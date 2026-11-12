@@ -112,6 +112,11 @@ export function workspaceUpdate(deps: WorkspaceUpdateDeps) {
         chosen.folder,
         ...peers.filter((peer) => !same(peer, chosen)).map((peer) => peer.folder),
       ]
+      for (const peer of peers) {
+        if (!same(peer, deps.self) && !same(peer, chosen)) {
+          await call(peer, { kind: 'quit', owner: deps.self })
+        }
+      }
       installRequested = true
       try {
         await call(chosen, { kind: 'install', owner: deps.self, version, folders })
@@ -120,15 +125,9 @@ export function workspaceUpdate(deps: WorkspaceUpdateDeps) {
           installRequested = false
           throw error
         }
-        // The installer may already be waiting for these processes to exit.
+        // The installer may already be waiting for this owner to exit.
         deps.report(error)
       }
-      const closing = await Promise.allSettled(
-        peers
-          .filter((peer) => !same(peer, deps.self) && !same(peer, chosen))
-          .map((peer) => call(peer, { kind: 'quit', owner: deps.self })),
-      )
-      for (const result of closing) if (result.status === 'rejected') deps.report(result.reason)
       if (!same(chosen, deps.self)) quit()
     } catch (error) {
       if (!installRequested) {
