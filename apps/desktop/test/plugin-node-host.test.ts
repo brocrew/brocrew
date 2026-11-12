@@ -39,6 +39,26 @@ import { sharedDataOwner } from '../src/main/plugins/shared-data'
 import { SHARED_DATA_FEATURE } from '../src/main/plugins/shared-data-contract'
 
 const cleanupFault = vi.hoisted(() => ({ once: false }))
+const startGate = vi.hoisted(() => ({
+  held: false,
+  entered: false,
+  release: undefined as (() => void) | undefined,
+}))
+vi.mock('../src/main/plugins/node-runtime', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../src/main/plugins/node-runtime')>()
+  return {
+    ...original,
+    async runtimeFiles(...args: Parameters<typeof original.runtimeFiles>) {
+      if (startGate.held) {
+        startGate.entered = true
+        await new Promise<void>((resolve) => {
+          startGate.release = resolve
+        })
+      }
+      return original.runtimeFiles(...args)
+    },
+  }
+})
 vi.mock('../resources/plugin-host/process-groups.mjs', async (importOriginal) => {
   const original =
     await importOriginal<typeof import('../resources/plugin-host/process-groups.mjs')>()
@@ -452,6 +472,31 @@ const auth = JSON.parse(fs.readFileSync(authPath, 'utf8'));`,
       await rm(folder, { recursive: true, force: true })
     }
   }, 15000)
+  it('waits for an accepted pending start on stop and never forks it afterwards', async () => {
+    const { host, home } = await context()
+    startGate.held = true
+    startGate.entered = false
+    const starting = host.start(fixture())
+    void starting.catch(() => undefined)
+    try {
+      await vi.waitFor(() => expect(startGate.entered).toBe(true))
+      let settled = false
+      const stopped = host.stop().then((result) => {
+        settled = true
+        return result
+      })
+      await new Promise((resolve) => setImmediate(resolve))
+      expect(settled).toBe(false)
+      startGate.release!()
+      await expect(starting).rejects.toThrow('plugin-host-start')
+      await expect(stopped).resolves.toEqual({ exited: false })
+      const runs = await readdir(join(home, 'runs'))
+      expect(runs).toEqual([])
+    } finally {
+      startGate.held = false
+      startGate.release?.()
+    }
+  })
   it.each(['stop', 'crash', 'quit'] as const)(
     'contains a requested detached browser and cleans its descendant after %s',
     async (kind) => {
