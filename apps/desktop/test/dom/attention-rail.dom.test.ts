@@ -1,6 +1,7 @@
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
+import { providersBridge } from '../../look/fixtures/providers'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import AgentState from '../../src/renderer/src/components/AgentState.vue'
 import { acceptEvent, createSessionRecord } from '../../src/renderer/src/lib/session-record'
@@ -101,13 +102,7 @@ const QUESTION: TranscriptEvent = {
 
 /** The rail, at the 200px column it really is, with the closed list stubbed out. */
 async function rail(open: unknown[]): Promise<Mounted> {
-  const stub = window as unknown as { api?: unknown }
-  stub.api = {
-    runtime: {
-      listResumable: () => Promise.resolve([]),
-      listUnresumable: () => Promise.resolve([]),
-    },
-  }
+  providersBridge()
   const m = mount(
     SideRail,
     { open, activeId: null, place: null },
