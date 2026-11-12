@@ -1,4 +1,4 @@
-import { neutralHostDeps, waitFor } from './host-fixture'
+import { neutralHostDeps } from './host-fixture'
 import type { LaunchedEvent, TranscriptEvent } from '../../src/shared/conversation-events'
 import type { UserTurnEvent } from '../../src/shared/human-answer-contracts'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'

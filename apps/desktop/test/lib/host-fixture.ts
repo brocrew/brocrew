@@ -116,4 +116,3 @@ export async function waitFor(predicate: () => boolean, what: string): Promise<v
   }
   throw new Error(`timed out waiting for ${what}`)
 }
-
