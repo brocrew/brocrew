@@ -7,9 +7,14 @@ import { Worker, MessageChannel } from 'node:worker_threads'
 import { ReaderWorkerLifetime } from '../../src/main/db/reader-worker-lifetime'
 import { closeDatabase } from '../../src/main/db/close-database'
 import { createAppLifetime } from '../../src/main/app-lifetime'
+import { RuntimeHost } from '../../src/main/runtime/runtime-host'
+import { NULL_SESSION_STORE } from '../../src/main/db/session-store'
+import { FakeRuntime } from '@brobot2/runtime'
+import { neutralHostDeps, fixtureProviderConfig } from '../lib/host-fixture'
 
 async function main() {
   const root = process.argv[2]!
+  const mode = process.argv[3] ?? 'success'
   const file = join(root, 'quit.sqlite')
   const writer = new Database(file)
   writer.pragma('journal_mode=WAL')
@@ -23,6 +28,12 @@ async function main() {
   const iterating = new Promise<void>((resolve) => { active = resolve })
   let unwound = false
   let exited = false
+  let workerExitCode: number | undefined
+  const workerErrors: string[] = []
+  const shutdownErrors: string[] = []
+  let finishWrites!: () => void
+  const writesReleased = new Promise<void>((resolve) => { finishWrites = resolve })
+  let finalWritesDone = false
   let closeStarted!: () => void
   const closingStarted = new Promise<void>((resolve) => { closeStarted = resolve })
   let closeSettled = false
@@ -61,7 +72,9 @@ async function main() {
     port1.on('message', (message) => {
       if (message.active) { order.push('active'); active() }
     })
-    worker.once('exit', () => {
+    worker.on('error', (error) => workerErrors.push(error.message))
+    worker.once('exit', (code) => {
+      workerExitCode = code
       unwound = Atomics.load(gate, 1) === 1
       if (unwound) order.push('unwound')
       exited = true
@@ -76,18 +89,54 @@ async function main() {
   })
   const outstanding = reader.read({}, {})
   await iterating
+  let sessionSequence = 0
+  const host = new RuntimeHost({
+    store: NULL_SESSION_STORE,
+    ...neutralHostDeps(() => root),
+    createRuntime: (provider) => new FakeRuntime(provider),
+    prepareProviderHome: () => root,
+    providerHomePath: () => root,
+    resolveCwd: () => root,
+    newSessionId: () => `fictional-${++sessionSequence}`,
+    readProviderConfig: fixtureProviderConfig,
+    workSearchReader: {
+      read: async () => ({ ok: false, reason: 'unavailable' }),
+      close: () => {
+        const closing = reader.close()
+        void closing.then(() => { closeSettled = true }, () => { closeSettled = true })
+        closeStarted()
+        return closing
+      },
+    },
+  })
+  const sink = { ownerId: 'fictional-quit-window', alive: true, aPersonIsBehindIt: true as const, send() {}, sendLiveness() {} }
+  const first = await host.createSession({ provider: 'claude' }, sink)
+  const sibling = await host.createSession({ provider: 'claude' }, sink)
+  const originalClose = host.close.bind(host)
+  Reflect.set(host, 'close', async (...args: Parameters<typeof host.close>) => {
+    if (args[0] === sibling.sessionId) {
+      await writesReleased
+      writer.exec('INSERT INTO kept VALUES(4)')
+      finalWritesDone = true
+    }
+    await originalClose(...args)
+    if (args[0] === first.sessionId && mode === 'session failure')
+      throw new Error('fictional session failed')
+  })
+  if (mode === 'sign-in failure') {
+    Reflect.get(host, 'signIns').set('fictional-sign-in', { signIn: {} })
+    Reflect.set(host, 'boundedCancel', async () => { throw new Error('fictional sign-in failed') })
+  }
   const lifetime = createAppLifetime({
     announceClosing: () => {}, recordOpenSessions: () => {},
     stopArchiveWork: () => {}, drainArchiveWork: async () => {},
-    closeAllSessions: () => {
-      const closing = reader.close()
-      void closing.then(() => { closeSettled = true }, () => { closeSettled = true })
-      closeStarted()
-      return closing
-    },
+    closeAllSessions: () => host.closeAll(),
     closeDatabase: () => {
       assert.equal(exited, true, 'writer reached checkpoint before reader exit')
       assert.equal(unwound, true, 'native iterator was terminated instead of unwound')
+      assert.equal(workerExitCode, 0, 'native worker must exit cleanly')
+      assert.deepEqual(workerErrors, [], 'native worker must not emit an error')
+      assert.equal(finalWritesDone, true, 'sibling final writes must finish before checkpoint')
       const observedWriter = new Proxy(writer, {
         get(target, key) {
           if (key === 'pragma') return (sql: string) => {
@@ -110,7 +159,8 @@ async function main() {
     },
     quit: () => {}, exit: (code) => { throw new Error(`unexpected exit ${code}`) },
     armLastResort: () => {}, log: (message, error) => {
-      if (error) throw error
+      if (error) shutdownErrors.push(error instanceof AggregateError
+        ? `${String(error)}: ${error.errors.map(String).join('; ')}` : String(error))
     }, now: Date.now,
   })
   lifetime.beforeQuit({ preventDefault() {} })
@@ -126,23 +176,32 @@ async function main() {
     assert.equal(writer.open, true)
     Atomics.store(gate, 0, 1)
     Atomics.notify(gate, 0)
+    finishWrites()
     await shutdown
   } finally {
     Atomics.store(gate, 0, 1)
     Atomics.notify(gate, 0)
     port1.close()
+    finishWrites()
+    await host.closeAll().catch(() => {})
     await reader.close()
     if (writer.open) writer.close()
   }
   assert.equal((await outstanding).ok, false)
   assert.equal(writer.open, false)
   const reopened = new Database(file)
-  assert.deepEqual(reopened.prepare('SELECT n FROM kept ORDER BY n').all(), [{ n: 1 }, { n: 2 }, { n: 3 }])
+  assert.deepEqual(reopened.prepare('SELECT n FROM kept ORDER BY n').all(), [{ n: 1 }, { n: 2 }, { n: 3 }, { n: 4 }])
   assert.equal(reopened.pragma('integrity_check', { simple: true }), 'ok')
   reopened.close()
   assert.equal(existsSync(wal) ? statSync(wal).size : 0, 0)
   assert.deepEqual(order, ['active', 'unwound', 'exit', 'checkpoint', 'writer-closed'])
-  console.log(JSON.stringify({ order, committedValues: [1, 2, 3], integrity: 'ok', checkpointResult, walBeforeQuit, walAtCheckpoint: 0 }))
+  assert.equal(shutdownErrors.length, mode === 'success' ? 0 : 1)
+  if (mode !== 'success') assert.ok(shutdownErrors[0]!.includes(mode === 'sign-in failure'
+    ? 'fictional sign-in failed' : 'fictional session failed'))
+  assert.equal(workerExitCode, 0)
+  assert.deepEqual(workerErrors, [])
+  console.log(JSON.stringify({ mode, order, workerExitCode, workerErrors, shutdownErrors,
+    committedValues: [1, 2, 3, 4], integrity: 'ok', checkpointResult, walBeforeQuit, walAtCheckpoint: 0 }))
 
 }
 void main().catch((error) => { console.error(error); process.exitCode = 1 })
