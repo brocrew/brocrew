@@ -246,7 +246,13 @@ it('cooperatively cancels inside the real worker engine without releasing its pe
       }
     })
     parentPort.postMessage({ type: 'ready' })
-    parentPort.on('message', ({ id, request, context, cancellation }) => {
+    parentPort.on('message', (message) => {
+      if (message.type === 'close') {
+        engine.close()
+        parentPort.close()
+        return
+      }
+      const { id, request, context, cancellation } = message
       flag = new Int32Array(cancellation)
       parentPort.postMessage({ type: 'read', id,
         result: engine.read(request, context, () => Atomics.load(flag, 0) !== 0) })
@@ -257,6 +263,8 @@ it('cooperatively cancels inside the real worker engine without releasing its pe
   const entered = new Promise<void>((resolve) => {
     nativeStarted = resolve
   })
+  let exitCode: number | undefined
+  const workerErrors: string[] = []
   class ObservedWorker extends EventEmitter implements ReaderWorker {
     constructor(readonly worker: Worker) {
       super()
@@ -264,8 +272,14 @@ it('cooperatively cancels inside the real worker engine without releasing its pe
         if (message.type === 'native-reading') nativeStarted()
         else this.emit('message', message)
       })
-      worker.on('error', (error) => this.emit('error', error))
-      worker.on('exit', (code) => this.emit('exit', code))
+      worker.on('error', (error) => {
+        workerErrors.push(error.message)
+        this.emit('error', error)
+      })
+      worker.on('exit', (code) => {
+        exitCode = code
+        this.emit('exit', code)
+      })
     }
     postMessage: Worker['postMessage'] = (...args) => this.worker.postMessage(...args)
     terminate: Worker['terminate'] = () => this.worker.terminate()
@@ -289,6 +303,8 @@ it('cooperatively cancels inside the real worker engine without releasing its pe
     await lifetime?.close()
     f.close()
   }
+  expect(exitCode).toBe(0)
+  expect(workerErrors).toEqual([])
 })
 
 it('renews the stall timer only for advancing work and still times out when progress stops', async () => {
