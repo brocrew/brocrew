@@ -131,6 +131,8 @@ export interface ForestRow {
 
 /** ⚑ What only a CONVERSATION row carries. */
 export interface ConversationRow {
+  readonly updatedAt?: number
+  readonly context?: 'window' | 'limit'
   /**
    * ⚑ **D-017b · another window has it open** — `openElsewhere`, which needs the window's own
    * `held`; the one fact about where it is that a node says.
@@ -438,6 +440,7 @@ export function forestView(input: ForestViewInput): ForestView | null {
       says,
       identity: node.identity,
       conversationRow: {
+        updatedAt: node.updatedAt,
         elsewhere,
         whereSays: elsewhere ? OPEN_IN_ANOTHER_WINDOW : null,
         // ⛔ **Only where the parent really is outside this reading** — never where it is the person.

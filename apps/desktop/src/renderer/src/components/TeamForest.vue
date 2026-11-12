@@ -16,6 +16,7 @@ import {
 } from '@vue-flow/core'
 import '@vue-flow/core/dist/style.css'
 import ForestCard from './ForestCard.vue'
+import ForestGroupCard from './ForestGroupCard.vue'
 import type { ForestRow, ForestView } from '../lib/the-forest'
 import type { RootFiles } from '../lib/files-kept'
 import { forestGraph, forestNodes, waitsOnIt, type GraphNode } from '../lib/forest-graph'
@@ -65,8 +66,8 @@ const LEAST_ZOOM = 0.6
 const rightward = computed(() => props.direction === 'right')
 const graph = computed(() => {
   if (props.view === null) return null
-  if (!rightward.value) return forestGraph(props.view)
-  const cards = forestNodes(props.view)
+  if (!rightward.value) return forestGraph(props.view, true)
+  const cards = forestNodes(props.view, true)
   return { generations: cards.length ? [cards] : [] }
 })
 
@@ -159,7 +160,7 @@ async function firstView(): Promise<void> {
   await nextTick()
   await flow.fitView({ padding: 0.12, maxZoom: 1, minZoom: LEAST_ZOOM })
   const here = currentHere.value
-    ? nodes.value.find((node) => node.id === currentHere.value)
+    ? nodes.value.find((node) => isCurrent(node.data!))
     : undefined
   if (here && flow.viewport.value.zoom <= LEAST_ZOOM + 0.001) {
     const height = heights.value.get(here.id) ?? UNMEASURED
@@ -169,6 +170,20 @@ async function firstView(): Promise<void> {
 
 /** ⚑ The node a card is, from Vue Flow's own slot — typed once, here. */
 const asNode = (data: unknown): GraphNode => data as GraphNode
+const isCurrent = (node: GraphNode): boolean =>
+  node.row.conversation === currentHere.value || node.members?.some((member) => member.row.conversation === currentHere.value) === true
+function pressNode(data: unknown): void {
+  const node = asNode(data)
+  if (node.members) toggle(node.row.conversation)
+  else emit('press', node.row)
+}
+const count = computed(() => {
+  const view = props.view
+  if (!view?.coverage.walked) return null
+  if (!props.current && view.coverage.cut > 0) return `Newest ${view.coverage.drawn} of ${view.coverage.there}`
+  const total = view.rows.filter((row) => row.kind === 'a-conversation' && !row.conversationRow?.context).length
+  return `${total} ${total === 1 ? 'conversation' : 'conversations'}`
+})
 
 /** ⚠️ **Which nodes a person has opened out** — component-local, and forgotten with the tab. */
 const opened = ref<ReadonlySet<string>>(new Set())
@@ -193,16 +208,25 @@ function toggle(conversation: string): void {
     </p>
 
     <template v-else>
-      <!-- 🔴 **The person, as a heading** — `641` §4.1. ⚑ No plate: he has no conversation, no
-           doing and no name in this app, and a plate would make him look like an agent. -->
-      <div class="person" data-cy="forest-person">
-        <span class="person-mark" aria-hidden="true">●</span>
-        <span class="person-name">You</span>
-        <span class="person-note">{{
-          props.current
-            ? "This conversation's tree"
-            : 'Everything this app started, and everything it started in turn'
-        }}</span>
+      <div class="graph-toolbar" data-cy="forest-toolbar">
+        <slot name="filters" />
+        <span v-if="count !== null" class="compact-count" data-cy="forest-drawn">{{ count }}</span>
+        <div class="zoom" role="group" aria-label="Zoom the forest">
+          <button type="button" title="Zoom out" data-cy="forest-zoom-out" @click="flow.zoomOut()">
+            −
+          </button>
+          <button type="button" title="Zoom in" data-cy="forest-zoom-in" @click="flow.zoomIn()">
+            +
+          </button>
+          <button
+            type="button"
+            title="Show the whole forest"
+            data-cy="forest-fit"
+            @click="flow.fitView({ padding: 0.12, maxZoom: 1 })"
+          >
+            Fit
+          </button>
+        </div>
       </div>
 
       <!-- 🔴 **The forest, on Vue Flow** (2026-09-30) — pan, zoom and fit inside this box, never the
@@ -228,20 +252,29 @@ function toggle(conversation: string): void {
           :max-zoom="1.5"
           @nodes-change="measured"
           @nodes-initialized="firstView"
-          @node-click="({ node }) => emit('press', asNode(node.data).row)"
+          @node-click="({ node }) => pressNode(node.data)"
         >
           <template #node-agent="{ data }">
             <!-- ⚑ One name for the node Vue Flow hands the slot, so the card reads as it did. -->
             <template v-for="node in [asNode(data)]" :key="node.row.key">
-              <div class="node" :style="{ width: `${CARD}px` }">
+              <div class="node" :class="{ 'context-parent': node.row.conversationRow?.context }" :data-context="node.row.conversationRow?.context ? 'parent' : undefined" :style="{ width: `${CARD}px` }">
                 <Handle
                   type="target"
                   :position="rightward ? Position.Left : Position.Top"
                   :connectable="false"
                 />
-                <ForestCard
+                <ForestGroupCard
+                  v-if="node.members"
                   :node="node"
-                  :here="node.row.conversation === currentHere"
+                  :here="isCurrent(node)"
+                  :opened="opened.has(node.row.conversation)"
+                  @toggle="toggle(node.row.conversation)"
+                  @press="(row) => emit('press', row)"
+                />
+                <ForestCard
+                  v-else
+                  :node="node"
+                  :here="isCurrent(node)"
                   :opened="opened.has(node.row.conversation)"
                   :file-counts="props.fileCounts"
                   :root-files="
@@ -260,22 +293,7 @@ function toggle(conversation: string): void {
           </template>
         </VueFlow>
         <!-- ⚑ **Zoom and fit, beside the drawing** — a trackpad pinch zooms too. -->
-        <div class="zoom" role="group" aria-label="Zoom the forest">
-          <button type="button" title="Zoom out" data-cy="forest-zoom-out" @click="flow.zoomOut()">
-            −
-          </button>
-          <button type="button" title="Zoom in" data-cy="forest-zoom-in" @click="flow.zoomIn()">
-            +
-          </button>
-          <button
-            type="button"
-            title="Show the whole forest"
-            data-cy="forest-fit"
-            @click="flow.fitView({ padding: 0.12, maxZoom: 1 })"
-          >
-            Fit
-          </button>
-        </div>
+
       </div>
 
       <!-- ⚑ **A read that ANSWERED and found nothing** — and it is not the same as not having read. -->
@@ -287,52 +305,15 @@ function toggle(conversation: string): void {
         }}
       </p>
 
-      <!-- Disclose what this forest reading left out. Coverage matters for a large tree even when the smaller conversation band needs less explanatory text. -->
-      <div class="covers" data-cy="forest-covers">
-        <p v-if="!props.view.coverage.walked" class="gap" data-cy="forest-not-walked">
-          <strong>This is not the whole picture</strong>
-          {{ props.view.coverage.covers ?? 'this build cannot say what was looked at' }}
-        </p>
-        <template v-else>
-          <p data-cy="forest-drawn">
-            <template v-if="props.current">Workspace reading: </template>
-            {{ props.view.coverage.drawn }} of
-            {{ props.view.coverage.there }}
-            {{ props.view.coverage.there === 1 ? 'conversation' : 'conversations' }} this app's
-            agents hold.
-          </p>
-          <!-- ⚑ D-034 · a replaced conversation has no card: its stand-in is drawn in its place. -->
-          <p v-if="props.view.coverage.replaced > 0" data-cy="forest-replaced">
-            {{ props.view.coverage.replaced }}
-            of them could never be reopened, and
-            {{ props.view.coverage.replaced === 1 ? 'is' : 'are' }} drawn as the conversation that
-            took {{ props.view.coverage.replaced === 1 ? 'its' : 'their' }} place.
-          </p>
-          <p v-if="props.view.coverage.cut > 0" class="gap" data-cy="forest-cut">
-            <strong>{{ props.view.coverage.cut }} more are not drawn</strong>
-            this read stops at a bound, so the oldest are left out.
-          </p>
-          <!-- 🔴 **678 · F-R18 — one sentence for the count, true for what it now means.** ⚠️ It said
-               *"Some work is missing … a task may be absent from a conversation that is drawn"*;
-               since `671` the same count also covers a drawn task whose STATE may be wrong. -->
-          <p v-if="props.view.coverage.short" class="gap" data-cy="forest-rows-unread">
-            <strong>{{ ROWS_UNREAD_LEAD }}</strong>
-            {{ props.view.coverage.short }}
-          </p>
-        </template>
-        <!-- 🔴 **685 · the WAITS reading's own count** (`676` F-R18a) — the plates' *waiting on…*
-             words come from it. ⛔ Outside `walked`: it is a different read, and never summed into
-             the line above (`678`'s one count, one sentence). -->
-        <p v-if="props.view.coverage.waitsShort" class="gap" data-cy="forest-waits-unread">
-          <strong>{{ ROWS_UNREAD_LEAD }}</strong>
-          {{ props.view.coverage.waitsShort }}
-        </p>
-        <!-- Disclose conversations held by no app agent, including the person's provider-home history. They are outside this forest rather than drawn as app-agent nodes below the person. -->
-        <p v-if="props.view.coverage.heldByNoAgent > 0" data-cy="forest-outside">
-          {{ props.view.coverage.heldByNoAgent }} more conversations on this machine are held by no
-          agent of this app, so they are not part of this picture.
-        </p>
-      </div>
+      <p v-if="!props.view.coverage.walked" class="quiet" data-cy="forest-not-walked">
+        {{ props.view.coverage.covers ?? 'This reading could not look at the conversations.' }}
+      </p>
+      <p v-if="props.view.coverage.short" class="quiet" data-cy="forest-rows-unread">
+        {{ ROWS_UNREAD_LEAD }} {{ props.view.coverage.short }}
+      </p>
+      <p v-if="props.view.coverage.waitsShort" class="quiet" data-cy="forest-waits-unread">
+        {{ ROWS_UNREAD_LEAD }} {{ props.view.coverage.waitsShort }}
+      </p>
     </template>
   </section>
 </template>
@@ -360,30 +341,22 @@ function toggle(conversation: string): void {
   font-size: var(--type-caption);
 }
 
-/* 🔴 **The person** — a heading and a rule, not a plate (`641` §4.1). */
-.person {
+.graph-toolbar {
   display: flex;
-  align-items: baseline;
-  padding-bottom: var(--space-4);
-  border-bottom: var(--border-width) solid var(--line);
-  gap: var(--space-3);
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-4);
 }
 
-.person-mark {
-  color: var(--text);
-  font-size: var(--type-caption);
-}
-
-.person-name {
-  color: var(--text);
-  font-size: var(--type-small);
-  font-weight: var(--fw-bold);
-}
-
-.person-note {
+.compact-count {
+  margin-left: auto;
   color: var(--faint);
   font-size: var(--type-caption);
+  white-space: nowrap;
 }
+
+.context-parent { opacity: 0.55; }
+.context-parent:hover, .context-parent:focus-within { opacity: 1; }
 
 /* 🔴 **The drawing's own box** (2026-09-30) — Vue Flow pans and zooms inside it; ⛔ never the page.
    ⚠️ Vue Flow needs a box with a height: a page gets a tall one, the Graph tab the whole column. */
@@ -428,10 +401,8 @@ function toggle(conversation: string): void {
 /* ⚑ **The conversation a person is in**, outlined in the accent. */
 
 .zoom {
-  position: absolute;
-  z-index: 5;
-  top: var(--space-4);
-  right: var(--space-4);
+  flex-shrink: 0;
+  margin-left: auto;
   display: flex;
   overflow: hidden;
   border: var(--border-width) solid var(--line);
@@ -459,22 +430,4 @@ function toggle(conversation: string): void {
   background: var(--wash-3);
 }
 
-.covers {
-  display: flex;
-  flex-direction: column;
-  padding-top: var(--space-4);
-  border-top: var(--border-width) solid var(--line);
-  color: var(--faint);
-  font-size: var(--type-caption);
-  gap: var(--space-3);
-}
-
-.covers p {
-  margin: 0;
-}
-
-.gap strong {
-  display: block;
-  color: var(--text);
-}
 </style>
