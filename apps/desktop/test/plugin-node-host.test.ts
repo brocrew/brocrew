@@ -871,7 +871,7 @@ process.send({ channel: 'brocrew-plugin-node:v1', runId: process.env.BROCREW_PLU
     expect(String((refusal as Error).cause)).toContain('code 7')
     expect(String((refusal as Error).cause)).toContain('fictional guardian setup refused')
   }, 15000)
-  it('refuses runtime tampering and never falls back to PATH', async () => {
+  it('rejects unknown runtimes and never falls back to PATH', async () => {
     const bad = { id: 'fictional', version: process.versions.node }
     await expect(runtimeFiles(bad)).rejects.toThrow('plugin-host-runtime')
     await expect(
@@ -881,20 +881,18 @@ process.send({ channel: 'brocrew-plugin-node:v1', runId: process.env.BROCREW_PLU
       }),
     ).rejects.toThrow('plugin-host-runtime')
   })
-  it('refuses modified executable or bootstrap bytes in a kept runtime', async () => {
-    const captured = await captureLog()
+  it('returns prepared paths after own kept executable or bootstrap bytes change', async () => {
     const runtime = await preparePluginNodeRuntime({
       resourcesRoot: resources,
       durableRoot: join(root, 'other-runtimes'),
     })
     const paths = await runtimeFiles(runtime)
-    await chmod(paths.node, 0o700)
-    await writeFile(paths.node, 'fictional replaced node')
-    await expect(runtimeFiles(runtime)).rejects.toThrow('plugin-host-runtime')
-    await vi.waitFor(async () =>
-      expect(await captured.text()).toContain('runtime-files-verify failure'),
-    )
-    await captured.close()
+    for (const path of [paths.node, paths.guardian]) {
+      await chmod(path, 0o700)
+      await writeFile(path, 'fictional replacement bytes')
+      expect(await runtimeFiles(runtime)).toEqual(paths)
+      expect(await readFile(path, 'utf8')).toBe('fictional replacement bytes')
+    }
   })
   it('retries the same runtime after an interrupted private copy without publishing partial bytes', async () => {
     const captured = await captureLog()

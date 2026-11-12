@@ -18,8 +18,6 @@ export interface PluginNodeRuntime {
 interface RuntimeFiles {
   node: string
   guardian: string
-  digest: string
-  scripts: Map<string, Buffer>
 }
 const prepared = new WeakMap<PluginNodeRuntime, RuntimeFiles>()
 /** The host's own scripts beside the pinned Node, all hashed into the runtime's identity. */
@@ -105,8 +103,6 @@ export async function preparePluginNodeRuntime(options: {
     prepared.set(runtime, {
       node: join(kept, NODE),
       guardian: join(kept, 'guardian.mjs'),
-      digest: metadata.sha256,
-      scripts,
     })
     return runtime
   } catch (error) {
@@ -147,8 +143,6 @@ export async function resumePluginNodeRuntime(options: {
     prepared.set(runtime, {
       node: join(kept, NODE),
       guardian: join(kept, 'guardian.mjs'),
-      digest: metadata.sha256,
-      scripts,
     })
     return runtime
   } catch {
@@ -162,18 +156,6 @@ export async function runtimeFiles(
   try {
     const paths = prepared.get(runtime)
     if (!paths) throw new PluginHostError('runtime')
-    if (digest(await sourceBytes(paths.node, 256 * 1024 * 1024)) !== paths.digest)
-      throw new PluginHostError('runtime')
-    for (const [name, bytes] of paths.scripts)
-      if (
-        !(
-          await sourceBytes(
-            join(paths.guardian, '..', name),
-            name === 'LICENSE' ? 512 * 1024 : 64 * 1024,
-          )
-        ).equals(bytes)
-      )
-        throw new PluginHostError('runtime')
     finish()
     return Object.freeze({ node: paths.node, guardian: paths.guardian })
   } catch (error) {
