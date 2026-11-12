@@ -4,7 +4,7 @@ import { chromeUiFixture } from './chrome-ui-fixture'
 import { PLUGIN_UI_CHANNEL } from '../src/shared/plugin-ui'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { join } from 'node:path'
-import { readFile, readdir, rm } from 'node:fs/promises'
+import { readFile, readdir, rm, unlink, writeFile } from 'node:fs/promises'
 import { digest } from '../src/main/plugins/node-host-files'
 import { PluginProfileLedger } from '../src/main/plugins/lifecycle/profile-ledger'
 import { PluginProfileLedger as PreviousLedger } from './fixtures/plugin-configuration-parent/profile-ledger'
@@ -174,6 +174,11 @@ describe.skipIf(process.platform === 'win32')('consumed configuration checkpoint
     expect(JSON.parse(await readFile(join(directory, 'checkpoint.json'), 'utf8'))).toMatchObject({
       revision: 2,
     })
+    const birth = join(directory, 'birth')
+    await writeFile(birth, 'Fictional changed marker.')
+    expect(await ledger.revision(id)).toBe(2)
+    await unlink(birth)
+    expect(await ledger.revision(id)).toBe(2)
     await rm(directory, { recursive: true })
     await expect(ledger.revision(id)).rejects.toThrow()
   })
