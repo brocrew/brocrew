@@ -45,6 +45,8 @@ export function neutralHostDeps(
 }
 
 export function ownsStream(host: RuntimeHost, sessionId: string, sink: RuntimeEventSink): boolean {
-  const slots = (host as unknown as { slots: ReadonlyMap<string, { ownerId: string | null }> }).slots
+  const slots = (host as unknown as {
+    slots: ReadonlyMap<string, { ownerId: string | null }>
+  }).slots
   return slots.get(sessionId)?.ownerId === sink.ownerId
 }

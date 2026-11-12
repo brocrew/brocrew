@@ -192,12 +192,22 @@ describe('a service is reached through the piece it is on', () => {
         text,
       })
       expect(sent.structured).toMatchObject({ outcome: 'ok', delivery: 'queued' })
-      expect(rows(service, 'user_turn').some((turn) => turn.type === 'user_turn' && turn.text.includes(text))).toBe(false)
+      expect(
+        rows(service, 'user_turn').some(
+          (turn) => turn.type === 'user_turn' && turn.text.includes(text),
+        ),
+      ).toBe(false)
       expect(stateOf(service, two.piece)).toBe('waiting')
       releaseTheTurn()
       await vi.waitFor(() => {
-        expect(rows(service, 'user_turn').some((turn) => turn.type === 'user_turn' && turn.text.includes(text))).toBe(true)
-        expect(world.sent.some((one) => one.as === 'browser-driver' && one.words.includes(text))).toBe(true)
+        expect(
+          rows(service, 'user_turn').some(
+            (turn) => turn.type === 'user_turn' && turn.text.includes(text),
+          ),
+        ).toBe(true)
+        expect(
+          world.sent.some((one) => one.as === 'browser-driver' && one.words.includes(text)),
+        ).toBe(true)
       })
       expect(stateOf(service, two.piece)).toBe('waiting')
     })
