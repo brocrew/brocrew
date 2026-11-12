@@ -8,7 +8,6 @@ import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
 import { WindowReadEngine } from '../src/main/db/window-read-engine'
-import { WINDOW_READ_BOUNDS } from '../src/main/db/window-read-protocol'
 import { WindowWorkerReader } from '../src/main/db/window-worker-reader'
 import { bundleAWorker } from './helpers/bundle-a-worker'
 
@@ -160,7 +159,7 @@ describe.each([175_930, 297_164])('a fictional %i-event conversation', (count) =
 })
 
 it.each(['rows', 'bytes', 'reply', 'cancelled', 'unread'] as const)(
-  'keeps a closed %s failure and never returns a swallowed partial fold',
+  'reads beyond the former %s budget, preserving cancellation and unread rows',
   async (reason) => {
     const directory = mkdtempSync(join(tmpdir(), 'fictional-reader-bound-'))
     const file = join(directory, 'fictional.sqlite')
@@ -187,7 +186,7 @@ it.each(['rows', 'bytes', 'reply', 'cancelled', 'unread'] as const)(
         VALUES (?, 'atlas', 0, ?, ?, ?, ?)`)
       const count =
         reason === 'rows' || reason === 'unread'
-          ? Math.ceil(WINDOW_READ_BOUNDS.rows / 3) + 2
+          ? Math.ceil(100_000 / 3) + 2
           : reason === 'cancelled'
             ? 2000
             : 1
@@ -198,15 +197,13 @@ it.each(['rows', 'bytes', 'reply', 'cancelled', 'unread'] as const)(
               ? {
                   type: 'message_queued',
                   messageId: 'atlas-message',
-                  text: 'x'.repeat(WINDOW_READ_BOUNDS.replyBytes),
+                  text: 'x'.repeat(4 * 1024 * 1024),
                   kind: 'work',
                 }
               : {
                   type: 'request_routed',
                   requestId:
-                    reason === 'bytes'
-                      ? 'x'.repeat(WINDOW_READ_BOUNDS.bytes)
-                      : `atlas-question-${i}`,
+                    reason === 'bytes' ? 'x'.repeat(32 * 1024 * 1024) : `atlas-question-${i}`,
                   to: 'a-person',
                   parent: null,
                 }
@@ -221,15 +218,21 @@ it.each(['rows', 'bytes', 'reply', 'cancelled', 'unread'] as const)(
       })()
       engine = new WindowReadEngine(file)
       let polls = 0
-      expect(() =>
-        engine!.read(
-          { kind: reason === 'reply' ? 'incidents' : 'routes' },
-          () => reason === 'cancelled' && ++polls > 1024,
-        ),
-      ).toThrow(
-        expect.objectContaining({ why: 'failed', reason: reason === 'unread' ? 'rows' : reason }),
-      )
-      if (reason === 'cancelled') expect(polls).toBeGreaterThan(WINDOW_READ_BOUNDS.foldPageRows)
+      const query = { kind: reason === 'reply' ? 'incidents' : 'routes' } as const
+      if (reason === 'cancelled') {
+        expect(() => engine!.read(query, () => ++polls > 1024)).toThrow(
+          expect.objectContaining({ why: 'failed', reason: 'cancelled' }),
+        )
+        expect(polls).toBeGreaterThan(1024)
+      } else {
+        const answer = engine.read(query)
+        if (answer.kind === 'routes') {
+          expect(answer.routes[0]?.requests).toHaveLength(reason === 'unread' ? 1 : count)
+          if (reason === 'unread') expect(answer.routes[0]?.skipped).toHaveLength(count - 1)
+        } else if (answer.kind === 'incidents') {
+          expect(answer.owners[0]?.messages[0]?.text).toHaveLength(4 * 1024 * 1024)
+        }
+      }
       if (reason === 'reply') {
         const workerFile = await bundleAWorker(
           'src/main/window-reader.worker.ts',
@@ -237,10 +240,10 @@ it.each(['rows', 'bytes', 'reply', 'cancelled', 'unread'] as const)(
           'reader.cjs',
         )
         native = new WindowWorkerReader(new Worker(workerFile, { workerData: { file } }))
-        await expect(native.read({ kind: 'incidents' })).rejects.toMatchObject({
-          why: 'failed',
-          reason: 'reply',
-        })
+        const answer = await native.read({ kind: 'incidents' })
+        expect(answer.kind).toBe('incidents')
+        if (answer.kind === 'incidents')
+          expect(answer.owners[0]?.messages[0]?.text).toHaveLength(4 * 1024 * 1024)
       }
       // Failure rolls back its snapshot and does not poison a later successful read.
       db.prepare('DELETE FROM events').run()

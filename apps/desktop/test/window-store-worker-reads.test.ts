@@ -228,9 +228,12 @@ describe('canonical window worker folds and independent live-store reads', () =>
     }
   })
 
-  it('does not silently return a partial answer when materialization exceeds its bound', () => {
+  it('returns a complete lead larger than the former reply budget', () => {
     row('alpha', 'user_turn', { sent: opening + 'x'.repeat(5 * 1024 * 1024) })
-    expect(() => engine.read(query)).toThrow(WindowReadUnavailable)
+    expect(engine.read(query)).toEqual({
+      kind: 'leads',
+      rows: store.threadLeadRows?.('alpha', opening, query.before, query.historicalOpening),
+    })
     expect(routesMatch().questions.rows).toHaveLength(1)
   })
 
@@ -484,61 +487,31 @@ describe('canonical window worker folds and independent live-store reads', () =>
     expect(console.warn).not.toHaveBeenCalledWith(expect.stringContaining('writer-moved'))
   })
 
-  it('an unsampled writer answers directly without requesting a worker snapshot', async () => {
-    const read = vi.fn(async (input: WindowReadQuery) => engine.read(input))
-    const { host } = hostWith({ read, close: async () => {} }, false, {
-      windowWriterStamp: undefined,
-      limitsWriterStamp: () => null,
-    })
-    anotherQuestion()
-    const expected = host.questionsForAPerson()
-    const direct = vi.spyOn(store, 'questionsAPersonMustAnswer')
-    direct.mockClear()
-    // Answered on the main thread, by the answer already composed at this version.
-    expect(await host.readForWindow(() => host.questionsForAPerson())).toBe(expected)
-    expect(direct).not.toHaveBeenCalled()
-    expect(read).not.toHaveBeenCalled()
-    expect(console.warn).toHaveBeenCalledWith(
-      'window read answered on the main thread: writer-unsampled (1 since launch)',
-    )
-  })
-
-  it('forty windows answered on the main thread share one composition of the queue', async () => {
-    const read = vi.fn(async (input: WindowReadQuery) => engine.read(input))
-    const { host } = hostWith({ read, close: async () => {} }, false, {
-      windowWriterStamp: undefined,
-      limitsWriterStamp: () => null,
-    })
-    anotherQuestion()
-    const direct = vi.spyOn(store, 'questionsAPersonMustAnswer')
-    const answers = await Promise.all(
-      Array.from({ length: 40 }, () => host.readForWindow(() => host.questionsForAPerson())),
-    )
-    expect(direct).toHaveBeenCalledOnce()
-    expect(read).not.toHaveBeenCalled()
-    for (const answer of answers) expect(answer).toBe(answers[0])
-    expect(answers[0]!.rows).toHaveLength(1)
-  })
-
-  it('forty workspace reads answered on the main thread share one composition', async () => {
-    const read = vi.fn(async (input: WindowReadQuery) => engine.read(input))
-    const { host } = hostWith({ read, close: async () => {} }, false, {
-      windowWriterStamp: undefined,
-      limitsWriterStamp: () => null,
-    })
-    anotherQuestion()
-    const walks = [
-      vi.spyOn(store, 'questionsAPersonMustAnswer'),
-      vi.spyOn(store, 'decisionsAwaitingAPerson'),
-      vi.spyOn(store, 'piecesWaitingOnWhoWrote'),
-    ]
-    const answers = await Promise.all(
-      Array.from({ length: 40 }, () => host.readForWindow(() => host.readWorkspace())),
-    )
-    for (const walk of walks) expect(walk).toHaveBeenCalledOnce()
-    expect(read).not.toHaveBeenCalled()
-    for (const answer of answers) expect(answer).toBe(answers[0])
-  })
+  it.each(['questions', 'workspace'] as const)(
+    'an unsampled writer refuses forty %s reads without composing on main',
+    async (kind) => {
+      const read = vi.fn(async (input: WindowReadQuery) => engine.read(input))
+      const { host } = hostWith({ read, close: async () => {} }, true, {
+        windowWriterStamp: undefined,
+        limitsWriterStamp: () => null,
+      })
+      anotherQuestion()
+      const answer = vi.fn(() =>
+        kind === 'questions' ? host.questionsForAPerson() : host.readWorkspace(),
+      )
+      const settled = await Promise.allSettled(
+        Array.from({ length: 40 }, () => host.readForWindow(answer)),
+      )
+      for (const result of settled) {
+        expect(result.status).toBe('rejected')
+        if (result.status === 'rejected')
+          expect(result.reason).toBeInstanceOf(WindowReadUnavailable)
+      }
+      expect(answer).not.toHaveBeenCalled()
+      expect(read).not.toHaveBeenCalled()
+      expect(console.warn).not.toHaveBeenCalled()
+    },
+  )
 
   it('a workspace reading that came up short is said once, and read again with nothing moved', async () => {
     const { host } = hostWith()
@@ -563,23 +536,19 @@ describe('canonical window worker folds and independent live-store reads', () =>
     expect(host.readWorkspace()).toBe(recovered)
   })
 
-  it('answers on the main thread when the writer moves under both tries', async () => {
+  it('refuses when the writer moves under both tries without composing on main', async () => {
     const read = vi.fn(async (query: WindowReadQuery) => {
       const answer = engine.read(query)
       row('alpha', 'request_escalated', { type: 'request_escalated', requestId: 'second' })
       return answer
     })
-    const { host } = hostWith({ read, close: async () => {} })
+    const { host } = hostWith({ read, close: async () => {} }, true)
     anotherQuestion()
-    const direct = vi.spyOn(store, 'questionsAPersonMustAnswer')
-    const answer = await host.readForWindow(() => host.questionsForAPerson())
+    const answer = vi.fn(() => host.questionsForAPerson())
+    await expect(host.readForWindow(answer)).rejects.toThrow(WindowReadUnavailable)
     expect(read).toHaveBeenCalledTimes(2)
-    expect(direct).toHaveBeenCalledOnce()
-    expect(answer).toEqual(host.questionsForAPerson())
-    expect(answer.rows).toHaveLength(1)
-    expect(console.warn).toHaveBeenCalledWith(
-      'window read answered on the main thread: writer-moved (1 since launch)',
-    )
+    expect(answer).not.toHaveBeenCalled()
+    expect(console.warn).not.toHaveBeenCalled()
   })
 
   it('a post-write joiner rejects the shared older snapshot and joins the fresh retry', async () => {
@@ -666,14 +635,18 @@ describe('canonical window worker folds and independent live-store reads', () =>
     read.mockRejectedValueOnce(new WindowReadUnavailable('failed'))
     const { host } = hostWith({ read, close: async () => {} }, false, { now: () => clock })
     anotherQuestion()
-    const first = await host.readForWindow(() => host.questionsForAPerson())
-    // The same stamp within the wait: answered without asking the worker again.
+    await expect(host.readForWindow(() => host.questionsForAPerson())).rejects.toThrow(
+      WindowReadUnavailable,
+    )
+    // The same stamp within the wait returns the error without synchronous recomputation.
     for (let one = 0; one < 5; one++)
-      expect(await host.readForWindow(() => host.questionsForAPerson())).toEqual(first)
+      await expect(host.readForWindow(() => host.questionsForAPerson())).rejects.toThrow(
+        WindowReadUnavailable,
+      )
     expect(read).toHaveBeenCalledOnce()
     // Once the wait has passed, one ask tries the worker again, and its answer is current.
     clock += 60_000
-    expect(await host.readForWindow(() => host.questionsForAPerson())).toEqual(first)
+    expect((await host.readForWindow(() => host.questionsForAPerson())).rows).toHaveLength(1)
     expect(read).toHaveBeenCalledTimes(2)
   })
 
@@ -682,7 +655,9 @@ describe('canonical window worker folds and independent live-store reads', () =>
     read.mockRejectedValueOnce(new WindowReadUnavailable('failed'))
     const { host } = hostWith({ read, close: async () => {} })
     anotherQuestion()
-    await host.readForWindow(() => host.questionsForAPerson())
+    await expect(host.readForWindow(() => host.questionsForAPerson())).rejects.toThrow(
+      WindowReadUnavailable,
+    )
     expect(read).toHaveBeenCalledOnce()
     row('alpha', 'request_escalated', { type: 'request_escalated', requestId: 'first' })
     expect((await host.readForWindow(() => host.questionsForAPerson())).rows).toHaveLength(1)
@@ -784,10 +759,6 @@ describe('canonical window worker folds and independent live-store reads', () =>
     const callers = Array.from({ length: WINDOW_READ_BOUNDS.callers }, () =>
       host.readForWindow(() => host.questionsForAPerson()),
     )
-    const mainThread = vi.spyOn(
-      host as unknown as { answeredOnTheMainThread: (...args: unknown[]) => unknown },
-      'answeredOnTheMainThread',
-    )
     const excess = Array.from({ length: 4 }, () =>
       host.readForWindow(() => host.questionsForAPerson()),
     )
@@ -797,8 +768,6 @@ describe('canonical window worker folds and independent live-store reads', () =>
     const answers = await Promise.all([...callers, ...excess])
     for (const answer of answers) expect(answer).toEqual(answers[0])
     expect(answers[0]!.rows).toHaveLength(1)
-    expect(mainThread).not.toHaveBeenCalled()
-    mainThread.mockRestore()
     row('alpha', 'request_escalated', { type: 'request_escalated', requestId: 'first' })
     const next = host.readForWindow(() => host.questionsForAPerson())
     expect(read).toHaveBeenCalledTimes(2)
@@ -821,8 +790,10 @@ describe('canonical window worker folds and independent live-store reads', () =>
     )
     const settled = Promise.allSettled(callers)
     reject(new WindowReadUnavailable())
-    const direct = host.questionsForAPerson()
-    expect(await settled).toEqual(callers.map(() => ({ status: 'fulfilled', value: direct })))
+    for (const result of await settled) {
+      expect(result.status).toBe('rejected')
+      if (result.status === 'rejected') expect(result.reason).toBeInstanceOf(WindowReadUnavailable)
+    }
     read.mockImplementation(async () => engine.read({ kind: 'routes' }))
     // A worker that answered nothing is gone, which is not remembered, so the next ask tries again.
     row('alpha', 'request_escalated', { type: 'request_escalated', requestId: 'first' })
@@ -830,24 +801,17 @@ describe('canonical window worker folds and independent live-store reads', () =>
     expect(read).toHaveBeenCalledTimes(2)
   })
 
-  describe('a read the worker does not serve is answered on the main thread', () => {
+  describe('a read the worker does not serve stays failed', () => {
     const said = (): string[] => vi.mocked(console.warn).mock.calls.map((call) => String(call[0]))
-    const theEightReads = [
+    const theSnapshotReads = [
       'listResumable',
       'listUnresumable',
       'questionsForAPerson',
       'decisionsForAPerson',
       'readWorkspace',
-      'whatIsBeingDone',
       'whatEachConversationIsWaitingOn',
       'theWholeForest',
     ] as const
-    /** An answer without the moment it was read, which two reads never share. */
-    const unstamped = (answer: unknown): unknown => {
-      if (answer === null || typeof answer !== 'object' || Array.isArray(answer)) return answer
-      return Object.fromEntries(Object.entries(answer).filter(([key]) => key !== 'readAt'))
-    }
-
     /**
      * The real reader over a worker that fails every read it is sent, exits on it, or holds it
      * until it is closed.
@@ -870,27 +834,21 @@ describe('canonical window worker folds and independent live-store reads', () =>
       return reader
     }
 
-    it('the worker’s read fails, as when its wait for a lock runs out: it answers', async () => {
-      const { host } = hostWith(aReaderWhoseWorker('fails'))
-      anotherQuestion()
-      const answer = await host.readForWindow(() => host.questionsForAPerson())
-      expect(answer).toEqual(host.questionsForAPerson())
-      expect(answer.rows).toHaveLength(1)
-      expect(said()).toEqual([
-        'window read answered on the main thread: worker-read-failed (1 since launch)',
-      ])
+    it('a worker failure is reported without composing on main', async () => {
+      const { host } = hostWith(aReaderWhoseWorker('fails'), true)
+      const answer = vi.fn(() => host.questionsForAPerson())
+      await expect(host.readForWindow(answer)).rejects.toThrow(WindowReadUnavailable)
+      expect(answer).not.toHaveBeenCalled()
+      expect(said()).toEqual([])
     })
 
-    it('the worker gone: it answers, and a worker that needs a restart is said apart', async () => {
-      const { host } = hostWith(new WindowReaderLifetime(() => aReaderWhoseWorker('exits')))
-      anotherQuestion()
-      const direct = host.questionsForAPerson()
+    it('a gone worker and exhausted lifetime report errors without composing on main', async () => {
+      const { host } = hostWith(new WindowReaderLifetime(() => aReaderWhoseWorker('exits')), true)
+      const answer = vi.fn(() => host.questionsForAPerson())
       for (let one = 0; one < 3; one++)
-        expect(await host.readForWindow(() => host.questionsForAPerson())).toEqual(direct)
-      expect(said()).toEqual([
-        'window read answered on the main thread: worker-gone (1 since launch)',
-        'window read answered on the main thread: worker-needs-restart (1 since launch)',
-      ])
+        await expect(host.readForWindow(answer)).rejects.toThrow(WindowReadUnavailable)
+      expect(answer).not.toHaveBeenCalled()
+      expect(said()).toEqual([])
     })
 
     it('a read the app’s close cuts off is refused, and not read on the main thread', async () => {
@@ -952,54 +910,19 @@ describe('canonical window worker folds and independent live-store reads', () =>
       expect(said().some((line) => line.startsWith('window read answered'))).toBe(false)
     })
 
-    it.each(theEightReads)(
-      '%s answers on the main thread while the worker is gone',
+    it.each(theSnapshotReads)(
+      '%s reports a worker miss without recomputing the answer',
       async (kind) => {
         const read = vi.fn(async (): Promise<WindowReadResult> => {
           throw new WindowReadUnavailable()
         })
-        const { host } = hostWith({ read, close: async () => {} })
-        const direct = await executeRuntimeCommand(hostWith().host, sink, { kind })
-        expect(unstamped(await executeRuntimeCommand(host, sink, { kind }))).toEqual(
-          unstamped(direct),
+        const { host } = hostWith({ read, close: async () => {} }, true)
+        await expect(executeRuntimeCommand(host, sink, { kind })).rejects.toThrow(
+          WindowReadUnavailable,
         )
         expect(read).toHaveBeenCalledOnce()
       },
     )
-
-    it('says each cause with its count at most once a minute, and nothing the answer holds', async () => {
-      let clock = 1_000_000
-      const read = vi.fn(async (): Promise<WindowReadResult> => {
-        throw new WindowReadUnavailable()
-      })
-      const { host } = hostWith({ read, close: async () => {} }, false, { now: () => clock })
-      for (let one = 0; one < 3; one++) await host.readForWindow(() => host.questionsForAPerson())
-      clock += 60_000
-      await host.readForWindow(() => host.questionsForAPerson())
-      expect(said()).toEqual([
-        'window read answered on the main thread: worker-gone (1 since launch)',
-        'window read answered on the main thread: worker-gone (4 since launch)',
-      ])
-      expect(said().join('\n')).not.toContain('fictional')
-    })
-
-    it('a list read the main thread can’t answer either is still refused, so the list says so', async () => {
-      const read = vi.fn(async (): Promise<WindowReadResult> => {
-        throw new WindowReadUnavailable()
-      })
-      const { host } = hostWith({ read, close: async () => {} })
-      await expect(executeRuntimeCommand(host, sink, { kind: 'listResumable' })).resolves.toEqual(
-        host.resumableSessions(),
-      )
-      // A commit moves the listing, so the next ask composes it again rather than sharing the last.
-      store.setApprovalMode('alpha', 'auto')
-      vi.spyOn(store, 'resumable').mockImplementation(() => {
-        throw new Error('the database is locked')
-      })
-      await expect(executeRuntimeCommand(host, sink, { kind: 'listResumable' })).rejects.toThrow(
-        'the database is locked',
-      )
-    })
 
     it('an answer that fails on the worker’s snapshot is refused, and not read again here', async () => {
       const { host } = hostWith({

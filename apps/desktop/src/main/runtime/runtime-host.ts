@@ -1612,9 +1612,8 @@ function notedInBoth(own: RowsUnread, answer: RowsUnread): RowsUnread {
 
 /**
  * Why the worker did not serve a window read: every caller permit was held; the writer moved under
- * both tries, or could not be sampled; the worker's read failed (its wait for a lock ran out, or
- * it passed a bound); the worker is gone; or it needs a restart. The read is then answered on the
- * main thread.
+ * both tries, or could not be sampled; the worker's read failed; the worker is gone; or it needs
+ * a restart. The failed read is reported to its caller.
  */
 type WindowReadMiss =
   | 'callers-full'
@@ -1665,7 +1664,7 @@ export interface WaitOnAsked {
 const A_WAIT_ENDS_WITHIN_MS = 30 * 24 * 60 * 60 * 1000
 
 /**
- * How long a window read the worker failed is answered on the main thread
+ * How long a failed read is remembered
  * before the worker is asked again at the same writer stamp: doubled after each further failure
  * there, up to the most. A write that moves the stamp asks again at once.
  */
@@ -1687,12 +1686,6 @@ const COPY_SLICE_BYTES = 256 * 1024
 const COPY_SLICE_TARGET_MS = 4
 const COPY_BUSY_WAIT_MS = { least: 10, most: 1000 } as const
 const SAY_COPY_PROGRESS_EVERY_MS = 60_000
-
-/** How often each cause of a window read answered on the main thread is logged, at most. */
-const SAY_A_WINDOW_READ_MISS_EVERY_MS = 60_000
-
-/** Maximum frequency of a canonical incident read while the worker cannot answer. */
-const INCIDENT_MAIN_READ_EVERY_MS = 30_000
 
 /** The page a start nobody hands on carries: nothing, and everything before `next` still to read. */
 function noPageBefore(next: number): HistoryWindow {
@@ -5450,7 +5443,6 @@ export class RuntimeHost implements LiveHost {
     { readonly stamp: WindowWriterStamp; readonly result: WindowReadResult } | undefined
   private windowIncidentsPending:
     { readonly stamp: WindowWriterStamp; readonly read: Promise<WindowReadResult> } | undefined
-  private lastIncidentMainReadAt: number | undefined
   /** A shared window read the worker failed, by kind: at which stamp, why, and until when. */
   private readonly windowReadsFailed = new Map<
     'routes' | 'incidents',
@@ -5463,11 +5455,6 @@ export class RuntimeHost implements LiveHost {
   >()
   private windowIncidentsKept:
     { readonly stamp: WindowWriterStamp; readonly result: WindowReadResult } | undefined
-  /** Each cause of a window read answered on the main thread: how many, and when it was last said. */
-  private readonly windowReadMisses = new Map<
-    WindowReadMiss,
-    { readonly count: number; readonly saidAt: number }
-  >()
 
   private readonly workReads: WorkReads
 
@@ -16346,12 +16333,7 @@ export class RuntimeHost implements LiveHost {
     })
   }
 
-  /**
-   * Await one canonical routing snapshot, then compose without an asynchronous gap. ⚑ Where the
-   * worker does not serve it ({@link WindowReadMiss}), the same answer is read here, on the main
-   * thread. ⛔ Only a read the main thread can't answer either, or one asked while the app closes,
-   * is refused.
-   */
+  /** Compose a window answer only after its canonical routing snapshot was read off main. */
   async readForWindow<T>(answer: () => T): Promise<T> {
     if (this.deps.windowReader === undefined) {
       this.deps.store.checkCommitted()
@@ -16362,47 +16344,14 @@ export class RuntimeHost implements LiveHost {
       if (result.kind !== 'routes') throw new WindowReadMissed('worker-gone')
       return this.windowRoutingReads.run(result, answer)
     }
-    if (this.windowReadCallers >= WINDOW_READ_BOUNDS.callers) {
-      // Past the bound a caller joins the read already pending, and starts none of its own.
-      try {
-        return await this.freshWindowQuery({ kind: 'routes' }, compose, undefined, true)
-      } catch (error) {
-        if (!(error instanceof WindowReadMissed) || this.launches.closed) throw error
-        return this.answeredOnTheMainThread(error.missed, answer)
-      }
-    }
+    if (this.windowReadCallers >= WINDOW_READ_BOUNDS.callers)
+      return this.freshWindowQuery({ kind: 'routes' }, compose, undefined, true)
     this.windowReadCallers++
-    let missed: WindowReadMiss
     try {
       return await this.freshWindowQuery({ kind: 'routes' }, compose)
-    } catch (error) {
-      if (!(error instanceof WindowReadMissed) || this.launches.closed) throw error
-      missed = error.missed
     } finally {
       this.windowReadCallers--
     }
-    return this.answeredOnTheMainThread(missed, answer)
-  }
-
-  /**
-   * `answer`, read here on the main thread because the worker did not serve it. ⚑ The cause and how
-   * often it happened are logged, each cause at most once a minute; nothing the answer holds is.
-   */
-  private answeredOnTheMainThread<T>(missed: WindowReadMiss, answer: () => T): T {
-    // Another connection's commit is heard before the answer is composed.
-    this.deps.store.checkCommitted()
-    const at = this.now()
-    const before = this.windowReadMisses.get(missed)
-    const count = (before?.count ?? 0) + 1
-    const say = before === undefined || at - before.saidAt >= SAY_A_WINDOW_READ_MISS_EVERY_MS
-    this.windowReadMisses.set(missed, { count, saidAt: say ? at : (before?.saidAt ?? at) })
-    if (say) {
-      console.warn(`window read answered on the main thread: ${missed} (${count} since launch)`)
-    }
-    const work = this.deps.mainThreadWork
-    return work === undefined
-      ? answer()
-      : work.timed('runtime window read on the main thread', answer)
   }
 
   private sampleWindowWriter(query: WindowReadQuery): WindowWriterStamp | null {
@@ -16496,7 +16445,7 @@ export class RuntimeHost implements LiveHost {
 
   /**
    * Remembers a shared read the worker failed at `stamp`, so callers at that
-   * stamp are answered on the main thread until its wait passes, and the next asks again.
+   * stamp receive the same error until its wait passes, and the next asks again.
    */
   private rememberAFailedWindowRead(
     kind: 'routes' | 'incidents',
@@ -17814,10 +17763,7 @@ export class RuntimeHost implements LiveHost {
     )
   }
 
-  /**
-   * `compose`, an incidents reading, run on the worker's incident snapshot, or by `onMain` on the
-   * main thread where the worker does not serve it and the fallback is due.
-   */
+  /** Compose incident facts from the worker snapshot; a failed read stays failed. */
   private async incidentsForWindow<T>(
     compose: () => T,
     onMain: () => T = () => this.windowIncidentReads.run(compose),
@@ -17830,28 +17776,14 @@ export class RuntimeHost implements LiveHost {
     )
       throw new WindowReadUnavailable('busy')
     this.windowReadCallers++
-    let missed: WindowReadMiss
     try {
       return await this.freshWindowQuery({ kind: 'incidents' }, (result) => {
         if (result.kind !== 'incidents') throw new WindowReadMissed('worker-gone')
         return this.windowIncidentReads.run(compose, result)
       })
-    } catch (error) {
-      if (!(error instanceof WindowReadMissed) || this.launches.closed) throw error
-      if (error.missed === 'worker-busy') throw error
-      missed = error.missed
     } finally {
       this.windowReadCallers--
     }
-    // The monotonic clock bounds heavy fallback work even if the system clock changes.
-    const at = performance.now()
-    if (
-      this.lastIncidentMainReadAt !== undefined &&
-      at - this.lastIncidentMainReadAt < INCIDENT_MAIN_READ_EVERY_MS
-    )
-      throw new WindowReadUnavailable()
-    this.lastIncidentMainReadAt = at
-    return this.answeredOnTheMainThread(missed, onMain)
   }
 
   /**
