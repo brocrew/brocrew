@@ -186,7 +186,7 @@ it('runs real native worker queries/pages/provenance and closes its owned connec
   }
 })
 
-it('bounds time and abandoned native scans honestly without poisoning the surviving engine', () => {
+it('allows continuing work beyond elapsed time and cooperatively cancels without poisoning retry', () => {
   let now = 0
   const f = filesLibraryFixture()
   f.example()
@@ -198,7 +198,12 @@ it('bounds time and abandoned native scans honestly without poisoning the surviv
         if (++checks === 10) now = 5_001
         return false
       }),
-    ).toMatchObject({ cause: 'budget', complete: false })
+    ).toMatchObject({ type: 'files', complete: true })
+    checks = 0
+    expect(engine.read(query, libraryContext, () => ++checks >= 10)).toMatchObject({
+      cause: 'cancelled',
+      complete: false,
+    })
     expect(engine.read(query, libraryContext).type).toBe('files')
   } finally {
     engine.close()
