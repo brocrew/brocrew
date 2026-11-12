@@ -18,7 +18,11 @@ import type { PagePerformanceReport, PageReportAnswer } from '../../shared/page-
 import type { WindowControl, WindowControlEffect } from '../../shared/window-controls'
 import type { SavedDrafts } from '../../shared/saved-drafts'
 import type { LocalZone } from '../../shared/local-time'
-import type { UpdatesSettingsChange, UpdatesSnapshot } from '../../shared/updates'
+import type {
+  UpdateRestartWorkspace,
+  UpdatesSettingsChange,
+  UpdatesSnapshot,
+} from '../../shared/updates'
 import type {
   NewWorkspace,
   WorkspaceChanged,
@@ -59,6 +63,8 @@ declare global {
         checkNow: () => Promise<UpdatesSnapshot>
         set: (change: UpdatesSettingsChange) => Promise<UpdatesSnapshot>
         download: () => Promise<UpdatesSnapshot>
+        restartPlan: () => Promise<readonly UpdateRestartWorkspace[]>
+        restartNow: () => Promise<UpdatesSnapshot>
         restartWhenQuiet: () => Promise<UpdatesSnapshot>
         cancelRestart: () => Promise<UpdatesSnapshot>
         onChanged: (listener: (snapshot: UpdatesSnapshot) => void) => () => void
@@ -138,6 +144,8 @@ declare global {
         checkNow: () => Promise<UpdatesSnapshot>
         set: (change: UpdatesSettingsChange) => Promise<UpdatesSnapshot>
         download: () => Promise<UpdatesSnapshot>
+        restartPlan: () => Promise<readonly UpdateRestartWorkspace[]>
+        restartNow: () => Promise<UpdatesSnapshot>
         restartWhenQuiet: () => Promise<UpdatesSnapshot>
         cancelRestart: () => Promise<UpdatesSnapshot>
         onChanged: (listener: (snapshot: UpdatesSnapshot) => void) => () => void
