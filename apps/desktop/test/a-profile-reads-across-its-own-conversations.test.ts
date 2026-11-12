@@ -612,4 +612,114 @@ describe('D-024 · a profile reads across its own conversations', () => {
       'this app cannot name the profile this conversation runs as, so it lists no files',
     )
   })
+
+  it('a conversation reads another conversation of its own profile — by its id, or by the label of a piece it owns — and not another profile’s, a stranger’s, or its own', async () => {
+    const ali1 = await personOpens('ali')
+    const ali2 = await personOpens('ali')
+    const bob = await personOpens('bob')
+    const pm = await personOpens('pm')
+    await aPersonSays(ali1, 'draft the release note')
+    await aPersonSays(ali2, 'check the invoices')
+    await aPersonSays(bob, 'plan the offsite')
+    // ⚑ The third Ali is a CHILD of the PM: it holds a piece the PM gave it.
+    const given = await aGive(pm, 'ali', 'the index', 'index it')
+    const ali3 = given.agent
+    const strayA = aStranger('sess_stray_a')
+    const strayB = aStranger('sess_stray_b')
+
+    // ⚠️ The premise, read off the ledger: Ali's three conversations are of one identity, and no
+    // spawn chain links the two a person opened.
+    expect([ali1, ali2, ali3].map((one) => store.identityOf(one)?.profileSlug)).toEqual([
+      'ali',
+      'ali',
+      'ali',
+    ])
+    expect(store.ancestorsOf(ali1)).toEqual([])
+    expect(store.ancestorsOf(ali2)).toEqual([])
+    expect(store.ancestorsOf(ali3)).toEqual([pm])
+    expect(store.identityOf(strayA)).toBeNull()
+    expect(store.identityOf(strayB)).toBeNull()
+
+    // (a) ⚑ By id: ali2 reads ali1, in full, and nothing of its own words leaks in.
+    const byId = await callFull(ali2, 'read_transcript', { agent: ali1 })
+    expect(byId.structured, byId.text).toMatchObject({
+      outcome: 'ok',
+      agent: ali1,
+      name: host.whatToCallTheConversation(ali1),
+    })
+    expect(byId.text).toContain('draft the release note')
+    expect(byId.text).not.toContain('check the invoices')
+
+    // (b) ⚑ By the label of the piece the conversation owns: ali1's ROOT, and the PM's piece owned
+    // by ali3 — each reads as the same conversation read by its id.
+    const byRootLabel = await callFull(ali2, 'read_transcript', { agent: rootLabelOf(ali1) })
+    expect(byRootLabel.structured, byRootLabel.text).toEqual(byId.structured)
+    expect(byRootLabel.text).toBe(byId.text)
+    const byGivenLabel = await callFull(ali2, 'read_transcript', { agent: given.label })
+    expect(byGivenLabel.structured, byGivenLabel.text).toMatchObject({ outcome: 'ok', agent: ali3 })
+
+    // (c) ⚑ Symmetry: ali1 reads ali2, and its words are ali2's.
+    const symmetric = await callFull(ali1, 'read_transcript', { agent: ali2 })
+    expect(symmetric.structured, symmetric.text).toMatchObject({ outcome: 'ok', agent: ali2 })
+    expect(symmetric.text).toContain('check the invoices')
+    expect(symmetric.text).not.toContain('draft the release note')
+
+    // ⚑ The chain arm survives the widening: the PM still reads the child it gave work to.
+    const chain = await callFull(pm, 'read_transcript', { agent: ali3 })
+    expect(chain.structured, chain.text).toMatchObject({ outcome: 'ok', agent: ali3 })
+
+    // (d) ⛔ The same call, from the same reader, on what is NOT its profile's — each the one answer.
+    const refusals: { what: string; answered: Answered }[] = [
+      {
+        what: 'another profile’s id',
+        answered: await callFull(ali2, 'read_transcript', { agent: bob }),
+      },
+      {
+        what: 'another profile’s root label',
+        answered: await callFull(ali2, 'read_transcript', { agent: rootLabelOf(bob) }),
+      },
+      {
+        what: 'its own id',
+        answered: await callFull(ali2, 'read_transcript', { agent: ali2 }),
+      },
+      {
+        what: 'two conversations with no identity',
+        answered: await callFull(strayA, 'read_transcript', { agent: strayB }),
+      },
+      {
+        what: 'a stranger reading an identity’s conversation',
+        answered: await callFull(strayA, 'read_transcript', { agent: ali1 }),
+      },
+    ]
+    for (const { what, answered } of refusals) {
+      expect(answered.structured, what).toMatchObject({
+        outcome: 'refused',
+        rail: 'not-a-conversation-below-you',
+        permanence: 'permanent',
+      })
+      // (e) ⚑ …and each says the reach it now has, whoever asked.
+      expect(reasonOf(answered.structured), what).toContain(THE_REACH_IT_NOW_SAYS)
+    }
+
+    // ⚑ Opacity, for a caller that may message anybody: Bob's root label is read as a label no piece
+    // carries, and as an id that names nothing, in the same words. (Its `detail` echoes the spelling
+    // the door resolved, which a caller that may message could name anyway: the narrowed arm below
+    // is where the echo is measured.)
+    const unknownLabel = await callFull(ali2, 'read_transcript', { agent: 'W999' })
+    const unknownId = await callFull(ali2, 'read_transcript', { agent: 'sess_nobody' })
+    const bobsLabel = refusals[1]?.answered as Answered
+    for (const same of [unknownLabel, unknownId]) {
+      expect(same.structured).toMatchObject({
+        outcome: 'refused',
+        rail: 'not-a-conversation-below-you',
+      })
+      expect(withoutTheEchoedSpelling(bobsLabel.structured)).toEqual(
+        withoutTheEchoedSpelling(same.structured),
+      )
+      expect(bobsLabel.text).toBe(same.text)
+    }
+    expect(bobsLabel.text).not.toContain(bob)
+    expect(bobsLabel.text).not.toContain(host.whatToCallTheConversation(bob))
+
+  })
 })

@@ -1270,7 +1270,7 @@ describe('§8 · what the host tells the reader, at a launch and at a reopen', (
     const first = await personOpens(DEFAULT_PROFILE_ID)
     await host.close(first, window)
     // ⚑ **D-014 · the narrowing is on a grant that survived** — `canSpawn` and `canStaff` are gone.
-    // ⚑ **What this test is about is untouched**: it is the fallback losing to a stored row.
+    expect(store.setCapabilities(DEFAULT_PROFILE_ID, { canCreateAgents: 'none' })).toBe(true)
     await personOpens(DEFAULT_PROFILE_ID)
     const ctx = seen.at(-1) as InstructionContext
     expect(ctx.capabilities?.canCreateAgents).toBe('none')
@@ -1280,7 +1280,7 @@ describe('§8 · what the host tells the reader, at a launch and at a reopen', (
     // ⚑ **D-024 · R1 — two texts, each asked for its own layer**: the narrowed grant LINE is in
     // this conversation's own text, and the delegation rule it bounds is factory text in the file.
     const said = thisConversationText(ctx)
-    expect(said).toContain('- You may not send messages to other conversations.')
+    expect(said).toContain('- You may not create agents.')
     const file = composeProfileBundle(ctx)
     expect(file).toContain('hand off separable, noisy work')
     expect(file).toContain('Follow current permissions, tool contracts and refusals.')

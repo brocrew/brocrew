@@ -812,7 +812,6 @@ describe('a service queues the work it is given', () => {
       held: () => [{ piece: 'work_root', label: 'W1', root: true, giver: null, received: true }],
       drivenByTheTurn: () => null,
       isAHelper: () => false,
-      mayGiveWork: () => null,
       depthOf: () => 0,
       capabilitiesOf: () => DEFAULT_CAPABILITIES,
       helperAs: () => null,
@@ -1205,19 +1204,17 @@ describe('a service queues the work it is given', () => {
       expect(refusedAs(await world.gives(host, caller, 'born-service'))).toBe('its-kind-is-unknown')
     })
 
-    it('a note to a service reaches its ledger only from the caller of the piece it is on', async () => {
+    it('a note from either caller reaches a service without changing its queued work', async () => {
       const { host, first, second } = await aServiceAndTwoCallers()
       const { owner: service } = await aServiceAtWork(host, first)
       accepted(await world.gives(host, second, 'browser-driver', { title: 'Queued' }))
-      // A grant to reach what it did not start never reaches a service.
-      const before = world.ledger(service).length
-      await expect(
-        host.queueMessage(service, 'a note', { ownerId: agentCallerId(second) }),
-      ).rejects.toThrow()
-      expect(world.ledger(service).length).toBe(before)
-      await expect(
-        host.queueMessage(service, 'a note', { ownerId: agentCallerId(first) }),
-      ).resolves.toMatchObject({ outcome: 'queued' })
+      const pieces = world.store.piecesOwnedBy(service)
+      for (const caller of [first, second]) {
+        await expect(
+          host.queueMessage(service, `a note from ${caller}`, { ownerId: agentCallerId(caller) }),
+        ).resolves.toMatchObject({ outcome: 'queued' })
+      }
+      expect(world.store.piecesOwnedBy(service)).toEqual(pieces)
       expect(world.startedAs).toEqual(['caller', 'other-caller', 'browser-driver'])
     })
   })

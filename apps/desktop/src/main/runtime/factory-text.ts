@@ -367,8 +367,6 @@ const SPAWNING_IS_OFF =
 // Resolve the approved permission sentences from the launch facts.
 function capabilityLines(allowed: ProfileCapabilities, at: ConversationAtLaunch): string[] {
   const lines = [
-    '- You may message any conversation.',
-    '- You may give work to any agent, through your own conversation with it.',
     allowed.canCreateAgents === 'any'
       ? '- You may create agents and give them their initial rules.'
       : '- You may not create agents.',
@@ -778,6 +776,8 @@ function thisConversationSections(
   // nothing — see {@link NO_IDENTITY_SO_NO_GRANTS}.
   const granted: string[] = [
     context.capabilities === null ? NO_IDENTITY_SO_NO_GRANTS : GRANTS_AS_THEY_STOOD,
+    '- You may message any conversation.',
+    '- You may give work to any agent, through your own conversation with it.',
   ]
   if (context.capabilities !== null) {
     granted.push(capabilityLines(context.capabilities, { depth: context.depth }).join('\n'))

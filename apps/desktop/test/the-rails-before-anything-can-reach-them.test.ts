@@ -230,7 +230,6 @@ describe('341 · the rails, before anything can reach them', () => {
         held: () => [{ piece: 'work_root', label: 'W1', root: true, giver: null, received: true }],
         drivenByTheTurn: () => null,
         isAHelper: () => false,
-        mayGiveWork: () => null,
         depthOf: () => 0,
         capabilitiesOf: () => DEFAULT_CAPABILITIES,
         // ⚑ **Nothing found**, so the answer is a START — the only answer that carries a token.
@@ -948,6 +947,7 @@ describe('341 · the rails, before anything can reach them', () => {
 
     it('⛔ an edit leaves every field it did not name alone, nulls included', async () => {
       await bringIdentityIntoBeing('pm')
+      expect(store.setCapabilities('pm', { canCreateAgents: 'none' })).toBe(true)
 
       const row = db
         .prepare(`SELECT ${CAPABILITY_COLUMNS.join(', ')} FROM agent_identity WHERE slug = ?`)
@@ -955,12 +955,12 @@ describe('341 · the rails, before anything can reach them', () => {
       // ⛔ **The one field written, and every other one still null** — a round trip through the
       // resolver would have frozen today's defaults into all of them. ⚑ **Derived since 374**: the
       // list this used to name by hand was the one place a new column could arrive already written.
-      expect(row.can_message).toBe('none')
+      expect(row.can_create_agents).toBe('none')
       expect(
-        CAPABILITY_COLUMNS.filter((column) => column !== 'can_message').map(
+        CAPABILITY_COLUMNS.filter((column) => column !== 'can_create_agents').map(
           (column) => row[column],
         ),
-      ).toEqual(CAPABILITY_COLUMNS.filter((column) => column !== 'can_message').map(() => null))
+      ).toEqual(CAPABILITY_COLUMNS.filter((column) => column !== 'can_create_agents').map(() => null))
       expect(CAPABILITY_COLUMNS.length).toBeGreaterThanOrEqual(3)
     })
 

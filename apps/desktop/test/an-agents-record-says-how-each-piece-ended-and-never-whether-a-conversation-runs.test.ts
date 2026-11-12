@@ -348,8 +348,8 @@ describe('an agent’s record — the cases beyond what-an-agent-has-done', () =
     })
   })
 
-  describe('5 · how its rules begin, to a caller that reaches it — paired under one grant', () => {
-    it('with can_message none, the caller that started its conversation is told and the one that did not is not — and counts nothing out of reach', async () => {
+  describe('5 · how its rules begin', () => {
+    it('both its starter and another caller see its conversations and how its rules begin', async () => {
       const starter = await personOpens(DEFAULT_PROFILE_ID)
       const outsider = await personOpens(DEFAULT_PROFILE_ID)
       const starterTools = agentToolsFor(host, starter)
@@ -392,23 +392,16 @@ describe('an agent’s record — the cases beyond what-an-agent-has-done', () =
       )
       expect(told.text).not.toContain(NOT_TOLD)
 
-      const notTold = await theRecordOf(outsiderTools, 'tester')
-      expect(notTold.structured, notTold.text).toMatchObject({
+      const outsiderRecord = await theRecordOf(outsiderTools, 'tester')
+      expect(outsiderRecord.structured).toMatchObject({
         outcome: 'ok',
-        rules_told: false,
-        rules_begin: null,
-        conversations: [],
+        rules_told: true,
+        rules_begin: 'You are a careful tester of web pages.',
         conversations_not_listed: 0,
-        pieces: [],
-        pieces_not_listed: 0,
       })
-      expect(notTold.structured).not.toHaveProperty('pieces_unread')
-      expect(notTold.text).toContain(NOT_TOLD)
-      expect(notTold.text).toContain('It has no conversation within your reach.')
-      expect(notTold.text).not.toContain('careful tester')
-      expect(notTold.text).not.toContain('It has no standing rules.')
-      expect(notTold.text).not.toContain('clock page')
-      expect(notTold.text).not.toContain(holder)
+      expect((outsiderRecord.structured.conversations as ConversationPayload[]).map((one) => one.agent)).toEqual([holder])
+      expect((outsiderRecord.structured.pieces as PiecePayload[]).length).toBe(2)
+
     })
   })
 

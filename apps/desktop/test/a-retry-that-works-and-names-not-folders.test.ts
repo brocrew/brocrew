@@ -380,11 +380,12 @@ describe('732 · a retry that works, and names, not folders', () => {
       )
     })
 
-    it('⛔ §1.5 control · the walls still answer FIRST — a parent a person has narrowed to giving no work meets that wall, starting or running', async () => {
+    it('a depth refusal precedes waiting for the child to reopen', async () => {
       // ⚑ **R30b's order, kept**: entitlement, boundary and the assignment wall, then the receiver's
       // open work, then *not started*. ⛔ A read asked ahead of the walls would tell this parent to
       // withdraw or ask about work it may no longer give at all.
       const wake = await aWakeInFlightIntoWorkItHolds(false)
+      grant('lead', { maxDepth: 0 })
 
       // ⚑ **D-016 · more work is a give**, which finds this very child — the parent's one
       // conversation with `worker`. ⚑ The wall is asked before the lookup (R2 step 3).
@@ -401,8 +402,8 @@ describe('732 · a retry that works, and names, not folders', () => {
       await waitFor(() => host.sessionIds.includes(wake.child), 'the wake to land')
       const running = await callOn(wake.parent, 'give_work', more)
       expect({ starting: starting.rail, running: running.rail }).toEqual({
-        starting: 'may-not-assign-work',
-        running: 'may-not-assign-work',
+        starting: 'too-deep',
+        running: 'too-deep',
       })
     })
   })
