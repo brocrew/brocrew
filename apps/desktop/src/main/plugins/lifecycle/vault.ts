@@ -1,8 +1,7 @@
 import { join } from 'node:path'
-import { readdir } from 'node:fs/promises'
 import { createRepoAwarePluginVerifier, type VerifiedPluginCatalogue } from '../package-verifier'
 import type { PluginRelease, PluginTarget } from '../package-schema'
-import { PLUGIN_LIMITS, pluginSha256 } from '../package-digests'
+import { PLUGIN_LIMITS } from '../package-digests'
 import {
   privateChild,
   immutableFile,
@@ -27,21 +26,13 @@ export class PluginPackageVault {
     release: Readonly<VaultRelease>,
     admitted?: VerifiedPluginCatalogue,
   ) {
-    const proofName = 'catalogue.sha256'
-    const names = (await readdir(directory)).sort()
-    if (names.join(',') !== ['archive', 'catalogue.json', proofName].sort().join(','))
-      throw new PluginSupervisorError('unavailable')
     const catalogue = await sourceBytes(
       join(directory, 'catalogue.json'),
       PLUGIN_LIMITS.catalogueBytes,
     )
-    const proof = await sourceBytes(join(directory, proofName), 64)
-    if (proof.toString('ascii') !== pluginSha256(catalogue))
-      throw new PluginSupervisorError('unavailable')
     const archive = await sourceBytes(join(directory, 'archive'), PLUGIN_LIMITS.archiveBytes)
     for (const [name, bytes] of [
       ['catalogue.json', catalogue],
-      [proofName, proof],
       ['archive', archive],
     ] as const)
       await verifyImmutableFile(join(directory, name), bytes)
@@ -71,10 +62,6 @@ export class PluginPackageVault {
       async (stage) => {
         await immutableFile(join(stage, 'archive'), archive)
         await immutableFile(join(stage, 'catalogue.json'), catalogue.bytes)
-        await immutableFile(
-          join(stage, 'catalogue.sha256'),
-          Buffer.from(pluginSha256(catalogue.bytes)),
-        )
       },
       async (directory) => {
         await this.checked(directory, release)
