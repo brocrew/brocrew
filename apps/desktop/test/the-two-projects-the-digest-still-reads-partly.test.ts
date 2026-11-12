@@ -45,7 +45,7 @@ import { DIGEST_EVENT_TYPES } from '../src/shared/digest'
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsDir = join(here, '../src/main/db/migrations')
 const FOLD = join(here, '../src/main/runtime/digest.ts')
-const STORE = join(here, '../src/main/db/session-store.ts')
+const STORE = join(here, '../src/main/db/digest-window-read.ts')
 
 const TO = 1_800_000_000_000
 const FROM = TO - 12 * 3_600_000
