@@ -51,6 +51,7 @@ export const SANDBOX_FILES = [
   'apps/desktop/src/main/last-resort-exit.ts',
   'apps/desktop/src/main/recovery/log-lines.ts',
   'scripts/lib/hidden-launch.mjs',
+  'scripts/lib/mac-native-upgrade.mjs',
   'scripts/lib/mac-update-test.mjs',
   'scripts/lib/moved-state-files.mjs',
   'scripts/lib/skill-tree-state.mjs',
