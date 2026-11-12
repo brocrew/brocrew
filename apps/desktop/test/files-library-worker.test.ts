@@ -328,6 +328,10 @@ it('renews the stall timer only for advancing work and still times out when prog
   const flag = new Int32Array(worker.posted[0]!['cancellation'] as SharedArrayBuffer)
   for (let completed = 1; completed <= 5; completed++) {
     await vi.advanceTimersByTimeAsync(15)
+    expect(readSettled).toBe(false)
+    expect(Atomics.load(flag, 0)).toBe(0)
+    expect(worker.posted).toHaveLength(1)
+    expect(starts).toBe(1)
     worker.emit('message', { type: 'progress', id: worker.posted[0]!['id'], completed })
     expect(worker.terminationRequested).toBe(false)
     expect(readSettled).toBe(false)
