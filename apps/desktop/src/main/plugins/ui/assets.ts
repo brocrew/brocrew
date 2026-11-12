@@ -1,6 +1,5 @@
 import type { CustomScheme } from 'electron'
 import type { VerifiedPluginPackage } from '../package-verifier'
-import { verifyPluginDigest } from '../package-digests'
 
 export const PLUGIN_SCHEME: CustomScheme = {
   scheme: 'brocrew-plugin',
@@ -33,8 +32,8 @@ export class PluginUiAssets {
     for (const asset of verified.manifest.ui.assets) {
       const file = verified.manifest.files.find((file) => file.path === asset.path),
         bytes = verified.readFile(asset.path)
-      if (!file || !bytes) throw new Error('Plugin unavailable. Try again.')
-      verifyPluginDigest(bytes, file, 256 * 1024 * 1024)
+      if (!file || !bytes || bytes.byteLength > 256 * 1024 * 1024)
+        throw new Error('Plugin unavailable. Try again.')
       this.files.set(`${this.origin}/${asset.path}`, {
         bytes: Uint8Array.from(bytes),
         mime: asset.mime,
