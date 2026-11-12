@@ -2497,7 +2497,7 @@ export async function executeRuntimeCommand(
       // **Synchronous, and here that is load-bearing rather than an economy**: `WhatIsBeingDone.readAt`
       // is one completion point over every row, and an `await` anywhere between them would be a
       // moment a session could move between two rows and land in one of them.
-      return host.readForWindow(() => host.whatIsBeingDone()) satisfies Answer<'whatIsBeingDone'>
+      return host.whatIsBeingDone() satisfies Answer<'whatIsBeingDone'>
     case 'whatEachConversationIsWaitingOn':
       // ⛔ **A read, and it takes no sink and no owner** (621) — `whatIsBeingDone`'s note one verb
       // over, and the same three clauses. ⚠️ **No `requireAPerson`**: it names no conversation, so

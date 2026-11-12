@@ -5,14 +5,9 @@ import type { SessionStore, ThreadLeadRow } from './session-store'
 import type { SkipNote } from './rows-unread'
 
 export const WINDOW_READ_BOUNDS = {
-  sessions: 2_000,
-  rows: 100_000,
-  bytes: 32 * 1024 * 1024,
-  replyBytes: 4 * 1024 * 1024,
   pending: 16,
   callers: 16,
   leadPageRows: 256,
-  foldPageRows: 256,
 } as const
 
 export const windowReadQuery = z.discriminatedUnion('kind', [
@@ -30,7 +25,7 @@ export const windowReadQuery = z.discriminatedUnion('kind', [
     .object({
       kind: z.literal('files'),
       sessionId: z.string().min(1).max(512),
-      givers: z.array(z.string().min(1).max(512)).max(WINDOW_READ_BOUNDS.sessions),
+      givers: z.array(z.string().min(1).max(512)),
     })
     .strict(),
   z
@@ -92,7 +87,7 @@ const skipped = z.union([z.number().int().nonnegative().safe(), z.literal('the-w
 const walk = z
   .object({
     walk: z.string(),
-    rows: z.array(z.unknown()).max(WINDOW_READ_BOUNDS.rows),
+    rows: z.array(z.unknown()),
     ledgers: z.number().int().nonnegative(),
     rowsUnread: z.number().int().nonnegative(),
     ledgersSkipped: z.number().int().nonnegative().optional(),
@@ -102,24 +97,22 @@ export const windowReadResult = z.discriminatedUnion('kind', [
   z
     .object({
       kind: z.literal('incidents'),
-      owners: z
-        .array(
-          z
-            .object({
-              sessionId: z.string().min(1),
-              pieces: z.array(z.unknown()).max(WINDOW_READ_BOUNDS.rows),
-              work: z.array(z.unknown()).max(WINDOW_READ_BOUNDS.rows),
-              routes: z.array(z.unknown()).max(WINDOW_READ_BOUNDS.rows),
-              messages: z.array(z.unknown()).max(WINDOW_READ_BOUNDS.rows),
-              stop: z.unknown(),
-              piecesSkipped: z.array(skipped).max(WINDOW_READ_BOUNDS.rows),
-              routesSkipped: z.array(skipped).max(WINDOW_READ_BOUNDS.rows),
-              messagesSkipped: z.array(skipped).max(WINDOW_READ_BOUNDS.rows),
-              stopSkipped: z.array(skipped).max(WINDOW_READ_BOUNDS.rows),
-            })
-            .strict(),
-        )
-        .max(WINDOW_READ_BOUNDS.sessions),
+      owners: z.array(
+        z
+          .object({
+            sessionId: z.string().min(1),
+            pieces: z.array(z.unknown()),
+            work: z.array(z.unknown()),
+            routes: z.array(z.unknown()),
+            messages: z.array(z.unknown()),
+            stop: z.unknown(),
+            piecesSkipped: z.array(skipped),
+            routesSkipped: z.array(skipped),
+            messagesSkipped: z.array(skipped),
+            stopSkipped: z.array(skipped),
+          })
+          .strict(),
+      ),
     })
     .strict(),
   z
@@ -155,32 +148,28 @@ export const windowReadResult = z.discriminatedUnion('kind', [
   z
     .object({
       kind: z.literal('files'),
-      tree: z.array(z.unknown()).max(WINDOW_READ_BOUNDS.rows),
-      added: z.array(z.unknown()).max(WINDOW_READ_BOUNDS.rows),
-      roster: z.array(z.unknown()).max(WINDOW_READ_BOUNDS.sessions),
+      tree: z.array(z.unknown()),
+      added: z.array(z.unknown()),
+      roster: z.array(z.unknown()),
     })
     .strict(),
   z
     .object({
       kind: z.literal('routes'),
-      routes: z
-        .array(
-          z
-            .object({
-              sessionId: z.string().min(1),
-              requests: z.array(z.unknown()).max(WINDOW_READ_BOUNDS.rows),
-              skipped: z.array(skipped).max(WINDOW_READ_BOUNDS.rows),
-            })
-            .strict(),
-        )
-        .max(WINDOW_READ_BOUNDS.sessions),
+      routes: z.array(
+        z
+          .object({
+            sessionId: z.string().min(1),
+            requests: z.array(z.unknown()),
+            skipped: z.array(skipped),
+          })
+          .strict(),
+      ),
       questions: walk,
       decisions: walk,
     })
     .strict(),
-  z
-    .object({ kind: z.literal('leads'), rows: z.array(z.unknown()).max(WINDOW_READ_BOUNDS.rows) })
-    .strict(),
+  z.object({ kind: z.literal('leads'), rows: z.array(z.unknown()) }).strict(),
 ])
 
 export interface WindowStoreReader {

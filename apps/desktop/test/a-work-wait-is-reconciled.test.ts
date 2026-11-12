@@ -2046,7 +2046,7 @@ describe('a work wait is reconciled without a window', () => {
   }
 
   it.each(['failed', 'abandoned', 'unsampled', 'moved'] as const)(
-    'incident worker %s gets fresh main answers at most once per thirty seconds',
+    'incident worker %s reports failure without repeating its work on main',
     async (failure) => {
       const fixture = await incidentWindow()
       let at = 1000
@@ -2063,35 +2063,16 @@ describe('a work wait is reconciled without a window', () => {
           new WindowReadUnavailable(failure === 'failed' ? 'failed' : 'unavailable'),
         )
       try {
-        expect(await fixture.look()).toMatchObject({
-          rows: [{ piece: fixture.work.piece }],
-          rowsUnread: 0,
-        })
-        expect(fixture.main).toHaveBeenCalledTimes(1)
-        record(fixture.owner, {
-          type: 'message_queued',
-          messageId: 'fresh-during-outage',
-          text: 'Fictional words.',
-          kind: 'work',
-        })
-        for (at of [1001, 16000, 30999])
+        for (at of [1000, 1001, 16000, 30999, 31000, 61000]) {
           await expect(fixture.look()).rejects.toThrow(WindowReadUnavailable)
-        expect(fixture.main).toHaveBeenCalledTimes(1)
-        at = 31000
-        expect(await fixture.look()).toMatchObject({ rows: [], rowsUnread: 0 })
-        expect(fixture.main).toHaveBeenCalledTimes(2)
-        record(fixture.owner, {
-          type: 'message_unqueued',
-          messageId: 'fresh-during-outage',
-          text: 'Fictional words.',
-          reason: 'sent',
-        })
-        at = 61000
-        expect(await fixture.look()).toMatchObject({
-          rows: [{ piece: fixture.work.piece }],
-          rowsUnread: 0,
-        })
-        expect(fixture.main).toHaveBeenCalledTimes(3)
+          record(fixture.owner, {
+            type: 'message_queued',
+            messageId: `fresh-during-outage-${at}`,
+            text: 'Fictional words.',
+            kind: 'work',
+          })
+        }
+        expect(fixture.main).not.toHaveBeenCalled()
       } finally {
         fixture.close()
       }
