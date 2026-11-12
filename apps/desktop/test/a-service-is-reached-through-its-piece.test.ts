@@ -181,6 +181,27 @@ describe('a service is reached through the piece it is on', () => {
       expect(asked.structured).toMatchObject({ outcome: 'ok', agent: service })
     })
 
+    it('flushes an unrelated caller’s held note while the next service piece stays queued', async () => {
+      const { host, stranger, service, two, releaseTheTurn } = await aServiceOnTheFirstPiece({
+        turnHeld: true,
+      })
+      const text = 'A note from a caller with no piece at this service.'
+      const sent = await call(host, stranger, 'message_agent', {
+        agent: service,
+        kind: 'note',
+        text,
+      })
+      expect(sent.structured).toMatchObject({ outcome: 'ok', delivery: 'queued' })
+      expect(rows(service, 'user_turn').some((turn) => turn.type === 'user_turn' && turn.text.includes(text))).toBe(false)
+      expect(stateOf(service, two.piece)).toBe('waiting')
+      releaseTheTurn()
+      await vi.waitFor(() => {
+        expect(rows(service, 'user_turn').some((turn) => turn.type === 'user_turn' && turn.text.includes(text))).toBe(true)
+        expect(world.sent.some((one) => one.as === 'browser-driver' && one.words.includes(text))).toBe(true)
+      })
+      expect(stateOf(service, two.piece)).toBe('waiting')
+    })
+
     it('lets the caller whose piece it is on stop its turn, follow it up and give it a new brief', async () => {
       const { host, caller, service, one } = await aServiceOnTheFirstPiece()
       const stopped = await call(host, caller, 'interrupt_agent', {
