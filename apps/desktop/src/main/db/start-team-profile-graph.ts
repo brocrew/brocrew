@@ -9,7 +9,6 @@ export function startTeamProfileGraph(
     () =>
       startWorker({
         workerData: { file },
-        resourceLimits: { maxOldGenerationSizeMb: 128, maxYoungGenerationSizeMb: 16 },
       }),
     () => performance.now(),
     undefined,

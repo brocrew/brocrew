@@ -25,10 +25,18 @@ if (parentPort !== null) {
       }
       const { id, request, context, cancellation } = parsed.data
       const flag = new Int32Array(cancellation)
+      let completed = 0
       port.postMessage({
         type: 'read',
         id,
-        result: engine.read(request, context, () => Atomics.load(flag, 0) !== 0),
+        result: engine.read(
+          request,
+          context,
+          () => Atomics.load(flag, 0) !== 0,
+          () => {
+            if (++completed % 256 === 0) port.postMessage({ type: 'progress', id, completed })
+          },
+        ),
       })
     })
     port.on('close', () => engine.close())

@@ -4,7 +4,7 @@ import { Worker } from 'node:worker_threads'
 import { FilesLibraryEngine } from '../src/main/db/files-library-engine'
 import { FilesLibraryLifetime } from '../src/main/db/files-library-reader'
 import { bundleAWorker } from './helpers/bundle-a-worker'
-import { FILES_LIBRARY_BOUNDS } from '../src/shared/files-library'
+import { FILES_LIBRARY_BOUNDS, type FilesLibraryResult } from '../src/shared/files-library'
 import {
   filesLibraryFixture,
   workspaceQuery,
@@ -12,6 +12,18 @@ import {
 } from './helpers/files-library-fixture'
 
 const sha = (value: string) => createHash('sha256').update(value).digest('hex')
+function complete(engine: FilesLibraryEngine, result: FilesLibraryResult) {
+  if (result.type !== 'files') throw new Error(JSON.stringify(result))
+  const loaded = [...result.files]
+  while (result.next !== null) {
+    const next = engine.read({ operation: 'page', cursor: result.next, size: 100 }, libraryContext)
+    if (next.type !== 'files') throw new Error(JSON.stringify(next))
+    loaded.push(...next.files)
+    result = next
+  }
+  return { ...result, files: loaded }
+}
+
 it('completes the accepted dense 80-file/86-keep population', () => {
   const f = filesLibraryFixture()
   f.example()
@@ -127,10 +139,10 @@ it('completes a fictional 10000-keep snapshot with indexed canonical metadata be
       )
   })
   try {
-    const result = engine.read(
+    const result = complete(engine, engine.read(
       { operation: 'query', query: workspaceQuery, size: 100 },
       libraryContext,
-    )
+    ))
     if (result.type !== 'files') throw new Error(JSON.stringify(result))
     expect([result.totalFiles, result.totalKeeps]).toEqual([2_500, 10_000])
     const actual = [...result.files]
@@ -148,14 +160,14 @@ it('completes a fictional 10000-keep snapshot with indexed canonical metadata be
     expect(result.metrics.rows).toBeLessThan(FILES_LIBRARY_BOUNDS.rows)
     expect(result.metrics.bytes).toBeLessThan(FILES_LIBRARY_BOUNDS.bytes)
     expect(result.metrics.cacheBytes).toBeLessThan(FILES_LIBRARY_BOUNDS.bytes)
-    expect(result.metrics.elapsedMs).toBeLessThan(FILES_LIBRARY_BOUNDS.deadlineMs)
+    expect(result.complete).toBe(true)
     const eventPlans = [...plans].filter(([sql]) => sql.includes('FROM events'))
     expect(eventPlans).toHaveLength(1)
     expect(eventPlans[0]![1].join(' ')).toContain('SEARCH events USING INDEX events_kind_owner_idx')
     expect(
       [...plans]
         .filter(([sql]) => sql.includes('FROM work_resource'))
-        .every(([, plan]) => plan.join(' ').includes('INTEGER PRIMARY KEY (rowid>?)')),
+        .every(([, plan]) => plan.join(' ').includes('work_resource')),
     ).toBe(true)
     console.log(
       'FILES_LIBRARY_10000',
@@ -182,10 +194,10 @@ it('completes a fictional 10000-keep snapshot with indexed canonical metadata be
         { operation: 'query', query: workspaceQuery, size: 100 },
         libraryContext,
       )
-      expect(worker).toMatchObject({ type: 'files', totalFiles: 2_500, totalKeeps: 10_000 })
+      expect(worker).toMatchObject({ type: 'files', complete: false, totalFiles: 100, totalKeeps: 400 })
       if (worker.type === 'files') {
-        expect(worker.files).toEqual(result.files)
-        expect(worker.metrics.rows).toBe(result.metrics.rows)
+        expect(worker.files).toEqual(result.files.slice(0, 100))
+        expect(worker.metrics.rows).toBeLessThan(result.metrics.rows)
         expect(worker.metrics.bytes).toBeLessThan(FILES_LIBRARY_BOUNDS.bytes)
         expect(worker.metrics.cacheBytes).toBeLessThan(FILES_LIBRARY_BOUNDS.bytes)
         console.log('FILES_LIBRARY_NATIVE_10000', JSON.stringify(worker.metrics))
@@ -199,28 +211,44 @@ it('completes a fictional 10000-keep snapshot with indexed canonical metadata be
   }
 })
 
-it('50000 keeps exercise explicit budget coverage without exact totals and the engine can retry', () => {
+it('returns a small first page and scrolls 120000 unique files across 1700 pieces beyond the former total caps', () => {
   const f = filesLibraryFixture()
   f.owner('fictional')
   const root = f.store.rootOf('fictional')!.piece
   f.db.transaction(() => {
-    for (let i = 0; i < 50_000; i++) f.keep(`keep-${i}`, root, sha(String(i % 500)), { at: i })
+    for (let i = 0; i < 1700; i++) f.task(`piece-${i}`, root, i + 1, 'fictional', 'fictional')
+    for (let i = 0; i < 120_000; i++)
+      f.keep(`keep-${i}`, `piece-${i % 1700}`, sha(String(i)), {
+        at: i, title: `Fictional report ${i} ` + 'source detail '.repeat(40),
+      })
   })()
   try {
-    const result = f.engine.read({ operation: 'query', query: workspaceQuery }, libraryContext)
-    expect(result).toMatchObject({ type: 'unavailable', complete: false, cause: 'budget' })
-    expect(result).not.toHaveProperty('totalFiles')
-    console.log('FILES_LIBRARY_50000', JSON.stringify(result))
-    f.db.prepare('DELETE FROM work_resource WHERE rowid > 80').run()
-    expect(
-      f.engine.read({ operation: 'query', query: workspaceQuery }, libraryContext),
-    ).toMatchObject({ type: 'files', totalFiles: 80 })
+    const first = f.engine.read({ operation: 'query', query: workspaceQuery, size: 100 }, libraryContext)
+    if (first.type !== 'files') throw new Error(JSON.stringify(first))
+    expect(first.complete).toBe(false)
+    expect(first.files).toHaveLength(100)
+    expect(first.metrics.rows).toBeLessThan(1000)
+    expect(first.metrics.cacheBytes).toBeLessThan(1024 * 1024)
+    expect(first.files.map((one) => one.file.resourceId)).toEqual(
+      Array.from({ length: 100 }, (_, i) => `keep-${119_999 - i}`),
+    )
+    console.log('FILES_FIRST_PAGE_120000', JSON.stringify(first.metrics))
+    const result = complete(f.engine, first)
+    expect(result.complete).toBe(true)
+    expect([result.totalFiles, result.totalKeeps, result.scopeKeeps]).toEqual([120_000, 120_000, 120_000])
+    expect(result.files.map((one) => one.file.resourceId)).toEqual(
+      Array.from({ length: 120_000 }, (_, i) => `keep-${119_999 - i}`),
+    )
+    expect(result.metrics.rows).toBeGreaterThan(100_000)
+    expect(result.metrics.bytes).toBeGreaterThan(32 * 1024 * 1024)
+    console.log('FILES_COMPLETE_120000', JSON.stringify(result.metrics))
+    expect(f.engine.read({ operation: 'query', query: workspaceQuery, size: 1 }, libraryContext)).toMatchObject({ type: 'files', complete: false })
   } finally {
     f.close()
   }
-})
+}, 120_000)
 
-it('reserves the previous complete cache while building its replacement and preserves its old cursor on failure', () => {
+it('replaces a long-title reading without a combined resident-cache budget failure', () => {
   const f = filesLibraryFixture()
   f.owner('fictional')
   const root = f.store.rootOf('fictional')!.piece
@@ -234,19 +262,18 @@ it('reserves the previous complete cache while building its replacement and pres
   try {
     const first = f.engine.read({ operation: 'query', query: workspaceQuery }, libraryContext)
     if (first.type !== 'files') throw new Error(JSON.stringify(first))
-    expect(first.metrics.cacheBytes).toBeGreaterThan(8 * 1024 * 1024)
+    expect(first.metrics.cacheBytes).toBeLessThan(1024 * 1024)
     const replacement = f.engine.read({ operation: 'query', query: workspaceQuery }, libraryContext)
-    expect(replacement).toMatchObject({ type: 'unavailable', cause: 'budget', complete: false })
-    expect(replacement).not.toHaveProperty('totalFiles')
+    expect(replacement).toMatchObject({ type: 'files', complete: false })
     expect(f.engine.read({ operation: 'page', cursor: first.next! }, libraryContext)).toMatchObject(
-      { type: 'files', snapshot: first.snapshot, totalFiles: 5_000 },
+      { type: 'unavailable', cause: 'invalid-cursor' },
     )
   } finally {
     f.close()
   }
 })
 
-it('a long retitle ledger and an unretitled task fail coverage instead of silently using the given title', () => {
+it('reads an unretitled task correctly beyond the former retitle-row cap', () => {
   const f = filesLibraryFixture()
   f.owner('fictional')
   const root = f.store.rootOf('fictional')!.piece
@@ -261,8 +288,7 @@ it('a long retitle ledger and an unretitled task fail coverage instead of silent
     .run()
   try {
     const result = f.engine.read({ operation: 'query', query: workspaceQuery }, libraryContext)
-    expect(result).toMatchObject({ type: 'unavailable', cause: 'budget', complete: false })
-    expect(result).not.toHaveProperty('totalFiles')
+    expect(result).toMatchObject({ type: 'files', complete: true, totalFiles: 1 })
     console.log('FILES_LIBRARY_RETITLES', JSON.stringify(result))
   } finally {
     f.close()

@@ -84,10 +84,11 @@ const display = (v: unknown): string | null =>
 const column = (name: string, kind: 'key' | 'display' | 'json' = 'key'): string =>
   `CASE WHEN ${name} IS NULL THEN NULL WHEN typeof(${name})='text' AND length(CAST(${name} AS BLOB))<=${kind === 'key' ? 800 : B.fieldBytes} THEN ${kind === 'display' ? `substr(${name},1,513)` : name} ELSE NULL END AS ${name.split('.').at(-1)}, CASE WHEN ${name} IS NOT NULL AND (typeof(${name})!='text' OR length(CAST(${name} AS BLOB))>${kind === 'key' ? 800 : B.fieldBytes}) THEN 1 ELSE 0 END AS bad_${name.split('.').at(-1)}`
 
-/** Complete immutable profile counts from one bounded, read-only SQLite transaction. */
+/** Immutable profile counts from a read-only SQLite transaction. */
 export class TeamProfileGraphEngine {
   private readonly db: Database.Database
   private reading: Reading | undefined
+  private progress: () => void = () => {}
   private closed = false
   private visited = 0
   private projectedBytes = 0
@@ -126,6 +127,7 @@ export class TeamProfileGraphEngine {
     input: TeamProfileGraphRequest,
     source: TeamProfileGraphReadContext,
     cancelled: () => boolean = () => false,
+    progress: () => void = () => {},
   ): TeamProfileGraphResult {
     this.visited = 0
     this.projectedBytes = 0
@@ -133,6 +135,7 @@ export class TeamProfileGraphEngine {
     this.started = this.monotonic()
     this.phase = 'roster'
     this.cancelled = cancelled
+    this.progress = progress
     if (this.closed) return graphUnavailable('closed')
     try {
       const request = teamProfileGraphRequest.parse(input),
@@ -207,17 +210,11 @@ export class TeamProfileGraphEngine {
   }
   private check(): void {
     if (this.cancelled()) throw new Failed('cancelled')
-    if (this.monotonic() - this.started >= B.deadlineMs) throw new Failed('budget')
+    this.progress()
   }
   private reserve(bytes: number): void {
     this.check()
-    if (
-      !Number.isSafeInteger(bytes) ||
-      bytes < 0 ||
-      this.workingBytes + bytes + B.sqliteCacheBytes + this.projectedResident + 2 * 1024 * 1024 >
-        B.workingBytes
-    )
-      throw new Failed('budget')
+    if (!Number.isSafeInteger(bytes) || bytes < 0) throw new Failed('metadata', 1)
     this.workingBytes += bytes
   }
   private bump(object: GraphCoverage | GraphNode | GraphEdge, field: string): void {
@@ -241,10 +238,7 @@ export class TeamProfileGraphEngine {
     let afterSession = ''
     while (true) {
       this.check()
-      if (this.workingBytes + B.sqliteCacheBytes + nativeBudget + 2 * 1024 * 1024 > B.workingBytes)
-        throw new Failed('budget')
-      const pageSize = Math.min(B.page, B.rows - this.visited)
-      if (pageSize <= 0) throw new Failed('budget')
+      const pageSize = B.page
       const type = sessionPage?.eventType ? [sessionPage.eventType] : []
       const cursorBytes = Buffer.from(afterSession)
       const later = sessionPage
@@ -269,10 +263,7 @@ export class TeamProfileGraphEngine {
       const rows = statement.all(...args) as Row[]
       const bytes = serialize(rows).byteLength
       this.projectedBytes = graphAdd(this.projectedBytes, bytes)
-      if (
-        bytes * 3 + rows.length * 1024 > nativeBudget ||
-        this.workingBytes + B.sqliteCacheBytes + bytes > B.workingBytes
-      )
+      if (bytes * 3 + rows.length * 1024 > nativeBudget)
         throw new Failed('budget')
       this.projectedResident = bytes * 2 + rows.length * 1024
       try {
@@ -337,7 +328,6 @@ export class TeamProfileGraphEngine {
       16 * 1024 * 1024,
     )) {
       if (!epoch(row.created_at) || row.created_at > readAt) continue
-      if (nodes.length >= B.identities) throw new Failed('budget')
       const id = key(row.id),
         profile = display(row.slug),
         name = display(row.display_name) ?? profile
@@ -472,7 +462,6 @@ export class TeamProfileGraphEngine {
       const k = JSON.stringify([source, target])
       let pair = pairs.get(k)
       if (!pair) {
-        if (pairs.size >= B.pairs) throw new Failed('budget')
         this.reserve(256 + textBytes(k) * 2)
         this.aggregateEstimate += 512 + textBytes(k) * 2
         pair = { source, target, work: 0, messages: 0, questions: 0 }
@@ -582,7 +571,6 @@ export class TeamProfileGraphEngine {
               const recipient = key(row.parent),
                 dedup = JSON.stringify([s.id, request, recipient])
               if (routeKeys.has(dedup)) continue
-              if (routeKeys.size >= B.routeKeys) throw new Failed('budget')
               this.reserve(128 + textBytes(dedup) * 2)
               routeKeys.add(dedup)
               addPair(node.id, sessions.get(recipient)?.identity ?? null, 'questions')
@@ -600,18 +588,13 @@ export class TeamProfileGraphEngine {
       else if (p.createdAt > c.createdAt) this.bump(coverage, 'creatorIncarnationLinksOmitted')
       else parents.set(child, parent)
     }
-    try {
-      graphLineage(
-        nodes,
-        parents,
-        coverage,
-        (bytes) => this.reserve(bytes),
-        () => this.check(),
-      )
-    } catch (error) {
-      if (error instanceof Error && error.message === 'lineage budget') throw new Failed('budget')
-      throw error
-    }
+    graphLineage(
+      nodes,
+      parents,
+      coverage,
+      (bytes) => this.reserve(bytes),
+      () => this.check(),
+    )
     this.phase = 'kind'
     for (const s of sessions.values()) {
       const node = s.identity === null ? undefined : byId.get(s.identity)
@@ -661,8 +644,6 @@ export class TeamProfileGraphEngine {
     )
     this.reserve(this.aggregateEstimate)
     const bytes = serialize({ nodes, edges, coverage }).byteLength
-    if (bytes > B.aggregateBytes) throw new Failed('budget')
-    if (bytes > this.aggregateEstimate) throw new Failed('budget')
     const completed = this.monotonic(),
       expiresAt = this.now() + B.ttlMs
     const result: Reading = {

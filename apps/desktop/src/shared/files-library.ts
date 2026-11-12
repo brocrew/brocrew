@@ -114,6 +114,7 @@ const facets = z.strictObject({
 export const filesLibraryResult = z.discriminatedUnion('type', [
   z.strictObject({
     type: z.literal('files'),
+    complete: z.boolean().optional(),
     ...stamp,
     files: z.array(group).max(100),
     totalFiles: count,

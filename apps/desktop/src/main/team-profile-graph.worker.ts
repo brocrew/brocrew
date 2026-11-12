@@ -34,7 +34,15 @@ if (parentPort !== null) {
       }
       const { id, request, context, cancellation } = parsed.data,
         flag = new Int32Array(cancellation)
-      const result = engine.read(request, context, () => Atomics.load(flag, 0) !== 0)
+      let completed = 0
+      const result = engine.read(
+          request,
+          context,
+          () => Atomics.load(flag, 0) !== 0,
+          () => {
+            if (++completed % 256 === 0) port.postMessage({ type: 'progress', id, completed })
+          },
+        )
       if (request.operation === 'snapshot' && expiry) {
         clearTimeout(expiry)
         expiry = undefined
