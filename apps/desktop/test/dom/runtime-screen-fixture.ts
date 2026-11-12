@@ -90,7 +90,7 @@ export const walk = () => ({
   ledgers: 0,
   rowsUnread: 0,
 })
-export const forestWalk = () => ({ ...walk(), walk: 'every-conversation-this-app-placed' as const })
+const forestWalk = () => ({ ...walk(), walk: 'every-conversation-this-app-placed' as const })
 export const runtime = {
   onEvent: vi.fn(() => () => {}),
   onLiveness: vi.fn(() => () => {}),
