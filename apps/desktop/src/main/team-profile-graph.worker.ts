@@ -1,5 +1,6 @@
 import { parentPort, workerData } from 'node:worker_threads'
 import { z } from 'zod'
+import { readerWorkCallbacks } from './db/reader-work-callbacks'
 import { TeamProfileGraphEngine } from './db/team-profile-graph-engine'
 import {
   teamProfileGraphRequest,
@@ -32,21 +33,11 @@ if (parentPort !== null) {
         close()
         return
       }
-      const { id, request, context, cancellation } = parsed.data,
-        flag = new Int32Array(cancellation)
-      let completed = 0
-      let reportedAt = performance.now()
-      const result = engine.read(
-        request,
-        context,
-        () => Atomics.load(flag, 0) !== 0,
-        () => {
-          if (++completed % 256 === 0 && performance.now() - reportedAt >= 100) {
-            reportedAt = performance.now()
-            port.postMessage({ type: 'progress', id, completed })
-          }
-        },
+      const { id, request, context, cancellation } = parsed.data
+      const callbacks = readerWorkCallbacks(cancellation, (completed) =>
+        port.postMessage({ type: 'progress', id, completed }),
       )
+      const result = engine.read(request, context, callbacks.cancelled, callbacks.progress)
       if (request.operation === 'snapshot' && expiry) {
         clearTimeout(expiry)
         expiry = undefined

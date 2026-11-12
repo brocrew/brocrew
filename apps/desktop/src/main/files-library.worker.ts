@@ -1,5 +1,6 @@
 import { parentPort, workerData } from 'node:worker_threads'
 import { z } from 'zod'
+import { readerWorkCallbacks } from './db/reader-work-callbacks'
 import { FilesLibraryEngine } from './db/files-library-engine'
 import { filesLibraryRequest, libraryReadContext } from '../shared/files-library'
 
@@ -24,23 +25,13 @@ if (parentPort !== null) {
         return
       }
       const { id, request, context, cancellation } = parsed.data
-      const flag = new Int32Array(cancellation)
-      let completed = 0
-      let reportedAt = performance.now()
+      const callbacks = readerWorkCallbacks(cancellation, (completed) =>
+        port.postMessage({ type: 'progress', id, completed }),
+      )
       port.postMessage({
         type: 'read',
         id,
-        result: engine.read(
-          request,
-          context,
-          () => Atomics.load(flag, 0) !== 0,
-          () => {
-            if (++completed % 256 === 0 && performance.now() - reportedAt >= 100) {
-              reportedAt = performance.now()
-              port.postMessage({ type: 'progress', id, completed })
-            }
-          },
-        ),
+        result: engine.read(request, context, callbacks.cancelled, callbacks.progress),
       })
     })
     port.on('close', () => engine.close())
