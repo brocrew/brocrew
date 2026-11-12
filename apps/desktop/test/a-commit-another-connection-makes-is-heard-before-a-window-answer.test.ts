@@ -11,8 +11,8 @@ import {
 
 /**
  * A commit another connection makes is heard before a window answer is composed — whether the
- * worker's reading is served, reused, or the answer is read on the main thread — so the host's
- * kept readings never meet a foreign commit unannounced. One resync each time.
+ * worker's reading is served or reused — so the host's kept readings never meet a foreign
+ * commit unannounced. A worker miss composes no answer. One resync each time.
  */
 describe('a commit another connection makes is heard before a window answer', () => {
   let world: AServiceWorld
@@ -86,10 +86,18 @@ describe('a commit another connection makes is heard before a window answer', ()
     expect(composed).toEqual([1, 2])
   })
 
-  it('when the answer is read on the main thread', async () => {
+  it('composes nothing on a worker miss, then hears the commit before a fresh answer', async () => {
     served = false
     const composed: number[] = []
     anotherConnectionCommits('/tmp/fictional-elsewhere')
+    await expect(host.readForWindow(() => composed.push(resyncs))).rejects.toBeInstanceOf(
+      WindowReadUnavailable,
+    )
+    expect(composed).toEqual([])
+    expect(resyncs).toBe(0)
+
+    served = true
+    stamp.revision += 1n
     await host.readForWindow(() => composed.push(resyncs))
     expect(composed).toEqual([1])
   })
