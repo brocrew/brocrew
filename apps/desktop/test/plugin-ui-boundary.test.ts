@@ -71,7 +71,10 @@ describe('per-view verified assets', () => {
     const bytes = Buffer.from(Buffer.from(original).toString().replace('bakery', 'market'))
     expect(bytes.byteLength).toBe(original.byteLength)
     const assets = new PluginUiAssets(
-      { ...verified, readFile: (path) => (path === 'ui/index.html' ? bytes : verified.readFile(path)) },
+      {
+        ...verified,
+        readFile: (path) => (path === 'ui/index.html' ? bytes : verified.readFile(path)),
+      },
       a,
     )
     const response = assets.response({ url: assets.entry, method: 'GET' })
