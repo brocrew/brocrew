@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { FakeRuntime, type ModelChoice, type StartOptions } from '@brobot2/runtime'
+import type { ProviderVersion } from '../src/shared/runtime-ipc'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
 import { fixtureProviderConfig, neutralHostDeps, RecordingSink } from './lib/host-fixture'
@@ -13,6 +14,21 @@ it('a provider version refresh reaches the drawer, agent picker and launched ali
   let version = '2.1.321'
   let current = false
   let counter = 0
+  const reportedVersion = (value: string): ProviderVersion => ({
+    version: value,
+    program: {
+      standing: 'tested',
+      from: 'carried',
+      path: join(folder, 'fictional-provider'),
+      version: value,
+      tested: null,
+      said: value,
+      help: null,
+      update: null,
+      others: [],
+      updatedFrom: null,
+    },
+  })
   const rows = (): ModelChoice[] => [
     {
       id: 'default',
@@ -45,7 +61,10 @@ it('a provider version refresh reaches the drawer, agent picker and launched ali
     providerHomePath: (provider, profile) => join(folder, profile, provider),
     newSessionId: () => `catalogue_${++counter}`,
     resolveCwd: () => folder,
-    providerVersions: async () => ({ claude: { version }, codex: { version: 'fictional-codex' } }),
+    providerVersions: async () => ({
+      claude: reportedVersion(version),
+      codex: reportedVersion('fictional-codex'),
+    }),
   })
   try {
     await host.providerVersions()
@@ -61,7 +80,7 @@ it('a provider version refresh reaches the drawer, agent picker and launched ali
     for (const row of picker.models) {
       await host.createSession(
         { provider: 'claude', profileId: 'fern', model: row.id },
-        new RecordingSink(),
+        new RecordingSink('catalogue-reader'),
       )
     }
     expect(started.map((options) => options.model)).toEqual(['default', 'fable'])

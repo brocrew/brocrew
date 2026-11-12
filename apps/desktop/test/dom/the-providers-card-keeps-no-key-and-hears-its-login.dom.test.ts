@@ -181,7 +181,7 @@ function theCard(
   const lists = createModelLists(
     () =>
       ({
-        modelList: async () => over.list ?? LIST,
+        modelList: async () => over.list ?? { ...LIST, provider: over.provider ?? 'claude' },
         addHandAddedModel: async () => undefined,
         deleteHandAddedModel: async () => undefined,
       }) as never,
