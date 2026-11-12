@@ -20,7 +20,10 @@ const currentModels: ModelChoice[] = [
   { id: 'fable', label: 'Fable 5.2', resolvesTo: 'claude-fable-5-2' },
 ]
 
-function catalogue(read: (provider: Provider, profile: string) => Promise<ModelChoice[]>) {
+function catalogue(
+  read: (provider: Provider, profile: string) => Promise<ModelChoice[]>,
+  closing: () => boolean = () => false,
+) {
   const probe = vi.fn(async (provider: Provider, profile: string) => ({
     ok: true as const,
     models: await read(provider, profile),
@@ -29,7 +32,7 @@ function catalogue(read: (provider: Provider, profile: string) => Promise<ModelC
     NULL_SESSION_STORE,
     () => [DEFAULT_PROFILE_ID, 'fern'],
     probe,
-    () => false,
+    closing,
     () => null,
     () => 100,
     () => {},
@@ -170,4 +173,22 @@ describe('one current catalogue per provider', () => {
     )
     expect(lists.held('claude', 'fern')).toMatchObject({ list: { models: drawer.list.models } })
   })
+
+  it('a forgotten in-flight answer cannot start a replacement probe after shutdown', async () => {
+    let closing = false
+    let release!: (models: ModelChoice[]) => void
+    let first = true
+    const { holder, probe } = catalogue(async () => {
+      if (!first) return currentModels
+      first = false
+      return new Promise<ModelChoice[]>((resolve) => { release = resolve })
+    }, () => closing)
+    const before = holder.modelList('claude')
+    holder.forgetModels('claude')
+    closing = true
+    release(oldModels)
+    expect((await before).notAsked).toEqual({ok: false, reason: 'closing'})
+    expect(probe).toHaveBeenCalledTimes(1)
+  })
+
 })

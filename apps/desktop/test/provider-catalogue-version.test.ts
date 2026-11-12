@@ -5,7 +5,7 @@ import { expect, it } from 'vitest'
 import { FakeRuntime, type ModelChoice, type StartOptions } from '@brobot2/runtime'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
-import { neutralHostDeps, RecordingSink } from './lib/host-fixture'
+import { fixtureProviderConfig, neutralHostDeps, RecordingSink } from './lib/host-fixture'
 
 it('a provider version refresh reaches the drawer, agent picker and launched aliases', async () => {
   const folder = mkdtempSync(join(tmpdir(), 'brocrew-catalogue-version-'))
@@ -29,6 +29,7 @@ it('a provider version refresh reaches the drawer, agent picker and launched ali
   const host = new RuntimeHost({
     ...neutralHostDeps(() => folder),
     store: NULL_SESSION_STORE,
+    readProviderConfig: fixtureProviderConfig,
     listProfiles: () => ['brobot', 'fern'],
     createRuntime: (provider) => {
       const runtime = new FakeRuntime(provider)
