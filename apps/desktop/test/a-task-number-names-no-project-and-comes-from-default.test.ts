@@ -1,6 +1,4 @@
 import { personOpener } from './helpers/person-opens-session'
-import { waitFor } from './lib/f093-host'
-import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -13,6 +11,8 @@ import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { pieceLine } from '../src/shared/piece-called'
 import {
+  waitFor,
+  type TranscriptEvent,
   fixtureFolder,
   fixtureDatabase,
   fixtureProviderConfig,
