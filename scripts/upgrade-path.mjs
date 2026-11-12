@@ -112,7 +112,7 @@ import {
   toolResultsIn,
   userTextsIn,
 } from './lib/scripted-claude.mjs'
-
+// 695-visible: normal upgrade rehearsal checks person-like starts on a hosted runner.
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..')
 const { values: args } = parseArgs({
   options: {
