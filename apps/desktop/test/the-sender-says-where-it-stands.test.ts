@@ -2,8 +2,7 @@ import { fixtureFolder, fixtureDatabase } from './lib/host-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { rmSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions } from '@brobot2/runtime'
 import { type AgentToolset } from '@brobot2/runtime'
@@ -34,7 +33,6 @@ import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from '.
  * the exact string that crossed `SessionHandle.send`.
  */
 
-const here = dirname(fileURLToPath(import.meta.url))
 
 describe('D-011 · the sender says where it stands', () => {
   class RecordingSink implements RuntimeEventSink {

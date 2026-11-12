@@ -2,8 +2,7 @@ import { fixtureFolder, fixtureDatabase } from './lib/host-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { rmSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions } from '@brobot2/runtime'
 import type { FakeSessionHandle } from '@brobot2/runtime'
@@ -43,7 +42,6 @@ import {
  * ⚑ **One provider shape**: nothing here resumes a conversation, so the Claude shape's
  * silent-until-its-first-turn resume would run the same run twice (`719`'s header states the same).
  */
-const here = dirname(fileURLToPath(import.meta.url))
 
 describe('724 · small true words, for the model and the lists', () => {
   let userData: string

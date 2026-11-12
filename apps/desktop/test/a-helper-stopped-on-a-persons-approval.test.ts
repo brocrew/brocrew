@@ -3,8 +3,7 @@ import { StartHandleKeepingRuntime as ProviderDouble } from './helpers/handle-ke
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { rmSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions } from '@brobot2/runtime'
 import type { AgentToolset, FakeSessionHandle } from '@brobot2/runtime'
@@ -30,7 +29,6 @@ import {
  * the double, whose turn in Ask mode stops on its own card.
  */
 
-const here = dirname(fileURLToPath(import.meta.url))
 
 const THE_BRIEF = 'run the tests'
 /**

@@ -2,8 +2,7 @@ import { fixtureFolder, fixtureDatabase } from './lib/host-fixture'
 import { ToolWatchingResumeRuntime } from './lib/provider-double'
 import { fixtureProviderConfig, neutralHostDeps, RecordingSink } from './lib/host-fixture'
 import { rmSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions } from '@brobot2/runtime'
 import type { AgentToolset } from '@brobot2/runtime'
@@ -50,7 +49,6 @@ import { resourcesRoot } from '../src/main/resources/resources'
  * out on its own `unread`.
  */
 
-const here = dirname(fileURLToPath(import.meta.url))
 
 /** A row the ledger cannot parse — the whole of what "torn" means here. */
 const TORN = '{not json'

@@ -3,8 +3,7 @@ import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { expectIdsOnlyInLinkTargets } from './helpers/navigation-reply'
 import { rmSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type {
@@ -64,7 +63,6 @@ import {
  * make the parent `W2` and the literals below `W2.1`.
  */
 
-const here = dirname(fileURLToPath(import.meta.url))
 
 /** ⚑ A reopen the test can hold at the provider: `hold` is awaited by every `resume`. */
 interface ResumeGate {

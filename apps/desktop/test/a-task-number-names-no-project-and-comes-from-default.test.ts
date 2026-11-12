@@ -3,8 +3,7 @@ import { personOpener } from './helpers/person-opens-session'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { rmSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
@@ -55,7 +54,6 @@ import {
  * real `RuntimeHost` over a real SQLite ledger and the fake provider, and nothing constructed.
  */
 
-const here = dirname(fileURLToPath(import.meta.url))
 
 /** A tool's answer: the text a model reads first, and the structured half it acts on. */
 interface Answer {

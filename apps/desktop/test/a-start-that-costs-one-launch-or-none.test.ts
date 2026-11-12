@@ -39,7 +39,6 @@ import {
  * door with {@link ResumeGate} so a test can watch a resume arrive and count it.
  */
 
-
 describe('D-017 · a start that costs one launch or none', () => {
   let userData: string
   let root: string

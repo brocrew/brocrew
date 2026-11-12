@@ -2,8 +2,7 @@ import { fixtureFolder, fixtureDatabase } from './lib/host-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { rmSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type { AgentToolset, ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
@@ -45,7 +44,6 @@ import {
  * ⚑ Real host, real SQLite ledger, real toolsets; the only double is the provider.
  */
 
-const here = dirname(fileURLToPath(import.meta.url))
 
 describe('D-009 · agents ask each other, and the answer comes back', () => {
   /** ⚑ Every toolset a launch was handed, starts AND resumes, keyed by the conversation. */

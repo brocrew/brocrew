@@ -4,8 +4,7 @@ import type { AgentState } from '../src/shared/agent-state-contracts'
 import type { PieceRow } from '../src/shared/task-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { rmSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type {
@@ -48,7 +47,6 @@ import {
  * product decision, and nothing here pins it either way.
  */
 
-const here = dirname(fileURLToPath(import.meta.url))
 
 /** A delay no other timer in the host uses, and no test waits out: nothing is stopped for idling. */
 const IDLE = 7_654_321

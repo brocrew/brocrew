@@ -28,7 +28,6 @@ import {
  * giving it work, and held messages reach the worker in arrival order, across a quit too.
  */
 
-
 describe('one session, and the callers who wait', () => {
   let userData: string
   let root: string

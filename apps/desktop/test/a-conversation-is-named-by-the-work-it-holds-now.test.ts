@@ -43,7 +43,6 @@ import {
  * ⛔ **The expected words are literals**; `nameByItsWork` is the subject, never the oracle.
  */
 
-
 /** The conversation a person is behind: the sink a window hands the host. */
 /** What a tool answered: the payload a model parses and the sentence it reads. */
 interface Answer {

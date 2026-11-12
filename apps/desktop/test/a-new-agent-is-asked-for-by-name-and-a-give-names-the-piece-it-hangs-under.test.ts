@@ -50,7 +50,6 @@ import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
  * Real host, real SQLite ledger, real toolsets; the only double is the provider.
  */
 
-
 /** One `an-agent` creator, folded - see `AgentIdentity.createdBy`. */
 const by = (agent: string): IdentityCreator => ({ by: 'an-agent', agent })
 

@@ -34,7 +34,6 @@ import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from '.
  * `turn` row), after the brief's own turn has ended.
  */
 
-
 describe('F080 · a giver reads its child’s wake', () => {
   class RecordingSink implements RuntimeEventSink {
     readonly aPersonIsBehindIt = true

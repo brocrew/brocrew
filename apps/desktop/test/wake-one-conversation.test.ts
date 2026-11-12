@@ -2,8 +2,7 @@ import { fixtureFolder, fixtureDatabase } from './lib/host-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { rmSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions } from '@brobot2/runtime'
 import type { AgentToolAnswer, FakeSessionHandle } from '@brobot2/runtime'
@@ -49,7 +48,6 @@ import {
  * ⚠️ **The two shapes** (`663` §5): the Fake announces a resumed conversation at construction;
  * Claude writes nothing until its first turn.
  */
-const here = dirname(fileURLToPath(import.meta.url))
 
 describe('663 · wake one conversation: its parent’s message carries it on', () => {
   let userData: string

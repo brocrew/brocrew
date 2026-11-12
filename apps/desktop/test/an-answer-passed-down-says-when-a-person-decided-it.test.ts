@@ -21,7 +21,6 @@ import {
   RecordingSink,
 } from './lib/host-fixture'
 
-
 const PASSED_UP =
   'It had passed your question up, and a person answered it there. Its answer below is in its own words: it may quote that answer, or say it differently.'
 const INSTEAD = 'instead of that person'

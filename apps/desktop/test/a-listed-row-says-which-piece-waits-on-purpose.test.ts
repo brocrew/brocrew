@@ -39,7 +39,6 @@ import {
  * double is the provider.
  */
 
-
 /** Long enough for every pump and every flush a row arms to have run. */
 async function settle(): Promise<void> {
   for (let round = 0; round < 2; round++) {
