@@ -10,46 +10,6 @@ import type { SessionStatus } from '@brobot2/shared'
 import type { WorkEdge } from './who-called-whom'
 
 /**
- * 🔴 **How many conversations one forest draws, and what happens past it** (637 §2.2).
- *
- * ## ⛔ Why a bound exists at all, measured rather than imagined
- *
- * The person's provider-home history, listed by `session-library.ts` and `SessionLibrary.vue`, can be much larger than the app's hierarchy. {@link TheWholeForest} queries conversations held by app agents and separately counts excluded history through {@link TheWholeForest.heldByNoAgent}; the bound applies to that narrower forest population.
- *
- * ## ⚑ 500, and the number is the ledger fold rather than the row
- *
- * ⛔ **The structural half needs no bound and is deliberately not given one.** It is one indexed
- * scan of `provider_session`, and `selectAll` — the Library's own read — already
- * runs `FROM provider_session … ORDER BY updated_at DESC` over the whole table with no `LIMIT`
- * over those 2,027 rows. ⚠️ A second, tighter rule about the same scan would be this app
- * disagreeing with itself about what one table costs.
- *
- * ⚑ **What this bounds is the LEDGERS.** Every drawn conversation's own record is folded for the
- * work it holds, and that is the half that grows with what each agent did rather than with how many there
- * are. ⚠️ **Since `664` it is not that cost EXACTLY**: a drawn conversation holding OPEN work also
- * takes one wait read to compose its rows, and that read folds the ledger of every conversation it
- * handed work to, which this bound does not cover — see `RuntimeHost.theWholeForest`'s price.
- *
- * ## 🔴 Past it the answer is SHORT and says so — it is never a refusal
- *
- * ⛔ **`read-bundle.ts`' discipline is *"Nothing is silently truncated"* and this honours it the
- * LIBRARY's way, not the bundle's.** ⚠️ A bundle past `MAX_BUNDLE_BYTES` is refused whole, because
- * half a bundle is not a bundle; a forest past this is the newest {@link MAX_FOREST_CONVERSATIONS}
- * of it, with {@link TheWholeForest.conversations} beside {@link LedgerWalk.ledgers} so a person
- * can see how short it is. 🔴 **Standing rule 8.4 is why**: a person with six hundred conversations
- * would meet a refusal they could never clear, and *"the LIMIT is the finding rather than the
- * test"*. ⚑ `LibraryPage`'s own sentence, one surface over — *"silently showing 50 of 500 is the
- * kind of truncation this app treats as a lie about coverage"* — is the shape this copies.
- *
- * ⛔ **And the tree stays a tree, at BOTH of its edges.** A drawn conversation whose parent fell
- * past the bound reads {@link ForestParent} `a-conversation-this-reading-did-not-draw`, and so does
- * a piece whose GIVER did — {@link ForestTask.givenBy}. ⚠️ **Two edges, so two words**: the first
- * draft gave the spawn edge the protection and left the handoff edge a bare id, which is the same
- * dangling pointer one arrow over.
- */
-export const MAX_FOREST_CONVERSATIONS = 500
-
-/**
  * 🔴 **Where one node hangs — a WORD, because a null parent spells three different facts** (637
  * §3.1).
  *
@@ -61,10 +21,9 @@ export const MAX_FOREST_CONVERSATIONS = 500
  * that handed that null to a renderer would make it guess, and `a-value-beside-a-word-or-a-union-of-arms`
  * is this repository's rule for exactly that: a value that stands on one arm belongs on that arm.
  *
- * ⚑ **The third arm is about THIS READING and never about the ledger** — two things put a
- * conversation outside it: {@link MAX_FOREST_CONVERSATIONS} cutting the tail, and a conversation
- * no agent of this app holds. ⚠️ The word is the same for both because the fact is the same: the row
- * exists and this answer does not contain it.
+ * ⚑ **The third arm is about THIS READING and never about the ledger** — a conversation outside
+ * the reading's window, archived, or held by no agent of this app. ⚠️ The word is the same for all
+ * because the fact is the same: the row exists and this answer does not contain it.
  */
 export type ForestParent =
   /**
@@ -85,8 +44,8 @@ export type ForestParent =
   /** ⚑ **Another node in this reading** — see {@link UnderAConversation}. */
   | UnderAConversation
   /**
-   * 🔴 **That conversation exists and this reading did not draw it** (637 §2.2) — reached by the
-   * bound cutting the tail, and by a conversation no agent of this app holds.
+   * 🔴 **That conversation exists and this reading did not draw it** (637 §2.2) — outside the
+   * reading's window, archived, or held by no agent of this app.
    *
    * ⛔ **A WORD rather than an id the renderer would have to look up and fail to find.** ⚠️ The
    * alternative was measured on paper and it is worse both ways: dropping the child hides work a
@@ -191,7 +150,7 @@ export interface ForestConversation {
    *
    * ⚑ **So a window draws it where they stood** — under their parent, over their children — and a
    * line to a child it, or any of them, gave open work to is dashed. ⛔ Each is named with whether
-   * this reading drew it, so one past the bound is still named and never dropped.
+   * this reading drew it, so one outside it is still named and never dropped.
    */
   readonly standsInFor: readonly NamedConversation[]
   /**
@@ -243,7 +202,7 @@ export interface ForestTask {
    * direction the shape already decides must not also be a field; here the shape decides nothing,
    * because {@link TheWholeForest.nodes} is a HETEROGENEOUS list and a renderer walks one field
    * across all of it. ⚑ Narrowing the type to {@link UnderAConversation} is what keeps the
-   * duplicate safe: this arm cannot hold `the-person` and cannot hold the bound's word.
+   * duplicate safe: this arm cannot hold `the-person` and cannot hold the not-drawn word.
    */
   readonly under: UnderAConversation
   /**
@@ -253,8 +212,8 @@ export interface ForestTask {
    *
    * ⚠️ **{@link under} is sound by construction and this is not.** The owner IS the conversation
    * whose ledger produced this row, so it is always in `nodes`; the giver is a different
-   * conversation entirely and two things can put it outside this reading — the bound cutting an
-   * older parent, and a giver no agent of this app holds. ⛔ **`WorkEdge.from` alone would be a
+   * conversation entirely and can be outside this reading — outside its window, archived, or held
+   * by no agent of this app. ⛔ **`WorkEdge.from` alone would be a
    * dangling id** and every renderer drawing the handoff would write the same membership check,
    * which is `an-unenumerated-state-counts-as-success` with an arrow drawn on it.
    *
@@ -274,41 +233,19 @@ export interface ForestTask {
 export type ForestNode = ForestConversation | ForestTask
 
 /**
- * The whole forest from the person down.
+ * The forest a window draws from the person down: a {@link ForestReading} and the pages read after
+ * it, put together by the window.
  *
  * > ⚑ ***"In the Team ui: I want a tab to switch to a graph vue. we see the user at the top,
  * > followed by all brobot conversations right after, and each brobot converation with its own
  * > children etc.. each of them represent a task or converation."***
  *
- * ## ⛔ Why this is a new read and not `whoCalledWhom` called N times
- *
- * ⚠️ **`whoCalledWhom` answers *who did THIS conversation spawn* and cannot be walked upward.**
- * Its own docblock rules the wider walk out of that file: *"No ancestor chain and no recursive
- * traversal… a walk this read performed for a window would be a bound nobody has priced."* ⛔ N
- * calls would be N round trips on N clocks, and one `readAt` over them would be `HO-050` §3's
- * animal — a figure that is not measuring what it claims.
- *
- * ⚑ **And it is not a recursive CTE either.** `629` wrote one for *is A above B*, seeded at one id
- * and bounded at 64 hops against a cycle a hand edit could make. 🔴 **A forest needs every root,
- * not one leaf's line** — and `parent_session_id` IS the edge, so the whole shape is that column
- * selected beside the node facts and assembled in memory. ⛔ **One flat indexed scan beats a
- * recursion here and cannot hang**: a cycle in the data makes a node whose parent is also drawn,
- * which is a picture, not a walk that does not return.
- *
- * ## ⚠️ What it is NOT a claim about
- *
- * ⛔ **{@link readAt} is not a claim about NOW**, and the forest is the slowest-moving of the three
- * population reads: it moves when a conversation is created or spawned and when work is given or
- * closed. ⚑ A surface drawing an age beside a doing word draws `WhatIsBeingDone`'s stamp and not
- * this one.
+ * ⛔ **{@link readAt} is not a claim about NOW**: a surface drawing an age beside a doing word
+ * draws `WhatIsBeingDone`'s stamp and not this one.
  */
 export interface TheWholeForest {
   /**
-   * 🔴 **The one moment every node below had been read by** — `WhoCalledWhom.readAt`'s rule and the
-   * same argument: `better-sqlite3` executes on the calling thread, every statement is synchronous,
-   * and there is no `await` anywhere between the first of them and this stamp.
-   *
-   * ⚑ **Stamped LAST**, after every ledger has been folded — a completion point, never a start
+   * 🔴 **The moment the last of its pages had been read by** — a completion point, never a start
    * time.
    */
   readonly readAt: number
@@ -327,21 +264,13 @@ export interface TheWholeForest {
    * yet"*. ⚠️ So a non-zero count is not only *a piece list short by a row*: a piece's composed
    * STATE may be wrong by one too, and the count cannot say which.
    *
-   * ⛔ **MOST RECENTLY ACTIVE FIRST, and here the order is the BOUND's rather than a preference.**
-   * Conversations arrive by `updated_at` descending and each one's pieces follow it, because
-   * {@link MAX_FOREST_CONVERSATIONS} cuts the tail — and the tail a person can afford to lose is
-   * the one they stopped looking at. ⚠️ **Not `created_at`**: a conversation begun a month ago and
-   * worked in this morning must outrank one opened yesterday and never touched. ⚠️ Nothing else may be concluded from a position: a surface
-   * that wants any other order sorts on a field it can name.
+   * ⚠️ Each conversation's pieces follow it; nothing else may be concluded from a position: a
+   * surface that wants an order sorts on a field it can name.
    */
   readonly nodes: LedgerWalk<ForestNode>
   /**
-   * 🔴 **How many conversations this app's agents hold — the whole population, before the bound.**
-   *
-   * ⛔ **Counted rather than derived from {@link nodes}** — *"the party that WALKED is the only one
-   * that can say what it walked"*, and `rows.length` would
-   * answer *what was drawn* to a question that asked *how many there are*. ⚑ It is what makes
-   * {@link MAX_FOREST_CONVERSATIONS} visible: equal to `nodes.ledgers` means nothing was left out.
+   * 🔴 **How many conversations the reading lists**, counted rather than derived from
+   * {@link nodes}: equal to `nodes.ledgers` means every one has been read.
    */
   readonly conversations: number
   /**
@@ -389,8 +318,6 @@ export type ForestCounts = Readonly<Record<ForestWindow, number>>
  * conversation is in two of them.
  */
 export interface ForestReading {
-  /** Names this reading for `forestNodes`, which reads its later pages. */
-  readonly id: string
   readonly scope: ForestScope
   /**
    * The one instant the windows reach back from, at which the running set was taken: counts and
@@ -430,6 +357,9 @@ export interface ForestReading {
   readonly readAt: number
 }
 
+/** What a later page needs of its reading: the conversations it lists. */
+export type ForestListed = Pick<ForestReading, 'members' | 'context' | 'behind'>
+
 /** A later page of a {@link ForestReading}'s nodes. */
 export interface ForestNodesPage {
   /** Composed as {@link ForestReading.nodes}: parents and givers named as in that reading. */
@@ -439,30 +369,3 @@ export interface ForestNodesPage {
   readonly readAt: number
 }
 
-/**
- * A reading and the pages read after it, as one {@link TheWholeForest}: every node read so far,
- * with {@link TheWholeForest.conversations} the conversations the reading lists that are not gone,
- * so `conversations - nodes.ledgers` is what is still to be read.
- */
-export function theForestSoFar(
-  reading: ForestReading,
-  pages: readonly ForestNodesPage[],
-): TheWholeForest {
-  const walks = [reading.nodes, ...pages.map((page) => page.nodes)]
-  const skipped = walks.reduce((total, walk) => total + (walk.ledgersSkipped ?? 0), 0)
-  const gone = new Set(pages.flatMap((page) => page.gone))
-  const listed =
-    reading.members.admitted.length + reading.context.length + reading.behind.length - gone.size
-  return {
-    readAt: pages.reduce((at, page) => Math.max(at, page.readAt), reading.readAt),
-    nodes: {
-      walk: reading.nodes.walk,
-      rows: walks.flatMap((walk) => walk.rows),
-      ledgers: walks.reduce((total, walk) => total + walk.ledgers, 0),
-      rowsUnread: walks.reduce((total, walk) => total + walk.rowsUnread, 0),
-      ...(skipped > 0 ? { ledgersSkipped: skipped } : {}),
-    },
-    conversations: listed,
-    heldByNoAgent: reading.heldByNoAgent,
-  }
-}

@@ -101,7 +101,6 @@ export function readingOf(
   const admitted = rows.flatMap((row) => row.node === 'a-conversation' ? [row.conversation] : [])
   const count = admitted.length
   return {
-    id: 'fictional-reading',
     scope,
     measuredFrom: NOW,
     counts: scope.is === 'the-workspace' ? { active: count, hour: count, day: count, week: count, all: count } : null,

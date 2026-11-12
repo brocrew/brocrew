@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { userEvent } from 'vitest/browser'
 import { nextTick, ref, defineComponent, h } from 'vue'
 import TeamForest from '../../src/renderer/src/components/TeamForest.vue'
+import TeamWorkspace from '../../src/renderer/src/components/TeamWorkspace.vue'
+import type { AgentStore } from '../../src/renderer/src/lib/agent-store'
 import { conv, forestDrawn, task, viewOf } from './forest-fixture'
 import { mount, unmountAll } from './harness'
 
@@ -27,7 +29,7 @@ describe('compact graph groups and navigation', () => {
     expect(m.all('forest-group')).toHaveLength(1)
     expect(m.q('forest-group').textContent).toContain('teo ×2')
     expect(m.q('forest-group-counts').textContent).toBe('1 active · 1 idle')
-    expect(m.q('forest-group').textContent).toContain('Idle')
+    expect(m.q('forest-group').textContent).toContain('Latest: Idle')
     expect(m.q('forest-group').classList.contains('current')).toBe(true)
     expect(m.all('forest-group-member')).toHaveLength(0)
     m.q('forest-group-toggle').focus()
@@ -79,4 +81,29 @@ describe('compact graph groups and navigation', () => {
     expect(m.all('forest-group-member')).toHaveLength(2)
     expect(m.host.querySelector<HTMLElement>('.vue-flow__transformationpane')!.style.transform).toBe(transform)
   })
+})
+
+
+it('uses the workspace height and keeps chips, count and zoom together on one row at 760px', async () => {
+  const m = mount(TeamWorkspace, { agents: null, store: {} as AgentStore, forest: fixture(), forestCounts: { active: 2, hour: 2, day: 6, week: 10, all: 12 } }, { width: 760, height: 800 })
+  m.q('team-tab-forest').click()
+  await forestDrawn()
+  await forestDrawn()
+  const canvas = m.q('forest-rows').getBoundingClientRect()
+  const workspace = m.q('team-workspace')
+  const bottomPadding = parseFloat(getComputedStyle(workspace).paddingBottom)
+  expect(Math.abs(workspace.getBoundingClientRect().bottom - canvas.bottom - bottomPadding)).toBeLessThan(2)
+  const count = m.q('forest-drawn').getBoundingClientRect()
+  const zoom = m.q('forest-zoom-out').getBoundingClientRect()
+  expect(zoom.left - count.right).toBeLessThan(20)
+  const toolbar = m.q('forest-toolbar').getBoundingClientRect()
+  for (const id of ['active', 'hour', 'day', 'week', 'all']) {
+    const chip = m.q(`forest-window-${id}`).getBoundingClientRect()
+    expect(chip.top).toBeGreaterThanOrEqual(toolbar.top)
+    expect(chip.bottom).toBeLessThanOrEqual(zoom.bottom + 2)
+  }
+  const root = m.q('forest-row-aster').getBoundingClientRect()
+  const group = m.q('forest-group').getBoundingClientRect()
+  expect(group.left).toBeGreaterThan(root.right)
+  expect(workspace.scrollHeight).toBeLessThanOrEqual(workspace.clientHeight + 1)
 })

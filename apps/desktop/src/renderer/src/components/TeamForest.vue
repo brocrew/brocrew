@@ -215,8 +215,7 @@ function toggle(conversation: string): void {
   >
       <div class="graph-toolbar" data-cy="forest-toolbar">
         <slot name="filters" />
-        <span v-if="props.pending" class="compact-count" role="status">{{ props.view?.reading && !props.view.reading.complete ? count : 'Reading…' }}</span>
-        <span v-else-if="count !== null" class="compact-count" data-cy="forest-drawn">{{ count }}</span>
+        <span class="compact-count" :role="props.pending ? 'status' : undefined" :data-cy="!props.pending && count !== null ? 'forest-drawn' : undefined">{{ props.pending ? (props.view?.reading && !props.view.reading.complete ? count : 'Reading…') : count }}</span>
         <div class="zoom" role="group" aria-label="Zoom the forest">
           <button type="button" title="Zoom out" data-cy="forest-zoom-out" @click="flow.zoomOut()">
             −
@@ -415,7 +414,6 @@ function toggle(conversation: string): void {
 
 .zoom {
   flex-shrink: 0;
-  margin-left: auto;
   display: flex;
   overflow: hidden;
   border: var(--border-width) solid var(--line);

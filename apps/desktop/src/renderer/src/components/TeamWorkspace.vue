@@ -262,7 +262,7 @@ function pressForest(row: ForestRow): void {
 </script>
 
 <template>
-  <section class="team-workspace" data-cy="team-workspace" data-chat-theme="light">
+  <section class="team-workspace" :class="{ 'showing-forest': showing === 'forest' }" data-cy="team-workspace" data-chat-theme="light">
     <header class="team-header">
       <div>
         <p class="eyebrow">Workspace directory</p>
@@ -324,11 +324,12 @@ function pressForest(row: ForestRow): void {
     <div
       v-show="showing === 'forest'"
       id="team-panel-forest"
+      class="team-forest-panel"
       role="tabpanel"
       aria-labelledby="team-tab-forest"
       data-cy="team-panel-forest"
     >
-      <TeamForest :view="props.forest" :pending="props.forestPending" :error="props.forestError" @retry="emit('forestWindow', props.forestWindow)" @press="pressForest">
+      <TeamForest fill direction="right" :view="props.forest" :pending="props.forestPending" :error="props.forestError" @retry="emit('forestWindow', props.forestWindow)" @press="pressForest">
         <template #filters>
           <div class="forest-windows" role="group" aria-label="Conversation time window">
             <button v-for="window in FOREST_WINDOWS" :key="window.id" type="button" :class="{ on: props.forestWindow === window.id }" :aria-pressed="props.forestWindow === window.id" :data-cy="`forest-window-${window.id}`" @click="emit('forestWindow', window.id)">
@@ -745,6 +746,14 @@ function pressForest(row: ForestRow): void {
   color: var(--paper-ink);
   background: var(--paper-bg);
 }
+
+.team-workspace.showing-forest {
+  overflow: hidden;
+  padding-bottom: var(--space-6);
+}
+.showing-forest > .team-header,
+.showing-forest > .team-tabs { flex-shrink: 0; }
+.team-forest-panel { display: flex; min-height: 0; flex: 1; flex-direction: column; }
 
 .team-count-bar {
   display: flex;

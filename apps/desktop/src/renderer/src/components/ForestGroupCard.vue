@@ -9,7 +9,11 @@ const emit = defineEmits<{ toggle: []; press: [row: ForestRow] }>()
 const members = computed(() => props.node.members ?? [])
 const summary = computed(() => ({
   ...props.node,
-  row: { ...props.node.row, name: `${props.node.row.name} ×${members.value.length}` },
+  row: {
+    ...props.node.row,
+    name: `${props.node.row.name} ×${members.value.length}`,
+    says: latest.value ? `Latest: ${latest.value}` : null,
+  },
   tasks: [],
 }))
 const distribution = computed(() => {
@@ -29,6 +33,7 @@ const dateOf = (member: GraphNode): string | null => {
   const updatedAt = member.row.conversationRow?.updatedAt
   return updatedAt === undefined ? null : new Date(updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
+const latest = computed(() => [props.node.row.says, dateOf(props.node)].filter(Boolean).join(' · '))
 </script>
 
 <template>

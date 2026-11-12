@@ -27,7 +27,7 @@ import type { RecentActivityReading } from '../../../shared/recent-activity'
 import type { WorkspaceReading } from '../../../shared/workspace-reading'
 import { activityOf, type WhatIsBeingDone } from '../../../shared/what-is-being-done'
 
-import type { ForestReading, ForestNodesPage, ForestScope } from '../../../shared/the-whole-forest'
+import type { ForestReading, ForestListed, ForestNodesPage, ForestScope } from '../../../shared/the-whole-forest'
 import type {
   AnswerAck,
   ProviderAnswerAck,
@@ -440,7 +440,7 @@ export interface SessionStore {
    */
   whatEachConversationIsWaitingOn(): Promise<WhatEachConversationIsWaitingOn | null>
   forestReading(scope: ForestScope): Promise<ForestReading | null>
-  forestNodes(reading: string, conversations: readonly string[]): Promise<ForestNodesPage | null>
+  forestNodes(reading: ForestListed, conversations: readonly string[]): Promise<ForestNodesPage | null>
   /**
    * 🔴 **D-018 · the memory each running conversation's process holds** — see
    * {@link ProcessMemory}, for a person's agent card.

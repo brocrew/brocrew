@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import type { ForestListed } from '../src/shared/the-whole-forest'
 import { readForestPages, type ForestSnapshot } from '../src/renderer/src/lib/forest-reading'
 import { conv, readingOf, forestOf } from './lib/forest-fixture'
 
@@ -12,7 +13,7 @@ describe('a graph reading grows by pages without changing its membership clock',
       unfolded: ids.slice(1),
     })
     const forestReading = vi.fn(async () => first)
-    const forestNodes = vi.fn(async (_reading: string, asked: readonly string[]) => ({
+    const forestNodes = vi.fn(async (_reading: ForestListed, asked: readonly string[]) => ({
       nodes: forestOf(asked.map((id) => conv(id, null))).nodes,
       gone: [],
       readAt: first.readAt + 1,

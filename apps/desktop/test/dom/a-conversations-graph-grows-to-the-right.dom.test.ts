@@ -137,7 +137,7 @@ describe('a conversation graph grows from left to right', () => {
     expect(viewport.style.transform).toBe(transform)
   })
 
-  it('keeps the Team graph in rows of generations with every tree and its original ports', async () => {
+  it('draws the workspace horizontally with every tree and left/right ports', async () => {
     const m = mount(
       TeamWorkspace,
       {
@@ -152,13 +152,13 @@ describe('a conversation graph grows from left to right', () => {
     const root = box(m, 'sess_brobot')
     const child = box(m, siblingIds[0]!)
     const leaf = box(m, 'sess_reader')
-    expect(child.top - root.bottom).toBeGreaterThan(5)
-    expect(leaf.top - child.bottom).toBeGreaterThan(5)
-    for (const id of siblingIds) expect(Math.abs(box(m, id).top - child.top)).toBeLessThan(1)
+    expect(child.left - root.right).toBeGreaterThan(5)
+    expect(leaf.left - child.right).toBeGreaterThan(5)
+    for (const id of siblingIds) expect(Math.abs(box(m, id).left - child.left)).toBeLessThan(1)
     expect(m.all('forest-row-sess_other')).toHaveLength(1)
     expect(m.all('forest-row-sess_other_helper')).toHaveLength(1)
     const node = m.q(`forest-row-${siblingIds[0]!}`).closest('.vue-flow__node')!
-    expect(node.querySelector('.vue-flow__handle-top')).not.toBeNull()
-    expect(node.querySelector('.vue-flow__handle-bottom')).not.toBeNull()
+    expect(node.querySelector('.vue-flow__handle-left')).not.toBeNull()
+    expect(node.querySelector('.vue-flow__handle-right')).not.toBeNull()
   })
 })

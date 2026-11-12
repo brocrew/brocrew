@@ -1,4 +1,4 @@
-import { FOREST_PAGE, type ForestReading, type ForestNodesPage, type ForestScope, type TheWholeForest } from '../../../shared/the-whole-forest'
+import { FOREST_PAGE, type ForestReading, type ForestListed, type ForestNodesPage, type ForestScope, type TheWholeForest } from '../../../shared/the-whole-forest'
 import type { LedgerWalk } from '../../../shared/question-contracts'
 import type { ForestNode } from '../../../shared/the-whole-forest'
 
@@ -12,7 +12,7 @@ export interface ForestSnapshot {
 
 export interface ForestReader {
   forestReading(scope: ForestScope): Promise<ForestReading | null>
-  forestNodes(reading: string, conversations: readonly string[]): Promise<ForestNodesPage | null>
+  forestNodes(reading: ForestListed, conversations: readonly string[]): Promise<ForestNodesPage | null>
 }
 
 /** Publish each page with its original membership and clock; stop asking when the view moves. */
@@ -43,7 +43,7 @@ export async function readForestPages(
   // The first answer supplies the page order, so a page never re-applies a moving time window.
   for (let offset = 0; offset < reading.unfolded.length; offset += FOREST_PAGE) {
     if (!current()) return false
-    const page = await reader.forestNodes(reading.id, reading.unfolded.slice(offset, offset + FOREST_PAGE))
+    const page = await reader.forestNodes({ members: reading.members, context: reading.context, behind: reading.behind }, reading.unfolded.slice(offset, offset + FOREST_PAGE))
     if (!current() || page === null || page.gone.length > 0) return false
     nodes = appendNodes(nodes, page.nodes)
     loaded += page.nodes.ledgers
