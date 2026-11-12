@@ -29,7 +29,6 @@ import {
  * the double, whose turn in Ask mode stops on its own card.
  */
 
-
 const THE_BRIEF = 'run the tests'
 /**
  * What the double's card asks, as the giver is told it: its tool, and the first line of what it

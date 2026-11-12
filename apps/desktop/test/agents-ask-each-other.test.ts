@@ -44,7 +44,6 @@ import {
  * ⚑ Real host, real SQLite ledger, real toolsets; the only double is the provider.
  */
 
-
 describe('D-009 · agents ask each other, and the answer comes back', () => {
   /** ⚑ Every toolset a launch was handed, starts AND resumes, keyed by the conversation. */
   class ToolWatchingRuntime extends FakeRuntime {

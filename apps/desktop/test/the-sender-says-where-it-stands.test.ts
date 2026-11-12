@@ -33,7 +33,6 @@ import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from '.
  * the exact string that crossed `SessionHandle.send`.
  */
 
-
 describe('D-011 · the sender says where it stands', () => {
   class RecordingSink implements RuntimeEventSink {
     readonly aPersonIsBehindIt = true

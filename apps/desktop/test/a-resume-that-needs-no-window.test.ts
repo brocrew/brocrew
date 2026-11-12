@@ -61,7 +61,6 @@ import {
  * CRASH — a host still live — which this relaunch does not model: it follows a quit).
  */
 
-
 /** Everything the host handed the provider, in the order it handed it. */
 interface Handed {
   readonly toolsets: AgentToolset[]

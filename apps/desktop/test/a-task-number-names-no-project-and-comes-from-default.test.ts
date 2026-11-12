@@ -54,7 +54,6 @@ import {
  * real `RuntimeHost` over a real SQLite ledger and the fake provider, and nothing constructed.
  */
 
-
 /** A tool's answer: the text a model reads first, and the structured half it acts on. */
 interface Answer {
   readonly text: string

@@ -63,7 +63,6 @@ import {
  * make the parent `W2` and the literals below `W2.1`.
  */
 
-
 /** ⚑ A reopen the test can hold at the provider: `hold` is awaited by every `resume`. */
 interface ResumeGate {
   hold: Promise<void> | null

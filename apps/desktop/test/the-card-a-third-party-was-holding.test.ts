@@ -68,7 +68,6 @@ import {
  * a turn) and `withdraw_task` on a parked child (§5).
  */
 
-
 /** `394`'s double, with the handles kept — a test has to BE the provider to park like one. */
 class ProviderDouble extends FakeRuntime {
   constructor(

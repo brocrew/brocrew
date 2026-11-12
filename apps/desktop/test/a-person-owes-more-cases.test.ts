@@ -47,7 +47,6 @@ import {
  * product decision, and nothing here pins it either way.
  */
 
-
 /** A delay no other timer in the host uses, and no test waits out: nothing is stopped for idling. */
 const IDLE = 7_654_321
 const WROTE = 'waiting-on-the-person-who-wrote'

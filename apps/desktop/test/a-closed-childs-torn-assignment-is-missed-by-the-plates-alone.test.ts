@@ -49,7 +49,6 @@ import { resourcesRoot } from '../src/main/resources/resources'
  * out on its own `unread`.
  */
 
-
 /** A row the ledger cannot parse — the whole of what "torn" means here. */
 const TORN = '{not json'
 
