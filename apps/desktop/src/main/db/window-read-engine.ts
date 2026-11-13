@@ -1,4 +1,6 @@
 import Database from 'better-sqlite3'
+import { randomUUID } from 'node:crypto'
+import type { SnapshotFoldAnswers } from './ledger-fold-state'
 import { recentActivity } from '../runtime/recent-activity'
 import { createSessionStore, type ThreadLeadRow } from './session-store'
 import { rowsUnreadOnce, type RowsUnread } from './rows-unread'
@@ -17,6 +19,8 @@ import {
 /** Canonical folds over one read-only WAL snapshot, consuming SQLite iterators incrementally. */
 export class WindowReadEngine {
   private readonly db: Database.Database
+  private readonly answers: SnapshotFoldAnswers = new Map()
+  private cacheToken: string | undefined
 
   constructor(file: string) {
     this.db = new Database(file, { readonly: true, fileMustExist: true, timeout: 1000 })
@@ -33,6 +37,12 @@ export class WindowReadEngine {
 
   read(input: WindowReadQuery, abandoned: () => boolean = () => false): WindowReadResult {
     const query = windowReadQuery.parse(input)
+    if (query.kind === 'routes') {
+      if (query.reuse === undefined || query.reuse.token !== this.cacheToken) this.answers.clear()
+      else for (const answers of this.answers.values())
+        for (const owner of query.reuse.changed) answers.delete(owner)
+      this.cacheToken = undefined
+    }
     let refused: WindowReadUnavailable | undefined
     const checkCancelled = () => {
       if (refused !== undefined) throw refused
@@ -88,6 +98,7 @@ export class WindowReadEngine {
         Math.random,
         checkCancelled,
         true,
+        query.kind === 'routes' ? this.answers : undefined,
       )
       let result: WindowReadResult
       if (query.kind === 'forest') {
@@ -235,9 +246,17 @@ export class WindowReadEngine {
       if (refused !== undefined) throw refused
       checkCancelled()
       this.db.exec('COMMIT')
+      if (result.kind === 'routes') {
+        this.cacheToken = randomUUID()
+        result = { ...result, cacheToken: this.cacheToken }
+      }
       return result
     } catch (error) {
       if (this.db.inTransaction) this.db.exec('ROLLBACK')
+      if (query.kind === 'routes') {
+        this.answers.clear()
+        this.cacheToken = undefined
+      }
       throw error
     }
   }

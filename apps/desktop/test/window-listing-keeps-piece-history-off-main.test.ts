@@ -133,11 +133,18 @@ it('the worker reuses unchanged routing folds between committed snapshots', () =
     return statement
   })
   const readings: { phase: string; walks: number; rows: number; elapsedMs: number }[] = []
+  const sample = windowWriterSampler(db, () => true)
+  let accepted: { stamp: NonNullable<ReturnType<typeof sample>>; token: string } | undefined
   const read = (phase: string) => {
     const beforeWalks = walks
     const beforeRows = rows
     const started = performance.now()
-    expect(engine.read({ kind: 'routes' }).kind).toBe('routes')
+    const stamp = sample({ kind: 'routes' })!
+    const changed = accepted === undefined ? null : sample.changedOwners!(accepted.stamp, stamp)
+    const result = engine.read({ kind: 'routes', ...(accepted !== undefined && changed !== null
+      ? { reuse: { token: accepted.token, changed: [...changed] } } : {}) })
+    expect(result.kind).toBe('routes')
+    if (result.kind === 'routes') accepted = { stamp, token: result.cacheToken! }
     readings.push({ phase, walks: walks - beforeWalks, rows: rows - beforeRows,
       elapsedMs: performance.now() - started })
   }

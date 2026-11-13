@@ -170,7 +170,7 @@ import {
 } from './question-copies'
 import { withWindowWriteFence } from './window-write-fence'
 import { ledgerWritesFor, type LedgerWriteStamp } from './ledger-write-stamp'
-import { createLedgerFoldState } from './ledger-fold-state'
+import { createLedgerFoldState, type SnapshotFoldAnswers } from './ledger-fold-state'
 import { createDigestWindowRead } from './digest-window-read'
 import { createWorkerRecordsRead } from './worker-records-read'
 import {
@@ -1482,6 +1482,7 @@ export function createSessionStore(
   random: () => number = Math.random,
   checkFoldState?: (state: readonly unknown[], complete?: boolean) => void,
   oneSnapshot = false,
+  snapshotAnswers?: SnapshotFoldAnswers,
 ): SessionStore {
   const connection = db
   // Installed before any transaction on this connection is made, so every one is framed.
@@ -3011,24 +3012,27 @@ export function createSessionStore(
     theFoldIndexHolds,
     invalidateWorkReads,
     invalidateAllWorkReads,
+    snapshotAnswers,
   )
 
   const selectLegacyStallCut = db.prepare(
     'SELECT generation, through_ordinal FROM work_legacy_stall_cut WHERE session_id = ?',
   )
   const pieceStallOrdinals = new WeakMap<readonly PieceRow[], ReadonlyMap<string, number>>()
-  const piecesOfSession = keptUntilItsLedgerGrows(foldPiecesOfSession)
-  const turnBlockPiecesOfSession = keptUntilItsLedgerGrows((owner, noteSkip) =>
-    foldPiecesOfSession(owner, noteSkip, true),
+  const piecesOfSession = keptUntilItsLedgerGrows(foldPiecesOfSession, undefined, 'pieces')
+  const turnBlockPiecesOfSession = keptUntilItsLedgerGrows(
+    (owner, noteSkip) => foldPiecesOfSession(owner, noteSkip, true), undefined, 'turn-pieces',
   )
   const stallsToldToSession = keptUntilItsLedgerGrows(
     foldStallsToldToSession,
     (session, generation, after, held) =>
       selectStallsToldMoved.get({ session, generation, after }) === undefined ? held : null,
+    'stalls',
   )
   const routedRequestsKept = keptUntilItsLedgerGrows(
     foldRoutedRequestsOfSession,
     carryTheRoutedRequestsForward,
+    'routes',
   )
   const routedRequestsOfSession = (sessionId: string, noteSkip?: SkipNote) =>
     routedRequestsKept(sessionId, noteSkip).answer
@@ -3036,6 +3040,7 @@ export function createSessionStore(
     foldQuestionsRaisedInSession,
     (session, generation, after, held) =>
       selectQuestionsRaisedMoved.get({ session, generation, after }) === undefined ? held : null,
+    'questions',
   )
   const piecesAtHand = theKeptOnly(foldPiecesOfSession)
   const routedRequestsKeptOnly = theKeptOnly(foldRoutedRequestsOfSession)

@@ -15277,7 +15277,15 @@ export class RuntimeHost implements LiveHost {
         let shared = this[key]
         if (shared === undefined && joinOnly) throw new WindowReadMissed('callers-full')
         if (shared === undefined) {
-          shared = { stamp: before, read: reader.read(query) }
+          let requested = query
+          if (query.kind === 'routes' && this.windowRoutesKept?.result.kind === 'routes') {
+            const previous = this.windowRoutesKept
+            const changed = this.deps.windowWriterStamp?.changedOwners?.(previous.stamp, before)
+            const token = previous.result.cacheToken
+            if (token !== undefined && changed != null)
+              requested = { ...query, reuse: { token, changed: [...changed] } }
+          }
+          shared = { stamp: before, read: reader.read(requested) }
           this[key] = shared
           const owned = shared
           // Settled before any caller's wait resumes, so they all find the failure remembered.

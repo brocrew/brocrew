@@ -10,6 +10,7 @@ interface KeptFold<T> {
   readonly newest: number | null
   readonly answer: T
 }
+export type SnapshotFoldAnswers = Map<string, Map<string, KeptFold<unknown>>>
 type CarriedForward<T> = (sessionId: string, generation: number, after: number, held: T) => T | null
 
 export function createLedgerFoldState(
@@ -20,6 +21,7 @@ export function createLedgerFoldState(
   theFoldIndexHolds: (statement: { readonly source: string }) => void,
   invalidateWorkReads: (sessionId: string) => void,
   invalidateAllWorkReads: () => void,
+  snapshotAnswers?: SnapshotFoldAnswers,
 ) {
   let ownFoldWrite: { session: string; generation: number; ordinal: number } | null = null
   let foldsWatched: 'not-yet' | 'yes' | 'never' = 'not-yet'
@@ -104,8 +106,11 @@ export function createLedgerFoldState(
   function keptUntilItsLedgerGrows<T>(
     fold: (sessionId: string, noteSkip?: SkipNote) => T,
     carriedForward?: CarriedForward<T>,
+    snapshotKey?: string,
   ): (sessionId: string, noteSkip?: SkipNote) => T {
-    const folded = new Map<string, KeptFold<T>>()
+    const folded = ((snapshotKey === undefined ? undefined : snapshotAnswers?.get(snapshotKey)) ??
+      new Map()) as Map<string, KeptFold<T>>
+    if (snapshotKey !== undefined) snapshotAnswers?.set(snapshotKey, folded)
     keptFolds.push(folded)
     const keep = (sessionId: string, kept: KeptFold<T>): void => {
       // Most recently used last, so the cap drops the conversation unread longest.

@@ -374,7 +374,9 @@ export interface RuntimeHostDeps {
   filesLibraryRevision?: () => string | null
   teamProfileGraphs?: TeamProfileGraphWindows
   teamProfileGraphRevision?: () => string | null
-  windowWriterStamp?: (query: WindowReadQuery) => WindowWriterStamp | null
+  windowWriterStamp?: ((query: WindowReadQuery) => WindowWriterStamp | null) & {
+    changedOwners?: (before: WindowWriterStamp, now: WindowWriterStamp) => readonly string[] | null
+  }
   workSearchReader?: WorkSearchReader
   pastWorkSearchReader?: Pick<PastWorkSearchReader, 'read' | 'close'>
   limitsWriterStamp?: () => LimitsWriterStamp | null

@@ -41,7 +41,9 @@ export const windowReadQuery = z.discriminatedUnion('kind', [
       hidden: conversationIds,
     })
     .strict(),
-  z.object({ kind: z.literal('routes') }).strict(),
+  z.object({ kind: z.literal('routes'), reuse: z.object({
+    token: z.string(), changed: conversationIds,
+  }).strict().optional() }).strict(),
   z.object({ kind: z.literal('incidents') }).strict(),
   z
     .object({
@@ -80,6 +82,7 @@ export interface WindowRoutes {
   readonly routes: readonly RoutingReading[]
   readonly questions: ReturnType<SessionStore['questionsAPersonMustAnswer']>
   readonly decisions: ReturnType<SessionStore['decisionsAwaitingAPerson']>
+  readonly cacheToken?: string
 }
 interface WindowLeads {
   readonly kind: 'leads'
@@ -229,6 +232,7 @@ export const windowReadResult = z.discriminatedUnion('kind', [
   z
     .object({
       kind: z.literal('routes'),
+      cacheToken: z.string().optional(),
       routes: z.array(
         z
           .object({

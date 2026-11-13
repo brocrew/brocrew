@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3'
 import type { WindowReadQuery } from './window-read-protocol'
 import { ROUTED_REQUEST_EVENT_TYPES, THREAD_LEAD_EVENT_TYPES } from './session-store'
 import { setWindowWriteFence } from './window-write-fence'
+import { FOLD_TYPE_LIST } from './fold-index'
 
 export interface WindowWriterStamp {
   readonly writer: object
@@ -10,6 +11,12 @@ export interface WindowWriterStamp {
   readonly dataVersion: bigint
   readonly schemaVersion?: bigint
   readonly at: number
+  readonly foldRevision?: bigint
+  readonly foldReset?: bigint
+}
+
+export type WindowWriterSampler = ((query: WindowReadQuery) => WindowWriterStamp | null) & {
+  changedOwners?: (before: WindowWriterStamp, now: WindowWriterStamp) => readonly string[] | null
 }
 
 const terms = (types: readonly string[]) => types.map((type) => `'${type}'`).join(', ')
@@ -18,10 +25,15 @@ const selects = (row: string, types: readonly string[]) =>
 const operations = ['INSERT', 'DELETE', 'UPDATE']
 const eventTriggers = operations.map((operation) => `window_read_event_${operation}`)
 const generationTriggers = operations.map((operation) => `window_read_generation_${operation}`)
-const triggerCount = BigInt(eventTriggers.length + generationTriggers.length)
+const foldTriggers = operations.map((operation) => `window_read_fold_${operation}`)
+const resetTriggers = operations.map((operation) => `window_read_stall_${operation}`)
+const triggerCount = BigInt(eventTriggers.length + generationTriggers.length + foldTriggers.length + resetTriggers.length + 1)
 const installedTriggers = `(SELECT count(*) FROM sqlite_temp_master WHERE type = 'trigger' AND
   ((tbl_name = 'events' AND name IN (${terms(eventTriggers)})) OR
-   (tbl_name = 'derived_generation' AND name IN (${terms(generationTriggers)}))))`
+   (tbl_name = 'derived_generation' AND name IN (${terms(generationTriggers)})) OR
+   (tbl_name = 'events' AND name IN (${terms(foldTriggers)})) OR
+   (tbl_name = 'work_legacy_stall_cut' AND name IN (${terms(resetTriggers)})) OR
+   (tbl_name = 'sessions' AND name = 'window_read_provider_update')))`
 const integer = (value: unknown): value is bigint => typeof value === 'bigint' && value >= 0n
 const watchers = new WeakMap<
   Database.Database,
@@ -40,7 +52,7 @@ export function windowWriterSampler(
   db: Database.Database,
   noRetainedCursor: () => boolean,
   now: () => number = Date.now,
-): (query: WindowReadQuery) => WindowWriterStamp | null {
+): WindowWriterSampler {
   let state = watchers.get(db)
   if (state === undefined) {
     state = { kept: new Map(), sequence: 0, owner: {}, suspended: 0, failed: false }
@@ -96,6 +108,10 @@ export function windowWriterSampler(
       revision INTEGER NOT NULL DEFAULT 0);
       CREATE INDEX IF NOT EXISTS temp.window_read_revision_session ON window_read_revision(session);
       INSERT OR IGNORE INTO window_read_revision (id, kind) VALUES (0, 'routes');`)
+    db.exec(`CREATE TEMP TABLE IF NOT EXISTS window_read_fold_owners (
+      session TEXT PRIMARY KEY, revision INTEGER NOT NULL);
+      CREATE INDEX IF NOT EXISTS temp.window_read_fold_owners_revision ON window_read_fold_owners(revision);
+      INSERT OR IGNORE INTO window_read_revision (id, kind) VALUES (-1, 'folds'), (-2, 'reset');`)
     for (const operation of operations) {
       const rows =
         operation === 'UPDATE' ? ['OLD', 'NEW'] : [operation === 'INSERT' ? 'NEW' : 'OLD']
@@ -131,11 +147,30 @@ export function windowWriterSampler(
       db.exec(`CREATE TEMP TRIGGER IF NOT EXISTS window_read_generation_${operation}
         AFTER ${operation} ON main.derived_generation ${changed}
         BEGIN
+          UPDATE window_read_revision SET revision = revision + 1 WHERE id = -1;
+          ${rows.map((row) => `INSERT INTO window_read_fold_owners(session, revision)
+            VALUES (${row}.session_id, (SELECT revision FROM window_read_revision WHERE id = -1))
+            ON CONFLICT(session) DO UPDATE SET revision = excluded.revision;`).join('\n')}
           UPDATE window_read_revision SET revision = revision + 1
             WHERE (id = 0 AND (${rows.map(candidate).join(' OR ')}))
                OR (${rows.map((row) => `session = ${row}.session_id`).join(' OR ')});
         END;`)
+      db.exec(`CREATE TEMP TRIGGER IF NOT EXISTS window_read_fold_${operation}
+        AFTER ${operation} ON main.events
+        WHEN ${rows.map((row) => `${row}.type IN (${FOLD_TYPE_LIST})`).join(' OR ')}
+        BEGIN
+          UPDATE window_read_revision SET revision = revision + 1 WHERE id = -1;
+          ${rows.map((row) => `INSERT INTO window_read_fold_owners(session, revision)
+            VALUES (${row}.session_id, (SELECT revision FROM window_read_revision WHERE id = -1))
+            ON CONFLICT(session) DO UPDATE SET revision = excluded.revision;`).join('\n')}
+        END;
+        CREATE TEMP TRIGGER IF NOT EXISTS window_read_stall_${operation}
+        AFTER ${operation} ON main.work_legacy_stall_cut
+        BEGIN UPDATE window_read_revision SET revision = revision + 1 WHERE id = -2; END;`)
     }
+    db.exec(`CREATE TEMP TRIGGER IF NOT EXISTS window_read_provider_update
+      AFTER UPDATE OF provider ON main.sessions WHEN OLD.provider IS NOT NEW.provider
+      BEGIN UPDATE window_read_revision SET revision = revision + 1 WHERE id = -2; END;`)
     installed = true
   }
   if (shared.suspended > 0) failedReinstall()
@@ -159,7 +194,9 @@ export function windowWriterSampler(
     (statements ??= {
       sample: db
         .prepare(
-          `SELECT revision, data_version AS version,
+          `SELECT revision, total_changes() AS changes, data_version AS version,
+      (SELECT revision FROM window_read_revision WHERE id = -1) AS folds,
+      (SELECT revision FROM window_read_revision WHERE id = -2) AS reset,
       recursive_triggers AS recursive,
       ${installedTriggers} AS triggers
     FROM temp.window_read_revision, pragma_data_version, pragma_recursive_triggers
@@ -174,7 +211,7 @@ export function windowWriterSampler(
     if (shared.suspended > 0) return write()
     shared.suspended++
     try {
-      for (const trigger of [...eventTriggers, ...generationTriggers])
+      for (const trigger of [...eventTriggers, ...generationTriggers, ...foldTriggers, ...resetTriggers, 'window_read_provider_update'])
         db.exec(`DROP TRIGGER IF EXISTS temp.${trigger}`)
       return write()
     } finally {
@@ -189,7 +226,7 @@ export function windowWriterSampler(
       shared.suspended--
     }
   })
-  return (query) => {
+  const sampler: WindowWriterSampler = (query) => {
     // Files name their rows from one worker snapshot and do not use this writer stamp.
     if (query.kind === 'files') return null
     try {
@@ -234,6 +271,9 @@ export function windowWriterSampler(
             version?: unknown
             recursive?: unknown
             triggers?: unknown
+            changes?: unknown
+            folds?: unknown
+            reset?: unknown
           }
         | undefined
       // Recreated counters and triggers cannot validate a sample from before the schema change.
@@ -248,6 +288,9 @@ export function windowWriterSampler(
         schemaVersion < 0 ||
         !integer(row.revision) ||
         !integer(row.version) ||
+        !integer(row.changes) ||
+        !integer(row.folds) ||
+        !integer(row.reset) ||
         !Number.isFinite(at) ||
         !db.open ||
         db.inTransaction ||
@@ -257,13 +300,23 @@ export function windowWriterSampler(
       return {
         writer: shared.owner,
         watcher,
-        revision: row.revision,
+        revision: query.kind === 'routes' ? row.changes : row.revision,
         dataVersion: row.version,
         schemaVersion: BigInt(schemaVersion),
         at,
+        foldRevision: row.folds,
+        foldReset: row.reset,
       }
     } catch {
       return null
     }
   }
+  sampler.changedOwners = (before, current) => {
+    if (before.writer !== current.writer || before.dataVersion !== current.dataVersion ||
+        before.schemaVersion !== current.schemaVersion || before.foldReset !== current.foldReset ||
+        before.foldRevision === undefined || current.foldRevision === undefined) return null
+    return (db.prepare('SELECT session FROM temp.window_read_fold_owners WHERE revision > ?')
+      .all(before.foldRevision) as { session: string }[]).map((row) => row.session)
+  }
+  return sampler
 }
