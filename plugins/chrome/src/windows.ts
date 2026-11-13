@@ -10,7 +10,7 @@ export function createWindowTasks({ browser }: { browser: ProfileBrowser }): Win
     async open(profile, url, allowed) {
       await browser.exclusive(profile, async () => {
         allowed?.()
-        await browser.ensure(profile, 'visible')
+        await browser.ensure(profile)
         allowed?.()
         const page = await browser.newPage(profile, { newWindow: false })
         allowed?.()

@@ -17,7 +17,6 @@ import type { ProfileStore } from './profiles/store.js'
 export function createChromeBrowser(
   store: ProfileStore,
   logger: Logger,
-  idleMs?: number,
   browser?: BrowserChoice,
   over: Partial<ChromeBrowserOptions> = {},
 ): ChromeBrowser {
@@ -28,24 +27,12 @@ export function createChromeBrowser(
       : {}),
     profileExists: (name) => store.get(name) !== undefined,
     logger,
-    ...(idleMs !== undefined ? { idleMs } : {}),
     ...(browser ? { browser } : {}),
     extensionsFor: (name) => store.get(name)?.allowExtensions === true,
     syncFor: (name) => store.get(name)?.allowSync === true,
     helperFor: (name) => store.get(name)?.helper ?? 'on',
     rememberHelper: (name, helper) => {
       if (store.get(name) && store.get(name)?.helper !== helper) store.setHelper(name, helper)
-    },
-    afterIdleClose: (name) => {
-      if (store.get(name)?.temporary) {
-        logger.info('admin action', {
-          action: 'delete',
-          profile: name,
-          actor: 'idle-close',
-          temporary: true,
-        })
-        store.remove(name)
-      }
     },
     ...over,
   })
@@ -70,7 +57,7 @@ async function main(): Promise<void> {
   try {
     config = loadConfig(process.env)
     store = createConfiguredProfileStore(config)
-    browser = createChromeBrowser(store, logger, undefined, config.browser, {
+    browser = createChromeBrowser(store, logger, config.browser, {
       noSandbox: config.noSandbox,
       noTestType: config.noTestType,
       downloadsRoot: config.downloadsRoot,

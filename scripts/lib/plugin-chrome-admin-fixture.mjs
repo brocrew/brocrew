@@ -27,9 +27,9 @@ export async function chromeAdminRouteFixture(directory) {
     async close() {
       state = null
     },
-    async ensure(name, mode) {
-      launches.push({ profile: name, mode })
-      state = { mode, generation: 1 }
+    async ensure(name) {
+      launches.push({ profile: name })
+      state = { generation: 1 }
     },
   }
   registerAdminRoutes(
@@ -53,7 +53,7 @@ export async function chromeAdminRouteFixture(directory) {
         },
       },
       browser,
-      opener: { open: (name) => browser.ensure(name, 'visible') },
+      opener: { open: (name) => browser.ensure(name) },
       logger: { info() {}, warn() {} },
     },
   )

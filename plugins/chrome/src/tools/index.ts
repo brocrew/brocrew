@@ -16,7 +16,6 @@ import {
   DEFAULT_TIMEOUT_MS,
   KEY,
   MAX_SCREENSHOT_BYTES,
-  MAX_TIMEOUT_MS,
   checkUrl,
   checkDownloadUrl,
   describeError,
@@ -48,8 +47,7 @@ import {
 } from './common.js'
 import type { ToolDef, ToolDeps } from './common.js'
 import { buildProfileToolDefs } from './profileTools.js'
-import { buildShowHideDefs } from './showHide.js'
-import { MAX_REOPEN, TITLE_RESERVE_MS, nowMs, reopenTabs } from './modeSwitch.js'
+import { buildShowTabDefs } from './showTab.js'
 import { PENDING_DOWNLOAD_MS } from '../tabs.js'
 import { dropPending, fetchToDisk, saveDownload } from './downloads.js'
 import { DESCRIPTION_MAX, ProfileStoreError } from '../profiles/store.js'
@@ -67,7 +65,7 @@ export function buildToolDefs(): ToolDef[] {
       spec: {
         name: 'list_browser_profiles',
         description:
-          'List the Chrome profiles: name, description, whether the user enabled it, temporary or not, open or closed, mode (headless/visible). Only enabled profiles can be used.',
+          'List the Chrome profiles: name, description, whether the user enabled it, temporary or not, open or closed. Only enabled profiles can be used.',
         props: {},
       },
       async run(_a, deps) {
@@ -86,7 +84,6 @@ export function buildToolDefs(): ToolDef[] {
                 allowExtensions: p.allowExtensions,
                 allowSettings: p.allowSettings,
                 open: s !== null,
-                mode: s?.mode ?? null,
               }
             }),
         }
@@ -96,7 +93,7 @@ export function buildToolDefs(): ToolDef[] {
       spec: {
         name: 'create_browser_profile',
         description:
-          'Create a new empty Chrome profile (one per account). Shared profiles start enabled in this workspace. Workspace-local profiles start disabled: the user enables them in Settings → Plugins → Chrome. temporary:true instead makes a throwaway profile that is enabled at once, never signed in and without extensions or settings access; it is deleted after 10 minutes idle, when the server restarts, or by delete_browser_profile. name is optional for a temporary profile (tmp-xxxxxx).',
+          'Create a new empty Chrome profile (one per account). Shared profiles start enabled in this workspace. Workspace-local profiles start disabled: the user enables them in Settings → Plugins → Chrome. temporary:true instead makes a throwaway profile that is enabled at once, never signed in and without extensions or settings access; it is deleted when the server restarts or by delete_browser_profile. name is optional for a temporary profile (tmp-xxxxxx).',
         props: {
           name: profileName,
           description: {
@@ -221,23 +218,18 @@ export function buildToolDefs(): ToolDef[] {
       spec: {
         name: 'open_tab',
         description:
-          'Open a background tab at an HTTP(S)/file URL or absolute local path. Returns tabId, numeric windowId, url and title. windowOf selects an existing tab’s window; otherwise use Chrome’s most recently active available window. Chrome is never brought forward; when the tab cannot open in the requested window, it opens in the window Chrome chooses and the answer has a note saying so. newWindow:true opens a separate window only when visible. A mode change restores at most 20 tabs at their URLs under the same ids, with the selected anchor first; form state is lost.',
+          'Open a background tab at an HTTP(S)/file URL or absolute local path. Returns tabId, numeric windowId, url and title. If later work fails, TAB_CREATED identifies the existing tab. windowOf selects an existing tab’s window and fails clearly if the helper cannot place it there; it never opens elsewhere as a fallback. Otherwise use Chrome’s most recently active available window. Chrome is never brought forward. newWindow:true opens a separate window.',
         props: {
           profile: profileName,
           url,
           windowOf: {
             ...tabId,
             description:
-              'Open in this live tab’s window, in the same profile. May bring Chrome forward when another window is selected. Cannot accompany newWindow:true.',
+              'Open in this live tab’s window, in the same profile. Fails if the helper cannot place it there. Cannot accompany newWindow:true.',
           },
           newWindow: {
             type: 'boolean',
-            description: 'Open in a new window (visible profiles only; no effect headless).',
-          },
-          visible: {
-            type: 'boolean',
-            description:
-              'true: show Chrome in a window; false: go back to headless; omitted: keep the current mode. A change restarts the profile and reopens its open tabs at their URLs under the same tab ids (form state is lost).',
+            description: 'Open in a new window.',
           },
         },
         required: ['profile', 'url'],
@@ -256,83 +248,49 @@ export function buildToolDefs(): ToolDef[] {
         }
         selectedAnchor()
         usableProfile(deps, name)
-        const startedAt = nowMs(deps)
         deps.tabs.watch(name, deps.browser)
-        deps.browser.touch(name)
         const out = await deps.browser.exclusive(name, async () => {
           usableProfile(deps, name)
-          const mode =
-            a.visible === true
-              ? 'visible'
-              : a.visible === false
-                ? 'headless'
-                : (deps.browser.state(name)?.mode ?? 'headless')
-          const selected = selectedAnchor()
-          const before = deps.browser.state(name)
-          const known = deps.tabs.list(generationOf(deps), name)
-          const ordered = selected
-            ? [selected, ...known.filter((t) => t.id !== selected.id)]
-            : known
-          const reopen =
-            before !== null && before.mode !== mode
-              ? ordered.slice(0, MAX_REOPEN).map((t) => ({ id: t.id, url: t.page.url() }))
-              : []
-          const { generation } = await deps.browser.ensure(name, mode)
+          selectedAnchor()
+          const { generation } = await deps.browser.ensure(name)
           deps.activity?.('browser-ready')
           usableProfile(deps, name)
-          const restored = await reopenTabs(
-            deps,
-            name,
-            generation,
-            reopen,
-            startedAt + MAX_TIMEOUT_MS - DEFAULT_TIMEOUT_MS - TITLE_RESERVE_MS,
-          )
           let openingNote: string | undefined
           const page = await deps.browser.newPage(name, {
-            newWindow: a.newWindow === true && mode === 'visible',
+            newWindow: a.newWindow === true,
             windowOf: selectedAnchor()?.page,
             onNote: (note) => {
               openingNote = note
             },
           })
-          await deps.browser.usePage(name, page)
-          deps.activity?.('page-ready')
-          usableProfile(deps, name)
           const tab = deps.tabs.add(name, generation, page)
-          let loadError: string | undefined
           try {
-            await page.goto(target, {
-              waitUntil: 'domcontentloaded',
-              timeout: DEFAULT_TIMEOUT_MS,
-            })
-            deps.activity?.('page-loaded')
-          } catch (e) {
-            loadError = openDialogNote(tab) ?? describeError(e)
-          }
-          const skipped = restored.filter((t) => t.note !== undefined).length
-          return {
-            tabId: tab.id,
-            windowId: await deps.browser.windowId(name, page),
-            url: page.url(),
-            title: await titleAfterLoad(page),
-            ...(openDialogNote(tab) ? { dialog: openDialogNote(tab) } : {}),
-            ...(loadError ? { loadError } : {}),
-            ...(restored.length ? { restoredTabs: restored } : {}),
-            ...(openingNote || skipped
-              ? {
-                  note: [
-                    openingNote,
-                    skipped
-                      ? `the restart took long: ${skipped} of the ${restored.length} earlier tab(s) could not be reopened in time (their ids stay dead)`
-                      : undefined,
-                  ]
-                    .filter(Boolean)
-                    .join(' '),
-                }
-              : {}),
+            await deps.browser.usePage(name, page)
+            deps.activity?.('page-ready')
+            usableProfile(deps, name)
+            let loadError: string | undefined
+            try {
+              await page.goto(target, {
+                waitUntil: 'domcontentloaded',
+                timeout: DEFAULT_TIMEOUT_MS,
+              })
+              deps.activity?.('page-loaded')
+            } catch (e) {
+              loadError = openDialogNote(tab) ?? describeError(e)
+            }
+            return {
+              tabId: tab.id,
+              windowId: await deps.browser.windowId(name, page),
+              url: page.url(),
+              title: await titleAfterLoad(page),
+              ...(openDialogNote(tab) ? { dialog: openDialogNote(tab) } : {}),
+              ...(loadError ? { loadError } : {}),
+              ...(openingNote ? { note: openingNote } : {}),
+            }
+          } catch (error) {
+            throw new ToolError(`TAB_CREATED ${tab.id}: ${describeError(error)}`)
           }
         })
-        deps.browser.touch(name)
         return { json: out }
       },
     },
@@ -405,14 +363,19 @@ export function buildToolDefs(): ToolDef[] {
           }
           const history = { waitUntil: 'commit' as const, timeout: ms }
           tab.refs = null
-          const res =
+          const navigating =
             target !== undefined
-              ? await page.goto(target, opts)
+              ? page.goto(target, opts)
               : a.action === 'back'
-                ? await page.goBack(history)
+                ? page.goBack(history)
                 : a.action === 'forward'
-                  ? await page.goForward(history)
-                  : await page.reload(opts)
+                  ? page.goForward(history)
+                  : page.reload(opts)
+          const res = await navigating.catch((error: unknown) => {
+            throw new ToolError(
+              `NAVIGATION_FAILED ${tab.id}: ${describeError(error)}; current URL ${page.url()}`,
+            )
+          })
           deps.activity?.('page-loaded')
           return {
             url: page.url(),
@@ -933,7 +896,7 @@ export function buildToolDefs(): ToolDef[] {
       spec: {
         name: 'download',
         description:
-          'Start and save a download in one call: give exactly one of ref (click the element) or url (navigate this tab). Capture is armed before the action, so this works headless too; do not click or navigate first and wait afterwards in headless mode. Saved under {downloads}/<date>/; returns the saved path. Only the first download this tab starts during the call is taken; downloads in other tabs are never taken. Max 200 MB.',
+          'Start and save a download in one call: give exactly one of ref (click the element) or url (navigate this tab). Capture is armed before the action. Saved under {downloads}/<date>/; returns the saved path. Only the first download this tab starts during the call is taken; downloads in other tabs are never taken. Max 200 MB.',
         props: { tabId, ref, url, timeoutMs },
         required: ['tabId'],
       },
@@ -996,7 +959,7 @@ export function buildToolDefs(): ToolDef[] {
       spec: {
         name: 'wait_for_download',
         description:
-          'Wait for and save a download this tab starts independently, from a page timer or script, or from a user in a visible window. For an agent-triggered click or navigation, use download with ref or url to arm capture and trigger the action in one call. Only one tool call runs at a time: another tool cannot trigger the download while this wait is active. In headless mode, start the wait before the timer fires; downloads outside an active call are denied and cannot be recovered afterwards. In a visible window, a private download from an earlier agent call in the last 60 s also counts. Saved like download; returns the path. A private download kept before this call can return savedBy:"chrome" with its private path. Downloads begun outside an agent call use normal Chrome downloads and are not taken by this tool. Start the wait before an independent event to get a copy under the agent downloads folder. In a visible window only this tab\'s first download during the wait is taken (downloads in other tabs go to the private plugin downloads folder as usual); one the user starts in this same tab during the wait may be the one taken. Max 200 MB.',
+          'Wait for and save a download this tab starts independently, from a page timer or script, or from a user in a visible window. For an agent-triggered click or navigation, use download with ref or url to arm capture and trigger the action in one call. Only one tool call runs at a time: another tool cannot trigger the download while this wait is active. A private download from an earlier agent call in the last 60 s also counts. Saved like download; returns the path. A private download kept before this call can return savedBy:"chrome" with its private path. Downloads begun outside an agent call use normal Chrome downloads and are not taken by this tool. Start the wait before an independent event to get a copy under the agent downloads folder. Only this tab\'s first download during the wait is taken (downloads in other tabs go to the private plugin downloads folder as usual); one the user starts in this same tab during the wait may be the one taken. Max 200 MB.',
         props: { tabId, timeoutMs },
         required: ['tabId'],
       },
@@ -1005,14 +968,9 @@ export function buildToolDefs(): ToolDef[] {
         const tab = await useTab(deps, a.tabId as string)
         deps.tabs.resolve(a.tabId as string, generationOf(deps))
         usableProfile(deps, tab.profile)
-        deps.browser.touch(tab.profile)
         const now = Date.now()
         tab.pendingDownloads = tab.pendingDownloads.filter((d) => now - d.at <= PENDING_DOWNLOAD_MS)
-        const headless = deps.browser.state(tab.profile)?.mode === 'headless'
-        // Before this call headless downloads were denied. A stale failed event
-        // must not immediately consume the newly armed wait and hide its trigger.
-        const waiting = headless ? undefined : tab.pendingDownloads.shift()
-        if (headless) tab.pendingDownloads = []
+        const waiting = tab.pendingDownloads.shift()
         let savedFile: string | undefined
         const save = async () => {
           const startedAt = waiting?.at ?? Date.now()
@@ -1086,7 +1044,6 @@ export function buildToolDefs(): ToolDef[] {
             )
         }
         usableProfile(deps, tab.profile)
-        deps.browser.touch(tab.profile)
         const t = tab
         return {
           json: await deps.browser.operate(t.profile, async () => {
@@ -1252,7 +1209,7 @@ export function buildToolDefs(): ToolDef[] {
 }
 export const MAX_PROFILES = 20
 export function allToolDefs(): ToolDef[] {
-  return [...buildToolDefs(), ...buildProfileToolDefs(), ...buildShowHideDefs()]
+  return [...buildToolDefs(), ...buildProfileToolDefs(), ...buildShowTabDefs()]
 }
 export const TOOL_NAMES = allToolDefs().map((d) => d.spec.name)
 export function createAgentChromeTools(deps: ToolDeps): ToolHandler[] {

@@ -1,9 +1,7 @@
 import type { BrowserChannel } from '../shared/browser/launchConfig.js'
-import type { BrowserMode } from './profileBrowser.js'
 
 export interface LaunchArgsInput {
   profileDir: string
-  mode: BrowserMode
   background?: boolean
 
   sync: boolean
@@ -34,11 +32,10 @@ export function launchArgs(i: LaunchArgsInput): string[] {
     ...(i.sync ? [] : ['--disable-sync']),
     ...(i.extensions ? [] : ['--disable-extensions']),
     // Lets this plugin load the BroCrew helper over its own debugging pipe.
-    ...(i.extensions && i.mode === 'visible' ? ['--enable-unsafe-extension-debugging'] : []),
-    ...(i.mode === 'headless' ? ['--headless', '--hide-scrollbars', '--mute-audio'] : []),
+    ...(i.extensions ? ['--enable-unsafe-extension-debugging'] : []),
     ...(platform === 'linux' ? ['--disable-dev-shm-usage'] : []),
     ...(i.noSandbox ? ['--no-sandbox'] : []),
     ...(i.extraArgs ?? []),
-    ...(i.background && i.mode === 'visible' ? ['--no-startup-window'] : ['about:blank']),
+    ...(i.background ? ['--no-startup-window'] : ['about:blank']),
   ]
 }

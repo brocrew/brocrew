@@ -180,7 +180,7 @@ describe('private Chrome package', () => {
       (await request('/v1/profiles', adminToken, undefined, 'https://fictional.invalid')).status,
     ).toBe(403)
   })
-  it('only the person enables profiles and opens windows; tool discovery and use work with fakes', async () => {
+  it('only the person enables profiles; tool discovery and use work with fakes', async () => {
     const { request, browser, url } = await boot()
     expect((await request('/v1/profiles', mcpToken, { name: 'fern' })).status).toBe(401)
     expect((await request('/v1/profiles', adminToken, { name: 'fern' })).status).toBe(201)
@@ -205,9 +205,9 @@ describe('private Chrome package', () => {
       arguments: { profile: 'fern', url: 'https://fictional.invalid/' },
     })
     expect(JSON.stringify(result)).toContain('t')
-    expect(browser.launches).toEqual([{ profile: 'fern', mode: 'headless' }])
+    expect(browser.launches).toEqual([{ profile: 'fern' }])
     expect((await request('/v1/profiles/fern/open', adminToken, {})).status).toBe(202)
-    expect(browser.launches.at(-1)).toEqual({ profile: 'fern', mode: 'visible' })
+    expect(browser.launches.at(-1)).toEqual({ profile: 'fern' })
     const duringWindow = await client.callTool({
       name: 'open_tab',
       arguments: { profile: 'fern', url: 'https://fictional.invalid/shared' },
@@ -239,7 +239,7 @@ describe('private Chrome package', () => {
     const { request, browser, server, store } = await boot()
     store.create('willow', 'panel')
     store.setFlags('willow', { enabled: true })
-    const { generation } = await browser.ensure('willow', 'headless')
+    const { generation } = await browser.ensure('willow')
     const page = new FakePage()
     page.urlValue = 'https://fictional:madeup@fictional.invalid/path?q=private#part'
     server.tabs.add('willow', generation, asPage(page))

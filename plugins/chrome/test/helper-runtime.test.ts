@@ -42,15 +42,9 @@ it.skipIf(!executable)(
       helperSource: fileURLToPath(new URL('../helper/', import.meta.url)),
       noTestType: true,
       ...(process.env.BROCREW_CHROME_HELPER_RUNTIME_NO_SANDBOX === '1' ? { noSandbox: true } : {}),
-      ua: {
-        get: async () => ({ userAgent: 'fictional fixture', chromeVersion: null }),
-        invalidate() {},
-        peek: () => null,
-      },
       launchContext: (opts) =>
         launchPersistentChromium({
           ...opts,
-          headless: true,
           args: [...(opts.args ?? []), '--headless'],
         }),
     })
@@ -58,7 +52,7 @@ it.skipIf(!executable)(
     const name = 'fern-ünï'
     fs.mkdirSync(path.join(home, name))
     const helper = () => browser.state(name)?.helper
-    await browser.ensure(name, 'visible')
+    await browser.ensure(name)
     expect(helper(), lines.join('\n')).toBe('ready')
     const a = await browser.newPage(name, { newWindow: true })
     const b = await browser.newPage(name, { newWindow: true })
@@ -81,7 +75,7 @@ it.skipIf(!executable)(
     }
     // A second launch loads the helper again and it is ready.
     await browser.close(name)
-    await browser.ensure(name, 'visible')
+    await browser.ensure(name)
     expect(helper(), lines.join('\n')).toBe('ready')
 
     // The person switches it off in chrome://extensions, which calls chrome.management.
@@ -98,29 +92,23 @@ it.skipIf(!executable)(
     )
     const anchor = await browser.newPage(name, { newWindow: true })
     await browser.newPage(name, { newWindow: true })
-    const wanted = await browser.windowId(name, anchor)
-    const notes: string[] = []
-    const fallback = await browser.newPage(name, {
-      newWindow: false,
-      windowOf: anchor,
-      onNote: (note) => notes.push(note),
-    })
+    await expect(
+      browser.newPage(name, {
+        newWindow: false,
+        windowOf: anchor,
+      }),
+    ).rejects.toThrow('WINDOW_TARGET_UNAVAILABLE')
     expect(helper()).toBe('off')
     expect(helperSwitch).toBe('off')
-    // Chrome chose the window; when it is not the requested one, the note asks for Turn on.
-    const landed = await browser.windowId(name, fallback)
-    if (landed === wanted) expect(notes).toEqual([])
-    else expect(notes.join(' ')).toContain('Settings → Plugins → Chrome')
-    process.stdout.write(`helper off: landed in ${landed}, requested ${wanted}\n`)
 
     // Still off after restarts, though Chrome drops the helper and its own record at start.
     await browser.close(name)
     helperSwitch = 'on'
-    await browser.ensure(name, 'visible')
+    await browser.ensure(name)
     expect(helperSwitch, 'read from the last session before Chrome started').toBe('off')
     expect(helper(), lines.join('\n')).toBe('off')
     await browser.close(name)
-    await browser.ensure(name, 'visible')
+    await browser.ensure(name)
     expect(helper(), lines.join('\n')).toBe('off')
 
     // The person presses Turn on: it is installed now and places the next tab.
@@ -147,7 +135,7 @@ it.skipIf(!executable)(
     await browser.close(name)
     await browser.turnHelperOn(name)
     expect(helperSwitch).toBe('turning-on')
-    await browser.ensure(name, 'visible')
+    await browser.ensure(name)
     expect(helper(), lines.join('\n')).toBe('ready')
     expect(helperSwitch).toBe('on')
     process.stdout.write(`helper runtime log:\n${lines.join('\n')}\n`)

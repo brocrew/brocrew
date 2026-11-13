@@ -93,7 +93,6 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
       ...store.shared?.view(name),
       ...(rec.deleting ? { status: 'deleting' } : {}),
       open: s !== null,
-      mode: s?.mode ?? null,
       helperOff: rec.helper === 'off',
     }
   }

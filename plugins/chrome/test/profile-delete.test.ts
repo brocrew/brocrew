@@ -6,7 +6,6 @@ import { ChromeBrowser } from '../src/browser/chromeBrowser.js'
 import { ProfileInUseError } from '../src/browser/profileBrowser.js'
 import { createProfileStore } from '../src/profiles/store.js'
 import { createProfileOpener } from '../src/openWindow.js'
-import { TabRegistry } from '../src/tabs.js'
 import { silentLogger } from '../src/logger.js'
 import { FakeBrowser } from './fakes.js'
 
@@ -62,7 +61,7 @@ it('removes the selected closed profile and its browsing data from disk, preserv
   expect(fs.existsSync(dir)).toBe(false)
   expect(store.get('birch')?.name).toBe('birch')
   expect(fs.existsSync(store.dirOf('birch'))).toBe(true)
-  await expect(browser.ensure('fern', 'headless')).rejects.toThrow('profile does not exist')
+  await expect(browser.ensure('fern')).rejects.toThrow('profile does not exist')
   expect(fs.existsSync(dir)).toBe(false)
   expect(launch).not.toHaveBeenCalled()
 })
@@ -101,7 +100,7 @@ it('blocks new operations and launches during the removal lock check', async () 
   await entering
   const work = vi.fn(async () => undefined)
   await expect(browser.operate('fern', work)).rejects.toBeInstanceOf(ProfileInUseError)
-  await expect(browser.ensure('fern', 'headless')).rejects.toBeInstanceOf(ProfileInUseError)
+  await expect(browser.ensure('fern')).rejects.toBeInstanceOf(ProfileInUseError)
   expect(work).not.toHaveBeenCalled()
   expect(launch).not.toHaveBeenCalled()
   unlock(false)
@@ -128,7 +127,7 @@ it('refuses deletion during a pending browser start without waiting for or endin
       unlock = resolve
     })
   })
-  const starting = browser.ensure('fern', 'visible')
+  const starting = browser.ensure('fern')
   const failedStart = expect(starting).rejects.toThrow('No browser is launched')
   await enteredLock
   try {
@@ -146,7 +145,6 @@ it('a person Open queued behind a completed delete cannot recreate the removed p
   const browser = new FakeBrowser(store.dirOf) as FakeBrowser & IdleRemoval
   const options = {
     browser,
-    tabs: new TabRegistry(),
     logger: silentLogger,
     profileExists: (name: string) => store.get(name) !== undefined,
   }

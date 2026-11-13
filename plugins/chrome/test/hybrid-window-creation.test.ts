@@ -108,12 +108,24 @@ class Ctx extends EventEmitter {
     }
   }
 }
-function setup(timeout = 1000) {
+function setup(timeout = 1000, explicit = false) {
   const ctx = new Ctx(),
     published: Page[] = []
   const windows = new ChromiumWindows(ctx as unknown as BrowserContext, {
     timeoutMs: timeout,
     onAdmit: (p) => published.push(p),
+    ...(explicit
+      ? {
+          placer: {
+            async place(windowId: number, url: string) {
+              const anchor = ctx.pages().find((page) => (page as unknown as Pg).wid === windowId)!
+              const session = await ctx.newCDPSession(anchor)
+              await session.send('Target.createTarget', { url, newWindow: false })
+              return { created: true as const, windowId: ctx.native }
+            },
+          },
+        }
+      : {}),
   })
   published.length = 0
   return { ctx, windows, published }
@@ -136,46 +148,45 @@ describe('inactive native selection without the helper', () => {
     })
     expect(ctx.sent.some((s) => s.method === 'Runtime.evaluate')).toBe(false)
   })
-  it('matching explicit window uses one background CDP page without a note', async () => {
+  it('even a matching native window needs the helper for explicit placement', async () => {
     const { ctx, windows } = setup()
     const notes: string[] = []
-    const page = await windows.open({
-      newWindow: false,
-      windowOf: ctx.pages()[0],
-      onNote: (n) => notes.push(n),
-    })
-    expect(await windows.windowId(page)).toBe(1)
+    await expect(
+      windows.open({
+        newWindow: false,
+        windowOf: ctx.pages()[0],
+        onNote: (n) => notes.push(n),
+      }),
+    ).rejects.toThrow('WINDOW_TARGET_UNAVAILABLE')
+    expect(ctx.all).toHaveLength(1)
     expect(notes).toEqual([])
     expect(ctx.sent.some((s) => s.method === 'Runtime.evaluate')).toBe(false)
   })
-  it('mismatch keeps the one background tab where Chrome put it and says so', async () => {
+  it('an unavailable explicit target never creates a tab in the native window', async () => {
     const { ctx, windows, published } = setup()
     const anchor = ctx.add(2)
     published.length = 0
     const notes: string[] = []
-    const page = await windows.open({
-      newWindow: false,
-      windowOf: anchor as unknown as Page,
-      onNote: (n) => notes.push(n),
-    })
-    const created = ctx.all.find((p) => p.probe)!
-    expect(page).toBe(created)
-    expect(created.closed).toBe(false)
-    expect(published).toEqual([page])
-    expect(await windows.windowId(page)).toBe(1)
-    expect(notes).toEqual([
-      'Opened in window 1; the requested window was 2. Chrome chose the window; placing it in another one could bring Chrome to the front.',
-    ])
-    expect(ctx.sent.filter((s) => s.method === 'Target.createTarget')).toHaveLength(1)
+    await expect(
+      windows.open({
+        newWindow: false,
+        windowOf: anchor as unknown as Page,
+        onNote: (n) => notes.push(n),
+      }),
+    ).rejects.toThrow('WINDOW_TARGET_UNAVAILABLE')
+    expect(ctx.all.some((p) => p.probe)).toBe(false)
+    expect(published).toEqual([])
+    expect(notes).toEqual([])
+    expect(ctx.sent.filter((s) => s.method === 'Target.createTarget')).toHaveLength(0)
     expect(ctx.sent.some((s) => s.method.startsWith('Runtime.'))).toBe(false)
   })
   it('quarantines initially blank page events and preserves unrelated popup admission', async () => {
     const { ctx, windows, published } = setup()
-    const anchor = ctx.add(2)
+    ctx.add(2)
     published.length = 0
     ctx.initialBlank = true
     ctx.unrelated = true
-    const page = await windows.open({ newWindow: false, windowOf: anchor as unknown as Page })
+    const page = await windows.open({ newWindow: false })
     expect(page).toBe(ctx.all.find((p) => p.probe))
     expect(published.filter((p) => p === page)).toHaveLength(1)
     expect(published.some((p) => p.url() === 'https://unrelated.test/')).toBe(true)
@@ -183,7 +194,7 @@ describe('inactive native selection without the helper', () => {
   it.each(['protocol failure', 'anchor movement', 'anchor close'])(
     'fails without a second creation after %s',
     async (fault) => {
-      const { ctx, windows } = setup(40)
+      const { ctx, windows } = setup(40, true)
       const anchor = ctx.add(2)
       if (fault === 'protocol failure') ctx.fail = 'Target.createTarget'
       if (fault === 'anchor movement') ctx.moveAnchor = true
@@ -212,7 +223,7 @@ describe('inactive native selection without the helper', () => {
     expect(ctx.sent.filter((s) => s.method === 'Target.createTarget')).toHaveLength(count)
   })
   it('retains correlated failed page ownership after its URL changes, without public admission', async () => {
-    const { ctx, windows, published } = setup()
+    const { ctx, windows, published } = setup(1000, true)
     const anchor = ctx.add(2)
     published.length = 0
     ctx.changeProbe = true

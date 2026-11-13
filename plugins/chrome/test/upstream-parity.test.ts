@@ -62,7 +62,6 @@ it('gives only the Chrome child the OS account HOME while retaining its owned pr
     await launchPersistentChromium({
       profileDir,
       channel: 'chrome',
-      headless: true,
       ignoreAllDefaultArgs: true,
       args: [`--user-data-dir=${profileDir}`, '--remote-debugging-pipe'],
     })
@@ -95,7 +94,6 @@ it('passes only explicitly owned all-default arguments to the fake Playwright dr
   const own = `--user-data-dir=${profileDir}`
   await launchPersistentChromium({
     profileDir,
-    headless: false,
     ignoreAllDefaultArgs: true,
     args: [own, '--remote-debugging-pipe'],
   })
@@ -150,19 +148,18 @@ it('back and forward wait for a commit while URL navigation and reload retain th
     expect.objectContaining({ waitUntil: 'domcontentloaded' }),
   )
 })
-it('generic show and hide return immediately and tools still work while the person has a visible window', async () => {
+it('show brings the existing page forward and tools still work in its window', async () => {
   const h = setup()
   const names = createAgentChromeTools(h.deps).map((tool) => tool.definition.name)
   expect(names).toContain('show_tab')
-  expect(names).toContain('hide_tab')
   expect(names.filter((name) => name.startsWith('ask_'))).toEqual([])
   const opened = (
     await h.call('open_tab', { profile: 'fern', url: 'https://fictional.invalid/first' })
   ).json as { tabId: string }
+  const page = h.browser.pages.get('fern')![0]
   await h.call('show_tab', { tabId: opened.tabId })
-  expect(h.browser.state('fern')?.mode).toBe('visible')
+  expect(page.fronts).toBe(1)
+  expect(h.browser.launches).toHaveLength(1)
   await h.call('navigate', { tabId: opened.tabId, url: 'https://fictional.invalid/shared' })
   expect(h.browser.pages.get('fern')![0].url()).toBe('https://fictional.invalid/shared')
-  await h.call('hide_tab', { tabId: opened.tabId })
-  expect(h.browser.state('fern')?.mode).toBe('headless')
 })

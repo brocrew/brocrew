@@ -3,17 +3,8 @@ import { randomUUID } from 'node:crypto'
 import { performance } from 'node:perf_hooks'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { BrowserContext, Page } from 'playwright-core'
-import type { TabPlacer, Unplaced } from '../../browser/brocrewHelper.js'
+import type { TabPlacer } from '../../browser/brocrewHelper.js'
 const systemMonotonicClock = () => performance.now()
-/** What the agent reads when a tab could not be opened in the window it asked for. */
-function elsewhere(actual: number, requested: number, helper: Unplaced | 'none'): string {
-  const opened = `Opened in window ${actual}; the requested window was ${requested}.`
-  if (helper === 'off')
-    return `${opened} BroCrew helper is off for this Chrome profile, so Chrome chose the window. Ask the person to turn it on in Settings → Plugins → Chrome.`
-  if (helper === 'ready') return opened
-  if (helper === 'refused') return `${opened} Chrome did not accept that window.`
-  return `${opened} Chrome chose the window; placing it in another one could bring Chrome to the front.`
-}
 const MAX_UNRESOLVED = 64
 export class WindowTargetError extends Error {}
 type Attempt = {
@@ -308,16 +299,19 @@ export class ChromiumWindows {
       return a
     }
     let session: Awaited<ReturnType<BrowserContext['newCDPSession']>> | undefined
-    let helper: Unplaced | 'none' = 'none'
     try {
       this.budget(deadline)
       let phase: Attempt | undefined
-      if (opts.windowOf && this.placer && preferred !== undefined) {
+      if (opts.windowOf) {
+        if (!this.placer)
+          throw new WindowTargetError(
+            'WINDOW_TARGET_UNAVAILABLE: the BroCrew helper cannot select this window; no tab was created',
+          )
         await revalidate()
         const placing = attempt()
         placing.dispatched = true
         const placed = await this.wait(
-          this.placer.place(preferred, placing.marker, deadline - this.now()),
+          this.placer.place(preferred!, placing.marker, deadline - this.now()),
           deadline,
           (late) => {
             if (!late.created) this.resolveAttempt(placing)
@@ -325,11 +319,11 @@ export class ChromiumWindows {
         )
         if (placed.created) {
           phase = placing
-          helper = 'ready'
         } else {
-          // Nothing was created, so the background creation below cannot duplicate it.
           this.resolveAttempt(placing)
-          helper = placed.helper
+          throw new WindowTargetError(
+            `WINDOW_TARGET_UNAVAILABLE: helper ${placed.helper}; no tab was created`,
+          )
         }
       }
       if (!phase) {
@@ -364,13 +358,15 @@ export class ChromiumWindows {
         throw new WindowTargetError('the new tab changed before admission')
       this.check(phase.page!)
       this.budget(deadline)
+      if (opts.windowOf && preferred !== id)
+        throw new WindowTargetError(
+          `WINDOW_TARGET_MISMATCH: Chrome placed the tab in window ${id} instead of ${preferred}`,
+        )
       admitted = phase.page!
       phase.resolved = true
       if (!separate && preferred !== undefined && preferred !== id)
         opts.onNote?.(
-          opts.windowOf
-            ? elsewhere(id, preferred, helper)
-            : 'Chrome opened this tab in a different window from the last tool-used window.',
+          'Chrome opened this tab in a different window from the last tool-used window.',
         )
       return admitted
     } catch (error) {

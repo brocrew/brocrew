@@ -27,7 +27,7 @@ describe('window-targeted tools and local navigation', () => {
         tabId: string
         windowId: number
       }
-    const a = await open({ visible: true, newWindow: true })
+    const a = await open({ newWindow: true })
     const b = await open()
     const c = await open({ newWindow: true })
     const d = await open()
@@ -43,12 +43,11 @@ describe('window-targeted tools and local navigation', () => {
       expect.arrayContaining([expect.objectContaining({ tabId: a.tabId, windowId: a.windowId })]),
     )
   })
-  it('returns placement notes, and the helper-off note, without hiding later failures', async () => {
+  it('reports default placement notes and explicit-target failures without opening elsewhere', async () => {
     const h = setup()
     h.profile('p')
-    const a = (
-      await h.call('open_tab', { profile: 'p', url: 'about:blank', visible: true, newWindow: true })
-    ).json as { tabId: string; windowId: number }
+    const a = (await h.call('open_tab', { profile: 'p', url: 'about:blank', newWindow: true }))
+      .json as { tabId: string; windowId: number }
     const c = (await h.call('open_tab', { profile: 'p', url: 'about:blank', newWindow: true }))
       .json as { tabId: string; windowId: number }
     const plain = (await h.call('open_tab', { profile: 'p', url: 'about:blank' })).json as {
@@ -61,19 +60,20 @@ describe('window-targeted tools and local navigation', () => {
     expect(placed.windowId).toBe(c.windowId)
     expect(placed.note).toBeUndefined()
     h.browser.helper = 'off'
-    const explicit = (
-      await h.call('open_tab', { profile: 'p', url: 'about:blank', windowOf: c.tabId })
-    ).json as { note: string; windowId: number }
-    expect(explicit.windowId).toBe(a.windowId)
-    expect(explicit.note).toContain('turn it on in Settings → Plugins → Chrome')
+    const count = h.browser.pages.get('p')!.length
+    expect(
+      await h.callError('open_tab', { profile: 'p', url: 'about:blank', windowOf: c.tabId }),
+    ).toContain('WINDOW_TARGET_UNAVAILABLE')
+    expect(h.browser.pages.get('p')).toHaveLength(count)
+    h.browser.helper = 'ready'
     h.browser.usePage = async () => {
       throw new Error('fictional admission failure')
     }
     expect(
       await h.callError('open_tab', { profile: 'p', url: 'about:blank', windowOf: a.tabId }),
-    ).toBe('fictional admission failure')
+    ).toContain('fictional admission failure')
   })
-  it('rejects conflict, foreign/unknown/closed selectors without opening or switching profiles', async () => {
+  it('rejects conflict, foreign/unknown/closed selectors without opening profiles', async () => {
     const h = setup()
     h.profile('p')
     h.profile('q')
@@ -92,7 +92,6 @@ describe('window-targeted tools and local navigation', () => {
       await h.callError('open_tab', {
         profile: 'q',
         url: 'about:blank',
-        visible: true,
         windowOf: a.tabId,
       }),
     ).toMatch(/requested profile/)
@@ -157,34 +156,6 @@ describe('window-targeted tools and local navigation', () => {
       vi.unstubAllGlobals()
     }
   })
-
-  it('restores the selected anchor first even when it was beyond the mode-switch tab budget', async () => {
-    const h = setup()
-    h.profile('p')
-    const ids: string[] = []
-    for (let i = 0; i < 21; i++)
-      ids.push(
-        (
-          (
-            await h.call('open_tab', {
-              profile: 'p',
-              url: `https://fixture.test/${i}`,
-            })
-          ).json as { tabId: string }
-        ).tabId,
-      )
-    const out = (
-      await h.call('open_tab', {
-        profile: 'p',
-        url: 'about:blank',
-        visible: true,
-        windowOf: ids[20],
-      })
-    ).json as { restoredTabs: Array<{ tabId: string }> }
-    expect(out.restoredTabs[0].tabId).toBe(ids[20])
-    expect(out.restoredTabs).toHaveLength(20)
-    expect((await h.call('snapshot', { tabId: ids[20] })).text).toContain('https://fixture.test/20')
-  })
 })
 
 describe('queued anchor validation', () => {
@@ -209,7 +180,6 @@ describe('queued anchor validation', () => {
         const pending = h.callError('open_tab', {
           profile: 'fern',
           url: 'about:blank',
-          visible: true,
           windowOf: a.tabId,
         })
         release()
@@ -279,7 +249,7 @@ it.each(['console', 'network', 'handle_dialog', 'wait_for_download'])(
         h
           .call('open_tab', { profile: 'fern', url: 'about:blank', ...args })
           .then((r) => r.json as { tabId: string; windowId: number })
-      const a = await open({ visible: true, newWindow: true }),
+      const a = await open({ newWindow: true }),
         c = await open({ newWindow: true })
       expect(a.windowId).not.toBe(c.windowId)
       if (tool === 'wait_for_download')

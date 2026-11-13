@@ -3,7 +3,6 @@ import { launchArgs } from '../src/browser/launchArgs.js'
 
 const base = {
   profileDir: '/tmp/own/p',
-  mode: 'visible' as const,
   sync: false,
   extensions: false,
   noSandbox: false,
@@ -26,24 +25,15 @@ describe('launchArgs: the whole command line, nothing else', () => {
       'about:blank',
     ])
   })
-  it.each(['visible', 'headless'] as const)(
-    'uses OS credential protection for branded Chrome in %s mode',
-    (mode) => {
-      const args = launchArgs({ ...base, mode, channel: 'chrome' })
-      expect(args).not.toContain('--use-mock-keychain')
-      expect(args).not.toContain('--password-store=basic')
-      const unbranded = launchArgs({ ...base, mode, channel: 'chromium' })
-      expect(unbranded).toContain('--use-mock-keychain')
-      expect(unbranded).toContain('--password-store=basic')
-    },
-  )
-  it('headless adds only the headless flags; sync on removes only its flag; extensions on swap their flag for the helper’s; test-type off removes only itself', () => {
-    const head = launchArgs({ ...base, mode: 'headless' })
-    expect(head.filter((a) => !launchArgs(base).includes(a))).toEqual([
-      '--headless',
-      '--hide-scrollbars',
-      '--mute-audio',
-    ])
+  it('uses OS credential protection for branded Chrome', () => {
+    const args = launchArgs({ ...base, channel: 'chrome' })
+    expect(args).not.toContain('--use-mock-keychain')
+    expect(args).not.toContain('--password-store=basic')
+    const unbranded = launchArgs({ ...base, channel: 'chromium' })
+    expect(unbranded).toContain('--use-mock-keychain')
+    expect(unbranded).toContain('--password-store=basic')
+  })
+  it('sync on removes only its flag; extensions on swap their flag for the helper’s; test-type off removes only itself', () => {
     expect(launchArgs({ ...base, sync: true })).toEqual(
       launchArgs(base).filter((a) => a !== '--disable-sync'),
     )
@@ -51,10 +41,6 @@ describe('launchArgs: the whole command line, nothing else', () => {
       launchArgs(base).map((a) =>
         a === '--disable-extensions' ? '--enable-unsafe-extension-debugging' : a,
       ),
-    )
-    const headless = { ...base, mode: 'headless' as const }
-    expect(launchArgs({ ...headless, extensions: true })).toEqual(
-      launchArgs(headless).filter((a) => a !== '--disable-extensions'),
     )
     expect(launchArgs({ ...base, noTestType: true })).toEqual(
       launchArgs(base).filter((a) => a !== '--test-type'),
@@ -72,7 +58,7 @@ describe('launchArgs: the whole command line, nothing else', () => {
       'about:blank',
     ])
   })
-  it("none of Playwright's slowing defaults is there, in any mode", () => {
+  it("none of Playwright's slowing defaults is there", () => {
     const banned = [
       '--disable-background-timer-throttling',
       '--disable-renderer-backgrounding',
@@ -89,18 +75,16 @@ describe('launchArgs: the whole command line, nothing else', () => {
       '--disable-back-forward-cache',
       '--disable-popup-blocking',
     ]
-    for (const mode of ['headless', 'visible'] as const) {
-      const all = launchArgs({ ...base, mode, sync: true, extensions: true })
-      for (const b of banned) expect(all, b).not.toContain(b)
-      expect(
-        all.some(
-          (a) =>
-            a.startsWith('--disable-features') ||
-            a.startsWith('--enable-features') ||
-            a.startsWith('--blink-settings'),
-        ),
-      ).toBe(false)
-    }
+    const all = launchArgs({ ...base, sync: true, extensions: true })
+    for (const b of banned) expect(all, b).not.toContain(b)
+    expect(
+      all.some(
+        (a) =>
+          a.startsWith('--disable-features') ||
+          a.startsWith('--enable-features') ||
+          a.startsWith('--blink-settings'),
+      ),
+    ).toBe(false)
   })
   it('exactly one --user-data-dir, equal to the profile dir (what the launch guard demands)', () => {
     expect(launchArgs(base).filter((a) => a.startsWith('--user-data-dir'))).toEqual([
@@ -115,5 +99,4 @@ it('background policy is opt-in: suppresses the visible startup window and keeps
   expect(args).not.toContain('--disable-popup-blocking')
   expect(args).not.toContain('about:blank')
   expect(launchArgs(base)).not.toContain('--no-startup-window')
-  expect(launchArgs({ ...base, background: true, mode: 'headless' })).toContain('about:blank')
 })

@@ -62,7 +62,6 @@ export function buildProfileToolDefs(): ToolDef[] {
         const name = a.profile as string
         usableProfile(deps, name, 'allowExtensions')
         const source = (a.source as string).trim()
-        deps.browser.touch(name)
         const id = webStoreId(source)
         if (id) {
           if (
@@ -140,7 +139,6 @@ export function buildProfileToolDefs(): ToolDef[] {
           )
         )
           throw new ToolError('that extension is not installed in this profile')
-        deps.browser.touch(name)
         await deps.windows.open(name, `chrome://extensions/?id=${id}`, () =>
           usableProfile(deps, name, 'allowExtensions'),
         )

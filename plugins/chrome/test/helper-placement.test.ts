@@ -143,37 +143,34 @@ describe('a requested window with the BroCrew helper', () => {
     expect(ctx.sent).not.toContain('Target.createTarget')
     expect(ctx.sent.some((m) => m.startsWith('Runtime.') || /activate|focus/i.test(m))).toBe(false)
   })
-  it.each([
-    [
-      'off',
-      'Opened in window 1; the requested window was 2. BroCrew helper is off for this Chrome profile, so Chrome chose the window. Ask the person to turn it on in Settings → Plugins → Chrome.',
-    ],
-    [
-      'unavailable',
-      'Opened in window 1; the requested window was 2. Chrome chose the window; placing it in another one could bring Chrome to the front.',
-    ],
-    [
-      'refused',
-      'Opened in window 1; the requested window was 2. Chrome did not accept that window.',
-    ],
-  ] as const)(
-    'when the helper answers %s, one background tab opens where Chrome chooses, with a note',
-    async (answer, note) => {
+  it.each(['off', 'unavailable', 'refused'] as const)(
+    'when the helper answers %s, fails clearly without creating elsewhere',
+    async (answer) => {
       const { ctx, placer, notes, open } = setup()
       placer.answer = answer
-      const page = await open()
-      expect(ctx.owned()).toEqual([page])
-      expect(ctx.sent.filter((m) => m === 'Target.createTarget')).toHaveLength(1)
-      expect(notes).toEqual([note])
+      await expect(open()).rejects.toThrow(`WINDOW_TARGET_UNAVAILABLE: helper ${answer}`)
+      expect(ctx.owned()).toEqual([])
+      expect(ctx.sent).not.toContain('Target.createTarget')
+      expect(notes).toEqual([])
     },
   )
-  it('keeps a helper tab that Chrome put in another window, says so, and creates no second one', async () => {
+  it('closes a misplaced helper tab and fails without creating a second one', async () => {
     const { ctx, placer, notes, open } = setup()
     placer.landIn = 5
-    const page = await open()
-    expect(ctx.owned()).toEqual([page])
+    await expect(open()).rejects.toThrow('WINDOW_TARGET_MISMATCH')
+    expect(ctx.owned()).toHaveLength(1)
+    expect(ctx.owned()[0].closed).toBe(true)
     expect(ctx.sent).not.toContain('Target.createTarget')
-    expect(notes).toEqual(['Opened in window 5; the requested window was 2.'])
+    expect(notes).toEqual([])
+  })
+  it('fails before creation when no helper can select the requested window', async () => {
+    const ctx = new Ctx()
+    const windows = new ChromiumWindows(ctx as unknown as BrowserContext)
+    await expect(windows.open({ newWindow: false, windowOf: ctx.pages()[0] })).rejects.toThrow(
+      'WINDOW_TARGET_UNAVAILABLE',
+    )
+    expect(ctx.owned()).toEqual([])
+    expect(ctx.sent).not.toContain('Target.createTarget')
   })
   it('without a requested window it never asks the helper', async () => {
     const { ctx, placer, windows } = setup()

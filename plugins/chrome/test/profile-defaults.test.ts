@@ -103,7 +103,6 @@ class Context extends EventEmitter {
   }
 }
 async function launch(
-  mode: 'visible' | 'headless',
   set?: { allowExtensions?: boolean; allowSync?: boolean },
   before?: (store: ReturnType<typeof createProfileStore>) => void,
 ) {
@@ -114,21 +113,16 @@ async function launch(
   before?.(store)
   const launches: ChromiumLaunchOptions[] = []
   const context = new Context()
-  const browser = createChromeBrowser(store, silentLogger, undefined, undefined, {
+  const browser = createChromeBrowser(store, silentLogger, undefined, {
     downloadsRoot: path.join(dir, 'downloads'),
     lockHeld: async () => false,
     helperSource: fileURLToPath(new URL('../helper/', import.meta.url)),
-    ua: {
-      get: async () => ({ userAgent: 'fictional', chromeVersion: '1' }),
-      invalidate() {},
-      peek: () => null,
-    },
     launchContext: async (opts) => {
       launches.push(opts)
       return context as unknown as BrowserContext
     },
   })
-  await browser.ensure('fern', mode)
+  await browser.ensure('fern')
   const state = browser.state('fern')
   await browser.closeAll()
   return { args: launches[0].args ?? [], sent: context.sent, state, store }
@@ -136,7 +130,7 @@ async function launch(
 
 describe('what a default profile launches with', () => {
   it('no --disable-sync or --disable-extensions, and the helper is tried in a visible profile', async () => {
-    const { args, sent, state } = await launch('visible')
+    const { args, sent, state } = await launch()
     expect(args).not.toContain('--disable-sync')
     expect(args).not.toContain('--disable-extensions')
     expect(args).toContain('--enable-unsafe-extension-debugging')
@@ -144,15 +138,8 @@ describe('what a default profile launches with', () => {
     // Chrome refused the load here, so placement degrades instead of failing the launch.
     expect(state?.helper).toBe('unavailable')
   })
-  it('headless profiles never get the helper', async () => {
-    const { args, sent, state } = await launch('headless')
-    expect(args).not.toContain('--disable-extensions')
-    expect(args).not.toContain('--enable-unsafe-extension-debugging')
-    expect(sent.some((m) => m.startsWith('Extensions.'))).toBe(false)
-    expect(state?.helper).toBeUndefined()
-  })
   it('a person who turned extensions off keeps them off, with no helper', async () => {
-    const { args, sent, state } = await launch('visible', {
+    const { args, sent, state } = await launch({
       allowExtensions: false,
       allowSync: false,
     })
@@ -162,28 +149,23 @@ describe('what a default profile launches with', () => {
     expect(sent.some((m) => m.startsWith('Extensions.'))).toBe(false)
     expect(state?.helper).toBeUndefined()
   })
-  it.each(['visible', 'headless'] as const)(
-    'reads an off switch Chrome recorded in the last session before a %s start, which drops it',
-    async (mode) => {
-      const { sent, state, store } = await launch(mode, undefined, offRecord)
-      expect(store.get('fern')?.helper).toBe('off')
-      if (mode === 'visible') expect(state?.helper).toBe('off')
-      expect(sent.some((m) => m.startsWith('Extensions.'))).toBe(false)
-    },
-  )
+  it('reads an off switch Chrome recorded in the last session before a start, which drops it', async () => {
+    const { sent, state, store } = await launch(undefined, offRecord)
+    expect(store.get('fern')?.helper).toBe('off')
+    expect(state?.helper).toBe('off')
+    expect(sent.some((m) => m.startsWith('Extensions.'))).toBe(false)
+  })
   it('reads it before a launch with extensions off too', async () => {
-    const { store } = await launch('visible', { allowExtensions: false }, offRecord)
+    const { store } = await launch({ allowExtensions: false }, offRecord)
     expect(store.get('fern')?.helper).toBe('off')
   })
   it('keeps it off at the next launch, after Chrome dropped its own record', async () => {
-    const { sent, state } = await launch('visible', undefined, (store) =>
-      store.setHelper('fern', 'off'),
-    )
+    const { sent, state } = await launch(undefined, (store) => store.setHelper('fern', 'off'))
     expect(state?.helper).toBe('off')
     expect(sent.some((m) => m.startsWith('Extensions.'))).toBe(false)
   })
   it('a Turn on pressed while closed beats the older off record at the next launch', async () => {
-    const { sent, store } = await launch('visible', undefined, (store) => {
+    const { sent, store } = await launch(undefined, (store) => {
       offRecord(store)
       store.setHelper('fern', 'turning-on')
     })
@@ -193,14 +175,6 @@ describe('what a default profile launches with', () => {
       'Extensions.uninstall',
       'Extensions.loadUnpacked',
     ])
-    expect(store.get('fern')?.helper).toBe('turning-on')
-  })
-  it('a Turn on survives headless launches until a visible one can install it', async () => {
-    const { sent, store } = await launch('headless', undefined, (store) => {
-      offRecord(store)
-      store.setHelper('fern', 'turning-on')
-    })
-    expect(sent.some((m) => m.startsWith('Extensions.'))).toBe(false)
     expect(store.get('fern')?.helper).toBe('turning-on')
   })
 })

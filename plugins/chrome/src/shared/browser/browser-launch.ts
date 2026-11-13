@@ -3,12 +3,10 @@ import type { BrowserContext } from 'playwright-core'
 import { assertOwnProfileDir } from './launchGuard.js'
 export interface ChromiumLaunchOptions {
   profileDir: string
-  headless: boolean
   executablePath?: string
   channel?: 'chrome' | 'chromium' | 'msedge'
   ignoreAllDefaultArgs?: boolean
   ignoreDefaultArgs?: readonly string[]
-  userAgent?: string
   viewport?: {
     width: number
     height: number
@@ -27,7 +25,7 @@ export async function launchPersistentChromium(
   const { chromium } = await import('playwright-core')
   assertOwnProfileDir(opts)
   return chromium.launchPersistentContext(opts.profileDir, {
-    headless: opts.headless,
+    headless: false,
     // The browser uses account roots; the server retains its private environment.
     env: browserEnvironment(),
     ...(opts.executablePath !== undefined ? { executablePath: opts.executablePath } : {}),
@@ -36,7 +34,6 @@ export async function launchPersistentChromium(
       ? { ignoreDefaultArgs: [...opts.ignoreDefaultArgs] }
       : {}),
     ...(opts.ignoreAllDefaultArgs === true ? { ignoreDefaultArgs: true } : {}),
-    ...(opts.userAgent !== undefined ? { userAgent: opts.userAgent } : {}),
     ...(opts.viewport !== undefined ? { viewport: opts.viewport } : {}),
     ...(opts.downloadsPath !== undefined ? { downloadsPath: opts.downloadsPath } : {}),
     ...(opts.chromiumSandbox !== undefined ? { chromiumSandbox: opts.chromiumSandbox } : {}),

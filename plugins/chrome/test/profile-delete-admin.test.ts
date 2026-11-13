@@ -32,7 +32,7 @@ it('only the person endpoint can remove a confirmed closed profile and its real 
 })
 it('refuses an open profile without closing its tabs or deleting data', async () => {
   const f = await boot()
-  await f.browser.ensure('fern', 'visible')
+  await f.browser.ensure('fern')
   await f.browser.newPage('fern')
   const reply = await f.remove()
   expect(reply.status).toBe(409)

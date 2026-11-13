@@ -151,7 +151,7 @@ it.each(['outside', 'internal'] as const)(
       lockHeld: async () => false,
       launchContext: launch,
     })
-    await expect(browser.ensure('fern', 'visible')).rejects.toThrow()
+    await expect(browser.ensure('fern')).rejects.toThrow()
     expect(launch).not.toHaveBeenCalled()
     await browser.closeAll()
   },
@@ -215,21 +215,18 @@ it('refuses extension removal queued before its permission was revoked', async (
   await expect(pending).rejects.toThrow()
   expect(h.browser.launches).toEqual([])
 })
-it.each(['show_tab', 'hide_tab'])(
-  'refuses queued %s after the profile is disabled',
-  async (tool) => {
-    const h = fixture(),
-      gate = held()
-    const opened = await h.call('open_tab', { profile: 'fern', url: 'https://fictional.invalid/' })
-    const first = h.browser.exclusive('fern', () => gate.promise)
-    const pending = h.call(tool, { tabId: (opened.json as { tabId: string }).tabId })
-    h.store.setFlags('fern', { enabled: false })
-    gate.resolve()
-    await first
-    await expect(pending).rejects.toThrow()
-    expect(h.browser.launches).toHaveLength(1)
-  },
-)
+it('refuses queued show_tab after the profile is disabled', async () => {
+  const h = fixture(),
+    gate = held()
+  const opened = await h.call('open_tab', { profile: 'fern', url: 'https://fictional.invalid/' })
+  const first = h.browser.exclusive('fern', () => gate.promise)
+  const pending = h.call('show_tab', { tabId: (opened.json as { tabId: string }).tabId })
+  h.store.setFlags('fern', { enabled: false })
+  gate.resolve()
+  await first
+  await expect(pending).rejects.toThrow()
+  expect(h.browser.launches).toHaveLength(1)
+})
 it('refuses a linked day folder for a browser-stream download too', async () => {
   const h = fixture(),
     target = home()
@@ -242,7 +239,6 @@ it('refuses a linked day folder for a browser-stream download too', async () => 
   const opened = await h.call('open_tab', {
     profile: 'fern',
     url: 'https://fictional.invalid/',
-    visible: true,
   })
   const id = (opened.json as { tabId: string }).tabId
   const tab = h.tabs.resolve(id, (name) => h.browser.state(name)?.generation ?? null)
@@ -268,7 +264,7 @@ it('refuses a linked downloads root before the launch seam', async () => {
     lockHeld: async () => false,
     launchContext: launch,
   })
-  await expect(browser.ensure('fern', 'visible')).rejects.toThrow()
+  await expect(browser.ensure('fern')).rejects.toThrow()
   expect(launch).not.toHaveBeenCalled()
   expect(fs.readdirSync(target)).toEqual([])
   await browser.closeAll()

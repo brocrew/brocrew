@@ -26,7 +26,7 @@ const DETACH_MS = 100
 
 export type HelperState = 'ready' | 'off' | 'unavailable'
 /** created: false means nothing was created. A thrown error means a tab may still arrive. */
-export type Unplaced = HelperState | 'refused'
+type Unplaced = HelperState | 'refused'
 export type Placement = { created: true; windowId: number } | { created: false; helper: Unplaced }
 export interface TabPlacer {
   /** timeoutMs is the time left for the whole placement, on the caller's own clock. */

@@ -66,7 +66,6 @@ export interface RouterOptions {
   logger?: Logger
   /** False means Chrome owns the native path and history; never move or delete it. */
   privateActive?: () => boolean
-  allowUnclaimed: boolean
   quota: UnclaimedDownloadQuota
   onPolicyFailure: () => Promise<void>
 }
@@ -182,7 +181,7 @@ export class DownloadRouter {
       return
     }
     if (rec.unclaimed || rec.state === 'canceled') return
-    if (!this.o.allowUnclaimed || !this.o.quota.take()) {
+    if (!this.o.quota.take()) {
       this.cancel(guid, rec)
       return
     }
@@ -269,12 +268,7 @@ export class DownloadRouter {
         if (rec.state === 'completed') this.discardCompleted(guid, rec)
         continue
       }
-      if (!this.o.allowUnclaimed && rec.state === 'completed') {
-        this.discardCompleted(guid, rec)
-        continue
-      }
-      // A failed tool may leave a user download in a visible window. An
-      // unfinished headless download must stop as soon as the call ends.
+      // A failed tool may leave a user download in the visible window.
       this.admitUnclaimed(guid, rec)
       if (rec.state === 'completed') this.place(guid, rec)
     }

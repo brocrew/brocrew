@@ -12,8 +12,6 @@ import { launchPersistentChromium } from '../shared/browser/browser-launch.js'
 import type { ChromiumLaunchOptions } from '../shared/browser/browser-launch.js'
 import { createKeyedSerializer, createTransitionBarrier } from '../shared/browser/browser-lease.js'
 import type { KeyedSerializer, TransitionBarrier } from '../shared/browser/browser-lease.js'
-import { createChromeUa, createUaReader, fallbackUaFor } from '../shared/browser/chromeUa.js'
-import type { ChromeUa } from '../shared/browser/chromeUa.js'
 import { OWN_SIGNALS, browserChoice, launchTarget } from '../shared/browser/launchConfig.js'
 import type { BrowserChoice } from '../shared/browser/launchConfig.js'
 import { allPagesClosed } from '../shared/browser/pagesClosed.js'
@@ -30,7 +28,7 @@ import {
   fenceBrowserHandles,
   unwrapBrowserHandle,
 } from './profileBrowser.js'
-import type { BrowserMode, ProfileBrowser } from './profileBrowser.js'
+import type { ProfileBrowser } from './profileBrowser.js'
 import {
   browserPidsOf,
   commandOfPid,
@@ -39,7 +37,6 @@ import {
   processList,
 } from './processes.js'
 import type { EndDeps, Platform } from './processes.js'
-export const IDLE_MS = 10 * 60 * 1000
 export const LOCK_WAIT_MS = 5000
 export const CLOSE_MS = 10000
 export const EXIT_GRACE_MS = 1500
@@ -54,13 +51,10 @@ export interface ChromeBrowserOptions {
   helperDir?: (profile: string) => string
   profileExists?: (profile: string) => boolean
   logger?: Logger
-  idleMs?: number
-  afterIdleClose?: (profile: string) => void | Promise<void>
   extensionsFor?: (profile: string) => boolean
   syncFor?: (profile: string) => boolean
   homedir?: () => string
   downloadsRoot?: string
-  nativeDownloadsInHeadless?: boolean
   extraArgs?: readonly string[]
   /** The shipped BroCrew helper folder; without it no profile gets the helper. */
   helperSource?: string
@@ -71,20 +65,17 @@ export interface ChromeBrowserOptions {
   noTestType?: boolean
   browser?: BrowserChoice
   launchContext?: (opts: ChromiumLaunchOptions) => Promise<BrowserContext>
-  ua?: ChromeUa
   lockHeld?: (dir: string) => Promise<boolean>
   lockWaitMs?: number
   closeMs?: number
   exitGraceMs?: number
   killChrome?: (dir: string) => Promise<void>
   pollMs?: number
-  setTimeout?: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>
 }
 interface Entry {
   name: string
   barrier: TransitionBarrier
   ctx: BrowserContext | null
-  mode: BrowserMode
   extensions: boolean
   sync: boolean
   generation: number
@@ -93,8 +84,6 @@ interface Entry {
   windowContext: BrowserContext | null
   helper: BrocrewHelper | null
   waiters: number
-  idleTimer: ReturnType<typeof setTimeout> | null
-  touched: number
   life: Promise<unknown>
   lifePending: number
   removing: boolean
@@ -171,10 +160,7 @@ function isBlank(page: Page): boolean {
 export class ChromeBrowser implements ProfileBrowser {
   private readonly entries = new Map<string, Entry>()
   private readonly serializer: KeyedSerializer = createKeyedSerializer()
-  private readonly ua: ChromeUa
   private readonly logger: Logger
-  private readonly idleMs: number
-  private readonly later: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>
   private readonly launchContext: (opts: ChromiumLaunchOptions) => Promise<BrowserContext>
   private readonly lockHeld: (dir: string) => Promise<boolean>
   private readonly lockWaitMs: number
@@ -189,19 +175,6 @@ export class ChromeBrowser implements ProfileBrowser {
   constructor(private readonly opts: ChromeBrowserOptions) {
     this.logger = opts.logger ?? silentLogger
     this.choice = opts.browser ?? browserChoice()
-    this.ua =
-      opts.ua ??
-      createChromeUa({
-        read: createUaReader(this.choice),
-        fallback: fallbackUaFor(),
-        onFallback: (reason, used) =>
-          this.logger.warn('Chrome UA read failed, using a stand-in', {
-            reason,
-            used,
-          }),
-      })
-    this.idleMs = opts.idleMs ?? IDLE_MS
-    this.later = opts.setTimeout ?? ((fn, ms) => setTimeout(fn, ms))
     this.launchContext = opts.launchContext ?? launchPersistentChromium
     this.lockHeld = opts.lockHeld ?? ((dir) => lockHeldByLiveChrome(dir))
     this.lockWaitMs = opts.lockWaitMs ?? LOCK_WAIT_MS
@@ -217,7 +190,6 @@ export class ChromeBrowser implements ProfileBrowser {
         name: profile,
         barrier: createTransitionBarrier(),
         ctx: null,
-        mode: 'headless',
         extensions: false,
         sync: false,
         generation: 0,
@@ -226,8 +198,6 @@ export class ChromeBrowser implements ProfileBrowser {
         windowContext: null,
         helper: null,
         waiters: 0,
-        idleTimer: null,
-        touched: 0,
         life: Promise.resolve(),
         lifePending: 0,
         removing: false,
@@ -260,22 +230,17 @@ export class ChromeBrowser implements ProfileBrowser {
     return this.opts.dirOf(profile)
   }
   state(profile: string): {
-    mode: BrowserMode
     generation: number
     helper?: HelperState
   } | null {
     const e = this.entries.get(profile)
     if (!e?.ctx) return null
     return {
-      mode: e.mode,
       generation: e.generation,
       ...(e.helper ? { helper: e.helper.state } : {}),
     }
   }
-  async ensure(
-    profile: string,
-    mode: BrowserMode,
-  ): Promise<{
+  async ensure(profile: string): Promise<{
     generation: number
   }> {
     if (this.shuttingDown) throw new Error('the server is shutting down')
@@ -294,7 +259,6 @@ export class ChromeBrowser implements ProfileBrowser {
       const sync = this.opts.syncFor?.(profile) === true
       if (
         e.ctx &&
-        e.mode === mode &&
         e.extensions === extensions &&
         e.sync === sync &&
         e.authorization === authorization
@@ -302,7 +266,7 @@ export class ChromeBrowser implements ProfileBrowser {
         return { generation: e.generation }
       if (e.ctx) await e.barrier.transition(() => this.closeNow(e))
       check()
-      // Take admission before the first launch await, including lock and UA inspection.
+      // Take admission before the first launch await, including lock inspection.
       this.releaseLease(e)
       if (e.lease) throw new ProfileInUseError()
       const lease = this.opts.acquireLease?.(profile) ?? null
@@ -310,7 +274,7 @@ export class ChromeBrowser implements ProfileBrowser {
       try {
         await this.waitForLock(dir)
         check()
-        const generation = await this.launch(e, dir, mode, extensions, sync, authorization, check)
+        const generation = await this.launch(e, dir, extensions, sync, authorization, check)
         check()
         return { generation }
       } catch (error) {
@@ -330,14 +294,13 @@ export class ChromeBrowser implements ProfileBrowser {
   private async launch(
     e: Entry,
     dir: string,
-    mode: BrowserMode,
     extensions: boolean,
     sync: boolean,
     authorization: string | undefined,
     check: () => void,
   ): Promise<number> {
     const stagingDir = this.privateDownloadStage(dir)
-    const helped = mode === 'visible' && extensions && this.opts.helperSource !== undefined
+    const helped = extensions && this.opts.helperSource !== undefined
     const helperSwitch = () => this.opts.helperFor?.(e.name) ?? 'on'
     // Chrome forgets the helper, and the person's switch, at any start; read it first. A Turn on
     // pressed since is newer than that record.
@@ -349,7 +312,6 @@ export class ChromeBrowser implements ProfileBrowser {
       this.opts.rememberHelper?.(e.name, 'off')
     const base: ChromiumLaunchOptions = {
       profileDir: dir,
-      headless: mode === 'headless',
       ...launchTarget(this.choice),
       ...(stagingDir ? { downloadsPath: stagingDir } : {}),
       ...(this.opts.noSandbox === true ? {} : { chromiumSandbox: true }),
@@ -357,7 +319,6 @@ export class ChromeBrowser implements ProfileBrowser {
       args: launchArgs({
         profileDir: dir,
         channel: this.choice.channel,
-        mode,
         background: true,
         sync,
         extensions,
@@ -366,49 +327,27 @@ export class ChromeBrowser implements ProfileBrowser {
         ...(this.opts.extraArgs ? { extraArgs: this.opts.extraArgs } : {}),
       }),
       ...OWN_SIGNALS,
-      ...(mode === 'visible' ? { viewport: null } : {}),
+      viewport: null,
     }
-    const build = async (): Promise<ChromiumLaunchOptions> =>
-      mode === 'headless' ? { ...base, userAgent: (await this.ua.get()).userAgent } : base
     let ctx: BrowserContext
     try {
-      const options = await build()
       check()
-      assertOwnProfileDir(options)
+      assertOwnProfileDir(base)
       privateFolder(this.downloadRoot(dir), stagingDir)
-      ctx = await this.launchContext(options)
+      ctx = await this.launchContext(base)
     } catch (err) {
       if (BROWSER_MISSING.test(err instanceof Error ? err.message : '')) {
         this.logger.warn('browser launch failed: no browser found', {
-          mode,
           channel: this.choice.channel,
         })
         if (stagingDir) new PrivateDownloadFiles(this.downloadRoot(dir)).removeEmpty(stagingDir)
         throw new BrowserNotFoundError()
       }
-      if (
-        mode !== 'headless' ||
-        !/version|mismatch|protocol error|unsupported/i.test(
-          err instanceof Error ? err.message : '',
-        )
-      ) {
-        this.logger.warn('browser launch failed', {
-          mode,
-          errorName: err instanceof Error ? err.name : 'unknown',
-        })
-        if (stagingDir) new PrivateDownloadFiles(this.downloadRoot(dir)).removeEmpty(stagingDir)
-        throw err
-      }
-      this.logger.warn('browser launch failed, re-reading the Chrome UA once', {
-        mode,
+      this.logger.warn('browser launch failed', {
+        errorName: err instanceof Error ? err.name : 'unknown',
       })
-      check()
-      this.ua.invalidate()
-      const options = await build()
-      check()
-      assertOwnProfileDir(options)
-      privateFolder(this.downloadRoot(dir), stagingDir)
-      ctx = await this.launchContext(options)
+      if (stagingDir) new PrivateDownloadFiles(this.downloadRoot(dir)).removeEmpty(stagingDir)
+      throw err
     }
     try {
       check()
@@ -422,7 +361,6 @@ export class ChromeBrowser implements ProfileBrowser {
         ctx,
         stagingDir,
         dir,
-        mode,
         () => e.ctx === ctx,
         check,
         e,
@@ -435,7 +373,6 @@ export class ChromeBrowser implements ProfileBrowser {
     }
     const generation = ++this.generations
     e.ctx = ctx
-    e.mode = mode
     e.extensions = extensions
     e.sync = sync
     e.generation = generation
@@ -478,12 +415,10 @@ export class ChromeBrowser implements ProfileBrowser {
     if (e.helper) await (helperSwitch() === 'turning-on' ? e.helper.turnOn() : e.helper.install())
     check()
     this.logger.info('browser launched', {
-      mode,
       generation,
       extensions,
       sync,
     })
-    this.armIdle(e)
     return generation
   }
   private authorized(e: Entry): boolean {
@@ -520,7 +455,6 @@ export class ChromeBrowser implements ProfileBrowser {
     e.windows = null
     e.windowContext = null
     e.helper = null
-    this.clearIdle(e)
     for (const hook of e.endedHooks.splice(0)) hook()
     for (const cb of [...e.closedListeners]) {
       try {
@@ -559,7 +493,6 @@ export class ChromeBrowser implements ProfileBrowser {
     ctx: BrowserContext,
     dir: string,
     profileDir: string,
-    mode: BrowserMode,
     isCurrent: () => boolean,
     check: () => void,
     e: Entry,
@@ -582,9 +515,7 @@ export class ChromeBrowser implements ProfileBrowser {
       nativeDir: () => this.downloadRoot(profileDir),
       fallbackDirs: () => [this.downloadRoot(profileDir)],
       logger: this.logger,
-      allowUnclaimed: mode === 'visible',
-      privateActive: () =>
-        mode === 'headless' || e.agentCalls > 0 || downloads.privateMode || downloads.captures > 0,
+      privateActive: () => e.agentCalls > 0 || downloads.privateMode || downloads.captures > 0,
       quota,
       onPolicyFailure: end,
     })
@@ -599,20 +530,13 @@ export class ChromeBrowser implements ProfileBrowser {
     }
     await session.send(
       'Browser.setDownloadBehavior',
-      this.downloadBehavior(mode, dir, e.agentCalls > 0, 0),
+      this.downloadBehavior(dir, e.agentCalls > 0, 0),
     )
-    downloads.privateMode = mode === 'headless' || e.agentCalls > 0
+    downloads.privateMode = e.agentCalls > 0
     return downloads
   }
-  private downloadBehavior(mode: BrowserMode, dir: string, agent: boolean, captures: number) {
-    const behavior: 'default' | 'deny' | 'allowAndName' =
-      mode === 'headless'
-        ? captures > 0
-          ? 'allowAndName'
-          : 'deny'
-        : agent || captures > 0
-          ? 'allowAndName'
-          : 'default'
+  private downloadBehavior(dir: string, agent: boolean, captures: number) {
+    const behavior: 'default' | 'allowAndName' = agent || captures > 0 ? 'allowAndName' : 'default'
     return {
       behavior,
       ...(behavior === 'default' ? {} : { downloadPath: dir }),
@@ -627,7 +551,7 @@ export class ChromeBrowser implements ProfileBrowser {
       .then(async () => {
         if (e.downloads !== d || e.ctx !== ctx) return
         if (!this.authorized(e)) throw new Error('profile authorization changed')
-        const policy = this.downloadBehavior(e.mode, d.dir, e.agentCalls > 0, d.captures)
+        const policy = this.downloadBehavior(d.dir, e.agentCalls > 0, d.captures)
         if (policy.behavior !== 'default') d.privateMode = true
         await d.session.send('Browser.setDownloadBehavior', policy)
         // Keep late private events owned until Chrome acknowledges normal routing.
@@ -643,10 +567,7 @@ export class ChromeBrowser implements ProfileBrowser {
     const e = this.entries.get(profile)
     return (
       !!e &&
-      (e.mode === 'headless' ||
-        e.agentCalls > 0 ||
-        (e.downloads?.privateMode ?? false) ||
-        (e.downloads?.captures ?? 0) > 0)
+      (e.agentCalls > 0 || (e.downloads?.privateMode ?? false) || (e.downloads?.captures ?? 0) > 0)
     )
   }
   private readonly downloadOwnership = new WeakMap<
@@ -860,7 +781,7 @@ export class ChromeBrowser implements ProfileBrowser {
     if (reuse) return reuse
     return e.windows.open({
       ...opts,
-      newWindow: opts.newWindow && e.mode === 'visible',
+      newWindow: opts.newWindow,
     })
   }
   /** The person turned the helper on: installed now in a running visible profile, else at its next. */
@@ -980,38 +901,5 @@ export class ChromeBrowser implements ProfileBrowser {
       check()
       return result
     })
-  }
-  touch(profile: string): void {
-    const e = this.entries.get(profile)
-    if (!e?.ctx) return
-    e.touched++
-    this.armIdle(e)
-  }
-  private armIdle(e: Entry): void {
-    this.clearIdle(e)
-    if (!e.ctx || e.mode === 'visible') return
-    e.idleTimer = this.later(() => this.idleFired(e), this.idleMs)
-    e.idleTimer.unref?.()
-  }
-  private clearIdle(e: Entry): void {
-    if (e.idleTimer) clearTimeout(e.idleTimer)
-    e.idleTimer = null
-  }
-  private idleFired(e: Entry): void {
-    e.idleTimer = null
-    if (!e.ctx || e.mode === 'visible') return
-    if (e.waiters > 0 || e.barrier.inFlight() > 0) {
-      e.idleTimer = this.later(() => this.idleFired(e), this.idleMs)
-      e.idleTimer.unref?.()
-      return
-    }
-    const { generation, touched } = e
-    void this.exclusive(e.name, async () => {
-      if (e.generation !== generation || e.touched !== touched) return
-      if (e.mode === 'visible') return
-      this.logger.info('idle close', { generation })
-      await this.close(e.name)
-      await this.opts.afterIdleClose?.(e.name)
-    }).catch(() => this.logger.warn('idle close failed'))
   }
 }

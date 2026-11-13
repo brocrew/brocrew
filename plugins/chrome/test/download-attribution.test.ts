@@ -37,11 +37,6 @@ async function fixture() {
     dirOf: () => path.join(home, 'profiles', 'fern'),
     downloadsRoot: path.join(home, 'private-downloads'),
     lockHeld: async () => false,
-    ua: {
-      get: async () => ({ userAgent: 'fictional', chromeVersion: '1' }),
-      invalidate() {},
-      peek: () => null,
-    },
     launchContext: async (opts) => {
       stage = opts.downloadsPath!
       return context as unknown as BrowserContext
@@ -51,7 +46,7 @@ async function fixture() {
     await browser.closeAll()
     fs.rmSync(home, { recursive: true, force: true })
   })
-  await browser.ensure('fern', 'visible')
+  await browser.ensure('fern')
   const policy = () =>
     session.send.mock.calls
       .filter((c: unknown[]) => c[0] === 'Browser.setDownloadBehavior')

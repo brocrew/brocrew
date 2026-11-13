@@ -92,11 +92,6 @@ const browser = new ChromeBrowser({
   helperFor: (name) => store.get(name)?.helper ?? 'on',
   rememberHelper: (name, helper) => store.setHelper(name, helper),
   ...(executable ? { browser: { channel: 'chrome' as const, executablePath: executable } } : {}),
-  ua: {
-    get: async () => ({ userAgent: 'fictional fixture', chromeVersion: null }),
-    invalidate() {},
-    peek: () => null,
-  },
   launchContext: async (opts) => {
     dirs.add(opts.profileDir)
     const ctx = await launchPersistentChromium(opts)
@@ -242,7 +237,6 @@ async function setupWindows(name: string): Promise<void> {
   windowA = await tool('open_tab', {
     profile: name,
     url: fixtureUrl,
-    visible: true,
     newWindow: true,
   })
   windowB = await tool('open_tab', { profile: name, url: fixtureUrl, newWindow: true })
@@ -333,7 +327,7 @@ const steps: Record<string, () => Promise<void>> = {
                 : ['the helper was not ready'],
           },
           async () => {
-            await browser.ensure('space-test-1', 'visible')
+            await browser.ensure('space-test-1')
             const helper = browser.state('space-test-1')?.helper
             await browser.close('space-test-1')
             return { helper }
@@ -402,7 +396,7 @@ const steps: Record<string, () => Promise<void>> = {
         },
         async () => {
           await browser.close('space-test-1')
-          await browser.ensure('space-test-1', 'visible')
+          await browser.ensure('space-test-1')
           return { helper: browser.state('space-test-1')?.helper }
         },
       )

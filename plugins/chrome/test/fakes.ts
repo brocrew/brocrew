@@ -1,12 +1,13 @@
 export { Client } from '@modelcontextprotocol/sdk/client/index.js'
 export { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { EventEmitter } from 'node:events'
+import { WindowTargetError } from '../src/shared/browser/chromiumWindows.js'
 import fs from 'node:fs'
 import { Readable } from 'node:stream'
 import os from 'node:os'
 import path from 'node:path'
 import type { Page, Download } from 'playwright-core'
-import type { BrowserMode, ProfileBrowser } from '../src/browser/profileBrowser.js'
+import type { ProfileBrowser } from '../src/browser/profileBrowser.js'
 import { ProfileInUseError } from '../src/browser/profileBrowser.js'
 import type { KeyedSerializer } from '../src/shared/browser/browser-lease.js'
 import { createProfileStore } from '../src/profiles/store.js'
@@ -262,17 +263,14 @@ export class FakeBrowser implements ProfileBrowser {
   states = new Map<
     string,
     {
-      mode: BrowserMode
       generation: number
     }
   >()
   pages = new Map<string, FakePage[]>()
   launches: Array<{
     profile: string
-    mode: BrowserMode
   }> = []
   closes: string[] = []
-  touches: string[] = []
   private gen = 0
   private nextWindow = 0
   private readonly windowIds = new WeakMap<object, number>()
@@ -292,20 +290,16 @@ export class FakeBrowser implements ProfileBrowser {
   private operations = new Map<string, number>()
   ensureError: Error | null = null
   constructor(private readonly dirFor: (profile: string) => string) {}
-  async ensure(
-    profile: string,
-    mode: BrowserMode,
-  ): Promise<{
+  async ensure(profile: string): Promise<{
     generation: number
   }> {
     if (this.ensureError) throw this.ensureError
     const cur = this.states.get(profile)
-    if (cur && cur.mode === mode) return { generation: cur.generation }
-    if (cur) await this.close(profile)
+    if (cur) return { generation: cur.generation }
     const generation = ++this.gen
-    this.states.set(profile, { mode, generation })
+    this.states.set(profile, { generation })
     this.pages.set(profile, [])
-    this.launches.push({ profile, mode })
+    this.launches.push({ profile })
     return { generation }
   }
   async close(profile: string): Promise<void> {
@@ -363,22 +357,13 @@ export class FakeBrowser implements ProfileBrowser {
     const p = new FakePage()
     const requested = opts.windowOf ? await this.windowId(profile, opts.windowOf) : undefined
     const native = this.nativeWindows.get(profile)
-    // With the helper on, a requested window is exact; without it Chrome keeps its own choice.
-    const chosen =
-      requested !== undefined && (this.helper === 'ready' || native === undefined)
-        ? requested
-        : requested !== undefined
-          ? native!
-          : (opts.newWindow && this.state(profile)?.mode === 'visible') || native === undefined
-            ? ++this.nextWindow
-            : native
-    if (requested !== undefined && chosen !== requested)
-      opts.onNote?.(
-        this.helper === 'off'
-          ? `Opened in window ${chosen}; the requested window was ${requested}. BroCrew helper is off for this Chrome profile, so Chrome chose the window. Ask the person to turn it on in Settings → Plugins → Chrome.`
-          : `Opened in window ${chosen}; the requested window was ${requested}. Chrome chose the window; placing it in another one could bring Chrome to the front.`,
+    if (requested !== undefined && this.helper !== 'ready')
+      throw new WindowTargetError(
+        `WINDOW_TARGET_UNAVAILABLE: helper ${this.helper}; no tab was created`,
       )
-    else if (
+    const chosen =
+      requested ?? (opts.newWindow || native === undefined ? ++this.nextWindow : native)
+    if (
       !opts.newWindow &&
       !opts.windowOf &&
       this.recentWindows.has(profile) &&
@@ -446,9 +431,6 @@ export class FakeBrowser implements ProfileBrowser {
     } finally {
       this.operations.set(profile, this.operations.get(profile)! - 1)
     }
-  }
-  touch(profile: string): void {
-    this.touches.push(profile)
   }
   crash(profile: string): void {
     void this.close(profile)

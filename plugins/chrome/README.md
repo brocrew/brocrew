@@ -32,19 +32,24 @@ last tool-used window, the result includes a placement note. Listing tabs does n
 `open_tab` and `list_tabs` return a numeric `windowId`; it is an observation, not a selector, and
 can change after a restart. Conflicting selectors and dead/foreign anchors are refused.
 
+Chrome always runs visibly. `show_tab` brings an existing tab and window to the front without
+restarting Chrome or reopening other tabs. There is no `hide_tab` or `visible` argument.
+If work after tab creation fails, `TAB_CREATED <id>` identifies the existing tab; use that id
+instead of opening another. `NAVIGATION_FAILED <id>` includes the current URL and original error.
+
 `open_tab` and `navigate` accept HTTP(S), `file:` URLs, native absolute paths and `about:blank`.
 Native paths are encoded as file URLs, preserving spaces, Unicode, `#` and `?`; relative and tilde
 paths are rejected. Chrome and the OS determine local-file access; navigation has no upload-root
 allowlist. The separate
 `download_url` transport stays HTTP(S)-only, including redirects; upload/download guards remain.
 
-Background opening grants no user activation and never shows or activates a Chrome window. Its
+Background opening grants no user activation and never activates a Chrome window. Its
 launch policy suppresses Chrome's startup window; Chrome's own popup blocker stays on. Ordinary
 opens and separate background windows request inactive CDP creation. An explicit `windowOf` asks
-the BroCrew helper (below) for an inactive tab in that window. When the helper is unavailable or
-turned off, or it says nothing was created, one inactive CDP tab opens where Chrome chooses and
-the answer's note names both windows; when the helper is off, the note asks the agent to have the
-person turn it back on. A helper call that may still create a tab is never followed by a second
+the BroCrew helper (below) for an inactive tab in that window. When the helper is unavailable,
+turned off, or refuses placement, `WINDOW_TARGET_UNAVAILABLE` reports the failure without a
+fallback creation. A misplaced helper tab is closed and reported as `WINDOW_TARGET_MISMATCH`.
+A helper call that may still create a tab is never followed by a second
 creation: it fails, and a late tab is closed. Internal tabs are not admitted until they resolve.
 Failed creations retain exact page ownership even if they navigate; incomplete cleanup is
 reported. Each of 64 operation slots retains every dispatched creation until it resolves.
@@ -59,12 +64,12 @@ at every launch, which also updates it. When the person switches it off in `chro
 the plugin notices (or reads Chrome's record of the last session before Chrome starts and forgets
 it), remembers it in `profiles.json` and stops loading it. The Chrome panel then shows "Helper
 off." with "Turn on", which installs it again: at once in a running visible profile, else at
-the profile's next visible launch, where it takes precedence over Chrome's older record. A removed helper comes back at the next launch. `list_extensions` marks it `builtIn`. Headless profiles, and profiles
-where the person turned extensions off, have no helper. Sync and extensions are on by default
+the profile's next launch, where it takes precedence over Chrome's older record. A removed helper comes back at the next launch. `list_extensions` marks it `builtIn`. Profiles
+where the person turned extensions off have no helper. Sync and extensions are on by default
 (temporary profiles excepted); profiles made before that were switched on once. At capacity, creation refuses
 until cleanup resolves or the profile closes; it never restarts a live profile automatically. Run the optional disposable native
 focus check in `scripts/native/` to verify frontmost-app/Space behavior on a macOS seat; the opt-in
-`BROCREW_CHROME_RUNTIME_TEST=1` tests load real local files with visible bookkeeping forced headless
+`BROCREW_CHROME_RUNTIME_TEST=1` tests load real local files with a test-only headless launch argument
 and do not prove native focus. Never use real or signed-in profiles for those checks.
 
 ## Profiles across workspaces

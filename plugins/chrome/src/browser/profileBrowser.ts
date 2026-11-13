@@ -1,6 +1,5 @@
 import type { Page, Download } from 'playwright-core'
 import type { HelperState } from './brocrewHelper.js'
-export type BrowserMode = 'headless' | 'visible'
 export interface ProfileBrowser {
   /** One admitted agent call; private routing covers its entire lifetime. */
   agentCall?<T>(profiles: readonly string[], fn: () => Promise<T>): Promise<T>
@@ -9,16 +8,12 @@ export interface ProfileBrowser {
   downloadFileIsPrivate?(profile: string, file: string): boolean
   deletePrivateDownload?(profile: string, download: Download): Promise<void>
   cancelPrivateDownload?(profile: string, download: Download): Promise<void>
-  ensure(
-    profile: string,
-    mode: BrowserMode,
-  ): Promise<{
+  ensure(profile: string): Promise<{
     generation: number
   }>
   close(profile: string): Promise<void>
   removeWhenIdle(profile: string, remove: () => void): Promise<void>
   state(profile: string): {
-    mode: BrowserMode
     generation: number
     /** The BroCrew helper in this browser; absent when this browser has none. */
     helper?: HelperState
@@ -50,7 +45,6 @@ export interface ProfileBrowser {
     onprogress?: () => void,
     existing?: { download: Download; signal?: AbortSignal },
   ): Promise<T>
-  touch(profile: string): void
 }
 export class BrowserNotFoundError extends Error {
   constructor() {

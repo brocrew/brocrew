@@ -16,22 +16,16 @@ afterEach(async () => {
       fs.rmSync(root, { recursive: true, force: true })
   }
 })
-async function setup(visible = false) {
+async function setup() {
   const h = harness()
   fixtures.push(h)
   h.profile('fern', { enabled: true })
-  const opened = (
-    await h.call('open_tab', { profile: 'fern', url: 'https://fictional.invalid/', visible })
-  ).json as { tabId: string }
+  const opened = (await h.call('open_tab', { profile: 'fern', url: 'https://fictional.invalid/' }))
+    .json as { tabId: string }
   const page = h.browser.pages.get('fern')![0]
   let active = false
-  let armed!: () => void
-  const ready = new Promise<void>((resolve) => {
-    armed = resolve
-  })
   h.browser.captureDownloads = async <T>(_profile: string, _page: Page, fn: () => Promise<T>) => {
     active = true
-    armed()
     try {
       return await fn()
     } finally {
@@ -43,11 +37,11 @@ async function setup(visible = false) {
     fs.writeFileSync(file, 'fictional bytes')
     return new FakeDownload(name, Buffer.from('fictional bytes'), file)
   }
-  return { h, page, tabId: opened.tabId, active: () => active, ready, download }
+  return { h, page, tabId: opened.tabId, active: () => active, download }
 }
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve))
-async function routed(visible = true) {
-  const f = await setup(visible)
+async function routed() {
+  const f = await setup()
   const native = path.join(f.h.home, 'routed-downloads')
   const profile = path.join(f.h.home, 'routed-profiles', 'fern')
   fs.mkdirSync(profile, { recursive: true })
@@ -80,18 +74,13 @@ async function routed(visible = true) {
     killChrome: async () => {
       throw new Error('No real browser should be ended')
     },
-    ua: {
-      get: async () => ({ userAgent: 'fictional', chromeVersion: '1' }),
-      invalidate() {},
-      peek: () => null,
-    },
     launchContext: async (options) => {
       stage = options.downloadsPath!
       return context as unknown as BrowserContext
     },
   })
   routedBrowsers.push(browser)
-  await browser.ensure('fern', visible ? 'visible' : 'headless')
+  await browser.ensure('fern')
   f.h.browser.captureDownloads = browser.captureDownloads.bind(browser)
   const begin = (guid: string, name = 'fresh.txt') => {
     fs.writeFileSync(path.join(stage, guid), 'fresh bytes')
@@ -129,23 +118,6 @@ it.each([false, true])(
     expect(f.active()).toBe(false)
   },
 )
-it('arms a fresh headless wait instead of consuming an earlier denied download', async () => {
-  const f = await setup()
-  const stale = f.download('denied.txt')
-  const deniedPath = vi
-    .spyOn(stale, 'path')
-    .mockRejectedValue(new Error('fictional denied download'))
-  const tab = f.h.tabs.resolve(f.tabId, (profile) => f.h.browser.state(profile)?.generation ?? null)
-  tab.pendingDownloads.push({ download: stale as never, at: Date.now() })
-  const pending = f.h.call('wait_for_download', { tabId: f.tabId })
-  await f.ready
-  expect(f.active()).toBe(true)
-  f.page.emit('download', f.download('fresh.txt'))
-  const result = (await pending).json as { path: string }
-  expect(fs.readFileSync(result.path, 'utf8')).toBe('fictional bytes')
-  expect(deniedPath).not.toHaveBeenCalled()
-  expect(f.active()).toBe(false)
-})
 it('guides agent downloads to one call and reserves waits for independent events', async () => {
   const f = await setup()
   const definition = buildToolDefs().find((d) => d.spec.name === 'wait_for_download')!
@@ -161,7 +133,7 @@ it('guides agent downloads to one call and reserves waits for independent events
 })
 
 it('retains an earlier visible-window download without waiting for another event', async () => {
-  const f = await setup(true)
+  const f = await setup()
   const saved = f.download('visible.txt')
   const tab = f.h.tabs.resolve(f.tabId, (profile) => f.h.browser.state(profile)?.generation ?? null)
   tab.pendingDownloads.push({ download: saved as never, at: Date.now() })

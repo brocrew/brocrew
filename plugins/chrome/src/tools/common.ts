@@ -39,7 +39,7 @@ export type ToolOutput =
     }
 export const DEFAULT_TIMEOUT_MS = 15000
 export const DEFAULT_NETWORK_LIMIT = 50
-export const MAX_TIMEOUT_MS = 60000
+const MAX_TIMEOUT_MS = 60000
 export const MAX_SCREENSHOT_BYTES = 5 * 1024 * 1024
 export const tabId: PropSpec = {
   type: 'string',
@@ -155,7 +155,6 @@ export function describeError(e: unknown): string {
 export async function useTab(deps: ToolDeps, id: string): Promise<TabState> {
   const tab = deps.tabs.resolve(id, generationOf(deps))
   usableProfile(deps, tab.profile)
-  deps.browser.touch(tab.profile)
   await deps.browser.operate(tab.profile, async () => {
     deps.tabs.resolve(id, generationOf(deps))
     usableProfile(deps, tab.profile)
@@ -189,7 +188,6 @@ export async function onTab<T>(
   const tab = deps.tabs.resolve(id, generationOf(deps))
   usableProfile(deps, tab.profile)
   requireNoDialog(tab)
-  deps.browser.touch(tab.profile)
   const value = await deps.browser.operate(tab.profile, () =>
     deps.serializer.runExclusive(tab.id, async () => {
       deps.tabs.resolve(id, generationOf(deps))

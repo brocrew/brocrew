@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import { ChromeBrowser } from '../src/browser/chromeBrowser.js'
 import { launchPersistentChromium } from '../src/shared/browser/browser-launch.js'
@@ -19,7 +19,6 @@ type RuntimeTab = { tabId: string; windowId: number; url: string; title: string 
 type OpenResult = RuntimeTab & {
   note?: string
   loadError?: string
-  restoredTabs?: Array<{ tabId: string }>
 }
 type RuntimeReply<Name extends string> = Name extends 'list_tabs'
   ? RuntimeTab[]
@@ -27,8 +26,8 @@ type RuntimeReply<Name extends string> = Name extends 'list_tabs'
     ? OpenResult
     : unknown
 
-// Opt-in real browser checks use only disposable, non-signed-in owned profiles. Logical visible
-// mode is forced headless with the COMPLETE production argument list; this proves no OS focus claim.
+// Opt-in real browser checks use disposable, non-signed-in owned profiles. Test infrastructure
+// adds --headless to the production arguments; this proves no OS focus claim.
 const enabled = process.env.BROCREW_CHROME_RUNTIME_TEST === '1'
 describe.skipIf(!enabled)('window and file contract in disposable installed Chrome', () => {
   const homes: string[] = []
@@ -39,19 +38,12 @@ describe.skipIf(!enabled)('window and file contract in disposable installed Chro
     const store = createProfileStore({ home })
     const browser = new ChromeBrowser({
       dirOf: store.dirOf,
+      extensionsFor: (profile) => store.get(profile)?.allowExtensions === true,
+      helperSource: fileURLToPath(new URL('../helper/', import.meta.url)),
       logger: silentLogger,
-      ua: {
-        get: async () => ({
-          userAgent: 'fictional fixture',
-          chromeVersion: null,
-        }),
-        invalidate() {},
-        peek: () => null,
-      },
       launchContext: (opts) =>
         launchPersistentChromium({
           ...opts,
-          headless: true,
           args: [...(opts.args ?? []), '--headless'],
         }),
     })
@@ -150,7 +142,7 @@ describe.skipIf(!enabled)('window and file contract in disposable installed Chro
     await connectMcp(h)
     const open = (extra = {}) =>
       h.call('open_tab', { profile: 'fern', url: 'about:blank', ...extra })
-    const a = await open({ visible: true, newWindow: true }),
+    const a = await open({ newWindow: true }),
       b = await open()
     const c = await open({ newWindow: true })
     await h.call('show_tab', { tabId: c.tabId }) // deliberate HEADLESS native-order setup, never a native focus proof
@@ -179,7 +171,6 @@ describe.skipIf(!enabled)('window and file contract in disposable installed Chro
         profile: 'willow',
         url: 'about:blank',
         windowOf: a.tabId,
-        visible: true,
       }),
     ).rejects.toThrow('requested profile')
     expect(h.browser.state('willow')).toBeNull()
@@ -188,17 +179,17 @@ describe.skipIf(!enabled)('window and file contract in disposable installed Chro
       if (t.windowId === c.windowId) await h.call('close_tab', { tabId: t.tabId })
     expect((await open()).windowId).toBe(a.windowId)
     await expect(open({ windowOf: c.tabId })).rejects.toThrow('no longer exists')
-    const headA = await h.call('open_tab', {
+    const otherA = await h.call('open_tab', {
       profile: 'willow',
       url: 'about:blank',
       newWindow: true,
     })
-    const headB = await h.call('open_tab', {
+    const otherB = await h.call('open_tab', {
       profile: 'willow',
       url: 'about:blank',
       newWindow: true,
     })
-    expect(headA.windowId).toBe(headB.windowId)
+    expect(otherA.windowId).not.toBe(otherB.windowId)
     expect((await open()).windowId).toBe(a.windowId)
   }, 120_000)
   it('case 6: local file URLs and encoded paths load in a persistent profile', async () => {
@@ -212,7 +203,6 @@ describe.skipIf(!enabled)('window and file contract in disposable installed Chro
     const first = await a.call('open_tab', {
       profile: 'fern',
       url: file,
-      visible: true,
     })
     const second = await a.call('open_tab', {
       profile: 'fern',
@@ -235,19 +225,5 @@ describe.skipIf(!enabled)('window and file contract in disposable installed Chro
     await expect(a.call('download_url', { tabId: first.tabId, url })).rejects.toThrow(
       'file URLs and local paths are not supported',
     )
-    const switched = await a.call('open_tab', {
-      profile: 'fern',
-      url: 'about:blank',
-      visible: false,
-      windowOf: second.tabId,
-    })
-    expect(switched.restoredTabs?.[0]?.tabId).toBe(second.tabId)
-    expect((await a.call('list_tabs')).find((t) => t.tabId === second.tabId)?.url).toBe(url)
-    await a.call('open_tab', {
-      profile: 'fern',
-      url: 'about:blank',
-      visible: true,
-      windowOf: first.tabId,
-    })
   }, 120_000)
 })

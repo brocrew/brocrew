@@ -107,7 +107,7 @@ const setup = () => {
 }
 
 describe('context window selection', () => {
-  it('default follows native selection; tool preference is observational; without the helper windowOf keeps Chrome’s choice', async () => {
+  it('default follows native selection; explicit targeting without the helper creates nothing', async () => {
     const { ctx, windows } = setup()
     const a = ctx.pages()[0]
     await windows.used(a)
@@ -118,12 +118,11 @@ describe('context window selection', () => {
     expect(await windows.windowId(await windows.open({ newWindow: false }))).toBe(1)
     await windows.used(a)
     expect(await windows.windowId(await windows.open({ newWindow: false }))).toBe(1)
-    const notes: string[] = []
-    const e = await windows.open({ newWindow: false, windowOf: c, onNote: (n) => notes.push(n) })
-    expect(await windows.windowId(e)).toBe(1)
-    expect(notes).toEqual([
-      'Opened in window 1; the requested window was 2. Chrome chose the window; placing it in another one could bring Chrome to the front.',
-    ])
+    const count = ctx.all.length
+    await expect(windows.open({ newWindow: false, windowOf: c })).rejects.toThrow(
+      'WINDOW_TARGET_UNAVAILABLE',
+    )
+    expect(ctx.all).toHaveLength(count)
     expect(ctx.sent.some((s) => /activate|bringToFront|focus|Runtime\./i.test(s.method))).toBe(
       false,
     )
@@ -134,7 +133,7 @@ describe('context window selection', () => {
     const page = await windows.open({ newWindow: true })
     expect(page.url()).toMatch(/^about:blank#new-tab-/)
     expect(ctx.listenerCount('page')).toBe(2)
-    const targeted = await windows.open({ newWindow: false, windowOf: page })
+    const targeted = await windows.open({ newWindow: false })
     expect(targeted.url()).toMatch(/^about:blank#new-tab-/)
     expect(await windows.windowId(targeted)).toBe(1)
     expect(ctx.listenerCount('page')).toBe(2)
@@ -190,8 +189,17 @@ describe('context window selection', () => {
 
 it('a targeted window that closes during creation fails: the owned tab alone is closed', async () => {
   const ctx = new Ctx()
-  const windows = new ChromiumWindows(ctx as unknown as BrowserContext, { timeoutMs: 30 })
   const original = ctx.pages()[0]
+  const windows = new ChromiumWindows(ctx as unknown as BrowserContext, {
+    timeoutMs: 30,
+    placer: {
+      async place(windowId, url) {
+        ctx.add(windowId, url)
+        await original.close()
+        return { created: true, windowId }
+      },
+    },
+  })
   const unrelated = ctx.add(2, 'https://unrelated.test/')
   ctx.closeAnchor = true
   await expect(windows.open({ newWindow: false, windowOf: original })).rejects.toThrow(

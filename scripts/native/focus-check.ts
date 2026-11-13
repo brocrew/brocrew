@@ -278,6 +278,8 @@ try {
   const makeBrowser = () =>
     new ChromeBrowser({
       dirOf: store.dirOf,
+      extensionsFor: () => true,
+      helperSource: path.resolve('plugins/chrome/helper'),
       launchContext: async (opts) => {
         assertRunning()
         ownedBrowserPid = undefined
@@ -354,14 +356,6 @@ try {
           }
           throw new NativeFatalError('owned-pid', 'owned Chrome PID unavailable: ' + String(error))
         }
-      },
-      ua: {
-        get: async () => ({
-          userAgent: 'fictional fixture',
-          chromeVersion: null,
-        }),
-        invalidate() {},
-        peek: () => null,
       },
     })
   browser = makeBrowser()
@@ -478,7 +472,7 @@ try {
   }
   try {
     // Calibration is FIRST and uses a separate owned, non-signed-in profile/process.
-    const calibration = await call({ visible: true, newWindow: true })
+    const calibration = await call({ newWindow: true })
     const calibrationPid = ownedPids.at(-1)!
     assert(Number.isInteger(calibrationPid))
     const controlBefore = samples.at(-1)!
@@ -555,7 +549,7 @@ try {
     async (index) => {
       const args =
         index === 0
-          ? { visible: true, newWindow: true }
+          ? { newWindow: true }
           : index === 2
             ? { windowOf: first?.tabId ?? 'missing-owned-tab' }
             : index === 3

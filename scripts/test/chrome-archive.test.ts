@@ -264,9 +264,9 @@ describe('Chrome release fixture', () => {
   it('binds the complete built author-bearing inventory without a core allowlist', async () => {
     await builtInventory(async ({ view, inventory, agent }) => {
       const advertised = inventory.tools.map((tool) => tool.name).sort()
-      expect(advertised).toHaveLength(34)
+      expect(advertised).toHaveLength(33)
       expect(advertised).toContain('show_tab')
-      expect(advertised).toContain('hide_tab')
+      expect(advertised).not.toContain('hide_tab')
       expect(
         Math.max(...inventory.tools.map((tool) => tool.description?.length ?? 0)),
       ).toBeLessThanOrEqual(2000)
@@ -279,15 +279,13 @@ describe('Chrome release fixture', () => {
       ).not.toBe(true)
     })
   })
-  it.each(['show_tab', 'hide_tab'])(
+  it.each(['show_tab'])(
     'admits %s even in an inventory under the old count limit',
     async (name) => {
       await builtInventory(async ({ inventory, inventoryReply, agent }) => {
-        // A diagnostic subset only: the separate parity control always consumes all 34 real tools.
+        // A diagnostic subset only: the separate parity control always consumes all 33 real tools.
         const selected = [
-          ...inventory.tools
-            .filter((tool) => !['show_tab', 'hide_tab'].includes(tool.name))
-            .slice(0, 31),
+          ...inventory.tools.filter((tool) => tool.name !== 'show_tab').slice(0, 31),
           inventory.tools.find((tool) => tool.name === name)!,
         ]
         expect(selected).toHaveLength(32)
@@ -324,7 +322,7 @@ describe('Chrome release fixture', () => {
       )
       const client = await agent()
       const tools = (await client.listTools()).tools
-      expect(tools).toHaveLength(34)
+      expect(tools).toHaveLength(33)
       expect(tools.some((tool) => tool.name === 'snapshot')).toBe(true)
       expect(JSON.stringify(tools)).toContain(credential)
       expect(log.mock.calls).toEqual([])

@@ -15,7 +15,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true })
 })
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve))
-function fixture(allowUnclaimed = true, quota = new UnclaimedDownloadQuota()) {
+function fixture(quota = new UnclaimedDownloadQuota()) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fictional-download-policy-'))
   roots.push(dir)
   const session = new EventEmitter() as EventEmitter & { send: ReturnType<typeof vi.fn> }
@@ -24,7 +24,6 @@ function fixture(allowUnclaimed = true, quota = new UnclaimedDownloadQuota()) {
   const router = new DownloadRouter({
     dir,
     session,
-    allowUnclaimed,
     quota,
     nativeDir: () => path.join(dir, 'kept'),
     onPolicyFailure: failed,
@@ -39,7 +38,7 @@ function fixture(allowUnclaimed = true, quota = new UnclaimedDownloadQuota()) {
   return { dir, session, router, failed, begin, progress }
 }
 it('reports only advancing received bytes for the owning active capture', async () => {
-  const h = fixture(false)
+  const h = fixture()
   const activity = vi.fn()
   const capture = h.router.capture(async () => new Set(['fern-frame']), activity)
   h.begin('fern')
@@ -58,7 +57,7 @@ it('reports only advancing received bytes for the owning active capture', async 
 it.each(['received', 'declared'] as const)(
   'cancels a page download beyond 200 MB (%s), including a claimed download',
   async (kind) => {
-    const h = fixture(false)
+    const h = fixture()
     const capture = h.router.capture(async () => new Set(['fern-frame']))
     h.begin('fern')
     await flush()
@@ -81,17 +80,17 @@ it.each(['received', 'declared'] as const)(
 it('caps unclaimed downloads per profile per rolling hour, across browser generations', async () => {
   let now = 0
   const quota = new UnclaimedDownloadQuota(() => now)
-  const first = fixture(true, quota)
+  const first = fixture(quota)
   for (let i = 0; i < MAX_UNCLAIMED_PER_HOUR; i++) first.begin(`fern-${i}`)
   await flush()
   expect(first.session.send).not.toHaveBeenCalled()
-  const nextGeneration = fixture(true, quota)
+  const nextGeneration = fixture(quota)
   nextGeneration.begin('fern-extra')
   await flush()
   expect(nextGeneration.session.send).toHaveBeenCalledWith('Browser.cancelDownload', {
     guid: 'fern-extra',
   })
-  const otherProfile = fixture(true)
+  const otherProfile = fixture()
   otherProfile.begin('willow-first')
   await flush()
   expect(otherProfile.session.send).not.toHaveBeenCalled()
@@ -100,23 +99,6 @@ it('caps unclaimed downloads per profile per rolling hour, across browser genera
   nextGeneration.begin('fern-new-hour')
   await flush()
   expect(nextGeneration.session.send).not.toHaveBeenCalled()
-})
-it('refuses unclaimed headless downloads, including other frames and extra downloads during a call', async () => {
-  const h = fixture(false)
-  h.begin('before')
-  await flush()
-  const capture = h.router.capture(async () => new Set(['fern-frame']))
-  h.begin('other-frame', 'willow-frame')
-  h.begin('claimed')
-  h.begin('extra')
-  await flush()
-  expect(h.session.send.mock.calls.map((c) => c[1].guid)).toEqual([
-    'before',
-    'other-frame',
-    'extra',
-  ])
-  capture.end()
-  expect(h.session.send).toHaveBeenCalledWith('Browser.cancelDownload', { guid: 'claimed' })
 })
 it('ends its owned browser if Chrome cannot cancel an oversized page download', async () => {
   const h = fixture()
@@ -127,44 +109,34 @@ it('ends its owned browser if Chrome cannot cancel an oversized page download', 
   expect(h.failed).toHaveBeenCalledOnce()
 })
 
-it.each([true, false])(
-  'successful tool captures do not consume unattended quota or fill the record cap (visible=%s)',
-  async (visible) => {
-    const h = fixture(visible)
-    for (let i = 0; i < 501; i++) {
-      const capture = h.router.capture(async () => new Set(['fern-frame']))
-      h.begin(`fern-tool-${i}`)
-      await flush()
-      // The tool saved and removed its artifact; its CDP completion can arrive late.
-      capture.end(true, `fern-tool-${i}`)
-      h.progress(`fern-tool-${i}`, 1, 'completed')
-    }
-    expect(h.session.send).not.toHaveBeenCalled()
-    h.begin('fern-unclaimed')
-    await flush()
-    if (visible) expect(h.session.send).not.toHaveBeenCalled()
-    else
-      expect(h.session.send).toHaveBeenCalledWith('Browser.cancelDownload', {
-        guid: 'fern-unclaimed',
-      })
-  },
-)
-
-it.each([true, false])(
-  'keeps a still-running claim capped when success saved an older download (visible=%s)',
-  async (visible) => {
-    const h = fixture(visible)
-    // D1 was already queued for the tool. During its call, the router claims D2.
+it('successful tool captures do not consume unattended quota or fill the record cap', async () => {
+  const h = fixture()
+  for (let i = 0; i < 501; i++) {
     const capture = h.router.capture(async () => new Set(['fern-frame']))
-    h.begin('fern-second')
+    h.begin(`fern-tool-${i}`)
     await flush()
-    capture.end(true, 'fern-older') // Saving the older file does not finish this claim.
-    h.progress('fern-second', MAX_DOWNLOAD_BYTES + 1)
-    expect(h.session.send).toHaveBeenCalledWith('Browser.cancelDownload', { guid: 'fern-second' })
-  },
-)
+    // The tool saved and removed its artifact; its CDP completion can arrive late.
+    capture.end(true, `fern-tool-${i}`)
+    h.progress(`fern-tool-${i}`, 1, 'completed')
+  }
+  expect(h.session.send).not.toHaveBeenCalled()
+  h.begin('fern-unclaimed')
+  await flush()
+  expect(h.session.send).not.toHaveBeenCalled()
+})
+
+it('keeps a still-running claim capped when success saved an older download', async () => {
+  const h = fixture()
+  // D1 was already queued for the tool. During its call, the router claims D2.
+  const capture = h.router.capture(async () => new Set(['fern-frame']))
+  h.begin('fern-second')
+  await flush()
+  capture.end(true, 'fern-older') // Saving the older file does not finish this claim.
+  h.progress('fern-second', MAX_DOWNLOAD_BYTES + 1)
+  expect(h.session.send).toHaveBeenCalledWith('Browser.cancelDownload', { guid: 'fern-second' })
+})
 it('discards the saved claim only after its own completed event', async () => {
-  const h = fixture(true)
+  const h = fixture()
   const capture = h.router.capture(async () => new Set(['fern-frame']))
   h.begin('fern-extra')
   await flush()
@@ -179,7 +151,7 @@ it('discards the saved claim only after its own completed event', async () => {
 })
 
 it('does not let a later call claim a download whose frame lookup outlived the original call', async () => {
-  const h = fixture(true)
+  const h = fixture()
   const frames = Promise.withResolvers<ReadonlySet<string>>()
   const first = h.router.capture(() => frames.promise)
   fs.writeFileSync(path.join(h.dir, 'slow-decision'), 'fictional held bytes')

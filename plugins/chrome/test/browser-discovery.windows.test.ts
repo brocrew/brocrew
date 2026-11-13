@@ -52,14 +52,8 @@ describe.skipIf(!enabled)('packaged Windows browser discovery in a disposable pr
         const store = built.createProfileStore({ home })
         store.create('fern', 'panel')
         store.setFlags('fern', { enabled: true })
-        browser = built.createChromeBrowser(store, silentLogger, undefined, config.browser, {
-          ua: {
-            get: async () => ({ userAgent: 'fictional discovery fixture', chromeVersion: null }),
-            invalidate() {},
-            peek: () => null,
-          },
-        })
-        await browser!.ensure('fern', 'headless')
+        browser = built.createChromeBrowser(store, silentLogger, config.browser)
+        await browser!.ensure('fern')
         const page = await browser!.newPage('fern', { newWindow: false })
         await page.goto('data:text/html,<title>Fictional discovery</title>')
         expect(await page.title()).toBe('Fictional discovery')

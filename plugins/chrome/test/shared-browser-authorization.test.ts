@@ -19,7 +19,7 @@ import { TabRegistry } from '../src/tabs.js'
 import { createKeyedSerializer } from '../src/shared/browser/browser-lease.js'
 import { buildToolDefs } from '../src/tools/index.js'
 import { fenceToolDefs } from '../src/tools/authorization.js'
-import { watchWindow } from '../src/tools/showHide.js'
+import { watchWindow } from '../src/tools/showTab.js'
 import { describeError } from '../src/tools/common.js'
 import type { ToolDeps } from '../src/tools/common.js'
 
@@ -75,11 +75,6 @@ function browserFixture(overrides: Partial<ConstructorParameters<typeof ChromeBr
     downloadsRoot: path.join(dir, 'downloads'),
     acquireLease: acquire,
     authorization: () => 'permission-1',
-    ua: {
-      get: async () => ({ userAgent: 'fictional', chromeVersion: '1' }),
-      invalidate() {},
-      peek: () => null,
-    },
     lockHeld: async () => false,
     launchContext: launch,
     killChrome: vi.fn(async () => {}),
@@ -87,10 +82,10 @@ function browserFixture(overrides: Partial<ConstructorParameters<typeof ChromeBr
   })
   return { browser, acquire, release, launch, context }
 }
-it('acquires before lock/UA awaits and retains a slow launch lease until Chrome ends', async () => {
-  const ua = deferred<{ userAgent: string; chromeVersion: string }>()
-  const f = browserFixture({ ua: { get: () => ua.promise, invalidate() {}, peek: () => null } })
-  const opening = f.browser.ensure('fern', 'headless')
+it('acquires before lock awaits and retains a slow launch lease until Chrome ends', async () => {
+  const lock = deferred<boolean>()
+  const f = browserFixture({ lockHeld: () => lock.promise })
+  const opening = f.browser.ensure('fern')
   await until(() => f.acquire.mock.calls.length === 1)
   expect(f.launch).not.toHaveBeenCalled()
   expect(f.release).not.toHaveBeenCalled()
@@ -98,23 +93,23 @@ it('acquires before lock/UA awaits and retains a slow launch lease until Chrome 
   await vi.advanceTimersByTimeAsync(11_000)
   expect(f.release).not.toHaveBeenCalled()
   vi.useRealTimers()
-  ua.resolve({ userAgent: 'fictional', chromeVersion: '1' })
+  lock.resolve(false)
   await opening
   expect(f.release).not.toHaveBeenCalled()
   await f.browser.close('fern')
   expect(f.release).toHaveBeenCalled()
 })
-it('does not launch when authorization changes during UA inspection', async () => {
-  const ua = deferred<{ userAgent: string; chromeVersion: string }>()
+it('does not launch when authorization changes during lock inspection', async () => {
+  const lock = deferred<boolean>()
   let epoch = 'allowed'
   const f = browserFixture({
     authorization: () => epoch,
-    ua: { get: () => ua.promise, invalidate() {}, peek: () => null },
+    lockHeld: () => lock.promise,
   })
-  const opening = f.browser.ensure('fern', 'headless')
+  const opening = f.browser.ensure('fern')
   await until(() => f.acquire.mock.calls.length === 1)
   epoch = 'revoked'
-  ua.resolve({ userAgent: 'fictional', chromeVersion: '1' })
+  lock.resolve(false)
   await expect(opening).rejects.toThrow('authorization changed')
   expect(f.launch).not.toHaveBeenCalled()
   expect(f.release).toHaveBeenCalled()
@@ -130,7 +125,7 @@ it('closes a context returned after revocation without admitting a generation', 
       return launch.promise
     },
   })
-  const opening = f.browser.ensure('fern', 'headless')
+  const opening = f.browser.ensure('fern')
   await until(() => launching)
   epoch = 'revoked'
   launch.resolve(f.context as unknown as BrowserContext)
@@ -147,8 +142,9 @@ it('old disconnected callbacks cannot release a successor launch lease', async (
     acquireLease: () => ({ release: releases[acquired++] }),
     launchContext: async () => contexts[launched++] as unknown as BrowserContext,
   })
-  await f.browser.ensure('fern', 'headless')
-  await f.browser.ensure('fern', 'visible')
+  await f.browser.ensure('fern')
+  await f.browser.close('fern')
+  await f.browser.ensure('fern')
   const calls = releases[1].mock.calls.length
   contexts[0].driver.emit('disconnected')
   contexts[0].emit('close')
@@ -204,8 +200,7 @@ function toolFixture(sharedStore?: ProfileStore) {
   tab.refs = new Set(['e1'])
   const serializer = createKeyedSerializer()
   const browser = {
-    state: () => ({ mode: 'headless', generation }),
-    touch() {},
+    state: () => ({ generation }),
     operate: async (_name: string, fn: () => Promise<unknown>) => fn(),
     exclusive: async (_name: string, fn: () => Promise<unknown>) => fn(),
     usePage: vi.fn(async () => {}),
@@ -356,11 +351,11 @@ it('retains uncertain failed-launch leases and retries release before later admi
       return context as unknown as BrowserContext
     },
   })
-  await expect(f.browser.ensure('fern', 'visible')).rejects.toThrow('fictional launch failure')
-  await expect(f.browser.ensure('fern', 'visible')).rejects.toThrow('another Chrome')
+  await expect(f.browser.ensure('fern')).rejects.toThrow('fictional launch failure')
+  await expect(f.browser.ensure('fern')).rejects.toThrow('another Chrome')
   expect(acquire).toHaveBeenCalledTimes(1)
   ended = true
-  await f.browser.ensure('fern', 'visible')
+  await f.browser.ensure('fern')
   expect(acquire).toHaveBeenCalledTimes(2)
   await f.browser.closeAll()
 })
@@ -380,7 +375,7 @@ it('retains the lease between context close and confirmed Chrome end', async () 
     acquireLease: () => ({ release }),
     launchContext: async () => context as unknown as BrowserContext,
   })
-  await f.browser.ensure('fern', 'visible')
+  await f.browser.ensure('fern')
   const close = f.browser.close('fern')
   await closing.promise
   expect(release).toHaveReturnedWith(false)
@@ -463,7 +458,7 @@ it('launches against the real facade without treating lease or helper bookkeepin
     launchContext: async () => new Context() as unknown as BrowserContext,
   })
   try {
-    await browser.ensure('fern', 'visible')
+    await browser.ensure('fern')
     expect(f.store.shared!.authorization('fern')).toBe(before)
     f.store.setHelper('fern', 'off')
     expect(f.store.shared!.authorization('fern')).toBe(before)
@@ -484,7 +479,7 @@ it('reuses the shared launch blank page and unwraps Page handles for native boun
   context.pages = () => [page]
   const f = browserFixture({ launchContext: async () => context as unknown as BrowserContext })
   try {
-    await f.browser.ensure('fern', 'visible')
+    await f.browser.ensure('fern')
     const reused = await f.browser.newPage('fern', { newWindow: false })
     expect(unwrapBrowserHandle(reused)).toBe(page)
     const session = vi.fn(async (passed: Page) => {
@@ -525,7 +520,7 @@ it('keeps one window watcher when separate authorized tool calls use the same br
   const pages = deferred<'pages-closed' | 'timeout'>()
   const wait = vi.fn(() => pages.promise)
   const close = vi.fn(async () => {})
-  f.deps.browser.state = () => ({ mode: 'visible', generation: 1 })
+  f.deps.browser.state = () => ({ generation: 1 })
   f.deps.browser.waitAllPagesClosed = wait
   f.deps.browser.close = close
   const [tool] = fenceToolDefs([

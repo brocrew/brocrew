@@ -107,7 +107,6 @@ export async function startAgentChrome(
         tabs,
         opener: createProfileOpener({
           browser: deps.browser,
-          tabs,
           logger,
           profileExists: (name) => store.get(name) !== undefined,
         }),
