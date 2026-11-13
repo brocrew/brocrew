@@ -19,7 +19,7 @@ interface App {
   post(path: string, handler: Handler): unknown
   get(path: string, handler: Handler): unknown
   delete(path: string, handler: Handler): unknown
-  listen(port: number, host: string, ready: () => void): HttpServer
+  listen(port: number, host: string, ready: (error?: Error) => void): HttpServer
 }
 export const DEFAULT_SSE_PING_MS = 30000
 export function canPing(
@@ -130,7 +130,7 @@ export async function startMcpHttp<T extends Transport>(options: {
   })
   setupRoutes?.()
   const httpServer = await new Promise<HttpServer>((resolve, reject) => {
-    const server = app.listen(port, host, () => resolve(server))
+    const server = app.listen(port, host, (error) => (error ? reject(error) : resolve(server)))
     server.once('error', reject)
   })
   onListening?.()
