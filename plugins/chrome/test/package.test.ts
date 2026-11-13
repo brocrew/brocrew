@@ -1,5 +1,8 @@
 import { packageTestHelpers } from '../../shared/test/package-helpers.mjs'
 import { createHash } from 'node:crypto'
+import { spawnSync } from 'node:child_process'
+import { createServer } from 'node:net'
+import { once } from 'node:events'
 import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -90,6 +93,40 @@ describe('private Chrome package', () => {
         }),
       )
       expect(client.getServerVersion()?.version).toBe(manifest.version)
+    }
+  })
+  it('reports the real startup cause when the packaged server cannot bind its port', async () => {
+    const artifact = process.env.BROCREW_CHROME_TEST_ARTIFACT
+    expect(artifact, 'Build a fresh artifact and set BROCREW_CHROME_TEST_ARTIFACT').toBeTruthy()
+    const entry = ['.', 'chrome-darwin-arm64', 'chrome-win32-x64']
+      .map((name) => path.join(artifact!, name, 'package', 'server.mjs'))
+      .find((file) => fs.existsSync(file))
+    expect(entry).toBeDefined()
+    const occupied = createServer()
+    occupied.listen(0, '127.0.0.1')
+    await once(occupied, 'listening')
+    try {
+      const config = configured()
+      const child = spawnSync(process.execPath, [entry!], {
+        encoding: 'utf8',
+        timeout: 3000,
+        windowsHide: true,
+        env: {
+          ...process.env,
+          BROCREW_CHROME_DATA: config.home,
+          BROCREW_CHROME_AUTH: config.authPath,
+          BROCREW_CHROME_PORT: String((occupied.address() as { port: number }).port),
+          BROCREW_CHROME_SHARED: undefined,
+        },
+      })
+      expect(child.error).toBeUndefined()
+      expect(child.status, child.stderr).toBe(1)
+      expect(child.stderr).toContain('agent-chrome: cannot start:')
+      expect(child.stderr).toContain('EADDRINUSE')
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        occupied.close((error) => (error ? reject(error) : resolve())),
+      )
     }
   })
   it('requires explicit paths and distinct auth, with no workspace fallback', () => {
