@@ -160,7 +160,8 @@ describe('real SQLite window reads leave the caller responsive', () => {
         restore()
       }
       const after = await measure(`after-${kind}`, () => windowReader.read(query))
-      if (kind === 'routes') expect(canonicalWindowFacts(after.result)).toEqual(canonicalWindowFacts(before.result))
+      if (kind === 'routes')
+        expect(canonicalWindowFacts(after.result)).toEqual(canonicalWindowFacts(before.result))
       else expect(after.result).toEqual(before.result)
       expect(before.longestGapMs).toBeGreaterThan(250)
       expect(before.inputHandled).toBe(false)

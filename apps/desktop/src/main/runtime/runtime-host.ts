@@ -7752,8 +7752,7 @@ export class RuntimeHost implements LiveHost {
             ? ((runs ? this.waitAsLastRead.get(conversation) : undefined) ?? read(conversation))
             : undefined
         const ledger = snapshotRead?.(conversation) ?? fullLedger ?? read(conversation)
-        if (runs && fullLedger !== undefined)
-          this.waitAsLastRead.set(conversation, fullLedger)
+        if (runs && fullLedger !== undefined) this.waitAsLastRead.set(conversation, fullLedger)
         const state = this.stateOf(conversation, reads, unread, ledger, workOut, owed)
         // ⚑ **D-018 · counted from here while it is idle**, whatever the windows were last told.
         if (this.idleEnoughToStop(conversation, state))

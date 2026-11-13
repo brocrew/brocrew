@@ -210,10 +210,10 @@ describe('the actual screen publishes actionables without awaiting the limits la
     }
     const refreshLimitsDisplay = vi.fn(() => slowLimits.promise)
     const look = runInNewContext(
-      `${ts.transpileModule(source.slice(start, end + 2), {compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText}; ${ts.transpileModule(source.slice(once, onceEnd + 2), {compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText}; ${coalesced}; lookForWhatIsYours`,
+      `${ts.transpileModule(source.slice(start, end + 2), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText}; ${ts.transpileModule(source.slice(once, onceEnd + 2), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText}; ${coalesced}; lookForWhatIsYours`,
       {
         ...refs,
-        store: {...store, personsQueue: () => combinedPersonsQueue(store)},
+        store: { ...store, personsQueue: () => combinedPersonsQueue(store) },
         refreshLimitsDisplay,
         oneReadAtATime,
         actionableReadsClosed: false,

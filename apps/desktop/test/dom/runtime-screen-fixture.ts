@@ -93,7 +93,9 @@ export const walk = () => ({
 })
 const forestWalk = () => ({ ...walk(), walk: 'every-conversation-this-app-placed' as const })
 export const runtime = {
-  personsQueue: vi.fn<RuntimeBridge['personsQueue']>((): ReturnType<typeof combinedPersonsQueue> => combinedPersonsQueue(runtime)),
+  personsQueue: vi.fn<RuntimeBridge['personsQueue']>((): ReturnType<typeof combinedPersonsQueue> =>
+    combinedPersonsQueue(runtime),
+  ),
   onEvent: vi.fn(() => () => {}),
   onLiveness: vi.fn(() => () => {}),
   onChanged: vi.fn((listener: Parameters<RuntimeBridge['onChanged']>[0]) => {

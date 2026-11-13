@@ -49,7 +49,9 @@ function functionSource(name: string): string {
   const start = screen.indexOf(`async function ${name}(`)
   const end = screen.indexOf('\n}\n', start)
   if (start < 0 || end < start) throw new Error(`the screen has no complete ${name} function`)
-  return ts.transpileModule(screen.slice(start, end + 2), {compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText
+  return ts.transpileModule(screen.slice(start, end + 2), {
+    compilerOptions: { target: ts.ScriptTarget.ES2022 },
+  }).outputText
 }
 
 function fixture() {
