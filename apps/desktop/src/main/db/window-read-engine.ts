@@ -15,6 +15,7 @@ import {
   type SkippedRow,
   type WindowReadQuery,
   type WindowReadResult,
+  type WindowRoutes,
 } from './window-read-protocol'
 
 /** Canonical folds over one read-only WAL snapshot, consuming SQLite iterators incrementally. */
@@ -38,7 +39,8 @@ export class WindowReadEngine {
 
   read(input: WindowReadQuery, abandoned: () => boolean = () => false): WindowReadResult {
     const query = windowReadQuery.parse(input)
-    if (query.kind === 'routes') {
+    const keepsFolds = query.kind === 'routes' || query.kind === 'publication'
+    if (keepsFolds) {
       if (query.reuse === undefined || query.reuse.token !== this.cacheToken) this.answers.clear()
       else for (const answers of this.answers.values())
         for (const owner of query.reuse.changed) answers.delete(owner)
@@ -99,7 +101,7 @@ export class WindowReadEngine {
         Math.random,
         checkCancelled,
         true,
-        query.kind === 'routes' ? this.answers : undefined,
+        keepsFolds ? this.answers : undefined,
       )
       let result: WindowReadResult
       if (query.kind === 'forest') {
@@ -209,6 +211,7 @@ export class WindowReadEngine {
         }
         result = { kind: 'leads', rows }
       } else {
+        const readRoutes = (): WindowRoutes => {
         const candidates = this.db
           .prepare("SELECT DISTINCT session_id AS id FROM events WHERE type = 'request_routed'")
           .iterate() as IterableIterator<{ id: string }>
@@ -237,12 +240,38 @@ export class WindowReadEngine {
             skipped: [...(skipped.get(id) ?? [])],
           })
         }
-        result = {
+        return {
           kind: 'routes',
           routes,
           questions: store.questionsAPersonMustAnswer(unread),
           decisions: store.decisionsAwaitingAPerson(unread),
           work: readWindowWork(cancellable, store),
+        }
+        }
+        if (query.kind === 'routes') result = readRoutes()
+        else {
+          let states: WindowRoutes | null = null
+          try { states = readRoutes() } catch (error) {
+            console.warn('window worker could not read changed states', error)
+            this.answers.clear()
+          }
+          const files: ReturnType<typeof store.filesKept>[number][] = []
+          const failedFiles: string[] = []
+          let roster: ReturnType<typeof store.agentIdentities> | null = null
+          try { roster = store.agentIdentities() } catch (error) {
+            console.warn('window worker could not read the file roster', error)
+          }
+          for (const { piece, resources } of query.kept) {
+            try {
+              if (roster === null) throw new WindowReadUnavailable()
+              files.push(...store.filesKept({ scope: 'piece', piece })
+                .filter((row) => resources.includes(row.resource.resource)))
+            } catch (error) {
+              failedFiles.push(piece)
+              console.warn('window worker could not read kept files', error)
+            }
+          }
+          result = { kind: 'publication', states, files, failedFiles, roster }
         }
       }
       if (refused !== undefined) throw refused
@@ -251,11 +280,14 @@ export class WindowReadEngine {
       if (result.kind === 'routes') {
         this.cacheToken = randomUUID()
         result = { ...result, cacheToken: this.cacheToken }
+      } else if (result.kind === 'publication' && result.states !== null) {
+        this.cacheToken = randomUUID()
+        result = { ...result, states: { ...result.states, cacheToken: this.cacheToken } }
       }
       return result
     } catch (error) {
       if (this.db.inTransaction) this.db.exec('ROLLBACK')
-      if (query.kind === 'routes') {
+      if (keepsFolds) {
         this.answers.clear()
         this.cacheToken = undefined
       }

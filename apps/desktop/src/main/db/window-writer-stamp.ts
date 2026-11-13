@@ -300,7 +300,7 @@ export function windowWriterSampler(
       return {
         writer: shared.owner,
         watcher,
-        revision: query.kind === 'routes' ? row.changes : row.revision,
+        revision: query.kind === 'routes' || query.kind === 'publication' ? row.changes : row.revision,
         dataVersion: row.version,
         schemaVersion: BigInt(schemaVersion),
         at,

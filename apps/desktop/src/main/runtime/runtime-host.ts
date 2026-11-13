@@ -4356,6 +4356,8 @@ export class RuntimeHost implements LiveHost {
 
   /** ⚑ **D-019 · a flush is already asked for this turn of the loop** ({@link askTheFlush}). */
   private flushAsked = false
+  private flushInFlight: Promise<void> | undefined
+  private flushAgain = false
 
   /**
    * ⚑ **D-026 · the files kept since the last flush** — each piece with the ids its commit wrote;
@@ -7308,9 +7310,24 @@ export class RuntimeHost implements LiveHost {
    * D-026, {@link filesWereKept}'s.
    */
   private askTheFlush(): void {
-    if (this.flushAsked) return
+    if (this.flushAsked) {
+      if (this.flushInFlight !== undefined) this.flushAgain = true
+      return
+    }
     this.flushAsked = true
-    setImmediate(() => this.sayWhatMoved())
+    setImmediate(() => {
+      this.flushInFlight = Promise.resolve().then(() => this.sayWhatMoved())
+        .catch((error: unknown) => {
+          console.warn(`runtime host could not flush changed states: ${errorMessage(error)}`)
+        }).finally(() => {
+          this.flushInFlight = undefined
+          this.flushAsked = false
+          if (this.flushAgain && !this.launches.closed) {
+            this.flushAgain = false
+            this.askTheFlush()
+          }
+        })
+    })
   }
 
   /**
@@ -7621,17 +7638,16 @@ export class RuntimeHost implements LiveHost {
    * Read each half independently: a failure must not discard the other. This immediate
    * callback must not escape with an exception, and quit must not read a closing database.
    */
-  private sayWhatMoved(): void {
+  private async sayWhatMoved(): Promise<void> {
+    if (this.launches.closed) return
     // Another connection's commit is heard before what moved is said.
     this.deps.store.checkCommitted()
-    this.flushAsked = false
     const asked = [...this.statesToAsk]
     this.statesToAsk.clear()
     const keptOn = this.filesToSay.splice(0)
     const say = this.deps.statesMoved
     if (say === undefined || this.launches.closed) return
-    const moved = this.statesThatMoved(asked)
-    const kept = this.whatWasKept(keptOn)
+    const publish = (moved: readonly AgentStateMoved[], kept: readonly KeptFile[]): void => {
     if (moved.length === 0 && kept.length === 0) return
     // A push is newer than every answer composed before it, so it moves the sequence once.
     const published = { epoch: this.publicationEpoch, seq: ++this.publicationSeq }
@@ -7642,7 +7658,29 @@ export class RuntimeHost implements LiveHost {
         this.stateSaid.delete(conversation)
         this.statesToAsk.add(conversation)
       }
+      this.filesToSay.push(...keptOn)
       console.warn(`runtime host could not tell the windows what moved: ${errorMessage(error)}`)
+    }
+    }
+    if (this.deps.windowReader === undefined) {
+      publish(this.statesThatMoved(asked), this.whatWasKept(keptOn))
+      return
+    }
+    if (asked.length === 0 && keptOn.length === 0) return
+    try {
+      await this.freshWindowQuery({ kind: 'publication', kept: keptOn }, (reading) => {
+        if (reading.kind !== 'publication') throw new WindowReadUnavailable()
+        const moved = reading.states === null ? [] :
+          this.windowRoutingReads.run(reading.states, () => this.statesThatMoved(asked))
+        if (reading.states === null) for (const id of asked) this.statesToAsk.add(id)
+        this.filesToSay.push(...keptOn.filter(({ piece }) => reading.failedFiles.includes(piece)))
+        publish(moved, reading.files.map((file) => keptFileOf(file, reading.roster)))
+      })
+    } catch (error) {
+      if (this.launches.closed) return
+      for (const id of asked) this.statesToAsk.add(id)
+      this.filesToSay.push(...keptOn)
+      console.warn(`runtime host could not read changed states: ${errorMessage(error)}`)
     }
   }
 
@@ -7667,7 +7705,8 @@ export class RuntimeHost implements LiveHost {
     }
     const unread = rowsUnreadOnce()
     const read = this.oneLedgerReadPerAnswer(unread)
-    const workOut = this.workOutAsKept(this.oneWorkOutReadPerAnswer(unread))
+    const workOut = this.windowRoutingReads.active ? this.oneStateWorkOutReadPerAnswer(unread) :
+      this.workOutAsKept(this.oneWorkOutReadPerAnswer(unread))
     // ⚑ **F036 · each asker's ledger as this flush reads it**, shared with that asker's own state.
     const owed = this.owedAsKept(this.oneOwedReadPerAnswer(this.ledgerAsKept(read)))
     const moved: AgentStateMoved[] = []
@@ -7675,8 +7714,8 @@ export class RuntimeHost implements LiveHost {
       try {
         const runs = this.slots.has(conversation)
         const ledger =
-          (runs ? this.waitAsLastRead.get(conversation) : undefined) ?? read(conversation)
-        if (runs) this.waitAsLastRead.set(conversation, ledger)
+          (runs && !this.windowRoutingReads.active ? this.waitAsLastRead.get(conversation) : undefined) ?? read(conversation)
+        if (runs && !this.windowRoutingReads.active) this.waitAsLastRead.set(conversation, ledger)
         const state = this.stateOf(conversation, reads, unread, ledger, workOut, owed)
         // ⚑ **D-018 · counted from here while it is idle**, whatever the windows were last told.
         if (this.idleEnoughToStop(conversation, state))
@@ -15277,6 +15316,14 @@ export class RuntimeHost implements LiveHost {
         this.now() < failed.until
       )
         throw failed.missed
+      let requested = query
+      if ((query.kind === 'routes' || query.kind === 'publication') && this.windowRoutesKept?.result.kind === 'routes') {
+        const previous = this.windowRoutesKept
+        const changed = this.deps.windowWriterStamp?.changedOwners?.(previous.stamp, before)
+        const token = previous.result.cacheToken
+        if (token !== undefined && changed != null)
+          requested = { ...query, reuse: { token, changed: [...changed] } }
+      }
       let pending: Promise<WindowReadResult>
       let origin = before
       if (reusable) {
@@ -15284,14 +15331,6 @@ export class RuntimeHost implements LiveHost {
         let shared = this[key]
         if (shared === undefined && joinOnly) throw new WindowReadMissed('callers-full')
         if (shared === undefined) {
-          let requested = query
-          if (query.kind === 'routes' && this.windowRoutesKept?.result.kind === 'routes') {
-            const previous = this.windowRoutesKept
-            const changed = this.deps.windowWriterStamp?.changedOwners?.(previous.stamp, before)
-            const token = previous.result.cacheToken
-            if (token !== undefined && changed != null)
-              requested = { ...query, reuse: { token, changed: [...changed] } }
-          }
           shared = { stamp: before, read: reader.read(requested) }
           this[key] = shared
           const owned = shared
@@ -15308,7 +15347,7 @@ export class RuntimeHost implements LiveHost {
         }
         pending = shared.read
         origin = shared.stamp
-      } else pending = reader.read(query, signal)
+      } else pending = reader.read(requested, signal)
       let result: WindowReadResult
       try {
         result = await this.waitForWindowRead(pending, signal)
@@ -15320,6 +15359,8 @@ export class RuntimeHost implements LiveHost {
       if (sameWindowWriter(origin, before) && sameWindowWriter(origin, after)) {
         if (query.kind === 'routes') this.windowRoutesKept = { stamp: after!, result }
         if (query.kind === 'incidents') this.windowIncidentsKept = { stamp: after!, result }
+        if (result.kind === 'publication' && result.states !== null)
+          this.windowRoutesKept = { stamp: after!, result: result.states }
         // Heard after the wait, so a commit made while the worker read is heard too.
         this.deps.store.checkCommitted()
         return compose(result)
@@ -39805,6 +39846,7 @@ export class RuntimeHost implements LiveHost {
     } finally {
       for (const result of await readersClosed)
         if (result.status === 'rejected') failures.push(result.reason)
+      await this.flushInFlight
     }
     if (failures.length) throw new AggregateError(failures, 'Runtime shutdown did not finish')
     // Bounded like every other wait a quit makes, and for the same reason: one adapter that will not

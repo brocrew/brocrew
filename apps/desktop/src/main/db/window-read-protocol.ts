@@ -15,6 +15,7 @@ export const WINDOW_READ_BOUNDS = {
 
 const conversationId = z.string().min(1).max(512)
 const conversationIds = z.array(conversationId)
+const foldReuse = z.object({ token: z.string(), changed: conversationIds }).strict()
 
 export const windowReadQuery = z.discriminatedUnion('kind', [
   z
@@ -42,9 +43,10 @@ export const windowReadQuery = z.discriminatedUnion('kind', [
       hidden: conversationIds,
     })
     .strict(),
-  z.object({ kind: z.literal('routes'), reuse: z.object({
-    token: z.string(), changed: conversationIds,
-  }).strict().optional() }).strict(),
+  z.object({ kind: z.literal('routes'), reuse: foldReuse.optional() }).strict(),
+  z.object({ kind: z.literal('publication'), reuse: foldReuse.optional(),
+    kept: z.array(z.object({ piece: z.string(), resources: z.array(z.string()) }).strict()),
+  }).strict(),
   z.object({ kind: z.literal('incidents') }).strict(),
   z
     .object({
@@ -85,6 +87,13 @@ export interface WindowRoutes {
   readonly decisions: ReturnType<SessionStore['decisionsAwaitingAPerson']>
   readonly cacheToken?: string
   readonly work?: WindowWorkReading
+}
+export interface WindowPublication {
+  readonly kind: 'publication'
+  readonly states: WindowRoutes | null
+  readonly files: ReturnType<SessionStore['filesKept']>
+  readonly failedFiles: readonly string[]
+  readonly roster: ReturnType<SessionStore['agentIdentities']> | null
 }
 interface WindowLeads {
   readonly kind: 'leads'
@@ -131,6 +140,7 @@ export type WindowReadResult =
   | WindowIncidents
   | WindowForest
   | WindowForestNodes
+  | WindowPublication
 
 const skipped = z.union([z.number().int().nonnegative().safe(), z.literal('the-whole-ledger')])
 const walk = z
@@ -144,6 +154,9 @@ const walk = z
   .strict()
 const ids = z.array(z.string().min(1))
 export const windowReadResult = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('publication'), states: z.unknown(), files: z.array(z.unknown()),
+    failedFiles: z.array(z.string()), roster: z.array(z.unknown()).nullable(),
+  }).strict(),
   z
     .object({
       kind: z.literal('forest'),
