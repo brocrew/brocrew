@@ -19,7 +19,9 @@ import { createRepoAwarePluginVerifier } from '../../apps/desktop/src/main/plugi
 import { catalogueBytes } from '../../apps/desktop/test/plugin-package-fixtures'
 const artifact = process.env.BROCREW_CHROME_TEST_ARTIFACT
 const packageTarget =
-  process.platform === 'win32' ? { os: 'win32', cpu: process.arch } : { os: 'darwin', cpu: 'arm64' }
+  process.platform === 'win32'
+    ? ({ os: 'win32', cpu: 'x64' } as const)
+    : ({ os: 'darwin', cpu: 'arm64' } as const)
 const hash = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex')
 async function builtInventory(
   run: (fixture: {
