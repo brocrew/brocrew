@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process'
+import { firstCopyPolicy } from './lib/upgrade-candidate-evidence.mjs'
 import { readStateEntry } from './lib/skill-tree-state.mjs'
 import {
   aCrashAfterTheSavedKey,
@@ -63,7 +64,6 @@ import {
   pluginOwnerQuiescence,
   launchSetupExpected,
   lineageFits,
-  firstCopyPolicy,
   READY_LINE,
   recordedWith,
   registryKept,

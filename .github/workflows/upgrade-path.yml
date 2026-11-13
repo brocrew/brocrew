@@ -159,7 +159,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: The check's own rules fail what they should
-        run: pnpm exec vitest run --project scripts scripts/test/upgrade-path.test.mjs
+        run: pnpm exec vitest run --project scripts scripts/test/upgrade-path.test.mjs scripts/test/upgrade-candidate-evidence.test.mjs
 
       - name: Fetch the beta a tester runs, as its release publishes it
         shell: bash
@@ -190,7 +190,7 @@ jobs:
           ASSET_BINDING: ${{ needs.assets.outputs.binding }}
         run: >-
           node --input-type=module -e 'import { writeFileSync, mkdirSync } from "node:fs";
-          import { releaseAssetInventory } from "./scripts/lib/upgrade-path.mjs";
+          import { releaseAssetInventory } from "./scripts/lib/upgrade-candidate-evidence.mjs";
           mkdirSync("upgrade-path-evidence", {recursive:true});
           releaseAssetInventory("apps/desktop/dist",process.env.CANDIDATE_VERSION,
           process.env.RUNNER_OS === "Windows" ? "windows" : "mac",
@@ -283,7 +283,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: The check's own rules fail what they should
-        run: pnpm exec vitest run --project scripts scripts/test/upgrade-path.test.mjs
+        run: pnpm exec vitest run --project scripts scripts/test/upgrade-path.test.mjs scripts/test/upgrade-candidate-evidence.test.mjs
 
       - name: Fetch the beta a tester runs, as its release publishes it
         env:
@@ -313,7 +313,7 @@ jobs:
           ASSET_BINDING: ${{ needs.assets.outputs.binding }}
         run: >-
           node --input-type=module -e 'import { writeFileSync, mkdirSync } from "node:fs";
-          import { releaseAssetInventory } from "./scripts/lib/upgrade-path.mjs";
+          import { releaseAssetInventory } from "./scripts/lib/upgrade-candidate-evidence.mjs";
           mkdirSync("upgrade-path-evidence", {recursive:true});
           releaseAssetInventory("apps/desktop/dist",process.env.CANDIDATE_VERSION,
           process.env.RUNNER_OS === "Windows" ? "windows" : "mac",
