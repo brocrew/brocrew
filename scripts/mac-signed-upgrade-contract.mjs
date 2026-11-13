@@ -63,7 +63,7 @@ export function permissionsKept(before, after) {
 export function fixturePermissions(folder, nativeNames = []) {
   const result = [{ path: '', directory: true, mode: lstatSync(folder).mode & 0o777 }]
   const existing = new Set(readdirSync(folder))
-  for (const name of [...STATE_FILES, 'brobot2.sqlite']) {
+  for (const name of [...STATE_FILES, 'brobot2.sqlite', 'api-keys.json']) {
     if (!existing.has(name)) continue
     for (const entry of permissionInventory(join(folder, name)))
       result.push({ ...entry, path: entry.path ? `${name}/${entry.path}` : name })
@@ -76,20 +76,38 @@ export function fixturePermissions(folder, nativeNames = []) {
   return result
 }
 
-export function credentialPreserved(before, after, { resaved = false } = {}) {
+export function credentialPreserved(before, after, status) {
+  requireEvidence(typeof before === 'string', 'Fictional plain-file credential baseline is missing.')
+  const file = JSON.parse(before)
+  const setAt = file?.keys?.codex?.setAt
   requireEvidence(
-    Array.isArray(before) &&
-      before.some(
-        (row) =>
-          row.provider === 'codex' && typeof row.sealed === 'string' && row.sealed.length > 0,
-      ),
-    'Fictional encrypted credential baseline is missing.',
+    file.version === 1 &&
+      Number.isSafeInteger(setAt) &&
+      setAt > 0 &&
+      isDeepStrictEqual(file.keys, {
+        codex: { key: 'sk-update-rehearsal-not-a-real-key', setAt },
+      }) &&
+      file.cantRead === undefined,
+    'Fictional plain-file credential baseline is invalid.',
   )
+  requireEvidence(before === after, 'Fictional plain-file credential bytes changed during update.')
+  if (arguments.length === 3)
+    requireEvidence(
+      status?.provider === 'codex' &&
+        status.set === true &&
+        status.inUse === true &&
+        status.setAt === setAt &&
+        status.readState !== 'unreadable' &&
+        status.refusedForBilling === undefined,
+      'The preserved fictional credential is not usable through the app API.',
+    )
+  return { store: 'api-keys.json', setAt, unchanged: true }
+}
+
+export function legacyCredentialsPreserved(before, after) {
   requireEvidence(
-    isDeepStrictEqual(resaved ? before.filter((row) => row.provider !== 'codex') : before, after),
-    resaved
-      ? 'Saving Codex again did not remove only its sealed row.'
-      : 'Fictional encrypted credential bytes changed during update.',
+    Array.isArray(before) && Array.isArray(after) && isDeepStrictEqual(before, after),
+    'Legacy credential rows changed during update.',
   )
 }
 

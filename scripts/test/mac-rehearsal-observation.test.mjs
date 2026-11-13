@@ -5,7 +5,7 @@ import { isDeepStrictEqual } from 'node:util'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import ts from 'typescript'
-import { openUpdates, saveRehearsalCodexKey } from '../lib/update-rehearsal-app.mjs'
+import { openUpdates } from '../lib/update-rehearsal-app.mjs'
 import { waitForNativeMacDownload } from '../lib/mac-native-upgrade.mjs'
 import { credentialPreserved } from '../mac-signed-upgrade-contract.mjs'
 import {
@@ -550,7 +550,7 @@ it('uses Updates and its native Download/restart preparation from offered or che
     }
 })
 
-it('requires the sealed-key refusal and no model request before saving again and resuming the same conversation', async () => {
+it('preserves the released plain-file key and resumes without saving it again', async () => {
   const source = ts.createSourceFile(
     'mac-signed-upgrade.mjs',
     readFileSync(new URL('../mac-signed-upgrade.mjs', import.meta.url), 'utf8'),
@@ -562,34 +562,27 @@ it('requires the sealed-key refusal and no model request before saving again and
     (node) => ts.isFunctionDeclaration(node) && node.name?.text === 'reopenSecond',
   )
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
-  for (const mode of ['expected', 'usable-key', 'wrong-refusal', 'model-request']) {
-    let saved = false
-    const reason = 'Saved key can’t be read, save it again in Settings.'
-    const rows = [{ provider: 'codex', sealed: 'original-ciphertext' }]
+  for (const mode of [
+    'expected',
+    'missing-file',
+    'changed-file',
+    'misleading-api',
+    'changed-after-resume',
+  ]) {
+    const before = JSON.stringify({
+      version: 1,
+      keys: { codex: { key: 'sk-update-rehearsal-not-a-real-key', setAt: 12 } },
+    })
     const model = { requests: [] }
     const runtime = {
       apiKeyStatus: async () => ({
         provider: 'codex',
         set: true,
-        inUse: mode === 'usable-key',
-        readState: mode === 'usable-key' ? undefined : 'unreadable',
-        unreadableReason: reason,
+        inUse: mode !== 'misleading-api',
+        setAt: 12,
       }),
-      resume: vi.fn(async ({ sessionId }) => {
-        expect(sessionId).toBe('original-conversation')
-        if (mode === 'model-request') model.requests.push({ post: true })
-        throw new Error(
-          mode === 'wrong-refusal'
-            ? 'another refusal'
-            : `Error invoking remote method 'runtime:command': Error: ${reason}`,
-        )
-      }),
-      setApiKey: vi.fn(async ({ provider, key }) => {
-        expect(provider).toBe('codex')
-        expect(key).toBe('sk-update-rehearsal-not-a-real-key')
-        saved = true
-        return { provider, set: true, inUse: true }
-      }),
+      setApiKey: vi.fn(),
+      close: vi.fn(),
     }
     const cdp = {
       evaluate: (body) =>
@@ -598,7 +591,7 @@ it('requires the sealed-key refusal and no model request before saving again and
             runtime,
             updates: {
               read: async () => ({
-                version: '0.2.17',
+                version: '0.2.24',
                 channel: 'stable',
                 checkAutomatically: true,
                 state: { kind: 'idle', upToDate: true },
@@ -607,20 +600,26 @@ it('requires the sealed-key refusal and no model request before saving again and
           },
         }),
     }
-    const continued = new Error('the original conversation continues after the explicit resave')
+    let resumed = false
     const fixture = {
       workspace: {
         name: 'Default',
-        baseline: { before: { provider_api_key: rows } },
+        baseline: { credential: before },
         copiesAfterFirst: ['copy'],
-        conversations: ['original-conversation', 'second-conversation'],
+        conversations: ['original-conversation'],
         result: {},
       },
       selectWorkspace: vi.fn(),
       launch: async () => cdp,
-      VERSION_B: '0.2.17',
+      VERSION_B: '0.2.24',
       recoveryOrder: vi.fn(),
-      readFile: vi.fn(),
+      readFile: vi.fn(async (path) => {
+        if (!path.endsWith('api-keys.json')) return ''
+        if (mode === 'missing-file') throw new Error('Fictional file is missing')
+        return mode === 'changed-file' || (mode === 'changed-after-resume' && resumed)
+          ? `${before}\n`
+          : before
+      }),
       join,
       evidence: folder(),
       checkpointIds: async () => ['copy'],
@@ -633,13 +632,14 @@ it('requires the sealed-key refusal and no model request before saving again and
       waitFor: async (check) => expect(await check()).toBe(true),
       model,
       credentialPreserved,
-      databaseSnapshot: () => ({ provider_api_key: rows }),
-      saveRehearsalCodexKey,
       startLocalModelTurn: vi.fn(async (_cdp, _text, options) => {
-        expect(saved).toBe(true)
         expect(options.sessionId).toBe('original-conversation')
-        throw continued
+        resumed = true
+        model.requests.push({ responseId: 'resumed-response', completed: true })
       }),
+      localModelTurnFacts: async () => ({ responseRecorded: true, responseId: 'resumed-response' }),
+      screenshot: vi.fn(),
+      passed: vi.fn(),
     }
     const run = new AsyncFunction(
       'fixture',
@@ -648,23 +648,18 @@ it('requires the sealed-key refusal and no model request before saving again and
       return await reopenSecond(workspace)`,
     )
     if (mode === 'expected') {
-      await expect(run(fixture)).rejects.toBe(continued)
-      expect(runtime.setApiKey).toHaveBeenCalledOnce()
-      expect(fixture.workspace.result.unreadableCredential).toEqual({
-        reason,
-        refusal: `Error invoking remote method 'runtime:command': Error: ${reason}`,
-        modelRequests: 0,
+      await run(fixture)
+      expect(fixture.workspace.result.second).toMatchObject({
+        resumedConversation: 'original-conversation',
+        resaved: false,
+        credential: { store: 'api-keys.json', setAt: 12, unchanged: true },
       })
+      expect(fixture.startLocalModelTurn).toHaveBeenCalledOnce()
+      expect(runtime.close).toHaveBeenCalledOnce()
     } else {
-      await expect(run(fixture)).rejects.toThrow(
-        mode === 'usable-key'
-          ? 'plain unreadable state'
-          : mode === 'wrong-refusal'
-            ? 'exact refusal'
-            : 'reached the scripted model',
-      )
-      expect(runtime.setApiKey).not.toHaveBeenCalled()
-      expect(fixture.startLocalModelTurn).not.toHaveBeenCalled()
+      await expect(run(fixture)).rejects.toThrow()
+      expect(fixture.startLocalModelTurn).toHaveBeenCalledTimes(mode === 'changed-after-resume' ? 1 : 0)
     }
+    expect(runtime.setApiKey).not.toHaveBeenCalled()
   }
 })

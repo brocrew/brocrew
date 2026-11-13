@@ -51,6 +51,7 @@ import {
   fixturePermissions,
   permissionsKept,
   credentialPreserved,
+  legacyCredentialsPreserved,
   registriesKept,
   assertThreeWorkspaceStates,
 } from './mac-signed-upgrade-contract.mjs'
@@ -249,13 +250,26 @@ async function launch(
 async function quit() {
   active = await quitMacChild(active, app, processInfo, passed)
 }
-async function checkRetention(before, state, natives, settingsBefore, registryBefore) {
+async function checkRetention(
+  before,
+  state,
+  natives,
+  settingsBefore,
+  registryBefore,
+  credential,
+  cdp,
+) {
   const after = databaseSnapshot(join(data, 'brobot2.sqlite'), {
     credentials: true,
     movedState: true,
   })
   const comparison = dataPreserved(before, after)
-  credentialPreserved(before.provider_api_key, after.provider_api_key)
+  legacyCredentialsPreserved(before.provider_api_key, after.provider_api_key)
+  credentialPreserved(
+    credential,
+    await readFile(join(data, 'api-keys.json'), 'utf8'),
+    await cdp.evaluate("return await window.api.runtime.apiKeyStatus({provider:'codex'})"),
+  )
   statePreserved(state, stateBytes(data, after))
   registriesKept(
     registryBefore,
@@ -297,6 +311,12 @@ async function seedWorkspace(workspace) {
     'return await window.api.updates.set({checkAutomatically:true,channel:"stable"})',
   )
   workspace.result.initialCredential = await saveRehearsalCodexKey(cdp)
+  workspace.credentialBeforeButtons = await readFile(join(data, 'api-keys.json'), 'utf8')
+  credentialPreserved(
+    workspace.credentialBeforeButtons,
+    workspace.credentialBeforeButtons,
+    await cdp.evaluate("return await window.api.runtime.apiKeyStatus({provider:'codex'})"),
+  )
   const conversations = []
   for (let index = 0; index < 2; index++) {
     const turn = { index, phase: 'creating', steps: [] }
@@ -349,6 +369,11 @@ async function seedWorkspace(workspace) {
     movedState: true,
   })
   workspace.stateBeforeButtons = stateBytes(data, workspace.beforeButtons)
+  workspace.result.credentialBaseline = credentialPreserved(
+    workspace.credentialBeforeButtons,
+    await readFile(join(data, 'api-keys.json'), 'utf8'),
+    await cdp.evaluate("return await window.api.runtime.apiKeyStatus({provider:'codex'})"),
+  )
   workspace.nativeBeforeButtons = await nativeFiles(nativeRoot, data)
   nativeTranscriptsPresent(workspace.beforeButtons, workspace.nativeBeforeButtons)
   requireEvidence(
@@ -362,6 +387,7 @@ async function seedWorkspace(workspace) {
     JSON.stringify(
       {
         database: workspace.beforeButtons,
+        credential: workspace.result.credentialBaseline,
         state: stateSummary(workspace.stateBeforeButtons),
         native: workspace.nativeBeforeButtons,
       },
@@ -541,13 +567,19 @@ async function captureBaseline(workspace, registryBefore, settingsBefore) {
     natives = await nativeFiles(nativeRoot, data)
   dataPreserved(workspace.beforeButtons, before, { allowAppended: true })
   statePreserved(workspace.stateBeforeButtons, state)
-  credentialPreserved(workspace.beforeButtons.provider_api_key, before.provider_api_key)
+  legacyCredentialsPreserved(workspace.beforeButtons.provider_api_key, before.provider_api_key)
+  const credential = workspace.credentialBeforeButtons
+  workspace.result.settledCredential = credentialPreserved(
+    credential,
+    await readFile(join(data, 'api-keys.json'), 'utf8'),
+  )
   await checkNativePrefixes(workspace.nativeBeforeButtons, data)
   workspace.result.baselineDatabase = {
     bytes: (await lstat(join(data, 'brobot2.sqlite'))).size,
     sha256: await digest(join(data, 'brobot2.sqlite')),
   }
   workspace.baseline = {
+    credential,
     before,
     state,
     files,
@@ -562,6 +594,7 @@ async function captureBaseline(workspace, registryBefore, settingsBefore) {
     JSON.stringify(
       {
         database: before,
+        credential: workspace.result.settledCredential,
         state: stateSummary(state),
         native: natives,
         permissions: workspace.baseline.permissions,
@@ -639,13 +672,15 @@ async function reopenFirst(workspace) {
   })
   statePreserved(baseline.state, stateBytes(checkpoint, copy))
   dataPreserved(baseline.before, copy)
-  credentialPreserved(baseline.before.provider_api_key, copy.provider_api_key)
+  legacyCredentialsPreserved(baseline.before.provider_api_key, copy.provider_api_key)
   const kept = await checkRetention(
     baseline.before,
     baseline.state,
     baseline.natives,
     baseline.settingsBefore,
     baseline.registryBefore,
+    baseline.credential,
+    cdp,
   )
   permissionsKept(baseline.permissions, fixturePermissions(data, Object.keys(baseline.natives)))
   const drafts = await cdp.evaluate('return await window.api.savedDrafts()')
@@ -685,6 +720,8 @@ async function reopenSecond(workspace) {
     baseline.natives,
     baseline.settingsBefore,
     baseline.registryBefore,
+    baseline.credential,
+    cdp,
   )
   await openUpdates(cdp)
   await click(cdp, '[data-cy=updates-check]')
@@ -699,41 +736,11 @@ async function reopenSecond(workspace) {
       read.checkAutomatically
     )
   }, 'the signed candidate does not offer itself or change settings')
-  const requestsBefore = model.requests.length
-  const unreadable = await cdp.evaluate(
-    "return await window.api.runtime.apiKeyStatus({provider:'codex'})",
+  workspace.result.credentialBeforeResume = credentialPreserved(
+    baseline.credential,
+    await readFile(join(data, 'api-keys.json'), 'utf8'),
+    await cdp.evaluate("return await window.api.runtime.apiKeyStatus({provider:'codex'})"),
   )
-  const reason = 'Saved key can’t be read, save it again in Settings.'
-  requireEvidence(
-    unreadable.provider === 'codex' &&
-      unreadable.set &&
-      !unreadable.inUse &&
-      unreadable.readState === 'unreadable' &&
-      unreadable.unreadableReason === reason,
-    'The predecessor sealed key did not report its plain unreadable state.',
-  )
-  const refusal = await cdp.evaluate(`try {
-    await window.api.runtime.resume({sessionId:${JSON.stringify(workspace.conversations[0])}})
-    return null
-  } catch(error) { return error.message }`)
-  requireEvidence(
-    refusal === `Error invoking remote method 'runtime:command': Error: ${reason}`,
-    'Resuming with the predecessor sealed key did not give its exact refusal.',
-  )
-  requireEvidence(
-    model.requests.length === requestsBefore,
-    'The unreadable key reached the scripted model before being saved again.',
-  )
-  credentialPreserved(
-    baseline.before.provider_api_key,
-    databaseSnapshot(join(data, 'brobot2.sqlite'), { credentials: true }).provider_api_key,
-  )
-  workspace.result.unreadableCredential = {
-    reason,
-    refusal,
-    modelRequests: model.requests.length - requestsBefore,
-  }
-  workspace.result.resavedCredential = await saveRehearsalCodexKey(cdp)
   const prompt = `${workspace.name} fictional resumed turn after the guided replacement`
   await startLocalModelTurn(cdp, prompt, { sessionId: workspace.conversations[0] })
   let history
@@ -744,22 +751,10 @@ async function reopenSecond(workspace) {
       model.requests.some((one) => one.responseId === history.responseId && one.completed)
     )
   }, 'same conversation resumes through the local scripted model')
-  const credential = await cdp.evaluate(
-    "return await window.api.runtime.apiKeyStatus({provider:'codex'})",
-  )
-  workspace.result.credential = {
-    provider: credential.provider,
-    set: credential.set,
-    inUse: credential.inUse,
-    readState: credential.readState ?? null,
-    setAt: credential.setAt,
-  }
-  requireEvidence(
-    credential.provider === 'codex' &&
-      credential.set &&
-      credential.inUse &&
-      credential.readState !== 'unreadable',
-    'The fictional credential saved again is inaccessible.',
+  workspace.result.credential = credentialPreserved(
+    baseline.credential,
+    await readFile(join(data, 'api-keys.json'), 'utf8'),
+    await cdp.evaluate("return await window.api.runtime.apiKeyStatus({provider:'codex'})"),
   )
   await cdp.evaluate(
     `return await window.api.runtime.close({sessionId:${JSON.stringify(workspace.conversations[0])}})`,
@@ -768,6 +763,8 @@ async function reopenSecond(workspace) {
     path: data,
     version: VERSION_B,
     resumedConversation: workspace.conversations[0],
+    credential: workspace.result.credential,
+    resaved: false,
     responseId: history.responseId,
   }
   await screenshot(cdp, 'b-second-restored.png')
@@ -838,18 +835,10 @@ try {
     const baseline = workspace.baseline,
       after = databaseSnapshot(join(data, 'brobot2.sqlite'), { credentials: true })
     dataPreserved(baseline.before, after, { allowAppended: true })
-    credentialPreserved(baseline.before.provider_api_key, after.provider_api_key, { resaved: true })
-    const keys = JSON.parse(await readFile(join(data, 'api-keys.json'), 'utf8'))
-    requireEvidence(
-      keys.version === 1 &&
-        isDeepStrictEqual(keys.keys, {
-          codex: {
-            key: 'sk-update-rehearsal-not-a-real-key',
-            setAt: workspace.result.credential.setAt,
-          },
-        }) &&
-        keys.cantRead === undefined,
-      'Saving the fictional key again did not keep its current plain-file state.',
+    legacyCredentialsPreserved(baseline.before.provider_api_key, after.provider_api_key)
+    workspace.result.finalCredential = credentialPreserved(
+      baseline.credential,
+      await readFile(join(data, 'api-keys.json'), 'utf8'),
     )
     await checkNativePrefixes(baseline.natives, data)
     permissionsKept(baseline.permissions, fixturePermissions(data, Object.keys(baseline.natives)))

@@ -8,6 +8,7 @@ import {
   fixturePermissions,
   permissionsKept,
   credentialPreserved,
+  legacyCredentialsPreserved,
   registriesKept,
   assertThreeWorkspaceStates,
 } from '../mac-signed-upgrade-contract.mjs'
@@ -31,9 +32,14 @@ test('persistent fixture permissions include nested skill files and ignore trans
     mkdirSync(join(folder, 'skills'))
     writeFileSync(join(folder, 'skills', 'run.sh'), 'echo fictional\n', { mode: 0o700 })
     writeFileSync(join(folder, 'brobot2.sqlite'), 'fictional db', { mode: 0o600 })
+    writeFileSync(join(folder, 'api-keys.json'), 'fictional key file', { mode: 0o600 })
     const before = fixturePermissions(folder)
+    assert.ok(before.some((entry) => entry.path === 'api-keys.json' && entry.mode === 0o600))
     writeFileSync(join(folder, 'brobot2.sqlite-wal'), 'transient')
     permissionsKept(before, fixturePermissions(folder))
+    chmodSync(join(folder, 'api-keys.json'), 0o400)
+    assert.throws(() => permissionsKept(before, fixturePermissions(folder)), /api-keys.json/)
+    chmodSync(join(folder, 'api-keys.json'), 0o600)
     chmodSync(join(folder, 'skills', 'run.sh'), 0o400)
     assert.throws(
       () => permissionsKept(before, fixturePermissions(folder)),
@@ -44,20 +50,63 @@ test('persistent fixture permissions include nested skill files and ignore trans
   }
 })
 
-test('sealed credentials stay exact until Codex is explicitly saved again', () => {
-  const rows = [
-    { provider: 'claude', sealed: 'other-ciphertext', updated_at: 11 },
-    { provider: 'codex', sealed: 'fictional-ciphertext', updated_at: 12 },
-  ]
-  credentialPreserved(rows, structuredClone(rows))
+test('the released plain-file credential needs a positive baseline and exact bytes', () => {
+  const file = { version: 1, keys: { codex: { key: 'sk-update-rehearsal-not-a-real-key', setAt: 12 } } }
+  const before = JSON.stringify(file)
+  const status = { provider: 'codex', set: true, inUse: true, setAt: 12 }
+  assert.deepEqual(credentialPreserved(before, before, status), {
+    store: 'api-keys.json',
+    setAt: 12,
+    unchanged: true,
+  })
+  credentialPreserved(before, before)
+  for (const missing of [undefined, null, [], '', '{}', '{'])
+    assert.throws(() => credentialPreserved(missing, missing, status))
+  for (const edit of [
+    (one) => delete one.keys.codex,
+    (one) => (one.version = 2),
+    (one) => (one.keys.codex.key = 'different-fictional-key'),
+    (one) => (one.keys.codex.setAt = null),
+    (one) => (one.cantRead = ['codex']),
+  ]) {
+    const changed = structuredClone(file)
+    edit(changed)
+    const text = JSON.stringify(changed)
+    assert.throws(() => credentialPreserved(text, text, status))
+    assert.throws(() => credentialPreserved(before, text, status))
+  }
+  assert.throws(() => credentialPreserved(before, undefined, status))
+  assert.throws(() => credentialPreserved(before, `${before}\n`, status))
+})
+
+test('a preserved file must agree with the live API before it is called usable', () => {
+  const before = JSON.stringify({
+    version: 1,
+    keys: { codex: { key: 'sk-update-rehearsal-not-a-real-key', setAt: 12 } },
+  })
+  const status = { provider: 'codex', set: true, inUse: true, setAt: 12 }
+  for (const change of [
+    { provider: 'claude' },
+    { set: false },
+    { inUse: false },
+    { setAt: 13 },
+    { setAt: undefined },
+    { readState: 'unreadable' },
+    { refusedForBilling: 'fictional refusal' },
+  ])
+    assert.throws(() => credentialPreserved(before, before, { ...status, ...change }))
+  assert.throws(() => credentialPreserved(before, before, null))
+  assert.throws(() => credentialPreserved(before, before, undefined))
+})
+
+test('legacy database rows stay exact even when the actual credential is in the plain file', () => {
+  const rows = [{ provider: 'claude', sealed: 'fictional-legacy-row', updated_at: 11 }]
+  legacyCredentialsPreserved([], [])
+  legacyCredentialsPreserved(rows, structuredClone(rows))
+  for (const after of [undefined, [], [{ ...rows[0], sealed: 'changed' }]])
+    assert.throws(() => legacyCredentialsPreserved(rows, after))
+  assert.throws(() => legacyCredentialsPreserved([], rows))
   assert.throws(() => credentialPreserved([], []))
-  assert.throws(() => credentialPreserved(rows, []))
-  assert.throws(() =>
-    credentialPreserved(rows, [rows[0], { ...rows[1], sealed: 'rewritten-ciphertext' }]),
-  )
-  credentialPreserved(rows, [rows[0]], { resaved: true })
-  for (const after of [rows, [], [{ ...rows[0], sealed: 'changed' }]])
-    assert.throws(() => credentialPreserved(rows, after, { resaved: true }))
 })
 
 test('all three workspace registry entries survive, allowing only their last-opened timestamps to change', () => {
