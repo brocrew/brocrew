@@ -33,7 +33,7 @@ const installedTriggers = `(SELECT count(*) FROM sqlite_temp_master WHERE type =
    (tbl_name = 'derived_generation' AND name IN (${terms(generationTriggers)})) OR
    (tbl_name = 'events' AND name IN (${terms(foldTriggers)})) OR
    (tbl_name = 'work_legacy_stall_cut' AND name IN (${terms(resetTriggers)})) OR
-   (tbl_name = 'sessions' AND name = 'window_read_provider_update')))`
+   (tbl_name = 'provider_session' AND name = 'window_read_provider_update')))`
 const integer = (value: unknown): value is bigint => typeof value === 'bigint' && value >= 0n
 const watchers = new WeakMap<
   Database.Database,
@@ -169,7 +169,7 @@ export function windowWriterSampler(
         BEGIN UPDATE window_read_revision SET revision = revision + 1 WHERE id = -2; END;`)
     }
     db.exec(`CREATE TEMP TRIGGER IF NOT EXISTS window_read_provider_update
-      AFTER UPDATE OF provider ON main.sessions WHEN OLD.provider IS NOT NEW.provider
+      AFTER UPDATE OF provider ON main.provider_session WHEN OLD.provider IS NOT NEW.provider
       BEGIN UPDATE window_read_revision SET revision = revision + 1 WHERE id = -2; END;`)
     installed = true
   }
