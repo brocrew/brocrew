@@ -27,8 +27,8 @@ const eventsFor = (snapshot, sessionId) =>
       event: JSON.parse(row.payload),
     }))
 
-/** A completed continuation must follow the interrupted turn in the original provider session. */
-export function interruptedContinuation(before, after, sessionId, prompt) {
+/** Interruption preserves the turn and provider identity; API-key fixtures do not auto-continue. */
+export function interruptedSavedSession(before, after, sessionId, prompt) {
   const original = before.provider_session.find((row) => row.id === sessionId)
   const current = after.provider_session.find((row) => row.id === sessionId)
   requireEvidence(
@@ -40,37 +40,54 @@ export function interruptedContinuation(before, after, sessionId, prompt) {
   requireEvidence(sent?.turn_id, 'The interrupted fixture prompt is missing.')
   const interrupted = events.find(
     (row) =>
-      row.turn_id === sent.turn_id && row.type === 'turn' && row.event.state === 'interrupted',
+      row.ordinal > sent.ordinal &&
+      row.turn_id === sent.turn_id &&
+      row.type === 'turn' &&
+      row.event.state === 'interrupted',
   )
-  const continued = events.find(
+  return interrupted
+    ? { sessionId, externalRef: original.external_ref, interruptedTurn: sent.turn_id }
+    : null
+}
+
+export function resumedSavedSession(before, after, sessionId, prompt, responseId) {
+  const interrupted = interruptedSavedSession(before, after, sessionId, UPDATE_NOW_PROMPT)
+  requireEvidence(interrupted, 'The original turn was not interrupted before its normal resume.')
+  const events = eventsFor(after, sessionId)
+  const stopped = events.find(
     (row) =>
-      row.ordinal > (interrupted?.ordinal ?? Infinity) &&
-      row.type === 'user_turn' &&
-      row.event.appNotice === 'a-turn-the-app-cut' &&
-      row.turn_id !== sent.turn_id,
+      row.turn_id === interrupted.interruptedTurn &&
+      row.type === 'turn' &&
+      row.event.state === 'interrupted',
   )
+  const sent = events.find(
+    (row) =>
+      row.ordinal > stopped.ordinal &&
+      row.type === 'user_turn' &&
+      row.event.text === prompt &&
+      row.event.appNotice === undefined &&
+      row.turn_id !== interrupted.interruptedTurn,
+  )
+  requireEvidence(sent?.turn_id, 'The normal B message is missing from the saved session.')
   const reply = events.find(
     (row) =>
-      row.turn_id === continued?.turn_id &&
+      row.turn_id === sent?.turn_id &&
+      row.ordinal > sent.ordinal &&
       row.type === 'assistant_message' &&
-      /^update rehearsal (resp_update_rehearsal_[0-9]+)$/.test(row.event.text),
+      row.event.text === `update rehearsal ${responseId}`,
   )
   const finished = events.find(
     (row) =>
-      row.turn_id === continued?.turn_id &&
+      row.turn_id === sent?.turn_id &&
       row.ordinal > (reply?.ordinal ?? Infinity) &&
       row.type === 'turn' &&
       row.event.state === 'completed',
   )
-  return interrupted && continued && reply && finished
-    ? {
-        sessionId,
-        externalRef: original.external_ref,
-        interruptedTurn: sent.turn_id,
-        continuedTurn: continued.turn_id,
-        responseId: reply.event.text.split(' ').at(-1),
-      }
-    : null
+  requireEvidence(
+    sent && reply && finished,
+    'A normal B message did not continue the saved session.',
+  )
+  return { ...interrupted, resumedTurn: sent.turn_id, responseId }
 }
 
 /** Match every automatic B process to a captured workspace, without launching any workspace. */
@@ -245,20 +262,16 @@ export async function restartRunningWorkspaces({
       'An automatically reopened workspace lost its unsent draft.',
     )
     if (workspace.interrupted) {
-      const resumed = await waitFor(() => {
-        const after = databaseSnapshot(join(workspace.data, 'brobot2.sqlite'))
-        const facts = interruptedContinuation(
-          workspace.interrupted.before,
-          after,
-          workspace.interrupted.sessionId,
-          UPDATE_NOW_PROMPT,
-        )
-        return facts &&
-          model.requests.some((one) => one.completed && one.responseId === facts.responseId)
-          ? facts
-          : null
-      }, 'B automatically continues the interrupted turn in its saved session')
-      workspace.result.interruptedResume = resumed
+      workspace.result.interruptedSession = await waitFor(
+        () =>
+          interruptedSavedSession(
+            workspace.interrupted.before,
+            databaseSnapshot(join(workspace.data, 'brobot2.sqlite')),
+            workspace.interrupted.sessionId,
+            UPDATE_NOW_PROMPT,
+          ),
+        'B keeps the interrupted turn in its original saved session',
+      )
     }
   }
   summary.replacementCount++

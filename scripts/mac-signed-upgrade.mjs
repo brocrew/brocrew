@@ -2,6 +2,7 @@ import { readWorkspaceForUpdate } from '../apps/desktop/src/main/one-host-gate.t
 import {
   UPDATE_NOW_PROMPT,
   continuedEventsOnly,
+  resumedSavedSession,
   holdUpdateTurn,
   restartRunningWorkspaces,
   quitAutomaticWorkspaces,
@@ -277,7 +278,7 @@ async function checkRetention(
     credentials: true,
     movedState: true,
   })
-  const resumed = currentWorkspace.result.interruptedResume
+  const resumed = currentWorkspace.result.interruptedSession
   if (resumed) continuedEventsOnly(before, after, resumed.sessionId)
   const comparison = dataPreserved(before, after, { allowAppended: Boolean(resumed) })
   legacyCredentialsPreserved(before.provider_api_key, after.provider_api_key)
@@ -643,7 +644,7 @@ async function reopenFirst(workspace) {
     movedState: true,
   })
   statePreserved(baseline.state, stateBytes(checkpoint, copy))
-  const resumed = workspace.result.interruptedResume
+  const resumed = workspace.result.interruptedSession
   if (resumed) continuedEventsOnly(baseline.before, copy, resumed.sessionId)
   dataPreserved(baseline.before, copy, { allowAppended: Boolean(resumed) })
   legacyCredentialsPreserved(baseline.before.provider_api_key, copy.provider_api_key)
@@ -733,6 +734,14 @@ async function reopenSecond(workspace) {
   await cdp.evaluate(
     `return await window.api.runtime.close({sessionId:${JSON.stringify(workspace.conversations[0])}})`,
   )
+  if (workspace.result.interruptedSession)
+    workspace.result.interruptedSession.resumedByMessage = resumedSavedSession(
+      workspace.interrupted.before,
+      databaseSnapshot(join(data, 'brobot2.sqlite')),
+      workspace.conversations[0],
+      prompt,
+      history.responseId,
+    )
   workspace.result.second = {
     path: data,
     version: VERSION_B,

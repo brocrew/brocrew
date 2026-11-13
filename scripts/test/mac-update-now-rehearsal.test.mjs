@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
 import {
-  interruptedContinuation,
+  interruptedSavedSession,
+  resumedSavedSession,
   continuedEventsOnly,
   holdUpdateTurn,
   reopenedWorkspaceProcesses,
@@ -53,10 +54,7 @@ function histories() {
     events: [
       ...before.events,
       row(1, 'original-turn', 'turn', { state: 'interrupted' }),
-      row(2, 'continuation-turn', 'user_turn', {
-        text: 'continue',
-        appNotice: 'a-turn-the-app-cut',
-      }),
+      row(2, 'continuation-turn', 'user_turn', { text: 'normal B message' }),
       row(3, 'continuation-turn', 'assistant_message', {
         text: 'update rehearsal resp_update_rehearsal_9',
       }),
@@ -73,29 +71,68 @@ it('allows new events only in the conversation whose interrupted resume was prov
   expect(() => continuedEventsOnly(before, after, 'conversation')).toThrow('another conversation')
 })
 
-it('binds automatic completion to the interrupted turn and original provider session', () => {
+it('keeps the interrupted turn in the original provider session without requiring auto-continuation', () => {
   const { before, after } = histories()
-  expect(interruptedContinuation(before, after, 'conversation', UPDATE_NOW_PROMPT)).toEqual({
+  expect(interruptedSavedSession(before, after, 'conversation', UPDATE_NOW_PROMPT)).toEqual({
     sessionId: 'conversation',
     externalRef: 'original-provider-session',
     interruptedTurn: 'original-turn',
-    continuedTurn: 'continuation-turn',
-    responseId: 'resp_update_rehearsal_9',
   })
+  after.events = after.events.filter((one) => one.ordinal !== 1)
+  expect(interruptedSavedSession(before, after, 'conversation', UPDATE_NOW_PROMPT)).toBeNull()
   after.provider_session[0].external_ref = 'replacement-session'
-  expect(() => interruptedContinuation(before, after, 'conversation', UPDATE_NOW_PROMPT)).toThrow(
+  expect(() => interruptedSavedSession(before, after, 'conversation', UPDATE_NOW_PROMPT)).toThrow(
     'session identity',
   )
 })
 
-it.each([1, 2, 3, 4])(
-  'cannot credit an unrelated or incomplete continuation when event %s is absent',
-  (ordinal) => {
-    const { before, after } = histories()
-    after.events = after.events.filter((row) => row.ordinal !== ordinal)
-    expect(interruptedContinuation(before, after, 'conversation', UPDATE_NOW_PROMPT)).toBeNull()
-  },
-)
+it('proves the later normal B message completes on that same saved session', () => {
+  const { before, after } = histories()
+  expect(
+    resumedSavedSession(
+      before,
+      after,
+      'conversation',
+      'normal B message',
+      'resp_update_rehearsal_9',
+    ),
+  ).toEqual({
+    sessionId: 'conversation',
+    externalRef: 'original-provider-session',
+    interruptedTurn: 'original-turn',
+    resumedTurn: 'continuation-turn',
+    responseId: 'resp_update_rehearsal_9',
+  })
+  const row = after.events.find((one) => one.ordinal === 2)
+  row.payload = JSON.stringify({
+    type: 'user_turn',
+    text: 'normal B message',
+    appNotice: 'a-turn-the-app-cut',
+  })
+  expect(() =>
+    resumedSavedSession(
+      before,
+      after,
+      'conversation',
+      'normal B message',
+      'resp_update_rehearsal_9',
+    ),
+  ).toThrow('normal B')
+})
+
+it.each([2, 3, 4])('cannot credit a normal B resume when event %s is absent', (ordinal) => {
+  const { before, after } = histories()
+  after.events = after.events.filter((row) => row.ordinal !== ordinal)
+  expect(() =>
+    resumedSavedSession(
+      before,
+      after,
+      'conversation',
+      'normal B message',
+      'resp_update_rehearsal_9',
+    ),
+  ).toThrow('normal B')
+})
 
 it('requires distinct new processes for every exact captured workspace', () => {
   const workspaces = [
@@ -145,7 +182,10 @@ function rehearsal() {
       log,
       'BroCrew shut down in 10ms\nclose its sessions\nkeep its unsent drafts\ndrain its archive work\nclose its database',
     )
-    fake.snapshots.set(join(data, 'brobot2.sqlite'), after)
+    fake.snapshots.set(join(data, 'brobot2.sqlite'), {
+      ...after,
+      events: after.events.filter((one) => one.ordinal <= 1),
+    })
     fake.drafts.set(data, `unsent draft ${index}`)
     return {
       name: `Workspace${index}`,
@@ -169,10 +209,7 @@ function rehearsal() {
     source: 'candidate-source',
     summary,
     model: {
-      requests: [
-        { held: true, completed: false },
-        { responseId: 'resp_update_rehearsal_9', completed: true },
-      ],
+      requests: [{ held: true, completed: false }],
     },
     run: vi.fn(),
     processInfo: async (pid) =>
@@ -220,7 +257,7 @@ it('presses Update now with peers running, proves all automatic reopens and resu
   expect(args.summary.replacementCount).toBe(1)
   expect(args.summary.updateNow.reopened).toHaveLength(3)
   expect(args.workspaces.every((one) => one.result.nativeStartup)).toBe(true)
-  expect(args.workspaces[1].result.interruptedResume.continuedTurn).toBe('continuation-turn')
+  expect(args.workspaces[1].result.interruptedSession.interruptedTurn).toBe('original-turn')
   expect(args.automaticChildren).toEqual([])
 })
 
@@ -251,7 +288,7 @@ it('tracks successful automatic peers even if another presence reply fails', asy
   expect(args.quitChild.mock.calls.map(([child]) => child.pid)).toEqual([4, 6])
 })
 
-it.each(['not-running', 'missing-peer', 'failed-drain', 'lost-draft', 'no-continuation'])(
+it.each(['not-running', 'missing-peer', 'failed-drain', 'lost-draft', 'no-interruption'])(
   'retains a failed rehearsal: %s',
   async (failure) => {
     const { args } = rehearsal()
@@ -260,9 +297,9 @@ it.each(['not-running', 'missing-peer', 'failed-drain', 'lost-draft', 'no-contin
     if (failure === 'failed-drain')
       writeFileSync(args.workspaces[2].active.log, 'BroCrew shut down in 10ms')
     if (failure === 'lost-draft') fake.drafts.set(args.workspaces[2].data, '')
-    if (failure === 'no-continuation') {
+    if (failure === 'no-interruption') {
       const snapshot = fake.snapshots.get(join(args.workspaces[1].data, 'brobot2.sqlite'))
-      snapshot.events = snapshot.events.filter((row) => row.ordinal < 2)
+      snapshot.events = snapshot.events.filter((row) => row.ordinal < 1)
     }
     await expect(restartRunningWorkspaces(args)).rejects.toThrow()
     expect(args.quitChild).not.toHaveBeenCalled()
