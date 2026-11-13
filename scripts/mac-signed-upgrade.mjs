@@ -90,6 +90,8 @@ const { values } = parseArgs({
     'predecessor-source': { type: 'string' },
     candidate: { type: 'string' },
     'candidate-source': { type: 'string' },
+    'marker-a': { type: 'string' },
+    'marker-b': { type: 'string' },
     evidence: { type: 'string' },
   },
 })
@@ -114,6 +116,7 @@ requireEvidence(VERSION_A !== VERSION_B, `The candidate is already the published
 const evidenceRoot = resolve(values.evidence)
 let evidence = evidenceRoot
 const sourceFor = (version) => (version === VERSION_A ? predecessor.source : candidate.source)
+const markerFor = (version) => values[version === VERSION_A ? 'marker-a' : 'marker-b']
 const app = '/Applications/BroCrew.app',
   dataRoot = join(homedir(), 'Library', 'Application Support', '@brobot2')
 const defaultData = join(dataRoot, 'desktop')
@@ -183,7 +186,7 @@ function passed(name, facts = true) {
   console.log(`PASS ${name}`)
 }
 async function bundleChecked(bundle, version) {
-  const base = await checkedMacBundle(bundle, version, undefined, run)
+  const base = await checkedMacBundle(bundle, version, markerFor(version), run)
   publicFeedUnchanged(await readFile(`${bundle}/Contents/Resources/app-update.yml`, 'utf8'))
   const signature = await exec('/usr/bin/codesign', ['-dv', '--verbose=4', bundle], {
     encoding: 'utf8',

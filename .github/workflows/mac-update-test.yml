@@ -144,6 +144,7 @@ jobs:
           node scripts/mac-signed-upgrade.mjs \
             --predecessor apps/desktop/dist-mac-update/a --predecessor-source "$GITHUB_SHA" \
             --candidate apps/desktop/dist-mac-update/b --candidate-source "$GITHUB_SHA" \
+            --marker-a "mac-a-$GITHUB_SHA" --marker-b "mac-b-$GITHUB_SHA" \
             --evidence mac-update-results
       - name: Keep success or failure evidence
         if: always()

@@ -206,6 +206,10 @@ it('runs the native rehearsal after packaging on a separate clean hosted job', (
       'apps/desktop/dist-mac-update/b',
       '--candidate-source',
       source,
+      '--marker-a',
+      `mac-a-${source}`,
+      '--marker-b',
+      `mac-b-${source}`,
       '--evidence',
       'mac-update-results',
     ])
