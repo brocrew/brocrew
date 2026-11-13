@@ -623,10 +623,16 @@ try {
     package: await bundleChecked(app, VERSION_B, values['marker-b']),
   }
   passed('squirrel-replacement-restart-and-database-open', summary.restart)
-  const added = await waitFor(async () => {
-    const copies = (await checkpointIds(data)).filter((one) => !copiesBefore.includes(one))
-    return copies.length ? copies : null
+  await waitFor(async () => {
+    const entries = await readdir(join(data, 'backups'), { withFileTypes: true })
+    const added = entries.filter((one) => one.isDirectory() && !copiesBefore.includes(one.name))
+    const completed = await Promise.all(
+      added.map((one) => exists(join(data, 'backups', one.name, 'manifest.json'))),
+    )
+    return added.length > 0 && completed.every(Boolean)
   }, 'B completes its first-start recovery copy', 600_000)
+  const copies = await checkpointIds(data),
+    added = copies.filter((one) => !copiesBefore.includes(one))
   requireEvidence(added.length === 1, 'B must make exactly one new checked recovery copy.')
   const checkpoint = join(data, 'backups', added[0]),
     manifest = JSON.parse(await readFile(join(checkpoint, 'manifest.json'), 'utf8'))
