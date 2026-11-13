@@ -26,21 +26,6 @@ interface Rec {
   receivedBytes: number
   observers: Set<() => void>
 }
-// Shared across browser generations, separately for each profile. Claimed tool downloads
-// retain their existing limit; only unattended page downloads consume this allowance.
-export const MAX_UNCLAIMED_PER_HOUR = 20
-const HOUR_MS = 60 * 60 * 1000
-export class UnclaimedDownloadQuota {
-  private admitted: number[] = []
-  constructor(private readonly now: () => number = Date.now) {}
-  take(): boolean {
-    const now = this.now()
-    this.admitted = this.admitted.filter((at) => at > now - HOUR_MS)
-    if (this.admitted.length >= MAX_UNCLAIMED_PER_HOUR) return false
-    this.admitted.push(now)
-    return true
-  }
-}
 const MAX_RECORDS = 500
 const MAX_NAME_BYTES = 200
 class CaptureImpl implements Capture {
@@ -66,7 +51,6 @@ export interface RouterOptions {
   logger?: Logger
   /** False means Chrome owns the native path and history; never move or delete it. */
   privateActive?: () => boolean
-  quota: UnclaimedDownloadQuota
   onPolicyFailure: () => Promise<void>
 }
 export class DownloadRouter {
@@ -181,10 +165,6 @@ export class DownloadRouter {
       return
     }
     if (rec.unclaimed || rec.state === 'canceled') return
-    if (!this.o.quota.take()) {
-      this.cancel(guid, rec)
-      return
-    }
     rec.unclaimed = true
   }
   private markDisposable(guid: string): void {
@@ -260,7 +240,7 @@ export class DownloadRouter {
       if (rec.owner !== c) continue
       rec.owner = null
       // Only the saved file's claim succeeded. A different download must still
-      // pass the unattended policy, even if the tool saved an older queued file.
+      // remain tracked, even if the tool saved an older queued file.
       if (completed && guid === savedGuid) {
         this.markDisposable(guid)
         // Late events still enforce the size cap until this file completes.

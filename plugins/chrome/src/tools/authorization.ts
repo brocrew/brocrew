@@ -5,7 +5,10 @@ import type { TabState } from '../tabs.js'
 
 const unavailable = () =>
   new ToolError('profile is unavailable — check Settings → Plugins → Chrome')
-type SharedAccess = { authorization(name: string): string }
+type SharedAccess = {
+  identity(name: string): string
+  admission(name: string): { identity: string }
+}
 export function sharedAccess(deps: Pick<ToolDeps, 'store'>): SharedAccess | undefined {
   return (deps.store as unknown as { shared?: SharedAccess }).shared
 }
@@ -18,7 +21,7 @@ export function checkToolAuthorization(deps: ToolDeps): void {
   checks.get(deps)?.()
 }
 
-/** Each call keeps its admission identities. Old callbacks cannot adopt new permission epochs. */
+/** Each call keeps its admission identities. Old callbacks cannot adopt a replacement target. */
 export function fenceToolDefs(defs: ToolDef[]): ToolDef[] {
   const fenced: ToolDef[] = defs.map((def) => ({
     ...def,
@@ -28,8 +31,10 @@ export function fenceToolDefs(defs: ToolDef[]): ToolDef[] {
       const admitted = new Map<string, string>()
       const admit = (name: string) => {
         try {
-          if (!deps.store.get(name)?.enabled) throw unavailable()
-          const token = shared.authorization(name)
+          const token =
+            def.spec.name === 'delete_browser_profile'
+              ? shared.admission(name).identity
+              : shared.identity(name)
           const old = admitted.get(name)
           if (old !== undefined && old !== token) throw unavailable()
           admitted.set(name, token)
@@ -163,8 +168,7 @@ export function fenceToolDefs(defs: ToolDef[]): ToolDef[] {
             check()
             const out = Reflect.apply(field, target, input.map(unwrap))
             if (prop === 'resolve' || prop === 'add') return tab(out as TabState)
-            if (prop === 'list')
-              return (out as TabState[]).filter((t) => deps.store.get(t.profile)?.enabled).map(tab)
+            if (prop === 'list') return (out as TabState[]).map(tab)
             return out
           }
         },
@@ -206,11 +210,7 @@ export function fenceToolDefs(defs: ToolDef[]): ToolDef[] {
           deps.tabs.resolve(args.tabId, (name) => deps.browser.state(name)?.generation ?? null)
             .profile,
         ]
-      else
-        profiles = deps.store
-          .list()
-          .filter((p) => p.enabled)
-          .map((p) => p.name)
+      else profiles = deps.store.list().map((p) => p.name)
       return deps.browser.agentCall!(profiles, () => def.run(args, deps))
     },
   }))

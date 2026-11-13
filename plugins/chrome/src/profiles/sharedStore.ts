@@ -528,6 +528,7 @@ export function createSharedProfileStore(
     identity(name) {
       const lp = localRecord(name)
       if (lp) {
+        if (lp.deleting) throw new ProfileStoreError(RENAME_ERRORS.deleting)
         localAvailable(lp, read())
         return `local:${alias(lp)}`
       }

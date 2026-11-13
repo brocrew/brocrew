@@ -6,6 +6,8 @@ import path from 'node:path'
 import type { BrowserContext, Page } from 'playwright-core'
 import { afterEach, expect, it, vi } from 'vitest'
 import { ChromeBrowser } from '../src/browser/chromeBrowser.js'
+import { createChromeBrowser } from '../src/index.js'
+import { silentLogger } from '../src/logger.js'
 import type { ProfileBrowser } from '../src/browser/profileBrowser.js'
 import { fenceBrowserHandles, unwrapBrowserHandle } from '../src/browser/profileBrowser.js'
 import { createProfileStore } from '../src/profiles/store.js'
@@ -166,7 +168,10 @@ function toolFixture(sharedStore?: ProfileStore) {
   store.setFlags('hidden', { enabled: false })
   let epoch = 1,
     generation = 1
-  store.shared ??= { authorization: () => String(epoch) } as SharedProfileAccess
+  store.shared ??= {
+    identity: () => String(epoch),
+    admission: () => ({ identity: String(epoch) }),
+  } as SharedProfileAccess
   const filled = deferred()
   const filling = deferred()
   const press = vi.fn(async () => {})
@@ -236,20 +241,20 @@ function toolFixture(sharedStore?: ProfileStore) {
     },
   }
 }
-it.each(['revocation', 'generation'] as const)(
+it.each(['target replacement', 'generation'] as const)(
   'fences submit after fill awaits a %s change',
   async (change) => {
     const f = toolFixture()
     const call = f.call('fill', { tabId: f.tab.id, ref: 'e1', text: 'fictional', submit: true })
     await f.filling.promise
-    if (change === 'revocation') f.revoke()
+    if (change === 'target replacement') f.revoke()
     else f.replace()
     f.filled.resolve()
     await expect(call).rejects.toThrow('unavailable')
     expect(f.press).not.toHaveBeenCalled()
   },
 )
-it('fences queued work even when off is followed by on before the queue drains', async () => {
+it('fences queued work when its admitted target is replaced before the queue drains', async () => {
   const f = toolFixture()
   const blocker = deferred()
   const blocking = f.deps.serializer.runExclusive(f.tab.id, () => blocker.promise)
@@ -262,15 +267,15 @@ it('fences queued work even when off is followed by on before the queue drains',
   await expect(call).rejects.toThrow('unavailable')
   expect(f.deps.browser.usePage).not.toHaveBeenCalled()
 })
-it('hides off metadata in listings and direct-name operations', async () => {
+it('includes off profiles in listings and direct-name operations', async () => {
   const f = toolFixture()
   const out = await f.call('list_browser_profiles', {})
-  expect(JSON.stringify(out)).not.toContain('hidden')
-  expect(JSON.stringify(out)).not.toContain('private off metadata')
+  expect(JSON.stringify(out)).toContain('hidden')
+  expect(JSON.stringify(out)).toContain('private off metadata')
   await expect(
     f.call('set_browser_profile_description', { profile: 'hidden', description: 'probe' }),
-  ).rejects.toThrow('unavailable')
-  expect(f.deps.store.get('hidden')?.description).toBe('private off metadata')
+  ).resolves.toBeDefined()
+  expect(f.deps.store.get('hidden')?.description).toBe('probe')
 })
 it('blocks a download request when cookies finish after revocation', async () => {
   const f = toolFixture()
@@ -441,9 +446,11 @@ it.each(['off-on', 'permission'] as const)(
     expect(child.status, child.stderr).toBe(0)
     blocker.resolve()
     await blocking
-    await expect(call).rejects.toThrow('unavailable')
-    expect(f.deps.browser.usePage).not.toHaveBeenCalled()
-    expect(f.press).not.toHaveBeenCalled()
+    await until(() => vi.mocked(f.deps.browser.usePage).mock.calls.length > 0)
+    await f.filling.promise
+    f.filled.resolve()
+    await expect(call).resolves.toBeDefined()
+    expect(f.press).toHaveBeenCalledOnce()
   },
 )
 it('launches against the real facade without treating lease or helper bookkeeping as revocation', async () => {
@@ -538,4 +545,34 @@ it('keeps one window watcher when separate authorized tool calls use the same br
   pages.resolve('pages-closed')
   await new Promise<void>((resolve) => setImmediate(resolve))
   expect(close).toHaveBeenCalledOnce()
+})
+
+it('the production factory keeps the same target through permission changes during launch', async () => {
+  const f = realSharedFixture()
+  f.store.setFlags('fern', { allowExtensions: false, allowSync: false })
+  f.store.setHelper('fern', 'off')
+  const lock = deferred<boolean>()
+  const inspected = deferred()
+  const context = new Context()
+  const launch = vi.fn(async () => context as unknown as BrowserContext)
+  const browser = createChromeBrowser(f.store, silentLogger, undefined, {
+    downloadsRoot: f.deps.downloadsRoot,
+    lockHeld: () => {
+      inspected.resolve()
+      return lock.promise
+    },
+    launchContext: launch,
+  })
+  try {
+    const opening = browser.ensure('fern')
+    await inspected.promise
+    f.store.setFlags('fern', { enabled: false, allowSettings: true })
+    lock.resolve(false)
+    await expect(opening).resolves.toBeDefined()
+    expect(launch).toHaveBeenCalledOnce()
+    expect(context.closed).toBe(false)
+  } finally {
+    lock.resolve(false)
+    await browser.closeAll()
+  }
 })

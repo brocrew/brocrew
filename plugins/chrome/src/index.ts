@@ -23,9 +23,12 @@ export function createChromeBrowser(
   return new ChromeBrowser({
     dirOf: store.dirOf,
     ...(store.shared
-      ? { acquireLease: store.shared.acquire, authorization: store.shared.authorization }
+      ? { acquireLease: store.shared.acquire, authorization: store.shared.identity }
       : {}),
-    profileExists: (name) => store.get(name) !== undefined,
+    profileExists: (name) => {
+      const rec = store.get(name)
+      return rec !== undefined && !rec.deleting
+    },
     logger,
     ...(browser ? { browser } : {}),
     extensionsFor: (name) => store.get(name)?.allowExtensions === true,

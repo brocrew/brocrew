@@ -36,7 +36,7 @@ function held() {
 const setting = { profile: 'fern', key: 'translate.enabled', value: true }
 
 it.each(['allowSettings', 'enabled'] as const)(
-  'refuses a queued write after %s is revoked',
+  'writes a supported setting after %s changes while queued',
   async (flag) => {
     const h = fixture(),
       gate = held()
@@ -45,11 +45,13 @@ it.each(['allowSettings', 'enabled'] as const)(
     h.store.setFlags('fern', { [flag]: false })
     gate.resolve()
     await first
-    await expect(pending).rejects.toThrow()
-    expect(fs.existsSync(prefsFile(h.store.dirOf('fern')))).toBe(false)
+    await expect(pending).resolves.toMatchObject({ json: { ok: true } })
+    expect(JSON.parse(fs.readFileSync(prefsFile(h.store.dirOf('fern')), 'utf8'))).toMatchObject({
+      translate: { enabled: true },
+    })
   },
 )
-it('rechecks a setting permission after the awaited close', async () => {
+it('writes a supported setting after its flag changes during close', async () => {
   const h = fixture(),
     gate = held(),
     entered = held()
@@ -61,11 +63,13 @@ it('rechecks a setting permission after the awaited close', async () => {
   await entered.promise
   h.store.setFlags('fern', { allowSettings: false })
   gate.resolve()
-  await expect(pending).rejects.toThrow()
-  expect(fs.existsSync(prefsFile(h.store.dirOf('fern')))).toBe(false)
+  await expect(pending).resolves.toMatchObject({ json: { ok: true } })
+  expect(JSON.parse(fs.readFileSync(prefsFile(h.store.dirOf('fern')), 'utf8'))).toMatchObject({
+    translate: { enabled: true },
+  })
 })
 it.each(['allowExtensions', 'enabled'] as const)(
-  'refuses an extension window queued before %s was revoked',
+  'opens a supported extension window after %s changes while queued',
   async (flag) => {
     const h = fixture(),
       gate = held()
@@ -74,11 +78,11 @@ it.each(['allowExtensions', 'enabled'] as const)(
     h.store.setFlags('fern', { [flag]: false })
     gate.resolve()
     await first
-    await expect(pending).rejects.toThrow()
-    expect(h.browser.launches).toEqual([])
+    await expect(pending).resolves.toMatchObject({ json: { status: 'opened' } })
+    expect(h.browser.launches).toEqual([{ profile: 'fern' }])
   },
 )
-it('refuses a queued new tab after the profile is disabled', async () => {
+it('opens a queued tab after the enabled flag changes', async () => {
   const h = fixture(),
     gate = held()
   const first = h.browser.exclusive('fern', () => gate.promise)
@@ -86,10 +90,10 @@ it('refuses a queued new tab after the profile is disabled', async () => {
   h.store.setFlags('fern', { enabled: false })
   gate.resolve()
   await first
-  await expect(pending).rejects.toThrow()
-  expect(h.browser.launches).toEqual([])
+  await expect(pending).resolves.toMatchObject({ json: { url: 'https://fictional.invalid/' } })
+  expect(h.browser.launches).toEqual([{ profile: 'fern' }])
 })
-it('refuses a tab action after waiting in the tab queue', async () => {
+it('performs a queued tab action after the enabled flag changes', async () => {
   const h = fixture(),
     gate = held(),
     serializer = createKeyedSerializer()
@@ -101,7 +105,7 @@ it('refuses a tab action after waiting in the tab queue', async () => {
   h.store.setFlags('fern', { enabled: false })
   gate.resolve()
   await first
-  await expect(pending).rejects.toThrow()
+  await expect(pending).resolves.toBeDefined()
 })
 it('still writes an allowed setting', async () => {
   const h = fixture()
@@ -197,7 +201,7 @@ it('still saves bytes in a real download day folder', async () => {
   )
 })
 
-it('refuses extension removal queued before its permission was revoked', async () => {
+it('opens extension removal after its flag changes while queued', async () => {
   const h = fixture(),
     gate = held(),
     id = 'a'.repeat(32)
@@ -212,10 +216,10 @@ it('refuses extension removal queued before its permission was revoked', async (
   h.store.setFlags('fern', { allowExtensions: false })
   gate.resolve()
   await first
-  await expect(pending).rejects.toThrow()
-  expect(h.browser.launches).toEqual([])
+  await expect(pending).resolves.toMatchObject({ json: { status: 'opened' } })
+  expect(h.browser.launches).toEqual([{ profile: 'fern' }])
 })
-it('refuses queued show_tab after the profile is disabled', async () => {
+it('shows a queued tab after the enabled flag changes', async () => {
   const h = fixture(),
     gate = held()
   const opened = await h.call('open_tab', { profile: 'fern', url: 'https://fictional.invalid/' })
@@ -224,7 +228,7 @@ it('refuses queued show_tab after the profile is disabled', async () => {
   h.store.setFlags('fern', { enabled: false })
   gate.resolve()
   await first
-  await expect(pending).rejects.toThrow()
+  await expect(pending).resolves.toBeDefined()
   expect(h.browser.launches).toHaveLength(1)
 })
 it('refuses a linked day folder for a browser-stream download too', async () => {

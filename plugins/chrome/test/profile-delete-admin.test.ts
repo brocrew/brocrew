@@ -90,7 +90,7 @@ it('does not remove any data when turning the profile off fails', async () => {
   disable.mockRestore()
   expect((await f.remove()).status).toBe(200)
 })
-it('the existing agent delete tool still refuses a person’s ordinary profile', async () => {
+it('the agent delete tool removes a closed local profile', async () => {
   const f = harness()
   cleanup.push(() => {
     for (const directory of [f.home, dirname(f.downloads), f.uploadRoot])
@@ -98,9 +98,9 @@ it('the existing agent delete tool still refuses a person’s ordinary profile',
   })
   f.profile('fern')
   const directory = f.store.dirOf('fern')
-  expect(await f.callError('delete_browser_profile', { profile: 'fern' })).toContain(
-    'only the user can delete it',
-  )
-  expect(f.store.get('fern')).toBeDefined()
-  expect(fs.existsSync(directory)).toBe(true)
+  expect((await f.call('delete_browser_profile', { profile: 'fern' })).json).toEqual({
+    deleted: 'fern',
+  })
+  expect(f.store.get('fern')).toBeUndefined()
+  expect(fs.existsSync(directory)).toBe(false)
 })

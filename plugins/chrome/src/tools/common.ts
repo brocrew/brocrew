@@ -3,7 +3,7 @@ import type { Locator, Page } from 'playwright-core'
 import type { LocalFileGuardConfig } from '../localFileGuard.js'
 import type { ProfileBrowser } from '../browser/profileBrowser.js'
 import type { KeyedSerializer } from '../shared/browser/browser-lease.js'
-import { isProfileName } from '../profiles/store.js'
+import { isProfileName, RENAME_ERRORS } from '../profiles/store.js'
 import type { ProfileStore } from '../profiles/store.js'
 import { TabError, type TabRegistry, type TabState } from '../tabs.js'
 import type { WindowTasks } from '../windows.js'
@@ -65,7 +65,7 @@ export const profileName: PropSpec = {
 }
 export const url: PropSpec = {
   type: 'string',
-  description: 'HTTP(S) or file URL, native absolute local path, or about:blank.',
+  description: 'URL to open in Chrome, or a native absolute local path.',
   minLength: 1,
   maxLength: 2000,
 }
@@ -95,23 +95,13 @@ export const urlIncludes: PropSpec = {
   maxLength: 200,
 }
 export const KEY = /^[A-Za-z0-9+_ -]{1,40}$/
-const refusalNotEnabled = (name: string): string =>
-  `profile "${name}" is not enabled — the user can enable it in the Settings → Plugins → Chrome`
-const refusalNotAllowed = (what: 'extensions' | 'settings', name: string): string =>
-  `${what} are not allowed on profile "${name}" — the user can allow them in the Settings → Plugins → Chrome`
-export type ProfileNeed = 'allowExtensions' | 'allowSettings'
-export function usableProfile(deps: ToolDeps, name: string, need?: ProfileNeed): void {
+export function usableProfile(deps: ToolDeps, name: string): void {
   const rec = isProfileName(name) ? deps.store.get(name) : undefined
-  if (!rec && isProfileName(name))
+  if (!rec)
     throw new ToolError(
       `no profile named "${name}" — list_browser_profiles shows the profiles that exist`,
     )
-  if (!rec || !rec.enabled)
-    throw new ToolError(refusalNotEnabled(isProfileName(name) ? name : 'unknown'))
-  if (need && !rec[need])
-    throw new ToolError(
-      refusalNotAllowed(need === 'allowExtensions' ? 'extensions' : 'settings', name),
-    )
+  if (rec.deleting) throw new ToolError(RENAME_ERRORS.deleting)
 }
 export const generationOf =
   (deps: Pick<ToolDeps, 'browser'>): ((profile: string) => number | null) =>

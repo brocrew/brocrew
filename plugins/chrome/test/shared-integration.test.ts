@@ -106,7 +106,7 @@ it('fresh admin warning binds the immutable identity/revision; agent bearer cann
   lease.release()
   expect((await remove((await read()).deleteConfirmation)).status).toBe(200)
 })
-it('shared tool listing hides off profiles while Settings can still list them', async () => {
+it('shared tool listing includes profiles with the enabled flag off', async () => {
   const f = fixture()
   f.store.create('fern', 'panel')
   f.store.setFlags('fern', { enabled: false })
@@ -123,7 +123,7 @@ it('shared tool listing hides off profiles while Settings can still list them', 
   const result = await tools
     .find((t) => t.definition.name === 'list_browser_profiles')!
     .execute({}, {})
-  expect(JSON.stringify(result)).not.toContain('fern')
+  expect(JSON.stringify(result)).toContain('fern')
   expect(f.store.list()).toHaveLength(1)
 })
 

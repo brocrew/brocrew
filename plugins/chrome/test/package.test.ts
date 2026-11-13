@@ -180,7 +180,7 @@ describe('private Chrome package', () => {
       (await request('/v1/profiles', adminToken, undefined, 'https://fictional.invalid')).status,
     ).toBe(403)
   })
-  it('only the person enables profiles; tool discovery and use work with fakes', async () => {
+  it('tool discovery and use work independently of the enabled flag', async () => {
     const { request, browser, url } = await boot()
     expect((await request('/v1/profiles', mcpToken, { name: 'fern' })).status).toBe(401)
     expect((await request('/v1/profiles', adminToken, { name: 'fern' })).status).toBe(201)
@@ -191,12 +191,12 @@ describe('private Chrome package', () => {
     await connectClient(client, transport)
     const tools = await client.listTools()
     expect(tools.tools.some((tool) => tool.name === 'open_tab')).toBe(true)
-    const refused = await client.callTool({
+    const beforeFlag = await client.callTool({
       name: 'open_tab',
       arguments: { profile: 'fern', url: 'https://fictional.invalid/' },
     })
-    expect(JSON.stringify(refused)).toContain('not enabled')
-    expect(browser.launches).toHaveLength(0)
+    expect(JSON.stringify(beforeFlag)).toContain('https://fictional.invalid/')
+    expect(browser.launches).toEqual([{ profile: 'fern' }])
     expect((await request('/v1/profiles/fern/flags', adminToken, { enabled: true })).status).toBe(
       200,
     )
@@ -219,13 +219,13 @@ describe('private Chrome package', () => {
     )
     expect(browser.state('fern')).toBeNull()
   })
-  it('only the person turns the BroCrew helper on, and only in an enabled profile', async () => {
+  it('the person turns the BroCrew helper on independently of the enabled flag', async () => {
     const { request, browser, store } = await boot()
     store.create('birch', 'panel')
     store.setHelper('birch', 'off')
     expect((await request('/v1/profiles/birch/helper', mcpToken, {})).status).toBe(401)
-    expect((await request('/v1/profiles/birch/helper', adminToken, {})).status).toBe(409)
-    expect(store.get('birch')?.helper).toBe('off')
+    expect((await request('/v1/profiles/birch/helper', adminToken, {})).status).toBe(200)
+    expect(store.get('birch')?.helper).toBe('turning-on')
     store.setFlags('birch', { enabled: true })
     expect((await request('/v1/profiles/birch/helper', adminToken, { on: true })).status).toBe(400)
     const turned = await request('/v1/profiles/birch/helper', adminToken, {})
@@ -233,7 +233,7 @@ describe('private Chrome package', () => {
     expect(turned.body).toMatchObject({ profile: { name: 'birch', helperOff: false } })
     // Recorded first, so it holds even while this profile is closed.
     expect(store.get('birch')?.helper).toBe('turning-on')
-    expect(browser.helperTurnedOn).toEqual(['birch'])
+    expect(browser.helperTurnedOn).toEqual(['birch', 'birch'])
   })
   it('returns bounded typed tabs, excludes expired generations and strips URL credentials/query', async () => {
     const { request, browser, server, store } = await boot()

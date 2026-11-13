@@ -35,12 +35,9 @@ export const ADMIN_ERRORS = {
     'Give at least one of enabled, allowExtensions, allowSettings, allowSync, each true or false.',
   confirm: 'Type the profile name to confirm.',
   description: `The description must be plain text of at most ${DESCRIPTION_MAX} characters.`,
-  temporary:
-    'A temporary profile has no account: it cannot be opened for the user and cannot get extension, settings or sync access.',
   inUse: 'The profile is open in another Chrome.',
   deleteInUse: 'Turn this profile off and wait for agent work to finish, then try again.',
   noBrowser: 'Install Google Chrome, then try again.',
-  helper: 'Enable this profile first, then turn the helper on.',
   failed: 'The request could not be completed.',
 } as const
 const isRecord = (v: unknown): v is Record<string, unknown> =>
@@ -183,11 +180,6 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
     if (Object.values(body).some((v) => typeof v !== 'boolean'))
       return fail(res, 400, ADMIN_ERRORS.flags)
     const before = store.get(name)
-    if (
-      before?.temporary &&
-      (body.allowExtensions === true || body.allowSettings === true || body.allowSync === true)
-    )
-      return fail(res, 400, ADMIN_ERRORS.temporary)
     store.setFlags(name, body as Partial<Record<(typeof FLAG_NAMES)[number], boolean>>)
     const extensionsChanged =
       body.allowExtensions !== undefined &&
@@ -207,7 +199,6 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
     const name = named(profile, res)
     if (!name) return
     if (!bodyOf(body, [])) return fail(res, 400, ADMIN_ERRORS.body)
-    if (store.get(name)?.enabled !== true) return fail(res, 409, ADMIN_ERRORS.helper)
     store.setHelper(name, 'turning-on')
     await browser.turnHelperOn(name).catch((error) => {
       if (res.locals.configuration) throw error
@@ -219,7 +210,6 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
     const name = named(profile, res)
     if (!name) return
     if (!bodyOf(body, [])) return fail(res, 400, ADMIN_ERRORS.body)
-    if (store.get(name)?.temporary) return fail(res, 400, ADMIN_ERRORS.temporary)
     try {
       await deps.opener.open(name)
     } catch (e) {

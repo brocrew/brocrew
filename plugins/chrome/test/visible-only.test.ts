@@ -91,7 +91,10 @@ describe('visible Chrome profiles', () => {
       expect(h.browser.pages.get('fern')).toHaveLength(1)
     },
   )
-  it('reports the existing tab and current URL when navigation fails after committing', async () => {
+  it.each([
+    ['https://fixture.test/committed', 'Timeout 15000ms exceeded'],
+    ['fictional-unsupported:page', 'net::ERR_UNKNOWN_URL_SCHEME'],
+  ])('reports the existing tab, current URL and Chrome error for %s', async (url, message) => {
     const h = setup()
     const opened = (await h.call('open_tab', { profile: 'fern', url: 'about:blank' })).json as {
       tabId: string
@@ -99,16 +102,16 @@ describe('visible Chrome profiles', () => {
     const page = h.browser.pages.get('fern')![0]
     const fault = vi.spyOn(page, 'goto').mockImplementation(async (url) => {
       page.urlValue = url
-      throw new Error('Timeout 15000ms exceeded')
+      throw new Error(message)
     })
     try {
       const error = await h.callError('navigate', {
         tabId: opened.tabId,
-        url: 'https://fixture.test/committed',
+        url,
       })
       expect(error).toContain(`NAVIGATION_FAILED ${opened.tabId}:`)
-      expect(error).toContain('https://fixture.test/committed')
-      expect(error).toContain('Timeout 15000ms exceeded')
+      expect(error).toContain(url)
+      expect(error).toContain(message)
       expect(h.browser.pages.get('fern')).toHaveLength(1)
     } finally {
       fault.mockRestore()

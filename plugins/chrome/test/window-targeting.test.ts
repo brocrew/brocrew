@@ -196,7 +196,7 @@ describe('queued anchor validation', () => {
 })
 
 it.each(['navigate', 'download_url'])(
-  'does not perform %s after revocation during awaited window metadata',
+  'does not perform %s after profile removal during awaited window metadata',
   async (tool) => {
     const h = harness()
     h.profile('fern')
@@ -224,9 +224,9 @@ it.each(['navigate', 'download_url'])(
         url: 'https://fictional.invalid/',
       })
       await ready
-      h.store.setFlags('fern', { enabled: false })
+      h.store.remove('fern')
       release()
-      expect(await pending).toContain('not enabled')
+      expect(await pending).toContain('no profile named')
       expect(page.gotos).toHaveLength(before)
       expect(fetcher).not.toHaveBeenCalled()
     } finally {

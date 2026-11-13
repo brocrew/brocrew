@@ -110,3 +110,30 @@ it('waits for application and reports a real error after a partial change withou
     profiles: expect.arrayContaining([expect.objectContaining({ name: 'fern', enabled: false })]),
   })
 })
+
+it('opens temporary profiles and applies their supported flags and helper while disabled', async () => {
+  const f = await boot()
+  f.store.create('scratch', 'agent', { temporary: true })
+  f.store.setFlags('scratch', { enabled: false })
+  expect(
+    (
+      await f.request('/profiles/scratch/flags', {
+        allowExtensions: true,
+        allowSettings: true,
+        allowSync: true,
+      })
+    ).status,
+  ).toBe(200)
+  expect(f.store.get('scratch')).toMatchObject({
+    enabled: false,
+    temporary: true,
+    allowExtensions: true,
+    allowSettings: true,
+    allowSync: true,
+  })
+  expect((await f.request('/profiles/scratch/helper', {})).status).toBe(200)
+  expect(f.browser.helperTurnedOn).toContain('scratch')
+  expect((await f.request('/profiles/scratch/open', {})).status).toBe(202)
+  expect(f.browser.launches.at(-1)).toEqual({ profile: 'scratch' })
+  expect((await f.request('/profiles/scratch/flags', { allowSync: 'yes' })).status).toBe(400)
+})

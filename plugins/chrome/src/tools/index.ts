@@ -65,27 +65,24 @@ export function buildToolDefs(): ToolDef[] {
       spec: {
         name: 'list_browser_profiles',
         description:
-          'List the Chrome profiles: name, description, whether the user enabled it, temporary or not, open or closed. Only enabled profiles can be used.',
+          'List the Chrome profiles: name, description, whether the user enabled it, temporary or not, open or closed.',
         props: {},
       },
       async run(_a, deps) {
         return {
-          json: deps.store
-            .list()
-            .filter((p) => !sharedAccess(deps) || p.enabled)
-            .map((p) => {
-              const s = deps.browser.state(p.name)
-              return {
-                name: p.name,
-                displayName: p.displayName ?? p.name,
-                description: p.description,
-                temporary: p.temporary,
-                enabled: p.enabled,
-                allowExtensions: p.allowExtensions,
-                allowSettings: p.allowSettings,
-                open: s !== null,
-              }
-            }),
+          json: deps.store.list().map((p) => {
+            const s = deps.browser.state(p.name)
+            return {
+              name: p.name,
+              displayName: p.displayName ?? p.name,
+              description: p.description,
+              temporary: p.temporary,
+              enabled: p.enabled,
+              allowExtensions: p.allowExtensions,
+              allowSettings: p.allowSettings,
+              open: s !== null,
+            }
+          }),
         }
       },
     },
@@ -189,7 +186,7 @@ export function buildToolDefs(): ToolDef[] {
       spec: {
         name: 'delete_browser_profile',
         description:
-          'Delete a TEMPORARY profile (created with create_browser_profile temporary:true): closes its Chrome and removes its files. Normal profiles cannot be deleted by agents; the user deletes those in the Settings → Plugins → Chrome.',
+          'Delete a local profile: closes its Chrome and removes its files. Shared global profiles require a fresh global deletion confirmation in Settings → Plugins → Chrome.',
         props: { profile: profileName },
         required: ['profile'],
       },
@@ -197,15 +194,11 @@ export function buildToolDefs(): ToolDef[] {
         const name = a.profile as string
         const rec = deps.store.get(name)
         if (!rec) throw new ToolError(`profile "${name}" does not exist`)
-        if (!rec.temporary)
-          throw new ToolError(
-            `profile "${name}" is not temporary — only the user can delete it, in the Settings → Plugins → Chrome`,
-          )
         deps.logger?.info('admin action', {
           action: 'delete',
           profile: name,
           actor: 'agent-tool',
-          temporary: true,
+          temporary: rec.temporary,
         })
         await deps.browser.exclusive(name, async () => {
           await deps.browser.close(name)
@@ -218,7 +211,7 @@ export function buildToolDefs(): ToolDef[] {
       spec: {
         name: 'open_tab',
         description:
-          'Open a background tab at an HTTP(S)/file URL or absolute local path. Returns tabId, numeric windowId, url and title. If later work fails, TAB_CREATED identifies the existing tab. windowOf selects an existing tab’s window and fails clearly if the helper cannot place it there; it never opens elsewhere as a fallback. Otherwise use Chrome’s most recently active available window. Chrome is never brought forward. newWindow:true opens a separate window.',
+          'Open a background tab at a URL or absolute local path. Returns tabId, numeric windowId, url and title. If later work fails, TAB_CREATED identifies the existing tab. windowOf selects an existing tab’s window and fails clearly if the helper cannot place it there; it never opens elsewhere as a fallback. Otherwise use Chrome’s most recently active available window. Chrome is never brought forward. newWindow:true opens a separate window.',
         props: {
           profile: profileName,
           url,
@@ -298,14 +291,12 @@ export function buildToolDefs(): ToolDef[] {
       spec: {
         name: 'list_tabs',
         description:
-          'List open tabs (tabId, numeric windowId, profile, url, title) of enabled profiles, or one profile. Read-only; does not change recent-window preference.',
+          'List open tabs (tabId, numeric windowId, profile, url, title) of all profiles, or one profile. Read-only; does not change recent-window preference.',
         props: { profile: profileName },
       },
       async run(a, deps) {
         if (a.profile !== undefined) usableProfile(deps, a.profile as string)
-        let tabs = deps.tabs.list(generationOf(deps), a.profile as string | undefined)
-        if (a.profile === undefined)
-          tabs = tabs.filter((t) => deps.store.get(t.profile)?.enabled === true)
+        const tabs = deps.tabs.list(generationOf(deps), a.profile as string | undefined)
         return {
           json: await Promise.all(
             tabs.map(async (t) => ({

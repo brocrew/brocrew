@@ -11,7 +11,5 @@ export function navigationUrl(raw: string): string {
   } catch {
     throw new Error('the URL is not valid')
   }
-  if (!['http:', 'https:', 'file:'].includes(url.protocol))
-    throw new Error('only http, https, file URLs, absolute local paths and about:blank are allowed')
   return url.href
 }

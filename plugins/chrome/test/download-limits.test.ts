@@ -3,11 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
-import {
-  DownloadRouter,
-  MAX_UNCLAIMED_PER_HOUR,
-  UnclaimedDownloadQuota,
-} from '../src/browser/downloadRouter.js'
+import { DownloadRouter } from '../src/browser/downloadRouter.js'
 import { MAX_DOWNLOAD_BYTES } from '../src/files.js'
 
 const roots: string[] = []
@@ -15,7 +11,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true })
 })
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve))
-function fixture(quota = new UnclaimedDownloadQuota()) {
+function fixture() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fictional-download-policy-'))
   roots.push(dir)
   const session = new EventEmitter() as EventEmitter & { send: ReturnType<typeof vi.fn> }
@@ -24,7 +20,6 @@ function fixture(quota = new UnclaimedDownloadQuota()) {
   const router = new DownloadRouter({
     dir,
     session,
-    quota,
     nativeDir: () => path.join(dir, 'kept'),
     onPolicyFailure: failed,
   })
@@ -77,28 +72,32 @@ it.each(['received', 'declared'] as const)(
     expect(fs.existsSync(path.join(h.dir, 'kept'))).toBe(false)
   },
 )
-it('caps unclaimed downloads per profile per rolling hour, across browser generations', async () => {
-  let now = 0
-  const quota = new UnclaimedDownloadQuota(() => now)
-  const first = fixture(quota)
-  for (let i = 0; i < MAX_UNCLAIMED_PER_HOUR; i++) first.begin(`fern-${i}`)
+it('keeps unclaimed downloads after the former hourly count, across browser generations', async () => {
+  const first = fixture()
+  for (let i = 0; i < 25; i++) first.begin(`fern-${i}`)
   await flush()
   expect(first.session.send).not.toHaveBeenCalled()
-  const nextGeneration = fixture(quota)
+  const nextGeneration = fixture()
   nextGeneration.begin('fern-extra')
   await flush()
-  expect(nextGeneration.session.send).toHaveBeenCalledWith('Browser.cancelDownload', {
-    guid: 'fern-extra',
-  })
+  expect(nextGeneration.session.send).not.toHaveBeenCalled()
+  nextGeneration.progress('fern-extra', 22, 'completed')
+  await vi.waitFor(() =>
+    expect(fs.readFileSync(path.join(nextGeneration.dir, 'kept', 'paper.txt'), 'utf8')).toBe(
+      'fictional staged bytes',
+    ),
+  )
   const otherProfile = fixture()
   otherProfile.begin('willow-first')
   await flush()
   expect(otherProfile.session.send).not.toHaveBeenCalled()
-  now = 60 * 60 * 1000
-  nextGeneration.session.send.mockClear()
-  nextGeneration.begin('fern-new-hour')
+})
+it('keeps 500 active records bounded and cancels only the overflow', async () => {
+  const h = fixture()
+  for (let i = 0; i < 500; i++) h.begin(`fern-${i}`)
+  h.begin('fern-overflow')
   await flush()
-  expect(nextGeneration.session.send).not.toHaveBeenCalled()
+  expect(h.session.send.mock.calls).toEqual([['Browser.cancelDownload', { guid: 'fern-overflow' }]])
 })
 it('ends its owned browser if Chrome cannot cancel an oversized page download', async () => {
   const h = fixture()
@@ -109,7 +108,7 @@ it('ends its owned browser if Chrome cannot cancel an oversized page download', 
   expect(h.failed).toHaveBeenCalledOnce()
 })
 
-it('successful tool captures do not consume unattended quota or fill the record cap', async () => {
+it('successful tool captures do not fill the record cap', async () => {
   const h = fixture()
   for (let i = 0; i < 501; i++) {
     const capture = h.router.capture(async () => new Set(['fern-frame']))

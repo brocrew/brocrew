@@ -46,7 +46,7 @@ export function buildProfileToolDefs(): ToolDef[] {
       spec: {
         name: 'install_extension',
         description:
-          'Ask the user to install a Chrome extension in a profile. source: a Web Store id (32 letters a-p), a Web Store URL, or a folder path under {roots} (an unpacked extension with manifest.json). Nothing installs by itself: a visible Chrome window opens on the right page and the Settings → Plugins → Chrome tells the user what to click; the call returns status "opened" immediately; agents keep using the profile. Restarts the profile (its tab ids die). Needs "Allow extensions" on the profile.',
+          'Ask the user to install a Chrome extension in a profile. source: a Web Store id (32 letters a-p), a Web Store URL, or a folder path under {roots} (an unpacked extension with manifest.json). Nothing installs by itself: a visible Chrome window opens on the right page and the Settings → Plugins → Chrome tells the user what to click; the call returns status "opened" immediately; agents keep using the profile. Restarts the profile (its tab ids die).',
         props: {
           profile: profileName,
           source: {
@@ -60,7 +60,7 @@ export function buildProfileToolDefs(): ToolDef[] {
       },
       async run(a, deps) {
         const name = a.profile as string
-        usableProfile(deps, name, 'allowExtensions')
+        usableProfile(deps, name)
         const source = (a.source as string).trim()
         const id = webStoreId(source)
         if (id) {
@@ -70,9 +70,7 @@ export function buildProfileToolDefs(): ToolDef[] {
             )
           )
             return { json: { status: 'already-installed', id } }
-          await deps.windows.open(name, webStoreUrl(id), () =>
-            usableProfile(deps, name, 'allowExtensions'),
-          )
+          await deps.windows.open(name, webStoreUrl(id), () => usableProfile(deps, name))
           return {
             json: {
               status: 'opened',
@@ -84,9 +82,7 @@ export function buildProfileToolDefs(): ToolDef[] {
         }
         if (/^https?:/i.test(source)) throw new ToolError('only Chrome Web Store URLs are accepted')
         checkUnpackedFolder(source, deps.guard())
-        await deps.windows.open(name, 'chrome://extensions', () =>
-          usableProfile(deps, name, 'allowExtensions'),
-        )
+        await deps.windows.open(name, 'chrome://extensions', () => usableProfile(deps, name))
         return {
           json: {
             status: 'opened',
@@ -101,12 +97,12 @@ export function buildProfileToolDefs(): ToolDef[] {
       spec: {
         name: 'list_extensions',
         description:
-          'List the extensions installed in a profile: id, name, version, enabled, unpacked; builtIn: true marks the BroCrew helper, which BroCrew installs and updates itself. Reads the profile files; the profile is not opened. Needs "Allow extensions".',
+          'List the extensions installed in a profile: id, name, version, enabled, unpacked; builtIn: true marks the BroCrew helper, which BroCrew installs and updates itself. Reads the profile files; the profile is not opened.',
         props: { profile: profileName },
         required: ['profile'],
       },
       async run(a, deps) {
-        usableProfile(deps, a.profile as string, 'allowExtensions')
+        usableProfile(deps, a.profile as string)
         return {
           json: diskAccess(deps, a.profile as string, false, () =>
             listExtensions(deps.browser.dir(a.profile as string)),
@@ -118,7 +114,7 @@ export function buildProfileToolDefs(): ToolDef[] {
       spec: {
         name: 'remove_extension',
         description:
-          'Ask the user to remove an extension: a visible window opens on its Chrome page and they click Remove. Files are never deleted by hand. Restarts the profile (its tab ids die). Needs "Allow extensions".',
+          'Ask the user to remove an extension: a visible window opens on its Chrome page and they click Remove. Files are never deleted by hand. Restarts the profile (its tab ids die).',
         props: {
           profile: profileName,
           id: {
@@ -131,7 +127,7 @@ export function buildProfileToolDefs(): ToolDef[] {
       },
       async run(a, deps) {
         const name = a.profile as string
-        usableProfile(deps, name, 'allowExtensions')
+        usableProfile(deps, name)
         const id = a.id as string
         if (
           !diskAccess(deps, name, false, () => listExtensions(deps.browser.dir(name))).some(
@@ -140,7 +136,7 @@ export function buildProfileToolDefs(): ToolDef[] {
         )
           throw new ToolError('that extension is not installed in this profile')
         await deps.windows.open(name, `chrome://extensions/?id=${id}`, () =>
-          usableProfile(deps, name, 'allowExtensions'),
+          usableProfile(deps, name),
         )
         return {
           json: {
@@ -155,12 +151,12 @@ export function buildProfileToolDefs(): ToolDef[] {
     {
       spec: {
         name: 'get_settings',
-        description: `Read the Chrome settings an agent may manage in a profile (${SETTING_KEYS.join(', ')}); null = Chrome's default. Needs "Allow settings".`,
+        description: `Read the Chrome settings an agent may manage in a profile (${SETTING_KEYS.join(', ')}); null = Chrome's default.`,
         props: { profile: profileName },
         required: ['profile'],
       },
       async run(a, deps) {
-        usableProfile(deps, a.profile as string, 'allowSettings')
+        usableProfile(deps, a.profile as string)
         return {
           json: {
             settings: diskAccess(deps, a.profile as string, false, () =>
@@ -174,7 +170,7 @@ export function buildProfileToolDefs(): ToolDef[] {
       spec: {
         name: 'set_setting',
         description:
-          'Change one allowlisted Chrome setting of a profile. Closes the profile\'s Chrome, writes the setting, and the next call relaunches it, so its tab ids die. Booleans take true/false, content settings 1 (allow) or 2 (block), intl.accept_languages a list like "en-US,en". Any other key is refused. Needs "Allow settings".',
+          'Change one allowlisted Chrome setting of a profile. Closes the profile\'s Chrome, writes the setting, and the next call relaunches it, so its tab ids die. Booleans take true/false, content settings 1 (allow) or 2 (block), intl.accept_languages a list like "en-US,en". Any other key is refused.',
         props: {
           profile: profileName,
           key: { type: 'string', description: 'The setting key.', enum: SETTING_KEYS },
@@ -184,16 +180,16 @@ export function buildProfileToolDefs(): ToolDef[] {
       },
       async run(a, deps) {
         const name = a.profile as string
-        usableProfile(deps, name, 'allowSettings')
+        usableProfile(deps, name)
         const key = a.key as string
         const value = validateSetting(key, a.value)
         const wasOpen = await deps.browser.exclusive(name, async () => {
-          usableProfile(deps, name, 'allowSettings')
+          usableProfile(deps, name)
           const open = deps.browser.state(name) !== null
           await deps.browser.close(name)
-          usableProfile(deps, name, 'allowSettings')
+          usableProfile(deps, name)
           diskAccess(deps, name, true, () => {
-            usableProfile(deps, name, 'allowSettings')
+            usableProfile(deps, name)
             writeSetting(deps.browser.dir(name), key, value)
           })
           return open

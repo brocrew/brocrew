@@ -20,7 +20,7 @@ import { silentLogger } from '../logger.js'
 import { settledWithin } from '../settled.js'
 import { launchArgs } from './launchArgs.js'
 import { PrivateDownloadFiles } from './privateDownloadFiles.js'
-import { DownloadRouter, UnclaimedDownloadQuota } from './downloadRouter.js'
+import { DownloadRouter } from './downloadRouter.js'
 import {
   BROWSER_MISSING,
   BrowserNotFoundError,
@@ -46,7 +46,7 @@ export interface ChromeBrowserOptions {
   dirOf: (profile: string) => string
   /** Synchronous admission; release must retain its token while Chrome termination is uncertain. */
   acquireLease?: (profile: string) => { release(): boolean | void }
-  /** A fresh effective authorization identity, including revocation epochs. */
+  /** A fresh stable profile target identity; replacement invalidates old work. */
   authorization?: (profile: string) => string
   helperDir?: (profile: string) => string
   profileExists?: (profile: string) => boolean
@@ -168,7 +168,6 @@ export class ChromeBrowser implements ProfileBrowser {
   private readonly exitGraceMs: number
   private readonly pollMs: number
   private readonly killChrome: (dir: string) => Promise<void>
-  private readonly downloadQuotas = new Map<string, UnclaimedDownloadQuota>()
   private generations = 0
   private shuttingDown = false
   private readonly choice: BrowserChoice
@@ -248,6 +247,7 @@ export class ChromeBrowser implements ProfileBrowser {
     if (this.entries.get(profile)?.removing) throw new ProfileInUseError()
     const authorization = this.opts.authorization?.(profile)
     const check = () => {
+      if (this.opts.profileExists?.(profile) === false) throw new Error('profile does not exist')
       if (this.shuttingDown || this.opts.authorization?.(profile) !== authorization)
         throw new Error('profile authorization changed')
     }
@@ -502,11 +502,6 @@ export class ChromeBrowser implements ProfileBrowser {
     let ending: Promise<void> | undefined
     const end = (): Promise<void> =>
       (ending ??= this.endDownloadBrowser(ctx, profileDir, isCurrent))
-    let quota = this.downloadQuotas.get(profileDir)
-    if (!quota) {
-      quota = new UnclaimedDownloadQuota()
-      this.downloadQuotas.set(profileDir, quota)
-    }
     const files = new PrivateDownloadFiles(this.downloadRoot(profileDir))
     const router: DownloadRouter = new DownloadRouter({
       dir,
@@ -516,7 +511,6 @@ export class ChromeBrowser implements ProfileBrowser {
       fallbackDirs: () => [this.downloadRoot(profileDir)],
       logger: this.logger,
       privateActive: () => e.agentCalls > 0 || downloads.privateMode || downloads.captures > 0,
-      quota,
       onPolicyFailure: end,
     })
     const downloads: NonNullable<Entry['downloads']> = {
@@ -892,6 +886,7 @@ export class ChromeBrowser implements ProfileBrowser {
     if (e.removing) return Promise.reject(new ProfileInUseError())
     const ctx = e.ctx
     const check = () => {
+      if (this.opts.profileExists?.(profile) === false) throw new Error('profile does not exist')
       if (e.ctx !== ctx || (ctx && !this.authorized(e)))
         throw new Error('profile authorization changed')
     }
