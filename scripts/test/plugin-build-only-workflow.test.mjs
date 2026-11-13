@@ -22,6 +22,10 @@ for (const [plugin, exportPlugin] of [
     const workflow = readFileSync(join(folder, 'source/.github/workflows/release.yml'), 'utf8')
     const [release, dryRun] = workflow.split('\n  build-only:\n')
     expect(dryRun).toBeTruthy()
+    for (const job of [release, dryRun])
+      expect(job).toMatch(
+        /actions\/setup-go@v6[\s\S]*?go-version: '1\.27\.2'[\s\S]*?npm run build -- artifact/,
+      )
     expect(release).toContain(
       "github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')",
     )

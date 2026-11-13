@@ -1,6 +1,6 @@
 {
   "name": "@brocrew/chrome-plugin",
-  "version": "0.1.14",
+  "version": "0.1.15",
   "private": true,
   "type": "module",
   "description": "Chrome profiles and browser tools for BroCrew",

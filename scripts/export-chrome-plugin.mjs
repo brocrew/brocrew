@@ -128,6 +128,10 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: '22.23.3'
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.27.2'
+          cache: false
       - run: npm ci --legacy-peer-deps --ignore-scripts --no-audit --no-fund
       - run: npm ci --prefix plugins/chrome --ignore-scripts --no-audit --no-fund
       - run: npm run typecheck
@@ -162,6 +166,10 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: '22.23.3'
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.27.2'
+          cache: false
       - run: npm ci --legacy-peer-deps --ignore-scripts --no-audit --no-fund
       - run: npm ci --prefix plugins/chrome --ignore-scripts --no-audit --no-fund
       - run: npm run typecheck
