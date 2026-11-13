@@ -116,7 +116,21 @@ it('a saved Codex key remains usable to a fresh startup probe after its launch c
     expect(auth).toMatchObject({ state: 'usable', login: 'api-key' })
     expect(
       isReady({
-        version: { version: '0.160.0' },
+        version: {
+          version: '0.160.0',
+          program: {
+            standing: 'tested',
+            from: 'carried',
+            path: join(root, 'codex'),
+            version: '0.160.0',
+            tested: null,
+            said: 'Fictional carried Codex 0.160.0.',
+            help: null,
+            update: null,
+            others: [],
+            updatedFrom: null,
+          },
+        },
         setup: null,
         auth,
         keyRefused: false,

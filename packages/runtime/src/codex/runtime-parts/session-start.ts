@@ -96,4 +96,3 @@ export function assertAuthHealthy(
     throw new AuthUnavailableError('codex', health.reason ?? 'managed Codex credential unavailable')
   }
 }
-
