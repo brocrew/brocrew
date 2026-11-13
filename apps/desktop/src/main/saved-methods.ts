@@ -90,11 +90,7 @@ function indexText(path: string): string {
  * kept; the index sent is rebuilt from their fields, never `index.md`'s own text. An index over
  * 4 KiB means no index at all. A missing folder means there are none.
  */
-export function readSavedMethods(
-  folder: string,
-  now: number,
-  _platform: NodeJS.Platform = process.platform,
-): SavedMethodsReading {
+export function readSavedMethods(folder: string, now: number): SavedMethodsReading {
   try {
     const at = entryAt(folder)
     if (at === null) return { kind: 'none', folder, readAt: now }

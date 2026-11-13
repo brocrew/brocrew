@@ -204,7 +204,7 @@ describe('a saved-methods index read where an open follows links (Windows)', () 
     fake.followsLinks = true
     fake.swap = { when: (path) => path === index, run: linkInPlace(index, theirs) }
 
-    const reading = readSavedMethods(folder, 0, 'win32')
+    const reading = readSavedMethods(folder, 0)
 
     expect(fake.swapped).toBe(true)
     expect(reading).toMatchObject({
@@ -229,7 +229,7 @@ describe('a saved-methods index read where an open follows links (Windows)', () 
     const folder = aFolder()
     fake.followsLinks = true
 
-    const reading = readSavedMethods(folder, 0, 'win32')
+    const reading = readSavedMethods(folder, 0)
 
     expect(reading).toMatchObject({ kind: 'read', methods: [{ title: 'Rotate a fictional log' }] })
   })
