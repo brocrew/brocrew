@@ -119,7 +119,7 @@ it('reads a complete W4-sized routing snapshot once across 154 overlapping windo
     expect(onMain).not.toHaveBeenCalled()
     for (const answer of answers)
       expect(new Set(answer.map((row) => row.sessionId))).toEqual(new Set(expected.keys()))
-    expect(named).toHaveBeenCalledTimes(expected.size)
+    expect(named).not.toHaveBeenCalled()
     expect(replyBytes).toBeGreaterThan(4 * 1024 * 1024)
     console.log(
       'Large window fixture',

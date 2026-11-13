@@ -349,6 +349,7 @@ export interface SessionStore {
    * snapshot of a fold over the whole ledger; nothing pushes it and nothing invalidates it, so the
    * caller owns both the cadence and the last answer — see `persons-queue.ts`.
    */
+  personsQueue(): Promise<PersonsQueueAnswer | null>
   questionsForAPerson(): Promise<LedgerWalk<PersonsQuestion> | null>
   /**
    * 🔴 **What only a person may settle** (403) — every open routed request that never travelled,

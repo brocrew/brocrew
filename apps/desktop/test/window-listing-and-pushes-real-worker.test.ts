@@ -14,6 +14,8 @@ import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import type { RuntimeStatesMessage } from '../src/shared/runtime-ipc'
 
 it('measures listings and real state notices with nine live agents', async () => {
+  const previousStackLimit = Error.stackTraceLimit
+  Error.stackTraceLimit = 50
   const mainHistory: { sql: string; rows: number; caller: string }[] = []
   const otherMainHistory: { sql: string; rows: number; caller: string; phase: string }[] = []
   let phase = 'startup'
@@ -203,6 +205,7 @@ it('measures listings and real state notices with nine live agents', async () =>
     await host.closeAll()
     await reader.close()
     await world.cleanUp()
+    Error.stackTraceLimit = previousStackLimit
     vi.restoreAllMocks()
   }
 }, 60_000)
