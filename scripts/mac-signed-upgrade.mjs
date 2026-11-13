@@ -1,3 +1,4 @@
+import { nativeWorkspaceFromRegistry, nativeWorkspaceStartup } from './mac-native-workspace.mjs'
 import {
   waitForNativeMacDownload,
   unpackDownloadedMacZip,
@@ -507,6 +508,7 @@ async function quitSquirrelApp() {
 async function nativeRestart(workspace) {
   selectWorkspace(workspace)
   const previous = active
+  const nativeWorkspace = nativeWorkspaceFromRegistry(workspace.baseline.registryBefore, workspaces)
   await click(workspace.cdp, '[data-cy=updates-restart]')
   await waitFor(async () => !(await processInfo(previous.pid)), 'A quits for Squirrel.Mac', 60_000)
   const stdout = await readFile(join(evidence, `${previous.stage}.stdout.log`), 'utf8')
@@ -522,23 +524,27 @@ async function nativeRestart(workspace) {
   previous.browser.close()
   workspace.cdp.close()
   squirrelApp = await observeMacReplacement({ app, version: VERSION_B, previous, run, processInfo })
-  const startup = await macFirstStartReceipt(data, VERSION_B)
-  const completed = await completedProofCopy(data, new Set(workspace.baseline.copiesBefore))
-  requireEvidence(
-    completed.manifest.madeBy?.appVersion === VERSION_B &&
-      completed.manifest.madeBy?.build === candidate.source,
-    'The native first start did not finish its candidate recovery copy.',
-  )
-  summary.installedCandidate = await bundleChecked(app, VERSION_B)
-  summary.replacementCount++
-  workspace.result.nativeStartup = { ...startup, completedCheckpointId: completed.manifest.id }
   summary.restart = {
+    origin: { name: workspace.name, path: workspace.data },
+    workspace: { name: nativeWorkspace.name, path: nativeWorkspace.data },
     previous: { pid: previous.pid, command: previous.command, started: previous.started },
     restarted: squirrelApp,
-    startup,
-    completedCheckpointId: completed.manifest.id,
-    package: summary.installedCandidate,
   }
+  summary.installedCandidate = await bundleChecked(app, VERSION_B)
+  summary.restart.package = summary.installedCandidate
+  const { startup, completed } = await nativeWorkspaceStartup(
+    nativeWorkspace,
+    { version: VERSION_B, source: candidate.source },
+    {
+      readReceipt: macFirstStartReceipt,
+      completedCopy: completedProofCopy,
+      workspaces,
+      diagnostic: summary.restart,
+    },
+  )
+  summary.replacementCount++
+  nativeWorkspace.result.nativeStartup = { ...startup, completedCheckpointId: completed.manifest.id }
+  Object.assign(summary.restart, { startup, completedCheckpointId: completed.manifest.id })
   passed('squirrel-replacement-restart-and-first-start', summary.restart)
   await quitSquirrelApp()
   await requireNoInstalledProcesses()
@@ -576,6 +582,7 @@ async function captureBaseline(workspace, registryBefore, settingsBefore) {
     registryBefore,
     permissions: fixturePermissions(data, Object.keys(natives)),
     copiesBefore: await checkpointIds(data),
+    workspaceId: (await readFile(join(data, 'backups', 'workspace-id'), 'utf8')).trim(),
   }
   await writeFile(
     join(evidence, 'a-settled-baseline.json'),
@@ -587,6 +594,7 @@ async function captureBaseline(workspace, registryBefore, settingsBefore) {
         native: natives,
         permissions: workspace.baseline.permissions,
         registry: registryBefore,
+        workspaceId: workspace.baseline.workspaceId,
       },
       null,
       2,

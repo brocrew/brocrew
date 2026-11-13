@@ -11,6 +11,7 @@ import {
 } from '../lib/mac-native-upgrade.mjs'
 import { requireEvidence } from '../lib/mac-update-test.mjs'
 import { nativeRestartRecorded } from '../mac-signed-upgrade-contract.mjs'
+import { nativeWorkspaceFromRegistry, nativeWorkspaceStartup } from '../mac-native-workspace.mjs'
 
 const folders = []
 const folder = () => {
@@ -87,8 +88,33 @@ it('presses native restart and keeps B alive until its candidate checkpoint comp
   expect(restart).toBeDefined()
   const order = [],
     previous = { pid: 123, stage: 'a', log: '/evidence/a.log', browser: { close: vi.fn() } }
-  const workspace = { cdp: { close: vi.fn() }, result: {}, baseline: { copiesBefore: ['A-copy'] } }
-  const startup = { appVersion: '0.2.23', successfulStarts: 1, checkpointId: 'A-copy' }
+  const workspace = {
+    name: 'Default',
+    data: '/fictional/default',
+    cdp: { close: vi.fn() },
+    result: {},
+    baseline: {
+      copiesBefore: ['default-A-copy'],
+      registryBefore: {
+        workspaces: [
+          { path: '/fictional/default', lastOpenedAt: 1 },
+          { path: '/fictional/WorkspaceB', lastOpenedAt: 2 },
+        ],
+      },
+    },
+  }
+  const nativeWorkspace = {
+    name: 'WorkspaceB',
+    data: '/fictional/WorkspaceB',
+    result: {},
+    baseline: { workspaceId: 'workspace-B', copiesBefore: ['A-copy'] },
+  }
+  const startup = {
+    appVersion: '0.2.23',
+    successfulStarts: 1,
+    checkpointId: 'A-copy',
+    workspaceId: 'workspace-B',
+  }
   const summary = { replacementCount: 0 }
   const fixture = {
     active: previous,
@@ -100,6 +126,9 @@ it('presses native restart and keeps B alive until its candidate checkpoint comp
     evidence: '/evidence',
     join,
     nativeRestartRecorded,
+    nativeWorkspaceFromRegistry,
+    nativeWorkspaceStartup,
+    workspaces: [workspace, nativeWorkspace],
     VERSION_B: '0.2.23',
     candidate: { source: 'original-signed-source' },
     selectWorkspace: vi.fn(),
@@ -119,12 +148,18 @@ it('presses native restart and keeps B alive until its candidate checkpoint comp
       order.push('native-B')
       return { pid: 456 }
     }),
-    macFirstStartReceipt: vi.fn(async () => startup),
+    macFirstStartReceipt: vi.fn(async () => {
+      expect(summary.restart.restarted).toEqual({ pid: 456 })
+      expect(summary.restart.workspace).toEqual({ name: 'WorkspaceB', path: nativeWorkspace.data })
+      expect(summary.restart.origin).toEqual({ name: 'Default', path: workspace.data })
+      return startup
+    }),
     completedProofCopy: vi.fn(async () => {
       order.push('completed-B-copy')
       return {
         manifest: {
           id: 'B-copy',
+          workspaceId: 'workspace-B',
           madeBy: { appVersion: '0.2.23', build: 'original-signed-source' },
         },
       }
@@ -158,10 +193,12 @@ it('presses native restart and keeps B alive until its candidate checkpoint comp
   })
   expect(fixture.run).not.toHaveBeenCalled()
   expect(fixture.completedProofCopy).toHaveBeenCalledExactlyOnceWith(
-    '/fictional/default',
+    '/fictional/WorkspaceB',
     new Set(['A-copy']),
   )
+  expect(fixture.macFirstStartReceipt).toHaveBeenCalledExactlyOnceWith(nativeWorkspace.data, '0.2.23')
   expect(summary.replacementCount).toBe(1)
-  expect(workspace.result.nativeStartup.completedCheckpointId).toBe('B-copy')
-  expect(workspace.result.nativeStartup.checkpointId).toBe('A-copy')
+  expect(workspace.result.nativeStartup).toBeUndefined()
+  expect(nativeWorkspace.result.nativeStartup.completedCheckpointId).toBe('B-copy')
+  expect(nativeWorkspace.result.nativeStartup.checkpointId).toBe('A-copy')
 })
