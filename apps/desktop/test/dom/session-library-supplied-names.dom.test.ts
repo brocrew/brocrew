@@ -115,6 +115,15 @@ async function filter(out: Awaited<ReturnType<typeof library>>, provider: string
   )
 }
 
+function expectUnknownGoneNote(out: Awaited<ReturnType<typeof library>>) {
+  const note = out.view.q('library-outcome-codex:behind')
+  expect(note.textContent?.trim()).toBe(
+    "The provider's file for this conversation is gone, so it can't be rebuilt.",
+  )
+  expect(note.dataset.outcome).toBe('unreadable')
+  return note
+}
+
 it('uses selected names in home provenance while keeping recorded and imported origin priority', async () => {
   const out = await library()
   const row = out.view.q('library-row-claude:unimported')
@@ -141,11 +150,7 @@ it('names a completed gone result after a late answer without rerunning rebuild 
   await vi.waitFor(() => expect(out.selected.listLibrary.mock.calls.length).toBe(3))
   await filter(out, 'codex')
   await vi.waitFor(() => expect(out.view.all('library-outcome-codex:behind')).toHaveLength(1))
-  const note = out.view.q('library-outcome-codex:behind')
-  expect(note.textContent?.trim()).toBe(
-    "The provider's file for this conversation is gone, so it can't be rebuilt.",
-  )
-  expect(note.dataset.outcome).toBe('unreadable')
+  const note = expectUnknownGoneNote(out)
   const reads = out.selected.listLibrary.mock.calls.length
   out.answer()
   await vi.waitFor(() =>
@@ -221,11 +226,7 @@ it('keeps unread and explicitly empty selected names distinct on home and gone p
   out.rebuilding.resolve({ outcome: 'gone', status: null })
   await vi.waitFor(() => expect(out.selected.listLibrary).toHaveBeenCalledTimes(2))
   await vi.waitFor(() => expect(out.view.all('library-outcome-codex:behind')).toHaveLength(1))
-  const note = out.view.q('library-outcome-codex:behind')
-  expect(note.textContent?.trim()).toBe(
-    "The provider's file for this conversation is gone, so it can't be rebuilt.",
-  )
-  expect(note.dataset.outcome).toBe('unreadable')
+  const note = expectUnknownGoneNote(out)
   const reads = out.selected.listLibrary.mock.calls.length
 
   out.answer()
