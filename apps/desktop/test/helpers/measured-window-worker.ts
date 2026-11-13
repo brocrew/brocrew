@@ -12,8 +12,8 @@ WindowReadEngine.prototype.read = function (...args) {
   started = performance.now(); queries = 0; rows = 0
   return read.apply(this, args)
 }
-Database.prototype.prepare = function (sql: string) {
-  const statement = prepare.call(this, sql)
+Database.prototype.prepare = function (this: Database.Database, sql: string) {
+  const statement = prepare.call(this, sql) as Database.Statement<unknown[], unknown>
   if (!/^\s*(SELECT|WITH)\b/i.test(sql) || !/\bevents\b/i.test(sql) || !/\bpayload\b/i.test(sql))
     return statement
   return new Proxy(statement, {
@@ -38,7 +38,7 @@ Database.prototype.prepare = function (sql: string) {
       return typeof value === 'function' ? value.bind(native) : value
     },
   })
-}
+} as typeof prepare
 if (parentPort !== null) {
   const port = parentPort
   const post = port.postMessage.bind(port)

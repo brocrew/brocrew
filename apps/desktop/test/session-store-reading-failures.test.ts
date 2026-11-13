@@ -10,6 +10,7 @@ afterEach(() => {
 })
 
 const readers = [
+  'personsQueue',
   'questionsForAPerson',
   'decisionsForAPerson',
   'stalledWorkForAPerson',
@@ -87,4 +88,16 @@ it('keeps a failed graph page distinct from an empty page', async () => {
     readAt: 55,
   })
   expect(read).toHaveBeenLastCalledWith(listing, ['neri'])
+})
+
+ it('keeps the combined queue publication and partial parts in one bridge round', async () => {
+  const answer = { questions: null, decisions: { rows: [], rowsUnread: 1 },
+    published: { epoch: 'fictional-epoch', seq: 7, covers: {} } }
+  const read = vi.fn().mockResolvedValue(answer)
+  const store = createSessionStore(everythingOverTheWire({
+    onEvent: () => () => {}, onLiveness: () => () => {}, personsQueue: read,
+  }) as unknown as RuntimeBridge)
+  stores.push(store)
+  expect(await store.personsQueue()).toEqual(answer)
+  expect(read).toHaveBeenCalledOnce()
 })

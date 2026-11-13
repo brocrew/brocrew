@@ -7645,7 +7645,13 @@ export class RuntimeHost implements LiveHost {
     this.deps.store.checkCommitted()
     const asked = [...this.statesToAsk]
     this.statesToAsk.clear()
-    const keptOn = this.filesToSay.splice(0)
+    const resourcesByPiece = new Map<string, Set<string>>()
+    for (const { piece, resources } of this.filesToSay.splice(0)) {
+      let kept = resourcesByPiece.get(piece)
+      if (kept === undefined) resourcesByPiece.set(piece, (kept = new Set()))
+      for (const resource of resources) kept.add(resource)
+    }
+    const keptOn = [...resourcesByPiece].map(([piece, resources]) => ({ piece, resources: [...resources] }))
     const say = this.deps.statesMoved
     if (say === undefined || this.launches.closed) return
     const publish = (moved: readonly AgentStateMoved[], kept: readonly KeptFile[]): void => {
@@ -15305,7 +15311,8 @@ export class RuntimeHost implements LiveHost {
       const kept = query.kind === 'incidents' ? this.windowIncidentsKept : this.windowRoutesKept
       if (reusable && kept !== undefined && sameWindowWriter(kept.stamp, before)) {
         this.deps.store.checkCommitted()
-        return compose(kept.result)
+        if (sameWindowWriter(before, this.sampleWindowWriter(query))) return compose(kept.result)
+        continue
       }
       const kind = query.kind === 'incidents' ? 'incidents' : 'routes'
       const failed = reusable ? this.windowReadsFailed.get(kind) : undefined
@@ -15315,13 +15322,15 @@ export class RuntimeHost implements LiveHost {
         this.now() < failed.until
       )
         throw failed.missed
-      let requested = query
-      if ((query.kind === 'routes' || query.kind === 'publication') && this.windowRoutesKept?.result.kind === 'routes') {
+      const requested = (): WindowReadQuery => {
         const previous = this.windowRoutesKept
-        const changed = this.deps.windowWriterStamp?.changedOwners?.(previous.stamp, before)
-        const token = previous.result.kind === 'routes' ? previous.result.cacheToken : undefined
-        if (token !== undefined && changed != null)
-          requested = { ...query, reuse: { token, changed: [...changed] } }
+        if ((query.kind === 'routes' || query.kind === 'publication') && previous?.result.kind === 'routes') {
+          const changed = this.deps.windowWriterStamp?.changedOwners?.(previous.stamp, before)
+          const token = previous.result.cacheToken
+          if (token !== undefined && changed != null)
+            return { ...query, reuse: { token, changed: [...changed] } }
+        }
+        return query
       }
       let pending: Promise<WindowReadResult>
       let origin = before
@@ -15330,7 +15339,7 @@ export class RuntimeHost implements LiveHost {
         let shared = this[key]
         if (shared === undefined && joinOnly) throw new WindowReadMissed('callers-full')
         if (shared === undefined) {
-          shared = { stamp: before, read: reader.read(requested) }
+          shared = { stamp: before, read: reader.read(requested()) }
           this[key] = shared
           const owned = shared
           // Settled before any caller's wait resumes, so they all find the failure remembered.
@@ -15346,7 +15355,7 @@ export class RuntimeHost implements LiveHost {
         }
         pending = shared.read
         origin = shared.stamp
-      } else pending = reader.read(requested, signal)
+      } else pending = reader.read(requested(), signal)
       let result: WindowReadResult
       try {
         result = await this.waitForWindowRead(pending, signal)
@@ -15354,14 +15363,13 @@ export class RuntimeHost implements LiveHost {
         throw whyTheWorkerMissed(error, signal)
       }
       if (this.launches.closed) throw new WindowReadUnavailable()
+      this.deps.store.checkCommitted()
       const after = this.sampleWindowWriter(query)
       if (sameWindowWriter(origin, before) && sameWindowWriter(origin, after)) {
         if (query.kind === 'routes') this.windowRoutesKept = { stamp: after!, result }
         if (query.kind === 'incidents') this.windowIncidentsKept = { stamp: after!, result }
         if (result.kind === 'publication' && result.states !== null)
           this.windowRoutesKept = { stamp: after!, result: result.states }
-        // Heard after the wait, so a commit made while the worker read is heard too.
-        this.deps.store.checkCommitted()
         return compose(result)
       }
     }

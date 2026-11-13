@@ -2373,20 +2373,6 @@ let looking: ReturnType<typeof setInterval> | null = null
 const lookAtLimits = limitsReadCadence()
 
 /**
- * ⛔ **One look, both populations, and they go out TOGETHER** (403).
- *
- * ⚠️ **`Promise.all` rather than two awaits**, and it is not a micro-optimisation: the two lists
- * are drawn as one queue with one count, and two reads a round trip apart can straddle an answer.
- * ⛔ **It BOUNDS that gap; it does not close it** — the two are separate IPC calls answered by
- * separate synchronous folds, so the honest claim is that they are in flight together rather than
- * that they are atomic. A single store sweep serving both is what would close it, and `403` filed
- * the cost rather than redesigning the readers at the end of a dispatch.
- *
- * ⛔ **Each keeps its own last answer on a refusal**, because a dropped call for one population
- * must not blank the other — and `personsQueueView` now honours that one layer down, which the
- * first version did not.
- */
-/**
  * ⚑ **W4.63 · a provider's usage moved — look now**, so a limit that lifted leaves the Providers
  * card without waiting for the next tick. ⚑ One at a time: a notice while one is out joins it.
  */
@@ -2403,6 +2389,16 @@ function lookAfterAUsageNotice(): void {
  * walk on its own cadence; an explicit look reads it at once. The queue itself is read by
  * {@link lookAtTheQueue}, so a burst of asks costs at most one more look.
  */
+let queueNoticePending = false
+function lookAfterAQueueNotice(): void {
+  if (queueNoticePending || actionableReadsClosed) return
+  queueNoticePending = true
+  queueMicrotask(() => {
+    queueNoticePending = false
+    if (!actionableReadsClosed) void lookForWhatIsYours(true)
+  })
+}
+
 async function lookForWhatIsYours(scheduled = false): Promise<void> {
   void refreshLimitsDisplay(scheduled)
   await lookAtTheQueue()
@@ -2414,28 +2410,16 @@ async function lookForWhatIsYours(scheduled = false): Promise<void> {
  */
 async function lookAtTheQueueOnce(): Promise<void> {
   if (actionableReadsClosed) return
-  const [questions, decisions, stalls, asks, owed, serverAsks, stops, incidents] =
-    await Promise.all([
-      store.questionsForAPerson(),
-      store.decisionsForAPerson(),
-      // 🔴 **557 · the stalls, in the SAME `Promise.all` for `533`'s reason exactly.** ⛔ The two
-      // bands and the rows are one card, and a read a round trip after the others would let that card
-      // be drawn from two moments. ⚑ Its name ends `ForAPerson`, so it is CONSCRIPTED into this look
-      // by `everything-a-person-must-answer-is-in-the-queue.test.ts`.
-      store.stalledWorkForAPerson(),
-      // ⚑ **D-017 · R19 · the asks, in the SAME `Promise.all` for `403`'s reason**: *Waiting on you*
-      // draws it beside the rows, and a read a round trip after them could straddle a decision.
-      store.instructionAsksForAPerson(),
-      // ⚑ **F097 · the work waiting on a person's reply, in the SAME `Promise.all`**, for the asks'
-      // reason. ⚑ Its name ends `ForAPerson`, so it is CONSCRIPTED into this look too.
-      store.waitingOnWhoWroteForAPerson(),
-      // The agents' requests to register an MCP server, in the same look for the asks' reason.
-      store.mcpServerRequestsForAPerson(),
-      // The stopped work, beside the stalls it never shares a piece with, in the same look.
-      store.stoppedWorkForAPerson(),
-      // Open work no other list shows, in the same look: it is drawn beside the stops it never repeats.
-      store.workIncidentsForAPerson(),
-    ])
+  const answer = await store.personsQueue()
+  const queue = answer !== null && !('refused' in answer) ? answer : null
+  const questions = queue?.questions ?? null
+  const decisions = queue?.decisions ?? null
+  const stalls = queue?.stalled ?? null
+  const asks = queue?.instructionAsks?.rows ?? null
+  const owed = queue?.waitingOnWhoWrote ?? null
+  const serverAsks = queue?.mcpServerRequests?.rows ?? null
+  const stops = queue?.stopped ?? null
+  const incidents = queue?.incidents ?? null
   if (actionableReadsClosed) return
   if (questions !== null) escalated.value = questions
   if (decisions !== null) decided.value = decisions
@@ -3198,7 +3182,7 @@ onMounted(() => {
       void readTheWorkspace()
       // ⚑ **And the person's queue**, which reads who holds each conversation and what is archived:
       // on the tick's terms, so a notice leaves the limits walk on its own cadence.
-      void lookForWhatIsYours(true)
+      lookAfterAQueueNotice()
     },
     // 🔴 **638 · the work moved somewhere in this app** — see {@link RUNTIME_CHANGE_SUBJECTS}.
     // ⛔ **The SAME reader the `conversations` arm calls**, deliberately: `631`'s two task lists and
@@ -3241,13 +3225,13 @@ onMounted(() => {
       void modelLists.reread()
       // ⚑ **And the person's queue**, which names whoever asks and whoever is asked: on the tick's
       // terms, like the arm above.
-      void lookForWhatIsYours(true)
+      lookAfterAQueueNotice()
     },
     // ⚑ **What a person must answer may have moved**: the queue and the rail's needs-you count are
     // read again, each through its one-at-a-time read, so a burst costs at most one more look. The
     // queue is asked on the tick's terms, and the five-second look stays until this arm is proven.
     persons: () => {
-      void lookForWhatIsYours(true)
+      lookAfterAQueueNotice()
       void readTheWorkspace()
     },
   })

@@ -188,6 +188,7 @@ export function windowWriterSampler(
         sample: Database.Statement
         add: Database.Statement
         remove: Database.Statement
+        changed: Database.Statement
       }
     | undefined
   const prepared = () =>
@@ -206,6 +207,7 @@ export function windowWriterSampler(
       add: db.prepare(`INSERT INTO temp.window_read_revision
     (id, kind, session, before_ordinal) VALUES (?, 'leads', ?, ?)`),
       remove: db.prepare('DELETE FROM temp.window_read_revision WHERE id = ?'),
+      changed: db.prepare('SELECT session FROM temp.window_read_fold_owners WHERE revision > ?'),
     })
   setWindowWriteFence(db, <T>(write: () => T): T => {
     if (shared.suspended > 0) return write()
@@ -315,7 +317,7 @@ export function windowWriterSampler(
     if (before.writer !== current.writer || before.dataVersion !== current.dataVersion ||
         before.schemaVersion !== current.schemaVersion || before.foldReset !== current.foldReset ||
         before.foldRevision === undefined || current.foldRevision === undefined) return null
-    return (db.prepare('SELECT session FROM temp.window_read_fold_owners WHERE revision > ?')
+    return (prepared().changed
       .all(before.foldRevision) as { session: string }[]).map((row) => row.session)
   }
   return sampler

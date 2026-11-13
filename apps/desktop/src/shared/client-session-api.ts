@@ -42,6 +42,7 @@ export type ClientSessionApi = Pick<
   | 'onChanged'
   | 'onEvent'
   | 'onLiveness'
+  | 'personsQueue'
   | 'processMemory'
   | 'questionsForAPerson'
   | 'queueMessage'

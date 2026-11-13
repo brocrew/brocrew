@@ -1,6 +1,8 @@
 import Database from 'better-sqlite3'
 import { join } from 'node:path'
 import { Worker } from 'node:worker_threads'
+import { loadavg } from 'node:os'
+import { PERSONS_PARTS } from '../src/shared/persons-published'
 import { serialize } from 'node:v8'
 import { expect, it, vi } from 'vitest'
 import { aServiceWorld } from './helpers/a-service-world'
@@ -11,14 +13,14 @@ import { limitsWriterSampler } from '../src/main/db/fresh-limits-snapshot'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import type { RuntimeStatesMessage } from '../src/shared/runtime-ipc'
 
-it('keeps nine live agents responsive through listings and real state notices', async () => {
+it('measures listings and real state notices with nine live agents', async () => {
   const mainHistory: { sql: string; rows: number; caller: string }[] = []
   const otherMainHistory: { sql: string; rows: number; caller: string; phase: string }[] = []
   let phase = 'startup'
   let measuring = false
   const nativePrepare = Database.prototype.prepare
-  vi.spyOn(Database.prototype, 'prepare').mockImplementation(function (sql: string) {
-    const statement = nativePrepare.call(this, sql)
+  vi.spyOn(Database.prototype, 'prepare').mockImplementation(function (this: Database.Database, sql: string) {
+    const statement = nativePrepare.call(this, sql) as Database.Statement<unknown[], unknown>
     if (!/^\s*(SELECT|WITH)\b/i.test(sql) || !/\bevents\b/i.test(sql) || !/\bpayload\b/i.test(sql))
       return statement
     const record = () => {
@@ -53,6 +55,9 @@ it('keeps nine live agents responsive through listings and real state notices', 
   const bundle = await bundleAWorker('test/helpers/measured-window-worker.ts', world.folder, 'measured-window.cjs')
   const worker = new Worker(bundle, { workerData: { file: join(world.folder, 'brobot2.sqlite') },
     resourceLimits: { maxOldGenerationSizeMb: 128, maxYoungGenerationSizeMb: 16 } })
+  const workerReady = new Promise<void>((resolve) => worker.on('message', (message) => {
+    if (message.type === 'ready') resolve()
+  }))
   worker.on('message', (message) => {
     if (message.type === 'read') readings.push({ kind: message.result.kind,
       ...message.measurement, bytes: serialize(message.result).byteLength })
@@ -71,6 +76,8 @@ it('keeps nine live agents responsive through listings and real state notices', 
   const longGaps: { phase: string; elapsedMs: number }[] = []
   let last = performance.now()
   let heartbeat: ReturnType<typeof setInterval> | undefined
+  let streaming: ReturnType<typeof setInterval> | undefined
+  const laneLoad = loadavg()
   try {
     const ids: string[] = []
     for (let n = 0; n < 9; n++) {
@@ -92,15 +99,18 @@ it('keeps nine live agents responsive through listings and real state notices', 
             '{"type":"status","state":"idle"}', ? FROM n`).run(`seed-${id}`, id, start, world.clock)
       }
     })()
+    // Let the independent startup reconciler finish before measuring the window read boundary.
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    await workerReady
     readings.length = 0
     measuring = true
     last = performance.now()
     heartbeat = setInterval(() => {
       const now = performance.now(); const elapsedMs = now - last
-      gaps.push(elapsedMs)
+      gaps.push(Math.max(0, elapsedMs - 10))
       if (elapsedMs > 30) longGaps.push({ phase, elapsedMs })
       last = now
-    }, 5)
+    }, 10)
     release()
     const phases: { phase: string; elapsedMs: number; reads: number; rows: number }[] = []
     const list = async (label: string) => {
@@ -131,18 +141,64 @@ it('keeps nine live agents responsive through listings and real state notices', 
     }, world.clock)
     await list('after-one-owner-commit')
     await list('warm-after-commit')
-    await new Promise((resolve) => setTimeout(resolve, 20))
-    console.info(JSON.stringify({ phases, readings, mainHistory, otherMainHistory, longGaps, heartbeat: {
-      count: gaps.length, maxMs: Math.max(...gaps),
-      p95Ms: [...gaps].sort((a, b) => a - b)[Math.floor(gaps.length * .95)],
+    const failures: string[] = []
+    let acceptedListings = 0
+    let acceptedQueues = 0
+    let streamRounds = 0
+    const beforeLoadPush = pushed.length
+    streaming = setInterval(() => {
+      streamRounds++
+      for (const { handle } of world.handles) handle.simulateThinking({ text: 'Fictional stream text', redacted: false })
+    }, 20)
+    phase = 'concurrent-stream-and-work'
+    for (let round = 0; round < 6; round++) {
+      const { handle } = world.handles[round % world.handles.length]!
+      handle.simulateBackgroundWork({ running: [{ id: `fictional-job-${round}`, description: 'Fictional ordinary work' }] })
+      await Promise.all([
+        executeRuntimeCommand(host, world.window, { kind: 'listResumable' }).then((answer) => {
+          if (Array.isArray(answer) && answer.length === 9) acceptedListings++
+          else failures.push('listing did not answer')
+        }).catch((error: unknown) => failures.push(`listing: ${String(error)}`)),
+        host.personsQueue().then((answer) => {
+          if ('refused' in answer) failures.push(`queue: ${answer.refused}`)
+          else {
+            const missing = PERSONS_PARTS.filter((part) => answer[part] === null)
+            if (missing.length) failures.push(`queue parts: ${missing.join(', ')}`)
+            else acceptedQueues++
+          }
+        }).catch((error: unknown) => failures.push(`queue: ${String(error)}`)),
+      ])
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+    clearInterval(streaming)
+    streaming = undefined
+    await new Promise((resolve) => setTimeout(resolve, 40))
+    const summarize = (calls: typeof mainHistory) => ({ queries: calls.length,
+      rows: calls.reduce((sum, one) => sum + one.rows, 0),
+      examples: [...new Map(calls.map((one) => [one.sql, one])).values()].map((one) => ({
+        sql: one.sql, caller: one.caller,
+      })),
+    })
+    console.info(JSON.stringify({ phases, readings, mainHistory: summarize(mainHistory),
+      otherMainHistory: summarize(otherMainHistory), longGaps, laneLoad,
+      load: { acceptedListings, acceptedQueues, streamRounds, pushes: pushed.length - beforeLoadPush, failures }, heartbeat: {
+      count: gaps.length, maxAddedMs: Math.max(...gaps),
+      p95AddedMs: [...gaps].sort((a, b) => a - b)[Math.floor(gaps.length * .95)],
     } }))
-    expect(mainHistory).toEqual([])
+    expect(mainHistory.length).toBe(0)
     expect(gaps.length).toBeGreaterThan(0)
+    expect(failures).toEqual([])
+    expect(acceptedListings).toBe(6)
+    expect(acceptedQueues).toBe(6)
+    expect(pushed.length - beforeLoadPush).toBeGreaterThan(0)
+    expect([...gaps].sort((a, b) => a - b)[Math.floor(gaps.length * .95)]).toBeLessThanOrEqual(25)
+    expect(Math.max(...gaps)).toBeLessThanOrEqual(100)
     expect(readings.some((one) => one.kind === 'publication')).toBe(true)
     expect(Math.max(...readings.map((one) => one.bytes))).toBeLessThan(9 * 2000 * 24)
   } finally {
     release()
     measuring = false
+    if (streaming !== undefined) clearInterval(streaming)
     if (heartbeat !== undefined) clearInterval(heartbeat)
     await host.closeAll()
     await reader.close()

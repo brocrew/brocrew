@@ -97,7 +97,11 @@ it('owns state and file marks through superseding notices, partial failures, del
     notice('Delivery recovered')
     await vi.waitFor(() => expect(files()).toContain(undelivered))
     expect(files().filter((one) => one === undelivered)).toHaveLength(1)
-    expect(pushed.every((one, index) => index === 0 || one.published.seq > pushed[index - 1]!.published.seq)).toBe(true)
+    const sequences = pushed.map((one) => {
+      expect(one.published).toBeDefined()
+      return one.published!.seq
+    })
+    expect(sequences.every((seq, index) => index === 0 || seq > sequences[index - 1]!)).toBe(true)
 
     hold = true
     notice('Must not publish after quit')
