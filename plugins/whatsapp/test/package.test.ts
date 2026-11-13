@@ -566,6 +566,45 @@ describe('sending', () => {
     },
   )
 
+  it('reports audio sent and the source caption error without retrying or releasing the send', async () => {
+    const { call, client, bridge, config, refusals } = await boot({ writable: [ROWING.jid] })
+    const file = path.join(config.files, 'meeting.mp3')
+    fs.writeFileSync(file, Buffer.from('ID3\u0004fictional audio'))
+    const originalCall = bridge.call.bind(bridge)
+    let sendCalls = 0
+    vi.spyOn(bridge, 'call').mockImplementation(async (route, body) => {
+      if (route !== '/send') return originalCall(route, body)
+      sendCalls++
+      return {
+        status: 502,
+        body: {
+          error: 'caption_failed',
+          audioSent: true,
+          captionSent: false,
+          cause: 'caption transport disconnected',
+        },
+      }
+    })
+    const result = await client.callTool({ name: 'send_to_group', arguments: {
+      group: ROWING.jid,
+      text: 'Meet at six',
+      file,
+    } })
+    expect(result.isError).toBe(true)
+    expect(JSON.parse((result.content as Array<{ text: string }>)[0].text)).toEqual({
+      audioSent: true,
+      captionSent: false,
+      error: 'caption transport disconnected',
+      group: ROWING.name,
+      file: 'meeting.mp3',
+    })
+    expect(sendCalls).toBe(1)
+    expect(refusals()).toEqual([])
+    const repeated = await call('send_to_group', { group: ROWING.jid, text: 'Meet at six', file })
+    expect(repeated.content[0].text).toBe(refused(REFUSALS.duplicate))
+    expect(sendCalls).toBe(1)
+  })
+
   it.each(['send_to_group', 'search_contacts'])('preserves bridge errors from %s', async (tool) => {
     const { client, bridge, refusals } = await boot({ read: true, writable: [ROWING.jid] })
     const reply = { status: 503, body: { error: 'send_failed', detail: 'Connection closed' } }

@@ -266,11 +266,15 @@ func newAPI(cfg config, s *session, unlinked func()) http.Handler {
 		} else {
 			err = s.sendText(ctx, jid, request.Text)
 		}
-		if err != nil {
-			writeCode(w, "send_failed")
-			return
-		}
-		writeJSON(w, http.StatusOK, sendResult{Kind: att.Kind, Name: att.Name})
+		writeSendResult(w, att, err)
 	})
 	return mux
+}
+
+func writeSendResult(w http.ResponseWriter, att attachment, err error) {
+	if err != nil {
+		writeCode(w, "send_failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, sendResult{Kind: att.Kind, Name: att.Name})
 }
