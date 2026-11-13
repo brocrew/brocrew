@@ -104,6 +104,21 @@ export class WindowRoutingReads {
     return owner === undefined ? undefined : this.fact(owner.naming, unread)
   }
 
+  raised(id: string, unread?: RowsUnread) {
+    const reading = this.context.getStore()
+    if (!reading?.active) return undefined
+    if (reading.work === undefined) throw new WindowReadUnavailable()
+    const raised = reading.work.raised.get(id)
+    return new Map(raised === undefined ? [] : this.fact(raised, unread))
+  }
+
+  instructionAskers(unread: RowsUnread) {
+    const reading = this.context.getStore()
+    if (!reading?.active) return undefined
+    if (reading.snapshot.work === undefined) throw new WindowReadUnavailable()
+    return this.fact(reading.snapshot.work.instructionAskers, unread)
+  }
+
   run<T>(snapshot: WindowRoutes, answer: () => T): T {
     let routes = this.indexed.get(snapshot)
     if (routes === undefined) {
@@ -158,21 +173,6 @@ export class WindowRoutingReads {
             if (reading === undefined) return store.workThatNamesUnder(id, piece, unread)
             const named = reading.work?.names.get(id)?.get(piece)
             return named === undefined ? this.naming(id, unread)!.named : this.fact(named, unread)
-          }
-        if (key === 'questionsRaisedIn')
-          return (id: string, unread?: RowsUnread) => {
-            const reading = current()
-            if (reading === undefined) return store.questionsRaisedIn(id, unread)
-            if (reading.work === undefined) throw new WindowReadUnavailable()
-            const raised = reading.work.raised.get(id)
-            return raised === undefined ? new Map() : new Map(this.fact(raised, unread))
-          }
-        if (key === 'instructionAsksWaiting')
-          return (unread?: RowsUnread) => {
-            const reading = current()
-            if (reading === undefined) return store.instructionAsksWaiting(unread)
-            if (reading.snapshot.work === undefined) throw new WindowReadUnavailable()
-            return this.fact(reading.snapshot.work.instructionAsks, unread)
           }
         if (key === 'whoRoutedToWhom')
           return () => {

@@ -101,6 +101,7 @@ import { KeptFiles } from './kept-files'
 import { WorkReads } from './work-reads'
 import type {
   ItsLedger,
+  StateLedger,
   WorkOutOf,
   APieceItHolds,
   PieceBoard,
@@ -7709,14 +7710,16 @@ export class RuntimeHost implements LiveHost {
     const workOut = this.windowRoutingReads.active ? this.oneStateWorkOutReadPerAnswer(unread) :
       this.workOutAsKept(this.oneWorkOutReadPerAnswer(unread))
     // ⚑ **F036 · each asker's ledger as this flush reads it**, shared with that asker's own state.
-    const owed = this.owedAsKept(this.oneOwedReadPerAnswer(this.ledgerAsKept(read)))
+    const snapshotRead = this.windowRoutingReads.active ? this.oneStateLedgerReadPerAnswer(unread) : undefined
+    const owed = snapshotRead === undefined ? this.owedAsKept(this.oneOwedReadPerAnswer(this.ledgerAsKept(read))) :
+      this.oneOwedReadPerAnswer(snapshotRead)
     const moved: AgentStateMoved[] = []
     for (const conversation of asked) {
       try {
         const runs = this.slots.has(conversation)
-        const ledger =
-          (runs && !this.windowRoutingReads.active ? this.waitAsLastRead.get(conversation) : undefined) ?? read(conversation)
-        if (runs && !this.windowRoutingReads.active) this.waitAsLastRead.set(conversation, ledger)
+        const ledger = snapshotRead?.(conversation) ??
+          (runs ? this.waitAsLastRead.get(conversation) : undefined) ?? read(conversation)
+        if (runs && snapshotRead === undefined) this.waitAsLastRead.set(conversation, read(conversation))
         const state = this.stateOf(conversation, reads, unread, ledger, workOut, owed)
         // ⚑ **D-018 · counted from here while it is idle**, whatever the windows were last told.
         if (this.idleEnoughToStop(conversation, state))
@@ -15224,11 +15227,6 @@ export class RuntimeHost implements LiveHost {
 
   /** The same asks, with the rows the read could not take; a short read is read again. */
   private instructionAsksCounted(): CountedRows<InstructionAskWaiting> {
-    if (this.windowRoutingReads.active) {
-      const unread = rowsUnreadOnce()
-      const rows = this.deps.store.instructionAsksWaiting(unread)
-      return { rows, rowsUnread: unread.count }
-    }
     return this.forAPerson('instructionAsksWaiting', () => {
       const unread = rowsUnreadOnce()
       const rows = this.deps.store.instructionAsksWaiting(unread)
@@ -17893,7 +17891,7 @@ export class RuntimeHost implements LiveHost {
   /** Resolve ledger then work-out defaults at this door; share waits for one answer only. */
   private oneWaitReadPerAnswer(
     unread?: RowsUnread,
-    ledger: (id: string) => ItsLedger = this.oneLedgerReadPerAnswer(unread),
+    ledger: (id: string) => StateLedger = this.oneLedgerReadPerAnswer(unread),
     workOut: WorkOutOf<StateWork> = this.oneWorkOutReadPerAnswer(unread),
   ): (id: string) => WhatAConversationIsWaitingOn {
     return this.workReads.oneWaitReadPerAnswer(unread, ledger, workOut)
@@ -17902,6 +17900,19 @@ export class RuntimeHost implements LiveHost {
   /** Share both ledger projections for this answer only. */
   private oneLedgerReadPerAnswer(unread?: RowsUnread): (id: string) => ItsLedger {
     return this.workReads.oneLedgerReadPerAnswer(unread)
+  }
+
+  private oneStateLedgerReadPerAnswer(unread?: RowsUnread): (id: string) => StateLedger {
+    if (!this.windowRoutingReads.active) return this.oneLedgerReadPerAnswer(unread)
+    const held = new Map<string, StateLedger>()
+    return (id) => {
+      const known = held.get(id)
+      if (known !== undefined) return known
+      const ledger = { routings: this.deps.store.routedRequestsOf(id, unread),
+        raised: this.windowRoutingReads.raised(id, unread)! }
+      held.set(id, ledger)
+      return ledger
+    }
   }
 
   /**
@@ -17934,7 +17945,7 @@ export class RuntimeHost implements LiveHost {
    * reads it ({@link whoOwesIt}): one this app raised, or a provider's that the asker is parked on.
    * ⚑ Oldest first, memoised across ONE answer, on {@link oneWorkOutReadPerAnswer}'s rule.
    */
-  private oneOwedReadPerAnswer(ledgerOf: (id: string) => ItsLedger): OwedBy {
+  private oneOwedReadPerAnswer(ledgerOf: (id: string) => StateLedger): OwedBy {
     const held = new Map<string, readonly OwedQuestion[]>()
     return (id) => {
       const mine = held.get(id)
@@ -19026,6 +19037,11 @@ export class RuntimeHost implements LiveHost {
    * person's decision about their rules (one scan of every ledger's asks, rather than one per card).
    */
   private cardReads(): CardReads {
+    const unread = rowsUnreadOnce()
+    const askers = this.windowRoutingReads.instructionAskers(unread)
+    if (askers !== undefined) return {
+      roster: this.deps.store.agentIdentities(), askingForRules: new Set(askers), asksUnread: unread.count,
+    }
     const asks = this.instructionAsksCounted()
     return {
       roster: this.deps.store.agentIdentities(),
@@ -19069,7 +19085,7 @@ export class RuntimeHost implements LiveHost {
      * ⚑ **D-019 · its two wait reads, when the caller holds them** ({@link waitAsLastRead});
      * absent, {@link whoOwesIt} reads them.
      */
-    ledger?: ItsLedger,
+    ledger?: StateLedger,
     /**
      * ⚑ **D-036 · the work it gave out, as the caller reads it** ({@link workOutAsLastRead}, or a
      * memo it shares); absent, {@link whoOwesIt} reads it.
@@ -19144,7 +19160,7 @@ export class RuntimeHost implements LiveHost {
     sessionId: string,
     reads: CardReads,
     unread: RowsUnread,
-    { routings, raised }: ItsLedger = this.oneLedgerReadPerAnswer(unread)(sessionId),
+    { routings, raised }: StateLedger = this.oneStateLedgerReadPerAnswer(unread)(sessionId),
     workOut: WorkOutOf<StateWork> = this.oneStateWorkOutReadPerAnswer(unread),
     // ⚑ The askers' ledgers on a note of their own: what they cannot read is not this one's record;
     // a running asker's as kept, and a running answerer's owed answers as kept.
@@ -19255,7 +19271,7 @@ export class RuntimeHost implements LiveHost {
   private aPieceItHoldsWaitsOnWhoWrote(
     sessionId: string,
     unread: RowsUnread,
-    itsLedger: ItsLedger,
+    itsLedger: StateLedger,
     workOut: WorkOutOf<StateWork>,
   ): boolean {
     const waits = this.windowRoutingReads.waitingOnWhoWrote(sessionId, unread) ??
@@ -32824,8 +32840,8 @@ export class RuntimeHost implements LiveHost {
     const unread = rowsUnreadOnce()
     // ⚑ **F036 · one fold of each ledger for the whole listing** — a row's own wait reads, and the
     // same ledger again as an asker of another row's owed answers ({@link oneOwedReadPerAnswer}).
-    const ledger = this.oneLedgerReadPerAnswer(unread)
-    const owed = this.oneOwedReadPerAnswer(this.ledgerAsKept(ledger))
+    const ledger = this.oneStateLedgerReadPerAnswer(unread)
+    const owed = this.oneOwedReadPerAnswer(ledger)
     const workOut = this.oneStateWorkOutReadPerAnswer(unread)
     const waiting = this.oneWaitReadPerAnswer(unread, ledger, workOut)
     return {

@@ -248,7 +248,9 @@ export const windowReadResult = z.discriminatedUnion('kind', [
     .object({
       kind: z.literal('routes'),
       cacheToken: z.string().optional(),
-      work: z.custom<WindowWorkReading>((value) => value !== null && typeof value === 'object').optional(),
+      work: z.object({ owners: z.array(z.unknown()), namesUnder: z.array(z.unknown()),
+        raised: z.array(z.unknown()), instructionAskers: z.unknown(), routedTo: z.array(z.unknown()),
+      }).strict().optional(),
       routes: z.array(
         z
           .object({

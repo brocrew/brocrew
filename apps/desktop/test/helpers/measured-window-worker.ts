@@ -1,11 +1,17 @@
 import '../../src/main/window-reader.worker'
 import Database from 'better-sqlite3'
 import { parentPort } from 'node:worker_threads'
+import { WindowReadEngine } from '../../src/main/db/window-read-engine'
 
 let started = 0
 let queries = 0
 let rows = 0
 const prepare = Database.prototype.prepare
+const read = WindowReadEngine.prototype.read
+WindowReadEngine.prototype.read = function (...args) {
+  started = performance.now(); queries = 0; rows = 0
+  return read.apply(this, args)
+}
 Database.prototype.prepare = function (sql: string) {
   const statement = prepare.call(this, sql)
   if (!/^\s*(SELECT|WITH)\b/i.test(sql) || !/\bevents\b/i.test(sql) || !/\bpayload\b/i.test(sql))
@@ -35,7 +41,6 @@ Database.prototype.prepare = function (sql: string) {
 }
 if (parentPort !== null) {
   const port = parentPort
-  port.prependListener('message', () => { started = performance.now(); queries = 0; rows = 0 })
   const post = port.postMessage.bind(port)
   port.postMessage = (message) => post({ ...message,
     measurement: { queries, rows, elapsedMs: performance.now() - started } })

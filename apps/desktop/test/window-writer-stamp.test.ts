@@ -57,12 +57,12 @@ describe('window writer revisions follow the selected facts', () => {
     return id
   }
 
-  it('ignores content and working/idle statuses, but includes terminal and unread statuses', () => {
+  it('fences the complete work snapshot including content and working/idle statuses', () => {
     const before = sample(routes)
     row('text', '{"type":"text","text":"fictional"}')
     for (const state of ['working', 'idle'])
       row('status', JSON.stringify({ type: 'status', state }))
-    expect(sameWindowWriter(before, sample(routes))).toBe(true)
+    expect(sameWindowWriter(before, sample(routes))).toBe(false)
     row('status', '{"type":"status","state":"ended"}')
     const ended = sample(routes)
     expect(sameWindowWriter(before, ended)).toBe(false)
@@ -70,7 +70,7 @@ describe('window writer revisions follow the selected facts', () => {
     expect(sameWindowWriter(ended, sample(routes))).toBe(false)
   })
 
-  it('a write of the kept usage readings does not move the revision', () => {
+  it('a metadata write moves the complete fence without invalidating owner folds', () => {
     const before = sample(routes)
     usageKeptIn(db).write({
       readings: {
@@ -79,7 +79,9 @@ describe('window writer revisions follow the selected facts', () => {
       },
       seen: { claude: [], codex: [] },
     })
-    expect(sameWindowWriter(before, sample(routes))).toBe(true)
+    const after = sample(routes)!
+    expect(sameWindowWriter(before, after)).toBe(false)
+    expect(sample.changedOwners!(before!, after)).toEqual([])
   })
 
   it('includes old-row payload updates, reclassification, deletion and rolled-back changes', () => {
@@ -92,7 +94,9 @@ describe('window writer revisions follow the selected facts', () => {
     db.prepare('DELETE FROM events WHERE id = ?').run(id)
     expect(sample(routes)).toBeNull()
     db.exec('ROLLBACK')
-    expect(sameWindowWriter(updated, sample(routes))).toBe(true)
+    const rolledBack = sample(routes)!
+    expect(sameWindowWriter(updated, rolledBack)).toBe(false)
+    expect(sample.changedOwners!(updated!, rolledBack)).toEqual([])
     db.prepare('UPDATE events SET type = ? WHERE id = ?').run('text', id)
     expect(sameWindowWriter(updated, sample(routes))).toBe(false)
     const newId = row('question_asked', '{}')
@@ -129,7 +133,7 @@ describe('window writer revisions follow the selected facts', () => {
     expect(sample(routes)).toBeNull()
   })
 
-  it('building an inactive projection does not invalidate until it becomes active', () => {
+  it('inactive writes move the complete snapshot fence but not an unaffected lead', () => {
     const before = sample(routes)
     const leadBefore = sample(leads)
     const id = row('user_turn', '{"sent":"fictional"}', 'alpha', 4)
@@ -140,7 +144,7 @@ describe('window writer revisions follow the selected facts', () => {
     const other = row('request_resolved', '{"type":"request_resolved","id":"fictional"}', 'beta', 5)
     db.prepare('UPDATE events SET generation = 1 WHERE id = ?').run(other)
     db.prepare('UPDATE events SET payload = ? WHERE id = ?').run('{"sent":"changed"}', id)
-    expect(sameWindowWriter(before, sample(routes))).toBe(true)
+    expect(sameWindowWriter(before, sample(routes))).toBe(false)
     expect(sameWindowWriter(inactiveLead, sample(leads))).toBe(true)
     expect(sameWindowWriter(leadBefore, sample(leads))).toBe(false)
   })
@@ -160,7 +164,7 @@ describe('window writer revisions follow the selected facts', () => {
     expect(sameWindowWriter(beta, sample(betaQuery))).toBe(true)
     const active = sample(routes)
     db.prepare('UPDATE derived_generation SET building = 2 WHERE session_id = ?').run('alpha')
-    expect(sameWindowWriter(active, sample(routes))).toBe(true)
+    expect(sameWindowWriter(active, sample(routes))).toBe(false)
     db.prepare('DELETE FROM derived_generation WHERE session_id = ?').run('alpha')
     expect(sameWindowWriter(active, sample(routes))).toBe(false)
   })
@@ -231,7 +235,7 @@ describe('window writer revisions follow the selected facts', () => {
       sample = windowWriterSampler(db, () => true)
       expect(
         db.prepare("SELECT count(*) AS n FROM sqlite_temp_master WHERE type = 'trigger'").get(),
-      ).toEqual({ n: 6 })
+      ).toEqual({ n: 13 })
       const before = sample(routes)
       const leadBefore = sample(leads)
       expect(before).not.toBeNull()
@@ -295,7 +299,7 @@ describe('window writer revisions follow the selected facts', () => {
       })),
     })
     expect(seen).toBe(100)
-    expect(sample(routes)?.revision).toBe(before!.revision + 1n)
+    expect(sample(routes)?.foldReset).toBe(before!.foldReset! + 1n)
     expect(sample(leads)?.revision).toBe(leadBefore!.revision + 1n)
     expect(sample(routes)).not.toBeNull()
     const generation = store.beginGeneration('alpha')
@@ -303,7 +307,7 @@ describe('window writer revisions follow the selected facts', () => {
     store.appendGeneration('alpha', generation, [
       { ordinal: 0, at: 1000, event: { type: 'assistant_message', text: 'fictional projection' } },
     ])
-    expect(sample(routes)?.revision).toBe(next!.revision + 1n)
+    expect(sample(routes)?.foldReset).toBe(next!.foldReset! + 1n)
   })
 
   it('a failed bulk restores triggers and still fences an earlier read', () => {
@@ -313,7 +317,7 @@ describe('window writer revisions follow the selected facts', () => {
         throw new Error('fictional failure')
       }),
     ).toThrow('fictional failure')
-    expect(sample(routes)?.revision).toBe(before!.revision + 1n)
+    expect(sample(routes)?.foldReset).toBe(before!.foldReset! + 1n)
     expect(sample(routes)).not.toBeNull()
   })
 

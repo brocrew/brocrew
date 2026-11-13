@@ -35,7 +35,7 @@ import type { LedgerWalk, RoutedRequest } from '../../shared/question-contracts'
 import type { Exchange } from '../../shared/last-exchange'
 import type { RunningState } from '../../shared/runtime-ipc'
 import type { LastReported, SpawnEdge, WhoCalledWhom, WorkEdge } from '../../shared/who-called-whom'
-import type { PieceBoard, PieceRecord, RootOnTheBoard, ItsLedger, WorkOutOf } from './work-records'
+import type { PieceBoard, PieceRecord, RootOnTheBoard, ItsLedger, StateLedger, WorkOutOf } from './work-records'
 
 interface WorkReadSources {
   /** New calls resolve current Root members when forwarded; existing callbacks stay unchanged. */
@@ -654,7 +654,7 @@ export class WorkReads {
   /** Memoize waits per answer; defaults have already been evaluated at the Root door. */
   oneWaitReadPerAnswer(
     unread: RowsUnread | undefined,
-    ledger: (id: string) => ItsLedger,
+    ledger: (id: string) => StateLedger,
     workOut: WorkOutOf<StateWork>,
   ): (id: string) => WhatAConversationIsWaitingOn {
     const held = new Map<string, WhatAConversationIsWaitingOn>()

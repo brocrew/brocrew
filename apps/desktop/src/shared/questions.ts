@@ -714,7 +714,7 @@ export const NOTHING_NAMED_THE_WORK: AboutWork = aboutTheWork(null, () => null)
  */
 export function openQuestionsByWork(
   requests: readonly RoutedRequest[],
-  raised: ReadonlyMap<string, RaisedQuestion>,
+  raised: ReadonlyMap<string, Pick<RaisedQuestion, 'piece'>>,
 ): ReadonlyMap<string, readonly RoutedRequest[]> {
   const byWork = new Map<string, RoutedRequest[]>()
   for (const request of requests) {

@@ -2,12 +2,14 @@ import type { AppDatabase } from './connection'
 import type { SessionStore } from './session-store'
 import { rowsUnreadOnce, type RowsUnread } from './rows-unread'
 import type { PieceRow } from '../../shared/task-contracts'
+import type { RaisedQuestion } from '../../shared/question-contracts'
 import { TASK_IS_OPEN } from '../../shared/tasks'
 import type { SkippedRow } from './window-read-protocol'
 
 export type StateWork = Pick<PieceRow, 'piece' | 'parent' | 'owner' | 'state' | 'givenAt'>
 export type StateWait = StateWork & Pick<PieceRow, 'label' | 'statusLine'>
 type Name = ReturnType<SessionStore['workThatNames']>
+export type StateQuestion = Pick<RaisedQuestion, 'piece' | 'raisedBy'>
 export interface WindowFact<T> {
   readonly value: T
   readonly skipped: readonly (readonly [string, readonly SkippedRow[]])[]
@@ -21,9 +23,9 @@ export interface WindowWorkReading {
   }[]
   readonly namesUnder: readonly (readonly [string, string, WindowFact<Name>])[]
   readonly raised: readonly (readonly [string, WindowFact<readonly (readonly [string,
-    ReturnType<SessionStore['questionsRaisedIn']> extends ReadonlyMap<string, infer T> ? T : never
+    StateQuestion
   ])[]>])[]
-  readonly instructionAsks: WindowFact<ReturnType<SessionStore['instructionAsksWaiting']>>
+  readonly instructionAskers: WindowFact<readonly string[]>
   readonly routedTo: ReturnType<SessionStore['whoRoutedToWhom']>
 }
 
@@ -73,7 +75,8 @@ export function readWindowWork(db: AppDatabase, store: SessionStore): WindowWork
   ) SELECT DISTINCT piece, owner FROM chain`).all() as { piece: string; owner: string }[]
   const namesUnder = pairs.map(({ piece, owner }) =>
     [owner, piece, counted((unread) => store.workThatNamesUnder(owner, piece, unread))] as const)
-  const raised = ids.map(({ id }) => [id, counted((unread) => [...store.questionsRaisedIn(id, unread)])] as const)
-  const instructionAsks = counted((unread) => store.instructionAsksWaiting(unread))
-  return { owners, namesUnder, raised, instructionAsks, routedTo: store.whoRoutedToWhom() }
+  const raised = ids.map(({ id }) => [id, counted((unread) => [...store.questionsRaisedIn(id, unread)]
+    .map(([request, { piece, raisedBy }]) => [request, { piece, raisedBy }] as const))] as const)
+  const instructionAskers = counted((unread) => store.instructionAsksWaiting(unread).map((one) => one.conversation))
+  return { owners, namesUnder, raised, instructionAskers, routedTo: store.whoRoutedToWhom() }
 }

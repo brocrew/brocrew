@@ -164,8 +164,11 @@ export type WhatAPieceIsToIt =
   | { readonly is: 'none' }
 
 /** The two ledger reads shared by one answer's work and wait projections. */
-export interface ItsLedger {
+export interface StateLedger {
   readonly routings: readonly RoutedRequest[]
+  readonly raised: ReadonlyMap<string, Pick<RaisedQuestion, 'piece' | 'raisedBy'>>
+}
+export interface ItsLedger extends StateLedger {
   readonly raised: ReadonlyMap<string, RaisedQuestion>
 }
 
