@@ -210,9 +210,7 @@ it('keeps unread and explicitly empty selected names distinct on home and gone p
 
   const out = await library('', true, '')
   const home = () => out.view.q('library-row-claude:unimported')
-  expect(home().querySelector('.chip.home')?.textContent?.trim()).toBe(
-    "in the provider's folder",
-  )
+  expect(home().querySelector('.chip.home')?.textContent?.trim()).toBe("in the provider's folder")
   expect(home().textContent).toContain("in the provider's own folder, not imported")
   expect(home().textContent).not.toContain('Claude')
 
