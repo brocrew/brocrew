@@ -55,6 +55,7 @@ function fernModule(): ProviderModule<FernValues> {
         }),
         cancel: async () => {},
       }),
+      bringTheKeyToItsHomes: async () => null,
       replaceARefusedCopy: async () => 'not-tried',
     },
     authPolicy: {

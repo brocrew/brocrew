@@ -954,7 +954,6 @@ export interface CodexLaunchContext {
   cwd: string
   /** Absolute, app-owned per-profile provider home → `CODEX_HOME`/`CODEX_SQLITE_HOME`. */
   providerHome: string
-  apiKeyBound?: boolean
 }
 
 /**
@@ -965,15 +964,14 @@ export interface CodexLaunchContext {
 export type TransportFactory = (context: CodexLaunchContext) => CodexTransport
 
 /**
- * API-key children use Codex's in-memory credential backend; other launches use its defaults.
+ * The app-server command line, the same for every launch. It carries no `--config` override, so
+ * this app leaves Codex's own agents at the provider's setting for every conversation.
  *
  * Exported for focused unit coverage; callers should construct transports through
  * {@link createSpawnTransportFactory}.
  */
-export function codexAppServerArgs(apiKeyBound = false): string[] {
-  return apiKeyBound
-    ? ['-c', 'cli_auth_credentials_store="ephemeral"', 'app-server']
-    : ['app-server']
+export function codexAppServerArgs(): string[] {
+  return ['app-server']
 }
 
 /**
@@ -985,7 +983,7 @@ export function codexAppServerArgs(apiKeyBound = false): string[] {
  */
 export function createSpawnTransportFactory(command = 'codex'): TransportFactory {
   return (context: CodexLaunchContext): CodexTransport => {
-    return new SpawnCodexTransport(command, codexAppServerArgs(context.apiKeyBound), {
+    return new SpawnCodexTransport(command, codexAppServerArgs(), {
       cwd: context.cwd,
       env: buildChildEnv({
         CODEX_HOME: context.providerHome,

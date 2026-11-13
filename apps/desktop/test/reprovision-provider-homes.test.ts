@@ -97,6 +97,7 @@ describe('copying this install’s provider sign-ins', () => {
       signIn: async () => {
         throw new Error('not used')
       },
+      bringTheKeyToItsHomes: async () => null,
       replaceARefusedCopy: async () => 'not-tried',
     }
     let counter = 0

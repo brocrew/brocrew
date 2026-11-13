@@ -31,7 +31,6 @@ import {
   openingParams,
   assertPromptingProfile,
   grantKeptTools,
-  logInWithCodexKey,
 } from './runtime-parts/session-start'
 import { answerPermission, answerUserInput } from './runtime-parts/permission-responses'
 import {
@@ -299,7 +298,6 @@ export class CodexSessionHandle implements SessionHandle {
     private readonly beforeSkillDiscovery?: () => Promise<void>,
     private readonly managedPluginMcp?: readonly ManagedPluginMcpServer[],
     private readonly managedPluginObserver?: ManagedPluginObserver,
-    private readonly apiKey?: string,
   ) {
     this._targetRef = targetRef ?? null
     this._ref = null
@@ -567,11 +565,6 @@ export class CodexSessionHandle implements SessionHandle {
   }
 
   private async assertCredentialUsable(): Promise<void> {
-    if (this.apiKey !== undefined) {
-      await logInWithCodexKey(this.transport, this.apiKey)
-      this.launchedOnAKey = true
-      return
-    }
     if (this.launchAccount === undefined)
       this.noteLaunchAccount(await codexAccountIn(this.providerHome))
     const state = await probeCodexAuth(this.transport)
@@ -1777,14 +1770,12 @@ export class CodexRuntime implements AgentRuntime {
   constructor(
     transportFactory: TransportFactory = defaultTransport,
     authHealth?: (providerHome: string) => AuthHealth,
-    private readonly apiKey?: string,
   ) {
     this.transportFactory = transportFactory
     this.authHealth = authHealth
   }
 
   private assertAuthHealthy(providerHome: string): void {
-    if (this.apiKey !== undefined) return
     assertAuthHealthy(providerHome, this.authHealth)
   }
 
@@ -1801,14 +1792,13 @@ export class CodexRuntime implements AgentRuntime {
       phase,
     )
     phase('boot-gate-passed')
-    const launchAccount = this.apiKey === undefined ? codexAccountInNow(opts.providerHome) : null
-    const launchCopy = this.apiKey === undefined ? codexCopyIdentityIn(opts.providerHome) : null
+    const launchAccount = codexAccountInNow(opts.providerHome)
+    const launchCopy = codexCopyIdentityIn(opts.providerHome)
     let transport: CodexTransport
     try {
       transport = this.transportFactory({
         cwd: opts.cwd,
         providerHome: opts.providerHome,
-        ...(this.apiKey === undefined ? {} : { apiKeyBound: true }),
       })
     } catch (error) {
       bootSettled()
@@ -1835,7 +1825,6 @@ export class CodexRuntime implements AgentRuntime {
       opts.beforeSkillDiscovery,
       opts.managedPluginMcp,
       opts.observeManagedPlugins,
-      this.apiKey,
     )
     handle.noteLaunchAccount(launchAccount, launchCopy)
     handle.noteStartPhases(phase)
@@ -1863,7 +1852,6 @@ export class CodexRuntime implements AgentRuntime {
       transport = this.transportFactory({
         cwd: context.providerHome,
         providerHome: context.providerHome,
-        ...(this.apiKey === undefined ? {} : { apiKeyBound: true }),
       })
     } catch (error) {
       bootSettled()
@@ -1878,8 +1866,6 @@ export class CodexRuntime implements AgentRuntime {
       await bounded(transport.request('initialize', initializeParams()), 'initialize')
       bootSettled() // the state runtime exists; `model/list` below is a network wait (180)
       transport.notify('initialized', {})
-      if (this.apiKey !== undefined)
-        await bounded(logInWithCodexKey(transport, this.apiKey), 'key login')
       const choices: ModelChoice[] = []
       let cursor: string | undefined
       for (let page = 0; page < MODEL_LIST_PAGE_LIMIT; page++) {
@@ -1931,13 +1917,12 @@ export class CodexRuntime implements AgentRuntime {
       )
       phase('boot-gate-passed')
       bootSettled = settled
-      launchAccount = this.apiKey === undefined ? codexAccountInNow(options.providerHome) : null
-      launchCopy = this.apiKey === undefined ? codexCopyIdentityIn(options.providerHome) : null
+      launchAccount = codexAccountInNow(options.providerHome)
+      launchCopy = codexCopyIdentityIn(options.providerHome)
       try {
         transport = this.transportFactory({
           cwd: ref.cwd,
           providerHome: options.providerHome,
-          ...(this.apiKey === undefined ? {} : { apiKeyBound: true }),
         })
       } catch (error) {
         settled()
@@ -1968,7 +1953,6 @@ export class CodexRuntime implements AgentRuntime {
       options.beforeSkillDiscovery,
       options.managedPluginMcp,
       options.observeManagedPlugins,
-      this.apiKey,
     )
     handle.noteLaunchAccount(launchAccount, launchCopy)
     handle.noteStartPhases(phase)

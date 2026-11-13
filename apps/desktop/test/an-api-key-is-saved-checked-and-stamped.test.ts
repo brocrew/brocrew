@@ -12,8 +12,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AuthUnavailableError } from '@brobot2/runtime'
-import type { CodexKeyOutcome } from '@brobot2/runtime/codex'
+import type { CodexKeyChange, CodexKeyOutcome } from '@brobot2/runtime/codex'
 import {
+  API_KEY_MAX_LENGTH,
   API_KEYS_FILE,
   ApiKeyUnreadableError,
   ApiKeys,
@@ -22,6 +23,7 @@ import {
   whyNotAKey,
 } from '../src/main/runtime/api-keys'
 import { prepareProviderHome } from '../src/main/runtime/provider-homes'
+import { bringTheCodexKeyTo } from '../src/main/providers/codex'
 import type { CodexKeySeam } from '../src/main/providers/codex/types'
 
 /**
@@ -58,11 +60,12 @@ describe('whyNotAKey', () => {
     expect(whyNotAKey('sk-ant fake not a key')).toContain('no spaces or line breaks')
     expect(whyNotAKey('sk-ant\nfake')).toContain('no spaces or line breaks')
     expect(whyNotAKey('sk-ünïcode')).toContain('does not look like an API key')
-    expect(whyNotAKey('a'.repeat(1024))).toBeNull()
+    expect(whyNotAKey('a'.repeat(API_KEY_MAX_LENGTH + 1))).toContain('does not look like')
+    expect(whyNotAKey('a'.repeat(API_KEY_MAX_LENGTH))).toBeNull()
   })
 
   it('never quotes what it refuses', () => {
-    for (const bad of ['sk secret words', 'sk-ünïcode-secret']) {
+    for (const bad of ['sk secret words', 'sk-ünïcode-secret', 'x'.repeat(600)]) {
       expect(whyNotAKey(bad)).not.toContain(bad.slice(0, 8))
     }
   })
@@ -177,7 +180,7 @@ it.skipIf(process.platform === 'win32')(
   },
 )
 
-it('a stale sealed row is not opened and does not count as a current key', async () => {
+it('a key an earlier version sealed is never opened: its start refuses in plain words until it is saved again or removed', async () => {
   const sealed = new Set(['claude', 'codex'])
   const store = {
     hasSealedApiKey: (provider: string) => sealed.has(provider),
@@ -185,8 +188,8 @@ it('a stale sealed row is not opened and does not count as a current key', async
   }
   const keys = new ApiKeys(userData, () => 5, store)
   for (const provider of ['claude', 'codex'] as const) {
-    expect(keys.status(provider)).toMatchObject({ set: false, inUse: false, setAt: null })
-    expect(await keys.read(provider)).toBeNull()
+    expect(keys.status(provider)).toMatchObject(CANT_BE_USED)
+    await expect(keys.read(provider)).rejects.toThrow(ApiKeyUnreadableError)
   }
   expect(await keys.set('claude', KEY)).toBeNull()
   expect(await keys.read('claude')).toBe(KEY)
@@ -327,6 +330,211 @@ describe('askTheProvider', () => {
   })
 })
 
+describe('bringTheCodexKeyTo', () => {
+  let home: string
+
+  beforeEach(() => {
+    home = mkdtempSync(join(tmpdir(), 'brobot2-codexkey-'))
+  })
+
+  afterEach(() => {
+    rmSync(home, { recursive: true, force: true })
+  })
+
+  const STAMP = 'brobot-api-key-login.json'
+  const stamp = () => JSON.parse(readFileSync(join(home, STAMP), 'utf8')) as { setAt: number }
+
+  function aSeam(
+    current: () => { key: string; setAt: number } | null,
+    change: (home: string, change: CodexKeyChange) => Promise<CodexKeyOutcome> = async (_h, c) => {
+      // A real login writes the credential the stamp is later checked against.
+      if (c.to === 'the-key') writeFileSync(join(home, 'auth.json'), '{}')
+      return { ok: true, authMethod: c.to === 'the-key' ? 'apikey' : null }
+    },
+  ) {
+    const changes = vi.fn(change)
+    const seam: CodexKeySeam = { current, change: changes }
+    return { seam, changes }
+  }
+
+  it('with no key and no stamp the home keeps its copied login, and Codex is not asked', async () => {
+    const { seam, changes } = aSeam(() => null)
+    expect(await bringTheCodexKeyTo(home, seam)).toBe('its-login')
+    expect(changes).not.toHaveBeenCalled()
+  })
+
+  it('a key logs the home in once, stamps WHEN it was saved (never the key), and a second look changes nothing', async () => {
+    const { seam, changes } = aSeam(() => ({ key: KEY, setAt: 500 }))
+    expect(await bringTheCodexKeyTo(home, seam)).toBe('the-key')
+    expect(changes).toHaveBeenCalledTimes(1)
+    expect(changes).toHaveBeenCalledWith(home, { to: 'the-key', apiKey: KEY })
+    expect(stamp()).toEqual({ setAt: 500 })
+    expect(readFileSync(join(home, STAMP), 'utf8')).not.toContain(KEY)
+
+    expect(await bringTheCodexKeyTo(home, seam)).toBe('the-key')
+    expect(changes).toHaveBeenCalledTimes(1)
+  })
+
+  it('the stamp stands only while the home still holds a login: a stamp over no auth.json logs in again', async () => {
+    const { seam, changes } = aSeam(() => ({ key: KEY, setAt: 500 }))
+    await bringTheCodexKeyTo(home, seam)
+    rmSync(join(home, 'auth.json'))
+    await bringTheCodexKeyTo(home, seam)
+    expect(changes).toHaveBeenCalledTimes(2)
+  })
+
+  it('a key saved again (a later moment) logs the home in again, with the new one', async () => {
+    let setAt = 500
+    let key = 'sk-first'
+    const { seam, changes } = aSeam(() => ({ key, setAt }))
+    await bringTheCodexKeyTo(home, seam)
+    setAt = 900
+    key = 'sk-second'
+    await bringTheCodexKeyTo(home, seam)
+    expect(changes).toHaveBeenLastCalledWith(home, { to: 'the-key', apiKey: 'sk-second' })
+    expect(stamp()).toEqual({ setAt: 900 })
+  })
+
+  it('a removed key logs the home out, drops the stamp, and hands the home back to its copied login', async () => {
+    let held: { key: string; setAt: number } | null = { key: KEY, setAt: 500 }
+    const { seam, changes } = aSeam(() => held)
+    await bringTheCodexKeyTo(home, seam)
+    held = null
+    expect(await bringTheCodexKeyTo(home, seam)).toBe('its-login')
+    expect(changes).toHaveBeenLastCalledWith(home, { to: 'no-key' })
+    expect(existsSync(join(home, STAMP))).toBe(false)
+    // …and with the stamp gone, the next look has nothing to undo.
+    await bringTheCodexKeyTo(home, seam)
+    expect(changes).toHaveBeenCalledTimes(2)
+  })
+
+  it('a login that fails refuses in BroBot’s words and stamps nothing — never a quiet fallback', async () => {
+    const failing = aSeam(
+      () => ({ key: KEY, setAt: 500 }),
+      async () => ({ ok: false, reason: 'Codex did not start.' }),
+    )
+    const error = await bringTheCodexKeyTo(home, failing.seam).catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(AuthUnavailableError)
+    expect((error as AuthUnavailableError).provider).toBe('codex')
+    expect((error as Error).message).toBe('Codex did not start. Try again in a moment.')
+    expect(existsSync(join(home, STAMP))).toBe(false)
+
+    const notTheKey = aSeam(
+      () => ({ key: KEY, setAt: 500 }),
+      async () => ({ ok: true, authMethod: 'chatgpt' }),
+    )
+    const wrong = await bringTheCodexKeyTo(home, notTheKey.seam).catch((e: unknown) => e)
+    expect(wrong).toBeInstanceOf(AuthUnavailableError)
+    expect((wrong as Error).message).toContain('did not take the API key')
+    expect((wrong as Error).message).not.toContain(KEY)
+    expect(existsSync(join(home, STAMP))).toBe(false)
+  })
+
+  it('a logout that fails keeps the stamp, so the next launch tries it again', async () => {
+    let held: { key: string; setAt: number } | null = { key: KEY, setAt: 500 }
+    let logoutWorks = false
+    const { seam } = aSeam(
+      () => held,
+      async (_h, c) => {
+        if (c.to === 'the-key') {
+          writeFileSync(join(home, 'auth.json'), '{}')
+          return { ok: true, authMethod: 'apikey' }
+        }
+        return logoutWorks
+          ? { ok: true, authMethod: null }
+          : { ok: false, reason: 'Codex is busy.' }
+      },
+    )
+    await bringTheCodexKeyTo(home, seam)
+    held = null
+    await expect(bringTheCodexKeyTo(home, seam)).rejects.toThrow(
+      'Codex is busy. Try again in a moment.',
+    )
+    expect(existsSync(join(home, STAMP))).toBe(true)
+    logoutWorks = true
+    expect(await bringTheCodexKeyTo(home, seam)).toBe('its-login')
+    expect(existsSync(join(home, STAMP))).toBe(false)
+  })
+
+  it('a saved key that can’t be used refuses the launch in its own words, and asks Codex nothing', async () => {
+    const { seam, changes } = aSeam(() => {
+      throw new ApiKeyUnreadableError('codex')
+    })
+    const error = await bringTheCodexKeyTo(home, seam).catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(AuthUnavailableError)
+    expect((error as Error).message).toContain('Saved key can’t be read')
+    expect(changes).not.toHaveBeenCalled()
+    const { seam: broken } = aSeam(() => {
+      throw new TypeError('a bug')
+    })
+    await expect(bringTheCodexKeyTo(home, broken)).rejects.toThrow(TypeError)
+  })
+
+  it('changes to ONE home run one at a time, in the order they were asked — and a failure does not block the next', async () => {
+    const order: string[] = []
+    const gate: { release: () => void } = { release: () => {} }
+    let first = true
+    let reads = 0
+    const { seam } = aSeam(
+      // Read when each change RUNS, so the second one sees the key saved after the first.
+      () => {
+        reads += 1
+        return { key: `sk-${reads}`, setAt: reads }
+      },
+      async (_h, c) => {
+        const mine = c.to === 'the-key' ? c.apiKey : 'none'
+        order.push(`start ${mine}`)
+        if (first) {
+          first = false
+          await new Promise<void>((resolve) => {
+            gate.release = resolve
+          })
+          writeFileSync(join(home, 'auth.json'), '{}')
+          order.push(`end ${mine}`)
+          return { ok: false, reason: 'the first one fails' }
+        }
+        writeFileSync(join(home, 'auth.json'), '{}')
+        order.push(`end ${mine}`)
+        return { ok: true, authMethod: 'apikey' }
+      },
+    )
+    const one = bringTheCodexKeyTo(home, seam)
+    const two = bringTheCodexKeyTo(home, seam)
+    // Let the second ask its question: it must not have started the login while the first runs.
+    for (let i = 0; i < 10; i++) await new Promise((resolve) => setTimeout(resolve, 2))
+    expect(order).toEqual(['start sk-1'])
+    gate.release()
+    await expect(one).rejects.toThrow('the first one fails')
+    expect(await two).toBe('the-key')
+    expect(order).toEqual(['start sk-1', 'end sk-1', 'start sk-2', 'end sk-2'])
+    expect(stamp()).toEqual({ setAt: 2 })
+  })
+
+  it('two homes do not wait for each other', async () => {
+    const other = mkdtempSync(join(tmpdir(), 'brobot2-codexkey-other-'))
+    try {
+      let release: () => void = () => {}
+      const held = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const seam: CodexKeySeam = {
+        current: () => ({ key: KEY, setAt: 1 }),
+        change: async (target) => {
+          if (target === home) await held
+          writeFileSync(join(target, 'auth.json'), '{}')
+          return { ok: true, authMethod: 'apikey' }
+        },
+      }
+      const slow = bringTheCodexKeyTo(home, seam)
+      expect(await bringTheCodexKeyTo(other, seam)).toBe('the-key')
+      release()
+      expect(await slow).toBe('the-key')
+    } finally {
+      rmSync(other, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('prepareProviderHome with a key', () => {
   let userData: string
 
@@ -345,25 +553,26 @@ describe('prepareProviderHome with a key', () => {
     ...extra,
   })
 
-  it('Codex home preparation copies its sign-in without reading or applying the saved key', async () => {
-    const original = JSON.stringify({ auth_mode: 'chatgpt' })
-    const copied = vi.fn((home: string) => writeFileSync(join(home, 'auth.json'), original))
-    const current = vi.fn(() => ({ key: KEY, setAt: 7 }))
-    const changes = vi.fn(async (home: string): Promise<CodexKeyOutcome> => {
-      writeFileSync(join(home, 'auth.json'), '{"auth_mode":"apikey"}')
-      return { ok: true, authMethod: 'apikey' }
-    })
-    const seam: CodexKeySeam = { current, change: changes }
+  it('a Codex home logged in with the key copies no login, and returns at once', async () => {
+    const copied = vi.fn()
+    const { seam, changes } = (() => {
+      const changes = vi.fn(async (home: string): Promise<CodexKeyOutcome> => {
+        writeFileSync(join(home, 'auth.json'), '{}')
+        return { ok: true, authMethod: 'apikey' }
+      })
+      return {
+        seam: { current: () => ({ key: KEY, setAt: 7 }), change: changes } as CodexKeySeam,
+        changes,
+      }
+    })()
     const home = await prepareProviderHome(
       userData,
       { profileId: 'default', provider: 'codex' },
       seams({ codexKey: seam, provisionCodexAuth: copied }),
     )
-    expect(current).not.toHaveBeenCalled()
-    expect(changes).not.toHaveBeenCalled()
-    expect(copied).toHaveBeenCalledExactlyOnceWith(home)
-    expect(readFileSync(join(home, 'auth.json'), 'utf8')).toBe(original)
-    expect(existsSync(join(home, 'brobot-api-key-login.json'))).toBe(false)
+    expect(changes).toHaveBeenCalledTimes(1)
+    expect(copied, 'the copied login was laid down over the key').not.toHaveBeenCalled()
+    expect(existsSync(join(home, 'brobot-api-key-login.json'))).toBe(true)
   })
 
   it('…and with no key, the copied login is laid down as before', async () => {

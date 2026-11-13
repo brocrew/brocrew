@@ -105,6 +105,7 @@ describe('native setup completion reaches existing runtime readiness notificatio
         reprovision: () => {
           throw new Error('native completion does not copy a credential')
         },
+        bringTheKeyToItsHomes: async () => null,
         replaceARefusedCopy: async () => 'not-tried',
       },
     })

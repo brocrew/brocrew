@@ -218,11 +218,12 @@ describe('provider-owned desktop inputs', () => {
     const key = f.inputs.codex.auth.key
     expect(key).toBe(f.inputs.codex.home.key)
     if (key === undefined) throw new Error('The key binding is absent')
-    await key.change('/fictional/profile')
+    await key.change('/fictional/profile', { to: 'no-key' })
     expect(f.transport).toHaveBeenCalledExactlyOnceWith('/fictional/codex-new')
     expect(f.changeKey).toHaveBeenCalledExactlyOnceWith(
       f.transport.mock.results[0]?.value,
       '/fictional/profile',
+      { to: 'no-key' },
     )
     await key.current()
     expect(f.env.keys.current).toHaveBeenCalledExactlyOnceWith('codex')

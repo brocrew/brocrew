@@ -219,6 +219,9 @@ export function claudeAuth(paths: ProviderHomePaths, seams: ClaudeAuthSeams): Ho
     async replaceARefusedCopy() {
       return 'not-tried'
     },
+    async bringTheKeyToItsHomes() {
+      return null
+    },
   }
 }
 

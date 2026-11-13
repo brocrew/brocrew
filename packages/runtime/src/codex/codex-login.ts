@@ -416,21 +416,39 @@ export async function probeCodexAuthInHome(
   }
 }
 
+/** What a person's API key does to one Codex profile home. */
+export type CodexKeyChange =
+  /** Log the home in with this key — Codex keeps it in its own `auth.json`. */
+  | { readonly to: 'the-key'; readonly apiKey: string }
+  /** Log the home out, so the copied machine login can take its place again. */
+  | { readonly to: 'no-key' }
+
 /** What the home holds after a {@link changeCodexKeyInHome}. */
 export type CodexKeyOutcome =
   | { readonly ok: true; readonly authMethod: string | null }
   | { readonly ok: false; readonly reason: string }
 
-/** Clear a legacy API-key login before OAuth provisioning; bound startup and always close the child. */
+/**
+ * 🔒 **Log one Codex profile home in with a person's API key, or out of it** — Codex's own login
+ * (`account/login/start {type:'apiKey'}`, `account/logout`), run in an app-server pinned to that home.
+ *
+ * ⚑ **Where the key goes**: into this app-server's stdin, as one JSON-RPC request, and from there
+ * into the `auth.json` Codex writes in the profile home (`0600`), as a ChatGPT login is kept today.
+ * ⛔ Never into an argument, an environment, a log or an error: a failure answers in this app's own
+ * words, and the provider's text — which a request's rejection carries — is never handed on.
+ *
+ * The home's boot slot serializes startup, requests are bounded, and the app-server closes on every path.
+ */
 export async function changeCodexKeyInHome(
   transports: TransportFactory,
   providerHome: string,
+  change: CodexKeyChange,
   signal?: AbortSignal,
 ): Promise<CodexKeyOutcome> {
   let bootSettled: (() => void) | undefined
   let transport: CodexTransport | undefined
   let cancel: LaunchCancel | undefined
-  const what = 'log this profile out'
+  const what = change.to === 'the-key' ? 'log this profile in with the key' : 'log this profile out'
   try {
     assertNotCancelled(signal, 'codex api key')
     bootSettled = await beginCodexHomeBoot(providerHome, { signal })
@@ -441,7 +459,14 @@ export async function changeCodexKeyInHome(
     await bounded(spawned.request('initialize', INITIALIZE_PARAMS), 'initialize')
     bootSettled()
     try {
-      await bounded(spawned.request('account/logout', undefined), 'account/logout')
+      if (change.to === 'the-key') {
+        await bounded(
+          spawned.request('account/login/start', { type: 'apiKey', apiKey: change.apiKey }),
+          'account/login/start',
+        )
+      } else {
+        await bounded(spawned.request('account/logout', undefined), 'account/logout')
+      }
     } catch {
       return { ok: false, reason: `Codex would not ${what}.` }
     }

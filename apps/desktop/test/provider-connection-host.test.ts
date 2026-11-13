@@ -113,7 +113,7 @@ it('Codex home preparation uses the once-selected method instead of a newly save
   const f = fixture()
   const keys = new ApiKeys(dir)
   f.state.revisionOf = (provider) => keys.revision(provider)
-  const changed = vi.fn(async () => ({ ok: true as const, authMethod: null }))
+  let applied: string | undefined
   const copied = vi.fn()
   f.prepared.mockImplementation(async (provider, profile, connection) => {
     const module = createCodexModule(
@@ -139,7 +139,10 @@ it('Codex home preparation uses the once-selected method instead of a newly save
               await keys.remove('codex')
               return key
             },
-            change: changed,
+            change: async (_home, change) => {
+              applied = change.to
+              return { ok: true, authMethod: 'apikey' }
+            },
           },
         },
         auth: { command: () => '/fictional/codex' },
@@ -152,7 +155,7 @@ it('Codex home preparation uses the once-selected method instead of a newly save
     { provider: 'codex', profileId: 'fern', model: 'fake-codex-a' },
     sink,
   )
-  expect(changed).not.toHaveBeenCalled()
+  expect(applied).toBeUndefined()
   expect(keys.revision('codex')).toBe(0)
   expect(copied).toHaveBeenCalled()
   expect(f.revision).not.toHaveBeenCalled()

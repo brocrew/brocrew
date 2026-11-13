@@ -36,6 +36,7 @@ export interface HomeAuthOperations {
   check(profileId: string, signal?: AbortSignal): Promise<AuthState>
   reprovision(profileId: string): ReprovisionOutcome | Promise<ReprovisionOutcome>
   signIn(profileId: string, signal?: AbortSignal): Promise<ProviderSignIn>
+  bringTheKeyToItsHomes(): Promise<string | null>
   replaceARefusedCopy(
     profileId: string,
     refused: unknown,
