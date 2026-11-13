@@ -110,7 +110,7 @@ describe('the remaining file reads on Windows', () => {
     expect(windows.reads).toBe(0)
   })
 
-  it('keeps refusing a link to a directory planted after resolution', () => {
+  it('reports the nonregular target of a link to a directory planted after resolution', () => {
     const offered = join(root, 'offered.md')
     writeFileSync(offered, BODY)
     const real = realPathOf(offered)
@@ -119,7 +119,7 @@ describe('the remaining file reads on Windows', () => {
     const directory = join(root, 'folder')
     mkdirSync(directory)
     symlinkSync(directory, offered, 'junction')
-    expect(readTextFile(real.path, 1024)).toBe('gone')
+    expect(readTextFile(real.path, 1024)).toBe('not-readable')
     expect(windows.reads).toBe(0)
     expect(lstatSync(offered).isSymbolicLink()).toBe(true)
     expect(lstatSync(directory).isDirectory()).toBe(true)
@@ -140,9 +140,13 @@ describe('the remaining file reads on Windows', () => {
     expect(windows.reads).toBeGreaterThan(0)
   })
 
-  it('does not display bytes through a link planted after the text file was resolved', () => {
-    expect(readTextFile(resolveThenReplace(), 1024)).toBe('gone')
-    expect(windows.reads).toBe(0)
+  it('displays the target bytes through a link planted after the text file was resolved', () => {
+    expect(readTextFile(resolveThenReplace(), 1024)).toEqual({
+      text: BODY,
+      truncated: false,
+      bytes: Buffer.byteLength(BODY),
+    })
+    expect(windows.reads).toBeGreaterThan(0)
   })
 
   it('still displays the target of an intentionally offered link resolved by the caller', () => {

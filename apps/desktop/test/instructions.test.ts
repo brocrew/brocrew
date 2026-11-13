@@ -1186,25 +1186,25 @@ describe('a Codex profile’s memory (317)', () => {
     expect(result.agentMemory.some((item) => item.kind === 'agent-memory-note')).toBe(true)
   })
 
-  it('🔒 a symlinked NOTES DIRECTORY is refused, not followed — enumeration is not a leaf read', () => {
-    // ⛔ **The one place this reader declines a link, and the asymmetry is the ruling.** The two
-    // fixed files are followed under 170 §2, because the provider derives and reads those paths
-    // itself. Enumeration is not that: `notes -> ~/Documents` would have this app listing and
-    // reading a directory no provider ever looked at, and the store's whole shape would come from
-    // the link. ⚑ It cited the rule on a symlinked `.claude` directory; `733` follows that one (its
-    // reason was a credential) and kept this one, whose reason is the store's shape.
-    const elsewhere = join(root, 'somebody-elses-documents')
-    write(join(elsewhere, '2026-09-04T00-00-00-secret.md'), 'NOT-A-MEMORY-OF-THIS-PROFILE')
+  it('reads notes through a linked directory and reports the actual target', () => {
+    const elsewhere = join(root, 'notes-elsewhere')
+    const name = '2026-09-04T00-00-00-note.md'
+    const text = 'A fictional note kept on another disk.'
+    write(join(elsewhere, name), text)
     mkdirSync(join(codexAdHocNotesDir(codexHome), '..'), { recursive: true })
     symlinkSync(elsewhere, codexAdHocNotesDir(codexHome))
 
     const result = codex()
-
-    expect(result.refused).toContainEqual({
-      path: codexAdHocNotesDir(codexHome),
-      reason: 'symlink',
+    expect(result.refused).toEqual([])
+    expect(result.agentMemory).toContainEqual({
+      kind: 'agent-memory-note',
+      path: join(codexAdHocNotesDir(codexHome), name),
+      text,
+      bytes: Buffer.byteLength(text),
+      truncated: false,
+      reach: 'on-request',
+      link: realpathSync(join(elsewhere, name)),
     })
-    expect(JSON.stringify(result.agentMemory)).not.toContain('NOT-A-MEMORY-OF-THIS-PROFILE')
   })
 
   it('🔴 …and a DANGLING notes directory says the link is BROKEN, not that it was refused', () => {

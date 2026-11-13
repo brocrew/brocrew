@@ -1,6 +1,5 @@
-import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, type Stats } from 'node:fs'
+import { closeSync, constants, fstatSync, statSync, openSync, readSync, type Stats } from 'node:fs'
 import { join } from 'node:path'
-import { isStillTheFileOpened } from '@brobot2/runtime'
 import {
   SAVED_METHODS_MOST_INDEX_BYTES,
   SAVED_METHODS_MOST_METHOD_BYTES,
@@ -56,10 +55,10 @@ class Refused extends Error {
   }
 }
 
-/** A path's own entry, never what a link points at; `null` when there is nothing there. */
+/** A path's target; `null` when there is nothing there. */
 function entryAt(path: string): Stats | null {
   try {
-    return lstatSync(path)
+    return statSync(path)
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
     throw error
@@ -67,19 +66,12 @@ function entryAt(path: string): Stats | null {
 }
 
 /**
- * `index.md`'s text, read through its own entry and never through a link: on Windows, whose opens
- * follow a link, the opened file must still be the one at its name. Opened without waiting, so a
- * pipe put there after it was looked at cannot hold the launch, and refused unless it is a file.
+ * `index.md`'s bounded text. Opened without waiting so a pipe cannot hold the launch, and read
+ * only when the opened descriptor holds a regular file.
  */
-function indexText(path: string, platform: NodeJS.Platform): string {
-  const fd = openSync(
-    path,
-    constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0),
-  )
+function indexText(path: string): string {
+  const fd = openSync(path, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0))
   try {
-    if (platform === 'win32' && !isStillTheFileOpened(path, fd)) {
-      throw new Refused({ kind: 'a-link', what: 'the-index' })
-    }
     const stat = fstatSync(fd)
     if (!stat.isFile()) throw new Refused({ kind: 'not-a-file', what: 'the-index' })
     if (stat.size > MOST_INDEX_FILE_BYTES) throw new Refused({ kind: 'index-file-too-large' })
@@ -95,18 +87,17 @@ function indexText(path: string, platform: NodeJS.Platform): string {
 /**
  * The saved methods in `folder`, read for one launch. Only index lines in
  * {@link SAVED_METHOD_LINE_FORM} that name a method file of at most 16 KiB in the folder itself are
- * kept; the index sent is rebuilt from their fields, never `index.md`'s own text. A link anywhere,
- * or an index over 4 KiB, means no index at all. A missing folder means there are none.
+ * kept; the index sent is rebuilt from their fields, never `index.md`'s own text. An index over
+ * 4 KiB means no index at all. A missing folder means there are none.
  */
 export function readSavedMethods(
   folder: string,
   now: number,
-  platform: NodeJS.Platform = process.platform,
+  _platform: NodeJS.Platform = process.platform,
 ): SavedMethodsReading {
   try {
     const at = entryAt(folder)
     if (at === null) return { kind: 'none', folder, readAt: now }
-    if (at.isSymbolicLink()) throw new Refused({ kind: 'a-link', what: 'the-folder' })
     if (!at.isDirectory()) throw new Refused({ kind: 'not-a-file', what: 'the-folder' })
     const indexPath = join(folder, SAVED_METHODS_INDEX)
     const index = entryAt(indexPath)
@@ -121,12 +112,11 @@ export function readSavedMethods(
         index: '',
       }
     }
-    if (index.isSymbolicLink()) throw new Refused({ kind: 'a-link', what: 'the-index' })
     // A pipe or device would wait for a writer on open; only a plain file is read at all.
     if (!index.isFile()) throw new Refused({ kind: 'not-a-file', what: 'the-index' })
     const methods: SavedMethod[] = []
     let leftOut = 0
-    for (const raw of indexText(indexPath, platform).split(/\r?\n/)) {
+    for (const raw of indexText(indexPath).split(/\r?\n/)) {
       const line = raw.trimEnd()
       // Only list items are entries; headings and prose around them are not.
       if (!/^\s*[-*] /.test(line)) continue
@@ -138,7 +128,6 @@ export function readSavedMethods(
       const { title, when, verified, file } = parsed
       const path = join(folder, file)
       const method = entryAt(path)
-      if (method?.isSymbolicLink() === true) throw new Refused({ kind: 'a-link', what: 'a-method' })
       if (method === null || !method.isFile() || method.size > SAVED_METHODS_MOST_METHOD_BYTES) {
         leftOut += 1
         continue

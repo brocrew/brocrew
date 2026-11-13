@@ -59,6 +59,31 @@ describe('the file an instruction reader actually opens', () => {
     })
   })
 
+  it.each(['file', 'link'] as const)(
+    'reads the regular target substituted before open as a %s',
+    (kind) => {
+      const file = join(root, 'rules.md')
+      const target = join(root, 'current.md')
+      const text = 'The current rule.\n'
+      writeFileSync(file, 'The earlier rule.\n')
+      writeFileSync(target, text)
+      opening.path = file
+      opening.change = () => {
+        renameSync(file, `${file}.earlier`)
+        if (kind === 'link') symlinkSync(target, file)
+        else renameSync(target, file)
+      }
+      expect(readInstructionFile(file)).toEqual({
+        ok: true,
+        text,
+        bytes: Buffer.byteLength(text),
+        truncated: false,
+        real: realpathSync.native(file),
+      })
+      expect(opening.change).toBeNull()
+    },
+  )
+
   it.skipIf(process.platform === 'win32')(
     'names a directory substituted after the path check as non-regular',
     () => {

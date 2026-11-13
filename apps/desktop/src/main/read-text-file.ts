@@ -3,12 +3,12 @@ import {
   constants,
   fstatSync,
   lstatSync,
+  openSync,
   readSync,
   realpathSync,
   statSync,
 } from 'node:fs'
 import { isAbsolute } from 'node:path'
-import { openNotThroughALink } from '@brobot2/runtime/provider-home'
 
 /**
  * Shared bounded text reads for document viewers. Callers resolve the source path and choose the
@@ -52,9 +52,8 @@ export function realPathOf(path: string): RealPath {
 
 /**
  * Classify a failed open by the filesystem entry, since platform error codes for sockets differ.
- * `ELOOP` can mean a replaced path or a directory rejected by the Windows regular-file check;
- * `lstat` distinguishes the directory without following a link. Otherwise, an existing regular
- * file is unreadable, another file kind is not readable as text, and a missing entry is gone.
+ * `ELOOP` means the path cannot be followed; `lstat` distinguishes a directory entry. An existing
+ * regular file is unreadable, another file kind is not readable as text, and a missing entry is gone.
  */
 function whyItDidNotOpen(realPath: string, error: unknown): ReadRefusal {
   try {
@@ -69,8 +68,7 @@ function whyItDidNotOpen(realPath: string, error: unknown): ReadRefusal {
 /**
  * Read at most `max` bytes of the caller-resolved path.
  *
- * The open helper handles a link introduced after resolution with `O_NOFOLLOW` or a Windows
- * post-open check. `O_NONBLOCK` keeps a fifo with no writer from hanging before the file-kind check.
+ * `O_NONBLOCK` keeps a fifo with no writer from hanging before the file-kind check.
  * Checking and reading the same descriptor keeps a rename from changing the file being read.
  *
  * A NUL in the sampled head makes the content not readable here, including common UTF-16 text.
@@ -79,7 +77,7 @@ function whyItDidNotOpen(realPath: string, error: unknown): ReadRefusal {
 export function readTextFile(realPath: string, max: number): TextFile | ReadRefusal {
   let fd: number
   try {
-    fd = openNotThroughALink(realPath, constants.O_RDONLY | constants.O_NONBLOCK)
+    fd = openSync(realPath, constants.O_RDONLY | constants.O_NONBLOCK)
   } catch (error) {
     return whyItDidNotOpen(realPath, error)
   }

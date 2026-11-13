@@ -47,11 +47,6 @@ export function readInstructionFile(path: string, cap = INSTRUCTION_FILE_CAP): I
   try {
     const held = fstatSync(fd)
     if (!held.isFile()) return { ok: false, reason: 'not-a-regular-file' }
-    // The descriptor and the path we checked must be the SAME file. This is the TOCTOU close: a
-    // rename or a swap between step 1 and step 2 changes the inode, and nothing else here would
-    // notice: `stat` and `fstat` disagree exactly when the path was swapped between them.
-    if (held.ino !== seen.ino || held.dev !== seen.dev) return { ok: false, reason: 'symlink' }
-
     const chunks: Buffer[] = []
     const buffer = Buffer.allocUnsafe(16 * 1024)
     let total = 0
@@ -242,10 +237,7 @@ export function sizeOnDisk(path: string): number {
   return Math.min(INSTRUCTION_FILE_CAP, safeStat(path)?.size ?? 0)
 }
 
-export function memoryDirNames(
-  dir: string,
-  followLink: boolean,
-): {
+export function memoryDirNames(dir: string): {
   names: string[]
   refused: RefusedInstruction | null
 } {
@@ -256,33 +248,16 @@ export function memoryDirNames(
     return { names: [], refused: null } // nothing written yet — the ordinary case, and it is silent
   }
   if (seen.isSymbolicLink()) {
-    // ⛔ **A link that leads NOWHERE is not a refusal** (314 §3), and this branch is here because
-    // the one below would have called it one. ⚠️ Found reviewing 317's diff: nothing declined to
-    // read anything when the far end of a link is gone, and *"not read: symlink"* would send
-    // somebody looking for a decision the app never made. {@link brokenMemoryLink} already knows
-    // how to say it, target and all. ⚑ It runs for BOTH policies, because a broken link is not a
-    // decision either of them made.
     const broken = brokenMemoryLink(dir)
     if (broken !== null) return { names: [], refused: broken }
-    // 🔒 See this function's own note for why one store refuses here and the other does not.
-    // Named as the DIRECTORY, because that is what was wrong.
-    if (!followLink) return { names: [], refused: { path: dir, reason: 'symlink' } }
   }
-  // ⚠️ **`statSync`, and only on the followed path.** `seen` is the LINK when there is one, so it
-  // is never a directory and the check below would refuse every working redirect as
-  // `not-a-regular-file` — the same row under a different word.
   const target = seen.isSymbolicLink() ? safeStat(dir) : seen
   if (target === null || !target.isDirectory()) {
     return { names: [], refused: { path: dir, reason: 'not-a-regular-file' } }
   }
   try {
     const names = readdirSync(dir, { withFileTypes: true })
-      // ⚠️ **A symlinked ENTRY is kept, and that is not an inconsistency with the check above.**
-      // The directory is refused because following it would let a link decide the whole store's
-      // shape; a single memory that is a link is 170 §2's ordinary case — the agent reaches it
-      // whichever way we go, so the guarded reader follows it and the panel discloses where it
-      // went. Only a DIRECTORY is dropped here, silently: a subdirectory named `*.md` is not a
-      // memory, and Codex's `memories__list` reports its `entry_type` as such.
+      // A subdirectory named `*.md` is not a memory file.
       .filter((entry) => !entry.isDirectory() && entry.name.endsWith('.md'))
       .map((entry) => entry.name)
       .sort()
@@ -292,11 +267,11 @@ export function memoryDirNames(
   }
 }
 
-/** A bounded note listing, newest filename first, without following a directory link. */
+/** A bounded note listing, newest filename first. */
 export function newestMemoryNotes(notesDir: string): {
   names: string[]
   refused: RefusedInstruction | null
 } {
-  const listed = memoryDirNames(notesDir, false)
+  const listed = memoryDirNames(notesDir)
   return { names: [...listed.names].reverse(), refused: listed.refused }
 }

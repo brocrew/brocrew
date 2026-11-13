@@ -227,31 +227,36 @@ describe('the index a launch reads', () => {
       )
   })
 
-  it('follows no link: not the folder, not the index, not a method', () => {
+  it('reads the targets of linked folders, indexes and methods', () => {
     const real = aStore({ 'rotate-log.md': METHOD })
     indexOf(real, [LINE])
 
     const linkedFolder = join(scratch('linked-folder'), 'runbooks')
     symlinkSync(real, linkedFolder)
-    expect(read(linkedFolder)).toMatchObject({
-      kind: 'refused',
-      refusal: { kind: 'a-link', what: 'the-folder' },
-    })
 
     const linkedIndex = aStore({ 'rotate-log.md': METHOD })
     symlinkSync(join(real, SAVED_METHODS_INDEX), join(linkedIndex, SAVED_METHODS_INDEX))
-    expect(read(linkedIndex)).toMatchObject({
-      kind: 'refused',
-      refusal: { kind: 'a-link', what: 'the-index' },
-    })
 
     const linkedMethod = aStore()
     symlinkSync(join(real, 'rotate-log.md'), join(linkedMethod, 'rotate-log.md'))
     indexOf(linkedMethod, [LINE])
-    expect(read(linkedMethod)).toMatchObject({
-      kind: 'refused',
-      refusal: { kind: 'a-link', what: 'a-method' },
-    })
+    for (const folder of [linkedFolder, linkedIndex, linkedMethod]) {
+      expect(read(folder)).toMatchObject({
+        kind: 'read',
+        folder,
+        hasIndex: true,
+        readAt: NOW,
+        leftOut: 0,
+        methods: [
+          {
+            title: 'Rotate a fictional log',
+            when: 'when the log passes 1 GB',
+            verified: '2026-10-12',
+            path: join(folder, 'rotate-log.md'),
+          },
+        ],
+      })
+    }
   })
 
   it('keeps its folder, counts, size, index and time for the launch’s record', () => {

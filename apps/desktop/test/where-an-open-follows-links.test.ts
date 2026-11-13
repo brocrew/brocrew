@@ -21,8 +21,8 @@ import { readSavedMethods, SAVED_METHODS_INDEX } from '../src/main/saved-methods
 
 /**
  * Windows has no `O_NOFOLLOW`: an open there follows a link put at the path. The files an agent's
- * home holds and this app rewrites or reads for a launch are never written or read through one
- * anyway. Off Windows, this file's `node:fs` drops `O_NOFOLLOW` from an open, as Windows does, and
+ * home holds and this app rewrites are never written through one anyway. Off Windows, this file's
+ * `node:fs` drops `O_NOFOLLOW` from an open, as Windows does, and
  * can put a link at a name just before an open. Scratch folders only.
  */
 
@@ -196,7 +196,7 @@ describe('a saved-methods index read where an open follows links (Windows)', () 
     return folder
   }
 
-  it('🔴 an index replaced by a link after it was looked at is not read', () => {
+  it('reads the target of an index replaced by a link after it was looked at', () => {
     const folder = aFolder()
     const index = join(folder, SAVED_METHODS_INDEX)
     const theirs = join(outside, 'index.md')
@@ -208,8 +208,20 @@ describe('a saved-methods index read where an open follows links (Windows)', () 
 
     expect(fake.swapped).toBe(true)
     expect(reading).toMatchObject({
-      kind: 'refused',
-      refusal: { kind: 'a-link', what: 'the-index' },
+      kind: 'read',
+      folder,
+      hasIndex: true,
+      readAt: 0,
+      leftOut: 0,
+      methods: [
+        {
+          title: 'Someone else’s method',
+          when: 'when they say',
+          verified: '2026-10-12',
+          path: join(folder, 'rotate-log.md'),
+        },
+      ],
+      index: `- Someone else’s method — when they say — verified 2026-10-12 — ${join(folder, 'rotate-log.md')}`,
     })
   })
 

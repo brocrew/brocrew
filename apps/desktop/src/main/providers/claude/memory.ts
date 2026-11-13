@@ -96,7 +96,7 @@ function claudeMemoryTopics(dir: string): {
   names: string[]
   refused: RefusedInstruction | null
 } {
-  const listed = memoryDirNames(dir, true)
+  const listed = memoryDirNames(dir)
   return { names: listed.names.filter(isClaudeMemoryTopic), refused: listed.refused }
 }
 
