@@ -1,6 +1,7 @@
 // Spawned only by shared-races.test.ts, with explicitly fictional roots.
 import fs from 'node:fs'
 import path from 'node:path'
+import { writeAtomicallySync } from '../../shared/atomic-file.js'
 import { createSharedProfileStore } from '../src/profiles/sharedStore.js'
 import { identity } from '../src/profiles/sharedLock.js'
 const [command, home, shared, id, barrier, boundary] = process.argv.slice(2)
@@ -34,7 +35,7 @@ while (!fs.existsSync(`${barrier}.go`)) pause()
 try {
   if (command === 'lease') {
     const lease = store.shared.acquire('fern')
-    fs.writeFileSync(`${barrier}.${id}.result`, 'acquired')
+    writeAtomicallySync(`${barrier}.${id}.result`, 'acquired')
     process.stdout.write('acquired\n')
     while (!fs.existsSync(`${barrier}.release`)) pause()
     lease.release()
@@ -57,6 +58,6 @@ try {
     process.stdout.write('updated\n')
   }
 } catch (e) {
-  fs.writeFileSync(`${barrier}.${id}.result`, 'refused')
+  writeAtomicallySync(`${barrier}.${id}.result`, 'refused')
   process.stdout.write(`refused:${e instanceof Error ? e.message : 'unknown'}\n`)
 }
