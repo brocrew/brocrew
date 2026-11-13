@@ -119,6 +119,37 @@ it('measures window reads with 1960 conversations and nine live agents', async (
     limitsWriterStamp: limitsWriterSampler(world.db, () => true),
     statesMoved: (message) => pushed.push(message),
   })
+  const incidentChecks: unknown[] = []
+  const inspected = host as unknown as {
+    publicationSeq: number
+    windowIncidentsKept?: { stamp: {revision:bigint, schemaVersion?:bigint, dataVersion:bigint} }
+    sampleWindowWriter(query: {kind:'incidents'}): {revision:bigint, schemaVersion?:bigint, dataVersion:bigint} | null
+    stampedIncidents(): {seq:number}
+    personsQueueAssembled(incidents: {seq:number} | null): unknown
+    incidentsForWindow(compose:()=>unknown): Promise<unknown>
+  }
+  const stamp = (one: ReturnType<typeof inspected.sampleWindowWriter> | undefined) => one == null ? null :
+    [String(one.revision), String(one.schemaVersion), String(one.dataVersion)]
+  const stamped = inspected.stampedIncidents.bind(host)
+  inspected.stampedIncidents = () => {
+    const result = stamped()
+    incidentChecks.push({where:'composed', seq:result.seq, current:inspected.publicationSeq})
+    return result
+  }
+  const assembled = inspected.personsQueueAssembled.bind(host)
+  inspected.personsQueueAssembled = (incidents) => {
+    const result = assembled(incidents)
+    incidentChecks.push({where:'assembled', seq:incidents?.seq, current:inspected.publicationSeq,
+      kept:stamp(inspected.windowIncidentsKept?.stamp), currentStamp:stamp(inspected.sampleWindowWriter({kind:'incidents'}))})
+    return result
+  }
+  const incidentsRead = inspected.incidentsForWindow.bind(host)
+  inspected.incidentsForWindow = async (compose) => {
+    try { return await incidentsRead(compose) } catch(error) {
+      incidentChecks.push({where:'read-failed',error:String(error)})
+      throw error
+    }
+  }
   const gaps: number[] = []
   const longGaps: { phase: string; elapsedMs: number }[] = []
   let last = performance.now()
@@ -351,6 +382,7 @@ it('measures window reads with 1960 conversations and nine live agents', async (
       JSON.stringify({
         phases,
         readings,
+        incidentChecks,
         mainHistory: summarize(mainHistory),
         otherMainHistory: summarize(otherMainHistory),
         longGaps,
