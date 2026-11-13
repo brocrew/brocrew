@@ -40,7 +40,8 @@ export class WindowReadEngine {
 
   read(input: WindowReadQuery, abandoned: () => boolean = () => false): WindowReadResult {
     const query = windowReadQuery.parse(input)
-    const keepsFolds = query.kind === 'routes' || query.kind === 'publication' || query.kind === 'incidents'
+    const keepsFolds =
+      query.kind === 'routes' || query.kind === 'publication' || query.kind === 'incidents'
     if (keepsFolds) {
       if (query.reuse === undefined || query.reuse.token !== this.cacheToken) this.answers.clear()
       else
@@ -155,7 +156,12 @@ export class WindowReadEngine {
         const readings: IncidentReading[] = []
         const reported = new Map<string, IncidentFact<readonly string[]>>()
         const read = <T>(answer: () => T): IncidentFact<T> => {
-          try { return { value: answer() } } catch { checkCancelled(); return null }
+          try {
+            return { value: answer() }
+          } catch {
+            checkCancelled()
+            return null
+          }
         }
         for (const sessionId of owners) {
           checkCancelled()
@@ -195,19 +201,40 @@ export class WindowReadEngine {
           const newestTurn = store.theNewestTurn(sessionId)
           for (const piece of pieces)
             if (piece.giver !== null && !reported.has(piece.giver))
-              reported.set(piece.giver, read(() => [...store.workReportedTo(piece.giver!)]))
+              reported.set(
+                piece.giver,
+                read(() => [...store.workReportedTo(piece.giver!)]),
+              )
           readings.push({
             sessionId,
             history: {
-              roots: work.filter((one) => one.parent === null).map((one) => [one.piece,
-                read(() => store.rootLines(one.piece)), read(() => store.turnBlockRootLines(one.piece))]),
-              receipts: work.map((one) => [one.piece, read(() => store.reconciliationReceipts(sessionId, one.piece))]),
+              roots: work
+                .filter((one) => one.parent === null)
+                .map((one) => [
+                  one.piece,
+                  read(() => store.rootLines(one.piece)),
+                  read(() => store.turnBlockRootLines(one.piece)),
+                ]),
+              receipts: work.map((one) => [
+                one.piece,
+                read(() => store.reconciliationReceipts(sessionId, one.piece)),
+              ]),
               recovery: read(() => store.reconciliationRecovery(sessionId)),
               newestTurn,
-              driven: newestTurn === null ? { value: [] } : read(() => store.reconciliationDrivenByTurn(sessionId, newestTurn)),
+              driven:
+                newestTurn === null
+                  ? { value: [] }
+                  : read(() => store.reconciliationDrivenByTurn(sessionId, newestTurn)),
               lastPerson: read(() => store.whenAPersonLastWrote(sessionId)),
-              legacy: pieces.filter((one) => one.state === 'stalled' && one.giver !== null)
-                .map((one) => [one.piece, one.giver!, read(() => store.legacyOrdinaryStallWasReported(sessionId, one.piece, one.giver!))]),
+              legacy: pieces
+                .filter((one) => one.state === 'stalled' && one.giver !== null)
+                .map((one) => [
+                  one.piece,
+                  one.giver!,
+                  read(() =>
+                    store.legacyOrdinaryStallWasReported(sessionId, one.piece, one.giver!),
+                  ),
+                ]),
               states: states.map((one) => [one.piece, one.state]),
               statesSkipped: [...statesSkipped],
             },
@@ -222,7 +249,12 @@ export class WindowReadEngine {
             stopSkipped: [...stopSkipped],
           })
         }
-        result = { kind: 'incidents', owners: readings, reported: [...reported], routing: readRoutes() }
+        result = {
+          kind: 'incidents',
+          owners: readings,
+          reported: [...reported],
+          routing: readRoutes(),
+        }
       } else if (query.kind === 'activity') {
         const reading = recentActivity(store, query.from, query.to)
         result = { kind: 'activity', ...reading }

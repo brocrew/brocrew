@@ -164,18 +164,46 @@ describe('canonical window worker folds and independent live-store reads', () =>
 
   it('projects incident history without main reads and preserves failed receipts and closed wait targets', () => {
     const root = store.ensurePersonalRoot('alpha', 1)
-    row('alpha', 'work_given', { type: 'work_given', piece: 'child', parent: root.piece,
-      label: `${root.label}.1`, givenBy: 'beta', title: 'Fictional', brief: 'A private brief stays off the wait-target projection.' })
+    row('alpha', 'work_given', {
+      type: 'work_given',
+      piece: 'child',
+      parent: root.piece,
+      label: `${root.label}.1`,
+      givenBy: 'beta',
+      title: 'Fictional',
+      brief: 'A private brief stays off the wait-target projection.',
+    })
     row('alpha', 'work_closed', { type: 'work_closed', piece: 'child' })
-    row('alpha', 'work_status_set', { type: 'work_status_set', piece: root.piece,
-      line: 'A fictional wait', by: 'alpha', at: 10 })
-    const reads = new WindowIncidentReads(() => null, () => null)
+    row('alpha', 'work_status_set', {
+      type: 'work_status_set',
+      piece: root.piece,
+      line: 'A fictional wait',
+      by: 'alpha',
+      at: 10,
+    })
+    const reads = new WindowIncidentReads(
+      () => null,
+      () => null,
+    )
     const forbidden = new Proxy(store, {
       get(target, key) {
-        if (['rootLines', 'turnBlockRootLines', 'reconciliationReceipts', 'reconciliationRecovery',
-          'theNewestTurn', 'reconciliationDrivenByTurn', 'whenAPersonLastWrote', 'workReportedTo',
-          'legacyOrdinaryStallWasReported', 'piecesOwnedBy'].includes(String(key)))
-          return () => { throw new Error(`main history: ${String(key)}`) }
+        if (
+          [
+            'rootLines',
+            'turnBlockRootLines',
+            'reconciliationReceipts',
+            'reconciliationRecovery',
+            'theNewestTurn',
+            'reconciliationDrivenByTurn',
+            'whenAPersonLastWrote',
+            'workReportedTo',
+            'legacyOrdinaryStallWasReported',
+            'piecesOwnedBy',
+          ].includes(String(key))
+        )
+          return () => {
+            throw new Error(`main history: ${String(key)}`)
+          }
         const value: unknown = Reflect.get(target, key, target)
         return typeof value === 'function' ? value.bind(target) : value
       },
@@ -187,8 +215,12 @@ describe('canonical window worker folds and independent live-store reads', () =>
       expect(windowReadResult.safeParse(snapshot).success).toBe(true)
       reads.run(() => {
         expect(projected.rootLines(root.piece)).toEqual(store.rootLines(root.piece))
-        expect(projected.turnBlockRootLines(root.piece)).toEqual(store.turnBlockRootLines(root.piece))
-        expect(projected.reconciliationRecovery('alpha')).toEqual(store.reconciliationRecovery('alpha'))
+        expect(projected.turnBlockRootLines(root.piece)).toEqual(
+          store.turnBlockRootLines(root.piece),
+        )
+        expect(projected.reconciliationRecovery('alpha')).toEqual(
+          store.reconciliationRecovery('alpha'),
+        )
         expect(projected.theNewestTurn('alpha')).toEqual(store.theNewestTurn('alpha'))
         expect(projected.whenAPersonLastWrote('alpha')).toEqual(store.whenAPersonLastWrote('alpha'))
         expect(reads.waitTarget('alpha', 'child', rowsUnreadOnce())).toEqual({ state: 'closed' })
@@ -197,31 +229,64 @@ describe('canonical window worker folds and independent live-store reads', () =>
       return snapshot
     }
     const complete = check()
-    reads.run(() => expect(projected.reconciliationReceipts('alpha', root.piece)).toEqual([]), complete)
+    reads.run(
+      () => expect(projected.reconciliationReceipts('alpha', root.piece)).toEqual([]),
+      complete,
+    )
     row('alpha', 'work_reconciliation', '{')
     const unread = check()
-    reads.run(() => expect(() => projected.reconciliationReceipts('alpha', root.piece)).toThrow(WindowReadUnavailable), unread)
+    reads.run(
+      () =>
+        expect(() => projected.reconciliationReceipts('alpha', root.piece)).toThrow(
+          WindowReadUnavailable,
+        ),
+      unread,
+    )
     row('alpha', 'work_recovery', '{')
     const recoveryUnread = engine.read({ kind: 'incidents' })
     if (recoveryUnread.kind !== 'incidents') throw new Error('wrong snapshot')
-    reads.run(() => expect(() => projected.reconciliationRecovery('alpha')).toThrow(WindowReadUnavailable), recoveryUnread)
+    reads.run(
+      () => expect(() => projected.reconciliationRecovery('alpha')).toThrow(WindowReadUnavailable),
+      recoveryUnread,
+    )
   })
 
   it('keeps legacy stall ordinal evidence with a reused owner fold', () => {
     const root = store.ensurePersonalRoot('alpha', 1)
-    row('alpha', 'work_given', {type:'work_given', piece:'legacy-child', parent:root.piece,
-      label:`${root.label}.1`, givenBy:'beta', title:'Fictional', brief:'Fictional'})
-    row('alpha', 'status', {type:'status', state:'working'})
-    row('alpha', 'status', {type:'status', state:'idle'})
-    row('beta', 'work_stall_told', {type:'work_stall_told', piece:'legacy-child', cause:'turn_ended', how:'pushed'})
-    db.prepare('INSERT OR REPLACE INTO work_legacy_stall_cut(session_id,generation,through_ordinal) VALUES (?,0,?)').run('alpha', ordinal)
+    row('alpha', 'work_given', {
+      type: 'work_given',
+      piece: 'legacy-child',
+      parent: root.piece,
+      label: `${root.label}.1`,
+      givenBy: 'beta',
+      title: 'Fictional',
+      brief: 'Fictional',
+    })
+    row('alpha', 'status', { type: 'status', state: 'working' })
+    row('alpha', 'status', { type: 'status', state: 'idle' })
+    row('beta', 'work_stall_told', {
+      type: 'work_stall_told',
+      piece: 'legacy-child',
+      cause: 'turn_ended',
+      how: 'pushed',
+    })
+    db.prepare(
+      'INSERT OR REPLACE INTO work_legacy_stall_cut(session_id,generation,through_ordinal) VALUES (?,0,?)',
+    ).run('alpha', ordinal)
     expect(store.legacyOrdinaryStallWasReported('alpha', 'legacy-child', 'beta')).toBe(true)
-    const first = engine.read({kind:'routes'})
-    if (first.kind !== 'routes' || first.cacheToken === undefined) throw new Error('missing route token')
-    const second = engine.read({kind:'incidents', reuse:{token:first.cacheToken,changed:[]}})
+    const first = engine.read({ kind: 'routes' })
+    if (first.kind !== 'routes' || first.cacheToken === undefined)
+      throw new Error('missing route token')
+    const second = engine.read({
+      kind: 'incidents',
+      reuse: { token: first.cacheToken, changed: [] },
+    })
     if (second.kind !== 'incidents') throw new Error('wrong snapshot')
-    expect(second.owners.find((one) => one.sessionId === 'alpha')?.history.legacy)
-      .toContainEqual(['legacy-child','beta',{value:true}])
+    expect(second.owners.find((one) => one.sessionId === 'alpha')?.history.legacy).toContainEqual([
+      'legacy-child',
+      'beta',
+      { value: true },
+    ])
   })
 
   it('reads incident dependencies canonically, including corrupt rows and changed generations', () => {

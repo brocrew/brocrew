@@ -15402,7 +15402,8 @@ export class RuntimeHost implements LiveHost {
         if (query.kind === 'routes') this.windowRoutesKept = { stamp: after!, result }
         if (query.kind === 'incidents') {
           this.windowIncidentsKept = { stamp: after!, result }
-          if (result.kind === 'incidents') this.windowRoutesKept = { stamp: after!, result: result.routing }
+          if (result.kind === 'incidents')
+            this.windowRoutesKept = { stamp: after!, result: result.routing }
         }
         if (result.kind === 'publication' && result.states !== null)
           this.windowRoutesKept = { stamp: after!, result: result.states }
@@ -16363,9 +16364,12 @@ export class RuntimeHost implements LiveHost {
       if (target.parent === null) return null
       const unread = rowsUnreadOnce()
       const projected = this.windowIncidentReads.waitTarget(target.owner, target.piece, unread)
-      const state = projected === undefined
-        ? this.deps.store.piecesOwnedBy(target.owner, unread).find((one) => one.piece === target.piece)?.state ?? null
-        : projected.state
+      const state =
+        projected === undefined
+          ? (this.deps.store
+              .piecesOwnedBy(target.owner, unread)
+              .find((one) => one.piece === target.piece)?.state ?? null)
+          : projected.state
       if (unread.count !== 0 || unread.ledgersSkipped !== 0)
         throw new Error('a wait target could not be read')
       return state === null
@@ -16751,7 +16755,9 @@ export class RuntimeHost implements LiveHost {
     try {
       return await this.freshWindowQuery({ kind: 'incidents' }, (result) => {
         if (result.kind !== 'incidents') throw new WindowReadMissed('worker-gone')
-        return this.windowRoutingReads.run(result.routing, () => this.windowIncidentReads.run(compose, result))
+        return this.windowRoutingReads.run(result.routing, () =>
+          this.windowIncidentReads.run(compose, result),
+        )
       })
     } finally {
       this.windowReadCallers--
@@ -16769,7 +16775,9 @@ export class RuntimeHost implements LiveHost {
     try {
       if (this.deps.windowReader !== undefined) {
         try {
-          return await this.incidentsForWindow(() => this.personsQueueAssembled(this.stampedIncidents()))
+          return await this.incidentsForWindow(() =>
+            this.personsQueueAssembled(this.stampedIncidents()),
+          )
         } catch (error) {
           if (this.launches.closed) throw error
           return await this.readForWindow(() => this.personsQueueAssembled(null))

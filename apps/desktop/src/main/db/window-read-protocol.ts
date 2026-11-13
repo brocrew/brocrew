@@ -114,14 +114,24 @@ interface WindowActivity extends RecentActivityReading {
 }
 export type IncidentFact<T> = { readonly value: T } | null
 export interface IncidentHistory {
-  readonly roots: readonly (readonly [string, IncidentFact<ReturnType<SessionStore['rootLines']>>, IncidentFact<ReturnType<SessionStore['turnBlockRootLines']>>])[]
-  readonly receipts: readonly (readonly [string, IncidentFact<ReturnType<SessionStore['reconciliationReceipts']>>])[]
+  readonly roots: readonly (readonly [
+    string,
+    IncidentFact<ReturnType<SessionStore['rootLines']>>,
+    IncidentFact<ReturnType<SessionStore['turnBlockRootLines']>>,
+  ])[]
+  readonly receipts: readonly (readonly [
+    string,
+    IncidentFact<ReturnType<SessionStore['reconciliationReceipts']>>,
+  ])[]
   readonly recovery: IncidentFact<ReturnType<SessionStore['reconciliationRecovery']>>
   readonly newestTurn: ReturnType<SessionStore['theNewestTurn']>
   readonly driven: IncidentFact<ReturnType<SessionStore['reconciliationDrivenByTurn']>>
   readonly lastPerson: IncidentFact<ReturnType<SessionStore['whenAPersonLastWrote']>>
   readonly legacy: readonly (readonly [string, string, IncidentFact<boolean>])[]
-  readonly states: readonly (readonly [string, ReturnType<SessionStore['piecesOwnedBy']>[number]['state']])[]
+  readonly states: readonly (readonly [
+    string,
+    ReturnType<SessionStore['piecesOwnedBy']>[number]['state'],
+  ])[]
   readonly statesSkipped: readonly SkippedRow[]
 }
 export interface IncidentReading {

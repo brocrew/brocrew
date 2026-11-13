@@ -81,10 +81,26 @@ function aScreen() {
         const mine = ++round
         await gate
         const walk = { rows: [`round ${mine}`], walk: 'fictional', ledgers: 1, rowsUnread: 0 }
-        const parts = { questions: walk, decisions: walk, stalled: walk, stopped: walk,
-          waitingOnWhoWrote: walk, incidents: walk, instructionAsks: walk, mcpServerRequests: walk }
-        return { ...parts, published: { epoch: 'fictional', seq: mine,
-          covers: Object.fromEntries(Object.keys(parts).map((part) => [part, {complete:true}])) } }
+        const parts = {
+          questions: walk,
+          decisions: walk,
+          stalled: walk,
+          stopped: walk,
+          waitingOnWhoWrote: walk,
+          incidents: walk,
+          instructionAsks: walk,
+          mcpServerRequests: walk,
+        }
+        return {
+          ...parts,
+          published: {
+            epoch: 'fictional',
+            seq: mine,
+            covers: Object.fromEntries(
+              Object.keys(parts).map((part) => [part, { complete: true }]),
+            ),
+          },
+        }
       }),
     ]),
   ) as Record<Reader, ReturnType<typeof vi.fn>> & { readLimitsDisplay: ReturnType<typeof vi.fn> }
@@ -103,7 +119,9 @@ function aScreen() {
     readWhatIsWaiting: vi.fn(async () => {}),
     looking: null,
     setInterval,
-    queueMicrotask: (run: () => void) => { void Promise.resolve().then(run) },
+    queueMicrotask: (run: () => void) => {
+      void Promise.resolve().then(run)
+    },
     LOOK_EVERY_MS,
   }
   const run = (body: string, name: string): unknown =>
@@ -198,14 +216,20 @@ describe('a persons notice and the tick share one look at the queue', () => {
     const good = screen.refs.escalated?.value
     screen.store.personsQueue.mockResolvedValueOnce({
       questions: null,
-      decisions: {rows: [], rowsUnread: 0},
-      instructionAsks: {rows: ['unread instruction'], rowsUnread: 1},
-      published: {covers: {questions:{complete:false}, decisions:{complete:true}, instructionAsks:{complete:false}}},
+      decisions: { rows: [], rowsUnread: 0 },
+      instructionAsks: { rows: ['unread instruction'], rowsUnread: 1 },
+      published: {
+        covers: {
+          questions: { complete: false },
+          decisions: { complete: true },
+          instructionAsks: { complete: false },
+        },
+      },
     })
     await screen.look()
     expect(screen.refs.escalated?.value).toEqual(good)
-    expect(screen.refs.decided?.value).toEqual({rows: [], rowsUnread: 0})
-    expect(screen.refs.lastLookAnswered?.value).toEqual({questions:false, decisions:true})
+    expect(screen.refs.decided?.value).toEqual({ rows: [], rowsUnread: 0 })
+    expect(screen.refs.lastLookAnswered?.value).toEqual({ questions: false, decisions: true })
     expect(screen.refs.lastAskLookAnswered?.value).toBe(false)
   })
 

@@ -50,13 +50,27 @@ describe('window incident dependency reuse', () => {
     const f = fixture()
     const snapshot: WindowIncidents = {
       kind: 'incidents',
-      routing: {kind:'routes',routes:[],questions:{rows:[],walk:'every-conversation-that-routed',ledgers:0,rowsUnread:0},decisions:{rows:[],walk:'every-conversation-that-routed',ledgers:0,rowsUnread:0}},
+      routing: {
+        kind: 'routes',
+        routes: [],
+        questions: { rows: [], walk: 'every-conversation-that-routed', ledgers: 0, rowsUnread: 0 },
+        decisions: { rows: [], walk: 'every-conversation-that-routed', ledgers: 0, rowsUnread: 0 },
+      },
       reported: [],
       owners: [
         {
           sessionId: 'one',
-          history: { roots: [], receipts: [], recovery: {value:null}, newestTurn: null,
-            driven: {value:[]}, lastPerson: {value:null}, legacy: [], states: [], statesSkipped: [] },
+          history: {
+            roots: [],
+            receipts: [],
+            recovery: { value: null },
+            newestTurn: null,
+            driven: { value: [] },
+            lastPerson: { value: null },
+            legacy: [],
+            states: [],
+            statesSkipped: [],
+          },
           pieces: [],
           work: [],
           routes: [],

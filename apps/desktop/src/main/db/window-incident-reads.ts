@@ -48,7 +48,11 @@ export class WindowIncidentReads {
         ? {}
         : {
             owners: new Map(snapshot.owners.map((row) => [row.sessionId, row])),
-            roots: new Map(snapshot.owners.flatMap((row) => row.history.roots.map((root) => [root[0], root] as const))),
+            roots: new Map(
+              snapshot.owners.flatMap((row) =>
+                row.history.roots.map((root) => [root[0], root] as const),
+              ),
+            ),
             reported: new Map(snapshot.reported),
           }),
     }
@@ -59,7 +63,11 @@ export class WindowIncidentReads {
     }
   }
 
-  waitTarget(owner: string, piece: string, unread: RowsUnread): { state: IncidentHistory['states'][number][1] | null } | undefined {
+  waitTarget(
+    owner: string,
+    piece: string,
+    unread: RowsUnread,
+  ): { state: IncidentHistory['states'][number][1] | null } | undefined {
     const scope = this.context.getStore()
     if (scope?.active !== true || scope.owners === undefined) return undefined
     const row = scope.owners.get(owner)
@@ -161,7 +169,8 @@ export class WindowIncidentReads {
         if (key === 'reconciliationReceipts')
           return (owner: string, piece: string) => {
             const row = history(owner)
-            return row === undefined ? store.reconciliationReceipts(owner, piece)
+            return row === undefined
+              ? store.reconciliationReceipts(owner, piece)
               : valueOf(row.receipts.find(([id]) => id === piece)?.[1])
           }
         if (key === 'reconciliationRecovery')
@@ -189,12 +198,15 @@ export class WindowIncidentReads {
         if (key === 'legacyOrdinaryStallWasReported')
           return (owner: string, piece: string, giver: string) => {
             const row = history(owner)
-            return row === undefined ? store.legacyOrdinaryStallWasReported(owner, piece, giver)
+            return row === undefined
+              ? store.legacyOrdinaryStallWasReported(owner, piece, giver)
               : valueOf(row.legacy.find(([id, by]) => id === piece && by === giver)?.[2])
           }
         if (key === 'workReportedTo')
-          return (giver: string) => current() === undefined ? store.workReportedTo(giver)
-            : new Set(valueOf(this.context.getStore()?.reported?.get(giver)))
+          return (giver: string) =>
+            current() === undefined
+              ? store.workReportedTo(giver)
+              : new Set(valueOf(this.context.getStore()?.reported?.get(giver)))
         if (key === 'reconciliationOwners')
           return () => {
             const owners = current()
