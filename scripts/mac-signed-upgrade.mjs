@@ -49,6 +49,7 @@ import { completedProofCopy, proofManifests } from './lib/recovery-measurement.m
 import {
   candidateNames,
   publicFeedUnchanged,
+  nativeRestartRecorded,
   fixturePermissions,
   permissionsKept,
   registriesKept,
@@ -508,20 +509,8 @@ async function nativeRestart(workspace) {
   const previous = active
   await click(workspace.cdp, '[data-cy=updates-restart]')
   await waitFor(async () => !(await processInfo(previous.pid)), 'A quits for Squirrel.Mac', 60_000)
-  const shutdown = await readFile(previous.log, 'utf8')
-  requireEvidence(
-    shutdown.includes(`updates: restarting to install ${VERSION_B}`) &&
-      /BroCrew shut down in \d+ms/.test(shutdown) &&
-      [
-        'close its sessions',
-        'keep its unsent drafts',
-        'drain its archive work',
-        'close its database',
-      ].every(
-        (step) => shutdown.includes(step) && !shutdown.includes(`BroCrew failed to ${step}:`),
-      ),
-    'The native restart did not record the install choice and normal A shutdown.',
-  )
+  const stdout = await readFile(join(evidence, `${previous.stage}.stdout.log`), 'utf8')
+  nativeRestartRecorded(stdout, await readFile(previous.log, 'utf8'), VERSION_B)
   workspace.result.shutdowns ??= []
   workspace.result.shutdowns.push({
     stage: 'native-restart',

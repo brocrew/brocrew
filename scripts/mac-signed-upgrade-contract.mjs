@@ -34,6 +34,20 @@ export function publicFeedUnchanged(text) {
   )
 }
 
+export function nativeRestartRecorded(stdout, stderr, version) {
+  requireEvidence(
+    stdout.includes(`updates: restarting to install ${version}`) &&
+      /BroCrew shut down in \d+ms/.test(stderr) &&
+      [
+        'close its sessions',
+        'keep its unsent drafts',
+        'drain its archive work',
+        'close its database',
+      ].every((step) => stderr.includes(step) && !stderr.includes(`BroCrew failed to ${step}:`)),
+    'The native restart did not record the install choice and normal A shutdown.',
+  )
+}
+
 function permissionInventory(folder) {
   const entries = []
   function walk(path, relative) {

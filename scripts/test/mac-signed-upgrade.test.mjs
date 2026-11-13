@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   publicFeedUnchanged,
+  nativeRestartRecorded,
   fixturePermissions,
   permissionsKept,
   registriesKept,
@@ -24,6 +25,33 @@ test('the installed public feed remains public rather than rewritten to a sandbo
   ])
     assert.throws(() => publicFeedUnchanged(text))
 })
+test('native restart requires the choice in stdout and every successful drain step in stderr', () => {
+  const choice = 'updates: restarting to install 0.2.24'
+  const steps = [
+    'close its sessions',
+    'keep its unsent drafts',
+    'drain its archive work',
+    'close its database',
+  ]
+  const drain = ['BroCrew shut down in 226ms', ...steps].join('\n')
+  nativeRestartRecorded(choice, drain, '0.2.24')
+  for (const [stdout, stderr, version] of [
+    ['', drain, '0.2.24'],
+    [choice, '', '0.2.24'],
+    [choice, drain, '0.2.25'],
+    ['', `${choice}\n${drain}`, '0.2.24'],
+    [`${choice}\n${drain}`, '', '0.2.24'],
+    [choice, steps.join('\n'), '0.2.24'],
+  ])
+    assert.throws(() => nativeRestartRecorded(stdout, stderr, version))
+  for (const step of steps) {
+    assert.throws(() => nativeRestartRecorded(choice, drain.replace(step, ''), '0.2.24'))
+    assert.throws(() =>
+      nativeRestartRecorded(choice, `${drain}\nBroCrew failed to ${step}: fictional failure`, '0.2.24'),
+    )
+  }
+})
+
 test('persistent fixture permissions include nested skill files and ignore transient database journals', () => {
   const folder = mkdtempSync(join(tmpdir(), 'signed-upgrade-modes-'))
   try {

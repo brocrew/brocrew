@@ -10,6 +10,7 @@ import {
   waitForNativeMacDownload,
 } from '../lib/mac-native-upgrade.mjs'
 import { requireEvidence } from '../lib/mac-update-test.mjs'
+import { nativeRestartRecorded } from '../mac-signed-upgrade-contract.mjs'
 
 const folders = []
 const folder = () => {
@@ -85,7 +86,7 @@ it('presses native restart and keeps B alive until its candidate checkpoint comp
   )
   expect(restart).toBeDefined()
   const order = [],
-    previous = { pid: 123, log: '/evidence/a.log', browser: { close: vi.fn() } }
+    previous = { pid: 123, stage: 'a', log: '/evidence/a.log', browser: { close: vi.fn() } }
   const workspace = { cdp: { close: vi.fn() }, result: {}, baseline: { copiesBefore: ['A-copy'] } }
   const startup = { appVersion: '0.2.23', successfulStarts: 1, checkpointId: 'A-copy' }
   const summary = { replacementCount: 0 }
@@ -96,6 +97,9 @@ it('presses native restart and keeps B alive until its candidate checkpoint comp
     summary,
     app: '/Applications/BroCrew.app',
     data: '/fictional/default',
+    evidence: '/evidence',
+    join,
+    nativeRestartRecorded,
     VERSION_B: '0.2.23',
     candidate: { source: 'original-signed-source' },
     selectWorkspace: vi.fn(),
@@ -106,8 +110,11 @@ it('presses native restart and keeps B alive until its candidate checkpoint comp
     waitFor: async (check) => {
       expect(await check()).toBe(true)
     },
-    readFile: async () =>
-      'updates: restarting to install 0.2.23\nBroCrew shut down in 10ms\nclose its sessions\nkeep its unsent drafts\ndrain its archive work\nclose its database',
+    readFile: vi.fn(async (path) =>
+      path === '/evidence/a.stdout.log'
+        ? 'updates: restarting to install 0.2.23'
+        : 'BroCrew shut down in 10ms\nclose its sessions\nkeep its unsent drafts\ndrain its archive work\nclose its database',
+    ),
     observeMacReplacement: vi.fn(async () => {
       order.push('native-B')
       return { pid: 456 }
@@ -139,6 +146,8 @@ it('presses native restart and keeps B alive until its candidate checkpoint comp
     'quit-native-B',
     'no-app-or-ShipIt',
   ])
+  expect(fixture.readFile).toHaveBeenCalledWith('/evidence/a.stdout.log', 'utf8')
+  expect(fixture.readFile).toHaveBeenCalledWith('/evidence/a.log', 'utf8')
   expect(fixture.click).toHaveBeenCalledExactlyOnceWith(workspace.cdp, '[data-cy=updates-restart]')
   expect(fixture.observeMacReplacement).toHaveBeenCalledExactlyOnceWith({
     app: fixture.app,
