@@ -365,8 +365,7 @@ it('measures window reads with 1960 conversations and nine live agents', async (
           .then((answer) => {
             assertQueue(answer, round < 3 ? ['semantic-question'] : [])
             if (round === 0 && !('refused' in answer)) {
-              const partial = structuredClone(answer)
-              partial.published.covers.questions = {...partial.published.covers.questions, complete:false} as PersonsQueue['published']['covers']['questions']
+              const partial: PersonsQueue = {...answer, published:{...answer.published, covers:{...answer.published.covers, questions:{population:'persons', scope:'questions', complete:false, ids:[]}}}}
               expect(() => assertQueue(partial, ['semantic-question'])).toThrow()
               expect(() => assertQueue(answer, ['wrong-question'])).toThrow()
             }
