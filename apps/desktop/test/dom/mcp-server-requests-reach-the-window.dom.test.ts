@@ -217,7 +217,7 @@ it('the actual screen sends only id and approve and removes the count before its
 
 it('the healthy empty screen has no MCP group, badge or floating request count', async () => {
   const m = mount(RuntimeScreen, {})
-  await expect.poll(() => runtime.mcpServerRequestsForAPerson.mock.calls.length).toBeGreaterThan(0)
+  await expect.poll(() => runtime.personsQueue.mock.calls.length).toBeGreaterThan(0)
   m.q('rail-waiting').click()
   await nextTick()
   expect(m.all('waiting-badge')).toHaveLength(0)

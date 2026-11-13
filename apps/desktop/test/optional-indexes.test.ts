@@ -1,3 +1,4 @@
+import { canonicalWindowFacts } from './helpers/canonical-window-facts'
 import Database from 'better-sqlite3'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -135,14 +136,7 @@ it('window and limits canonical answers survive removal of every optional read i
   const workerLimits = new LimitsReadEngine(file, () => now)
   try {
     const actualWindow = workerWindow.read(routes)
-    if (actualWindow.kind !== 'routes' || expectedWindow.kind !== 'routes')
-      throw new Error('expected routing snapshots')
-    expect(actualWindow).toHaveProperty('cacheToken', expect.any(String))
-    const {cacheToken: expectedToken, ...expectedFacts} = expectedWindow
-    expect(expectedToken).toEqual(expect.any(String))
-    const {cacheToken: actualToken, ...actualFacts} = actualWindow
-    expect(actualToken).toEqual(expect.any(String))
-    expect(actualFacts).toEqual(expectedFacts)
+    expect(canonicalWindowFacts(actualWindow)).toEqual(canonicalWindowFacts(expectedWindow))
     expect(workerLimits.read(limits).canonical).toEqual(expectedLimits)
     expect(createSessionStore(db).providerLimitsSeen(now)).toEqual(expectedLimits)
   } finally {
