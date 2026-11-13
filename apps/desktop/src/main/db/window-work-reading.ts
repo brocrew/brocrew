@@ -2,8 +2,8 @@ import type { AppDatabase } from './connection'
 import type { SessionStore } from './session-store'
 import { rowsUnreadOnce, type RowsUnread } from './rows-unread'
 import type { PieceRow } from '../../shared/task-contracts'
-import type { LedgerWalk, RaisedQuestion } from '../../shared/question-contracts'
-import { TASK_IS_OPEN } from '../../shared/tasks'
+import type { LedgerWalk, RaisedQuestion, WorkInHand } from '../../shared/question-contracts'
+import { TASK_IS_OPEN, openWorkOf } from '../../shared/tasks'
 import type { SkippedRow } from './window-read-protocol'
 
 export type StateWork = Pick<PieceRow, 'piece' | 'parent' | 'owner' | 'state' | 'givenAt'>
@@ -32,6 +32,7 @@ export interface WindowFact<T> {
 export interface WindowWorkReading {
   readonly owners: readonly {
     readonly id: string
+    readonly openWork: WindowFact<readonly WorkInHand[]>
     readonly given: WindowFact<readonly StateWork[]>
     readonly waitsOnWhoWrote: WindowFact<readonly StateWork[]>
     readonly naming: WindowFact<{
@@ -95,6 +96,10 @@ export function readWindowWork(db: AppDatabase, store: SessionStore): WindowWork
   const owners = ids.map(({ id }) => {
     return {
       id,
+      openWork: counted((unread) => {
+        const root = store.rootOf(id)
+        return [...(root === null ? [] : [{ label: root.label }]), ...openWorkOf(store.piecesOwnedBy(id, unread))]
+      }),
       given: counted((unread) =>
         store
           .piecesGivenBy(id, unread)

@@ -18097,16 +18097,22 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **474 · handed in when a caller has its own piece memo, and built here when it does not.**
     // ⛔ Both arms are reached — {@link questionsForAPerson} passes its own because it asks the same
     // rows a second question, and the two other callers take the default.
-    pieces: (id: string) => readonly PieceRow[] = this.onePieceReadPerAnswer(),
+    pieces?: (id: string) => readonly PieceRow[],
   ): (id: string) => readonly WorkInHand[] {
     const held = new Map<string, readonly WorkInHand[]>()
+    const readPieces = pieces ?? this.onePieceReadPerAnswer()
     return (id: string): readonly WorkInHand[] => {
       const mine = held.get(id)
       if (mine !== undefined) return mine
+      const projected = pieces === undefined ? this.windowRoutingReads.openWork(id) : undefined
+      if (projected !== undefined) {
+        held.set(id, projected)
+        return projected
+      }
       const root = this.deps.store.rootOf(id)
       // 🔴 **467 · {@link openWorkOf}**, which the store asks too, so the predicate is spelled once
       // for both.
-      const open = [...(root === null ? [] : [{ label: root.label }]), ...openWorkOf(pieces(id))]
+      const open = [...(root === null ? [] : [{ label: root.label }]), ...openWorkOf(readPieces(id))]
       held.set(id, open)
       return open
     }

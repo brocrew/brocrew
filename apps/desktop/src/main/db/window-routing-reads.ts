@@ -88,11 +88,19 @@ export class WindowRoutingReads {
     return (
       reading.work.owners.get(id) ?? {
         id,
+        openWork: { value: [], skipped: [] },
         given: { value: [], skipped: [] },
         waitsOnWhoWrote: { value: [], skipped: [] },
         naming: { value: { named: null, waitingOnPurpose: null }, skipped: [] },
       }
     )
+  }
+
+  openWork(id: string) {
+    const owner = this.owner(id)
+    if (owner === undefined) return undefined
+    if (owner.openWork.skipped.length !== 0) throw new WindowReadUnavailable()
+    return this.fact(owner.openWork)
   }
 
   given(id: string, unread?: RowsUnread) {
