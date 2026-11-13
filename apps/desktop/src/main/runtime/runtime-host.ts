@@ -31512,13 +31512,7 @@ export class RuntimeHost implements LiveHost {
     if (this.keyRefusedForBilling.delete(provider)) this.providersMoved({ what: 'key', provider })
   }
 
-  /**
-   * 🔒 **Keep a person's API key for a provider** — answers where it stands now, and `refused`, in
-   * words to act on, when it was not kept. ⛔ Nothing here echoes the key: not the answer, not an
-   * error, not a log line. ⚑ It outranks the provider's login from the next launch; a conversation
-   * already running keeps what it started with. ⚑ For Codex, every profile home is logged in with it
-   * now — Codex's own login — and any that cannot be is logged in at its next launch.
-   */
+  /** Save the key; conversations apply their recorded mode at launch or reopen. */
   async setApiKey(provider: Provider, key: string): Promise<ApiKeyChanged> {
     const keys = this.deps.apiKeys
     if (!keys) {
@@ -31531,32 +31525,27 @@ export class RuntimeHost implements LiveHost {
     if (refused !== null) return { ...this.apiKeyStatus(provider), refused }
     this.keyChanges.set(provider, (this.keyChanges.get(provider) ?? 0) + 1)
     this.keyRefusedForBilling.delete(provider)
-    const notice = await this.bringTheKeyToItsHomes(provider)
     this.providerLoginChanged(provider)
     this.letTheWakeUpsWaitingForItsKeyGo(provider)
-    return notice === null ? keys.status(provider) : { ...keys.status(provider), notice }
+    return keys.status(provider)
   }
 
-  /**
-   * 🔒 **Stop using a provider's API key** — answers where it stands now. ⚑ The provider runs on its
-   * login again; for Codex, every profile home is logged out now and takes the copied login back.
-   */
+  /** Remove the key without changing any conversation's recorded mode. */
   async removeApiKey(provider: Provider): Promise<ApiKeyChanged> {
     const keys = this.deps.apiKeys
     if (!keys) return this.apiKeyStatus(provider)
     await keys.remove(provider)
     this.keyChanges.set(provider, (this.keyChanges.get(provider) ?? 0) + 1)
     this.keyRefusedForBilling.delete(provider)
-    const notice = await this.bringTheKeyToItsHomes(provider)
     this.providerLoginChanged(provider)
     this.letTheWakeUpsWaitingForItsKeyGo(provider)
-    return notice === null ? keys.status(provider) : { ...keys.status(provider), notice }
+    return keys.status(provider)
   }
 
   /**
    * 🔒 Asks the provider whether it accepts the key that is set, only when a person presses the
-   * check ({@link RuntimeHostDeps.askTheProvider}). For Codex, the profile homes are logged in with
-   * the key first. The answer never quotes the key. What it learns about the key's account is kept
+   * check ({@link RuntimeHostDeps.askTheProvider}). The answer never quotes the key.
+   * What it learns about the key's account is kept
    * for the card: a check that finds the account can't pay marks the key refused, and one that saw
    * a request answered clears that.
    */
@@ -31581,8 +31570,6 @@ export class RuntimeHost implements LiveHost {
         reason: `No API key is saved for ${card}. Save one under “API key” on the ${card} card first.`,
       }
     }
-    const moved = await this.bringTheKeyToItsHomes(provider)
-    if (moved !== null) return { ok: false, reason: moved }
     const said = await ask(provider, key)
     if (
       this.keyChanges.get(provider) !== change ||
@@ -32133,21 +32120,7 @@ export class RuntimeHost implements LiveHost {
     return await work
   }
 
-  /** ⚑ {@link ProviderAuthOps.bringTheKeyToItsHomes}, warned rather than thrown. */
-  private async bringTheKeyToItsHomes(provider: Provider): Promise<string | null> {
-    const ops = this.deps.providerAuth
-    if (!ops) return null
-    try {
-      return await this.withProviderLaunch(`${provider} API-key synchronization`, () =>
-        ops.bringTheKeyToItsHomes(provider),
-      )
-    } catch (error) {
-      console.warn(
-        `runtime host could not bring ${provider}'s homes in line with its API key: ${errorMessage(error)}`,
-      )
-      return 'BroCrew could not tell the provider about the key yet; it will at its next launch.'
-    }
-  }
+
 
   /**
    * Whether this profile's credential can run a turn.

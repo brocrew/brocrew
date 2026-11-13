@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { APPROVAL_PROFILES } from '../src/codex/codex-runtime'
 import { PROTECTIONS, WHAT_STANDS_PAST_ITS_FOLDER, type Protection } from '../src/approval-mode'
@@ -105,11 +105,41 @@ describe('499 · D-038 · what each Codex mode keeps past its folder, read off t
  */
 describe('499 §3.2 · the mid-turn deferral, and which half of it is ours', () => {
   const RUNTIME_SRC = new URL('../src/', import.meta.url)
+  const CODEX_IMPLEMENTATION = [
+    'next-turn.ts',
+    'codex/codex-runtime.ts',
+    'codex/runtime-parts/initial-observations.ts',
+    'codex/runtime-parts/model-catalogue.ts',
+    'codex/runtime-parts/notification-scope.ts',
+    'codex/runtime-parts/permission-responses.ts',
+    'codex/runtime-parts/request-cards.ts',
+    'codex/runtime-parts/request-params.ts',
+    'codex/runtime-parts/request-preparation.ts',
+    'codex/runtime-parts/server-requests.ts',
+    'codex/runtime-parts/session-start.ts',
+    'codex/runtime-parts/session-views.ts',
+    'codex/runtime-parts/tool-approval-details.ts',
+    'codex/codex-transport.ts',
+    'codex/runtime-parts/turn-state.ts',
+    'codex/runtime-parts/wire-values.ts',
+  ] as const
   const read = (path: string): string => readFileSync(new URL(path, RUNTIME_SRC), 'utf8')
   const code = (path: string): string =>
     read(path)
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/(^|[^:])\/\/.*$/gm, '$1')
+
+  it('reads every owned Codex implementation leaf', () => {
+    const leaves = readdirSync(new URL('codex/runtime-parts/', RUNTIME_SRC))
+    expect(
+      [
+        'next-turn.ts',
+        'codex/codex-runtime.ts',
+        'codex/codex-transport.ts',
+        ...leaves.map((leaf) => `codex/runtime-parts/${leaf}`),
+      ].sort(),
+    ).toEqual([...CODEX_IMPLEMENTATION].sort())
+  })
 
   it('⛔ CODEX · the provider says *for subsequent turns*, in a GENERATED type we did not write', () => {
     // 🔴 **The strongest evidence available from source**, and it is the provider's own contract
@@ -127,8 +157,12 @@ describe('499 §3.2 · the mid-turn deferral, and which half of it is ours', () 
     // ⚑ **…and we never send the one that IS accepted mid-turn**, which is what makes the deferral
     // structural on our side too: the only path that carries the profile is the one that opens a
     // turn. Search shape: a `transport.request('thread/settings/update'` call, which does not exist.
-    expect(code('codex/codex-runtime.ts')).not.toContain("'thread/settings/update'")
-    expect(code('codex/codex-runtime.ts')).toContain('approvalProfileFor({ approvalMode })')
+    for (const leaf of CODEX_IMPLEMENTATION) {
+      expect(code(leaf), leaf).not.toContain("'thread/settings/update'")
+    }
+    expect(code('codex/runtime-parts/request-params.ts')).toContain(
+      'approvalProfileFor({ approvalMode })',
+    )
   })
 
   it('🔴 CLAUDE · it is OURS, because nothing captures the mode at turn start', () => {
@@ -147,7 +181,9 @@ describe('499 §3.2 · the mid-turn deferral, and which half of it is ours', () 
     )
     // ⛔ **`send()` passes the adopted mode NOWHERE**, unlike Codex, which hands it to
     // `turnStartParams`. That asymmetry is the whole of the finding.
-    expect(code('codex/codex-runtime.ts')).toContain('approvalPolicy: profile.approvalPolicy')
+    expect(code('codex/runtime-parts/request-params.ts')).toContain(
+      'approvalPolicy: profile.approvalPolicy',
+    )
   })
 
   it('⚠️ …and the DOCBLOCK says so, because a reader who believes the old one would "fix" the wrong thing', () => {

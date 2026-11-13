@@ -14,7 +14,6 @@ export {
   changeCodexKeyInHome,
   probeCodexAuthInHome,
   startCodexLogin,
-  type CodexKeyChange,
   type CodexKeyOutcome,
   type CodexLoginOutcome,
 } from './codex/codex-login'

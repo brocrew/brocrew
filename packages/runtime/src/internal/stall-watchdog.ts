@@ -1,18 +1,4 @@
-/**
- * A turn that stops making progress must not present as a silent, permanent "working" (074).
- *
- * The live incident: a Claude turn produced its final message, then the provider went quiet without
- * ever sending `result`. The stream never ended, so nothing failed — the session simply sat on
- * `working` with the composer disabled and no explanation, recoverable only by a manual interrupt.
- *
- * This watchdog does not judge WHY progress stopped (rate limit, provider backoff, a genuinely slow
- * tool) and deliberately does **not** kill the turn — a long build is not an error. It only makes
- * the silence visible, so the user can see the situation and interrupt if they want to.
- *
- * Timers are injectable so tests drive this deterministically rather than by sleeping, and the real
- * timer is `unref`d: a watchdog must never be the reason a process stays alive.
- */
-
+import type { SessionStatus } from '@brobot2/shared'
 import type { RuntimeEvent } from '../events'
 
 /**
@@ -27,10 +13,7 @@ export function isReasoning(event: RuntimeEvent): boolean {
   )
 }
 
-/**
- * The stall notice, in words: "Still thinking" when the last provider event was reasoning, and the
- * no-activity sentence otherwise. The minutes are whole minutes of silence.
- */
+/** Whole minutes of silence after reasoning; the ordinary no-activity notice otherwise. */
 export function stallNotice(idleMs: number, afterReasoning: boolean): string {
   if (afterReasoning)
     return `Still thinking (${String(Math.max(1, Math.floor(idleMs / 60_000)))} min).`
@@ -56,6 +39,25 @@ const realTimers: WatchdogTimers = {
 export const DEFAULT_STALL_TIMEOUT_MS = 120_000
 
 export class StallWatchdog {
+  static reporterFor(
+    machine: { readonly isTerminal: boolean; readonly hasProviderWork: boolean },
+    terminated: () => boolean,
+    status: () => SessionStatus,
+    emit: (event: RuntimeEvent) => void,
+  ): (idleMs: number, afterReasoning?: boolean) => void {
+    return (idleMs, afterReasoning = false) => {
+      if (terminated() || machine.isTerminal || !machine.hasProviderWork) return
+      if (status() === 'waiting_permission') return
+      emit({
+        type: 'error',
+        fatal: false,
+        message: stallNotice(idleMs, afterReasoning),
+        stall: true,
+        ...(afterReasoning ? { thinking: true as const } : {}),
+      })
+    }
+  }
+
   private handle: unknown = null
   /** Reported once per stall: a repeating notice would be noise, and nothing new has happened. */
   private reported = false
@@ -68,13 +70,7 @@ export class StallWatchdog {
     private readonly timers: WatchdogTimers = realTimers,
   ) {}
 
-  /**
-   * Progress happened (the turn started, or any event arrived): restart the window.
-   *
-   * Calling this on EVERY event is what keeps a legitimately busy turn from being flagged — the
-   * watchdog measures silence, not duration. `reasoning` says whether this progress was the model
-   * reasoning, so a silence after it can be said as thinking.
-   */
+  /** Restart on every event: the watchdog measures silence, not the length of a turn. */
   notice(reasoning = false): void {
     this.stop()
     this.reported = false
@@ -101,12 +97,7 @@ export class StallWatchdog {
     // The stall notice itself is not provider progress: counting it would re-arm the watchdog and
     // forget that the silence followed reasoning.
     if (event.type === 'error' && event.stall) return
-    // ⚠️ **`hasProviderWork`, and without it 123 would ship a false stall notice** (found while
-    // wiring it). The watchdog is armed off `status: working`, which now covers a burst with no turn
-    // behind it — but progress was still counted only for a turn, so a burst that worked steadily
-    // for two minutes would have gone quiet-by-definition and raised *"no activity for 120s"* over
-    // an agent that had not stopped for a moment. The watchdog measures silence, and this is the
-    // line that decides what counts as not-silence.
+    // Provider work includes activity outside an explicit turn.
     if (hasProviderWork) this.notice(isReasoning(event))
   }
 

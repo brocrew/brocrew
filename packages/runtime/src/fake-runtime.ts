@@ -14,7 +14,7 @@ import {
 import type { SessionRef } from './session-ref'
 import { AnswerRefused } from './answer-refused'
 import { ApprovalModeSwitch, type ApprovalModeState } from './approval-mode'
-import { NextTurnSetting } from './next-turn'
+import { NextTurnSetting, sessionSettings, requestPlanMode } from './next-turn'
 import {
   type AgentRuntime,
   type ApprovalMode,
@@ -285,14 +285,7 @@ export class FakeSessionHandle implements SessionHandle {
   }
 
   get settings(): SessionSettingsState {
-    return {
-      model: { effective: this.models.effective, requested: this.models.requested },
-      reasoningEffort: { effective: this.efforts.effective, requested: this.efforts.requested },
-      planMode: {
-        effective: this.plan.effective === 'planning',
-        requested: this.plan.requested === 'planning',
-      },
-    }
+    return sessionSettings(this.models, this.efforts, this.plan)
   }
 
   setModel(model: string | undefined): Promise<void> {
@@ -318,21 +311,7 @@ export class FakeSessionHandle implements SessionHandle {
     if (this.isGone) {
       return Promise.reject(new Error('cannot change plan mode: this session is no longer active'))
     }
-    const current = this.plan.requested
-    const next = on ? 'planning' : current === 'never' ? 'never' : 'left'
-    if (next === current) {
-      return Promise.reject(
-        new Error(
-          on
-            ? 'cannot start plan mode: this session is already planning'
-            : current === 'never'
-              ? 'cannot stop planning: this session was not planning'
-              : 'cannot stop planning: this session has already been given the go-ahead',
-        ),
-      )
-    }
-    this.plan.request(next)
-    return Promise.resolve()
+    return requestPlanMode(this.plan, on)
   }
 
   private get isGone(): boolean {

@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -107,8 +107,27 @@ describe('§2 · no producer in this package states the floor in its own words',
    * what makes the floor one derivation instead of four habits, and what makes a NEW producer that
    * forgets it visible without a live run.
    */
-  const PRODUCING_FILES = [
+  const CODEX_IMPLEMENTATION = [
+    'next-turn.ts',
     'codex/codex-runtime.ts',
+    'codex/runtime-parts/initial-observations.ts',
+    'codex/runtime-parts/model-catalogue.ts',
+    'codex/runtime-parts/notification-scope.ts',
+    'codex/runtime-parts/permission-responses.ts',
+    'codex/runtime-parts/request-cards.ts',
+    'codex/runtime-parts/request-params.ts',
+    'codex/runtime-parts/request-preparation.ts',
+    'codex/runtime-parts/server-requests.ts',
+    'codex/runtime-parts/session-start.ts',
+    'codex/runtime-parts/session-views.ts',
+    'codex/runtime-parts/tool-approval-details.ts',
+    'codex/codex-transport.ts',
+    'codex/runtime-parts/turn-state.ts',
+    'codex/runtime-parts/wire-values.ts',
+  ] as const
+
+  const PRODUCING_FILES = [
+    ...CODEX_IMPLEMENTATION,
     'claude/claude-runtime.ts',
     'fake-runtime.ts',
   ] as const
@@ -136,6 +155,85 @@ describe('§2 · no producer in this package states the floor in its own words',
   }
   const withoutProse = (code: string): string =>
     code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
+
+  // Only this actual caller edge can carry a parameter offer into a producer.
+  const receivesPublishedElicitationOffer = (
+    callerSource: string,
+    calleeSource: string,
+    expression: string,
+    producerLine: number,
+  ): boolean => {
+    const callerParts = callerSource.split('  private async handleExternalMcpElicitation(')
+    const handlerParts = callerParts[1]?.split('  private finishUnexpected(')
+    const calleeParts = calleeSource.split('export function elicitationCard(')
+    const cardParts = calleeParts[1]?.split('export function approvalCard(')
+    if (
+      callerParts.length !== 2 ||
+      handlerParts?.length !== 2 ||
+      calleeParts.length !== 2 ||
+      cardParts?.length !== 2
+    ) {
+      return false
+    }
+    const caller = handlerParts[0]
+    const callee = cardParts[0]
+    if (caller === undefined || callee === undefined) return false
+    const headerEnd = callee.indexOf('): RuntimeEvent {')
+    if (headerEnd < 0) return false
+    const parameter = /providerHome: string,\s*([A-Za-z_$][\w$]*): PermissionOutcome\[\],/.exec(
+      callee.slice(0, headerEnd),
+    )?.[1]
+    if (parameter === undefined || expression !== parameter) return false
+    const producers = [
+      ...callee.matchAll(new RegExp(`^[ \t]*availableDecisions:[ \t]*${parameter},?[ \t]*$`, 'gm')),
+    ]
+    const producerAt = producers[0]?.index
+    if (producers.length !== 1 || producerAt === undefined) return false
+    const calleeStart =
+      calleeSource.indexOf('export function elicitationCard(') +
+      'export function elicitationCard('.length
+    const actualLine = calleeSource.slice(0, calleeStart + producerAt).split('\n').length - 1
+    if (producerLine !== actualLine) return false
+    const beforeProducer = callee.slice(headerEnd, producerAt)
+    if (
+      /\b(?:const|let|var)\b/.test(beforeProducer) ||
+      new RegExp(`\\b${parameter}\\s*=(?!=)`).test(beforeProducer)
+    ) {
+      return false
+    }
+    const calls = [
+      ...caller.matchAll(
+        /this\.emit\(\s*elicitationCard\(\s*id,\s*elicitation,\s*askable,\s*toolApproval,\s*approvalMode,\s*this\.providerHome,\s*([A-Za-z_$][\w$]*),\s*confirmsAServersForm,\s*showsALink,\s*cancelStopsNothing,\s*\)\s*,?\s*\)/g,
+      ),
+    ]
+    const argument = calls[0]?.[1]
+    const callAt = calls[0]?.index
+    if (
+      calls.length !== 1 ||
+      [...caller.matchAll(/\belicitationCard\s*\(/g)].length !== 1 ||
+      argument === undefined ||
+      callAt === undefined
+    ) {
+      return false
+    }
+    const callLine = caller.slice(0, callAt).split('\n').length - 1
+    return (
+      nearestDeclaration(caller.split('\n'), callLine, argument)?.startsWith('publishedOffer(') ===
+      true
+    )
+  }
+
+  it('censuses every owned Codex implementation leaf', () => {
+    const leaves = readdirSync(join(here, '../src/codex/runtime-parts'))
+    expect(
+      [
+        'next-turn.ts',
+        'codex/codex-runtime.ts',
+        'codex/codex-transport.ts',
+        ...leaves.map((leaf) => `codex/runtime-parts/${leaf}`),
+      ].sort(),
+    ).toEqual([...CODEX_IMPLEMENTATION].sort())
+  })
 
   it('🔴 every `availableDecisions` assignment goes through `publishedOffer`', () => {
     // 🔴 **Three spellings, and the first draft saw one** (found by this dispatch's own review).
@@ -200,12 +298,26 @@ describe('§2 · no producer in this package states the floor in its own words',
     for (const { at, expression, line } of built) {
       const leaf = at.split(' · ')[0] ?? ''
       const direct = expression.startsWith('publishedOffer(')
+      const transferredParameter =
+        leaf === 'codex/runtime-parts/request-cards.ts' && expression === 'offer'
       const viaLocal =
+        !transferredParameter &&
         /^[A-Za-z_$][\w$]*$/.test(expression) &&
         nearestDeclaration(withoutProse(src(leaf)).split('\n'), line, expression)?.startsWith(
           'publishedOffer(',
         ) === true
-      expect(direct || viaLocal, `${at} does not resolve to a publishedOffer call`).toBe(true)
+      const viaElicitationCall =
+        transferredParameter &&
+        receivesPublishedElicitationOffer(
+          withoutProse(src('codex/codex-runtime.ts')),
+          withoutProse(src(leaf)),
+          expression,
+          line,
+        )
+      expect(
+        direct || viaLocal || viaElicitationCall,
+        `${at} does not resolve to a publishedOffer call`,
+      ).toBe(true)
     }
   })
 
@@ -246,14 +358,113 @@ describe('§2 · no producer in this package states the floor in its own words',
     expect(/availableDecisions:/.test(withoutProse(quoted))).toBe(false)
   })
 
+  it('resolves only the actual elicitation parameter producer through its emitted call', () => {
+    const caller = withoutProse(src('codex/codex-runtime.ts'))
+    const callee = withoutProse(src('codex/runtime-parts/request-cards.ts'))
+    const producerLine = (source: string): number =>
+      source.split('\n').findIndex((line) => line.trim() === 'availableDecisions: offer,')
+    const line = producerLine(callee)
+    expect(line).toBeGreaterThanOrEqual(0)
+    expect(receivesPublishedElicitationOffer(caller, callee, 'offer', line)).toBe(true)
+    expect(receivesPublishedElicitationOffer(caller, callee, 'offer', line + 1)).toBe(false)
+    expect(receivesPublishedElicitationOffer(caller, callee, 'unboundOffer', line)).toBe(false)
+
+    const alter = (source: string, needle: string | RegExp, replacement: string): string => {
+      if (typeof needle === 'string') expect(source).toContain(needle)
+      else expect(source).toMatch(needle)
+      const changed = source.replace(needle, replacement)
+      expect(changed).not.toBe(source)
+      return changed
+    }
+    const unchecked = alter(caller, 'const offer = publishedOffer(', 'const offer = unchecked(')
+    const renamed = alter(caller, 'const offer = publishedOffer(', 'const other = publishedOffer(')
+    const foreignBinding = `function unrelated() { const offer = publishedOffer(raw) }\n${renamed}`
+    const rawArgument = alter(
+      caller,
+      /(this\.providerHome,\s*)offer(,\s*confirmsAServersForm,)/,
+      '$1unboundOffer$2',
+    )
+    const wrongPosition = alter(
+      caller,
+      /this\.providerHome,(\s*)offer,/,
+      'offer,$1this.providerHome,',
+    )
+    const call = caller.match(/this\.emit\(\s*elicitationCard\([\s\S]*?\)\s*,?\s*\)/)?.[0] ?? ''
+    expect(call).toContain('cancelStopsNothing')
+    const duplicate = alter(caller, call, call + call)
+    for (const invalidCaller of [
+      unchecked,
+      renamed,
+      foreignBinding,
+      rawArgument,
+      wrongPosition,
+      duplicate,
+    ]) {
+      expect(receivesPublishedElicitationOffer(invalidCaller, callee, 'offer', line)).toBe(false)
+    }
+
+    const rawOutput = alter(
+      callee,
+      'availableDecisions: offer,',
+      'availableDecisions: unboundOffer,',
+    )
+    const shadowed = alter(
+      callee,
+      /(\): RuntimeEvent \{\s*)return askable/,
+      '$1const offer = unboundOffer\n  return askable',
+    )
+    const reassigned = alter(
+      callee,
+      /(\): RuntimeEvent \{\s*)return askable/,
+      '$1offer = unboundOffer\n  return askable',
+    )
+    for (const invalidCallee of [rawOutput, shadowed, reassigned]) {
+      expect(
+        receivesPublishedElicitationOffer(
+          caller,
+          invalidCallee,
+          'offer',
+          producerLine(invalidCallee),
+        ),
+      ).toBe(false)
+    }
+
+    // A proven caller does not qualify a different parameter producer in the same file.
+    const unrelated =
+      'function unrelated(offer) {\n  return {\n    availableDecisions: offer,\n  }\n}\n'
+    const extraProducer = unrelated + callee
+    expect(
+      receivesPublishedElicitationOffer(
+        caller,
+        extraProducer,
+        'offer',
+        producerLine(extraProducer),
+      ),
+    ).toBe(false)
+    expect(
+      receivesPublishedElicitationOffer(
+        caller,
+        extraProducer,
+        'offer',
+        line + unrelated.split('\n').length - 1,
+      ),
+    ).toBe(true)
+    expect(receivesPublishedElicitationOffer('', callee, 'offer', line)).toBe(false)
+  })
+
   it('⛔ and the POSITIVE gate is still written apart from the offer, in both adapters', () => {
     // 🔴 **487's bound, as a census.** The brief's rule is that the offer grows and the positive
     // gate does not; the two are separate values in both adapters, and a gate computed FROM the
     // published offer would be the widening this dispatch must not perform.
-    const codex = withoutProse(src('codex/codex-runtime.ts'))
-    expect(codex).toContain('const allowed = !requested.faithful')
-    expect(codex).toContain("claimed.allowed = new Set<PermissionOutcome>(['allow', 'deny'])")
-    expect(codex).not.toContain('allowed = new Set(scope.availableDecisions)')
+    const requests = withoutProse(src('codex/runtime-parts/server-requests.ts'))
+    const session = withoutProse(src('codex/codex-runtime.ts'))
+    expect(requests).toContain('const allowed = !requested.faithful')
+    expect(session).toContain("claimed.allowed = new Set<PermissionOutcome>(['allow', 'deny'])")
+    for (const leaf of CODEX_IMPLEMENTATION) {
+      expect(withoutProse(src(leaf)), leaf).not.toContain(
+        'allowed = new Set(scope.availableDecisions)',
+      )
+    }
     // ⚠️ **Claude is the exception, and it is not one.** Its gate IS the published set — and both
     // refusals were always in it, so `publishedOffer` adds nothing there to widen.
     const claude = withoutProse(src('claude/claude-runtime.ts'))

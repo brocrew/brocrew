@@ -8,6 +8,7 @@ import {
   codexToolApproval,
   codexToolApprovalDetail,
 } from '../../../../packages/runtime/src/codex/external-mcp'
+import { toolApprovalCall } from '../../../../packages/runtime/src/codex/runtime-parts/tool-approval-details'
 import { boundPermissionDetail } from '../../../../packages/runtime/src/events'
 import { persistenceOf, publishedOffer } from '../../../../packages/runtime/src/permission'
 import { wordsForACard } from '../../../../packages/runtime/src/words-on-a-card'
@@ -144,12 +145,7 @@ function codexToolCard(persist: readonly string[] = ['session', 'always']): Perm
     ...boundPermissionDetail(codexToolApprovalDetail(claimed)),
     ...(summary === null ? {} : { summary }),
     cancelStopsNothing: true,
-    mcpToolCall: {
-      server: approval.serverName,
-      tool,
-      parameters: [...approval.parameters],
-      ...(approval.parametersOmitted > 0 ? { parametersOmitted: approval.parametersOmitted } : {}),
-    },
+    mcpToolCall: toolApprovalCall(approval, tool),
     scope: {
       paths: [],
       networkHosts: [],

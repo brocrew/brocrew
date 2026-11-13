@@ -1,5 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { AsyncQueue } from '../internal/async-queue'
+import { buildChildEnv } from '../internal/child-env'
 import {
   endTree,
   fileTimeOf,
@@ -944,5 +945,52 @@ export class SpawnCodexTransport implements CodexTransport {
         // already dead
       }
     }
+  }
+}
+
+/** Per-launch context passed to a {@link TransportFactory} so the spawn gets the profile home (021). */
+export interface CodexLaunchContext {
+  /** Working directory for the session (also the app-server child's cwd). */
+  cwd: string
+  /** Absolute, app-owned per-profile provider home → `CODEX_HOME`/`CODEX_SQLITE_HOME`. */
+  providerHome: string
+  apiKeyBound?: boolean
+}
+
+/**
+ * How to obtain a transport — the real spawn by default; a fake in tests. The
+ * `context` carries the profile home so the real transport can pin `CODEX_HOME`
+ * (021). A zero-arg test factory stays assignable (fewer params is fine).
+ */
+export type TransportFactory = (context: CodexLaunchContext) => CodexTransport
+
+/**
+ * API-key children use Codex's in-memory credential backend; other launches use its defaults.
+ *
+ * Exported for focused unit coverage; callers should construct transports through
+ * {@link createSpawnTransportFactory}.
+ */
+export function codexAppServerArgs(apiKeyBound = false): string[] {
+  return apiKeyBound
+    ? ['-c', 'cli_auth_credentials_store="ephemeral"', 'app-server']
+    : ['app-server']
+}
+
+/**
+ * The real spawn, with the `codex` executable a parameter (014). The library default stays the
+ * bare command for back-compat, but a bare command is a PATH lookup — an app launched from
+ * Finder inherits launchd's minimal PATH and has no `codex` on it — so the desktop app passes
+ * the absolute path of the binary it ships instead. Which binary to run is the caller's
+ * knowledge; how to run it (inherited env, pinned homes) stays here.
+ */
+export function createSpawnTransportFactory(command = 'codex'): TransportFactory {
+  return (context: CodexLaunchContext): CodexTransport => {
+    return new SpawnCodexTransport(command, codexAppServerArgs(context.apiKeyBound), {
+      cwd: context.cwd,
+      env: buildChildEnv({
+        CODEX_HOME: context.providerHome,
+        CODEX_SQLITE_HOME: context.providerHome,
+      }),
+    })
   }
 }

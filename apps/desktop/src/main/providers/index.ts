@@ -77,7 +77,6 @@ function forwardAuth(auth: Readonly<Record<Provider, HomeAuthOperations>>): Prov
     signIn: (provider, profileId, signal) => auth[provider].signIn(profileId, signal),
     replaceARefusedCopy: (provider, profileId, refused, stillWanted) =>
       auth[provider].replaceARefusedCopy(profileId, refused, stillWanted),
-    bringTheKeyToItsHomes: (provider) => auth[provider].bringTheKeyToItsHomes(),
   }
 }
 

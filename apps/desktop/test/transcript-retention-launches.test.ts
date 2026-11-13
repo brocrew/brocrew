@@ -29,13 +29,13 @@ let dir: string
 let db: AppDatabase
 let host: RuntimeHost
 let barrier = async (): Promise<void> => {}
-let synchronize = async (): Promise<string | null> => null
 let prepareHome: () => string | Promise<string>
 const calls = {
   fresh: vi.fn(),
   resume: vi.fn(),
   model: vi.fn(),
   check: vi.fn(),
+  keyCheck: vi.fn(),
   signIn: vi.fn(),
   version: vi.fn(),
   renew: vi.fn(),
@@ -46,7 +46,6 @@ beforeEach(() => {
   db = openDatabase(join(dir, 'fictional.sqlite'))
   applyMigrations(db, migrationsFolder)
   barrier = async () => {}
-  synchronize = async () => null
   prepareHome = () => join(dir, 'fictional-home')
   for (const call of Object.values(calls)) call.mockClear()
   const runtime = new FakeRuntime('claude')
@@ -84,7 +83,6 @@ beforeEach(() => {
       }
     },
     reprovision: () => 'replaced',
-    bringTheKeyToItsHomes: () => synchronize(),
     replaceARefusedCopy: async () => 'not-tried',
   }
   let ids = 0
@@ -111,7 +109,10 @@ beforeEach(() => {
       },
       read: () => (keySet ? 'fictional-key-never-sent' : null),
     },
-    askTheProvider: async () => ({ ok: true, answeredARequest: true }),
+    askTheProvider: async (provider, key) => {
+      calls.keyCheck(provider, key)
+      return { ok: true, answeredARequest: true }
+    },
     providerVersions: async () => {
       calls.version()
       return {
@@ -267,16 +268,10 @@ it.each(['fresh', 'resume', 'model', 'check', 'signIn', 'version', 'renew'] as c
 )
 
 it.each(['save', 'remove', 'check'] as const)(
-  'Codex key %s waits for clearing and owns synchronization until its native work settles',
+  'Codex key %s leaves conversation homes alone and does not wait for their clearing',
   async (kind) => {
     const gate = heldOperation()
-    const native = heldOperation()
     barrier = vi.fn(gate.hold)
-    const syncing = vi.fn(async () => {
-      await native.hold()
-      return null
-    })
-    synchronize = syncing
     const operation =
       kind === 'save'
         ? host.setApiKey('codex', 'fictional-key-never-sent')
@@ -284,39 +279,28 @@ it.each(['save', 'remove', 'check'] as const)(
           ? host.removeApiKey('codex')
           : host.checkApiKey('codex')
     try {
-      await Promise.race([gate.arrived, native.arrived, operation.then(() => undefined)])
-      expect(barrier).toHaveBeenCalledTimes(1)
-      expect(syncing).toHaveBeenCalledTimes(0)
-      expect(host.providerProcessesInFlight()).toBe(true)
-      gate.release()
-      await native.arrived
-      expect(syncing).toHaveBeenCalledTimes(1)
-      expect(host.providerProcessesInFlight()).toBe(true)
-      native.release()
+      await Promise.race([gate.arrived, operation.then(() => undefined)])
+      expect(barrier).not.toHaveBeenCalled()
       await operation
       expect(host.providerProcessesInFlight()).toBe(false)
+      if (kind === 'check') {
+        expect(calls.keyCheck).toHaveBeenCalledExactlyOnceWith('codex', 'fictional-key-never-sent')
+      } else {
+        expect(calls.keyCheck).not.toHaveBeenCalled()
+        expect(host.apiKeyStatus('codex').set).toBe(kind === 'save')
+      }
     } finally {
       gate.release()
-      native.release()
       await operation
     }
   },
 )
 
-it('a failed key synchronization releases its launch and keeps the existing notice', async () => {
-  synchronize = async () => {
-    throw new Error('fictional native failure')
-  }
-  vi.spyOn(console, 'warn').mockImplementation(() => {})
-  try {
-    const changed = await host.removeApiKey('codex')
-    expect(changed).toMatchObject({
-      notice: 'BroCrew could not tell the provider about the key yet; it will at its next launch.',
-    })
-    expect(host.providerProcessesInFlight()).toBe(false)
-  } finally {
-    vi.restoreAllMocks()
-  }
+it('removing a key changes saved state without reporting a native home operation', async () => {
+  const changed = await host.removeApiKey('codex')
+  expect(changed).toMatchObject({ set: false })
+  expect(changed).not.toHaveProperty('notice')
+  expect(host.providerProcessesInFlight()).toBe(false)
 })
 
 it('model-home preparation waits for clearing and keeps its native key synchronization owned', async () => {

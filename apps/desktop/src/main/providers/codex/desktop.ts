@@ -28,11 +28,10 @@ export function codexDesktopInputs(
   const key: CodexKeySeam = {
     current: () => context.keys.current('codex'),
     isSaved: () => context.keys.status('codex').set,
-    change: (home, change) =>
+    change: (home) =>
       (seams.changeKey ?? changeCodexKeyInHome)(
         (seams.transportFactory ?? createSpawnTransportFactory)(program().path),
         home,
-        change,
       ),
   }
   return {

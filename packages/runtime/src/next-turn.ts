@@ -111,3 +111,39 @@ export class NextTurnSetting<T> {
     this._requested = value
   }
 }
+
+export type PlanPhase = 'never' | 'planning' | 'left'
+
+export function sessionSettings(
+  models: NextTurnSetting<string | undefined>,
+  efforts: NextTurnSetting<string | undefined>,
+  plan: NextTurnSetting<PlanPhase>,
+) {
+  return {
+    model: { effective: models.effective, requested: models.requested },
+    reasoningEffort: { effective: efforts.effective, requested: efforts.requested },
+    planMode: {
+      effective: plan.effective === 'planning',
+      requested: plan.requested === 'planning',
+    },
+  }
+}
+
+// Never-planned and released-plan remain distinct when requesting the next phase.
+export function requestPlanMode(plan: NextTurnSetting<PlanPhase>, on: boolean): Promise<void> {
+  const current = plan.requested
+  const next: PlanPhase = on ? 'planning' : current === 'never' ? 'never' : 'left'
+  if (next === current) {
+    return Promise.reject(
+      new Error(
+        on
+          ? 'cannot start plan mode: this session is already planning'
+          : current === 'never'
+            ? 'cannot stop planning: this session was not planning'
+            : 'cannot stop planning: this session has already been given the go-ahead',
+      ),
+    )
+  }
+  plan.request(next)
+  return Promise.resolve()
+}

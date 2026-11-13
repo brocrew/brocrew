@@ -880,7 +880,6 @@ describe('D-004 · R101 — a login renewed elsewhere reopens the conversation i
       signIn: async () => {
         throw new Error('not used')
       },
-      bringTheKeyToItsHomes: async () => null,
       replaceARefusedCopy: async () => 'not-tried' as const,
     }
     authOps = ops

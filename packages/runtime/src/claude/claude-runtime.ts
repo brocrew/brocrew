@@ -116,7 +116,7 @@ import { endsOpenSubAgents, OpenSubAgents } from '../internal/open-sub-agents'
 import { isProviderWork } from '../internal/provider-work'
 import { RequestBroker } from '../internal/request-broker'
 import { SessionMachine } from '../internal/session-machine'
-import { StallWatchdog, stallNotice } from '../internal/stall-watchdog'
+import { StallWatchdog } from '../internal/stall-watchdog'
 import { claudeAutoMemoryDir } from './auto-memory'
 import { localSettingsFilesOf } from './local-settings-location'
 import { keptRulesForALaunch } from './persisted-rules'
@@ -1400,18 +1400,12 @@ export class ClaudeSessionHandle implements SessionHandle {
 
   private readonly planGestures = new Map<string, boolean>()
 
-  private reportStall(idleMs: number, afterReasoning = false): void {
-    if (this.terminated || this.machine.isTerminal || !this.machine.hasProviderWork) return
-
-    if (this.currentStatus === 'waiting_permission') return
-    this.emit({
-      type: 'error',
-      fatal: false,
-      message: stallNotice(idleMs, afterReasoning),
-      stall: true,
-      ...(afterReasoning ? { thinking: true as const } : {}),
-    })
-  }
+  private readonly reportStall = StallWatchdog.reporterFor(
+    this.machine,
+    () => this.terminated,
+    () => this.currentStatus,
+    (event) => this.emit(event),
+  )
 
   private deliver(event: RuntimeEvent): void {
     this.stallWatchdog.progress(event, this.machine.hasProviderWork)

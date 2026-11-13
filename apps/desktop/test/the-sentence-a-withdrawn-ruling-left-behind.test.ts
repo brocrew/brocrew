@@ -412,7 +412,7 @@ describe('§3 · where this tree states the guarantee, it states the limit besid
 
   it('⛔ the adapter that MEASURED the limit re-derives it, and cites no dead function', () => {
     const span = spanCarrying(
-      'packages/runtime/src/codex/codex-runtime.ts',
+      'packages/runtime/src/codex/runtime-parts/request-params.ts',
       'What the mode switch really costs',
     )
     expect(span).toContain('stop being in force from the switch onwards')

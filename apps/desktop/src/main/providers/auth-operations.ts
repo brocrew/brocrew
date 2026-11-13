@@ -65,13 +65,6 @@ export interface ProviderAuthOps {
    */
   signIn(provider: Provider, profileId: string, signal?: AbortSignal): Promise<ProviderSignIn>
   /**
-   * 🔒 **Bring every existing home of a provider in line with its API key** — at once, when a
-   * person saves or removes the key ({@link bringTheCodexKeyTo}); each home that cannot is brought
-   * in line at its next launch instead. ⚑ Answers `null`, or a sentence saying how many could not.
-   * Claude keeps nothing in its homes: always `null`.
-   */
-  bringTheKeyToItsHomes(provider: Provider): Promise<string | null>
-  /**
    * Replace a profile's Codex sign-in that Codex has just refused with a fresh copy of the same
    * account, from this computer's own or BroBot's own, whichever Codex refreshed last and later than
    * the copy, only while the copy on disk is still the one that was refused (`refused`), and only
