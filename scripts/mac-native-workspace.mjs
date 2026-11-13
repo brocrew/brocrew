@@ -1,6 +1,19 @@
-import { readFile } from 'node:fs/promises'
+import { readFile, writeFile, lstat } from 'node:fs/promises'
 import { join } from 'node:path'
-import { requireEvidence } from './lib/mac-update-test.mjs'
+import {
+  requireEvidence,
+  databaseSnapshot,
+  stateBytes,
+  nativeFiles,
+  dataPreserved,
+  statePreserved,
+  checkNativePrefixes,
+  digest,
+  checkpointIds,
+  stateSummary,
+} from './lib/mac-update-test.mjs'
+import { credentialPreserved, legacyCredentialsPreserved } from './mac-upgrade-credentials.mjs'
+import { fixturePermissions } from './mac-signed-upgrade-contract.mjs'
 
 export function nativeWorkspaceFromRegistry(registry, workspaces) {
   const latest = [...registry.workspaces].sort((a, b) => b.lastOpenedAt - a.lastOpenedAt)[0]
@@ -46,4 +59,61 @@ export async function nativeWorkspaceStartup(
     diagnostic.receipts = await nativeWorkspaceReceipts(workspaces)
     throw error
   }
+}
+
+export async function captureWorkspaceBaseline(
+  workspace,
+  registryBefore,
+  settingsBefore,
+  { nativeRoot, evidence },
+) {
+  const data = workspace.data
+  const before = databaseSnapshot(join(data, 'brobot2.sqlite'), {
+    credentials: true,
+    movedState: true,
+  })
+  const files = stateBytes(data)
+  const state = stateBytes(data, before),
+    natives = await nativeFiles(nativeRoot, data)
+  dataPreserved(workspace.beforeButtons, before, { allowAppended: true })
+  statePreserved(workspace.stateBeforeButtons, state)
+  legacyCredentialsPreserved(workspace.beforeButtons.provider_api_key, before.provider_api_key)
+  const credential = workspace.credentialBeforeButtons
+  workspace.result.settledCredential = credentialPreserved(
+    credential,
+    await readFile(join(data, 'api-keys.json'), 'utf8'),
+  )
+  await checkNativePrefixes(workspace.nativeBeforeButtons, data)
+  workspace.result.baselineDatabase = {
+    bytes: (await lstat(join(data, 'brobot2.sqlite'))).size,
+    sha256: await digest(join(data, 'brobot2.sqlite')),
+  }
+  workspace.baseline = {
+    credential,
+    before,
+    state,
+    files,
+    natives,
+    settingsBefore,
+    registryBefore,
+    permissions: fixturePermissions(data, Object.keys(natives)),
+    copiesBefore: await checkpointIds(data),
+    workspaceId: (await readFile(join(data, 'backups', 'workspace-id'), 'utf8')).trim(),
+  }
+  await writeFile(
+    join(evidence, 'a-settled-baseline.json'),
+    JSON.stringify(
+      {
+        database: before,
+        credential: workspace.result.settledCredential,
+        state: stateSummary(state),
+        native: natives,
+        permissions: workspace.baseline.permissions,
+        registry: registryBefore,
+        workspaceId: workspace.baseline.workspaceId,
+      },
+      null,
+      2,
+    ),
+  )
 }

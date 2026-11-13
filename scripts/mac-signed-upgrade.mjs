@@ -1,4 +1,16 @@
-import { nativeWorkspaceFromRegistry, nativeWorkspaceStartup } from './mac-native-workspace.mjs'
+import { readWorkspaceForUpdate } from '../apps/desktop/src/main/one-host-gate.ts'
+import {
+  UPDATE_NOW_PROMPT,
+  continuedEventsOnly,
+  holdUpdateTurn,
+  restartRunningWorkspaces,
+  quitAutomaticWorkspaces,
+} from './mac-update-now-rehearsal.mjs'
+import {
+  captureWorkspaceBaseline,
+  nativeWorkspaceFromRegistry,
+  nativeWorkspaceStartup,
+} from './mac-native-workspace.mjs'
 import {
   waitForNativeMacDownload,
   unpackDownloadedMacZip,
@@ -133,7 +145,7 @@ const summary = {
   workspaceCount: 3,
   workspaces: workspaces.map((one) => one.result),
   replacementCount: 0,
-  sameCode: false,
+  sameCode: predecessor.source === candidate.source,
   scriptedCopyIsFinderDrag: false,
   assertions: [],
   knownLimits: [],
@@ -148,6 +160,7 @@ let active = null,
   installedByHarness = false,
   transport = null
 const channels = []
+const automaticChildren = []
 const { run, plist, processInfo } = macCommands((entry) => {
   summary.commands ??= []
   summary.commands.push(entry)
@@ -264,7 +277,9 @@ async function checkRetention(
     credentials: true,
     movedState: true,
   })
-  const comparison = dataPreserved(before, after)
+  const resumed = currentWorkspace.result.interruptedResume
+  if (resumed) continuedEventsOnly(before, after, resumed.sessionId)
+  const comparison = dataPreserved(before, after, { allowAppended: Boolean(resumed) })
   legacyCredentialsPreserved(before.provider_api_key, after.provider_api_key)
   credentialPreserved(
     credential,
@@ -281,10 +296,12 @@ async function checkRetention(
     hash(await readFile(settings)) === hash(settingsBefore),
     'Computer update settings changed.',
   )
-  requireEvidence(
-    isDeepStrictEqual(await nativeFiles(nativeRoot, data), natives),
-    'Native transcript bytes changed before any resume.',
-  )
+  if (resumed) await checkNativePrefixes(natives, data)
+  else
+    requireEvidence(
+      isDeepStrictEqual(await nativeFiles(nativeRoot, data), natives),
+      'Native transcript bytes changed before any resume.',
+    )
   return { comparison, after }
 }
 
@@ -543,7 +560,10 @@ async function nativeRestart(workspace) {
     },
   )
   summary.replacementCount++
-  nativeWorkspace.result.nativeStartup = { ...startup, completedCheckpointId: completed.manifest.id }
+  nativeWorkspace.result.nativeStartup = {
+    ...startup,
+    completedCheckpointId: completed.manifest.id,
+  }
   Object.assign(summary.restart, { startup, completedCheckpointId: completed.manifest.id })
   passed('squirrel-replacement-restart-and-first-start', summary.restart)
   await quitSquirrelApp()
@@ -552,54 +572,10 @@ async function nativeRestart(workspace) {
 
 async function captureBaseline(workspace, registryBefore, settingsBefore) {
   selectWorkspace(workspace)
-  const before = databaseSnapshot(join(data, 'brobot2.sqlite'), {
-    credentials: true,
-    movedState: true,
+  await captureWorkspaceBaseline(workspace, registryBefore, settingsBefore, {
+    nativeRoot,
+    evidence,
   })
-  const files = stateBytes(data)
-  const state = stateBytes(data, before),
-    natives = await nativeFiles(nativeRoot, data)
-  dataPreserved(workspace.beforeButtons, before, { allowAppended: true })
-  statePreserved(workspace.stateBeforeButtons, state)
-  legacyCredentialsPreserved(workspace.beforeButtons.provider_api_key, before.provider_api_key)
-  const credential = workspace.credentialBeforeButtons
-  workspace.result.settledCredential = credentialPreserved(
-    credential,
-    await readFile(join(data, 'api-keys.json'), 'utf8'),
-  )
-  await checkNativePrefixes(workspace.nativeBeforeButtons, data)
-  workspace.result.baselineDatabase = {
-    bytes: (await lstat(join(data, 'brobot2.sqlite'))).size,
-    sha256: await digest(join(data, 'brobot2.sqlite')),
-  }
-  workspace.baseline = {
-    credential,
-    before,
-    state,
-    files,
-    natives,
-    settingsBefore,
-    registryBefore,
-    permissions: fixturePermissions(data, Object.keys(natives)),
-    copiesBefore: await checkpointIds(data),
-    workspaceId: (await readFile(join(data, 'backups', 'workspace-id'), 'utf8')).trim(),
-  }
-  await writeFile(
-    join(evidence, 'a-settled-baseline.json'),
-    JSON.stringify(
-      {
-        database: before,
-        credential: workspace.result.settledCredential,
-        state: stateSummary(state),
-        native: natives,
-        permissions: workspace.baseline.permissions,
-        registry: registryBefore,
-        workspaceId: workspace.baseline.workspaceId,
-      },
-      null,
-      2,
-    ),
-  )
 }
 
 async function reopenFirst(workspace) {
@@ -667,7 +643,9 @@ async function reopenFirst(workspace) {
     movedState: true,
   })
   statePreserved(baseline.state, stateBytes(checkpoint, copy))
-  dataPreserved(baseline.before, copy)
+  const resumed = workspace.result.interruptedResume
+  if (resumed) continuedEventsOnly(baseline.before, copy, resumed.sessionId)
+  dataPreserved(baseline.before, copy, { allowAppended: Boolean(resumed) })
   legacyCredentialsPreserved(baseline.before.provider_api_key, copy.provider_api_key)
   const kept = await checkRetention(
     baseline.before,
@@ -793,7 +771,9 @@ try {
     requests: transport.requests,
     failures: transport.failures,
   }
-  model = await aScriptedModel(null, () => new Date().toISOString())
+  model = await aScriptedModel(summary.sameCode ? UPDATE_NOW_PROMPT : null, () =>
+    new Date().toISOString(),
+  )
   const attached = await plist('/usr/bin/hdiutil', [
     'attach',
     baselineImage,
@@ -813,13 +793,43 @@ try {
   transport.switchTo(candidate)
   await nativeDownload(workspaces[0], published)
   await allRunning(VERSION_A, 'concurrentBeforeNormalQuit')
-  await quitAll('baseline-peers-before-native-restart', workspaces[0])
+  if (!summary.sameCode) await quitAll('baseline-peers-before-native-restart', workspaces[0])
   const registryBefore = JSON.parse(await readFile(registry, 'utf8')),
     settingsBefore = await readFile(settings)
   for (const workspace of workspaces)
     await captureBaseline(workspace, registryBefore, settingsBefore)
   await bundleChecked(app, VERSION_A)
-  await nativeRestart(workspaces[0])
+  if (summary.sameCode) {
+    await holdUpdateTurn(workspaces[1], model)
+    await restartRunningWorkspaces({
+      origin: workspaces[0],
+      workspaces,
+      model,
+      app,
+      version: VERSION_B,
+      source: candidate.source,
+      run,
+      processInfo,
+      click,
+      observeReplacement: observeMacReplacement,
+      readReceipt: macFirstStartReceipt,
+      completedCopy: completedProofCopy,
+      quitChild: quitRestartedMacApp,
+      bundleChecked,
+      summary,
+      workspaceDetails: readWorkspaceForUpdate,
+      automaticChildren,
+      onOldExit: () => {
+        active = null
+      },
+    })
+    active = null
+    await requireNoInstalledProcesses()
+    passed(
+      'update-now-interrupts-saves-installs-once-and-reopens-all-workspaces',
+      summary.updateNow,
+    )
+  } else await nativeRestart(workspaces[0])
   for (const workspace of workspaces) await reopenFirst(workspace)
   await allRunning(VERSION_B, 'concurrentSignedFirst')
   await quitAll('candidate-first-reopening')
@@ -889,6 +899,13 @@ try {
     }
   }
 } finally {
+  try {
+    await quitAutomaticWorkspaces(automaticChildren, processInfo, quitRestartedMacApp)
+  } catch (error) {
+    summary.cleanupFailure = String(error)
+    summary.success = false
+    process.exitCode = 1
+  }
   if (currentWorkspace) currentWorkspace.active = active
   for (const workspace of workspaces) {
     selectWorkspace(workspace)
