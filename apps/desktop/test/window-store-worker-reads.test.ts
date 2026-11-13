@@ -207,6 +207,23 @@ describe('canonical window worker folds and independent live-store reads', () =>
     reads.run(() => expect(() => projected.reconciliationRecovery('alpha')).toThrow(WindowReadUnavailable), recoveryUnread)
   })
 
+  it('keeps legacy stall ordinal evidence with a reused owner fold', () => {
+    const root = store.ensurePersonalRoot('alpha', 1)
+    row('alpha', 'work_given', {type:'work_given', piece:'legacy-child', parent:root.piece,
+      label:`${root.label}.1`, givenBy:'beta', title:'Fictional', brief:'Fictional'})
+    row('alpha', 'status', {type:'status', state:'working'})
+    row('alpha', 'status', {type:'status', state:'idle'})
+    row('beta', 'work_stall_told', {type:'work_stall_told', piece:'legacy-child', cause:'turn_ended', how:'pushed'})
+    db.prepare('INSERT OR REPLACE INTO work_legacy_stall_cut(session_id,generation,through_ordinal) VALUES (?,0,?)').run('alpha', ordinal)
+    expect(store.legacyOrdinaryStallWasReported('alpha', 'legacy-child', 'beta')).toBe(true)
+    const first = engine.read({kind:'routes'})
+    if (first.kind !== 'routes' || first.cacheToken === undefined) throw new Error('missing route token')
+    const second = engine.read({kind:'incidents', reuse:{token:first.cacheToken,changed:[]}})
+    if (second.kind !== 'incidents') throw new Error('wrong snapshot')
+    expect(second.owners.find((one) => one.sessionId === 'alpha')?.history.legacy)
+      .toContainEqual(['legacy-child','beta',{value:true}])
+  })
+
   it('reads incident dependencies canonically, including corrupt rows and changed generations', () => {
     store.ensurePersonalRoot('alpha', 1)
     store.ensurePersonalRoot('beta', 1)

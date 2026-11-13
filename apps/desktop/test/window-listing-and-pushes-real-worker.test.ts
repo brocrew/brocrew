@@ -119,37 +119,6 @@ it('measures window reads with 1960 conversations and nine live agents', async (
     limitsWriterStamp: limitsWriterSampler(world.db, () => true),
     statesMoved: (message) => pushed.push(message),
   })
-  const incidentChecks: unknown[] = []
-  const inspected = host as unknown as {
-    publicationSeq: number
-    windowIncidentsKept?: { stamp: {revision:bigint, schemaVersion?:bigint, dataVersion:bigint} }
-    sampleWindowWriter(query: {kind:'incidents'}): {revision:bigint, schemaVersion?:bigint, dataVersion:bigint} | null
-    stampedIncidents(): {seq:number}
-    personsQueueAssembled(incidents: {seq:number} | null): unknown
-    incidentsForWindow(compose:()=>unknown): Promise<unknown>
-  }
-  const stamp = (one: ReturnType<typeof inspected.sampleWindowWriter> | undefined) => one == null ? null :
-    [String(one.revision), String(one.schemaVersion), String(one.dataVersion)]
-  const stamped = inspected.stampedIncidents.bind(host)
-  inspected.stampedIncidents = () => {
-    const result = stamped()
-    incidentChecks.push({where:'composed', seq:result.seq, current:inspected.publicationSeq})
-    return result
-  }
-  const assembled = inspected.personsQueueAssembled.bind(host)
-  inspected.personsQueueAssembled = (incidents) => {
-    const result = assembled(incidents)
-    incidentChecks.push({where:'assembled', seq:incidents?.seq, current:inspected.publicationSeq,
-      kept:stamp(inspected.windowIncidentsKept?.stamp), currentStamp:stamp(inspected.sampleWindowWriter({kind:'incidents'}))})
-    return result
-  }
-  const incidentsRead = inspected.incidentsForWindow.bind(host)
-  inspected.incidentsForWindow = async (compose) => {
-    try { return await incidentsRead(compose) } catch(error) {
-      incidentChecks.push({where:'read-failed',error:String(error)})
-      throw error
-    }
-  }
   const gaps: number[] = []
   const longGaps: { phase: string; elapsedMs: number }[] = []
   let last = performance.now()
@@ -250,12 +219,22 @@ it('measures window reads with 1960 conversations and nine live agents', async (
       }
     })()
     const setupStarted = performance.now()
+    let setupLast = setupStarted
+    const setupGaps: number[] = []
+    heartbeat = setInterval(() => {
+      const now = performance.now()
+      setupGaps.push(Math.max(0, now - setupLast - 10))
+      setupLast = now
+    }, 10)
     for (const { handle } of world.handles)
       handle.simulateThinking({ text: 'Fictional active stream starts', redacted: false })
     // Let the independent startup reconciler finish before measuring the window read boundary.
     await new Promise<void>((resolve) => setImmediate(resolve))
     await workerReady
     const setupSettledMs = performance.now() - setupStarted
+    clearInterval(heartbeat)
+    setupGaps.push(Math.max(0, performance.now() - setupLast - 10))
+    heartbeat = undefined
     const population = {
       total: allIds.length,
       active: ids.length,
@@ -382,13 +361,14 @@ it('measures window reads with 1960 conversations and nine live agents', async (
       JSON.stringify({
         phases,
         readings,
-        incidentChecks,
         mainHistory: summarize(mainHistory),
         otherMainHistory: summarize(otherMainHistory),
         longGaps,
         laneLoad,
         population,
         setupSettledMs,
+        setupAddedDelaysMs: setupGaps,
+        wholeRunMaxAddedMs: Math.max(...setupGaps, ...gaps),
         load: {
           acceptedListings,
           acceptedQueues,
@@ -398,6 +378,7 @@ it('measures window reads with 1960 conversations and nine live agents', async (
         },
         heartbeat: {
           count: gaps.length,
+          addedDelaysMs: gaps,
           maxAddedMs: Math.max(...gaps),
           p95AddedMs: [...gaps].sort((a, b) => a - b)[Math.floor(gaps.length * 0.95)],
         },
