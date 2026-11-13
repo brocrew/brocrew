@@ -1,4 +1,6 @@
 import { expect, it } from 'vitest'
+import { createServer } from 'node:net'
+import { once } from 'node:events'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
@@ -56,5 +58,23 @@ it('cancels the active HTTP request when its MCP caller leaves', async () => {
   } finally {
     await client.close()
     await running.close()
+  }
+})
+
+it('preserves the real bind error when the HTTP port is already occupied', async () => {
+  const occupied = createServer()
+  occupied.listen(0, '127.0.0.1')
+  await once(occupied, 'listening')
+  try {
+    await expect(
+      startHttpMcpServer({
+        port: (occupied.address() as { port: number }).port,
+        createServer: () => new Server({ name: 'fictional-bind-error', version: '1' }),
+      }),
+    ).rejects.toMatchObject({ code: 'EADDRINUSE' })
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      occupied.close((error) => (error ? reject(error) : resolve())),
+    )
   }
 })
