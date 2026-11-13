@@ -16764,13 +16764,7 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  /**
-   * The person's queue as one publication: all eight parts composed in one synchronous stretch and
-   * stamped with the sequence they are exact at. The incidents, read first on their own snapshot,
-   * are included only if nothing they read moved before that stretch: no version, no wait on a
-   * time, and none of the live facts they consulted. Otherwise, as for any part whose read fails,
-   * the part is null and its coverage says so.
-   */
+  /** All queue facts share one worker snapshot, then compose with live state at one publication. */
   async personsQueue(): Promise<PersonsQueueAnswer> {
     try {
       if (this.deps.windowReader !== undefined) {
