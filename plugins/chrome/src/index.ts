@@ -6,7 +6,7 @@ import { startAgentChrome } from './app.js'
 import type { RunningAgentChrome } from './app.js'
 import { ChromeBrowser } from './browser/chromeBrowser.js'
 import type { ChromeBrowserOptions } from './browser/chromeBrowser.js'
-import { ConfigError, loadConfig } from './config.js'
+import { loadConfig } from './config.js'
 import type { AgentChromeConfig } from './config.js'
 import { createLogger } from './logger.js'
 import type { Logger } from './logger.js'
@@ -81,7 +81,7 @@ async function main(): Promise<void> {
     running = await startAgentChrome(config, { browser, store, logger })
   } catch (e) {
     process.stderr.write(
-      `agent-chrome: cannot start: ${e instanceof ConfigError ? e.message : e instanceof Error ? e.name : 'unknown error'}\n`,
+      `agent-chrome: cannot start: ${e instanceof Error ? e.message : 'unknown error'}\n`,
     )
     process.exit(1)
   }
