@@ -117,6 +117,7 @@ describe('private Chrome package', () => {
           BROCREW_CHROME_AUTH: config.authPath,
           BROCREW_CHROME_PORT: String((occupied.address() as { port: number }).port),
           BROCREW_CHROME_SHARED: undefined,
+          MCP_BIND_HOST: undefined,
         },
       })
       expect(child.error).toBeUndefined()
