@@ -82,7 +82,9 @@ export function readWindowWork(db: AppDatabase, store: SessionStore): WindowWork
     SELECT id, id, owner_session_id, parent_id FROM work
     UNION SELECT chain.piece, w.id, w.owner_session_id, w.parent_id
       FROM work w JOIN chain ON w.id = chain.parent
-  ) SELECT DISTINCT piece, owner FROM chain`).all() as { piece: string; owner: string }[]
+  ) SELECT DISTINCT piece, owner FROM chain
+    WHERE NOT EXISTS (SELECT 1 FROM work root
+      WHERE root.owner_session_id = chain.owner AND root.parent_id IS NULL)`).all() as { piece: string; owner: string }[]
   const namesUnder = pairs.map(({ piece, owner }) =>
     [owner, piece, counted((unread) => store.workThatNamesUnder(owner, piece, unread))] as const)
   const raised = ids.map(({ id }) => [id, counted((unread) => [...store.questionsRaisedIn(id, unread)]

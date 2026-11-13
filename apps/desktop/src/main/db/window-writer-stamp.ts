@@ -139,7 +139,7 @@ export function windowWriterSampler(
           UPDATE window_read_revision SET revision = revision + 1
             WHERE id = 0 AND (${rows.map(route).join(' OR ')});
           UPDATE window_read_revision SET revision = revision + 1
-            WHERE (${rows.map((row) => selects(row, THREAD_LEAD_EVENT_TYPES)).join(' OR ')})
+            WHERE ${leadsChanged} AND (${rows.map((row) => selects(row, THREAD_LEAD_EVENT_TYPES)).join(' OR ')})
               AND session IN (${rows.map((row) => `${row}.session_id`).join(', ')})
               AND kind = 'leads' AND (${rows.map(lead).join(' OR ')});
         END;`)
@@ -246,6 +246,7 @@ export function windowWriterSampler(
     } finally {
       try {
         installed = false
+        statements = undefined
         install()
         db.prepare('UPDATE temp.window_read_revision SET revision = revision + 1').run()
         shared.failed = false

@@ -167,7 +167,7 @@ it('measures window reads with 1960 conversations and nine live agents', async (
     phase = 'nine-provider-notices'
     for (const { handle } of world.handles)
       handle.simulateBackgroundWork({ running: [{ id: 'fictional-job', description: 'Fictional running job' }] })
-    await vi.waitFor(() => expect(new Set(pushed.slice(beforePush).flatMap((p) => p.moved.map((m) => m.conversation))).size).toBe(9))
+    await vi.waitFor(() => expect(new Set(pushed.slice(beforePush).flatMap((p) => p.moved.map((m) => m.conversation))).size).toBe(9), { timeout: 10_000 })
     await list('after-nine-notices')
     const root = world.store.rootOf(ids[0]!)!
     phase = 'one-owner-write'

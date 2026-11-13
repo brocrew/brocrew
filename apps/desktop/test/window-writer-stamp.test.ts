@@ -277,7 +277,7 @@ describe('window writer revisions follow the selected facts', () => {
     },
   )
 
-  it('a table replaced after installation stays unsampled until its triggers are reinstalled', () => {
+  it('a replaced table is resampled only after reinstalling its triggers with a new identity', () => {
     const before = sample(routes)
     const schema = db
       .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'events'")
@@ -285,7 +285,8 @@ describe('window writer revisions follow the selected facts', () => {
     db.exec('DROP TABLE events')
     expect(sample(routes)).toBeNull()
     db.exec(schema.sql)
-    expect(sample(routes)).toBeNull()
+    expect(sample(routes)).not.toBeNull()
+    expect(sameWindowWriter(before, sample(routes))).toBe(false)
     const repaired = windowWriterSampler(db, () => true)
     expect(repaired(routes)).not.toBeNull()
     expect(sameWindowWriter(before, repaired(routes))).toBe(false)
