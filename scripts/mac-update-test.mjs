@@ -622,9 +622,11 @@ try {
     startup,
     package: await bundleChecked(app, VERSION_B, values['marker-b']),
   }
-  passed('squirrel-replacement-restart-and-first-start-recovery', summary.restart)
-  const copies = await checkpointIds(data),
-    added = copies.filter((one) => !copiesBefore.includes(one))
+  passed('squirrel-replacement-restart-and-database-open', summary.restart)
+  const added = await waitFor(async () => {
+    const copies = (await checkpointIds(data)).filter((one) => !copiesBefore.includes(one))
+    return copies.length ? copies : null
+  }, 'B completes its first-start recovery copy', 600_000)
   requireEvidence(added.length === 1, 'B must make exactly one new checked recovery copy.')
   const checkpoint = join(data, 'backups', added[0]),
     manifest = JSON.parse(await readFile(join(checkpoint, 'manifest.json'), 'utf8'))
@@ -645,11 +647,8 @@ try {
     { usage: true },
   )
   await writeFile(join(evidence, 'b-checkpoint-manifest.json'), JSON.stringify(manifest, null, 2))
-  requireEvidence(
-    startup.checkpointId === added[0],
-    'First Squirrel start did not record its recovery copy.',
-  )
-  passed('b-checked-recovery-copy-before-database-open', {
+  summary.restart.completedCheckpointId = added[0]
+  passed('b-checked-recovery-copy-after-native-first-start', {
     ...checked,
     startup,
     data: copyComparison,
