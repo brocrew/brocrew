@@ -1,3 +1,4 @@
+// Frozen 0.1.8 lock reader; unused durable writer and internal exports omitted.
 /** A filesystem bakery mutex. Each contender owns an immutable, unique name. No stale
  * callback can unlink a successor, and a crash before writing a ticket remains attributable.
  * Only short synchronous metadata transactions run inside this mutex. */
@@ -6,7 +7,7 @@ import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { privateFolder } from '../../src/privatePaths.js'
-export type Liveness = 'alive' | 'gone' | 'unknown'
+type Liveness = 'alive' | 'gone' | 'unknown'
 export interface ProcessIdentity {
   pid: number
   birth: string
@@ -37,7 +38,7 @@ export function birthOf(pid: number): string | undefined {
     return undefined
   }
 }
-export function ownerState(owner: ProcessIdentity): Liveness {
+function ownerState(owner: ProcessIdentity): Liveness {
   try {
     process.kill(owner.pid, 0)
   } catch (e) {
@@ -123,26 +124,5 @@ export function withSharedLock<T>(
     }
   } finally {
     fs.rmSync(mine, { recursive: true, force: true })
-  }
-}
-/** Durable replace, keeping arbitrary unknown fields in the caller's object. */
-export function durableJson(file: string, value: unknown): void {
-  const temp = `${file}.${randomUUID()}.tmp`
-  const fd = fs.openSync(temp, 'wx', 0o600)
-  try {
-    fs.writeFileSync(fd, JSON.stringify(value) + '\n')
-    fs.fsyncSync(fd)
-  } finally {
-    fs.closeSync(fd)
-  }
-  fs.renameSync(temp, file)
-  // Windows doesn't allow directory fsync; the rename still provides atomic visibility.
-  if (process.platform !== 'win32') {
-    const dir = fs.openSync(path.dirname(file), 'r')
-    try {
-      fs.fsyncSync(dir)
-    } finally {
-      fs.closeSync(dir)
-    }
   }
 }

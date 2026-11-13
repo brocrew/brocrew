@@ -197,7 +197,6 @@ jobs:
       GOTOOLCHAIN: local
       GOFLAGS: -mod=readonly
       CGO_ENABLED: '0'
-      BROCREW_CHROME_TEST_ARTIFACT: ${{ runner.temp }}/chrome-native-birth
     defaults:
       run:
         shell: pwsh
@@ -224,6 +223,7 @@ jobs:
           }
           "TEMP=$temp" >> $env:GITHUB_ENV
           "TMP=$temp" >> $env:GITHUB_ENV
+          "BROCREW_CHROME_TEST_ARTIFACT=$(Join-Path $env:RUNNER_TEMP 'chrome-native-birth')" >> $env:GITHUB_ENV
       - name: Install locked dependencies
         run: |
           pnpm install --frozen-lockfile
