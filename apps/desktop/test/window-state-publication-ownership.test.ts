@@ -1,4 +1,5 @@
 import { join } from 'node:path'
+import Database from 'better-sqlite3'
 import { expect, it, vi } from 'vitest'
 import { aServiceWorld } from './helpers/a-service-world'
 import { WindowReadEngine } from '../src/main/db/window-read-engine'
@@ -12,7 +13,28 @@ import { limitsWriterSampler } from '../src/main/db/fresh-limits-snapshot'
 import type { RuntimeStatesMessage } from '../src/shared/runtime-ipc'
 
 it('owns state and file marks through superseding notices, partial failures, delivery failure and quit', async () => {
+  let writer: Database.Database | undefined
+  let measuring = false
+  let mainHistoryQueries = 0
+  const prepare = Database.prototype.prepare
+  const nativeReads = vi.spyOn(Database.prototype, 'prepare').mockImplementation(function (this: Database.Database, sql: string) {
+    const connection = this
+    const statement = prepare.call(this, sql) as Database.Statement<unknown[], unknown>
+    if (!/^\s*(SELECT|WITH)\b/i.test(sql) || !/\bevents\b/i.test(sql) || !/\bpayload\b/i.test(sql)) return statement
+    return new Proxy(statement, {
+      get(native, key) {
+        if (key === 'get' || key === 'all' || key === 'iterate')
+          return (...args: unknown[]) => {
+            if (measuring && connection === writer && /statesThatMoved|whatWasKept|sayWhatMoved/.test(new Error().stack ?? '')) mainHistoryQueries++
+            return native[key](...args)
+          }
+        const value: unknown = Reflect.get(native, key, native)
+        return typeof value === 'function' ? value.bind(native) : value
+      },
+    })
+  })
   const world = aServiceWorld()
+  writer = world.db
   world.anAgent('fictional-agent', 'normal')
   const engine = new WindowReadEngine(join(world.folder, 'brobot2.sqlite'))
   const pushed: RuntimeStatesMessage[] = []
@@ -68,6 +90,7 @@ it('owns state and file marks through superseding notices, partial failures, del
   try {
     const id = await world.aPersonOpens(host, 'fictional-agent')
     await vi.waitFor(() => expect(pushed.length).toBeGreaterThan(0))
+    measuring = true
     const handle = world.handles[0]!.handle
     const root = world.store.rootOf(id)!.piece
     let number = 0
@@ -147,14 +170,16 @@ it('owns state and file marks through superseding notices, partial failures, del
     await host.closeAll()
     expect(pushed).toHaveLength(atQuit)
     expect(closed).toBe(true)
+    expect(mainHistoryQueries).toBe(0)
     console.info(
       JSON.stringify({
-        publicationOwnership: { reads, pushes: pushed.length, files: files().length },
+        publicationOwnership: { reads, pushes: pushed.length, files: files().length, mainHistoryQueries },
       }),
     )
   } finally {
     held?.finish()
     await host.closeAll()
     await world.cleanUp()
+    nativeReads.mockRestore()
   }
 }, 30_000)
