@@ -146,12 +146,15 @@ export interface OriginChip {
  * `only here` is the one worth emphasis and it is **not** a warning: it means the provider has
  * already deleted its copy and ours is the last one. That is the sweep's whole value, said quietly.
  */
-export function originChipOf(entry: {
-  provider: Provider
-  origin: LibraryOrigin
-  recordId: string | null
-  onDisk: boolean
-}): OriginChip {
+export function originChipOf(
+  entry: {
+    provider: Provider
+    origin: LibraryOrigin
+    recordId: string | null
+    onDisk: boolean
+  },
+  suppliedName?: string | null,
+): OriginChip {
   if (entry.origin === 'ours') return { kind: 'ours', label: 'ours' }
   // ⛔ **Named for the gesture that produced it** (214 §1). A restored bundle is the one row whose
   // provider has no copy on this machine at all, so `imported` — which means *"the file is still in
@@ -159,8 +162,11 @@ export function originChipOf(entry: {
   if (entry.origin === 'restored') return { kind: 'restored', label: 'restored from a bundle' }
   // 169 §2 · whose folder, not which layer of ours. The row already knows, and *"in provider home"*
   // was the shortest sentence in the app that only made sense to someone who had read the source.
-  if (entry.recordId === null)
-    return { kind: 'home', label: `in ${providerName(entry.provider)}'s folder` }
+  if (entry.recordId === null) {
+    const name =
+      suppliedName === undefined ? providerName(entry.provider) : (suppliedName ?? 'the provider')
+    return { kind: 'home', label: `in ${name}'s folder` }
+  }
   return entry.onDisk
     ? { kind: 'imported', label: 'imported' }
     : { kind: 'only', label: 'only here' }
@@ -199,6 +205,7 @@ import { calendarDay } from '../lib/clock'
 import { describeDerived } from '../lib/derived-state'
 import { scanSummary, useHomeScan } from '../lib/home-scan'
 import { useClientApi } from '../client-provider/injection'
+import { useProviderNames } from '../composables/useProviderNames'
 import {
   NO_FILTERS,
   activeConstraints,
@@ -302,6 +309,7 @@ const error = ref<string | null>(null)
  */
 const CHECK_HOMES = 'Check homes'
 const selectedClientApi = useClientApi()
+const nameOfProvider = useProviderNames(selectedClientApi)
 const homeScan = useHomeScan(selectedClientApi.sessions)
 /**
  * The outcome of the last import, keyed by `entry.id` — which is the PROVIDER's identity and does
@@ -309,7 +317,8 @@ const homeScan = useHomeScan(selectedClientApi.sessions)
  * until the import lands: the key moved at exactly the moment the outcome arrived, so a successful
  * import silently dropped its own confirmation while a failed one kept it.
  */
-const outcomes = ref<Record<string, ImportedFromHome>>({})
+type LibraryOutcome = ImportedFromHome & { goneProvider?: LibraryEntry['provider'] }
+const outcomes = ref<Record<string, LibraryOutcome>>({})
 /** Which rows have an import in flight, so a row cannot be pressed twice into the same queue. */
 const importing = ref<Record<string, boolean>>({})
 /**
@@ -449,6 +458,7 @@ async function importEntry(entry: LibraryEntry): Promise<void> {
 async function rebuildEntry(entry: LibraryEntry): Promise<void> {
   if (entry.recordId === null || rebuilding.value[entry.id]) return
   rebuilding.value = { ...rebuilding.value, [entry.id]: true }
+  const originalProvider = entry.provider
   try {
     const sessions = selectedClientApi.sessions
     if (!sessions) throw new Error('Session library is unavailable')
@@ -468,7 +478,8 @@ async function rebuildEntry(entry: LibraryEntry): Promise<void> {
         outcome: rebuildOutcome(result.outcome),
         sessionId: entry.recordId,
         readable: result.status?.present ?? false,
-        note: rebuildNote(result, entry.provider),
+        note: rebuildNote(result),
+        ...(result.outcome === 'gone' ? { goneProvider: originalProvider } : {}),
       },
     }
     await load()
@@ -519,8 +530,18 @@ function rebuildOutcome(outcome: RebuiltLedger['outcome']): ImportedFromHome['ou
   }
 }
 
+function goneNote(name: string): string {
+  return `${name}'s file for this conversation is gone, so it can't be rebuilt.`
+}
+
+function outcomeNote(outcome: LibraryOutcome | undefined): string | undefined {
+  return outcome?.goneProvider === undefined
+    ? outcome?.note
+    : goneNote(nameOfProvider(outcome.goneProvider) ?? 'The provider')
+}
+
 /** One line per ending, and none of them is "error". See {@link RebuiltLedger}. */
-function rebuildNote(result: RebuiltLedger, provider: LibraryEntry['provider']): string {
+function rebuildNote(result: RebuiltLedger): string {
   switch (result.outcome) {
     case 'imported':
       return 'Read again from its file.'
@@ -531,7 +552,7 @@ function rebuildNote(result: RebuiltLedger, provider: LibraryEntry['provider']):
     case 'still-writing':
       return 'Its file is still being written. Nothing was replaced; try again when it has finished.'
     case 'gone':
-      return `${providerName(provider)}'s file for this conversation is gone, so it can't be rebuilt.`
+      return goneNote('The provider')
     case 'stopped':
       return 'Stopped part-way. The previous transcript is untouched; try again.'
     case 'in-use':
@@ -959,7 +980,7 @@ function label(entry: LibraryEntry): string {
 
 /** An unread user-home file remains importable even after an unfinished attempt gave it a row. */
 function provenance(entry: LibraryEntry): string {
-  return `in ${providerName(entry.provider)}'s own folder, not imported`
+  return `in ${nameOfProvider(entry.provider) ?? 'the provider'}'s own folder, not imported`
 }
 
 /**
@@ -1186,9 +1207,12 @@ function size(bytes: number | null): string {
                       <span class="dot" aria-hidden="true"></span>
                       {{ childLabel(entry.child) }}
                     </span>
-                    <span class="chip" :class="originChipOf(entry).kind">
+                    <span
+                      class="chip"
+                      :class="originChipOf(entry, nameOfProvider(entry.provider) ?? null).kind"
+                    >
                       <span class="dot" aria-hidden="true"></span>
-                      {{ originChipOf(entry).label }}
+                      {{ originChipOf(entry, nameOfProvider(entry.provider) ?? null).label }}
                     </span>
                     <span
                       v-if="entry.archivedAt !== undefined"
@@ -1248,7 +1272,7 @@ function size(bytes: number | null): string {
                     :data-outcome="outcomes[entry.id]?.outcome"
                     :data-cy="`library-outcome-${entry.id}`"
                   >
-                    {{ outcomes[entry.id]?.note }}
+                    {{ outcomeNote(outcomes[entry.id]) }}
                   </p>
 
                   <p v-if="offersNothing(entry)" class="why" :data-cy="`library-why-${entry.id}`">

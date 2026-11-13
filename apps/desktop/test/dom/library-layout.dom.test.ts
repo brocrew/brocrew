@@ -1,3 +1,4 @@
+import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import { ALL_PROVIDER_FOLDERS } from '../../src/shared/runtime-ipc'
@@ -171,14 +172,10 @@ const page = (over: Partial<LibraryPage> = {}): LibraryPage => ({
   ...over,
 })
 
-/**
- * ⚠️ **The stub's shape matches the declared global, and the cast goes through `unknown`** — the
- * same constraint `surface-boundaries.dom.test.ts` documents. A narrower `listLibrary()` is not
- * comparable to the declared one and `vue-tsc` says so, which is the type system pointing out that
- * the fake and the thing it stands in for have drifted.
- */
+/** Keep the fixture's query, result and catalogue types aligned with the bridge. */
 type LibraryApi = {
   runtime: {
+    providerCatalogue: () => Promise<typeof PROVIDER_DESCRIPTORS>
     listLibrary: (input: LibraryQuery) => Promise<LibraryPage>
     importUserHomeSession: () => Promise<ImportedFromHome>
     rebuildLedger: () => Promise<RebuiltLedger>
@@ -194,6 +191,7 @@ function stub(answer: (query: string) => LibraryPage): void {
   reads = []
   stubbed().api = {
     runtime: {
+      providerCatalogue: async () => PROVIDER_DESCRIPTORS,
       listLibrary: (input) => {
         reads.push(input)
         return Promise.resolve(answer(input.query ?? ''))

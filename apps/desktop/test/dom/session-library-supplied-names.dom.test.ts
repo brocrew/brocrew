@@ -5,7 +5,7 @@ import type { ClientSessionApi } from '../../src/shared/client-session-api'
 import type { LibraryQuery, RebuiltLedger } from '../../src/shared/runtime-ipc'
 import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
 import { createDesktopProviderApi } from '../../src/renderer/src/client-provider/desktop'
-import SessionLibrary from '../../src/renderer/src/components/SessionLibrary.vue'
+import SessionLibrary, { originChipOf } from '../../src/renderer/src/components/SessionLibrary.vue'
 import { providersBridge } from '../../look/fixtures/providers'
 import { ROWS, page } from './library-filter-fixture'
 import { mount, unmountAll } from './harness'
@@ -29,10 +29,10 @@ function deferred<T>() {
   })
   return { promise, resolve }
 }
-async function library(name = 'Fern', late = false) {
+async function library(name = 'Fern', late = false, otherName = 'Birch') {
   const names = PROVIDER_DESCRIPTORS.map((entry) => ({
     ...entry,
-    displayName: entry.id === 'claude' ? name : 'Birch',
+    displayName: entry.id === 'claude' ? name : otherName,
   }))
   const naming = deferred<typeof names>()
   const rebuilding = deferred<RebuiltLedger>()
@@ -195,4 +195,53 @@ it('keeps an actual rejected rebuild cause verbatim with no refresh or raw fallb
   )
   expect(out.selected.listLibrary).toHaveBeenCalledTimes(1)
   expect(out.raw.rebuildLedger).not.toHaveBeenCalled()
+})
+
+it('keeps unread and explicitly empty selected names distinct on home and gone prose', async () => {
+  const homeFact = {
+    provider: 'claude' as const,
+    origin: 'user-home' as const,
+    recordId: null,
+    onDisk: true,
+  }
+  expect(originChipOf(homeFact).label).toBe("in Claude's folder")
+  expect(originChipOf(homeFact, null).label).toBe("in the provider's folder")
+  expect(originChipOf(homeFact, '').label).toBe("in 's folder")
+
+  const out = await library('', true, '')
+  const home = () => out.view.q('library-row-claude:unimported')
+  expect(home().querySelector('.chip.home')?.textContent?.trim()).toBe(
+    "in the provider's folder",
+  )
+  expect(home().textContent).toContain("in the provider's own folder, not imported")
+  expect(home().textContent).not.toContain('Claude')
+
+  out.view.q('library-rebuild-codex:behind').click()
+  await vi.waitFor(() =>
+    expect(out.selected.rebuildLedger).toHaveBeenCalledExactlyOnceWith({ sessionId: 'sess_1' }),
+  )
+  out.rebuilding.resolve({ outcome: 'gone', status: null })
+  await vi.waitFor(() => expect(out.selected.listLibrary).toHaveBeenCalledTimes(2))
+  await vi.waitFor(() => expect(out.view.all('library-outcome-codex:behind')).toHaveLength(1))
+  const note = out.view.q('library-outcome-codex:behind')
+  expect(note.textContent?.trim()).toBe(
+    "The provider's file for this conversation is gone, so it can't be rebuilt.",
+  )
+  expect(note.dataset.outcome).toBe('unreadable')
+  const reads = out.selected.listLibrary.mock.calls.length
+
+  out.answer()
+  await vi.waitFor(() => {
+    expect(home().querySelector('.chip.home')?.textContent?.trim()).toBe("in 's folder")
+    expect(home().textContent).toContain("in 's own folder, not imported")
+    expect(note.textContent?.trim()).toBe(
+      "'s file for this conversation is gone, so it can't be rebuilt.",
+    )
+  })
+  expect(out.selected.providerCatalogue).toHaveBeenCalledTimes(1)
+  expect(out.selected.rebuildLedger).toHaveBeenCalledExactlyOnceWith({ sessionId: 'sess_1' })
+  expect(out.selected.listLibrary).toHaveBeenCalledTimes(reads)
+  expect(out.raw.catalogue).not.toHaveBeenCalled()
+  expect(out.raw.rebuildLedger).not.toHaveBeenCalled()
+  expect(out.raw.listLibrary).not.toHaveBeenCalled()
 })
