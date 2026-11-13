@@ -15276,7 +15276,7 @@ export class RuntimeHost implements LiveHost {
   }
 
   private sampleWindowWriter(query: WindowReadQuery): WindowWriterStamp | null {
-    if (query.kind !== 'incidents' && this.deps.windowWriterStamp !== undefined)
+    if (this.deps.windowWriterStamp !== undefined)
       return this.deps.windowWriterStamp(query)
     const stamp = this.deps.limitsWriterStamp?.() ?? null
     return stamp === null

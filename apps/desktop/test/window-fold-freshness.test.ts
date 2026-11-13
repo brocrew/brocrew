@@ -76,11 +76,18 @@ it('reuses unrelated owners while corrections, rollback, import and external wri
     db.prepare('UPDATE events SET payload = ? WHERE session_id = ? AND ordinal = 1001').run(payload('Corrected'), 'alpha')
     expect(read('same-ordinal-update').title).toBe('Corrected')
     expect(new Set(owners)).toEqual(new Set(['alpha']))
+    db.transaction(() => {
+      store.append('beta', 1001, { type: 'work_retitled', piece: store.rootOf('beta')!.piece,
+        title: 'Beta append', by: null }, 3)
+      db.prepare('UPDATE events SET payload = ? WHERE session_id = ? AND ordinal = 1001').run(payload('Mixed correction'), 'alpha')
+    })()
+    expect(read('mixed-append-and-correction').title).toBe('Mixed correction')
+    expect(new Set(owners)).toEqual(new Set(['alpha', 'beta']))
     expect(() => db.transaction(() => {
       db.prepare('UPDATE events SET payload = ? WHERE session_id = ? AND ordinal = 1001').run(payload('Rolled back'), 'alpha')
       throw new Error('rollback')
     })()).toThrow('rollback')
-    expect(read('rollback').title).toBe('Corrected')
+    expect(read('rollback').title).toBe('Mixed correction')
     expect(rows).toBe(0)
     const rejected = read('rejected-after-read', () => {
       db.prepare('UPDATE events SET payload = ? WHERE session_id = ? AND ordinal = 1001').run(payload('After rejected snapshot'), 'alpha')

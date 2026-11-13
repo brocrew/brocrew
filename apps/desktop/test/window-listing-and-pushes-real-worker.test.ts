@@ -130,6 +130,8 @@ it('measures window reads with 1960 conversations and nine live agents', async (
       }
     })()
     const setupStarted = performance.now()
+    for (const { handle } of world.handles)
+      handle.simulateThinking({ text: 'Fictional active stream starts', redacted: false })
     // Let the independent startup reconciler finish before measuring the window read boundary.
     await new Promise<void>((resolve) => setImmediate(resolve))
     await workerReady
