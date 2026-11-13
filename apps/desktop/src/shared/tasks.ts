@@ -290,11 +290,6 @@ export function stalledWithACause<T extends Pick<PieceRow, 'state' | 'stalledBec
 }
 
 /**
- * ⚑ **D-016 · commit 6** — whether a conversation gave this piece; see
- * {@link PieceAConversationGave}.
- */
-
-/**
  * 🔴 **D-016 · commit 6 · R3 — a stall its giver can be told of: stalled with a cause, and given by
  * a CONVERSATION** — the one predicate both recipients are admitted by (557's, widened), so they
  * stay complements. ⛔ A piece a person gave is left out of both, whatever stalled it: nobody could
