@@ -511,11 +511,11 @@ describe('the file is read and written carefully', () => {
     expect(await readDockLabelFile(folder)).toEqual({ name: 'OK' })
   })
 
-  it.skipIf(NO_PIPES_OR_LINKS)('a link at the file is not followed', async () => {
+  it.skipIf(NO_PIPES_OR_LINKS)('a linked file supplies its actual label', async () => {
     const elsewhere = join(folder, 'elsewhere.json')
     writeFileSync(elsewhere, JSON.stringify({ name: 'LINKED' }))
     symlinkSync(elsewhere, file())
-    expect(await readDockLabelFile(folder)).toEqual({})
+    expect(await readDockLabelFile(folder)).toEqual({ name: 'LINKED' })
   })
 
   it.skipIf(NO_PIPES_OR_LINKS)(
@@ -764,12 +764,17 @@ describe('the workspace list is read carefully for the starting colours', () => 
     await expect(colour()).rejects.toThrow()
   })
 
-  it.skipIf(NO_PIPES_OR_LINKS)('a link at the list is not followed', async () => {
+  it.skipIf(NO_PIPES_OR_LINKS)('a linked list supplies the same workspace colours', async () => {
     const { listFile, colour } = aWorkspace()
     const elsewhere = join(folder, 'elsewhere.json')
-    writeFileSync(elsewhere, JSON.stringify(listing(join(folder, 'brobot-atlas'))))
+    const text = JSON.stringify(listing(join(folder, 'brobot-atlas')))
+    writeFileSync(listFile, text)
+    const ordinary = await colour()
+    expect(ordinary).not.toBe(hashed)
+    rmSync(listFile)
+    writeFileSync(elsewhere, text)
     symlinkSync(elsewhere, listFile)
-    await expect(colour()).rejects.toThrow()
+    expect(await colour()).toBe(ordinary)
   })
 
   it('no list yet names no other workspace: the plain hash', async () => {

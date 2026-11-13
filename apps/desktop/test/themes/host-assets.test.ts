@@ -245,7 +245,7 @@ describe('theme asset registry and scheme', () => {
     expect(await themeAssetResponse(themeAssetUrl('mine', 'assets/red.png'), store)).toBeNull()
   })
 
-  it('retains the unrelated theme leaf-link policy', async () => {
+  it('reads the actual image bytes through a linked theme leaf', async () => {
     const folder = await putTheme(fixture.library, 'mine', childTheme('mine'), {
       'assets/red.png': RED_PNG,
     })
@@ -255,11 +255,14 @@ describe('theme asset registry and scheme', () => {
     await writeFile(outside, RED_PNG)
     await rm(join(folder, 'assets/red.png'))
     await symlink(outside, join(folder, 'assets/red.png'))
-    expect(await themeAssetResponse(themeAssetUrl('mine', 'assets/red.png'), store)).toBeNull()
+    expect(await themeAssetResponse(themeAssetUrl('mine', 'assets/red.png'), store)).toEqual({
+      bytes: RED_PNG,
+      contentType: 'image/png',
+    })
     expect(await readFile(outside)).toEqual(RED_PNG)
   })
 
-  it('refuses a linked parent substituted after asset admission', async () => {
+  it('reads a linked parent substituted after asset admission', async () => {
     const folder = await putTheme(fixture.library, 'mine', childTheme('mine'), {
       'assets/red.png': RED_PNG,
     })
@@ -267,7 +270,10 @@ describe('theme asset registry and scheme', () => {
     await store.start()
     await rename(join(folder, 'assets'), join(fixture.outside, 'saved-assets'))
     await symlink(join(fixture.outside, 'saved-assets'), join(folder, 'assets'), 'dir')
-    expect(await themeAssetResponse(themeAssetUrl('mine', 'assets/red.png'), store)).toBeNull()
+    expect(await themeAssetResponse(themeAssetUrl('mine', 'assets/red.png'), store)).toEqual({
+      bytes: RED_PNG,
+      contentType: 'image/png',
+    })
   })
 
   it('registers secure privileges and sends validated MIME, length and nosniff for GET and HEAD', async () => {
@@ -307,7 +313,7 @@ describe('theme asset registry and scheme', () => {
 })
 
 describe('bounded real theme file reads', () => {
-  it('pairs ordinary reads with traversal, root-prefix sibling, size and nonregular refusal', async () => {
+  it('reads local targets while retaining size and nonregular failures', async () => {
     const folder = await putTheme(fixture.library, 'mine', childTheme('mine'), {
       'assets/red.png': RED_PNG,
     })
@@ -319,12 +325,12 @@ describe('bounded real theme file reads', () => {
       bytes: RED_PNG,
     })
     expect(await readThemeFile(folder, '../mine-other/red.png', 1024)).toEqual({
-      ok: false,
-      failure: 'outside',
+      ok: true,
+      bytes: RED_PNG,
     })
     expect(await readThemeFile(folder, join(fixture.outside, 'red.png'), 1024)).toEqual({
-      ok: false,
-      failure: 'outside',
+      ok: true,
+      bytes: RED_PNG,
     })
     expect(await readThemeFile(folder, 'assets/red.png', RED_PNG.length - 1)).toEqual({
       ok: false,
@@ -332,7 +338,10 @@ describe('bounded real theme file reads', () => {
       size: RED_PNG.length,
       maximum: RED_PNG.length - 1,
     })
-    expect((await readThemeFile(folder, 'assets', 1024)).ok).toBe(false)
+    expect(await readThemeFile(folder, 'assets', 1024)).toMatchObject({
+      ok: false,
+      failure: 'unreadable',
+    })
     expect(await readOfferedThemeAsset(join(folder, 'assets/red.png'), RED_PNG.length)).toEqual({
       ok: true,
       bytes: RED_PNG,
@@ -343,7 +352,7 @@ describe('bounded real theme file reads', () => {
     })
   })
 
-  it('refuses linked roots, intermediate folders and leaves while leaving outside bytes intact', async () => {
+  it('reads linked roots, intermediate folders and leaves without changing target bytes', async () => {
     const folder = await putTheme(fixture.library, 'mine', childTheme('mine'), {
       'assets/red.png': RED_PNG,
     })
@@ -351,18 +360,30 @@ describe('bounded real theme file reads', () => {
     await writeFile(outside, RED_PNG)
     const linkedRoot = join(fixture.root, 'linked-root')
     await symlink(folder, linkedRoot, 'dir')
-    expect((await readThemeFile(linkedRoot, 'assets/red.png', 1024)).ok).toBe(false)
+    expect(await readThemeFile(linkedRoot, 'assets/red.png', 1024)).toEqual({
+      ok: true,
+      bytes: RED_PNG,
+    })
     await symlink(fixture.outside, join(folder, 'assets/linked'), 'dir')
-    expect((await readThemeFile(folder, 'assets/linked/red.png', 1024)).ok).toBe(false)
+    expect(await readThemeFile(folder, 'assets/linked/red.png', 1024)).toEqual({
+      ok: true,
+      bytes: RED_PNG,
+    })
     await symlink(outside, join(folder, 'assets/leaf.png'))
-    expect((await readThemeFile(folder, 'assets/leaf.png', 1024)).ok).toBe(false)
+    expect(await readThemeFile(folder, 'assets/leaf.png', 1024)).toEqual({
+      ok: true,
+      bytes: RED_PNG,
+    })
     expect(await readOfferedThemeAsset(join(folder, 'assets/leaf.png'), 1024)).toEqual({
-      ok: false,
-      failure: 'link',
+      ok: true,
+      bytes: RED_PNG,
     })
     expect(await readFile(outside)).toEqual(RED_PNG)
     await mkdir(join(folder, 'assets/directory.png'))
-    expect((await readOfferedThemeAsset(join(folder, 'assets/directory.png'), 1024)).ok).toBe(false)
+    expect(await readOfferedThemeAsset(join(folder, 'assets/directory.png'), 1024)).toMatchObject({
+      ok: false,
+      failure: 'unreadable',
+    })
   })
 })
 
@@ -387,7 +408,7 @@ describe('theme file changes at real filesystem boundaries', () => {
       const files: ThemeReadFiles = {
         ...THEME_READ_FILES,
         open: async (path, flags) => {
-          expect(flags & (constants.O_NOFOLLOW ?? 0)).toBe(constants.O_NOFOLLOW ?? 0)
+          expect(flags).toBe(constants.O_RDONLY | constants.O_NONBLOCK)
           const handle = await THEME_READ_FILES.open(path, flags)
           observations.push(observeHandle(handle))
           return handle
@@ -412,7 +433,7 @@ describe('theme file changes at real filesystem boundaries', () => {
   )
 
   it.each(['leaf', 'parent'] as const)(
-    'rejects a %s inode swap immediately before open without reading the replacement',
+    'reads the actual %s replacement installed immediately before open',
     async (kind) => {
       const folder = await putTheme(fixture.library, 'mine', childTheme('mine'), {
         'assets/red.png': RED_PNG,
@@ -440,18 +461,18 @@ describe('theme file changes at real filesystem boundaries', () => {
         },
       }
       expect(await readThemeFile(folder, 'assets/red.png', RED_PNG.length, files)).toEqual({
-        ok: false,
-        failure: 'changed',
+        ok: true,
+        bytes: foreign,
       })
       expect(swapped).toBe(true)
       expect(observations).toHaveLength(1)
-      expect(observations[0]!.read).not.toHaveBeenCalled()
+      expect(observations[0]!.read).toHaveBeenCalled()
       await closedHandle(observations[0]!)
       expect(await readFile(join(fixture.outside, 'red.png'))).toEqual(foreign)
     },
   )
 
-  it('refuses a leaf symlink installed between lstat and no-follow open', async () => {
+  it('reads a leaf symlink installed immediately before open', async () => {
     const folder = await putTheme(fixture.library, 'mine', childTheme('mine'), {
       'assets/red.png': RED_PNG,
     })
@@ -466,30 +487,33 @@ describe('theme file changes at real filesystem boundaries', () => {
         await rename(leaf, join(fixture.outside, 'original.png'))
         await symlink(foreign, leaf)
         attempted = true
-        expect(flags & (constants.O_NOFOLLOW ?? 0)).toBe(constants.O_NOFOLLOW ?? 0)
+        expect(flags).toBe(constants.O_RDONLY | constants.O_NONBLOCK)
         const handle = await THEME_READ_FILES.open(path, flags)
         observations.push(observeHandle(handle))
         return handle
       },
     }
-    expect((await readThemeFile(folder, 'assets/red.png', RED_PNG.length, files)).ok).toBe(false)
+    expect(await readThemeFile(folder, 'assets/red.png', RED_PNG.length, files)).toEqual({
+      ok: true,
+      bytes: Buffer.alloc(RED_PNG.length, 0xfa),
+    })
     expect(attempted).toBe(true)
-    // Windows has no O_NOFOLLOW; the opened target must still be refused before any read.
-    expect(observations).toHaveLength(process.platform === 'win32' ? 1 : 0)
+    expect(observations).toHaveLength(1)
     for (const observed of observations) {
-      expect(observed.read).not.toHaveBeenCalled()
+      expect(observed.read).toHaveBeenCalled()
       await closedHandle(observed)
     }
   })
 
   // Windows prevents renaming an ancestor of an open file.
   it.skipIf(process.platform === 'win32')(
-    'rechecks pinned parent identity after opening the original descriptor, before reading',
+    'reads the opened descriptor when its parent is replaced before reading',
     async () => {
       const folder = await putTheme(fixture.library, 'mine', childTheme('mine'), {
         'assets/red.png': RED_PNG,
       })
       const observations: ReturnType<typeof observeHandle>[] = []
+      let replaced = false
       const files: ThemeReadFiles = {
         ...THEME_READ_FILES,
         open: async (path, flags) => {
@@ -498,90 +522,183 @@ describe('theme file changes at real filesystem boundaries', () => {
           await rename(join(folder, 'assets'), join(fixture.outside, 'original-assets'))
           await mkdir(join(folder, 'assets'))
           await writeFile(join(folder, 'assets/red.png'), Buffer.alloc(RED_PNG.length, 0xfa))
+          replaced = true
           return handle
         },
       }
       expect(await readThemeFile(folder, 'assets/red.png', RED_PNG.length, files)).toEqual({
-        ok: false,
-        failure: 'changed',
+        ok: true,
+        bytes: RED_PNG,
       })
       expect(observations).toHaveLength(1)
-      expect(observations[0]!.read).not.toHaveBeenCalled()
+      expect(replaced).toBe(true)
+      expect(observations[0]!.read).toHaveBeenCalled()
       await closedHandle(observations[0]!)
     },
   )
 
-  it('rejects a changed final pathname after reading only the pinned original bytes', async () => {
+  it('returns opened bytes when the final pathname is replaced after a real read', async () => {
     const folder = await putTheme(fixture.library, 'mine', childTheme('mine'), {
       'assets/red.png': RED_PNG,
     })
     const leaf = join(folder, 'assets/red.png')
     const observations: ReturnType<typeof observeHandle>[] = []
-    let leafStats = 0
+    let replaced = false
     const files: ThemeReadFiles = {
       ...THEME_READ_FILES,
-      lstat: async (path) => {
-        if (path === leaf && ++leafStats === 2) {
-          await rename(leaf, join(fixture.outside, 'original.png'))
-          await writeFile(leaf, Buffer.alloc(RED_PNG.length, 0xfa))
-        }
-        return THEME_READ_FILES.lstat(path)
-      },
       open: async (path, flags) => {
         const handle = await THEME_READ_FILES.open(path, flags)
-        observations.push(observeHandle(handle))
+        const read = handle.read.bind(handle)
+        const observation = observeHandle(handle)
+        observation.read.mockImplementation(async (...args) => {
+          const result = await Reflect.apply(read, handle, args)
+          if (!replaced) {
+            await rename(leaf, join(fixture.outside, 'original.png'))
+            await writeFile(leaf, Buffer.alloc(RED_PNG.length, 0xfa))
+            replaced = true
+          }
+          return result
+        })
+        observations.push(observation)
         return handle
       },
     }
     expect(await readThemeFile(folder, 'assets/red.png', RED_PNG.length, files)).toEqual({
-      ok: false,
-      failure: 'changed',
+      ok: true,
+      bytes: RED_PNG,
     })
-    expect(leafStats).toBe(2)
+    expect(replaced).toBe(true)
     const observation = observations[0]!
     expect(observation.read).toHaveBeenCalled()
     const buffer: unknown = observation.read.mock.calls[0]![0]
     if (!Buffer.isBuffer(buffer)) throw new Error('expected real read buffer')
     expect(buffer.subarray(0, RED_PNG.length)).toEqual(RED_PNG)
+    expect(await readFile(leaf)).toEqual(Buffer.alloc(RED_PNG.length, 0xfa))
     await closedHandle(observation)
   })
 
-  it('bounds growth after descriptor stat and refuses without returning partial bytes', async () => {
+  it.each([
+    { extra: 1, shrinks: false },
+    { extra: 1_024, shrinks: false },
+    { extra: 1, shrinks: true },
+  ])('bounds actual growth of $extra bytes (shrinks: $shrinks)', async ({ extra, shrinks }) => {
     const folder = await putTheme(fixture.library, 'mine', childTheme('mine'), {
       'assets/red.png': RED_PNG,
     })
+    const maximum = extra === 1 && !shrinks ? RED_PNG.length + 1 : RED_PNG.length
+    const appended = Buffer.alloc(extra, 0xfa)
     const observations: ReturnType<typeof observeHandle>[] = []
-    let opened = false
     let grew = false
+    let shrank = false
     const files: ThemeReadFiles = {
       ...THEME_READ_FILES,
       open: async (path, flags) => {
         const handle = await THEME_READ_FILES.open(path, flags)
-        observations.push(observeHandle(handle))
-        opened = true
+        const observation = observeHandle(handle)
+        observations.push(observation)
+        const stat = handle.stat.bind(handle)
+        vi.spyOn(handle, 'stat').mockImplementation(async (...args) => {
+          const observed = await Reflect.apply(stat, handle, args)
+          if (!grew) {
+            await appendFile(path, appended)
+            grew = true
+          }
+          return observed
+        })
+        if (shrinks) {
+          const read = handle.read.bind(handle)
+          observation.read.mockImplementationOnce(async (...args) => {
+            const sampled = await Reflect.apply(read, handle, args)
+            await writeFile(path, RED_PNG)
+            shrank = true
+            return sampled
+          })
+        }
         return handle
       },
-      lstat: async (path) => {
-        if (opened && !grew && path === join(folder, 'assets')) {
-          await appendFile(join(folder, 'assets/red.png'), Buffer.alloc(1_024, 0xfa))
-          grew = true
-        }
-        return THEME_READ_FILES.lstat(path)
+    }
+    const result = await readThemeFile(folder, 'assets/red.png', maximum, files)
+    expect(result).toEqual(
+      extra === 1 && !shrinks
+        ? { ok: true, bytes: Buffer.concat([RED_PNG, appended]) }
+        : { ok: false, failure: 'too-large', size: RED_PNG.length + extra, maximum },
+    )
+    expect(grew).toBe(true)
+    expect(shrank).toBe(shrinks)
+    if (shrinks) expect(await readFile(join(folder, 'assets/red.png'))).toEqual(RED_PNG)
+    const observation = observations[0]!
+    const buffer: unknown = observation.read.mock.calls[0]![0]
+    if (!Buffer.isBuffer(buffer)) throw new Error('expected real read buffer')
+    expect(buffer.length).toBe(maximum + 1)
+    await closedHandle(observation)
+  })
+
+  it('refuses an oversized opened replacement before reading content', async () => {
+    const folder = await putTheme(fixture.library, 'mine', childTheme('mine'), {
+      'assets/red.png': RED_PNG,
+    })
+    let observation: ReturnType<typeof observeHandle> | undefined
+    let replaced = false
+    const files: ThemeReadFiles = {
+      ...THEME_READ_FILES,
+      open: async (path, flags) => {
+        await rename(path, join(fixture.outside, 'original.png'))
+        await writeFile(path, Buffer.alloc(RED_PNG.length + 1))
+        replaced = true
+        const handle = await THEME_READ_FILES.open(path, flags)
+        observation = observeHandle(handle)
+        return handle
       },
     }
     expect(await readThemeFile(folder, 'assets/red.png', RED_PNG.length, files)).toEqual({
       ok: false,
       failure: 'too-large',
-      size: RED_PNG.length + 1_024,
+      size: RED_PNG.length + 1,
       maximum: RED_PNG.length,
     })
-    expect(grew).toBe(true)
-    const observation = observations[0]!
-    const buffer: unknown = observation.read.mock.calls[0]![0]
-    if (!Buffer.isBuffer(buffer)) throw new Error('expected real read buffer')
-    expect(buffer.length).toBe(RED_PNG.length + 1)
-    await closedHandle(observation)
+    expect(replaced).toBe(true)
+    expect(observation!.read).not.toHaveBeenCalled()
+    await closedHandle(observation!)
   })
+
+  it.each(['stat', 'read'] as const)(
+    'closes the real descriptor after a %s failure',
+    async (operation) => {
+      const folder = await putTheme(fixture.library, 'mine', childTheme('mine'), {
+        'assets/red.png': RED_PNG,
+      })
+      const error = Object.assign(new Error('fictional file I/O failure'), { code: 'EIO' })
+      let observation: ReturnType<typeof observeHandle> | undefined
+      let failed = false
+      const files: ThemeReadFiles = {
+        ...THEME_READ_FILES,
+        open: async (path, flags) => {
+          const handle = await THEME_READ_FILES.open(path, flags)
+          observation = observeHandle(handle)
+          if (operation === 'stat') {
+            vi.spyOn(handle, 'stat').mockImplementationOnce(async () => {
+              failed = true
+              throw error
+            })
+          } else {
+            observation.read.mockImplementationOnce(async () => {
+              failed = true
+              throw error
+            })
+          }
+          return handle
+        },
+      }
+      expect(await readThemeFile(folder, 'assets/red.png', RED_PNG.length, files)).toEqual({
+        ok: false,
+        failure: 'unreadable',
+        refused: error,
+        cause: error,
+      })
+      expect(failed).toBe(true)
+      await closedHandle(observation!)
+    },
+  )
 })
 
 type ThemeHandler = (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown

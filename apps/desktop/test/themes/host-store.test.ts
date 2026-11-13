@@ -407,20 +407,24 @@ describe('virtual classic', () => {
 })
 
 describe('theme intake and publication', () => {
-  it('copies absolute source paths and accepts asset names relative to assets with sniffed types', async () => {
+  it.each(['direct', 'link'] as const)('copies %s source assets', async (kind) => {
     const source = join(fixture.source, 'offered.bin')
     await writeFile(source, RED_PNG)
+    const offered = kind === 'link' ? join(fixture.source, 'linked.bin') : source
+    if (kind === 'link') await symlink(source, offered)
     const store = fixture.store()
     await store.start()
     expect(
       await store.save({
         theme: childTheme('from-path'),
-        assets: [{ name: 'red.jpg', path: source }],
+        assets: [{ name: 'red.jpg', path: offered }],
       }),
     ).toMatchObject({ outcome: 'ok' })
     await writeFile(source, 'source changed')
     expect(await readFile(join(fixture.library, 'from-path', 'assets/red.jpg'))).toEqual(RED_PNG)
+    expect(await readFile(offered, 'utf8')).toBe('source changed')
     expect(store.asset('from-path', 'assets/red.jpg')?.facts.type).toBe('png')
+    expect(store.raw('from-path')).toEqual(childTheme('from-path'))
     expect(
       await store.save({
         theme: childTheme('from-base64'),
@@ -436,7 +440,6 @@ describe('theme intake and publication', () => {
 
   it.each([
     'relative',
-    'link',
     'directory',
     'both',
     'neither',
@@ -448,39 +451,35 @@ describe('theme intake and publication', () => {
   ] as const)('refuses %s intake without publishing any files', async (kind) => {
     const source = join(fixture.source, 'red.png')
     await writeFile(source, RED_PNG)
-    const link = join(fixture.source, 'link.png')
-    if (kind === 'link') await symlink(source, link)
     const assets: NonNullable<ThemeSaveInput['assets']> =
       kind === 'relative'
         ? [{ name: 'red.png', path: 'relative.png' }]
-        : kind === 'link'
-          ? [{ name: 'red.png', path: link }]
-          : kind === 'directory'
-            ? [{ name: 'red.png', path: fixture.source }]
-            : kind === 'both'
-              ? [{ name: 'red.png', path: source, base64: RED_PNG.toString('base64') }]
-              : kind === 'neither'
-                ? [{ name: 'red.png' }]
-                : kind === 'duplicate'
+        : kind === 'directory'
+          ? [{ name: 'red.png', path: fixture.source }]
+          : kind === 'both'
+            ? [{ name: 'red.png', path: source, base64: RED_PNG.toString('base64') }]
+            : kind === 'neither'
+              ? [{ name: 'red.png' }]
+              : kind === 'duplicate'
+                ? [
+                    { name: 'red.png', path: source },
+                    { name: 'assets/RED.png', path: source },
+                  ]
+                : kind === 'prefix'
                   ? [
                       { name: 'red.png', path: source },
-                      { name: 'assets/RED.png', path: source },
+                      { name: 'red.png/child.png', path: source },
                     ]
-                  : kind === 'prefix'
-                    ? [
-                        { name: 'red.png', path: source },
-                        { name: 'red.png/child.png', path: source },
-                      ]
-                    : kind === 'base64'
-                      ? [{ name: 'red.png', base64: 'AB==' }]
-                      : kind === 'unused-invalid'
-                        ? [
-                            {
-                              name: 'unused.png',
-                              base64: Buffer.from('not an image').toString('base64'),
-                            },
-                          ]
-                        : [{ name: 'red.png', path: source }]
+                  : kind === 'base64'
+                    ? [{ name: 'red.png', base64: 'AB==' }]
+                    : kind === 'unused-invalid'
+                      ? [
+                          {
+                            name: 'unused.png',
+                            base64: Buffer.from('not an image').toString('base64'),
+                          },
+                        ]
+                      : [{ name: 'red.png', path: source }]
     const store = fixture.store(kind === 'decode' ? { loader: { sample: () => false } } : {})
     await store.start()
     expect(await store.save({ theme: childTheme('rejected'), assets })).toMatchObject({
@@ -560,9 +559,9 @@ describe('theme intake and publication', () => {
     expect(store.raw('unused-invalid')).toBeNull()
     expect(store.raw('linked')).toBeNull()
   })
-
-  it('refuses a linked JSON leaf and linked asset parent during registry loading', async () => {
-    const outside = await putTheme(fixture.outside, 'linked-json', childTheme('linked-json'))
+  it('loads linked JSON bytes but retains the upstream linked-asset-parent refusal', async () => {
+    const target = childTheme('linked-json', 'Linked target')
+    const outside = await putTheme(fixture.outside, target.id, target)
     const jsonFolder = await putTheme(fixture.library, 'linked-json', childTheme('linked-json'))
     await rm(join(jsonFolder, 'theme.json'))
     await symlink(join(outside, 'theme.json'), join(jsonFolder, 'theme.json'))
@@ -575,12 +574,12 @@ describe('theme intake and publication', () => {
     await symlink(fixture.outside, join(assetsFolder, 'assets'), 'dir')
     const store = fixture.store()
     await store.start()
-    for (const id of ['linked-json', 'linked-assets']) {
-      expect(store.snapshot().themes.find((row) => row.id === id)?.status).toBe('refused')
-      expect(store.raw(id)).toBeNull()
-    }
+    const themes = store.snapshot().themes
+    expect(themes.find((row) => row.id === target.id)?.status).toBe('ok')
+    expect(store.raw(target.id)).toEqual(target)
+    expect(themes.find((row) => row.id === 'linked-assets')?.status).toBe('refused')
+    expect(store.raw('linked-assets')).toBeNull()
   })
-
   it('keeps an existing theme unless replacement is explicit and forbids built-in replacement', async () => {
     const store = fixture.store()
     await store.start()

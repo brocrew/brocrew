@@ -38,8 +38,8 @@ interface Saved {
 }
 
 /**
- * A small JSON file in `folder`, read through the theme files' careful reader: a regular file only,
- * never through a link, at most `maximum` bytes, without waiting on a pipe. Answers `undefined` for
+ * A small JSON file in `folder`, read through the theme files' bounded reader: a regular file only,
+ * at most `maximum` bytes, without waiting on a pipe. Answers `undefined` for
  * one that is missing, not readable that way, or not JSON.
  */
 export async function readSmallJson(
@@ -62,9 +62,9 @@ export async function readSmallJson(
 export const DOCK_LABEL_FILE_BYTES = 4096
 
 /**
- * The settings in a workspace's data folder, read through the theme files' careful reader: a
- * regular file only, never through a link, at most {@link DOCK_LABEL_FILE_BYTES}, without waiting
- * on a pipe. A missing, oversized, linked or unreadable file says nothing, so the defaults stand.
+ * The settings in a workspace's data folder, read through the theme files' bounded reader: a
+ * regular file only, at most {@link DOCK_LABEL_FILE_BYTES}, without waiting on a pipe.
+ * A missing, oversized or unreadable file says nothing, so the defaults stand.
  */
 export async function readDockLabelFile(folder: string): Promise<Saved> {
   const said = await readSmallJson(folder, DOCK_LABEL_FILE, DOCK_LABEL_FILE_BYTES)
