@@ -52,58 +52,63 @@ it.each([
   'copy-source',
   'copy-version',
   'missing-copy',
-])('retains a failed native startup rather than attributing another workspace: %s', async (kind) => {
-  const workspaces = fixtures(),
-    workspace = workspaces[1]
-  const diagnostic = { restarted: { pid: 456 }, workspace: { path: workspace.data } }
-  const failure = new Error('first-start receipt timeout')
-  const startup = { workspaceId: kind === 'receipt-workspace' ? 'Default' : 'WorkspaceB' }
-  const readReceipt = vi.fn(async () => {
-    if (kind === 'read-error') throw failure
-    return startup
-  })
-  const completedCopy = vi.fn(async () =>
-    kind === 'missing-copy'
-      ? null
-      : {
-          manifest: {
-            id: 'candidate-copy',
-            workspaceId: kind === 'copy-workspace' ? 'Default' : 'WorkspaceB',
-            madeBy: {
-              appVersion: kind === 'copy-version' ? 'old' : 'next',
-              build: kind === 'copy-source' ? 'other-source' : 'candidate-source',
+])(
+  'retains a failed native startup rather than attributing another workspace: %s',
+  async (kind) => {
+    const workspaces = fixtures(),
+      workspace = workspaces[1]
+    const diagnostic = { restarted: { pid: 456 }, workspace: { path: workspace.data } }
+    const failure = new Error('first-start receipt timeout')
+    const startup = { workspaceId: kind === 'receipt-workspace' ? 'Default' : 'WorkspaceB' }
+    const readReceipt = vi.fn(async () => {
+      if (kind === 'read-error') throw failure
+      return startup
+    })
+    const completedCopy = vi.fn(async () =>
+      kind === 'missing-copy'
+        ? null
+        : {
+            manifest: {
+              id: 'candidate-copy',
+              workspaceId: kind === 'copy-workspace' ? 'Default' : 'WorkspaceB',
+              madeBy: {
+                appVersion: kind === 'copy-version' ? 'old' : 'next',
+                build: kind === 'copy-source' ? 'other-source' : 'candidate-source',
+              },
             },
           },
-        },
-  )
-  if (kind === 'copy-error') completedCopy.mockRejectedValueOnce(failure)
-  const result = nativeWorkspaceStartup(
-    workspace,
-    { version: 'next', source: 'candidate-source' },
-    { readReceipt, completedCopy, workspaces, diagnostic },
-  )
-  if (['read-error', 'copy-error'].includes(kind)) await expect(result).rejects.toBe(failure)
-  else
-    await expect(result).rejects.toThrow(
-      kind === 'receipt-workspace'
-        ? 'receipt belongs to another workspace'
-        : 'candidate recovery copy in this workspace',
     )
-  expect(readReceipt).toHaveBeenCalledExactlyOnceWith(workspace.data, 'next')
-  if (['read-error', 'receipt-workspace'].includes(kind)) expect(completedCopy).not.toHaveBeenCalled()
-  else
-    expect(completedCopy).toHaveBeenCalledExactlyOnceWith(
-      workspace.data,
-      new Set(['WorkspaceB-old']),
+    if (kind === 'copy-error') completedCopy.mockRejectedValueOnce(failure)
+    const result = nativeWorkspaceStartup(
+      workspace,
+      { version: 'next', source: 'candidate-source' },
+      { readReceipt, completedCopy, workspaces, diagnostic },
     )
-  expect(diagnostic.restarted).toEqual({ pid: 456 })
-  expect(diagnostic.receipts.map((one) => one.path)).toEqual(workspaces.map((one) => one.data))
-  expect(diagnostic.receipts.every((one) => one.error.includes('ENOENT'))).toBe(true)
-})
+    if (['read-error', 'copy-error'].includes(kind)) await expect(result).rejects.toBe(failure)
+    else
+      await expect(result).rejects.toThrow(
+        kind === 'receipt-workspace'
+          ? 'receipt belongs to another workspace'
+          : 'candidate recovery copy in this workspace',
+      )
+    expect(readReceipt).toHaveBeenCalledExactlyOnceWith(workspace.data, 'next')
+    if (['read-error', 'receipt-workspace'].includes(kind))
+      expect(completedCopy).not.toHaveBeenCalled()
+    else
+      expect(completedCopy).toHaveBeenCalledExactlyOnceWith(
+        workspace.data,
+        new Set(['WorkspaceB-old']),
+      )
+    expect(diagnostic.restarted).toEqual({ pid: 456 })
+    expect(diagnostic.receipts.map((one) => one.path)).toEqual(workspaces.map((one) => one.data))
+    expect(diagnostic.receipts.every((one) => one.error.includes('ENOENT'))).toBe(true)
+  },
+)
 
 it('retains receipt metadata and records a malformed receipt alongside the other workspace', async () => {
   const workspaces = fixtures()
-  for (const workspace of workspaces) mkdirSync(join(workspace.data, 'backups'), { recursive: true })
+  for (const workspace of workspaces)
+    mkdirSync(join(workspace.data, 'backups'), { recursive: true })
   writeFileSync(join(workspaces[0].data, 'backups', 'retention.json'), '{unfinished')
   writeFileSync(
     join(workspaces[1].data, 'backups', 'retention.json'),

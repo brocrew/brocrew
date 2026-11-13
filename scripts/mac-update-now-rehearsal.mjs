@@ -1,3 +1,4 @@
+// 695-visible: drives and observes the existing hosted Mac rehearsal; it issues no app launch.
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {

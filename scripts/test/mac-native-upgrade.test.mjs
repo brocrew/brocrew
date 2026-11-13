@@ -196,7 +196,10 @@ it('presses native restart and keeps B alive until its candidate checkpoint comp
     '/fictional/WorkspaceB',
     new Set(['A-copy']),
   )
-  expect(fixture.macFirstStartReceipt).toHaveBeenCalledExactlyOnceWith(nativeWorkspace.data, '0.2.23')
+  expect(fixture.macFirstStartReceipt).toHaveBeenCalledExactlyOnceWith(
+    nativeWorkspace.data,
+    '0.2.23',
+  )
   expect(summary.replacementCount).toBe(1)
   expect(workspace.result.nativeStartup).toBeUndefined()
   expect(nativeWorkspace.result.nativeStartup.completedCheckpointId).toBe('B-copy')

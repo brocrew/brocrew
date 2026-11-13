@@ -123,6 +123,7 @@ describe('every Electron launcher under scripts/', () => {
       'lib/mac-native-upgrade.mjs',
       'lib/mac-update-test.mjs',
       'mac-signed-upgrade-contract.mjs',
+      'mac-update-now-rehearsal.mjs',
       'upgrade-path.mjs',
       'window-controls-probe.mjs',
     ])
@@ -132,6 +133,14 @@ describe('every Electron launcher under scripts/', () => {
       'nav-order-probe.mjs',
       'one-app-probe.mjs',
     ])
+  })
+
+  it('the Update now coordinator observes the hosted native journey without creating a window', () => {
+    const source = readFileSync(join(SCRIPTS, 'mac-update-now-rehearsal.mjs'), 'utf8')
+    expect(verdictOf(source)).toBe('visible')
+    expect(showsAWindow(source)).toBe(false)
+    expect(verdictOf(source.replace('695-visible:', 'native-observer:'))).toBeNull()
+    expect(showsAWindow(`${source}\nnew BrowserWindow({ show: true })`)).toBe(true)
   })
 
   it('a launcher on a main of its own shows no window either', () => {
