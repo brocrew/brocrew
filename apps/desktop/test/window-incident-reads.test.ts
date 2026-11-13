@@ -50,9 +50,12 @@ describe('window incident dependency reuse', () => {
     const f = fixture()
     const snapshot: WindowIncidents = {
       kind: 'incidents',
+      reported: [],
       owners: [
         {
           sessionId: 'one',
+          history: { roots: [], receipts: [], recovery: {value:null}, newestTurn: null,
+            driven: {value:[]}, lastPerson: {value:null}, legacy: [], states: [], statesSkipped: [] },
           pieces: [],
           work: [],
           routes: [],

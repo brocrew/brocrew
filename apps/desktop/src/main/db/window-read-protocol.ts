@@ -112,8 +112,21 @@ interface WindowFiles {
 interface WindowActivity extends RecentActivityReading {
   readonly kind: 'activity'
 }
+export type IncidentFact<T> = { readonly value: T } | null
+export interface IncidentHistory {
+  readonly roots: readonly (readonly [string, IncidentFact<ReturnType<SessionStore['rootLines']>>, IncidentFact<ReturnType<SessionStore['turnBlockRootLines']>>])[]
+  readonly receipts: readonly (readonly [string, IncidentFact<ReturnType<SessionStore['reconciliationReceipts']>>])[]
+  readonly recovery: IncidentFact<ReturnType<SessionStore['reconciliationRecovery']>>
+  readonly newestTurn: ReturnType<SessionStore['theNewestTurn']>
+  readonly driven: IncidentFact<ReturnType<SessionStore['reconciliationDrivenByTurn']>>
+  readonly lastPerson: IncidentFact<ReturnType<SessionStore['whenAPersonLastWrote']>>
+  readonly legacy: readonly (readonly [string, string, IncidentFact<boolean>])[]
+  readonly states: readonly (readonly [string, ReturnType<SessionStore['piecesOwnedBy']>[number]['state']])[]
+  readonly statesSkipped: readonly SkippedRow[]
+}
 export interface IncidentReading {
   readonly sessionId: string
+  readonly history: IncidentHistory
   readonly pieces: ReturnType<SessionStore['openPiecesOf']>
   readonly work: ReturnType<SessionStore['reconciliationWork']>
   readonly routes: ReturnType<SessionStore['routedRequestsOf']>
@@ -126,6 +139,7 @@ export interface IncidentReading {
 }
 export interface WindowIncidents {
   readonly kind: 'incidents'
+  readonly reported: readonly (readonly [string, IncidentFact<readonly string[]>])[]
   readonly owners: readonly IncidentReading[]
 }
 interface WindowForest extends ForestFirstRead {
@@ -198,10 +212,12 @@ export const windowReadResult = z.discriminatedUnion('kind', [
   z
     .object({
       kind: z.literal('incidents'),
+      reported: z.array(z.tuple([z.string(), z.unknown()])),
       owners: z.array(
         z
           .object({
             sessionId: z.string().min(1),
+            history: z.unknown(),
             pieces: z.array(z.unknown()),
             work: z.array(z.unknown()),
             routes: z.array(z.unknown()),

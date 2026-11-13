@@ -12,6 +12,7 @@ import {
   WindowReadUnavailable,
   type RoutingReading,
   type IncidentReading,
+  type IncidentFact,
   type SkippedRow,
   type WindowReadQuery,
   type WindowReadResult,
@@ -115,6 +116,10 @@ export class WindowReadEngine {
       } else if (query.kind === 'incidents') {
         const owners = store.reconciliationOwners()
         const readings: IncidentReading[] = []
+        const reported = new Map<string, IncidentFact<readonly string[]>>()
+        const read = <T>(answer: () => T): IncidentFact<T> => {
+          try { return { value: answer() } } catch { checkCancelled(); return null }
+        }
         for (const sessionId of owners) {
           checkCancelled()
           const piecesSkipped = new Set<SkippedRow>()
@@ -147,10 +152,30 @@ export class WindowReadEngine {
               return pieces
             },
           }
+          const work = foldedStore.reconciliationWork(new Set([sessionId]), noted(piecesSkipped))
+          const statesSkipped = new Set<SkippedRow>()
+          const states = store.piecesOwnedBy(sessionId, noted(statesSkipped))
+          const newestTurn = store.theNewestTurn(sessionId)
+          for (const piece of pieces)
+            if (piece.givenBy !== null && !reported.has(piece.givenBy))
+              reported.set(piece.givenBy, read(() => [...store.workReportedTo(piece.givenBy!)]))
           readings.push({
             sessionId,
+            history: {
+              roots: work.filter((one) => one.parent === null).map((one) => [one.piece,
+                read(() => store.rootLines(one.piece)), read(() => store.turnBlockRootLines(one.piece))]),
+              receipts: work.map((one) => [one.piece, read(() => store.reconciliationReceipts(sessionId, one.piece))]),
+              recovery: read(() => store.reconciliationRecovery(sessionId)),
+              newestTurn,
+              driven: newestTurn === null ? { value: [] } : read(() => store.reconciliationDrivenByTurn(sessionId, newestTurn)),
+              lastPerson: read(() => store.whenAPersonLastWrote(sessionId)),
+              legacy: pieces.filter((one) => one.state === 'stalled' && one.givenBy !== null)
+                .map((one) => [one.piece, one.givenBy!, read(() => store.legacyOrdinaryStallWasReported(sessionId, one.piece, one.givenBy!))]),
+              states: states.map((one) => [one.piece, one.state]),
+              statesSkipped: [...statesSkipped],
+            },
             pieces,
-            work: foldedStore.reconciliationWork(new Set([sessionId]), noted(piecesSkipped)),
+            work,
             routes: store.routedRequestsOf(sessionId, noted(routesSkipped)),
             messages: store.messagesWaitingIn(sessionId, noted(messagesSkipped)),
             stop: store.lastAskToStop(sessionId, noted(stopSkipped)),
@@ -160,7 +185,7 @@ export class WindowReadEngine {
             stopSkipped: [...stopSkipped],
           })
         }
-        result = { kind: 'incidents', owners: readings }
+        result = { kind: 'incidents', owners: readings, reported: [...reported] }
       } else if (query.kind === 'activity') {
         const reading = recentActivity(store, query.from, query.to)
         result = { kind: 'activity', ...reading }

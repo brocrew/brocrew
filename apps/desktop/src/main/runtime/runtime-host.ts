@@ -16359,14 +16359,15 @@ export class RuntimeHost implements LiveHost {
       watched?.add(target.owner)
       if (target.parent === null) return null
       const unread = rowsUnreadOnce()
-      const piece = this.deps.store
-        .piecesOwnedBy(target.owner, unread)
-        .find((one) => one.piece === target.piece)
+      const projected = this.windowIncidentReads.waitTarget(target.owner, target.piece, unread)
+      const state = projected === undefined
+        ? this.deps.store.piecesOwnedBy(target.owner, unread).find((one) => one.piece === target.piece)?.state ?? null
+        : projected.state
       if (unread.count !== 0 || unread.ledgersSkipped !== 0)
         throw new Error('a wait target could not be read')
-      return piece === undefined
+      return state === null
         ? 'wait-target-missing'
-        : TASK_IS_OPEN[piece.state]
+        : TASK_IS_OPEN[state]
           ? null
           : 'wait-target-ended'
     }

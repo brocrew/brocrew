@@ -8,6 +8,8 @@ import { sameWindowContent, type WindowContentStamp } from './window-routing-rea
 import {
   WindowReadUnavailable,
   type IncidentReading,
+  type IncidentFact,
+  type IncidentHistory,
   type WindowIncidents,
 } from './window-read-protocol'
 
@@ -19,6 +21,8 @@ export class WindowIncidentReads {
   private readonly context = new AsyncLocalStorage<{
     active: boolean
     owners?: ReadonlyMap<string, IncidentReading>
+    roots?: ReadonlyMap<string, IncidentHistory['roots'][number]>
+    reported?: ReadonlyMap<string, IncidentFact<readonly string[]>>
   }>()
   private readonly kept = new Map<string, Kept>()
   private stamp: WindowContentStamp | null = null
@@ -44,6 +48,8 @@ export class WindowIncidentReads {
         ? {}
         : {
             owners: new Map(snapshot.owners.map((row) => [row.sessionId, row])),
+            roots: new Map(snapshot.owners.flatMap((row) => row.history.roots.map((root) => [root[0], root] as const))),
+            reported: new Map(snapshot.reported),
           }),
     }
     try {
@@ -51,6 +57,15 @@ export class WindowIncidentReads {
     } finally {
       scope.active = false
     }
+  }
+
+  waitTarget(owner: string, piece: string, unread: RowsUnread): { state: IncidentHistory['states'][number][1] | null } | undefined {
+    const scope = this.context.getStore()
+    if (scope?.active !== true || scope.owners === undefined) return undefined
+    const row = scope.owners.get(owner)
+    if (row === undefined) throw new WindowReadUnavailable()
+    for (const ordinal of row.history.statesSkipped) unread.in(owner)(ordinal)
+    return { state: row.history.states.find(([id]) => id === piece)?.[1] ?? null }
   }
 
   private sample(): WindowContentStamp | null {
@@ -124,8 +139,62 @@ export class WindowIncidentReads {
       for (const ordinal of row[`${kind}Skipped`]) unread?.in(id)(ordinal)
       return row
     }
+    const valueOf = <T>(fact: IncidentFact<T> | undefined): T => {
+      if (fact == null) throw new WindowReadUnavailable()
+      return structuredClone(fact.value)
+    }
+    const history = (owner: string) => {
+      const owners = current()
+      if (owners === undefined) return undefined
+      const row = owners.get(owner)
+      if (row === undefined) throw new WindowReadUnavailable()
+      return row.history
+    }
     return new Proxy(original, {
       get: (store, key) => {
+        if (key === 'rootLines' || key === 'turnBlockRootLines')
+          return (piece: string) => {
+            if (current() === undefined) return store[key](piece)
+            const root = this.context.getStore()?.roots?.get(piece)
+            return key === 'rootLines' ? valueOf(root?.[1]) : valueOf(root?.[2])
+          }
+        if (key === 'reconciliationReceipts')
+          return (owner: string, piece: string) => {
+            const row = history(owner)
+            return row === undefined ? store.reconciliationReceipts(owner, piece)
+              : valueOf(row.receipts.find(([id]) => id === piece)?.[1])
+          }
+        if (key === 'reconciliationRecovery')
+          return (owner: string) => {
+            const row = history(owner)
+            return row === undefined ? store.reconciliationRecovery(owner) : valueOf(row.recovery)
+          }
+        if (key === 'theNewestTurn')
+          return (owner: string) => {
+            const row = history(owner)
+            return row === undefined ? store.theNewestTurn(owner) : row.newestTurn
+          }
+        if (key === 'reconciliationDrivenByTurn')
+          return (owner: string, turn: string) => {
+            const row = history(owner)
+            if (row === undefined) return store.reconciliationDrivenByTurn(owner, turn)
+            if (turn !== row.newestTurn) throw new WindowReadUnavailable()
+            return valueOf(row.driven)
+          }
+        if (key === 'whenAPersonLastWrote')
+          return (owner: string) => {
+            const row = history(owner)
+            return row === undefined ? store.whenAPersonLastWrote(owner) : valueOf(row.lastPerson)
+          }
+        if (key === 'legacyOrdinaryStallWasReported')
+          return (owner: string, piece: string, giver: string) => {
+            const row = history(owner)
+            return row === undefined ? store.legacyOrdinaryStallWasReported(owner, piece, giver)
+              : valueOf(row.legacy.find(([id, by]) => id === piece && by === giver)?.[2])
+          }
+        if (key === 'workReportedTo')
+          return (giver: string) => current() === undefined ? store.workReportedTo(giver)
+            : new Set(valueOf(this.context.getStore()?.reported?.get(giver)))
         if (key === 'reconciliationOwners')
           return () => {
             const owners = current()
