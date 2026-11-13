@@ -24,7 +24,7 @@ Tests use a fake bridge and made-up chats; none starts WhatsApp. From the reposi
 
 ## Host attachment
 
-The app's plugin host supplies `BROCREW_WHATSAPP_DATA` (the data root), `BROCREW_WHATSAPP_AUTH` (a readable JSON file with distinct `mcpToken` and `adminToken`) and `BROCREW_WHATSAPP_PORT` (default 0). The package never makes a production credential. The bridge program is copied from the package into `<data>/bin/` as an executable only when its SHA-256 equals the one built into `server.mjs`.
+The app's plugin host supplies `BROCREW_WHATSAPP_DATA` (the data root), `BROCREW_WHATSAPP_AUTH` (a readable JSON file with distinct `mcpToken` and `adminToken`) and `BROCREW_WHATSAPP_PORT` (default 0). The package never makes a production credential. The bridge program is copied from the package into `<data>/bin/` as an executable.
 
 Archives are built for macOS on Apple silicon and for Windows x64. On Windows the program is `whatsapp-bridge.exe`. Ordinary OS permissions govern access on each platform; the host and bridge do not tighten existing folders or require owner-only access.
 
