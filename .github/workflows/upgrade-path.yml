@@ -25,6 +25,21 @@ on:
         description: The version the candidate is stamped with
         default: 0.1.7
         type: string
+      original_run_id:
+        description: Original signed release run; with both artifact IDs, reuse its files without building
+        type: string
+      windows_artifact_id:
+        description: Original signed Windows release artifact ID
+        type: string
+      mac_artifact_id:
+        description: Original signed Mac release artifact ID
+        type: string
+      candidate_source:
+        description: Full source SHA embedded in the original signed candidate
+        type: string
+      predecessor_source:
+        description: Full source SHA of the explicitly selected published predecessor
+        type: string
   workflow_call:
     inputs:
       recovery_proof:
@@ -44,6 +59,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 env:
   ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
@@ -52,6 +68,7 @@ env:
   WINDOWS_BETA: ${{ inputs.windows_beta || (contains(github.ref_name, '-before-the-switch-') && 'windows-beta-14' || 'v0.1.6') }}
   MAC_BETA: ${{ inputs.mac_beta || (contains(github.ref_name, '-before-the-switch-') && 'mac-beta-3' || 'v0.1.6') }}
   CANDIDATE_VERSION: ${{ inputs.candidate_version || '0.1.7' }}
+  CANDIDATE_SOURCE: ${{ inputs.candidate_source || github.sha }}
   UPGRADE_PATH_CLAUDE_PORT: '9360'
 
 concurrency:
@@ -59,7 +76,67 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  assets:
+    name: Bind reused files to their original release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      binding: ${{ steps.assets.outputs.binding }}
+    steps:
+      - id: assets
+        uses: actions/github-script@v8
+        env:
+          ORIGINAL_RUN: ${{ inputs.original_run_id }}
+          WINDOWS_ARTIFACT: ${{ inputs.windows_artifact_id }}
+          MAC_ARTIFACT: ${{ inputs.mac_artifact_id }}
+          CANDIDATE_SOURCE: ${{ inputs.candidate_source }}
+          PREDECESSOR_SOURCE: ${{ inputs.predecessor_source }}
+          RECOVERY_MODE: ${{ inputs.recovery_proof || inputs.recovery_measurement_bytes != '0' && inputs.recovery_measurement_bytes != '' }}
+        with:
+          script: |
+            const { ORIGINAL_RUN: run, WINDOWS_ARTIFACT: windows, MAC_ARTIFACT: mac,
+              CANDIDATE_SOURCE: candidate, PREDECESSOR_SOURCE: predecessor } = process.env
+            const demand = (ok, message) => { if (!ok) throw new Error(message) }
+            if (!run) {
+              demand(!mac && !candidate && !predecessor &&
+                (context.eventName !== 'workflow_dispatch' || !windows),
+                'Artifact reuse needs the original run and complete candidate/predecessor inputs.')
+              return
+            }
+            demand([run, windows, mac].every(value => /^[1-9][0-9]*$/.test(value)),
+              'Reuse needs an original run and both original artifact IDs.')
+            demand([candidate, predecessor].every(value => /^[0-9a-f]{40}$/.test(value)),
+              'Reuse needs full candidate and predecessor source SHAs.')
+            demand(process.env.RECOVERY_MODE !== 'true', 'Signed reuse is the ordinary upgrade path.')
+            const repo = context.repo
+            const { data: original } = await github.rest.actions.getWorkflowRun({ ...repo, run_id: Number(run) })
+            demand(original.head_sha === candidate && original.head_branch === `v${process.env.CANDIDATE_VERSION}`,
+              'The original run must bind the selected candidate SHA and release version.')
+            const { data: oldWindows } = await github.rest.repos.getCommit({ ...repo, ref: process.env.WINDOWS_BETA })
+            const { data: oldMac } = await github.rest.repos.getCommit({ ...repo, ref: process.env.MAC_BETA })
+            demand(oldWindows.sha === predecessor && oldMac.sha === predecessor,
+              'Both selected predecessor tags must bind the supplied predecessor SHA.')
+            for (const tag of new Set([process.env.WINDOWS_BETA, process.env.MAC_BETA])) {
+              const { data: release } = await github.rest.repos.getReleaseByTag({ ...repo, tag })
+              demand(!release.draft && release.tag_name === tag, 'The predecessor must be published.')
+            }
+            const artifacts = []
+            for (const [os, id] of [['windows', windows], ['macos', mac]]) {
+              const { data: artifact } = await github.rest.actions.getArtifact({ ...repo, artifact_id: Number(id) })
+              demand(artifact.workflow_run?.id === Number(run) && artifact.workflow_run?.head_sha === candidate &&
+                artifact.name.startsWith(`release-${os}-`) && !artifact.expired,
+                `The ${os} artifact must be an original retained release output of the selected run.`)
+              artifacts.push(artifact)
+            }
+            const binding = { harnessSource: context.sha, candidateSource: candidate,
+              candidateVersion: process.env.CANDIDATE_VERSION, predecessorSource: predecessor,
+              windowsPredecessor: process.env.WINDOWS_BETA, macPredecessor: process.env.MAC_BETA,
+              originalRun: original, artifacts }
+            core.setOutput('binding', JSON.stringify(binding))
+            core.info(JSON.stringify(binding, null, 2))
+
   windows:
+    needs: assets
     name: Windows, from the tester's beta to the candidate
     if: github.repository == 'brocrew/brocrew' && (inputs.recovery_measurement_bytes || '0') == '0'
     # `windows-2022`, as `windows.yml`: pnpm's node-gyp does not know the 2025 image's Visual Studio.
@@ -101,8 +178,24 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           artifact-ids: ${{ inputs.windows_artifact_id }}
+          run-id: ${{ inputs.original_run_id || github.run_id }}
+          github-token: ${{ github.token }}
           merge-multiple: true
           path: apps/desktop/dist
+
+      - name: Keep the original artifact binding and file inventory
+        if: inputs.original_run_id
+        shell: bash
+        env:
+          ASSET_BINDING: ${{ needs.assets.outputs.binding }}
+        run: >-
+          node --input-type=module -e 'import { writeFileSync, mkdirSync } from "node:fs";
+          import { releaseAssetInventory } from "./scripts/lib/upgrade-path.mjs";
+          mkdirSync("upgrade-path-evidence", {recursive:true});
+          releaseAssetInventory("apps/desktop/dist",process.env.CANDIDATE_VERSION,
+          process.env.RUNNER_OS === "Windows" ? "windows" : "mac",
+          files => writeFileSync("upgrade-path-evidence/original-assets.json",
+          JSON.stringify({binding:JSON.parse(process.env.ASSET_BINDING),files},null,2)))'
 
       - name: Build the candidate from this commit (NSIS, x64, unsigned)
         if: ${{ !inputs.windows_artifact_id }}
@@ -154,7 +247,7 @@ jobs:
           --beta-tag "$WINDOWS_BETA" --beta-release upgrade-path-evidence/beta-release.json
           --beta-dir upgrade-path-beta
           --candidate-dir apps/desktop/dist
-          --candidate-version "$CANDIDATE_VERSION" --source-sha "$GITHUB_SHA"
+          --candidate-version "$CANDIDATE_VERSION" --source-sha "$CANDIDATE_SOURCE"
           --evidence upgrade-path-evidence
           ${{ inputs.recovery_proof && '--recovery-proof' || '' }}
 
@@ -168,8 +261,9 @@ jobs:
           retention-days: 7
 
   mac:
+    needs: assets
     name: Mac, from the tester's beta to the candidate
-    if: github.repository == 'brocrew/brocrew' && !inputs.windows_artifact_id
+    if: github.repository == 'brocrew/brocrew' && (!inputs.windows_artifact_id || inputs.original_run_id)
     runs-on: ${{ vars.MAC_RUNNER || 'macos-15' }}
     timeout-minutes: 75
     steps:
@@ -199,12 +293,37 @@ jobs:
           mkdir -p upgrade-path-beta upgrade-path-evidence
           gh api "repos/$GITHUB_REPOSITORY/releases/tags/$MAC_BETA" > upgrade-path-evidence/beta-release.json
           gh release download "$MAC_BETA" --repo "$GITHUB_REPOSITORY" \
-            --pattern '*-arm64*.dmg' --dir upgrade-path-beta
+            --pattern '*-arm64*.dmg' --pattern latest-mac.yml --dir upgrade-path-beta
           ls -la upgrade-path-beta
+
+      - name: The original signed Mac release files
+        if: inputs.original_run_id
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ inputs.mac_artifact_id }}
+          run-id: ${{ inputs.original_run_id }}
+          github-token: ${{ github.token }}
+          merge-multiple: true
+          path: apps/desktop/dist
+
+      - name: Keep the original artifact binding and file inventory
+        if: inputs.original_run_id
+        shell: bash
+        env:
+          ASSET_BINDING: ${{ needs.assets.outputs.binding }}
+        run: >-
+          node --input-type=module -e 'import { writeFileSync, mkdirSync } from "node:fs";
+          import { releaseAssetInventory } from "./scripts/lib/upgrade-path.mjs";
+          mkdirSync("upgrade-path-evidence", {recursive:true});
+          releaseAssetInventory("apps/desktop/dist",process.env.CANDIDATE_VERSION,
+          process.env.RUNNER_OS === "Windows" ? "windows" : "mac",
+          files => writeFileSync("upgrade-path-evidence/original-assets.json",
+          JSON.stringify({binding:JSON.parse(process.env.ASSET_BINDING),files},null,2)))'
 
       # Signed ad hoc (`-c.mac.identity=-`), as the betas are: a person replaces one ad hoc app with
       # another, and the Keychain sees a different program.
       - name: Build the candidate from this commit (dmg, arm64, signed ad hoc)
+        if: ${{ !inputs.original_run_id }}
         run: |
           set -euo pipefail
           pnpm --filter @brobot2/desktop run build
@@ -213,6 +332,7 @@ jobs:
           ls -la apps/desktop/dist
 
       - name: Install Claude Code, sent to the lane's scripted model
+        if: ${{ !inputs.original_run_id }}
         run: |
           set -euo pipefail
           version=$(node scripts/lib/scripted-claude.mjs version)
@@ -223,6 +343,7 @@ jobs:
           "$HOME/.local/bin/claude" --version
 
       - name: Install the beta, make data with it, replace it with the candidate, and check
+        if: ${{ !inputs.original_run_id }}
         env:
           BROCREW_SKIP_UPDATE_CHECK: '1'
           RECOVERY_MEASUREMENT_BYTES: ${{ inputs.recovery_measurement_bytes || '0' }}
@@ -232,9 +353,18 @@ jobs:
           --beta-tag "$MAC_BETA" --beta-release upgrade-path-evidence/beta-release.json
           --beta-dir upgrade-path-beta
           --candidate-dir apps/desktop/dist
-          --candidate-version "$CANDIDATE_VERSION" --source-sha "$GITHUB_SHA"
+          --candidate-version "$CANDIDATE_VERSION" --source-sha "$CANDIDATE_SOURCE"
           --evidence upgrade-path-evidence
           ${{ inputs.recovery_proof && '--recovery-proof' || '' }}
+
+      - name: Upgrade three workspaces using the original signed Mac files
+        if: inputs.original_run_id
+        env:
+          PREDECESSOR_SOURCE: ${{ inputs.predecessor_source }}
+        run: >-
+          node scripts/mac-signed-upgrade.mjs --predecessor upgrade-path-beta
+          --predecessor-source "$PREDECESSOR_SOURCE" --candidate apps/desktop/dist
+          --candidate-source "$CANDIDATE_SOURCE" --evidence upgrade-path-evidence
 
       - name: Keep the evidence, whatever happened
         if: always()

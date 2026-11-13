@@ -63,6 +63,7 @@ import {
   pluginOwnerQuiescence,
   launchSetupExpected,
   lineageFits,
+  firstCopyPolicy,
   READY_LINE,
   recordedWith,
   registryKept,
@@ -197,6 +198,7 @@ const summary = {
   betaTag: args['beta-tag'],
   candidateVersion: args['candidate-version'],
   sourceSha: args['source-sha'],
+  harnessSource: process.env.GITHUB_SHA ?? null,
   data,
   outsideThisCheck: [
     'the prompt a Mac shows for a file a browser downloaded (this download carries no quarantine flag)',
@@ -2536,10 +2538,21 @@ async function runUpgradePath() {
   )
   const expectedReason =
     candidateLineage.length > before.lineage.length ? 'before-migration' : 'first-start-of-release'
-  // With migrations to run, the start finishes the copy before READY; otherwise it finishes it in
-  // the background once the first window is shown, and the first window's own observations are kept.
-  const firstCopyCompletion =
-    expectedReason === 'before-migration' ? 'before-ready' : 'functional-background'
+  const completedCopies = copiesTheBetaLeft.map((copy) => {
+    const folder = join(data, 'backups', copy.folder)
+    const files = {}
+    for (const name of ['database.sqlite', ...stateFiles]) {
+      if (existsSync(join(folder, name))) files[name] = readStateEntry(join(folder, name))
+    }
+    return { ...copy, files, unfinished: existsSync(join(folder, 'unfinished')) }
+  })
+  const firstCopy = firstCopyPolicy(before.lineage, candidateLineage, completedCopies, {
+    workspaceId: readFileSync(join(data, 'backups', 'workspace-id'), 'utf8').trim(),
+    stateFiles,
+  })
+  const firstCopyCompletion = firstCopy.completion
+  summary.firstCopyPolicy = firstCopy
+  keep('first-copy-policy.json', firstCopy)
   const betasCopyIds = new Set(copiesTheBetaLeft.map(({ manifest }) => manifest?.id))
   let firstCopyObservation = null
 
@@ -2647,10 +2660,11 @@ async function runUpgradePath() {
       absent: performance.now(),
       manifestAbsent,
     }
+    summary.firstStart.copyObservation = firstCopyObservation
     summary.firstStart.app = info
     check(
       info?.version === args['candidate-version'] && info?.build?.commit === args['source-sha'],
-      'the running app is the candidate, built from this run’s commit',
+      'the running app is the candidate, built from the selected candidate commit',
       { version: info?.version, build: info?.build },
     )
     check(
@@ -2707,6 +2721,7 @@ async function runUpgradePath() {
         `first start: the recovery copy finished in the background before the app was asked to close (waited up to ${String(COPY_FINISH_MS / 1_000)} s)`,
       )
     }
+    firstCopyObservation.closeRequested = performance.now()
     await quit('the candidate, after its first start')
   })
   summary.firstStart.order = existsSync(join(evidence, 'candidate-first.log'))

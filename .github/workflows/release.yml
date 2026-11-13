@@ -250,6 +250,9 @@ jobs:
           retention-days: 14
 
   windows-upgrade:
+    permissions:
+      contents: read
+      actions: read
     name: Upgrade test on Windows
     needs: [plan, windows]
     uses: ./.github/workflows/upgrade-path.yml
