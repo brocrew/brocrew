@@ -2426,19 +2426,19 @@ async function lookAtTheQueueOnce(): Promise<void> {
   // ⛔ **The last good answer is kept here too**, for the reads above's reason: a dropped call must
   // not be able to withdraw work that is still stopped.
   if (stalls !== null) stalledWork.value = stalls
-  lastStallLookAnswered.value = stalls !== null
+  lastStallLookAnswered.value = stalls !== null && queue!.published.covers.stalled.complete
   // ⛔ **The last good answer is kept here too**, for the reads above's reason.
   if (asks !== null) instructionAsks.value = asks
-  lastAskLookAnswered.value = asks !== null
+  lastAskLookAnswered.value = asks !== null && queue!.published.covers.instructionAsks.complete
   // ⛔ **…and here** (F097).
   if (owed !== null) waitingOnWhoWrote.value = owed
-  lastReplyLookAnswered.value = owed !== null
+  lastReplyLookAnswered.value = owed !== null && queue!.published.covers.waitingOnWhoWrote.complete
   if (serverAsks !== null) mcpServerRequests.value = serverAsks
-  lastServerRequestLookAnswered.value = serverAsks !== null
+  lastServerRequestLookAnswered.value = serverAsks !== null && queue!.published.covers.mcpServerRequests.complete
   if (stops !== null) stoppedWork.value = stops
-  lastStopLookAnswered.value = stops !== null
+  lastStopLookAnswered.value = stops !== null && queue!.published.covers.stopped.complete
   if (incidents !== null) workIncidents.value = incidents
-  lastIncidentLookAnswered.value = incidents !== null
+  lastIncidentLookAnswered.value = incidents !== null && queue!.published.covers.incidents.complete
   // 🔴 **Whether the look that just landed ANSWERED, which the values above cannot say** (434).
   //
   // ⛔ **Keeping the last good answer is right and it hides the failure.** A population whose read
@@ -2447,8 +2447,8 @@ async function lookAtTheQueueOnce(): Promise<void> {
   // nothing saying so. ⚠️ **A queue that silently omits an item fails criterion 17 in the
   // direction that costs most**, and everything that arrived since the freeze is omitted.
   lastLookAnswered.value = {
-    questions: questions !== null,
-    decisions: decisions !== null,
+    questions: questions !== null && queue!.published.covers.questions.complete,
+    decisions: decisions !== null && queue!.published.covers.decisions.complete,
   }
 }
 
