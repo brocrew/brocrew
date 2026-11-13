@@ -17,15 +17,24 @@ it('owns state and file marks through superseding notices, partial failures, del
   let measuring = false
   let mainHistoryQueries = 0
   const prepare = Database.prototype.prepare
-  const nativeReads = vi.spyOn(Database.prototype, 'prepare').mockImplementation(function (this: Database.Database, sql: string) {
+  const nativeReads = vi.spyOn(Database.prototype, 'prepare').mockImplementation(function (
+    this: Database.Database,
+    sql: string,
+  ) {
     const connection = this
     const statement = prepare.call(this, sql) as Database.Statement<unknown[], unknown>
-    if (!/^\s*(SELECT|WITH)\b/i.test(sql) || !/\bevents\b/i.test(sql) || !/\bpayload\b/i.test(sql)) return statement
+    if (!/^\s*(SELECT|WITH)\b/i.test(sql) || !/\bevents\b/i.test(sql) || !/\bpayload\b/i.test(sql))
+      return statement
     return new Proxy(statement, {
       get(native, key) {
         if (key === 'get' || key === 'all' || key === 'iterate')
           return (...args: unknown[]) => {
-            if (measuring && connection === writer && /statesThatMoved|whatWasKept|sayWhatMoved/.test(new Error().stack ?? '')) mainHistoryQueries++
+            if (
+              measuring &&
+              connection === writer &&
+              /statesThatMoved|whatWasKept|sayWhatMoved/.test(new Error().stack ?? '')
+            )
+              mainHistoryQueries++
             return native[key](...args)
           }
         const value: unknown = Reflect.get(native, key, native)
