@@ -126,6 +126,8 @@ export function windowWriterSampler(
         'generation',
         'ordinal',
         'created_at',
+        'turn_id',
+        'id',
       ])
       const snapshotChanged = `(${routesChanged} AND (${rows.map((row) => `${row}.type NOT IN (${terms(streamTypes)})`).join(' OR ')}))`
       db.exec(`CREATE TEMP TRIGGER IF NOT EXISTS window_read_event_${operation}

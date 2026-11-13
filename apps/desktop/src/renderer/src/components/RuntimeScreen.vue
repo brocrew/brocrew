@@ -2383,12 +2383,6 @@ function lookAfterAUsageNotice(): void {
   })
 }
 
-/**
- * The one entry every ask for the queue goes through: the tick, the `persons` notice, the
- * `conversations` and `agents` notices, and each answer given here. `scheduled` keeps the limits
- * walk on its own cadence; an explicit look reads it at once. The queue itself is read by
- * {@link lookAtTheQueue}, so a burst of asks costs at most one more look.
- */
 let queueNoticePending = false
 function lookAfterAQueueNotice(): void {
   if (queueNoticePending || actionableReadsClosed) return
@@ -2399,6 +2393,12 @@ function lookAfterAQueueNotice(): void {
   })
 }
 
+/**
+ * The one entry every ask for the queue goes through: the tick, the `persons` notice, the
+ * `conversations` and `agents` notices, and each answer given here. `scheduled` keeps the limits
+ * walk on its own cadence; an explicit look reads it at once. The queue itself is read by
+ * {@link lookAtTheQueue}, so a burst of asks costs at most one more look.
+ */
 async function lookForWhatIsYours(scheduled = false): Promise<void> {
   void refreshLimitsDisplay(scheduled)
   await lookAtTheQueue()

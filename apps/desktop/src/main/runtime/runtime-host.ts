@@ -17920,8 +17920,8 @@ export class RuntimeHost implements LiveHost {
   /** Resolve ledger then work-out defaults at this door; share waits for one answer only. */
   private oneWaitReadPerAnswer(
     unread?: RowsUnread,
-    ledger: (id: string) => StateLedger = this.oneLedgerReadPerAnswer(unread),
-    workOut: WorkOutOf<StateWork> = this.oneWorkOutReadPerAnswer(unread),
+    ledger: (id: string) => StateLedger = this.oneStateLedgerReadPerAnswer(unread),
+    workOut: WorkOutOf<StateWork> = this.oneStateWorkOutReadPerAnswer(unread),
   ): (id: string) => WhatAConversationIsWaitingOn {
     return this.workReads.oneWaitReadPerAnswer(unread, ledger, workOut)
   }
