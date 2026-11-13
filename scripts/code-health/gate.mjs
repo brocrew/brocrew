@@ -21,11 +21,65 @@ class GateError extends Error {}
 const rel = (file) => path.relative(root, path.resolve(root, file)).split(path.sep).join('/')
 const unique = (keys) => [...new Set(keys)].sort()
 
-export const jscpdKeys = (report) =>
-  report.duplicates.map((d) => {
-    const [a, b] = [rel(d.firstFile.name), rel(d.secondFile.name)].sort()
-    return `${d.format}|${a}|${b}`
-  })
+export function cloneBaseArgument(argv) {
+  const positions = argv.flatMap((arg, index) => (arg === '--clone-base' ? [index] : []))
+  const value = argv[positions[0] + 1]
+  if (positions.length !== 1 || !/^[a-f0-9]{40}$/.test(value ?? ''))
+    throw new GateError('jscpd: --clone-base requires one explicit full commit SHA')
+  return value
+}
+
+export function cloneFindings(report) {
+  const total = report?.statistics?.total
+  if (
+    !Array.isArray(report?.duplicates) ||
+    !Number.isSafeInteger(total?.clones) ||
+    total.clones !== report.duplicates.length ||
+    !Number.isSafeInteger(total?.newClones) ||
+    total.newClones < 0 ||
+    !Number.isSafeInteger(total?.sources) ||
+    total.sources <= 0
+  )
+    throw new GateError('jscpd: missing or inconsistent native baseline counts')
+  const findings = []
+  for (const [index, clone] of report.duplicates.entries()) {
+    if (typeof clone.isNew !== 'boolean')
+      throw new GateError(`jscpd: missing boolean isNew on record ${index}`)
+    if (typeof clone.format !== 'string' || !clone.format)
+      throw new GateError(`jscpd: missing format on record ${index}`)
+    const endpoints = [clone.firstFile, clone.secondFile].map((file) => {
+      if (
+        typeof file?.name !== 'string' ||
+        !file.name ||
+        !Number.isSafeInteger(file.start) ||
+        file.start < 1 ||
+        !Number.isSafeInteger(file.end) ||
+        file.end < file.start
+      )
+        throw new GateError(`jscpd: malformed endpoint on record ${index}`)
+      return `${rel(file.name)}:${file.start}-${file.end}`
+    })
+    if (clone.isNew) findings.push(`record ${index}: ${clone.format}|${endpoints.join('|')}`)
+  }
+  if (findings.length !== total.newClones)
+    throw new GateError('jscpd: newClones disagrees with boolean markers')
+  return findings
+}
+
+function cloneReference(argv) {
+  const sha = cloneBaseArgument(argv)
+  const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim()
+  if (git('cat-file', '-t', sha) !== 'commit')
+    throw new GateError('jscpd: clone reference is not a commit object')
+  return {
+    base: sha,
+    baseTree: git('rev-parse', `${sha}^{tree}`),
+    head: git('rev-parse', 'HEAD'),
+    headTree: git('rev-parse', 'HEAD^{tree}'),
+    configBlob: git('hash-object', path.join(here, 'jscpd.json')),
+    toolLockBlob: git('hash-object', path.join(here, 'package-lock.json')),
+  }
+}
 
 const external = (file) => /(^|\/)node_modules\//.test(rel(file))
 export const depcruiseKeys = (report) => [
@@ -105,34 +159,73 @@ const lineCount = (file) => {
 }
 
 const TOOLS = {
-  jscpd(files, out) {
-    run(
-      'jscpd',
-      [
-        '--prefix',
-        here,
-        'run',
-        '--silent',
-        'scan:clones',
-        '--',
-        root,
-        '--absolute',
-        '--config',
-        path.join(here, 'jscpd.json'),
-        '--output',
-        out,
-      ],
-      out,
-      (s) => s === 0,
-      'npm',
+  jscpd(files, out, reference) {
+    const nativeOut = path.join(out, 'jscpd')
+    fs.mkdirSync(nativeOut)
+    const executable = path.join(here, 'node_modules', '.bin', 'jscpd')
+    const version = execFileSync(executable, ['--version'], { cwd: root, encoding: 'utf8' }).trim()
+    if (version !== 'jscpd 5.4.2') throw new GateError(`jscpd: unexpected version ${version}`)
+    const args = [
+      '--prefix',
+      here,
+      'run',
+      '--silent',
+      'scan:clones',
+      '--',
+      root,
+      '--absolute',
+      '--config',
+      path.join(here, 'jscpd.json'),
+      '--output',
+      nativeOut,
+      '--reporters',
+      'json,sarif',
+      '--baseline-from-ref',
+      reference.base,
+      '--fail-on-empty',
+    ]
+    const before = execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' })
+    fs.writeFileSync(
+      path.join(nativeOut, 'binding.json'),
+      JSON.stringify(
+        {
+          ...reference,
+          version,
+          executable: 'npm',
+          args,
+          before,
+        },
+        null,
+        2,
+      ) + '\n',
     )
-    const r = readJson('jscpd', path.join(out, 'jscpd-report.json'), (r) =>
+    try {
+      run('jscpd', args, nativeOut, (s) => s === 0, 'npm')
+    } finally {
+      fs.writeFileSync(
+        path.join(nativeOut, 'status-after.txt'),
+        execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }),
+      )
+    }
+    const report = readJson('jscpd', path.join(nativeOut, 'jscpd-report.json'), (r) =>
       Array.isArray(r?.duplicates),
     )
-    const percent = r.statistics?.total?.percentage
+    readJson(
+      'jscpd SARIF',
+      path.join(nativeOut, 'jscpd-report.sarif'),
+      (r) =>
+        Array.isArray(r?.runs) &&
+        r.runs.length === 1 &&
+        Array.isArray(r.runs[0].results) &&
+        r.runs[0].results.length === report.duplicates.length,
+    )
+    const added = cloneFindings(report)
     return {
-      keys: jscpdKeys(r),
-      totals: `${r.duplicates.length} clones, ${percent}% duplicated lines`,
+      native: true,
+      now: report.duplicates.length,
+      added,
+      resolved: [],
+      totals: `${report.duplicates.length} native records; ${added.length} NEW; base ${reference.base}`,
     }
   },
   depcruise(files, out) {
@@ -218,11 +311,17 @@ function main(argv) {
     ? path.resolve(argv[argv.indexOf('--out') + 1])
     : fs.mkdtempSync(path.join(os.tmpdir(), 'code-health-'))
   fs.mkdirSync(out, { recursive: true })
+  const reference = update ? null : cloneReference(argv)
   const files = sourceFiles()
   const rows = []
   for (const [name, scan] of Object.entries(TOOLS)) {
     console.log(`code-health: running ${name}`)
-    const result = scan(files, out)
+    if (update && name === 'jscpd') continue
+    const result = scan(files, out, reference)
+    if (result.native) {
+      rows.push({ name, before: 'n/a', now: result.now, ...result, totals: result.totals })
+      continue
+    }
     const current = name === 'size' ? result.sizes : unique(result.keys)
     const file = path.join(here, 'baseline', `${name}.json`)
     if (update) {
@@ -245,7 +344,7 @@ function main(argv) {
     })
   }
   if (update) {
-    console.log('code-health: baselines rewritten')
+    console.log('code-health: depcruise, knip and size baselines rewritten; clone debt unchanged')
     return 0
   }
   const added = rows.reduce((n, r) => n + r.added.length, 0)
@@ -256,7 +355,7 @@ function main(argv) {
     '|---|---:|---:|---:|---:|---|',
     ...rows.map(
       (r) =>
-        `| ${r.name} | ${r.before} | ${r.now} | ${r.added.length} | ${r.resolved.length} | ${r.totals} |`,
+        `| ${r.native ? 'jscpd native NEW records' : r.name} | ${r.before} | ${r.now} | ${r.added.length} | ${r.native ? 'n/a' : r.resolved.length} | ${r.totals} |`,
     ),
     ...rows.flatMap((r) =>
       r.added.length ? ['', `## New ${r.name} findings`, ...r.added.map((k) => `- \`${k}\``)] : [],
@@ -272,7 +371,11 @@ function main(argv) {
         : [],
     ),
     '',
-    added ? `**${added} new finding(s).** ${UPDATE_HINT}` : 'No new findings.',
+    ...(rows.some((r) => r.native && r.added.length)
+      ? ['', 'Deduplicate the native clone findings; --update cannot admit clone findings.']
+      : []),
+    added ? `**${added} new finding(s).**` : 'No new findings.',
+    ...(rows.some((r) => !r.native && r.added.length) ? ['', UPDATE_HINT] : []),
   ].join('\n')
   fs.writeFileSync(path.join(out, 'report.md'), report + '\n')
   console.log(report + `\n\nReport and native tool output: ${out}`)

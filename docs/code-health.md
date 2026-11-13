@@ -1,52 +1,29 @@
 # Code health
 
-One gate, four checks, each against its own committed baseline in `scripts/code-health/baseline/`:
+One gate, four checks. Clone findings use native jscpd5.4.2 fingerprint multiplicity against an explicit source reference; the other three checks use committed debt baselines.
 
-| Check     | Tool and config                                     | Finding identity                     |
-| --------- | --------------------------------------------------- | ------------------------------------ |
-| jscpd     | jscpd 5.4.2, `scripts/code-health/jscpd.json`       | format + the two files, sorted       |
-| depcruise | dependency-cruiser 17.3.8, `depcruise.cjs`          | rule + from file + to file; a cycle is keyed by each edge depcruise marks circular |
-| knip      | Knip 6.44.1, `knip.json`                            | issue type + file + symbol           |
-| size      | the runner: code files over 1000 lines              | file, with its baselined line count  |
+| Check | Comparison |
+|---|---|
+| jscpd | Candidate config in scripts/code-health/jscpd.json, native --baseline-from-ref fullSHA; every native isNew record counts |
+| depcruise | Rule + from/to file; each native circular edge, against baseline/depcruise.json |
+| knip | Issue type + file + symbol, against baseline/knip.json |
+| size | Code file over1000lines and its allowed count, against baseline/size.json |
 
-Run it with `node scripts/code-health/gate.mjs` after `npm ci --prefix scripts/code-health`
-(and the usual `pnpm install` plus `npm ci` in each plugin). Exit 0 means no new findings, 1 means
-at least one new finding, and 2 means a tool failed or produced no readable report. An execution
-error prints the tool's own stderr and is never counted as a finding.
+Install the usual workspace/plugin dependencies and npm ci --prefix scripts/code-health. Run `node scripts/code-health/gate.mjs --clone-base <full40hexSHA>`. Use the piece's proven landed MAIN base, not a formatter parent or an arbitrary current checkout. The exact source objects must be available locally. Missing reference/report/markers, mismatched native counts or failed tools are execution errors, exit2. Valid new findings are exit1; no new findings is exit0.
 
-## What fails
+Clone comparison uses unchanged candidate configuration at both snapshots. Full native JSON and SARIF, exact argv/version/reference/config identities and status receipts are retained under the output directory. Candidate native output directory must be fresh; existing output is not reused or deleted. Clone summaries count NEW records; a separate full historical base census/resolved count is not exported, so those table columns say n/a. The old committed clone file-pair debt remains byte-identical and no longer decides clone findings. Two new records with the same fingerprint still count as2. Additional copies inside an already known pair can fail. New duplication cannot be offset by unrelated deletions.
 
-A finding whose identity is not in the baseline. Line numbers and content never take part, so
-editing code that already carries listed debt passes. Examples that fail: a new clone between two
-files that had none, a new import that closes a cycle or crosses a boundary in `depcruise.cjs`, a
-new unused export, a file growing past 1000 lines. The files already over the limit are listed in
-`baseline/size.json` at their current size: they may shrink, never grow. When one of them has to
-change, keep the change net-zero, or move code out into a new or smaller file.
+Native report boundaries/partner rotation can still flag spans whose source already existed; they remain findings to deduplicate. Zero native NEW does not prove global semantic no-growth. Formatting crossing minLines10 changes native eligibility; there is no universal formatting-invariance claim. No import/comment filter or custom clone engine is applied.
 
-Some limits are deliberate:
+The other baseline checks retain existing behavior: a missing key is new; giants may shrink but cannot exceed their baselined size. A listed finding can return until its baseline is updated. `node scripts/code-health/gate.mjs --update` skips clones and rewrites only depcruise/knip/size baselines; it leaves clone debt data unchanged. Review those baseline diffs in an ordinary PR. --update cannot admit clone findings. If no-circular gains pathNot/dependencyTypesNot exceptions, apply the same filter to cycle keys.
 
-- A second clone between a file pair that already has one is not new; it shows in the totals.
-- A listed finding that disappears and comes back passes again until the baseline is updated.
-- A listed giant that shrinks may grow back to its baselined size until `--update` is run.
-- Moving or renaming a file that carries listed debt shows that debt as new. Run the update below in
-  the same PR.
+## CI references and reports
 
-If `no-circular` gains an exception such as `pathNot` or `dependencyTypesNot`, apply the same
-filter to the cycle keys in `depcruiseKeys`.
+PR: event.pull_request.base.sha. Push: nonzero event.before. Manual: required fullSHA clone_base input. A first push with no valid before fails explicitly rather than guessing a reference. PR candidate checkout may be the synthetic merge commit; both candidate and base are recorded.
 
-## Updating the baseline
+Weekly Sunday06:00UTC: capture one run time, subtract604800seconds, anchor MAIN at the scheduled event's exact SHA, then select `git rev-list -1 --before="$cutoff" "$main_anchor"`. Record cutoff, MAIN anchor, selected SHA/tree and ancestry check. No qualifying commit is an explicit missing-reference error; there is no HEAD/parent fallback. Full checkout history supplies ordinary event objects; missing objects still fail. No implicit fetch repair is attempted.
 
-`node scripts/code-health/gate.mjs --update` rewrites the four baseline files from the current tree.
-Commit the result in an ordinary PR; the baseline diff is what review reads. Do it when you fix debt
-(the run lists it as resolved) or move a file with listed debt.
-
-## Weekly report
-
-`.github/workflows/code-health.yml` runs on pushes to `main` and `gate/prepare-*`, on pull requests and every Sunday at
-06:00 UTC on a hosted Linux runner. Each run writes `report.md` (baseline, current, new and resolved
-counts per check, plus the tools' own totals) to the run summary and keeps it with the native tool
-output in the `code-health` artifact. The Sunday run is the weekly trend report. On Monday the
-duplication, module-boundary and dead-code reviewers read it; the code reviewer covers for them.
+Each hosted run retains report.md, reference.txt and native output under the code-health artifact for90days. The weekly run measures native change over the selected seven-day reference, while the other checks still compare committed debt. Reviewers must keep those units distinct.
 
 ## Plugin execution boundary
 

@@ -7,6 +7,11 @@ on:
   schedule:
     - cron: '0 6 * * 0'
   workflow_dispatch:
+    inputs:
+      clone_base:
+        description: Exact full commit SHA for the piece's landed MAIN base
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -27,6 +32,50 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+          fetch-depth: 0
+
+      - name: Select exact clone reference
+        id: clone-reference
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          MANUAL_BASE: ${{ inputs.clone_base }}
+          SCHEDULE_MAIN: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_time=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+          cutoff=''
+          main_anchor=''
+          case "$GITHUB_EVENT_NAME" in
+            pull_request) base="$PR_BASE" ;;
+            push) base="$PUSH_BEFORE" ;;
+            workflow_dispatch) base="$MANUAL_BASE" ;;
+            schedule)
+              test "$GITHUB_REF" = refs/heads/main
+              main_anchor="$SCHEDULE_MAIN"
+              git cat-file -e "$main_anchor^{commit}"
+              run_epoch=$(date -u --date="$run_time" +%s)
+              cutoff=$(date -u --date="@$((run_epoch - 604800))" '+%Y-%m-%dT%H:%M:%SZ')
+              base=$(git rev-list -1 --before="$cutoff" "$main_anchor")
+              ;;
+            *) echo 'Missing clone reference policy for this event' >&2; exit 2 ;;
+          esac
+          if [[ ! "$base" =~ ^[a-f0-9]{40}$ || "$base" = 0000000000000000000000000000000000000000 ]]; then
+            echo 'Missing exact clone reference; no fallback is allowed' >&2
+            exit 2
+          fi
+          git cat-file -e "$base^{commit}"
+          base_tree=$(git rev-parse "$base^{tree}")
+          if [ -n "$main_anchor" ]; then
+            git merge-base --is-ancestor "$base" "$main_anchor"
+          fi
+          mkdir -p "$RUNNER_TEMP/code-health"
+          {
+            printf 'event %s\nrun_time %s\ncutoff %s\nmain_anchor %s\n' "$GITHUB_EVENT_NAME" "$run_time" "$cutoff" "$main_anchor"
+            printf 'candidate %s\nbase %s\nbase_tree %s\n' "$(git rev-parse HEAD)" "$base" "$base_tree"
+          } | tee "$RUNNER_TEMP/code-health/reference.txt"
+          printf 'sha=%s\n' "$base" >> "$GITHUB_OUTPUT"
 
       - name: Install pnpm
         uses: pnpm/action-setup@v6
@@ -50,8 +99,10 @@ jobs:
       - name: Gate rules
         run: node --test scripts/code-health/gate.test.mjs
 
-      - name: Scan and compare with the baselines
-        run: node scripts/code-health/gate.mjs --out "$RUNNER_TEMP/code-health"
+      - name: Scan and compare
+        env:
+          CLONE_BASE: ${{ steps.clone-reference.outputs.sha }}
+        run: node scripts/code-health/gate.mjs --clone-base "$CLONE_BASE" --out "$RUNNER_TEMP/code-health"
 
       - name: Report
         if: always()
