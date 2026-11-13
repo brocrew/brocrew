@@ -59,16 +59,33 @@ it('a window listing reads piece history off the writer connection', async () =>
     windowWriterStamp: windowWriterSampler(db, () => true),
   })
   try {
-    measuring = true
-    const answer = await executeRuntimeCommand(host, {
-      ownerId: 'fictional-window', alive: true, aPersonIsBehindIt: true,
-      send: () => {}, sendLiveness: () => {},
-    }, { kind: 'listResumable' })
-    measuring = false
-    expect(answer).toEqual(expect.arrayContaining([
-      expect.objectContaining({ sessionId: 'holder', named: expect.objectContaining({ label: 'W1' }) }),
-    ]))
-    console.info(JSON.stringify({ queries, writerWalks: walks.length,
+    const phases: { phase: string; walks: number; rows: number; queries: number }[] = []
+    const listing = async (phase: string, title: string | null) => {
+      const before = walks.length
+      const asked = queries.length
+      measuring = true
+      const answer = await executeRuntimeCommand(host, {
+        ownerId: 'fictional-window', alive: true, aPersonIsBehindIt: true,
+        send: () => {}, sendLiveness: () => {},
+      }, { kind: 'listResumable' })
+      measuring = false
+      phases.push({ phase, walks: walks.length - before,
+        rows: walks.slice(before).reduce((sum, walk) => sum + walk.rows, 0),
+        queries: queries.length - asked })
+      expect(answer).toEqual(expect.arrayContaining([
+        expect.objectContaining({ sessionId: 'holder',
+          named: expect.objectContaining({ label: 'W1', title }) }),
+      ]))
+    }
+    await listing('cold', null)
+    await listing('warm', null)
+    const root = store.rootOf('holder')!
+    store.append('holder', 4001, {
+      type: 'work_retitled', piece: root.piece, title: 'Changed fictional work', by: null,
+    }, 4002)
+    await listing('after-work-commit', 'Changed fictional work')
+    await listing('warm-after-work-commit', 'Changed fictional work')
+    console.info(JSON.stringify({ phases, queries, writerWalks: walks.length,
       writerRows: walks.reduce((sum, walk) => sum + walk.rows, 0), callers: walks.map((walk) => walk.caller) }))
     expect(walks).toHaveLength(0)
   } finally {
