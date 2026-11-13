@@ -7675,6 +7675,10 @@ export class RuntimeHost implements LiveHost {
     }
     if (asked.length === 0 && keptOn.length === 0) return
     try {
+      if (keptOn.length === 0) {
+        await this.readForWindow(() => publish(this.statesThatMoved(asked), []))
+        return
+      }
       await this.freshWindowQuery({ kind: 'publication', kept: keptOn.map(({ piece, resources }) =>
         ({ piece, resources: [...resources] })) }, (reading) => {
         if (reading.kind !== 'publication') throw new WindowReadUnavailable()
@@ -16729,20 +16733,26 @@ export class RuntimeHost implements LiveHost {
   async personsQueue(): Promise<PersonsQueueAnswer> {
     try {
       let incidentsRead = false
+      let onMain: StampedIncidents | null = null
       try {
-        await this.incidentsForWindow(() => { incidentsRead = true })
+        await this.incidentsForWindow(() => {
+          if (this.deps.windowReader === undefined) onMain = this.stampedIncidents()
+          incidentsRead = true
+        })
       } catch (error) {
         if (this.launches.closed) throw error
       }
       return await this.readForWindow(() => {
-        let incidents: StampedIncidents | null = null
-        if (incidentsRead) {
+        let incidents: StampedIncidents | null = onMain
+        if (incidentsRead && this.deps.windowReader !== undefined) {
           const kept = this.windowIncidentsKept
-          if (this.deps.windowReader === undefined) {
-            incidents = this.windowIncidentReads.run(() => this.stampedIncidents())
-          } else if (kept?.result.kind === 'incidents' &&
+          if (kept?.result.kind === 'incidents' &&
             sameWindowWriter(kept.stamp, this.sampleWindowWriter({ kind: 'incidents' }))) {
-            incidents = this.windowIncidentReads.run(() => this.stampedIncidents(), kept.result)
+            try {
+              incidents = this.windowIncidentReads.run(() => this.stampedIncidents(), kept.result)
+            } catch (error) {
+              console.warn(`runtime host could not read queue incidents: ${errorMessage(error)}`)
+            }
           }
         }
         return this.personsQueueAssembled(incidents)
