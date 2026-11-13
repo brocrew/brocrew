@@ -462,10 +462,7 @@ describe('one row per conversation, and the count is the rows (090, D-017b)', ()
     expect(row(m, 'sess_lostref').textContent).not.toContain('thing')
   })
 
-  /**
-   * ⚑ **D-017b** — the empty group's own sentence went with the group; ⛔ a list that could not be
-   * READ still says so, and a failure is still not an empty list.
-   */
+  /** A failed read is reported rather than presented as an empty conversation list. */
   it('a list that could not be READ says so, in the error’s own words', async () => {
     stubbed().api = {
       runtime: {

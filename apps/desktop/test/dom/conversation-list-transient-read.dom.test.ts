@@ -23,7 +23,7 @@ function open(read = vi.fn(async () => rows)) {
   window.api.runtime.listResumable = read
   window.api.runtime.listUnresumable = vi.fn(async () => [])
   vi.useFakeTimers()
-  const workspace = reactive({ path: '/fictional/first', name: 'First' })
+  const workspace = reactive({ path: '/fictional/first', name: 'First', isDefault: false })
   const rail = ref<{
     refreshResumable(): Promise<void>
     hearStates(message: RuntimeStatesMessage): void
