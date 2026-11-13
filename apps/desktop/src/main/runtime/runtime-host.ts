@@ -16728,14 +16728,25 @@ export class RuntimeHost implements LiveHost {
    */
   async personsQueue(): Promise<PersonsQueueAnswer> {
     try {
-      let incidents: StampedIncidents | null
+      let incidentsRead = false
       try {
-        incidents = await this.incidentsForWindow(() => this.stampedIncidents())
+        await this.incidentsForWindow(() => { incidentsRead = true })
       } catch (error) {
         if (this.launches.closed) throw error
-        incidents = null
       }
-      return await this.readForWindow(() => this.personsQueueAssembled(incidents))
+      return await this.readForWindow(() => {
+        let incidents: StampedIncidents | null = null
+        if (incidentsRead) {
+          const kept = this.windowIncidentsKept
+          if (this.deps.windowReader === undefined) {
+            incidents = this.windowIncidentReads.run(() => this.stampedIncidents())
+          } else if (kept?.result.kind === 'incidents' &&
+            sameWindowWriter(kept.stamp, this.sampleWindowWriter({ kind: 'incidents' }))) {
+            incidents = this.windowIncidentReads.run(() => this.stampedIncidents(), kept.result)
+          }
+        }
+        return this.personsQueueAssembled(incidents)
+      })
     } catch (error) {
       return this.personsQueueRefused(errorMessage(error))
     }

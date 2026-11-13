@@ -476,8 +476,7 @@ describe('canonical window worker folds and independent live-store reads', () =>
     const read = vi.fn(async (input: WindowReadQuery) => {
       const answer = engine.read(input)
       row('alpha', 'text', { type: 'text', text: 'fictional stream' })
-      row('beta', 'status', { type: 'status', state: 'working' })
-      row('alpha', 'status', { type: 'status', state: 'idle' })
+      row('beta', 'thinking', { type: 'thinking', phase: 'delta', text: 'fictional stream' })
       return answer
     })
     const { host, writer } = hostWith({ read, close: async () => {} }, true)

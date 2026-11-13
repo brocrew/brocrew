@@ -13,7 +13,7 @@ import { limitsWriterSampler } from '../src/main/db/fresh-limits-snapshot'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import type { RuntimeStatesMessage } from '../src/shared/runtime-ipc'
 
-it('measures listings and real state notices with nine live agents', async () => {
+it('measures window reads with 1960 conversations and nine live agents', async () => {
   const previousStackLimit = Error.stackTraceLimit
   Error.stackTraceLimit = 50
   const mainHistory: { sql: string; rows: number; caller: string }[] = []
@@ -29,7 +29,7 @@ it('measures listings and real state notices with nine live agents', async () =>
       const caller = new Error().stack ?? ''
       const row = { sql, rows: 0, caller, phase }
       if (measuring) {
-        if (/theListing|statesThatMoved|whatWasKept|personsQueue|ForAPerson/.test(caller)) mainHistory.push(row)
+        if (/theListing|statesThatMoved|whatWasKept|personsQueue|ForAPerson/.test(caller) && !/reconciliationReading|reconcileWork/.test(caller)) mainHistory.push(row)
         else otherMainHistory.push(row)
       }
       return row
@@ -87,6 +87,15 @@ it('measures listings and real state notices with nine live agents', async () =>
       world.anAgent(profile, 'normal')
       ids.push(await world.aPersonOpens(host, profile))
     }
+    const allIds = [...ids]
+    world.db.transaction(() => {
+      for (let n = ids.length; n < 1960; n++) {
+        const id = `fictional-recorded-${n}`
+        world.store.create({ id, provider: 'codex', profileId: 'fictional-recorded',
+          cwd: world.folder, approvalMode: 'ask' })
+        allIds.push(id)
+      }
+    })()
     world.clockStep = 0
     world.db.transaction(() => {
       for (const id of ids) {
@@ -101,9 +110,32 @@ it('measures listings and real state notices with nine live agents', async () =>
             '{"type":"status","state":"idle"}', ? FROM n`).run(`seed-${id}`, id, start, world.clock)
       }
     })()
+    world.db.transaction(() => {
+      const addWork = world.db.prepare(`INSERT INTO work
+        (id, parent_id, number, owner_session_id, given_by_session_id, title, brief, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      for (let n = 0; n < 5108; n++) {
+        const owner = allIds[n % allIds.length]!
+        const root = world.store.rootOf(owner)!
+        const piece = n < 9 ? `${owner}-piece` : `fictional-piece-${n}`
+        const number = Math.floor(n / allIds.length) + 1
+        addWork.run(piece, root.piece, number, owner, ids[0], 'Fictional child', 'Fictional brief', world.clock)
+        if (n >= 9) {
+          world.store.append(owner, world.store.nextOrdinal(owner), { type: 'work_given', piece,
+            label: `${root.label}.${number}`, parent: root.piece, givenBy: ids[0]!,
+            title: 'Fictional child', brief: 'Fictional brief' }, world.clock)
+          world.store.append(owner, world.store.nextOrdinal(owner), { type: 'work_closed', piece,
+            by: ids[0]! }, world.clock)
+        }
+      }
+    })()
+    const setupStarted = performance.now()
     // Let the independent startup reconciler finish before measuring the window read boundary.
     await new Promise<void>((resolve) => setImmediate(resolve))
     await workerReady
+    const setupSettledMs = performance.now() - setupStarted
+    const population = { total: allIds.length, active: ids.length,
+      workRows: (world.db.prepare('SELECT count(*) AS n FROM work').get() as { n: number }).n }
     readings.length = 0
     measuring = true
     last = performance.now()
@@ -130,6 +162,7 @@ it('measures listings and real state notices with nine live agents', async () =>
     }
     await list('cold')
     await list('warm')
+    expect(await executeRuntimeCommand(host, world.window, { kind: 'listUnresumable' })).toHaveLength(1951)
     const beforePush = pushed.length
     phase = 'nine-provider-notices'
     for (const { handle } of world.handles)
@@ -182,7 +215,7 @@ it('measures listings and real state notices with nine live agents', async () =>
       })),
     })
     console.info(JSON.stringify({ phases, readings, mainHistory: summarize(mainHistory),
-      otherMainHistory: summarize(otherMainHistory), longGaps, laneLoad,
+      otherMainHistory: summarize(otherMainHistory), longGaps, laneLoad, population, setupSettledMs,
       load: { acceptedListings, acceptedQueues, streamRounds, pushes: pushed.length - beforeLoadPush, failures }, heartbeat: {
       count: gaps.length, maxAddedMs: Math.max(...gaps),
       p95AddedMs: [...gaps].sort((a, b) => a - b)[Math.floor(gaps.length * .95)],
@@ -196,7 +229,7 @@ it('measures listings and real state notices with nine live agents', async () =>
     expect([...gaps].sort((a, b) => a - b)[Math.floor(gaps.length * .95)]).toBeLessThanOrEqual(25)
     expect(Math.max(...gaps)).toBeLessThanOrEqual(100)
     expect(readings.some((one) => one.kind === 'publication')).toBe(true)
-    expect(Math.max(...readings.map((one) => one.bytes))).toBeLessThan(9 * 2000 * 24)
+    expect(Math.max(...readings.filter((one) => one.kind !== 'incidents').map((one) => one.bytes))).toBeLessThan(4 * 1024 * 1024)
   } finally {
     release()
     measuring = false

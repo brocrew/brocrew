@@ -57,9 +57,10 @@ describe('window writer revisions follow the selected facts', () => {
     return id
   }
 
-  it('fences the complete work snapshot including content and working/idle statuses', () => {
+  it('fences work statuses without invalidating for stream content', () => {
     const before = sample(routes)
     row('text', '{"type":"text","text":"fictional"}')
+    expect(sameWindowWriter(before, sample(routes))).toBe(true)
     for (const state of ['working', 'idle'])
       row('status', JSON.stringify({ type: 'status', state }))
     expect(sameWindowWriter(before, sample(routes))).toBe(false)
@@ -70,7 +71,7 @@ describe('window writer revisions follow the selected facts', () => {
     expect(sameWindowWriter(ended, sample(routes))).toBe(false)
   })
 
-  it('a metadata write moves the complete fence without invalidating owner folds', () => {
+  it('an unclassified metadata write moves the complete fence and resets folds', () => {
     const before = sample(routes)
     usageKeptIn(db).write({
       readings: {
@@ -81,7 +82,7 @@ describe('window writer revisions follow the selected facts', () => {
     })
     const after = sample(routes)!
     expect(sameWindowWriter(before, after)).toBe(false)
-    expect(sample.changedOwners!(before!, after)).toEqual([])
+    expect(sample.changedOwners!(before!, after)).toBeNull()
   })
 
   it('includes old-row payload updates, reclassification, deletion and rolled-back changes', () => {
@@ -95,7 +96,7 @@ describe('window writer revisions follow the selected facts', () => {
     expect(sample(routes)).toBeNull()
     db.exec('ROLLBACK')
     const rolledBack = sample(routes)!
-    expect(sameWindowWriter(updated, rolledBack)).toBe(false)
+    expect(sameWindowWriter(updated, rolledBack)).toBe(true)
     expect(sample.changedOwners!(updated!, rolledBack)).toEqual([])
     db.prepare('UPDATE events SET type = ? WHERE id = ?').run('text', id)
     expect(sameWindowWriter(updated, sample(routes))).toBe(false)
@@ -164,9 +165,36 @@ describe('window writer revisions follow the selected facts', () => {
     expect(sameWindowWriter(beta, sample(betaQuery))).toBe(true)
     const active = sample(routes)
     db.prepare('UPDATE derived_generation SET building = 2 WHERE session_id = ?').run('alpha')
-    expect(sameWindowWriter(active, sample(routes))).toBe(false)
+    expect(sameWindowWriter(active, sample(routes))).toBe(true)
     db.prepare('DELETE FROM derived_generation WHERE session_id = ?').run('alpha')
     expect(sameWindowWriter(active, sample(routes))).toBe(false)
+  })
+
+  it('keeps stream and timestamp writes irrelevant only to work snapshots', () => {
+    const before = sample(routes)!
+    const activity = sample({ kind: 'activity', from: 0, to: 1000 })!
+    for (const type of ['assistant_delta', 'thinking']) row(type, JSON.stringify({ type, text: 'stream' }))
+    db.prepare('UPDATE provider_session SET updated_at = updated_at + 1 WHERE id = ?').run('alpha')
+    expect(sameWindowWriter(before, sample(routes))).toBe(true)
+    expect(sameWindowWriter(activity, sample({ kind: 'activity', from: 0, to: 1000 }))).toBe(false)
+    db.prepare("UPDATE provider_session SET status = 'working' WHERE id = 'alpha'").run()
+    const changed = sample(routes)!
+    expect(sameWindowWriter(before, changed)).toBe(false)
+    expect(sample.changedOwners!(before, changed)).toEqual(['alpha'])
+  })
+
+  it('tracks a new metadata table after a schema change and rolls its writes back', () => {
+    const before = sample(routes)!
+    db.exec('CREATE TABLE fictional_metadata (value TEXT)')
+    const schema = sample(routes)!
+    expect(sample.changedOwners!(before, schema)).toBeNull()
+    db.exec("INSERT INTO fictional_metadata VALUES ('first')")
+    const written = sample(routes)!
+    expect(sample.changedOwners!(schema, written)).toBeNull()
+    db.exec("BEGIN; UPDATE fictional_metadata SET value = 'rolled back'; ROLLBACK")
+    expect(sameWindowWriter(written, sample(routes))).toBe(true)
+    db.exec("UPDATE fictional_metadata SET value = 'corrected'")
+    expect(sameWindowWriter(written, sample(routes))).toBe(false)
   })
 
   it('samplers sharing a writer cannot alias watchers, and eviction changes their identity', () => {
@@ -178,7 +206,7 @@ describe('window writer revisions follow the selected facts', () => {
     for (let i = 11; i < 280; i++) other({ ...leads, before: i })
     expect(sameWindowWriter(before, sample(leads))).toBe(false)
     expect(db.prepare('SELECT count(*) AS n FROM temp.window_read_revision').get()).toEqual({
-      n: 259,
+      n: 260,
     })
   })
 
@@ -234,8 +262,8 @@ describe('window writer revisions follow the selected facts', () => {
       ).toEqual({ n: 0 })
       sample = windowWriterSampler(db, () => true)
       expect(
-        db.prepare("SELECT count(*) AS n FROM sqlite_temp_master WHERE type = 'trigger'").get(),
-      ).toEqual({ n: 13 })
+        db.prepare("SELECT count(*) AS n FROM sqlite_temp_master WHERE type = 'trigger' AND tbl_name = 'events'").get(),
+      ).toEqual({ n: 6 })
       const before = sample(routes)
       const leadBefore = sample(leads)
       expect(before).not.toBeNull()

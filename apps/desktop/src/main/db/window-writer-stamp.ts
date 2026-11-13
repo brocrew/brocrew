@@ -19,21 +19,17 @@ export type WindowWriterSampler = ((query: WindowReadQuery) => WindowWriterStamp
   changedOwners?: (before: WindowWriterStamp, now: WindowWriterStamp) => readonly string[] | null
 }
 
-const terms = (types: readonly string[]) => types.map((type) => `'${type}'`).join(', ')
+const terms = (types: readonly string[]) => types.map((type) => `'${type.replaceAll("'", "''")}'`).join(', ')
 const selects = (row: string, types: readonly string[]) =>
   `(CASE ${row}.type ${types.map((type) => `WHEN '${type}' THEN 1`).join(' ')} ELSE 0 END)`
 const operations = ['INSERT', 'DELETE', 'UPDATE']
 const eventTriggers = operations.map((operation) => `window_read_event_${operation}`)
 const generationTriggers = operations.map((operation) => `window_read_generation_${operation}`)
 const foldTriggers = operations.map((operation) => `window_read_fold_${operation}`)
-const resetTriggers = operations.map((operation) => `window_read_stall_${operation}`)
-const triggerCount = BigInt(eventTriggers.length + generationTriggers.length + foldTriggers.length + resetTriggers.length + 1)
-const installedTriggers = `(SELECT count(*) FROM sqlite_temp_master WHERE type = 'trigger' AND
-  ((tbl_name = 'events' AND name IN (${terms(eventTriggers)})) OR
-   (tbl_name = 'derived_generation' AND name IN (${terms(generationTriggers)})) OR
-   (tbl_name = 'events' AND name IN (${terms(foldTriggers)})) OR
-   (tbl_name = 'work_legacy_stall_cut' AND name IN (${terms(resetTriggers)})) OR
-   (tbl_name = 'provider_session' AND name = 'window_read_provider_update')))`
+const quote = (name: string) => '"' + name.replaceAll('"', '""') + '"'
+const streamTypes = ['assistant_delta', 'thinking', 'text']
+const metadataOnly = new Set(['agent_identity', 'identity_instruction', 'identity_instruction_seen',
+  'work_resource', 'work_sequence', 'archived_conversation'])
 const integer = (value: unknown): value is bigint => typeof value === 'bigint' && value >= 0n
 const watchers = new WeakMap<
   Database.Database,
@@ -70,6 +66,9 @@ export function windowWriterSampler(
     }
   }
   let installed = false
+  let mainSchema: number | undefined
+  let metadataTriggers: string[] = []
+  const allTriggers = () => [...eventTriggers, ...generationTriggers, ...foldTriggers, ...metadataTriggers]
   const candidate = (row: string) => `EXISTS (SELECT 1 FROM main.events
     WHERE type = 'request_routed' AND session_id = ${row}.session_id)`
   const active = (row: string) => `${row}.generation = coalesce(
@@ -111,7 +110,7 @@ export function windowWriterSampler(
     db.exec(`CREATE TEMP TABLE IF NOT EXISTS window_read_fold_owners (
       session TEXT PRIMARY KEY, revision INTEGER NOT NULL);
       CREATE INDEX IF NOT EXISTS temp.window_read_fold_owners_revision ON window_read_fold_owners(revision);
-      INSERT OR IGNORE INTO window_read_revision (id, kind) VALUES (-1, 'folds'), (-2, 'reset');`)
+      INSERT OR IGNORE INTO window_read_revision (id, kind) VALUES (-1, 'folds'), (-2, 'reset'), (-3, 'complete');`)
     for (const operation of operations) {
       const rows =
         operation === 'UPDATE' ? ['OLD', 'NEW'] : [operation === 'INSERT' ? 'NEW' : 'OLD']
@@ -128,11 +127,15 @@ export function windowWriterSampler(
         'ordinal',
         'created_at',
       ])
+      const snapshotChanged = `(${routesChanged} AND (${rows.map((row) => `${row}.type NOT IN (${terms(streamTypes)})`).join(' OR ')}))`
       db.exec(`CREATE TEMP TRIGGER IF NOT EXISTS window_read_event_${operation}
         AFTER ${operation} ON main.events
-        WHEN (${routesChanged} AND (${rows.map(relevant).join(' OR ')}))
+        WHEN ${snapshotChanged} OR (${routesChanged} AND (${rows.map(relevant).join(' OR ')}))
           OR (${leadsChanged} AND (${rows.map((row) => selects(row, THREAD_LEAD_EVENT_TYPES)).join(' OR ')}))
         BEGIN
+          UPDATE window_read_revision SET revision = revision + 1 WHERE id = -3 AND ${snapshotChanged};
+          UPDATE window_read_revision SET revision = revision + 1 WHERE id = -2 AND ${snapshotChanged}
+            AND (${rows.map((row) => `${row}.type NOT IN (${FOLD_TYPE_LIST}, ${terms(streamTypes)})`).join(' OR ')});
           UPDATE window_read_revision SET revision = revision + 1
             WHERE id = 0 AND (${rows.map(route).join(' OR ')});
           UPDATE window_read_revision SET revision = revision + 1
@@ -147,7 +150,7 @@ export function windowWriterSampler(
       db.exec(`CREATE TEMP TRIGGER IF NOT EXISTS window_read_generation_${operation}
         AFTER ${operation} ON main.derived_generation ${changed}
         BEGIN
-          UPDATE window_read_revision SET revision = revision + 1 WHERE id = -1;
+          UPDATE window_read_revision SET revision = revision + 1 WHERE id IN (-1, -3);
           ${rows.map((row) => `INSERT INTO window_read_fold_owners(session, revision)
             VALUES (${row}.session_id, (SELECT revision FROM window_read_revision WHERE id = -1))
             ON CONFLICT(session) DO UPDATE SET revision = excluded.revision;`).join('\n')}
@@ -163,14 +166,37 @@ export function windowWriterSampler(
           ${rows.map((row) => `INSERT INTO window_read_fold_owners(session, revision)
             VALUES (${row}.session_id, (SELECT revision FROM window_read_revision WHERE id = -1))
             ON CONFLICT(session) DO UPDATE SET revision = excluded.revision;`).join('\n')}
-        END;
-        CREATE TEMP TRIGGER IF NOT EXISTS window_read_stall_${operation}
-        AFTER ${operation} ON main.work_legacy_stall_cut
-        BEGIN UPDATE window_read_revision SET revision = revision + 1 WHERE id = -2; END;`)
+        END;`)
     }
-    db.exec(`CREATE TEMP TRIGGER IF NOT EXISTS window_read_provider_update
-      AFTER UPDATE OF provider ON main.provider_session WHEN OLD.provider IS NOT NEW.provider
-      BEGIN UPDATE window_read_revision SET revision = revision + 1 WHERE id = -2; END;`)
+    metadataTriggers = []
+    const tables = db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table'
+      AND name NOT LIKE 'sqlite_%' AND sql NOT LIKE 'CREATE VIRTUAL TABLE%'`).all() as { name: string }[]
+    for (const { name } of tables) {
+      if (['events', 'derived_generation', 'raw_frame'].includes(name)) continue
+      const columns = (db.prepare(`PRAGMA table_info(${quote(name)})`).all() as { name: string }[])
+        .map((column) => column.name).filter((column) => name !== 'provider_session' || column !== 'updated_at')
+      for (const operation of operations) {
+        const trigger = `window_read_meta_${name}_${operation}`
+        metadataTriggers.push(trigger)
+        const rows = operation === 'UPDATE' ? ['OLD', 'NEW'] : [operation === 'INSERT' ? 'NEW' : 'OLD']
+        const changed = operation === 'UPDATE'
+          ? `WHEN ${columns.map((column) => `OLD.${quote(column)} IS NOT NEW.${quote(column)}`).join(' OR ')}` : ''
+        const ownerColumn = name === 'provider_session' ? 'id' : name === 'work' ? 'owner_session_id' : null
+        const owners = ownerColumn === null ? '' : `
+          UPDATE window_read_revision SET revision = revision + 1 WHERE id = -1;
+          ${rows.map((row) => `INSERT INTO window_read_fold_owners(session, revision)
+            VALUES (${row}.${ownerColumn}, (SELECT revision FROM window_read_revision WHERE id = -1))
+            ON CONFLICT(session) DO UPDATE SET revision = excluded.revision;`).join('\n')}`
+        const reset = ownerColumn === null && !metadataOnly.has(name)
+          ? 'UPDATE window_read_revision SET revision = revision + 1 WHERE id = -2;' : ''
+        db.exec(`CREATE TEMP TRIGGER IF NOT EXISTS ${quote(trigger)} AFTER ${operation} ON main.${quote(name)} ${changed}
+          BEGIN
+            UPDATE window_read_revision SET revision = revision + 1 WHERE id = -3;
+            ${owners} ${reset}
+          END;`)
+      }
+    }
+    mainSchema = db.pragma('main.schema_version', { simple: true }) as number
     installed = true
   }
   if (shared.suspended > 0) failedReinstall()
@@ -198,8 +224,9 @@ export function windowWriterSampler(
           `SELECT revision, total_changes() AS changes, data_version AS version,
       (SELECT revision FROM window_read_revision WHERE id = -1) AS folds,
       (SELECT revision FROM window_read_revision WHERE id = -2) AS reset,
+      (SELECT revision FROM window_read_revision WHERE id = -3) AS complete,
       recursive_triggers AS recursive,
-      ${installedTriggers} AS triggers
+      (SELECT count(*) FROM sqlite_temp_master WHERE type = 'trigger' AND name IN (${terms(allTriggers())})) AS triggers
     FROM temp.window_read_revision, pragma_data_version, pragma_recursive_triggers
     WHERE id = ?`,
         )
@@ -213,8 +240,8 @@ export function windowWriterSampler(
     if (shared.suspended > 0) return write()
     shared.suspended++
     try {
-      for (const trigger of [...eventTriggers, ...generationTriggers, ...foldTriggers, ...resetTriggers, 'window_read_provider_update'])
-        db.exec(`DROP TRIGGER IF EXISTS temp.${trigger}`)
+      for (const trigger of allTriggers())
+        db.exec(`DROP TRIGGER IF EXISTS temp.${quote(trigger)}`)
       return write()
     } finally {
       try {
@@ -233,6 +260,15 @@ export function windowWriterSampler(
     if (query.kind === 'files') return null
     try {
       if (shared.suspended > 0 || !db.open || db.inTransaction || !noRetainedCursor()) return null
+      const schema = db.pragma('main.schema_version', { simple: true }) as number
+      if (schema !== mainSchema) {
+        for (const trigger of allTriggers()) db.exec(`DROP TRIGGER IF EXISTS temp.${quote(trigger)}`)
+        installed = false
+        statements = undefined
+        shared.owner = {}
+        install()
+        db.prepare('UPDATE temp.window_read_revision SET revision = revision + 1').run()
+      }
       if (shared.failed) {
         try {
           installed = false
@@ -276,6 +312,7 @@ export function windowWriterSampler(
             changes?: unknown
             folds?: unknown
             reset?: unknown
+            complete?: unknown
           }
         | undefined
       // Recreated counters and triggers cannot validate a sample from before the schema change.
@@ -284,7 +321,7 @@ export function windowWriterSampler(
       if (
         row === undefined ||
         row.recursive !== 1n ||
-        row.triggers !== triggerCount ||
+        row.triggers !== BigInt(allTriggers().length) ||
         typeof schemaVersion !== 'number' ||
         !Number.isSafeInteger(schemaVersion) ||
         schemaVersion < 0 ||
@@ -293,6 +330,7 @@ export function windowWriterSampler(
         !integer(row.changes) ||
         !integer(row.folds) ||
         !integer(row.reset) ||
+        !integer(row.complete) ||
         !Number.isFinite(at) ||
         !db.open ||
         db.inTransaction ||
@@ -302,7 +340,9 @@ export function windowWriterSampler(
       return {
         writer: shared.owner,
         watcher,
-        revision: query.kind === 'routes' || query.kind === 'publication' ? row.changes : row.revision,
+        revision: query.kind === 'leads' ? row.revision
+          : query.kind === 'routes' || query.kind === 'publication' || query.kind === 'incidents'
+            ? row.complete : row.changes,
         dataVersion: row.version,
         schemaVersion: BigInt(schemaVersion),
         at,
