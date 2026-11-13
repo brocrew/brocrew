@@ -130,7 +130,7 @@ describe('§2 · the long form is any kind of file this app holds, rendered from
     // being quoted in the summary.
     expect(said).toContain(`Put the rest in ${HELD_FORMS_SAID} and name its path in resource_paths`)
     expect(said).not.toContain('in a Markdown file and')
-    expect(HELD_FORMS_SAID).toBe('a Markdown file, a page, an image or a PDF')
+    expect(HELD_FORMS_SAID).toBe('a Markdown file, a page, an image, a PDF or any other file')
   })
 
   // ⚑ Not a control — a pin on the rendering itself, which exists only since `736`.
@@ -139,9 +139,9 @@ describe('§2 · the long form is any kind of file this app holds, rendered from
     for (const extension of Object.keys(FORM_OF_EXTENSION)) {
       expect(HELD_FORMS_WITH_EXTENSIONS_SAID, extension).toContain(extension)
     }
-    expect(DOCUMENT_FORMS.length).toBe(4)
+    expect(DOCUMENT_FORMS.length).toBe(5)
     expect(HELD_FORMS_WITH_EXTENSIONS_SAID).toBe(
-      'a Markdown file (.md), a page (.html, .htm), an image (.png, .jpg, .jpeg, .gif, .webp, .svg) or a PDF (.pdf)',
+      'a Markdown file (.md), a page (.html, .htm), an image (.png, .jpg, .jpeg, .gif, .webp, .svg), a PDF (.pdf) or any other file',
     )
   })
 })

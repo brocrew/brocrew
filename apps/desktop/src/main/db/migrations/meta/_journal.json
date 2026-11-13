@@ -225,6 +225,13 @@
       "when": 1794484637450,
       "tag": "0031_knowledge_actor_attribution",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1794506138924,
+      "tag": "0032_keep_empty_resources",
+      "breakpoints": true
     }
   ]
 }

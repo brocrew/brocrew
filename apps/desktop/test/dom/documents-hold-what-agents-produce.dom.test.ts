@@ -109,6 +109,31 @@ describe('635 · a page is shown, never run', () => {
     expect(m.all('doc-view-markdown')).toHaveLength(1)
   })
 
+  it('shows generic UTF-8 and empty text as raw content without a Markdown view', () => {
+    for (const text of ['ordinary text\n', '']) {
+      const m = mount(
+        CanonicalDocumentViewer,
+        { result: shown({ form: 'file', name: 'notes.txt', text, bytes: text.length }) },
+        { width: 900, height: 700 },
+      )
+      expect(m.q('document-body').dataset.view).toBe('raw')
+      expect(m.all('doc-view-markdown')).toHaveLength(0)
+      expect(m.all('canonical-document-not-drawn')).toHaveLength(0)
+      if (text !== '') expect(m.host.textContent).toContain(text.trim())
+      m.unmount()
+    }
+  })
+
+  it('keeps opaque content distinct from an empty text preview', () => {
+    const m = mount(
+      CanonicalDocumentViewer,
+      { result: shown({ form: 'file', name: 'opaque.bin', text: null, bytes: 3 }) },
+      { width: 900, height: 700 },
+    )
+    expect(m.all('document-body')).toHaveLength(0)
+    expect(m.q('canonical-document-not-drawn').textContent).toContain('no preview for its format')
+  })
+
   it('⚠️ a form this window cannot draw says so, and does not draw an empty document', () => {
     // 🔴 **`an-unenumerated-state-counts-as-success` at the surface most likely to hit it**: a
     // picture has no text, and a viewer that fed `null` to the paper would show a blank page over

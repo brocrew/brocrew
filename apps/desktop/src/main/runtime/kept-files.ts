@@ -202,7 +202,7 @@ export class KeptFiles {
           const read = root === undefined ? null : resourceBytes(root, row.resource)
           texts.set(
             copy,
-            read?.ok === true && read.content.as !== 'not-for-a-model'
+            read?.ok === true && read.content.as !== 'file'
               ? wordsInTheText(read.content.text, asked.words)
               : null,
           )
@@ -353,8 +353,7 @@ export class KeptFiles {
     }
     const read = resourceBytes(root, row)
     if (!read.ok) return { ok: false, refusal: read.refusal }
-    // ⚑ **635 · the CONTENT and never the bytes** (`HO-097` §1.2). ⛔ A model gets a form it can
-    // use or a word saying there is none; the Buffer stays on this side of the wire.
+    // Inline text or an actual kept path; raw Buffers stay off the tool wire.
     return { ok: true, resource: row, form: read.form, content: read.content }
   }
 
@@ -397,7 +396,7 @@ export class KeptFiles {
       form: read.form,
       // ⛔ **The TEXT for a text form and `null` otherwise** — a `''` here would draw an empty page
       // over a picture (`an-unenumerated-state-counts-as-success`).
-      text: read.content.as === 'not-for-a-model' ? null : read.content.text,
+      text: read.content.as === 'file' ? read.content.preview : read.content.text,
       bytes: row.bytes,
     }
   }

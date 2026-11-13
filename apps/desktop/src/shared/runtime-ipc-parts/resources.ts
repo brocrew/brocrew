@@ -78,9 +78,7 @@ export type ResourceReading =
        * ⚑ **The TEXT, hash-re-checked on the way out** — Markdown for a report, the source for a
        * page, and ⛔ **`null` for a form that encodes none.**
        *
-       * ⚠️ **`null` and never `''`.** Every resource holds at least one byte, and a picture is a
-       * different thing entirely: a viewer that could not tell them apart would draw a blank page over
-       * an image (`an-unenumerated-state-counts-as-success`).
+       * An empty text file is `''`; an unsupported binary preview is `null`.
        */
       text: string | null
       /** What was recorded when it was kept, so the panel can say how big it is without measuring. */

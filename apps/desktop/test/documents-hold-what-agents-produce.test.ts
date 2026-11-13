@@ -1,13 +1,24 @@
-import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
-import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+  fixtureDatabase,
+} from './lib/host-fixture'
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import type { AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { agentCallerId, agentToolsFor } from '../src/main/runtime/agent-tools'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
@@ -46,9 +57,6 @@ import { renderMarkdown } from '../src/renderer/src/lib/markdown'
  * one and `HO-097` §1.1 says to keep it so — reached here on a piece a real `giveWork` handed out.
  */
 
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
-
 class Window implements RuntimeEventSink {
   readonly aPersonIsBehindIt = true
   alive = true
@@ -71,8 +79,7 @@ describe('635 · the store widens, and viewing never executes', () => {
   beforeEach(() => {
     userData = mkdtempSync(join(tmpdir(), 'brobot2-635-'))
     work = mkdtempSync(join(tmpdir(), 'brobot2-635-work-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    db = fixtureDatabase(userData)
     clock = 1_800_000_000_000
     store = createSessionStore(db, tick)
     counter = 0
@@ -157,7 +164,7 @@ describe('635 · the store widens, and viewing never executes', () => {
     return resource
   }
 
-  it('give inputs and update resources retain the common refusal when the reply has its own words', async () => {
+  it('give inputs and update resources keep ordinary files byte for byte', async () => {
     const piece = await aPiece()
     const path = wrote('not-kept.zsh', 'Fictional text; never executed.')
     const tools = agentToolsFor(host, piece.giver).tools
@@ -175,18 +182,22 @@ describe('635 · the store widens, and viewing never executes', () => {
       ['update_work', { piece: piece.label, resources: [path] }],
     ] as const) {
       const answer = await tools.find((one) => one.name === name)!.call(args)
-      expect(answer.structured?.['outcome']).toBe('refused')
-      expect(answer.structured?.['rail']).toBe('resource-not-a-form-this-app-keeps')
-      expect(String(answer.structured?.['reason'])).toContain(
-        'Keep it where it is and name its full path in what you write. Use the assigned folder.',
-      )
-      expect(String(answer.structured?.['reason'])).not.toContain(
-        'summary instead of resource_paths',
-      )
+      expect(answer.structured?.['outcome']).toBe('ok')
+      const files = answer.structured?.[name === 'give_work' ? 'inputs' : 'resources'] as {
+        resource: string
+        name: string
+      }[]
+      expect(files).toHaveLength(1)
+      const read = host.readResource(files[0]!.resource)
+      if (!read.ok) throw new Error(`refused: ${read.refusal.rail}`)
+      expect(read.form).toBe('file')
+      expect(read.content).toMatchObject({ as: 'file', preview: 'Fictional text; never executed.' })
+      if (read.content.as !== 'file') throw new Error('expected a kept path')
+      expect(readFileSync(read.content.path)).toEqual(readFileSync(path))
     }
     const record = host.pieceRecord(piece.giver, piece.label)
     if (record.is !== 'a-piece') throw new Error('fictional piece missing')
-    expect(store.resourcesOf(record.piece.piece)).toEqual([])
+    expect(store.resourcesOf(record.piece.piece)).toHaveLength(1)
   })
 
   // ───────────────────────────────────────────────────────────────────────────────────────────
@@ -206,6 +217,7 @@ describe('635 · the store widens, and viewing never executes', () => {
       page: { name: 'clock.html', body: '<!doctype html>\n<p>the world clock</p>\n' },
       // ⚑ **A real PNG header**, so the bytes are a picture rather than text with a `.png` on it.
       image: { name: 'shot.png', body: Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex') },
+      file: { name: 'deliverable.bin', body: Buffer.from([0xff, 0, 0x80]) },
       pdf: { name: 'report.pdf', body: Buffer.from('%PDF-1.7\n%\xE2\xE3\xCF\xD3\n', 'binary') },
     }
 
@@ -240,32 +252,34 @@ describe('635 · the store widens, and viewing never executes', () => {
       )
     })
 
-    it('⛔ an EMPTY file is refused whatever its type — the one text rule that is about the FILE', async () => {
-      // ⚑ **`resource-empty`'s own sentence is true of a picture**: *an empty file is not a
-      // resource*. ⚠️ The UTF-8 rule is about an ENCODING and is skipped for a binary form; this
-      // one is not.
-      const piece = await aPiece()
-      for (const name of ['empty.md', 'empty.png', 'empty.pdf']) {
-        const refused = await offer(piece, [wrote(name, Buffer.alloc(0))])
-        expect(refused.ok, `${name} was kept`).toBe(false)
-        if (!refused.ok) expect(refused.refusal.rail, name).toBe('resource-empty')
+    it('keeps empty files of every form with their actual zero bytes', async () => {
+      for (const name of ['empty.md', 'empty.html', 'empty.png', 'empty.pdf', 'empty.bin']) {
+        const resource = await mustKeep(wrote(name, Buffer.alloc(0)))
+        expect(store.resource(resource)?.bytes).toBe(0)
+        const read = host.readResource(resource)
+        if (!read.ok) throw new Error(`refused: ${read.refusal.rail}`)
+        expect(read.resource.bytes).toBe(0)
+        if (read.content.as === 'file') {
+          expect(readFileSync(read.content.path)).toEqual(Buffer.alloc(0))
+          expect(read.content.preview).toBe(read.form === 'file' ? '' : null)
+        } else {
+          expect(read.content.text).toBe('')
+        }
       }
     })
 
-    it('⛔ a type this app has no word for is refused, and the refusal names a performable act', async () => {
-      const refused = await offer(await aPiece(), [wrote('deliverable.zip', 'not a document\n')])
-      expect(refused.ok).toBe(false)
-      if (refused.ok) return
-      expect(refused.refusal.rail).toBe('resource-not-a-form-this-app-keeps')
-      // 🔴 **`permanent`, so no remedy FIELD** — `425`'s biconditional, which `628` re-ruled.
-      expect(refused.refusal.permanence).toBe('permanent')
-      expect(refused.refusal.retryable).toBe(false)
-      expect(refused.refusal.remedy).toBeNull()
-      // A reply names its summary field; other file-writing doors retain the common remedy.
-      expect(refused.refusal.reason).toBe(
-        'This app does not keep a .zip file. It keeps a Markdown file, a page, an image or a PDF. Name its full path in summary instead of resource_paths; keep the file where it is. Nothing was kept or recorded.',
-      )
-      expect(refused.refusal.reason).not.toMatch(/project folder/i)
+    it('keeps opaque bytes without inventing a text preview', async () => {
+      const bytes = Buffer.from([0xff, 0, 0x80, 0x50])
+      const resource = await mustKeep(wrote('deliverable.zip', bytes))
+      const read = host.readResource(resource)
+      if (!read.ok || read.content.as !== 'file') throw new Error('expected a kept file')
+      expect(read.form).toBe('file')
+      expect(read.content).toMatchObject({
+        mimeType: 'application/octet-stream',
+        bytes: 4,
+        preview: null,
+      })
+      expect(readFileSync(read.content.path)).toEqual(bytes)
     })
   })
 
@@ -274,26 +288,40 @@ describe('635 · the store widens, and viewing never executes', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§2 · the content union', () => {
-    it('🔴 a report is markdown, a page is its SOURCE, and a picture says it is not text', async () => {
+    it('returns text inline and gives the model usable kept paths for media', async () => {
       const report = await mustKeep(wrote('r.md', '# it worked\n'))
       const page = await mustKeep(wrote('p.html', '<p>hello</p>\n'))
-      const picture = await mustKeep(wrote('s.png', Buffer.from('89504e470d0a1a0a', 'hex')))
-
       const read = (id: string) => {
         const answer = host.readResource(id)
         if (!answer.ok) throw new Error(`refused: ${answer.refusal.rail}`)
         return answer.content
       }
       expect(read(report)).toEqual({ as: 'markdown', text: '# it worked\n' })
-      // ⛔ **The source, verbatim** — not rendered, not stripped. A model reads HTML.
       expect(read(page)).toEqual({ as: 'source', text: '<p>hello</p>\n' })
-      // 🔴 **A MEMBER and not a missing key** (`HO-097` §1.2, this dispatch's §3.1).
-      expect(read(picture)).toEqual({ as: 'not-for-a-model', because: 'a-picture-is-not-text' })
-      // ⛔ **And a PDF says its OWN reason.** ⚠️ Both are withheld and the words differ — a member
-      // that reported a picture's reason over a PDF would compile, pass an exhaustive check, and
-      // tell a model a fact about a different file.
-      const pdf = await mustKeep(wrote('r.pdf', Buffer.from('%PDF-1.7\n', 'binary')))
-      expect(read(pdf)).toEqual({ as: 'not-for-a-model', because: 'a-pdf-is-not-text' })
+      const reader = await personOpens()
+      const tool = agentToolsFor(host, reader).tools.find((one) => one.name === 'read_document')!
+      for (const [name, bytes, mimeType] of [
+        ['s.png', Buffer.from('89504e470d0a1a0a', 'hex'), 'image/png'],
+        ['r.pdf', Buffer.from('%PDF-1.7\n', 'binary'), 'application/pdf'],
+      ] as const) {
+        const id = await mustKeep(wrote(name, bytes))
+        const content = read(id)
+        if (content.as !== 'file') throw new Error('expected a kept path')
+        expect(content).toEqual({
+          as: 'file',
+          path: realpathSync.native(
+            join(resourcesRoot(userData), store.resource(id)!.sha256, name),
+          ),
+          mimeType,
+          bytes: bytes.length,
+          preview: null,
+        })
+        expect(readFileSync(content.path)).toEqual(bytes)
+        const answer = await tool.call({ resource: id })
+        expect(answer.text).toContain(content.path)
+        expect(answer.text).toContain(mimeType)
+        expect(answer.text).toContain(`${bytes.length} bytes`)
+      }
     })
   })
 
@@ -375,6 +403,21 @@ describe('635 · the store widens, and viewing never executes', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§4 · how big a resource may be', () => {
+    it('keeps large generic files by path without exceeding the inline text bound', async () => {
+      const bytes = Buffer.alloc(MOST_BYTES_OF_FORM.markdown + 1, 0x61)
+      const id = await mustKeep(wrote('large.txt', bytes))
+      const read = host.readResource(id)
+      if (!read.ok || read.content.as !== 'file') throw new Error('expected a kept path')
+      expect(read.content.preview).toBeNull()
+      expect(readFileSync(read.content.path)).toEqual(bytes)
+      const oversized = await offer(await aPiece(), [
+        wrote('oversized.bin', Buffer.alloc(MOST_BYTES_OF_FORM.file + 1)),
+      ])
+      if (oversized.ok) throw new Error('a file beyond the file bound was kept')
+      expect(oversized.refusal.rail).toBe('resource-too-large')
+      expect(oversized.refusal.detail).toMatchObject({ limit: MOST_BYTES_OF_FORM.file })
+    })
+
     it('⚑ a picture larger than a REPORT may be is taken, and the bound is the form’s', async () => {
       // ⛔ **Measured where the two readings DIVERGE** (standing rule 3): a file over the text
       // bound and under the binary one. A single bound cannot tell these two answers apart.
@@ -413,15 +456,11 @@ describe('635 · the store widens, and viewing never executes', () => {
   })
 
   // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §5 · the allow-list
+  // §5 · names select views
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
-  describe('§5 · a name this build cannot read', () => {
-    it('🔴 a kept row whose extension this build has no word for REFUSES, never guesses', async () => {
-      // ⛔ **A row written by a LATER build**, which is the one way this state is reachable: the
-      // writer keeps only a name the allow-list admits, so nothing in THIS build can make one.
-      // ⚑ The row is moved by hand and the bytes go with it, so the hash still matches — what is
-      // left is exactly the question *can this app say what these bytes are*.
+  describe('§5 · reading an unknown extension', () => {
+    it('reads a kept row with an unknown extension without changing its bytes', async () => {
       const resource = await mustKeep(wrote('r.md', '# the answer\n'))
       const before = store.resource(resource)
       if (before === null) throw new Error('the fixture was not kept')
@@ -434,10 +473,10 @@ describe('635 · the store widens, and viewing never executes', () => {
       db.prepare('UPDATE work_resource SET name = ? WHERE id = ?').run(moved, resource)
 
       const read = host.readResource(resource)
-      expect(read.ok).toBe(false)
-      // ⛔ **`resource-bytes-unreadable` and not a guess** — the bytes are there and this app
-      // cannot say what they are, which is what that rail means.
-      if (!read.ok) expect(read.refusal.rail).toBe('resource-bytes-unreadable')
+      if (!read.ok || read.content.as !== 'file') throw new Error('expected a generic file')
+      expect(read.form).toBe('file')
+      expect(read.content.preview).toBe('# the answer\n')
+      expect(readFileSync(read.content.path)).toEqual(Buffer.from('# the answer\n'))
     })
   })
 
@@ -449,9 +488,9 @@ describe('635 · the store widens, and viewing never executes', () => {
       }
     })
 
-    it('⚑ …and a name with no extension, or one nobody listed, is `null` and never a member', () => {
-      expect(formOfName('README')).toBeNull()
-      expect(formOfName('deliverable.zip')).toBeNull()
+    it('uses the generic file view for names without a known extension', () => {
+      expect(formOfName('README')).toBe('file')
+      expect(formOfName('deliverable.zip')).toBe('file')
       expect(formOfName('.md')).toBe('markdown')
     })
   })

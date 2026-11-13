@@ -836,13 +836,12 @@ it('🔴 402 · the agent lifecycle, performed', { timeout: 3_600_000 }, async (
    * ⚑ **Row 10's read, the same in both phases** — the door `read_document` goes through, and
    * whether the bytes it hands back carry the marker the worker wrote.
    *
-   * ⚑ **635 · the content is a UNION** — a resource of a form no model can be handed has no text at
-   * all, and this stage is about a Markdown report, so a non-text arm is a failure of the fixture
-   * rather than of the read.
+   * A file arm supplies a kept path rather than inline text. This stage requires a Markdown
+   * report, so a file arm fails the fixture rather than the read.
    */
   const theResourceSaid = (kept: ResourceRow): { carried: boolean; what: string } => {
     const body = host.readResource(kept.resource)
-    const said = body.ok && body.content.as !== 'not-for-a-model' ? body.content.text : null
+    const said = body.ok && body.content.as !== 'file' ? body.content.text : null
     const carried = said !== null && said.includes(RESOURCE_MARK)
     return {
       carried,

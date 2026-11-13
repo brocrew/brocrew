@@ -734,7 +734,7 @@ describe('the viewer says what kind of file it is', () => {
           bytes: 70,
         },
         'Image · 70 B',
-        'This file is an image. It is kept, and this window cannot draw it yet.',
+        'This file is an image. It is kept; no image preview was supplied to this window.',
       ],
       [
         {
@@ -746,7 +746,7 @@ describe('the viewer says what kind of file it is', () => {
           bytes: 1_468_006,
         },
         'PDF · 1.4 MB',
-        'This file is a PDF. It is kept, and this window cannot draw it yet.',
+        'This file is a PDF. It is kept; no PDF preview was supplied to this window.',
       ],
     ]
     for (const [result, kind, notDrawn] of kinds) {

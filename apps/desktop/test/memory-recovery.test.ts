@@ -542,7 +542,9 @@ describe('released 0030 knowledge data survives the actor migration', () => {
       expect(next.when).toBeGreaterThan(entries[30].when)
       const prefix = join(root, 'released-0030')
       const failing = join(root, 'failing-upgrade')
-      for (const folder of [prefix, failing]) {
+      const target = join(root, 'through-0031')
+      const targetJournal = { ...journal, entries: [...entries, next] }
+      for (const folder of [prefix, failing, target]) {
         mkdirSync(join(folder, 'meta'), { recursive: true })
         for (const one of entries)
           copyFileSync(join(migrations, one.tag + '.sql'), join(folder, one.tag + '.sql'))
@@ -553,7 +555,9 @@ describe('released 0030 knowledge data survives the actor migration', () => {
         readFileSync(join(migrations, next.tag + '.sql'), 'utf8') +
           '\n--> statement-breakpoint\nINSERT INTO fictional_missing_upgrade_table VALUES (1);',
       )
-      writeFileSync(join(failing, 'meta/_journal.json'), JSON.stringify(journal))
+      writeFileSync(join(failing, 'meta/_journal.json'), JSON.stringify(targetJournal))
+      copyFileSync(join(migrations, next.tag + '.sql'), join(target, next.tag + '.sql'))
+      writeFileSync(join(target, 'meta/_journal.json'), JSON.stringify(targetJournal))
       const file = join(root, 'released.sqlite')
       let saved = openDatabase(file)
       try {
@@ -739,13 +743,13 @@ describe('released 0030 knowledge data survives the actor migration', () => {
           expect(schema()).toEqual(beforeSchema)
           expect(journalRows()).toEqual(beforeJournal)
         } else {
-          applyMigrations(saved, migrations)
+          applyMigrations(saved, target)
           expect(contracts()).toEqual(beforeContracts)
           expect(journalRows().slice(0, -1)).toEqual(beforeJournal)
           expect(journalRows()).toHaveLength(beforeJournal.length + 1)
           const upgradedSchema = schema()
           const upgradedJournal = journalRows()
-          applyMigrations(saved, migrations)
+          applyMigrations(saved, target)
           expect(journalRows()).toEqual(upgradedJournal)
           expect(schema()).toEqual(upgradedSchema)
         }
@@ -757,7 +761,7 @@ describe('released 0030 knowledge data survives the actor migration', () => {
         saved.close()
         saved = openDatabase(file)
         saved.pragma(foreignKeys ? 'foreign_keys = ON' : 'foreign_keys = OFF')
-        if (!fail) applyMigrations(saved, migrations)
+        if (!fail) applyMigrations(saved, target)
         expect(rows()).toEqual(beforeRows)
         expect(schema()).toEqual(finalSchema)
         expect(journalRows()).toEqual(finalJournal)

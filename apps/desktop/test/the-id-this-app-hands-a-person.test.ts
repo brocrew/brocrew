@@ -294,7 +294,9 @@ describe('510 · the id this app hands a person', () => {
       // ⚑ **Same bytes through both**, which is what makes the remaining difference a VOCABULARY
       // difference and not a data one.
       // ⚑ **635 · through the union**, which is the shape that replaced `markdown: string`.
-      expect(agent.content.as === 'not-for-a-model' ? null : agent.content.text).toBe(person.text)
+      expect(agent.content.as === 'file' ? agent.content.preview : agent.content.text).toBe(
+        person.text,
+      )
       // ⛔ **The paired call one fact over, about an id nothing kept**: the agent gets a
       // `RESOURCE_RAILS` refusal carrying a permanence and a remedy, and the window gets one of
       // four words. **That is the difference the old title claimed for entitlement.**

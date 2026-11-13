@@ -277,6 +277,7 @@ export const FORM_WORD: Readonly<Record<DocumentForm, string>> = {
   page: 'Page',
   image: 'Image',
   pdf: 'PDF',
+  file: 'File',
 }
 
 /**

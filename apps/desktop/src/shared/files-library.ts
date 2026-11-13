@@ -179,7 +179,7 @@ export function libraryUnavailable(
 
 export function libraryKind(name: string): 'documents' | 'images' | 'unknown' {
   const form = formOfName(name)
-  return form === 'image' ? 'images' : form === null ? 'unknown' : 'documents'
+  return form === 'image' ? 'images' : form === 'file' ? 'unknown' : 'documents'
 }
 export function libraryMatches(fields: readonly string[], tokens: readonly string[]): boolean {
   const text = fields.map((field) => field.normalize('NFC').toLowerCase()).join('\n')

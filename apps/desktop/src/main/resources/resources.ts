@@ -50,14 +50,11 @@ export function resourcesRoot(userData: string): string {
 export const RESOURCE_RAILS = [
   /** Nothing is there, it will not resolve, or it is not a regular file. */
   'resource-unreadable',
-  /**
-   * ⛔ **Not a form this app keeps** — its name's extension is not on `FORM_OF_EXTENSION`'s
-   * allow-list, so it was never going to be kept, whatever is in it.
-   */
+  /** Legacy refusal vocabulary; file extensions now select a view. */
   'resource-not-a-form-this-app-keeps',
   /** Bigger than its form may be ({@link MOST_BYTES_OF_FORM}). */
   'resource-too-large',
-  /** No bytes at all. ⚑ `work_resource_bytes_ck` refuses the same thing in the database. */
+  /** Legacy refusal vocabulary; zero-byte regular files are kept. */
   'resource-empty',
   /** A Markdown file or a page whose bytes are not UTF-8: a text a person cannot read is not text. */
   'resource-not-text',
@@ -142,7 +139,7 @@ export function resourceRemedyOf(rail: ResourceRail): RefusalRemedy | null {
  * listed requirement, never the same path again. ⛔ It names an artifact and not a verb (`422` §3).
  */
 const OFFER_ANOTHER_FILE =
-  ' Write a file and offer that path instead — one of the types this app holds, not empty, and no larger than a file of that type may be.'
+  ' Write a file and offer that path instead — one of the types this app holds, and no larger than a file of that type may be.'
 
 /**
  * 🔴 **The act for a file this app will never keep**, in the PO's words (`HO-097` §1.4): the content
@@ -233,6 +230,7 @@ export const MOST_BYTES_OF_FORM: Readonly<Record<DocumentForm, number>> = {
   page: MAX_TEXT_RESOURCE_BYTES,
   image: 16_777_216,
   pdf: 16_777_216,
+  file: 16_777_216,
 }
 
 /** ⛔ **The largest any resource may be**, DERIVED — the reader's bound moves with the writer's. */
@@ -277,33 +275,13 @@ export type OfferedResource =
 /** A file that passed {@link readOfferedResource} — what {@link keepResource} keeps. */
 export type OfferedFile = Extract<OfferedResource, { readonly ok: true }>
 
-/**
- * 🔴 **Read a file offered as a resource, and say whether it may be kept** (380, 635; D-016).
- *
- * ⛔ **The extension first, with no syscall**; then `O_NOFOLLOW | O_NONBLOCK` — the leaf was already
- * resolved, and a FIFO would block Electron's main process — and `fstat` decides the shape, because a
- * directory opens fine on macOS. The SIZE is measured before a byte is taken, against the form's own
- * bound.
- *
- * ⚑ **Then the two rules about the bytes**: at least one of them, and for a Markdown file or a page,
- * UTF-8 — decoded with `fatal: true`, because `Buffer.toString('utf8')` silently substitutes U+FFFD.
- * ⛔ Nothing is changed: the bytes kept are the bytes read, and the hash is of exactly them.
- *
- * `suppliedPath` is the path as the agent spelled it. A file too large to keep is named by it, so an
- * agent offering several files can tell which one; it falls back to `realPath`.
- */
+/** Read a regular file without blocking, within its size bound, retaining its exact bytes. */
 export function readOfferedResource(
   realPath: string,
   suppliedPath: string = realPath,
 ): OfferedResource {
   const name = basename(realPath)
   const form = formOfName(name)
-  if (form === null) {
-    return {
-      ok: false,
-      refusal: refuseResource('resource-not-a-form-this-app-keeps', { path: realPath }),
-    }
-  }
   let fd: number
   try {
     fd = openNotThroughALink(realPath, constants.O_RDONLY | constants.O_NONBLOCK)
@@ -333,10 +311,7 @@ export function readOfferedResource(
   } finally {
     closeQuietly(fd)
   }
-  if (bytes.length === 0) {
-    return { ok: false, refusal: refuseResource('resource-empty', { path: realPath }) }
-  }
-  if (CONTENT_OF_FORM[form] !== 'not-for-a-model') {
+  if (form === 'markdown' || form === 'page') {
     try {
       new TextDecoder('utf-8', { fatal: true }).decode(bytes)
     } catch {
@@ -502,11 +477,8 @@ export function resourceBytes(root: string, row: KeptResource): ResourceBytesRes
   }
   const read = readOwnFile(lexicalPath)
   if (!read.ok) return refused('resource-bytes-unreadable')
-  // ⛔ **The form is read off the kept name and never off a column** — a name this build has no word
-  // for is a file it cannot say anything about, which is what `resource-bytes-unreadable` means.
   const form = formOfName(row.name)
-  if (form === null) return refused('resource-bytes-unreadable')
-  return { ok: true, form, bytes: read.bytes, content: contentOf(form, read.bytes) }
+  return { ok: true, form, bytes: read.bytes, content: contentOf(form, read.bytes, realPath) }
 }
 
 /**
@@ -720,20 +692,28 @@ export function keptFileToShow(
   return { ok: true, path: join(resolve(root), row.sha256, row.name), changed: false }
 }
 
-/**
- * Builds model content from the current bytes and the file's form.
- */
-function contentOf(form: DocumentForm, bytes: Buffer): DocumentContent {
-  switch (CONTENT_OF_FORM[form]) {
-    case 'markdown':
-      return { as: 'markdown', text: bytes.toString('utf8') }
-    case 'source':
-      return { as: 'source', text: bytes.toString('utf8') }
-    case 'not-for-a-model':
-      return {
-        as: 'not-for-a-model',
-        because: form === 'image' ? 'a-picture-is-not-text' : 'a-pdf-is-not-text',
-      }
+/** Inline text stays within the existing text bound; all other bytes remain available by path. */
+function contentOf(form: DocumentForm, bytes: Buffer, path: string): DocumentContent {
+  const as = CONTENT_OF_FORM[form]
+  let preview: string | null = null
+  if (
+    (as === 'markdown' || as === 'source' || form === 'file') &&
+    bytes.length <= MAX_TEXT_RESOURCE_BYTES
+  ) {
+    try {
+      preview = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+    } catch {
+      // The file is still readable; this viewer cannot decode an inline text preview.
+    }
+  }
+  if (preview !== null && (as === 'markdown' || as === 'source')) return { as, text: preview }
+  return {
+    as: 'file',
+    path,
+    mimeType:
+      drawnAsOfBytes('pdf', bytes) ?? drawnAsOfBytes('image', bytes) ?? 'application/octet-stream',
+    bytes: bytes.length,
+    preview,
   }
 }
 
@@ -760,6 +740,7 @@ const TITLE_OF_FORM: Readonly<Record<DocumentForm, ((text: string) => string | n
   page: pageTitle,
   image: null,
   pdf: null,
+  file: null,
 }
 
 /**

@@ -99,7 +99,6 @@ export function openResolvedFile(
     if (info.dev !== pre.dev || info.ino !== pre.ino)
       refuse('the file changed while it was being opened')
     if (info.nlink > 1) refuse('it is a hard-linked file (it has more than one name)')
-    if (info.size === 0) refuse('the file is empty')
     if (info.size > cfg.maxBytes) {
       refuse(`it is larger than the limit (${Math.round(cfg.maxBytes / 1048576)} MB)`)
     }

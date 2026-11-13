@@ -96,7 +96,7 @@ describe('shared resolved file opening', () => {
     expect(io.closeSync).toHaveBeenCalledExactlyOnceWith(io.openSync.mock.results[0].value)
     expect(() => fs.fstatSync(io.openSync.mock.results[0].value)).toThrow(/EBADF/)
   })
-  it('reports hard links before empty-file or size refusals', () => {
+  it('reports hard links before size refusals', () => {
     const { file, io, cfg, open } = setup(Buffer.alloc(0))
     fs.linkSync(file, `${file}.link`)
     expect(() => open({ ...cfg, maxBytes: -1 })).toThrow(
@@ -142,6 +142,26 @@ it.each([
   ['Chrome', openGuardedFile, LocalFileGuardError],
   ['WhatsApp', openWhatsAppFile, WhatsAppFileError],
 ])('%s wrapper retains its package error class', (_name, open, FileError) => {
-  const { file, cfg } = setup(Buffer.alloc(0))
-  expect(() => open(file, cfg)).toThrow(FileError)
+  const { file, cfg } = setup()
+  expect(() => open(file, { ...cfg, maxBytes: 1 })).toThrow(FileError)
+})
+
+it.each([
+  ['Chrome', openGuardedFile],
+  ['WhatsApp', openWhatsAppFile],
+])('%s streams an empty regular file and closes only when asked', async (_name, open) => {
+  const { file, cfg, io } = setup(Buffer.alloc(0))
+  const opened = open(file, cfg)
+  cleanup.push(opened.close)
+  expect(opened.size).toBe(0)
+  expect(opened.realPath).toBe(fs.realpathSync(file))
+  const chunks = []
+  for await (const chunk of opened.stream()) chunks.push(chunk)
+  expect(Buffer.concat(chunks)).toEqual(Buffer.alloc(0))
+  expect(fs.fstatSync(opened.fd).size).toBe(0)
+  expect(io.closeSync).not.toHaveBeenCalled()
+  opened.close()
+  opened.close()
+  expect(io.closeSync).toHaveBeenCalledExactlyOnceWith(opened.fd)
+  expect(() => fs.fstatSync(opened.fd)).toThrow(/EBADF/)
 })

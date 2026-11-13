@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import { writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { agentToolHandlerInput, type AgentToolAnswer } from '@brobot2/runtime'
 import { claudeMcpServersFor } from '../../../packages/runtime/src/claude/agent-tools'
@@ -9,7 +9,6 @@ import {
   codexDynamicToolsFor,
 } from '../../../packages/runtime/src/codex/agent-tools'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
-import { refuseResource } from '../src/main/resources/resources'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
 type Packet = {
@@ -215,46 +214,56 @@ describe('reply field failures travel through the real MCP server', () => {
       })
     }
 
-    for (const [name, kind] of [
-      ['fictional.ZSH', 'a .zsh file'],
-      ['fictional.PRIVATE_EXTENSION', 'a file of an unrecognised kind'],
+    for (const [name, body] of [
+      ['fictional.ZSH', Buffer.from('Fictional file; never executed.')],
+      ['fictional.PRIVATE_EXTENSION', Buffer.from([0xff, 0, 0x80])],
+      ['fictional.empty', Buffer.alloc(0)],
     ] as const) {
-      it(`${adapter}: a refused ${name} names the kinds and puts its path in summary`, async () => {
+      it(`${adapter}: keeps ${name} through the native wrapper without changing its bytes`, async () => {
         const path = join(world.folder, name)
-        writeFileSync(path, 'Fictional file; never executed.')
-        const text = await handBack(adapter, {
+        const refused = await handBack(adapter, {
           piece,
           outcome: 'done',
           summary: 'Fictional completion.',
           resource_paths: [path],
         })
         replyIsRefused()
-        const reason = `This app does not keep ${kind}. It keeps a Markdown file, a page, an image or a PDF. Name its full path in summary instead of resource_paths; keep the file where it is. Nothing was kept or recorded.`
-        expect(calls.at(-1)!.structured?.reason).toBe(reason)
-        expect(text).toContain(reason)
-        expect(reason).not.toContain('PRIVATE_EXTENSION')
+        expect(calls.at(-1)!.structured?.rail).toBe('resource-unreadable')
         expect(world.store.resourcesOf(piece)).toEqual([])
         expect(reportedMethod()).toBeUndefined()
         expect(world.store.piecesOwnedBy(worker).find((one) => one.piece === piece)?.state).toBe(
           'working',
         )
-        hasNoReminder(text)
-        // Another file-writing door retains its own resource refusal.
+        hasNoReminder(refused)
+
+        writeFileSync(path, body)
         const update = await agentToolsFor(host, worker)
           .tools.find((one) => one.name === 'update_work')!
           .call({ piece, resources: [path] })
-        expect(update.structured?.rail).toBe('resource-not-a-form-this-app-keeps')
-        expect(update.structured?.reason).toBe(
-          refuseResource('resource-not-a-form-this-app-keeps').reason,
-        )
-        const accepted = await handBack(adapter, {
+        expect(update.structured?.outcome).toBe('ok')
+        const text = await handBack(adapter, {
           piece,
           outcome: 'done',
-          summary: `The result stays at ${path}.`,
+          summary: 'Fictional completion.',
+          resource_paths: [path],
         })
         replyIsAccepted()
-        hasReminder(accepted)
-        expect(reportedMethod()).toMatchObject({ summary: `The result stays at ${path}.` })
+        hasReminder(text)
+        expect(reportedMethod()).toMatchObject({ summary: 'Fictional completion.' })
+        const ids = calls.at(-1)!.structured?.resources as string[]
+        expect(ids).toHaveLength(1)
+        const read = host.readResource(ids[0]!)
+        if (!read.ok || read.content.as !== 'file') throw new Error('expected an actual kept path')
+        expect(readFileSync(read.content.path)).toEqual(body)
+        expect(read.content.bytes).toBe(body.length)
+        expect(read.content.preview).toBe(
+          name === 'fictional.PRIVATE_EXTENSION' ? null : body.toString('utf8'),
+        )
+        const answer = await agentToolsFor(host, worker)
+          .tools.find((one) => one.name === 'read_document')!
+          .call({ resource: ids[0] })
+        expect(answer.text).toContain(read.content.path)
+        expect(answer.text).toContain(`${body.length} bytes`)
       })
     }
 

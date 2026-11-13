@@ -323,7 +323,7 @@ describe('D-032 · the echoed id is checked — an answer for another file is no
     expect(read(wrong.m.q('canonical-document-name'))).toBe('chart.png')
     expect(wrong.m.all('kept-file-drawing')).toHaveLength(0)
     expect(read(wrong.m.q('canonical-document-not-drawn'))).toBe(
-      'This file is an image. It is kept, and this window cannot draw it yet.',
+      'This file is an image. It is kept; no image preview was supplied to this window.',
     )
     expect(urls.made()).toEqual([])
     unmountAll()

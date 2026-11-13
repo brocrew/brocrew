@@ -861,7 +861,7 @@ const ACT: Readonly<Record<string, string>> = {
   // ⚑ **731** — the act names no folder: a resource path takes a file anywhere since `726`.
   // ⚑ **736** — and names the kinds of file the store holds (`733` F-4), rendered from its list.
   'REPLY_RAILS|summary-too-long':
-    'Put the rest in a Markdown file, a page, an image or a PDF and name its path in resource_paths',
+    'Put the rest in a Markdown file, a page, an image, a PDF or any other file and name its path in resource_paths',
   'QUESTION_RAILS|no-question-by-that-name': 'list_questions names the requests you can answer',
   'QUESTION_RAILS|a-person-answers-this-one': 'that one is a person’s to settle',
   'QUESTION_RAILS|that-answer-cannot-be-sent':

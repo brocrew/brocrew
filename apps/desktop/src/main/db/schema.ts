@@ -409,7 +409,7 @@ export const workResource = sqliteTable(
       'work_resource_sha256_ck',
       sql`length(${t.sha256}) = 64 AND ${t.sha256} NOT GLOB '*[^0-9a-f]*'`,
     ),
-    check('work_resource_bytes_ck', sql`${t.bytes} >= 1`),
+    check('work_resource_bytes_ck', sql`${t.bytes} >= 0`),
     index('work_resource_work_idx').on(t.workId),
   ],
 )

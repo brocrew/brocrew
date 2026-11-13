@@ -1,4 +1,4 @@
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -640,11 +640,11 @@ describe('a file too large to keep is named as the agent spelled it', () => {
 
   it('leaves every other refusal naming the resolved path', () => {
     const real = join(dir, 'empty.md')
-    writeFileSync(real, '')
-    const empty = readOfferedResource(real, 'notes/empty.md')
-    if (empty.ok) throw new Error('an empty file was offered')
-    expect(empty.refusal.rail).toBe('resource-empty')
-    expect(empty.refusal.detail).toEqual({ path: real })
+    mkdirSync(real)
+    const directory = readOfferedResource(real, 'notes/empty.md')
+    if (directory.ok) throw new Error('a directory was offered')
+    expect(directory.refusal.rail).toBe('resource-unreadable')
+    expect(directory.refusal.detail).toEqual({ path: real })
   })
 })
 

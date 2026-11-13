@@ -967,10 +967,9 @@ describe('D-026 · one door lists the kept files, and every door that keeps one 
       expect(rowsOn(f.label.p2).map((row) => row.pieceTitle)).toEqual(['the second piece'])
     })
 
-    it('a file kept before titles were taken reads as its name, a person’s file has no adder, and a name with no form has none', () => {
+    it('a file kept before titles were taken reads as its name, a person’s file has no adder, and an unknown form is a file', () => {
       // An old row: no door can write a NULL title any more, so the test's own db does.
       db.prepare('UPDATE work_resource SET title = NULL WHERE id = ?').run(f.file.out1.id)
-      // A file a person kept, and one a conversation this app can name no profile for added.
       const persons = store.addResource(
         {
           piece: f.piece.p2,
@@ -1001,20 +1000,21 @@ describe('D-026 · one door lists the kept files, and every door that keeps one 
 
       const rows = piecesFiles(f.label.p1)
       const old = rows.find((row) => row.resourceId === f.file.out1.id)
-      // ⚑ Never null and never empty: the name, the rule's own *or else*.
       expect(old?.title).toBe('out1.md')
       expect(old?.title).not.toBe('')
 
       const onP2 = piecesFiles(f.label.p2)
       const byId = (id: string): KeptFile | undefined => onP2.find((row) => row.resourceId === id)
-      expect(byId(persons.resource)).toMatchObject({ name: 'notes.txt', addedBy: null, form: null })
+      expect(byId(persons.resource)).toMatchObject({
+        name: 'notes.txt',
+        addedBy: null,
+        form: 'file',
+      })
       expect(byId(strays.resource)?.addedBy).toEqual({
         conversation: stray,
         name: AN_AGENT_THIS_APP_CANNOT_NAME,
         identity: null,
       })
-      // ⚑ The paired positives in the same list: the file out2.md keeps its title, its form and its
-      // adder, and the tenth piece's own heading stands.
       expect(byId(f.file.out2.id)).toMatchObject({
         title: 'out2.md',
         form: 'markdown',

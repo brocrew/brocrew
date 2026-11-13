@@ -1268,25 +1268,25 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
       const { worker, task } = await workWasGiven()
       const a = wrote('a.md', 'alpha\n')
       const b = wrote('b.md', 'beta\n')
-      const c = wrote('c.md', '')
+      const c = join(root, 'c.md')
       const call = () =>
         reply(worker, {
           piece: task,
           outcome: 'done',
-          summary: 'three files, the last one empty',
+          summary: 'three files, the last one missing',
           resource_paths: [a, b, c],
         })
 
       const refused = await call()
       expect(refused.outcome).toBe('refused')
-      expect(refused.rail).toBe('resource-empty')
+      expect(refused.rail).toBe('resource-unreadable')
       // Every file is read before any is kept: neither a's nor b's hash directory exists.
       expect(keptHashes()).toEqual([])
       expect(store.resourcesOf(task)).toEqual([])
       expect(taskOf(worker, task)?.state).toBe('working')
       expect(ledger(worker).some((event) => event.type === 'work_replied')).toBe(false)
 
-      // One fact over: c has content, and the identical call lands.
+      // Creating the missing file makes the identical call land.
       writeFileSync(c, 'gamma\n')
       const landed = await call()
       expect(landed.outcome, JSON.stringify(landed)).toBe('ok')
@@ -1544,8 +1544,9 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
       expect(() => insert('res_a4', 'made', `${'a'.repeat(63)}g`, 1)).toThrow(
         'work_resource_sha256_ck',
       )
-      expect(() => insert('res_a5', 'made', 'a'.repeat(64), 0)).toThrow('work_resource_bytes_ck')
-      expect(count()).toBe(3)
+      expect(() => insert('res_empty', 'made', shaOf(Buffer.alloc(0)), 0)).not.toThrow()
+      expect(() => insert('res_a5', 'made', 'a'.repeat(64), -1)).toThrow('work_resource_bytes_ck')
+      expect(count()).toBe(4)
     })
   })
 
@@ -1618,7 +1619,6 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
         // ⚑ **Six** — `0005_the_fold_index` too, which creates an index and no table.
         // ⚑ **Seven** — `0006_the_inventory_index` too, which creates an index and no table.
         // ⚑ **Eight** — `0007_the_mcp_request_index` too, which creates an index and no table.
-        // The ninth migration adds only event indexes for work reconciliation.
         // ⚑ **Ten** — `0009_the_fold_index_ends_passed_up_questions` too, which recreates an index
         // and creates no table.
         // The legacy stall cut adds one migration and preserves the same resource schema.

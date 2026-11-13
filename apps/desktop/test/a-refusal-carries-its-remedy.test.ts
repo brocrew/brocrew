@@ -1079,13 +1079,9 @@ describe('425 · a refusal carries its remedy', () => {
   describe('§3 · the resource shapes, refused and then satisfied', () => {
     it('🔴 each malformed resource shape is refused with the same act, and the act works', async () => {
       const piece = await aPieceToReplyTo()
-      // ⛔ **Each way of failing the requirement is named**, and each fixture is written so the rail
-      // it reaches is the one named — `put-the-hazard-on-the-path-the-code-walks`. ⚑ D-016: an
-      // EMPTY file is one with no bytes at all (`resource-empty`); whitespace is text.
       const shapes: { rail: ResourceRail; path: string }[] = [
         { rail: 'resource-unreadable', path: join(work, 'nothing-here.md') },
         { rail: 'resource-too-large', path: wrote('big.md', `${'a'.repeat(1_048_576)}\n`) },
-        { rail: 'resource-empty', path: wrote('empty.md', '') },
         { rail: 'resource-not-text', path: wrote('bytes.md', Buffer.from([0xff, 0xfe, 0x00])) },
       ]
       for (const shape of shapes) {
@@ -1113,29 +1109,29 @@ describe('425 · a refusal carries its remedy', () => {
       // that refused every shape above.
       const followed = await offer(piece, wrote('the-long-form.md', '# It fits\n\nAll of it.\n'))
       expect(followed.ok, JSON.stringify(followed)).toBe(true)
-      // ⚑ **And the file that was refused is still exactly where it was** — nothing in the remedy
-      // asked this app to have changed it. ⚑ D-016: read by the same reader the reply asked, since
-      // the piece is answered now and a second reply would meet that instead.
-      expect(readOfferedResource(join(work, 'empty.md')).ok).toBe(false)
+      // Empty regular files remain readable after the successful reply.
+      const empty = readOfferedResource(wrote('empty.md', ''))
+      if (!empty.ok) throw new Error(`refused: ${empty.refusal.rail}`)
+      expect(empty.bytes).toEqual(Buffer.alloc(0))
     })
 
-    it('⛔ permanent resource-shape rails carry nothing, beside a present remedy', async () => {
-      const piece = await aPieceToReplyTo()
-      // ⚠️ **`an-unenumerated-state-counts-as-success` is the trap**: the empty answer has to be
-      // measured with a present one beside it, or *nothing* and *never asked* look the same.
-      // ⚑ `726` · R92 removed the first permanent shape this walked — `resource-outside-workspace`,
-      // a file outside the offering conversation's folder. The one left is the file's TYPE.
-      const notMarkdown = await offer(piece, wrote('notes.txt', 'plain\n'))
-      expect(notMarkdown.ok).toBe(false)
-      if (!notMarkdown.ok) {
-        expect(notMarkdown.refusal.rail).toBe('resource-not-a-form-this-app-keeps')
-        expect(notMarkdown.refusal.remedy).toBeNull()
+    it('keeps ordinary and empty files while missing-file refusals retain their remedy', async () => {
+      const missing = await offer(await aPieceToReplyTo(), join(work, 'missing.txt'))
+      expect(missing.ok).toBe(false)
+      if (!missing.ok) {
+        expect(missing.refusal.rail).toBe('resource-unreadable')
+        expect(missing.refusal.remedy).toBe('offer-a-workspace-markdown-file-that-reads')
       }
-      // ⚑ **The present one, over the same door and the same reader.**
-      const refused = await offer(piece, wrote('nothing.md', ''))
-      expect(refused.ok).toBe(false)
-      if (!refused.ok) {
-        expect(refused.refusal.remedy).toBe('offer-a-workspace-markdown-file-that-reads')
+      for (const [name, body] of [
+        ['notes.txt', 'plain\n'],
+        ['nothing.md', ''],
+      ] as const) {
+        const path = wrote(name, body)
+        const accepted = await offer(await aPieceToReplyTo(), path)
+        expect(accepted.ok, JSON.stringify(accepted)).toBe(true)
+        const read = readOfferedResource(path)
+        if (!read.ok) throw new Error(`refused: ${read.refusal.rail}`)
+        expect(read.bytes).toEqual(Buffer.from(body))
       }
     })
   })

@@ -107,22 +107,13 @@ const REFUSAL: Record<string, string> = {
     'The file is not the bytes that were kept. This app re-checks the hash on every read, and it did not match.',
 }
 
-/**
- * ⛔ **635 · what a person is told about a form this window holds and cannot draw.**
- *
- * ⚑ **It says the file is FINE** — kept and readable — and that the missing thing is this panel.
- * ⚠️ `452` §5.1's rule with the noun changed: a sentence that read *that file could not be opened*
- * would blame the file for a gap in the viewer.
- */
-// ⚑ **731 · no pointer to the project folder.** Until `731` the image and PDF sentences ended *"— open
-// the project folder to look at it"*: `HO-097`'s premise that an offered file sat there. It never
-// was where the kept copy is (this app's own folder), and since `726`/`731` the folder a file is
-// written in is a habit, never a condition (the PM, on `726` §9).
+/** Truthful fallback when this window received no supported preview. */
 const NOT_DRAWN: Readonly<Record<DocumentForm, string>> = {
   markdown: 'This file is Markdown and is shown above.',
   page: 'This file is a page and its source is shown above.',
-  image: 'This file is an image. It is kept, and this window cannot draw it yet.',
-  pdf: 'This file is a PDF. It is kept, and this window cannot draw it yet.',
+  image: 'This file is an image. It is kept; no image preview was supplied to this window.',
+  pdf: 'This file is a PDF. It is kept; no PDF preview was supplied to this window.',
+  file: 'This file is kept. This window has no preview for its format.',
 }
 
 /**

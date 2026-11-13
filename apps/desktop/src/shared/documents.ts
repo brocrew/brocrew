@@ -62,36 +62,11 @@ export const MOST_TEXT_SEARCHED = 33_554_432
  */
 export const OLDER_FILES_COUNTED = 10_000
 
-/**
- * Classify resources handed back by agents as Markdown reports, pages, images or PDFs.
- *
- * ⚠️ **Orthogonal to {@link RESOURCE_ROLES}**: the role is what the file is TO its piece, and this
- * is what the bytes ARE — an input can be a page and something made can be Markdown.
- *
- * ## ⚑ It is DERIVED from the kept name and stored nowhere
- *
- * 🔴 **The form of a resource is a pure function of its name** ({@link formOfName}). ⛔ **A column
- * would be a second answer** free to disagree with the file on disk — and the file is the thing a
- * person opens (`HO-095` §4's *never two sources of truth*). ⚠️ A name this build has no word for
- * reads as `null`, not as a member, and every reader draws less rather than something else —
- * `an-unenumerated-state-counts-as-success`.
- */
-export const DOCUMENT_FORMS = ['markdown', 'page', 'image', 'pdf'] as const
+/** Known document views; other regular files remain usable kept files. */
+export const DOCUMENT_FORMS = ['markdown', 'page', 'image', 'pdf', 'file'] as const
 export type DocumentForm = (typeof DOCUMENT_FORMS)[number]
 
-/**
- * ⛔ **Extension → form, and it is the ONE table** (635).
- *
- * ⚠️ **It decides two things at once and that is why it is one table**: what a reply may hand in
- * as a resource, and what form a kept resource reads back as. ⚑ Two tables would be two chances to
- * disagree about `.jpeg`.
- *
- * ⛔ **An ALLOW-LIST, which is the shape untrusted input needs** (`HO-097` §1.2 for the frame, and
- * the same argument for the store): a deny-list of types we will not take admits every type
- * nobody has thought of yet.
- *
- * ⚑ **Lower-cased keys, and the lookup lower-cases too** — `README.MD` is Markdown.
- */
+/** Extensions select a view; they do not decide whether a file can be kept. */
 export const FORM_OF_EXTENSION: Readonly<Record<string, DocumentForm>> = {
   '.md': 'markdown',
   '.html': 'page',
@@ -119,6 +94,7 @@ const FORM_SAID: Readonly<Record<DocumentForm, string>> = {
   page: 'a page',
   image: 'an image',
   pdf: 'a PDF',
+  file: 'any other file',
 }
 
 /** `a, b, c or d`. */
@@ -137,21 +113,17 @@ export const HELD_FORMS_WITH_EXTENSIONS_SAID = listSaid(
     const extensions = Object.keys(FORM_OF_EXTENSION).filter(
       (extension) => FORM_OF_EXTENSION[extension] === form,
     )
-    return `${FORM_SAID[form]} (${extensions.join(', ')})`
+    return extensions.length === 0
+      ? FORM_SAID[form]
+      : `${FORM_SAID[form]} (${extensions.join(', ')})`
   }),
 )
 
-/**
- * ⚑ **The form a file with this name would be**, or `null` because this app has no word for it.
- *
- * ⛔ **It takes a NAME and never a path**, so a caller cannot reach a filesystem through it and
- * `shared/` keeps its promise. ⚠️ The extension is everything after the LAST dot; a name with no
- * dot has none.
- */
-export function formOfName(name: string): DocumentForm | null {
+/** A known view selected by the name, or a generic file. */
+export function formOfName(name: string): DocumentForm {
   const dot = name.lastIndexOf('.')
-  if (dot < 0) return null
-  return FORM_OF_EXTENSION[name.slice(dot).toLowerCase()] ?? null
+  if (dot < 0) return 'file'
+  return FORM_OF_EXTENSION[name.slice(dot).toLowerCase()] ?? 'file'
 }
 
 /**
@@ -188,69 +160,22 @@ export function textViewFor(name: string): { raw: boolean; sourceOnly: boolean }
   return { raw: !/\.(md|markdown|output|txt)$/i.test(name), sourceOnly: false }
 }
 
-/**
- * 🔴 **What an agent's MODEL is handed when it reads a resource** (635, `HO-097` §1.2).
- *
- * > ⚑ *"A form its model can actually use — the text of a page, the image itself, the content of a
- * > PDF. Where a type cannot be handed to a model, the tool says so plainly rather than returning
- * > something useless."*
- *
- * ## ⛔ A discriminated union, and `not-for-a-model` is a MEMBER rather than a missing key
- *
- * ⚠️ **The field it replaces was `markdown: string`.** ⛔ A PNG has no markdown, and an optional
- * string whose absence renders as empty is `an-unenumerated-state-counts-as-success` exactly — the
- * model would read `''` and conclude the document was blank. ⚑ `a-value-beside-a-word-or-a-union-of-arms`:
- * one-arm values want a union.
- *
- * ## ⚠️ Why an image is NOT a member today, measured rather than assumed
- *
- * ⛔ **`AgentToolAnswer` is `{ text: string; structured?: Record<string, unknown> }`**
- * (`packages/runtime/src/agent-tools.ts`) — ⚑ **there is no image member on the contract BOTH
- * adapters translate**, so neither provider can be handed a picture through this toolset. 🔴 **That
- * is a property of the toolset and not of the providers**, which is why the answer is the same for
- * both and why this is not the lowest common denominator picked silently (`635` §3.3): the door
- * that would have to widen is named, and it is in `packages/runtime`.
- */
-export const NOT_FOR_A_MODEL = [
-  /** ⛔ An image. The bytes are a picture and this app's tool answers carry text. */
-  'a-picture-is-not-text',
-  /**
-   * ⛔ A PDF. ⚠️ **Its text could be extracted and this app does not do it**: a PDF parser is a
-   * dependency with its own parsing surface over a file an agent wrote, and `HO-097` §1.2 says to
-   * say so plainly rather than return something useless. ⚑ A person reads it; a model is told why
-   * it cannot.
-   */
-  'a-pdf-is-not-text',
-] as const
-export type NotForAModel = (typeof NOT_FOR_A_MODEL)[number]
-
-/**
- * ⛔ **What a model may do about a resource it cannot be handed** (635, `HO-097` §1.4's shape).
- *
- * ⚑ **It names an ARTIFACT and not a verb** (`422` §3), and it is the honest act: this app keeps the
- * resource and a PERSON can open it, so the thing to do is tell whoever asked.
- */
-export const NOT_FOR_A_MODEL_ACT =
-  'This app keeps it and a person can open it here; say so in your reply and name it by its resource id.'
-
+/** Text is inline; other content retains an actual path for native file/media readers. */
 export type DocumentContent =
-  /** ⚑ Markdown, as it was kept — the arm every document had before `635`. */
   | { readonly as: 'markdown'; readonly text: string }
-  /**
-   * ⚑ **A page's SOURCE, as text.** ⛔ Not rendered, not stripped, not summarised — a model reads
-   * HTML perfectly well, and anything else here would be this app deciding what the page says.
-   */
   | { readonly as: 'source'; readonly text: string }
-  /** ⛔ **Nothing a model can use**, and it says which of the two it is. */
-  | { readonly as: 'not-for-a-model'; readonly because: NotForAModel }
+  | {
+      readonly as: 'file'
+      readonly path: string
+      readonly mimeType: string
+      readonly bytes: number
+      readonly preview: string | null
+    }
 
-/**
- * ⚑ **What a resource of this form is handed to a model AS** — the one mapping, so a form added
- * tomorrow does not compile until somebody answers this question for it.
- */
 export const CONTENT_OF_FORM: Readonly<Record<DocumentForm, DocumentContent['as']>> = {
   markdown: 'markdown',
   page: 'source',
-  image: 'not-for-a-model',
-  pdf: 'not-for-a-model',
+  image: 'file',
+  pdf: 'file',
+  file: 'file',
 }

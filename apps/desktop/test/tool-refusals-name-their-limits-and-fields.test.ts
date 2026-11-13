@@ -12,7 +12,7 @@ import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
 const remedy =
-  'Put the rest in a Markdown file, a page, an image or a PDF and name its path in resource_paths; the piece stays open. Nothing was shortened for you.'
+  'Put the rest in a Markdown file, a page, an image, a PDF or any other file and name its path in resource_paths; the piece stays open. Nothing was shortened for you.'
 
 describe('tool refusals name their limits and fields without keeping caller text', () => {
   let world: AServiceWorld

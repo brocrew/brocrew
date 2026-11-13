@@ -21,7 +21,6 @@ import { type Caller } from '../conversation-caller'
 import {
   FILES_FOUND_LISTED,
   MOST_FILES_SEARCHED,
-  NOT_FOR_A_MODEL_ACT,
   OLDER_FILES_COUNTED,
 } from '../../../shared/documents'
 import { FIND_WHERE_INPUT, type ToolName } from './catalog'
@@ -237,7 +236,7 @@ export function createReadDocumentTool(
      * Reads a kept resource by id, returning its current local bytes.
      */
     description:
-      'Read a resource this app keeps for a piece of work — an input its giver handed over, or a file the agent holding it kept or handed back with its reply. A report comes back as Markdown and a page as its source; an image or a PDF comes back saying so.',
+      'Read a resource this app keeps for a piece of work — an input its giver handed over, or a file the agent holding it kept or handed back with its reply. A report comes back as Markdown and a page as its source. Other files return their actual kept path, type and size, with an inline text preview when supported; native file/media tools can use that path.',
     /**
      * **486 · the rails are the whole gate** (HO-031 §2.4).
      *
@@ -271,13 +270,14 @@ export function createReadDocumentTool(
             `refused (${read.refusal.rail}): ${read.refusal.reason}`,
           )
         }
-        // **635 · the payload branches on the CONTENT, and the *not this* arm is a member**
-        // (`HO-097` §1.2: *"where a type cannot be handed to a model, the tool says so plainly
-        // rather than returning something useless"*).
+        const content = read.content
         const said =
-          read.content.as === 'not-for-a-model'
-            ? `That resource is of a form this app does not hand to a model (${read.content.because}). ${NOT_FOR_A_MODEL_ACT}`
-            : read.content.text
+          content.as === 'file'
+            ? `Kept file: ${content.path}\nType: ${content.mimeType}. Size: ${content.bytes} bytes.\n\n${
+                content.preview ??
+                'No inline text preview is available. Use this path with a native file/media reader that supports the format.'
+              }`
+            : content.text
         return answer(
           {
             outcome: 'ok',
@@ -290,11 +290,17 @@ export function createReadDocumentTool(
             // different questions: `form` is *what the file is* and `as` is *what you were
             // handed*. A page is a `page` handed over `as: 'source'`.
             form: read.form,
-            // **675 · the text is the answer's PROSE, and it is not said twice** — twice is
-            // twice the context. `as` stays, so a model reads WHICH it got; the refusal-shaped
-            // arm keeps its `because`.
+            // Inline text appears once, in the answer's prose.
             content:
-              read.content.as === 'not-for-a-model' ? { ...read.content } : { as: read.content.as },
+              content.as === 'file'
+                ? {
+                    as: content.as,
+                    path: content.path,
+                    mimeType: content.mimeType,
+                    bytes: content.bytes,
+                    hasPreview: content.preview !== null,
+                  }
+                : { as: content.as },
           },
           said,
         )
