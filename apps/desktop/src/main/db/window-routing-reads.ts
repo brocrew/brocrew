@@ -88,6 +88,7 @@ export class WindowRoutingReads {
     return (
       reading.work.owners.get(id) ?? {
         id,
+        rootless: false,
         openWork: { value: [], skipped: [] },
         given: { value: [], skipped: [] },
         waitsOnWhoWrote: { value: [], skipped: [] },
@@ -101,6 +102,10 @@ export class WindowRoutingReads {
     if (owner === undefined) return undefined
     if (owner.openWork.skipped.length !== 0) throw new WindowReadUnavailable()
     return this.fact(owner.openWork)
+  }
+
+  rootless(id: string): boolean | undefined {
+    return this.owner(id)?.rootless
   }
 
   given(id: string, unread?: RowsUnread) {

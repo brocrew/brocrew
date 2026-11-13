@@ -12,6 +12,7 @@ it('uses worker structural facts for listing service classification with canonic
   const writer: { current?: Database.Database } = {}
   let measuring = false
   const probes: string[] = []
+  const callers: string[] = []
   const prepare = Database.prototype.prepare
   vi.spyOn(Database.prototype, 'prepare').mockImplementation(function (
     this: Database.Database,
@@ -24,8 +25,11 @@ it('uses worker structural facts for listing service classification with canonic
       get(native, key) {
         if (key === 'get')
           return (...args: unknown[]) => {
-            if (measuring && isWriter() && /theServiceOf/.test(new Error().stack ?? ''))
+            const caller = measuring && isWriter() ? (new Error().stack ?? '') : ''
+            if (/theServiceOf/.test(caller)) {
               probes.push(sql)
+              callers.push(caller)
+            }
             return native.get(...args)
           }
         const value: unknown = Reflect.get(native, key, native)
@@ -87,7 +91,7 @@ it('uses worker structural facts for listing service classification with canonic
       type: 'work_retitled', piece: root.piece, title: 'Changed title', by: null,
     }, world.clock)
     await read('retitled')
-    console.info(JSON.stringify({ counts, probes }))
+    console.info(JSON.stringify({ counts, probes, callers }))
     expect(probes).toEqual([])
   } finally {
     measuring = false

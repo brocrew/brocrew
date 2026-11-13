@@ -7968,7 +7968,10 @@ export class RuntimeHost implements LiveHost {
    * `null` for any other conversation. ⛔ A conversation with no parent and no root, which only a
    * service's birth makes, is a service's even where what is kept cannot name it: `'unknown'`.
    */
-  private theServiceOf(conversation: string): string | 'unknown' | null {
+  private theServiceOf(
+    conversation: string,
+    rootlessReading?: () => boolean | undefined,
+  ): string | 'unknown' | null {
     const read = this.profileExecution
     if (read.readable) {
       for (const [identity, entry] of Object.entries(read.kept.profiles)) {
@@ -7979,9 +7982,10 @@ export class RuntimeHost implements LiveHost {
     }
     const { store } = this.deps
     const rootless =
-      store.recordedOne(conversation) !== null &&
-      store.parentOf(conversation) === null &&
-      store.rootOf(conversation) === null
+      rootlessReading?.() ??
+      (store.recordedOne(conversation) !== null &&
+        store.parentOf(conversation) === null &&
+        store.rootOf(conversation) === null)
     return rootless ? 'unknown' : null
   }
 
@@ -32842,7 +32846,8 @@ export class RuntimeHost implements LiveHost {
     conversation: string,
     waiting: (id: string) => WhatAConversationIsWaitingOn,
   ): Pick<ResumableSessionInfo, 'named' | 'waitingOnPurpose'> {
-    if (this.theServiceOf(conversation) !== null) return { named: null }
+    if (this.theServiceOf(conversation, () => this.windowRoutingReads.rootless(conversation)) !== null)
+      return { named: null }
     const { named, waitingOnPurpose } =
       this.windowRoutingReads.naming(conversation) ??
       this.deps.store.workThatNamesAndItsWait(conversation)

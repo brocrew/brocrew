@@ -33,6 +33,7 @@ export interface WindowFact<T> {
 export interface WindowWorkReading {
   readonly owners: readonly {
     readonly id: string
+    readonly rootless: boolean
     readonly openWork: WindowFact<readonly WorkInHand[]>
     readonly given: WindowFact<readonly StateWork[]>
     readonly waitsOnWhoWrote: WindowFact<readonly StateWork[]>
@@ -95,10 +96,11 @@ export function readWindowWork(db: AppDatabase, store: SessionStore): WindowWork
     )
     .all() as { id: string }[]
   const owners = ids.map(({ id }) => {
+    const root = store.rootOf(id)
     return {
       id,
+      rootless: root === null && store.recordedOne(id) !== null && store.parentOf(id) === null,
       openWork: counted((unread) => {
-        const root = store.rootOf(id)
         return [
           ...(root === null ? [] : [{ label: root.label }]),
           ...openWorkOf(store.piecesOwnedBy(id, unread)),
