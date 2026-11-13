@@ -448,16 +448,13 @@ describe('sending', () => {
     expect(bridge.sends()[0].text).toBe('Plain words')
   })
 
-  it('refuses too long a message, too many and the same one twice', async () => {
+  it('sends long text while refusing too many messages and the same one twice', async () => {
     const { call, tick } = await boot({ writable: [ROWING.jid, ALLOTMENT.jid] })
     expect(
       (await call('send_to_group', { group: ROWING.jid, text: '🌊'.repeat(4001) })).content[0].text,
-    ).toBe(refused(REFUSALS['too-long']))
-    expect(
-      (await call('send_to_group', { group: ROWING.jid, text: '🌊'.repeat(4000) })).content[0].text,
     ).toContain('"sent":true')
     expect(
-      (await call('send_to_group', { group: ROWING.jid, text: '🌊'.repeat(4000) })).content[0].text,
+      (await call('send_to_group', { group: ROWING.jid, text: '🌊'.repeat(4001) })).content[0].text,
     ).toBe(refused(REFUSALS.duplicate))
     for (let i = 0; i < 4; i++)
       await call('send_to_group', { group: ROWING.jid, text: `Note ${i}` })
@@ -515,13 +512,13 @@ describe('sending', () => {
     expect(
       (await call('send_to_group', { group: ROWING.jid, file: inside, text: 'c'.repeat(1001) }))
         .content[0].text,
-    ).toBe(refused(REFUSALS['caption-too-long']))
+    ).toContain('"sent":true')
     bridge.sendError = 'unsupported_media_type'
     expect(
       (await call('send_to_group', { group: ROWING.jid, file: inside, text: 'typed' })).content[0]
         .text,
     ).toBe(refused(REFUSALS['file-type']))
-    expect(bridge.sends()).toHaveLength(2)
+    expect(bridge.sends()).toHaveLength(3)
   })
 
   it.each([ROWING.name, ROWING.jid])(
@@ -604,12 +601,15 @@ describe('sending', () => {
     expect(sendCalls).toBe(1)
   })
 
-  it.each(['send_to_group', 'search_contacts'])('preserves bridge errors from %s', async (tool) => {
+  it.each([
+    ['send_to_group', 'Hello', 503, 'Connection closed'],
+    ['search_contacts', 'Ines', 503, 'Connection closed'],
+    ['send_to_group', 'x'.repeat(4001), 502, 'server returned error 413'],
+  ] as const)('preserves bridge errors from %s', async (tool, text, status, detail) => {
     const { client, bridge, refusals } = await boot({ read: true, writable: [ROWING.jid] })
-    const reply = { status: 503, body: { error: 'send_failed', detail: 'Connection closed' } }
+    const reply = { status, body: { error: 'send_failed', detail } }
     vi.spyOn(bridge, 'call').mockResolvedValueOnce(reply)
-    const args =
-      tool === 'search_contacts' ? { query: 'Ines' } : { group: ROWING.jid, text: 'Hello' }
+    const args = tool === 'search_contacts' ? { query: text } : { group: ROWING.jid, text }
     expect(await client.callTool({ name: tool, arguments: args })).toEqual({
       isError: true,
       content: [{ type: 'text', text: `Error: ${JSON.stringify(reply)}` }],
