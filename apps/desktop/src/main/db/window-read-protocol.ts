@@ -249,7 +249,7 @@ export const windowReadResult = z.discriminatedUnion('kind', [
       kind: z.literal('routes'),
       cacheToken: z.string().optional(),
       work: z.object({ owners: z.array(z.unknown()), namesUnder: z.array(z.unknown()),
-        raised: z.array(z.unknown()), instructionAskers: z.unknown(), routedTo: z.array(z.unknown()),
+        raised: z.array(z.unknown()), instructionAskers: z.unknown(), queue: z.unknown(), routedTo: z.array(z.unknown()),
       }).strict().optional(),
       routes: z.array(
         z

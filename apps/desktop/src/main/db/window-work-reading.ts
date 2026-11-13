@@ -2,12 +2,15 @@ import type { AppDatabase } from './connection'
 import type { SessionStore } from './session-store'
 import { rowsUnreadOnce, type RowsUnread } from './rows-unread'
 import type { PieceRow } from '../../shared/task-contracts'
-import type { RaisedQuestion } from '../../shared/question-contracts'
+import type { LedgerWalk, RaisedQuestion } from '../../shared/question-contracts'
 import { TASK_IS_OPEN } from '../../shared/tasks'
 import type { SkippedRow } from './window-read-protocol'
 
 export type StateWork = Pick<PieceRow, 'piece' | 'parent' | 'owner' | 'state' | 'givenAt'>
 export type StateWait = StateWork & Pick<PieceRow, 'label' | 'statusLine'>
+export type QueueStall = Pick<PieceRow, 'piece' | 'label' | 'title' | 'owner' | 'giver' |
+  'state' | 'stalledBecause' | 'stalledBy' | 'stalledAt'>
+type QueueReply = Pick<PieceRow, 'piece' | 'label' | 'title' | 'owner'> & { readonly answeredAPersonAt: number }
 type Name = ReturnType<SessionStore['workThatNames']>
 export type StateQuestion = Pick<RaisedQuestion, 'piece' | 'raisedBy'>
 export interface WindowFact<T> {
@@ -25,6 +28,13 @@ export interface WindowWorkReading {
   readonly raised: readonly (readonly [string, WindowFact<readonly (readonly [string,
     StateQuestion
   ])[]>])[]
+  readonly queue: {
+    readonly stalls: WindowFact<LedgerWalk<QueueStall>>
+    readonly stops: WindowFact<LedgerWalk<QueueStall>>
+    readonly replies: WindowFact<LedgerWalk<QueueReply>>
+    readonly instructions: WindowFact<ReturnType<SessionStore['instructionAsksWaiting']>>
+    readonly servers: WindowFact<ReturnType<SessionStore['mcpServerRequestsWaiting']>>
+  }
   readonly instructionAskers: WindowFact<readonly string[]>
   readonly routedTo: ReturnType<SessionStore['whoRoutedToWhom']>
 }
@@ -77,6 +87,22 @@ export function readWindowWork(db: AppDatabase, store: SessionStore): WindowWork
     [owner, piece, counted((unread) => store.workThatNamesUnder(owner, piece, unread))] as const)
   const raised = ids.map(({ id }) => [id, counted((unread) => [...store.questionsRaisedIn(id, unread)]
     .map(([request, { piece, raisedBy }]) => [request, { piece, raisedBy }] as const))] as const)
-  const instructionAskers = counted((unread) => store.instructionAsksWaiting(unread).map((one) => one.conversation))
-  return { owners, namesUnder, raised, instructionAskers, routedTo: store.whoRoutedToWhom() }
+  const stalled = (walk: LedgerWalk<PieceRow>): LedgerWalk<QueueStall> => ({ ...walk,
+    rows: walk.rows.map(({ piece, label, title, owner, giver, state, stalledBecause, stalledBy, stalledAt }) =>
+      ({ piece, label, title, owner, giver, state, stalledBecause, stalledBy, stalledAt })),
+  })
+  const queue = {
+    stalls: counted((unread) => stalled(store.stalledWorkNobodyWasToldAbout(unread))),
+    stops: counted((unread) => stalled(store.stalledWorkItsGiverWasToldAbout(unread))),
+    replies: counted((unread) => {
+      const walk = store.piecesWaitingOnWhoWrote(unread)
+      return { ...walk, rows: walk.rows.map(({ piece, label, title, owner, answeredAPersonAt }) =>
+        ({ piece, label, title, owner, answeredAPersonAt })) }
+    }),
+    instructions: counted((unread) => store.instructionAsksWaiting(unread)),
+    servers: counted((unread) => store.mcpServerRequestsWaiting(unread)),
+  }
+  const instructionAskers = { ...queue.instructions,
+    value: queue.instructions.value.map((one) => one.conversation) }
+  return { owners, namesUnder, raised, queue, instructionAskers, routedTo: store.whoRoutedToWhom() }
 }

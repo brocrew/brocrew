@@ -112,6 +112,14 @@ export class WindowRoutingReads {
     return new Map(raised === undefined ? [] : this.fact(raised, unread))
   }
 
+  queue<K extends keyof WindowWorkReading['queue']>(kind: K, unread: RowsUnread):
+    WindowWorkReading['queue'][K]['value'] | undefined {
+    const reading = this.context.getStore()
+    if (!reading?.active) return undefined
+    if (reading.snapshot.work?.queue === undefined) throw new WindowReadUnavailable()
+    return this.fact<WindowWorkReading['queue'][K]['value']>(reading.snapshot.work.queue[kind], unread)
+  }
+
   instructionAskers(unread: RowsUnread) {
     const reading = this.context.getStore()
     if (!reading?.active) return undefined

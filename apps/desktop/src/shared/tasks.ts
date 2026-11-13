@@ -6,7 +6,6 @@ import type {
   AgentMessageKind,
   ConversationWait,
   HeldWork,
-  PieceAConversationGave,
   PieceRow,
   PieceWaitingOnWhoWrote,
   StatusLine,
@@ -282,9 +281,9 @@ export const A_TURN_THAT_ANSWERED_A_PERSON_ENDS_ON: Readonly<Record<TaskStallCau
  * that neither reader needs a non-null assertion to hand the cause on, and a `!` is how an
  * invariant becomes a claim nothing checks.
  */
-export function stalledWithACause(
-  piece: PieceRow,
-): piece is PieceRow & { readonly stalledBecause: TaskStallCause } {
+export function stalledWithACause<T extends Pick<PieceRow, 'state' | 'stalledBecause'>>(
+  piece: T,
+): piece is T & { readonly stalledBecause: TaskStallCause } {
   return piece.state === 'stalled' && piece.stalledBecause !== null
 }
 
@@ -292,7 +291,7 @@ export function stalledWithACause(
  * ⚑ **D-016 · commit 6** — whether a conversation gave this piece; see
  * {@link PieceAConversationGave}.
  */
-export function givenByAConversation(piece: PieceRow): piece is PieceAConversationGave {
+export function givenByAConversation<T extends Pick<PieceRow, 'giver'>>(piece: T): piece is T & { readonly giver: string } {
   return piece.giver !== null
 }
 
@@ -335,9 +334,9 @@ export function givenByAConversation(piece: PieceRow): piece is PieceAConversati
  * a dispatch that moved only the agent's half would leave the two reading different populations
  * of the same ledgers.
  */
-export function aStallItsGiverCanBeToldOf(
-  piece: PieceRow,
-): piece is PieceAConversationGave & { readonly stalledBecause: TaskStallCause } {
+export function aStallItsGiverCanBeToldOf<T extends Pick<PieceRow, 'state' | 'stalledBecause' | 'giver'>>(
+  piece: T,
+): piece is T & { readonly giver: string; readonly stalledBecause: TaskStallCause } {
   return stalledWithACause(piece) && givenByAConversation(piece)
 }
 

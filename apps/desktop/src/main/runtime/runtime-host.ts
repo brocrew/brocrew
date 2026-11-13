@@ -15235,7 +15235,7 @@ export class RuntimeHost implements LiveHost {
   private instructionAsksCounted(): CountedRows<InstructionAskWaiting> {
     return this.forAPerson('instructionAsksWaiting', () => {
       const unread = rowsUnreadOnce()
-      const rows = this.deps.store.instructionAsksWaiting(unread)
+      const rows = this.windowRoutingReads.queue('instructions', unread) ?? this.deps.store.instructionAsksWaiting(unread)
       return { rows, rowsUnread: unread.count }
     })
   }
@@ -15249,7 +15249,7 @@ export class RuntimeHost implements LiveHost {
   private mcpServerRequestsCounted(): CountedRows<McpServerRequestWaiting> {
     return this.forAPerson('mcpServerRequestsWaiting', () => {
       const unread = rowsUnreadOnce()
-      const rows = this.deps.store.mcpServerRequestsWaiting(unread)
+      const rows = this.windowRoutingReads.queue('servers', unread) ?? this.deps.store.mcpServerRequestsWaiting(unread)
       return { rows, rowsUnread: unread.count }
     })
   }
@@ -15976,7 +15976,7 @@ export class RuntimeHost implements LiveHost {
     // 🔴 **D-017 · R8** — one set for the walk, so a record it skipped is counted once.
     const unread = rowsUnreadOnce()
     const walked = this.shown(
-      this.deps.store.stalledWorkNobodyWasToldAbout(unread),
+      this.windowRoutingReads.queue('stalls', unread) ?? this.deps.store.stalledWorkNobodyWasToldAbout(unread),
       (row) => row.owner,
     )
     return {
@@ -16052,7 +16052,7 @@ export class RuntimeHost implements LiveHost {
     }
     const unread = rowsUnreadOnce()
     const found = this.shown(
-      this.deps.store.stalledWorkItsGiverWasToldAbout(unread),
+      this.windowRoutingReads.queue('stops', unread) ?? this.deps.store.stalledWorkItsGiverWasToldAbout(unread),
       (row) => row.owner,
     )
     const rows = found.rows.flatMap((row) => {
@@ -16988,7 +16988,7 @@ export class RuntimeHost implements LiveHost {
     }
     // 🔴 **D-017 · R8** — one set for the walk, so a record it skipped is counted once.
     const unread = rowsUnreadOnce()
-    const walked = this.shown(this.deps.store.piecesWaitingOnWhoWrote(unread), (row) => row.owner)
+    const walked = this.shown(this.windowRoutingReads.queue('replies', unread) ?? this.deps.store.piecesWaitingOnWhoWrote(unread), (row) => row.owner)
     return {
       walk: walked.walk,
       ledgers: walked.ledgers,

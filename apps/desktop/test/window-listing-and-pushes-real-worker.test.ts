@@ -29,7 +29,7 @@ it('measures listings and real state notices with nine live agents', async () =>
       const caller = new Error().stack ?? ''
       const row = { sql, rows: 0, caller, phase }
       if (measuring) {
-        if (/theListing|statesThatMoved|whatWasKept/.test(caller)) mainHistory.push(row)
+        if (/theListing|statesThatMoved|whatWasKept|personsQueue|ForAPerson/.test(caller)) mainHistory.push(row)
         else otherMainHistory.push(row)
       }
       return row
