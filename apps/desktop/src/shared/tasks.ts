@@ -733,11 +733,11 @@ export const NOTHING_IT_WAITS_ON: WhatAConversationIsWaitingOn = {
  * conversation that has to move next; asking the giver would walk the edge the wrong way. ⚠️ **It
  * is asked only for OPEN rows**, so a conversation whose work has all finished costs no read at all.
  */
-export function composeWhatEachPieceIsWaitingOn(
-  pieces: readonly PieceRow[],
+export function composeWhatEachPieceIsWaitingOn<T extends Pick<PieceRow, 'piece' | 'owner' | 'state'>>(
+  pieces: readonly T[],
   /** ⛔ **Everything the conversation holding a row is waiting on** — one read per conversation. */
   outstandingFor: (sessionId: string) => WhatAConversationIsWaitingOn,
-): readonly PieceRow[] {
+): readonly T[] {
   return pieces.map((piece) => {
     if (!TASK_IS_OPEN[piece.state]) return piece
     const outstanding = outstandingFor(piece.owner)

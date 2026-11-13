@@ -19,6 +19,7 @@ import { ledgersSkippedOf, readOrSkip } from '../db/session-store'
 import { rowsUnreadOnce } from '../db/rows-unread'
 import type { SessionStore, WorkRow } from '../db/session-store'
 import type { RowsUnread } from '../db/rows-unread'
+import type { StateWork } from '../db/window-work-reading'
 import {
   composeWhatEachPieceIsWaitingOn,
   TASK_IS_OPEN,
@@ -654,7 +655,7 @@ export class WorkReads {
   oneWaitReadPerAnswer(
     unread: RowsUnread | undefined,
     ledger: (id: string) => ItsLedger,
-    workOut: WorkOutOf,
+    workOut: WorkOutOf<StateWork>,
   ): (id: string) => WhatAConversationIsWaitingOn {
     const held = new Map<string, WhatAConversationIsWaitingOn>()
     const read = (id: string): WhatAConversationIsWaitingOn => {

@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3'
 import { randomUUID } from 'node:crypto'
 import type { SnapshotFoldAnswers } from './ledger-fold-state'
+import { readWindowWork } from './window-work-reading'
 import { recentActivity } from '../runtime/recent-activity'
 import { createSessionStore, type ThreadLeadRow } from './session-store'
 import { rowsUnreadOnce, type RowsUnread } from './rows-unread'
@@ -241,6 +242,7 @@ export class WindowReadEngine {
           routes,
           questions: store.questionsAPersonMustAnswer(unread),
           decisions: store.decisionsAwaitingAPerson(unread),
+          work: readWindowWork(cancellable, store),
         }
       }
       if (refused !== undefined) throw refused

@@ -5,6 +5,7 @@ import { FOREST_PAGE, FOREST_WINDOWS } from '../../shared/the-whole-forest'
 import type { ForestFirstRead } from './forest-first-read'
 import type { SessionStore, ThreadLeadRow } from './session-store'
 import type { SkipNote } from './rows-unread'
+import type { WindowWorkReading } from './window-work-reading'
 
 export const WINDOW_READ_BOUNDS = {
   pending: 16,
@@ -83,6 +84,7 @@ export interface WindowRoutes {
   readonly questions: ReturnType<SessionStore['questionsAPersonMustAnswer']>
   readonly decisions: ReturnType<SessionStore['decisionsAwaitingAPerson']>
   readonly cacheToken?: string
+  readonly work?: WindowWorkReading
 }
 interface WindowLeads {
   readonly kind: 'leads'
@@ -233,6 +235,7 @@ export const windowReadResult = z.discriminatedUnion('kind', [
     .object({
       kind: z.literal('routes'),
       cacheToken: z.string().optional(),
+      work: z.custom<WindowWorkReading>((value) => value !== null && typeof value === 'object').optional(),
       routes: z.array(
         z
           .object({

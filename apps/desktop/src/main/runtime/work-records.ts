@@ -170,4 +170,4 @@ export interface ItsLedger {
 }
 
 /** Open given work is read from its holders separately from the giver's own ledger. */
-export type WorkOutOf = (id: string) => readonly PieceRow[]
+export type WorkOutOf<T = PieceRow> = (id: string) => readonly T[]
