@@ -47,7 +47,11 @@ test('native restart requires the choice in stdout and every successful drain st
   for (const step of steps) {
     assert.throws(() => nativeRestartRecorded(choice, drain.replace(step, ''), '0.2.24'))
     assert.throws(() =>
-      nativeRestartRecorded(choice, `${drain}\nBroCrew failed to ${step}: fictional failure`, '0.2.24'),
+      nativeRestartRecorded(
+        choice,
+        `${drain}\nBroCrew failed to ${step}: fictional failure`,
+        '0.2.24',
+      ),
     )
   }
 })

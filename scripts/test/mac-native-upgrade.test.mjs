@@ -111,7 +111,7 @@ it('presses native restart and keeps B alive until its candidate checkpoint comp
       expect(await check()).toBe(true)
     },
     readFile: vi.fn(async (path) =>
-      path === '/evidence/a.stdout.log'
+      path === join(fixture.evidence, 'a.stdout.log')
         ? 'updates: restarting to install 0.2.23'
         : 'BroCrew shut down in 10ms\nclose its sessions\nkeep its unsent drafts\ndrain its archive work\nclose its database',
     ),
@@ -146,7 +146,7 @@ it('presses native restart and keeps B alive until its candidate checkpoint comp
     'quit-native-B',
     'no-app-or-ShipIt',
   ])
-  expect(fixture.readFile).toHaveBeenCalledWith('/evidence/a.stdout.log', 'utf8')
+  expect(fixture.readFile).toHaveBeenCalledWith(join(fixture.evidence, 'a.stdout.log'), 'utf8')
   expect(fixture.readFile).toHaveBeenCalledWith('/evidence/a.log', 'utf8')
   expect(fixture.click).toHaveBeenCalledExactlyOnceWith(workspace.cdp, '[data-cy=updates-restart]')
   expect(fixture.observeMacReplacement).toHaveBeenCalledExactlyOnceWith({
