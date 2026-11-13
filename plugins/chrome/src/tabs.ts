@@ -2,7 +2,6 @@ import type { Dialog, Download, Page } from 'playwright-core'
 import type { ProfileBrowser } from './browser/profileBrowser.js'
 export class TabError extends Error {}
 export const RING_SIZE = 200
-export const DIALOG_AUTO_DISMISS_MS = 10000
 export interface Ring<T> {
   push(entry: Omit<T, 'seq'>): T
   since(since?: number): T[]
@@ -76,17 +75,14 @@ export function bareUrl(raw: string): string {
 }
 export interface TabRegistryOptions {
   start?: number
-  setTimeout?: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>
 }
 export class TabRegistry {
   private next: number
   private readonly tabs = new Map<string, TabState>()
   private readonly byPage = new WeakMap<Page, TabState>()
   private readonly gone = new Map<string, string>()
-  private readonly later: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>
   constructor(opts: TabRegistryOptions = {}) {
     this.next = opts.start ?? 1 + Math.floor(Math.random() * 9000)
-    this.later = opts.setTimeout ?? ((fn, ms) => setTimeout(fn, ms))
   }
   private readonly privateDownloads = new Map<string, (download: Download) => Promise<boolean>>()
   private readonly watched = new Set<string>()
@@ -226,23 +222,17 @@ export class TabRegistry {
       if (e) e.status = 0
     })
     page.on('dialog', (dialog) => {
+      tab.pendingDialog = dialog
       const plan = tab.dialogPlan
       if (plan) {
         tab.dialogPlan = null
-        void (plan.accept ? dialog.accept(plan.promptText) : dialog.dismiss()).catch(
-          () => undefined,
-        )
+        void (plan.accept ? dialog.accept(plan.promptText) : dialog.dismiss())
+          .then(() => {
+            if (tab.pendingDialog === dialog) tab.pendingDialog = null
+          })
+          .catch(() => undefined)
         return
       }
-      tab.pendingDialog = dialog
-      this.later(() => {
-        if (tab.pendingDialog !== dialog) return
-        tab.pendingDialog = null
-        void dialog.dismiss().catch(() => undefined)
-        tab.notes.push(
-          `an unhandled ${dialog.type()} dialog was dismissed after ${DIALOG_AUTO_DISMISS_MS / 1000} s: "${dialog.message().slice(0, 200)}"`,
-        )
-      }, DIALOG_AUTO_DISMISS_MS).unref?.()
     })
   }
 }

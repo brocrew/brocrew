@@ -24,6 +24,7 @@ import {
   jsonValue,
   locate,
   onTab,
+  openDialogNote,
   useTab,
   profileName,
   raceTimeout,
@@ -306,7 +307,7 @@ export function buildToolDefs(): ToolDef[] {
             })
             deps.activity?.('page-loaded')
           } catch (e) {
-            loadError = describeError(e)
+            loadError = openDialogNote(tab) ?? describeError(e)
           }
           const skipped = restored.filter((t) => t.note !== undefined).length
           return {
@@ -314,6 +315,7 @@ export function buildToolDefs(): ToolDef[] {
             windowId: await deps.browser.windowId(name, page),
             url: page.url(),
             title: await titleAfterLoad(page),
+            ...(openDialogNote(tab) ? { dialog: openDialogNote(tab) } : {}),
             ...(loadError ? { loadError } : {}),
             ...(restored.length ? { restoredTabs: restored } : {}),
             ...(openingNote || skipped
@@ -354,6 +356,7 @@ export function buildToolDefs(): ToolDef[] {
               profile: t.profile,
               url: t.page.url(),
               title: await titleOf(t.page),
+              ...(openDialogNote(t) ? { dialog: openDialogNote(t) } : {}),
             })),
           ),
         }
@@ -713,7 +716,7 @@ export function buildToolDefs(): ToolDef[] {
         const ms = timeoutOf(a)
         if ((a.scope === 'element') !== (a.ref !== undefined))
           throw new ToolError('scope "element" needs ref, and the other scopes take none')
-        const { value } = await onTab(deps, a.tabId as string, async ({ tab, page }) => {
+        const { value, notes } = await onTab(deps, a.tabId as string, async ({ tab, page }) => {
           const png =
             a.scope === 'element'
               ? await locate(tab, page, a.ref as string).screenshot({
@@ -730,7 +733,7 @@ export function buildToolDefs(): ToolDef[] {
         })
         return {
           image: value,
-          caption: `${a.scope as string} screenshot of ${a.tabId as string}`,
+          caption: `${a.scope as string} screenshot of ${a.tabId as string}${notes.length ? `\nnotes: ${notes.join('; ')}` : ''}`,
         }
       },
     },
@@ -850,7 +853,7 @@ export function buildToolDefs(): ToolDef[] {
       spec: {
         name: 'handle_dialog',
         description:
-          'Say how to answer the next alert/confirm/prompt dialog of this tab (accept or dismiss, with promptText for prompts). If a dialog is already open it is answered now. An unhandled dialog is dismissed after 10 s and reported in the next result.',
+          'Say how to answer the next alert/confirm/prompt dialog of this tab (accept or dismiss, with promptText for prompts). If a dialog is already open it is answered now. An unhandled dialog stays open until explicitly answered; page actions report the open dialog and may be blocked until handle_dialog answers it.',
         props: {
           tabId,
           accept: {
@@ -871,10 +874,10 @@ export function buildToolDefs(): ToolDef[] {
         usableProfile(deps, tab.profile)
         const pending = tab.pendingDialog
         if (pending) {
-          tab.pendingDialog = null
           await (a.accept === true
             ? pending.accept(a.promptText as string | undefined)
             : pending.dismiss())
+          if (tab.pendingDialog === pending) tab.pendingDialog = null
           return { json: { ok: true, applied: 'to the open dialog' } }
         }
         tab.dialogPlan = {

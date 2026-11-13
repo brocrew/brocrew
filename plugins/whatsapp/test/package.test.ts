@@ -585,11 +585,10 @@ describe('sending', () => {
         },
       }
     })
-    const result = await client.callTool({ name: 'send_to_group', arguments: {
-      group: ROWING.jid,
-      text: 'Meet at six',
-      file,
-    } })
+    const result = await client.callTool({
+      name: 'send_to_group',
+      arguments: { group: ROWING.jid, text: 'Meet at six', file },
+    })
     expect(result.isError).toBe(true)
     expect(JSON.parse((result.content as Array<{ text: string }>)[0].text)).toEqual({
       audioSent: true,

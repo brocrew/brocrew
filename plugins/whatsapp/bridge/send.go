@@ -256,6 +256,13 @@ func (s *session) sendMedia(ctx context.Context, jid types.JID, att attachment, 
 	})
 }
 
+type captionSendError struct {
+	cause error
+}
+
+func (e *captionSendError) Error() string { return "audio sent; caption failed: " + e.cause.Error() }
+func (e *captionSendError) Unwrap() error { return e.cause }
+
 func sendMediaMessages(messages []*waE2E.Message, send func(*waE2E.Message) error) error {
 	for i, message := range messages {
 		err := send(message)
@@ -263,7 +270,7 @@ func sendMediaMessages(messages []*waE2E.Message, send func(*waE2E.Message) erro
 			if i == 0 {
 				return err
 			}
-			return nil
+			return &captionSendError{cause: err}
 		}
 	}
 	return nil

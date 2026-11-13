@@ -4,6 +4,7 @@ import { dispatchTool, type ToolDefinition } from '../../../shared/tool-dispatch
 export { PublicToolError } from '../../../shared/tool-dispatch.js'
 export type { ToolDefinition } from '../../../shared/tool-dispatch.js'
 export type ToolResult = {
+  isError?: boolean
   content: Array<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }>
 }
 export interface ToolHandler {
