@@ -1,3 +1,5 @@
+import { givenByAConversation } from './given-by-a-conversation'
+export { givenByAConversation } from './given-by-a-conversation'
 import type { ActedBy } from './who-did-it'
 import type { PersistedEventInfo, TranscriptEvent } from './conversation-events'
 import type { WorkInHand } from './question-contracts'
@@ -291,11 +293,6 @@ export function stalledWithACause<T extends Pick<PieceRow, 'state' | 'stalledBec
  * ⚑ **D-016 · commit 6** — whether a conversation gave this piece; see
  * {@link PieceAConversationGave}.
  */
-export function givenByAConversation<T extends Pick<PieceRow, 'giver'>>(
-  piece: T,
-): piece is T & { readonly giver: string } {
-  return piece.giver !== null
-}
 
 /**
  * 🔴 **D-016 · commit 6 · R3 — a stall its giver can be told of: stalled with a cause, and given by

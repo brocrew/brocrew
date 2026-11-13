@@ -92,7 +92,7 @@ export interface WindowRoutes {
   readonly cacheToken?: string
   readonly work?: WindowWorkReading
 }
-export interface WindowPublication {
+interface WindowPublication {
   readonly kind: 'publication'
   readonly states: WindowRoutes | null
   readonly files: ReturnType<SessionStore['filesKept']>

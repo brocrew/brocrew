@@ -120,6 +120,7 @@
         "resources/plugin-host/*.mjs",
         "test/**/*.worker.ts",
         "test/helpers/plugin-disclosure-reader-worker.ts",
+        "test/helpers/measured-window-worker.ts",
         "test/fixtures/quit-active-sqlite.child.ts",
         "smoke/packaged-plugin-service.ts",
         "smoke/plugin-lifecycle.ts",

@@ -4,11 +4,12 @@ import { rowsUnreadOnce, type RowsUnread } from './rows-unread'
 import type { PieceRow } from '../../shared/task-contracts'
 import type { LedgerWalk, RaisedQuestion, WorkInHand } from '../../shared/question-contracts'
 import { TASK_IS_OPEN, openWorkOf } from '../../shared/tasks'
-import type { SkippedRow } from './window-read-protocol'
+import type { SkipNote } from './rows-unread'
+type SkippedRow = Parameters<SkipNote>[0]
 
 export type StateWork = Pick<PieceRow, 'piece' | 'parent' | 'owner' | 'state' | 'givenAt'>
-export type StateWait = StateWork & Pick<PieceRow, 'label' | 'statusLine'>
-export type QueueStall = Pick<
+type StateWait = StateWork & Pick<PieceRow, 'label' | 'statusLine'>
+type QueueStall = Pick<
   PieceRow,
   | 'piece'
   | 'label'
@@ -24,7 +25,7 @@ type QueueReply = Pick<PieceRow, 'piece' | 'label' | 'title' | 'owner'> & {
   readonly answeredAPersonAt: number
 }
 type Name = ReturnType<SessionStore['workThatNames']>
-export type StateQuestion = Pick<RaisedQuestion, 'piece' | 'raisedBy'>
+type StateQuestion = Pick<RaisedQuestion, 'piece' | 'raisedBy'>
 export interface WindowFact<T> {
   readonly value: T
   readonly skipped: readonly (readonly [string, readonly SkippedRow[]])[]

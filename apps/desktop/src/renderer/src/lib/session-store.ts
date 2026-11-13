@@ -1,3 +1,4 @@
+import { readPersonsQueue } from './read-persons-queue'
 import { createLiveSessionRecords } from './live-session-records'
 import type { PersonsQueueAnswer } from '../../../shared/persons-published'
 import type { ClientSessionApi } from '../../../shared/client-session-api'
@@ -1852,13 +1853,7 @@ export function createSessionStore(bridge: ClientSessionApi): SessionStore {
      * the sentence *"nothing is waiting on you"* — the strongest claim this app makes about a
      * person's own workload — and a dropped IPC call must not be able to make it.
      */
-    async personsQueue(): Promise<PersonsQueueAnswer | null> {
-      try {
-        return await bridge.personsQueue()
-      } catch {
-        return null
-      }
-    },
+    personsQueue: () => readPersonsQueue(bridge),
 
     async questionsForAPerson(): Promise<LedgerWalk<PersonsQuestion> | null> {
       try {
