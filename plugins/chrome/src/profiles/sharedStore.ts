@@ -32,9 +32,13 @@ import { readVolumeIdentity } from './volumeIdentity.js'
 export type ChromeState = 'ended' | 'live' | 'unknown'
 export class ProfileInUseElsewhereError extends ProfileStoreError {
   readonly transient = true
-  constructor(readonly label: string) {
+  constructor(
+    readonly label: string,
+    profile?: string,
+    hostPid?: number,
+  ) {
     super(
-      `Chrome profile is in use in ${label === 'the default workspaces' ? label : `the ${label} workspace`} right now. Use another profile, or ask the person to close it there. You can retry after it closes.`,
+      `Chrome profile${profile === undefined ? '' : ` "${profile}"`} is in use in ${label === 'the default workspaces' ? label : `the ${label} workspace`} right now. ${hostPid === undefined ? '' : `Recorded plugin host PID: ${hostPid}. `}Use another profile, or ask the person to close the owning profile's browser there. You can retry after the owning profile's browser closes. A new window cannot bypass this owner.`,
     )
   }
 }
@@ -493,7 +497,7 @@ export function createSharedProfileStore(
         if (!supported(p, r))
           throw new ProfileStoreError('Profile is reserved or requires a newer plugin.')
         if (p.lease && !(reclaim && p.lease.token === previous?.token))
-          throw new ProfileInUseElsewhereError(p.lease.label)
+          throw new ProfileInUseElsewhereError(p.lease.label, name, p.lease.pid)
         p.lease = lease
       })
       return {
@@ -515,7 +519,7 @@ export function createSharedProfileStore(
       }
       const held = raw(read(), name).lease
       if (held && held.runId !== runId && !stale(held, sharedDir(name)))
-        throw new ProfileInUseElsewhereError(held.label)
+        throw new ProfileInUseElsewhereError(held.label, name, held.pid)
       // Reads may share this process's live browser. Writes always need a stopped Chrome
       // and a fresh reservation, including after our own browser has been closed.
       if (!write && held?.runId === runId) return work()
@@ -588,7 +592,7 @@ export function createSharedProfileStore(
         if (confirmation(r, p) !== expected)
           throw new ProfileStoreError('Profile changed; review the current deletion warning again.')
         if (p.lease && !(reclaim && previous?.token === p.lease.token))
-          throw new ProfileInUseElsewhereError(p.lease.label)
+          throw new ProfileInUseElsewhereError(p.lease.label, name, p.lease.pid)
         if (
           p.state === 'moving' ||
           (p.state === 'deleting' &&
