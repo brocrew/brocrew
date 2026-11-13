@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, it, vi } from 'vitest'
-import { openDatabase } from '../src/main/db/connection'
+import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
 import { WindowReadEngine } from '../src/main/db/window-read-engine'
@@ -91,6 +91,67 @@ it('a window listing reads piece history off the writer connection', async () =>
   } finally {
     measuring = false
     await host.closeAll()
+    engine.close()
+    vi.restoreAllMocks()
+    db.close()
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+it('the worker reuses unchanged routing folds between committed snapshots', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'fictional-worker-history-'))
+  const file = join(directory, 'fictional.sqlite')
+  const db = openDatabase(file)
+  applyMigrations(db, join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations'))
+  const store = createSessionStore(db)
+  store.create({ id: 'holder', provider: 'codex', cwd: directory,
+    approvalMode: 'ask', profileId: 'fictional' })
+  store.append('holder', 0, {
+    type: 'work_given', piece: 'fictional-piece', label: 'W1.1', parent: 'fictional-root',
+    givenBy: 'fictional-giver', title: 'Fictional work', brief: 'Fictional brief',
+  }, 1)
+  store.append('holder', 1, {
+    type: 'request_routed', requestId: 'fictional-request', to: 'a-person',
+  }, 2)
+  db.exec(`WITH RECURSIVE numbers(n) AS (SELECT 2 UNION ALL SELECT n + 1 FROM numbers WHERE n < 4001)
+    INSERT INTO events (id, session_id, generation, ordinal, type, payload, created_at)
+    SELECT 'fictional-' || n, 'holder', 0, n, 'status',
+           '{"type":"status","state":"ended"}', n + 1 FROM numbers`)
+  const engine = new WindowReadEngine(file)
+  const worker = (engine as unknown as { db: AppDatabase }).db
+  let walks = 0
+  let rows = 0
+  const prepare = worker.prepare.bind(worker)
+  vi.spyOn(worker, 'prepare').mockImplementation((sql) => {
+    const statement = prepare(sql)
+    if (!sql.includes("json_remove(payload, '$.sent', '$.given')")) return statement
+    const iterate = statement.iterate.bind(statement)
+    vi.spyOn(statement, 'iterate').mockImplementation(function* (...args) {
+      walks++
+      for (const row of iterate(...args)) { rows++; yield row }
+    })
+    return statement
+  })
+  const readings: { phase: string; walks: number; rows: number; elapsedMs: number }[] = []
+  const read = (phase: string) => {
+    const beforeWalks = walks
+    const beforeRows = rows
+    const started = performance.now()
+    expect(engine.read({ kind: 'routes' }).kind).toBe('routes')
+    readings.push({ phase, walks: walks - beforeWalks, rows: rows - beforeRows,
+      elapsedMs: performance.now() - started })
+  }
+  try {
+    read('cold')
+    read('unchanged-snapshot')
+    store.append('holder', 4002, {
+      type: 'work_retitled', piece: 'fictional-piece', title: 'Changed fictional work', by: null,
+    }, 4003)
+    read('after-work-commit')
+    console.info(JSON.stringify({ workerReadings: readings }))
+    expect(readings[0]!.rows).toBeGreaterThan(4000)
+    expect(readings[1]!.rows).toBe(0)
+  } finally {
     engine.close()
     vi.restoreAllMocks()
     db.close()
