@@ -5,7 +5,7 @@ import { LocalFileGuardError } from '../localFileGuard.js'
 import { BrowserNotFoundError, ProfileInUseError } from '../browser/profileBrowser.js'
 import { OperationBlockedError } from '../shared/browser/browser-lease.js'
 import { ProfileInUseElsewhereError } from '../profiles/sharedStore.js'
-import { TabError } from '../tabs.js'
+import { answerDialog, TabError } from '../tabs.js'
 import { randomBytes } from 'node:crypto'
 import type { ToolHandler, ToolResult } from '../shared/toolServer.js'
 import { openGuardedFile } from '../localFileGuard.js'
@@ -872,19 +872,11 @@ export function buildToolDefs(): ToolDef[] {
         const tab = await useTab(deps, a.tabId as string)
         deps.tabs.resolve(a.tabId as string, generationOf(deps))
         usableProfile(deps, tab.profile)
-        const pending = tab.pendingDialog
-        if (pending) {
-          await (a.accept === true
-            ? pending.accept(a.promptText as string | undefined)
-            : pending.dismiss())
-          if (tab.pendingDialog === pending) tab.pendingDialog = null
-          return { json: { ok: true, applied: 'to the open dialog' } }
-        }
-        tab.dialogPlan = {
+        const applied = await answerDialog(tab, {
           accept: a.accept === true,
           ...(a.promptText !== undefined ? { promptText: a.promptText as string } : {}),
-        }
-        return { json: { ok: true, applied: 'to the next dialog' } }
+        })
+        return { json: { ok: true, applied: `to the ${applied} dialog` } }
       },
     },
     {

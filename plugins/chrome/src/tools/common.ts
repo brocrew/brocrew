@@ -204,7 +204,8 @@ export async function onTab<T>(
         return await fn({ tab, page: tab.page })
       } catch (error) {
         const note = openDialogNote(tab)
-        if (note) throw new TabError(`${note}. The action's completion is unknown; do not replay it.`)
+        if (note)
+          throw new TabError(`${note}. The action's completion is unknown; do not replay it.`)
         throw error
       }
     }),

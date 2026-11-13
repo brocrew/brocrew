@@ -60,6 +60,16 @@ export interface TabState {
     at: number
   }>
 }
+export async function answerDialog(tab: TabState, plan: DialogPlan): Promise<'open' | 'next'> {
+  const pending = tab.pendingDialog
+  if (pending) {
+    await (plan.accept ? pending.accept(plan.promptText) : pending.dismiss())
+    if (tab.pendingDialog === pending) tab.pendingDialog = null
+    return 'open'
+  }
+  tab.dialogPlan = plan
+  return 'next'
+}
 export const MAX_PENDING_DOWNLOADS = 5
 export const PENDING_DOWNLOAD_MS = 60000
 const MAX_TOMBSTONES = 2000
