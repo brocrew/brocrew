@@ -98,7 +98,10 @@ export function readWindowWork(db: AppDatabase, store: SessionStore): WindowWork
       id,
       openWork: counted((unread) => {
         const root = store.rootOf(id)
-        return [...(root === null ? [] : [{ label: root.label }]), ...openWorkOf(store.piecesOwnedBy(id, unread))]
+        return [
+          ...(root === null ? [] : [{ label: root.label }]),
+          ...openWorkOf(store.piecesOwnedBy(id, unread)),
+        ]
       }),
       given: counted((unread) =>
         store

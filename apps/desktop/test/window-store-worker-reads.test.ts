@@ -332,28 +332,49 @@ describe('canonical window worker folds and independent live-store reads', () =>
 
   it('projects root-first open work while explicit readers and no-worker reads keep their semantics', () => {
     const root = store.ensurePersonalRoot('alpha', 1)
-    for (const [piece, label] of [['open-child', `${root.label}.2`], ['closed-child', `${root.label}.3`]])
-      row('alpha', 'work_given', {type:'work_given',piece,label,parent:root.piece,givenBy:'beta',title:'Fictional',brief:'Never copied to work context'})
-    row('alpha', 'work_closed', {type:'work_closed',piece:'closed-child'})
-    const host = aLibraryHost(directory, {store})
+    for (const [piece, label] of [
+      ['open-child', `${root.label}.2`],
+      ['closed-child', `${root.label}.3`],
+    ])
+      row('alpha', 'work_given', {
+        type: 'work_given',
+        piece,
+        label,
+        parent: root.piece,
+        givenBy: 'beta',
+        title: 'Fictional',
+        brief: 'Never copied to work context',
+      })
+    row('alpha', 'work_closed', { type: 'work_closed', piece: 'closed-child' })
+    const host = aLibraryHost(directory, { store })
     hosts.push(host)
     const context = host as unknown as {
-      oneWorkReadPerAnswer(pieces?: SessionStore['piecesOwnedBy']): (id:string)=>readonly {label:string}[]
+      oneWorkReadPerAnswer(
+        pieces?: SessionStore['piecesOwnedBy'],
+      ): (id: string) => readonly { label: string }[]
       windowRoutingReads: WindowRoutingReads
     }
-    const expected = [{label:root.label},{label:`${root.label}.2`}]
+    const expected = [{ label: root.label }, { label: `${root.label}.2` }]
     expect(context.oneWorkReadPerAnswer()('alpha')).toEqual(expected)
-    const snapshot = engine.read({kind:'routes'})
+    const snapshot = engine.read({ kind: 'routes' })
     if (snapshot.kind !== 'routes') throw new Error('wrong snapshot')
     const explicit = vi.fn(() => [])
-    const raw = vi.spyOn(store, 'piecesOwnedBy').mockImplementation(() => {throw new Error('raw reader')})
+    const raw = vi.spyOn(store, 'piecesOwnedBy').mockImplementation(() => {
+      throw new Error('raw reader')
+    })
     context.windowRoutingReads.run(snapshot, () => {
       expect(context.oneWorkReadPerAnswer()('alpha')).toEqual(expected)
       expect(raw).not.toHaveBeenCalled()
-      expect(context.oneWorkReadPerAnswer(explicit)('alpha')).toEqual([{label:root.label}])
+      expect(context.oneWorkReadPerAnswer(explicit)('alpha')).toEqual([{ label: root.label }])
       expect(explicit).toHaveBeenCalledWith('alpha')
     })
     expect(() => context.oneWorkReadPerAnswer()('alpha')).toThrow('raw reader')
+    const incomplete = structuredClone(snapshot)
+    const owner = incomplete.work!.owners.find((one) => one.id === 'alpha')!
+    Object.assign(owner.openWork, { skipped: [['alpha', [1]]] })
+    context.windowRoutingReads.run(incomplete, () => {
+      expect(() => context.oneWorkReadPerAnswer()('alpha')).toThrow(WindowReadUnavailable)
+    })
     raw.mockRestore()
   })
 

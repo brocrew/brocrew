@@ -18112,7 +18112,10 @@ export class RuntimeHost implements LiveHost {
       const root = this.deps.store.rootOf(id)
       // 🔴 **467 · {@link openWorkOf}**, which the store asks too, so the predicate is spelled once
       // for both.
-      const open = [...(root === null ? [] : [{ label: root.label }]), ...openWorkOf(readPieces(id))]
+      const open = [
+        ...(root === null ? [] : [{ label: root.label }]),
+        ...openWorkOf(readPieces(id)),
+      ]
       held.set(id, open)
       return open
     }

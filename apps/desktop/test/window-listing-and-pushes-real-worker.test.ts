@@ -22,12 +22,20 @@ function assertQueue(answer: PersonsQueueAnswer, questions: string[], workLabel:
     expect(answer[part], part).not.toBeNull()
     expect(answer.published.covers[part].complete, part).toBe(true)
   }
-  expect(answer.questions!.rows.map((one) => [one.request.requestId, one.request.state])).toEqual(questions.map((id) => [id, 'open']))
-  expect(answer.decisions!.rows.map((one) => [one.request.requestId, one.request.state])).toEqual([['semantic-decision','open']])
-  expect(answer.decisions!.rows[0]!.work).toEqual([{label:workLabel}])
-  expect(answer.instructionAsks!.rows.map((one) => one.asked.askId)).toEqual(['semantic-instruction'])
-  expect(answer.mcpServerRequests!.rows.map((one) => one.requested.requestId)).toEqual(['semantic-server'])
-  for (const part of ['stalled','stopped','waitingOnWhoWrote','incidents'] as const)
+  expect(answer.questions!.rows.map((one) => [one.request.requestId, one.request.state])).toEqual(
+    questions.map((id) => [id, 'open']),
+  )
+  expect(answer.decisions!.rows.map((one) => [one.request.requestId, one.request.state])).toEqual([
+    ['semantic-decision', 'open'],
+  ])
+  expect(answer.decisions!.rows[0]!.work).toEqual([{ label: workLabel }])
+  expect(answer.instructionAsks!.rows.map((one) => one.asked.askId)).toEqual([
+    'semantic-instruction',
+  ])
+  expect(answer.mcpServerRequests!.rows.map((one) => one.requested.requestId)).toEqual([
+    'semantic-server',
+  ])
+  for (const part of ['stalled', 'stopped', 'waitingOnWhoWrote', 'incidents'] as const)
     expect(answer[part]!.rows, part).toEqual([])
 }
 
@@ -237,15 +245,49 @@ it('measures window reads with 1960 conversations and nine live agents', async (
       }
     })()
     const semanticOwner = allIds[1900]!
-    const appendSemantic = (event: TranscriptEvent) => world.store.append(semanticOwner, world.store.nextOrdinal(semanticOwner), event, world.clock)
+    const appendSemantic = (event: TranscriptEvent) =>
+      world.store.append(semanticOwner, world.store.nextOrdinal(semanticOwner), event, world.clock)
     for (const event of [
-      {type:'question_asked',requestId:'semantic-question',prompt:'Fictional choice?',questions:[{id:'part',prompt:'Which?',options:[]}]},
-      {type:'request_routed',requestId:'semantic-question',to:'a-person'},
-      {type:'permission_request',id:'semantic-decision',kind:'command',action:'Fictional',detail:'Fictional action'},
-      {type:'request_routed',requestId:'semantic-decision',to:'a-person',because:'a-permission-decision'},
-      {type:'instruction_proposed',askId:'semantic-instruction',ask:'propose',about:'fictional-recorded',proposedBy:'fictional-recorded',text:'Fictional rules.',why:'Fictional'},
-      {type:'mcp_server_requested',requestId:'semantic-server',name:'fictional-notes',url:'http://127.0.0.1:8765/mcp',reaches:'Fictional notes',whoGetsIt:'everyone',requestedBy:'fictional-recorded'},
-    ]) appendSemantic(event as TranscriptEvent)
+      {
+        type: 'question_asked',
+        requestId: 'semantic-question',
+        prompt: 'Fictional choice?',
+        questions: [{ id: 'part', prompt: 'Which?', options: [] }],
+      },
+      { type: 'request_routed', requestId: 'semantic-question', to: 'a-person' },
+      {
+        type: 'permission_request',
+        id: 'semantic-decision',
+        kind: 'command',
+        action: 'Fictional',
+        detail: 'Fictional action',
+      },
+      {
+        type: 'request_routed',
+        requestId: 'semantic-decision',
+        to: 'a-person',
+        because: 'a-permission-decision',
+      },
+      {
+        type: 'instruction_proposed',
+        askId: 'semantic-instruction',
+        ask: 'propose',
+        about: 'fictional-recorded',
+        proposedBy: 'fictional-recorded',
+        text: 'Fictional rules.',
+        why: 'Fictional',
+      },
+      {
+        type: 'mcp_server_requested',
+        requestId: 'semantic-server',
+        name: 'fictional-notes',
+        url: 'http://127.0.0.1:8765/mcp',
+        reaches: 'Fictional notes',
+        whoGetsIt: 'everyone',
+        requestedBy: 'fictional-recorded',
+      },
+    ])
+      appendSemantic(event as TranscriptEvent)
     const setupStarted = performance.now()
     let setupLast = setupStarted
     const setupGaps: number[] = []
@@ -349,7 +391,8 @@ it('measures window reads with 1960 conversations and nine live agents', async (
     }, 20)
     phase = 'concurrent-stream-and-work'
     for (let round = 0; round < 6; round++) {
-      if (round === 3) appendSemantic({type:'user_decision',requestId:'semantic-question',outcome:'allow'})
+      if (round === 3)
+        appendSemantic({ type: 'user_decision', requestId: 'semantic-question', outcome: 'allow' })
       const { handle } = world.handles[round % world.handles.length]!
       handle.simulateBackgroundWork({
         running: [{ id: `fictional-job-${round}`, description: 'Fictional ordinary work' }],
@@ -364,11 +407,37 @@ it('measures window reads with 1960 conversations and nine live agents', async (
         host
           .personsQueue()
           .then((answer) => {
-            assertQueue(answer, round < 3 ? ['semantic-question'] : [], world.store.rootOf(semanticOwner)!.label)
+            assertQueue(
+              answer,
+              round < 3 ? ['semantic-question'] : [],
+              world.store.rootOf(semanticOwner)!.label,
+            )
             if (round === 0 && !('refused' in answer)) {
-              const partial: PersonsQueue = {...answer, published:{...answer.published, covers:{...answer.published.covers, questions:{population:'persons', scope:'questions', complete:false, ids:[]}}}}
-              expect(() => assertQueue(partial, ['semantic-question'], world.store.rootOf(semanticOwner)!.label)).toThrow()
-              expect(() => assertQueue(answer, ['wrong-question'], world.store.rootOf(semanticOwner)!.label)).toThrow()
+              const partial: PersonsQueue = {
+                ...answer,
+                published: {
+                  ...answer.published,
+                  covers: {
+                    ...answer.published.covers,
+                    questions: {
+                      population: 'persons',
+                      scope: 'questions',
+                      complete: false,
+                      ids: [],
+                    },
+                  },
+                },
+              }
+              expect(() =>
+                assertQueue(
+                  partial,
+                  ['semantic-question'],
+                  world.store.rootOf(semanticOwner)!.label,
+                ),
+              ).toThrow()
+              expect(() =>
+                assertQueue(answer, ['wrong-question'], world.store.rootOf(semanticOwner)!.label),
+              ).toThrow()
             }
             acceptedQueues++
           })
