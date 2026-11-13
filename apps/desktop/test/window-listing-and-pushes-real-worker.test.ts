@@ -15,7 +15,7 @@ import { limitsWriterSampler } from '../src/main/db/fresh-limits-snapshot'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import type { RuntimeStatesMessage } from '../src/shared/runtime-ipc'
 
-function assertQueue(answer: PersonsQueueAnswer, questions: string[]): void {
+function assertQueue(answer: PersonsQueueAnswer, questions: string[], workLabel: string): void {
   expect('refused' in answer).toBe(false)
   if ('refused' in answer) throw new Error(answer.refused)
   for (const part of PERSONS_PARTS) {
@@ -24,6 +24,7 @@ function assertQueue(answer: PersonsQueueAnswer, questions: string[]): void {
   }
   expect(answer.questions!.rows.map((one) => [one.request.requestId, one.request.state])).toEqual(questions.map((id) => [id, 'open']))
   expect(answer.decisions!.rows.map((one) => [one.request.requestId, one.request.state])).toEqual([['semantic-decision','open']])
+  expect(answer.decisions!.rows[0]!.work).toEqual([{label:workLabel}])
   expect(answer.instructionAsks!.rows.map((one) => one.asked.askId)).toEqual(['semantic-instruction'])
   expect(answer.mcpServerRequests!.rows.map((one) => one.requested.requestId)).toEqual(['semantic-server'])
   for (const part of ['stalled','stopped','waitingOnWhoWrote','incidents'] as const)
@@ -363,11 +364,11 @@ it('measures window reads with 1960 conversations and nine live agents', async (
         host
           .personsQueue()
           .then((answer) => {
-            assertQueue(answer, round < 3 ? ['semantic-question'] : [])
+            assertQueue(answer, round < 3 ? ['semantic-question'] : [], world.store.rootOf(semanticOwner)!.label)
             if (round === 0 && !('refused' in answer)) {
               const partial: PersonsQueue = {...answer, published:{...answer.published, covers:{...answer.published.covers, questions:{population:'persons', scope:'questions', complete:false, ids:[]}}}}
-              expect(() => assertQueue(partial, ['semantic-question'])).toThrow()
-              expect(() => assertQueue(answer, ['wrong-question'])).toThrow()
+              expect(() => assertQueue(partial, ['semantic-question'], world.store.rootOf(semanticOwner)!.label)).toThrow()
+              expect(() => assertQueue(answer, ['wrong-question'], world.store.rootOf(semanticOwner)!.label)).toThrow()
             }
             acceptedQueues++
           })
