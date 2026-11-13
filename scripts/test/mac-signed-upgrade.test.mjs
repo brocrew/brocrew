@@ -1,6 +1,14 @@
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync, mkdirSync, chmodSync, rmSync } from 'node:fs'
+import {
+  mkdtempSync,
+  writeFileSync,
+  readFileSync,
+  lstatSync,
+  mkdirSync,
+  chmodSync,
+  rmSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -64,17 +72,48 @@ test('persistent fixture permissions include nested skill files and ignore trans
     writeFileSync(join(folder, 'brobot2.sqlite'), 'fictional db', { mode: 0o600 })
     writeFileSync(join(folder, 'api-keys.json'), 'fictional key file', { mode: 0o600 })
     const before = fixturePermissions(folder)
-    assert.ok(before.some((entry) => entry.path === 'api-keys.json' && entry.mode === 0o600))
     writeFileSync(join(folder, 'brobot2.sqlite-wal'), 'transient')
-    permissionsKept(before, fixturePermissions(folder))
-    chmodSync(join(folder, 'api-keys.json'), 0o400)
-    assert.throws(() => permissionsKept(before, fixturePermissions(folder)), /api-keys.json/)
-    chmodSync(join(folder, 'api-keys.json'), 0o600)
-    chmodSync(join(folder, 'skills', 'run.sh'), 0o400)
-    assert.throws(
-      () => permissionsKept(before, fixturePermissions(folder)),
-      /permissions changed: skills\/run.sh/,
-    )
+    const withJournal = fixturePermissions(folder)
+    permissionsKept(before, withJournal)
+    assert.ok(!withJournal.some((entry) => entry.path === 'brobot2.sqlite-wal'))
+    for (const [path, posixMode, error] of [
+      ['api-keys.json', 0o600, /permissions changed: api-keys.json/],
+      ['skills/run.sh', 0o700, /permissions changed: skills\/run.sh/],
+    ]) {
+      const file = join(folder, path)
+      const entry = before.find((one) => one.path === path)
+      const mode = lstatSync(file).mode & 0o777
+      const facts = JSON.stringify({ platform: process.platform, path, mode, entry, before })
+      assert.ok(entry, facts)
+      assert.equal(entry.directory, false, facts)
+      assert.equal(entry.mode, mode, facts)
+      if (process.platform === 'win32') assert.equal(mode & 0o200, 0o200, facts)
+      else assert.equal(mode, posixMode, facts)
+      const bytes = readFileSync(file)
+      try {
+        chmodSync(file, 0o400)
+        const after = fixturePermissions(folder)
+        const changed = after.find((one) => one.path === path)
+        const readOnlyMode = lstatSync(file).mode & 0o777
+        const changedFacts = JSON.stringify({
+          platform: process.platform,
+          entry,
+          changed,
+          readOnlyMode,
+        })
+        assert.ok(changed, changedFacts)
+        assert.equal(changed.mode, readOnlyMode, changedFacts)
+        if (process.platform === 'win32') assert.equal(readOnlyMode & 0o200, 0, changedFacts)
+        else assert.equal(readOnlyMode, 0o400, changedFacts)
+        assert.deepEqual(readFileSync(file), bytes)
+        assert.throws(() => permissionsKept(before, after), error, changedFacts)
+      } finally {
+        chmodSync(file, entry.mode)
+      }
+      permissionsKept(before, fixturePermissions(folder))
+      assert.deepEqual(readFileSync(file), bytes)
+    }
+    assert.equal(readFileSync(join(folder, 'brobot2.sqlite'), 'utf8'), 'fictional db')
   } finally {
     rmSync(folder, { recursive: true })
   }
