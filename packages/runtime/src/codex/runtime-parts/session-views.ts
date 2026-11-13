@@ -191,10 +191,7 @@ import type { TurnStartParams } from '../protocol/v2/TurnStartParams'
 import { withDeadline } from '../../internal/bounded'
 import { CHILD_READ_TIMEOUT_MS, CHILD_INPUT_TIMEOUT_MS } from './turn-state'
 
-export function readChildThread(
-  transport: CodexTransport,
-  childId: string,
-): Promise<unknown> {
+export function readChildThread(transport: CodexTransport, childId: string): Promise<unknown> {
   return withDeadline(
     Promise.resolve(
       transport.request('thread/read', { threadId: childId } satisfies ThreadReadParams),

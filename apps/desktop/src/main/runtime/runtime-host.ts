@@ -32120,8 +32120,6 @@ export class RuntimeHost implements LiveHost {
     return await work
   }
 
-
-
   /**
    * Whether this profile's credential can run a turn.
    *

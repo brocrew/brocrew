@@ -182,10 +182,7 @@ import { CodexSubAgents } from './sub-agents'
 import type { ThreadCompactStartParams } from './protocol/v2/ThreadCompactStartParams'
 import type { ThreadResumeParams } from './protocol/v2/ThreadResumeParams'
 import type { ThreadStartParams } from './protocol/v2/ThreadStartParams'
-import {
-  type TransportFactory,
-  createSpawnTransportFactory,
-} from './codex-transport'
+import { type TransportFactory, createSpawnTransportFactory } from './codex-transport'
 import {
   MODEL_LIST_PAGE_LIMIT,
   MODEL_PROBE_TIMEOUT_MS,
