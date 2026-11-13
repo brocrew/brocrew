@@ -7668,7 +7668,8 @@ export class RuntimeHost implements LiveHost {
     }
     if (asked.length === 0 && keptOn.length === 0) return
     try {
-      await this.freshWindowQuery({ kind: 'publication', kept: keptOn }, (reading) => {
+      await this.freshWindowQuery({ kind: 'publication', kept: keptOn.map(({ piece, resources }) =>
+        ({ piece, resources: [...resources] })) }, (reading) => {
         if (reading.kind !== 'publication') throw new WindowReadUnavailable()
         const moved = reading.states === null ? [] :
           this.windowRoutingReads.run(reading.states, () => this.statesThatMoved(asked))
@@ -15320,7 +15321,7 @@ export class RuntimeHost implements LiveHost {
       if ((query.kind === 'routes' || query.kind === 'publication') && this.windowRoutesKept?.result.kind === 'routes') {
         const previous = this.windowRoutesKept
         const changed = this.deps.windowWriterStamp?.changedOwners?.(previous.stamp, before)
-        const token = previous.result.cacheToken
+        const token = previous.result.kind === 'routes' ? previous.result.cacheToken : undefined
         if (token !== undefined && changed != null)
           requested = { ...query, reuse: { token, changed: [...changed] } }
       }
