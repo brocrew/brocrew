@@ -1,10 +1,10 @@
 import { onBeforeUnmount, watch } from 'vue'
 import { appClosing } from '../lib/app-closing'
 
-/** Retry a failed conversation read twice, one second apart, before reporting it. */
+/** Allow two seconds for conversation reads to recover, retrying one second apart. */
 export function useConversationListRecovery(workspace: () => string | null, reset: () => void) {
   let generation = 0
-  let failures = 0
+  let failedSince: number | undefined
   let disposed = false
   let timer: ReturnType<typeof setTimeout> | undefined
   let finishWait: ((retry: boolean) => void) | undefined
@@ -23,7 +23,7 @@ export function useConversationListRecovery(workspace: () => string | null, rese
     workspace,
     () => {
       begin()
-      failures = 0
+      failedSince = undefined
       reset()
     },
     { flush: 'sync' },
@@ -36,10 +36,12 @@ export function useConversationListRecovery(workspace: () => string | null, rese
     begin,
     current,
     succeeded: () => {
-      failures = 0
+      failedSince = undefined
     },
     retry: (read: number): Promise<boolean> => {
-      if (!current(read) || ++failures >= 3) return Promise.resolve(false)
+      if (!current(read)) return Promise.resolve(false)
+      failedSince ??= Date.now()
+      if (Date.now() - failedSince >= 2_000) return Promise.resolve(false)
       return new Promise((resolve) => {
         finishWait = resolve
         timer = setTimeout(() => {
