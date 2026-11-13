@@ -173,7 +173,8 @@ describe('window writer revisions follow the selected facts', () => {
   it('keeps stream and timestamp writes irrelevant only to work snapshots', () => {
     const before = sample(routes)!
     const activity = sample({ kind: 'activity', from: 0, to: 1000 })!
-    for (const type of ['assistant_delta', 'thinking']) row(type, JSON.stringify({ type, text: 'stream' }))
+    for (const type of ['assistant_delta', 'thinking'])
+      row(type, JSON.stringify({ type, text: 'stream' }))
     db.prepare('UPDATE provider_session SET updated_at = updated_at + 1 WHERE id = ?').run('alpha')
     expect(sameWindowWriter(before, sample(routes))).toBe(true)
     expect(sameWindowWriter(activity, sample({ kind: 'activity', from: 0, to: 1000 }))).toBe(false)
@@ -262,7 +263,11 @@ describe('window writer revisions follow the selected facts', () => {
       ).toEqual({ n: 0 })
       sample = windowWriterSampler(db, () => true)
       expect(
-        db.prepare("SELECT count(*) AS n FROM sqlite_temp_master WHERE type = 'trigger' AND tbl_name = 'events'").get(),
+        db
+          .prepare(
+            "SELECT count(*) AS n FROM sqlite_temp_master WHERE type = 'trigger' AND tbl_name = 'events'",
+          )
+          .get(),
       ).toEqual({ n: 6 })
       const before = sample(routes)
       const leadBefore = sample(leads)

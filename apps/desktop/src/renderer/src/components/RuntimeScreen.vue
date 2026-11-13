@@ -2434,7 +2434,8 @@ async function lookAtTheQueueOnce(): Promise<void> {
   if (owed !== null) waitingOnWhoWrote.value = owed
   lastReplyLookAnswered.value = owed !== null && queue!.published.covers.waitingOnWhoWrote.complete
   if (serverAsks !== null) mcpServerRequests.value = serverAsks
-  lastServerRequestLookAnswered.value = serverAsks !== null && queue!.published.covers.mcpServerRequests.complete
+  lastServerRequestLookAnswered.value =
+    serverAsks !== null && queue!.published.covers.mcpServerRequests.complete
   if (stops !== null) stoppedWork.value = stops
   lastStopLookAnswered.value = stops !== null && queue!.published.covers.stopped.complete
   if (incidents !== null) workIncidents.value = incidents

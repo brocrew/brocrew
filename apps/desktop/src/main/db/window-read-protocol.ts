@@ -44,9 +44,13 @@ export const windowReadQuery = z.discriminatedUnion('kind', [
     })
     .strict(),
   z.object({ kind: z.literal('routes'), reuse: foldReuse.optional() }).strict(),
-  z.object({ kind: z.literal('publication'), reuse: foldReuse.optional(),
-    kept: z.array(z.object({ piece: z.string(), resources: z.array(z.string()) }).strict()),
-  }).strict(),
+  z
+    .object({
+      kind: z.literal('publication'),
+      reuse: foldReuse.optional(),
+      kept: z.array(z.object({ piece: z.string(), resources: z.array(z.string()) }).strict()),
+    })
+    .strict(),
   z.object({ kind: z.literal('incidents') }).strict(),
   z
     .object({
@@ -154,9 +158,15 @@ const walk = z
   .strict()
 const ids = z.array(z.string().min(1))
 export const windowReadResult = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('publication'), states: z.unknown(), files: z.array(z.unknown()),
-    failedFiles: z.array(z.string()), roster: z.array(z.unknown()).nullable(),
-  }).strict(),
+  z
+    .object({
+      kind: z.literal('publication'),
+      states: z.unknown(),
+      files: z.array(z.unknown()),
+      failedFiles: z.array(z.string()),
+      roster: z.array(z.unknown()).nullable(),
+    })
+    .strict(),
   z
     .object({
       kind: z.literal('forest'),
@@ -248,9 +258,17 @@ export const windowReadResult = z.discriminatedUnion('kind', [
     .object({
       kind: z.literal('routes'),
       cacheToken: z.string().optional(),
-      work: z.object({ owners: z.array(z.unknown()), namesUnder: z.array(z.unknown()),
-        raised: z.array(z.unknown()), instructionAskers: z.unknown(), queue: z.unknown(), routedTo: z.array(z.unknown()),
-      }).strict().optional(),
+      work: z
+        .object({
+          owners: z.array(z.unknown()),
+          namesUnder: z.array(z.unknown()),
+          raised: z.array(z.unknown()),
+          instructionAskers: z.unknown(),
+          queue: z.unknown(),
+          routedTo: z.array(z.unknown()),
+        })
+        .strict()
+        .optional(),
       routes: z.array(
         z
           .object({

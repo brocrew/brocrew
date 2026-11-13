@@ -19,7 +19,8 @@ export type WindowWriterSampler = ((query: WindowReadQuery) => WindowWriterStamp
   changedOwners?: (before: WindowWriterStamp, now: WindowWriterStamp) => readonly string[] | null
 }
 
-const terms = (types: readonly string[]) => types.map((type) => `'${type.replaceAll("'", "''")}'`).join(', ')
+const terms = (types: readonly string[]) =>
+  types.map((type) => `'${type.replaceAll("'", "''")}'`).join(', ')
 const selects = (row: string, types: readonly string[]) =>
   `(CASE ${row}.type ${types.map((type) => `WHEN '${type}' THEN 1`).join(' ')} ELSE 0 END)`
 const operations = ['INSERT', 'DELETE', 'UPDATE']
@@ -28,8 +29,14 @@ const generationTriggers = operations.map((operation) => `window_read_generation
 const foldTriggers = operations.map((operation) => `window_read_fold_${operation}`)
 const quote = (name: string) => '"' + name.replaceAll('"', '""') + '"'
 const streamTypes = ['assistant_delta', 'thinking', 'text']
-const metadataOnly = new Set(['agent_identity', 'identity_instruction', 'identity_instruction_seen',
-  'work_resource', 'work_sequence', 'archived_conversation'])
+const metadataOnly = new Set([
+  'agent_identity',
+  'identity_instruction',
+  'identity_instruction_seen',
+  'work_resource',
+  'work_sequence',
+  'archived_conversation',
+])
 const integer = (value: unknown): value is bigint => typeof value === 'bigint' && value >= 0n
 const watchers = new WeakMap<
   Database.Database,
@@ -68,7 +75,12 @@ export function windowWriterSampler(
   let installed = false
   let mainSchema: number | undefined
   let metadataTriggers: string[] = []
-  const allTriggers = () => [...eventTriggers, ...generationTriggers, ...foldTriggers, ...metadataTriggers]
+  const allTriggers = () => [
+    ...eventTriggers,
+    ...generationTriggers,
+    ...foldTriggers,
+    ...metadataTriggers,
+  ]
   const candidate = (row: string) => `EXISTS (SELECT 1 FROM main.events
     WHERE type = 'request_routed' AND session_id = ${row}.session_id)`
   const active = (row: string) => `${row}.generation = coalesce(
@@ -153,9 +165,13 @@ export function windowWriterSampler(
         AFTER ${operation} ON main.derived_generation ${changed}
         BEGIN
           UPDATE window_read_revision SET revision = revision + 1 WHERE id IN (-1, -3);
-          ${rows.map((row) => `INSERT INTO window_read_fold_owners(session, revision)
+          ${rows
+            .map(
+              (row) => `INSERT INTO window_read_fold_owners(session, revision)
             VALUES (${row}.session_id, (SELECT revision FROM window_read_revision WHERE id = -1))
-            ON CONFLICT(session) DO UPDATE SET revision = excluded.revision;`).join('\n')}
+            ON CONFLICT(session) DO UPDATE SET revision = excluded.revision;`,
+            )
+            .join('\n')}
           UPDATE window_read_revision SET revision = revision + 1
             WHERE (id = 0 AND (${rows.map(candidate).join(' OR ')}))
                OR (${rows.map((row) => `session = ${row}.session_id`).join(' OR ')});
@@ -165,32 +181,54 @@ export function windowWriterSampler(
         WHEN ${rows.map((row) => `${row}.type IN (${FOLD_TYPE_LIST})`).join(' OR ')}
         BEGIN
           UPDATE window_read_revision SET revision = revision + 1 WHERE id = -1;
-          ${rows.map((row) => `INSERT INTO window_read_fold_owners(session, revision)
+          ${rows
+            .map(
+              (row) => `INSERT INTO window_read_fold_owners(session, revision)
             VALUES (${row}.session_id, (SELECT revision FROM window_read_revision WHERE id = -1))
-            ON CONFLICT(session) DO UPDATE SET revision = excluded.revision;`).join('\n')}
+            ON CONFLICT(session) DO UPDATE SET revision = excluded.revision;`,
+            )
+            .join('\n')}
         END;`)
     }
     metadataTriggers = []
-    const tables = db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table'
-      AND name NOT LIKE 'sqlite_%' AND sql NOT LIKE 'CREATE VIRTUAL TABLE%'`).all() as { name: string }[]
+    const tables = db
+      .prepare(
+        `SELECT name FROM sqlite_master WHERE type = 'table'
+      AND name NOT LIKE 'sqlite_%' AND sql NOT LIKE 'CREATE VIRTUAL TABLE%'`,
+      )
+      .all() as { name: string }[]
     for (const { name } of tables) {
       if (['events', 'derived_generation', 'raw_frame'].includes(name)) continue
       const columns = (db.prepare(`PRAGMA table_info(${quote(name)})`).all() as { name: string }[])
-        .map((column) => column.name).filter((column) => name !== 'provider_session' || column !== 'updated_at')
+        .map((column) => column.name)
+        .filter((column) => name !== 'provider_session' || column !== 'updated_at')
       for (const operation of operations) {
         const trigger = `window_read_meta_${name}_${operation}`
         metadataTriggers.push(trigger)
-        const rows = operation === 'UPDATE' ? ['OLD', 'NEW'] : [operation === 'INSERT' ? 'NEW' : 'OLD']
-        const changed = operation === 'UPDATE'
-          ? `WHEN ${columns.map((column) => `OLD.${quote(column)} IS NOT NEW.${quote(column)}`).join(' OR ')}` : ''
-        const ownerColumn = name === 'provider_session' ? 'id' : name === 'work' ? 'owner_session_id' : null
-        const owners = ownerColumn === null ? '' : `
+        const rows =
+          operation === 'UPDATE' ? ['OLD', 'NEW'] : [operation === 'INSERT' ? 'NEW' : 'OLD']
+        const changed =
+          operation === 'UPDATE'
+            ? `WHEN ${columns.map((column) => `OLD.${quote(column)} IS NOT NEW.${quote(column)}`).join(' OR ')}`
+            : ''
+        const ownerColumn =
+          name === 'provider_session' ? 'id' : name === 'work' ? 'owner_session_id' : null
+        const owners =
+          ownerColumn === null
+            ? ''
+            : `
           UPDATE window_read_revision SET revision = revision + 1 WHERE id = -1;
-          ${rows.map((row) => `INSERT INTO window_read_fold_owners(session, revision)
+          ${rows
+            .map(
+              (row) => `INSERT INTO window_read_fold_owners(session, revision)
             VALUES (${row}.${ownerColumn}, (SELECT revision FROM window_read_revision WHERE id = -1))
-            ON CONFLICT(session) DO UPDATE SET revision = excluded.revision;`).join('\n')}`
-        const reset = ownerColumn === null && !metadataOnly.has(name)
-          ? 'UPDATE window_read_revision SET revision = revision + 1 WHERE id = -2;' : ''
+            ON CONFLICT(session) DO UPDATE SET revision = excluded.revision;`,
+            )
+            .join('\n')}`
+        const reset =
+          ownerColumn === null && !metadataOnly.has(name)
+            ? 'UPDATE window_read_revision SET revision = revision + 1 WHERE id = -2;'
+            : ''
         db.exec(`CREATE TEMP TRIGGER IF NOT EXISTS ${quote(trigger)} AFTER ${operation} ON main.${quote(name)} ${changed}
           BEGIN
             UPDATE window_read_revision SET revision = revision + 1 WHERE id = -3;
@@ -242,8 +280,7 @@ export function windowWriterSampler(
     if (shared.suspended > 0) return write()
     shared.suspended++
     try {
-      for (const trigger of allTriggers())
-        db.exec(`DROP TRIGGER IF EXISTS temp.${quote(trigger)}`)
+      for (const trigger of allTriggers()) db.exec(`DROP TRIGGER IF EXISTS temp.${quote(trigger)}`)
       return write()
     } finally {
       try {
@@ -265,7 +302,8 @@ export function windowWriterSampler(
       if (shared.suspended > 0 || !db.open || db.inTransaction || !noRetainedCursor()) return null
       const schema = db.pragma('main.schema_version', { simple: true }) as number
       if (schema !== mainSchema) {
-        for (const trigger of allTriggers()) db.exec(`DROP TRIGGER IF EXISTS temp.${quote(trigger)}`)
+        for (const trigger of allTriggers())
+          db.exec(`DROP TRIGGER IF EXISTS temp.${quote(trigger)}`)
         installed = false
         statements = undefined
         shared.owner = {}
@@ -343,9 +381,12 @@ export function windowWriterSampler(
       return {
         writer: shared.owner,
         watcher,
-        revision: query.kind === 'leads' ? row.revision
-          : query.kind === 'routes' || query.kind === 'publication' || query.kind === 'incidents'
-            ? row.complete : row.changes,
+        revision:
+          query.kind === 'leads'
+            ? row.revision
+            : query.kind === 'routes' || query.kind === 'publication' || query.kind === 'incidents'
+              ? row.complete
+              : row.changes,
         dataVersion: row.version,
         schemaVersion: BigInt(schemaVersion),
         at,
@@ -357,11 +398,18 @@ export function windowWriterSampler(
     }
   }
   sampler.changedOwners = (before, current) => {
-    if (before.writer !== current.writer || before.dataVersion !== current.dataVersion ||
-        before.schemaVersion !== current.schemaVersion || before.foldReset !== current.foldReset ||
-        before.foldRevision === undefined || current.foldRevision === undefined) return null
-    return (prepared().changed
-      .all(before.foldRevision) as { session: string }[]).map((row) => row.session)
+    if (
+      before.writer !== current.writer ||
+      before.dataVersion !== current.dataVersion ||
+      before.schemaVersion !== current.schemaVersion ||
+      before.foldReset !== current.foldReset ||
+      before.foldRevision === undefined ||
+      current.foldRevision === undefined
+    )
+      return null
+    return (prepared().changed.all(before.foldRevision) as { session: string }[]).map(
+      (row) => row.session,
+    )
   }
   return sampler
 }

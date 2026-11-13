@@ -65,7 +65,9 @@ export class WindowRoutingReads {
   private readonly indexed = new WeakMap<WindowRoutes, ReadonlyMap<string, RoutingReading>>()
   private readonly workIndexed = new WeakMap<WindowRoutes, NonNullable<Reading['work']>>()
 
-  get active(): boolean { return this.context.getStore()?.active === true }
+  get active(): boolean {
+    return this.context.getStore()?.active === true
+  }
 
   askersOf(parent: string): ReadonlySet<string> | undefined {
     const reading = this.context.getStore()
@@ -75,8 +77,7 @@ export class WindowRoutingReads {
   }
 
   private fact<T>(fact: WindowFact<T>, unread?: RowsUnread): T {
-    for (const [id, rows] of fact.skipped)
-      for (const ordinal of rows) unread?.in(id)(ordinal)
+    for (const [id, rows] of fact.skipped) for (const ordinal of rows) unread?.in(id)(ordinal)
     return fact.value
   }
 
@@ -84,9 +85,14 @@ export class WindowRoutingReads {
     const reading = this.context.getStore()
     if (!reading?.active) return undefined
     if (reading.work === undefined) throw new WindowReadUnavailable()
-    return reading.work.owners.get(id) ?? { id,
-      given: { value: [], skipped: [] }, waitsOnWhoWrote: { value: [], skipped: [] },
-      naming: { value: { named: null, waitingOnPurpose: null }, skipped: [] } }
+    return (
+      reading.work.owners.get(id) ?? {
+        id,
+        given: { value: [], skipped: [] },
+        waitsOnWhoWrote: { value: [], skipped: [] },
+        naming: { value: { named: null, waitingOnPurpose: null }, skipped: [] },
+      }
+    )
   }
 
   given(id: string, unread?: RowsUnread) {
@@ -112,12 +118,17 @@ export class WindowRoutingReads {
     return new Map(raised === undefined ? [] : this.fact(raised, unread))
   }
 
-  queue<K extends keyof WindowWorkReading['queue']>(kind: K, unread: RowsUnread):
-    WindowWorkReading['queue'][K]['value'] | undefined {
+  queue<K extends keyof WindowWorkReading['queue']>(
+    kind: K,
+    unread: RowsUnread,
+  ): WindowWorkReading['queue'][K]['value'] | undefined {
     const reading = this.context.getStore()
     if (!reading?.active) return undefined
     if (reading.snapshot.work?.queue === undefined) throw new WindowReadUnavailable()
-    return this.fact<WindowWorkReading['queue'][K]['value']>(reading.snapshot.work.queue[kind], unread)
+    return this.fact<WindowWorkReading['queue'][K]['value']>(
+      reading.snapshot.work.queue[kind],
+      unread,
+    )
   }
 
   instructionAskers(unread: RowsUnread) {
@@ -147,8 +158,12 @@ export class WindowRoutingReads {
         if (from === undefined) askers.set(parent, (from = new Set()))
         from.add(asker)
       }
-      work = { owners: new Map(snapshot.work.owners.map((owner) => [owner.id, owner])),
-        names, raised: new Map(snapshot.work.raised), askers }
+      work = {
+        owners: new Map(snapshot.work.owners.map((owner) => [owner.id, owner])),
+        names,
+        raised: new Map(snapshot.work.raised),
+        askers,
+      }
       this.workIndexed.set(snapshot, work)
     }
     const reading: Reading = { active: true, snapshot, routes, work }
@@ -174,7 +189,8 @@ export class WindowRoutingReads {
       get: (store, key) => {
         if (key === 'workThatNames')
           return (id: string, unread?: RowsUnread) =>
-            this.naming(id, unread)?.named ?? (current() === undefined ? store.workThatNames(id, unread) : null)
+            this.naming(id, unread)?.named ??
+            (current() === undefined ? store.workThatNames(id, unread) : null)
         if (key === 'workThatNamesUnder')
           return (id: string, piece: string, unread?: RowsUnread) => {
             const reading = current()

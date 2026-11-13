@@ -291,7 +291,9 @@ export function stalledWithACause<T extends Pick<PieceRow, 'state' | 'stalledBec
  * ⚑ **D-016 · commit 6** — whether a conversation gave this piece; see
  * {@link PieceAConversationGave}.
  */
-export function givenByAConversation<T extends Pick<PieceRow, 'giver'>>(piece: T): piece is T & { readonly giver: string } {
+export function givenByAConversation<T extends Pick<PieceRow, 'giver'>>(
+  piece: T,
+): piece is T & { readonly giver: string } {
   return piece.giver !== null
 }
 
@@ -334,9 +336,9 @@ export function givenByAConversation<T extends Pick<PieceRow, 'giver'>>(piece: T
  * a dispatch that moved only the agent's half would leave the two reading different populations
  * of the same ledgers.
  */
-export function aStallItsGiverCanBeToldOf<T extends Pick<PieceRow, 'state' | 'stalledBecause' | 'giver'>>(
-  piece: T,
-): piece is T & { readonly giver: string; readonly stalledBecause: TaskStallCause } {
+export function aStallItsGiverCanBeToldOf<
+  T extends Pick<PieceRow, 'state' | 'stalledBecause' | 'giver'>,
+>(piece: T): piece is T & { readonly giver: string; readonly stalledBecause: TaskStallCause } {
   return stalledWithACause(piece) && givenByAConversation(piece)
 }
 
@@ -732,7 +734,9 @@ export const NOTHING_IT_WAITS_ON: WhatAConversationIsWaitingOn = {
  * conversation that has to move next; asking the giver would walk the edge the wrong way. ⚠️ **It
  * is asked only for OPEN rows**, so a conversation whose work has all finished costs no read at all.
  */
-export function composeWhatEachPieceIsWaitingOn<T extends Pick<PieceRow, 'piece' | 'owner' | 'state'>>(
+export function composeWhatEachPieceIsWaitingOn<
+  T extends Pick<PieceRow, 'piece' | 'owner' | 'state'>,
+>(
   pieces: readonly T[],
   /** ⛔ **Everything the conversation holding a row is waiting on** — one read per conversation. */
   outstandingFor: (sessionId: string) => WhatAConversationIsWaitingOn,

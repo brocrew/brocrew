@@ -42,8 +42,9 @@ export class WindowReadEngine {
     const keepsFolds = query.kind === 'routes' || query.kind === 'publication'
     if (keepsFolds) {
       if (query.reuse === undefined || query.reuse.token !== this.cacheToken) this.answers.clear()
-      else for (const answers of this.answers.values())
-        for (const owner of query.reuse.changed) answers.delete(owner)
+      else
+        for (const answers of this.answers.values())
+          for (const owner of query.reuse.changed) answers.delete(owner)
       this.cacheToken = undefined
     }
     let refused: WindowReadUnavailable | undefined
@@ -212,60 +213,67 @@ export class WindowReadEngine {
         result = { kind: 'leads', rows }
       } else {
         const readRoutes = (): WindowRoutes => {
-        const candidates = this.db
-          .prepare("SELECT DISTINCT session_id AS id FROM events WHERE type = 'request_routed'")
-          .iterate() as IterableIterator<{ id: string }>
-        const routes: RoutingReading[] = []
-        const skipped = new Map<string, Set<SkippedRow>>()
-        const counts = rowsUnreadOnce()
-        const unread: RowsUnread = {
-          in: (sessionId) => (ordinal) => {
-            let seen = skipped.get(sessionId)
-            if (seen === undefined) skipped.set(sessionId, (seen = new Set()))
-            seen.add(ordinal)
-            counts.in(sessionId)(ordinal)
-          },
-          get count() {
-            return counts.count
-          },
-          get ledgersSkipped() {
-            return counts.ledgersSkipped
-          },
-        }
-        for (const { id } of candidates) {
-          checkCancelled()
-          routes.push({
-            sessionId: id,
-            requests: store.routedRequestsOf(id, unread),
-            skipped: [...(skipped.get(id) ?? [])],
-          })
-        }
-        return {
-          kind: 'routes',
-          routes,
-          questions: store.questionsAPersonMustAnswer(unread),
-          decisions: store.decisionsAwaitingAPerson(unread),
-          work: readWindowWork(cancellable, store),
-        }
+          const candidates = this.db
+            .prepare("SELECT DISTINCT session_id AS id FROM events WHERE type = 'request_routed'")
+            .iterate() as IterableIterator<{ id: string }>
+          const routes: RoutingReading[] = []
+          const skipped = new Map<string, Set<SkippedRow>>()
+          const counts = rowsUnreadOnce()
+          const unread: RowsUnread = {
+            in: (sessionId) => (ordinal) => {
+              let seen = skipped.get(sessionId)
+              if (seen === undefined) skipped.set(sessionId, (seen = new Set()))
+              seen.add(ordinal)
+              counts.in(sessionId)(ordinal)
+            },
+            get count() {
+              return counts.count
+            },
+            get ledgersSkipped() {
+              return counts.ledgersSkipped
+            },
+          }
+          for (const { id } of candidates) {
+            checkCancelled()
+            routes.push({
+              sessionId: id,
+              requests: store.routedRequestsOf(id, unread),
+              skipped: [...(skipped.get(id) ?? [])],
+            })
+          }
+          return {
+            kind: 'routes',
+            routes,
+            questions: store.questionsAPersonMustAnswer(unread),
+            decisions: store.decisionsAwaitingAPerson(unread),
+            work: readWindowWork(cancellable, store),
+          }
         }
         if (query.kind === 'routes') result = readRoutes()
         else {
           let states: WindowRoutes | null = null
-          try { states = readRoutes() } catch (error) {
+          try {
+            states = readRoutes()
+          } catch (error) {
             console.warn('window worker could not read changed states', error)
             this.answers.clear()
           }
           const files: ReturnType<typeof store.filesKept>[number][] = []
           const failedFiles: string[] = []
           let roster: ReturnType<typeof store.agentIdentities> | null = null
-          try { roster = store.agentIdentities() } catch (error) {
+          try {
+            roster = store.agentIdentities()
+          } catch (error) {
             console.warn('window worker could not read the file roster', error)
           }
           for (const { piece, resources } of query.kept) {
             try {
               if (roster === null) throw new WindowReadUnavailable()
-              files.push(...store.filesKept({ scope: 'piece', piece })
-                .filter((row) => resources.includes(row.resource.resource)))
+              files.push(
+                ...store
+                  .filesKept({ scope: 'piece', piece })
+                  .filter((row) => resources.includes(row.resource.resource)),
+              )
             } catch (error) {
               failedFiles.push(piece)
               console.warn('window worker could not read kept files', error)

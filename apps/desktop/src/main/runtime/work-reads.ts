@@ -35,7 +35,14 @@ import type { LedgerWalk, RoutedRequest } from '../../shared/question-contracts'
 import type { Exchange } from '../../shared/last-exchange'
 import type { RunningState } from '../../shared/runtime-ipc'
 import type { LastReported, SpawnEdge, WhoCalledWhom, WorkEdge } from '../../shared/who-called-whom'
-import type { PieceBoard, PieceRecord, RootOnTheBoard, ItsLedger, StateLedger, WorkOutOf } from './work-records'
+import type {
+  PieceBoard,
+  PieceRecord,
+  RootOnTheBoard,
+  ItsLedger,
+  StateLedger,
+  WorkOutOf,
+} from './work-records'
 
 interface WorkReadSources {
   /** New calls resolve current Root members when forwarded; existing callbacks stay unchanged. */

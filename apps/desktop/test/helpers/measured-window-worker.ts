@@ -9,7 +9,9 @@ let rows = 0
 const prepare = Database.prototype.prepare
 const read = WindowReadEngine.prototype.read
 WindowReadEngine.prototype.read = function (...args) {
-  started = performance.now(); queries = 0; rows = 0
+  started = performance.now()
+  queries = 0
+  rows = 0
   return read.apply(this, args)
 }
 Database.prototype.prepare = function (this: Database.Database, sql: string) {
@@ -18,22 +20,28 @@ Database.prototype.prepare = function (this: Database.Database, sql: string) {
     return statement
   return new Proxy(statement, {
     get(native, key) {
-      if (key === 'iterate') return function* (...args: unknown[]) {
-        queries++
-        for (const row of native.iterate(...args)) { rows++; yield row }
-      }
-      if (key === 'get') return (...args: unknown[]) => {
-        queries++
-        const value = native.get(...args)
-        if (value !== undefined) rows++
-        return value
-      }
-      if (key === 'all') return (...args: unknown[]) => {
-        queries++
-        const value = native.all(...args)
-        rows += value.length
-        return value
-      }
+      if (key === 'iterate')
+        return function* (...args: unknown[]) {
+          queries++
+          for (const row of native.iterate(...args)) {
+            rows++
+            yield row
+          }
+        }
+      if (key === 'get')
+        return (...args: unknown[]) => {
+          queries++
+          const value = native.get(...args)
+          if (value !== undefined) rows++
+          return value
+        }
+      if (key === 'all')
+        return (...args: unknown[]) => {
+          queries++
+          const value = native.all(...args)
+          rows += value.length
+          return value
+        }
       const value: unknown = Reflect.get(native, key, native)
       return typeof value === 'function' ? value.bind(native) : value
     },
@@ -42,6 +50,6 @@ Database.prototype.prepare = function (this: Database.Database, sql: string) {
 if (parentPort !== null) {
   const port = parentPort
   const post = port.postMessage.bind(port)
-  port.postMessage = (message) => post({ ...message,
-    measurement: { queries, rows, elapsedMs: performance.now() - started } })
+  port.postMessage = (message) =>
+    post({ ...message, measurement: { queries, rows, elapsedMs: performance.now() - started } })
 }

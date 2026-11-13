@@ -2,7 +2,11 @@ import { join } from 'node:path'
 import { expect, it, vi } from 'vitest'
 import { aServiceWorld } from './helpers/a-service-world'
 import { WindowReadEngine } from '../src/main/db/window-read-engine'
-import { WindowReadUnavailable, type WindowReadQuery, type WindowReadResult } from '../src/main/db/window-read-protocol'
+import {
+  WindowReadUnavailable,
+  type WindowReadQuery,
+  type WindowReadResult,
+} from '../src/main/db/window-read-protocol'
 import { windowWriterSampler } from '../src/main/db/window-writer-stamp'
 import { limitsWriterSampler } from '../src/main/db/fresh-limits-snapshot'
 import type { RuntimeStatesMessage } from '../src/shared/runtime-ipc'
@@ -24,7 +28,12 @@ it('owns state and file marks through superseding notices, partial failures, del
     let result = engine.read(query)
     if (result.kind === 'publication') {
       if (failStates) result = { ...result, states: null }
-      if (failFiles) result = { ...result, files: [], failedFiles: query.kind === 'publication' ? query.kept.map((one) => one.piece) : [] }
+      if (failFiles)
+        result = {
+          ...result,
+          files: [],
+          failedFiles: query.kind === 'publication' ? query.kept.map((one) => one.piece) : [],
+        }
     }
     if (hold) {
       hold = false
@@ -34,15 +43,25 @@ it('owns state and file marks through superseding notices, partial failures, del
     }
     return result
   }
-  const host = world.aHost({ servicesOn: false,
-    windowReader: { read, close: async () => {
-      held?.reject()
-      if (!closed) { closed = true; engine.close() }
-    } },
+  const host = world.aHost({
+    servicesOn: false,
+    windowReader: {
+      read,
+      close: async () => {
+        held?.reject()
+        if (!closed) {
+          closed = true
+          engine.close()
+        }
+      },
+    },
     windowWriterStamp: windowWriterSampler(world.db, () => true),
     limitsWriterStamp: limitsWriterSampler(world.db, () => true),
     statesMoved: (message) => {
-      if (failDelivery) { failDelivery = false; throw new Error('fictional delivery failure') }
+      if (failDelivery) {
+        failDelivery = false
+        throw new Error('fictional delivery failure')
+      }
       pushed.push(message)
     },
   })
@@ -52,11 +71,25 @@ it('owns state and file marks through superseding notices, partial failures, del
     const handle = world.handles[0]!.handle
     const root = world.store.rootOf(id)!.piece
     let number = 0
-    const keep = () => world.store.addResource({ piece: root, role: 'made', title: 'Fictional file',
-      summary: null, name: `fictional-${++number}.md`, sha256: 'a'.repeat(64), bytes: 1, addedBy: id }, world.clock).resource
-    const notice = (description: string) => handle.simulateBackgroundWork({ running: [{ id: 'fictional-job', description }] })
+    const keep = () =>
+      world.store.addResource(
+        {
+          piece: root,
+          role: 'made',
+          title: 'Fictional file',
+          summary: null,
+          name: `fictional-${++number}.md`,
+          sha256: 'a'.repeat(64),
+          bytes: 1,
+          addedBy: id,
+        },
+        world.clock,
+      ).resource
+    const notice = (description: string) =>
+      handle.simulateBackgroundWork({ running: [{ id: 'fictional-job', description }] })
     const files = () => pushed.flatMap((one) => one.kept.map((file) => file.resourceId))
-    const states = (from: number) => pushed.slice(from).flatMap((one) => one.moved.map((moved) => moved.state))
+    const states = (from: number) =>
+      pushed.slice(from).flatMap((one) => one.moved.map((moved) => moved.state))
 
     const before = pushed.length
     hold = true
@@ -78,12 +111,16 @@ it('owns state and file marks through superseding notices, partial failures, del
     await vi.waitFor(() => expect(files()).toContain(fileOnly))
     failStates = false
     notice('State recovered')
-    await vi.waitFor(() => expect(states(before)).toContainEqual({ is: 'in-the-background', what: 'State recovered' }))
+    await vi.waitFor(() =>
+      expect(states(before)).toContainEqual({ is: 'in-the-background', what: 'State recovered' }),
+    )
 
     failFiles = true
     const delayed = keep()
     notice('Files read failed')
-    await vi.waitFor(() => expect(states(before)).toContainEqual({ is: 'in-the-background', what: 'Files read failed' }))
+    await vi.waitFor(() =>
+      expect(states(before)).toContainEqual({ is: 'in-the-background', what: 'Files read failed' }),
+    )
     expect(files()).not.toContain(delayed)
     failFiles = false
     notice('Files recovered')
@@ -110,7 +147,11 @@ it('owns state and file marks through superseding notices, partial failures, del
     await host.closeAll()
     expect(pushed).toHaveLength(atQuit)
     expect(closed).toBe(true)
-    console.info(JSON.stringify({ publicationOwnership: { reads, pushes: pushed.length, files: files().length } }))
+    console.info(
+      JSON.stringify({
+        publicationOwnership: { reads, pushes: pushed.length, files: files().length },
+      }),
+    )
   } finally {
     held?.finish()
     await host.closeAll()

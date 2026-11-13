@@ -7317,10 +7317,12 @@ export class RuntimeHost implements LiveHost {
     }
     this.flushAsked = true
     setImmediate(() => {
-      this.flushInFlight = Promise.resolve().then(() => this.sayWhatMoved())
+      this.flushInFlight = Promise.resolve()
+        .then(() => this.sayWhatMoved())
         .catch((error: unknown) => {
           console.warn(`runtime host could not flush changed states: ${errorMessage(error)}`)
-        }).finally(() => {
+        })
+        .finally(() => {
           this.flushInFlight = undefined
           this.flushAsked = false
           if (this.flushAgain && !this.launches.closed) {
@@ -7651,23 +7653,26 @@ export class RuntimeHost implements LiveHost {
       if (kept === undefined) resourcesByPiece.set(piece, (kept = new Set()))
       for (const resource of resources) kept.add(resource)
     }
-    const keptOn = [...resourcesByPiece].map(([piece, resources]) => ({ piece, resources: [...resources] }))
+    const keptOn = [...resourcesByPiece].map(([piece, resources]) => ({
+      piece,
+      resources: [...resources],
+    }))
     const say = this.deps.statesMoved
     if (say === undefined || this.launches.closed) return
     const publish = (moved: readonly AgentStateMoved[], kept: readonly KeptFile[]): void => {
-    if (moved.length === 0 && kept.length === 0) return
-    // A push is newer than every answer composed before it, so it moves the sequence once.
-    const published = { epoch: this.publicationEpoch, seq: ++this.publicationSeq }
-    try {
-      say({ moved, kept, published })
-    } catch (error) {
-      for (const { conversation } of moved) {
-        this.stateSaid.delete(conversation)
-        this.statesToAsk.add(conversation)
+      if (moved.length === 0 && kept.length === 0) return
+      // A push is newer than every answer composed before it, so it moves the sequence once.
+      const published = { epoch: this.publicationEpoch, seq: ++this.publicationSeq }
+      try {
+        say({ moved, kept, published })
+      } catch (error) {
+        for (const { conversation } of moved) {
+          this.stateSaid.delete(conversation)
+          this.statesToAsk.add(conversation)
+        }
+        this.filesToSay.push(...keptOn)
+        console.warn(`runtime host could not tell the windows what moved: ${errorMessage(error)}`)
       }
-      this.filesToSay.push(...keptOn)
-      console.warn(`runtime host could not tell the windows what moved: ${errorMessage(error)}`)
-    }
     }
     if (this.deps.windowReader === undefined) {
       publish(this.statesThatMoved(asked), this.whatWasKept(keptOn))
@@ -7679,15 +7684,25 @@ export class RuntimeHost implements LiveHost {
         await this.readForWindow(() => publish(this.statesThatMoved(asked), []))
         return
       }
-      await this.freshWindowQuery({ kind: 'publication', kept: keptOn.map(({ piece, resources }) =>
-        ({ piece, resources: [...resources] })) }, (reading) => {
-        if (reading.kind !== 'publication') throw new WindowReadUnavailable()
-        const moved = reading.states === null ? [] :
-          this.windowRoutingReads.run(reading.states, () => this.statesThatMoved(asked))
-        if (reading.states === null) for (const id of asked) this.statesToAsk.add(id)
-        this.filesToSay.push(...keptOn.filter(({ piece }) => reading.failedFiles.includes(piece)))
-        publish(moved, reading.files.map((file) => keptFileOf(file, reading.roster)))
-      })
+      await this.freshWindowQuery(
+        {
+          kind: 'publication',
+          kept: keptOn.map(({ piece, resources }) => ({ piece, resources: [...resources] })),
+        },
+        (reading) => {
+          if (reading.kind !== 'publication') throw new WindowReadUnavailable()
+          const moved =
+            reading.states === null
+              ? []
+              : this.windowRoutingReads.run(reading.states, () => this.statesThatMoved(asked))
+          if (reading.states === null) for (const id of asked) this.statesToAsk.add(id)
+          this.filesToSay.push(...keptOn.filter(({ piece }) => reading.failedFiles.includes(piece)))
+          publish(
+            moved,
+            reading.files.map((file) => keptFileOf(file, reading.roster)),
+          )
+        },
+      )
     } catch (error) {
       if (this.launches.closed) return
       for (const id of asked) this.statesToAsk.add(id)
@@ -7717,19 +7732,27 @@ export class RuntimeHost implements LiveHost {
     }
     const unread = rowsUnreadOnce()
     const read = this.oneLedgerReadPerAnswer(unread)
-    const workOut = this.windowRoutingReads.active ? this.oneStateWorkOutReadPerAnswer(unread) :
-      this.workOutAsKept(this.oneWorkOutReadPerAnswer(unread))
+    const workOut = this.windowRoutingReads.active
+      ? this.oneStateWorkOutReadPerAnswer(unread)
+      : this.workOutAsKept(this.oneWorkOutReadPerAnswer(unread))
     // ⚑ **F036 · each asker's ledger as this flush reads it**, shared with that asker's own state.
-    const snapshotRead = this.windowRoutingReads.active ? this.oneStateLedgerReadPerAnswer(unread) : undefined
-    const owed = snapshotRead === undefined ? this.owedAsKept(this.oneOwedReadPerAnswer(this.ledgerAsKept(read))) :
-      this.oneOwedReadPerAnswer(snapshotRead)
+    const snapshotRead = this.windowRoutingReads.active
+      ? this.oneStateLedgerReadPerAnswer(unread)
+      : undefined
+    const owed =
+      snapshotRead === undefined
+        ? this.owedAsKept(this.oneOwedReadPerAnswer(this.ledgerAsKept(read)))
+        : this.oneOwedReadPerAnswer(snapshotRead)
     const moved: AgentStateMoved[] = []
     for (const conversation of asked) {
       try {
         const runs = this.slots.has(conversation)
-        const ledger = snapshotRead?.(conversation) ??
-          (runs ? this.waitAsLastRead.get(conversation) : undefined) ?? read(conversation)
-        if (runs && snapshotRead === undefined) this.waitAsLastRead.set(conversation, read(conversation))
+        const ledger =
+          snapshotRead?.(conversation) ??
+          (runs ? this.waitAsLastRead.get(conversation) : undefined) ??
+          read(conversation)
+        if (runs && snapshotRead === undefined)
+          this.waitAsLastRead.set(conversation, read(conversation))
         const state = this.stateOf(conversation, reads, unread, ledger, workOut, owed)
         // ⚑ **D-018 · counted from here while it is idle**, whatever the windows were last told.
         if (this.idleEnoughToStop(conversation, state))
@@ -15239,7 +15262,9 @@ export class RuntimeHost implements LiveHost {
   private instructionAsksCounted(): CountedRows<InstructionAskWaiting> {
     return this.forAPerson('instructionAsksWaiting', () => {
       const unread = rowsUnreadOnce()
-      const rows = this.windowRoutingReads.queue('instructions', unread) ?? this.deps.store.instructionAsksWaiting(unread)
+      const rows =
+        this.windowRoutingReads.queue('instructions', unread) ??
+        this.deps.store.instructionAsksWaiting(unread)
       return { rows, rowsUnread: unread.count }
     })
   }
@@ -15253,7 +15278,9 @@ export class RuntimeHost implements LiveHost {
   private mcpServerRequestsCounted(): CountedRows<McpServerRequestWaiting> {
     return this.forAPerson('mcpServerRequestsWaiting', () => {
       const unread = rowsUnreadOnce()
-      const rows = this.windowRoutingReads.queue('servers', unread) ?? this.deps.store.mcpServerRequestsWaiting(unread)
+      const rows =
+        this.windowRoutingReads.queue('servers', unread) ??
+        this.deps.store.mcpServerRequestsWaiting(unread)
       return { rows, rowsUnread: unread.count }
     })
   }
@@ -15280,8 +15307,7 @@ export class RuntimeHost implements LiveHost {
   }
 
   private sampleWindowWriter(query: WindowReadQuery): WindowWriterStamp | null {
-    if (this.deps.windowWriterStamp !== undefined)
-      return this.deps.windowWriterStamp(query)
+    if (this.deps.windowWriterStamp !== undefined) return this.deps.windowWriterStamp(query)
     const stamp = this.deps.limitsWriterStamp?.() ?? null
     return stamp === null
       ? null
@@ -15328,7 +15354,10 @@ export class RuntimeHost implements LiveHost {
         throw failed.missed
       const requested = (): WindowReadQuery => {
         const previous = this.windowRoutesKept
-        if ((query.kind === 'routes' || query.kind === 'publication') && previous?.result.kind === 'routes') {
+        if (
+          (query.kind === 'routes' || query.kind === 'publication') &&
+          previous?.result.kind === 'routes'
+        ) {
           const changed = this.deps.windowWriterStamp?.changedOwners?.(previous.stamp, before)
           const token = previous.result.cacheToken
           if (token !== undefined && changed != null)
@@ -15980,7 +16009,8 @@ export class RuntimeHost implements LiveHost {
     // 🔴 **D-017 · R8** — one set for the walk, so a record it skipped is counted once.
     const unread = rowsUnreadOnce()
     const walked = this.shown(
-      this.windowRoutingReads.queue('stalls', unread) ?? this.deps.store.stalledWorkNobodyWasToldAbout(unread),
+      this.windowRoutingReads.queue('stalls', unread) ??
+        this.deps.store.stalledWorkNobodyWasToldAbout(unread),
       (row) => row.owner,
     )
     return {
@@ -16056,7 +16086,8 @@ export class RuntimeHost implements LiveHost {
     }
     const unread = rowsUnreadOnce()
     const found = this.shown(
-      this.windowRoutingReads.queue('stops', unread) ?? this.deps.store.stalledWorkItsGiverWasToldAbout(unread),
+      this.windowRoutingReads.queue('stops', unread) ??
+        this.deps.store.stalledWorkItsGiverWasToldAbout(unread),
       (row) => row.owner,
     )
     const rows = found.rows.flatMap((row) => {
@@ -16746,8 +16777,10 @@ export class RuntimeHost implements LiveHost {
         let incidents: StampedIncidents | null = onMain
         if (incidentsRead && this.deps.windowReader !== undefined) {
           const kept = this.windowIncidentsKept
-          if (kept?.result.kind === 'incidents' &&
-            sameWindowWriter(kept.stamp, this.sampleWindowWriter({ kind: 'incidents' }))) {
+          if (
+            kept?.result.kind === 'incidents' &&
+            sameWindowWriter(kept.stamp, this.sampleWindowWriter({ kind: 'incidents' }))
+          ) {
             try {
               incidents = this.windowIncidentReads.run(() => this.stampedIncidents(), kept.result)
             } catch (error) {
@@ -17009,7 +17042,11 @@ export class RuntimeHost implements LiveHost {
     }
     // 🔴 **D-017 · R8** — one set for the walk, so a record it skipped is counted once.
     const unread = rowsUnreadOnce()
-    const walked = this.shown(this.windowRoutingReads.queue('replies', unread) ?? this.deps.store.piecesWaitingOnWhoWrote(unread), (row) => row.owner)
+    const walked = this.shown(
+      this.windowRoutingReads.queue('replies', unread) ??
+        this.deps.store.piecesWaitingOnWhoWrote(unread),
+      (row) => row.owner,
+    )
     return {
       walk: walked.walk,
       ledgers: walked.ledgers,
@@ -17937,8 +17974,10 @@ export class RuntimeHost implements LiveHost {
     return (id) => {
       const known = held.get(id)
       if (known !== undefined) return known
-      const ledger = { routings: this.deps.store.routedRequestsOf(id, unread),
-        raised: this.windowRoutingReads.raised(id, unread)! }
+      const ledger = {
+        routings: this.deps.store.routedRequestsOf(id, unread),
+        raised: this.windowRoutingReads.raised(id, unread)!,
+      }
       held.set(id, ledger)
       return ledger
     }
@@ -19068,9 +19107,12 @@ export class RuntimeHost implements LiveHost {
   private cardReads(): CardReads {
     const unread = rowsUnreadOnce()
     const askers = this.windowRoutingReads.instructionAskers(unread)
-    if (askers !== undefined) return {
-      roster: this.deps.store.agentIdentities(), askingForRules: new Set(askers), asksUnread: unread.count,
-    }
+    if (askers !== undefined)
+      return {
+        roster: this.deps.store.agentIdentities(),
+        askingForRules: new Set(askers),
+        asksUnread: unread.count,
+      }
     const asks = this.instructionAsksCounted()
     return {
       roster: this.deps.store.agentIdentities(),
@@ -19303,7 +19345,8 @@ export class RuntimeHost implements LiveHost {
     itsLedger: StateLedger,
     workOut: WorkOutOf<StateWork>,
   ): boolean {
-    const waits = this.windowRoutingReads.waitingOnWhoWrote(sessionId, unread) ??
+    const waits =
+      this.windowRoutingReads.waitingOnWhoWrote(sessionId, unread) ??
       this.deps.store.piecesWaitingOnWhoWroteIn(sessionId, unread)
     if (waits.length === 0) return false
     return composeWhatEachPieceIsWaitingOn(
@@ -32797,7 +32840,8 @@ export class RuntimeHost implements LiveHost {
     waiting: (id: string) => WhatAConversationIsWaitingOn,
   ): Pick<ResumableSessionInfo, 'named' | 'waitingOnPurpose'> {
     if (this.theServiceOf(conversation) !== null) return { named: null }
-    const { named, waitingOnPurpose } = this.windowRoutingReads.naming(conversation) ??
+    const { named, waitingOnPurpose } =
+      this.windowRoutingReads.naming(conversation) ??
       this.deps.store.workThatNamesAndItsWait(conversation)
     if (waitingOnPurpose === null) return { named }
     // ⚑ Said only where the composition left it as its fold reads it: a more specific wait in its

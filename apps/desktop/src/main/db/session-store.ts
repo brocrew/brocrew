@@ -3021,7 +3021,9 @@ export function createSessionStore(
   const pieceStallOrdinals = new WeakMap<readonly PieceRow[], ReadonlyMap<string, number>>()
   const piecesOfSession = keptUntilItsLedgerGrows(foldPiecesOfSession, undefined, 'pieces')
   const turnBlockPiecesOfSession = keptUntilItsLedgerGrows(
-    (owner, noteSkip) => foldPiecesOfSession(owner, noteSkip, true), undefined, 'turn-pieces',
+    (owner, noteSkip) => foldPiecesOfSession(owner, noteSkip, true),
+    undefined,
+    'turn-pieces',
   )
   const stallsToldToSession = keptUntilItsLedgerGrows(
     foldStallsToldToSession,
