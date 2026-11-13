@@ -7,7 +7,7 @@ import {
   forgetProfileSignIns,
   useProfileSignIn,
 } from '../../src/renderer/src/composables/useProfileSignIn'
-import type { CreatedSession } from '../../src/shared/runtime-ipc'
+import type { AuthState, CreatedSession } from '../../src/shared/runtime-ipc'
 import { CAPABILITY_FIXTURE } from '../provider-capability-fixture'
 import { drawerProps, META, mount, paneProps, record, unmountAll } from './harness'
 
@@ -32,7 +32,7 @@ const SESSION: CreatedSession = {
 
 function theBridge() {
   const runtime = {
-    checkProviderAuth: vi.fn(async () => EXPIRED),
+    checkProviderAuth: vi.fn(async (_input?: { probe?: boolean }): Promise<AuthState> => EXPIRED),
     signInProvider: vi.fn(async () => ({ success: true, state: EXPIRED, detail: null })),
     reprovisionProviderAuth: vi.fn(async () => 'replaced'),
     cancelProviderSignIn: vi.fn(async () => undefined),
@@ -56,6 +56,34 @@ afterEach(() => {
 })
 
 describe('an agent’s expired sign-in, renewed where it is read', () => {
+  it('the conversation Check again probes Claude and clears the panel without sending a turn', async () => {
+    const runtime = theBridge()
+    runtime.checkProviderAuth.mockImplementation(async (input?: { probe?: boolean }): Promise<AuthState> =>
+      input?.probe
+        ? { state: 'usable', login: 'account', expiresAt: null }
+        : { state: 'stale', reason: 'Claude refused the current sign-in.' },
+    )
+    const r = record([])
+    r.meta = { ...SESSION, provider: 'claude', ref: { ...META.ref!, provider: 'claude' } }
+    r.error = 'A previous turn could not run.'
+    const send = vi.fn()
+    const m = mount(
+      ConversationPane as Component,
+      paneProps({ record: r, capabilities: CAPABILITY_FIXTURE, onSend: send }),
+    )
+    await settled()
+    expect(runtime.checkProviderAuth).toHaveBeenCalledExactlyOnceWith({
+      provider: 'claude', profileId: PROFILE,
+    })
+    m.q('sign-in-check').click()
+    await settled()
+    expect(runtime.checkProviderAuth).toHaveBeenLastCalledWith({
+      provider: 'claude', profileId: PROFILE, probe: true,
+    })
+    expect(m.host.querySelector('[data-cy="sign-in-panel"]')).toBeNull()
+    expect(send).not.toHaveBeenCalled()
+  })
+
   it.each([true, false])(
     'the renewal advice matches whether continuation was sent: %s',
     async (continued) => {

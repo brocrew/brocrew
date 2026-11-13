@@ -923,6 +923,36 @@ describe('D-004 · R101 — a login renewed elsewhere reopens the conversation i
     expect(auth.probes()).toBe(1)
   })
 
+  it('a successful turn on the new login clears the provider refusal without resuming an interrupted conversation', async () => {
+    const auth = locallyReadyAuth()
+    const { host, window, sessionId, record } = await killedMidTurn(() => {})
+    await waitFor(() => record().phase === 'recorded', 'the rejected life to stop')
+    expect((await host.checkProviderAuth('claude', 'brobot')).state).toBe('stale')
+    const stopped = eventsOf(sessionId)
+    authChanges = []
+
+    machineLogin = 'test-login-after-account-switch'
+    const fresh = await host.createSession(
+      { provider: 'claude', cwd: join(dir, 'cwd') },
+      window.sink,
+    )
+    await host.send(fresh.sessionId, 'a turn on the new login', window.sink)
+    launches[1]!.fq.emit(
+      frame({ type: 'system', subtype: 'init', session_id: 'provider-B', cwd: join(dir, 'cwd') }),
+    )
+    launches[1]!.fq.emit(frame({ type: 'result', subtype: 'success', is_error: false }))
+    await waitFor(
+      () => eventsOf(fresh.sessionId).some((event) => event.type === 'turn' && event.state === 'completed'),
+      'the new login to complete a turn',
+    )
+
+    expect(await host.checkProviderAuth('claude', 'brobot')).toEqual(auth.ready)
+    expect(authChanges).toContainEqual({ what: 'login', provider: 'claude' })
+    expect(auth.probes()).toBe(0)
+    expect(launches).toHaveLength(2)
+    expect(eventsOf(sessionId)).toEqual(stopped)
+  })
+
   it('a failed manual probe stays nonReady and cannot clear a measured rejection', async () => {
     locallyReadyAuth()
     authOps = {
