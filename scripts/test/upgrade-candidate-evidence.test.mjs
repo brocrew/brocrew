@@ -312,6 +312,30 @@ describe('the existing workflow’s same-artifact route', () => {
     ).toContain('--candidate-source "$CANDIDATE_SOURCE"')
   })
 
+  it('selects Mac only explicitly while defaults and the reusable Windows caller keep their jobs', () => {
+    expect(workflow.on.workflow_dispatch.inputs.mac_only).toMatchObject({
+      type: 'boolean',
+      default: false,
+    })
+    expect(workflow.on.workflow_call.inputs.mac_only).toBeUndefined()
+    const selected = (job, inputs) =>
+      Boolean(
+        new Function('github', 'inputs', `return (${workflow.jobs[job].if})`)(
+          { repository: 'brocrew/brocrew' },
+          inputs,
+        ),
+      )
+    const reuse = { original_run_id: '100', windows_artifact_id: '101' }
+    for (const inputs of [{}, { mac_only: false }, reuse]) {
+      expect(selected('windows', inputs)).toBe(true)
+      expect(selected('mac', inputs)).toBe(true)
+    }
+    expect(selected('windows', { ...reuse, mac_only: true })).toBe(false)
+    expect(selected('mac', { ...reuse, mac_only: true })).toBe(true)
+    expect(selected('windows', { windows_artifact_id: '101' })).toBe(true)
+    expect(selected('mac', { windows_artifact_id: '101' })).toBe(false)
+  })
+
   it('refuses partial reuse, another run/source/version, mismatched predecessors and expired outputs', async () => {
     for (const change of [
       { changed: { ORIGINAL_RUN: '' } },

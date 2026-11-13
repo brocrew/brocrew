@@ -5,6 +5,10 @@ on:
     tags: ['upgrade-path-*']
   workflow_dispatch:
     inputs:
+      mac_only:
+        description: Run only the Mac upgrade, retaining both original artifact bindings
+        type: boolean
+        default: false
       recovery_proof:
         description: Run the three recovery cases with published 0.2.19
         type: boolean
@@ -138,7 +142,7 @@ jobs:
   windows:
     needs: assets
     name: Windows, from the tester's beta to the candidate
-    if: github.repository == 'brocrew/brocrew' && (inputs.recovery_measurement_bytes || '0') == '0'
+    if: github.repository == 'brocrew/brocrew' && !inputs.mac_only && (inputs.recovery_measurement_bytes || '0') == '0'
     # `windows-2022`, as `windows.yml`: pnpm's node-gyp does not know the 2025 image's Visual Studio.
     runs-on: windows-2022
     timeout-minutes: 75
