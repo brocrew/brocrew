@@ -13,7 +13,7 @@ import { limitsWriterSampler } from '../src/main/db/fresh-limits-snapshot'
 import type { RuntimeStatesMessage } from '../src/shared/runtime-ipc'
 
 it('owns state and file marks through superseding notices, partial failures, delivery failure and quit', async () => {
-  let writer: Database.Database | undefined
+  const writer: { current?: Database.Database } = {}
   let measuring = false
   let mainHistoryQueries = 0
   const prepare = Database.prototype.prepare
@@ -21,7 +21,7 @@ it('owns state and file marks through superseding notices, partial failures, del
     this: Database.Database,
     sql: string,
   ) {
-    const connection = this
+    const isWriter = () => this === writer.current
     const statement = prepare.call(this, sql) as Database.Statement<unknown[], unknown>
     if (!/^\s*(SELECT|WITH)\b/i.test(sql) || !/\bevents\b/i.test(sql) || !/\bpayload\b/i.test(sql))
       return statement
@@ -31,7 +31,7 @@ it('owns state and file marks through superseding notices, partial failures, del
           return (...args: unknown[]) => {
             if (
               measuring &&
-              connection === writer &&
+              isWriter() &&
               /statesThatMoved|whatWasKept|sayWhatMoved/.test(new Error().stack ?? '')
             )
               mainHistoryQueries++
@@ -43,7 +43,7 @@ it('owns state and file marks through superseding notices, partial failures, del
     })
   })
   const world = aServiceWorld()
-  writer = world.db
+  writer.current = world.db
   world.anAgent('fictional-agent', 'normal')
   const engine = new WindowReadEngine(join(world.folder, 'brobot2.sqlite'))
   const pushed: RuntimeStatesMessage[] = []
@@ -182,7 +182,12 @@ it('owns state and file marks through superseding notices, partial failures, del
     expect(mainHistoryQueries).toBe(0)
     console.info(
       JSON.stringify({
-        publicationOwnership: { reads, pushes: pushed.length, files: files().length, mainHistoryQueries },
+        publicationOwnership: {
+          reads,
+          pushes: pushed.length,
+          files: files().length,
+          mainHistoryQueries,
+        },
       }),
     )
   } finally {
