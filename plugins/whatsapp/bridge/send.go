@@ -19,12 +19,10 @@ import (
 )
 
 const (
-	groupSendTextRunes     = 4100 // 4000 characters of text plus the "🤖 " marker
-	attachmentCaptionRunes = 1002
-	groupSendHourlyLimit   = 40
-	groupSendMinInterval   = 2 * time.Second
-	groupSendTimeout       = 20 * time.Second
-	attachmentSendTimeout  = 100 * time.Second // inside the app's two-minute limit on one tool call
+	groupSendHourlyLimit  = 40
+	groupSendMinInterval  = 2 * time.Second
+	groupSendTimeout      = 20 * time.Second
+	attachmentSendTimeout = 100 * time.Second // inside the app's two-minute limit on one tool call
 )
 
 var errGroupUnavailable = errors.New("group sending unavailable")
@@ -95,8 +93,8 @@ func groupJID(raw string) (types.JID, bool) {
 	return jid, true
 }
 
-func validText(text string, limit int, needed bool) bool {
-	return utf8.ValidString(text) && utf8.RuneCountInString(text) <= limit && !strings.ContainsRune(text, '\x00') &&
+func validText(text string, needed bool) bool {
+	return utf8.ValidString(text) && !strings.ContainsRune(text, '\x00') &&
 		(!needed || strings.TrimSpace(text) != "")
 }
 

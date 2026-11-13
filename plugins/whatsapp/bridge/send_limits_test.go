@@ -15,11 +15,11 @@ import (
 )
 
 func TestLongTextKeepsProtocolValidation(t *testing.T) {
-	if !validText(strings.Repeat("x", 4101), 4100, true) || !validText(strings.Repeat("c", 1003), 1002, false) {
+	if !validText(strings.Repeat("x", 4101), true) || !validText(strings.Repeat("c", 1003), false) {
 		t.Fatal("long text and captions should reach the provider")
 	}
 	for _, text := range []string{"", " ", "hello\x00", string([]byte{0xff})} {
-		if validText(text, 4100, true) {
+		if validText(text, true) {
 			t.Fatalf("invalid required text accepted: %q", text)
 		}
 	}

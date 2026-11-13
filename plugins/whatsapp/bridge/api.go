@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"go.mau.fi/whatsmeow"
 )
 
 const requestBodyLimit = 128 * 1024 // Includes up to 1,024 selected group IDs.
@@ -218,11 +220,7 @@ func newAPI(cfg config, s *session, unlinked func()) http.Handler {
 			return
 		}
 		hasFile := request.File != nil
-		limit := groupSendTextRunes
-		if hasFile {
-			limit = attachmentCaptionRunes
-		}
-		if !validText(request.Text, limit, !hasFile) {
+		if !validText(request.Text, !hasFile) {
 			writeCode(w, "invalid_message")
 			return
 		}
@@ -281,7 +279,11 @@ func writeSendResult(w http.ResponseWriter, att attachment, err error) {
 			})
 			return
 		}
-		writeCode(w, "send_failed")
+		body := map[string]string{"error": "send_failed"}
+		if errors.Is(err, whatsmeow.ErrServerReturnedError) {
+			body["detail"] = err.Error()
+		}
+		writeJSON(w, statusFor("send_failed"), body)
 		return
 	}
 	writeJSON(w, http.StatusOK, sendResult{Kind: att.Kind, Name: att.Name})

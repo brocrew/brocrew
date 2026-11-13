@@ -3,7 +3,7 @@ import path from 'node:path'
 import type { Bridge, BridgeGroup } from '../bridge.js'
 import type { WhatsAppConfig } from '../config.js'
 import { LocalFileGuardError, openGuardedFile } from '../localFileGuard.js'
-import { SEND_LIMITS, characters, type SendPolicy } from '../policy.js'
+import type { SendPolicy } from '../policy.js'
 import type { RefusalCode, Refusals } from '../refusals.js'
 import type { SettingsStore } from '../settings.js'
 import { currentRequestSignal } from '../shared/requestSignal.js'
@@ -395,8 +395,7 @@ export function createWhatsAppTools(deps: ToolDeps): ToolHandler[] {
             text: {
               type: 'string',
               maxLength: 20_000,
-              description:
-                'The message, or the caption of the file. At most 4,000 characters; 1,000 with a file.',
+              description: 'The message, or the caption of the file.',
             },
             file: {
               type: 'string',
@@ -413,11 +412,6 @@ export function createWhatsAppTools(deps: ToolDeps): ToolHandler[] {
           if (file === undefined && text.trim() === '')
             throw new PublicToolError('invalid arguments: "text" is required')
           const group = groupNamed(tool, a.group as string)
-          if (
-            characters(text) >
-            (file === undefined ? SEND_LIMITS.textCharacters : SEND_LIMITS.captionCharacters)
-          )
-            throw refusals.refuse(tool, file === undefined ? 'too-long' : 'caption-too-long')
           const attached = file === undefined ? undefined : await attachment(tool, file)
           // File preparation can outlast a change to the selected group's permission.
           groupNamed(tool, group.jid)

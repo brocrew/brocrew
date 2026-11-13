@@ -1,17 +1,12 @@
 import { createHash } from 'node:crypto'
 
-export const SEND_LIMITS = Object.freeze({
-  textCharacters: 4000,
-  captionCharacters: 1000,
+const SEND_LIMITS = Object.freeze({
   perGroup: 5,
   perGroupMs: 10 * 60_000,
   total: 20,
   totalMs: 60 * 60_000,
   duplicateMs: 60 * 60_000,
 })
-
-/** Characters as a person counts them: an emoji is one. */
-export const characters = (text: string): number => [...text].length
 
 interface Sent {
   at: number
