@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import ts from 'typescript'
 import { openUpdates } from '../lib/update-rehearsal-app.mjs'
 import { waitForNativeMacDownload } from '../lib/mac-native-upgrade.mjs'
-import { credentialPreserved } from '../mac-signed-upgrade-contract.mjs'
+import { credentialPreserved } from '../mac-upgrade-credentials.mjs'
 import {
   databaseSnapshot,
   keepModelFailureEvidence,

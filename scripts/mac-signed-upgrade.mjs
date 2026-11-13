@@ -43,6 +43,7 @@ import {
   verifyCheckpoint,
 } from './lib/mac-update-test.mjs'
 import { startControlledTransport } from './mac-signed-upgrade-transport.mjs'
+import { credentialPreserved, legacyCredentialsPreserved } from './mac-upgrade-credentials.mjs'
 import { CHECKPOINT_LINE, resultLine, startOrder } from './lib/upgrade-path.mjs'
 import { completedProofCopy, proofManifests } from './lib/recovery-measurement.mjs'
 import {
@@ -50,8 +51,6 @@ import {
   publicFeedUnchanged,
   fixturePermissions,
   permissionsKept,
-  credentialPreserved,
-  legacyCredentialsPreserved,
   registriesKept,
   assertThreeWorkspaceStates,
 } from './mac-signed-upgrade-contract.mjs'
