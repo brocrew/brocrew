@@ -224,6 +224,33 @@ it('presses Update now with peers running, proves all automatic reopens and resu
   expect(args.automaticChildren).toEqual([])
 })
 
+it('attempts every tracked identity when one normal quit fails, retaining that failure for cleanup', async () => {
+  const children = [{ pid: 4 }, { pid: 5 }, { pid: 6 }]
+  const quit = vi.fn(async (child) => {
+    if (child.pid === 4) throw new Error('identity changed')
+  })
+  await expect(quitAutomaticWorkspaces(children, vi.fn(), quit)).rejects.toThrow(
+    'PID 4: Error: identity changed',
+  )
+  expect(quit.mock.calls.map(([child]) => child.pid)).toEqual([4, 5, 6])
+  expect(children).toEqual([{ pid: 4 }])
+  await quitAutomaticWorkspaces(children, vi.fn(), vi.fn())
+  expect(children).toEqual([])
+})
+
+it('tracks successful automatic peers even if another presence reply fails', async () => {
+  const { args } = rehearsal()
+  const details = args.workspaceDetails
+  args.workspaceDetails = async (data) => {
+    if (data === args.workspaces[1].data) throw new Error('presence reply failed')
+    return details(data)
+  }
+  await expect(restartRunningWorkspaces(args)).rejects.toThrow('presence reply failed')
+  expect(args.automaticChildren.map((one) => one.pid)).toEqual([4, 6])
+  await quitAutomaticWorkspaces(args.automaticChildren, args.processInfo, args.quitChild)
+  expect(args.quitChild.mock.calls.map(([child]) => child.pid)).toEqual([4, 6])
+})
+
 it.each(['not-running', 'missing-peer', 'failed-drain', 'lost-draft', 'no-continuation'])(
   'retains a failed rehearsal: %s',
   async (failure) => {

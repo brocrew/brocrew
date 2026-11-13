@@ -59,18 +59,20 @@ jobs:
           test "$GITHUB_REPOSITORY" = brocrew/brocrew
       - uses: ./.github/actions/setup-desktop
       - name: Check the pure rehearsal helpers
-        run: pnpm exec vitest run --project scripts scripts/test/mac-update-test.test.mjs
+        run: pnpm exec vitest run --project scripts scripts/test/mac-update-test.test.mjs scripts/test/mac-update-now-rehearsal.test.mjs scripts/test/mac-native-upgrade.test.mjs scripts/test/mac-native-workspace.test.mjs scripts/test/mac-signed-upgrade.test.mjs scripts/test/mac-update-workflow.test.mjs
       - id: feed
         env:
           REPO: ${{ inputs.feed_repo || github.repository }}
           BUILD_ONLY: ${{ inputs.build_only }}
         run: |
-          echo "owner=${REPO%/*}" >> "$GITHUB_OUTPUT"
-          echo "repo=${REPO#*/}" >> "$GITHUB_OUTPUT"
           if [ "$BUILD_ONLY" = true ]; then
+            echo "owner=${REPO%/*}" >> "$GITHUB_OUTPUT"
+            echo "repo=${REPO#*/}" >> "$GITHUB_OUTPUT"
             echo 'dist=dist-rehearsal' >> "$GITHUB_OUTPUT"
             echo 'prefix=' >> "$GITHUB_OUTPUT"
           else
+            echo 'owner=brocrew' >> "$GITHUB_OUTPUT"
+            echo 'repo=brocrew' >> "$GITHUB_OUTPUT"
             echo 'dist=dist-mac-update' >> "$GITHUB_OUTPUT"
             echo 'prefix=mac-' >> "$GITHUB_OUTPUT"
           fi
@@ -80,8 +82,8 @@ jobs:
           version: 0.0.98
           owner: ${{ steps.feed.outputs.owner }}
           repo: ${{ steps.feed.outputs.repo }}
-          feed_url: ${{ !inputs.feed_private && (inputs.feed_url || 'http://127.0.0.1:47123/') || '' }}
-          feed_private: ${{ inputs.feed_private }}
+          feed_url: ${{ inputs.build_only && !inputs.feed_private && (inputs.feed_url || 'http://127.0.0.1:47123/') || '' }}
+          feed_private: ${{ inputs.build_only && inputs.feed_private || false }}
           marker: ${{ steps.feed.outputs.prefix }}a-${{ github.sha }}
           output: ${{ steps.feed.outputs.dist }}/a
         env:
@@ -96,8 +98,8 @@ jobs:
           version: 0.0.99
           owner: ${{ steps.feed.outputs.owner }}
           repo: ${{ steps.feed.outputs.repo }}
-          feed_url: ${{ !inputs.feed_private && (inputs.feed_url || 'http://127.0.0.1:47123/') || '' }}
-          feed_private: ${{ inputs.feed_private }}
+          feed_url: ${{ inputs.build_only && !inputs.feed_private && (inputs.feed_url || 'http://127.0.0.1:47123/') || '' }}
+          feed_private: ${{ inputs.build_only && inputs.feed_private || false }}
           marker: ${{ steps.feed.outputs.prefix }}b-${{ github.sha }}
           output: ${{ steps.feed.outputs.dist }}/b
         env:
@@ -135,16 +137,14 @@ jobs:
         with:
           name: mac-update-packages
           path: apps/desktop/dist-mac-update
-      - name: Rehearse ZIP download and Squirrel restart on fictional data
+      - name: Rehearse ZIP download and Update now across running fictional workspaces
         shell: bash
         run: |
           set -euo pipefail
-          node scripts/mac-update-test.mjs \
-            --dist-a apps/desktop/dist-mac-update/a \
-            --dist-b apps/desktop/dist-mac-update/b \
-            --feed-url http://127.0.0.1:47123/ --serve-local \
-            --marker-a "mac-a-$GITHUB_SHA" --marker-b "mac-b-$GITHUB_SHA" \
-            --source-sha "$GITHUB_SHA" --evidence mac-update-results
+          node scripts/mac-signed-upgrade.mjs \
+            --predecessor apps/desktop/dist-mac-update/a --predecessor-source "$GITHUB_SHA" \
+            --candidate apps/desktop/dist-mac-update/b --candidate-source "$GITHUB_SHA" \
+            --evidence mac-update-results
       - name: Keep success or failure evidence
         if: always()
         uses: actions/upload-artifact@v4

@@ -93,11 +93,20 @@ export function reopenedWorkspaceProcesses(peers, app, workspaces, previousPids)
 }
 
 export async function quitAutomaticWorkspaces(children, processInfo, quitChild) {
-  while (children.length) {
-    const child = children[0]
-    await quitChild(child, processInfo)
-    children.shift()
+  const pending = children.splice(0)
+  const results = await Promise.allSettled(pending.map((child) => quitChild(child, processInfo)))
+  const failures = []
+  for (const [index, result] of results.entries()) {
+    if (result.status === 'fulfilled') continue
+    children.push(pending[index])
+    failures.push(
+      new Error(`B workspace PID ${pending[index].pid}: ${String(result.reason)}`, {
+        cause: result.reason,
+      }),
+    )
   }
+  if (failures.length)
+    throw new AggregateError(failures, failures.map((one) => one.message).join('; '))
 }
 
 export async function holdUpdateTurn(workspace, model) {
@@ -172,23 +181,29 @@ export async function restartRunningWorkspaces({
   automaticChildren.push(restarted)
   summary.installedCandidate = await bundleChecked(app, version)
   const reopened = await waitFor(async () => {
-    const peers = await Promise.all(workspaces.map((one) => workspaceDetails(one.data)))
-    for (const peer of peers) {
-      if (
-        !peer ||
-        previous.some((one) => one.pid === peer.pid) ||
-        peer.executable !== `${app}/Contents/MacOS/BroCrew` ||
-        !workspaces.some((one) => one.data === peer.folder)
-      )
-        continue
-      const identity = await processInfo(peer.pid)
-      requireEvidence(
-        identity?.command === `${app}/Contents/MacOS/BroCrew` ||
-          identity?.command.startsWith(`${app}/Contents/MacOS/BroCrew `),
-        'Automatically reopened workspace process differs from the installed app.',
-      )
-      if (!automaticChildren.some((one) => one.pid === peer.pid)) automaticChildren.push(identity)
-    }
+    const answers = await Promise.allSettled(
+      workspaces.map(async (workspace) => {
+        const peer = await workspaceDetails(workspace.data)
+        if (
+          !peer ||
+          previous.some((one) => one.pid === peer.pid) ||
+          peer.executable !== `${app}/Contents/MacOS/BroCrew` ||
+          !workspaces.some((one) => one.data === peer.folder)
+        )
+          return peer
+        const identity = await processInfo(peer.pid)
+        requireEvidence(
+          identity?.command === `${app}/Contents/MacOS/BroCrew` ||
+            identity?.command.startsWith(`${app}/Contents/MacOS/BroCrew `),
+          'Automatically reopened workspace process differs from the installed app.',
+        )
+        if (!automaticChildren.some((one) => one.pid === peer.pid)) automaticChildren.push(identity)
+        return peer
+      }),
+    )
+    const failure = answers.find((one) => one.status === 'rejected')
+    if (failure) throw failure.reason
+    const peers = answers.map((one) => one.value)
     return reopenedWorkspaceProcesses(
       peers,
       app,

@@ -154,8 +154,9 @@ it.each([false, true])('preserves package layout and markers for build-only=%s',
       },
     })
     expect(readFileSync(output, 'utf8')).toBe(
-      'owner=fictional\nrepo=sandbox\n' +
-        (buildOnly ? 'dist=dist-rehearsal\nprefix=\n' : 'dist=dist-mac-update\nprefix=mac-\n'),
+      buildOnly
+        ? 'owner=fictional\nrepo=sandbox\ndist=dist-rehearsal\nprefix=\n'
+        : 'owner=brocrew\nrepo=brocrew\ndist=dist-mac-update\nprefix=mac-\n',
     )
   } finally {
     rmSync(temp, { recursive: true, force: true })
@@ -178,7 +179,41 @@ it('runs the native rehearsal after packaging on a separate clean hosted job', (
     path: 'apps/desktop/dist-mac-update',
   })
   const run = rehearse.steps.find((step) => step.name?.startsWith('Rehearse ZIP')).run
-  expect(run).toContain('--dist-a apps/desktop/dist-mac-update/a')
-  expect(run).toContain('--dist-b apps/desktop/dist-mac-update/b')
-  expect(run).toContain('--source-sha "$GITHUB_SHA"')
+  const temp = mkdtempSync(join(tmpdir(), 'mac-native-workflow-'))
+  try {
+    const output = join(temp, 'arguments')
+    writeFileSync(
+      join(temp, 'node'),
+      '#!/usr/bin/env python3\nimport json,os,sys\nwith open(os.environ["ARGUMENTS"], "w") as out: json.dump(sys.argv[1:], out)\n',
+      { mode: 0o755 },
+    )
+    const source = 'a'.repeat(40)
+    execFileSync('bash', ['-c', run], {
+      env: {
+        ...process.env,
+        PATH: `${temp}:${process.env.PATH}`,
+        ARGUMENTS: output,
+        GITHUB_SHA: source,
+      },
+    })
+    expect(JSON.parse(readFileSync(output, 'utf8'))).toEqual([
+      'scripts/mac-signed-upgrade.mjs',
+      '--predecessor',
+      'apps/desktop/dist-mac-update/a',
+      '--predecessor-source',
+      source,
+      '--candidate',
+      'apps/desktop/dist-mac-update/b',
+      '--candidate-source',
+      source,
+      '--evidence',
+      'mac-update-results',
+    ])
+  } finally {
+    rmSync(temp, { recursive: true, force: true })
+  }
+  for (const step of build.steps.filter((one) => one.uses === './.github/actions/signed-mac')) {
+    expect(step.with.feed_url).toContain('inputs.build_only && !inputs.feed_private')
+    expect(step.with.feed_private).toContain('inputs.build_only && inputs.feed_private')
+  }
 })
