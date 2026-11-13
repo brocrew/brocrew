@@ -41765,6 +41765,17 @@ export class RuntimeHost implements LiveHost {
       this.recordLimitAccount(session)
     const event = this.sayingARefusedCopyIsReplaced(session, given)
 
+    if (
+      event.type === 'turn' &&
+      event.state === 'completed' &&
+      event.onAKey !== true &&
+      !this.readsAnOlderLogin(session) &&
+      !this.aKeyIsSaved(session.provider) &&
+      this.rejectedMachineLogins.delete(session.provider)
+    ) {
+      this.providersMoved({ what: 'login', provider: session.provider })
+    }
+
     session.liveness.observe(event)
     // A fragment a later event states whole: proof the provider is working, and nothing to keep.
     if (event.type === 'unknown' && event.passing === true) return

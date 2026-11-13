@@ -23,7 +23,7 @@ export interface ProfileSignIn {
   readonly busy: SignInPhase
   /** What the last gesture said, in the words of whoever produced it. Never a credential. */
   readonly notice: string | null
-  check(): Promise<void>
+  check(probe?: boolean): Promise<void>
   signIn(): Promise<void>
   copyMachineSignIn(): Promise<void>
   cancel(): Promise<void>
@@ -107,7 +107,7 @@ export function useProfileSignIn(
     get notice() {
       return gesture.notice
     },
-    check: () => gesture.check(),
+    check: (probe = false) => gesture.check(undefined, probe),
     signIn: () => gesture.signIn(),
     copyMachineSignIn: () => gesture.copyMachineSignIn(),
     cancel: () => gesture.cancel(),

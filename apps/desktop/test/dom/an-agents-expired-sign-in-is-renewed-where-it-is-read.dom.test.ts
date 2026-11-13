@@ -58,10 +58,11 @@ afterEach(() => {
 describe('an agent’s expired sign-in, renewed where it is read', () => {
   it('the conversation Check again probes Claude and clears the panel without sending a turn', async () => {
     const runtime = theBridge()
-    runtime.checkProviderAuth.mockImplementation(async (input?: { probe?: boolean }): Promise<AuthState> =>
-      input?.probe
-        ? { state: 'usable', login: 'account', expiresAt: null }
-        : { state: 'stale', reason: 'Claude refused the current sign-in.' },
+    runtime.checkProviderAuth.mockImplementation(
+      async (input?: { probe?: boolean }): Promise<AuthState> =>
+        input?.probe
+          ? { state: 'usable', login: 'account', expiresAt: null }
+          : { state: 'stale', reason: 'Claude refused the current sign-in.' },
     )
     const r = record([])
     r.meta = { ...SESSION, provider: 'claude', ref: { ...META.ref!, provider: 'claude' } }
@@ -73,12 +74,15 @@ describe('an agent’s expired sign-in, renewed where it is read', () => {
     )
     await settled()
     expect(runtime.checkProviderAuth).toHaveBeenCalledExactlyOnceWith({
-      provider: 'claude', profileId: PROFILE,
+      provider: 'claude',
+      profileId: PROFILE,
     })
     m.q('sign-in-check').click()
     await settled()
     expect(runtime.checkProviderAuth).toHaveBeenLastCalledWith({
-      provider: 'claude', profileId: PROFILE, probe: true,
+      provider: 'claude',
+      profileId: PROFILE,
+      probe: true,
     })
     expect(m.host.querySelector('[data-cy="sign-in-panel"]')).toBeNull()
     expect(send).not.toHaveBeenCalled()

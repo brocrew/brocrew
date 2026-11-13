@@ -2068,7 +2068,7 @@ onUnmounted(() => {
             "
             :busy="profileSignIn.busy"
             :notice="profileSignIn.notice"
-            @check="profileSignIn.check()"
+            @check="profileSignIn.check(true)"
             @reprovision="profileSignIn.copyMachineSignIn()"
             @sign-in="profileSignIn.signIn()"
             @cancel-sign-in="profileSignIn.cancel()"

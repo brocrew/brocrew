@@ -101,7 +101,7 @@ export interface SignInGesture {
   /** The pair the gesture in flight was started for. */
   readonly running: SignInPair | null
   /** `draw` decides what this surface shows of the answer, when it arrives. */
-  check(draw?: (said: AuthState) => AuthState | null): Promise<void>
+  check(draw?: (said: AuthState) => AuthState | null, probe?: boolean): Promise<void>
   signIn(): Promise<void>
   copyMachineSignIn(): Promise<void>
   /** Cancels the sign-in that is running, under the pair it was started for. */
@@ -163,13 +163,16 @@ export function createSignInGesture(options: SignInGestureOptions): SignInGestur
     get running() {
       return running
     },
-    async check(draw: (said: AuthState) => AuthState | null = (said) => said) {
+    async check(draw: (said: AuthState) => AuthState | null = (said) => said, probe = false) {
       await withGesture('checking', async (asked) => {
         const ticket = ticketFor(options.fact(asked))
         let said: AuthState
         let answered = true
         try {
-          said = await options.bridge().checkProviderAuth(literal(asked))
+          said = await options.bridge().checkProviderAuth({
+            ...literal(asked),
+            ...(probe ? { probe: true as const } : {}),
+          })
         } catch (error) {
           said = { state: 'unknown', reason: readableError(error) }
           answered = false

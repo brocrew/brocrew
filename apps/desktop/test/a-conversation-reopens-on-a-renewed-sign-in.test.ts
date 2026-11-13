@@ -942,7 +942,10 @@ describe('D-004 · R101 — a login renewed elsewhere reopens the conversation i
     )
     launches[1]!.fq.emit(frame({ type: 'result', subtype: 'success', is_error: false }))
     await waitFor(
-      () => eventsOf(fresh.sessionId).some((event) => event.type === 'turn' && event.state === 'completed'),
+      () =>
+        eventsOf(fresh.sessionId).some(
+          (event) => event.type === 'turn' && event.state === 'completed',
+        ),
       'the new login to complete a turn',
     )
 
