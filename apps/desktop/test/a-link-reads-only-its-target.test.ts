@@ -178,16 +178,18 @@ describe('a link reads only its target', () => {
     expect(roster).not.toHaveBeenCalled()
   })
 
-  it('refreshes titles, identity names and settled instructions even when the routing revision stays put', () => {
+  it('refreshes contents while canonical routing facts stay unchanged and work stamps advance', () => {
     const root = create('fictional-card')
     host.resolveLink(link('fictional-card'))
     const before = sample({ kind: 'routes' })!
+    const routing = world.store.routedRequestsOf('fictional-card')
     host.retitleForAPerson(root.piece, 'Renamed plan')
-    expect(sample({ kind: 'routes' })!.revision).toBe(before.revision)
+    expect(sample({ kind: 'routes' })!.revision).toBeGreaterThan(before.revision)
+    expect(world.store.routedRequestsOf('fictional-card')).toEqual(routing)
     expect(host.resolveLink(link('fictional-card')).title).toBe('Renamed plan')
     expect(host.resolveLink('brocrew://agent/aid%3Afictional').title).toBe('Ada')
     host.setAgentDisplayName('fictional', 'Fictional adviser')
-    expect(sample({ kind: 'routes' })!.revision).toBe(before.revision)
+    expect(world.store.routedRequestsOf('fictional-card')).toEqual(routing)
     expect(host.resolveLink('brocrew://agent/aid%3Afictional').title).toBe('Fictional adviser')
     append('fictional-card', {
       type: 'instruction_proposed',
@@ -200,7 +202,7 @@ describe('a link reads only its target', () => {
     })
     expect(host.resolveLink(link('fictional-card')).status).toBe('needs you')
     append('fictional-card', { type: 'instruction_settled', askId: 'new-rule', ending: 'refused' })
-    expect(sample({ kind: 'routes' })!.revision).toBe(before.revision)
+    expect(world.store.routedRequestsOf('fictional-card')).toEqual(routing)
     expect(host.resolveLink(link('fictional-card')).status).toBe('idle')
   })
 

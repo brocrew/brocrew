@@ -93,7 +93,7 @@ const request = (n: number): McpServerRequestForAPerson => ({
   },
 })
 const runtime = {
-  personsQueue: vi.fn<RuntimeBridge['personsQueue']>(() => combinedPersonsQueue(runtime)),
+  personsQueue: vi.fn<RuntimeBridge['personsQueue']>((): ReturnType<typeof combinedPersonsQueue> => combinedPersonsQueue(runtime)),
   onEvent: vi.fn(() => () => {}),
   onLiveness: vi.fn(() => () => {}),
   onChanged: vi.fn(() => () => {}),
