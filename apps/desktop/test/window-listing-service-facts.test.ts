@@ -55,15 +55,35 @@ it('uses worker structural facts for listing service classification with canonic
     })
   const root = world.store.rootOf('normal')!
   for (const id of ['child', 'unknown', 'born'])
-    world.store.append(id, 0, {
-      type: 'work_given', piece: `${id}-piece`, label: `${root.label}.1`,
-      parent: root.piece, givenBy: 'normal', title: 'Fictional child', brief: 'Fictional',
-    }, world.clock)
-  writeProfileExecution(world.db, { profiles: {
-    [normal.id]: { kind: 'normal', identityCreatedAt: normal.createdAt },
-    [born.id]: { kind: 'service', identityCreatedAt: born.createdAt, serviceConversation: 'born' },
-    [reserved.id]: { kind: 'service', identityCreatedAt: reserved.createdAt, reserved: 'reserved' },
-  } })
+    world.store.append(
+      id,
+      0,
+      {
+        type: 'work_given',
+        piece: `${id}-piece`,
+        label: `${root.label}.1`,
+        parent: root.piece,
+        givenBy: 'normal',
+        title: 'Fictional child',
+        brief: 'Fictional',
+      },
+      world.clock,
+    )
+  writeProfileExecution(world.db, {
+    profiles: {
+      [normal.id]: { kind: 'normal', identityCreatedAt: normal.createdAt },
+      [born.id]: {
+        kind: 'service',
+        identityCreatedAt: born.createdAt,
+        serviceConversation: 'born',
+      },
+      [reserved.id]: {
+        kind: 'service',
+        identityCreatedAt: reserved.createdAt,
+        reserved: 'reserved',
+      },
+    },
+  })
   const canonical = world.aHost()
   const engine = new WindowReadEngine(join(world.folder, 'brobot2.sqlite'))
   const host = world.aHost({
@@ -89,22 +109,38 @@ it('uses worker structural facts for listing service classification with canonic
       counts.push({ phase, probes: probes.length - before, canonicalProbes })
       expect(answer).toEqual(expected)
       expect(expected.find((row) => row.sessionId === 'normal')?.named?.label).toBe(root.label)
-      expect(expected.find((row) => row.sessionId === 'child')?.named?.label).toBe(`${root.label}.1`)
-      expect(expected.find((row) => row.sessionId === 'unknown')?.named?.label ?? null).toBe(unknownLabel)
+      expect(expected.find((row) => row.sessionId === 'child')?.named?.label).toBe(
+        `${root.label}.1`,
+      )
+      expect(expected.find((row) => row.sessionId === 'unknown')?.named?.label ?? null).toBe(
+        unknownLabel,
+      )
       for (const id of ['born', 'reserved'])
         expect(expected.find((row) => row.sessionId === id)?.named).toBeNull()
     }
     await read('cold')
     await read('warm')
-    world.store.append('normal', world.store.nextOrdinal('normal'), {
-      type: 'work_retitled', piece: root.piece, title: 'Changed title', by: null,
-    }, world.clock)
+    world.store.append(
+      'normal',
+      world.store.nextOrdinal('normal'),
+      {
+        type: 'work_retitled',
+        piece: root.piece,
+        title: 'Changed title',
+        by: null,
+      },
+      world.clock,
+    )
     await read('retitled')
     const external = openDatabase(join(world.folder, 'brobot2.sqlite'))
     try {
-      external.prepare('UPDATE provider_session SET parent_session_id = ? WHERE id = ?').run('normal', 'unknown')
+      external
+        .prepare('UPDATE provider_session SET parent_session_id = ? WHERE id = ?')
+        .run('normal', 'unknown')
       await read('external-parent', `${root.label}.1`)
-      external.prepare('UPDATE provider_session SET parent_session_id = NULL WHERE id = ?').run('unknown')
+      external
+        .prepare('UPDATE provider_session SET parent_session_id = NULL WHERE id = ?')
+        .run('unknown')
       await read('external-parent-removed')
     } finally {
       external.close()

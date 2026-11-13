@@ -32846,7 +32846,9 @@ export class RuntimeHost implements LiveHost {
     conversation: string,
     waiting: (id: string) => WhatAConversationIsWaitingOn,
   ): Pick<ResumableSessionInfo, 'named' | 'waitingOnPurpose'> {
-    if (this.theServiceOf(conversation, () => this.windowRoutingReads.rootless(conversation)) !== null)
+    if (
+      this.theServiceOf(conversation, () => this.windowRoutingReads.rootless(conversation)) !== null
+    )
       return { named: null }
     const { named, waitingOnPurpose } =
       this.windowRoutingReads.naming(conversation) ??
