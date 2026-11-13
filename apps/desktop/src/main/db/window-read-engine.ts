@@ -157,8 +157,8 @@ export class WindowReadEngine {
           const states = store.piecesOwnedBy(sessionId, noted(statesSkipped))
           const newestTurn = store.theNewestTurn(sessionId)
           for (const piece of pieces)
-            if (piece.givenBy !== null && !reported.has(piece.givenBy))
-              reported.set(piece.givenBy, read(() => [...store.workReportedTo(piece.givenBy!)]))
+            if (piece.giver !== null && !reported.has(piece.giver))
+              reported.set(piece.giver, read(() => [...store.workReportedTo(piece.giver!)]))
           readings.push({
             sessionId,
             history: {
@@ -169,8 +169,8 @@ export class WindowReadEngine {
               newestTurn,
               driven: newestTurn === null ? { value: [] } : read(() => store.reconciliationDrivenByTurn(sessionId, newestTurn)),
               lastPerson: read(() => store.whenAPersonLastWrote(sessionId)),
-              legacy: pieces.filter((one) => one.state === 'stalled' && one.givenBy !== null)
-                .map((one) => [one.piece, one.givenBy!, read(() => store.legacyOrdinaryStallWasReported(sessionId, one.piece, one.givenBy!))]),
+              legacy: pieces.filter((one) => one.state === 'stalled' && one.giver !== null)
+                .map((one) => [one.piece, one.giver!, read(() => store.legacyOrdinaryStallWasReported(sessionId, one.piece, one.giver!))]),
               states: states.map((one) => [one.piece, one.state]),
               statesSkipped: [...statesSkipped],
             },

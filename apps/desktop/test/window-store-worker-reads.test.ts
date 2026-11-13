@@ -11,6 +11,7 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { rowsUnreadOnce } from '../src/main/db/rows-unread'
 import { WindowReadEngine } from '../src/main/db/window-read-engine'
 import { WindowRoutingReads } from '../src/main/db/window-routing-reads'
+import { WindowIncidentReads } from '../src/main/db/window-incident-reads'
 import {
   WindowReaderLifetime,
   WindowWorkerReader,
@@ -19,6 +20,7 @@ import {
 
 import {
   WINDOW_READ_BOUNDS,
+  windowReadResult,
   WindowReadUnavailable,
   type WindowReadQuery,
   type WindowReadResult,
@@ -159,6 +161,51 @@ describe('canonical window worker folds and independent live-store reads', () =>
       expect(row.requests).toEqual(fresh.routedRequestsOf(row.sessionId, rowsUnreadOnce()))
     return actual
   }
+
+  it('projects incident history without main reads and preserves failed receipts and closed wait targets', () => {
+    const root = store.ensurePersonalRoot('alpha', 1)
+    row('alpha', 'work_given', { type: 'work_given', piece: 'child', parent: root.piece,
+      label: `${root.label}.1`, givenBy: 'beta', title: 'Fictional', brief: 'A private brief stays off the wait-target projection.' })
+    row('alpha', 'work_closed', { type: 'work_closed', piece: 'child' })
+    row('alpha', 'work_status_set', { type: 'work_status_set', piece: root.piece,
+      line: 'A fictional wait', by: 'alpha', at: 10 })
+    const reads = new WindowIncidentReads(() => null, () => null)
+    const forbidden = new Proxy(store, {
+      get(target, key) {
+        if (['rootLines', 'turnBlockRootLines', 'reconciliationReceipts', 'reconciliationRecovery',
+          'theNewestTurn', 'reconciliationDrivenByTurn', 'whenAPersonLastWrote', 'workReportedTo',
+          'legacyOrdinaryStallWasReported', 'piecesOwnedBy'].includes(String(key)))
+          return () => { throw new Error(`main history: ${String(key)}`) }
+        const value: unknown = Reflect.get(target, key, target)
+        return typeof value === 'function' ? value.bind(target) : value
+      },
+    })
+    const projected = reads.store(forbidden)
+    const check = () => {
+      const snapshot = engine.read({ kind: 'incidents' })
+      if (snapshot.kind !== 'incidents') throw new Error('wrong snapshot')
+      expect(windowReadResult.safeParse(snapshot).success).toBe(true)
+      reads.run(() => {
+        expect(projected.rootLines(root.piece)).toEqual(store.rootLines(root.piece))
+        expect(projected.turnBlockRootLines(root.piece)).toEqual(store.turnBlockRootLines(root.piece))
+        expect(projected.reconciliationRecovery('alpha')).toEqual(store.reconciliationRecovery('alpha'))
+        expect(projected.theNewestTurn('alpha')).toEqual(store.theNewestTurn('alpha'))
+        expect(projected.whenAPersonLastWrote('alpha')).toEqual(store.whenAPersonLastWrote('alpha'))
+        expect(reads.waitTarget('alpha', 'child', rowsUnreadOnce())).toEqual({ state: 'closed' })
+        expect(reads.waitTarget('alpha', 'absent', rowsUnreadOnce())).toEqual({ state: null })
+      }, snapshot)
+      return snapshot
+    }
+    const complete = check()
+    reads.run(() => expect(projected.reconciliationReceipts('alpha', root.piece)).toEqual([]), complete)
+    row('alpha', 'work_reconciliation', '{')
+    const unread = check()
+    reads.run(() => expect(() => projected.reconciliationReceipts('alpha', root.piece)).toThrow(WindowReadUnavailable), unread)
+    row('alpha', 'work_recovery', '{')
+    const recoveryUnread = engine.read({ kind: 'incidents' })
+    if (recoveryUnread.kind !== 'incidents') throw new Error('wrong snapshot')
+    reads.run(() => expect(() => projected.reconciliationRecovery('alpha')).toThrow(WindowReadUnavailable), recoveryUnread)
+  })
 
   it('reads incident dependencies canonically, including corrupt rows and changed generations', () => {
     store.ensurePersonalRoot('alpha', 1)
