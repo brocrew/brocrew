@@ -187,3 +187,101 @@ jobs:
           path: windows-suite/
           retention-days: 14
           if-no-files-found: warn
+
+  chrome-native-birth:
+    name: Chrome native process birth (Windows)
+    if: github.repository == 'brocrew/brocrew'
+    runs-on: windows-2022
+    timeout-minutes: 30
+    env:
+      GOTOOLCHAIN: local
+      GOFLAGS: -mod=readonly
+      CGO_ENABLED: '0'
+      BROCREW_CHROME_TEST_ARTIFACT: ${{ runner.temp }}/chrome-native-birth
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+        with:
+          version: '10.11.0'
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.22.0'
+          cache: pnpm
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.27.2'
+          cache: false
+      - name: Use the profile's long temp path
+        run: |
+          $temp = Join-Path $env:USERPROFILE 'AppData\Local\Temp'
+          if ($temp.Contains('~') -or -not (Test-Path -LiteralPath $temp -PathType Container)) {
+            throw "No profile temp folder by its long name at $temp"
+          }
+          "TEMP=$temp" >> $env:GITHUB_ENV
+          "TMP=$temp" >> $env:GITHUB_ENV
+      - name: Install locked dependencies
+        run: |
+          pnpm install --frozen-lockfile
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm ci --prefix plugins/chrome --ignore-scripts --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Record exact source and tools
+        run: |
+          New-Item -ItemType Directory -Force windows-suite-native | Out-Null
+          git rev-parse HEAD 'HEAD^{tree}' | Tee-Object windows-suite-native/source.txt
+          node -p 'JSON.stringify({node:process.version,os:process.platform,arch:process.arch})'
+          pnpm --version
+          go version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --input-type=module -e "import('./plugins/chrome/node_modules/esbuild/lib/main.js').then(m => console.log('esbuild '+m.version))"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Execute every birth helper module on native Windows
+        run: |
+          $modules = @(Get-ChildItem plugins/chrome/native -Filter go.mod -Recurse)
+          if ($modules.Count -eq 0) { throw 'No native birth helper module selected' }
+          foreach ($module in $modules) {
+            $selectedJson = go -C $module.DirectoryName list -json .
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $selectedJson | Tee-Object "windows-suite-native/go-$($module.Directory.Name)-selected.json"
+            $selected = $selectedJson | ConvertFrom-Json
+            if ('main_windows.go' -notin $selected.GoFiles -or 'main_windows_test.go' -notin $selected.TestGoFiles) {
+              throw 'Native Windows helper/test files were not selected'
+            }
+            go -C $module.DirectoryName test -v ./... 2>&1 | Tee-Object "windows-suite-native/go-$($module.Directory.Name)-tests.txt"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+      - name: Build the actual Windows package and provide its helper to unbundled tests
+        run: |
+          $env:BROCREW_PLUGIN_SOURCE_COMMIT = $env:GITHUB_SHA
+          $env:BROCREW_GO = (Get-Command go).Source
+          node plugins/chrome/build.mjs $env:BROCREW_CHROME_TEST_ARTIFACT win32-x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $payload = Join-Path $env:BROCREW_CHROME_TEST_ARTIFACT 'package'
+          Copy-Item (Join-Path $payload 'plugin.json') windows-suite-native/plugin.json
+          Copy-Item (Join-Path $env:BROCREW_CHROME_TEST_ARTIFACT 'fixture-release.json') windows-suite-native/fixture-release.json
+          New-Item -ItemType Directory -Force plugins/chrome/src/profiles/bin | Out-Null
+          Copy-Item (Join-Path $payload 'bin/chrome-process-birth.exe') plugins/chrome/src/profiles/bin/chrome-process-birth.exe
+          Get-FileHash (Join-Path $payload 'bin/chrome-process-birth.exe') | Format-List
+      - name: Execute packaged helper against independently observed Windows process facts
+        run: |
+          node scripts/test/chrome-native-birth-windows.mjs $env:BROCREW_CHROME_TEST_ARTIFACT windows-suite-native
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Execute standalone Chrome compatibility and behavior tests
+        run: |
+          pnpm exec vitest run --config plugins/chrome/vitest.config.ts --reporter=default --reporter=json --outputFile.json=windows-suite-native/chrome.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Keep native selection, package and execution evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chrome-native-birth-windows
+          path: |
+            windows-suite-native/
+            ${{ runner.temp }}/chrome-native-birth/package/bin/chrome-process-birth.exe
+          retention-days: 14
+          if-no-files-found: error

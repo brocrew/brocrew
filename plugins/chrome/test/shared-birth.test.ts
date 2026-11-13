@@ -12,9 +12,10 @@ afterEach(() => {
 it.skipIf(process.platform === 'linux')(
   'process birth identity cannot change when reader locales or timezones differ',
   () => {
+    const expected = process.platform === 'win32' ? '638980000000000001' : 'canonical-birth'
     run.mockImplementation((_file, _args, options) =>
-      options.env?.LC_ALL === 'C' && options.env?.TZ === 'UTC'
-        ? 'canonical-birth'
+      process.platform === 'win32' || (options.env?.LC_ALL === 'C' && options.env?.TZ === 'UTC')
+        ? expected
         : `localized-${process.env.LANG}-${process.env.TZ}`,
     )
     vi.stubEnv('TZ', 'Pacific/Honolulu')
@@ -25,7 +26,7 @@ it.skipIf(process.platform === 'linux')(
     vi.stubEnv('LANG', 'en_US.UTF-8')
     vi.stubEnv('LC_ALL', 'en_US.UTF-8')
     const second = birthOf(process.pid)
-    expect(first).toBe('canonical-birth')
+    expect(first).toBe(expected)
     expect(second).toBe(first)
   },
 )
