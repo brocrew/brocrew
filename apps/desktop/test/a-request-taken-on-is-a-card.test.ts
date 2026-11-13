@@ -124,7 +124,7 @@ const ARGS = { title: TITLE, brief: BRIEF }
 
 describe('§1 · the receipt this card reads is the tool’s own sentence', () => {
   it('🔴 `take_on_work` still words its receipt the way the card reads it', () => {
-    const source = readFileSync(join(here, '../src/main/runtime/agent-tools.ts'), 'utf8')
+    const source = readFileSync(join(here, '../src/main/runtime/tool-families/work.ts'), 'utf8')
     expect(source).toContain('tookOnForPerson(taken.label, taken.root)')
     expect(tookOnForPerson('W1.7', 'W1')).toBe('Took on W1.7 under W1 for the person.')
     expect(pieceLine('W1.7', TITLE)).toBe(`W1.7 · ${TITLE}`)

@@ -1,3 +1,4 @@
+import { agentToolSourcePaths } from './helpers/agent-tool-source'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions } from '@brobot2/runtime'
 import { waitFor } from './lib/f093-host'
@@ -714,9 +715,12 @@ describe('397 · the word for a question nobody stopped', () => {
       expect(REQUEST_STATES.filter((state) => REQUEST_IS_OPEN[state])).toEqual(['open'])
       // ⛔ **The fold is the only thing that writes this state**, so a second reading of *"is it
       // still open"* cannot appear beside it. `agent-tools.ts` filters through the table by name.
-      const tools = codeOnly(sourceOf(join(mainRoot, 'runtime'), 'agent-tools.ts'))
+      const tools = codeOnly(sourceOf(join(mainRoot, 'runtime/tool-families'), 'questions.ts'))
       expect(tools).toContain('REQUEST_IS_OPEN[one.request.state]')
-      expect(tools).not.toMatch(/state === 'open'/)
+      for (const file of agentToolSourcePaths(join(mainRoot, 'runtime'))) {
+        const tools = codeOnly(readFileSync(file, 'utf8'))
+        expect(tools).not.toMatch(/state === 'open'/)
+      }
     })
 
     it('🔴 the fold derives it, and a ledger with no ending derives nothing', () => {

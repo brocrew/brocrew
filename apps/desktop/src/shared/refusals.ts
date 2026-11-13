@@ -402,3 +402,135 @@ export function storedRefusalTold(stored: unknown): RefusalTold | undefined {
   if (!Number.isSafeInteger(counted)) return undefined
   return { text: kept.text, dropped: counted }
 }
+
+/**
+ * Tool refusals stay separate from spawn rails and share their payload grammar.
+ * Historical ledger rows retain their original refusal strings.
+ */
+export const TOOL_REFUSALS = [
+  'theme-invalid',
+  'theme-is-built-in',
+  'theme-exists',
+  'theme-unknown',
+  'theme-too-large',
+  // Unknown conversations and conversations outside the call’s reach share this answer.
+  'no-such-agent',
+  // A recorded conversation cannot be started for messages: a read-only copy, provider child,
+  // or adopted conversation. An already-running one can still receive messages.
+  'that-conversation-takes-no-messages',
+  // The profile names several reachable conversations; the call must name one.
+  'that-agent-has-several-conversations',
+  'malformed-request',
+  'agent-cannot-take-a-message',
+  // A reservation’s launch is still in flight, excluding a reservation already closing.
+  // The same launch state uses this word at each door that can meet it.
+  'that-conversation-has-not-started',
+  // The message targets its sender. Retrying or changing grants cannot make that call valid.
+  'that-agent-is-you',
+  // The global spawning switch is off; creation and spawn doors use the same switch word.
+  'spawning-disabled',
+  // An admitted launch failed for a classified reason; admission itself did not refuse it.
+  // Timeout, temporary shortages and an unusable program have separate words. Unknown errors propagate.
+  'agent-did-not-start',
+  // An admitted provider launch timed out. Its launch is stopped and reservation abandoned
+  // so another call can attempt a new launch, without a promise that it succeeds.
+  'agent-took-too-long-to-start',
+  // A give waited for another launch and that launch failed. A new give may start a conversation.
+  'the-start-it-waited-on-did-not-happen',
+  // A temporary descriptor, process-slot or memory shortage prevented a start.
+  // Classification uses errno, not provider text; retry may succeed when resources return.
+  'agent-could-not-start-just-now',
+  // The program or folder cannot be used, or the provider refuses the start.
+  // The detail names the cause; temporary shortages and timeouts use separate words.
+  'agent-could-not-be-started',
+  // The caller lacks the creation capability; this is checked before the requested name.
+  'may-not-create-agents',
+  // The folded name already exists. Creation refuses rather than adopting that identity;
+  // the caller needs a different name.
+  'agent-name-taken',
+  // A service was requested while services are off; no identity is made.
+  'services-are-off-so-none-is-made',
+  // No piece given by this caller to the named recipient matches. Missing, other-giver
+  // and other-recipient pieces share this answer; use a label from the caller’s work list.
+  'not-a-piece-you-gave',
+  // The piece has a completed reply and cannot be withdrawn. New work requires a new give.
+  'that-piece-was-already-answered',
+  // The piece was already withdrawn; a repeated withdrawal cannot report a new success.
+  'that-piece-was-already-taken-back',
+  // The brief or its update is in flight. It cannot be cancelled while the send owns it;
+  // retry after handover settles, so the ledger cannot say both cancelled and sent.
+  'that-work-is-being-sent',
+  // Ending the piece must also end passed-up question copies, but a copy’s holder is starting.
+  // Nothing commits; retry after that bounded start lands or fails.
+  'a-conversation-with-its-questions-is-starting',
+  // The questions or passed-up copies could not all be read, so the piece is not ended alone.
+  // A later read may succeed; ask a person if it keeps failing.
+  'its-questions-could-not-all-be-read',
+  // The host could not establish the fixed authority required for the rule operation.
+  'may-not-write-rules',
+  // The claimed rule-relay shortcut is refused as a call, not silently converted to a proposal.
+  'may-not-relay-a-rule',
+  // A follow-up named open work the caller holds. Use a tracked question or hand the work back;
+  // ended work falls back to the giver lookup’s refusal.
+  'that-is-work-you-hold',
+  // The call names the caller’s own root for a follow-up, brief or close. Ask the person
+  // and answer in the conversation; keeping files on that root remains allowed.
+  'that-is-your-own-work',
+  // An admitted wake still awaits confirmation that the previous run stopped or finalized.
+  // Another attempt cannot succeed while that lifetime remains held.
+  'that-conversation-is-still-stopping',
+  // A wake failed on a resume, provider, program or folder problem needing attention.
+  // Temporary setup shortages have their own word; the detail names the observed cause.
+  'that-conversation-could-not-be-resumed',
+  // A wake met a temporary descriptor, process-slot or memory shortage in the error cause chain.
+  // Classification uses errno, not provider text; retry may succeed when resources return.
+  'that-conversation-could-not-be-woken-just-now',
+  // Names the transcript-reach refusal. Missing and out-of-scope conversations share this word;
+  // producers define the allowed descendant or same-profile scope.
+  'not-a-conversation-below-you',
+  // No piece held or given by the caller matches; missing and other callers’ pieces share this word.
+  'no-piece-by-that-name',
+  // The giver names an agent-given piece; the holder can name work a person gave it.
+  'the-giver-names-a-piece',
+  // The piece ended, so status, brief, close and kept-file changes are refused. Its title may change.
+  'that-piece-has-ended',
+  // The caller did not give the piece it is trying to brief or close. Other holder operations remain available.
+  'the-giver-briefs-and-closes-a-piece',
+  // The giver already closed the piece. It has ended; another withdrawal cannot close it again.
+  'that-piece-was-already-closed',
+  // The caller has no person-given root under which to take on work.
+  'no-work-of-your-own',
+  'work-record-unavailable',
+  // The profile name is not held by the app; this differs from a conversation id or piece label.
+  'no-agent-by-that-name',
+  // Neither the named conversation nor a conversation below it is archived.
+  'that-conversation-is-not-archived',
+  // An archive or delete of the conversation is still under way.
+  'it-is-being-archived-or-deleted',
+  // The archived-conversation list could not be saved; the host’s explanation is carried in said.
+  'it-could-not-be-restored',
+  // The requested name or address is registered. A request adds a server and never edits one.
+  'server-already-registered',
+  // Another request already asks for this server name; it clears when that request is decided.
+  'server-already-asked-for',
+  // This conversation or the app has reached its waiting-request limit; decisions release capacity.
+  'too-many-server-requests',
+  // The brief is still queued at a service and has reached nobody. Change it with update_work
+  // without losing its queue position; a follow-up can be sent after handover.
+  'that-piece-is-still-queued',
+] as const
+
+export type ToolRefusal = (typeof TOOL_REFUSALS)[number]
+
+/** Policy facts recorded for a refusal, without the request's detail, ids or folders.
+ * The row records that it was refused; keep the caller's sentence rather than deriving it again.
+ */
+export interface RefusalFacts {
+  readonly rail: string
+  readonly permanence: RailPermanence
+  readonly retryable: boolean
+  /** Static next act from the closed remedy vocabulary; it carries no request data. */
+  readonly remedy: RefusalRemedy | null
+  /** The payload's actual caller-facing sentence when present, never provider text. */
+  readonly told?: RefusalTold
+}

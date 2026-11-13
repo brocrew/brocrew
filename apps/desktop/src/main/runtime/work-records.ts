@@ -1,3 +1,4 @@
+import type { RaisedQuestion, RoutedRequest } from '../../shared/question-contracts'
 import type { HowAPieceEnded } from '../../shared/piece-called'
 import type { PieceRow, StatusLine } from '../../shared/task-contracts'
 import type { Exchange } from '../../shared/last-exchange'
@@ -161,3 +162,12 @@ export type WhatAPieceIsToIt =
       readonly label: string
     }
   | { readonly is: 'none' }
+
+/** The two ledger reads shared by one answer's work and wait projections. */
+export interface ItsLedger {
+  readonly routings: readonly RoutedRequest[]
+  readonly raised: ReadonlyMap<string, RaisedQuestion>
+}
+
+/** Open given work is read from its holders separately from the giver's own ledger. */
+export type WorkOutOf = (id: string) => readonly PieceRow[]

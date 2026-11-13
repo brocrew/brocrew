@@ -27,10 +27,10 @@ import { MAX_RESOURCES_PER_REPLY } from '../../shared/documents'
 
 import type { RailPermanence, RefusalRemedy } from '../../shared/refusals'
 import { undrivenSentence } from '../../shared/tasks'
-// ⚠️ **Type-only, and it has to stay that way.** `runtime-host.ts` imports this module for real, so
-// a value import back would be a runtime cycle; `CallerIdentity` is erased at compile time and the
-// two files stay one-directional.
-import type { CallerIdentity, TellDelivery } from './runtime-host'
+// Import identity and delivery contracts from their defining modules, as types only.
+// They must stay erased so these contracts add no runtime initialization dependency.
+import type { CallerIdentity } from './conversation-caller'
+import type { TellDelivery } from './message-records'
 import type { MessageRefusal } from './message-rails'
 import type { ResourceRefusal } from '../resources/resources'
 import type { ModelRefusal } from './model-rails'

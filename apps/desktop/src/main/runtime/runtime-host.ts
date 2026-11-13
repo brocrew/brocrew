@@ -1,3 +1,45 @@
+import { InstructionDecisions } from './host-split/instruction-decisions'
+import type {
+  WaitOnAsked,
+  TheCopiesRefusal,
+  TakeBackOutcome,
+  CarriesOn,
+  RestoredByAnAgent,
+  AgentRecordReading,
+  UpdateWorkOutcome,
+  TakeOnWorkOutcome,
+  CreateAgentOutcome,
+  MayCreateAgents,
+  ProposeRulesOutcome,
+  AgentOwnNotesOutcome,
+  AgentRulesOutcome,
+  McpServerRequestOutcome,
+  McpServerAsked,
+} from './host-split/host-command-contracts'
+export type {
+  WaitOnAsked,
+  TakeBackOutcome,
+  CarriesOn,
+  RestoredByAnAgent,
+  AgentRecordReading,
+  UpdateWorkOutcome,
+  TakeOnWorkOutcome,
+  CreateAgentOutcome,
+  MayCreateAgents,
+  ProposeRulesOutcome,
+  AgentOwnNotesOutcome,
+  AgentRulesOutcome,
+  McpServerRequestOutcome,
+  McpServerAsked,
+} from './host-split/host-command-contracts'
+import {
+  SchedulePlanning,
+  WAKE_LEAD_MS,
+  THE_ONE_CLOCK_ERA,
+  type RunOwed,
+  type OwedToItsJobs,
+  type PlannedWake,
+} from './host-split/schedule-planning'
 import {
   earliest,
   GRANTS_MAY_MOVE,
@@ -45,14 +87,12 @@ import type {
 export type {
   TurnFacts,
   InterruptOutcome,
-  TheStopAMessageGot,
   TheStopItsWordsAsked,
   AnswerWithItsStop,
   MessageNowOutcome,
   OutOfReach,
   TheDoorsReach,
   AProfileNames,
-  TellDelivery,
   NewBriefDelivery,
   Told,
 } from './message-records'
@@ -60,16 +100,16 @@ import type { FindFilesAsked, FoundFiles } from './kept-file-search'
 import { KeptFiles } from './kept-files'
 import { WorkReads } from './work-reads'
 import type {
+  ItsLedger,
+  WorkOutOf,
   APieceItHolds,
   PieceBoard,
   PieceRecord,
   MadeByItsProfile,
-  EndedPieceDetail,
   WhatAPieceIsToIt,
 } from './work-records'
 export type {
   APieceItHolds,
-  RootOnTheBoard,
   PieceBoard,
   PieceRecord,
   MadeByItsProfile,
@@ -84,12 +124,7 @@ import type {
   ConversationOnARecord,
   PieceOnARecord,
 } from './agent-records'
-export type {
-  ProfileReport,
-  ProfileReading,
-  WhoStartedIt,
-  ConversationOnARecord,
-} from './agent-records'
+export type { ProfileReading, WhoStartedIt, ConversationOnARecord } from './agent-records'
 import {
   terminalFor,
   errorMessage,
@@ -110,14 +145,12 @@ import {
 } from './session-disclosures'
 export type { WhatAFailedTurnWasFor } from './session-disclosures'
 import {
-  aWordOfThePlanners,
   dealtWith,
   scheduleNoticesText,
   theSameIsSaid,
   whatItSaysIsNotStarted,
   type NoticeAboutAJob,
   type WordOwed,
-  type AWordOfThisApps,
 } from './schedule-notices'
 export { scheduleNoticesText, type NoticeAboutAJob } from './schedule-notices'
 
@@ -140,7 +173,7 @@ export type {
   StoppedOnAPerson,
   AgentCard,
 } from './agent-directory'
-export type { FindFilesAsked, FoundFile, FoundFiles } from './kept-file-search'
+export type { FindFilesAsked, FoundFiles } from './kept-file-search'
 import {
   THE_APP_ITSELF,
   mayControl,
@@ -864,7 +897,8 @@ import {
   type ExternalMcpServerReach,
   type ExternalMcpServerRow,
 } from '../../shared/external-mcp'
-import type { RefusalFacts, ToolName, ToolRefusal } from './agent-tools'
+import type { RefusalFacts } from '../../shared/refusals'
+import type { ToolName, ToolRefusal } from './agent-tools'
 import {
   MessagingRefused,
   admitReachAtAll,
@@ -896,17 +930,9 @@ import {
   type AQuestionItHasOpen,
   type AHelperInTheTurn,
   type CurrentWorkInTheTurn,
-  TURN_BLOCK_WORDS,
   type WhoWaitsOnIt,
 } from './what-this-app-adds-to-a-turn'
-import {
-  EMPTY_TURN_BLOCK,
-  TURN_HELPER_OWNERS,
-  TURN_HELPER_PIECES,
-  turnBlockChanges,
-  type TurnBlockSnapshot,
-} from './turn-block-changes'
-import { WORK_STATE_WORD } from '../../shared/work-state-words'
+import { EMPTY_TURN_BLOCK, turnBlockChanges, type TurnBlockSnapshot } from './turn-block-changes'
 
 import {
   ACommandTakesNoAttachments,
@@ -967,7 +993,6 @@ import {
   // `recordAnAnswerItsGiverNeverGot`.
   theAnswerItCarries,
   AN_ANSWER_HELD_THEN_LOST,
-  NOTHING_IT_WAITS_ON,
   // ⚑ **D-022 · R4 — what a delivery row drives**, the fold's own spelling — see
   // `HostedSession.itsTurnDrives`; ⚑ D-027: of a turn that delivered several, the one they share.
   theDriveOfTheTurn,
@@ -1016,7 +1041,7 @@ import type {
 } from '../../shared/question-contracts'
 import { countedTogether } from '../../shared/workspace-reading'
 import type { WhatNeedsAPerson, WorkspaceReading } from '../../shared/workspace-reading'
-import { THE_APP_DID_IT, didIt } from '../../shared/who-did-it'
+import { didIt } from '../../shared/who-did-it'
 import type { LimitsDisplayAnswer } from '../../shared/limits-display'
 import type { WorkSearchQuery, WorkSearchResult } from '../../shared/work-search'
 import { WorkSearch } from './work-search'
@@ -1048,19 +1073,11 @@ import { NOTICE_MEANS, type AppNotice } from '../../shared/app-notice'
 import type {
   AgentInstructionsReading,
   InstructionAskWaiting,
-  InstructionEnding,
-  OwnInstructionsVersion,
   RulesAuthor,
 } from '../../shared/own-instructions'
 // ⚑ **F009 · how an agent's rules begin**, as its record quotes them.
-import { howTheRulesBegin, OWN_INSTRUCTIONS_CHARS } from '../../shared/own-instructions'
+import { howTheRulesBegin } from '../../shared/own-instructions'
 import {
-  ownNotesWriteFits,
-  OWN_NOTES_BASELINE_PROBLEM,
-  OWN_NOTES_STALE_PROBLEM,
-  OWN_NOTES_SAVE_PROBLEM,
-  OWN_NOTES_WRITE_CALLER_PROBLEM,
-  OWN_NOTES_READ_CALLER_PROBLEM,
   type OwnNotesWrite,
   type OwnNotesReading,
   type OwnNotesReceipt,
@@ -1209,13 +1226,7 @@ import { admitInterrupt, refuseInterrupt } from './interrupt-rails'
 import { distilSkipping } from './digest'
 import { MAX_DIGEST_SPAN_MS, WINDOW_WAS_CHOSEN, type DigestReading } from '../../shared/digest'
 import { newQueuedMessageId, queuedDisclosure } from './queued-message'
-import {
-  newAskedQuestionId,
-  newInstructionAskId,
-  newMcpServerRequestId,
-  newResourceId,
-  newWorkId,
-} from '../db/ids'
+import { newAskedQuestionId, newMcpServerRequestId, newResourceId, newWorkId } from '../db/ids'
 import {
   MCP_SERVER_REQUESTS_IN_ALL,
   MCP_SERVER_REQUESTS_PER_CONVERSATION,
@@ -1223,7 +1234,6 @@ import {
   theToolsItOffered,
   type McpServerRequestEnding,
   type McpServerRequestWaiting,
-  type McpServerRequestWho,
 } from '../../shared/mcp-server-requests'
 import type { QueuedMessage } from './queued-message'
 import { DEFAULT_PROFILE_ID, ProfileUnopenable, assertProfileMayBeCreated } from './provider-homes'
@@ -1245,20 +1255,14 @@ import type {
   AgentState,
   BackgroundCommand,
   BackgroundLevel,
-  ScheduledRow,
   ScheduleLevel,
 } from '../../shared/agent-state-contracts'
 // ⚑ **D-029 · a job's time, with its day where that is not today** — {@link scheduleNoticesText}.
 import { clockTimeFrom } from '../../shared/clock'
 import { theZoneReadNow, type LocalZone } from '../../shared/local-time'
+import { type CalendarSource } from '../../shared/schedule-wake'
+import { type ReceiptSchedulePlan } from '../../shared/schedule-receipts'
 import {
-  eligibilityBounds,
-  nextCronOccurrence,
-  type CalendarSource,
-} from '../../shared/schedule-wake'
-import { planReceiptSchedule, type ReceiptSchedulePlan } from '../../shared/schedule-receipts'
-import {
-  planScheduleAdmission,
   recordScheduleAdmission,
   type WakeAdmissionPlan,
 } from '../../shared/schedule-wake-admission'
@@ -1292,15 +1296,11 @@ import {
   type NotContinuedBecause,
 } from '../turns-the-app-cut-file'
 import {
-  aConversationsScope,
-  aJobsMaking,
-  theJobOfAMaking,
   hostCalendar,
   isScheduleEvidence,
   receiptStamp,
   RECEIPTS_LEVEL_SOURCE,
   heldUntil,
-  noticesWorthTelling,
   ScheduleEvidence,
 } from './schedule-evidence'
 
@@ -1652,18 +1652,6 @@ function whyTheWorkerMissed(error: unknown, signal: AbortSignal | undefined): un
   )
 }
 
-/**
- * What a wait names, as `update_work`'s `on` says it: exactly one of an agent (a piece's label or
- * id, or a question's id), the person (a question's id), a time, or an event (a scheduled job's
- * or a background task's id).
- */
-export interface WaitOnAsked {
-  readonly agent?: string
-  readonly person?: string
-  readonly time?: string
-  readonly event?: string
-}
-
 /** How far ahead a wait on a time may name. */
 const A_WAIT_ENDS_WITHIN_MS = 30 * 24 * 60 * 60 * 1000
 
@@ -1853,12 +1841,6 @@ const AN_ENDING_WAITS_OUT_STARTS = 3
 
 /** The open copies passed up of questions about a piece, each with the conversation holding it. */
 type PassedUpCopies = readonly { readonly passer: string; readonly requestId: string }[]
-
-/** Why a piece could not end with the copies of its questions: the rails each door refuses with. */
-type TheCopiesRefusal = Extract<
-  ToolRefusal,
-  'a-conversation-with-its-questions-is-starting' | 'its-questions-could-not-all-be-read'
->
 
 /** A press on a request that has already ended. */
 const ANSWERED_FIRST: AnswerAck = {
@@ -2752,103 +2734,6 @@ function deliveryOf(delivered: QueueOutcome | null): Told {
     : { delivery: delivered.outcome === 'sent' ? 'sent' : 'held' }
 }
 
-/**
- * 🔴 **What {@link RuntimeHost.takeBackPiece} answers, and it never throws** (429 as a task).
- *
- * ## ⛔ It names `TOOL_REFUSALS` words rather than carrying a vocabulary of its own
- *
- * ⚠️ **`withdraw_task` is a TOOL and its refusals are tool refusals.** ⛔ A rail module for six
- * rails would be another permanence table, remedy table, carrier and census entry — for words whose
- * only reader is one door in `agent-tools.ts`.
- *
- * ## ⚠️ The refusal carries the FACTS and the door composes the sentence
- *
- * ⛔ **`341`'s split, and it is what makes HO-023 §5's second clause testable**: *the refusal names
- * what answered it* is a claim about DATA — a label, an outcome, resource ids — and a host that
- * returned a string would have made it a claim about prose.
- */
-export type TakeBackOutcome =
-  | ({
-      readonly ok: true
-      readonly piece: string
-      /** The label a person says out loud, off the row rather than recomputed. */
-      readonly label: string
-      /** The conversation that held it. */
-      readonly owner: string
-      /**
-       * ⚑ **Whether a held brief, or a held new brief, went back with the piece** — computed from
-       * what happened, never from the state the call started in.
-       */
-      readonly tookBackTheMessage: boolean
-      /**
-       * 🔴 **How many of the owner's questions about the piece ended with it** (591) — counted from
-       * the derivation that decides them, never from the branch that hoped to end them. ⚠️ Zero is
-       * the ordinary answer.
-       */
-      readonly endedQuestions: number
-      /**
-       * Whether its holder's running turn was asked to stop with it: only at a service, taking back
-       * the piece it is on, while a turn of its runs that an agent may stop.
-       */
-      readonly askedItsTurnToStop: boolean
-      /** Whether a service held it: its turn is no longer the caller's to stop once it is taken back. */
-      readonly atAService: boolean
-      // ⚑ **D-016 · ruling 8 — what reached the owner** (D-022 · R3), and why when nothing did
-      // ({@link Told}). ⚑ The piece is taken back either way.
-    } & Told)
-  | { readonly ok: false; readonly refused: TakeBackRefused }
-
-/** ⛔ **Which rail stopped a take-back, and the facts that rail may state** (429). */
-export type TakeBackRefused =
-  | {
-      readonly rail: Extract<ToolRefusal, 'not-a-piece-you-gave'>
-      /**
-       * 🔴 **F089 · the piece is the caller's own** — one it holds, and so not one it gave — said as
-       * what it is ({@link APieceItHolds}). ⛔ Absent for a name that names nothing and for another
-       * conversation's piece — one answer, so a name is no oracle. ⚠️ Absent too, and its word's own
-       * sentence said, for a piece the caller gave whose holder it cannot reach (a reopen a person is
-       * closing) or whose record cannot be read, and for a piece it holds whose record cannot be
-       * read: how that one stands is not known.
-       */
-      readonly itHoldsIt?: APieceItHolds
-    }
-  | {
-      readonly rail: Extract<ToolRefusal, 'that-piece-was-already-answered'>
-      readonly label: string
-      /** How the owner said it went. */
-      readonly outcome: TaskOutcome | null
-      /** The resources its reply handed in, as `work_resource` ids — empty when it handed in none. */
-      readonly resources: readonly string[]
-      /** When it closed. */
-      readonly endedAt: number | null
-    }
-  | {
-      readonly rail: Extract<ToolRefusal, 'that-piece-was-already-taken-back'>
-      readonly label: string
-    }
-  | {
-      readonly rail: Extract<ToolRefusal, 'that-piece-was-already-closed'>
-      readonly label: string
-    }
-  | {
-      readonly rail: Extract<ToolRefusal, 'that-work-is-being-sent'>
-      readonly label: string
-    }
-  /** The piece could not end with the copies passed up of its questions, so nothing was done. */
-  | {
-      readonly rail: TheCopiesRefusal
-      readonly label: string
-      readonly unreadQuestion?: UnreadQuestion
-    }
-  /**
-   * 🔴 **657 · the piece is real and its owner is a launch in flight** (`650` F4) — the shared word,
-   * carrying the label because the caller can act on it the moment the launch lands.
-   */
-  | {
-      readonly rail: Extract<ToolRefusal, 'that-conversation-has-not-started'>
-      readonly label: string
-    }
-
 /** ⚑ **The arm that carries nothing, as a constant** — see {@link whoseConversationIs}. */
 export const AN_IDENTITY_THIS_APP_CANNOT_NAME: WhoseConversation = {
   is: 'an-identity-this-app-cannot-name',
@@ -3036,31 +2921,6 @@ function handBackTheMainProcess(): Promise<void> {
 }
 
 /**
- * How a conversation an agent restored carries on, as after any stop: `starting` now, for the
- * messages it held when it was archived or a job that came due meanwhile; waking at `wakesAt`
- * (epoch ms) for its schedule; or `null`, stopped until something starts it.
- */
-export type CarriesOn = 'starting' | { readonly wakesAt: number } | null
-
-/** What an agent's restore of an archived conversation came to ({@link RuntimeHost.restoreAsAnAgent}). */
-export type RestoredByAnAgent =
-  | {
-      readonly is: 'restored'
-      readonly conversations: readonly {
-        readonly conversation: string
-        readonly carriesOn: CarriesOn
-      }[]
-      /** When this was read, to place each `wakesAt` on a day. */
-      readonly readAt: number
-    }
-  | { readonly is: 'no-such-agent' }
-  | { readonly is: 'not-archived' }
-  /** An archive or a delete of it is under way: the same call works once that has landed. */
-  | { readonly is: 'being-set-aside'; readonly said: string }
-  /** The list of archived conversations could not be saved: a person has to act. */
-  | { readonly is: 'could-not'; readonly said: string }
-
-/**
  * ⚑ **D-017 · R11 — what every card in one answer is read against** — see
  * `RuntimeHost.cardReads`: the roster that names each conversation, and the conversations whose
  * asks against their rules wait on a person.
@@ -3072,22 +2932,6 @@ interface CardReads {
   readonly asksUnread: number
   readonly nameOf?: (conversation: string) => string
 }
-
-/**
- * ⚑ **D-017 · R11 · R19 — what one conversation's ledger holds that its wait and who owes it the
- * next move are both read from** — see `RuntimeHost.oneLedgerReadPerAnswer`.
- */
-interface ItsLedger {
-  readonly routings: readonly RoutedRequest[]
-  readonly raised: ReadonlyMap<string, RaisedQuestion>
-}
-
-/**
- * ⚑ **D-036 · the work a conversation gave out that is still open, by the conversation asked
- * about** — see `RuntimeHost.oneWorkOutReadPerAnswer`. ⚠️ Not a field of {@link ItsLedger}: it is
- * read from the ledgers of the conversations holding that work, so other rows move it.
- */
-type WorkOutOf = (id: string) => readonly PieceRow[]
 
 /** No piece a conversation gave has stopped: what `RuntimeHost.whoOwesIt` leaves out by default. */
 const NO_PIECE_STOPPED: ReadonlySet<string> = new Set()
@@ -3152,48 +2996,6 @@ const FILES_ON_A_RECORD = 5
 
 /** ⚑ **F009 · the most of its standing rules' first line an agent's record quotes.** */
 const RULES_BEGIN_CHARS = 200
-
-/**
- * Read an agent's record when `list_profiles` names it. The record helps the caller choose whom to call and is not preloaded into conversation context.
- *
- * ⚑ **Each part through the door its facts already had, or the reach of the agent it is about.** Its
- * roster row ({@link ProfileReport}) and the files it made are told to any caller, as
- * `list_profiles` and `find_files` tell them. ⛔ **Its conversations, and the pieces they held, are
- * folded by the reach `list_agents` folds by** ({@link RuntimeHost.withinMessagingReach}), so the
- * record reads past no fold that door applies — {@link ProfileReport}'s own rule — ⚑ and how its
- * standing rules begin is told to a caller that reaches that agent: one of its conversations, or any
- * conversation it did not start. ⚑ What it adds to those doors is said in
- * {@link RuntimeHost.agentRecord}.
- */
-export type AgentRecordReading =
-  | { readonly is: 'no-agent-by-that-name' }
-  | { readonly is: 'a-record'; readonly record: AgentRecord }
-
-/** ⚑ **F009 · one agent's record** — see {@link AgentRecordReading}. */
-export interface AgentRecord {
-  readonly agent: ProfileReport
-  readonly rules: RulesOnARecord
-  /** Its conversations within the caller's reach, newest activity first, at most {@link CONVERSATIONS_ON_A_RECORD}. */
-  readonly conversations: readonly ConversationOnARecord[]
-  /** How many more of its conversations within the caller's reach are not listed. */
-  readonly conversationsNotListed: number
-  /** The newest pieces those conversations hold, newest given first, at most {@link PIECES_ON_A_RECORD}. */
-  readonly pieces: readonly PieceOnARecord[]
-  /** ⚑ How many of those newest pieces could not be read: their holder's record is torn there. */
-  readonly piecesUnread: number
-  /** How many more of those conversations' pieces were given before the newest. */
-  readonly piecesNotListed: number
-  /** The files it made, newest first, at most {@link FILES_ON_A_RECORD} — `list_tasks {made}`'s shape. */
-  readonly files: (MadeByItsProfile & { readonly is: 'listed' })['made']
-  /** How many more files it made are not listed. */
-  readonly filesNotListed: number
-  /** ⚑ Rows of its conversations' records the reads could not read — a count, never a cause. */
-  readonly rowsUnread: number
-  /** ⚑ **D-017 · R8** — how many of their records were skipped whole, when any. */
-  readonly ledgersSkipped?: number
-  /** ⚑ When it was read — what its times are placed on a day by. */
-  readonly readAt: number
-}
 
 interface SessionSlot {
   readonly id: string
@@ -3934,29 +3736,11 @@ const DEFAULT_DELIVERY_WAIT_MS = 15_000
 const DEFAULT_COMMAND_LIST_WAIT_MS = 5_000
 
 /**
- * 🔴 **D-029 · how long before a one-shot fires its stopped conversation is started** (R1). ⚑ From
- * `05` §2: a stopped conversation's first output came 8.4–10.8 s after its message (10.0 s on a
- * 24 MB transcript), and its provider restores its jobs while it resumes that history, before any
- * output. ⛔ **A job restored after its time is dropped without a word, and one restored early only
- * waits** — so the margin is taken on the side that costs nothing: about three times the slowest
- * wake.
- */
-const WAKE_LEAD_MS = 30_000
-
-/**
  * How long a life started for its jobs holds one whose minute has already come, when its provider
  * states no level: a provider restores its jobs, and runs what is due, within seconds
  * ({@link WAKE_LEAD_MS}).
  */
 const WAKE_BRIEF_HOLD_MS = 2 * 60_000
-
-/**
- * The clock era every moment here is read in. ⚠️ A wall clock set by hand, or by the network, is
- * not noticed: a job's time is trusted as the clock stood when it was made. A scheduling call's own
- * two moments are checked against a clock that is never set, where they are read
- * (`claude/scheduling-calls.ts`).
- */
-const THE_ONE_CLOCK_ERA = 'wall'
 
 /** The most conversations whose scheduling evidence is held in memory at once. */
 const SCHEDULES_HELD = 200
@@ -4152,88 +3936,10 @@ function theTurnWasCut(kind: CutKind, turn: TurnAsItEnded, generation: number): 
 }
 
 /**
- * How many starts this app makes for a repeating job's runs, one after another, with its provider
- * listing the job after none of them, before it makes no more for that job.
- */
-const STARTS_WITH_NO_WORD_OF_A_JOB = 3
-
-/**
  * How many times the gap between two starts in the line a start due at once waits out: it has no
  * minute to meet, and many can be due together at a launch.
  */
 const AT_ONCE_START_GAPS = 4
-
-/** A run of a repeating job that a start is owed for, and when that start is due. */
-interface RunOwed {
-  /** The job, by its id. */
-  readonly job: string
-  /** That job's making ({@link aJobsMaking}): what a start made for the run is kept under. */
-  readonly making: string
-  /** The minute of that run, epoch ms. */
-  readonly runAt: number
-  /** When to start for it: its lead before that minute. */
-  readonly startAt: number
-  /** How many starts in a row its provider will have left unanswered, this one counted. */
-  readonly unanswered: number
-}
-
-/** What a plan owes each of a conversation's jobs ({@link RuntimeHost.whatItsJobsAreOwed}). */
-interface OwedToItsJobs {
-  /** The starts asked for jobs that are not started run by run, less those already made. */
-  readonly admission: WakeAdmissionPlan
-  /** The runs of its repeating jobs a start is owed for. */
-  readonly runs: readonly RunOwed[]
-  /** By job id, the run each repeating job of known time is next started for; `undefined`: none. */
-  readonly itsRuns: ReadonlyMap<string, number | undefined>
-  /** By job id, the jobs this app does not start the conversation for once it is stopped, and why. */
-  readonly notStarted: ReadonlyMap<string, NotStartedBecause>
-  /** This app's own words about its jobs that it has not been told yet. */
-  readonly words: readonly WordOwed[]
-}
-
-/** What a stopped conversation's plan asks of a start ({@link RuntimeHost.planItsWake}). */
-interface PlannedWake {
-  readonly plan: ReceiptSchedulePlan
-  readonly admission: WakeAdmissionPlan
-  readonly runs: readonly RunOwed[]
-  /** What it is to be told of its jobs at its next start: the planner's notices, and this app's. */
-  readonly words: readonly WordOwed[]
-  /** When the soonest start it asks for is due; `null` when it asks for none. */
-  readonly startAt: number | null
-  readonly level: ScheduleLevel
-}
-
-/**
- * The repeating jobs of a plan whose time is known — listed, placed on a calendar the planner
- * trusts, and within their lifetime — each with its schedule.
- */
-function itsRepeatingJobsOfKnownTime(plan: ReceiptSchedulePlan): {
-  readonly job: string
-  readonly making: string
-  readonly schedule: string
-  readonly state: ReceiptSchedulePlan['states'][number]
-}[] {
-  return plan.wake.plans.flatMap(({ job, result }) => {
-    if (job.recurring !== true || result.kind !== 'known' || job.schedule === undefined) return []
-    const state = plan.states.find((one) => one.generation.generation === job.evidence?.generation)
-    if (state === undefined || state.age === 'expired') return []
-    return [{ job: job.id, making: aJobsMaking(state.generation), schedule: job.schedule, state }]
-  })
-}
-
-/**
- * A repeating job's first run after `after`, on `calendar`, searched as far as it takes — the
- * planner shares one search budget among every job its evidence holds, so a run far ahead can be
- * past it.
- */
-function theRunAfter(
-  schedule: string,
-  after: number,
-  calendar: CalendarSource,
-): number | undefined {
-  const next = nextCronOccurrence(schedule, { after, inclusive: false, zone: 'UTC', calendar })
-  return next.kind === 'known' ? next.nominalAt : undefined
-}
 
 /** Nothing done yet for a conversation's jobs. */
 const NOTHING_DONE_FOR_ITS_JOBS: ConversationAttempts = {
@@ -4244,10 +3950,6 @@ const NOTHING_DONE_FOR_ITS_JOBS: ConversationAttempts = {
   notStartedSaid: {},
   at: 0,
 }
-
-/** The jobs, each by its making, a conversation was told something of at a start. */
-const theJobsItWasToldOf = (kept: ConversationAttempts): ReadonlySet<string> =>
-  new Set(kept.told.filter((one) => one.said).map((one) => one.of))
 
 /**
  * ⚑ **D-029 · one stopped conversation's wake-up** — see {@link RuntimeHost.wakeUps}.
@@ -4371,217 +4073,6 @@ const NO_INSTRUCTIONS: SessionInstructions = {
   // nothing"* rather than *"we did not say"* — there is no third value here and none is wanted:
   // the empty `injected` beside it is the same fact from the other side.
   composed: null,
-}
-
-/**
- * 🔴 **D-016 · what `update_work` answers with** — the piece and what now stands, or the word that
- * refused it. ⚑ `rail` is a {@link ToolRefusal}, type-only, as {@link CreateAgentOutcome}'s is; a
- * file that could not be kept is its own arm, carried whole.
- */
-export type UpdateWorkOutcome =
-  | ({
-      readonly ok: true
-      readonly piece: string
-      readonly label: string
-      /** The conversation holding it — the one told, when anything was told. */
-      readonly owner: string
-      /** The title it now stands under, when this call set one. */
-      readonly title: string | null
-      /** The status line it now reads, when this call set one. */
-      readonly status: string | null
-      /** Whether this call gave it a new brief. */
-      readonly rebriefed: boolean
-      readonly definitionOfDone?: string | null
-      /** The files this call kept for it, each with its role — empty when none. */
-      readonly kept: readonly {
-        readonly resource: string
-        readonly name: string
-        readonly role: ResourceRole
-      }[]
-      /** Present only when this call closed it: take back's two facts ({@link TakeBackOutcome}). */
-      readonly closed: {
-        readonly tookBackTheMessage: boolean
-        readonly endedQuestions: number
-      } | null
-      /** Whether its holder's running turn was asked to stop with a close: at a service, as a take-back. */
-      readonly askedItsTurnToStop: boolean
-      /** Whether a service holds it: once it is closed, its turn is no longer the caller's to stop. */
-      readonly atAService: boolean
-      // ⚑ **D-022 · R3 — what reached its owner.** `null`: nothing in this call tells it — a title,
-      // a status line, or files its owner made. A close and inputs answer a `TellDelivery`; a new
-      // brief may also ride its piece's give, still held behind the owner's turn (`with-its-give`),
-      // or find the piece ended when it reached the owner (`after-it-ended`). `not-delivered`, with
-      // why (`Told`); what was written stands.
-    } & (Told<NewBriefDelivery> | { readonly delivery: null }))
-  | {
-      readonly ok: false
-      readonly rail: Exclude<ToolRefusal, 'that-piece-has-ended' | TheCopiesRefusal>
-      readonly detail: Readonly<Record<string, unknown>>
-    }
-  /** The piece could not end with the copies passed up of its questions, so nothing was done. */
-  | {
-      readonly ok: false
-      readonly rail: TheCopiesRefusal
-      readonly detail: {
-        readonly piece: string
-        readonly label: string
-        readonly unreadQuestion?: UnreadQuestion
-      }
-    }
-  | {
-      readonly ok: false
-      readonly rail: 'that-piece-has-ended'
-      readonly detail: EndedPieceDetail
-      /** ⚑ **F059** — the moment it was refused, which its sentence says the ending's time as of. */
-      readonly readAt: number
-    }
-  | { readonly ok: false; readonly resourceRefusal: ResourceRefusal }
-
-/**
- * 🔴 **D-016 · commit 6 · what `take_on_work` answers with** — the piece taken on, under the
- * caller's own root, or the rail that stopped it.
- */
-export type TakeOnWorkOutcome =
-  | {
-      readonly ok: true
-      readonly piece: string
-      readonly label: string
-      readonly title: string
-      /** The label of the root it hangs under — the caller's own conversation's work. */
-      readonly root: string
-      readonly notice: 'sent' | 'held' | 'not-delivered' | null
-      readonly queued: boolean
-    }
-  | { readonly ok: false; readonly resourceRefusal: ResourceRefusal }
-  | {
-      readonly ok: false
-      readonly rail: Extract<
-        ToolRefusal,
-        'malformed-request' | 'no-work-of-your-own' | 'work-record-unavailable'
-      >
-      readonly detail: Readonly<Record<string, unknown>>
-    }
-
-/**
- * 🔴 **What an AGENT's creation answers with** (419) — an identity, or the rail that stopped it.
- *
- * ⛔ **The refusal is a VALUE on a resolved call**, which is HO-005 criterion 4's *"a successful call
- * whose payload names the rail"* and `SpawnOutcome`'s shape one door over. ⚠️ The person's door
- * {@link RuntimeHost.createAgent} throws instead, and the difference is who is reading: a model
- * reads a payload and decides what to do; a window shows a sentence.
- *
- * ⚑ **`rail` is a {@link ToolRefusal} and the import is TYPE-ONLY**, so this file gains no runtime
- * edge to `agent-tools.ts` — which already imports this one. `agent-tools.ts` turns the word into a
- * payload through `refuseTool`, where its permanence and its sentence live; ⛔ **a word added here
- * without those two does not compile**, which is the compile error this shape exists to buy.
- */
-export type CreateAgentOutcome =
-  | {
-      readonly ok: true
-      readonly identity: AgentIdentity
-      /**
-       * 🔴 **618 · the first version of its own rules, or `null` when the creator sent none**
-       * (`HO-078` §4).
-       *
-       * ⛔ **Carried rather than inferred from the argument**, and that is
-       * `a-report-must-be-computed-from-the-outcome` rather than a shape preference: the door that
-       * ANSWERS a caller must say what was written, not what it was asked to write. ⚠️ A caller
-       * reading its own argument back would report a version on a write that never happened.
-       *
-       * ⚑ **Always version 1 when it is not null**, because this door is the only writer of
-       * {@link WhoWroteIt}'s `its-creator` and the identity had none a line earlier —
-       * `identity_instruction_creator_is_first_ck` is where that stops being a promise.
-       */
-      readonly rules: OwnInstructionsVersion | null
-      /**
-       * 🔴 **D-042 · R2 — the default it now has, read back** (`null`: none was named) — what the
-       * door says its new conversations start on.
-       */
-      readonly defaultModel: AgentModelChoice | null
-    }
-  | {
-      readonly ok: false
-      readonly rail: ToolRefusal
-      readonly detail: Readonly<Record<string, unknown>>
-    }
-
-/**
- * 🔴 **What {@link RuntimeHost.mayCreateAgents} answers** (486, HO-031 §2.5).
- *
- * ⚠️ The refused arm is {@link CreateAgentOutcome}'s refusal shape exactly, so a tool turning either
- * into a payload writes one line.
- */
-export type MayCreateAgents =
-  | {
-      readonly ok: true
-      /**
-       * 🔴 **WHO is creating, ready to be written into `agent_identity.created_by`** (598,
-       * `HO-084` §1) — always the `an-agent` arm, because this door is only ever an agent's.
-       *
-       * ⛔ **Carried rather than re-read**: its one in-app caller needs it again, and reading it
-       * twice is how two answers to *who is asking* come to differ. ⚑ Here the second answer would
-       * be the provenance written onto the new row, so a drift would record the wrong creator.
-       */
-      readonly creator: IdentityCreator
-    }
-  | {
-      readonly ok: false
-      readonly rail: ToolRefusal
-      readonly detail: Readonly<Record<string, unknown>>
-    }
-
-/**
- * 🔴 **What an agent's ask against an identity's own instructions did** (582).
- *
- * ⛔ **A DISCRIMINATED UNION over `wrote`, and not a pair of optional fields.** The two arms carry
- * different values — a version number on one, an ask id on the other — and
- * `a-value-beside-a-word-or-a-union-of-arms` is this project's own rule for exactly that shape: a
- * value that exists on one arm wants a union, and a flat pair makes the impossible combination
- * compile.
- */
-export type ProposeRulesOutcome =
-  | { readonly ok: true; readonly wrote: 'a-request'; readonly askId: string }
-  | {
-      readonly ok: false
-      readonly rail: ToolRefusal
-      readonly detail: Readonly<Record<string, unknown>>
-    }
-
-export type AgentOwnNotesOutcome<T> =
-  | { readonly ok: true; readonly result: T }
-  | {
-      readonly ok: false
-      readonly rail: ToolRefusal
-      readonly detail: Readonly<Record<string, unknown>>
-    }
-
-export type AgentRulesOutcome<T> =
-  | { readonly ok: true; readonly result: T }
-  | {
-      readonly ok: false
-      readonly rail: ToolRefusal
-      readonly detail: Readonly<Record<string, unknown>>
-    }
-
-/** What `request_mcp_server` answers: the request it put in front of the person, or a refusal. */
-export type McpServerRequestOutcome =
-  | { readonly ok: true; readonly requestId: string }
-  | {
-      readonly ok: false
-      readonly rail: ToolRefusal
-      readonly detail: Readonly<Record<string, unknown>>
-    }
-
-/** What an agent asks for with `request_mcp_server`, its words already checked by the tool. */
-export interface McpServerAsked {
-  readonly name: string
-  readonly url: string
-  readonly reaches: string
-  readonly whoGetsIt: McpServerRequestWho
-  /** With `only-these-agents`, the agents by profile; empty with `everyone`. */
-  readonly agents: readonly string[]
-  /** The caller's own piece this is for, by label or id, or `null`. */
-  readonly piece: string | null
 }
 
 /**
@@ -5462,6 +4953,7 @@ export class RuntimeHost implements LiveHost {
     { readonly stamp: WindowWriterStamp; readonly result: WindowReadResult } | undefined
 
   private readonly workReads: WorkReads
+  private readonly schedulePlanning: SchedulePlanning
 
   constructor(private readonly deps: RuntimeHostDeps) {
     this.ledgerIdentity = deps.store
@@ -5469,7 +4961,24 @@ export class RuntimeHost implements LiveHost {
       ...deps,
       store: this.windowRoutingReads.store(this.windowIncidentReads.store(deps.store)),
     }
+    this.schedulePlanning = new SchedulePlanning(this.deps, {
+      itsCalendar: () => this.itsCalendar(),
+      itsEvidence: (conversation) => this.itsEvidence(conversation),
+      itsAttempts: (conversation) => this.itsAttempts(conversation),
+      keepItsAttempts: (conversation, record) => this.keepItsAttempts(conversation, record),
+      hasSlot: (id) => this.slots.has(id),
+      startReservedFor: (id) => this.startsReserved.get(id),
+      keptAttemptsFor: (id) => this.attemptsKept.conversations[id],
+    })
     this.workReads = new WorkReads({
+      currentStore: () => this.deps.store,
+      idsForTurnRead: (id) => this.theIdsItStandsFor(id),
+      waitForTurnRead: (unread, ledger, workOut) =>
+        this.oneWaitReadPerAnswer(unread, ledger, workOut),
+      queueForTurnRead: (row, bounded) => this.withItsPlaceInTheQueue(row, bounded),
+      withinMessagingReach: (id, by, me) => this.withinMessagingReach(id, by, me),
+      theOneInItsPlace: (id) => this.theOneInItsPlace(id),
+      whatToCallTheConversation: (id) => this.whatToCallTheConversation(id),
       store: this.deps.store,
       oneWaitReadPerAnswer: (unread) => this.oneWaitReadPerAnswer(unread),
       theIdsItStandsFor: (sessionId) => this.theIdsItStandsFor(sessionId),
@@ -9651,43 +9160,10 @@ export class RuntimeHost implements LiveHost {
     evidence.add({ ordinal, at, rowType: event.type, payload: event })
   }
 
-  /**
-   * 🔴 **What a conversation's receipts and levels say is scheduled, and when** — the planner's
-   * answer over its evidence, on the Mac's calendar ({@link planReceiptSchedule}); `null`, warned,
-   * when it cannot be planned. ⚑ The notices it has already been handed are left out
-   * ({@link attemptsKept}). ⛔ It never throws.
-   */
   private planItsSchedule(conversation: string, now: number): ReceiptSchedulePlan | null {
-    try {
-      const calendar = this.itsCalendar()
-      return planReceiptSchedule(
-        this.itsEvidence(conversation).on(calendar),
-        aConversationsScope(conversation),
-        {
-          now,
-          wakeLeadMs: WAKE_LEAD_MS,
-          calendar,
-          clockEra: THE_ONE_CLOCK_ERA,
-          clockContinuous: true,
-          noticeDelivery: {
-            acceptedIds: this.itsAttempts(conversation).told.map((one) => one.id),
-            mailbox: [],
-          },
-        },
-      )
-    } catch (error) {
-      console.warn(
-        `runtime host could not plan what ${conversation} has scheduled: ${errorMessage(error)}`,
-      )
-      return null
-    }
+    return this.schedulePlanning.planItsSchedule(conversation, now)
   }
 
-  /**
-   * The level a plan lists: each job with what it was last said to ask, and its next minute where
-   * the plan knows it — a one-shot's own while it is ahead, a repeating job's next while the job
-   * is within its lifetime.
-   */
   private theLevelItPlans(
     conversation: string,
     plan: ReceiptSchedulePlan,
@@ -9700,406 +9176,28 @@ export class RuntimeHost implements LiveHost {
     /** The jobs this app does not start the conversation for, by job id, and why. */
     notStarted: ReadonlyMap<string, NotStartedBecause> = new Map(),
   ): ScheduleLevel {
-    const evidence = this.itsEvidence(conversation)
-    const calendar = this.itsCalendar()
-    return {
-      jobs: plan.currentListing.jobs.map(({ job }): ScheduledRow => {
-        const state = plan.states.find(
-          (one) => one.generation.generation === job.evidence?.generation,
-        )
-        const nominalAt =
-          state === undefined
-            ? undefined
-            : itsRuns.has(job.id)
-              ? itsRuns.get(job.id)
-              : job.recurring === true
-                ? state.age === 'expired'
-                  ? undefined
-                  : (state.nextNominalAt ??
-                    (state.generation.creation === undefined || job.schedule === undefined
-                      ? undefined
-                      : theRunAfter(job.schedule, now, calendar)))
-                : state.display.label === 'scheduled'
-                  ? state.pendingNominalAt
-                  : undefined
-        const { prompt } = evidence.askedBy(job.id)
-        const why = notStarted.get(job.id)
-        return {
-          id: job.id,
-          ...(job.schedule === undefined ? {} : { schedule: job.schedule }),
-          ...(job.recurring === undefined ? {} : { recurring: job.recurring }),
-          ...(prompt === undefined ? {} : { prompt }),
-          ...(nominalAt === undefined ? {} : { nominalAt }),
-          ...(why === undefined ? {} : { notStarted: why }),
-        }
-      }),
-      dropped: plan.currentListing.dropped,
-    }
+    return this.schedulePlanning.theLevelItPlans(conversation, plan, now, itsRuns, notStarted)
   }
 
-  /**
-   * **The notices of a plan the conversation needs no word about are settled**
-   * ({@link noticesWorthTelling}): kept as told, so no start is made to tell them. ⚑ Answers whether
-   * any was. ⛔ It never throws.
-   */
   private settleWhatItSaw(conversation: string, plan: ReceiptSchedulePlan, now: number): boolean {
-    if (plan.notices.length === 0) return false
-    try {
-      const before = this.itsAttempts(conversation)
-      const calendar = this.itsCalendar()
-      const { settle } = noticesWorthTelling(
-        this.itsEvidence(conversation).on(calendar),
-        plan,
-        theJobsItWasToldOf(before),
-        calendar,
-        now,
-      )
-      if (settle.length === 0) return false
-      this.keepItsAttempts(conversation, {
-        ...before,
-        told: [
-          ...before.told,
-          ...settle.map((notice) => dealtWith(aWordOfThePlanners(plan, notice), false)),
-        ],
-        at: now,
-      })
-      return true
-    } catch (error) {
-      console.warn(
-        `runtime host could not settle what ${conversation} saw of its jobs: ${errorMessage(error)}`,
-      )
-      return false
-    }
+    return this.schedulePlanning.settleWhatItSaw(conversation, plan, now)
   }
 
-  /**
-   * 🔴 **What a stopped conversation's plan asks a start for** — the plan, the starts it asks for
-   * that were not already made ({@link planScheduleAdmission}), the runs of its repeating jobs a
-   * start is owed for, and the level it lists.
-   *
-   * ⚑ **A start already made for a job is not made again** while nothing about the job changed —
-   * across stops and restarts ({@link attemptsKept}). ⚑ The one exception is a job whose known time
-   * is still ahead and which a level its provider stated after that start lists: the provider
-   * brought it back, so a later stop is woken in time for it. ⛔ A job whose time is not known, or
-   * has passed, is never asked for twice, however often its provider lists it unchanged.
-   *
-   * ⚑ **A repeating job whose time is known is started for each run**, its lead before it — never
-   * at once because an earlier run passed — and once for each run at most
-   * ({@link whatItsJobsAreOwed}, which holds the rules).
-   *
-   * ⛔ **A plan made from a history read only in part, with no level of its provider's in it, plans
-   * nothing**: no start, nothing kept is cut, and the level it was last known to hold is said
-   * again, each job marked as not started for that reason (`history-not-read-in-full`). What the
-   * part read does not hold is unknown, never gone.
-   */
   private planItsWake(
     conversation: string,
     now: number,
     /** The level it was last known to hold: what is said of its jobs when its plan cannot be. */
     lastKnown: ScheduleLevel | undefined = this.wakeUps.get(conversation)?.level,
   ): PlannedWake | null {
-    // ⚑ It is stopped. A life the app died under has no row for its end: it ended, as far as
-    // anything shows, when its provider last reported a status.
-    try {
-      const evidence = this.itsEvidence(conversation)
-      if (evidence.itsLifeIsOpen && !this.slots.has(conversation)) {
-        evidence.itsLifeEndedUnseen(this.deps.store.lastStatusAt(conversation) ?? now)
-      }
-    } catch (error) {
-      console.warn(
-        `runtime host could not read when ${conversation} last ran: ${errorMessage(error)}`,
-      )
-    }
-    let plan = this.planItsSchedule(conversation, now)
-    if (plan === null) return null
-    const evidence = this.itsEvidence(conversation)
-    if (evidence.historyIsCut && !evidence.readALevel) {
-      return this.itsHistoryWasNotReadInFull(conversation, plan, lastKnown)
-    }
-    // ⚑ What it saw for itself needs no word, and no start: settled, then planned without it.
-    if (this.settleWhatItSaw(conversation, plan, now)) {
-      plan = this.planItsSchedule(conversation, now)
-      if (plan === null) return null
-    }
-    this.forgetJobsItsPlanNoLongerNames(conversation, plan, now)
-    const owed = this.whatItsJobsAreOwed(conversation, plan, now)
-    const itsPlan = plan
-    const soonest = Math.min(
-      owed.admission.startAt ?? Number.POSITIVE_INFINITY,
-      ...owed.runs.map((run) => run.startAt),
-    )
-    return {
-      plan,
-      admission: owed.admission,
-      runs: owed.runs,
-      words: [...plan.notices.map((notice) => aWordOfThePlanners(itsPlan, notice)), ...owed.words],
-      startAt: Number.isFinite(soonest) ? soonest : null,
-      // ⚑ Stopped, a repeating job runs next when this app starts the conversation for a run:
-      // that run's minute is its time, and one no start is owed for has none.
-      level: this.theLevelItPlans(conversation, plan, now, owed.itsRuns, owed.notStarted),
-    }
+    return this.schedulePlanning.planItsWake(conversation, now, lastKnown)
   }
 
-  /**
-   * What a stopped conversation's wake is when its history was read only in part and holds no level
-   * of its provider's ({@link planItsWake}): no start; the level it was last known to hold, each
-   * job marked `history-not-read-in-full` with no time; and a word for each, held for whatever
-   * start comes. ⚑ With no level known, nothing is said: there is no job to say it of.
-   */
-  private itsHistoryWasNotReadInFull(
-    conversation: string,
-    plan: ReceiptSchedulePlan,
-    lastKnown: ScheduleLevel | undefined,
-  ): PlannedWake {
-    const kept = this.itsAttempts(conversation)
-    const told = new Set(kept.told.map((one) => one.id))
-    // ⚑ No time: what the part read holds says nothing of when any job runs.
-    const jobs = (lastKnown?.jobs ?? []).map((job): ScheduledRow => {
-      const untimed: ScheduledRow = { ...job, notStarted: 'history-not-read-in-full' }
-      delete (untimed as { nominalAt?: number }).nominalAt
-      return untimed
-    })
-    const words = jobs.flatMap((job): WordOwed[] => {
-      const of = JSON.stringify(['listed', job.id, null])
-      const id = JSON.stringify(['history-not-read-in-full', of])
-      return told.has(id)
-        ? []
-        : [
-            {
-              id,
-              of,
-              job: job.id,
-              reason: 'history-not-read-in-full',
-              dueAt: null,
-              ...(job.prompt === undefined ? {} : { prompt: job.prompt }),
-            },
-          ]
-    })
-    if (lastKnown === undefined) {
-      console.warn(
-        `runtime host: ${conversation}'s history was read only in part and holds no level, and no ` +
-          'level of it is known: nothing is planned for its jobs',
-      )
-    }
-    return {
-      plan,
-      admission: { state: kept.attempts, requests: [], startAt: null },
-      runs: [],
-      words,
-      startAt: null,
-      level: { jobs, dropped: lastKnown?.dropped ?? 0 },
-    }
-  }
-
-  /**
-   * 🔴 **What a plan owes each of a conversation's jobs, were it stopped now** — which starts, and
-   * for which jobs none, with this app's own word about those. ⚑ Read for a stopped conversation's
-   * wake-up, and for a running one's level, which says the same of each job.
-   *
-   *  - **A job whose time is not known** is asked for once ({@link planScheduleAdmission}) and told
-   *    so: after that one start it is not started for (`time-not-known`).
-   *  - **A one-shot whose time is known** is asked for once, in time; again only if its provider
-   *    listed it after that start and its time is still ahead.
-   *  - **A repeating job whose time is known** is started for run by run, once for each. After a
-   *    start made for a run, the next run is owed if its provider listed the job after that start
-   *    was made. ⛔ It is owed no more once a life ran through all the time that run could take
-   *    with no such listing, or once {@link STARTS_WITH_NO_WORD_OF_A_JOB} starts of this app's own
-   *    in a row went unanswered (`no-word-from-its-provider`). ⚠️ Neither proves the job is gone: this app has
-   *    stopped spending starts on it, and says so.
-   *  - ⛔ **A job not heard of since its provider's conversation was reset** — neither made nor
-   *    listed after it ({@link ScheduleEvidence.heardOfSinceItsReset}) — is started for by none of
-   *    the above, whatever its receipt says (`no-word-since-a-reset`): its provider's next level
-   *    says whether it is still there, and its time is then as known as before. ⚠️ Whether a
-   *    provider's jobs outlive a reset is not measured, for any kind of reset: the mark claims
-   *    neither.
-   *  - ⛔ **In a history whose older rows were not read** ({@link ScheduleEvidence.historyIsCut}), a
-   *    job now known only from where it is listed, for which something was once done — a start
-   *    made for it, a run, a word — gets no start of its own (`history-not-read-in-full`): it may
-   *    be that same job, its making no longer among the rows.
-   */
   private whatItsJobsAreOwed(
     conversation: string,
     plan: ReceiptSchedulePlan,
     now: number,
   ): OwedToItsJobs {
-    const evidence = this.itsEvidence(conversation)
-    // ⚑ While a start of this app's own is on its way, it is planned as before that start was
-    // kept: its own reservation is no answer to whether it should be made.
-    const kept = this.startsReserved.get(conversation) ?? this.itsAttempts(conversation)
-    const calendar = this.itsCalendar()
-    const told = new Set(this.itsAttempts(conversation).told.map((one) => one.id))
-    const notStarted = new Map<string, NotStartedBecause>()
-    const words: WordOwed[] = []
-    const say = (reason: AWordOfThisApps, job: string, making: string, about: string): void => {
-      const id = JSON.stringify([reason, making, about])
-      if (!told.has(id)) words.push({ id, of: making, job, reason, dueAt: null })
-    }
-    // ⛔ A job not heard of since its provider's conversation was reset is started for by nothing
-    // here: whether it is still there is its provider's to say, and its next level does.
-    const unheard = new Set<string>()
-    for (const { job } of plan.wake.plans) {
-      const made = plan.states.find(
-        (one) => one.generation.generation === job.evidence?.generation,
-      )?.generation
-      if (made === undefined || evidence.heardOfSinceItsReset(made)) continue
-      unheard.add(job.id)
-      notStarted.set(job.id, 'no-word-since-a-reset')
-      say('not-listed-since-a-reset', job.id, aJobsMaking(made), evidence.itsReset ?? 'reset')
-    }
-    // ⚑ A job whose next run cannot be found stays with the others: one start, at once.
-    const timed = itsRepeatingJobsOfKnownTime(plan).flatMap((one) => {
-      if (unheard.has(one.job)) return []
-      const next = one.state.nextNominalAt ?? theRunAfter(one.schedule, now, calendar)
-      return next === undefined ? [] : [{ ...one, next }]
-    })
-    const runs = timed.flatMap(({ job, making, schedule, state, next }): RunOwed[] => {
-      const { generation } = state
-      const listed =
-        generation.lastPresence?.kind === 'listing' && generation.presence === 'present'
-          ? generation.lastPresence.observedAt
-          : undefined
-      const last = kept.runs[making]
-      const owedFor = (runAt: number | undefined, unanswered: number): RunOwed[] =>
-        runAt === undefined
-          ? []
-          : [{ job, making, runAt, startAt: Math.max(now, runAt - WAKE_LEAD_MS), unanswered }]
-      if (last === undefined) return owedFor(next, 1)
-      // ⚑ A run a start was already made for is not started for again: the one after it is owed.
-      const runAt = last.runAt < next ? next : theRunAfter(schedule, last.runAt, calendar)
-      // Its provider listed it after that start was made: it holds the job, and runs it.
-      // ⚑ A listing in the very millisecond of the start counts as after it: at most one more start.
-      if (listed !== undefined && listed >= last.startedAt) return owedFor(runAt, 1)
-      const latest =
-        eligibilityBounds(last.runAt, true, calendar.read(last.runAt)?.minute ?? 0)
-          ?.latestEligibleAt ?? last.runAt
-      if (
-        evidence.wasRunningThrough(last.runAt, latest, now) ||
-        last.unanswered >= STARTS_WITH_NO_WORD_OF_A_JOB
-      ) {
-        notStarted.set(job, 'no-word-from-its-provider')
-        say('not-started', job, making, String(last.runAt))
-        return []
-      }
-      return owedFor(runAt, last.unanswered + 1)
-    })
-    // ⚑ Only a job whose known minute is still ahead: one whose time is not known, or whose
-    // minute has come — though it may yet run late — is asked for once while nothing about it
-    // changes, however often it is listed.
-    const admittedAt = kept.admittedAt
-    const broughtBack = new Set(
-      admittedAt === null
-        ? []
-        : plan.wake.plans.flatMap(({ job, result }) => {
-            const listed = plan.states.find(
-              (one) => one.generation.generation === job.evidence?.generation,
-            )?.generation
-            return result.kind === 'known' &&
-              result.nominalAt > now &&
-              listed?.lastPresence?.kind === 'listing' &&
-              listed.presence === 'present' &&
-              listed.lastPresence.observedAt >= admittedAt
-              ? [JSON.stringify(['job', job.id])]
-              : []
-          }),
-    )
-    // ⛔ In a history whose older rows were not read, a job now known only from where it is
-    // listed may be one this app once had the making of: it is given no start of its own on the
-    // strength of looking new.
-    const lostItsMaking = new Set<string>()
-    if (evidence.historyIsCut) {
-      const made = new Set([
-        ...[...Object.keys(kept.runs), ...kept.told.map((one) => one.of)].flatMap((making) => {
-          const its = theJobOfAMaking(making)
-          return its?.made === true ? [its.job] : []
-        }),
-        // ⚑ …and a job a start was made for, whatever kind: a one-shot's start leaves nothing else.
-        ...kept.attempts.flatMap((one) => {
-          if (!one.attempted) return []
-          try {
-            const key: unknown = JSON.parse(one.key)
-            return Array.isArray(key) && key[0] === 'job' && typeof key[1] === 'string'
-              ? [key[1]]
-              : []
-          } catch {
-            return []
-          }
-        }),
-      ])
-      for (const { job } of plan.wake.plans) {
-        const known = plan.states.find(
-          (one) => one.generation.generation === job.evidence?.generation,
-        )?.generation
-        if (known?.creation === undefined && made.has(job.id)) lostItsMaking.add(job.id)
-      }
-    }
-    for (const job of lostItsMaking) {
-      notStarted.set(job, 'history-not-read-in-full')
-      say('history-not-read-in-full', job, JSON.stringify(['listed', job, null]), 'cut')
-    }
-    const each = new Set([...timed.map(({ job }) => job), ...unheard, ...lostItsMaking])
-    const admission = planScheduleAdmission(
-      { ...plan.wake, plans: plan.wake.plans.filter(({ job }) => !each.has(job.id)) },
-      kept.attempts.filter((one) => !broughtBack.has(one.key)),
-      {
-        zone: calendar.identity,
-        wakeLeadMs: WAKE_LEAD_MS,
-        calendarIdentity: calendar.identity,
-        calendarVersion: calendar.version,
-        clockEra: THE_ONE_CLOCK_ERA,
-      },
-    )
-    const asked = new Set(admission.requests.map((one) => one.key))
-    for (const { job, result } of plan.wake.plans) {
-      if (
-        unheard.has(job.id) ||
-        lostItsMaking.has(job.id) ||
-        timed.some((one) => one.job === job.id)
-      ) {
-        continue
-      }
-      const made = plan.states.find(
-        (one) => one.generation.generation === job.evidence?.generation,
-      )?.generation
-      if (made === undefined) continue
-      const making = aJobsMaking(made)
-      const isAsked = asked.has(JSON.stringify(['job', job.id]))
-      if (result.kind !== 'known') {
-        // ⚑ Told with its one start, or at its next start if that one was made untold.
-        say('time-not-known', job.id, making, 'once')
-        if (!isAsked) notStarted.set(job.id, 'time-not-known')
-      } else if (!isAsked && result.nominalAt > now) {
-        notStarted.set(job.id, 'no-word-from-its-provider')
-        say('not-started', job.id, making, String(result.nominalAt))
-      }
-    }
-    const itsRuns = new Map<string, number | undefined>()
-    for (const job of unheard) itsRuns.set(job, undefined)
-    for (const { job } of timed) itsRuns.set(job, undefined)
-    for (const run of runs) itsRuns.set(run.job, run.runAt)
-    return { admission, runs, itsRuns, notStarted, words }
-  }
-
-  /**
-   * What was kept of a conversation's notices and runs is cut to the jobs its plan still names, by
-   * job id: a plan never names the others again, so nothing could be told or started for them
-   * twice. ⚑ By id and not by making, so a job whose making has left the rows read keeps what was
-   * done for it. ⛔ It never throws.
-   */
-  private forgetJobsItsPlanNoLongerNames(
-    conversation: string,
-    plan: ReceiptSchedulePlan,
-    now: number,
-  ): void {
-    const kept = this.attemptsKept.conversations[conversation]
-    if (kept === undefined) return
-    // ⛔ A history read only in part names fewer jobs than there are: nothing kept is cut by it.
-    if (this.itsEvidence(conversation).historyIsCut) return
-    const named = new Set(plan.states.map((one) => one.generation.jobId))
-    const stillNamed = (making: string): boolean => named.has(theJobOfAMaking(making)?.job ?? '')
-    const told = kept.told.filter((one) => stillNamed(one.of))
-    const runs = Object.entries(kept.runs).filter(([making]) => stillNamed(making))
-    if (told.length === kept.told.length && runs.length === Object.keys(kept.runs).length) return
-    this.keepItsAttempts(conversation, { ...kept, told, runs: Object.fromEntries(runs), at: now })
+    return this.schedulePlanning.whatItsJobsAreOwed(conversation, plan, now)
   }
 
   /**
@@ -18968,124 +18066,18 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  /**
-   * 🔴 **Everything each conversation is waiting ON, memoised across ONE answer** (603 as one
-   * question, generalised by 609) — {@link oneQuestionReadPerAnswer}'s shape, over the join rather
-   * than over one read.
-   *
-   * ⛔ **Three narrow reads per conversation, and only for conversations that HOLD open work.**
-   * {@link composeWhatEachPieceIsWaitingOn} asks nothing about a closed row, so work that has all
-   * finished costs nothing here: *"a conversation that never routed reads nothing at all."*
-   *
-   * ⚠️ **609 · it went from two reads to four, and D-016 took the proposals back out**: the new
-   * one that stayed, `piecesGivenBy`, is the fold {@link pieceBoard} already takes on its other
-   * half. ⛔ **`routedRequestsOf` is asked once and read twice** — by `openQuestionsByWork` and by
-   * `aPersonOwesAnAnswerIn` — because the store memoises nothing and this builder is where one read
-   * serves both questions.
-   *
-   * ⚠️ **Per answer and never per host.** A question is ended by an answer, a withdrawal or the
-   * conversation's own ending, all of which happen between two reads; a cache that outlived the
-   * call would report a task as waiting after the answer had landed, the card was pressed or the
-   * worker replied. ⚑ Within one answer it is a
-   * fact that cannot move — `oneNamingPerAnswer`'s rule, and `better-sqlite3` executes on this
-   * thread, so nothing is written between two of these reads.
-   *
-   * ⛔ **The KEYS and not the requests**, because the composition asks *is there one* and the door
-   * that counts them ({@link takeBackPiece}) reads the requests itself. ⚑ Handing a surface the rows
-   * would put a question's identity on a list about work.
-   */
+  /** Resolve ledger then work-out defaults at this door; share waits for one answer only. */
   private oneWaitReadPerAnswer(
-    /**
-     * 🔴 **671 · R18 — where a COUNTED answer's wait reads write down what they could not read** —
-     * `SessionStore`'s `RowsUnread`, handed to all three reads.
-     *
-     * ⚑ **676 · F1 — three answers pass one**: {@link pieceBoard} and {@link pieceRecord}
-     * (`list_tasks`) and
-     * {@link whatEachConversationIsWaitingOn} (the Team plates and the rail) — each a payload
-     * somebody reads and can discount.
-     *
-     * ⛔ **The three NOTICE pushes pass none, and that is the answer rather than an omission** —
-     * {@link tellWhoeverGaveTheWork}, {@link tellAboutWorkItGaveOut} and
-     * {@link settleTheNoticesFor}. ⚠️ **What they produce is about ONE task**: a decision — *is
-     * this parent owed a sentence about it?* — and a notice carrying that sentence and a
-     * {@link WorkReport} for that piece alone (`406`). ⛔ The rows this read meets are the ledgers of
-     * every conversation the composition touched, so *"N rows could not be read"* on a report about
-     * one piece would tell a parent about ledgers it holds no work in, and could not say whether any
-     * of them was about THIS piece. ⚠️ **What a torn row does to them, stated**: a `work_given` row
-     * torn is a piece with no row, so no notice; a question row torn is a wait the composition
-     * cannot see, so a notice can go out — with `state: 'stalled'` on its report — that a readable
-     * row would have held (`671` F5). ⚑ **What they do instead**: every torn row they meet is
-     * WARNED where it is skipped (`toPersistedEvents`, `noteUnreadRow`) — and since `676`'s review
-     * that includes the child's last words, which RAISED and lost the whole notice until the read
-     * was guarded (`its-words-could-not-be-read`). ⚠️ The person's reading of the same composition,
-     * {@link stalledWorkForAPerson}, counts what ITS walk meets (`671`); a torn row only a push
-     * reads — the child's last words — is not in that count, and is said in the notice instead.
-     */
     unread?: RowsUnread,
-    /**
-     * ⚑ **D-017 · R11 · R19 — the ledger reads this shares with {@link whoOwesIt}** across one
-     * answer ({@link oneLedgerReadPerAnswer}), so a reading that carries both costs what the wait
-     * alone did.
-     */
     ledger: (id: string) => ItsLedger = this.oneLedgerReadPerAnswer(unread),
-    /**
-     * ⚑ **D-036 · the open work each conversation gave out, which this shares with
-     * {@link whoOwesIt}** across one answer ({@link oneWorkOutReadPerAnswer}), so a piece's open
-     * children and the holders the one state names are one read.
-     */
     workOut: WorkOutOf = this.oneWorkOutReadPerAnswer(unread),
   ): (id: string) => WhatAConversationIsWaitingOn {
-    const held = new Map<string, WhatAConversationIsWaitingOn>()
-    const read = (id: string): WhatAConversationIsWaitingOn => {
-      // ⛔ **ONE read of the routings, read twice** — `openQuestionsByWork` asks *which piece has
-      // an open question* and `aPersonOwesAnAnswerIn` asks *is one of these a person's* — because
-      // the store memoises nothing and two calls would fold the same ledger twice. ⚑ A question
-      // about no piece holds no piece (D-016).
-      const { routings, raised } = ledger(id)
-      const outstanding: WhatAConversationIsWaitingOn = {
-        answers: new Set(openQuestionsByWork(routings, raised).keys()),
-        // ⚑ **609 · *a person owes something here*, spelled in the module that owns its
-        // vocabulary** — `aPersonOwesAnAnswerIn` over the routings.
-        aPerson: aPersonOwesAnAnswerIn(routings),
-        // 🔴 **D-016 · the pieces this conversation gave that are still OPEN, by the piece each was
-        // given under** — so a piece waits on a worker only while a child of ITS OWN is open, and
-        // one piece's open child no longer silences its siblings. ⚑ **D-036 · the read the one
-        // state names the holders from** ({@link oneWorkOutReadPerAnswer}); what the ones it took
-        // the place of gave hangs under their own pieces, never one it owns. ⚠️ **Not
-        // `SessionStore.workGivenOutBy`**: that reader is the same derivation WALKED, and it walks it
-        // through this very composition — so reading it here would compose inside its own source.
-        childrenOpen: new Set(workOut(id).map((one) => one.parent)),
-      }
-      return outstanding
-    }
-    return (id: string): WhatAConversationIsWaitingOn => {
-      const mine = held.get(id)
-      if (mine !== undefined) return mine
-      // 🔴 **D-017 · R8 — a counted answer skips a conversation whose reads throw**, and it waits
-      // on nothing there.
-      const outstanding = readOrSkip(id, unread?.in(id), NOTHING_IT_WAITS_ON, () => read(id))
-      held.set(id, outstanding)
-      return outstanding
-    }
+    return this.workReads.oneWaitReadPerAnswer(unread, ledger, workOut)
   }
 
-  /**
-   * ⚑ **D-017 · R11 · R19 — a conversation's two ledger reads that its wait and who owes it the
-   * next move both ask** — its routings and its own questions — memoised across ONE answer, on
-   * {@link oneWaitReadPerAnswer}'s rule (*per answer and never per host*).
-   */
+  /** Share both ledger projections for this answer only. */
   private oneLedgerReadPerAnswer(unread?: RowsUnread): (id: string) => ItsLedger {
-    const held = new Map<string, ItsLedger>()
-    return (id: string): ItsLedger => {
-      const mine = held.get(id)
-      if (mine !== undefined) return mine
-      const read: ItsLedger = {
-        routings: this.deps.store.routedRequestsOf(id, unread),
-        raised: this.deps.store.questionsRaisedIn(id, unread),
-      }
-      held.set(id, read)
-      return read
-    }
+    return this.workReads.oneLedgerReadPerAnswer(unread)
   }
 
   /**
@@ -19161,31 +18153,9 @@ export class RuntimeHost implements LiveHost {
     return (id) => (this.slots.has(id) ? this.waitAsLastRead.get(id) : undefined) ?? read(id)
   }
 
-  /**
-   * ⚑ **D-036 · the work a conversation gave out that is still open** — the pieces it gave, and
-   * those the conversations it took the place of gave ({@link theIdsItStandsFor}), that
-   * {@link TASK_IS_OPEN} calls open, as their owners' ledgers fold them (`SessionStore.piecesGivenBy`:
-   * one indexed probe, then one fold per owner), the oldest give first — memoised across ONE answer,
-   * on {@link oneWaitReadPerAnswer}'s rule.
-   *
-   * ⚠️ **Apart from {@link oneLedgerReadPerAnswer}, because it is read from OTHER ledgers**: other
-   * rows move it ({@link workOutAsLastRead}), a reader that needs none of it reads none of it, and a
-   * reader counting what its OWN record could not read hands it a note of its own that nothing reads
-   * back (`AgentCard.rowsUnread`) — so a holder's ledger that cannot be read is skipped and warned,
-   * never thrown. ⛔ With no note, a fold that throws is thrown ({@link readOrSkip}).
-   */
+  /** Read this identity chain's open given work once for this answer. */
   private oneWorkOutReadPerAnswer(unread?: RowsUnread): WorkOutOf {
-    const held = new Map<string, readonly PieceRow[]>()
-    return (id) => {
-      const mine = held.get(id)
-      if (mine !== undefined) return mine
-      const read = this.theIdsItStandsFor(id)
-        .flatMap((one) => this.deps.store.piecesGivenBy(one, unread))
-        .filter((one) => TASK_IS_OPEN[one.state])
-        .sort((left, right) => left.givenAt - right.givenAt)
-      held.set(id, read)
-      return read
-    }
+    return this.workReads.oneWorkOutReadPerAnswer(unread)
   }
 
   /**
@@ -22552,321 +21522,16 @@ export class RuntimeHost implements LiveHost {
     readonly replyQuestionTurn: string | null
     readonly current: CurrentWorkInTheTurn
   } {
-    const unread = rowsUnreadOnce()
-    const owners = new Set<string>([session.id])
-    const held = new Map<string, readonly PieceRow[]>()
-    const ledgers = new Map<string, ItsLedger>()
-    let candidatesRead = 0
-    const admit = (id: string): void => {
-      if (!owners.has(id) && owners.size > TURN_HELPER_OWNERS)
-        throw new Error('turn helper owner bound')
-      owners.add(id)
-    }
-    const pieces = (id: string): readonly PieceRow[] => {
-      admit(id)
-      let rows = held.get(id)
-      if (rows === undefined) {
-        rows = this.deps.store.turnBlockPiecesOwnedBy(id, unread)
-        held.set(id, rows)
-      }
-      return rows
-    }
-    const ledger = (id: string): ItsLedger => {
-      admit(id)
-      let read = ledgers.get(id)
-      if (read === undefined) {
-        read = {
-          routings: this.deps.store.routedRequestsOf(id, unread),
-          raised: this.deps.store.questionsRaisedIn(id, unread),
-        }
-        ledgers.set(id, read)
-      }
-      return read
-    }
-    const given = new Map<string, readonly PieceRow[]>()
-    const workOut = (id: string): readonly PieceRow[] => {
-      const before = given.get(id)
-      if (before !== undefined) return before
-      const rows: PieceRow[] = []
-      const givers = this.theIdsItStandsFor(id)
-      if (givers.length > TURN_HELPER_OWNERS) throw new Error('turn giver bound')
-      for (const giver of givers) {
-        let after: string | null = null
-        for (;;) {
-          const candidates = this.deps.store.turnBlockCandidates(
-            giver,
-            TURN_HELPER_PIECES + 1,
-            after,
-          )
-          if (candidates === null) throw new Error('turn has no ledger')
-          const page = candidates.slice(0, TURN_HELPER_PIECES)
-          for (const candidate of page) {
-            const row = pieces(candidate.owner).find(
-              (one) => one.piece === candidate.piece && one.giver === giver,
-            )
-            if (row === undefined) throw new Error('turn candidate was not read')
-            // Ended history consumes no helper slot; unshown endings remain eligible.
-            if (
-              !TASK_IS_OPEN[row.state] &&
-              session.turnBlockSnapshot?.awaitingEnd.has(row.piece) !== true &&
-              !(session.turnBlockSnapshot?.at != null && row.givenAt > session.turnBlockSnapshot.at)
-            )
-              continue
-            candidatesRead += 1
-            if (candidatesRead > TURN_HELPER_PIECES) throw new Error('turn helper piece bound')
-            rows.push(row)
-          }
-          if (candidates.length <= TURN_HELPER_PIECES) break
-          const last = page.at(-1)!.piece
-          if (last === after) throw new Error('turn helper candidate page did not advance')
-          after = last
-        }
-      }
-      given.set(id, rows)
-      return rows
-    }
-    const helperNames = new Map<string, string>()
-    let current: CurrentWorkInTheTurn = { kind: 'unavailable' }
-    let questions: readonly AQuestionItHasOpen[] | null = null
-    let personWait: string | null = null
-    let nobodyWaiting = false
-    let replyQuestionTurn: string | null = null
-    try {
-      if (this.deps.store.turnBlockCandidates(session.id, 0) === null)
-        throw new Error('turn has no ledger')
-      const root = this.deps.store.rootOf(session.id)
-      if (root !== null) {
-        const lines = this.deps.store.turnBlockRootLines(root.piece)
-        if (lines !== null)
-          current = {
-            kind: 'piece',
-            label: root.label,
-            title: lines.title,
-            status: lines.statusLine?.text ?? null,
-          }
-      }
-      const mine = pieces(session.id)
-      if (root === null) {
-        const open = mine.filter((row) => TASK_IS_OPEN[row.state])
-        const selected =
-          open.find((row) => row.piece === currentPiece) ??
-          (open.length === 1 ? open[0] : undefined)
-        current =
-          selected === undefined
-            ? open.length === 0
-              ? { kind: 'none' }
-              : {
-                  kind: 'ambiguous',
-                  labels: open.slice(0, 5).map((row) => row.label),
-                  more: Math.max(0, open.length - 5),
-                }
-            : {
-                kind: 'piece',
-                label: selected.label,
-                title: selected.title,
-                status: selected.statusLine?.text ?? null,
-              }
-      }
-      const ownLedger = ledger(session.id)
-      const instructions = this.deps.store.instructionAsksWaitingIn(session.id, unread)
-      if (instructions === null) throw new Error('turn instruction waits unavailable')
-      if (unread.count > 0 || unread.ledgersSkipped > 0) throw new Error('turn facts incomplete')
-      const personRequests = ownLedger.routings.filter(
-        (row) => row.went.to === 'a-person' && REQUEST_IS_OPEN[row.state],
-      )
-      questions = personRequests.flatMap((row) => {
-        const raised = ownLedger.raised.get(row.requestId)
-        return raised?.raisedBy === 'this-app'
-          ? [{ id: row.requestId, askedAt: row.at, prompt: raised.prompt }]
-          : []
-      })
-      const waits = this.oneWaitReadPerAnswer(unread, ledger, (id) =>
-        workOut(id).filter((row) => TASK_IS_OPEN[row.state]),
-      )
-      const raw = workOut(session.id)
-      const rawStates = new Map(raw.map((row) => [row.piece, row.state]))
-      const helpers = composeWhatEachPieceIsWaitingOn(raw, waits).map((row) =>
-        this.withItsPlaceInTheQueue(row, { pieces: pieces(row.owner), waits }),
-      )
-      const personPieces = [...composeWhatEachPieceIsWaitingOn(mine, waits), ...helpers].filter(
-        (row) =>
-          TASK_IS_OPEN[row.state] &&
-          (row.state === 'waiting-on-a-person' ||
-            row.state === 'waiting-on-the-person-who-wrote' ||
-            row.needsUserAction === true),
-      )
-      // Wait composition can read additional ledgers; check its result before claiming absence.
-      if (unread.count > 0 || unread.ledgersSkipped > 0)
-        throw new Error('turn wait facts incomplete')
-      const helperRules: string[] = []
-      for (const owner of new Set(
-        helpers.filter((row) => TASK_IS_OPEN[row.state]).map((row) => row.owner),
-      )) {
-        const rules = this.deps.store.instructionAsksWaitingIn(owner, unread)
-        if (rules === null) throw new Error('helper instruction waits unavailable')
-        helperRules.push(...rules.map((row) => `${owner}:${row.asked.askId}`))
-      }
-      if (unread.count > 0 || unread.ledgersSkipped > 0)
-        throw new Error('turn rule facts incomplete')
-      const waitKeys = [
-        ...personRequests.map((row) => row.requestId),
-        ...instructions.map((row) => row.asked.askId),
-        ...helperRules,
-        ...personPieces.map((row) => row.piece),
-      ].sort()
-      personWait = JSON.stringify(waitKeys)
-      nobodyWaiting = waitKeys.length === 0
-      if (nobodyWaiting) {
-        try {
-          replyQuestionTurn = this.deps.store.replyQuestionWithoutARequest(session.id)
-        } catch {
-          /* An unread reply supplies no hint; the independently read queue stays known. */
-        }
-      }
-      return {
-        helpers: helpers
-          .filter(
-            (row) =>
-              TASK_IS_OPEN[row.state] ||
-              session.turnBlockSnapshot?.awaitingEnd.has(row.piece) === true ||
-              (session.turnBlockSnapshot?.at != null && row.givenAt > session.turnBlockSnapshot.at),
-          )
-          .map((row) => {
-            const open = TASK_IS_OPEN[row.state]
-            let name = helperNames.get(row.owner)
-            if (name === undefined) {
-              if (
-                !this.withinMessagingReach(
-                  this.theOneInItsPlace(row.owner),
-                  { ownerId: agentCallerId(session.id) },
-                  session.id,
-                )
-              )
-                throw new Error('helper name is outside card reach')
-              name = this.whatToCallTheConversation(row.owner)
-              helperNames.set(row.owner, name)
-            }
-            if (!Object.hasOwn(WORK_STATE_WORD, row.state)) throw new Error('unknown helper state')
-            const state =
-              row.outcome != null
-                ? TURN_BLOCK_WORDS.ended(row.outcome)
-                : row.state === 'waiting-on-the-person-who-wrote'
-                  ? TURN_BLOCK_WORDS.waitingOnThePerson
-                  : WORK_STATE_WORD[row.state]
-            return {
-              piece: row.piece,
-              label: row.label,
-              name,
-              state,
-              givenAt: row.givenAt,
-              changedAt:
-                row.state === rawStates.get(row.piece) ? (row.lastRecordedChangeAt ?? null) : null,
-              open,
-              urgent:
-                open &&
-                (row.state === 'stalled' ||
-                  row.state === 'waiting-on-a-person' ||
-                  row.state === 'waiting-on-the-person-who-wrote' ||
-                  row.needsUserAction === true ||
-                  row.queueStalledAt != null),
-              revision: JSON.stringify([
-                row.owner,
-                name,
-                row.state,
-                row.outcome,
-                row.queuedBehind,
-                row.queueStalledAt,
-                row.statusLine,
-                row.lastRecordedChangeAt,
-                row.needsUserAction,
-              ]),
-            }
-          }),
-        questions,
-        personWait,
-        nobodyWaiting,
-        replyQuestionTurn,
-        current,
-      }
-    } catch (error) {
-      console.warn(`turn block facts unavailable for ${session.id}: ${errorMessage(error)}`)
-      return {
-        helpers: null,
-        questions,
-        personWait,
-        nobodyWaiting,
-        replyQuestionTurn,
-        current,
-      }
-    }
-  }
-
-  /**
-   * ⚑ **Who waits on a conversation**: who gave it each piece it holds open, and whose questions
-   * to it are open — or `null`: not at hand. ⛔ Only from folds the store already holds, of its own
-   * ledger and of every conversation that routes to it (`SessionStore.piecesAtHand`,
-   * `SessionStore.questionsRoutedToAtHand`); none is made here.
-   *
-   * ⚑ A giver is named by its own piece above the one it gave ({@link calledByItsChain}), an asker
-   * by its name alone: neither folds a ledger. ⛔ A piece nobody gave it (its own, for a person) is
-   * not listed: no conversation waits on it. ⚑ Each question by its latest routing, and only
-   * those this conversation is to answer: one its asker addressed to a person is the person's,
-   * though it is routed past here. ⛔ It never throws.
-   */
-  private whoWaitsOnItAtHand(session: HostedSession): WhoWaitsOnIt | null {
-    try {
-      const pieces = this.deps.store.piecesAtHand(session.id)
-      if (pieces === null) return null
-      const latest = new Map<string, RoutedRequest>()
-      for (const id of this.theIdsItStandsFor(session.id)) {
-        const routed = this.deps.store.questionsRoutedToAtHand(id)
-        if (routed === null) return null
-        for (const request of routed) {
-          const itsKey = questionKey(request.askedBy, request.requestId)
-          latest.delete(itsKey)
-          latest.set(itsKey, request)
-        }
-      }
-      return {
-        givers: pieces.flatMap((piece) =>
-          TASK_IS_OPEN[piece.state] && piece.giver !== null
-            ? [
-                {
-                  who: this.calledByItsChain(piece.giver, piece.piece),
-                  work: `${piece.label} · ${piece.title}`,
-                },
-              ]
-            : [],
-        ),
-        askers: [...latest.values()].flatMap((request) =>
-          REQUEST_IS_OPEN[request.state] && request.went.to !== 'a-person'
-            ? [
-                {
-                  who: this.whatToCallTheConversation(request.askedBy),
-                  id: request.requestId,
-                  askedAt: request.at,
-                },
-              ]
-            : [],
-        ),
-      }
-    } catch (error) {
-      console.warn(`runtime host could not read who waits on ${session.id}: ${errorMessage(error)}`)
-      return null
-    }
-  }
-
-  /**
-   * ⚑ **What a sentence about one piece calls another conversation, where that folds no ledger**:
-   * by its root, or by its own piece above that one (`SessionStore.workOnItsChainThatNames`), as
-   * {@link calledUnder} does — and by its name alone where the work table places it on neither.
-   * ⛔ Never by the piece that names it now: finding that folds its ledger.
-   */
-  private calledByItsChain(conversation: string, piece: string): string {
-    return theConversationCalled(
-      this.whatToCallTheConversation(conversation),
-      theWorkAlone(this.deps.store.workOnItsChainThatNames(conversation, piece)),
+    return this.workReads.factsForTheTurnBlock(
+      session.id,
+      currentPiece,
+      () => session.turnBlockSnapshot,
     )
+  }
+
+  /** Read only existing at-hand folds; unknown facts remain null. */
+  private whoWaitsOnItAtHand(session: HostedSession): WhoWaitsOnIt | null {
+    return this.workReads.whoWaitsOnItAtHand(session.id)
   }
 
   /** ⚑ {@link HostedSession.aPersonLastWroteAt} as a life begins. ⛔ It never throws. */
@@ -36279,27 +34944,7 @@ export class RuntimeHost implements LiveHost {
     about: string | undefined,
     by: Caller,
   ): AgentOwnNotesOutcome<AgentOwnNotesReading> {
-    const author = this.rulesAuthor(me, by)
-    if (author === null || (about !== undefined && typeof about !== 'string'))
-      return {
-        ok: false,
-        rail: 'malformed-request',
-        detail: { problems: [OWN_NOTES_READ_CALLER_PROBLEM] },
-      }
-    const profile = about === undefined ? author.profile : foldProfileName(about)
-    const page = this.deps.store.currentOwnNotesOf(profile)
-    if (page === null) return { ok: false, rail: 'no-such-agent', detail: { agent: profile } }
-    const current = page.current
-    return {
-      ok: true,
-      result: {
-        profile: page.profile,
-        version: current?.version ?? 0,
-        text: current?.text ?? '',
-        author: current?.author ?? null,
-        reason: current?.reason ?? null,
-      },
-    }
+    return this.instructionDecisions.readOwnNotes(me, about, by)
   }
 
   /** All bound conversations of one profile share this page, including its helpers. */
@@ -36308,89 +34953,27 @@ export class RuntimeHost implements LiveHost {
     said: OwnNotesWrite,
     by: Caller,
   ): AgentOwnNotesOutcome<OwnNotesReceipt> {
-    const author = this.rulesAuthor(me, by)
-    if (author === null)
-      return {
-        ok: false,
-        rail: 'malformed-request',
-        detail: { problems: [OWN_NOTES_WRITE_CALLER_PROBLEM] },
-      }
-    if (!ownNotesWriteFits(said))
-      return {
-        ok: false,
-        rail: 'malformed-request',
-        detail: { problems: [OWN_NOTES_BASELINE_PROBLEM] },
-      }
-    const page = this.deps.store.currentOwnNotesOf(author.profile)
-    if (page === null || (page.current?.version ?? 0) !== said.expectedVersion)
-      return {
-        ok: false,
-        rail: 'malformed-request',
-        detail: { problems: [OWN_NOTES_STALE_PROBLEM] },
-      }
-    // The tool caller id is agent:<id>; the repository derives the author from the bare session id.
-    const written = this.deps.store.writeOwnNotes(
-      author.profile,
-      said,
-      { who: 'an-agent', agent: me },
-      this.now(),
-    )
-    if (written === null)
-      return {
-        ok: false,
-        rail: 'malformed-request',
-        detail: { problems: [OWN_NOTES_SAVE_PROBLEM] },
-      }
-    this.theWorldMoved('agents')
-    return {
-      ok: true,
-      result: {
-        profile: author.profile,
-        conversation: me,
-        version: written.version,
-        previousVersion: said.expectedVersion,
-        author: written.author,
-      },
-    }
+    return this.instructionDecisions.writeOwnNotes(me, said, by)
   }
 
   agentOwnNotes(profile: string): OwnNotesReading | null {
-    return this.deps.store.ownNotesOf(foldProfileName(profile))
+    return this.instructionDecisions.agentOwnNotes(profile)
   }
 
   agentOwnNotesUnread(profile: string) {
-    return this.deps.store.ownNotesUnread(foldProfileName(profile))
+    return this.instructionDecisions.agentOwnNotesUnread(profile)
   }
 
   saveOwnNotes(profile: string, said: OwnNotesWrite, by: Caller): OwnNotesReading | null {
-    const actor = whoDidIt(by)
-    if (!ownNotesWriteFits(said)) return null
-    const page = this.deps.store.currentOwnNotesOf(profile)
-    if (page === null || (page.current?.version ?? 0) !== said.expectedVersion) return null
-    const written = this.deps.store.writeOwnNotes(profile, said, actor, this.now())
-    if (written === null) return null
-    this.theWorldMoved('agents')
-    return this.agentOwnNotes(profile)
+    return this.instructionDecisions.saveOwnNotes(profile, said, by)
   }
 
   undoOwnNotes(profile: string, expectedVersion: number, by: Caller): OwnNotesReading | null {
-    const actor = whoDidIt(by)
-    if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 1) return null
-    const current = this.deps.store.currentOwnNotesOf(profile)?.current
-    if (current == null || current.version !== expectedVersion) return null
-    const written = this.deps.store.undoOwnNotes(profile, { expectedVersion }, actor, this.now())
-    if (written === null) return null
-    this.theWorldMoved('agents')
-    return this.agentOwnNotes(profile)
+    return this.instructionDecisions.undoOwnNotes(profile, expectedVersion, by)
   }
 
   markOwnNotesSeen(profile: string, throughVersion: number, by: Caller): boolean {
-    const actor = whoDidIt(by)
-    const before = this.deps.store.ownNotesUnread(profile).seenThrough
-    const marked = this.deps.store.markOwnNotesSeen(profile, throughVersion, actor)
-    if (marked && this.deps.store.ownNotesUnread(profile).seenThrough > before)
-      this.theWorldMoved('agents')
-    return marked
+    return this.instructionDecisions.markOwnNotesSeen(profile, throughVersion, by)
   }
 
   /** Known agents may propose changes. Historical relay grants no longer authorize a write. */
@@ -36405,87 +34988,12 @@ export class RuntimeHost implements LiveHost {
     },
     by: Caller,
   ): ProposeRulesOutcome {
-    const author = this.rulesAuthor(me, by)
-    if (author === null) return { ok: false, rail: 'may-not-write-rules', detail: { you: null } }
-    if (said.relaying)
-      return {
-        ok: false,
-        rail: 'malformed-request',
-        detail: { problems: ['already_agreed is not supported; leave it out'] },
-      }
-    if (
-      typeof said.text !== 'string' ||
-      said.text.length > OWN_INSTRUCTIONS_CHARS ||
-      typeof said.why !== 'string' ||
-      said.why.trim() === '' ||
-      said.why.length > OWN_INSTRUCTIONS_CHARS
-    )
-      return {
-        ok: false,
-        rail: 'malformed-request',
-        detail: { problems: ['rules and why must fit the size limit, and why must say why'] },
-      }
-    const about = foldProfileName(said.about)
-    if (this.deps.store.capabilitiesOf(about) === null)
-      return {
-        ok: false,
-        rail: 'no-such-agent',
-        detail: { agent: about },
-      }
-    const session = this.slots.get(me)?.session ?? null
-    if (session === null)
-      return { ok: false, rail: 'may-not-write-rules', detail: { you: author.profile } }
-    const basedOnVersion = this.deps.store.ownInstructionsOf(about).versions[0]?.version ?? 0
-    if (!Number.isSafeInteger(said.expectedVersion) || said.expectedVersion !== basedOnVersion)
-      return {
-        ok: false,
-        rail: 'malformed-request',
-        detail: {
-          problems: ['the current rule version is required; read the rules again before proposing'],
-        },
-      }
-    const askId = newInstructionAskId()
-    this.publishOurs(session, {
-      type: 'instruction_proposed',
-      askId,
-      ask: 'propose',
-      about,
-      proposedBy: author.profile,
-      author,
-      basedOnVersion,
-      text: said.text,
-      why: said.why.trim(),
-    })
-    return { ok: true, wrote: 'a-request', askId }
+    return this.instructionDecisions.proposeAgentRules(me, said, by)
   }
 
   /** Internal preparation for the agent tool; public exposure follows the history and Undo UI. */
   readAgentRules(me: string, about: string, by: Caller): AgentRulesOutcome<AgentRulesReading> {
-    if (this.rulesAuthor(me, by) === null)
-      return {
-        ok: false,
-        rail: 'may-not-write-rules',
-        detail: { you: null },
-      }
-    const profile = foldProfileName(about)
-    if (this.deps.store.capabilitiesOf(profile) === null)
-      return {
-        ok: false,
-        rail: 'no-such-agent',
-        detail: { agent: profile },
-      }
-    const newest = this.deps.store.ownInstructionsOf(profile).versions[0]
-    return {
-      ok: true,
-      result: {
-        profile,
-        version: newest?.version ?? 0,
-        text: newest?.text ?? '',
-        whoWroteIt: newest?.whoWroteIt ?? null,
-        ...(newest?.author === undefined ? {} : { author: newest.author }),
-        reason: newest?.said ?? null,
-      },
-    }
+    return this.instructionDecisions.readAgentRules(me, about, by)
   }
 
   /** The host's fixed role policy ignores dormant per-profile grants. */
@@ -36494,95 +35002,7 @@ export class RuntimeHost implements LiveHost {
     said: AgentRulesWrite,
     by: Caller,
   ): AgentRulesOutcome<AgentRulesReceipt> {
-    const author = this.rulesAuthor(me, by)
-    if (author === null || author.profile !== DEFAULT_PROFILE_ID)
-      return {
-        ok: false,
-        rail: 'may-not-write-rules',
-        detail: { you: author?.profile ?? null },
-      }
-    const slot = this.slots.get(me)
-    // Both the live reservation and recorded parent survive a person's claim of a helper.
-    if (slot === undefined || slot.spawnedBy !== null || this.deps.store.parentOf(me) !== null)
-      return {
-        ok: false,
-        rail: 'may-not-write-rules',
-        detail: { you: author.profile, helper: true },
-      }
-    const profile = foldProfileName(said.about)
-    if (profile === DEFAULT_PROFILE_ID)
-      return {
-        ok: false,
-        rail: 'may-not-write-rules',
-        detail: { you: author.profile, self: true },
-      }
-    if (this.deps.store.capabilitiesOf(profile) === null)
-      return {
-        ok: false,
-        rail: 'no-such-agent',
-        detail: { agent: profile },
-      }
-    if (
-      !Number.isSafeInteger(said.expectedVersion) ||
-      said.expectedVersion < 0 ||
-      typeof said.text !== 'string' ||
-      said.text.length > OWN_INSTRUCTIONS_CHARS ||
-      typeof said.why !== 'string' ||
-      said.why.trim() === '' ||
-      said.why.length > OWN_INSTRUCTIONS_CHARS
-    )
-      return {
-        ok: false,
-        rail: 'malformed-request',
-        detail: {
-          problems: [
-            'read the current rules, provide their version, and say why within the size limit',
-          ],
-        },
-      }
-    const previous = this.deps.store.ownInstructionsOf(profile).versions[0]
-    if ((previous?.version ?? 0) !== said.expectedVersion)
-      return {
-        ok: false,
-        rail: 'malformed-request',
-        detail: { problems: ['the rules changed; read them again before replacing them'] },
-      }
-    const written = this.deps.store.writeOwnInstructions(
-      {
-        profileSlug: profile,
-        text: said.text,
-        whoWroteIt: 'an-agent-direct',
-        author,
-        by: whoDidIt(by),
-        conversation: me,
-        said: said.why.trim(),
-        broughtBack: null,
-        expectedVersion: said.expectedVersion,
-      },
-      this.now(),
-    )
-    if (written === null)
-      return {
-        ok: false,
-        rail: 'malformed-request',
-        detail: { problems: ['the rules changed; read them again before replacing them'] },
-      }
-    const receipt: AgentRulesReceipt = {
-      profile,
-      conversation: me,
-      version: written.version,
-      previousVersion: previous?.version ?? 0,
-      author,
-      replacedPersonVersion:
-        previous?.whoWroteIt === 'a-person' || previous?.whoWroteIt === 'an-agents-proposal'
-          ? previous.version
-          : null,
-    }
-    this.supersedeInstructionAsks(profile, whoDidIt(by))
-    const session = this.slots.get(me)?.session ?? null
-    if (session !== null) this.publishOurs(session, { type: 'instruction_changed', ...receipt })
-    this.theWorldMoved('agents')
-    return { ok: true, result: receipt }
+    return this.instructionDecisions.writeAgentRules(me, said, by)
   }
 
   /**
@@ -37844,14 +36264,7 @@ export class RuntimeHost implements LiveHost {
    * fold is the cross-session one and every other caller of it wants the whole population.
    */
   agentInstructions(profileSlug: string): AgentInstructionsReading {
-    const about = foldProfileName(profileSlug)
-    return {
-      own: this.deps.store.ownInstructionsOf(profileSlug),
-      waiting: this.deps.store.instructionAsksWaiting().filter((one) => one.asked.about === about),
-      // ⛔ **Stamped LAST, after both halves are in hand** (567) — a moment claimed before the reads
-      // is a moment the reading is not of.
-      readAt: this.now(),
-    }
+    return this.instructionDecisions.agentInstructions(profileSlug)
   }
 
   /**
@@ -38430,34 +36843,25 @@ export class RuntimeHost implements LiveHost {
     by: Caller,
     baseline?: RulesBaseline,
   ): AgentInstructionsReading | null {
-    if (whoDidIt(by).who !== 'a-person') return null
-    const current = this.deps.store.ownInstructionsOf(profileSlug).versions[0]
-    const expected = baseline ?? {
-      expectedVersion: current?.version ?? 0,
-    }
-    const written = this.deps.store.writeOwnInstructions(
-      {
-        profileSlug,
-        text,
-        expectedVersion: expected.expectedVersion,
-        // ⛔ **`a-person` because the DOOR proved it** — `requireAPerson` stands in front of this
-        // verb on the wire, so no other value is reachable here. ⚑ The relay and the approval have
-        // their own entry points and write their own words.
-        whoWroteIt: 'a-person',
-        by: whoDidIt(by),
-        conversation: null,
-        said: null,
-        broughtBack: broughtBack ?? null,
-      },
-      this.now(),
-    )
-    if (written === null) return null
-    this.supersedeInstructionAsks(profileSlug, whoDidIt(by))
-    // ⚑ **`agents`, for `setAgentDisplayName`'s reason one method up**: what an identity has been
-    // told is a fact about the identity, and a surface listing identities may be drawing it.
-    this.theWorldMoved('agents')
-    return this.agentInstructions(profileSlug)
+    return this.instructionDecisions.instructAgent(profileSlug, text, broughtBack, by, baseline)
   }
+
+  private readonly instructionDecisions = new InstructionDecisions({
+    store: () => this.deps.store,
+    rulesAuthor: (me, by) => this.rulesAuthor(me, by),
+    hasUnspawnedSlot: (conversation) => {
+      const slot = this.slots.get(conversation)
+      return slot !== undefined && slot.spawnedBy === null
+    },
+    instructionPublisher: (conversation) => {
+      const session = this.slots.get(conversation)?.session ?? null
+      return session === null ? null : (event) => this.publishOurs(session, event)
+    },
+    agentOwnNotes: (profile) => this.agentOwnNotes(profile),
+    agentInstructions: (profile) => this.agentInstructions(profile),
+    theWorldMoved: (what) => this.theWorldMoved(what),
+    now: () => this.now(),
+  })
 
   /**
    * 🔴 **A person approves or refuses one ask an agent made** (582, `HO-009` §2.2: *"A proposal is a
@@ -38474,89 +36878,7 @@ export class RuntimeHost implements LiveHost {
    * could not write is a card a person may press again.
    */
   decideInstruction(askId: string, approve: boolean, by: Caller): AnswerAck {
-    if (whoDidIt(by).who !== 'a-person')
-      return {
-        outcome: 'refused',
-        reason: 'only a person can decide this request',
-        stillOpen: true,
-      }
-    const waiting = this.deps.store
-      .instructionAsksWaiting()
-      .find((one) => one.asked.askId === askId)
-    if (waiting === undefined) {
-      return {
-        outcome: 'refused',
-        reason: 'there is no request waiting by that name, so nothing was written',
-        stillOpen: false,
-      }
-    }
-    const actor = whoDidIt(by)
-    if (approve) {
-      if (
-        waiting.asked.basedOnVersion === undefined ||
-        (this.deps.store.ownInstructionsOf(waiting.asked.about).versions[0]?.version ?? 0) !==
-          waiting.asked.basedOnVersion
-      ) {
-        this.endInstructionAsk(askId, 'superseded', THE_APP_DID_IT)
-        return {
-          outcome: 'refused',
-          reason:
-            'the rules changed or this request has no recorded baseline; ask for a new proposal',
-          stillOpen: false,
-        }
-      }
-      const written = this.deps.store.writeOwnInstructions(
-        {
-          profileSlug: waiting.asked.about,
-          text: waiting.asked.text,
-          whoWroteIt: 'an-agents-proposal',
-          expectedVersion: waiting.asked.basedOnVersion,
-          ...(waiting.asked.author === undefined ? {} : { author: waiting.asked.author }),
-          // ⛔ **The PERSON, because the person is who acted** — `477`'s finding: the ending's word
-          // does not name its own author, and the agent that proposed it is a different actor from
-          // the person who approved it. ⚑ The proposer is on the row too, as the conversation.
-          by: actor,
-          conversation: waiting.conversation,
-          said: waiting.asked.why,
-          broughtBack: null,
-        },
-        this.now(),
-      )
-      // ⚑ **The identity went while this waited**, which is reachable: `removeAgent` cascades the
-      // versions away and does not reach into a ledger. ⛔ **`stillOpen: true` would be false** —
-      // nothing about pressing again would succeed — so the ask is ENDED as refused by the app and
-      // the person is told what happened rather than handed a button that cannot work.
-      if (written === null) {
-        this.endInstructionAsk(askId, 'refused', THE_APP_DID_IT)
-        return {
-          outcome: 'refused',
-          reason:
-            'the agent or its rules changed, so nothing was written and the request has been taken down',
-          stillOpen: false,
-        }
-      }
-      this.supersedeInstructionAsks(waiting.asked.about, actor, askId)
-      this.theWorldMoved('agents')
-    }
-    if (!this.endInstructionAsk(askId, approve ? 'approved' : 'refused', actor)) {
-      // ⚠️ **Reachable only when something settled it between the read above and this write** —
-      // another window, or a second press. ⛔ On the approve arm the version IS written and this
-      // reports honestly rather than claiming the whole act failed.
-      return {
-        outcome: 'refused',
-        reason: 'somebody answered that request first',
-        stillOpen: false,
-      }
-    }
-    return { outcome: 'taken' }
-  }
-
-  private supersedeInstructionAsks(profile: string, by: ActedBy, except?: string): void {
-    for (const waiting of this.deps.store.instructionAsksWaiting()) {
-      if (waiting.asked.about === foldProfileName(profile) && waiting.asked.askId !== except) {
-        this.endInstructionAsk(waiting.asked.askId, 'superseded', by)
-      }
-    }
+    return this.instructionDecisions.decideInstruction(askId, approve, by)
   }
 
   agentMethods(profile: string, offset: number, limit: number, by: Caller): MethodLibrary | null {
@@ -38627,7 +36949,7 @@ export class RuntimeHost implements LiveHost {
   }
 
   agentRulesUnread(profile: string) {
-    return this.deps.store.instructionUnread(profile)
+    return this.instructionDecisions.agentRulesUnread(profile)
   }
 
   undoAgentRules(
@@ -38635,43 +36957,11 @@ export class RuntimeHost implements LiveHost {
     expectedVersion: number,
     by: Caller,
   ): AgentInstructionsReading | null {
-    const actor = whoDidIt(by)
-    if (actor.who !== 'a-person') return null
-    const written = this.deps.store.undoOwnInstructions(profile, expectedVersion, actor, this.now())
-    if (written === null) return null
-    this.supersedeInstructionAsks(profile, actor)
-    this.theWorldMoved('agents')
-    return this.agentInstructions(profile)
+    return this.instructionDecisions.undoAgentRules(profile, expectedVersion, by)
   }
 
   markAgentRulesSeen(profile: string, throughVersion: number, by: Caller): boolean {
-    const actor = whoDidIt(by)
-    const marked = this.deps.store.markInstructionsSeen(profile, throughVersion, actor)
-    if (marked) this.theWorldMoved('agents')
-    return marked
-  }
-
-  /**
-   * ⛔ **End one ask — through the LIVE conversation when this host is running it, and through the
-   * store otherwise.**
-   *
-   * ⚠️ **The two paths write the same row and differ only in who sees it arrive.** `publishOurs`
-   * puts it into the sink a window is reading, so a person watching the conversation that asked
-   * sees it settle; the store's append is what a conversation nobody has open still records.
-   * ⛔ Using only the store would leave a live transcript showing an ask that has been answered.
-   */
-  private endInstructionAsk(askId: string, ending: InstructionEnding, by: ActedBy): boolean {
-    const waiting = this.deps.store
-      .instructionAsksWaiting()
-      .find((one) => one.asked.askId === askId)
-    if (waiting === undefined) return false
-    const slot = this.slots.get(waiting.conversation)
-    const session = slot?.session ?? null
-    if (session === null) {
-      return this.deps.store.settleInstructionAsk(askId, ending, by, this.now())
-    }
-    this.publishOurs(session, { type: 'instruction_settled', askId, ending, by })
-    return true
+    return this.instructionDecisions.markAgentRulesSeen(profile, throughVersion, by)
   }
 
   /**

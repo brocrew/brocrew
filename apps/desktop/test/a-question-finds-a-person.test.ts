@@ -8,7 +8,6 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { readFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type {
@@ -38,7 +37,6 @@ import { SPAWN_RAILS } from '../src/main/runtime/spawn-rails'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { theMessagesOf } from '../src/shared/runtime-ipc'
-import { CAPABILITY_FIELDS } from '../src/shared/capabilities'
 import { mailboxOf, stillHeld } from '../src/shared/mailbox'
 import { REQUEST_IS_OPEN, permissionShaped } from '../src/shared/questions'
 import { APPROVALS_ARE_THE_PERSONS } from './lib/the-core'
@@ -81,7 +79,6 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const mainRoot = join(here, '../src/main')
 
 /**
  * `373`'s double, with the handles kept too.
@@ -306,10 +303,6 @@ describe('394 · a question finds a person, and a permission never travels', () 
     sessionId: string,
     args: Record<string, unknown>,
   ): Promise<Record<string, unknown>> => callOn(toolsOf(sessionId), 'answer_question', args)
-
-  const sourceOf = (dir: string, file: string): string => readFileSync(join(dir, file), 'utf8')
-  const codeOnly = (source: string): string =>
-    source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
 
   // ───────────────────────────────────────────────────────────────────────────────────────────
   // §1 · the mailbox — a question that cannot be dropped (and, since D-010, nothing is refused a slot)
@@ -1192,26 +1185,6 @@ describe('394 · a question finds a person, and a permission never travels', () 
       for (const named of [...TOOL_NAMES, 'request_routed', 'user_decision']) {
         expect(sentence, `the permission sentence names ${named}`).not.toContain(named)
       }
-    })
-
-    it('⚑ no capability field is read in the tool layer, and this verb did not change that', () => {
-      // ⚠️ **`347`'s standing census, re-asked because `394` added a verb that settles something on
-      // another conversation's behalf.** The entitlement is the host's; the tool layer translates.
-      const tools = codeOnly(sourceOf(join(mainRoot, 'runtime'), 'agent-tools.ts'))
-      expect(tools).toMatch(/host\.answerQuestion\(/)
-      // ⚑ **Every field this app has, key and column, derived and never listed by hand** — a list of
-      // literals went on naming fields D-014 deleted, and an absence of a name nothing has is not a
-      // measurement.
-      const names = CAPABILITY_FIELDS.flatMap((field) => [field.key, field.column])
-      expect(
-        names.length,
-        'no capability field was read, so this measures nothing',
-      ).toBeGreaterThan(0)
-      for (const name of names) expect(tools, name).not.toContain(name)
-      // ⛔ **The positive control, one file over**: the host reads a grant by the same spelling, so a
-      // search that finds nothing in the tool layer is a search that can find something.
-      const hostCode = codeOnly(sourceOf(join(mainRoot, 'runtime'), 'runtime-host.ts'))
-      expect(names.some((name) => hostCode.includes(name))).toBe(true)
     })
   })
 })

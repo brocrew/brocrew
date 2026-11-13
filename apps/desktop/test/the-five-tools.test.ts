@@ -1,6 +1,7 @@
+import { agentToolCode } from './helpers/agent-tool-source'
 import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -1563,12 +1564,7 @@ describe('347 · the five tools', () => {
 
   describe('§6 · the tool layer holds no policy', () => {
     /** Source with block and line comments removed, so prose cannot answer for code. */
-    const codeOf = (relative: string): string =>
-      readFileSync(join(srcRoot, relative), 'utf8')
-        .replace(/\/\*[\s\S]*?\*\//g, '')
-        .split('\n')
-        .filter((line) => !line.trim().startsWith('//'))
-        .join('\n')
+    const codeOf = (relative: string): string => agentToolCode(join(srcRoot, dirname(relative)))
 
     it('🔴 `agent-tools.ts` names no capability, no bound and no depth', () => {
       const code = codeOf('main/runtime/agent-tools.ts')
