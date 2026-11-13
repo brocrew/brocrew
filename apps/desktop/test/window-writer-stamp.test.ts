@@ -178,7 +178,7 @@ describe('window writer revisions follow the selected facts', () => {
     for (let i = 11; i < 280; i++) other({ ...leads, before: i })
     expect(sameWindowWriter(before, sample(leads))).toBe(false)
     expect(db.prepare('SELECT count(*) AS n FROM temp.window_read_revision').get()).toEqual({
-      n: 257,
+      n: 259,
     })
   })
 

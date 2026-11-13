@@ -13,6 +13,8 @@ import type { RuntimeStatesMessage } from '../src/shared/runtime-ipc'
 
 it('keeps nine live agents responsive through listings and real state notices', async () => {
   const mainHistory: { sql: string; rows: number; caller: string }[] = []
+  const otherMainHistory: { sql: string; rows: number; caller: string; phase: string }[] = []
+  let phase = 'startup'
   let measuring = false
   const nativePrepare = Database.prototype.prepare
   vi.spyOn(Database.prototype, 'prepare').mockImplementation(function (sql: string) {
@@ -21,8 +23,11 @@ it('keeps nine live agents responsive through listings and real state notices', 
       return statement
     const record = () => {
       const caller = new Error().stack ?? ''
-      const row = { sql, rows: 0, caller }
-      if (measuring && /theListing|statesThatMoved|whatWasKept/.test(caller)) mainHistory.push(row)
+      const row = { sql, rows: 0, caller, phase }
+      if (measuring) {
+        if (/theListing|statesThatMoved|whatWasKept/.test(caller)) mainHistory.push(row)
+        else otherMainHistory.push(row)
+      }
       return row
     }
     return new Proxy(statement, { get(native, key) {
@@ -63,6 +68,7 @@ it('keeps nine live agents responsive through listings and real state notices', 
     statesMoved: (message) => pushed.push(message),
   })
   const gaps: number[] = []
+  const longGaps: { phase: string; elapsedMs: number }[] = []
   let last = performance.now()
   let heartbeat: ReturnType<typeof setInterval> | undefined
   try {
@@ -89,10 +95,16 @@ it('keeps nine live agents responsive through listings and real state notices', 
     readings.length = 0
     measuring = true
     last = performance.now()
-    heartbeat = setInterval(() => { const now = performance.now(); gaps.push(now - last); last = now }, 5)
+    heartbeat = setInterval(() => {
+      const now = performance.now(); const elapsedMs = now - last
+      gaps.push(elapsedMs)
+      if (elapsedMs > 30) longGaps.push({ phase, elapsedMs })
+      last = now
+    }, 5)
     release()
     const phases: { phase: string; elapsedMs: number; reads: number; rows: number }[] = []
-    const list = async (phase: string) => {
+    const list = async (label: string) => {
+      phase = label
       const before = readings.length
       const started = performance.now()
       const answer = await executeRuntimeCommand(host, world.window, { kind: 'listResumable' })
@@ -107,18 +119,20 @@ it('keeps nine live agents responsive through listings and real state notices', 
     await list('cold')
     await list('warm')
     const beforePush = pushed.length
+    phase = 'nine-provider-notices'
     for (const { handle } of world.handles)
       handle.simulateBackgroundWork({ running: [{ id: 'fictional-job', description: 'Fictional running job' }] })
     await vi.waitFor(() => expect(new Set(pushed.slice(beforePush).flatMap((p) => p.moved.map((m) => m.conversation))).size).toBe(9))
     await list('after-nine-notices')
     const root = world.store.rootOf(ids[0]!)!
+    phase = 'one-owner-write'
     world.store.append(ids[0]!, world.store.nextOrdinal(ids[0]!), {
       type: 'work_retitled', piece: root.piece, title: 'Changed fictional title', by: null,
     }, world.clock)
     await list('after-one-owner-commit')
     await list('warm-after-commit')
     await new Promise((resolve) => setTimeout(resolve, 20))
-    console.info(JSON.stringify({ phases, readings, mainHistory, heartbeat: {
+    console.info(JSON.stringify({ phases, readings, mainHistory, otherMainHistory, longGaps, heartbeat: {
       count: gaps.length, maxMs: Math.max(...gaps),
       p95Ms: [...gaps].sort((a, b) => a - b)[Math.floor(gaps.length * .95)],
     } }))
