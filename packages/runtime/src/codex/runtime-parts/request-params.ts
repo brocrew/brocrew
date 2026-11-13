@@ -162,7 +162,9 @@ export function phasesOf(sink: StartPhaseSink | undefined): StartPhaseSink {
   return (phase, detail) => {
     try {
       sink?.(phase, detail)
-    } catch {}
+    } catch {
+      // Reporting a phase must never stop the launch it reports on.
+    }
   }
 }
 

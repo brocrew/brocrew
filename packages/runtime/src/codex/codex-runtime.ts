@@ -39,7 +39,6 @@ import {
   prepareUserInputRequest,
 } from './runtime-parts/request-preparation'
 import {
-  THE_AGENT_ASKS_FOR_ACCESS,
   elicitationPayloadFor,
   declinedToolCall,
   elicitationScopeProblem,
@@ -1652,7 +1651,9 @@ export class CodexSessionHandle implements SessionHandle {
         turn.localId,
         ended.map((one) => one.toolCallId),
       )
-    } catch {}
+    } catch {
+      // The list Codex refused: the poll's own level still says what runs.
+    }
   }
 
   endEverythingTheTurnStarted(): void {
