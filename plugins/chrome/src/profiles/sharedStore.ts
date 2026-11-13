@@ -17,6 +17,7 @@ import {
   RENAME_ERRORS,
   isProfileName,
   ProfileStoreError,
+  ProfileInUseElsewhereError,
   FLAG_NAMES,
 } from './store.js'
 import type { ProfileStore } from './store.js'
@@ -30,18 +31,7 @@ import type {
 } from './sharedTypes.js'
 import { readVolumeIdentity } from './volumeIdentity.js'
 export type ChromeState = 'ended' | 'live' | 'unknown'
-export class ProfileInUseElsewhereError extends ProfileStoreError {
-  readonly transient = true
-  constructor(
-    readonly label: string,
-    profile?: string,
-    hostPid?: number,
-  ) {
-    super(
-      `Chrome profile${profile === undefined ? '' : ` "${profile}"`} is in use in ${label === 'the default workspaces' ? label : `the ${label} workspace`} right now. ${hostPid === undefined ? '' : `Recorded plugin host PID: ${hostPid}. `}Use another profile, or ask the person to close the owning profile's browser there. You can retry after the owning profile's browser closes. A new window cannot bypass this owner.`,
-    )
-  }
-}
+export { ProfileInUseElsewhereError } from './store.js'
 interface Workspace {
   label: string
   lastSeenAt: string

@@ -24,6 +24,18 @@ export function checkDescription(value: unknown): string {
   return text
 }
 export class ProfileStoreError extends Error {}
+export class ProfileInUseElsewhereError extends ProfileStoreError {
+  readonly transient = true
+  constructor(
+    readonly label: string,
+    profile?: string,
+    hostPid?: number,
+  ) {
+    super(
+      `Chrome profile${profile === undefined ? '' : ` "${profile}"`} is in use in ${label === 'the default workspaces' ? label : `the ${label} workspace`} right now. ${hostPid === undefined ? '' : `Recorded plugin host PID: ${hostPid}. `}Use another profile, or ask the person to close the owning profile's browser there. You can retry after the owning profile's browser closes. A new window cannot bypass this owner.`,
+    )
+  }
+}
 export const RENAME_ERRORS = {
   invalid: 'Profile name must be 1–60 characters.',
   duplicate: 'Another profile already uses that name.',
