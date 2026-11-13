@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useClientApi } from '../client-provider/injection'
+import { useConversationListRecovery } from '../composables/useConversationListRecovery'
 import { useProviderNames } from '../composables/useProviderNames'
 import { providerNamesIn } from '../lib/front-door-words'
 import type { AgentState as OneState } from '../../../shared/agent-state-contracts'
@@ -403,17 +404,8 @@ const looked = ref(false)
 const listError = ref<string | null>(null)
 
 /**
- * 🔴 **D-019 · what main said an agent is doing since the list was asked** — each conversation's
- * last state on `runtime:states` ({@link hearStates}), with the list read it arrived after. The
- * list's rows draw it over their own `state`, so every surface drawing the host's state — these
- * rows, the cards under the strip, the palette, the Team shelf and the plate of a view drawn from
- * its ledger — changes the moment the push lands, and nothing is asked.
- *
- * ⛔ **A pushed state gives way only to a list read ASKED AFTER IT ARRIVED.** Main derives a read's
- * answer when the read reaches it, so a push that arrived before the read was asked is older than
- * that answer and the read wins; one that arrived while the read was in flight may be newer than
- * the half of the answer it raced (`listResumable` and `listUnresumable` are two replies), so it
- * stands until a later read lands.
+ * A pushed state outlives any list read already in flight when the push arrived.
+ * A later read replaces it; the paired lists may otherwise contain an older state.
  */
 const said = shallowRef<ReadonlyMap<string, { readonly state: OneState; readonly after: number }>>(
   new Map(),
@@ -492,7 +484,20 @@ watchEffect(() => {
 })
 onBeforeUnmount(() => lists.clear())
 
+const listRecovery = useConversationListRecovery(
+  () => props.workspaceFolder?.path ?? null,
+  () => {
+    hostResumable.value = []
+    hostUnresumable.value = []
+    said.value = new Map()
+    looked.value = false
+    listError.value = null
+    void refreshListed()
+  },
+)
+
 async function refreshListed(): Promise<void> {
+  const cycle = listRecovery.begin()
   // ⚑ **D-019 · numbered before either half is asked** — see {@link said}.
   readsAsked += 1
   const asked = readsAsked
@@ -502,7 +507,6 @@ async function refreshListed(): Promise<void> {
   // quit had already shut. ⚑ Main refuses them too; this is the half that means an ordinary quit
   // prints nothing at all. ⚠️ **Leaves the list exactly as it was**: there is nobody to report to.
   if (appClosing.value) return
-  listError.value = null
   try {
     const sessionsApi = client.sessions
     if (!sessionsApi?.listResumable || !sessionsApi.listUnresumable)
@@ -511,15 +515,19 @@ async function refreshListed(): Promise<void> {
       sessionsApi.listResumable(),
       sessionsApi.listUnresumable(),
     ])
-    if (asked !== readsAsked) return
+    if (asked !== readsAsked || !listRecovery.current(cycle)) return
     providerBlocks.value.acceptListed([...resumable, ...unresumable], providerReadAt)
     hostResumable.value = resumable
     hostUnresumable.value = unresumable
     // ⛔ **D-019 · every push that arrived before this read was asked gives way to its answer.**
     said.value = new Map([...said.value].filter(([, heard]) => heard.after >= asked))
     looked.value = true
+    listRecovery.succeeded()
+    listError.value = null
   } catch (cause) {
-    if (asked !== readsAsked) return
+    if (asked !== readsAsked || !listRecovery.current(cycle)) return
+    if (await listRecovery.retry(cycle)) return refreshListed()
+    if (asked !== readsAsked || !listRecovery.current(cycle)) return
     listError.value = readableError(cause)
   }
 }

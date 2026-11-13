@@ -209,6 +209,9 @@ const chevronOf = (m: Mounted, section: 'brobot' | 'agents'): Element =>
 describe('the rail says what it could not read, and which sections are open', () => {
   it('🔴 a list that could not be read says what it could not read', async () => {
     const failed = await rail(() => Promise.reject(new Error('the database is locked')))
+    await vi.waitFor(() => expect(failed.all('conversations-error')).toHaveLength(1), {
+      timeout: 3_000,
+    })
     const line = failed.q('conversations-error')
 
     // ⛔ Exactly — three neighbours pin the cause alone, and this is the lead a person reads.

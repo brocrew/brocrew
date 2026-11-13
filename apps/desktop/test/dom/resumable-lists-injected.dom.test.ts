@@ -182,7 +182,8 @@ it.each(surfaces)(
     expect(out.rows()).toBe(2)
     expect(out.m.host.textContent).not.toContain('raw-opposite')
     const failure = new Error('Fern list read failed')
-    out.selected.listUnresumable.mockRejectedValueOnce(failure)
+    if (surface === 'rail') out.selected.listUnresumable.mockRejectedValue(failure)
+    else out.selected.listUnresumable.mockRejectedValueOnce(failure)
     await out.refresh()
     expect(out.error()).toContain(failure.message)
     expect(out.adoptionCaptures()).toBe(captured)
@@ -191,11 +192,12 @@ it.each(surfaces)(
     await out.refresh()
     expect(out.error()).toContain('Fern getter failed')
     expect(out.adoptionCaptures()).toBe(captured)
-    expect(out.getSessions.mock.calls.length - captured).toBe(3)
+    expect(out.getSessions.mock.calls.length - captured).toBe(surface === 'rail' ? 5 : 3)
     out.failGetter(undefined)
+    out.selected.listUnresumable.mockResolvedValue([closedRow('fern-closed')])
     await out.refresh()
     expect(out.adoptionCaptures()).toBe(captured)
-    expect(out.getSessions.mock.calls.length - captured).toBe(4)
+    expect(out.getSessions.mock.calls.length - captured).toBe(surface === 'rail' ? 6 : 4)
     expect(out.rows()).toBe(2)
     expect(out.m.all(surface === 'page' ? 'resumable-error' : 'conversations-error')).toHaveLength(
       0,
@@ -203,7 +205,7 @@ it.each(surfaces)(
     closing.value = true
     await out.refresh()
     expect(out.adoptionCaptures()).toBe(captured)
-    expect(out.getSessions.mock.calls.length - captured).toBe(4)
+    expect(out.getSessions.mock.calls.length - captured).toBe(surface === 'rail' ? 6 : 4)
     expect(out.raw.listResumable).not.toHaveBeenCalled()
     expect(out.raw.listUnresumable).not.toHaveBeenCalled()
   },

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import SessionLibrary from '../../src/renderer/src/components/SessionLibrary.vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
@@ -480,6 +480,9 @@ describe('one row per conversation, and the count is the rows (090, D-017b)', ()
     )
     await new Promise((resolve) => setTimeout(resolve, 0))
     await nextTick()
+    await vi.waitFor(() => expect(broken.all('conversations-error')).toHaveLength(1), {
+      timeout: 3_000,
+    })
     const err = broken.q('conversations-error')
     expect(visible(err)).toBe(true)
     expect(err.textContent).toContain('the database is locked')

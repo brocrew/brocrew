@@ -1,5 +1,5 @@
 import type { AgentState } from '../../src/shared/agent-state-contracts'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 
@@ -384,7 +384,7 @@ describe('a read of the list that fails after one that succeeded', () => {
 
     const refresh = m.vm.refreshResumable as () => Promise<void>
 
-    // The database is locked for one announcement.
+    // The database stays locked through the bounded recovery attempts.
     stubbed().api = {
       runtime: {
         listResumable: () => Promise.reject(new Error('the database is locked')),
@@ -450,6 +450,9 @@ describe('the palette the rail hosts', () => {
     }
     const failing = mount(SideRail, { open: [], activeId: null, place: null }, { width: 251.68 })
     await settle()
+    await vi.waitFor(() => expect(failing.all('conversations-error')).toHaveLength(1), {
+      timeout: 3_000,
+    })
     expect(said(failing.q('conversations-error'))).toContain('the database is locked')
     await openPalette(failing)
     const afterFailure = palettesFoot()
