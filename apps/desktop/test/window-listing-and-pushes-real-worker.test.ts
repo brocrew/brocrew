@@ -43,7 +43,6 @@ it('keeps nine live agents responsive through listings and real state notices', 
     } })
   })
   const world = aServiceWorld()
-  world.clockStep = 0
   const pushed: RuntimeStatesMessage[] = []
   const readings: { kind: string; queries: number; rows: number; elapsedMs: number; bytes: number }[] = []
   const bundle = await bundleAWorker('test/helpers/measured-window-worker.ts', world.folder, 'measured-window.cjs')
@@ -73,6 +72,7 @@ it('keeps nine live agents responsive through listings and real state notices', 
       world.anAgent(profile, 'normal')
       ids.push(await world.aPersonOpens(host, profile))
     }
+    world.clockStep = 0
     world.db.transaction(() => {
       for (const id of ids) {
         const start = world.store.nextOrdinal(id)
