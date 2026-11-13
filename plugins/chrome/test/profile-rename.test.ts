@@ -4,7 +4,7 @@ import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { buildSync } from 'esbuild'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, onTestFailed } from 'vitest'
 import { createProfileStore } from '../src/profiles/store.js'
 import { createSharedProfileStore } from '../src/profiles/sharedStore.js'
 const roots: string[] = []
@@ -123,6 +123,13 @@ it('two real processes racing for one shared label publish exactly one winner', 
     platform: 'node',
     format: 'esm',
   })
+  if (process.platform === 'win32') {
+    fs.mkdirSync(path.join(f.root, 'bin'))
+    fs.copyFileSync(
+      new URL('../src/profiles/bin/chrome-process-birth.exe', import.meta.url),
+      path.join(f.root, 'bin/chrome-process-birth.exe'),
+    )
+  }
   const children = ['fern', 'cedar'].map((name) => {
     const child = spawn(
       process.execPath,
@@ -136,6 +143,19 @@ it('two real processes racing for one shared label publish exactly one winner', 
     })
     child.stderr.on('data', (b) => {
       error += b
+    })
+    onTestFailed(() => {
+      process.stderr.write(
+        JSON.stringify({
+          worker,
+          profile: name,
+          pid: child.pid,
+          exit: child.exitCode,
+          signal: child.signalCode,
+          stdout: text,
+          stderr: error,
+        }) + '\n',
+      )
     })
     const done = new Promise<number | null>((resolve, reject) => {
       child.on('error', reject)

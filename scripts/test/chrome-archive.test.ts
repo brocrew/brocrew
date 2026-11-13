@@ -18,6 +18,8 @@ import { liveGroupMembers } from '../../apps/desktop/resources/plugin-host/proce
 import { createRepoAwarePluginVerifier } from '../../apps/desktop/src/main/plugins/package-verifier'
 import { catalogueBytes } from '../../apps/desktop/test/plugin-package-fixtures'
 const artifact = process.env.BROCREW_CHROME_TEST_ARTIFACT
+const packageTarget =
+  process.platform === 'win32' ? { os: 'win32', cpu: process.arch } : { os: 'darwin', cpu: 'arm64' }
 const hash = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex')
 async function builtInventory(
   run: (fixture: {
@@ -33,7 +35,7 @@ async function builtInventory(
   const release = JSON.parse(fs.readFileSync(path.join(artifact!, 'fixture-release.json'), 'utf8'))
   const catalogue = catalogueBytes({ format: 2, entries: [release] })
   const pkg = createRepoAwarePluginVerifier({
-    target: { os: 'darwin', cpu: 'arm64' },
+    target: packageTarget,
   })
     .verifyCatalogue(catalogue.bytes)
     .verifyPackage('chrome', release.version, archive)
@@ -346,7 +348,7 @@ describe('Chrome release fixture', () => {
     expect(release.archive.sha256).toBe(hash(archive))
     const catalogue = catalogueBytes({ format: 2, entries: [release] })
     const verifier = createRepoAwarePluginVerifier({
-      target: { os: 'darwin', cpu: 'arm64' },
+      target: packageTarget,
     })
     const trusted = verifier.verifyCatalogue(catalogue.bytes)
     const checked = trusted.verifyPackage(

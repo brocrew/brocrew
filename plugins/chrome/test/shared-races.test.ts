@@ -4,7 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
 import { buildSync } from 'esbuild'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, onTestFailed } from 'vitest'
 import { createProfileStore } from '../src/profiles/store.js'
 import { createSharedProfileStore } from '../src/profiles/sharedStore.js'
 import { identity, ownerState, withSharedLock } from '../src/profiles/sharedLock.js'
@@ -29,6 +29,13 @@ function fixture() {
     platform: 'node',
     format: 'esm',
   })
+  if (process.platform === 'win32') {
+    fs.mkdirSync(path.join(root, 'bin'))
+    fs.copyFileSync(
+      new URL('../src/profiles/bin/chrome-process-birth.exe', import.meta.url),
+      path.join(root, 'bin/chrome-process-birth.exe'),
+    )
+  }
   const open = () =>
     createSharedProfileStore({
       home,
@@ -51,6 +58,19 @@ function fixture() {
     })
     child.stderr!.on('data', (b) => {
       errors += b
+    })
+    onTestFailed(() => {
+      process.stderr.write(
+        JSON.stringify({
+          worker,
+          command,
+          pid: child.pid,
+          exit: child.exitCode,
+          signal: child.signalCode,
+          stdout: output,
+          stderr: errors,
+        }) + '\n',
+      )
     })
     const done = new Promise<number | null>((resolve, reject) => {
       child.on('error', reject)

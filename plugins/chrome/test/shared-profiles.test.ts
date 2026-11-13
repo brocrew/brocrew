@@ -278,13 +278,16 @@ it('native ended proof treats unreadable, malformed, truncated and unnamed-proce
   const f = fixture()
   const dir = path.join(f.home, 'profiles')
   fs.mkdirSync(dir)
-  expect(inspectChrome(dir, { list: () => null })).toBe('unknown')
-  expect(inspectChrome(dir, { list: () => '' })).toBe('unknown')
-  expect(inspectChrome(dir, { list: () => 'malformed listing' })).toBe('unknown')
-  expect(inspectChrome(dir, { list: () => `123 renamed-browser --user-data-dir=${dir}` })).toBe(
-    'unknown',
-  )
-  expect(inspectChrome(dir, { list: () => '123 /sbin/init' })).toBe('ended')
+  expect(inspectChrome(dir, { platform: 'linux', list: () => null })).toBe('unknown')
+  expect(inspectChrome(dir, { platform: 'linux', list: () => '' })).toBe('unknown')
+  expect(inspectChrome(dir, { platform: 'linux', list: () => 'malformed listing' })).toBe('unknown')
+  expect(
+    inspectChrome(dir, {
+      platform: 'linux',
+      list: () => `123 renamed-browser --user-data-dir=${dir}`,
+    }),
+  ).toBe('unknown')
+  expect(inspectChrome(dir, { platform: 'linux', list: () => '123 /sbin/init' })).toBe('ended')
   expect(
     inspectChrome(dir, { platform: 'win32', list: () => '"ProcessId","CommandLine"\n"123",""' }),
   ).toBe('unknown')
