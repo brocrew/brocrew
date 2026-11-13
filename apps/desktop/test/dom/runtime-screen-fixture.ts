@@ -1,3 +1,4 @@
+import { combinedPersonsQueue } from '../helpers/combined-persons-queue'
 import { vi } from 'vitest'
 import { readingOf } from './forest-fixture'
 import { createSessionStore, type SessionStore } from '../../src/renderer/src/lib/session-store'
@@ -92,6 +93,7 @@ export const walk = () => ({
 })
 const forestWalk = () => ({ ...walk(), walk: 'every-conversation-this-app-placed' as const })
 export const runtime = {
+  personsQueue: vi.fn<RuntimeBridge['personsQueue']>(() => combinedPersonsQueue(runtime)),
   onEvent: vi.fn(() => () => {}),
   onLiveness: vi.fn(() => () => {}),
   onChanged: vi.fn((listener: Parameters<RuntimeBridge['onChanged']>[0]) => {

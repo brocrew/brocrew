@@ -1,3 +1,4 @@
+import { combinedPersonsQueue } from '../helpers/combined-persons-queue'
 import { readingOf } from './forest-fixture'
 import type { ForestScope } from '../../src/shared/the-whole-forest'
 import { createModelLists } from '../lib/provider-launch-fixture'
@@ -92,6 +93,7 @@ const request = (n: number): McpServerRequestForAPerson => ({
   },
 })
 const runtime = {
+  personsQueue: vi.fn<RuntimeBridge['personsQueue']>(() => combinedPersonsQueue(runtime)),
   onEvent: vi.fn(() => () => {}),
   onLiveness: vi.fn(() => () => {}),
   onChanged: vi.fn(() => () => {}),

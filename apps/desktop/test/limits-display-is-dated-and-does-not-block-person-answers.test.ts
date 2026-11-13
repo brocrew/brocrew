@@ -1,3 +1,5 @@
+import ts from 'typescript'
+import { combinedPersonsQueue } from './helpers/combined-persons-queue'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { runInNewContext } from 'node:vm'
@@ -208,10 +210,10 @@ describe('the actual screen publishes actionables without awaiting the limits la
     }
     const refreshLimitsDisplay = vi.fn(() => slowLimits.promise)
     const look = runInNewContext(
-      `${source.slice(start, end + 2).replace(': Promise<void>', '')}; ${source.slice(once, onceEnd + 2).replace(': Promise<void>', '')}; ${coalesced}; lookForWhatIsYours`,
+      `${ts.transpileModule(source.slice(start, end + 2), {compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText}; ${ts.transpileModule(source.slice(once, onceEnd + 2), {compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText}; ${coalesced}; lookForWhatIsYours`,
       {
         ...refs,
-        store,
+        store: {...store, personsQueue: () => combinedPersonsQueue(store)},
         refreshLimitsDisplay,
         oneReadAtATime,
         actionableReadsClosed: false,

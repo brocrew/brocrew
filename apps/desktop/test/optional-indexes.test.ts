@@ -134,7 +134,15 @@ it('window and limits canonical answers survive removal of every optional read i
   const workerWindow = new WindowReadEngine(file)
   const workerLimits = new LimitsReadEngine(file, () => now)
   try {
-    expect(workerWindow.read(routes)).toEqual(expectedWindow)
+    const actualWindow = workerWindow.read(routes)
+    if (actualWindow.kind !== 'routes' || expectedWindow.kind !== 'routes')
+      throw new Error('expected routing snapshots')
+    expect(actualWindow).toHaveProperty('cacheToken', expect.any(String))
+    const {cacheToken: expectedToken, ...expectedFacts} = expectedWindow
+    expect(expectedToken).toEqual(expect.any(String))
+    const {cacheToken: actualToken, ...actualFacts} = actualWindow
+    expect(actualToken).toEqual(expect.any(String))
+    expect(actualFacts).toEqual(expectedFacts)
     expect(workerLimits.read(limits).canonical).toEqual(expectedLimits)
     expect(createSessionStore(db).providerLimitsSeen(now)).toEqual(expectedLimits)
   } finally {

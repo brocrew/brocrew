@@ -1,3 +1,5 @@
+import ts from 'typescript'
+import { combinedPersonsQueue } from './helpers/combined-persons-queue'
 import type { LedgerWalk } from '../src/shared/question-contracts'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -47,7 +49,7 @@ function functionSource(name: string): string {
   const start = screen.indexOf(`async function ${name}(`)
   const end = screen.indexOf('\n}\n', start)
   if (start < 0 || end < start) throw new Error(`the screen has no complete ${name} function`)
-  return screen.slice(start, end + 2)
+  return ts.transpileModule(screen.slice(start, end + 2), {compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText
 }
 
 function fixture() {
@@ -94,6 +96,7 @@ function fixture() {
   })
   const runtimeStore = {
     ...store,
+    personsQueue: () => combinedPersonsQueue(store),
     readLimitsDisplay: async () => {
       const mine = ++operation
       const at = Date.now()

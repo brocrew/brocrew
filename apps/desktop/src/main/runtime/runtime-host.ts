@@ -7747,12 +7747,13 @@ export class RuntimeHost implements LiveHost {
     for (const conversation of asked) {
       try {
         const runs = this.slots.has(conversation)
-        const ledger =
-          snapshotRead?.(conversation) ??
-          (runs ? this.waitAsLastRead.get(conversation) : undefined) ??
-          read(conversation)
-        if (runs && snapshotRead === undefined)
-          this.waitAsLastRead.set(conversation, read(conversation))
+        const fullLedger =
+          snapshotRead === undefined
+            ? ((runs ? this.waitAsLastRead.get(conversation) : undefined) ?? read(conversation))
+            : undefined
+        const ledger = snapshotRead?.(conversation) ?? fullLedger ?? read(conversation)
+        if (runs && fullLedger !== undefined)
+          this.waitAsLastRead.set(conversation, fullLedger)
         const state = this.stateOf(conversation, reads, unread, ledger, workOut, owed)
         // ⚑ **D-018 · counted from here while it is idle**, whatever the windows were last told.
         if (this.idleEnoughToStop(conversation, state))
