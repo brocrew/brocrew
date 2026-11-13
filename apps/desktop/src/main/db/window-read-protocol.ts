@@ -51,7 +51,7 @@ export const windowReadQuery = z.discriminatedUnion('kind', [
       kept: z.array(z.object({ piece: z.string(), resources: z.array(z.string()) }).strict()),
     })
     .strict(),
-  z.object({ kind: z.literal('incidents') }).strict(),
+  z.object({ kind: z.literal('incidents'), reuse: foldReuse.optional() }).strict(),
   z
     .object({
       kind: z.literal('activity'),
@@ -139,6 +139,7 @@ export interface IncidentReading {
 }
 export interface WindowIncidents {
   readonly kind: 'incidents'
+  readonly routing: WindowRoutes
   readonly reported: readonly (readonly [string, IncidentFact<readonly string[]>])[]
   readonly owners: readonly IncidentReading[]
 }
@@ -212,6 +213,7 @@ export const windowReadResult = z.discriminatedUnion('kind', [
   z
     .object({
       kind: z.literal('incidents'),
+      routing: z.unknown(),
       reported: z.array(z.tuple([z.string(), z.unknown()])),
       owners: z.array(
         z

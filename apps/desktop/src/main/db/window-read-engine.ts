@@ -40,7 +40,7 @@ export class WindowReadEngine {
 
   read(input: WindowReadQuery, abandoned: () => boolean = () => false): WindowReadResult {
     const query = windowReadQuery.parse(input)
-    const keepsFolds = query.kind === 'routes' || query.kind === 'publication'
+    const keepsFolds = query.kind === 'routes' || query.kind === 'publication' || query.kind === 'incidents'
     if (keepsFolds) {
       if (query.reuse === undefined || query.reuse.token !== this.cacheToken) this.answers.clear()
       else
@@ -105,6 +105,43 @@ export class WindowReadEngine {
         true,
         keepsFolds ? this.answers : undefined,
       )
+      const readRoutes = (): WindowRoutes => {
+        const candidates = this.db
+          .prepare("SELECT DISTINCT session_id AS id FROM events WHERE type = 'request_routed'")
+          .iterate() as IterableIterator<{ id: string }>
+        const routes: RoutingReading[] = []
+        const skipped = new Map<string, Set<SkippedRow>>()
+        const counts = rowsUnreadOnce()
+        const unread: RowsUnread = {
+          in: (sessionId) => (ordinal) => {
+            let seen = skipped.get(sessionId)
+            if (seen === undefined) skipped.set(sessionId, (seen = new Set()))
+            seen.add(ordinal)
+            counts.in(sessionId)(ordinal)
+          },
+          get count() {
+            return counts.count
+          },
+          get ledgersSkipped() {
+            return counts.ledgersSkipped
+          },
+        }
+        for (const { id } of candidates) {
+          checkCancelled()
+          routes.push({
+            sessionId: id,
+            requests: store.routedRequestsOf(id, unread),
+            skipped: [...(skipped.get(id) ?? [])],
+          })
+        }
+        return {
+          kind: 'routes',
+          routes,
+          questions: store.questionsAPersonMustAnswer(unread),
+          decisions: store.decisionsAwaitingAPerson(unread),
+          work: readWindowWork(cancellable, store),
+        }
+      }
       let result: WindowReadResult
       if (query.kind === 'forest') {
         result = { kind: 'forest', ...readTheForestFirst(store, query.asked) }
@@ -185,7 +222,7 @@ export class WindowReadEngine {
             stopSkipped: [...stopSkipped],
           })
         }
-        result = { kind: 'incidents', owners: readings, reported: [...reported] }
+        result = { kind: 'incidents', owners: readings, reported: [...reported], routing: readRoutes() }
       } else if (query.kind === 'activity') {
         const reading = recentActivity(store, query.from, query.to)
         result = { kind: 'activity', ...reading }
@@ -237,43 +274,6 @@ export class WindowReadEngine {
         }
         result = { kind: 'leads', rows }
       } else {
-        const readRoutes = (): WindowRoutes => {
-          const candidates = this.db
-            .prepare("SELECT DISTINCT session_id AS id FROM events WHERE type = 'request_routed'")
-            .iterate() as IterableIterator<{ id: string }>
-          const routes: RoutingReading[] = []
-          const skipped = new Map<string, Set<SkippedRow>>()
-          const counts = rowsUnreadOnce()
-          const unread: RowsUnread = {
-            in: (sessionId) => (ordinal) => {
-              let seen = skipped.get(sessionId)
-              if (seen === undefined) skipped.set(sessionId, (seen = new Set()))
-              seen.add(ordinal)
-              counts.in(sessionId)(ordinal)
-            },
-            get count() {
-              return counts.count
-            },
-            get ledgersSkipped() {
-              return counts.ledgersSkipped
-            },
-          }
-          for (const { id } of candidates) {
-            checkCancelled()
-            routes.push({
-              sessionId: id,
-              requests: store.routedRequestsOf(id, unread),
-              skipped: [...(skipped.get(id) ?? [])],
-            })
-          }
-          return {
-            kind: 'routes',
-            routes,
-            questions: store.questionsAPersonMustAnswer(unread),
-            decisions: store.decisionsAwaitingAPerson(unread),
-            work: readWindowWork(cancellable, store),
-          }
-        }
         if (query.kind === 'routes') result = readRoutes()
         else {
           let states: WindowRoutes | null = null
@@ -313,6 +313,9 @@ export class WindowReadEngine {
       if (result.kind === 'routes') {
         this.cacheToken = randomUUID()
         result = { ...result, cacheToken: this.cacheToken }
+      } else if (result.kind === 'incidents') {
+        this.cacheToken = randomUUID()
+        result = { ...result, routing: { ...result.routing, cacheToken: this.cacheToken } }
       } else if (result.kind === 'publication' && result.states !== null) {
         this.cacheToken = randomUUID()
         result = { ...result, states: { ...result.states, cacheToken: this.cacheToken } }

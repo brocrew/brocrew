@@ -1474,6 +1474,9 @@ function theFoldIndexHolds(statement: { readonly source: string }): void {
   }
 }
 
+// The ordinal evidence follows the folded array when a worker keeps it across snapshots.
+const pieceStallOrdinals = new WeakMap<readonly PieceRow[], ReadonlyMap<string, number>>()
+
 export function createSessionStore(
   db: AppDatabase,
   now: () => number = Date.now,
@@ -3018,7 +3021,6 @@ export function createSessionStore(
   const selectLegacyStallCut = db.prepare(
     'SELECT generation, through_ordinal FROM work_legacy_stall_cut WHERE session_id = ?',
   )
-  const pieceStallOrdinals = new WeakMap<readonly PieceRow[], ReadonlyMap<string, number>>()
   const piecesOfSession = keptUntilItsLedgerGrows(foldPiecesOfSession, undefined, 'pieces')
   const turnBlockPiecesOfSession = keptUntilItsLedgerGrows(
     (owner, noteSkip) => foldPiecesOfSession(owner, noteSkip, true),

@@ -20,16 +20,7 @@ const SCREEN = readFileSync(
 )
 const NOW = Date.UTC(2026, 10, 5, 12)
 
-const READERS = [
-  'questionsForAPerson',
-  'decisionsForAPerson',
-  'stalledWorkForAPerson',
-  'instructionAsksForAPerson',
-  'waitingOnWhoWroteForAPerson',
-  'mcpServerRequestsForAPerson',
-  'stoppedWorkForAPerson',
-  'workIncidentsForAPerson',
-] as const
+const READERS = ['personsQueue'] as const
 type Reader = (typeof READERS)[number]
 
 const REFS = [
@@ -58,7 +49,7 @@ function javascript(source: string): string {
 
 /** From the look's declaration to the end of the limits refresh it starts. */
 function theLook(): string {
-  const start = SCREEN.indexOf('async function lookForWhatIsYours(')
+  const start = SCREEN.indexOf('let queueNoticePending = false')
   const limits = SCREEN.indexOf('async function refreshLimitsDisplay(', start)
   const end = SCREEN.indexOf('\n}\n', limits)
   if (start < 0 || limits < 0 || end < 0) throw new Error('the screen lost its look')
@@ -87,9 +78,13 @@ function aScreen() {
     READERS.map((reader) => [
       reader,
       vi.fn(async () => {
-        const mine = reader === 'questionsForAPerson' ? ++round : round
+        const mine = ++round
         await gate
-        return { rows: [`round ${mine}`], walk: 'fictional', ledgers: 1, rowsUnread: 0 }
+        const walk = { rows: [`round ${mine}`], walk: 'fictional', ledgers: 1, rowsUnread: 0 }
+        const parts = { questions: walk, decisions: walk, stalled: walk, stopped: walk,
+          waitingOnWhoWrote: walk, incidents: walk, instructionAsks: walk, mcpServerRequests: walk }
+        return { ...parts, published: { epoch: 'fictional', seq: mine,
+          covers: Object.fromEntries(Object.keys(parts).map((part) => [part, {complete:true}])) } }
       }),
     ]),
   ) as Record<Reader, ReturnType<typeof vi.fn>> & { readLimitsDisplay: ReturnType<typeof vi.fn> }
@@ -108,6 +103,7 @@ function aScreen() {
     readWhatIsWaiting: vi.fn(async () => {}),
     looking: null,
     setInterval,
+    queueMicrotask: (run: () => void) => { void Promise.resolve().then(run) },
     LOOK_EVERY_MS,
   }
   const run = (body: string, name: string): unknown =>
@@ -116,6 +112,7 @@ function aScreen() {
   const arm = (body: string): (() => void) => runInNewContext(javascript(`(${body})`), context)
   const look = run(theLook(), 'lookForWhatIsYours') as (scheduled?: boolean) => Promise<void>
   context.lookForWhatIsYours = look
+  context.lookAfterAQueueNotice = runInNewContext('lookAfterAQueueNotice', context)
   const arms = {
     persons: arm(theArm('persons')),
     conversations: () => {},
@@ -125,7 +122,7 @@ function aScreen() {
     // Only each arm's look at the queue: its other readers are this file's business elsewhere.
     const lines = theArm(subject)
       .split('\n')
-      .filter((line) => line.includes('lookForWhatIsYours'))
+      .filter((line) => line.includes('lookAfterAQueueNotice'))
     expect(lines, `the ${subject} arm no longer looks at the queue`).toHaveLength(1)
     arms[subject] = arm(`() => {\n${lines.join('\n')}\n}`)
   }
@@ -189,6 +186,27 @@ describe('a persons notice and the tick share one look at the queue', () => {
     expect(screen.refs.escalated?.value).toEqual(expect.objectContaining({ rows: ['round 3'] }))
     // The rail's needs-you count is asked on the notice too, through its own one-at-a-time read.
     expect(screen.readTheWorkspace).toHaveBeenCalledTimes(1 + 5)
+  })
+
+  it('coalesces an idle notice burst into one combined call and preserves failed parts', async () => {
+    const screen = aScreen()
+    screen.arms.persons()
+    screen.arms.conversations()
+    screen.arms.agents()
+    await settle()
+    expect(screen.readsOf('personsQueue')).toBe(1)
+    const good = screen.refs.escalated?.value
+    screen.store.personsQueue.mockResolvedValueOnce({
+      questions: null,
+      decisions: {rows: [], rowsUnread: 0},
+      instructionAsks: {rows: ['unread instruction'], rowsUnread: 1},
+      published: {covers: {questions:{complete:false}, decisions:{complete:true}, instructionAsks:{complete:false}}},
+    })
+    await screen.look()
+    expect(screen.refs.escalated?.value).toEqual(good)
+    expect(screen.refs.decided?.value).toEqual({rows: [], rowsUnread: 0})
+    expect(screen.refs.lastLookAnswered?.value).toEqual({questions:false, decisions:true})
+    expect(screen.refs.lastAskLookAnswered?.value).toBe(false)
   })
 
   it('an ask made while a look is out settles only once a look that saw it has landed', async () => {

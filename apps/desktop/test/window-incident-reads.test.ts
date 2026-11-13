@@ -50,6 +50,7 @@ describe('window incident dependency reuse', () => {
     const f = fixture()
     const snapshot: WindowIncidents = {
       kind: 'incidents',
+      routing: {kind:'routes',routes:[],questions:{rows:[],walk:'every-conversation-that-routed',ledgers:0,rowsUnread:0},decisions:{rows:[],walk:'every-conversation-that-routed',ledgers:0,rowsUnread:0}},
       reported: [],
       owners: [
         {

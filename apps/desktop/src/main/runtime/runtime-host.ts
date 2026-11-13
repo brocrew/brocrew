@@ -15355,7 +15355,7 @@ export class RuntimeHost implements LiveHost {
       const requested = (): WindowReadQuery => {
         const previous = this.windowRoutesKept
         if (
-          (query.kind === 'routes' || query.kind === 'publication') &&
+          (query.kind === 'routes' || query.kind === 'publication' || query.kind === 'incidents') &&
           previous?.result.kind === 'routes'
         ) {
           const changed = this.deps.windowWriterStamp?.changedOwners?.(previous.stamp, before)
@@ -15400,7 +15400,10 @@ export class RuntimeHost implements LiveHost {
       const after = this.sampleWindowWriter(query)
       if (sameWindowWriter(origin, before) && sameWindowWriter(origin, after)) {
         if (query.kind === 'routes') this.windowRoutesKept = { stamp: after!, result }
-        if (query.kind === 'incidents') this.windowIncidentsKept = { stamp: after!, result }
+        if (query.kind === 'incidents') {
+          this.windowIncidentsKept = { stamp: after!, result }
+          if (result.kind === 'incidents') this.windowRoutesKept = { stamp: after!, result: result.routing }
+        }
         if (result.kind === 'publication' && result.states !== null)
           this.windowRoutesKept = { stamp: after!, result: result.states }
         return compose(result)
@@ -16748,7 +16751,7 @@ export class RuntimeHost implements LiveHost {
     try {
       return await this.freshWindowQuery({ kind: 'incidents' }, (result) => {
         if (result.kind !== 'incidents') throw new WindowReadMissed('worker-gone')
-        return this.windowIncidentReads.run(compose, result)
+        return this.windowRoutingReads.run(result.routing, () => this.windowIncidentReads.run(compose, result))
       })
     } finally {
       this.windowReadCallers--
@@ -16764,33 +16767,21 @@ export class RuntimeHost implements LiveHost {
    */
   async personsQueue(): Promise<PersonsQueueAnswer> {
     try {
-      let incidentsRead = false
-      let onMain: StampedIncidents | null = null
+      if (this.deps.windowReader !== undefined) {
+        try {
+          return await this.incidentsForWindow(() => this.personsQueueAssembled(this.stampedIncidents()))
+        } catch (error) {
+          if (this.launches.closed) throw error
+          return await this.readForWindow(() => this.personsQueueAssembled(null))
+        }
+      }
+      let incidents: StampedIncidents | null = null
       try {
-        await this.incidentsForWindow(() => {
-          if (this.deps.windowReader === undefined) onMain = this.stampedIncidents()
-          incidentsRead = true
-        })
+        incidents = await this.incidentsForWindow(() => this.stampedIncidents())
       } catch (error) {
         if (this.launches.closed) throw error
       }
-      return await this.readForWindow(() => {
-        let incidents: StampedIncidents | null = onMain
-        if (incidentsRead && this.deps.windowReader !== undefined) {
-          const kept = this.windowIncidentsKept
-          if (
-            kept?.result.kind === 'incidents' &&
-            sameWindowWriter(kept.stamp, this.sampleWindowWriter({ kind: 'incidents' }))
-          ) {
-            try {
-              incidents = this.windowIncidentReads.run(() => this.stampedIncidents(), kept.result)
-            } catch (error) {
-              console.warn(`runtime host could not read queue incidents: ${errorMessage(error)}`)
-            }
-          }
-        }
-        return this.personsQueueAssembled(incidents)
-      })
+      return await this.readForWindow(() => this.personsQueueAssembled(incidents))
     } catch (error) {
       return this.personsQueueRefused(errorMessage(error))
     }
