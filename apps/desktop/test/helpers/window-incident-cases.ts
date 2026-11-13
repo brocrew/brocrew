@@ -9,10 +9,17 @@ import { rowsUnreadOnce } from '../../src/main/db/rows-unread'
 import { RuntimeHost } from '../../src/main/runtime/runtime-host'
 import { aLibraryHost } from './files-library-fixture'
 
-export function windowIncidentCases(fixture: () => {
-  store: SessionStore; db: AppDatabase; engine: WindowReadEngine; directory: string; hosts: RuntimeHost[]; ordinal: number
-  row(session: string, type: string, payload: object | string, generation?: number): void
-}) {
+export function windowIncidentCases(
+  fixture: () => {
+    store: SessionStore
+    db: AppDatabase
+    engine: WindowReadEngine
+    directory: string
+    hosts: RuntimeHost[]
+    ordinal: number
+    row(session: string, type: string, payload: object | string, generation?: number): void
+  },
+) {
   it('projects incident history without main reads and preserves failed receipts and closed wait targets', () => {
     const { store, engine, row } = fixture()
     const root = store.ensurePersonalRoot('alpha', 1)
@@ -232,5 +239,4 @@ export function windowIncidentCases(fixture: () => {
     })
     raw.mockRestore()
   })
-
 }
