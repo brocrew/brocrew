@@ -298,10 +298,10 @@ describe('an agent restoring an archived conversation', () => {
       })
     }
     expect(await host.archiveConversation(helper)).toMatchObject({ done: true })
-    // It lists only what it can reach, and any archived conversation may be restored.
-    expect(agentsIn(await call(narrowed, 'list_agents', { archived: true }), 'archived')).toEqual(
-      [],
-    )
+    // The archived reader lists the known conversation despite the narrowed message grant.
+    expect(agentsIn(await call(narrowed, 'list_agents', { archived: true }), 'archived')).toEqual([
+      helper,
+    ])
     expect((await call(narrowed, 'restore_agent', { agent: label })).structured).toMatchObject({
       outcome: 'ok',
       restored: [{ agent: helper }],

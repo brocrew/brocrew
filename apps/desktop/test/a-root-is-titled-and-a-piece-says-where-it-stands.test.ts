@@ -464,24 +464,29 @@ describe('D-016 · a root is titled, and a piece says where it stands', () => {
       expect(noSuchRecord.outcome, JSON.stringify(noSuchRecord)).toBe('refused')
       expect(noSuchRecord.rail).toBe('no-piece-by-that-name')
 
-      const forbidden: [string, string, string][] = [
+      const forbiddenUpdates: [string, string, string][] = [
         ['a stranger on the piece', stranger, label],
         ['a stranger on the root', stranger, managersRoot],
         ['the worker on the manager’s root', worker, managersRoot],
         ['a stranger on a name that names nothing', stranger, nobodys],
         ['the worker on a name that names nothing', worker, nobodys],
       ]
-      for (const [who, caller, spelled] of forbidden) {
+      for (const [who, caller, spelled] of forbiddenUpdates) {
         const updated = await callOn(caller, 'update_work', { piece: spelled, status: 'x' })
         expect(updated, `update_work · ${who}`).toEqual({
           ...noSuchUpdate,
           detail: { piece: spelled },
         })
         const read = await recordOf(caller, spelled)
-        expect(read, `list_tasks · ${who}`).toEqual({
-          ...noSuchRecord,
-          detail: { piece: spelled },
-        })
+        if (spelled === nobodys) {
+          expect(read, `list_tasks · ${who}`).toEqual({
+            ...noSuchRecord,
+            detail: { piece: spelled },
+          })
+        } else {
+          expect(read, `list_tasks · ${who}`).toMatchObject({ label: spelled })
+          expect(read, `list_tasks · ${who}`).not.toHaveProperty('rail')
+        }
       }
       // ⚑ A title is refused the same way — it is the entitlement that is asked first.
       expect(await callOn(stranger, 'update_work', { piece: label, title: 'mine now' })).toEqual({

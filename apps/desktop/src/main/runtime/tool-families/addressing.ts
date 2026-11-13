@@ -85,12 +85,14 @@ export function conversationAddressing(
           lines.push('For new work, give_work with its profile.')
         lines.push('To stop a known conversation, interrupt_agent with its label.')
       } else if (facts.rowsUnread > 0 || (facts.ledgersSkipped ?? 0) > 0) {
-        lines.push(`${facts.label} is your own piece. list_agents names who you can reach.`)
+        lines.push(
+          `${facts.label} is your own piece. list_agents names conversations; message_agent answers whether one can take your message.`,
+        )
       } else {
         lines.push(
           facts.children === 0
-            ? `${facts.label} is your own piece, with no helpers recorded under it. list_agents names who you can reach.`
-            : `${facts.label} is your own piece. None of its helpers is in your reach. list_agents names who you can reach.`,
+            ? `${facts.label} is your own piece, with no helpers recorded under it. list_agents names conversations; message_agent answers whether one can take your message.`
+            : `${facts.label} is your own piece. None of its helpers is in your messaging reach. list_agents names conversations; message_agent answers whether one can take your message.`,
         )
       }
       if (facts.rowsUnread > 0) lines.push(unreadRowsSentence(facts.rowsUnread))

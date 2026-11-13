@@ -523,15 +523,11 @@ describe('437 · a question a worker can ask its parent', () => {
       expect(store.routedRequestsOf(worker).find((one) => one.requestId === requestId)?.state).toBe(
         'answered',
       )
-      // ⚠️ **And SEEING did not widen either** — `433`'s ruling is *a caller may see exactly what it
-      // may send to*, so a verb that granted a send without a sight would have broken it and one
-      // that granted a sight is what this asserts did not happen.
-      // ⛔ **Asked of the AGENT IDS and never of the whole payload.** The worker's own card carries
-      // `parent`, which IS the pm's id — so a `toContain` over the JSON would be satisfied by a
-      // neighbouring field and would fail for a reason that is not the reach.
+      // The parent is readable; the question answer route above is asserted separately.
+      // Ask for agent ids: the worker's own card also carries the parent's id.
       const listed = await callOn(workerTools, 'list_agents', {})
       const named = (listed.agents as { agent: string }[]).map((one) => one.agent)
-      expect(named).not.toContain(pm)
+      expect(named).toContain(pm)
       // ⚑ **The non-vacuity control**: it really did list something — itself.
       expect(named).toContain(worker)
     })

@@ -139,9 +139,6 @@ export const TOOL_PERMANENCE: Readonly<Record<ToolRefusal, RailPermanence>> = {
   // a process slot or memory something else lets go of. The identical wake then succeeds with
   // nobody acting (`apps/desktop/test/a-shortage-that-clears-by-itself.test.ts`, walked to `ok`).
   'that-conversation-could-not-be-woken-just-now': 'while-this-holds',
-  // **D-012 · the chain does not change** — a conversation is below you or it is not. **D-024 ·
-  // R2 — nor does a conversation's identity**: it is of your profile or it is not.
-  'not-a-conversation-below-you': 'permanent',
   // **D-016 · the name, the piece's giver and whether it has ended do not change by waiting.**
   'no-piece-by-that-name': 'permanent',
   'the-giver-names-a-piece': 'permanent',
@@ -239,8 +236,6 @@ const TOOL_REMEDY: Readonly<Record<ToolRefusal, RefusalRemedy | null>> = {
   // **705 · R39 — the biconditional's other half, as `that-conversation-is-still-stopping`'s**:
   // retryable, so it carries the act, and the act is the same call once the shortage has passed.
   'that-conversation-could-not-be-woken-just-now': 'make-the-same-call-when-this-settles',
-  // **D-012 · not retryable, so it carries no act** — the biconditional.
-  'not-a-conversation-below-you': null,
   // **D-016 · not retryable, so none carries an act** — the biconditional; each sentence names
   // the call that is right instead.
   'no-piece-by-that-name': null,
@@ -307,13 +302,13 @@ export interface ToolRefusalPayload {
 export const TOOL_SENTENCES: Readonly<Record<ToolRefusal, string>> = {
   ...THEME_TOOL_REASONS,
   'no-such-agent':
-    'no conversation you can reach goes by that id or piece label, so nothing was done. list_agents names the ones you can reach; list_profiles names every agent this app holds.',
+    'no conversation available to this call goes by that id or piece label, so nothing was done. list_agents names the conversations this app can run; list_profiles names every agent this app holds.',
   // **D-017 · R12** — the act first, inside the cut; then which kinds of conversation this is.
   // The detail carries every label; the refusal sentence names up to five.
   'that-agent-has-several-conversations':
     'make the same call with agent set to one of that agent\u2019s conversations, by a label the detail lists. It has more than one you can reach, so nothing was done.',
   'that-conversation-takes-no-messages':
-    'that conversation cannot be started by a message, so nothing was sent to it; list_agents names the ones you can reach. It is a read-only copy, a provider\u2019s own sub-agent, or a conversation this app did not start.',
+    'that conversation cannot be started by a message, so nothing was sent to it; list_agents names the conversations this app can run. It is a read-only copy, a provider\u2019s own sub-agent, or a conversation this app did not start.',
   'malformed-request':
     'the arguments did not match what this tool accepts, so nothing was done. The problems are listed in the detail: fix each one and call this tool again.',
   // **It says who can change it, because nothing the caller does will** (424). The old sentence
@@ -422,14 +417,9 @@ export const TOOL_SENTENCES: Readonly<Record<ToolRefusal, string>> = {
   // sentence says what to do and never that it will work.
   'that-conversation-could-not-be-woken-just-now':
     'that conversation could not be started just now, so nothing was sent. Make the same call again in a moment: its provider could not be started because this machine ran short of open files, processes or memory, which usually clears by itself.',
-  // **D-012 · the act first, inside the cut**: the other door, for an agent this one does not read.
-  // **D-024 · R2 — its last clause says the reach it now has**: a conversation of the caller's
-  // own profile is read here too, and every other one keeps this answer.
-  'not-a-conversation-below-you':
-    'there is no conversation below you by that id or piece label, so nothing was read. To ask any other agent something, use ask_question; only conversations you started, those started under them, and your profile’s other conversations are read here.',
   // **D-016 · the act first, inside the cut** — where the right label is.
   'no-piece-by-that-name':
-    'no piece by that name is one you hold or gave, so nothing was done. list_tasks names the open pieces you hold and gave, by label, and with state: "all" the ended ones too.',
+    'no piece by that name is available to this call, so nothing was done. Check its label or id with search_work or list_tasks.',
   // **D-016 · it says what the caller MAY do**: the status line is its, and the name is its giver's.
   'the-giver-names-a-piece':
     'the one that gave you that piece names it, so its title was not changed. To have it called something else, ask it; you may set its status line.',

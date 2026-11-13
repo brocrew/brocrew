@@ -317,23 +317,11 @@ export function createReadTranscriptTool(
   guarded: (run: () => Promise<AgentToolAnswer>) => Promise<AgentToolAnswer>,
 ): AgentToolDefinition & { readonly name: ToolName } {
   return {
-    /**
-     * **D-012 · a giver looks closer, only when it needs to** (proposal §6.5).
-     *
-     * **The stall notice quoted up to 4 KB of the child's last message** because a giver could
-     * not read its child. Now the notice previews the last exchange and names this door, and
-     * the giver reads the rest here: the last exchange whole, then the turns — a few back, or the
-     * ones a search finds (*"When the person just answered 'yes', only the turns before it say
-     * what was agreed"*).
-     *
-     * **Reach is the chain** `interrupt_agent` walks — a conversation below the caller —
-     * **and, since D-024 · R2, the caller's own profile's other conversations** — and never a
-     * shared service ({@link AgentToolHost.readTranscript}). A READER: nothing is sent.
-     */
+    /** Read a known conversation without sending or starting anything. */
     name: 'read_transcript',
     handlerOwnsMissingInput: true,
     description:
-      'Read a conversation below you — one you started, or one started under it — or another conversation of your own profile: the last message it received (and who sent it) with its latest words back, then its last turns, or the turns whose words contain a search. Use it when a notice about work you gave out is not enough; name it by a piece it owns (W1.2) — list_tasks names the pieces you gave — or by its id.',
+      'Read any conversation: the last message it received (and who sent it) with its latest words back, then its last turns, or the turns whose words contain a search. Name it by a piece it owns (W1.2) or by its id.',
     beyondItsRails: 'nothing-its-rails-do-not-cover',
     input: Object.fromEntries(
       Object.entries(readerInputs.read_transcript).map(([field, schema]) => [
@@ -365,12 +353,9 @@ export function createReadTranscriptTool(
         }
         const fieldRefusal = readerFieldRefusal('read_transcript', args)
         if (fieldRefusal !== null) return fieldRefusal
-        // **D-016 · commit 7 · R1 — a label names its piece's owner** when this caller may reach
-        // it or read it — the chain below it, or (D-024 · R2) a conversation of its own profile, as
-        // an id is read; one that names nothing it may read is out of that reach, as an unknown id
-        // is.
+        // A known piece label names its owner for this read.
         const addressed = host.theConversationAddressed(agent, by, me, 'reading')
-        const read = host.readTranscript(addressed, me, {
+        const read = host.readTranscript(addressed, {
           back: turnsBack,
           search: typeof search === 'string' ? search.trim() : null,
         })

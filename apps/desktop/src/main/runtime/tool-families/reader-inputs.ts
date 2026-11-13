@@ -20,7 +20,7 @@ export function readerFields() {
         .boolean()
         .optional()
         .describe(
-          'true lists the archived conversations you can reach instead, the most recently archived first, each with when it was archived and by whom. Leave it out for the conversations that are not archived.',
+          'true lists the archived conversations instead, the most recently archived first, each with when it was archived and by whom. Leave it out for the conversations that are not archived.',
         ),
     },
     get_agent_status: {
@@ -40,7 +40,7 @@ export function readerFields() {
         .string()
         .optional()
         .describe(
-          'A piece you, or another conversation of your profile, hold or gave — its label (W1.2) or its id — to read its record. Leave it out for your board.',
+          'A piece’s label (W1.2) or id to read its record. Leave it out for your own board.',
         ),
       made: z
         .boolean()

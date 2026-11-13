@@ -28,7 +28,7 @@ import { PROVIDER_NAME, type ProviderUsageReading } from '../../../shared/runtim
 import { type Provider } from '@brobot2/shared'
 import { READ_ONE_WITH_READ_DOCUMENT, resourcesNamed } from '../reply-rails'
 import { type ToolName } from './catalog'
-import { WHEN_THE_ASK_LANDED, outOfReachAnswer } from './delivery'
+import { WHEN_THE_ASK_LANDED } from './delivery'
 import { aPairInWords, sameModel } from '../../../shared/model-choice'
 import { agentStateWords } from '../../../shared/agent-state'
 import { answer, refusalAnswer } from './answers'
@@ -313,11 +313,11 @@ function agentRecordText(record: AgentRecord, me: string | null): string {
         : 'How its standing rules begin is told only to a caller that can reach its conversations.'
   const blocks: string[] = [[profileText(record.agent), rules].join('\n')]
   if (record.conversations.length === 0) {
-    blocks.push('It has no conversation within your reach.')
+    blocks.push('It has no conversations.')
   } else {
     blocks.push(
       [
-        'Its conversations you can reach, the most recently active first:',
+        'Its conversations, the most recently active first:',
         ...record.conversations.map((one) => {
           const called =
             one.conversation === me
@@ -341,15 +341,13 @@ function agentRecordText(record: AgentRecord, me: string | null): string {
         }),
         ...(record.conversationsNotListed === 0
           ? []
-          : [
-              `  …and ${String(record.conversationsNotListed)} more you can reach, not listed here.`,
-            ]),
+          : [`  …and ${String(record.conversationsNotListed)} more, not listed here.`]),
         'get_agent_status says what any of them is doing now.',
       ].join('\n'),
     )
     blocks.push(
       record.pieces.length === 0 && record.piecesUnread === 0 && record.piecesNotListed === 0
-        ? 'Its conversations you can reach hold no pieces of work.'
+        ? 'Its conversations hold no pieces of work.'
         : [
             'Its newest pieces of work there, the newest given first:',
             ...record.pieces.map(({ held, givenBy }) => {
@@ -479,11 +477,11 @@ export function createListAgentsTool(
     // names the work it holds — its root and its open pieces, by label (spec D17).
     // **D-016 · commit 7 · R1 · R3 — each is NAMED by the piece it owns**, and that label is
     // what every door that takes an agent takes; the id stays in the payload.
-    description: `List the agents you can reach: every conversation this app will let you message, including your own, whatever it is doing. Up to ${String(CONVERSATIONS_LISTED)}, the most recently active first; the answer says how many more there are, and message_agent and get_agent_status take any of them by the label of a piece it owns (W1.2) or by its id. Each one's state says what it is doing: active, needs you (a person's answer or approval is waiting in it, or it answered a person who wrote to it and waits for their next words), waiting on another conversation's answer, owes another conversation an answer (and whom), running in the background (and what), scheduled (and when it next wakes), waiting on the agents holding work it gave out (and who), or idle. The agents themselves outlive their conversations — list_profiles names every agent this app holds. Being listed is not a promise that every message to it is admitted — message_agent answers that separately. Each says the provider, model and effort its conversation runs on, and what its provider last reported when that differs. An archived conversation is put away and left out: archived: true lists those instead, each with when it was archived and by whom. Its label still reaches it; restore_agent brings it back without sending it anything, and whatever is sent to it brings it and the helpers archived with it back too. Each is named by the piece of work it owns (the owner of W1.2 · its title), or by its id when it holds none, then who it is — the name a person gave that agent, and the profile slug give_work takes — its state, the conversation that started it, named the same way, and the work it holds: its own root, when a person gave it one, and its open pieces, by label. A conversation this app cannot attribute is still listed, and says so rather than being given a name.`,
+    description: `List the conversations this app can run or restart, including your own, whatever they are doing. Up to ${String(CONVERSATIONS_LISTED)}, the most recently active first; the answer says how many more there are, and get_agent_status takes any of them by the label of a piece it owns (W1.2) or by its id. Each one's state says what it is doing: active, needs you (a person's answer or approval is waiting in it, or it answered a person who wrote to it and waits for their next words), waiting on another conversation's answer, owes another conversation an answer (and whom), running in the background (and what), scheduled (and when it next wakes), waiting on the agents holding work it gave out (and who), or idle. The agents themselves outlive their conversations — list_profiles names every agent this app holds. Being listed is not a promise that every message to it is admitted — message_agent answers that separately. Each says the provider, model and effort its conversation runs on, and what its provider last reported when that differs. An archived conversation is put away and left out: archived: true lists those instead, each with when it was archived and by whom. Its label still reaches it; restore_agent brings it back without sending it anything, and whatever is sent to it brings it and the helpers archived with it back too. Each is named by the piece of work it owns (the owner of W1.2 · its title), or by its id when it holds none, then who it is — the name a person gave that agent, and the profile slug give_work takes — its state, the conversation that started it, named the same way, and the work it holds: its own root, when a person gave it one, and its open pieces, by label. A conversation this app cannot attribute is still listed, and says so rather than being given a name.`,
     /**
      * **486 · the rails are the whole gate** (HO-031 §2.4).
      *
-     * **A reader of the conversations the caller may reach.** `agentsVisibleTo` filters by the caller's own reach and an empty answer is a sentence (`644`); there is nothing here to ask a person about.
+     * **A reader of running and restartable conversations.** An empty answer is a sentence (`644`).
      */
     beyondItsRails: 'nothing-its-rails-do-not-cover',
     input: Object.fromEntries(
@@ -507,7 +505,7 @@ export function createListAgentsTool(
           const more =
             notListed === 0
               ? ''
-              : `\n…and ${String(notListed)} more archived conversations you can reach, not listed here.`
+              : `\n…and ${String(notListed)} more archived conversations, not listed here.`
           return answer(
             {
               outcome: 'ok',
@@ -520,7 +518,7 @@ export function createListAgentsTool(
               notListed,
             },
             (archived.length === 0
-              ? 'no archived conversations you can reach'
+              ? 'no archived conversations'
               : archived
                   .map(({ card, archivedAt }) => cardText(card) + archivedSaid(archivedAt, readAt))
                   .join('\n')) + more,
@@ -536,7 +534,7 @@ export function createListAgentsTool(
         const more =
           notListed === 0
             ? ''
-            : `\n…and ${String(notListed)} more you can reach, not listed here; get_agent_status and message_agent take the label of a piece it owns (W1.2), or its id.`
+            : `\n…and ${String(notListed)} more, not listed here; get_agent_status takes the label of a piece one owns (W1.2), or its id.`
         return answer(
           { outcome: 'ok', agents: agents.map(cardPayload), count: agents.length, notListed },
           listed + more,
@@ -553,7 +551,6 @@ export function createGetAgentStatusTool(
     | 'theConversationAddressed'
     | 'whatOpenedItsLastTurn'
     | 'whenItWasArchived'
-    | 'whyItIsOutOfReach'
   >,
   by: Caller,
   me: string,
@@ -574,7 +571,7 @@ export function createGetAgentStatusTool(
     // `list_agents`' it was not describing a payload that had stopped matching it. The first
     // clause gains the fact the card gained; nothing else here moved.
     description:
-      "Who one agent is, what it is doing right now — active, needs you, waiting on another conversation's answer, owing another conversation an answer, running in the background, scheduled, waiting on the agents holding work it gave out, or idle — the work it holds, by label, and where it came from. It answers for any conversation you may reach — every one list_agents names, and any other by the piece it owns (W1.2) or by its id. It says the provider, model and effort its conversation runs on, and what its provider last reported when that differs.",
+      "Who one agent is, what it is doing right now — active, needs you, waiting on another conversation's answer, owing another conversation an answer, running in the background, scheduled, waiting on the agents holding work it gave out, or idle — the work it holds, by label, and where it came from. It answers for any conversation this app can run or restart, including every one list_agents names, by the piece it owns (W1.2) or by its id. It says the provider, model and effort its conversation runs on, and what its provider last reported when that differs.",
     /**
      * **486 · the rails are the whole gate** (HO-031 §2.4).
      *
@@ -596,17 +593,13 @@ export function createGetAgentStatusTool(
         const fieldRefusal = readerFieldRefusal('get_agent_status', args)
         if (fieldRefusal !== null) return fieldRefusal
         // **D-016 · commit 7 · R1 — a label names its piece's owner**, before any rail reads the
-        // target; one that names nothing this caller may reach reads as an unknown id below.
-        const agent = host.theConversationAddressed(args.agent, by, me, 'messaging')
-        // **D-017 · R12 — an id out of reach is refused as every door refuses it**: the reach
-        // rail `message_agent` meets, and `no-such-agent` only for an id no conversation has.
-        const out = host.whyItIsOutOfReach(agent, by, me)
-        if (out !== null) return outOfReachAnswer(out, agent)
+        // target; one that names nothing reads as an unknown id below.
+        const agent = host.theConversationAddressed(args.agent, by, me, 'reading')
         const card = host.agentCard(agent, by, me)
         if (card === null) return refusalAnswer(refuseTool('no-such-agent', { agent }))
         // **When its last turn ran, and what opened it** — so a giver reading *nothing has
         // started since* can tell whether its own held words were what that turn took.
-        const last = host.whatOpenedItsLastTurn(card.agent, me)
+        const last = host.whatOpenedItsLastTurn(card.agent)
         const called = namedByItsWorkOnce(host)
         const named = (who: AConversation): string =>
           who.conversation === me ? 'you' : called(who.conversation, who.about ?? null)
@@ -653,13 +646,11 @@ export function createListProfilesTool(
     name: 'list_profiles',
 
     description:
-      'Every agent this app holds — any of them can be named to give_work: what each is called, which provider its conversations run on, and its default model and effort, when it has one; and each provider’s latest usage reading per window — how much is used, when it resets and when it was read, and whether that was before this app last started, when it may be another sign-in’s — so you can keep to a cap before you give work; and which windows each provider has reported since this app began noting them, with when each was first and last reported. These are identities, not conversations — list_agents answers which conversations you can see. Being listed here is not a promise that a give will succeed. The answer says in words what the count covers — read that before summarising it. Name one agent with profile, before choosing whom to give work to, to read what it has done instead: how its standing rules begin, its conversations you can reach — who started each and when, which could not be reopened and which are archived — the newest pieces of work they hold and how each stands or ended, and the files it made.',
+      'Every agent this app holds — any of them can be named to give_work: what each is called, which provider its conversations run on, and its default model and effort, when it has one; and each provider’s latest usage reading per window — how much is used, when it resets and when it was read, and whether that was before this app last started, when it may be another sign-in’s — so you can keep to a cap before you give work; and which windows each provider has reported since this app began noting them, with when each was first and last reported. These are identities, not conversations — list_agents answers which conversations you can see. Being listed here is not a promise that a give will succeed. The answer says in words what the count covers — read that before summarising it. Name one agent with profile, before choosing whom to give work to, to read what it has done instead: how its standing rules begin, its conversations — who started each and when, which could not be reopened and which are archived — the newest pieces of work they hold and how each stands or ended, and the files it made.',
     /**
      * **486 · the rails are the whole gate** (HO-031 §2.4).
      *
-     * **A reader of this app's own table**; there is nothing here to ask a person about. F009 ·
-     * an agent's record asks the reach `list_agents` asks, of each of its conversations, inside the
-     * host's read — a fold, never a wall.
+     * A reader of this app's own table; a named agent's conversation record uses its own read.
      */
     beyondItsRails: 'nothing-its-rails-do-not-cover',
     /**

@@ -78,11 +78,10 @@ export interface ProfileCapabilities {
    */
   readonly maxDepth: number
   /**
-   * 🔴 **Which conversations this identity may SEND to, and so SEE** (374, HO-007 §2.1 P3).
+   * Which conversations this identity may send messages to.
    *
    * ⛔ At `none` a caller reaches nothing; `'any'` also admits a conversation its holder did not
-   * start — see `message-rails.ts`'s `reachesWhatItDidNotStart`. ⚑ **A caller may SEE exactly what
-   * it may SEND to** (`433`): `list_agents` and `get_agent_status` read this word too.
+   * start — see `message-rails.ts`'s `reachesWhatItDidNotStart`. Read tools do not use this grant.
    *
    * ⚠️ **It does not decide giving work** — {@link canAssignWork} does — and interrupting reads no
    * grant at all: it reaches the conversations below the caller in the chain that created them.
@@ -523,21 +522,8 @@ export const CAPABILITY_FIELDS = [
     column: 'can_message',
     editor: 'choice',
     label: 'May message',
-    /**
-     * 🔴 **The help text carries its SECOND consequence since 433.**
-     *
-     * ⛔ **This field decides what an identity may SEE as well as what it may SEND to.** `433` §B
-     * put `list_agents` and `get_agent_status` on the same question — *a caller may SEE exactly
-     * what it may SEND to* — so a person moving this control is deciding what that identity can
-     * enumerate and inspect. ⚠️ **A person choosing a grant has to be told the whole of what they
-     * are choosing**, which is the shape `370` paid eight false sentences for.
-     *
-     * ⚑ **The last sentence is WALKED from {@link MESSAGING_REACH_ADMITS}** (449), so any new word
-     * joins this help with nobody editing it.
-     */
     help:
-      'Which conversations this identity may send a message to — and, because an agent can see ' +
-      'exactly what it may write to, which ones it can list and ask about. ' +
+      'Which conversations this identity may send a message to. It may read conversations and named work regardless of this setting. ' +
       reachSentence(MESSAGING_REACH_ADMITS),
     /**
      * 🔴 **449 · the WORD was the whole line, and a model read it and got the rule wrong.**
@@ -551,10 +537,8 @@ export const CAPABILITY_FIELDS = [
      * 🔴 **`any`** (HO-058 §1): *a message consumes nothing, destroys nothing, and transfers no
      * authority.*
      *
-     * ⛔ **This default also decides what an identity may be told about** — `list_agents`,
-     * `get_agent_status`, and the holder state `list_tasks` and `withdraw_task` read. ⚠️ Giving WORK is
-     * {@link ProfileCapabilities.canAssignWork}'s, and a NULL column follows this value: a person
-     * who pressed *Use the default* follows it, and one who narrowed keeps their word.
+     * Giving work is {@link ProfileCapabilities.canAssignWork}'s. A NULL column follows this value:
+     * a person who pressed *Use the default* follows it, and one who narrowed keeps their word.
      */
     ruled: 'any',
     narrowest: 'none',

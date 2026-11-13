@@ -634,17 +634,20 @@ describe('373 · a parent that survives a restart', () => {
       expect(everything).toContain('parent_session_id')
     })
 
-    it('⚑ the derived commander is `agent:<parent>` exactly — one caller admitted, two refused', async () => {
+    it('⚑ the derived parent survives restart as commander while every caller reads its card', async () => {
       const { pm, worker } = await aPmAndItsWorker()
       await restart()
       await reopen(worker, secondWindow)
 
+      expect(store.setCapabilities('pm', { canMessage: 'none' })).toBe(true)
       const admitted: CallerIdentity = { ownerId: agentCallerId(pm) }
       expect(host.agentCard(worker, admitted, null)).not.toBeNull()
-      // ⛔ The child speaking as itself is not its own commander…
-      expect(host.agentCard(worker, { ownerId: agentCallerId(worker) }, null)).toBeNull()
-      // …and the bare session id is not an identity at all: the namespace is load-bearing (347).
-      expect(host.agentCard(worker, { ownerId: pm }, null)).toBeNull()
+      expect(host.withinMessagingReach(worker, admitted)).toBe(true)
+      expect(store.parentOf(worker)).toBe(pm)
+      expect(host.agentCard(worker, { ownerId: agentCallerId(worker) }, null)).not.toBeNull()
+      expect(host.agentCard(worker, { ownerId: pm }, null)).not.toBeNull()
+      expect(host.withinMessagingReach(worker, { ownerId: agentCallerId(worker) })).toBe(false)
+      expect(host.withinMessagingReach(worker, { ownerId: pm })).toBe(false)
     })
 
     it('⚠️ a commander that was NOT the parent cannot be stood up — only a conversation gives', async () => {
@@ -681,8 +684,12 @@ describe('373 · a parent that survives a restart', () => {
       if (parent === undefined) throw new Error('the parent is not running')
       const given = await host.giveWork(request, { ownerId: agentCallerId(parent) })
       if (!given.ok) throw new Error(`the give was refused: ${given.refusal.rail}`)
+      expect(store.setCapabilities('pm', { canMessage: 'none' })).toBe(true)
       expect(host.agentCard(given.owner, { ownerId: agentCallerId(parent) }, null)).not.toBeNull()
-      expect(host.agentCard(given.owner, planner, null)).toBeNull()
+      expect(host.withinMessagingReach(given.owner, { ownerId: agentCallerId(parent) })).toBe(true)
+      expect(store.parentOf(given.owner)).toBe(parent)
+      expect(host.agentCard(given.owner, planner, null)).not.toBeNull()
+      expect(host.withinMessagingReach(given.owner, planner)).toBe(false)
     })
 
     it('⛔ a conversation nobody spawned comes back commanded by nobody, and discloses it', async () => {

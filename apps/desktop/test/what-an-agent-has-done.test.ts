@@ -423,7 +423,7 @@ describe('F009 · what an agent has done, read on demand', () => {
       expect(record.text).toMatch(/ {2}- you, the owner of W1 · a person started it at /)
       expect(record.text).toContain('It has no standing rules.')
       expect(record.text).toContain('It has made no files.')
-      expect(record.text).toContain('Its conversations you can reach hold no pieces of work.')
+      expect(record.text).toContain('Its conversations hold no pieces of work.')
     })
 
     it('🔴 each list is bounded, and what it leaves out is counted', async () => {
@@ -500,7 +500,7 @@ describe('F009 · what an agent has done, read on demand', () => {
         pieces_not_listed: 1,
       })
       expect((record.structured.conversations as unknown[]).length).toBe(10)
-      expect(record.text).toContain('  …and 1 more you can reach, not listed here.')
+      expect(record.text).toContain('  …and 1 more, not listed here.')
       expect(record.text).toContain('  …and 1 older one, not listed here.')
     })
 
@@ -726,7 +726,7 @@ describe('F009 · what an agent has done, read on demand', () => {
   })
 
   describe('2 · the reach', () => {
-    it('🔴 a caller that reaches only what it started reads only those conversations, and every file', async () => {
+    it('narrow message reach leaves the full conversation and piece record readable', async () => {
       const { one, two, oneTools, twoTools, first, standIn, second, file } =
         await aTesterWithAHistory()
       expect(store.setCapabilities(DEFAULT_PROFILE_ID, { canMessage: 'none' } as never)).toBe(true)
@@ -736,24 +736,21 @@ describe('F009 · what an agent has done, read on demand', () => {
       const oneSees = (fromOne.structured.conversations as ConversationPayload[]).map(
         (row) => row.agent,
       )
-      expect(oneSees.sort()).toEqual([first, standIn].sort())
-      expect((fromOne.structured.pieces as PiecePayload[]).map((piece) => piece.label)).toEqual([
-        'W1.4',
-        'W1.3',
-        'W1.2',
-        'W1.1',
-      ])
-      expect(fromOne.text).not.toContain('W2.1')
+      expect(oneSees.sort()).toEqual([first, standIn, second].sort())
+      expect(
+        (fromOne.structured.pieces as PiecePayload[]).map((piece) => piece.label).sort(),
+      ).toEqual(['W1.1', 'W1.2', 'W1.3', 'W1.4', 'W2.1'])
+      expect(fromOne.text).toContain('W2.1')
 
       const fromTwo = await theRecordOf(twoTools, 'tester')
       expect(fromTwo.structured, fromTwo.text).toMatchObject({ outcome: 'ok' })
       expect(
-        (fromTwo.structured.conversations as ConversationPayload[]).map((row) => row.agent),
-      ).toEqual([second])
-      expect((fromTwo.structured.pieces as PiecePayload[]).map((piece) => piece.label)).toEqual([
-        'W2.1',
-      ])
-      expect(fromTwo.text).not.toContain('W1.4')
+        (fromTwo.structured.conversations as ConversationPayload[]).map((row) => row.agent).sort(),
+      ).toEqual([first, standIn, second].sort())
+      expect(
+        (fromTwo.structured.pieces as PiecePayload[]).map((piece) => piece.label).sort(),
+      ).toEqual(['W1.1', 'W1.2', 'W1.3', 'W1.4', 'W2.1'])
+      expect(fromTwo.text).toContain('W1.4')
       // ⚑ Each reaches a conversation of it, so each is told how its rules begin.
       expect(fromTwo.structured.rules_told).toBe(true)
       // ⚑ Its files are not folded by reach: `find_files` names them to any caller.
@@ -762,7 +759,7 @@ describe('F009 · what an agent has done, read on demand', () => {
       ])
       // ⚑ What the record says of a conversation is what `get_agent_status` would admit.
       const status = await fullCall(twoTools, 'get_agent_status', { agent: first })
-      expect(status.structured.outcome).toBe('refused')
+      expect(status.structured.outcome).toBe('ok')
       expect(one).not.toBe(two)
     })
 
@@ -785,7 +782,7 @@ describe('F009 · what an agent has done, read on demand', () => {
         rules_told: true,
         rules_begin: 'You are an auditor of accounts.',
       })
-      expect(told.text).toContain('It has no conversation within your reach.')
+      expect(told.text).toContain('It has no conversations.')
 
       expect(store.setCapabilities(DEFAULT_PROFILE_ID, { canMessage: 'none' } as never)).toBe(true)
       const NOT_TOLD =

@@ -31,20 +31,6 @@ import {
   RecordingSink,
 } from './lib/host-fixture'
 
-/**
- * # 🔴 D-012 · a giver can look closer, and a stall notice is short (proposal §6.2, §6.5)
- *
- * ⛔ A stall notice quoted up to 4 KB of the child's last message, because a giver could not read
- * its child. ⚑ Now:
- *  - §1 the app derives, per conversation, the LAST EXCHANGE — the last message it received, with
- *    who sent it, and its latest words back (an open turn's too), off the ledger;
- *  - §2 the TRANSCRIPT a giver reads — a few turns back, or a search;
- *  - §3 the stall notice PREVIEWS the exchange and names `read_transcript` to a giver it admits;
- *  - §4 `read_transcript` reads a conversation BELOW the caller.
- *
- * ⚑ Real host, real SQLite ledger, real toolsets; the only double is the provider, which echoes.
- */
-
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
@@ -509,7 +495,7 @@ describe('D-012 · a giver looks closer', () => {
   // §4 · the door
   // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-  describe('§4 · read_transcript reads a conversation below you', () => {
+  describe('§4 · read_transcript reads any conversation', () => {
     it('🔴 the giver reads its child: the last exchange, then the turns — words and who sent them', async () => {
       const { pm, worker, label } = await aPmItsWorkerAndAPeer()
       await theGiverFollowsItUp(pm, worker, label, 'build it')
@@ -531,21 +517,90 @@ describe('D-012 · a giver looks closer', () => {
       )
     })
 
-    it('⛔ not below you — a peer, the child reading upward, and an id that names nothing — one answer', async () => {
-      const { pm, worker, workerTools, peer } = await aPmItsWorkerAndAPeer()
+    it('reads a peer, an ancestor and itself by id or piece label without changing their ledgers', async () => {
+      const { pm, worker, workerTools, peer, label } = await aPmItsWorkerAndAPeer()
+      const before = [pm.id, worker, peer.id].map((id) => store.events(id))
+      const launches = order.length
+      const expected = await callOn(pm.tools, 'read_transcript', { agent: worker })
       for (const [tools, agent] of [
         [peer.tools, worker],
+        [peer.tools, label],
+        [workerTools, worker],
+      ] as const) {
+        const read = await callOn(tools, 'read_transcript', { agent })
+        expect(read).toMatchObject({
+          outcome: 'ok',
+          agent: worker,
+          last_exchange: expected.last_exchange,
+          turns: expected.turns,
+        })
+        expect(JSON.stringify(read)).toContain('build it')
+      }
+      for (const [tools, agent] of [
         [workerTools, pm.id],
-        [pm.tools, 'sess_nobody'],
         [pm.tools, pm.id],
       ] as const) {
-        const refused = await callOn(tools, 'read_transcript', { agent })
-        expect(refused, agent).toMatchObject({
-          outcome: 'refused',
-          rail: 'not-a-conversation-below-you',
-          permanence: 'permanent',
+        expect(await callOn(tools, 'read_transcript', { agent })).toMatchObject({
+          outcome: 'ok',
+          agent,
+          last_exchange: { received: null, answer: null },
+          turns: [],
+          older: false,
         })
       }
+      expect([pm.id, worker, peer.id].map((id) => store.events(id))).toEqual(before)
+      expect(order).toHaveLength(launches)
+    })
+
+    it('reads stopped and archived conversations without reopening them', async () => {
+      const { pm, worker, peer, label } = await aPmItsWorkerAndAPeer()
+      await letTheTurnFinish(worker)
+      await waitFor(() => turnsEnded(worker) === 1, 'the brief’s turn to end')
+      const expected = await callOn(pm.tools, 'read_transcript', { agent: worker })
+      await host.close(worker, window)
+      const launches = order.length
+      const before = store.events(worker)
+      expect(await callOn(peer.tools, 'read_transcript', { agent: label })).toEqual(expected)
+      expect(order).toHaveLength(launches)
+      expect(store.events(worker)).toEqual(before)
+      expect(await host.archiveConversation(worker)).toMatchObject({ done: true })
+      const archivedAt = host.whenItWasArchived(worker)
+      expect(archivedAt).not.toBeNull()
+      const archived = store.events(worker)
+      expect(await callOn(peer.tools, 'read_transcript', { agent: worker })).toEqual(expected)
+      expect(host.whenItWasArchived(worker)).toBe(archivedAt)
+      expect(store.events(worker)).toEqual(archived)
+      expect(order).toHaveLength(launches)
+    })
+
+    it('distinguishes an existing empty service transcript from an absent conversation', async () => {
+      const reader = await personOpens('reviewer')
+      const service = 'sess_empty_service'
+      store.create({
+        id: service,
+        provider: 'claude',
+        cwd: root,
+        approvalMode: 'ask',
+        profileId: 'service',
+        service: true,
+      })
+      const before = store.events(service)
+      const launches = order.length
+      expect(await callOn(reader.tools, 'read_transcript', { agent: service })).toMatchObject({
+        outcome: 'ok',
+        agent: service,
+        last_exchange: { received: null, answer: null },
+        turns: [],
+        older: false,
+      })
+      for (const agent of ['sess_nobody', 'W999']) {
+        expect(await callOn(reader.tools, 'read_transcript', { agent })).toMatchObject({
+          outcome: 'refused',
+          rail: 'no-such-agent',
+        })
+      }
+      expect(store.events(service)).toEqual(before)
+      expect(order).toHaveLength(launches)
     })
 
     it('⛔ a malformed read is refused by name, and nothing is read', async () => {

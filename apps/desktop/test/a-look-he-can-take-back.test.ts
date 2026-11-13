@@ -116,8 +116,8 @@ interface World {
   readonly unclaimed: UnclaimedSession | null
   readonly registered: boolean
   readonly provider: string
-  readonly reachableFromOne: boolean
-  readonly reachableFromTwo: boolean
+  readonly readableFromOne: boolean
+  readonly readableFromTwo: boolean
   readonly ledger: readonly TranscriptEvent[]
 }
 
@@ -234,16 +234,15 @@ describe('523 · a look he can take back', () => {
   /**
    * 🔴 **The world, through doors that change none of it.**
    *
-   * ⛔ **`agentCard` and not `attachOpenSessions`** — see this file's header. It asks
-   * `withinMessagingReach` and returns `null` rather than throwing, so both arms are a read.
-   * ⚠️ **Neither window is the commander**, so for these two sinks reach IS ownership.
+   * `agentCard` reads the card for either window. The claim and release are measured by the
+   * unclaimed row, registered session, provider state, and ledger.
    */
   const worldOf = (sessionId: string): World => ({
     unclaimed: host.unclaimedSessions().find((row) => row.sessionId === sessionId) ?? null,
     registered: host.sessionIds.includes(sessionId),
     provider: stateOf(host.agentCard(sessionId, THE_APP_ITSELF, null)),
-    reachableFromOne: host.agentCard(sessionId, one, null) !== null,
-    reachableFromTwo: host.agentCard(sessionId, two, null) !== null,
+    readableFromOne: host.agentCard(sessionId, one, null) !== null,
+    readableFromTwo: host.agentCard(sessionId, two, null) !== null,
     ledger: ledger(sessionId),
   })
 
@@ -259,8 +258,8 @@ describe('523 · a look he can take back', () => {
       const watched = worldOf(sessionId)
       expect(watched).not.toEqual(before)
       expect(watched.unclaimed, 'a claimed conversation is nobody’s no longer').toBeNull()
-      expect(watched.reachableFromOne).toBe(true)
-      expect(watched.reachableFromTwo).toBe(false)
+      expect(watched.readableFromOne).toBe(true)
+      expect(watched.readableFromTwo).toBe(true)
       // ⛔ **The two fields `519` item 3 asked to be exposed**, on the hand-over itself.
       expect(handed.startedWithoutAWindow).toBe(true)
       expect(handed.mayHandItBack).toBe(true)

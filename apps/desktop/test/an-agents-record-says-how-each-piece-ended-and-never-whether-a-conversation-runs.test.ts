@@ -180,7 +180,7 @@ describe('an agent’s record — the cases beyond what-an-agent-has-done', () =
   const conversationLines = (text: string): string[] => {
     const block = text
       .split('\n\n')
-      .find((one) => one.startsWith('Its conversations you can reach'))
+      .find((one) => one.startsWith('Its conversations, the most recently active first:'))
     if (block === undefined) throw new Error(`no conversations block: ${text}`)
     return block.split('\n').filter((line) => line.startsWith('  - '))
   }
@@ -399,18 +399,18 @@ describe('an agent’s record — the cases beyond what-an-agent-has-done', () =
         outcome: 'ok',
         rules_told: false,
         rules_begin: null,
-        conversations: [],
         conversations_not_listed: 0,
-        pieces: [],
         pieces_not_listed: 0,
       })
       expect(notTold.structured).not.toHaveProperty('pieces_unread')
+      expect(
+        (notTold.structured.conversations as ConversationPayload[]).map((one) => one.agent),
+      ).toEqual([holder])
+      expect((notTold.structured.pieces as PiecePayload[]).length).toBe(2)
       expect(notTold.text).toContain(NOT_TOLD)
-      expect(notTold.text).toContain('It has no conversation within your reach.')
+      expect(notTold.text).toContain('clock page')
       expect(notTold.text).not.toContain('careful tester')
       expect(notTold.text).not.toContain('It has no standing rules.')
-      expect(notTold.text).not.toContain('clock page')
-      expect(notTold.text).not.toContain(holder)
     })
   })
 

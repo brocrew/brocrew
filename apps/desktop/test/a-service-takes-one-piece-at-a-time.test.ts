@@ -14,12 +14,7 @@ import { clockTime } from '../src/shared/clock'
 
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
-/**
- * A service takes one piece at a time: its oldest queued piece is handed over alone, and the next
- * only once that one has ended and the service runs nothing. A turn going quiet, a question, an
- * approval or a stall keeps the piece it is on. Reached through the host alone: services are
- * switched off in the app.
- */
+/** The active piece keeps the service until it ends. */
 
 describe('a service takes one piece at a time', () => {
   let world: AServiceWorld
@@ -34,7 +29,6 @@ describe('a service takes one piece at a time', () => {
     if (!outcome.ok) throw new Error(`refused (${outcome.refusal.rail}): ${outcome.refusal.reason}`)
     return outcome
   }
-  /** A service and a caller a person opened; with `auto`, the service runs without asking. */
   const aServiceAndACaller = async (
     opts: { auto?: boolean } = {},
   ): Promise<{ host: RuntimeHost; caller: string }> => {
@@ -47,7 +41,6 @@ describe('a service takes one piece at a time', () => {
   const piecesOf = (service: string): readonly PieceRow[] => world.store.piecesOwnedBy(service)
   const stateOf = (service: string, piece: string): string | undefined =>
     piecesOf(service).find((one) => one.piece === piece)?.state
-  /** Until `piece` at `service` has been handed over: open, and no longer waiting. */
   const handedOver = async (service: string, piece: string): Promise<void> => {
     await vi.waitFor(() => {
       expect(stateOf(service, piece)).not.toBe('waiting')
@@ -259,7 +252,7 @@ describe('a service takes one piece at a time', () => {
     expect(handedOverIn(one.owner)).toEqual([one.piece])
   })
 
-  it('never shows a caller the words of the piece the service is on', async () => {
+  it('shows the service approval wait only on its active piece, not on the queued caller’s piece', async () => {
     const { host, caller } = await aServiceAndACaller()
     world.anAgent('other-caller', 'nothing kept')
     const other = await world.aPersonOpens(host, 'other-caller')
@@ -269,12 +262,25 @@ describe('a service takes one piece at a time', () => {
         brief: 'the secret brief',
       }),
     )
+    const queued = accepted(await world.gives(host, caller, 'browser-driver'))
     await handedOver(one.owner, one.piece)
-    const two = accepted(await world.gives(host, other, 'browser-driver', { title: 'Lunch' }))
-    const record = await call(host, other, 'list_tasks', { piece: two.label })
+    await vi.waitFor(() => {
+      expect(world.ledger(one.owner).some((row) => row.type === 'permission_request')).toBe(true)
+    })
+    expect(stateOf(one.owner, one.piece)).toBe('working')
+    expect(stateOf(one.owner, queued.piece)).toBe('waiting')
+    const active = await call(host, caller, 'list_tasks', { piece: one.label })
+    expect(active.structured['stopped_on_a_person']).toMatchObject({
+      asks: expect.stringContaining('its request to use Bash') as unknown,
+    })
+    const lunch = accepted(await world.gives(host, other, 'browser-driver', { title: 'Lunch' }))
+    const record = await call(host, other, 'list_tasks', { piece: lunch.label })
+    expect(record.structured['stopped_on_a_person']).toBeUndefined()
+    expect(JSON.stringify(record.structured['held_because'] ?? '')).not.toContain('Secret')
     expect(record.text).not.toContain('secret')
     expect(record.text).not.toContain('Secret')
     expect(JSON.stringify(record.structured)).not.toContain('secret')
+    expect(JSON.stringify(record.structured)).not.toContain('Secret')
   })
 
   it('runs a piece that asked for no pair on its agent’s, never on the pair the piece before it asked for', async () => {
@@ -713,12 +719,7 @@ describe('a service takes one piece at a time', () => {
   })
 
   describe('at a restart', () => {
-    /**
-     * A service's conversation recorded with two pieces queued in it and nothing handed over, as a
-     * stop between its pieces leaves it; with `held`, the first one's brief is held in its ledger,
-     * for its next start, or for a life a crash cut — or was handed to that life, which a crash cut
-     * before its turn was recorded.
-     */
+    /** Queue left at a stop, with first brief held or interrupted. */
     const aQueueLeftBehind = (
       held:
         | 'nothing'

@@ -198,10 +198,10 @@ describe('a service is reached through the piece it is on', () => {
       expect(rebriefed.structured).toMatchObject({ outcome: 'ok' })
     })
 
-    it('opens no other door to it: its status, its record and a question to it stay out of reach', async () => {
+    it('reads the service status while a question remains outside the caller’s reach', async () => {
       const { host, caller, service } = await aServiceOnTheFirstPiece()
       const status = await call(host, caller, 'get_agent_status', { agent: service })
-      expect(status.structured).toMatchObject({ outcome: 'refused' })
+      expect(status.structured).toMatchObject({ outcome: 'ok', agent: { agent: service } })
       const asked = await call(host, caller, 'ask_question', {
         who_answers: 'an-agent',
         agent: service,
@@ -209,7 +209,7 @@ describe('a service is reached through the piece it is on', () => {
       })
       expect(asked.structured).toMatchObject({ outcome: 'refused' })
       const listed = await call(host, caller, 'list_agents', {})
-      expect(JSON.stringify(listed.structured)).not.toContain(service)
+      expect(JSON.stringify(listed.structured)).toContain(service)
     })
 
     it('lets a message to it ask its turn to stop only from the caller whose piece it is on', async () => {

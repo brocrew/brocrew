@@ -485,10 +485,7 @@ export const TOOL_REFUSALS = [
   // A wake met a temporary descriptor, process-slot or memory shortage in the error cause chain.
   // Classification uses errno, not provider text; retry may succeed when resources return.
   'that-conversation-could-not-be-woken-just-now',
-  // Names the transcript-reach refusal. Missing and out-of-scope conversations share this word;
-  // producers define the allowed descendant or same-profile scope.
-  'not-a-conversation-below-you',
-  // No piece held or given by the caller matches; missing and other callers’ pieces share this word.
+  // No piece available to the call matches this name.
   'no-piece-by-that-name',
   // The giver names an agent-given piece; the holder can name work a person gave it.
   'the-giver-names-a-piece',

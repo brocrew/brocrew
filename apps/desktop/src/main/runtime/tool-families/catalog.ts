@@ -137,8 +137,7 @@ export const TOOL_NAMES = [
   // **D-009 · F012** — the asker takes back a question it asked (ruling 5). Appended: the
   // roster's order is pinned by index.
   'withdraw_question',
-  // **D-012 · a giver reads a conversation below it** (proposal §6.5) — its last exchange and its
-  // turns, a few back or by a search. **D-024 · R2 — and its own profile's other conversations.**
+  // Read any known conversation's last exchange and turns, a few back or by a search.
   // A READER, like `read_document`: it hands nobody anything.
   'read_transcript',
   /**

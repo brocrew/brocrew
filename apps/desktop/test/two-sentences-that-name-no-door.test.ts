@@ -198,7 +198,7 @@ describe('two sentences that name a door', () => {
         reason: string
       }
 
-      expect(payload.reason).toContain('list_agents names the ones you can reach')
+      expect(payload.reason).toContain('list_agents names the conversations this app can run')
       expect(payload.reason).toContain('list_profiles names every agent this app holds')
 
       expect(payload.reason).not.toContain(ghost)
@@ -209,7 +209,7 @@ describe('two sentences that name a door', () => {
       ])
 
       expect(payload.reason).toContain(
-        'no conversation you can reach goes by that id or piece label, so nothing was done.',
+        'no conversation available to this call goes by that id or piece label, so nothing was done.',
       )
     })
 

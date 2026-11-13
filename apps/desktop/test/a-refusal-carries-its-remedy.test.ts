@@ -770,8 +770,9 @@ describe('425 · a refusal carries its remedy', () => {
       // ⚑ **+2**, the move offer's two that carry no act.
       // ⚑ **+1**, `until-a-person-changes-it` and so `null`: `services-are-off-so-none-is-made`, a
       // service asked for while services are off — its sentence names the person who turns them on.
+      // R03 removes the permanent ancestry-only read refusal; a known conversation is readable.
       // Two provider choices cannot be cleared by retrying: a fixed service and a full pool.
-      expect(quiet).toHaveLength(85)
+      expect(quiet).toHaveLength(84)
       for (const [rail, permanence] of [
         ['service-provider-is-fixed', 'permanent'],
         ['no-room-for-provider-conversation', 'until-a-person-changes-it'],
@@ -1011,7 +1012,9 @@ describe('425 · a refusal carries its remedy', () => {
       // ⚑ And one more: a service asked for while services are off.
       // ⚑ Four more: a piece that cannot end with the copies of its questions, at two vocabularies.
       // The walk also includes the fixed service provider and a pool with no matching provider.
-      expect(walked).toHaveLength(116)
+      // R03 removes the ancestry-only read refusal from the canonical vocabulary.
+      expect(walked).toHaveLength(115)
+      expect(everyRail().some((one) => one.rail === 'not-a-conversation-below-you')).toBe(false)
       expect(walked).toEqual(everyRail().map((one) => `${one.vocabulary} · ${one.rail}`))
     })
   })

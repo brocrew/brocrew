@@ -371,7 +371,7 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
         const said = await callWithWords(tools, 'interrupt_agent', { agent: named, reason: 'stop' })
         const guide =
           named === label
-            ? ` ${label} is your own piece, with no helpers recorded under it. list_agents names who you can reach.`
+            ? ` ${label} is your own piece, with no helpers recorded under it. list_agents names conversations; message_agent answers whether one can take your message.`
             : named === itsRoot
               ? ` ${itsRoot} is your own piece. Its helpers: Ada (worker) on ${label} (working). Reach a helper by its piece's label, even after it ended: message_agent with kind: note, or ask_question. For new work, give_work with its profile. To stop a known conversation, interrupt_agent with its label.`
               : ''
@@ -396,7 +396,7 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
         ended,
         'that-agent-is-you',
         NOT_ITSELF +
-          ` ${label} is your own piece, with no helpers recorded under it. list_agents names who you can reach.`,
+          ` ${label} is your own piece, with no helpers recorded under it. list_agents names conversations; message_agent answers whether one can take your message.`,
         `${label}, ended`,
       )
       // ⚑ The pair: the pm names the same label — a piece it gave, whose holder is another.

@@ -21,25 +21,7 @@ import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 
-/**
- * 🔴 **D-017 · one list, sorted by activity, wherever it is read.**
- *
- * ⛔ **`conversationsVisibleTo` is the one walk behind `list_agents` and `get_agent_status`'s
- * reach check** — running and stopped conversations are merged into a single
- * sequence, cut nowhere except the page, and sorted newest-activity-first. Nothing in the existing
- * suite compares that sequence unsorted (every prior assertion calls `.sort()` on the ids before
- * comparing), so the ordering rule itself has no test standing over it — §1 is that test.
- *
- * ⚑ **And the same walk is the reach.** A conversation that stopped is read under the identical
- * `withinMessagingReach` question as a running one, so a caller with a narrow grant must lose it
- * from `get_agent_status` and from the list the moment it stops, and a caller with a wide one must
- * keep it — §3 measures both halves of that over the SAME now-stopped target. ⚠️ §2 measured
- * `list_projects`' fold of the same walk, and went with that tool at D-016.
- *
- * ⚑ **Real host, real SQLite ledger, real migrations, real IPC boundary.** The only double is the
- * provider — `a-reach-you-can-see.test.ts`'s harness, which §3's fixture is copied from.
- */
-
+/** One list orders running and stopped conversations by recent activity. */
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
@@ -181,12 +163,7 @@ describe('D-017 · one list, newest activity first, wherever it is read', () => 
   // §3 · a stopped conversation is refused by REACH, never folded into no-such-agent
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
-  /**
-   * 🔴 **Copied from `a-reach-you-can-see.test.ts`** — two callers, one target, one grant apart.
-   * ⛔ **Nothing here makes anybody command anything**: no `commandedBy`, no shared owner and no
-   * spawn between any two of them, so the only thing that can admit an answer is the grant — and,
-   * since §3 below stops the target, the only thing that can admit a STOPPED one.
-   */
+  /** Two callers differ in message reach; both may read the stopped target. */
   const twoCallersAndOneTarget = async (): Promise<{
     brobot: string
     brobotTools: AgentToolset
@@ -199,8 +176,7 @@ describe('D-017 · one list, newest activity first, wherever it is read', () => 
     const brobotTools = theToolsetJustHandedOut()
     const explorer = await personOpens('explorer')
     const explorerTools = theToolsetJustHandedOut()
-    // ⚠️ **The premise, asserted rather than assumed.** ⚑ **`none` since D-016** — the reach
-    // vocabulary is `none | any`, and `none` is the one word that leaves a caller out of reach.
+    // Narrow messaging without narrowing the readers.
     expect(store.setCapabilities('explorer', { canMessage: 'none' })).toBe(true)
     expect(store.capabilitiesOf(DEFAULT_PROFILE_ID)?.canMessage).toBe('any')
     expect(store.capabilitiesOf('explorer')?.canMessage).toBe('none')
@@ -208,36 +184,16 @@ describe('D-017 · one list, newest activity first, wherever it is read', () => 
     return { brobot, brobotTools, explorer, explorerTools, manager }
   }
 
-  describe('§3 · a stopped, out-of-reach conversation meets the reach rail, never no-such-agent', () => {
-    /**
-     * 🔴 **M131's shape, named**: `whyItIsOutOfReach`'s `!this.slots.has(sessionId)` branch only
-     * runs for a STOPPED conversation — every out-of-reach case `a-reach-you-can-see.test.ts` §1
-     * drives is a RUNNING one, which never enters this branch at all. ⚑ **The granted caller, over
-     * the identical stopped id, is the paired positive**: it is not the target having stopped that
-     * excludes `explorer`, because `brobot` reaches the very same stopped conversation fine.
-     */
-    it("a stopped conversation out of the caller's reach is refused the reach rail, not no-such-agent, and is left off that caller's list — the granted caller still reaches it", async () => {
+  describe('§3 · stopped conversations remain readable', () => {
+    it('a stopped conversation remains readable when messaging is narrowed', async () => {
       const { brobotTools, explorerTools, manager } = await twoCallersAndOneTarget()
 
       // 🔴 **The target stops.**
       await host.close(manager, window)
 
-      // ⛔ **The narrow caller** — refused by REACH, in the same shape and the same words
-      // `message_agent` gives for the identical call, and never `no-such-agent`: the conversation
-      // exists, and `05` rule 6 reserves that word for an id no conversation has.
-      const refused = await callOn(explorerTools, 'get_agent_status', { agent: manager })
-      expect(refused, JSON.stringify(refused)).toMatchObject({
-        outcome: 'refused',
-        rail: 'may-not-message',
-        permanence: 'until-a-person-changes-it',
-        detail: { reach: 'none' },
-      })
-      expect(refused['rail']).not.toBe('no-such-agent')
-      // ⚠️ **All but the detail**: at `none` `message_agent` answers from its argument-independent
-      // wall (`486`), before it reads the id, so its detail names the grant and no agent.
-      const withoutDetail = (answer: Record<string, unknown>): Record<string, unknown> => ({
-        ...answer,
-        detail: undefined,
+      expect(await callOn(explorerTools, 'get_agent_status', { agent: manager })).toMatchObject({
+        outcome: 'ok',
+        agent: { state: 'idle' },
       })
       const said = await callOn(explorerTools, 'message_agent', {
         agent: manager,
@@ -245,9 +201,9 @@ describe('D-017 · one list, newest activity first, wherever it is read', () => 
         // ⚑ **D-016 · a note** — a follow-up names a piece the sender gave, and this caller gave none.
         kind: 'note',
       })
-      expect(withoutDetail(said)).toStrictEqual(withoutDetail(refused))
+      expect(said).toMatchObject({ outcome: 'refused', rail: 'may-not-message' })
       expect(said['detail']).toStrictEqual({ reach: 'none' })
-      expect(await idsListedBy(explorerTools)).not.toContain(manager)
+      expect(await idsListedBy(explorerTools)).toContain(manager)
 
       // ⚑ **THE PAIRED POSITIVE — the granted caller, over the identical stopped id.**
       expect(await callOn(brobotTools, 'get_agent_status', { agent: manager })).toMatchObject({

@@ -170,28 +170,17 @@ export class WorkReads {
   /**
    * 🔴 **D-016 · one piece's RECORD** — `list_tasks` naming a piece (design notes §2, plan §3.9).
    *
-   * ⛔ **The caller must own it — its root included — or have given it** (the giver through
-   * {@link theIdsItStandsFor}), ⚑ **or a conversation of its own profile must** (D-024 · R2);
-   * anything else is `no-piece-by-that-name`, one answer for a name that names nothing and one that
-   * is somebody else's, so a label is no oracle.
+   * A named piece is readable regardless of who holds or gave it. A missing label remains
+   * `no-piece-by-that-name`.
    *
    * ⚑ **A root is its title, its status line, its children and its resources** (R1; D-023 · R1): no
    * state, no questions and no exchange of its own. ⚑ **Any other piece is its board entry, plus
    * its brief, the last exchange with the conversation holding it in full (D-012), the open
    * questions that conversation asked about it, its children and its resources.**
    */
-  pieceRecord(sessionId: string, spelled: string): PieceRecord {
+  pieceRecord(_sessionId: string, spelled: string): PieceRecord {
     const row = this.sources.pieceNamed(spelled)
     if (row === null) return { is: 'no-piece-by-that-name' }
-    const itsOwner = row.owner === sessionId
-    const itsGiver =
-      row.givenBy !== null && this.sources.theIdsItStandsFor(sessionId).includes(row.givenBy)
-    // ⚑ **D-024 · R2 — or a conversation of its own profile holds or gave it**
-    // ({@link ofOneIdentity}).
-    const itsProfiles =
-      this.sources.ofOneIdentity(row.owner, sessionId) ||
-      (row.givenBy !== null && this.sources.ofOneIdentity(row.givenBy, sessionId))
-    if (!itsOwner && !itsGiver && !itsProfiles) return { is: 'no-piece-by-that-name' }
     const unread = rowsUnreadOnce()
     const waiting = this.sources.oneWaitReadPerAnswer(unread)
     const children = this.sources.childrenOnTheRecord(row.piece, waiting, unread)

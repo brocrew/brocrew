@@ -556,7 +556,7 @@ describe('629 · a stop reaches down the whole chain', () => {
         const said = await callWithText(tools, 'interrupt_agent', { agent: named, reason: 'stop' })
         const guide =
           named === aliLabel
-            ? ` ${aliLabel} is your own piece, with no helpers recorded under it. list_agents names who you can reach.`
+            ? ` ${aliLabel} is your own piece, with no helpers recorded under it. list_agents names conversations; message_agent answers whether one can take your message.`
             : named === brobotsRoot
               ? ` ${brobotsRoot} is your own piece. Its helpers: Ada (${pmProfile}) on ${adaLabel} (working). Reach a helper by its piece's label, even after it ended: message_agent with kind: note, or ask_question. For new work, give_work with its profile. To stop a known conversation, interrupt_agent with its label.`
               : ''
@@ -620,7 +620,7 @@ describe('629 · a stop reaches down the whole chain', () => {
       for (const named of [ali, aliLabel, next]) {
         const guide =
           named === aliLabel
-            ? ` ${aliLabel} is your own piece, with no helpers recorded under it. list_agents names who you can reach.`
+            ? ` ${aliLabel} is your own piece, with no helpers recorded under it. list_agents names conversations; message_agent answers whether one can take your message.`
             : ''
         expect(
           await callOn(nextTools, 'interrupt_agent', { agent: named, reason: 'stop' }),

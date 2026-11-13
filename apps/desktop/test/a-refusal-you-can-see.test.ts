@@ -193,6 +193,7 @@ describe('405 · a refusal you can see', () => {
     // seam is for.
     agentRecord: (...args) => host.agentRecord(...args),
     agentCard: (...args) => host.agentCard(...args),
+    servicePieceForStatus: (...args) => host.servicePieceForStatus(...args),
     whatOpenedItsLastTurn: (...args) => host.whatOpenedItsLastTurn(...args),
     // ⚑ **D-017's two readers** (R12's reach answer, R10's replacement), delegated like every other
     // member — see this helper's own note.
@@ -733,7 +734,6 @@ describe('405 · a refusal you can see', () => {
       const sentence = `${reason} ${permanenceInWords('no-such-profile', 'permanent')}`
       expect(theRefusalIn(pm).told).toEqual({ text: sentence, dropped: 0 })
 
-      // The app is closed, and started again on the same file.
       await host.closeAll()
       db.close()
       db = openDatabase(join(userData, 'brobot2.sqlite'))

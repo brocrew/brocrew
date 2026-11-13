@@ -452,7 +452,7 @@ describe('374 · the rails a message passes', () => {
       // capability looked up from `this.slots` would have quietly closed that door, because there is
       // no slot for `pm` at all. ⚑ Every fact this gate reads comes from the ledger for that reason.
       await reopenInto(worker, secondWindow)
-      expect(host.agentCard(pm, secondWindow, null)).toBeNull()
+      expect(host.agentCard(pm, secondWindow, null)).not.toBeNull()
 
       const by = speakingAs(pm)
       reach('pm', { canMessage: 'none' })

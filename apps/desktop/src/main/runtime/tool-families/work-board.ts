@@ -204,9 +204,7 @@ const pieceText = (
  */
 const rootText = (root: RootOnTheBoard, reader: string): string =>
   `  ${pieceLine(root.label, root.title)} · ${
-    root.owner === reader
-      ? 'your own work, from a person'
-      : 'work a person gave another conversation of your profile'
+    root.owner === reader ? 'your own work, from a person' : 'work a person gave that conversation'
   }${root.statusLine === null ? '' : ` · ${root.statusLine.text}`}\n  Done when: ${root.definitionOfDone ?? 'Not recorded'}`
 
 /** **D-016 · a root as a payload carries it** — no state, for {@link rootText}'s reason. */
@@ -272,6 +270,7 @@ export function createListTasksTool(
     | 'nameByItsWorkUnder'
     | 'pieceBoard'
     | 'pieceRecord'
+    | 'servicePieceForStatus'
     | 'whatToCallTheConversation'
     | 'whenItWasArchived'
     | 'whyWhatIsHeldWaits'
@@ -286,15 +285,12 @@ export function createListTasksTool(
     name: 'list_tasks',
     handlerOwnsMissingInput: true,
     description:
-      'Your pieces of work: named, one piece’s record — its state, current status line, the last exchange with the agent holding it, its open questions, its children and its resources — the inputs it was given and what was made for it; unnamed, your board — the open pieces you hold (your own root among them) and gave: waiting, working or stalled, and any you gave whose answer has not reached you. An open piece an archived conversation holds is named in one line and not listed. The ones that ended are counted and not listed: state: "all" lists them too and "ended" only them, a line each, newest first and as many as limit says; name one to read its record. A piece another conversation of your profile holds or gave can be named too. Labels (W1.2) and ids both name a piece. made: true lists instead the files your profile’s conversations made.',
+      'Your pieces of work: named, one piece’s record — its state, current status line, the last exchange with the agent holding it, its open questions, its children and its resources — the inputs it was given and what was made for it; unnamed, your board — the open pieces you hold (your own root among them) and gave: waiting, working or stalled, and any you gave whose answer has not reached you. An open piece an archived conversation holds is named in one line and not listed. The ones that ended are counted and not listed: state: "all" lists them too and "ended" only them, a line each, newest first and as many as limit says; name one to read its record. Any piece can be named to read its record. Labels (W1.2) and ids both name a piece. made: true lists instead the files your profile’s conversations made.',
     /**
      * **486 · the rails are the whole gate** (HO-031 §2.4).
      *
-     * **The caller's own work**: a piece it holds or gave, **or one a conversation of its
-     * own profile holds or gave** (D-024 · R2), and nothing else — the host's lookup is the
-     * entitlement, and a piece it may not read is `no-piece-by-that-name`. **D-024 · R3 —
-     * `made`** lists the files its profile's conversations made; each is readable by its id with
-     * `read_document`.
+     * Named reads look up any piece. The unnamed board and `made` still describe the caller's
+     * own work and its profile's files.
      */
     beyondItsRails: 'nothing-its-rails-do-not-cover',
     input: Object.fromEntries(
@@ -397,15 +393,9 @@ export function createListTasksTool(
          */
         const called = namedByItsWorkOnce(host)
         /**
-         * **484 · what the conversation holding a row is doing now** — memoised per id, and
-         * asked through {@link AgentToolHost.agentCard} so the disclosure is EXACTLY
-         * `get_agent_status`'s and cannot be a second opinion about reach.
-         *
-         * **`null` when the card reader has no visible card** — this caller may not be told about
-         * that conversation. It is the same absence `list_agents` gives, arrived at through the same
-         * door. Asked here rather than in the host: the fold has no business knowing what is
-         * live, and a `PieceRow` that carried a live field would be a derivation that is not a
-         * function of its ledger.
+         * The conversation holding a row is read through {@link AgentToolHost.agentCard} and
+         * memoised per id. The fold does not own live state; a `PieceRow` carrying a live field
+         * would be a derivation that is not a function of its ledger.
          */
         const seen = new Map<string, AgentCard | null>()
         const cardOf = (row: PieceRow): AgentCard | null => {
@@ -432,14 +422,23 @@ export function createListTasksTool(
             ? ` · ${whoseText(card.whose)}`
             : ''
         }
+        const servicePieces = new Map<string, string | null | undefined>()
+        const servicePieceOf = (owner: string): string | null | undefined => {
+          if (!servicePieces.has(owner)) servicePieces.set(owner, host.servicePieceForStatus(owner))
+          return servicePieces.get(owner)
+        }
         /**
          * What an open row's holder's turn is stopped on until a person answers it, as its card
          * says it.
          */
-        const stopOf = (row: PieceRow): AgentCard['stoppedOnAPerson'] =>
-          TASK_IS_OPEN[row.state] && row.owner !== me
-            ? (cardOf(row)?.stoppedOnAPerson ?? null)
-            : null
+        const stopOf = (row: PieceRow): AgentCard['stoppedOnAPerson'] => {
+          if (!TASK_IS_OPEN[row.state] || row.owner === me) return null
+          const stop = cardOf(row)?.stoppedOnAPerson ?? null
+          if (stop === null) return null
+          const activeServicePiece = servicePieceOf(row.owner)
+          if (activeServicePiece !== undefined && activeServicePiece !== row.piece) return null
+          return stop
+        }
         /**
          * **Why what is held for a row's holder waits** — the words a receipt says when it
          * holds something for that conversation ({@link AgentToolHost.whyWhatIsHeldWaits}),
@@ -452,7 +451,10 @@ export function createListTasksTool(
           if (!TASK_IS_OPEN[row.state] || row.owner === me || ownerIs(row) === null) return null
           const known = waits.get(row.owner)
           if (known !== undefined) return known
-          const why = host.whyWhatIsHeldWaits(row.owner, stopOf(row) !== null)
+          const why = host.whyWhatIsHeldWaits(
+            row.owner,
+            (cardOf(row)?.stoppedOnAPerson ?? null) !== null,
+          )
           waits.set(row.owner, why)
           return why
         }

@@ -306,7 +306,7 @@ describe('a label names the conversation that owns the piece, and no more', () =
     const doors: [ToolName, Record<string, unknown>, string][] = [
       ['get_agent_status', {}, 'no-such-agent'],
       ['interrupt_agent', { reason: 'no longer needed' }, 'no-such-agent'],
-      ['read_transcript', {}, 'not-a-conversation-below-you'],
+      ['read_transcript', {}, 'no-such-agent'],
     ]
     for (const [name, rest, rail] of doors) {
       const noLabel = await callOn(brobotTools, name, { agent: 'W9.9', ...rest })
@@ -318,7 +318,7 @@ describe('a label names the conversation that owns the piece, and no more', () =
     }
   })
 
-  it('⛔ to a caller that may not message, the label of a conversation out of its reach is unknown, told exactly like a label no piece carries, while the same conversation’s id meets the reach rail', async () => {
+  it('a caller with narrow messaging still reads the same foreign card by label and id', async () => {
     const { brobotTools, ada, stranger } = await aFamily()
 
     // ⚑ The paired positive, BEFORE the narrowing: the default caller reaches the stranger by its
@@ -331,31 +331,22 @@ describe('a label names the conversation that owns the piece, and no more', () =
     narrowBroBot()
     const rowsBefore = ledger(stranger).length
 
-    // The stranger's id meets the reach rail — the premise that it IS out of reach.
+    // Reading remains independent of message reach.
     const byId = await callOn(brobotTools, 'get_agent_status', { agent: stranger })
     expect(byId, JSON.stringify(byId)).toMatchObject({
-      outcome: 'refused',
-      rail: 'may-not-message',
-      detail: { reach: 'none', agent: stranger },
+      outcome: 'ok',
+      agent: { agent: stranger },
     })
 
-    // ⛔ Its label is a label no piece carries.
     const byLabel = await fullCall(brobotTools, 'get_agent_status', { agent: 'W2' })
     const unknownLabel = await fullCall(brobotTools, 'get_agent_status', { agent: 'W9.9' })
     expect(byLabel.structured, byLabel.text).toMatchObject({
-      outcome: 'refused',
-      rail: 'no-such-agent',
+      outcome: 'ok',
+      agent: { agent: stranger },
     })
-    expect(withoutTheEchoedSpelling(byLabel.structured)).toEqual(
-      withoutTheEchoedSpelling(unknownLabel.structured),
-    )
-    expect(byLabel.structured.detail).toEqual({ agent: 'W2' })
-    expect(byLabel.text).toBe(unknownLabel.text)
-    // ...and neither the payload nor the sentence lets slip that the conversation exists.
-    for (const said of [JSON.stringify(byLabel.structured), byLabel.text]) {
-      expect(said).not.toContain(stranger)
-      expect(said).not.toContain('Amara')
-    }
+    expect(byLabel.structured).toEqual(byId)
+    expect(unknownLabel.structured).toMatchObject({ outcome: 'refused', rail: 'no-such-agent' })
+    expect(byLabel.text).toContain('Amara')
     expect(ledger(stranger)).toHaveLength(rowsBefore)
 
     // ⚑ The same reader, one fact over: its own child is still reached by label and by id.
@@ -368,9 +359,9 @@ describe('a label names the conversation that owns the piece, and no more', () =
     const { brobot, brobotTools, ali, aliHandle, stranger, strangerHandle } = await aFamily()
     narrowBroBot()
 
-    // ⚠️ The premise: Ali is a GRANDCHILD, so it is out of a `none` caller's messaging reach.
+    // The grandchild remains readable while messaging is narrowed.
     const premise = await callOn(brobotTools, 'get_agent_status', { agent: ali })
-    expect(premise.rail, JSON.stringify(premise)).toBe('may-not-message')
+    expect(premise, JSON.stringify(premise)).toMatchObject({ outcome: 'ok' })
 
     await makeItWork(aliHandle)
     await makeItWork(strangerHandle)
@@ -428,37 +419,28 @@ describe('a label names the conversation that owns the piece, and no more', () =
     })
   })
 
-  it('🔴 a caller that may not message reads, by label, the transcript of a conversation it may read, and not a stranger’s', async () => {
+  it('a caller that may not message reads an unrelated conversation by label and id', async () => {
     const { brobotTools, ali, stranger } = await aFamily()
     narrowBroBot()
 
-    // ⚠️ The premise: Ali is out of a `none` caller's messaging reach.
-    const premise = await callOn(brobotTools, 'get_agent_status', { agent: ali })
-    expect(premise.rail, JSON.stringify(premise)).toBe('may-not-message')
-
-    // The chain admits the grandparent: Ali's lines, by its label.
+    const status = await callOn(brobotTools, 'get_agent_status', { agent: ali })
+    expect(status).toMatchObject({ outcome: 'ok' })
     const read = await fullCall(brobotTools, 'read_transcript', { agent: 'W1.1.1' })
     expect(read.structured, read.text).toMatchObject({ outcome: 'ok', agent: ali, name: 'Ali' })
     expect(read.text).toContain('wire the routes')
 
-    // ⛔ A stranger's label reads as the label no piece carries, and its id as the same rail.
+    const before = ledger(stranger)
     const byLabel = await fullCall(brobotTools, 'read_transcript', { agent: 'W2' })
-    const unknownLabel = await fullCall(brobotTools, 'read_transcript', { agent: 'W9.9' })
     const byId = await fullCall(brobotTools, 'read_transcript', { agent: stranger })
-    for (const refused of [byLabel, unknownLabel, byId]) {
-      expect(refused.structured, refused.text).toMatchObject({
-        outcome: 'refused',
-        rail: 'not-a-conversation-below-you',
-      })
-    }
-    expect(withoutTheEchoedSpelling(byLabel.structured)).toEqual(
-      withoutTheEchoedSpelling(unknownLabel.structured),
-    )
-    expect(byLabel.text).toBe(unknownLabel.text)
-    for (const said of [JSON.stringify(byLabel.structured), byLabel.text]) {
-      expect(said).not.toContain(stranger)
-      expect(said).not.toContain('Amara')
-    }
+    expect(byLabel.structured, byLabel.text).toMatchObject({ outcome: 'ok', agent: stranger })
+    expect(byLabel.structured).toEqual(byId.structured)
+    expect(byLabel.text).toBe(byId.text)
+    const unknown = await fullCall(brobotTools, 'read_transcript', { agent: 'W9.9' })
+    expect(unknown.structured, unknown.text).toMatchObject({
+      outcome: 'refused',
+      rail: 'no-such-agent',
+    })
+    expect(ledger(stranger)).toEqual(before)
   })
 
   it.each(['person', 'agent', 'app', 'unknown'] as const)(
@@ -1077,7 +1059,7 @@ describe('a label names the conversation that owns the piece, and no more', () =
           kind: 'note',
           text: 'Read this.',
         })
-        expect(said.text).toContain('None of its helpers is in your reach.')
+        expect(said.text).toContain('None of its helpers is in your messaging reach.')
         expect(said.text).not.toContain('Ada')
         expect(said.text).not.toContain('worker')
         const record = await fullCall(brobotTools, 'list_tasks', { piece: 'W1' })

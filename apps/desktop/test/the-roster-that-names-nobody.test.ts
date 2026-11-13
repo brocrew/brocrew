@@ -548,7 +548,7 @@ describe('610 · the roster that names nobody', () => {
       // ⚑ **D-016 · commit 7 · R1 — and by the piece it owns**, the label every door that takes an
       // agent takes beside its id.
       expect(said).toContain(
-        'It answers for any conversation you may reach — every one list_agents names, and any other by the piece it owns (W1.2) or by its id.',
+        'It answers for any conversation this app can run or restart, including every one list_agents names, by the piece it owns (W1.2) or by its id.',
       )
     })
   })

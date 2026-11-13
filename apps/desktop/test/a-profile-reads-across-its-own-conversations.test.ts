@@ -27,9 +27,6 @@ import {
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
-/** The last clause of `read_transcript`'s one refusal, as a model reads it since D-024. */
-const THE_REACH_IT_NOW_SAYS = 'your profile’s other conversations are read here'
-
 type Answered = { structured: Record<string, unknown>; text: string }
 
 describe('D-024 · a profile reads across its own conversations', () => {
@@ -227,19 +224,13 @@ describe('D-024 · a profile reads across its own conversations', () => {
     return files[0]?.resource as string
   }
 
-  /** What a refusal says as a model reads it: its structure beside its words, nothing else. */
-  const reasonOf = (answer: Record<string, unknown>): string => String(answer.reason)
-
-  const withoutTheEchoedSpelling = (refusal: Record<string, unknown>): Record<string, unknown> =>
-    Object.fromEntries(Object.entries(refusal).filter(([key]) => key !== 'detail'))
-
   const namesOf = (made: unknown): string[] => (made as { name: string }[]).map((one) => one.name)
 
   // ───────────────────────────────────────────────────────────────────────────────────────────
   // §1 · read_transcript
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
-  it('a conversation reads another conversation of its own profile — by its id, or by the label of a piece it owns — and not another profile’s, a stranger’s, or its own', async () => {
+  it('a conversation reads any profile, itself and recorded conversations without an identity', async () => {
     const ali1 = await personOpens('ali')
     const ali2 = await personOpens('ali')
     const bob = await personOpens('bob')
@@ -294,101 +285,90 @@ describe('D-024 · a profile reads across its own conversations', () => {
     const chain = await callFull(pm, 'read_transcript', { agent: ali3 })
     expect(chain.structured, chain.text).toMatchObject({ outcome: 'ok', agent: ali3 })
 
-    // (d) ⛔ The same call, from the same reader, on what is NOT its profile's — each the one answer.
-    const refusals: { what: string; answered: Answered }[] = [
-      {
-        what: 'another profile’s id',
-        answered: await callFull(ali2, 'read_transcript', { agent: bob }),
-      },
-      {
-        what: 'another profile’s root label',
-        answered: await callFull(ali2, 'read_transcript', { agent: rootLabelOf(bob) }),
-      },
-      {
-        what: 'its own id',
-        answered: await callFull(ali2, 'read_transcript', { agent: ali2 }),
-      },
-      {
-        what: 'two conversations with no identity',
-        answered: await callFull(strayA, 'read_transcript', { agent: strayB }),
-      },
-      {
-        what: 'a stranger reading an identity’s conversation',
-        answered: await callFull(strayA, 'read_transcript', { agent: ali1 }),
-      },
-    ]
-    for (const { what, answered } of refusals) {
-      expect(answered.structured, what).toMatchObject({
+    // Foreign, self and unattributed conversations are read without starting them.
+    const before = [ali1, ali2, bob, strayA, strayB].map((id) => store.events(id))
+    const ali2EventsBefore = store.events(ali2)
+    for (const [caller, agent, target, words] of [
+      [ali2, bob, bob, 'plan the offsite'],
+      [ali2, rootLabelOf(bob), bob, 'plan the offsite'],
+      [ali2, ali2, ali2, 'check the invoices'],
+      [strayA, strayB, strayB, null],
+      [strayA, ali1, ali1, 'draft the release note'],
+    ] as const) {
+      const read = await callFull(caller, 'read_transcript', { agent })
+      expect(read.structured, read.text).toMatchObject({ outcome: 'ok', agent: target })
+      if (words === null) {
+        expect(read.structured).toMatchObject({
+          last_exchange: { received: null, answer: null },
+          turns: [],
+        })
+      } else {
+        expect(read.text).toContain(words)
+      }
+    }
+    expect([ali1, ali2, bob, strayA, strayB].map((id) => store.events(id))).toEqual(before)
+    for (const agent of ['W999', 'sess_nobody']) {
+      const missing = await callFull(ali2, 'read_transcript', { agent })
+      expect(missing.structured, missing.text).toMatchObject({
         outcome: 'refused',
-        rail: 'not-a-conversation-below-you',
-        permanence: 'permanent',
+        rail: 'no-such-agent',
       })
-      // (e) ⚑ …and each says the reach it now has, whoever asked.
-      expect(reasonOf(answered.structured), what).toContain(THE_REACH_IT_NOW_SAYS)
     }
-
-    // ⚑ Opacity, for a caller that may message anybody: Bob's root label is read as a label no piece
-    // carries, and as an id that names nothing, in the same words. (Its `detail` echoes the spelling
-    // the door resolved, which a caller that may message could name anyway: the narrowed arm below
-    // is where the echo is measured.)
-    const unknownLabel = await callFull(ali2, 'read_transcript', { agent: 'W999' })
-    const unknownId = await callFull(ali2, 'read_transcript', { agent: 'sess_nobody' })
-    const bobsLabel = refusals[1]?.answered as Answered
-    for (const same of [unknownLabel, unknownId]) {
-      expect(same.structured).toMatchObject({
-        outcome: 'refused',
-        rail: 'not-a-conversation-below-you',
-      })
-      expect(withoutTheEchoedSpelling(bobsLabel.structured)).toEqual(
-        withoutTheEchoedSpelling(same.structured),
-      )
-      expect(bobsLabel.text).toBe(same.text)
-    }
-    expect(bobsLabel.text).not.toContain(bob)
-    expect(bobsLabel.text).not.toContain(host.whatToCallTheConversation(bob))
-
-    // ⚑ And for a caller that may NOT message — Ali's grant narrowed to `none` — a label opens no
-    // door of its own: Ali's sibling is still read by its label and by its id (the profile reach, not
-    // the messaging reach), and Bob's label is a label no piece carries, down to the echo.
-    expect(store.setCapabilities('ali', { canMessage: 'none' })).toBe(true)
-    const premise = await callOn(ali2, 'get_agent_status', { agent: bob })
-    expect(premise.rail, JSON.stringify(premise)).toBe('may-not-message')
-    for (const agent of [ali1, rootLabelOf(ali1)]) {
-      const read = await callFull(ali2, 'read_transcript', { agent })
-      expect(read.structured, read.text).toMatchObject({ outcome: 'ok', agent: ali1 })
-      expect(read.text).toContain('draft the release note')
-    }
-    const narrowed = await callFull(ali2, 'read_transcript', { agent: rootLabelOf(bob) })
-    const narrowedUnknown = await callFull(ali2, 'read_transcript', { agent: 'W999' })
-    expect(narrowed.structured, narrowed.text).toMatchObject({
-      outcome: 'refused',
-      rail: 'not-a-conversation-below-you',
-      detail: { agent: rootLabelOf(bob) },
+    const afterRefusals = [ali1, ali2, bob, strayA, strayB].map((id) => store.events(id))
+    const newEvents = store.events(ali2).slice(ali2EventsBefore.length)
+    expect(newEvents.map((entry) => entry.event)).toEqual([
+      expect.objectContaining({
+        type: 'tool_refused',
+        tool: 'read_transcript',
+        rail: 'no-such-agent',
+      }),
+      expect.objectContaining({
+        type: 'tool_refused',
+        tool: 'read_transcript',
+        rail: 'no-such-agent',
+      }),
+    ])
+    const status = await callFull(strayA, 'get_agent_status', { agent: rootLabelOf(ali1) })
+    expect(status.structured, status.text).toMatchObject({
+      outcome: 'ok',
+      agent: { agent: ali1 },
+      last_turn_took: { text: 'draft the release note' },
     })
-    expect(withoutTheEchoedSpelling(narrowed.structured)).toEqual(
-      withoutTheEchoedSpelling(narrowedUnknown.structured),
-    )
-    expect(narrowed.text).toBe(narrowedUnknown.text)
-    for (const said of [JSON.stringify(narrowed.structured), narrowed.text]) {
-      expect(said).not.toContain(bob)
-      expect(said).not.toContain(host.whatToCallTheConversation(bob))
+    expect([ali1, ali2, bob, strayA, strayB].map((id) => store.events(id))).toEqual(afterRefusals)
+
+    // A narrowed message grant still refuses sending while the same reader can inspect.
+    expect(store.setCapabilities('ali', { canMessage: 'none' })).toBe(true)
+    const bobBeforeMessage = store.events(bob)
+    const denied = await callOn(ali2, 'message_agent', {
+      agent: bob,
+      kind: 'note',
+      text: 'this must not be sent',
+    })
+    expect(denied).toMatchObject({ outcome: 'refused', rail: 'may-not-message' })
+    expect(store.events(bob)).toEqual(bobBeforeMessage)
+    for (const agent of [bob, rootLabelOf(bob)]) {
+      const read = await callFull(ali2, 'read_transcript', { agent })
+      expect(read.structured, read.text).toMatchObject({ outcome: 'ok', agent: bob })
+      expect(read.text).toContain('plan the offsite')
     }
+    expect(await callOn(ali2, 'get_agent_status', { agent: rootLabelOf(bob) })).toMatchObject({
+      outcome: 'ok',
+      agent: { agent: bob },
+    })
   })
 
   // ───────────────────────────────────────────────────────────────────────────────────────────
   // §2 · list_tasks naming a piece
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
-  it('a conversation reads the record of a piece its profile’s other conversation holds or gave, and a root says whose work it is', async () => {
+  it('a conversation reads any named piece while a root says whose work it is', async () => {
     const ali1 = await personOpens('ali')
     const ali2 = await personOpens('ali')
     const carol = await personOpens('carol')
     await bringIdentityIntoBeing('bob')
     const pm = await personOpens('pm')
-    // ⚑ P1: owned by ali3, given by the PM — ali2 passes ONLY through the owner half.
     const p1 = await aGive(pm, 'ali', 'the index', 'index it')
     const ali3 = p1.agent
-    // ⚑ P2: owned by a Bob conversation, given by ali1 — ali2 passes ONLY through the giver half.
     const p2 = await aGive(ali1, 'bob', 'the offsite', 'plan it')
     const bobKid = p2.agent
     expect(store.identityOf(bobKid)?.profileSlug).toBe('bob')
@@ -449,18 +429,15 @@ describe('D-024 · a profile reads across its own conversations', () => {
       owner: ali1,
       label: aliRoot,
     })
-    expect(sibling.text).toContain('work a person gave another conversation of your profile')
+    expect(sibling.text).toContain('work a person gave that conversation')
     expect(sibling.text).not.toContain('your own work, from a person')
     for (const caller of [ali1, ali2]) {
       const own = await recordOf(caller, rootLabelOf(caller))
       expect(own.structured, own.text).toMatchObject({ outcome: 'ok', root: true, owner: caller })
       expect(own.text).toContain('your own work, from a person')
-      expect(own.text).not.toContain('work a person gave another conversation of your profile')
+      expect(own.text).not.toContain('work a person gave that conversation')
     }
 
-    // ⛔ The same calls from readers of ANOTHER profile: one answer, the one a label no piece carries
-    // gets, and none of the piece's words in it. ⚑ Each of those readers reads its OWN root, so the
-    // refusal below is the profile and not the reader.
     const carolsOwn = await recordOf(carol, rootLabelOf(carol))
     expect(carolsOwn.structured, carolsOwn.text).toMatchObject({
       outcome: 'ok',
@@ -469,28 +446,22 @@ describe('D-024 · a profile reads across its own conversations', () => {
     })
     const unknown = await recordOf(ali2, 'W999')
     expect(unknown.structured).toMatchObject({ outcome: 'refused', rail: 'no-piece-by-that-name' })
-    for (const [caller, piece] of [
-      [carol, p1.label],
-      [carol, p2.label],
-      [carol, aliRoot],
-      [bobKid, p1.label],
+    for (const [caller, piece, brief] of [
+      [carol, p1, 'index it'],
+      [carol, p2, 'plan it'],
+      [bobKid, p1, 'index it'],
     ] as const) {
-      const refused = await recordOf(caller, piece)
-      expect(refused.structured, `${caller} on ${piece}`).toMatchObject({
-        outcome: 'refused',
-        rail: 'no-piece-by-that-name',
-      })
-      expect(withoutTheEchoedSpelling(refused.structured)).toEqual(
-        withoutTheEchoedSpelling(unknown.structured),
-      )
-      expect(refused.text).toBe(unknown.text)
-      for (const said of [JSON.stringify(refused.structured), refused.text]) {
-        expect(said).not.toContain('the index')
-        expect(said).not.toContain('index it')
-        expect(said).not.toContain('the offsite')
-        expect(said).not.toContain('plan it')
-      }
+      aRecordOf(await recordOf(caller, piece.label), piece, brief)
+      aRecordOf(await recordOf(caller, piece.piece), piece, brief)
     }
+    const otherRoot = await recordOf(carol, aliRoot)
+    expect(otherRoot.structured, otherRoot.text).toMatchObject({
+      outcome: 'ok',
+      root: true,
+      owner: ali1,
+      label: aliRoot,
+    })
+    expect(otherRoot.text).toContain('work a person gave that conversation')
   })
 
   // ───────────────────────────────────────────────────────────────────────────────────────────

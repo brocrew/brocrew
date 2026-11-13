@@ -10538,37 +10538,12 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  /**
-   * 🔴 **Every agent this caller may be told about — which is exactly every agent it may SEND to**
-   * (347; re-pointed at 433 over `431`'s reach) — ⚑ **D-017 · R12 · as ONE list** (`05` rule 6).
-   *
-   * ⛔ **{@link withinMessagingReach}, and deliberately not a third question** — *a caller may SEE
-   * exactly what it may SEND to, no more and no less* — so this filter asks the very predicate
-   * {@link requireToMessage} asks rather than spelling a second reading of it.
-   *
-   * ⚑ **Running and stopped alike, newest activity first** — a message starts any of them, so
-   * whether one runs is not a line this list draws (`05` rule 5). ⛔ D-007's list apart, of children
-   * *"none can be reached"*, is gone: every one of them can. ⚠️ **Cut at {@link CONVERSATIONS_LISTED}**,
-   * and the answer says how many more there are: an id it does not list is still one
-   * `get_agent_status` and `message_agent` take.
-   *
-   * ⚠️ **`me` is an id and not a permission.** Passing a session id that is not the caller's would
-   * add that row — so the only caller allowed to supply it is the tool layer, which mints it from
-   * the session the toolset was built for and cannot be handed another.
-   *
-   * ⚑ **The price is stated rather than hidden**: the reach read per running slot and per recorded
-   * conversation a message can start (one table-wide read, {@link everythingStartable}), and the
-   * card's own reads only for the ones listed. ⚠️ **610 · the roster once per CALL** ({@link
-   * cardReads}), so two cards in one list are named against the same roster.
-   */
+  /** List running and restartable conversations, newest activity first. */
   agentsVisibleTo(by: Caller, me: string | null): AgentsListed {
     return agentsVisibleTo(this.conversationsVisibleTo(by, me), me, this.archived)
   }
 
-  /**
-   * The archived conversations this caller may reach, the most recently archived first: what
-   * {@link agentsVisibleTo} leaves out, under the same reach and the same cut.
-   */
+  /** Archived conversations under the same list limit. */
   archivedVisibleTo(by: Caller, me: string | null): ArchivedListed {
     return archivedVisibleTo(this.conversationsVisibleTo(by, me), this.archived, () => this.now())
   }
@@ -10578,195 +10553,46 @@ export class RuntimeHost implements LiveHost {
     return this.archived.archivedAt(this.theOneInItsPlace(id))
   }
 
-  /**
-   * ⚑ **D-017 · R12 — the one walk behind every list of agents**: each conversation this caller may
-   * reach, running or not, newest activity first, with its card read only when it is listed — see
-   * {@link agentsVisibleTo} for the reach and the price.
-   */
-  private conversationsVisibleTo(by: Caller, me: string | null): readonly VisibleConversation[] {
+  /** Read cards only for conversations that fit the list limit. */
+  private conversationsVisibleTo(_by: Caller, me: string | null): readonly VisibleConversation[] {
     const reads = this.cardReads()
     return [
-      ...[...this.slots.values()]
-        .filter((slot) => this.withinMessagingReach(slot.id, by, me))
-        .map((slot) => ({
-          id: slot.id,
-          // ⚑ A reservation with no row yet is the newest activity there is.
-          at: this.deps.store.recordedOne(slot.id)?.updatedAt ?? this.now(),
-          card: () => this.cardFor(slot, reads),
-        })),
-      ...this.everythingStartable()
-        .filter(({ startable }) => this.withinMessagingReach(startable.id, by, me))
-        .map(({ startable, at }) => ({
-          id: startable.id,
-          at,
-          card: () => this.stoppedCard(startable, reads),
-        })),
+      ...[...this.slots.values()].map((slot) => ({
+        id: slot.id,
+        // ⚑ A reservation with no row yet is the newest activity there is.
+        at: this.deps.store.recordedOne(slot.id)?.updatedAt ?? this.now(),
+        card: () => this.cardFor(slot, reads),
+      })),
+      ...this.everythingStartable().map(({ startable, at }) => ({
+        id: startable.id,
+        at,
+        card: () => this.stoppedCard(startable, reads),
+      })),
       // ⚑ The caller's own conversation first, whatever its activity, so the cap never cuts the
       // one `list_agents` promises ("including your own"); then the newest activity first.
     ].sort((one, other) => (one.id === me ? -1 : other.id === me ? 1 : other.at - one.at))
   }
 
-  /**
-   * One agent's card, or null when this caller may not be told about it.
-   *
-   * ⛔ **Entitlement is asked BEFORE existence, and the two answers are deliberately the same**
-   * (341's ordering, one door over). A caller that may not see this id gets `null`, and so does a
-   * caller asking about an id that was never a session — so probing this reader cannot enumerate
-   * the app's agents.
-   *
-   * 🔴 **Since 433 the entitlement is {@link withinMessagingReach} and no longer `mayCommand`
-   * directly** — *a caller may SEE exactly what it may SEND to*. ⚠️ **Enumerating and inspecting
-   * are one question asked for a set and for one id**, so `list_agents` ({@link agentsVisibleTo})
-   * and `get_agent_status` (this reader) ask one reach rather than two rulings.
-   *
-   * ⚠️ **643 · this reader has a second caller**: `list_tasks`' holder read —
-   * `agentCard(row.owner, by, me)?.state`. ⚑ It does not widen the entitlement, because it asks this
-   * same reach. 🔴 **A count nothing compares to is a count that drifts** — the same lesson
-   * `the-interruption-that-looks-like-a-fault.test.ts` records against its own title at `610`.
-   *
-   * ## ⛔ Nothing on a card is redacted
-   *
-   * ⚠️ **A narrower card for a wider reach would be a SECOND question** — *may you see it*, and
-   * *how much of it* — asked at two call sites, with no rail behind it and no refusal to name.
-   * `431` bought one named question; a second axis here would be the widening-by-degree that
-   * ruling was written against.
-   *
-   * ⛔ **The cost, stated rather than implied.** An identity holding `can_message: 'any'` — since
-   * `549` the ruled value, so every identity a person has not narrowed — can read the profile,
-   * provider, state, parent, last-turn ending and held pieces — the root's title and every open
-   * piece's label, title and state — of every LIVE conversation in this app. That is a real widening
-   * and it is what the ruling asks for. ⚠️ It is bounded by the grant
-   * — which a person can narrow to `none` in one control that no restart undoes (`710`, `707` F-4:
-   * this said only BroBot's seed held it, false since `549`).
-   *
-   * ⚑ **D-017 · R2 — and a conversation this app is not running is named too**, by
-   * {@link startable}, under the SAME entitlement, with the one state (R11): a message starts it,
-   * however it stopped.
-   */
-  /**
-   * ⚑ **What opened a conversation's last turn that ended** — for `get_agent_status`, beside its
-   * card's {@link AgentCard.lastEndedTurn}: the one in its place, as that card is. `took` is `null`
-   * when no turn has ended or no row of it says — ⛔ and when the caller may not read that
-   * conversation's words: they are its transcript's ({@link mayReadTheTranscriptOf}), which a card's
-   * reach does not extend to. ⚑ `readAt` places the turn's times on a day.
-   */
-  whatOpenedItsLastTurn(
-    id: string,
-    me: string | null,
-  ): { readonly took: ReceivedInATurn | null; readonly readAt: number } {
+  /** What opened the last ended turn, if its ledger has one. */
+  whatOpenedItsLastTurn(id: string): {
+    readonly took: ReceivedInATurn | null
+    readonly readAt: number
+  } {
     const target = this.theOneInItsPlace(id)
-    const mayRead = me !== null && (target === me || this.mayReadTheTranscriptOf(target, me))
     return {
-      took: mayRead ? this.deps.store.whatOpenedTheLastEndedTurn(target) : null,
+      took: this.deps.store.whatOpenedTheLastEndedTurn(target),
       readAt: this.now(),
     }
   }
 
   agentCard(id: string, by: Caller, me: string | null): AgentCard | null {
-    // ⚑ **D-017 · R10** — the card of the one that took its place, for an id that could never be
-    // reopened.
     const sessionId = this.theOneInItsPlace(id)
     const slot = this.slots.get(sessionId)
-    // ⚠️ **A TYPE narrowing since 433, and no longer a rail** — {@link cardFor} takes a
-    // `SessionSlot`. ⛔ The line below answers `false` for a slot that is not in the map, so the
-    // early return can no longer be the thing that refuses a guessed id, and a mutation on it
-    // SURVIVES. ⚑ *A line no mutation can kill is not carrying its rule*: this one carries the
-    // compiler's, which is why it stays and why it is not a row in `433`'s table.
-    //
-    // ⚑ **D-017 · R2 · the no-slot branch** — a conversation a message would start, which
-    // {@link stoppedCardFor} answers under the SAME entitlement, asked there.
     if (slot === undefined) return this.stoppedCardFor(sessionId, by, me)
-    if (!this.withinMessagingReach(sessionId, by, me)) return null
     return this.cardFor(slot, this.cardReads())
   }
 
-  /**
-   * 🔴 **Is that conversation within this caller's messaging REACH?** (431 · HO-024 §4 row 6,
-   * criterion 6; HO-022 §3's *"BroBot is global"*.)
-   *
-   * ## ⛔ Why it is a SEPARATE question and not a wider {@link mayCommand}
-   *
-   * ⚠️ **`mayCommand` answers FOURTEEN questions from FIVE call sites, and every hand count of it
-   * so far has been short.** `431` wrote *ten*; `433`'s own first draft wrote *twelve* and was
-   * corrected by its review. ⛔ The ones a reader keeps missing are the verbs that do not spell the
-   * predicate themselves: {@link takeBackPiece} and {@link updateWork}'s close ask it through
-   * {@link whereItsHolderStands}, {@link interruptAgent} and {@link theConversationAddressed} through {@link mayInterrupt}, and `respondPermission` and `respondUserInput` reach it through
-   * {@link requireToAnswer}, which nobody counting `mayCommand(` can see.
-   *
-   * 🔴 **553 · and it was short AGAIN, in the direction this paragraph predicts.** ⛔ It said
-   * *fourteen* from `433` to here while `a-reach-you-can-see.test.ts` §3 had been computing
-   * **fifteen** since `441` put `decideProposal` on {@link requireToAnswer} — **the derived number
-   * moved and the sentence beside it did not**, which is the shape this very paragraph exists to
-   * warn about. ⚑ `553` added `assertMayAssign` and corrected both halves in one commit.
-   *
-   * 🔴 **So the number is DERIVED and no longer restated anywhere it can rot** — except here, and
-   * the line above is what that cost. `a-reach-you-can-see.test.ts` §3 computes it: the seven call
-   * sites in this file, plus the callers of each `require…` helper, plus this method's own two
-   * readers — and it pins the fourteen question names, so a fifteenth goes red with the list in
-   * front of whoever added it. ⚑ **D-017 · sixteen became fifteen, and ten sites seven** —
-   * `endAgent`'s question went with `end_agent`, and `703`'s two (which only chose a held
-   * message's refusal words) went with D-010. ⚑ **D-016 · fifteen became fourteen** —
-   * `decideProposal`'s question went with proposals, ⚑ **and fourteen became twelve, and seven sites
-   * five** — the spawn door's `not-your-parent` and `assertMayAssign`'s went with `spawn_agent` and
-   * the work message: a give goes to the giver's own conversation with an agent, found rather than
-   * asked. ⚑ **D-016c · and twelve became thirteen** — a close asks the holder's reach as a take-back
-   * does, through {@link whereItsHolderStands}. ⚑ **D-016 · commit 7 · and thirteen became fourteen** — the reading
-   * of a piece label asks `interrupt_agent`'s entitlement, through {@link mayInterrupt} as the verb
-   * does. ⚠️ The SITE count moved at `433` too, from nine to seven, because two of them became
-   * callers of this method instead.
-   *
-   * ⚑ **Widening the predicate would widen all fourteen**, and `430` said so in as many words:
-   * *"widening `mayCommand` globally would also widen other commands and is not the price of this
-   * criterion."* ⛔ An identity granted a global reach would then be able to INTERRUPT every
-   * conversation it may message, where that reaches only the chain below it.
-   *
-   * 🔴 **So `mayCommand` still answers all fourteen, and FOUR of them ask it through here.** `send`
-   * and {@link queueMessage} reach it as clause 2 below (431) — the latter through its private
-   * worker `queueAs` since `657`, which is the name the census reads; {@link agentsVisibleTo} and
-   * {@link agentCard} joined them at 433, because *a caller may SEE exactly what it may SEND to*
-   * and a narrower reader would be a capability no model could discover — ⚑ and F009's
-   * {@link agentRecord}, a third reader, which lists an agent's conversations by it: a fifth that asks
-   * it through here. ⛔ **The other ten ask
-   * it directly or through the other gates, and are unchanged by this method existing** —
-   * {@link replyToParent}, `sendInterrupting`, `cancelQueuedMessage` and `interrupt` through
-   * {@link requireToCommand}; `respondPermission` and `respondUserInput` through
-   * {@link requireToAnswer}; {@link interruptAgent} and {@link theConversationAddressed} through
-   * {@link mayInterrupt}; and {@link takeBackPiece} and
-   * {@link updateWork}'s close through {@link whereItsHolderStands}. ⚠️ A verb added tomorrow
-   * gets the strict question by writing the name every other verb writes
-   * ({@link requireToCommand}) — 340's *"an entitlement widening must be opt-in at the call site"*,
-   * in the direction it was written for.
-   *
-   * ## ⚠️ What it does NOT promise, and why the two answers are one
-   *
-   * ⛔ **`false` is *not within your reach* and *there is no such conversation*, deliberately
-   * folded** — 341's ordering, which {@link agentCard} held first and now reads back off this
-   * method. A caller outside its reach gets the same `false` for a live conversation in another
-   * project as for an id that was never a session, so probing this cannot enumerate the app. ⚑ For
-   * a caller whose grant DOES admit what it did not start, `false` is an honest *there is nothing
-   * there*: it may reach everything, so there is nothing left to hide from it. ⚠️ **That is what
-   * makes 433 safe to route both readers through here**: the leak negative is a property of this
-   * one boolean, so the list, the card and the send cannot come to three shapes of it.
-   *
-   * ## ⛔ Three clauses, in the one order they may be asked in
-   *
-   *  1. **`me`** — a caller is entitled to be told about ITSELF, which is {@link agentsVisibleTo}'s
-   *     `me` and for its reason. ⚠️ `me` is an id and not a permission; only the tool layer supplies
-   *     one, minted from the session its toolset was built for. `424`'s `that-agent-is-you` is what
-   *     the door says one line later, and it needs this clause to get there.
-   *  2. **{@link mayCommand}, unchanged** — what you started, you may reach.
-   *  3. **The GRANT** — {@link reachesWhatItDidNotStart}, over the reach a person granted this
-   *     identity. ⛔ **Never for the caller's own session**: the gate below has no `me`, and a
-   *     conversation queueing words to itself is a loop no door offers and this clause will not
-   *     open. ⚠️ **An identity with no row is refused rather than defaulted**, which is
-   *     {@link admitReachAtAll}'s own direction: handing {@link DEFAULT_CAPABILITIES} to a caller
-   *     this app cannot place is the widening `unknown-profile` exists to refuse one door over.
-   *
-   * ⚑ **The grant is read from the LEDGER, not from the slot** — {@link assertMayReach}'s
-   * reasoning, and `373`'s: a commander derived from a provenance row is admitted even when its own
-   * conversation is not open, and a capability that could not be looked up for it would quietly
-   * close that door.
-   */
+  /** Messaging reach for send and command doors; read tools do not use this grant. */
   withinMessagingReach(sessionId: string, by: Caller, me: string | null = null): boolean {
     // ⚑ **D-017 · R2 · …or one this app is not running**, whose two fields are the ones
     // {@link mayCommand} reads below — see {@link startable}. ⚑ The grant below decides for it as
@@ -10789,12 +10615,7 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * ⚑ **D-017 · R12 — why this caller may not reach that conversation, or `null` when it may** — the
-   * one answer every door that takes an agent id gives (`message_agent`, `get_agent_status`,
-   * `ask_question`), so an id `list_agents` would not name is refused in one sentence whichever
-   * door was asked. ⚑ **D-016 · commit 7 · R1 — and the reach a label is resolved by at those three
-   * doors** ({@link theConversationAddressed}), so there a label names only what that list could
-   * have named; `interrupt_agent` and `read_transcript` widen it by their own ({@link TheDoorsReach}).
+   * Why this caller may not reach that conversation for messaging, or `null` when it may.
    *
    * ⛔ **`no-such-agent` only for an id no conversation has** (`05` rule 6): the fold that answered
    * *not yours* in the words of *not there* is gone — a conversation a quit left open was
@@ -10829,28 +10650,7 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  /**
-   * 🔴 **D-016 · commit 7 · R1 — the conversation an agent address names** — the one reading every
-   * door that takes an agent asks, before any rail of its own reads the target.
-   *
-   *  - ⚑ **A piece's label** (`W1.4.2`, `W1` — `pieceNumbersOf`' strict shape) names that
-   *    piece's OWNER: a root's label its conversation, and an ended piece's still its owner (a
-   *    conversation is never dead) — ⛔ **when the asking door's reach admits that owner**
-   *    ({@link TheDoorsReach}: the reach `list_agents` names by, widened only for a door whose own
-   *    rails reach further), so a label is taken wherever the owner's id would be served.
-   *  - ⚑ **Anything else is handed back as spelled**, and the door reads it as an id, as it always
-   *    has.
-   *
-   * ⛔ **Gone and not yours are one answer.** A label that names no piece, and one whose owner that
-   * reach does not admit, are handed back as spelled too — and no conversation has that id (every id
-   * this app mints is `sess_<uuid>`, never a label's shape) — so each door refuses it through its OWN
-   * unknown-id path, in the same rail and the same words it gives an unknown id: a label never says
-   * whether a piece exists. ⚑ An id's answers are unchanged (D-017 · R12).
-   *
-   * ⚠️ **The owner as recorded, never the one in its place**: every door reads an id through
-   * {@link theOneInItsPlace} already (R10), and `message_agent`'s receipt needs the replaced id to
-   * say what happened.
-   */
+  /** A known piece label names its owner for reads; other doors retain their own reach. */
   theConversationAddressed(
     address: string,
     by: Caller,
@@ -10868,7 +10668,7 @@ export class RuntimeHost implements LiveHost {
       // answered for what that piece is, queued or on.
       ((reach === 'messaging' || reach === 'interrupting') && this.itGaveItToAService(row, by)) ||
       (reach === 'interrupting' && this.mayInterrupt(this.theOneInItsPlace(owner))) ||
-      (reach === 'reading' && me !== null && this.mayReadTheTranscriptOf(owner, me))
+      reach === 'reading'
     return admitted ? owner : address
   }
 
@@ -10975,44 +10775,7 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  /**
-   * On a `list_profiles` request naming a profile, read its roster row, the beginning of its standing rules, reachable conversations and their newest work, and files it made. Load this history only on demand so conversation context does not carry it by default.
-   *
-   * ## ⚑ Who may read which part
-   *
-   * ⚑ **To any caller**: its roster row, `list_profiles`' own (D-014), and the files it made,
-   * `find_files`', which asks nothing about who is calling. ⛔ **Its conversations, and their pieces,
-   * only within the caller's reach** — {@link withinMessagingReach}, the predicate `list_agents` and
-   * `get_agent_status` ask, asked of the one in each one's place (D-017 · R10), so a conversation
-   * listed is one those doors would take. ⚑ **How its standing rules begin, to a caller that reaches
-   * that agent** — one of its conversations, or (its grant) any conversation it did not start, which
-   * takes in every one that agent will ever have.
-   *
-   * ⚠️ **What it tells beyond those doors, stated**:
-   *  - the first line of another agent's standing rules, which no tool showed;
-   *  - of a conversation within reach, the pieces it held that ENDED — their titles, who gave them,
-   *    how and when each ended, and an answer's outcome — where its card names only its open ones
-   *    and `list_tasks` tells them only to their holder, their giver and their profile; and when each
-   *    piece was given, and how many it holds;
-   *  - a conversation that could never be reopened, under its own id — `list_agents` names only the
-   *    one in its place — with its open pieces and their givers, which no card shows;
-   *  - when each conversation was created, and when its record last changed.
-   *
-   * ⛔ No brief, no answer's words, no question and no transcript. ⛔ **Never whether this app runs a
-   * conversation** (`05` rule 5): what it is doing now is `get_agent_status`'s one state.
-   *
-   * ## ⚑ Bounded by its answer, not by the ledgers (F071)
-   *
-   * ⚑ One indexed read of the agent's conversations (`provider_session_identity_idx`), with the
-   * reach asked of each — a few rows by their keys, per conversation of that agent; one indexed read
-   * of the newest pieces they hold and one of their count, each
-   * holder of those folded through the naming memo, which keeps a fold until that ledger grows; each
-   * listed conversation named by the work that names it (the same memo), and its starter by the
-   * piece it was started with — the first rows of its ledger, up to the first message it received,
-   * then that piece's chain; one indexed read of the files it made and their count; one probe for
-   * its rules. ⛔ The ledger of a conversation that holds none of those pieces is folded only to name
-   * it, as every list of agents names it.
-   */
+  /** Read an agent’s conversations and work; keep the existing standing-rules check. */
   agentRecord(profile: string, by: Caller, me: string | null): AgentRecordReading {
     // ⚑ **The roster's own row**, so the record and `list_profiles` say one thing of the agent.
     const slug = foldProfileName(profile)
@@ -11021,9 +10784,7 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **This caller and the conversations it took the place of** — said as `you` (729 · R90).
     const itself = me === null ? [] : this.theIdsItStandsFor(me)
     const unread = rowsUnreadOnce()
-    const inReach = this.deps.store
-      .conversationsOf(agent.profile)
-      .filter((one) => this.withinMessagingReach(this.theOneInItsPlace(one.conversation), by, me))
+    const inReach = this.deps.store.conversationsOf(agent.profile)
     const shown = inReach.slice(0, CONVERSATIONS_ON_A_RECORD)
     // ⚑ **Each conversation's agent named once a record** — a name reads the whole roster.
     const agentsNamed = new Map<string, string>()
@@ -11068,12 +10829,15 @@ export class RuntimeHost implements LiveHost {
     const made = this.madeFilesOf(agent.profile, FILES_ON_A_RECORD)
     // ⚑ **Its rules, to a caller that reaches this agent** — one of its conversations, or (its grant)
     // any conversation it did not start.
-    const rules: RulesOnARecord =
-      inReach.length === 0 && !this.itsGrantReachesWhatItDidNotStart(by)
-        ? { is: 'not-told' }
-        : ((line) => (line === null ? { is: 'none' } : { is: 'they-begin', line }))(
-            howTheRulesBegin(this.deps.store.configuredLayerFor(agent.profile), RULES_BEGIN_CHARS),
-          )
+    const canReadRules =
+      inReach.some((one) =>
+        this.withinMessagingReach(this.theOneInItsPlace(one.conversation), by, me),
+      ) || this.itsGrantReachesWhatItDidNotStart(by)
+    const rules: RulesOnARecord = !canReadRules
+      ? { is: 'not-told' }
+      : ((line) => (line === null ? { is: 'none' } : { is: 'they-begin', line }))(
+          howTheRulesBegin(this.deps.store.configuredLayerFor(agent.profile), RULES_BEGIN_CHARS),
+        )
     return {
       is: 'a-record',
       record: {
@@ -11599,6 +11363,12 @@ export class RuntimeHost implements LiveHost {
     const service = this.theServiceOf(owner)
     if (service === null || service === 'unknown') return null
     return this.thePieceItIsOn(owner)?.piece ?? null
+  }
+
+  /** `undefined` for an ordinary agent; `null` when a service has no readable active piece. */
+  servicePieceForStatus(owner: string): string | null | undefined {
+    if (this.theServiceOf(owner) === null) return undefined
+    return this.thePieceAServiceIsOn(owner)
   }
 
   /**
@@ -15143,7 +14913,7 @@ export class RuntimeHost implements LiveHost {
           // the piece it owns**, as the asker is: ⚑ F033 · the one its message was sent under.
           (who) => this.nameByItsWorkUnder(who.conversation, who.about ?? null),
           // ⚑ **D-012** — `read_transcript` is named only to a parent it would admit.
-          this.mayReadTheTranscriptOf(piece.owner, parent.id),
+          this.mayReadTheTranscriptOf(piece.owner),
           // ⚑ Whether the app's restart ended that conversation: the launch's own sweep, or a quit's
           // stamp, which a reopen clears.
           this.theRestartEnded(piece.owner, cause),
@@ -17495,10 +17265,7 @@ export class RuntimeHost implements LiveHost {
    * so `203`'s owner check has nothing to be about. ⚠️ **Not `requireAPerson`**: that gate exists
    * where an AGENT could widen what agents may do, and this changes nothing.
    *
-   * ⛔ **On the window wire and on NO toolset**, and that matters more here than it did for a
-   * count: this is a list of what every OTHER conversation in the app is doing, and handing it to a
-   * conversation would be a reach nobody has granted. ⚑ An agent asking about its own children has
-   * `list_agents`, whose cards go through `withinMessagingReach`.
+   * This aggregate is sent on the window wire; read tools expose conversation records separately.
    */
   whatIsBeingDone(): WhatIsBeingDone {
     const conversations = [...this.slots.entries()].flatMap(
@@ -19544,13 +19311,12 @@ export class RuntimeHost implements LiveHost {
    * ⚑ **D-017 · R2 · one agent's card, when this app is not running it** — {@link agentCard}'s
    * no-slot branch.
    *
-   * ⚑ **The entitlement is asked here and is the one every card asks** — {@link withinMessagingReach},
-   * which reads the same {@link startable} object — so a stopped conversation is shown to exactly the
-   * callers its started self would be shown to, and to nobody when there is none.
    */
-  private stoppedCardFor(sessionId: string, by: Caller, me: string | null): AgentCard | null {
+  private stoppedCardFor(sessionId: string, _by: Caller, _me: string | null): AgentCard | null {
+    void _by
+    void _me
     const stopped = this.startable(sessionId)
-    if (stopped === null || !this.withinMessagingReach(sessionId, by, me)) return null
+    if (stopped === null) return null
     return this.stoppedCard(stopped, this.cardReads())
   }
 
@@ -40299,46 +40065,12 @@ export class RuntimeHost implements LiveHost {
     throw new MessagingRefused({ ...refusal, detail: { ...refusal.detail, agent: sessionId } })
   }
 
-  /**
-   * 🔴 **681 · who is ABOVE a conversation — its recorded chain once it has a row, its reservations'
-   * before** (PM ruling R30b).
-   *
-   * ⛔ **`629`'s chain walk read `SessionStore.ancestorsOf`, which is the provenance rows** — and a
-   * starting conversation has none until `store.create` writes them with its row. ⚠️ So a
-   * grandparent's `interrupt_agent` on a grandchild still starting met `no-such-agent`, permanently,
-   * where the same grandchild running is admitted: an ENTITLEMENT wall reading a starting child as
-   * nobody's, which is R30's sentence — *every wall reads a starting child as it will read it
-   * running* — failing at the first wall rather than the second.
-   *
-   * ⚑ **The recorded chain whenever there is one**, and only a conversation still STARTING walks its
-   * reservation: {@link SessionSlot.spawnedBy} names the parent from the moment the slot is taken,
-   * and that parent's own chain is read the same way — a parent still starting too walks one
-   * reservation further. ⛔ A conversation nobody spawned has `spawnedBy === null` and stays a root,
-   * and a registered one whose rows `record` failed to write reads as it always did: it is not being
-   * recorded at all.
-   */
-  /**
-   * 🔴 **D-012 · may `reader` read `target`'s transcript?** (proposal §6.5) — the ONE answer the
-   * `read_transcript` door and the stall notice's pointer both ask.
-   *
-   * ⚑ **Below you** — the reader is in the target's durable spawn chain ({@link ancestorsAsItWillRun},
-   * the chain `interrupt_agent` walks) — ⚑ **D-024 · R2 — or your own profile's**: a conversation
-   * of the reader's own identity ({@link ofOneIdentity}), which its launch lists by the pieces it
-   * holds. ⛔ Same identity, so no guard is added; anything else keeps the one refusal and its
-   * opacity.
-   */
-  /**
-   * 🔴 **D-012 · what `read_transcript` hands a giver** — the conversation's last exchange and its
-   * turns, a few back or those a search finds, or the word that refuses it
-   * ({@link mayReadTheTranscriptOf}). ⚑ An ended conversation is read like a running one: the chain
-   * and the ledger are both durable.
-   */
+  /** Read any known conversation's transcript, including an empty one. */
   readTranscript(
     target: string,
-    reader: string,
     read: { readonly back: number; readonly search: string | null },
   ):
-    | { readonly ok: false; readonly refusal: 'not-a-conversation-below-you' }
+    | { readonly ok: false; readonly refusal: 'no-such-agent' }
     | {
         readonly ok: true
         readonly name: string
@@ -40346,8 +40078,8 @@ export class RuntimeHost implements LiveHost {
         readonly turns: readonly TranscriptTurn[]
         readonly older: boolean
       } {
-    if (!this.mayReadTheTranscriptOf(target, reader)) {
-      return { ok: false, refusal: 'not-a-conversation-below-you' }
+    if (!this.mayReadTheTranscriptOf(target)) {
+      return { ok: false, refusal: 'no-such-agent' }
     }
     return {
       ok: true,
@@ -40357,11 +40089,8 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  mayReadTheTranscriptOf(target: string, reader: string): boolean {
-    return (
-      target !== reader &&
-      (this.ancestorsAsItWillRun(target).includes(reader) || this.ofOneIdentity(target, reader))
-    )
+  mayReadTheTranscriptOf(target: string): boolean {
+    return this.slots.has(target) || this.deps.store.recordedOne(target) !== null
   }
 
   /**

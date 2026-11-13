@@ -382,14 +382,11 @@ describe('431 · the message that crosses a project', () => {
           permanence: 'until-a-person-changes-it',
         })
       }
-      // 🔴 **`431`'s own property is UNCHANGED and is measured here rather than assumed**: a caller
-      // may SEE exactly what it may SEND to, and the reader is where that shows. ⛔ Its own child is
-      // still named. ⚑ **D-017 · R12** — the conversation elsewhere no longer folds to
-      // `no-such-agent`: the reader answers it with the refusal the send door gives, at every door.
+      // The read door still identifies both conversations after the message grant narrows.
       expect((await callOn(brobotTools, 'get_agent_status', { agent: child })).outcome).toBe('ok')
       expect(await callOn(brobotTools, 'get_agent_status', { agent: manager })).toMatchObject({
-        outcome: 'refused',
-        rail: 'may-not-message',
+        outcome: 'ok',
+        agent: { agent: manager },
       })
     })
   })

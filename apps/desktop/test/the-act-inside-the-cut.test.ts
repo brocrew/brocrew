@@ -637,7 +637,7 @@ const OVERRIDES: readonly {
     spreadAs: 'aSelfAddressSaid',
     sentence:
       refuseTool('that-agent-is-you', { agent: 'sess_self' }).reason +
-      ' W1.2 is your own piece, with no helpers recorded under it. list_agents names who you can reach.',
+      ' W1.2 is your own piece, with no helpers recorded under it. list_agents names conversations; message_agent answers whether one can take your message.',
   },
   // ⚠️ **D-039 · `THE_NEW_AGENT_WAS_MADE` is not an override**, and the scan below cannot see it: a
   // give with `new: true` whose launch failed says it AFTER its word's own sentence (or one of the
@@ -688,8 +688,9 @@ const ACT: Readonly<Record<string, string>> = {
   'REPLY_RAILS|result-document-not-returned':
     'must be a Markdown file or page listed in resource_paths',
   // ⚑ **D-017 · R12** — said only about an id no conversation has; the act names what reaches.
-  'TOOL_REFUSALS|no-such-agent': 'list_agents names the ones you can reach',
-  'TOOL_REFUSALS|that-conversation-takes-no-messages': 'list_agents names the ones you can reach',
+  'TOOL_REFUSALS|no-such-agent': 'list_agents names the conversations this app can run',
+  'TOOL_REFUSALS|that-conversation-takes-no-messages':
+    'list_agents names the conversations this app can run',
   'TOOL_REFUSALS|that-agent-has-several-conversations':
     'make the same call with agent set to one of that agent\u2019s conversations',
   'TOOL_REFUSALS|that-agent-has-several-conversations/their-labels':
@@ -705,9 +706,6 @@ const ACT: Readonly<Record<string, string>> = {
     'Check that record, then retry this call',
   'REPLY_RAILS|a-conversation-with-its-questions-is-starting': 'Try again in a moment',
   'REPLY_RAILS|its-questions-could-not-all-be-read': 'Check that record, then retry this call',
-  // ⚑ **D-012** — `read_transcript`'s two words: the other door, inside the cut.
-  'TOOL_REFUSALS|not-a-conversation-below-you':
-    'To ask any other agent something, use ask_question',
   'TOOL_REFUSALS|that-agent-is-you': 'do it yourself — or send it to another agent',
   'TOOL_REFUSALS|that-agent-is-you/with-helper-guidance':
     'do it yourself — or send it to another agent',
@@ -756,7 +754,7 @@ const ACT: Readonly<Record<string, string>> = {
     'ask a person with ask_question naming it, and answer the person here when it is done',
   'TOOL_REFUSALS|that-piece-was-already-answered':
     'Read the reply first; for genuinely new work, give it with give_work',
-  'TOOL_REFUSALS|no-piece-by-that-name': 'list_tasks names the open pieces you hold and gave',
+  'TOOL_REFUSALS|no-piece-by-that-name': 'Check its label or id with search_work or list_tasks',
   // ⚑ **D-016 · commit 5** — said at `message_agent` and at `update_work` now, so *nothing was done*
   // and then the act, in one clause.
   'TOOL_REFUSALS|that-is-your-own-work':

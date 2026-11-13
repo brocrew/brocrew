@@ -298,9 +298,9 @@ describe('642 · who can I talk to', () => {
         is: 'idle',
       })
     }
-    // ⛔ **The grant still decides**: narrowed to none, BroBot is shown only what it commands.
+    // The grant still decides message delivery; the card remains readable.
     expect(store.setCapabilities(DEFAULT_PROFILE_ID, { canMessage: 'none' })).toBe(true)
-    expect(host.agentCard(other, speakingAs(brobot), brobot)).toBeNull()
+    expect(host.agentCard(other, speakingAs(brobot), brobot)?.state).toEqual({ is: 'idle' })
     expect(host.agentCard(child, speakingAs(brobot), brobot)?.state).toEqual({ is: 'idle' })
   })
 
@@ -375,17 +375,18 @@ describe('642 · who can I talk to', () => {
   // §4 · the sentence this dispatch changed, pinned by name
   // ───────────────────────────────────────────────────────────────────────────────
 
-  // What an id the listing leaves out still is: one the two doors that take any id may reach.
-  const SAYS_WHAT_IT_DROPS =
-    'message_agent and get_agent_status take any of them by the label of a piece it owns (W1.2) or by its id'
+  // A status read takes any listed id; messaging has its own reach.
+  const SAYS_STATUS_ADDRESSING =
+    'get_agent_status takes any of them by the label of a piece it owns (W1.2) or by its id'
 
-  it('§4.1 the description says what the listing drops, and names the surface that holds the rest', async () => {
+  it('§4.1 the description names global status reads and separate message reach', async () => {
     await personOpens(DEFAULT_PROFILE_ID)
     const tools = theToolsetJustHandedOut()
     const listing = tools.tools.find((one) => one.name === 'list_agents')
     expect(listing).toBeDefined()
 
-    expect(listing?.description).toContain(SAYS_WHAT_IT_DROPS)
+    expect(listing?.description).toContain(SAYS_STATUS_ADDRESSING)
+    expect(listing?.description).toContain('message_agent answers that separately')
     expect(listing?.description).toContain('list_profiles')
     // One list: nothing is listed apart.
     expect(listing?.description).not.toContain('Listed apart')
@@ -590,7 +591,7 @@ describe('642 · who can I talk to', () => {
       expect(page.notListed).toBe(5)
       // ⚑ **D-016 · commit 7 · R1 — by the label of a piece it owns, or its id.**
       expect(page.text).toContain(
-        '…and 5 more you can reach, not listed here; get_agent_status and message_agent take the label of a piece it owns (W1.2), or its id.',
+        '…and 5 more, not listed here; get_agent_status takes the label of a piece one owns (W1.2), or its id.',
       )
     })
   })

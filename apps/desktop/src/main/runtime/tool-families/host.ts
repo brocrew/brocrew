@@ -107,10 +107,11 @@ export interface AgentToolHost {
   archivedVisibleTo(by: Caller, me: string | null): ArchivedListed
   whenItWasArchived(id: string): number | null
   agentCard(id: string, by: Caller, me: string | null): AgentCard | null
-  whatOpenedItsLastTurn(
-    id: string,
-    me: string | null,
-  ): { readonly took: ReceivedInATurn | null; readonly readAt: number }
+  servicePieceForStatus(owner: string): string | null | undefined
+  whatOpenedItsLastTurn(id: string): {
+    readonly took: ReceivedInATurn | null
+    readonly readAt: number
+  }
   whyItIsOutOfReach(
     id: string,
     by: Caller,
@@ -231,10 +232,9 @@ export interface AgentToolHost {
   withdrawQuestion(input: { requestId: string }, by: Caller): WithdrawQuestionOutcome
   readTranscript(
     target: string,
-    reader: string,
     read: { readonly back: number; readonly search: string | null },
   ):
-    | { readonly ok: false; readonly refusal: 'not-a-conversation-below-you' }
+    | { readonly ok: false; readonly refusal: 'no-such-agent' }
     | {
         readonly ok: true
         readonly name: string

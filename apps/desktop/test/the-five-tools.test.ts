@@ -181,9 +181,10 @@ describe('347 · the five tools', () => {
   }
 
   /** An identity exists only once a person has run a conversation as it — 341 criterion 12. */
-  const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
+  const bringIdentityIntoBeing = async (profileId: string): Promise<string> => {
     const id = await personOpens(profileId)
     await host.close(id, window)
+    return id
   }
 
   /**
@@ -362,8 +363,8 @@ describe('347 · the five tools', () => {
       )
     })
 
-    it('⛔ list_agents shows the caller and its children, and a stranger sees neither', async () => {
-      await bringIdentityIntoBeing('worker')
+    it('list_agents shows the caller, its child and an unrelated conversation to every reader', async () => {
+      const seeded = await bringIdentityIntoBeing('worker')
       const parent = await personOpens('pm')
       const child = (await give(parent, 'worker')).agent as string
 
@@ -372,17 +373,17 @@ describe('347 · the five tools', () => {
       expect(ids).toContain(parent)
       expect(ids).toContain(child)
 
-      // ⛔ **The positive above differs from the default**: a second agent, entitled to nothing,
-      // asks the very same reader and sees only itself — so "contains parent and child" is a fact
-      // about entitlement rather than about the reader returning everything it can find.
+      // A narrowed message grant does not narrow the reader.
       const stranger = await personOpens('nosy')
       // ⚑ **549 · narrowed, because the ruled default is `any`** — see {@link narrowedToNone}.
       narrowedToNone('nosy')
       const theirs = (await toolsOf(stranger).call('list_agents', {})).agents as { agent: string }[]
-      expect(theirs.map((one) => one.agent)).toEqual([stranger])
+      expect(theirs.map((one) => one.agent).sort()).toEqual(
+        [stranger, parent, child, seeded].sort(),
+      )
     })
 
-    it('⚠️ get_agent_status reports the child, and refuses a session the caller may not reach', async () => {
+    it('get_agent_status reports the child to any reader while message reach stays narrow', async () => {
       await bringIdentityIntoBeing('worker')
       const parent = await personOpens('pm')
       const child = (await give(parent, 'worker')).agent as string
@@ -410,18 +411,16 @@ describe('347 · the five tools', () => {
       const stranger = await personOpens('nosy')
       // ⚑ **549 · narrowed, because the ruled default is `any`** — see {@link narrowedToNone}.
       narrowedToNone('nosy')
-      const refused = await toolsOf(stranger).call('get_agent_status', { agent: child })
-      expect(refused.outcome).toBe('refused')
-      // ⚑ **D-017 · R12 — an id that EXISTS and is out of reach gets the reach rail `message_agent`
-      // meets**, at every door that takes an id; `no-such-agent` is said only about an id no
-      // conversation has (`05` rule 6).
-      expect(refused.rail).toBe('may-not-message')
+      const read = await toolsOf(stranger).call('get_agent_status', { agent: child })
+      expect(read.outcome).toBe('ok')
+      expect((read.agent as { agent: string }).agent).toBe(child)
       const toldByTheMessageDoor = await toolsOf(stranger).call('message_agent', {
         kind: 'note',
         agent: child,
         text: 'hello',
       })
-      expect(toldByTheMessageDoor.rail).toBe(refused.rail)
+      expect(toldByTheMessageDoor.outcome).toBe('refused')
+      expect(toldByTheMessageDoor.rail).toBe('may-not-message')
 
       // ⛔ **An id that was never a session answers `no-such-agent`**, and the reader returns rather
       // than throwing. ⚑ D-017 · R12 — the two shapes differ now, by ruling: `341`'s *answer them
@@ -429,7 +428,7 @@ describe('347 · the five tools', () => {
       const ghost = await toolsOf(stranger).call('get_agent_status', { agent: 'sess_never' })
       expect(ghost.outcome).toBe('refused')
       expect(ghost.rail).toBe('no-such-agent')
-      expect(ghost.reason).not.toBe(refused.reason)
+      expect(ghost.reason).not.toBe(toldByTheMessageDoor.reason)
     })
 
     // ⚑ **D-017 · commit 3** — `end_agent` is gone (nothing ends a conversation), and with it the two

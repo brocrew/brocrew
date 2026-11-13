@@ -519,7 +519,7 @@ describe('685 §2.1 · the act a refusal carries, on its notice', () => {
     // ⚑ **D-017 · R12 — `no-such-agent` now says only *no conversation has that id*** (R13's true
     // words), and the act it points at reads *reach*.
     expect(card?.kind === 'tool' ? card.result?.summary : '').toContain(
-      'list_agents names the ones you can reach',
+      'list_agents names the conversations this app can run',
     )
     // ⚑ The control: the same fold for a call that is NOT a card does join — the aRefusedAnswer cases.
   })
