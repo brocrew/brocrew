@@ -5,30 +5,30 @@
       "id": "chrome",
       "name": "Chrome",
       "description": "Lets agents use Google Chrome with its own separate profiles: read pages, use sites and save downloads.",
-      "version": "0.1.14",
+      "version": "0.1.15",
       "authors": [
         "brocrew"
       ],
       "minAppVersion": "0.2.20",
-      "sourceCommit": "cd32eaa723e3a816d32139cb90d7564c0243da63",
+      "sourceCommit": "c8f25ade625db68f8b5ff39aa321fdeca9d3d67c",
       "targets": [
         {
           "os": "darwin",
           "cpu": "arm64",
-          "url": "https://github.com/brocrew/brocrew-plugin-chrome/releases/download/v0.1.14/chrome-darwin-arm64.tar.gz",
-          "sha256": "a4e040f97e78ee04a5cc6b14e7bbd557a6e86518e2397c6c67e68e9377856b58",
-          "bytes": 3608061,
+          "url": "https://github.com/brocrew/brocrew-plugin-chrome/releases/download/v0.1.15/chrome-darwin-arm64.tar.gz",
+          "sha256": "a4fd05eeacdfe159126680d530e41ff617073203a7c03219615b401da2da939a",
+          "bytes": 3609227,
           "compression": "tar.gz",
-          "manifestSha256": "a424d36c3273bb7005921fe4b26d37385520a1f0e54acd3504cd9e3333480271"
+          "manifestSha256": "8ae54996fdafa693cd54be908452c24afdd04265b2a98e2d0cec3ac276535198"
         },
         {
           "os": "win32",
           "cpu": "x64",
-          "url": "https://github.com/brocrew/brocrew-plugin-chrome/releases/download/v0.1.14/chrome-win32-x64.tar.gz",
-          "sha256": "188171e17862d297ad869c03dbc6b3974a8dcc03071035b89e926753eb7228fa",
-          "bytes": 3608061,
+          "url": "https://github.com/brocrew/brocrew-plugin-chrome/releases/download/v0.1.15/chrome-win32-x64.tar.gz",
+          "sha256": "38c6bf0bd2505676ab8b514546ac21229ba4adf171627e9d3bd93157d99c0497",
+          "bytes": 4373228,
           "compression": "tar.gz",
-          "manifestSha256": "d9dbbba0e3fea2e0172afd89cdcae8028fe226695a09432b4224d637350750b0"
+          "manifestSha256": "620c5a6eb168807ff7d2dbb6b07114d625fc3b907ec1a3fddf31ac1056a0b49a"
         }
       ]
     },
@@ -36,30 +36,30 @@
       "id": "whatsapp",
       "name": "WhatsApp",
       "description": "Lets agents read your WhatsApp chats when you allow it, and send to the groups you choose.",
-      "version": "0.1.7",
+      "version": "0.1.8",
       "authors": [
         "brocrew"
       ],
       "minAppVersion": "0.2.20",
-      "sourceCommit": "fd13882c460c32c247d39877ab7a67437d939ddd",
+      "sourceCommit": "a90cae6b2a6af5918ebd831f47f3b71d3cff0ccb",
       "targets": [
         {
           "os": "darwin",
           "cpu": "arm64",
-          "url": "https://github.com/brocrew/brocrew-plugin-whatsapp/releases/download/v0.1.7/whatsapp-darwin-arm64.tar.gz",
-          "sha256": "70b899abb2949a5fac46e24f54c6311db972b0b1bcb3c15f383307a4f60a7059",
-          "bytes": 7805126,
+          "url": "https://github.com/brocrew/brocrew-plugin-whatsapp/releases/download/v0.1.8/whatsapp-darwin-arm64.tar.gz",
+          "sha256": "ceddd5b416327c509bfa1e16f3e50cbee8ebc8ea66909a0db8fbcefcb52786cc",
+          "bytes": 7806423,
           "compression": "tar.gz",
-          "manifestSha256": "65acde784bd23d8c1591bc86c5c0d20d8eb023085c52bec70ad688f7eb4bea88"
+          "manifestSha256": "5764682600274b33fa88e91a175b8006d220c209fc91c7139387e1e7d9a0d578"
         },
         {
           "os": "win32",
           "cpu": "x64",
-          "url": "https://github.com/brocrew/brocrew-plugin-whatsapp/releases/download/v0.1.7/whatsapp-win32-x64.tar.gz",
-          "sha256": "52e0c48cec297b8c990e96cabafd3a7371ff91e33ea211240b60f8dae955bf47",
-          "bytes": 8204268,
+          "url": "https://github.com/brocrew/brocrew-plugin-whatsapp/releases/download/v0.1.8/whatsapp-win32-x64.tar.gz",
+          "sha256": "1e86700ae58dafe39f5c1384d5390e4b250b78292105b4945b0dcfc81621f026",
+          "bytes": 8205072,
           "compression": "tar.gz",
-          "manifestSha256": "c0ded866fa9f6d6ca216e533ad90f3478cced2df9a728e490d6a0125996dcb96"
+          "manifestSha256": "b6285504f29cc047fefff0284feb9fcfcfdf3a37ed983a3d4c86f0abb24980ee"
         }
       ]
     }
