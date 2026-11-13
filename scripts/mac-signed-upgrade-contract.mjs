@@ -77,7 +77,10 @@ export function fixturePermissions(folder, nativeNames = []) {
 }
 
 export function credentialPreserved(before, after, status) {
-  requireEvidence(typeof before === 'string', 'Fictional plain-file credential baseline is missing.')
+  requireEvidence(
+    typeof before === 'string',
+    'Fictional plain-file credential baseline is missing.',
+  )
   const file = JSON.parse(before)
   const setAt = file?.keys?.codex?.setAt
   requireEvidence(

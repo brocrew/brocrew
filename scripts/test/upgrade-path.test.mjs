@@ -1615,8 +1615,7 @@ describe('the candidate’s first recovery copy', () => {
     copies,
     applied = lineage,
     built = [...lineage, { createdAt: 2_000_000_000_000, hash: 'h2' }],
-  ) =>
-    firstCopyPolicy(applied, built, copies, { workspaceId, stateFiles: expected.stateFiles })
+  ) => firstCopyPolicy(applied, built, copies, { workspaceId, stateFiles: expected.stateFiles })
   const fallback = () => ({
     folder: id,
     manifest: copy(manifest),

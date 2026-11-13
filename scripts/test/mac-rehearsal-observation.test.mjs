@@ -658,7 +658,9 @@ it('preserves the released plain-file key and resumes without saving it again', 
       expect(runtime.close).toHaveBeenCalledOnce()
     } else {
       await expect(run(fixture)).rejects.toThrow()
-      expect(fixture.startLocalModelTurn).toHaveBeenCalledTimes(mode === 'changed-after-resume' ? 1 : 0)
+      expect(fixture.startLocalModelTurn).toHaveBeenCalledTimes(
+        mode === 'changed-after-resume' ? 1 : 0,
+      )
     }
     expect(runtime.setApiKey).not.toHaveBeenCalled()
   }

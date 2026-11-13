@@ -51,7 +51,10 @@ test('persistent fixture permissions include nested skill files and ignore trans
 })
 
 test('the released plain-file credential needs a positive baseline and exact bytes', () => {
-  const file = { version: 1, keys: { codex: { key: 'sk-update-rehearsal-not-a-real-key', setAt: 12 } } }
+  const file = {
+    version: 1,
+    keys: { codex: { key: 'sk-update-rehearsal-not-a-real-key', setAt: 12 } },
+  }
   const before = JSON.stringify(file)
   const status = { provider: 'codex', set: true, inUse: true, setAt: 12 }
   assert.deepEqual(credentialPreserved(before, before, status), {

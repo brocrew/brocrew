@@ -226,7 +226,10 @@ export function releaseAssetInventory(directory, version, os, record = () => {})
     expected.push(entry.url, `${entry.url}.blockmap`)
   }
   requireEvidence(
-    isDeepStrictEqual(files.map(({ name }) => name), expected.sort()),
+    isDeepStrictEqual(
+      files.map(({ name }) => name),
+      expected.sort(),
+    ),
     'The reused artifact must contain exactly its feed, installers and blockmaps.',
   )
   requireEvidence(
