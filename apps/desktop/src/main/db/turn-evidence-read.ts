@@ -151,9 +151,8 @@ export function createTurnEvidenceRead(
       sql.turnFirstRow.get(sessionId, turnId, life.generation) as { first: number | null }
     ).first
     if (first === null) return false
-    const last = (
-      sql.lastLaunch.get(sessionId, life.generation, first) as { last: number | null }
-    ).last
+    const last = (sql.lastLaunch.get(sessionId, life.generation, first) as { last: number | null })
+      .last
     return last === life.launched
   }
 
