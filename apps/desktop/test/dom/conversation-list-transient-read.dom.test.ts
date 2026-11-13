@@ -40,6 +40,7 @@ function open(read = vi.fn(async () => rows)) {
           workspaceFolder: workspace,
         }),
     ),
+    {},
   )
   return { m, rail, read, workspace, refresh: () => rail.value!.refreshResumable() }
 }
@@ -200,15 +201,67 @@ it('frequent failed refresh notices cannot bypass or restart the two-second quie
   out.read.mockRejectedValue(unavailable)
   const first = out.refresh()
   await flush()
+  await vi.advanceTimersByTimeAsync(400)
   const second = out.refresh()
   await flush()
+  await vi.advanceTimersByTimeAsync(400)
   const third = out.refresh()
   await flush()
   expect(errors(out)).toHaveLength(0)
-  await vi.advanceTimersByTimeAsync(1_999)
+  await vi.advanceTimersByTimeAsync(1_199)
   expect(errors(out)).toHaveLength(0)
   await vi.advanceTimersByTimeAsync(1)
+  expect(errors(out)).toHaveLength(1)
   await Promise.all([first, second, third])
   expect(out.m.q('conversations-error').textContent).toContain(unavailable.message)
   expect(count(out)).toBe(1)
+})
+
+it('a slow failed reply schedules the final attempt at the original deadline', async () => {
+  const out = open()
+  await flush()
+  out.read.mockRejectedValueOnce(unavailable)
+  let rejectSlow!: (cause: Error) => void
+  out.read.mockImplementationOnce(
+    () =>
+      new Promise((_, reject) => {
+        rejectSlow = reject
+      }),
+  )
+  out.read.mockRejectedValue(unavailable)
+  const refreshed = out.refresh()
+  await flush()
+  expect(errors(out)).toHaveLength(0)
+  await vi.advanceTimersByTimeAsync(1_000)
+  expect(out.read).toHaveBeenCalledTimes(3)
+  await vi.advanceTimersByTimeAsync(900)
+  rejectSlow(unavailable)
+  await flush()
+  await vi.advanceTimersByTimeAsync(99)
+  expect(errors(out)).toHaveLength(0)
+  expect(out.read).toHaveBeenCalledTimes(3)
+  await vi.advanceTimersByTimeAsync(1)
+  expect(errors(out)).toHaveLength(1)
+  await refreshed
+  expect(out.read).toHaveBeenCalledTimes(4)
+  expect(count(out)).toBe(1)
+})
+
+it('changing workspace directly cancels a scheduled retry without a superseding refresh call', async () => {
+  const out = open()
+  await flush()
+  out.read.mockRejectedValueOnce(unavailable)
+  const refreshed = out.refresh()
+  await flush()
+  expect(errors(out)).toHaveLength(0)
+  await vi.advanceTimersByTimeAsync(400)
+  out.read.mockResolvedValue([])
+  out.workspace.path = '/fictional/second'
+  await flush()
+  await refreshed
+  expect(count(out)).toBe(0)
+  expect(out.read).toHaveBeenCalledTimes(3)
+  await vi.advanceTimersByTimeAsync(2_000)
+  expect(out.read).toHaveBeenCalledTimes(3)
+  expect(errors(out)).toHaveLength(0)
 })

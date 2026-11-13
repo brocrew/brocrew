@@ -41,14 +41,18 @@ export function useConversationListRecovery(workspace: () => string | null, rese
     retry: (read: number): Promise<boolean> => {
       if (!current(read)) return Promise.resolve(false)
       failedSince ??= Date.now()
-      if (Date.now() - failedSince >= 2_000) return Promise.resolve(false)
+      const remaining = 2_000 - (Date.now() - failedSince)
+      if (remaining <= 0) return Promise.resolve(false)
       return new Promise((resolve) => {
         finishWait = resolve
-        timer = setTimeout(() => {
-          timer = undefined
-          finishWait = undefined
-          resolve(current(read))
-        }, 1_000)
+        timer = setTimeout(
+          () => {
+            timer = undefined
+            finishWait = undefined
+            resolve(current(read))
+          },
+          Math.min(1_000, remaining),
+        )
       })
     },
   }
