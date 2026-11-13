@@ -28,19 +28,7 @@ import { isVisibleIn } from '../src/renderer/src/lib/transcript-mode'
 import type { ResumedSession, RuntimeBridge, RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { everythingOverTheWire } from './lib/the-wire'
 
-/**
- * 🔴 **D-004 · R101 — a Claude conversation killed by a login renewed elsewhere on this Mac reopens
- * itself on the new login, and says so.**
- *
- * A mid-turn `auth_stale` failure (“OAuth access token has been revoked”) stops the
- * conversation. Reopening and sending another message must use a login renewed by another
- * Claude process; a child holding an injected token cannot renew that token itself.
- *
- * ⚑ **Real host, real SQLite ledger, the product's own `ClaudeRuntime` over scripted SDK frames, and
- * the real renderer store in the window.** The machine login is a fake reader: the token is a plain
- * test string, and it changes between the launch and the fatal 401 exactly as a renewal does.
- * 🔒 No real credential is read anywhere in this file.
- */
+// Real host, ledger and Claude adapter over scripted SDK frames and a synthetic machine login.
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
@@ -92,7 +80,6 @@ class FakeQuery {
   readonly cli = new TheCliAnswersInOrder()
 }
 
-/** ⛔ One window's two ends, the way the preload builds them (`a-woken-conversation…`'s `Window`). */
 class Window {
   readonly received: RuntimeEventMessage[] = []
   readonly resumes: ResumedSession[] = []
@@ -128,8 +115,7 @@ class Window {
         this.resumes.push(handed)
         return handed
       },
-      // ⚑ **D-017b · the window takes a conversation it is sent events for back through `look`**,
-      // which starts nothing: the host started it for this window, and the look attaches it.
+      // Looking attaches the window without starting the conversation.
       look: async (input) => {
         const handed = await run<ResumedSession>('look', { ...input })
         this.resumes.push(handed)
@@ -142,8 +128,6 @@ class Window {
         }
       },
       onLiveness: () => () => {},
-      // ⚑ **D-017 · the store now asks for what is open when it starts** (`45a11477`); without this
-      // door every mount rejected unhandled. Through the real command, like its neighbours.
       attachOpen: () => run<ResumedSession[]>('attachOpen'),
     }
     return everythingOverTheWire(bridge) as RuntimeBridge
@@ -160,16 +144,12 @@ describe('D-004 · R101 — a login renewed elsewhere reopens the conversation i
   let hosts: RuntimeHost[]
   /** ⚑ What the provider has "on disk": every id a `system/init` announced. */
   let announced: Set<string>
-  /** Every query the product built, and the options it built them with. */
   let launches: { fq: FakeQuery; options: Options }[]
-  /** 🔒 The fake machine login — a test string, or `null` for missing or expired. */
   let machineLogin: string | null
   let readMachineLogin: (() => Promise<string | null>) | undefined
-  /** The app's renewal of an expired Claude Code login, when a test gives one. */
   let renewal: ((reason?: 'rejected') => Promise<ClaudeLoginRenewal>) | undefined
   let renewAfterRejection: boolean
   let nextId: number
-  /** Whether a Claude key is saved, which a launch runs on instead of the login. */
   let keySaved: boolean
   let authOps: ProviderAuthOps | undefined
   let authChanges: unknown[]
@@ -300,21 +280,11 @@ describe('D-004 · R101 — a login renewed elsewhere reopens the conversation i
   const eventsOf = (sessionId: string): TranscriptEvent[] =>
     ledger.events(sessionId).map((entry) => entry.event)
 
-  /**
-   * ⚑ **D-017b · the window's record holds the RECORDED hand-over** (`look`, once the life that died
-   * is let go) — ⛔ never the dying life's `attached` one: its hand-back, grants and settings are
-   * that life's.
-   */
+  // The window has taken the stopped life back from the ledger.
   const holdsTheRecordedHandover = (one: SessionRecord): boolean =>
     one.meta !== null && 'handover' in one.meta && one.meta.handover === 'recorded'
 
-  /**
-   * ⚑ A conversation in a person's window, one turn in, and a second turn the revoked sign-in kills
-   * — the measured shape: the provider's init, then the CLI's own `authentication_failed` notice.
-   * `renew` runs after the turn began and before the fatal 401, as another Claude on the Mac
-   * renewing does. ⚑ `the-stream-ended` (T-002) kills it another way instead: the provider stream
-   * ends mid-turn, a fatal error with no `auth_stale` cause.
-   */
+  // Change the synthetic login during the second turn, then refuse auth or end the stream.
   async function killedMidTurn(
     renew: () => void,
     how: 'revoked' | 'the-stream-ended' = 'revoked',
@@ -746,14 +716,12 @@ describe('D-004 · R101 — a login renewed elsewhere reopens the conversation i
       machineLogin = 'test-token-renewed-elsewhere'
     })
 
-    // ⚑ A second launch, a RESUME of the same provider conversation, on the renewed login.
     await waitFor(() => launches.length === 2, 'the reopen')
     expect(launches[1]?.options.resume).toBe('provider-A')
     expect(launches[1]?.options.env?.['CLAUDE_CODE_OAUTH_TOKEN']).toBe(
       'test-token-renewed-elsewhere',
     )
 
-    // ⚑ The row says why, and it reached the window that watched it die.
     expect(eventsOf(sessionId)).toContainEqual({
       type: 'reopened',
       because: 'the-sign-in-was-renewed',
@@ -768,15 +736,12 @@ describe('D-004 · R101 — a login renewed elsewhere reopens the conversation i
     expect(takenBack()[0]?.sessionId).toBe(sessionId)
     await waitFor(() => record().phase === 'open', 'the window’s record to be live again')
 
-    // ⚑ One line says so, and the transcript is not ended.
     const said = record().control.items.filter(
       (item): item is NoticeItem =>
         item.kind === 'notice' && item.text === REOPENED_ON_A_RENEWED_SIGN_IN,
     )
     expect(said).toHaveLength(1)
     expect(record().control.ended).toBe(false)
-    // ⚑ **T-002 · `1004 M11`**: at `warn`, so the reading view keeps it: it answers the stop drawn
-    // just above it. And the card's own promise is in its words.
     expect(said[0]?.level).toBe('warn')
     expect(isVisibleIn(said[0]!)).toBe(true)
     expect(REOPENED_ON_A_RENEWED_SIGN_IN).toContain('Nothing was re-sent: send again to carry on.')

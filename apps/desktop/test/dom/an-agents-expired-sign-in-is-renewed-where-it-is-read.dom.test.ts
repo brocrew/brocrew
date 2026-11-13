@@ -32,7 +32,9 @@ const SESSION: CreatedSession = {
 
 function theBridge() {
   const runtime = {
-    checkProviderAuth: vi.fn(async (_input?: { probe?: boolean }): Promise<AuthState> => EXPIRED),
+    checkProviderAuth: vi.fn<(input?: { probe?: boolean }) => Promise<AuthState>>(
+      async () => EXPIRED,
+    ),
     signInProvider: vi.fn(async () => ({ success: true, state: EXPIRED, detail: null })),
     reprovisionProviderAuth: vi.fn(async () => 'replaced'),
     cancelProviderSignIn: vi.fn(async () => undefined),

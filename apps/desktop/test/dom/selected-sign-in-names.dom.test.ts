@@ -186,7 +186,7 @@ it.each(['card', 'launcher', 'pane'] as const)(
         {
           provider: 'claude',
           profileId: DEFAULT_PROFILE_ID,
-          ...(kind === 'card' ? { probe: true } : {}),
+          ...(kind === 'card' || kind === 'pane' ? { probe: true } : {}),
         },
       ],
     ])
