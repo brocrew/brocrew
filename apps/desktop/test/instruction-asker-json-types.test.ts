@@ -16,7 +16,7 @@ beforeEach(() => {
   store = createSessionStore(db)
   ordinal = 100
   for (const id of owners)
-    store.create({ id, provider: 'codex', cwd: folder, approvalMode: 'ask' })
+    store.create({ id, provider: 'codex', profileId: 'brobot', cwd: folder, approvalMode: 'ask' })
 })
 
 afterEach(() => {
