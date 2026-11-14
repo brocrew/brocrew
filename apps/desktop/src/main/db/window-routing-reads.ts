@@ -3,13 +3,13 @@ import type { WindowWriterStamp } from './window-writer-stamp'
 import type { LimitsWriterStamp } from './fresh-limits-snapshot'
 import type { SessionStore } from './session-store'
 import type { RowsUnread } from './rows-unread'
-import type { RoutingReading, WindowRoutes } from './window-read-protocol'
+import type { RoutingReading, WindowRoutes, WindowListingStates } from './window-read-protocol'
 import { WindowReadUnavailable } from './window-read-protocol'
 import type { WindowFact, WindowWorkReading } from './window-work-reading'
 
 type Reading = {
   active: boolean
-  readonly snapshot: WindowRoutes
+  readonly snapshot: WindowRoutes | WindowListingStates
   readonly routes: ReadonlyMap<string, RoutingReading>
   readonly work?: {
     owners: ReadonlyMap<string, WindowWorkReading['owners'][number]>
@@ -62,8 +62,14 @@ export function sameWindowContent(
 export class WindowRoutingReads {
   private readonly context = new AsyncLocalStorage<Reading>()
   /** Each snapshot's routes by conversation, built once for as long as the snapshot is kept. */
-  private readonly indexed = new WeakMap<WindowRoutes, ReadonlyMap<string, RoutingReading>>()
-  private readonly workIndexed = new WeakMap<WindowRoutes, NonNullable<Reading['work']>>()
+  private readonly indexed = new WeakMap<
+    WindowRoutes | WindowListingStates,
+    ReadonlyMap<string, RoutingReading>
+  >()
+  private readonly workIndexed = new WeakMap<
+    WindowRoutes | WindowListingStates,
+    NonNullable<Reading['work']>
+  >()
 
   get active(): boolean {
     return this.context.getStore()?.active === true
@@ -131,14 +137,14 @@ export class WindowRoutingReads {
     return new Map(raised === undefined ? [] : this.fact(raised, unread))
   }
 
-  queue<K extends keyof WindowWorkReading['queue']>(
+  queue<K extends keyof NonNullable<WindowWorkReading['queue']>>(
     kind: K,
     unread: RowsUnread,
-  ): WindowWorkReading['queue'][K]['value'] | undefined {
+  ): NonNullable<WindowWorkReading['queue']>[K]['value'] | undefined {
     const reading = this.context.getStore()
     if (!reading?.active) return undefined
     if (reading.snapshot.work?.queue === undefined) throw new WindowReadUnavailable()
-    return this.fact<WindowWorkReading['queue'][K]['value']>(
+    return this.fact<NonNullable<WindowWorkReading['queue']>[K]['value']>(
       reading.snapshot.work.queue[kind],
       unread,
     )
@@ -151,7 +157,7 @@ export class WindowRoutingReads {
     return this.fact(reading.snapshot.work.instructionAskers, unread)
   }
 
-  run<T>(snapshot: WindowRoutes, answer: () => T): T {
+  run<T>(snapshot: WindowRoutes | WindowListingStates, answer: () => T): T {
     let routes = this.indexed.get(snapshot)
     if (routes === undefined) {
       routes = new Map(snapshot.routes.map((row) => [row.sessionId, row]))
@@ -232,6 +238,7 @@ export class WindowRoutingReads {
             const reading = current()
             if (reading === undefined) return store.questionsAPersonMustAnswer(unread)
             skipped(reading, unread)
+            if (!('questions' in reading.snapshot)) throw new WindowReadUnavailable()
             return reading.snapshot.questions
           }
         if (key === 'decisionsAwaitingAPerson')
@@ -239,6 +246,7 @@ export class WindowRoutingReads {
             const reading = current()
             if (reading === undefined) return store.decisionsAwaitingAPerson(unread)
             skipped(reading, unread)
+            if (!('decisions' in reading.snapshot)) throw new WindowReadUnavailable()
             return reading.snapshot.decisions
           }
         const value: unknown = Reflect.get(store, key, store)

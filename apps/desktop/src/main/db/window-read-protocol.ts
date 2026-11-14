@@ -44,6 +44,7 @@ export const windowReadQuery = z.discriminatedUnion('kind', [
     })
     .strict(),
   z.object({ kind: z.literal('routes'), reuse: foldReuse.optional() }).strict(),
+  z.object({ kind: z.literal('listing') }).strict(),
   z
     .object({
       kind: z.literal('publication'),
@@ -91,6 +92,11 @@ export interface WindowRoutes {
   readonly decisions: ReturnType<SessionStore['decisionsAwaitingAPerson']>
   readonly cacheToken?: string
   readonly work?: WindowWorkReading
+}
+export interface WindowListingStates {
+  readonly kind: 'listing'
+  readonly routes: readonly RoutingReading[]
+  readonly work: WindowWorkReading
 }
 interface WindowPublication {
   readonly kind: 'publication'
@@ -162,6 +168,7 @@ interface WindowForestNodes {
   readonly gone: readonly string[]
 }
 export type WindowReadResult =
+  | WindowListingStates
   | WindowRoutes
   | WindowLeads
   | WindowFiles
@@ -182,6 +189,28 @@ const walk = z
   })
   .strict()
 const ids = z.array(z.string().min(1))
+const listingFacts = z.object({
+      work: z
+        .object({
+          owners: z.array(z.unknown()),
+          namesUnder: z.array(z.unknown()),
+          raised: z.array(z.unknown()),
+          instructionAskers: z.unknown(),
+          queue: z.unknown(),
+          routedTo: z.array(z.unknown()),
+        })
+        .strict()
+        .optional(),
+      routes: z.array(
+        z
+          .object({
+            sessionId: z.string().min(1),
+            requests: z.array(z.unknown()),
+            skipped: z.array(skipped),
+          })
+          .strict(),
+      ),
+}).strict()
 export const windowReadResult = z.discriminatedUnion('kind', [
   z
     .object({
@@ -282,34 +311,8 @@ export const windowReadResult = z.discriminatedUnion('kind', [
       roster: z.array(z.unknown()),
     })
     .strict(),
-  z
-    .object({
-      kind: z.literal('routes'),
-      cacheToken: z.string().optional(),
-      work: z
-        .object({
-          owners: z.array(z.unknown()),
-          namesUnder: z.array(z.unknown()),
-          raised: z.array(z.unknown()),
-          instructionAskers: z.unknown(),
-          queue: z.unknown(),
-          routedTo: z.array(z.unknown()),
-        })
-        .strict()
-        .optional(),
-      routes: z.array(
-        z
-          .object({
-            sessionId: z.string().min(1),
-            requests: z.array(z.unknown()),
-            skipped: z.array(skipped),
-          })
-          .strict(),
-      ),
-      questions: walk,
-      decisions: walk,
-    })
-    .strict(),
+  listingFacts.extend({ kind: z.literal('listing') }).strict(),
+  listingFacts.extend({ kind: z.literal('routes'), cacheToken: z.string().optional(), questions: walk, decisions: walk }).strict(),
   z.object({ kind: z.literal('leads'), rows: z.array(z.unknown()) }).strict(),
 ])
 

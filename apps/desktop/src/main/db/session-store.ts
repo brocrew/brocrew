@@ -1,3 +1,4 @@
+import { readInstructionAskers } from './instruction-askers-read'
 import {
   createSessionCatalogueRead,
   derivedStateOf,
@@ -726,6 +727,7 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   hasPendingMemoryAmendment(profileSlug: string): boolean
   memoryAmendment(profileSlug: string, id: string): MemoryAmendment | null
   instructionAsksWaiting(unread?: RowsUnread): readonly InstructionAskWaiting[]
+  instructionAskersAmong(owners: readonly string[], unread: RowsUnread): readonly string[]
   settleInstructionAsk(askId: string, ending: InstructionEnding, by: ActedBy, at: number): boolean
   /** Every MCP server request no ending names yet, oldest first, across every conversation. */
   mcpServerRequestsWaiting(unread?: RowsUnread): readonly McpServerRequestWaiting[]
@@ -1057,6 +1059,10 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   } | null
   theRequestRouted(sessionId: string, requestId: string): ProviderRequestEvent | null
   questionsRaisedIn(sessionId: string, unread?: RowsUnread): ReadonlyMap<string, RaisedQuestion>
+  questionStatesIn(
+    sessionId: string,
+    unread?: RowsUnread,
+  ): ReadonlyMap<string, Pick<RaisedQuestion, 'piece' | 'raisedBy'>>
   routedRequestsAtHand(sessionId: string): readonly RoutedRequest[] | null
   questionsRaisedAtHand(sessionId: string): ReadonlyMap<string, RaisedQuestion> | null
   piecesAtHand(owner: string): readonly PieceRow[] | null
@@ -1146,6 +1152,7 @@ export const NULL_SESSION_STORE: SessionStore = {
   hasPendingMemoryAmendment: () => false,
   memoryAmendment: () => null,
   instructionAsksWaiting: () => [],
+  instructionAskersAmong: () => [],
   turnBlockCandidates: () => null,
   instructionAsksWaitingIn: () => null,
   replyQuestionWithoutARequest: () => null,
@@ -1314,6 +1321,7 @@ export const NULL_SESSION_STORE: SessionStore = {
   routedRequestsOf: () => [],
   questionsRoutedTo: () => [],
   questionsRaisedIn: () => new Map(),
+  questionStatesIn: () => new Map(),
   theDecisionOn: () => null,
   theRequestRouted: () => null,
   whoRoutedToWhom: () => [],
@@ -3051,6 +3059,12 @@ export function createSessionStore(
   const routedRequestsAtHand = (sessionId: string) =>
     routedRequestsKeptOnly(sessionId)?.answer ?? null
   const questionsRaisedAtHand = theKeptOnly(foldQuestionsRaisedInSession)
+  const questionStatesInSession = keptUntilItsLedgerGrows(
+    (sessionId, noteSkip) =>
+      readRaisedQuestions(sessionId, noteSkip, ({ piece, raisedBy }) => ({ piece, raisedBy })),
+    undefined,
+    'question-states',
+  )
 
   function foldPiecesOfSession(
     owner: string,
@@ -3323,7 +3337,8 @@ export function createSessionStore(
     const generation = activeGeneration(sessionId)
     return readOrSkip(sessionId, noteSkip, { answer: [], floor: null, entries: [] }, () => {
       let floor: number | null = null
-      let actedOn: PersistedEvent[] | null = []
+      // A read-only snapshot keeps the answer, not provider/question bodies for append replay.
+      let actedOn: PersistedEvent[] | null = oneSnapshot ? null : []
       function* entries() {
         const rows = selectRoutedRequestEvents.iterate({
           session: sessionId,
@@ -3361,27 +3376,33 @@ export function createSessionStore(
     after: number,
     held: RoutedRequestsKept,
   ): RoutedRequestsKept | null {
-    const rows = selectRoutedRequestEventsAfter.all({
+    const rows = selectRoutedRequestEventsAfter.iterate({
       session: sessionId,
       generation,
       after,
-    }) as (EventRow & { readonly type: string; readonly readable: number })[]
+    }) as Iterable<EventRow & { readonly type: string; readonly readable: number }>
     // A row the whole fold would count as unread, or a first routing, is the whole fold's to read.
-    if (rows.some((row) => row.readable !== 1)) return null
-    if (held.floor === null) {
-      return rows.some((row) => row.type === 'request_routed' || row.type === 'question_asked')
-        ? null
-        : held
-    }
     let skipped = false
-    const added = toPersistedEvents(rows, () => {
-      skipped = true
-    }).filter((entry) => aWaitIsReadFrom(entry.event))
-    if (skipped) return null
+    const added: PersistedEvent[] = []
+    for (const row of rows) {
+      if (row.readable !== 1) return null
+      if (held.floor === null) {
+        if (row.type === 'request_routed' || row.type === 'question_asked') return null
+        continue
+      }
+      for (const entry of toPersistedEvents([row], () => {
+        skipped = true
+      })) {
+        if (!aWaitIsReadFrom(entry.event)) continue
+        if (held.entries === null) return null
+        added.push(entry)
+        if (held.entries.length + added.length > ROUTED_ENTRIES_KEPT_AT_MOST) return null
+      }
+      if (skipped) return null
+    }
     if (added.length === 0) return held
     if (held.entries === null) return null
     const entries = [...held.entries, ...added]
-    if (entries.length > ROUTED_ENTRIES_KEPT_AT_MOST) return null
     let wellFormed = true
     try {
       const answer = deriveRoutedRequests(sessionId, entries, () => {
@@ -3402,7 +3423,25 @@ export function createSessionStore(
       activeGeneration(sessionId),
     ) as RaisedQuestionRow[]
     return readOrSkip(sessionId, noteSkip, new Map<string, RaisedQuestion>(), () =>
-      wordsIn(sessionId, rows, noteSkip),
+      wordsIn(sessionId, rows, noteSkip, (question) => question),
+    )
+  }
+
+  function readRaisedQuestions<T>(
+    sessionId: string,
+    noteSkip: SkipNote | undefined,
+    project: (question: RaisedQuestion) => T,
+  ): ReadonlyMap<string, T> {
+    return readOrSkip(sessionId, noteSkip, new Map<string, T>(), () =>
+      wordsIn(
+        sessionId,
+        selectQuestionsRaised.iterate(
+          sessionId,
+          activeGeneration(sessionId),
+        ) as Iterable<RaisedQuestionRow>,
+        noteSkip,
+        project,
+      ),
     )
   }
 
@@ -3434,12 +3473,13 @@ export function createSessionStore(
     }
   }
 
-  function wordsIn(
+  function wordsIn<T>(
     sessionId: string,
-    rows: readonly RaisedQuestionRow[],
+    rows: Iterable<RaisedQuestionRow>,
     noteSkip: SkipNote | undefined,
-  ): ReadonlyMap<string, RaisedQuestion> {
-    const words = new Map<string, RaisedQuestion>()
+    project: (question: RaisedQuestion) => T,
+  ): ReadonlyMap<string, T> {
+    const words = new Map<string, T>()
     for (const row of rows) {
       if (row.readable === 0) {
         noteUnreadRow(sessionId, row.ordinal, noteSkip)
@@ -3450,7 +3490,7 @@ export function createSessionStore(
         noteUnreadRow(sessionId, row.ordinal, noteSkip, 'is not a well-formed question')
         continue
       }
-      words.set(row.id, question)
+      words.set(row.id, project(question))
     }
     return words
   }
@@ -3468,7 +3508,9 @@ export function createSessionStore(
   ): WhatAConversationIsWaitingOn {
     const mine = unread?.in(sessionId)
     const routings = routedRequestsOfSession(sessionId, mine)
-    const raised = questionsRaisedInSession(sessionId, mine)
+    const raised = oneSnapshot
+      ? questionStatesInSession(sessionId, mine)
+      : questionsRaisedInSession(sessionId, mine)
     return {
       answers: new Set(openQuestionsByWork(routings, raised).keys()),
       aPerson: aPersonOwesAnAnswerIn(routings),
@@ -4744,6 +4786,11 @@ export function createSessionStore(
     hasPendingMemoryAmendment: knowledgeHistory.hasPendingMemoryAmendment,
     memoryAmendment: knowledgeHistory.memoryAmendment,
 
+    instructionAskersAmong(owners, unread) {
+      return readInstructionAskers(db, owners, (owner, ordinal) =>
+        noteUnreadRow(owner, ordinal, unread.in(owner)),
+      )
+    },
     instructionAsksWaiting(unread) {
       return instructionAsksWaiting(unread)
     },
@@ -6375,6 +6422,9 @@ export function createSessionStore(
     },
     questionsRaisedIn(sessionId, unread) {
       return questionsRaisedInSession(sessionId, unread?.in(sessionId))
+    },
+    questionStatesIn(sessionId, unread) {
+      return questionStatesInSession(sessionId, unread?.in(sessionId))
     },
     conversationsHoldingACopyOf(requestId) {
       // The copies only once they are full and indexed; until then, the exact read of the ledger.

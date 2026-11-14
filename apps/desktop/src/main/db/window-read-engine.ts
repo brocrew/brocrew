@@ -17,6 +17,7 @@ import {
   type WindowReadQuery,
   type WindowReadResult,
   type WindowRoutes,
+  type WindowListingStates,
 } from './window-read-protocol'
 
 /** Canonical folds over one read-only WAL snapshot, consuming SQLite iterators incrementally. */
@@ -106,8 +107,11 @@ export class WindowReadEngine {
         true,
         keepsFolds ? this.answers : undefined,
       )
-      const readRoutes = (): WindowRoutes => {
-        const candidates = this.db
+      const database = this.db
+      function readRoutes(listingOnly: true): WindowListingStates
+      function readRoutes(listingOnly?: false): WindowRoutes
+      function readRoutes(listingOnly = false): WindowRoutes | WindowListingStates {
+        const candidates = database
           .prepare("SELECT DISTINCT session_id AS id FROM events WHERE type = 'request_routed'")
           .iterate() as IterableIterator<{ id: string }>
         const routes: RoutingReading[] = []
@@ -135,6 +139,9 @@ export class WindowReadEngine {
             skipped: [...(skipped.get(id) ?? [])],
           })
         }
+        if (listingOnly) return {
+          kind: 'listing', routes, work: readWindowWork(cancellable, store, true),
+        }
         return {
           kind: 'routes',
           routes,
@@ -144,7 +151,9 @@ export class WindowReadEngine {
         }
       }
       let result: WindowReadResult
-      if (query.kind === 'forest') {
+      if (query.kind === 'listing') {
+        result = readRoutes(true)
+      } else if (query.kind === 'forest') {
         result = { kind: 'forest', ...readTheForestFirst(store, query.asked) }
       } else if (query.kind === 'forest-nodes') {
         result = {

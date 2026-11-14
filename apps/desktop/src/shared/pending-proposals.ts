@@ -5,11 +5,11 @@
  * renderer can use it.
  */
 export function pendingProposals<Proposed, Settled, Pending extends { readonly at: number }>(
-  rows: readonly {
+  rows: Iterable<{
     readonly conversation: string
     readonly at: number
     readonly event: Proposed | Settled
-  }[],
+  }>,
   fold: {
     readonly settled: (event: Proposed | Settled) => event is Settled
     readonly id: (event: Proposed | Settled) => string

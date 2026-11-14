@@ -47,7 +47,7 @@ export interface WindowWorkReading {
     string,
     WindowFact<readonly (readonly [string, StateQuestion])[]>,
   ])[]
-  readonly queue: {
+  readonly queue?: {
     readonly stalls: WindowFact<LedgerWalk<QueueStall>>
     readonly stops: WindowFact<LedgerWalk<QueueStall>>
     readonly replies: WindowFact<LedgerWalk<QueueReply>>
@@ -79,7 +79,7 @@ function counted<T>(read: (unread: RowsUnread) => T): WindowFact<T> {
 }
 
 /** The state and naming projections need no task briefs, replies, or resource bodies. */
-export function readWindowWork(db: AppDatabase, store: SessionStore): WindowWorkReading {
+export function readWindowWork(db: AppDatabase, store: SessionStore, listingOnly = false): WindowWorkReading {
   const state = ({ piece, parent, owner, state, givenAt }: PieceRow): StateWork => ({
     piece,
     parent,
@@ -149,9 +149,7 @@ export function readWindowWork(db: AppDatabase, store: SessionStore): WindowWork
       [
         id,
         counted((unread) =>
-          [...store.questionsRaisedIn(id, unread)].map(
-            ([request, { piece, raisedBy }]) => [request, { piece, raisedBy }] as const,
-          ),
+          [...store.questionStatesIn(id, unread)],
         ),
       ] as const,
   )
@@ -171,7 +169,7 @@ export function readWindowWork(db: AppDatabase, store: SessionStore): WindowWork
       }),
     ),
   })
-  const queue = {
+  const queue = listingOnly ? undefined : {
     stalls: counted((unread) => stalled(store.stalledWorkNobodyWasToldAbout(unread))),
     stops: counted((unread) => stalled(store.stalledWorkItsGiverWasToldAbout(unread))),
     replies: counted((unread) => {
@@ -190,9 +188,8 @@ export function readWindowWork(db: AppDatabase, store: SessionStore): WindowWork
     instructions: counted((unread) => store.instructionAsksWaiting(unread)),
     servers: counted((unread) => store.mcpServerRequestsWaiting(unread)),
   }
-  const instructionAskers = {
-    ...queue.instructions,
-    value: queue.instructions.value.map((one) => one.conversation),
-  }
+  const instructionAskers = queue === undefined
+    ? counted((unread) => store.instructionAskersAmong(ids.map(({ id }) => id), unread))
+    : { ...queue.instructions, value: queue.instructions.value.map((one) => one.conversation) }
   return { owners, namesUnder, raised, queue, instructionAskers, routedTo: store.whoRoutedToWhom() }
 }

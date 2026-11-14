@@ -2253,11 +2253,9 @@ export async function executeRuntimeCommand(
         command.text,
       )) satisfies Answer<'endPlanMode'>
     case 'listResumable':
-      return host.readForWindow(() => host.resumableSessions()) satisfies Answer<'listResumable'>
+      return host.readForWindow(() => host.resumableSessions(), 'listing') satisfies Answer<'listResumable'>
     case 'listUnresumable':
-      return host.readForWindow(() =>
-        host.unresumableSessions(),
-      ) satisfies Answer<'listUnresumable'>
+      return host.readForWindow(() => host.unresumableSessions(), 'listing') satisfies Answer<'listUnresumable'>
     case 'adoptSessions':
       // Awaited like every other async host call here: it became one in 046, when importing moved
       // to the streaming path, and a bare `return` of a promise would be the only case in this

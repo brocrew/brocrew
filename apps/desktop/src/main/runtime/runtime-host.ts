@@ -15290,21 +15290,22 @@ export class RuntimeHost implements LiveHost {
   }
 
   /** Compose a window answer only after its canonical routing snapshot was read off main. */
-  async readForWindow<T>(answer: () => T): Promise<T> {
+  async readForWindow<T>(answer: () => T, kind: 'routes' | 'listing' = 'routes'): Promise<T> {
     if (this.deps.windowReader === undefined) {
       this.deps.store.checkCommitted()
       return answer()
     }
     if (this.launches.closed) throw new WindowReadUnavailable()
     const compose = (result: WindowReadResult): T => {
-      if (result.kind !== 'routes') throw new WindowReadMissed('worker-gone')
+      if (result.kind !== kind || (result.kind !== 'routes' && result.kind !== 'listing'))
+        throw new WindowReadMissed('worker-gone')
       return this.windowRoutingReads.run(result, answer)
     }
     if (this.windowReadCallers >= WINDOW_READ_BOUNDS.callers)
-      return this.freshWindowQuery({ kind: 'routes' }, compose, undefined, true)
+      return this.freshWindowQuery({ kind }, compose, undefined, true)
     this.windowReadCallers++
     try {
-      return await this.freshWindowQuery({ kind: 'routes' }, compose)
+      return await this.freshWindowQuery({ kind }, compose)
     } finally {
       this.windowReadCallers--
     }
@@ -16822,7 +16823,7 @@ export class RuntimeHost implements LiveHost {
                 },
           },
         }
-      })
+      }, 'listing')
     } catch (error) {
       return this.listingRefused(errorMessage(error))
     }
