@@ -90,7 +90,6 @@ jobs:
       - name: Read the large workspace without increasing the worker heap
         run: pnpm --filter @brobot2/desktop exec vitest run --config vitest.config.ts test/window-history-memory.test.ts --maxWorkers=1
 
-
   windows:
     name: Build for Windows (NSIS, x64)
     needs: plan

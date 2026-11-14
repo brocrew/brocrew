@@ -42,7 +42,10 @@ export class WindowReadEngine {
   read(input: WindowReadQuery, abandoned: () => boolean = () => false): WindowReadResult {
     const query = windowReadQuery.parse(input)
     const keepsFolds =
-      query.kind === 'routes' || query.kind === 'listing' || query.kind === 'publication' || query.kind === 'incidents'
+      query.kind === 'routes' ||
+      query.kind === 'listing' ||
+      query.kind === 'publication' ||
+      query.kind === 'incidents'
     if (keepsFolds) {
       if (query.reuse === undefined || query.reuse.token !== this.cacheToken) this.answers.clear()
       else

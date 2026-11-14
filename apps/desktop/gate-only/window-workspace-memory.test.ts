@@ -89,8 +89,25 @@ it(
       host = undefined
       const checkout = fileURLToPath(new URL('../../../', import.meta.url))
       const queryDirectory = join(directory, 'query-only')
-      const manifest = JSON.parse(execFileSync(process.execPath, ['scripts/build-window-query-only.mjs', queryDirectory], { cwd: checkout, encoding: 'utf8' }))
-      const query = JSON.parse(execFileSync(process.execPath, ['scripts/window-query-only.mjs', file, join(queryDirectory, 'window-reader.cjs'), join(queryDirectory, 'manifest.json'), 'candidate'], { cwd: checkout, encoding: 'utf8', timeout: 65_000 }))
+      const manifest = JSON.parse(
+        execFileSync(process.execPath, ['scripts/build-window-query-only.mjs', queryDirectory], {
+          cwd: checkout,
+          encoding: 'utf8',
+        }),
+      )
+      const query = JSON.parse(
+        execFileSync(
+          process.execPath,
+          [
+            'scripts/window-query-only.mjs',
+            file,
+            join(queryDirectory, 'window-reader.cjs'),
+            join(queryDirectory, 'manifest.json'),
+            'candidate',
+          ],
+          { cwd: checkout, encoding: 'utf8', timeout: 65_000 },
+        ),
+      )
       expect(query.outcome).toBe('complete')
       expect(query.owners).toBe(scale.conversations)
       expect(query.oom).toBe(0)

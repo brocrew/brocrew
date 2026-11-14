@@ -15347,14 +15347,21 @@ export class RuntimeHost implements LiveHost {
         this.windowIncidentsKept = undefined
         throw new WindowReadMissed('writer-unsampled')
       }
-      const reusable = query.kind === 'routes' || query.kind === 'listing' || query.kind === 'incidents'
-      const kept = query.kind === 'incidents' ? this.windowIncidentsKept : query.kind === 'listing' ? this.windowListingKept : this.windowRoutesKept
+      const reusable =
+        query.kind === 'routes' || query.kind === 'listing' || query.kind === 'incidents'
+      const kept =
+        query.kind === 'incidents'
+          ? this.windowIncidentsKept
+          : query.kind === 'listing'
+            ? this.windowListingKept
+            : this.windowRoutesKept
       if (reusable && kept !== undefined && sameWindowWriter(kept.stamp, before)) {
         this.deps.store.checkCommitted()
         if (sameWindowWriter(before, this.sampleWindowWriter(query))) return compose(kept.result)
         continue
       }
-      const kind = query.kind === 'incidents' ? 'incidents' : query.kind === 'listing' ? 'listing' : 'routes'
+      const kind =
+        query.kind === 'incidents' ? 'incidents' : query.kind === 'listing' ? 'listing' : 'routes'
       const failed = reusable ? this.windowReadsFailed.get(kind) : undefined
       if (
         failed !== undefined &&
@@ -15365,7 +15372,10 @@ export class RuntimeHost implements LiveHost {
       const requested = (): WindowReadQuery => {
         const previous = query.kind === 'listing' ? this.windowListingKept : this.windowRoutesKept
         if (
-          (query.kind === 'routes' || query.kind === 'listing' || query.kind === 'publication' || query.kind === 'incidents') &&
+          (query.kind === 'routes' ||
+            query.kind === 'listing' ||
+            query.kind === 'publication' ||
+            query.kind === 'incidents') &&
           (previous?.result.kind === 'routes' || previous?.result.kind === 'listing')
         ) {
           const changed = this.deps.windowWriterStamp?.changedOwners?.(previous.stamp, before)
@@ -15378,7 +15388,12 @@ export class RuntimeHost implements LiveHost {
       let pending: Promise<WindowReadResult>
       let origin = before
       if (reusable) {
-        const key = query.kind === 'incidents' ? 'windowIncidentsPending' : query.kind === 'listing' ? 'windowListingPending' : 'windowRoutesPending'
+        const key =
+          query.kind === 'incidents'
+            ? 'windowIncidentsPending'
+            : query.kind === 'listing'
+              ? 'windowListingPending'
+              : 'windowRoutesPending'
         let shared = this[key]
         if (shared === undefined && joinOnly) throw new WindowReadMissed('callers-full')
         if (shared === undefined) {
@@ -39920,7 +39935,7 @@ export class RuntimeHost implements LiveHost {
       this.deps.closeSharedSkills?.()
       this.windowIncidentReads.invalidate()
       this.windowRoutesKept = undefined
-        this.windowListingKept = undefined
+      this.windowListingKept = undefined
       this.windowIncidentsKept = undefined
       this.workReconciler?.close()
       clearInterval(this.reconciliationTimer)

@@ -28,6 +28,8 @@
     "engine:check": "node scripts/engine-check.mjs",
     "notices:check": "node scripts/third-party-notices.mjs --check",
     "window:check": "node scripts/window-opens-check.mjs",
+    "window-query:build": "node scripts/build-window-query-only.mjs",
+    "window-query:read": "node scripts/window-query-only.mjs",
     "quit:check": "node scripts/app-closes-check.mjs",
     "gate": "pnpm run ci",
     "smoke:claude": "vitest run --config vitest.smoke.config.ts packages/runtime/smoke/claude-live.smoke.ts",

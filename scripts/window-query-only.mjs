@@ -56,10 +56,7 @@ function read() {
   worker.postMessage({
     type: 'read',
     id: ++requests,
-    query:
-      mode === 'baseline'
-        ? { kind: 'routes' }
-        : { kind: 'listing' },
+    query: mode === 'baseline' ? { kind: 'routes' } : { kind: 'listing' },
   })
 }
 

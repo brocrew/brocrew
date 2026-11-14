@@ -9,7 +9,13 @@ import { limitsWriterSampler } from '../src/main/db/fresh-limits-snapshot'
 
 it('legacy listing callers share admission, warm reads and failures at the same writer stamp', async () => {
   const world = aServiceWorld()
-  world.store.create({ id: 'own-root', provider: 'codex', profileId: 'brobot', cwd: world.folder, approvalMode: 'ask' })
+  world.store.create({
+    id: 'own-root',
+    provider: 'codex',
+    profileId: 'brobot',
+    cwd: world.folder,
+    approvalMode: 'ask',
+  })
   const engine = new WindowReadEngine(join(world.folder, 'brobot2.sqlite'))
   const read = vi.fn(async (query: WindowReadQuery) => engine.read(query))
   const host = aLibraryHost(world.folder, {
@@ -26,7 +32,13 @@ it('legacy listing callers share admission, warm reads and failures at the same 
     expect(result.unresumable.map((row) => row.sessionId)).toEqual(['own-root'])
     return result
   }
-  const move = () => world.store.append('own-root', world.store.nextOrdinal('own-root'), { type: 'status', state: 'idle' }, world.clock++)
+  const move = () =>
+    world.store.append(
+      'own-root',
+      world.store.nextOrdinal('own-root'),
+      { type: 'status', state: 'idle' },
+      world.clock++,
+    )
   try {
     const concurrent = await Promise.all(Array.from({ length: 40 }, listing))
     expect(read).toHaveBeenCalledOnce()
@@ -36,7 +48,10 @@ it('legacy listing callers share admission, warm reads and failures at the same 
     move()
     await listing()
     expect(read).toHaveBeenCalledTimes(2)
-    expect(read.mock.calls[1]![0]).toMatchObject({ kind: 'listing', reuse: { token: expect.any(String) } })
+    expect(read.mock.calls[1]![0]).toMatchObject({
+      kind: 'listing',
+      reuse: { token: expect.any(String) },
+    })
     move()
     read.mockRejectedValueOnce(new WindowReadUnavailable('failed'))
     for (let n = 0; n < 6; n++) expect(await host.listConversations()).toHaveProperty('refused')
