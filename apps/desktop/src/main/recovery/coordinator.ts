@@ -499,6 +499,7 @@ async function decide(
   }
   working('checkpoint')
   const make = async (): Promise<void> => {
+    await rotate()
     const captured = await captureCheckpoint({ ...options, reason })
     await captured.finish()
     await rotate()
