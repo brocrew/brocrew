@@ -285,7 +285,10 @@ async function checkRetention(
   })
   const resumed = currentWorkspace.result.interruptedSession
   if (resumed) continuedEventsOnly(before, after, resumed.sessionId)
-  const comparison = dataPreserved(before, after, { allowAppended: Boolean(resumed), candidateLineage })
+  const comparison = dataPreserved(before, after, {
+    allowAppended: Boolean(resumed),
+    candidateLineage,
+  })
   legacyCredentialsPreserved(before.provider_api_key, after.provider_api_key)
   credentialPreserved(
     credential,
@@ -637,7 +640,10 @@ async function reopenFirst(workspace) {
     {
       version: VERSION_B,
       source: candidate.source,
-      reason: candidateLineage.length > baseline.before.migrations.length ? 'before-migration' : 'first-start-of-release',
+      reason:
+        candidateLineage.length > baseline.before.migrations.length
+          ? 'before-migration'
+          : 'first-start-of-release',
       id: added[0],
       workspaceId: (await readFile(join(data, 'backups', 'workspace-id'), 'utf8')).trim(),
       state: baseline.files,
@@ -846,7 +852,10 @@ try {
       summary.updateNow,
     )
   } else await nativeRestart(workspaces[0])
-  candidateLineage = packagedCandidateLineage(join(app, 'Contents', 'Resources', 'app.asar'), workspaces)
+  candidateLineage = packagedCandidateLineage(
+    join(app, 'Contents', 'Resources', 'app.asar'),
+    workspaces,
+  )
   for (const workspace of workspaces) await reopenFirst(workspace)
   await allRunning(VERSION_B, 'concurrentSignedFirst')
   await quitAll('candidate-first-reopening')

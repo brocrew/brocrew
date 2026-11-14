@@ -968,12 +968,15 @@ test('requires the exact checkpoint reason and a valid date for either migration
     assert.doesNotThrow(() => verifyCheckpoint(copy, files, { ...expected, reason }))
     const other = reason === 'before-migration' ? 'first-start-of-release' : 'before-migration'
     assert.throws(() => verifyCheckpoint(copy, files, { ...expected, reason: other }))
-    assert.throws(() => verifyCheckpoint({ ...copy, createdAt: 'bad date' }, files, { ...expected, reason }))
+    assert.throws(() =>
+      verifyCheckpoint({ ...copy, createdAt: 'bad date' }, files, { ...expected, reason }),
+    )
   }
 })
 
 test('live candidate migrations retain the baseline prefix and complete the candidate lineage', () => {
-  const before = baseline(), after = structuredClone(before)
+  const before = baseline(),
+    after = structuredClone(before)
   const candidateLineage = [
     { createdAt: 42, hash: 'lineage', lf: 'lineage', crlf: 'lineage' },
     { createdAt: 43, hash: 'next', lf: 'next', crlf: 'next' },

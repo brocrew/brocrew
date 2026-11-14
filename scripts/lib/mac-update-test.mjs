@@ -413,7 +413,11 @@ function rowsKept(before, after, table, ignored = []) {
   }
 }
 
-export function dataPreserved(before, after, { allowAppended = false, usage = false, candidateLineage } = {}) {
+export function dataPreserved(
+  before,
+  after,
+  { allowAppended = false, usage = false, candidateLineage } = {},
+) {
   for (const table of ['provider_session', 'events']) {
     requireEvidence(
       Array.isArray(before[table]) && Array.isArray(after[table]) && before[table].length > 0,
@@ -443,8 +447,11 @@ export function dataPreserved(before, after, { allowAppended = false, usage = fa
   requireEvidence(
     candidateLineage
       ? isDeepStrictEqual(before.migrations, after.migrations.slice(0, before.migrations.length)) &&
-        after.migrations.length === candidateLineage.length &&
-        lineageFits(after.migrations.map((m) => ({ createdAt: m.created_at, hash: m.hash })), candidateLineage)
+          after.migrations.length === candidateLineage.length &&
+          lineageFits(
+            after.migrations.map((m) => ({ createdAt: m.created_at, hash: m.hash })),
+            candidateLineage,
+          )
       : isDeepStrictEqual(before.migrations, after.migrations),
     'Migration records differ from the expected lineage.',
   )
@@ -491,7 +498,8 @@ export function verifyCheckpoint(manifest, files, expected) {
     'Checkpoint names a different folder or workspace.',
   )
   requireEvidence(
-    !Number.isNaN(Date.parse(manifest.createdAt)) && manifest.reason === (expected.reason ?? 'first-start-of-release'),
+    !Number.isNaN(Date.parse(manifest.createdAt)) &&
+      manifest.reason === (expected.reason ?? 'first-start-of-release'),
     'Checkpoint date or reason is missing.',
   )
   requireEvidence(

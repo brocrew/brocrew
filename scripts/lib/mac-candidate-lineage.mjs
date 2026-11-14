@@ -10,7 +10,10 @@ export function packagedCandidateLineage(archive, workspaces) {
       createdAt: one.created_at,
       hash: one.hash,
     }))
-    requireEvidence(lineageFits(recorded, lineage), 'Baseline migrations are not a candidate lineage prefix.')
+    requireEvidence(
+      lineageFits(recorded, lineage),
+      'Baseline migrations are not a candidate lineage prefix.',
+    )
   }
   return lineage
 }
