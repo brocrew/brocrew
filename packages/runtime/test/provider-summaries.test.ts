@@ -79,15 +79,18 @@ describe('provider-neutral summaries', () => {
     expect(parseRuntimeEvent(event)).toEqual({ ok: true, event })
   })
 
-  it('omits an explicitly null native command description', () => {
+  it.each([null, '', ' ', '\t\r\n'])(
+    'omits an empty native command description without warning: %j',
+    (detail) => {
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {
-      expect(normalize({ ...command, detail: null })).toEqual([])
+      expect(normalize({ ...command, detail })).toEqual([])
       expect(warning).not.toHaveBeenCalled()
     } finally {
       warning.mockRestore()
     }
-  })
+    },
+  )
 
   it.each([
     { ...turn, status_category: undefined },
@@ -101,7 +104,9 @@ describe('provider-neutral summaries', () => {
     { ...turn, needs_action: true },
     { ...command, detail: undefined },
     { ...command, detail: [] },
-    { ...command, detail: '' },
+    { ...command, detail: {} },
+    { ...command, detail: 0 },
+    { ...command, detail: false },
   ])('keeps malformed summaries on the existing unknown and warning path: %j', (raw) => {
     expectUnknown(raw)
   })
