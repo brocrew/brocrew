@@ -2,11 +2,13 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import type { ResumableSessionInfo, RuntimeStatesMessage } from '../../src/shared/runtime-ipc'
-import { agentName, DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
+import { agentName } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll } from './harness'
 
 afterEach(unmountAll)
 vi.mock('../../src/shared/runtime-ipc', { spy: true })
+const conversationNamesRead = () =>
+  vi.mocked(agentName).mock.calls.filter(([profile]) => profile === 'synthetic-worker').length
 
 it('updates nine states without deriving the details of 1960 conversations again', async () => {
   let folder = '/synthetic/workspace'
@@ -14,7 +16,7 @@ it('updates nine states without deriving the details of 1960 conversations again
     sessionId: `conversation-${i}`,
     provider: 'claude',
     cwd: folder,
-    profileId: DEFAULT_PROFILE_ID,
+    profileId: 'synthetic-worker',
     status: 'idle',
     state: { is: 'idle' },
     named: null,
@@ -47,7 +49,7 @@ it('updates nine states without deriving the details of 1960 conversations again
     await new Promise((resolve) => setTimeout(resolve, 0))
     await nextTick()
     expect(mounted.host.querySelectorAll('[data-session-id]')).toHaveLength(1960)
-    expect(vi.mocked(agentName).mock.calls.length).toBeGreaterThanOrEqual(1960)
+    expect(conversationNamesRead()).toBe(1960)
     const order = () =>
       [...mounted.host.querySelectorAll('[data-session-id]')].map((row) =>
         row.getAttribute('data-session-id'),
@@ -63,12 +65,12 @@ it('updates nine states without deriving the details of 1960 conversations again
     expect(mounted.host.querySelectorAll('small[data-standing="working"]')).toHaveLength(9)
     expect(mounted.host.querySelectorAll('small[data-standing="idle"]')).toHaveLength(1951)
     expect(order()).toEqual(before)
-    expect(agentName, 'a state notice must not derive unchanged names').not.toHaveBeenCalled()
+    expect(conversationNamesRead(), 'a state notice must not derive unchanged names').toBe(0)
 
     folder = '/synthetic/renamed-folder'
     await (mounted.vm.refreshResumable as () => Promise<void>)()
     await nextTick()
-    expect(vi.mocked(agentName).mock.calls.length).toBeGreaterThanOrEqual(1960)
+    expect(conversationNamesRead()).toBe(1960)
     expect(mounted.q('open-session-conversation-0').textContent).toContain('renamed-folder')
     expect(mounted.host.querySelectorAll('small[data-standing="idle"]')).toHaveLength(1960)
   } finally {
