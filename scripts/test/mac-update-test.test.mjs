@@ -322,19 +322,28 @@ test('captures both skill trees by content and detects edits, removals, addition
 })
 
 test('refuses state symlinks, including broken links, at the root and inside trees', () => {
-  const root = mkdtempSync(join(tmpdir(), 'mac-state-links-'))
-  try {
-    skillFixture(root)
-    for (const [path, type] of [
-      [join(root, 'skills', 'café', 'linked'), 'dir'],
-      [join(root, 'skills-off'), 'dir'],
-      [join(root, 'drafts.json'), 'file'],
-    ]) {
+  for (const [parts, type] of [
+    [['skills', 'café', 'linked'], 'dir'],
+    [['skills-off'], 'dir'],
+    [['drafts.json'], 'file'],
+  ]) {
+    const root = mkdtempSync(join(tmpdir(), 'mac-state-links-'))
+    try {
+      skillFixture(root)
+      assert.doesNotThrow(() => stateBytes(root))
+      const path = join(root, ...parts)
       rmSync(path, { recursive: true, force: true })
       symlinkSync(join(root, 'missing-target'), path, type)
       assert.throws(() => stateBytes(root), /link/)
-      rmSync(path)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
     }
+  }
+  const root = mkdtempSync(join(tmpdir(), 'mac-state-not-folder-'))
+  try {
+    skillFixture(root)
+    assert.doesNotThrow(() => stateBytes(root))
+    rmSync(join(root, 'skills-off'), { recursive: true })
     writeFileSync(join(root, 'skills-off'), 'A tree replaced by a file')
     assert.throws(() => stateBytes(root), /folder/)
   } finally {
