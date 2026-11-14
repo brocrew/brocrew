@@ -125,6 +125,14 @@ function fingerprint(file: string): { bytes: number; mtimeMs: number; sha256: st
   }
 }
 
+function filesWithData(folder: string): string[] {
+  return readdirSync(folder).filter(
+    (name) =>
+      !name.endsWith('.sqlite-shm') &&
+      !(name.endsWith('.sqlite-wal') && statSync(join(folder, name)).size === 0),
+  )
+}
+
 /**
  * The migrator's own record in a database, read directly from a copy of it, since a reader opened
  * on the file itself would leave sidecars beside it.
@@ -178,7 +186,7 @@ describe('migrationsOf', () => {
   it('is absent when there is no file', async () => {
     const { userData } = aFolder()
     expect(await migrationsOf(join(userData, 'brobot2.sqlite'))).toEqual({ kind: 'absent' })
-    expect(readdirSync(userData)).toEqual([])
+    expect(filesWithData(userData)).toEqual([])
   })
 
   it('is empty for an empty file, a database with no tables, and an empty record alone', async () => {
@@ -201,8 +209,12 @@ describe('migrationsOf', () => {
     )
     two.close()
     expect(await migrationsOf(noRows, { userData })).toEqual({ kind: 'empty' })
-    expect(readdirSync(folder).sort()).toEqual(['no-rows.sqlite', 'no-table.sqlite', 'zero.sqlite'])
-    expect(readdirSync(userData)).toEqual([])
+    expect(filesWithData(folder).sort()).toEqual([
+      'no-rows.sqlite',
+      'no-table.sqlite',
+      'zero.sqlite',
+    ])
+    expect(filesWithData(userData)).toEqual([])
   })
 
   it('is unreadable for an empty file beside a -wal or -journal that holds data', async () => {
@@ -223,7 +235,7 @@ describe('migrationsOf', () => {
       expect(fingerprint(`${file}${suffix}`), 'the sidecar is left as it was').toEqual(before)
       rmSync(`${file}${suffix}`)
     }
-    expect(readdirSync(userData)).toEqual(['brobot2.sqlite'])
+    expect(filesWithData(userData)).toEqual(['brobot2.sqlite'])
   })
 
   it('is unreadable for tables with no migration record, or an empty one', async () => {
@@ -294,20 +306,20 @@ describe('migrationsOf', () => {
     mkdirSync(folderInstead)
     expect(await migrationsOf(folderInstead, { userData })).toMatchObject({ kind: 'unreadable' })
 
-    expect(readdirSync(folder).sort()).toEqual([
+    expect(filesWithData(folder).sort()).toEqual([
       'a-folder.sqlite',
       'garbage.sqlite',
       'short.sqlite',
       'torn.sqlite',
     ])
-    expect(readdirSync(userData)).toEqual([])
+    expect(filesWithData(userData)).toEqual([])
   })
 
   it('reads the record of a database the app migrated, and leaves the file and its folder as they were', async () => {
     const { userData } = aFolder()
     const file = join(userData, 'brobot2.sqlite')
     aMigratedDatabase(file)
-    expect(readdirSync(userData)).toEqual(['brobot2.sqlite'])
+    expect(filesWithData(userData)).toEqual(['brobot2.sqlite'])
     const before = fingerprint(file)
 
     const facts = await migrationsOf(file)
@@ -316,7 +328,7 @@ describe('migrationsOf', () => {
     expect(facts.kind === 'recorded' && facts.migrations.map(({ createdAt }) => createdAt)).toEqual(
       THE_BUILDS,
     )
-    expect(readdirSync(userData), 'no sidecar, and no scratch folder left').toEqual([
+    expect(filesWithData(userData), 'no sidecar, and no scratch folder left').toEqual([
       'brobot2.sqlite',
     ])
     expect(fingerprint(file)).toEqual(before)
@@ -327,13 +339,18 @@ describe('migrationsOf', () => {
     const { userData } = aFolder()
     const file = join(userData, 'brobot2.sqlite')
     aMigratedDatabase(file)
+    writeFileSync(`${file}-journal`, Buffer.alloc(512))
     const { fs, calls } = watched()
     const modes: number[] = []
     const watching: RecoveryFs = {
       ...fs,
-      link: async (existing, name) => {
+      cloneFile: async (from, to, signal, beforeFullCopy) => {
+        modes.push(statSync(dirname(to)).mode & 0o777)
+        await fs.cloneFile(from, to, signal, beforeFullCopy)
+      },
+      copyFile: async (existing, name, mode) => {
         modes.push(statSync(dirname(name)).mode & 0o777)
-        await fs.link(existing, name)
+        await fs.copyFile(existing, name, mode)
       },
     }
 
@@ -346,12 +363,18 @@ describe('migrationsOf', () => {
     expect(dirname(own)).toBe(scratch)
     expect(relative(scratch, own).split(sep)).toHaveLength(1)
     expect(UUID.test(relative(scratch, own))).toBe(true)
-    expect(calls.filter((call) => call.startsWith('link ')).map((call) => call.slice(5))).toEqual([
-      join(own, 'database.sqlite'),
-    ])
+    expect(
+      calls
+        .filter((call) => call.startsWith('copy '))
+        .map((call) => call.slice(5))
+        .filter((path) => path.endsWith('-journal')),
+    ).toEqual([join(own, 'database.sqlite-journal')])
     expect(calls.some((call) => call.startsWith('mkdtemp '))).toBe(false)
-    if (POSIX) expect(modes).toEqual([0o700])
-    expect(readdirSync(userData)).toEqual(['brobot2.sqlite'])
+    if (POSIX) {
+      expect(modes.length).toBeGreaterThan(0)
+      expect(modes.every((mode) => mode === 0o700)).toBe(true)
+    }
+    expect(filesWithData(userData)).toEqual(['brobot2.sqlite', 'brobot2.sqlite-journal'])
   })
 
   it('keeps a recovery folder that was already there, with what it holds, and leaves nothing in it', async () => {
@@ -366,7 +389,7 @@ describe('migrationsOf', () => {
     expect(readdirSync(join(userData, 'recovery'))).toEqual(['history-only.json'])
   })
 
-  it('links rather than copies while nothing beside the file holds data, an empty -wal included', async () => {
+  it('reads without linking or copying while nothing beside the file holds data, an empty -wal included', async () => {
     const { userData } = aFolder()
     const file = join(userData, 'brobot2.sqlite')
     aMigratedDatabase(file)
@@ -378,13 +401,9 @@ describe('migrationsOf', () => {
       kind: 'recorded',
       migrations: recordIn(file),
     })
-    expect(calls.filter((call) => call.startsWith('link '))).toHaveLength(1)
+    expect(calls.filter((call) => call.startsWith('link '))).toHaveLength(0)
     expect(calls.some((call) => call.startsWith('copy '))).toBe(false)
-    expect(readdirSync(userData).sort()).toEqual([
-      'brobot2.sqlite',
-      'brobot2.sqlite-shm',
-      'brobot2.sqlite-wal',
-    ])
+    expect(filesWithData(userData).sort()).toEqual(['brobot2.sqlite'])
     expect(statSync(file).nlink).toBe(1)
   })
 
@@ -392,7 +411,7 @@ describe('migrationsOf', () => {
     const { folder, userData } = aFolder()
     const left = join(userData, 'brobot2.sqlite')
     crashedInto(folder, left)
-    writeFileSync(`${left}-journal`, '')
+    writeFileSync(`${left}-journal`, Buffer.alloc(512))
     const { fs, calls } = watched()
 
     const facts = await migrationsOf(left, { fs })
@@ -403,9 +422,9 @@ describe('migrationsOf', () => {
     expect(calls.some((call) => call.startsWith('link '))).toBe(false)
     const copied = calls.filter((call) => call.startsWith('copy ')).map((call) => call.slice(5))
     expect(new Set(copied.map((path) => path.split(sep).at(-1)))).toEqual(
-      new Set(['database.sqlite', 'database.sqlite-wal']),
+      new Set(['database.sqlite', 'database.sqlite-wal', 'database.sqlite-journal']),
     )
-    expect(readdirSync(userData).sort()).toEqual([
+    expect(filesWithData(userData).sort()).toEqual([
       'brobot2.sqlite',
       'brobot2.sqlite-journal',
       'brobot2.sqlite-wal',
@@ -416,6 +435,7 @@ describe('migrationsOf', () => {
     const { folder, userData } = aFolder()
     const left = join(userData, 'brobot2.sqlite')
     crashedInto(folder, left)
+    writeFileSync(`${left}-journal`, Buffer.alloc(512))
     const copies: string[] = []
     const cloning: RecoveryFs = {
       ...nodeFs,
@@ -429,6 +449,7 @@ describe('migrationsOf', () => {
     expect(copies.map((file) => file.split(sep).at(-1))).toEqual([
       'database.sqlite',
       'database.sqlite-wal',
+      'database.sqlite-journal',
     ])
   })
 
@@ -436,6 +457,7 @@ describe('migrationsOf', () => {
     const { folder, userData } = aFolder()
     const left = join(userData, 'brobot2.sqlite')
     crashedInto(folder, left)
+    writeFileSync(`${left}-journal`, Buffer.alloc(512))
     const main = fingerprint(left)
     const wal = fingerprint(`${left}-wal`)
     const copies: string[] = []
@@ -449,7 +471,7 @@ describe('migrationsOf', () => {
       },
     }
     const asked: string[] = []
-    const needed = main.bytes + 2 * wal.bytes + 64 * 1024 * 1024
+    const needed = main.bytes + 2 * (wal.bytes + 512) + 64 * 1024 * 1024
 
     const refused = await migrationsOf(left, {
       fs: noClones,
@@ -459,23 +481,32 @@ describe('migrationsOf', () => {
     expect(refused).toEqual({ kind: 'no-room', needed, free: needed - 1 })
     expect(copies, 'no copy was begun').toEqual([])
     expect(asked.every((path) => path.startsWith(join(userData, 'recovery', 'scratch')))).toBe(true)
-    expect(readdirSync(userData).sort()).toEqual(['brobot2.sqlite', 'brobot2.sqlite-wal'])
+    expect(filesWithData(userData).sort()).toEqual([
+      'brobot2.sqlite',
+      'brobot2.sqlite-journal',
+      'brobot2.sqlite-wal',
+    ])
     expect(fingerprint(left)).toEqual(main)
 
     expect(await migrationsOf(left, { fs: noClones, freeBytes: () => needed })).toMatchObject({
       kind: 'recorded',
     })
-    expect(copies).toHaveLength(2)
+    expect(copies).toHaveLength(3)
     expect(await migrationsOf(left, { fs: noClones, freeBytes: () => null })).toMatchObject({
       kind: 'recorded',
     })
-    expect(readdirSync(userData).sort()).toEqual(['brobot2.sqlite', 'brobot2.sqlite-wal'])
+    expect(filesWithData(userData).sort()).toEqual([
+      'brobot2.sqlite',
+      'brobot2.sqlite-journal',
+      'brobot2.sqlite-wal',
+    ])
   })
 
   it('reports clone-adapter full-copy admission failure as no room without touching source bytes', async () => {
     const { folder, userData } = aFolder()
     const file = join(userData, 'brobot2.sqlite')
     crashedInto(folder, file)
+    writeFileSync(`${file}-journal`, Buffer.alloc(512))
     const before = [fingerprint(file), fingerprint(`${file}-wal`)]
     const full: RecoveryFs = {
       ...nodeFs,
@@ -495,6 +526,7 @@ describe('migrationsOf', () => {
     const { folder, userData } = aFolder()
     const left = join(userData, 'brobot2.sqlite')
     crashedInto(folder, left)
+    writeFileSync(`${left}-journal`, Buffer.alloc(512))
     const full: RecoveryFs = {
       ...nodeFs,
       cloneFile: () =>
@@ -506,7 +538,11 @@ describe('migrationsOf', () => {
       kind: 'no-room',
       free: 0,
     })
-    expect(readdirSync(userData).sort()).toEqual(['brobot2.sqlite', 'brobot2.sqlite-wal'])
+    expect(filesWithData(userData).sort()).toEqual([
+      'brobot2.sqlite',
+      'brobot2.sqlite-journal',
+      'brobot2.sqlite-wal',
+    ])
   })
 
   it.runIf(POSIX)('reads a database that is itself a link through a copy, not a link', async () => {
@@ -522,11 +558,11 @@ describe('migrationsOf', () => {
       migrations: recordIn(real),
     })
     expect(calls.some((call) => call.startsWith('link '))).toBe(false)
-    expect(readdirSync(userData)).toEqual(['brobot2.sqlite'])
+    expect(filesWithData(userData)).toEqual(['brobot2.sqlite'])
   })
 
   it.runIf(POSIX)(
-    'reads nothing through a recovery or scratch folder that is a link, and makes nothing there',
+    'reads directly without using a recovery or scratch folder that is a link',
     async () => {
       for (const linked of ['recovery', join('recovery', 'scratch')]) {
         const { userData } = aFolder()
@@ -539,8 +575,7 @@ describe('migrationsOf', () => {
 
         const facts = await migrationsOf(file)
 
-        expect(facts, linked).toMatchObject({ kind: 'unreadable' })
-        expect(facts.kind === 'unreadable' ? facts.detail : '').toContain('is a link')
+        expect(facts, linked).toMatchObject({ kind: 'recorded' })
         expect(readdirSync(elsewhere), linked).toEqual([])
       }
     },
@@ -550,11 +585,12 @@ describe('migrationsOf', () => {
     const { folder } = aFolder()
     const file = join(folder, 'other.sqlite')
     aMigratedDatabase(file)
+    writeFileSync(`${file}-journal`, Buffer.alloc(512))
     expect(await migrationsOf(file)).toEqual({
       kind: 'unreadable',
       detail: 'it can only be read through a copy, and no place for one was given',
     })
-    expect(readdirSync(folder)).toEqual(['other.sqlite'])
+    expect(filesWithData(folder)).toEqual(['other.sqlite', 'other.sqlite-journal'])
   })
 
   it('reads what is still only in a -wal a crash left, and changes neither file', async () => {
@@ -578,7 +614,7 @@ describe('migrationsOf', () => {
       THE_BUILDS,
     )
 
-    expect(readdirSync(userData).sort()).toEqual(['brobot2.sqlite', 'brobot2.sqlite-wal'])
+    expect(filesWithData(userData).sort()).toEqual(['brobot2.sqlite', 'brobot2.sqlite-wal'])
     expect(fingerprint(left)).toEqual(main)
     expect(fingerprint(`${left}-wal`)).toEqual(wal)
   })
@@ -598,7 +634,7 @@ describe('migrationsOf', () => {
       migrations: recordIn(copy),
     })
     expect(calls, 'no scratch folder was needed').toEqual([])
-    expect(readdirSync(folder)).toEqual(['database.sqlite'])
+    expect(filesWithData(folder)).toEqual(['database.sqlite'])
     expect(fingerprint(copy)).toEqual(before)
   })
 
@@ -614,7 +650,7 @@ describe('migrationsOf', () => {
     }
 
     expect(await migrationsOf(file, { fs: noLinks })).toMatchObject({ kind: 'recorded' })
-    expect(readdirSync(userData)).toEqual(['brobot2.sqlite'])
+    expect(filesWithData(userData)).toEqual(['brobot2.sqlite'])
     expect(fingerprint(file)).toEqual(before)
   })
 

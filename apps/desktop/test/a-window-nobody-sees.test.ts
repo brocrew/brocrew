@@ -97,9 +97,7 @@ describe('695 §1 · main/index.ts — every door a hidden launch could show its
     const create = bodyAfter('function createWindow(): void')
     expect(create).toContain('if (presentation.hidden) keepOutOfSight(window)')
     const ready = bodyAfter("window.on('ready-to-show', () =>")
-    expect(ready.trim()).toBe(
-      'if (!presentation.hidden) window.show()',
-    )
+    expect(ready.trim()).toBe('if (!presentation.hidden) window.show()')
     expect(create).toMatch(/(^|\s)show:\s*false/)
     expect(create).toMatch(/(^|\s)title:\s*'BroCrew'/)
   })
@@ -111,7 +109,11 @@ ready()`
     const { code } = await transformWithEsbuild(source, 'window-copy-order.ts', { loader: 'ts' })
     const returned = runInNewContext(code, {
       presentation: { hidden: false },
-      window: { show: () => { shown = true } },
+      window: {
+        show: () => {
+          shown = true
+        },
+      },
     })
     expect(shown).toBe(true)
     expect(returned).toBeUndefined()

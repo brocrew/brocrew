@@ -85,13 +85,13 @@ describe('the candidate’s first recovery copy', () => {
       completed: 50,
       manifestAbsent: true,
     }
-    expect(() => firstStart(log, { completion: selected.completion, observation })).toThrow('before READY')
+    expect(() => firstStart(log, { completion: selected.completion, observation })).toThrow(
+      'before READY',
+    )
     expect(() => firstStart(log, { completion: policy([]).completion, observation })).toThrow(
       'before READY',
     )
-    expect(() => firstStart(log, { completion: selected.completion })).toThrow(
-      'before READY',
-    )
+    expect(() => firstStart(log, { completion: selected.completion })).toThrow('before READY')
     expect(policy([], lineage, lineage).completion).toBe('not-needed')
   })
 

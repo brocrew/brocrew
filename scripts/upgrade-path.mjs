@@ -2536,8 +2536,7 @@ async function runUpgradePath() {
       candidate: candidateLineage,
     },
   )
-  const expectedReason =
-    candidateLineage.length > before.lineage.length ? 'before-migration' : null
+  const expectedReason = candidateLineage.length > before.lineage.length ? 'before-migration' : null
   const completedCopies = copiesTheBetaLeft.map((copy) => {
     const folder = join(data, 'backups', copy.folder)
     const files = {}
@@ -2550,11 +2549,20 @@ async function runUpgradePath() {
     workspaceId: readFileSync(join(data, 'backups', 'workspace-id'), 'utf8').trim(),
     stateFiles,
   })
-  const previousWhole = completedCopies.filter(({ manifest }) => firstCopy.fallbacks.includes(manifest?.id))
-  const previousMigration = previousWhole.filter(({ manifest }) => manifest.reason === 'before-migration')
-  const previousSelected = (previousMigration.length > 0
-    ? previousMigration.sort((a, b) => b.manifest.database.migrations.length - a.manifest.database.migrations.length || Date.parse(b.manifest.createdAt) - Date.parse(a.manifest.createdAt))
-    : previousWhole.sort((a, b) => Date.parse(b.manifest.createdAt) - Date.parse(a.manifest.createdAt)))[0]?.folder ?? null
+  const previousWhole = completedCopies.filter(({ manifest }) =>
+    firstCopy.fallbacks.includes(manifest?.id),
+  )
+  const previousMigration = previousWhole.filter(
+    ({ manifest }) => manifest.reason === 'before-migration',
+  )
+  const previousSelected =
+    (previousMigration.length > 0
+      ? previousMigration.sort(
+          (a, b) => Date.parse(b.manifest.createdAt) - Date.parse(a.manifest.createdAt),
+        )
+      : previousWhole.sort(
+          (a, b) => Date.parse(b.manifest.createdAt) - Date.parse(a.manifest.createdAt),
+        ))[0]?.folder ?? null
   const firstCopyCompletion = firstCopy.completion
   summary.firstCopyPolicy = firstCopy
   keep('first-copy-policy.json', firstCopy)
@@ -2740,48 +2748,52 @@ async function runUpgradePath() {
   const copiesAfterFirst = await copies()
   const sinceTheBeta = copiesSince(copiesTheBetaLeft, copiesAfterFirst, args['candidate-version'])
   summary.copiesAfterFirst = { ...sinceTheBeta, copies: copiesAfterFirst.map(copySaid) }
-  if (expectedReason !== null) holds('the first start made one recovery copy, of exactly what the beta left', () => {
-    requireEvidence(
-      sinceTheBeta.made.length === 1 &&
-        sinceTheBeta.others.length === 0 &&
-        sinceTheBeta.unread.length === 0,
-      `The first start left ${String(sinceTheBeta.made.length)} new copies that name the candidate’s version, not one, and ${String(sinceTheBeta.others.length + sinceTheBeta.unread.length)} that do not: ${JSON.stringify(summary.copiesAfterFirst.copies)}`,
-    )
-    const [made] = sinceTheBeta.made
-    const folder = join(data, 'backups', made)
-    requireEvidence(existsSync(join(folder, 'manifest.json')), 'The copy has no manifest.')
-    summary.checkpointMarkerLeft = existsSync(join(folder, 'unfinished'))
-    requireEvidence(!summary.checkpointMarkerLeft, 'The copy still carries its unfinished marker.')
-    const manifest = JSON.parse(readFileSync(join(folder, 'manifest.json'), 'utf8'))
-    keep('checkpoint-manifest.json', manifest)
-    const files = { 'database.sqlite': readFileSync(join(folder, 'database.sqlite')) }
-    for (const name of stateFiles) {
-      if (existsSync(join(folder, name))) files[name] = readStateEntry(join(folder, name))
-    }
-    const workspaceIdFile = join(data, 'backups', 'workspace-id')
-    summary.checkpoint = verifyCheckpoint(manifest, files, {
-      folder: made,
-      workspaceId: existsSync(workspaceIdFile)
-        ? readFileSync(workspaceIdFile, 'utf8').trim()
-        : null,
-      reason: expectedReason,
-      version: args['candidate-version'],
-      build: args['source-sha'],
-      lineage: before.lineage,
-      stateFiles,
-      state: filesBefore,
+  if (expectedReason !== null)
+    holds('the first start made one recovery copy, of exactly what the beta left', () => {
+      requireEvidence(
+        sinceTheBeta.made.length === 1 &&
+          sinceTheBeta.others.length === 0 &&
+          sinceTheBeta.unread.length === 0,
+        `The first start left ${String(sinceTheBeta.made.length)} new copies that name the candidate’s version, not one, and ${String(sinceTheBeta.others.length + sinceTheBeta.unread.length)} that do not: ${JSON.stringify(summary.copiesAfterFirst.copies)}`,
+      )
+      const [made] = sinceTheBeta.made
+      const folder = join(data, 'backups', made)
+      requireEvidence(existsSync(join(folder, 'manifest.json')), 'The copy has no manifest.')
+      summary.checkpointMarkerLeft = existsSync(join(folder, 'unfinished'))
+      requireEvidence(
+        !summary.checkpointMarkerLeft,
+        'The copy still carries its unfinished marker.',
+      )
+      const manifest = JSON.parse(readFileSync(join(folder, 'manifest.json'), 'utf8'))
+      keep('checkpoint-manifest.json', manifest)
+      const files = { 'database.sqlite': readFileSync(join(folder, 'database.sqlite')) }
+      for (const name of stateFiles) {
+        if (existsSync(join(folder, name))) files[name] = readStateEntry(join(folder, name))
+      }
+      const workspaceIdFile = join(data, 'backups', 'workspace-id')
+      summary.checkpoint = verifyCheckpoint(manifest, files, {
+        folder: made,
+        workspaceId: existsSync(workspaceIdFile)
+          ? readFileSync(workspaceIdFile, 'utf8').trim()
+          : null,
+        reason: expectedReason,
+        version: args['candidate-version'],
+        build: args['source-sha'],
+        lineage: before.lineage,
+        stateFiles,
+        state: filesBefore,
+      })
+      const inTheCopy = readDatabase(folder, 'database.sqlite')
+      requireEvidence(
+        whole(inTheCopy),
+        `The copy's database is not whole: ${inTheCopy.integrity.join('; ')}`,
+      )
+      const compared = rowsPreserved(before.tables, inTheCopy.tables, {}, before.keys)
+      requireEvidence(
+        compared.lost.length === 0 && Object.keys(compared.added).length === 0,
+        `The copy's rows are not the beta's: ${JSON.stringify(compared).slice(0, 1_000)}`,
+      )
     })
-    const inTheCopy = readDatabase(folder, 'database.sqlite')
-    requireEvidence(
-      whole(inTheCopy),
-      `The copy's database is not whole: ${inTheCopy.integrity.join('; ')}`,
-    )
-    const compared = rowsPreserved(before.tables, inTheCopy.tables, {}, before.keys)
-    requireEvidence(
-      compared.lost.length === 0 && Object.keys(compared.added).length === 0,
-      `The copy's rows are not the beta's: ${JSON.stringify(compared).slice(0, 1_000)}`,
-    )
-  })
 
   check(
     copiesAfterFirst.length <= 1 &&
@@ -2790,9 +2802,10 @@ async function runUpgradePath() {
       sinceTheBeta.changed.length === 0 &&
       (expectedReason !== null
         ? copiesAfterFirst.length === 1 && sinceTheBeta.gone.length === copiesTheBetaLeft.length
-        : sinceTheBeta.made.length === 0 && (previousSelected === null
-          ? copiesAfterFirst.length === 0
-          : copiesAfterFirst.length === 1 && copiesAfterFirst[0].folder === previousSelected)),
+        : sinceTheBeta.made.length === 0 &&
+          (previousSelected === null
+            ? copiesAfterFirst.length === 0
+            : copiesAfterFirst.length === 1 && copiesAfterFirst[0].folder === previousSelected)),
     expectedReason !== null
       ? 'the completed migration checkpoint replaced the previous generation; exactly one remains'
       : 'without a migration the candidate made no checkpoint and retained at most one previous copy',

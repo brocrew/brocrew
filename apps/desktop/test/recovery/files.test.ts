@@ -466,10 +466,11 @@ describe.runIf(process.platform === 'darwin')('Darwin recovery copy', () => {
     expect(readFileSync(destination, 'utf8')).toBe('Fictional changed copy.')
     expect(readdirSync(folder).sort()).toEqual(['copy', 'source'])
   })
-  it('requires room for the full copy before starting the fallback-capable command', async () => {
+  it('does not demand full-copy headroom before an APFS clone', async () => {
     const folder = aFolder(),
       source = join(folder, 'source')
     writeFileSync(source, 'Fictional nonempty bytes.')
+    vi.mocked(statfs).mockClear()
     vi.mocked(statfs).mockResolvedValueOnce({
       type: 0n,
       bsize: 4096n,
@@ -479,12 +480,13 @@ describe.runIf(process.platform === 'darwin')('Darwin recovery copy', () => {
       files: 0n,
       ffree: 0n,
     })
-    await expect(nodeFs.cloneFile(source, join(folder, 'copy'))).rejects.toMatchObject({
-      code: 'ENOSPC',
-    })
-    expect(readdirSync(folder)).toEqual(['source'])
+    await nodeFs.cloneFile(source, join(folder, 'copy'))
+    expect(readFileSync(join(folder, 'copy'))).toEqual(readFileSync(source))
+    expect(statfs).not.toHaveBeenCalled()
+    expect(readdirSync(folder).sort()).toEqual(['copy', 'source'])
+    vi.mocked(statfs).mockReset()
   })
-  it('applies the caller full-copy admission before creating staging or running the command', async () => {
+  it('does not invoke full-copy admission for the clone path', async () => {
     const folder = aFolder(),
       source = join(folder, 'source')
     writeFileSync(source, 'Fictional data.')
@@ -493,8 +495,9 @@ describe.runIf(process.platform === 'darwin')('Darwin recovery copy', () => {
       nodeFs.cloneFile(source, join(folder, 'copy'), undefined, () => {
         throw refusal
       }),
-    ).rejects.toBe(refusal)
-    expect(readdirSync(folder)).toEqual(['source'])
+    ).resolves.toBeUndefined()
+    expect(readFileSync(join(folder, 'copy'))).toEqual(readFileSync(source))
+    expect(readdirSync(folder).sort()).toEqual(['copy', 'source'])
   })
   it('propagates command failure after child exit and removes only its partial staging', async () => {
     const folder = aFolder(),

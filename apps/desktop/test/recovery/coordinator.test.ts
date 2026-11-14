@@ -45,6 +45,7 @@ import {
   databaseFile,
   gateFile,
   journalFile,
+  manifestFile,
   recoveryDir,
 } from '../../src/main/recovery/layout'
 import { CHECKPOINT_LINE, FAIL_LINE, READY_LINE } from '../../src/main/recovery/log-lines'
@@ -149,6 +150,8 @@ async function treeOf(dir: string): Promise<Record<string, string>> {
       }
       const file = join(dir, path)
       const stats = await stat(file)
+      if (path === 'brobot2.sqlite-shm' || (path === 'brobot2.sqlite-wal' && stats.size === 0))
+        continue
       const sha256 = createHash('sha256')
         .update(await readFile(file))
         .digest('hex')
@@ -185,7 +188,7 @@ describe('a start that opens its data', () => {
     expect(seen).toEqual({ lines: [], working: ['check'], progress: [] })
   })
 
-  it('reads a database closed cleanly through a link, which needs no room on the disk', async () => {
+  it('reads a database closed cleanly without a copy, which needs no room on the disk', async () => {
     const userData = await aWorkspace({ migrations: THIS_BUILD, checkpoints: [] })
     const before = await treeOf(userData)
     const { deps } = checkOf(userData, { freeBytes: () => 0 })
@@ -413,12 +416,7 @@ describe('a copy before a migration', () => {
       freeBytes: () => 0,
     })
 
-    expect(await inspect(deps)).toEqual({
-      kind: 'failed',
-      reason: 'checkpoint-failed',
-      canRetry: true,
-      detail: await noRoom(userData),
-    })
+    expect(await inspect(deps)).toEqual({ kind: 'open', checkpoint: 'not-needed' })
     expect(await treeOf(backupsDir(userData))).toEqual(before)
     expect(await isIntact(checked)).toBe(true)
     expect(seen.lines).not.toContain(CHECKPOINT_LINE)
@@ -520,7 +518,7 @@ SELECT * FROM no_such_migration_table;`,
     })
   })
 
-  it('says it is working before it reads the database through a copy, or hashes a copy to reuse', async () => {
+  it('says it is working before reading WAL directly or hashing a copy to reuse', async () => {
     const events: string[] = []
     const recording: RecoveryFs = {
       ...nodeFs,
@@ -545,7 +543,7 @@ SELECT * FROM no_such_migration_table;`,
     const first = checkOf(crashed, { fs: recording, working: said })
     expect(await inspect(first.deps)).toEqual({ kind: 'open', checkpoint: 'not-needed' })
     expect(events[0]).toBe('working check')
-    expect(events.some((event) => event.startsWith('copy '))).toBe(true)
+    expect(events.some((event) => event.startsWith('copy '))).toBe(false)
 
     events.length = 0
     const userData = await aWorkspace({ migrations: THIS_BUILD, checkpoints: [] })
@@ -563,7 +561,7 @@ SELECT * FROM no_such_migration_table;`,
     expect(events.some((event) => event.startsWith('read '))).toBe(true)
   })
 
-  it('refuses a start whose database a crash left, when the disk has no room to check it, and says so', async () => {
+  it('reads crash-left committed WAL even when the disk has no room for a copy', async () => {
     const userData = await aWorkspace({ migrations: THIS_BUILD, checkpoints: [], crashed: true })
     const before = await treeOf(userData)
     const noClones: RecoveryFs = {
@@ -572,11 +570,7 @@ SELECT * FROM no_such_migration_table;`,
         Promise.reject(Object.assign(new Error('ENOTSUP: no clones'), { code: 'ENOTSUP' })),
     }
     const verdict = await inspect(checkOf(userData, { fs: noClones, freeBytes: () => 0 }).deps)
-    expect(verdict).toMatchObject({ kind: 'failed', reason: 'checkpoint-failed', canRetry: true })
-    expect(verdict.kind === 'failed' ? verdict.detail : '').toMatch(
-      /not enough free space to check this workspace's data/,
-    )
-    expect(whyItDidNotStart(verdict)).not.toMatch(/unreadable|could not read/)
+    expect(verdict).toEqual({ kind: 'open', checkpoint: 'not-needed' })
     expect(await treeOf(userData)).toEqual(before)
   })
 
@@ -1252,7 +1246,14 @@ it.each([
     const userData = await aWorkspace({
       migrations,
       migrationsFolder,
-      checkpoints: hasFallback ? [{ migrations, createdAt: new Date(0).toISOString() }] : [],
+      checkpoints: hasFallback
+        ? [
+            {
+              migrations: migrations === LEGACY_BUILD ? migrations - 1 : migrations,
+              createdAt: new Date(0).toISOString(),
+            },
+          ]
+        : [],
     })
     let hashes = 0
     const { deps } = checkOf(userData, {
@@ -1267,13 +1268,21 @@ it.each([
       },
     })
     let resumedId: string | undefined
+    const legacyReleaseCapture = hasFallback && migrations === LEGACY_BUILD
+    if (legacyReleaseCapture) {
+      const old = (await listCheckpoints(userData))[0]!
+      await writeFile(
+        manifestFile(userData, old.manifest.id),
+        JSON.stringify({ ...old.manifest, reason: 'before-migration' }),
+      )
+    }
     if (hasFallback) {
       const captured = await captureCheckpoint({
         userData,
         ownership: 'sole',
         appVersion: THIS_VERSION,
         build: null,
-        reason: 'before-migration',
+        reason: legacyReleaseCapture ? 'first-start-of-release' : 'before-migration',
         verifyCopy: checkTheCopyHere,
         hashCopy: deps.hashCopy,
       })
@@ -1282,18 +1291,27 @@ it.each([
     }
     expect(await inspect(deps)).toEqual({
       kind: 'open',
-      checkpoint: pending && !hasFallback ? 'made' : 'not-needed',
+      checkpoint: pending && (!hasFallback || legacyReleaseCapture) ? 'made' : 'not-needed',
     })
-    expect(hashes).toBe(pending ? 1 : 0)
+    expect(hashes).toBe(pending ? (legacyReleaseCapture ? 2 : 1) : 0)
     const copies = await listCheckpoints(userData)
     expect(copies).toHaveLength(pending ? 1 : 0)
     if (pending) {
       const copy = copies[0]!
-      expect(resumedId === undefined || copy.manifest.id === resumedId).toBe(true)
+      expect(
+        resumedId === undefined ||
+          (legacyReleaseCapture ? copy.manifest.id !== resumedId : copy.manifest.id === resumedId),
+      ).toBe(true)
+      expect(copy.manifest.reason).toBe('before-migration')
+      expect(copy.manifest.database.migrations).toHaveLength(migrations)
       expect(existsSync(join(copy.folder, 'unfinished'))).toBe(false)
       expect(await isIntact(copy)).toBe(true)
-      expect(await inspect(deps), 'a failed migration can retry using the completed checkpoint').toEqual({
-        kind: 'open', checkpoint: 'not-needed',
+      expect(
+        await inspect(deps),
+        'a failed migration can retry using the completed checkpoint',
+      ).toEqual({
+        kind: 'open',
+        checkpoint: 'not-needed',
       })
     }
   },

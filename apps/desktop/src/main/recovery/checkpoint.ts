@@ -168,8 +168,7 @@ export async function checkpointNeeded(
       break
     }
   }
-  const needed = needsACheckpoint({ ...facts, intact })
-  return needed
+  return needsACheckpoint({ ...facts, intact })
 }
 
 function reusableCopies(facts: CheckpointFacts): Checkpoint[] {
@@ -535,11 +534,7 @@ export async function prune(
   let candidates = whole
   const keepingOf = (copies: readonly Checkpoint[]): Set<string> => {
     const beforeMigration = copies.filter(({ manifest }) => manifest.reason === 'before-migration')
-    const latest = beforeMigration.length > 0
-      ? beforeMigration.sort(
-          (a, b) => b.manifest.database.migrations.length - a.manifest.database.migrations.length || newestFirst(a, b),
-        )
-      : copies
+    const latest = beforeMigration.length > 0 ? beforeMigration : copies
     return new Set(latest.slice(0, KEEP_NEWEST).map(({ manifest }) => manifest.id))
   }
   const intact = new Set<string>()
