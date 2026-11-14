@@ -26,10 +26,9 @@ export function summaryEvents(message: { readonly subtype: string }): RuntimeEve
   }
   if (message.subtype === 'task_summary') {
     const description = fields['detail']
-    if (description === null) return []
-    return typeof description === 'string' && description.trim() !== ''
-      ? [{ type: 'command_summary', description }]
-      : null
+    if (description === null || (typeof description === 'string' && description.trim() === ''))
+      return []
+    return typeof description === 'string' ? [{ type: 'command_summary', description }] : null
   }
   return null
 }

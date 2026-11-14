@@ -82,13 +82,13 @@ describe('provider-neutral summaries', () => {
   it.each([null, '', ' ', '\t\r\n'])(
     'omits an empty native command description without warning: %j',
     (detail) => {
-    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    try {
-      expect(normalize({ ...command, detail })).toEqual([])
-      expect(warning).not.toHaveBeenCalled()
-    } finally {
-      warning.mockRestore()
-    }
+      const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        expect(normalize({ ...command, detail })).toEqual([])
+        expect(warning).not.toHaveBeenCalled()
+      } finally {
+        warning.mockRestore()
+      }
     },
   )
 
