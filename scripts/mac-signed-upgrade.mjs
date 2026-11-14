@@ -1,4 +1,4 @@
-import { packagedCandidateLineage } from './lib/mac-candidate-lineage.mjs'
+import * as macLineage from './lib/mac-candidate-lineage.mjs'
 import { readWorkspaceForUpdate } from '../apps/desktop/src/main/one-host-gate.ts'
 import {
   UPDATE_NOW_PROMPT,
@@ -640,17 +640,11 @@ async function reopenFirst(workspace) {
     {
       version: VERSION_B,
       source: candidate.source,
-      reason:
-        candidateLineage.length > baseline.before.migrations.length
-          ? 'before-migration'
-          : 'first-start-of-release',
+      reason: macLineage.checkpointReason(candidateLineage, baseline.before.migrations),
       id: added[0],
       workspaceId: (await readFile(join(data, 'backups', 'workspace-id'), 'utf8')).trim(),
       state: baseline.files,
-      migrations: baseline.before.migrations.map((one) => ({
-        createdAt: one.created_at,
-        hash: one.hash,
-      })),
+      migrations: macLineage.checkpointMigrations(baseline.before.migrations),
     },
   )
   const copy = databaseSnapshot(join(checkpoint, 'database.sqlite'), {
@@ -852,7 +846,7 @@ try {
       summary.updateNow,
     )
   } else await nativeRestart(workspaces[0])
-  candidateLineage = packagedCandidateLineage(
+  candidateLineage = macLineage.packagedCandidateLineage(
     join(app, 'Contents', 'Resources', 'app.asar'),
     workspaces,
   )

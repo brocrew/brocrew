@@ -17,3 +17,11 @@ export function packagedCandidateLineage(archive, workspaces) {
   }
   return lineage
 }
+
+export function checkpointReason(candidateLineage, migrations) {
+  return candidateLineage.length > migrations.length ? 'before-migration' : 'first-start-of-release'
+}
+
+export function checkpointMigrations(migrations) {
+  return migrations.map((one) => ({ createdAt: one.created_at, hash: one.hash }))
+}
