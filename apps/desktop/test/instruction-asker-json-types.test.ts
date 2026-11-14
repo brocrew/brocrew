@@ -53,21 +53,19 @@ const nonStrings = [
   { name: 'missing', value: undefined, literal: 'undefined' },
 ]
 
-it.each(nonStrings)('does not replace a valid string ID with a $name proposal', ({ value, literal }) => {
-  append('first', 'instruction_proposed', literal)
-  append('second', 'instruction_proposed', value)
-  expectCanonical(['first'], 1)
-})
+it('preserves canonical instruction IDs, unread rows and settlement ordering', () => {
+  for (const { value, literal } of nonStrings) {
+    db.prepare('DELETE FROM events').run()
+    append('first', 'instruction_proposed', literal)
+    append('second', 'instruction_proposed', value)
+    expectCanonical(['first'], 1)
+    append('second', 'instruction_settled', value)
+    expectCanonical(['first'], 2)
+    append('second', 'instruction_settled', literal)
+    expectCanonical([], 2)
+  }
 
-it.each(nonStrings)('does not settle a valid string ID with a $name ID', ({ value, literal }) => {
-  append('first', 'instruction_proposed', literal)
-  append('second', 'instruction_settled', value)
-  expectCanonical(['first'], 1)
-  append('second', 'instruction_settled', literal)
-  expectCanonical([], 1)
-})
-
-it('keeps literal JSON-looking string identities and canonical terminal ordering', () => {
+  db.prepare('DELETE FROM events').run()
   append('first', 'instruction_proposed', '{"part":1}')
   append('second', 'instruction_proposed', '{"part":1}')
   append('first', 'instruction_proposed', '[1,2]')
