@@ -92,7 +92,12 @@ describe('the candidate’s first recovery copy', () => {
       'before READY',
     )
     expect(() => firstStart(log, { completion: selected.completion })).toThrow('before READY')
-    expect(policy([], lineage, lineage).completion).toBe('not-needed')
+    expect(() =>
+      startOrder(READY_LINE, {
+        checkpoint: false,
+        completion: policy([], lineage, lineage).completion,
+      }),
+    ).not.toThrow()
   })
 
   it('rejects incomplete, foreign-workspace, incompatible and unregistered fallbacks', () => {

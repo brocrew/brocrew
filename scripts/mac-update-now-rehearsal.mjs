@@ -150,6 +150,7 @@ export async function restartRunningWorkspaces({
   app,
   version,
   source,
+  checkpoint,
   run,
   processInfo,
   click,
@@ -247,7 +248,7 @@ export async function restartRunningWorkspaces({
   for (const workspace of workspaces) {
     const { startup, completed } = await nativeWorkspaceStartup(
       workspace,
-      { version, source },
+      { version, source, checkpoint },
       {
         readReceipt,
         completedCopy,
@@ -255,7 +256,11 @@ export async function restartRunningWorkspaces({
         diagnostic: summary.updateNow,
       },
     )
-    workspace.result.nativeStartup = { ...startup, completedCheckpointId: completed.manifest.id }
+    workspace.result.nativeStartup = {
+      ...startup,
+      receiptObserved: startup !== null,
+      completedCheckpointId: completed?.manifest.id ?? null,
+    }
     const snapshot = databaseSnapshot(join(workspace.data, 'brobot2.sqlite'), { movedState: true })
     const drafts = JSON.parse(stateBytes(workspace.data, snapshot)['drafts.json'].toString('utf8'))
     requireEvidence(

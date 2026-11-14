@@ -2,6 +2,7 @@ import { readFile, writeFile, lstat } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   requireEvidence,
+  exists,
   databaseSnapshot,
   stateBytes,
   nativeFiles,
@@ -42,15 +43,20 @@ export async function nativeWorkspaceStartup(
   { readReceipt, completedCopy, workspaces, diagnostic },
 ) {
   try {
+    if (!candidate.checkpoint && workspace.baseline.workspaceId === null) {
+      return { startup: null, completed: null }
+    }
     const startup = await readReceipt(workspace.data, candidate.version)
     requireEvidence(
-      startup.workspaceId === workspace.baseline.workspaceId,
+      workspace.baseline.workspaceId === null ||
+        startup.workspaceId === workspace.baseline.workspaceId,
       'The native first-start receipt belongs to another workspace.',
     )
     if (!candidate.checkpoint) return { startup, completed: null }
     const completed = await completedCopy(workspace.data, new Set(workspace.baseline.copiesBefore))
     requireEvidence(
-      completed?.manifest.workspaceId === workspace.baseline.workspaceId &&
+      completed?.manifest.workspaceId === startup.workspaceId &&
+        startup.checkpointId === completed.manifest.id &&
         completed.manifest.madeBy?.appVersion === candidate.version &&
         completed.manifest.madeBy?.build === candidate.source,
       'The native first start did not finish its candidate recovery copy in this workspace.',
@@ -99,6 +105,14 @@ export async function captureWorkspaceBaseline(
   const selected = (beforeMigration.length > 0 ? beforeMigration : copies).sort(
     (a, b) => Date.parse(b.manifest.createdAt) - Date.parse(a.manifest.createdAt),
   )[0]
+  const identityFile = join(data, 'backups', 'workspace-id')
+  const workspaceId = (await exists(identityFile))
+    ? (await readFile(identityFile, 'utf8')).trim()
+    : null
+  requireEvidence(
+    copies.length === 0 || workspaceId !== null,
+    'Existing recovery copies have no workspace identity.',
+  )
   workspace.baseline = {
     credential,
     before,
@@ -117,7 +131,7 @@ export async function captureWorkspaceBaseline(
           state: stateSummary(stateBytes(join(data, 'backups', selected.id))),
         }
       : null,
-    workspaceId: (await readFile(join(data, 'backups', 'workspace-id'), 'utf8')).trim(),
+    workspaceId,
   }
   await writeFile(
     join(evidence, 'a-settled-baseline.json'),

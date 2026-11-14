@@ -194,7 +194,7 @@ function rehearsal() {
       result: {},
       active: { pid: index + 1, log, browser: { close: vi.fn() } },
       cdp: { evaluate: async () => workspaces.map((one) => ({ path: one.data })), close: vi.fn() },
-      baseline: { workspaceId: `uuid-${index}`, copiesBefore: [`old-${index}`] },
+      baseline: { workspaceId: null, copiesBefore: [] },
       ...(index === 1 ? { interrupted: { sessionId: 'conversation', before } } : {}),
     }
   })
@@ -207,6 +207,7 @@ function rehearsal() {
     app,
     version: '0.0.99',
     source: 'candidate-source',
+    checkpoint: false,
     summary,
     model: {
       requests: [{ held: true, completed: false }],
@@ -222,12 +223,8 @@ function rehearsal() {
     readReceipt: async (data) => ({
       workspaceId: workspaces.find((one) => one.data === data).baseline.workspaceId,
     }),
-    completedCopy: async (data) => ({
-      manifest: {
-        id: `copy-${data}`,
-        workspaceId: workspaces.find((one) => one.data === data).baseline.workspaceId,
-        madeBy: { appVersion: '0.0.99', build: 'candidate-source' },
-      },
+    completedCopy: vi.fn(async () => {
+      throw new Error('Same-code Update now must not wait for a new checkpoint')
     }),
     quitChild: vi.fn(async (child) => order.push(`quit-${child.pid}`)),
     bundleChecked: vi.fn(async () => ({ version: '0.0.99' })),
@@ -256,7 +253,13 @@ it('presses Update now with peers running, proves all automatic reopens and resu
   expect(args.onOldExit).toHaveBeenCalledOnce()
   expect(args.summary.replacementCount).toBe(1)
   expect(args.summary.updateNow.reopened).toHaveLength(3)
-  expect(args.workspaces.every((one) => one.result.nativeStartup)).toBe(true)
+  expect(
+    args.workspaces.every((one) => one.result.nativeStartup?.completedCheckpointId === null),
+  ).toBe(true)
+  expect(args.completedCopy).not.toHaveBeenCalled()
+  expect(args.workspaces.every((one) => one.result.nativeStartup.receiptObserved === false)).toBe(
+    true,
+  )
   expect(args.workspaces[1].result.interruptedSession.interruptedTurn).toBe('original-turn')
   expect(args.automaticChildren).toEqual([])
 })

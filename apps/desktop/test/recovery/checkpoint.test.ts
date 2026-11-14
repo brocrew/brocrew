@@ -176,6 +176,7 @@ function coded(code: string): Error {
 }
 
 const SOLE: PruneOptions = { ownership: 'sole' }
+const fullCopyFs: RecoveryFs = { ...nodeFs, cloneFile: () => Promise.reject(coded('ENOTSUP')) }
 
 function make(userData: string, options: Partial<MakeCheckpointOptions> = {}): Promise<Checkpoint> {
   return makeCheckpoint({
@@ -402,7 +403,7 @@ describe('makeCheckpoint', () => {
 
   it('says how much space it needs, and makes nothing, when the disk is too full', async () => {
     const userData = aLiveWorkspace()
-    const failure = await make(userData, { freeBytes: () => 1_000_000 }).catch(
+    const failure = await make(userData, { fs: fullCopyFs, freeBytes: () => 1_000_000 }).catch(
       (error: unknown) => error,
     )
     expect(failure).toBeInstanceOf(CheckpointFailed)

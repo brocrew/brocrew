@@ -137,6 +137,13 @@ const notTheOnlyApp = (ownership: Exclude<Ownership, 'sole'>): StartupVerdict =>
 })
 
 const quiet: ProgressListener = () => undefined
+const fullCopyFs: RecoveryFs = {
+  ...nodeFs,
+  cloneFile: () =>
+    Promise.reject(
+      Object.assign(new Error('No clone in this full-copy fixture'), { code: 'ENOTSUP' }),
+    ),
+}
 
 async function treeOf(dir: string): Promise<Record<string, string>> {
   const tree: Record<string, string> = {}
@@ -262,6 +269,7 @@ describe('a copy before a migration', () => {
       buildMigrationsFolder: await aBuildWithOneMoreMigration(),
       verifyCopy: checkTheCopyHere,
       now: () => now,
+      fs: fullCopyFs,
       freeBytes: () => (existsSync(oldest.dir) ? 0 : 1_000_000_000),
     })
 
@@ -297,6 +305,7 @@ describe('a copy before a migration', () => {
       buildMigrationsFolder: await aBuildWithOneMoreMigration(),
       verifyCopy: checkTheCopyHere,
       now: () => now,
+      fs: fullCopyFs,
       freeBytes: () => 0,
     })
     expect(await inspect(deps)).toMatchObject({ kind: 'failed', reason: 'checkpoint-failed' })
@@ -317,6 +326,7 @@ describe('a copy before a migration', () => {
       buildMigrationsFolder: await aBuildWithOneMoreMigration(),
       verifyCopy: checkTheCopyHere,
       now: () => now,
+      fs: fullCopyFs,
       freeBytes: () => 0,
     })
 
@@ -344,6 +354,7 @@ describe('a copy before a migration', () => {
       buildMigrationsFolder: await aBuildWithOneMoreMigration(),
       verifyCopy: checkTheCopyHere,
       now: () => now,
+      fs: fullCopyFs,
       freeBytes: () => 0,
     })
 
@@ -598,6 +609,7 @@ SELECT * FROM no_such_migration_table;`,
     const { deps, seen } = checkOf(userData, {
       buildMigrationsFolder: await aBuildWithOneMoreMigration(),
       verifyCopy: checkTheCopyHere,
+      fs: fullCopyFs,
       freeBytes: () => 0,
     })
     const verdict = await inspect(deps)

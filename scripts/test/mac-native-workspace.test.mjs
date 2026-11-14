@@ -59,7 +59,10 @@ it.each([
       workspace = workspaces[1]
     const diagnostic = { restarted: { pid: 456 }, workspace: { path: workspace.data } }
     const failure = new Error('first-start receipt timeout')
-    const startup = { workspaceId: kind === 'receipt-workspace' ? 'Default' : 'WorkspaceB' }
+    const startup = {
+      workspaceId: kind === 'receipt-workspace' ? 'Default' : 'WorkspaceB',
+      checkpointId: 'candidate-copy',
+    }
     const readReceipt = vi.fn(async () => {
       if (kind === 'read-error') throw failure
       return startup

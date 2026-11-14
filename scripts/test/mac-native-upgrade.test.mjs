@@ -117,7 +117,7 @@ it('presses native restart and keeps B alive until its candidate checkpoint comp
   const startup = {
     appVersion: '0.2.23',
     successfulStarts: 1,
-    checkpointId: 'A-copy',
+    checkpointId: 'B-copy',
     workspaceId: 'workspace-B',
   }
   const summary = { replacementCount: 0 }
@@ -133,11 +133,17 @@ it('presses native restart and keeps B alive until its candidate checkpoint comp
     nativeRestartRecorded,
     nativeWorkspaceFromRegistry,
     nativeWorkspaceStartup,
-    macLineage,
-    candidateLineage: [
-      { createdAt: 1, hash: 'a' },
-      { createdAt: 2, hash: 'b' },
-    ],
+    macLineage: {
+      ...macLineage,
+      packagedCandidateLineage: vi.fn(() => {
+        expect(summary.installedCandidate).toEqual({ version: '0.2.23' })
+        return [
+          { createdAt: 1, hash: 'a' },
+          { createdAt: 2, hash: 'b' },
+        ]
+      }),
+    },
+    candidateLineage: undefined,
     workspaces: [workspace, nativeWorkspace],
     VERSION_B: '0.2.23',
     candidate: { source: 'original-signed-source' },
@@ -213,5 +219,5 @@ it('presses native restart and keeps B alive until its candidate checkpoint comp
   expect(summary.replacementCount).toBe(1)
   expect(workspace.result.nativeStartup).toBeUndefined()
   expect(nativeWorkspace.result.nativeStartup.completedCheckpointId).toBe('B-copy')
-  expect(nativeWorkspace.result.nativeStartup.checkpointId).toBe('A-copy')
+  expect(nativeWorkspace.result.nativeStartup.checkpointId).toBe('B-copy')
 })

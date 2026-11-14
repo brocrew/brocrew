@@ -558,6 +558,10 @@ async function nativeRestart(workspace) {
   }
   summary.installedCandidate = await bundleChecked(app, VERSION_B)
   summary.restart.package = summary.installedCandidate
+  candidateLineage = macLineage.packagedCandidateLineage(
+    join(app, 'Contents', 'Resources', 'app.asar'),
+    workspaces,
+  )
   const { startup, completed } = await nativeWorkspaceStartup(
     nativeWorkspace,
     {
@@ -579,6 +583,7 @@ async function nativeRestart(workspace) {
   summary.replacementCount++
   nativeWorkspace.result.nativeStartup = {
     ...startup,
+    receiptObserved: startup !== null,
     completedCheckpointId: completed?.manifest.id ?? null,
   }
   Object.assign(summary.restart, { startup, completedCheckpointId: completed?.manifest.id ?? null })
@@ -858,6 +863,7 @@ try {
       app,
       version: VERSION_B,
       source: candidate.source,
+      checkpoint: false,
       run,
       processInfo,
       click,
@@ -880,7 +886,7 @@ try {
       summary.updateNow,
     )
   } else await nativeRestart(workspaces[0])
-  candidateLineage = macLineage.packagedCandidateLineage(
+  candidateLineage ??= macLineage.packagedCandidateLineage(
     join(app, 'Contents', 'Resources', 'app.asar'),
     workspaces,
   )
