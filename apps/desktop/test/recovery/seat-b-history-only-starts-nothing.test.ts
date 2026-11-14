@@ -181,9 +181,10 @@ describe('while the history-only gate stands', () => {
 
   it('the verdict names each file the restore set aside, with its full sha256', async () => {
     const userData = await aCopyOf(scratch, newer)
-    const live = filesIn(userData)
     const service = aService(userData)
-    const restored = await service.restore(offerOf(await service.inspect()).id, quiet)
+    const offer = offerOf(await service.inspect())
+    const live = filesIn(userData)
+    const restored = await service.restore(offer.id, quiet)
     if (restored.kind !== 'history-only') throw new Error('not a history-only verdict')
     const { preservedFiles } = restored.gate
     const folder = fromRecorded(userData, restored.gate.preserved)
@@ -233,7 +234,7 @@ describe('a return after the newer data set aside was changed', () => {
     [
       'a file it did not set aside, now there',
       (folder) => {
-        const path = join(folder, `${COPY_FILE}-wal`)
+        const path = join(folder, `${COPY_FILE}-journal`)
         expect(existsSync(path)).toBe(false)
         writeFileSync(path, 'written beside the set-aside data')
       },

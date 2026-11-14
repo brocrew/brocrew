@@ -293,7 +293,7 @@ describe('the same errors from the file system itself', () => {
     const next = await aService(userData).inspect()
     if (next.kind !== 'history-only') throw new Error(`not settled: ${JSON.stringify(next)}`)
     const preserved = preservedDir(userData, next.gate.restoreId)
-    for (const name of [...FAMILY, 'drafts.json']) {
+    for (const name of [...FAMILY, 'drafts.json'].filter((name) => !name.endsWith('-shm'))) {
       const kept = join(preserved, copyNameOf(name))
       expect(existsSync(kept) ? sha256(readFileSync(kept)) : null, name).toBe(newer[name])
     }

@@ -47,6 +47,7 @@ export async function nativeWorkspaceStartup(
       startup.workspaceId === workspace.baseline.workspaceId,
       'The native first-start receipt belongs to another workspace.',
     )
+    if (!candidate.checkpoint) return { startup, completed: null }
     const completed = await completedCopy(workspace.data, new Set(workspace.baseline.copiesBefore))
     requireEvidence(
       completed?.manifest.workspaceId === workspace.baseline.workspaceId &&
@@ -88,6 +89,16 @@ export async function captureWorkspaceBaseline(
     bytes: (await lstat(join(data, 'brobot2.sqlite'))).size,
     sha256: await digest(join(data, 'brobot2.sqlite')),
   }
+  const copies = await Promise.all(
+    (await checkpointIds(data)).map(async (id) => ({
+      id,
+      manifest: JSON.parse(await readFile(join(data, 'backups', id, 'manifest.json'), 'utf8')),
+    })),
+  )
+  const beforeMigration = copies.filter(({ manifest }) => manifest.reason === 'before-migration')
+  const selected = (beforeMigration.length > 0 ? beforeMigration : copies).sort(
+    (a, b) => Date.parse(b.manifest.createdAt) - Date.parse(a.manifest.createdAt),
+  )[0]
   workspace.baseline = {
     credential,
     before,
@@ -97,7 +108,15 @@ export async function captureWorkspaceBaseline(
     settingsBefore,
     registryBefore,
     permissions: fixturePermissions(data, Object.keys(natives)),
-    copiesBefore: await checkpointIds(data),
+    copiesBefore: copies.map(({ id }) => id),
+    retainedCheckpointId: selected?.id ?? null,
+    retainedCheckpointContents: selected
+      ? {
+          database: await digest(join(data, 'backups', selected.id, 'database.sqlite')),
+          manifest: await digest(join(data, 'backups', selected.id, 'manifest.json')),
+          state: stateSummary(stateBytes(join(data, 'backups', selected.id))),
+        }
+      : null,
     workspaceId: (await readFile(join(data, 'backups', 'workspace-id'), 'utf8')).trim(),
   }
   await writeFile(

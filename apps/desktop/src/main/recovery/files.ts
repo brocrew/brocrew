@@ -162,12 +162,7 @@ export const nodeFs: RecoveryFs = {
   readdir: (path) => nodeFsPromises.readdir(path),
 }
 
-async function cloneRecoveryFile(
-  from: string,
-  to: string,
-  signal?: AbortSignal,
-  _beforeFullCopy?: () => void,
-): Promise<void> {
+async function cloneRecoveryFile(from: string, to: string, signal?: AbortSignal): Promise<void> {
   signal?.throwIfAborted()
   if (process.platform !== 'darwin') {
     await nodeFsPromises.copyFile(

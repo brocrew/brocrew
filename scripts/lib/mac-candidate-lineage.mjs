@@ -19,7 +19,7 @@ export function packagedCandidateLineage(archive, workspaces) {
 }
 
 export function checkpointReason(candidateLineage, migrations) {
-  return candidateLineage.length > migrations.length ? 'before-migration' : 'first-start-of-release'
+  return candidateLineage.length > migrations.length ? 'before-migration' : null
 }
 
 export function checkpointMigrations(migrations) {

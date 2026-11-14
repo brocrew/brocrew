@@ -1,3 +1,4 @@
+import * as macLineage from '../lib/mac-candidate-lineage.mjs'
 import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, realpathSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -107,7 +108,11 @@ it('presses native restart and keeps B alive until its candidate checkpoint comp
     name: 'WorkspaceB',
     data: '/fictional/WorkspaceB',
     result: {},
-    baseline: { workspaceId: 'workspace-B', copiesBefore: ['A-copy'] },
+    baseline: {
+      workspaceId: 'workspace-B',
+      copiesBefore: ['A-copy'],
+      before: { migrations: [{ created_at: 1, hash: 'a' }] },
+    },
   }
   const startup = {
     appVersion: '0.2.23',
@@ -128,6 +133,11 @@ it('presses native restart and keeps B alive until its candidate checkpoint comp
     nativeRestartRecorded,
     nativeWorkspaceFromRegistry,
     nativeWorkspaceStartup,
+    macLineage,
+    candidateLineage: [
+      { createdAt: 1, hash: 'a' },
+      { createdAt: 2, hash: 'b' },
+    ],
     workspaces: [workspace, nativeWorkspace],
     VERSION_B: '0.2.23',
     candidate: { source: 'original-signed-source' },

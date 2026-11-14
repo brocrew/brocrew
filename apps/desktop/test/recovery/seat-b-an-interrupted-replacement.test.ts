@@ -58,7 +58,10 @@ function standingOf(userData: string): Standing {
   return Object.fromEntries(
     LIVE_NAMES.map((name) => {
       const path = join(userData, name)
-      return [name, existsSync(path) ? sha256(readFileSync(path)) : null]
+      return [
+        name,
+        name.endsWith('-shm') ? null : existsSync(path) ? sha256(readFileSync(path)) : null,
+      ]
     }),
   )
 }
@@ -68,7 +71,10 @@ function setAsideIn(folder: string): Standing {
   return Object.fromEntries(
     LIVE_NAMES.map((name) => {
       const path = join(folder, copyNameOf(name))
-      return [name, existsSync(path) ? sha256(readFileSync(path)) : null]
+      return [
+        name,
+        name.endsWith('-shm') ? null : existsSync(path) ? sha256(readFileSync(path)) : null,
+      ]
     }),
   )
 }

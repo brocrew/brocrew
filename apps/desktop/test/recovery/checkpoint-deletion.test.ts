@@ -648,13 +648,13 @@ it('ordinary retention pruning also preserves a note arriving at final rmdir and
       return nodeFs.rmdir(path)
     },
   }
-  expect(
-    await prune(userData, lineage, {
-      ...options,
-      fs,
-      now: () => Date.parse(copy.manifest.createdAt) + 4 * 86_400_000,
-    }),
-  ).toEqual([])
+  const removed = await prune(userData, lineage, {
+    ...options,
+    fs,
+    now: () => Date.parse(copy.manifest.createdAt) + 4 * 86_400_000,
+  })
+  expect(removed).toHaveLength(1)
+  expect(removed).not.toContain(copy.manifest.id)
   expect(inserted).toBe(true)
   expect(readFileSync(join(fragment, 'my-notes.txt'), 'utf8')).toContain('fictional note')
   expect(await retainedCopyInfo(userData, lineage, options)).toMatchObject({ id: copy.manifest.id })

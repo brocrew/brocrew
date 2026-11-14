@@ -81,7 +81,7 @@ it.each([
     if (kind === 'copy-error') completedCopy.mockRejectedValueOnce(failure)
     const result = nativeWorkspaceStartup(
       workspace,
-      { version: 'next', source: 'candidate-source' },
+      { version: 'next', source: 'candidate-source', checkpoint: true },
       { readReceipt, completedCopy, workspaces, diagnostic },
     )
     if (['read-error', 'copy-error'].includes(kind)) await expect(result).rejects.toBe(failure)

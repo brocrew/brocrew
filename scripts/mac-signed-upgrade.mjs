@@ -560,7 +560,15 @@ async function nativeRestart(workspace) {
   summary.restart.package = summary.installedCandidate
   const { startup, completed } = await nativeWorkspaceStartup(
     nativeWorkspace,
-    { version: VERSION_B, source: candidate.source },
+    {
+      version: VERSION_B,
+      source: candidate.source,
+      checkpoint:
+        macLineage.checkpointReason(
+          candidateLineage,
+          nativeWorkspace.baseline.before.migrations,
+        ) !== null,
+    },
     {
       readReceipt: macFirstStartReceipt,
       completedCopy: completedProofCopy,
@@ -571,9 +579,9 @@ async function nativeRestart(workspace) {
   summary.replacementCount++
   nativeWorkspace.result.nativeStartup = {
     ...startup,
-    completedCheckpointId: completed.manifest.id,
+    completedCheckpointId: completed?.manifest.id ?? null,
   }
-  Object.assign(summary.restart, { startup, completedCheckpointId: completed.manifest.id })
+  Object.assign(summary.restart, { startup, completedCheckpointId: completed?.manifest.id ?? null })
   passed('squirrel-replacement-restart-and-first-start', summary.restart)
   await quitSquirrelApp()
   await requireNoInstalledProcesses()
@@ -590,6 +598,8 @@ async function captureBaseline(workspace, registryBefore, settingsBefore) {
 async function reopenFirst(workspace) {
   selectWorkspace(workspace)
   const baseline = workspace.baseline
+  const needsCheckpoint =
+    macLineage.checkpointReason(candidateLineage, baseline.before.migrations) !== null
   const launched = performance.now()
   const cdp = await launch('b-first', workspace.port, VERSION_B)
   workspace.cdp = cdp
@@ -598,64 +608,88 @@ async function reopenFirst(workspace) {
     (one) => !baseline.copiesBefore.includes(one.manifest.id),
   )
   const observation = { launched, responsive, absent: performance.now(), manifestAbsent }
-  await completedProofCopy(data, new Set(baseline.copiesBefore))
-  if (!workspace.result.nativeStartup)
+  if (needsCheckpoint) await completedProofCopy(data, new Set(baseline.copiesBefore))
+  if (needsCheckpoint && !workspace.result.nativeStartup)
     await waitFor(
       async () =>
         (await readFile(join(evidence, 'b-first.log'), 'utf8'))
           .split(/\r?\n/)
           .includes(CHECKPOINT_LINE),
-      'the candidate records its finished background copy',
+      'the candidate records its completed pre-migration copy',
       600_000,
     )
   observation.completed = performance.now()
   const log = await readFile(join(evidence, 'b-first.log'), 'utf8')
-  const order = workspace.result.nativeStartup
-    ? recoveryOrder(log, { checkpoint: false })
-    : startOrder(log, { checkpoint: true, completion: 'functional-background', observation })
-  const added = (await checkpointIds(data)).filter((id) => !baseline.copiesBefore.includes(id))
+  const order =
+    workspace.result.nativeStartup || !needsCheckpoint
+      ? recoveryOrder(log, { checkpoint: false })
+      : startOrder(log, { checkpoint: true, completion: 'before-ready', observation })
+  const retained = await checkpointIds(data)
+  const added = retained.filter((id) => !baseline.copiesBefore.includes(id))
   requireEvidence(
-    added.length === 1,
-    'The candidate must make exactly one checked recovery copy per workspace.',
+    needsCheckpoint
+      ? added.length === 1 && retained.length === 1
+      : added.length === 0 &&
+          (baseline.retainedCheckpointId === null
+            ? retained.length === 0
+            : retained.length === 1 && retained[0] === baseline.retainedCheckpointId),
+    'The candidate must keep one pre-migration checkpoint, replacing the previous generation only for a migration.',
   )
-  if (workspace.result.nativeStartup)
+  if (needsCheckpoint && workspace.result.nativeStartup)
     requireEvidence(
       workspace.result.nativeStartup.completedCheckpointId === added[0],
       'The native first start did not record its recovery copy.',
     )
-  const checkpoint = join(data, 'backups', added[0])
-  const manifestText = await readFile(join(checkpoint, 'manifest.json'), 'utf8')
-  await writeFile(join(evidence, 'b-checkpoint-manifest.json'), manifestText)
-  const manifest = JSON.parse(manifestText)
-  requireEvidence(
-    manifest.madeBy?.appVersion === VERSION_B && manifest.madeBy?.build === candidate.source,
-    'The recovery copy was not made by the candidate.',
-  )
-  const checked = verifyCheckpoint(
-    { ...manifest, madeBy: { ...manifest.madeBy, appVersion: SAME_CODE_VERSION } },
-    {
-      ...stateBytes(checkpoint),
-      'database.sqlite': await readFile(join(checkpoint, 'database.sqlite')),
-    },
-    {
-      version: VERSION_B,
-      source: candidate.source,
-      reason: macLineage.checkpointReason(candidateLineage, baseline.before.migrations),
-      id: added[0],
-      workspaceId: (await readFile(join(data, 'backups', 'workspace-id'), 'utf8')).trim(),
-      state: baseline.files,
-      migrations: macLineage.checkpointMigrations(baseline.before.migrations),
-    },
-  )
-  const copy = databaseSnapshot(join(checkpoint, 'database.sqlite'), {
-    credentials: true,
-    movedState: true,
-  })
-  statePreserved(baseline.state, stateBytes(checkpoint, copy))
-  const resumed = workspace.result.interruptedSession
-  if (resumed) continuedEventsOnly(baseline.before, copy, resumed.sessionId)
-  dataPreserved(baseline.before, copy, { allowAppended: Boolean(resumed) })
-  legacyCredentialsPreserved(baseline.before.provider_api_key, copy.provider_api_key)
+  if (!needsCheckpoint && baseline.retainedCheckpointId !== null) {
+    const retainedFolder = join(data, 'backups', baseline.retainedCheckpointId)
+    requireEvidence(
+      isDeepStrictEqual(
+        {
+          database: await digest(join(retainedFolder, 'database.sqlite')),
+          manifest: await digest(join(retainedFolder, 'manifest.json')),
+          state: stateSummary(stateBytes(retainedFolder)),
+        },
+        baseline.retainedCheckpointContents,
+      ),
+      'The selected existing rollback checkpoint changed on a no-migration start.',
+    )
+  }
+  let checked = null
+  if (needsCheckpoint) {
+    const checkpoint = join(data, 'backups', added[0])
+    const manifestText = await readFile(join(checkpoint, 'manifest.json'), 'utf8')
+    await writeFile(join(evidence, 'b-checkpoint-manifest.json'), manifestText)
+    const manifest = JSON.parse(manifestText)
+    requireEvidence(
+      manifest.madeBy?.appVersion === VERSION_B && manifest.madeBy?.build === candidate.source,
+      'The recovery copy was not made by the candidate.',
+    )
+    checked = verifyCheckpoint(
+      { ...manifest, madeBy: { ...manifest.madeBy, appVersion: SAME_CODE_VERSION } },
+      {
+        ...stateBytes(checkpoint),
+        'database.sqlite': await readFile(join(checkpoint, 'database.sqlite')),
+      },
+      {
+        version: VERSION_B,
+        source: candidate.source,
+        reason: macLineage.checkpointReason(candidateLineage, baseline.before.migrations),
+        id: added[0],
+        workspaceId: (await readFile(join(data, 'backups', 'workspace-id'), 'utf8')).trim(),
+        state: baseline.files,
+        migrations: macLineage.checkpointMigrations(baseline.before.migrations),
+      },
+    )
+    const copy = databaseSnapshot(join(checkpoint, 'database.sqlite'), {
+      credentials: true,
+      movedState: true,
+    })
+    statePreserved(baseline.state, stateBytes(checkpoint, copy))
+    const resumed = workspace.result.interruptedSession
+    if (resumed) continuedEventsOnly(baseline.before, copy, resumed.sessionId)
+    dataPreserved(baseline.before, copy, { allowAppended: Boolean(resumed) })
+    legacyCredentialsPreserved(baseline.before.provider_api_key, copy.provider_api_key)
+  }
   const kept = await checkRetention(
     baseline.before,
     baseline.state,
