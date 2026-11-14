@@ -1,3 +1,14 @@
+import {
+  createSessionCatalogueRead,
+  derivedStateOf,
+  resolveEndReason,
+  parseChildDescent,
+  type ResumableSession,
+  type LiveSessionRow,
+  type UnresumableSession,
+  type RecordedSession,
+} from './session-catalogue-read'
+export type { ResumableSession, LiveSessionRow, RecordedSession } from './session-catalogue-read'
 import type { DigestRow, EventRow, PersistedEvent } from './ledger-row-types'
 export type { DigestRow, EventRow, PersistedEvent } from './ledger-row-types'
 import {
@@ -94,13 +105,12 @@ import {
   isAvailable,
   NOT_STARTED_BECAUSE,
   SUPPORTED_PROVIDERS,
-  parseSessionRef,
+  type parseSessionRef,
   serializeSessionRef,
   storedQuestionsParsed,
   type NotStartedBecause,
 } from '@brobot2/runtime'
 import type { Provider, SessionStatus, TurnEnding } from '@brobot2/shared'
-import { turnEndingSchema } from '@brobot2/shared'
 import {
   CAPABILITY_COLUMNS,
   CAPABILITY_FIELDS,
@@ -135,15 +145,9 @@ import type {
   AgentIdentityName,
   IdentityCreator,
   NewAgent,
-  DerivedState,
   LedgerStatus,
 } from '../../shared/runtime-ipc'
-import {
-  DEFAULT_PROFILE_ID,
-  PROVIDER_NAME,
-  seededProviderFor,
-  theMessagesOf,
-} from '../../shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID, seededProviderFor, theMessagesOf } from '../../shared/runtime-ipc'
 import { aNameForANewAgent } from '../../shared/human-names'
 import { NORMALIZER_VERSION, PRE_CONTRACT_NORMALIZER_VERSION } from '../archive/normalizer'
 import {
@@ -382,48 +386,6 @@ export interface WaitingMessage {
   readonly asks?: TheQuestionItAsks
 }
 
-export interface ResumableSession {
-  sessionId: string
-  provider: Provider
-  /** The parsed provider ref — a row without one is not returned at all. */
-  ref: ReturnType<typeof parseSessionRef>
-  cwd: string
-  status: SessionStatus
-  /** Null only for rows written before the column existed; never guessed. */
-  approvalMode: 'ask' | 'auto' | null
-  /** Null for rows written before profiles could be chosen — they ran in the default one. */
-  profileId: string | null
-  reasoningEffort: string | null
-  model: string | null
-  planMode: boolean | null
-  planEndedAt: number | null
-  modelOrEffortSetByAPersonAt: number | null
-  reportedModel: string | null
-  reportedEffort: string | null
-  adoptedAt: number | null
-  hasTranscript: boolean
-  lastEnding: TurnEndReason | null
-  child: ChildDescent | null
-  resumeRefusal: string | null
-  homeRefusal: string | null
-  restoredFromBundle: boolean
-  /** When the session began — the provider's own time for an adopted one. */
-  createdAt: number
-  updatedAt: number
-}
-
-export interface LiveSessionRow {
-  sessionId: string
-  /** Null for rows written before profiles could be chosen — they ran in the default one. */
-  profileId: string | null
-  /** Null only for rows written before the column existed; never guessed. */
-  approvalMode: 'ask' | 'auto' | null
-  /** The parsed ref, or null while the provider has not named this conversation yet. */
-  ref: ReturnType<typeof parseSessionRef> | null
-  model: string | null
-  reasoningEffort: string | null
-}
-
 interface AdoptedSessionRecord {
   id: string
   provider: Provider
@@ -437,44 +399,6 @@ interface AdoptedSessionRecord {
   createdAt: number
   rotation?: number
   child?: ChildDescent
-}
-
-interface UnresumableSession {
-  sessionId: string
-  provider: Provider
-  cwd: string
-  status: SessionStatus
-  profileId: string | null
-  adoptedAt: number | null
-  updatedAt: number
-  hasTranscript: boolean
-  foundInUserHome: boolean
-  restoredFromBundle: boolean
-  lastEnding: TurnEndReason | null
-  /** Plain-language why, from the row itself — never a guess. */
-  reason: string
-}
-
-export interface RecordedSession {
-  /** Our id for the row. */
-  sessionId: string
-  provider: Provider
-  providerSessionId: string | null
-  cwd: string
-  status: SessionStatus
-  profileId: string | null
-  adoptedAt: number | null
-  hasTranscript: boolean
-  foundInUserHome: boolean
-  restoredFromBundle: boolean
-  derived: DerivedState | null
-  lastEnding: TurnEndReason | null
-  createdAt: number
-  updatedAt: number
-  /** Why it cannot be reopened, or null when it can — the same answer the reopen list gives. */
-  unresumableReason: string | null
-  neverStarted: boolean
-  child: ChildDescent | null
 }
 
 interface SessionSnapshot {
@@ -1449,66 +1373,6 @@ export const NULL_SESSION_STORE: SessionStore = {
   lastOrdinalWrite: () => undefined,
 }
 
-interface SessionRow {
-  id: string
-  provider: string
-  external_ref: string | null
-  cwd: string
-  status: string
-  approval_mode: string | null
-  profile_id: string | null
-  reasoning_effort: string | null
-  model: string | null
-  plan_mode: number | null
-  plan_ended_at: number | null
-  model_or_effort_set_by_a_person_at: number | null
-  reported_model: string | null
-  reported_effort: string | null
-  adopted_at: number | null
-  restored_at: number | null
-  child_descent: string | null
-  has_events: number
-  last_end_reason: string | null
-  /** All null for a session with no `derived_generation` row — one this app recorded rather than projected. */
-  normalizer_version: number | null
-  building: number | null
-  failure: string | null
-  created_at: number
-  updated_at: number
-}
-
-/** The generation columns of {@link SessionRow}, as the shape {@link derivedStateOf} reads. */
-function derivedStateOfRow(row: SessionRow): DerivedState | null {
-  if (row.normalizer_version === null) return null
-  return derivedStateOf(
-    {
-      normalizerVersion: row.normalizer_version,
-      building: row.building,
-      failure: row.failure,
-    },
-    row.has_events !== 0,
-  )
-}
-
-interface ProjectionState {
-  normalizerVersion: number
-  building: number | null
-  failure: string | null
-}
-
-function derivedStateOf(row: ProjectionState | null, present: boolean): DerivedState | null {
-  if (row === null) return null
-  if (row.building !== null) return 'rebuilding'
-  if (row.failure !== null) return 'failed'
-  if (!present) return null
-  return row.normalizerVersion < NORMALIZER_VERSION ? 'stale' : 'current'
-}
-
-function resolveEndReason(value: string | null): TurnEndReason | null {
-  if (value === null) return null
-  return turnEndingSchema.safeParse(value).success ? (value as TurnEndReason) : 'unknown'
-}
-
 /** The open-turn lookup's row — just enough to decide attribution and status. */
 interface OpenTurnRow {
   id: string
@@ -2263,6 +2127,7 @@ export function createSessionStore(
     `SELECT ${SESSION_COLUMNS}, ${GENERATION_COLUMNS}, ${LAST_ENDING_COLUMN}
        FROM provider_session ${GENERATION_JOIN} WHERE provider_session.id = ?`,
   )
+  const sessionCatalogueRead = createSessionCatalogueRead(selectAll, selectOne)
   const selectEvents = db.prepare(
     `SELECT ordinal, payload, created_at FROM events
       WHERE session_id = ? AND generation = ? ORDER BY ordinal`,
@@ -5238,22 +5103,11 @@ export function createSessionStore(
     },
 
     find(sessionId) {
-      const row = selectOne.get(sessionId) as SessionRow | undefined
-      return row ? (toResumable(row) ?? null) : null
+      return sessionCatalogueRead.find(sessionId)
     },
 
     findLive(sessionId) {
-      const row = selectOne.get(sessionId) as SessionRow | undefined
-      if (!row) return null
-      return {
-        sessionId: row.id,
-        profileId: row.profile_id,
-        approvalMode:
-          row.approval_mode === 'ask' || row.approval_mode === 'auto' ? row.approval_mode : null,
-        ref: row.external_ref === null ? null : safeSessionRef(row.external_ref),
-        model: row.model,
-        reasoningEffort: row.reasoning_effort,
-      }
+      return sessionCatalogueRead.findLive(sessionId)
     },
 
     workflowOutputPath(sessionId, taskId, unread) {
@@ -6836,22 +6690,15 @@ export function createSessionStore(
     },
 
     resumable() {
-      return (selectAll.all() as SessionRow[]).flatMap((row) => {
-        if (!hasSomewhereToReopen(row)) return []
-        const session = toResumable(row)
-        return session ? [session] : []
-      })
+      return sessionCatalogueRead.resumable()
     },
 
     unresumable() {
-      // The same rows `resumable()` drops, kept with the reason they were dropped.
-      return (selectAll.all() as SessionRow[]).flatMap((row) =>
-        canReopen(row) ? [] : [{ ...describeRow(row), reason: whyNotResumable(row) }],
-      )
+      return sessionCatalogueRead.unresumable()
     },
 
     recorded() {
-      return (selectAll.all() as SessionRow[]).map(recordedOf)
+      return sessionCatalogueRead.recorded()
     },
 
     replacements() {
@@ -6944,8 +6791,7 @@ export function createSessionStore(
     },
 
     recordedOne(sessionId) {
-      const row = selectOne.get(sessionId) as SessionRow | undefined
-      return row === undefined ? null : recordedOf(row)
+      return sessionCatalogueRead.recordedOne(sessionId)
     },
   }
 }
@@ -6959,25 +6805,6 @@ export function mergeDescent(
     Object.entries(live).filter(([, value]) => value !== undefined),
   ) as ChildDescent
   return stored === null ? answered : { ...stored, ...answered }
-}
-
-function parseChildDescent(raw: string | null): ChildDescent | null {
-  if (raw === null || raw === '') return null
-  try {
-    const parsed: unknown = JSON.parse(raw)
-    return typeof parsed === 'object' && parsed !== null ? (parsed as ChildDescent) : null
-  } catch {
-    return null
-  }
-}
-
-function providerIdOf(row: SessionRow): string | null {
-  if (row.external_ref === null) return null
-  try {
-    return parseSessionRef(row.external_ref).sessionId
-  } catch {
-    return null
-  }
 }
 
 /** What a stored level says this app does not start its conversation for, by job; a word it does not know is passed over. */
@@ -7030,144 +6857,4 @@ export function aRowADeliveryCanStart(row: RecordedSession): boolean {
   return (
     !row.foundInUserHome && !row.restoredFromBundle && row.child === null && row.adoptedAt === null
   )
-}
-
-function recordedOf(row: SessionRow): RecordedSession {
-  return {
-    ...describeRow(row),
-    providerSessionId: providerIdOf(row),
-    derived: derivedStateOfRow(row),
-    createdAt: row.created_at,
-    unresumableReason: reopenRefusalOf(row),
-    neverStarted: row.external_ref === null,
-    child: parseChildDescent(row.child_descent),
-  }
-}
-
-function reopenRefusalOf(row: ReopenFacts): string | null {
-  return canReopen(row) ? whyNoDirectInput(row) : whyNotResumable(row)
-}
-
-/** The part of a row that reads the same whether or not it can be resumed. */
-function describeRow(row: SessionRow): Omit<UnresumableSession, 'reason'> {
-  return {
-    sessionId: row.id,
-    provider: row.provider as Provider,
-    cwd: row.cwd,
-    status: row.status as SessionStatus,
-    profileId: row.profile_id,
-    adoptedAt: row.adopted_at,
-    updatedAt: row.updated_at,
-    hasTranscript: row.has_events !== 0,
-    foundInUserHome: foundInUserHome(row),
-    restoredFromBundle: restoredFromBundle(row),
-    lastEnding: resolveEndReason(row.last_end_reason),
-  }
-}
-
-interface ReopenFacts {
-  provider: string
-  external_ref: string | null
-  profile_id: string | null
-  adopted_at: number | null
-  restored_at: number | null
-  child_descent: string | null
-  has_events: number
-}
-
-function whyNotResumable(row: ReopenFacts): string {
-  const provider = PROVIDER_NAME[row.provider as Provider]
-  if (restoredFromBundle(row)) {
-    const held =
-      row.has_events === 0
-        ? 'restored from a bundle that carried no conversation'
-        : 'restored from a bundle — BroCrew has the whole conversation and can show it'
-    return (
-      `${held}, but ${provider} never ran it on this machine, so a message here has nothing to ` +
-      'carry on from'
-    )
-  }
-  if (foundInUserHome(row)) {
-    return (
-      `one of your own ${provider} conversations, found in ${provider}'s own folder — BroCrew can ` +
-      `read it here, but a message here would start ${provider} in BroCrew's own folder, where ` +
-      'this conversation is not'
-    )
-  }
-  if (row.external_ref !== null) {
-    return 'we can no longer read where this conversation lives, so a message here cannot carry it on'
-  }
-  return row.has_events === 0
-    ? 'no turn was ever taken in this one, so there is nothing to carry on from'
-    : `this one stopped before ${provider} gave it an id, so there is nothing to carry on from`
-}
-
-function foundInUserHome(row: ReopenFacts): boolean {
-  return row.adopted_at !== null && row.profile_id === null
-}
-
-function restoredFromBundle(row: ReopenFacts): boolean {
-  return row.restored_at !== null
-}
-
-function hasSomewhereToReopen(row: ReopenFacts): boolean {
-  return !foundInUserHome(row) && !restoredFromBundle(row)
-}
-
-function canReopen(row: ReopenFacts): boolean {
-  return hasSomewhereToReopen(row) && readableRef(row) !== null
-}
-
-function readableRef(
-  row: Pick<ReopenFacts, 'external_ref'>,
-): ReturnType<typeof parseSessionRef> | null {
-  return row.external_ref === null ? null : safeSessionRef(row.external_ref)
-}
-
-function safeSessionRef(external: string): ReturnType<typeof parseSessionRef> | null {
-  try {
-    return parseSessionRef(external)
-  } catch {
-    return null
-  }
-}
-
-function toResumable(row: SessionRow): ResumableSession | null {
-  const ref = readableRef(row)
-  if (ref === null) return null
-  try {
-    return {
-      sessionId: row.id,
-      provider: row.provider as Provider,
-      ref,
-      cwd: row.cwd,
-      status: row.status as SessionStatus,
-      approvalMode:
-        row.approval_mode === 'ask' || row.approval_mode === 'auto' ? row.approval_mode : null,
-      profileId: row.profile_id,
-      reasoningEffort: row.reasoning_effort,
-      model: row.model,
-      planMode: row.plan_mode === null ? null : row.plan_mode !== 0,
-      planEndedAt: row.plan_ended_at,
-      modelOrEffortSetByAPersonAt: row.model_or_effort_set_by_a_person_at,
-      reportedModel: row.reported_model,
-      reportedEffort: row.reported_effort,
-      adoptedAt: row.adopted_at,
-      hasTranscript: row.has_events === 1,
-      child: parseChildDescent(row.child_descent),
-      resumeRefusal: whyNoDirectInput(row),
-      homeRefusal: hasSomewhereToReopen(row) ? null : whyNotResumable(row),
-      restoredFromBundle: restoredFromBundle(row),
-      lastEnding: resolveEndReason(row.last_end_reason),
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-    }
-  } catch {
-    return null
-  }
-}
-
-function whyNoDirectInput(row: ReopenFacts): string | null {
-  if (parseChildDescent(row.child_descent) === null) return null
-  return 'a sub-agent conversation — another agent drove it, so it takes no message of its own'
 }
