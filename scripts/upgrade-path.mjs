@@ -2537,7 +2537,7 @@ async function runUpgradePath() {
     },
   )
   const expectedReason =
-    candidateLineage.length > before.lineage.length ? 'before-migration' : 'first-start-of-release'
+    candidateLineage.length > before.lineage.length ? 'before-migration' : null
   const completedCopies = copiesTheBetaLeft.map((copy) => {
     const folder = join(data, 'backups', copy.folder)
     const files = {}
@@ -2550,6 +2550,11 @@ async function runUpgradePath() {
     workspaceId: readFileSync(join(data, 'backups', 'workspace-id'), 'utf8').trim(),
     stateFiles,
   })
+  const previousWhole = completedCopies.filter(({ manifest }) => firstCopy.fallbacks.includes(manifest?.id))
+  const previousMigration = previousWhole.filter(({ manifest }) => manifest.reason === 'before-migration')
+  const previousSelected = (previousMigration.length > 0
+    ? previousMigration.sort((a, b) => b.manifest.database.migrations.length - a.manifest.database.migrations.length || Date.parse(b.manifest.createdAt) - Date.parse(a.manifest.createdAt))
+    : previousWhole.sort((a, b) => Date.parse(b.manifest.createdAt) - Date.parse(a.manifest.createdAt)))[0]?.folder ?? null
   const firstCopyCompletion = firstCopy.completion
   summary.firstCopyPolicy = firstCopy
   keep('first-copy-policy.json', firstCopy)
@@ -2709,7 +2714,7 @@ async function runUpgradePath() {
     }
     await observeTheSavedKey('first start')
     wholeScreen('screen-after-the-first-start.png')
-    if (firstCopyCompletion === 'functional-background') {
+    if (expectedReason !== null && firstCopyCompletion === 'functional-background') {
       const finished = await until(
         () => (readFileSync(running.log, 'utf8').includes(CHECKPOINT_LINE) ? true : null),
         COPY_FINISH_MS,
@@ -2726,7 +2731,7 @@ async function runUpgradePath() {
   })
   summary.firstStart.order = existsSync(join(evidence, 'candidate-first.log'))
     ? wholeLog('candidate-first', {
-        checkpoint: true,
+        checkpoint: expectedReason !== null,
         completion: firstCopyCompletion,
         observation: firstCopyObservation,
       })
@@ -2735,7 +2740,7 @@ async function runUpgradePath() {
   const copiesAfterFirst = await copies()
   const sinceTheBeta = copiesSince(copiesTheBetaLeft, copiesAfterFirst, args['candidate-version'])
   summary.copiesAfterFirst = { ...sinceTheBeta, copies: copiesAfterFirst.map(copySaid) }
-  holds('the first start made one recovery copy, of exactly what the beta left', () => {
+  if (expectedReason !== null) holds('the first start made one recovery copy, of exactly what the beta left', () => {
     requireEvidence(
       sinceTheBeta.made.length === 1 &&
         sinceTheBeta.others.length === 0 &&
@@ -2779,15 +2784,25 @@ async function runUpgradePath() {
   })
 
   check(
-    sinceTheBeta.gone.length === 0 && sinceTheBeta.changed.length === 0,
-    'the first start left each recovery copy the beta made as it was',
-    { gone: sinceTheBeta.gone, changed: sinceTheBeta.changed },
+    copiesAfterFirst.length <= 1 &&
+      sinceTheBeta.others.length === 0 &&
+      sinceTheBeta.unread.length === 0 &&
+      sinceTheBeta.changed.length === 0 &&
+      (expectedReason !== null
+        ? copiesAfterFirst.length === 1 && sinceTheBeta.gone.length === copiesTheBetaLeft.length
+        : sinceTheBeta.made.length === 0 && (previousSelected === null
+          ? copiesAfterFirst.length === 0
+          : copiesAfterFirst.length === 1 && copiesAfterFirst[0].folder === previousSelected)),
+    expectedReason !== null
+      ? 'the completed migration checkpoint replaced the previous generation; exactly one remains'
+      : 'without a migration the candidate made no checkpoint and retained at most one previous copy',
+    { gone: sinceTheBeta.gone, changed: sinceTheBeta.changed, retained: copiesAfterFirst.length },
   )
   check(
     copiesTheBetaLeft.every(
       ({ manifest }) =>
         typeof manifest?.workspaceId === 'string' &&
-        manifest.workspaceId === summary.checkpoint?.workspaceId,
+        manifest.workspaceId === readFileSync(join(data, 'backups', 'workspace-id'), 'utf8').trim(),
     ),
     'each recovery copy the beta made is of the workspace the candidate’s copy is of',
     {
@@ -2923,7 +2938,7 @@ async function runUpgradePath() {
     const sinceTheFirst = copiesSince(copiesAfterFirst, await copies(), args['candidate-version'])
     check(
       sinceTheFirst.same,
-      'the second start made no recovery copy, and left the ones there as they were: the app itself counts the first as this release’s',
+      'the second start made no recovery copy and left the retained migration checkpoint as it was',
       sinceTheFirst,
     )
     await observeTheSavedKey('second start')

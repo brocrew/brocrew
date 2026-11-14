@@ -37,7 +37,6 @@ import {
   recordSuccessfulStart,
   retainedCopyInfo,
   deleteRetainedCopy,
-  type CapturedCheckpoint,
 } from './recovery/checkpoint'
 import { TranscriptRetentionHost, transcriptStartupWasInterrupted } from './transcript-retention'
 import {
@@ -378,7 +377,6 @@ const recoveryCopyVerifier = verifyInAWorker((request) =>
 )
 const recoveryWork = new Set<Promise<unknown>>()
 const recoveryCaptureAbort = new AbortController()
-const capturedRecoveryCopies: CapturedCheckpoint[] = []
 const recoveryCopyHasher = verifyInAWorker((request) =>
   startRecoveryVerifier({
     workerData: { ...request, hashOnly: true },
@@ -386,16 +384,6 @@ const recoveryCopyHasher = verifyInAWorker((request) =>
   }),
 )
 
-function finishCapturedRecoveryCopies(): void {
-  const copies = capturedRecoveryCopies.splice(0)
-  if (copies.length === 0) return
-  void withRecoveryWork(async () => {
-    for (const copy of copies) await copy.finish()
-    await letGoOfOldCopies()
-  }).catch((error: unknown) => {
-    console.warn('BroCrew kept an unfinished recovery copy for the next start:', error)
-  })
-}
 let stoppingRecoveryWork: Promise<void> | null = null
 
 function withRecoveryWork<T>(work: () => Promise<T>): Promise<T> {
@@ -1392,7 +1380,6 @@ function createWindow(): void {
   window.webContents.once('did-finish-load', () => signalFirstWindowLoad())
   window.on('ready-to-show', () => {
     if (!presentation.hidden) window.show()
-    finishCapturedRecoveryCopies()
   })
   thePageIsVisible = true
   const sight = (): void => {
@@ -1483,7 +1470,6 @@ function theRecoveryService(launchOwnership: HostGateVerdict): RecoveryService {
     verifyCopy: recoveryCopyVerifier.verify,
     hashCopy: recoveryCopyHasher.verify,
     signal: recoveryCaptureAbort.signal,
-    deferCheckpoint: (captured) => capturedRecoveryCopies.push(captured),
   }
   const asked = app.commandLine.getSwitchValue(RECOVERY_FAULT_SWITCH)
   if (asked === '') return createRecoveryService(deps)
@@ -2163,6 +2149,7 @@ function start(ownership: HostGateVerdict): void {
 
       mainThreadWork.add('the start', performance.now() - startBegan)
       recoveryStartSucceeded = true
+      void letGoOfOldCopies()
       sayAtOnce(READY_LINE)
     })
     .catch((error: unknown) => {

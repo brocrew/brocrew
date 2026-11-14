@@ -75,7 +75,7 @@ export interface RecoveryFs {
   rename(from: string, to: string): Promise<void>
   /** `mode` is `fs.constants.COPYFILE_*`. */
   copyFile(from: string, to: string, mode?: number): Promise<void>
-  /** Exclusive copy-on-write attempt; Darwin checks space for its possible full-copy fallback. */
+  /** Exclusive copy-on-write attempt; Darwin uses the platform's `cp -c`. */
   cloneFile(
     from: string,
     to: string,
@@ -166,7 +166,7 @@ async function cloneRecoveryFile(
   from: string,
   to: string,
   signal?: AbortSignal,
-  beforeFullCopy?: () => void,
+  _beforeFullCopy?: () => void,
 ): Promise<void> {
   signal?.throwIfAborted()
   if (process.platform !== 'darwin') {
@@ -179,13 +179,6 @@ async function cloneRecoveryFile(
   }
   if (await pathExists(to))
     throw Object.assign(new Error(`${to} already exists`), { code: 'EEXIST' })
-  beforeFullCopy?.()
-  const [source, space] = await Promise.all([
-    nodeFsPromises.stat(from),
-    nodeFsPromises.statfs(dirname(to), { bigint: true }),
-  ])
-  if (space.bavail * space.bsize < BigInt(source.size))
-    throw Object.assign(new Error('Not enough room for a full recovery copy.'), { code: 'ENOSPC' })
   const staging = await nodeFsPromises.mkdtemp(join(dirname(to), '.copy-'))
   const copy = join(staging, 'copy')
   let failure: unknown

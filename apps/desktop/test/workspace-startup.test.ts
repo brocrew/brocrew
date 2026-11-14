@@ -134,7 +134,6 @@ async function startup(
     recoveryCopyVerifier: { verify: checkTheCopyHere, stop: async () => {} },
     recoveryCopyHasher: { verify: checkTheCopyHere, stop: async () => {} },
     recoveryCaptureAbort: new AbortController(),
-    capturedRecoveryCopies: [],
     mainThreadWork: { timed: <T>(_what: string, work: () => T): T => work() },
     buildLineage: async () => [],
     recoveryService: null,

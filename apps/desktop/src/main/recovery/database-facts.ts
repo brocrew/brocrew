@@ -158,8 +158,10 @@ export async function migrationsOf(
     if (Buffer.from(header.subarray(0, 16)).toString('latin1') !== SQLITE_MAGIC) {
       return unreadable('it is not a SQLite database')
     }
-    const rollbackMode = header[18] === 1 && header[19] === 1
-    if (rollbackMode && sidecars.length === 0) return readMigrations(file, true)
+    // SQLite reads committed WAL pages itself; only a rollback journal needs recovery on a copy.
+    if (!sidecars.some(({ suffix, bytes }) => suffix === '-journal' && bytes > 0)) {
+      return readMigrations(file, true)
+    }
 
     const userData =
       options.userData ?? (basename(file) === DATABASE_FILE ? dirname(file) : undefined)
@@ -414,7 +416,7 @@ export function prepareDatabaseSnapshot(
   const { pages, pageSize, checkpointed } = snapshotFacts(file)
   return async (copy) => {
     let copied = false
-    if (checkpointed) {
+    if (checkpointed && process.platform === 'darwin') {
       try {
         await fs.cloneFile(file, copy, options.signal, () =>
           options.beforeFallback(pages * pageSize),

@@ -71,12 +71,12 @@ describe('the candidate’s first recovery copy', () => {
     unfinished: false,
   })
 
-  it('requires completion before READY only when a migration has no compatible completed fallback', () => {
+  it('requires completion before READY for every pending migration', () => {
     expect(policy([]).completion).toBe('before-ready')
     const selected = policy([fallback()])
     expect(selected.fallbacks).toEqual([id])
     expect(selected.rollbackLineage).toEqual(lineage)
-    expect(selected.completion).toBe('functional-background')
+    expect(selected.completion).toBe('before-ready')
     const log = `${READY_LINE}\n${CHECKPOINT_LINE}`
     const observation = {
       launched: 10,
@@ -85,14 +85,14 @@ describe('the candidate’s first recovery copy', () => {
       completed: 50,
       manifestAbsent: true,
     }
-    expect(() => firstStart(log, { completion: selected.completion, observation })).not.toThrow()
+    expect(() => firstStart(log, { completion: selected.completion, observation })).toThrow('before READY')
     expect(() => firstStart(log, { completion: policy([]).completion, observation })).toThrow(
       'before READY',
     )
     expect(() => firstStart(log, { completion: selected.completion })).toThrow(
-      'Responsive ordinary DOM',
+      'before READY',
     )
-    expect(policy([], lineage, lineage).completion).toBe('functional-background')
+    expect(policy([], lineage, lineage).completion).toBe('not-needed')
   })
 
   it('rejects incomplete, foreign-workspace, incompatible and unregistered fallbacks', () => {

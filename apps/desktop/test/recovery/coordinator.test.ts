@@ -22,7 +22,7 @@ import {
   inWords,
   isIntact,
   listCheckpoints,
-  type CapturedCheckpoint,
+  captureCheckpoint,
 } from '../../src/main/recovery/checkpoint'
 import {
   createRecoveryService,
@@ -218,16 +218,13 @@ describe('a start that opens its data', () => {
     expect(await treeOf(backupsDir(userData))).toEqual(before)
   })
 
-  it('makes a copy at a packaged release’s first start, and none at its next', async () => {
+  it('makes no copy at either packaged start when no migration is pending', async () => {
     const userData = await aWorkspace({ migrations: THIS_BUILD, checkpoints: [] })
     const { deps, seen } = checkOf(userData, { packaged: true })
-    expect(await inspect(deps)).toEqual({ kind: 'open', checkpoint: 'made' })
     expect(await inspect(deps)).toEqual({ kind: 'open', checkpoint: 'not-needed' })
-    expect(seen.lines).toEqual([CHECKPOINT_LINE])
-    const [made, ...more] = await listCheckpoints(userData)
-    expect(more).toEqual([])
-    expect(made?.manifest.reason).toBe('first-start-of-release')
-    expect(made?.manifest.madeBy).toEqual({ appVersion: THIS_VERSION, build: null })
+    expect(await inspect(deps)).toEqual({ kind: 'open', checkpoint: 'not-needed' })
+    expect(seen.lines).toEqual([])
+    expect(await listCheckpoints(userData)).toEqual([])
   })
 })
 
@@ -1257,13 +1254,10 @@ it.each([
       migrationsFolder,
       checkpoints: hasFallback ? [{ migrations, createdAt: new Date(0).toISOString() }] : [],
     })
-    const captured: CapturedCheckpoint[] = []
     let hashes = 0
-    const background = !pending || hasFallback
     const { deps } = checkOf(userData, {
       buildMigrationsFolder: pending ? await aBuildWithOneMoreMigration() : MIGRATIONS_FOLDER,
       packaged: true,
-      deferCheckpoint: (copy) => captured.push(copy),
       verifyCopy: async () => {
         throw new Error('no startup full integrity check')
       },
@@ -1272,17 +1266,35 @@ it.each([
         return { kind: 'ok', sha256: await sha256Of(file) }
       },
     })
-    expect(await inspect(deps)).toEqual({ kind: 'open', checkpoint: 'made' })
-    expect(captured).toHaveLength(background ? 1 : 0)
-    expect(hashes).toBe(background ? 0 : 1)
-    expect(await listCheckpoints(userData)).toHaveLength(pending ? 1 : 0)
-    if (background) {
-      const folder = join(backupsDir(userData), captured[0]!.manifest.id)
-      expect(existsSync(join(folder, 'unfinished'))).toBe(true)
-      expect(existsSync(join(folder, 'database.sqlite'))).toBe(true)
-      await captured[0]!.finish()
-      expect(hashes).toBe(1)
-      expect(await listCheckpoints(userData)).toHaveLength(hasFallback ? 2 : 1)
+    let resumedId: string | undefined
+    if (hasFallback) {
+      const captured = await captureCheckpoint({
+        userData,
+        ownership: 'sole',
+        appVersion: THIS_VERSION,
+        build: null,
+        reason: 'before-migration',
+        verifyCopy: checkTheCopyHere,
+        hashCopy: deps.hashCopy,
+      })
+      resumedId = captured.manifest.id
+      expect(existsSync(join(backupsDir(userData), resumedId, 'unfinished'))).toBe(true)
+    }
+    expect(await inspect(deps)).toEqual({
+      kind: 'open',
+      checkpoint: pending && !hasFallback ? 'made' : 'not-needed',
+    })
+    expect(hashes).toBe(pending ? 1 : 0)
+    const copies = await listCheckpoints(userData)
+    expect(copies).toHaveLength(pending ? 1 : 0)
+    if (pending) {
+      const copy = copies[0]!
+      expect(resumedId === undefined || copy.manifest.id === resumedId).toBe(true)
+      expect(existsSync(join(copy.folder, 'unfinished'))).toBe(false)
+      expect(await isIntact(copy)).toBe(true)
+      expect(await inspect(deps), 'a failed migration can retry using the completed checkpoint').toEqual({
+        kind: 'open', checkpoint: 'not-needed',
+      })
     }
   },
 )

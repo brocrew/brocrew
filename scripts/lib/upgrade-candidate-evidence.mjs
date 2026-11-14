@@ -35,9 +35,7 @@ export function firstCopyPolicy(applied, built, copies, { workspaceId, stateFile
     rollbackLineage,
     fallbacks,
     completion:
-      built.length > applied.length && fallbacks.length === 0
-        ? 'before-ready'
-        : 'functional-background',
+      built.length > applied.length ? 'before-ready' : 'not-needed',
   }
 }
 

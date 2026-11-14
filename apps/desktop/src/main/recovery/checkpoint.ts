@@ -111,7 +111,7 @@ const RESTORED_WITH_THE_DATABASE: ReadonlySet<string> = new Set(
   APP_STATE_FILES.filter((file) => file.restore === 'with-the-database').map((file) => file.name),
 )
 
-const KEEP_NEWEST = 2
+const KEEP_NEWEST = 1
 const HEADROOM_SHARE = 1.1
 const HEADROOM_BYTES = 64 * 1024 * 1024
 
@@ -134,10 +134,7 @@ export function needsACheckpoint(facts: CheckpointFacts): CheckpointReason | nul
     )
     return reused ? null : 'before-migration'
   }
-  const byThisRelease = facts.offerable.some(
-    ({ manifest }) => manifest.madeBy.appVersion === facts.release,
-  )
-  return facts.release !== null && !byThisRelease ? 'first-start-of-release' : null
+  return null
 }
 
 export interface CheckpointQuestion {
@@ -172,14 +169,6 @@ export async function checkpointNeeded(
     }
   }
   const needed = needsACheckpoint({ ...facts, intact })
-  if (needed === 'first-start-of-release') {
-    try {
-      const receipt = await readRetentionReceipt(userData, fs)
-      if (receipt?.appVersion === release) return null
-    } catch {
-      // An unreadable receipt cannot establish that this release has already opened.
-    }
-  }
   return needed
 }
 
@@ -191,6 +180,7 @@ function reusableCopies(facts: CheckpointFacts): Checkpoint[] {
     release === null ? build !== null && madeBy.build === build : madeBy.appVersion === release
   return facts.offerable.filter(
     ({ manifest }) =>
+      manifest.reason === 'before-migration' &&
       byThisBuild(manifest) &&
       sameMigrations(manifest.database.migrations, database.migrations) &&
       Math.floor(databaseChangedAt) <= Date.parse(manifest.createdAt),
@@ -543,8 +533,15 @@ export async function prune(
     if (found === 'whole') whole.push(checkpoint)
   }
   let candidates = whole
-  const keepingOf = (copies: readonly Checkpoint[]): Set<string> =>
-    new Set(copies.slice(0, KEEP_NEWEST).map(({ manifest }) => manifest.id))
+  const keepingOf = (copies: readonly Checkpoint[]): Set<string> => {
+    const beforeMigration = copies.filter(({ manifest }) => manifest.reason === 'before-migration')
+    const latest = beforeMigration.length > 0
+      ? beforeMigration.sort(
+          (a, b) => b.manifest.database.migrations.length - a.manifest.database.migrations.length || newestFirst(a, b),
+        )
+      : copies
+    return new Set(latest.slice(0, KEEP_NEWEST).map(({ manifest }) => manifest.id))
+  }
   const intact = new Set<string>()
   for (;;) {
     const keeping = keepingOf(candidates)
@@ -985,13 +982,14 @@ export async function recordSuccessfulStart(
   const checkpointId = newest?.manifest.id ?? previous?.checkpointId ?? null
   const same =
     previous?.appVersion === options.currentAppVersion && previous.checkpointId === checkpointId
+  if (same) return
   const receipt: RetentionReceipt = {
     format: 'brocrew-recovery-retention',
     version: 1,
     workspaceId: workspace.id,
     appVersion: options.currentAppVersion,
     checkpointId,
-    successfulStarts: Math.min(3, same ? previous.successfulStarts + 1 : 1),
+    successfulStarts: 1,
   }
   const path = join(backupsDir(userData), RETENTION_FILE)
   await assertOwnedPathsAreReal(userData, [path], fs)

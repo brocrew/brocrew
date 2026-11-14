@@ -13,10 +13,8 @@ import {
   listCheckpoints,
   listOfferable,
   theNewestIntact,
-  makeCheckpoint,
   captureCheckpoint,
   resumeCapturedCheckpoints,
-  type CapturedCheckpoint,
   offeredFrom,
   prune,
   type Checkpoint,
@@ -79,7 +77,7 @@ export interface CoordinatorDeps {
   readonly appVersion: string
   /** The commit this build was made from, recorded in each copy's manifest; null when unknown. */
   readonly build: string | null
-  /** A packaged release makes a copy at its first start on existing data. */
+  /** Whether this build has a release version for checkpoint reuse. */
   readonly packaged: boolean
   readonly requireExistingDatabase?: boolean
   readonly ownership: () => Promise<Ownership>
@@ -105,7 +103,6 @@ export interface CoordinatorDeps {
   readonly verifyCopy: VerifyCopy
   readonly hashCopy?: VerifyCopy
   readonly signal?: AbortSignal
-  readonly deferCheckpoint?: (captured: CapturedCheckpoint) => void
 }
 
 /** What this start may do with the workspace's data. Never throws. */
@@ -460,19 +457,12 @@ async function decide(
   }
 
   const pending = hasPendingMigrations(applied, lineage)
-  // 0.2.19 ships through 0029_open_provider_ids; newer migrations cannot be opened by it.
-  const legacyLineage = lineage.filter(({ createdAt }) => createdAt <= 1794254514029)
-  const rollbackLineage = isLineagePrefix(applied, legacyLineage)
-    ? legacyLineage
-    : lineage.slice(0, applied.length)
-  const needsCompletedFallback =
-    pending && (await listOfferable(userData, rollbackLineage, fs)).length === 0
   const options = {
     userData,
     ownership: owner,
     appVersion: deps.appVersion,
     build: deps.build,
-    reason: 'first-start-of-release' as const,
+    reason: 'before-migration' as const,
     fs,
     verifyCopy: deps.verifyCopy,
     hashCopy: deps.hashCopy,
@@ -485,57 +475,33 @@ async function decide(
     beforeStep: deps.beforeCheckpointStep,
   }
   const retained = await resumeCapturedCheckpoints(options)
-  let completedFallback = !needsCompletedFallback
-  for (const captured of retained) {
-    if (
-      !completedFallback &&
-      isLineagePrefix(captured.manifest.database.migrations, rollbackLineage)
-    ) {
-      await captured.finish()
-      completedFallback = true
-    } else if (deps.deferCheckpoint) deps.deferCheckpoint(captured)
-    else await captured.finish()
-  }
-  const alreadyCaptured = retained.some(
-    ({ manifest }) =>
-      manifest.madeBy.appVersion === deps.appVersion && manifest.madeBy.build === deps.build,
-  )
-  const reason = alreadyCaptured
-    ? null
-    : await checkpointNeeded({
-        userData,
-        database,
-        lineage,
-        release: deps.packaged ? deps.appVersion : null,
-        build: deps.build,
-        fs,
-      })
-  if (reason === null && !pending) return OPEN_NOT_NEEDED
+  for (const captured of retained) await captured.finish()
+  const reason = await checkpointNeeded({
+    userData,
+    database,
+    lineage,
+    release: deps.packaged ? deps.appVersion : null,
+    build: deps.build,
+    fs,
+  })
+  if (reason === null && !pending && retained.length === 0) return OPEN_NOT_NEEDED
   if (owner !== 'sole') return notTheOnlyApp(owner)
-  if (reason === null && !completedFallback) {
-    return failed(
-      'checkpoint-failed',
-      false,
-      'No completed recovery copy is compatible with this workspace before its next migration.',
-    )
+  const rotate = (): Promise<string[]> =>
+    prune(userData, lineage, {
+      ownership: owner,
+      currentAppVersion: deps.appVersion,
+      fs,
+      now: deps.now,
+    })
+  if (reason === null) {
+    await rotate()
+    return OPEN_NOT_NEEDED
   }
-  if (reason === null) return OPEN_NOT_NEEDED
   working('checkpoint')
   const make = async (): Promise<void> => {
-    if (!deps.deferCheckpoint) {
-      await makeCheckpoint({ ...options, reason })
-      return
-    }
     const captured = await captureCheckpoint({ ...options, reason })
-    if (!completedFallback) {
-      if (!isLineagePrefix(captured.manifest.database.migrations, rollbackLineage)) {
-        throw new CheckpointFailed(
-          'No completed recovery copy is compatible with this workspace before its next migration.',
-          false,
-        )
-      }
-      await captured.finish()
-    } else deps.deferCheckpoint(captured)
+    await captured.finish()
+    await rotate()
   }
   try {
     await make()

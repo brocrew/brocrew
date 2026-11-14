@@ -625,7 +625,7 @@ function aCheckpoint(made: {
       id: randomUUID(),
       createdAt: new Date(made.createdAt).toISOString(),
       workspaceId: randomUUID(),
-      reason: 'first-start-of-release',
+      reason: 'before-migration',
       madeBy: { appVersion: made.appVersion, build: made.build ?? null },
       database: {
         file: 'database.sqlite',
@@ -669,13 +669,11 @@ describe('needsACheckpoint', () => {
     }
   })
 
-  it('asks for one at a packaged release’s first start on existing data, and only then', () => {
+  it('does not copy existing data merely because a packaged release starts for the first time', () => {
     const byAnother = aCheckpoint({ appVersion: '0.1.0', migrations: OWN, createdAt: minute(-10) })
     const byThis = aCheckpoint({ appVersion: '0.2.0', migrations: OWN, createdAt: minute(-5) })
-    expect(needsACheckpoint(facts({ release: '0.2.0' }))).toBe('first-start-of-release')
-    expect(needsACheckpoint(facts({ release: '0.2.0', offerable: [byAnother] }))).toBe(
-      'first-start-of-release',
-    )
+    expect(needsACheckpoint(facts({ release: '0.2.0' }))).toBeNull()
+    expect(needsACheckpoint(facts({ release: '0.2.0', offerable: [byAnother] }))).toBeNull()
     expect(needsACheckpoint(facts({ release: '0.2.0', offerable: [byAnother, byThis] }))).toBeNull()
     expect(needsACheckpoint(facts({ release: null })), 'a build that is not a release').toBeNull()
   })
@@ -1450,7 +1448,7 @@ describe('recovery copies from a previous release', () => {
       const oldLineage = await buildLineage(oldMigrations)
       aLiveDatabase(userData, oldMigrations)
       writeFileSync(join(userData, 'drafts.json'), '{"draft":"a fictional recipe"}')
-      const old = await make(userData, { appVersion: '0.1.17', now: () => START })
+      const old = await make(userData, { appVersion: '0.1.17', reason: 'before-migration', now: () => START })
       const files = ['database.sqlite', 'manifest.json', 'drafts.json']
       const before = files.map((file) => fingerprint(join(old.folder, file)))
       await recordSuccessfulStart(userData, oldLineage, { ...SOLE, currentAppVersion: '0.1.17' })
@@ -1468,9 +1466,11 @@ describe('recovery copies from a previous release', () => {
       const options = { ...SOLE, currentAppVersion: '0.1.19', now: () => minute(4) }
       await recordSuccessfulStart(userData, lineage, options)
 
-      expect(await prune(userData, lineage, options)).toEqual([])
-      expect(files.map((file) => fingerprint(join(old.folder, file)))).toEqual(before)
-      expect(await isIntact(current)).toBe(true)
+      expect(await prune(userData, lineage, options)).toEqual([migrate ? old.manifest.id : current.manifest.id])
+      const survivor = migrate ? current : old
+      expect(await isIntact(survivor)).toBe(true)
+      expect(ids(await listOfferable(userData, lineage))).toEqual([survivor.manifest.id])
+      if (!migrate) expect(files.map((file) => fingerprint(join(old.folder, file)))).toEqual(before)
     },
   )
 
@@ -1655,7 +1655,7 @@ describe('recovery copy retention and Settings', () => {
         lineage: LINEAGE,
         release: '9.0.0',
       }),
-    ).toBe('first-start-of-release')
+    ).toBeNull()
   })
 
   it('shows total copied bytes; Delete now removes the selected copy', async () => {

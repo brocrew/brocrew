@@ -38,7 +38,7 @@ import { nodeFs, type RecoveryFs } from '../../src/main/recovery/files'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const POSIX = process.platform !== 'win32'
 
-it('reads committed WAL migrations through a private copy without changing the live family', async () => {
+it('reads committed WAL migrations without a database copy or changes to committed bytes', async () => {
   const { folder, userData } = aFolder()
   const file = join(folder, 'closed.sqlite')
   crashedInto(folder, file)
@@ -59,7 +59,7 @@ it('reads committed WAL migrations through a private copy without changing the l
     kind: 'recorded',
     migrations: LINEAGE.map(({ createdAt, hash }) => ({ createdAt, hash })),
   })
-  expect(copies).toBeGreaterThan(0)
+  expect(copies).toBe(0)
   expect([readFileSync(file), readFileSync(`${file}-wal`)]).toEqual(before)
   expect(existsSync(join(userData, 'recovery', 'scratch'))).toBe(false)
 })
