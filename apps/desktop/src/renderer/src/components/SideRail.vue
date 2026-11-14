@@ -440,7 +440,6 @@ function hearStates(message: RuntimeStatesMessage): void {
   if (!props.providerBlocks) localProviderBlocks.acceptMany(message.moved)
 }
 
-/** Every conversation the host lists, newest first — see {@link conversationList}. */
 const readList = computed(() =>
   conversationList({
     resumable: hostResumable.value,
@@ -455,7 +454,6 @@ const listed = computed(() =>
     new Map([...said.value].map(([conversation, heard]) => [conversation, heard.state])),
   ),
 )
-
 const cast = useWhoCalledWhom()
 const lists = railFacts()
 // Index the forest once per reading, rather than walking it for every row on every render.
