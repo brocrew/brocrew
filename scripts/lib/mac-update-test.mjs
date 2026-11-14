@@ -1,3 +1,4 @@
+import { lineageFits } from './upgrade-path.mjs'
 import { createHash } from 'node:crypto'
 import { spawn, spawnSync, execFile } from 'node:child_process'
 import { createReadStream } from 'node:fs'
@@ -225,7 +226,7 @@ export function diskImageFrom(text, version) {
  * modules: an 8-byte size pickle, the header pickle naming each file's size and offset, then the
  * files, whose offsets count from the header's end.
  */
-export function packageOfAsar(archive) {
+export function fileOfAsar(archive, path) {
   const fd = openSync(archive, 'r')
   try {
     const read = (length, at) => {
@@ -239,15 +240,19 @@ export function packageOfAsar(archive) {
     const headerSize = read(8, 0).readUInt32LE(4)
     const header = read(headerSize, 8)
     const json = header.subarray(8, 8 + header.readUInt32LE(4)).toString('utf8')
-    const file = JSON.parse(json).files?.['package.json']
+    const file = path.split('/').reduce((node, part) => node?.files?.[part], JSON.parse(json))
     requireEvidence(
       Number.isSafeInteger(file?.size) && typeof file?.offset === 'string' && !file.unpacked,
-      'The app archive holds no package.json.',
+      `The app archive holds no ${path}.`,
     )
-    return JSON.parse(read(file.size, 8 + headerSize + Number(file.offset)).toString('utf8'))
+    return read(file.size, 8 + headerSize + Number(file.offset)).toString('utf8')
   } finally {
     closeSync(fd)
   }
+}
+
+export function packageOfAsar(archive) {
+  return JSON.parse(fileOfAsar(archive, 'package.json'))
 }
 
 export function hash(bytes, algorithm = 'sha256', encoding = 'hex') {
@@ -408,7 +413,7 @@ function rowsKept(before, after, table, ignored = []) {
   }
 }
 
-export function dataPreserved(before, after, { allowAppended = false, usage = false } = {}) {
+export function dataPreserved(before, after, { allowAppended = false, usage = false, candidateLineage } = {}) {
   for (const table of ['provider_session', 'events']) {
     requireEvidence(
       Array.isArray(before[table]) && Array.isArray(after[table]) && before[table].length > 0,
@@ -436,8 +441,12 @@ export function dataPreserved(before, after, { allowAppended = false, usage = fa
     )
   }
   requireEvidence(
-    isDeepStrictEqual(before.migrations, after.migrations),
-    'Migration records changed in the same-code rehearsal.',
+    candidateLineage
+      ? isDeepStrictEqual(before.migrations, after.migrations.slice(0, before.migrations.length)) &&
+        after.migrations.length === candidateLineage.length &&
+        lineageFits(after.migrations.map((m) => ({ createdAt: m.created_at, hash: m.hash })), candidateLineage)
+      : isDeepStrictEqual(before.migrations, after.migrations),
+    'Migration records differ from the expected lineage.',
   )
   if (usage)
     for (const table of USAGE_TABLES)
@@ -482,7 +491,7 @@ export function verifyCheckpoint(manifest, files, expected) {
     'Checkpoint names a different folder or workspace.',
   )
   requireEvidence(
-    !Number.isNaN(Date.parse(manifest.createdAt)) && manifest.reason === 'first-start-of-release',
+    !Number.isNaN(Date.parse(manifest.createdAt)) && manifest.reason === (expected.reason ?? 'first-start-of-release'),
     'Checkpoint date or reason is missing.',
   )
   requireEvidence(

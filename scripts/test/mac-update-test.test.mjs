@@ -951,3 +951,36 @@ test('after a refused resume, the same conversation is resumed and sent once aft
   assert.equal(resumes, 2)
   assert.equal(sends, 1)
 })
+
+test('requires the exact checkpoint reason and a valid date for either migration path', () => {
+  const { manifest, files, expected } = checkpoint()
+  for (const reason of ['before-migration', 'first-start-of-release']) {
+    const copy = { ...manifest, reason }
+    assert.doesNotThrow(() => verifyCheckpoint(copy, files, { ...expected, reason }))
+    const other = reason === 'before-migration' ? 'first-start-of-release' : 'before-migration'
+    assert.throws(() => verifyCheckpoint(copy, files, { ...expected, reason: other }))
+    assert.throws(() => verifyCheckpoint({ ...copy, createdAt: 'bad date' }, files, { ...expected, reason }))
+  }
+})
+
+test('live candidate migrations retain the baseline prefix and complete the candidate lineage', () => {
+  const before = baseline(), after = structuredClone(before)
+  const candidateLineage = [
+    { createdAt: 42, hash: 'lineage', lf: 'lineage', crlf: 'lineage' },
+    { createdAt: 43, hash: 'next', lf: 'next', crlf: 'next' },
+  ]
+  after.migrations.push({ id: 2, hash: 'next', created_at: 43 })
+  assert.doesNotThrow(() => dataPreserved(before, after, { candidateLineage }))
+  for (const changed of [
+    (a) => a.migrations.pop(),
+    (a) => (a.migrations[0].hash = 'different'),
+    (a) => (a.migrations[1].hash = 'different'),
+    (a) => a.migrations.push({ id: 3, hash: 'extra', created_at: 44 }),
+    (a) => (a.events[0].payload = 'changed'),
+  ]) {
+    const damaged = structuredClone(after)
+    changed(damaged)
+    assert.throws(() => dataPreserved(before, damaged, { candidateLineage }))
+  }
+  assert.throws(() => dataPreserved(before, after))
+})

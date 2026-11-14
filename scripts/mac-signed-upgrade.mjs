@@ -1,3 +1,4 @@
+import { packagedCandidateLineage } from './lib/mac-candidate-lineage.mjs'
 import { readWorkspaceForUpdate } from '../apps/desktop/src/main/one-host-gate.ts'
 import {
   UPDATE_NOW_PROMPT,
@@ -157,6 +158,7 @@ const summary = {
   launchAttempts: [],
   quarantine: [],
 }
+let candidateLineage
 let active = null,
   model = null,
   mountedA = null,
@@ -283,7 +285,7 @@ async function checkRetention(
   })
   const resumed = currentWorkspace.result.interruptedSession
   if (resumed) continuedEventsOnly(before, after, resumed.sessionId)
-  const comparison = dataPreserved(before, after, { allowAppended: Boolean(resumed) })
+  const comparison = dataPreserved(before, after, { allowAppended: Boolean(resumed), candidateLineage })
   legacyCredentialsPreserved(before.provider_api_key, after.provider_api_key)
   credentialPreserved(
     credential,
@@ -619,7 +621,9 @@ async function reopenFirst(workspace) {
       'The native first start did not record its recovery copy.',
     )
   const checkpoint = join(data, 'backups', added[0])
-  const manifest = JSON.parse(await readFile(join(checkpoint, 'manifest.json'), 'utf8'))
+  const manifestText = await readFile(join(checkpoint, 'manifest.json'), 'utf8')
+  await writeFile(join(evidence, 'b-checkpoint-manifest.json'), manifestText)
+  const manifest = JSON.parse(manifestText)
   requireEvidence(
     manifest.madeBy?.appVersion === VERSION_B && manifest.madeBy?.build === candidate.source,
     'The recovery copy was not made by the candidate.',
@@ -633,6 +637,7 @@ async function reopenFirst(workspace) {
     {
       version: VERSION_B,
       source: candidate.source,
+      reason: candidateLineage.length > baseline.before.migrations.length ? 'before-migration' : 'first-start-of-release',
       id: added[0],
       workspaceId: (await readFile(join(data, 'backups', 'workspace-id'), 'utf8')).trim(),
       state: baseline.files,
@@ -674,7 +679,6 @@ async function reopenFirst(workspace) {
     data: kept.comparison,
   }
   await writeFile(join(evidence, 'b-first-data.json'), JSON.stringify(kept.after, null, 2))
-  await writeFile(join(evidence, 'b-checkpoint-manifest.json'), JSON.stringify(manifest, null, 2))
   workspace.copiesAfterFirst = await checkpointIds(data)
   passed(
     'manually-reopened-workspace-keeps-data-draft-credential-ciphertext-and-modes',
@@ -842,6 +846,7 @@ try {
       summary.updateNow,
     )
   } else await nativeRestart(workspaces[0])
+  candidateLineage = packagedCandidateLineage(join(app, 'Contents', 'Resources', 'app.asar'), workspaces)
   for (const workspace of workspaces) await reopenFirst(workspace)
   await allRunning(VERSION_B, 'concurrentSignedFirst')
   await quitAll('candidate-first-reopening')
@@ -852,7 +857,7 @@ try {
     selectWorkspace(workspace)
     const baseline = workspace.baseline,
       after = databaseSnapshot(join(data, 'brobot2.sqlite'), { credentials: true })
-    dataPreserved(baseline.before, after, { allowAppended: true })
+    dataPreserved(baseline.before, after, { allowAppended: true, candidateLineage })
     legacyCredentialsPreserved(baseline.before.provider_api_key, after.provider_api_key)
     workspace.result.finalCredential = credentialPreserved(
       baseline.credential,
