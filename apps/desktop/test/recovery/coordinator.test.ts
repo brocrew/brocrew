@@ -1,8 +1,8 @@
+import { fullCopyFs, treeOf, sha256Of } from './lib/recovery-files'
 import { aBuildWithOneMoreMigration as buildWithOneMoreMigration } from './lib/seat-b-folders'
 import { registerMigrationLineageCases } from './lib/migration-lineage-cases'
 import Database from 'better-sqlite3'
 import { applyMigrations } from '../../src/main/db/migrate'
-import { createHash } from 'node:crypto'
 import {
   appendFile,
   mkdir,
@@ -57,6 +57,7 @@ import {
   THIS_BUILD,
   THIS_VERSION,
   makeRecoveryFixture,
+  checkOf,
   type RecoveryFixtureOptions,
 } from './lib/recovery-fixture'
 import { checkTheCopyHere } from '../helpers/check-the-copy-here'
@@ -86,35 +87,6 @@ async function aNewerWorkspace(options: Partial<RecoveryFixtureOptions> = {}): P
   })
 }
 
-interface Seen {
-  readonly lines: string[]
-  readonly working: WorkingOn[]
-  readonly progress: (readonly [number, number])[]
-}
-
-function checkOf(
-  userData: string,
-  over: Partial<CoordinatorDeps> = {},
-): { readonly deps: CoordinatorDeps; readonly seen: Seen } {
-  const seen: Seen = { lines: [], working: [], progress: [] }
-  return {
-    deps: {
-      userData,
-      buildMigrationsFolder: MIGRATIONS_FOLDER,
-      verifyCopy: checkTheCopyHere,
-      appVersion: THIS_VERSION,
-      build: null,
-      packaged: false,
-      ownership: () => Promise.resolve('sole'),
-      log: (line) => seen.lines.push(line),
-      working: (what) => seen.working.push(what),
-      progress: (done, total) => seen.progress.push([done, total]),
-      ...over,
-    },
-    seen,
-  }
-}
-
 const owned = (ownership: Ownership): Pick<CoordinatorDeps, 'ownership'> => ({
   ownership: () => Promise.resolve(ownership),
 })
@@ -137,45 +109,7 @@ const notTheOnlyApp = (ownership: Exclude<Ownership, 'sole'>): StartupVerdict =>
 })
 
 const quiet: ProgressListener = () => undefined
-const fullCopyFs: RecoveryFs = {
-  ...nodeFs,
-  cloneFile: () =>
-    Promise.reject(
-      Object.assign(new Error('No clone in this full-copy fixture'), { code: 'ENOTSUP' }),
-    ),
-}
-
-async function treeOf(dir: string): Promise<Record<string, string>> {
-  const tree: Record<string, string> = {}
-  const walk = async (relative: string): Promise<void> => {
-    for (const entry of await readdir(join(dir, relative), { withFileTypes: true })) {
-      const path = relative === '' ? entry.name : `${relative}/${entry.name}`
-      if (entry.isDirectory()) {
-        tree[path] = 'folder'
-        await walk(path)
-        continue
-      }
-      const file = join(dir, path)
-      const stats = await stat(file)
-      if (path === 'brobot2.sqlite-shm' || (path === 'brobot2.sqlite-wal' && stats.size === 0))
-        continue
-      const sha256 = createHash('sha256')
-        .update(await readFile(file))
-        .digest('hex')
-      tree[path] = `${String(stats.size)} ${String(stats.mtimeMs)} ${sha256}`
-    }
-  }
-  await walk('')
-  return tree
-}
-
 const aBuildWithOneMoreMigration = () => buildWithOneMoreMigration({ root: aRoot })
-
-async function sha256Of(path: string): Promise<string> {
-  return createHash('sha256')
-    .update(await readFile(path))
-    .digest('hex')
-}
 
 describe('the three lines a start prints', () => {
   it('are these exact sentences, which something watching the start matches', () => {
@@ -250,6 +184,24 @@ describe('a copy before a migration', () => {
     return `There isn't enough free space for a recovery copy: it needs about ${inWords(Math.ceil(bytes * 1.1) + 64 * 1024 * 1024)}, and 1 MB is free.`
   }
 
+  const workspaceWithCopies = async (checkpoints: RecoveryFixtureOptions['checkpoints']) => {
+    const userData = join(await aRoot(), 'data')
+    const fixture = await makeRecoveryFixture(userData, {
+      migrations: THIS_BUILD,
+      checkpoints,
+      now,
+    })
+    return { userData, fixture }
+  }
+  const checkingWithoutRoom = async (userData: string) =>
+    checkOf(userData, {
+      buildMigrationsFolder: await aBuildWithOneMoreMigration(),
+      verifyCopy: checkTheCopyHere,
+      now: () => now,
+      fs: fullCopyFs,
+      freeBytes: () => 0,
+    })
+
   it('frees legacy surplus for the replacement while preserving unrelated copies', async () => {
     const userData = join(await aRoot(), 'data')
     const fixture = await makeRecoveryFixture(userData, {
@@ -293,21 +245,10 @@ describe('a copy before a migration', () => {
   })
 
   it('a failed update keeps its selected rollback anchor after removing legacy surplus', async () => {
-    const userData = join(await aRoot(), 'data')
-    await makeRecoveryFixture(userData, {
-      migrations: THIS_BUILD,
-      checkpoints: [dated(9), dated(2), dated(1)],
-      now,
-    })
+    const { userData } = await workspaceWithCopies([dated(9), dated(2), dated(1)])
     const selected = (await listCheckpoints(userData))[0]!
     const before = await treeOf(selected.folder)
-    const { deps } = checkOf(userData, {
-      buildMigrationsFolder: await aBuildWithOneMoreMigration(),
-      verifyCopy: checkTheCopyHere,
-      now: () => now,
-      fs: fullCopyFs,
-      freeBytes: () => 0,
-    })
+    const { deps } = await checkingWithoutRoom(userData)
     expect(await inspect(deps)).toMatchObject({ kind: 'failed', reason: 'checkpoint-failed' })
     expect(await treeOf(selected.folder)).toEqual(before)
     expect((await listCheckpoints(userData)).map(({ manifest }) => manifest.id)).toEqual([
@@ -316,19 +257,8 @@ describe('a copy before a migration', () => {
   })
 
   it('reports insufficient room while preserving the selected rollback anchor', async () => {
-    const userData = join(await aRoot(), 'data')
-    const fixture = await makeRecoveryFixture(userData, {
-      migrations: THIS_BUILD,
-      checkpoints: [dated(9), dated(2), dated(1)],
-      now,
-    })
-    const { deps } = checkOf(userData, {
-      buildMigrationsFolder: await aBuildWithOneMoreMigration(),
-      verifyCopy: checkTheCopyHere,
-      now: () => now,
-      fs: fullCopyFs,
-      freeBytes: () => 0,
-    })
+    const { userData, fixture } = await workspaceWithCopies([dated(9), dated(2), dated(1)])
+    const { deps } = await checkingWithoutRoom(userData)
 
     expect(await inspect(deps)).toEqual({
       kind: 'failed',
@@ -344,19 +274,8 @@ describe('a copy before a migration', () => {
   })
 
   it('keeps a lone copy and uses only the first sentence when none can be pruned', async () => {
-    const userData = join(await aRoot(), 'data')
-    const fixture = await makeRecoveryFixture(userData, {
-      migrations: THIS_BUILD,
-      checkpoints: [dated(9)],
-      now,
-    })
-    const { deps } = checkOf(userData, {
-      buildMigrationsFolder: await aBuildWithOneMoreMigration(),
-      verifyCopy: checkTheCopyHere,
-      now: () => now,
-      fs: fullCopyFs,
-      freeBytes: () => 0,
-    })
+    const { userData, fixture } = await workspaceWithCopies([dated(9)])
+    const { deps } = await checkingWithoutRoom(userData)
 
     expect(await inspect(deps)).toEqual({
       kind: 'failed',

@@ -1,4 +1,6 @@
 import { readFile, writeFile, lstat } from 'node:fs/promises'
+import { isDeepStrictEqual } from 'node:util'
+import * as macLineage from './lib/mac-candidate-lineage.mjs'
 import { join } from 'node:path'
 import {
   requireEvidence,
@@ -12,6 +14,8 @@ import {
   digest,
   checkpointIds,
   stateSummary,
+  VERSION_B as SAME_CODE_VERSION,
+  verifyCheckpoint,
 } from './lib/mac-update-test.mjs'
 import { credentialPreserved, legacyCredentialsPreserved } from './mac-upgrade-credentials.mjs'
 import { fixturePermissions } from './mac-signed-upgrade-contract.mjs'
@@ -149,4 +153,70 @@ export async function captureWorkspaceBaseline(
       2,
     ),
   )
+}
+
+export async function checkFirstWorkspaceCopy(
+  workspace,
+  { needsCheckpoint, version, source, lineage, evidence },
+) {
+  const { data, baseline } = workspace
+  const retained = await checkpointIds(data)
+  const added = retained.filter((id) => !baseline.copiesBefore.includes(id))
+  requireEvidence(
+    needsCheckpoint
+      ? added.length === 1 && retained.length === 1
+      : added.length === 0 &&
+          (baseline.retainedCheckpointId === null
+            ? retained.length === 0
+            : retained.length === 1 && retained[0] === baseline.retainedCheckpointId),
+    'The candidate must keep one pre-migration checkpoint, replacing the previous generation only for a migration.',
+  )
+  if (needsCheckpoint && workspace.result.nativeStartup)
+    requireEvidence(
+      workspace.result.nativeStartup.completedCheckpointId === added[0],
+      'The native first start did not record its recovery copy.',
+    )
+  if (!needsCheckpoint && baseline.retainedCheckpointId !== null) {
+    const retainedFolder = join(data, 'backups', baseline.retainedCheckpointId)
+    requireEvidence(
+      isDeepStrictEqual(
+        {
+          database: await digest(join(retainedFolder, 'database.sqlite')),
+          manifest: await digest(join(retainedFolder, 'manifest.json')),
+          state: stateSummary(stateBytes(retainedFolder)),
+        },
+        baseline.retainedCheckpointContents,
+      ),
+      'The selected existing rollback checkpoint changed on a no-migration start.',
+    )
+  }
+  let checked = null
+  let checkpoint = null
+  if (needsCheckpoint) {
+    checkpoint = join(data, 'backups', added[0])
+    const manifestText = await readFile(join(checkpoint, 'manifest.json'), 'utf8')
+    await writeFile(join(evidence, 'b-checkpoint-manifest.json'), manifestText)
+    const manifest = JSON.parse(manifestText)
+    requireEvidence(
+      manifest.madeBy?.appVersion === version && manifest.madeBy?.build === source,
+      'The recovery copy was not made by the candidate.',
+    )
+    checked = verifyCheckpoint(
+      { ...manifest, madeBy: { ...manifest.madeBy, appVersion: SAME_CODE_VERSION } },
+      {
+        ...stateBytes(checkpoint),
+        'database.sqlite': await readFile(join(checkpoint, 'database.sqlite')),
+      },
+      {
+        version,
+        source,
+        reason: macLineage.checkpointReason(lineage, baseline.before.migrations),
+        id: added[0],
+        workspaceId: (await readFile(join(data, 'backups', 'workspace-id'), 'utf8')).trim(),
+        state: baseline.files,
+        migrations: macLineage.checkpointMigrations(baseline.before.migrations),
+      },
+    )
+  }
+  return { checkpoint, checked }
 }

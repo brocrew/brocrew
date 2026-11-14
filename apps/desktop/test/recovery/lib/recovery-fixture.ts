@@ -1,3 +1,4 @@
+import type { CoordinatorDeps, WorkingOn } from '../../../src/main/recovery/coordinator'
 import { MIGRATIONS_FOLDER, BUILD_LINEAGE } from './migration-journal'
 export { MIGRATIONS_FOLDER, BUILD_LINEAGE } from './migration-journal'
 import { UNFLUSHED } from './recovery-files'
@@ -699,5 +700,34 @@ async function layRestore(
     gate: gate?.value ?? null,
     staged: stagedDir(userData, id),
     preserved: preservedDir(userData, id),
+  }
+}
+
+interface Seen {
+  readonly lines: string[]
+  readonly working: WorkingOn[]
+  readonly progress: (readonly [number, number])[]
+}
+
+export function checkOf(
+  userData: string,
+  over: Partial<CoordinatorDeps> = {},
+): { readonly deps: CoordinatorDeps; readonly seen: Seen } {
+  const seen: Seen = { lines: [], working: [], progress: [] }
+  return {
+    deps: {
+      userData,
+      buildMigrationsFolder: MIGRATIONS_FOLDER,
+      verifyCopy: checkTheCopyHere,
+      appVersion: THIS_VERSION,
+      build: null,
+      packaged: false,
+      ownership: () => Promise.resolve('sole'),
+      log: (line) => seen.lines.push(line),
+      working: (what) => seen.working.push(what),
+      progress: (done, total) => seen.progress.push([done, total]),
+      ...over,
+    },
+    seen,
   }
 }

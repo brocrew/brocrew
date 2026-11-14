@@ -1,6 +1,8 @@
+import { fingerprint } from './lib/recovery-files'
 import {
   MIGRATIONS_FOLDER as MIGRATIONS,
-  MIGRATION_JOURNAL as JOURNAL,
+  firstMigrationsIn,
+  failingMigrationsIn,
   BUILD_LINEAGE as THE_BUILDS,
 } from './lib/migration-journal'
 import Database from 'better-sqlite3'
@@ -130,45 +132,11 @@ async function aCopiedWorkspace(options: Partial<MakeCheckpointOptions> = {}) {
   return { userData, copy: await make(userData, options) }
 }
 
-function theFirstMigrations(count: number): string {
-  const folder = join(aRoot(), 'migrations')
-  cpSync(MIGRATIONS, folder, { recursive: true })
-  writeFileSync(
-    join(folder, 'meta', '_journal.json'),
-    JSON.stringify({ ...JOURNAL, entries: JOURNAL.entries.slice(0, count) }),
-  )
-  return folder
-}
-
-function migrationsWithOneThatFails(): string {
-  const folder = join(aRoot(), 'migrations')
-  cpSync(MIGRATIONS, folder, { recursive: true })
-  const tag = '0099_fails'
-  writeFileSync(join(folder, `${tag}.sql`), 'CREATE TABLE fails (;\n')
-  const entry = {
-    idx: JOURNAL.entries.length,
-    version: '6',
-    when: A_LATER_ONE,
-    tag,
-    breakpoints: true,
-  }
-  writeFileSync(
-    join(folder, 'meta', '_journal.json'),
-    JSON.stringify({ ...JOURNAL, entries: [...JOURNAL.entries, entry] }),
-  )
-  return folder
-}
+const theFirstMigrations = (count: number): string => firstMigrationsIn(aRoot(), count)
+const migrationsWithOneThatFails = (): string => failingMigrationsIn(aRoot(), A_LATER_ONE)
 
 function sha256(bytes: Uint8Array | string): string {
   return createHash('sha256').update(bytes).digest('hex')
-}
-
-function fingerprint(file: string): { bytes: number; mtimeMs: number; sha256: string } {
-  return {
-    bytes: statSync(file).size,
-    mtimeMs: statSync(file).mtimeMs,
-    sha256: sha256(readFileSync(file)),
-  }
 }
 
 function coded(code: string): Error {

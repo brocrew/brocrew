@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process'
-import { firstCopyPolicy } from './lib/upgrade-candidate-evidence.mjs'
+import { firstCopyPolicy, checkCheckpointRetention } from './lib/upgrade-candidate-evidence.mjs'
 import { readStateEntry } from './lib/skill-tree-state.mjs'
 import {
   aCrashAfterTheSavedKey,
@@ -2795,22 +2795,13 @@ async function runUpgradePath() {
       )
     })
 
-  check(
-    copiesAfterFirst.length <= 1 &&
-      sinceTheBeta.others.length === 0 &&
-      sinceTheBeta.unread.length === 0 &&
-      sinceTheBeta.changed.length === 0 &&
-      (expectedReason !== null
-        ? copiesAfterFirst.length === 1 && sinceTheBeta.gone.length === copiesTheBetaLeft.length
-        : sinceTheBeta.made.length === 0 &&
-          (previousSelected === null
-            ? copiesAfterFirst.length === 0
-            : copiesAfterFirst.length === 1 && copiesAfterFirst[0].folder === previousSelected)),
-    expectedReason !== null
-      ? 'the completed migration checkpoint replaced the previous generation; exactly one remains'
-      : 'without a migration the candidate made no checkpoint and retained at most one previous copy',
-    { gone: sinceTheBeta.gone, changed: sinceTheBeta.changed, retained: copiesAfterFirst.length },
-  )
+  checkCheckpointRetention(check, {
+    copiesAfterFirst,
+    sinceTheBeta,
+    copiesTheBetaLeft,
+    previousSelected,
+    expectedReason,
+  })
   check(
     copiesTheBetaLeft.every(
       ({ manifest }) =>
