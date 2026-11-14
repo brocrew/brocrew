@@ -24,12 +24,27 @@ afterEach(() => {
   rmSync(folder, { recursive: true, force: true })
 })
 
-function append(owner: string, type: 'instruction_proposed' | 'instruction_settled', askId: unknown) {
-  const event = type === 'instruction_proposed'
-    ? { type, askId, ask: 'propose', about: 'target', proposedBy: owner, text: 'Fictional rule', why: 'Fictional reason' }
-    : { type, askId, ending: 'approved' }
-  db.prepare(`INSERT INTO events (id, session_id, generation, ordinal, type, payload, created_at)
-    VALUES (?, ?, 0, ?, ?, ?, ?)`).run(`${owner}-${ordinal}`, owner, ordinal, type, JSON.stringify(event), ordinal)
+function append(
+  owner: string,
+  type: 'instruction_proposed' | 'instruction_settled',
+  askId: unknown,
+) {
+  const event =
+    type === 'instruction_proposed'
+      ? {
+          type,
+          askId,
+          ask: 'propose',
+          about: 'target',
+          proposedBy: owner,
+          text: 'Fictional rule',
+          why: 'Fictional reason',
+        }
+      : { type, askId, ending: 'approved' }
+  db.prepare(
+    `INSERT INTO events (id, session_id, generation, ordinal, type, payload, created_at)
+    VALUES (?, ?, 0, ?, ?, ?, ?)`,
+  ).run(`${owner}-${ordinal}`, owner, ordinal, type, JSON.stringify(event), ordinal)
   ordinal++
 }
 

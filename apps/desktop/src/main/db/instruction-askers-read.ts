@@ -11,7 +11,10 @@ export function readInstructionAskers(
 ): readonly string[] {
   const statement = db.prepare(`SELECT session_id AS conversation, created_at AS at, ordinal,
     CASE WHEN json_valid(payload) THEN json_extract(payload, '$.type') END AS type,
-    CASE WHEN json_valid(payload) THEN json_extract(payload, '$.askId') END AS askId
+    CASE WHEN json_valid(payload) THEN
+      CASE WHEN json_type(payload, '$.askId') = 'text'
+        THEN json_extract(payload, '$.askId') END
+    END AS askId
     FROM events WHERE session_id IN (SELECT value FROM json_each(?))
       AND type IN ('instruction_proposed', 'instruction_settled')
     ORDER BY created_at, session_id, ordinal`)
