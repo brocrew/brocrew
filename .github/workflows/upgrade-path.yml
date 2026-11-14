@@ -139,8 +139,23 @@ jobs:
             core.setOutput('binding', JSON.stringify(binding))
             core.info(JSON.stringify(binding, null, 2))
 
-  windows:
+  window-memory:
+    name: Candidate large-workspace worker regression
     needs: assets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.candidate_source || github.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup-desktop
+      - name: Read the candidate's large workspace at its production heap
+        run: pnpm --filter @brobot2/desktop exec vitest run --config vitest.config.ts test/window-history-memory.test.ts --maxWorkers=1
+
+
+  windows:
+    needs: [assets, window-memory]
     name: Windows, from the tester's beta to the candidate
     if: github.repository == 'brocrew/brocrew' && !inputs.mac_only && (inputs.recovery_measurement_bytes || '0') == '0'
     # `windows-2022`, as `windows.yml`: pnpm's node-gyp does not know the 2025 image's Visual Studio.
@@ -265,7 +280,7 @@ jobs:
           retention-days: 7
 
   mac:
-    needs: assets
+    needs: [assets, window-memory]
     name: Mac, from the tester's beta to the candidate
     if: github.repository == 'brocrew/brocrew' && (!inputs.windows_artifact_id || inputs.original_run_id)
     runs-on: ${{ vars.MAC_RUNNER || 'macos-15' }}

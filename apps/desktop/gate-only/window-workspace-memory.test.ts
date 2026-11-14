@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { mkdtempSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -84,6 +85,18 @@ it(
       expect(onMain).not.toHaveBeenCalled()
       expect(oom).toBe(0)
       expect(elapsed).toBeLessThanOrEqual(60_000)
+      await host.closeAll()
+      host = undefined
+      const checkout = fileURLToPath(new URL('../../../', import.meta.url))
+      const queryDirectory = join(directory, 'query-only')
+      const manifest = JSON.parse(execFileSync(process.execPath, ['scripts/build-window-query-only.mjs', queryDirectory], { cwd: checkout, encoding: 'utf8' }))
+      const query = JSON.parse(execFileSync(process.execPath, ['scripts/window-query-only.mjs', file, join(queryDirectory, 'window-reader.cjs'), join(queryDirectory, 'manifest.json'), 'candidate'], { cwd: checkout, encoding: 'utf8', timeout: 65_000 }))
+      expect(query.outcome).toBe('complete')
+      expect(query.owners).toBe(scale.conversations)
+      expect(query.oom).toBe(0)
+      expect(query.milliseconds).toBeLessThanOrEqual(60_000)
+      expect(query.workerSha256).toBe(manifest.workerSha256)
+      console.log('Window query-only binding', JSON.stringify({ manifest, query }))
       console.log(
         'Window workspace result',
         JSON.stringify({

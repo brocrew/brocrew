@@ -77,6 +77,20 @@ jobs:
           BROBOT_LEAK_PATTERNS: ${{ secrets.BROBOT_LEAK_PATTERNS }}
         run: node scripts/leak-check.mjs
 
+  window-memory:
+    name: Large fictional workspace at the production worker heap
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-desktop
+      - name: Read the large workspace without increasing the worker heap
+        run: pnpm --filter @brobot2/desktop exec vitest run --config vitest.config.ts test/window-history-memory.test.ts --maxWorkers=1
+
+
   windows:
     name: Build for Windows (NSIS, x64)
     needs: plan
@@ -263,7 +277,7 @@ jobs:
 
   draft:
     name: Draft the release with this run's files
-    needs: [plan, leak, windows, macos, mac-upgrade, windows-upgrade]
+    needs: [plan, leak, window-memory, windows, macos, mac-upgrade, windows-upgrade]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:

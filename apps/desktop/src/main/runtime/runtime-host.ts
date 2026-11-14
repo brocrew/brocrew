@@ -4941,11 +4941,15 @@ export class RuntimeHost implements LiveHost {
     { readonly stamp: WindowWriterStamp; readonly read: Promise<WindowReadResult> } | undefined
   private windowRoutesKept:
     { readonly stamp: WindowWriterStamp; readonly result: WindowReadResult } | undefined
+  private windowListingPending:
+    { readonly stamp: WindowWriterStamp; readonly read: Promise<WindowReadResult> } | undefined
+  private windowListingKept:
+    { readonly stamp: WindowWriterStamp; readonly result: WindowReadResult } | undefined
   private windowIncidentsPending:
     { readonly stamp: WindowWriterStamp; readonly read: Promise<WindowReadResult> } | undefined
   /** A shared window read the worker failed, by kind: at which stamp, why, and until when. */
   private readonly windowReadsFailed = new Map<
-    'routes' | 'incidents',
+    'routes' | 'listing' | 'incidents',
     {
       readonly stamp: WindowWriterStamp
       readonly missed: WindowReadMissed
@@ -15339,17 +15343,18 @@ export class RuntimeHost implements LiveHost {
       const before = this.sampleWindowWriter(query)
       if (before === null) {
         this.windowRoutesKept = undefined
+        this.windowListingKept = undefined
         this.windowIncidentsKept = undefined
         throw new WindowReadMissed('writer-unsampled')
       }
-      const reusable = query.kind === 'routes' || query.kind === 'incidents'
-      const kept = query.kind === 'incidents' ? this.windowIncidentsKept : this.windowRoutesKept
+      const reusable = query.kind === 'routes' || query.kind === 'listing' || query.kind === 'incidents'
+      const kept = query.kind === 'incidents' ? this.windowIncidentsKept : query.kind === 'listing' ? this.windowListingKept : this.windowRoutesKept
       if (reusable && kept !== undefined && sameWindowWriter(kept.stamp, before)) {
         this.deps.store.checkCommitted()
         if (sameWindowWriter(before, this.sampleWindowWriter(query))) return compose(kept.result)
         continue
       }
-      const kind = query.kind === 'incidents' ? 'incidents' : 'routes'
+      const kind = query.kind === 'incidents' ? 'incidents' : query.kind === 'listing' ? 'listing' : 'routes'
       const failed = reusable ? this.windowReadsFailed.get(kind) : undefined
       if (
         failed !== undefined &&
@@ -15358,10 +15363,10 @@ export class RuntimeHost implements LiveHost {
       )
         throw failed.missed
       const requested = (): WindowReadQuery => {
-        const previous = this.windowRoutesKept
+        const previous = query.kind === 'listing' ? this.windowListingKept : this.windowRoutesKept
         if (
-          (query.kind === 'routes' || query.kind === 'publication' || query.kind === 'incidents') &&
-          previous?.result.kind === 'routes'
+          (query.kind === 'routes' || query.kind === 'listing' || query.kind === 'publication' || query.kind === 'incidents') &&
+          (previous?.result.kind === 'routes' || previous?.result.kind === 'listing')
         ) {
           const changed = this.deps.windowWriterStamp?.changedOwners?.(previous.stamp, before)
           const token = previous.result.cacheToken
@@ -15373,7 +15378,7 @@ export class RuntimeHost implements LiveHost {
       let pending: Promise<WindowReadResult>
       let origin = before
       if (reusable) {
-        const key = query.kind === 'incidents' ? 'windowIncidentsPending' : 'windowRoutesPending'
+        const key = query.kind === 'incidents' ? 'windowIncidentsPending' : query.kind === 'listing' ? 'windowListingPending' : 'windowRoutesPending'
         let shared = this[key]
         if (shared === undefined && joinOnly) throw new WindowReadMissed('callers-full')
         if (shared === undefined) {
@@ -15405,6 +15410,7 @@ export class RuntimeHost implements LiveHost {
       const after = this.sampleWindowWriter(query)
       if (sameWindowWriter(origin, before) && sameWindowWriter(origin, after)) {
         if (query.kind === 'routes') this.windowRoutesKept = { stamp: after!, result }
+        if (query.kind === 'listing') this.windowListingKept = { stamp: after!, result }
         if (query.kind === 'incidents') {
           this.windowIncidentsKept = { stamp: after!, result }
           if (result.kind === 'incidents')
@@ -15423,7 +15429,7 @@ export class RuntimeHost implements LiveHost {
    * stamp receive the same error until its wait passes, and the next asks again.
    */
   private rememberAFailedWindowRead(
-    kind: 'routes' | 'incidents',
+    kind: 'routes' | 'listing' | 'incidents',
     stamp: WindowWriterStamp,
     error: unknown,
   ): void {
@@ -39914,6 +39920,7 @@ export class RuntimeHost implements LiveHost {
       this.deps.closeSharedSkills?.()
       this.windowIncidentReads.invalidate()
       this.windowRoutesKept = undefined
+        this.windowListingKept = undefined
       this.windowIncidentsKept = undefined
       this.workReconciler?.close()
       clearInterval(this.reconciliationTimer)

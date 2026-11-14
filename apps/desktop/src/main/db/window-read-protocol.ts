@@ -44,7 +44,7 @@ export const windowReadQuery = z.discriminatedUnion('kind', [
     })
     .strict(),
   z.object({ kind: z.literal('routes'), reuse: foldReuse.optional() }).strict(),
-  z.object({ kind: z.literal('listing') }).strict(),
+  z.object({ kind: z.literal('listing'), reuse: foldReuse.optional() }).strict(),
   z
     .object({
       kind: z.literal('publication'),
@@ -95,6 +95,7 @@ export interface WindowRoutes {
 }
 export interface WindowListingStates {
   readonly kind: 'listing'
+  readonly cacheToken?: string
   readonly routes: readonly RoutingReading[]
   readonly work: WindowWorkReading
 }
@@ -313,7 +314,7 @@ export const windowReadResult = z.discriminatedUnion('kind', [
       roster: z.array(z.unknown()),
     })
     .strict(),
-  listingFacts.extend({ kind: z.literal('listing') }).strict(),
+  listingFacts.extend({ kind: z.literal('listing'), cacheToken: z.string().optional() }).strict(),
   listingFacts
     .extend({
       kind: z.literal('routes'),

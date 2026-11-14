@@ -1,5 +1,21 @@
 # Release BroCrew
 
+## Required full-workspace AWS qualification before every cut
+
+Before creating a version tag, run the full fictional workspace qualification on the exact selected release commit. The checkout must contain that commit, and `AWS_RUN` must name the installed AWS lane wrapper (`aws-run.sh`):
+
+```sh
+release_sha="$(git -C "$release_checkout" rev-parse HEAD)"
+"$AWS_RUN" "$release_sha" --from "$release_checkout" --host big \
+  pnpm exec vitest run --config vitest.gate-only.config.ts \
+  --project gate-only-desktop \
+  apps/desktop/gate-only/window-workspace-memory.test.ts --maxWorkers=1
+```
+
+Retain the full source SHA/tree, command, fixture counts, query timings and terminal output. This qualification uses 1,960 fictional conversations, 115,640 turns and 10,291,960 events, with the production worker limits of 128 MB old generation and 16 MB young generation. Require all 1,960 expected conversation IDs, complete legacy list reads, zero worker OOMs, zero main-thread history reads and the asserted query deadline. A missing receipt, failure or different release source stops the cut; qualify the actual selected source before proceeding.
+
+The compact historical-memory regression is also required in hosted CI, release and upgrade checks. Its receipt does not replace this full AWS qualification, and the full fixture does not run implicitly in ordinary hosted shards.
+
 A release is one run of `.github/workflows/release.yml`, started by a version tag:
 
 1. Push an annotated tag `vX.Y.Z` on `main`. Any other tag stops in the first job.
