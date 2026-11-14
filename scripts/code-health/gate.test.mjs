@@ -13,6 +13,7 @@ import {
   depcruiseKeys,
   cloneBaseArgument,
   cloneFindings,
+  classifyCloneFindings,
   knipKeys,
 } from './gate.mjs'
 
@@ -63,6 +64,198 @@ test('missing markers/counts, malformed endpoints and inconsistent reports are e
     report([{ ...clone(true), firstFile: { name: 'a.ts', start: 0, end: 5 } }]),
   ]
   for (const value of bad) assert.throws(() => cloneFindings(value))
+})
+
+function statementCase(first, second = first, options = {}) {
+  const names = options.names ?? ['a.ts', 'b.ts']
+  const endpoint = (name, text, [start, end]) => {
+    const location = (position) => {
+      const prefix = text.slice(0, position)
+      const lines = prefix.split('\n')
+      return {
+        position: Buffer.byteLength(prefix),
+        line: lines.length,
+        column: Buffer.byteLength(lines.at(-1)),
+      }
+    }
+    const startLoc = location(start)
+    const endLoc = location(end)
+    return { name, start: startLoc.line, end: endLoc.line, startLoc, endLoc }
+  }
+  const value = report([
+    {
+      ...clone(options.isNew ?? true),
+      firstFile: endpoint(names[0], first, options.firstSpan ?? [0, first.length]),
+      secondFile: endpoint(names[1], second, options.secondSpan ?? [0, second.length]),
+    },
+  ])
+  const readSource = (name) => (name === names[0] ? first : second)
+  return { value, result: classifyCloneFindings(value, readSource), readSource }
+}
+
+test('both static import spans are visible non-logic matches without changing native data', () => {
+  const imports = [
+    "import value from './default'",
+    "import * as names from './namespace';",
+    "import type { Shape } from './types'",
+    "import {\n  value as renamed,\n  type Other,\n} from './named'",
+    "import './side-effect'",
+    "import data from './data.json' with { type: 'json' }",
+  ].join('\n')
+  const { value, result, readSource } = statementCase(imports)
+  const original = JSON.stringify(value)
+  assert.equal(result.nativeFindings.length, 1)
+  assert.deepEqual(result.importOnlyRecords, result.nativeFindings)
+  assert.deepEqual(result.countedFindings, [])
+  assert.equal(result.summary, '1 native NEW; 1 import-only; 0 counted NEW')
+  assert.equal(result.classifications[0].kind, 'import-only')
+  classifyCloneFindings(value, readSource)
+  assert.equal(JSON.stringify(value), original)
+  assert.throws(() => classifyCloneFindings({ ...value, statistics: {} }, readSource))
+})
+
+test('complete source identifies windows beginning or ending inside multiline imports', () => {
+  const first = "import {\n  shared,\n  another,\n} from './fixture'\nimport { x } from './next'\n"
+  const second =
+    "import {\n  shared,\n  different,\n} from './fixture'\nimport { y } from './next'\n"
+  const { result } = statementCase(first, second, {
+    firstSpan: [first.indexOf('shared'), first.indexOf('another') + 4],
+    secondSpan: [second.indexOf('shared'), second.indexOf('different') + 4],
+  })
+  assert.equal(result.importOnlyRecords.length, 1)
+})
+
+test('the first const token after imports keeps a mixed record counted on either endpoint', () => {
+  const first =
+    "import { x } from './same'\n\nconst here = dirname(fileURLToPath(import.meta.url))\n"
+  const second = "import { x } from './same'\nimport { y } from './next'\n"
+  for (const reverse of [false, true]) {
+    const texts = reverse ? [second, first] : [first, second]
+    const ends = reverse
+      ? [second.indexOf('import', 1) + 6, first.indexOf('const') + 5]
+      : [first.indexOf('const') + 5, second.indexOf('import', 1) + 6]
+    const { result } = statementCase(...texts, {
+      firstSpan: [0, ends[0]],
+      secondSpan: [0, ends[1]],
+    })
+    assert.equal(result.countedFindings.length, 1)
+    assert.equal(result.importOnlyRecords.length, 0)
+  }
+})
+
+test('import headers cannot hide roster builders, mocks or copied executable bodies', () => {
+  for (const body of [
+    "const NOW = Date.now(); const roster = ['a', 'b'].map((name) => ({ name, NOW }));",
+    "vi.mock('./module', () => ({ value: () => 1 }));",
+    'export function copied(input) { return input.map((n) => n + 1); }',
+  ]) {
+    const { result } = statementCase("import { x } from './same'\n" + body)
+    assert.equal(result.countedFindings.length, 1)
+  }
+})
+
+test('comments alone are not import syntax, including inside multiline imports', () => {
+  for (const comment of ['/* shared words */', '/** @type {Named} */', '// shared words']) {
+    const text = `import {\n  ${comment}\n  value,\n} from './source'\n`
+    const span = [text.indexOf(comment), text.indexOf(comment) + comment.length]
+    const { result } = statementCase(text, text, { firstSpan: span, secondSpan: span })
+    assert.equal(result.countedFindings.length, 1)
+    assert.equal(result.importOnlyRecords.length, 0)
+  }
+  const text = "import { x } from './source'\n  \nconst value = 1\n"
+  const span = [text.indexOf('\n') + 1, text.indexOf('const')]
+  assert.equal(
+    statementCase(text, text, { firstSpan: span, secondSpan: span }).result.countedFindings.length,
+    1,
+  )
+})
+
+test('UTF8 byte coordinates map to UTF16 syntax boundaries across Unicode and CRLF', () => {
+  const text =
+    "/* 🧭 café */\r\nimport {\r\n  /* é */ value,\r\n} from './é🧭'\r\nconst body = 1\r\n"
+  const start = text.indexOf('import')
+  const end = text.indexOf('const')
+  assert.equal(
+    statementCase(text, text, { firstSpan: [start, end], secondSpan: [start, end] }).result
+      .importOnlyRecords.length,
+    1,
+  )
+  assert.equal(
+    statementCase(text, text, { firstSpan: [start, end + 1], secondSpan: [start, end] }).result
+      .countedFindings.length,
+    1,
+  )
+  const { value, readSource } = statementCase(text, text, {
+    firstSpan: [start, end],
+    secondSpan: [start, end],
+  })
+  const insideEmoji = Buffer.from(text).indexOf(Buffer.from('🧭')) + 3
+  value.duplicates[0].firstFile.startLoc.position = insideEmoji
+  value.duplicates[0].firstFile.startLoc.line = 1
+  value.duplicates[0].firstFile.startLoc.column = insideEmoji
+  value.duplicates[0].firstFile.start = 1
+  assert.equal(classifyCloneFindings(value, readSource).countedFindings.length, 1)
+})
+
+test('dynamic imports, import.meta, require, exports and import-looking text remain counted', () => {
+  for (const text of [
+    "const value = import('./module')",
+    'const value = import.meta.url',
+    "const value = require('./module')",
+    "import value = require('./module')",
+    "export { value } from './module'",
+    'const value = "import { fake } from \'./module\'"',
+    "const value = `import { fake } from './module'`",
+    "/* import { fake } from './module' */",
+  ])
+    assert.equal(statementCase(text).result.countedFindings.length, 1)
+})
+
+test('unsupported formats, parse errors and uncertain native coordinates are never excluded', () => {
+  const text = "import { x } from './module'"
+  const unsupported = statementCase(text, text, { names: ['a.vue', 'b.vue'] }).result
+  assert.equal(unsupported.countedFindings.length, 1)
+  assert.deepEqual(unsupported.classifications[0].endpoints, [
+    'unsupported format',
+    'unsupported format',
+  ])
+  assert.equal(statementCase("import { broken from './module'").result.countedFindings.length, 1)
+  for (const mutation of [
+    (file) => delete file.startLoc,
+    (file) => file.endLoc.position++,
+    (file) => file.startLoc.column++,
+    (file) => (file.endLoc.position = file.startLoc.position),
+  ]) {
+    const { value, readSource } = statementCase(text)
+    mutation(value.duplicates[0].firstFile)
+    assert.equal(classifyCloneFindings(value, readSource).countedFindings.length, 1)
+  }
+})
+
+test('classification conserves multiplicity and reports empty NEW without reading source', () => {
+  const imports = statementCase("import { x } from './module'")
+  const bodyText = 'export const body = () => 1'
+  const body = statementCase(bodyText, bodyText, { names: ['c.ts', 'd.ts'] })
+  const value = report([
+    imports.value.duplicates[0],
+    imports.value.duplicates[0],
+    body.value.duplicates[0],
+  ])
+  let read = 0
+  const result = classifyCloneFindings(value, (file) => {
+    read++
+    return file === 'a.ts' || file === 'b.ts' ? "import { x } from './module'" : bodyText
+  })
+  assert.equal(result.nativeFindings.length, 3)
+  assert.equal(result.importOnlyRecords.length, 2)
+  assert.equal(result.countedFindings.length, 1)
+  assert.equal(result.summary, '3 native NEW; 2 import-only; 1 counted NEW')
+  assert.equal(read, 4)
+  const empty = statementCase("import { x } from './module'", undefined, { isNew: false }).value
+  assert.deepEqual(
+    classifyCloneFindings(empty, () => assert.fail('no NEW source read')).classifications,
+    [],
+  )
 })
 
 test('a cycle gives the same keys whichever module it is reported from', () => {
@@ -270,7 +463,7 @@ function nativeCase(change) {
     assert.ok(before.duplicates.length > 0)
     change({ source, write })
     const after = scan(base, 'after')
-    return { before, after }
+    return { before, after, classification: classifyCloneFindings(after) }
   } finally {
     const captureRoot = process.env.CODE_HEALTH_NATIVE_EVIDENCE
     if (captureRoot) {
@@ -301,7 +494,7 @@ test(
   'native copy growth inside an old pair fails despite unrelated debt removal',
   { timeout: 120000 },
   () => {
-    const { before, after } = nativeCase(({ source, write }) => {
+    const { before, after, classification } = nativeCase(({ source, write }) => {
       for (const file of ['a.ts', 'b.ts']) write(file, block(100) + block(9000))
       for (const file of ['c.ts', 'd.ts']) fs.unlinkSync(path.join(source, file))
     })
@@ -315,6 +508,40 @@ test(
     assert.equal([...pairs(after)].filter((key) => !old.has(key)).length, 0)
     assert.ok(after.statistics.total.newClones > 0)
     assert.ok(cloneFindings(after).length > 0)
+    assert.ok(classification.countedFindings.length > 0)
+  },
+)
+
+const importBlock =
+  Array.from({ length: 12 }, (_, n) => `import { item${n} } from './dependency${n}'`).join('\n') +
+  '\n'
+
+test(
+  'native import-only matches stay visible while copied logic after imports still fails',
+  { timeout: 120000 },
+  () => {
+    const { after, classification } = nativeCase(({ source, write }) => {
+      for (const file of ['a.ts', 'b.ts']) write(file, importBlock + block(100) + block(9000))
+      for (const file of ['c.ts', 'd.ts']) fs.unlinkSync(path.join(source, file))
+    })
+    assert.ok(after.statistics.total.newClones > 0)
+    assert.ok(classification.countedFindings.length > 0)
+    assert.equal(classification.nativeFindings.length, after.statistics.total.newClones)
+  },
+)
+
+test(
+  'native import-only NEW records retain raw NEW markers and have zero counted logic',
+  { timeout: 120000 },
+  () => {
+    const { after, classification } = nativeCase(({ source, write }) => {
+      for (const file of ['a.ts', 'b.ts']) write(file, importBlock)
+      for (const file of ['c.ts', 'd.ts']) fs.unlinkSync(path.join(source, file))
+    })
+    assert.ok(after.statistics.total.newClones > 0)
+    assert.ok(classification.importOnlyRecords.length > 0)
+    assert.equal(classification.nativeFindings.length, after.statistics.total.newClones)
+    assert.equal(classification.countedFindings.length, 0)
   },
 )
 

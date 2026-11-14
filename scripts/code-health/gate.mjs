@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import ts from 'typescript'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(here, '../..')
@@ -64,6 +65,114 @@ export function cloneFindings(report) {
   if (findings.length !== total.newClones)
     throw new GateError('jscpd: newClones disagrees with boolean markers')
   return findings
+}
+
+function importSource(file, readSource) {
+  const kinds = {
+    '.ts': ts.ScriptKind.TS,
+    '.tsx': ts.ScriptKind.TSX,
+    '.mts': ts.ScriptKind.TS,
+    '.cts': ts.ScriptKind.TS,
+    '.js': ts.ScriptKind.JS,
+    '.jsx': ts.ScriptKind.JSX,
+    '.mjs': ts.ScriptKind.JS,
+    '.cjs': ts.ScriptKind.JS,
+  }
+  const kind = kinds[path.extname(file).toLowerCase()]
+  if (kind === undefined) return { reason: 'unsupported format' }
+  const bytes = Buffer.from(readSource(file))
+  const text = bytes.toString('utf8')
+  if (!Buffer.from(text).equals(bytes)) return { reason: 'uncertain source encoding' }
+  const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, kind)
+  if (source.parseDiagnostics.length) return { reason: 'source parse errors' }
+  const runs = []
+  const statements = source.statements
+  for (let i = 0; i < statements.length; i++) {
+    if (!ts.isImportDeclaration(statements[i])) continue
+    const start = statements[i].getStart(source)
+    const tokens = []
+    const visit = (node) => {
+      if (
+        node.kind === ts.SyntaxKind.JSDocComment ||
+        node.kind === ts.SyntaxKind.SingleLineCommentTrivia ||
+        node.kind === ts.SyntaxKind.MultiLineCommentTrivia
+      )
+        return
+      if (node.kind <= ts.SyntaxKind.LastToken) {
+        tokens.push([node.getStart(source), node.end])
+        return
+      }
+      node.getChildren(source).forEach(visit)
+    }
+    do {
+      visit(statements[i])
+      i++
+    } while (i < statements.length && ts.isImportDeclaration(statements[i]))
+    runs.push({ start, end: statements[i]?.getStart(source) ?? text.length, tokens })
+    i--
+  }
+  return { bytes, runs }
+}
+
+function importEndpoint(file, source) {
+  if (source.reason) return source.reason
+  const offset = (location, line) => {
+    if (
+      !Number.isSafeInteger(location?.position) ||
+      location.position < 0 ||
+      location.position > source.bytes.length ||
+      !Number.isSafeInteger(location.column) ||
+      location.column < 0 ||
+      location.line !== line
+    )
+      return null
+    const prefix = source.bytes.subarray(0, location.position)
+    const text = prefix.toString('utf8')
+    if (
+      !Buffer.from(text).equals(prefix) ||
+      text.split('\n').length !== line ||
+      location.column !== prefix.length - prefix.lastIndexOf(10) - 1
+    )
+      return null
+    return text.length
+  }
+  const start = offset(file.startLoc, file.start)
+  const end = offset(file.endLoc, file.end)
+  if (start === null || end === null || start >= end) return 'uncertain source coordinates'
+  return source.runs.some(
+    (run) =>
+      start >= run.start && end <= run.end && run.tokens.some(([a, b]) => start < b && end > a),
+  )
+    ? 'static import syntax'
+    : 'non-import syntax or trivia only'
+}
+
+export function classifyCloneFindings(report, readSource = (file) => fs.readFileSync(file)) {
+  const nativeFindings = cloneFindings(report)
+  const sources = new Map()
+  const countedFindings = []
+  const importOnlyRecords = []
+  const classifications = []
+  let next = 0
+  for (const clone of report.duplicates) {
+    if (!clone.isNew) continue
+    const finding = nativeFindings[next++]
+    const endpoints = [clone.firstFile, clone.secondFile].map((file) => {
+      if (!sources.has(file.name)) sources.set(file.name, importSource(file.name, readSource))
+      return importEndpoint(file, sources.get(file.name))
+    })
+    const importOnly = endpoints.every((reason) => reason === 'static import syntax')
+    if (importOnly) importOnlyRecords.push(finding)
+    else countedFindings.push(finding)
+    classifications.push({ finding, kind: importOnly ? 'import-only' : 'counted', endpoints })
+  }
+  return {
+    nativeFindings,
+    countedFindings,
+    importOnlyRecords,
+    classifications,
+    summary: `${nativeFindings.length} native NEW; ${importOnlyRecords.length} import-only; ${countedFindings.length} counted NEW`,
+  }
 }
 
 function cloneReference(argv) {
@@ -219,13 +328,14 @@ const TOOLS = {
         Array.isArray(r.runs[0].results) &&
         r.runs[0].results.length === report.duplicates.length,
     )
-    const added = cloneFindings(report)
+    const classification = classifyCloneFindings(report)
     return {
       native: true,
       now: report.duplicates.length,
-      added,
+      added: classification.countedFindings,
+      ...classification,
       resolved: [],
-      totals: `${report.duplicates.length} native records; ${added.length} NEW; base ${reference.base}`,
+      totals: `${report.duplicates.length} native records; ${classification.summary}; base ${reference.base}`,
     }
   },
   depcruise(files, out) {
@@ -355,7 +465,18 @@ function main(argv) {
     '|---|---:|---:|---:|---:|---|',
     ...rows.map(
       (r) =>
-        `| ${r.native ? 'jscpd native NEW records' : r.name} | ${r.before} | ${r.now} | ${r.added.length} | ${r.native ? 'n/a' : r.resolved.length} | ${r.totals} |`,
+        `| ${r.native ? 'jscpd counted NEW records' : r.name} | ${r.before} | ${r.now} | ${r.added.length} | ${r.native ? 'n/a' : r.resolved.length} | ${r.totals} |`,
+    ),
+    ...rows.flatMap((r) =>
+      r.classifications?.length
+        ? [
+            '',
+            '## Native NEW clone statement classifications',
+            ...r.classifications.map(
+              (c) => `- ${c.kind}: \`${c.finding}\` (${c.endpoints.join('; ')})`,
+            ),
+          ]
+        : [],
     ),
     ...rows.flatMap((r) =>
       r.added.length ? ['', `## New ${r.name} findings`, ...r.added.map((k) => `- \`${k}\``)] : [],
