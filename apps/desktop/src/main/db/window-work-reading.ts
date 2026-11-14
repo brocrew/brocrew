@@ -79,7 +79,11 @@ function counted<T>(read: (unread: RowsUnread) => T): WindowFact<T> {
 }
 
 /** The state and naming projections need no task briefs, replies, or resource bodies. */
-export function readWindowWork(db: AppDatabase, store: SessionStore, listingOnly = false): WindowWorkReading {
+export function readWindowWork(
+  db: AppDatabase,
+  store: SessionStore,
+  listingOnly = false,
+): WindowWorkReading {
   const state = ({ piece, parent, owner, state, givenAt }: PieceRow): StateWork => ({
     piece,
     parent,
@@ -145,13 +149,7 @@ export function readWindowWork(db: AppDatabase, store: SessionStore, listingOnly
       [owner, piece, counted((unread) => store.workThatNamesUnder(owner, piece, unread))] as const,
   )
   const raised = ids.map(
-    ({ id }) =>
-      [
-        id,
-        counted((unread) =>
-          [...store.questionStatesIn(id, unread)],
-        ),
-      ] as const,
+    ({ id }) => [id, counted((unread) => [...store.questionStatesIn(id, unread)])] as const,
   )
   const stalled = (walk: LedgerWalk<PieceRow>): LedgerWalk<QueueStall> => ({
     ...walk,
@@ -169,27 +167,35 @@ export function readWindowWork(db: AppDatabase, store: SessionStore, listingOnly
       }),
     ),
   })
-  const queue = listingOnly ? undefined : {
-    stalls: counted((unread) => stalled(store.stalledWorkNobodyWasToldAbout(unread))),
-    stops: counted((unread) => stalled(store.stalledWorkItsGiverWasToldAbout(unread))),
-    replies: counted((unread) => {
-      const walk = store.piecesWaitingOnWhoWrote(unread)
-      return {
-        ...walk,
-        rows: walk.rows.map(({ piece, label, title, owner, answeredAPersonAt }) => ({
-          piece,
-          label,
-          title,
-          owner,
-          answeredAPersonAt,
-        })),
+  const queue = listingOnly
+    ? undefined
+    : {
+        stalls: counted((unread) => stalled(store.stalledWorkNobodyWasToldAbout(unread))),
+        stops: counted((unread) => stalled(store.stalledWorkItsGiverWasToldAbout(unread))),
+        replies: counted((unread) => {
+          const walk = store.piecesWaitingOnWhoWrote(unread)
+          return {
+            ...walk,
+            rows: walk.rows.map(({ piece, label, title, owner, answeredAPersonAt }) => ({
+              piece,
+              label,
+              title,
+              owner,
+              answeredAPersonAt,
+            })),
+          }
+        }),
+        instructions: counted((unread) => store.instructionAsksWaiting(unread)),
+        servers: counted((unread) => store.mcpServerRequestsWaiting(unread)),
       }
-    }),
-    instructions: counted((unread) => store.instructionAsksWaiting(unread)),
-    servers: counted((unread) => store.mcpServerRequestsWaiting(unread)),
-  }
-  const instructionAskers = queue === undefined
-    ? counted((unread) => store.instructionAskersAmong(ids.map(({ id }) => id), unread))
-    : { ...queue.instructions, value: queue.instructions.value.map((one) => one.conversation) }
+  const instructionAskers =
+    queue === undefined
+      ? counted((unread) =>
+          store.instructionAskersAmong(
+            ids.map(({ id }) => id),
+            unread,
+          ),
+        )
+      : { ...queue.instructions, value: queue.instructions.value.map((one) => one.conversation) }
   return { owners, namesUnder, raised, queue, instructionAskers, routedTo: store.whoRoutedToWhom() }
 }

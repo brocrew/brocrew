@@ -189,28 +189,30 @@ const walk = z
   })
   .strict()
 const ids = z.array(z.string().min(1))
-const listingFacts = z.object({
-      work: z
+const listingFacts = z
+  .object({
+    work: z
+      .object({
+        owners: z.array(z.unknown()),
+        namesUnder: z.array(z.unknown()),
+        raised: z.array(z.unknown()),
+        instructionAskers: z.unknown(),
+        queue: z.unknown(),
+        routedTo: z.array(z.unknown()),
+      })
+      .strict()
+      .optional(),
+    routes: z.array(
+      z
         .object({
-          owners: z.array(z.unknown()),
-          namesUnder: z.array(z.unknown()),
-          raised: z.array(z.unknown()),
-          instructionAskers: z.unknown(),
-          queue: z.unknown(),
-          routedTo: z.array(z.unknown()),
+          sessionId: z.string().min(1),
+          requests: z.array(z.unknown()),
+          skipped: z.array(skipped),
         })
-        .strict()
-        .optional(),
-      routes: z.array(
-        z
-          .object({
-            sessionId: z.string().min(1),
-            requests: z.array(z.unknown()),
-            skipped: z.array(skipped),
-          })
-          .strict(),
-      ),
-}).strict()
+        .strict(),
+    ),
+  })
+  .strict()
 export const windowReadResult = z.discriminatedUnion('kind', [
   z
     .object({
@@ -312,7 +314,14 @@ export const windowReadResult = z.discriminatedUnion('kind', [
     })
     .strict(),
   listingFacts.extend({ kind: z.literal('listing') }).strict(),
-  listingFacts.extend({ kind: z.literal('routes'), cacheToken: z.string().optional(), questions: walk, decisions: walk }).strict(),
+  listingFacts
+    .extend({
+      kind: z.literal('routes'),
+      cacheToken: z.string().optional(),
+      questions: walk,
+      decisions: walk,
+    })
+    .strict(),
   z.object({ kind: z.literal('leads'), rows: z.array(z.unknown()) }).strict(),
 ])
 

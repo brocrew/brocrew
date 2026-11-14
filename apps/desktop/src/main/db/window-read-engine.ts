@@ -139,9 +139,12 @@ export class WindowReadEngine {
             skipped: [...(skipped.get(id) ?? [])],
           })
         }
-        if (listingOnly) return {
-          kind: 'listing', routes, work: readWindowWork(cancellable, store, true),
-        }
+        if (listingOnly)
+          return {
+            kind: 'listing',
+            routes,
+            work: readWindowWork(cancellable, store, true),
+          }
         return {
           kind: 'routes',
           routes,

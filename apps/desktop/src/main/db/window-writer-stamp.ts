@@ -384,7 +384,10 @@ export function windowWriterSampler(
         revision:
           query.kind === 'leads'
             ? row.revision
-            : query.kind === 'routes' || query.kind === 'listing' || query.kind === 'publication' || query.kind === 'incidents'
+            : query.kind === 'routes' ||
+                query.kind === 'listing' ||
+                query.kind === 'publication' ||
+                query.kind === 'incidents'
               ? row.complete
               : row.changes,
         dataVersion: row.version,
