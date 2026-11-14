@@ -130,6 +130,17 @@ function existingRow<T>(value: T | null | undefined): T {
   return value
 }
 
+function expectLiveWithoutAProviderRef(read: ReturnType<typeof createSessionCatalogueRead>) {
+  expect(existingRow(read.findLive('session-one'))).toEqual({
+    sessionId: 'session-one',
+    profileId: 'fixture-profile',
+    approvalMode: null,
+    ref: null,
+    model: 'fixture-model',
+    reasoningEffort: 'high',
+  })
+}
+
 describe('catalogue reader supplied-statement contracts', () => {
   it('does no constructor reads and uses each supplied receiver once per reader call', () => {
     const h = suppliedStatements()
@@ -191,14 +202,7 @@ describe('catalogue reader supplied-statement contracts', () => {
     h.setOne(unnamed)
     h.setRows([unnamed])
     expect(h.read.find('session-one')).toBeNull()
-    expect(existingRow(h.read.findLive('session-one'))).toEqual({
-      sessionId: 'session-one',
-      profileId: 'fixture-profile',
-      approvalMode: null,
-      ref: null,
-      model: 'fixture-model',
-      reasoningEffort: 'high',
-    })
+    expectLiveWithoutAProviderRef(h.read)
     expect(existingRow(h.read.recordedOne('session-one'))).toMatchObject({
       sessionId: 'session-one',
       providerSessionId: null,
@@ -231,14 +235,7 @@ describe('catalogue reader supplied-statement contracts', () => {
       h.setOne(damaged)
       h.setRows([damaged])
       expect(h.read.find('session-one')).toBeNull()
-      expect(existingRow(h.read.findLive('session-one'))).toEqual({
-        sessionId: 'session-one',
-        profileId: 'fixture-profile',
-        approvalMode: null,
-        ref: null,
-        model: 'fixture-model',
-        reasoningEffort: 'high',
-      })
+      expectLiveWithoutAProviderRef(h.read)
       expect(existingRow(h.read.recordedOne('session-one'))).toMatchObject({
         sessionId: 'session-one',
         providerSessionId: null,
