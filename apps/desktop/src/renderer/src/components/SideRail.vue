@@ -41,6 +41,7 @@ import {
 import { appClosing } from '../lib/app-closing'
 import {
   conversationList,
+  withConversationStates,
   conversationTitle,
   groupWorkers,
   workerLabel,
@@ -440,18 +441,19 @@ function hearStates(message: RuntimeStatesMessage): void {
 }
 
 /** Every conversation the host lists, newest first — see {@link conversationList}. */
-const listed = computed(() =>
+const readList = computed(() =>
   conversationList({
     resumable: hostResumable.value,
     unresumable: hostUnresumable.value,
-    // ⚑ **449 · the same roster `TeamWorkspace` draws from**, so one identity is named once in this
-    // window. ⛔ `null` before the read lands is a real state and the fold says less rather than
-    // something else.
     identities: props.agents?.identities ?? null,
-    // 🔴 **D-019 · and what main said of each since** — see {@link said}.
-    said: new Map([...said.value].map(([conversation, heard]) => [conversation, heard.state])),
     providerSaid: providerBlocks.value.snapshot(),
   }),
+)
+const listed = computed(() =>
+  withConversationStates(
+    readList.value,
+    new Map([...said.value].map(([conversation, heard]) => [conversation, heard.state])),
+  ),
 )
 
 const cast = useWhoCalledWhom()

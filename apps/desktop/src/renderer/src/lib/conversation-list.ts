@@ -117,6 +117,16 @@ export function conversationList(input: ConversationListInput): ListedConversati
   return rows.sort((one, other) => other.updatedAt - one.updatedAt)
 }
 
+export function withConversationStates(
+  rows: readonly ListedConversation[],
+  said: ReadonlyMap<string, AgentState>,
+): ListedConversation[] {
+  return rows.map((row) => {
+    const state = said.get(row.sessionId)
+    return state === undefined || state === row.state ? row : { ...row, state }
+  })
+}
+
 /**
  * ⚑ **D-016 · commit 7 · R2 — the one title a row, the palette and the header draw**: the work that
  * names the conversation (`W1 · Bakery website`, or `W1` before it is titled), or the agent's name
