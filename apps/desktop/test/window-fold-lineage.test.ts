@@ -1,0 +1,153 @@
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { afterEach, expect, it, vi } from 'vitest'
+import { openDatabase, type AppDatabase } from '../src/main/db/connection'
+import { applyMigrations } from '../src/main/db/migrate'
+import { createSessionStore } from '../src/main/db/session-store'
+import { WindowReadEngine } from '../src/main/db/window-read-engine'
+import type { WindowReadQuery, WindowReadResult } from '../src/main/db/window-read-protocol'
+
+const cleanup: (() => void)[] = []
+afterEach(() => {
+  vi.restoreAllMocks()
+  for (const close of cleanup.splice(0).reverse()) close()
+})
+
+function world() {
+  const folder = mkdtempSync(join(tmpdir(), 'fold-lineage-'))
+  const file = join(folder, 'fictional.sqlite')
+  const db = openDatabase(file)
+  cleanup.push(() => {
+    db.close()
+    rmSync(folder, { recursive: true, force: true })
+  })
+  applyMigrations(db, join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations'))
+  const store = createSessionStore(db)
+  for (const id of ['alpha', 'beta']) {
+    store.adopt({
+      id,
+      provider: 'codex',
+      sessionId: `fictional-${id}`,
+      cwd: folder,
+      profileId: 'fictional',
+      createdAt: 1,
+      updatedAt: 1,
+    })
+    store.append(
+      id,
+      0,
+      {
+        type: 'work_given',
+        piece: `${id}-child`,
+        parent: store.rootOf(id)!.piece,
+        label: `${store.rootOf(id)!.label}.1`,
+        givenBy: 'alpha',
+        title: id,
+        brief: 'Fictional',
+      },
+      1,
+    )
+  }
+  const engine = new WindowReadEngine(file)
+  cleanup.push(() => engine.close())
+  const worker = (engine as unknown as { db: AppDatabase }).db
+  const prepare = worker.prepare.bind(worker)
+  const rebuilt: string[] = []
+  const heads: string[] = []
+  vi.spyOn(worker, 'prepare').mockImplementation((sql) => {
+    const statement = prepare(sql)
+    if (sql.includes('json_remove')) {
+      const iterate = statement.iterate.bind(statement)
+      vi.spyOn(statement, 'iterate').mockImplementation(function* (...args) {
+        rebuilt.push(String(args[0]))
+        yield* iterate(...args)
+      })
+    }
+    if (sql.includes('SELECT max(ordinal) AS through')) {
+      const get = statement.get.bind(statement)
+      vi.spyOn(statement, 'get').mockImplementation((...args) => {
+        heads.push(String(args[0]))
+        return get(...args)
+      })
+    }
+    return statement
+  })
+  function read(query: WindowReadQuery) {
+    rebuilt.length = 0
+    heads.length = 0
+    return engine.read(query)
+  }
+  return { db, store, engine, read, rebuilt, heads }
+}
+
+function routing(result: WindowReadResult) {
+  if (result.kind === 'incidents') return result.routing
+  if (result.kind === 'routes' || result.kind === 'listing') return result
+  throw new Error('Expected a folded reading')
+}
+
+it('keeps unchanged owner folds for different kinds already sent with the same capability', () => {
+  const w = world()
+  const cold = routing(w.read({ kind: 'incidents' }))
+  expect(new Set(w.rebuilt)).toEqual(new Set(['alpha', 'beta']))
+  const offered = { token: cold.cacheToken!, changed: [] }
+  const queued: WindowReadQuery[] = [
+    { kind: 'listing', reuse: offered },
+    { kind: 'routes', reuse: offered },
+  ]
+  const readings = queued.map((query) => {
+    const result = routing(w.read(query))
+    return { result, rebuilt: [...w.rebuilt] }
+  })
+  for (const { result, rebuilt } of readings) {
+    expect(result.work!.owners.map((owner) => owner.id).sort()).toEqual(['alpha', 'beta'])
+    expect(rebuilt).toEqual([])
+    expect(result.cacheToken).toBe(cold.cacheToken)
+  }
+})
+
+it('reads each owner generation and newest fold row once per immutable worker snapshot', () => {
+  const w = world()
+  const cold = routing(w.read({ kind: 'incidents' }))
+  w.read({ kind: 'routes', reuse: { token: cold.cacheToken!, changed: [] } })
+  expect(w.heads.sort()).toEqual(['alpha', 'beta'])
+  expect(w.rebuilt).toEqual([])
+})
+
+it('rebuilds changed owners and discards the lineage after cancellation or an unknown capability', () => {
+  const w = world()
+  const cold = routing(w.read({ kind: 'incidents' }))
+  w.store.append(
+    'alpha',
+    1,
+    {
+      type: 'work_retitled',
+      piece: w.store.rootOf('alpha')!.piece,
+      title: 'Changed title',
+      by: null,
+    },
+    2,
+  )
+  const changed = routing(
+    w.read({ kind: 'routes', reuse: { token: cold.cacheToken!, changed: ['alpha'] } }),
+  )
+  expect(
+    changed.work!.owners.find((owner) => owner.id === 'alpha')!.naming.value.named?.title,
+  ).toBe('Changed title')
+  expect(new Set(w.rebuilt)).toEqual(new Set(['alpha']))
+  expect(() =>
+    w.engine.read(
+      { kind: 'listing', reuse: { token: changed.cacheToken!, changed: [] } },
+      () => true,
+    ),
+  ).toThrow()
+  const reset = routing(
+    w.read({ kind: 'routes', reuse: { token: changed.cacheToken!, changed: [] } }),
+  )
+  expect(reset.cacheToken).not.toBe(changed.cacheToken)
+  expect(new Set(w.rebuilt)).toEqual(new Set(['alpha', 'beta']))
+  w.read({ kind: 'listing', reuse: { token: 'unknown', changed: [] } })
+  expect(new Set(w.rebuilt)).toEqual(new Set(['alpha', 'beta']))
+})
