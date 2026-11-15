@@ -5,7 +5,7 @@ import { sha256Of } from './recovery/files'
 /** Checks one recovery copy off the main thread, closes it, answers, and ends. */
 const port = parentPort
 if (port) {
-  const { copy, holdMs, hashOnly } = workerData as CopyCheckRequest
+  const { copy, holdMs, hashOnly, readonly } = workerData as CopyCheckRequest
   if (hashOnly) {
     void sha256Of(copy)
       .then(
@@ -18,7 +18,7 @@ if (port) {
       )
       .finally(() => port.close())
   } else {
-    port.postMessage(checkTheCopy(copy, holdMs))
+    port.postMessage(checkTheCopy(copy, holdMs, readonly))
     port.close()
   }
 }

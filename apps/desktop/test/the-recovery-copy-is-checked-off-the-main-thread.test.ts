@@ -1,12 +1,5 @@
 import Database from 'better-sqlite3'
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { createHash } from 'node:crypto'
 import { dirname, join } from 'node:path'
@@ -106,7 +99,7 @@ describe('the recovery copy is checked off the main thread', () => {
         `const { parentPort, workerData } = require('node:worker_threads');
         const { checkTheCopy } = require(workerData.checkBundle);
         parentPort.once('message', () => {
-          parentPort.postMessage(checkTheCopy(workerData.copy, workerData.holdMs));
+          parentPort.postMessage(checkTheCopy(workerData.copy, workerData.holdMs, workerData.readonly));
           parentPort.close();
         });
         parentPort.postMessage('ready');`,

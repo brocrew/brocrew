@@ -68,8 +68,7 @@ export function workspaceCompaction(start: (request: Request) => Worker): {
         .stat(output)
         .then(
           (stats) => {
-            if (!stopped && !reportingStopped)
-              progress(stats.size, facts.keptBytes)
+            if (!stopped && !reportingStopped) progress(stats.size, facts.keptBytes)
           },
           () => undefined,
         )

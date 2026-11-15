@@ -11,12 +11,13 @@ export type CopyCheck =
   | { readonly kind: 'failed'; readonly message: string }
 
 /** Checks a copy and says what it found. */
-export type VerifyCopy = (copy: string) => Promise<CopyCheck>
+export type VerifyCopy = (copy: string, readonly?: boolean) => Promise<CopyCheck>
 
 /** What a check worker is handed. */
 export interface CopyCheckRequest {
   readonly copy: string
   readonly hashOnly?: boolean
+  readonly readonly?: boolean
   /** A test's hold: the check's thread is kept this long before it starts. */
   readonly holdMs?: number
 }
@@ -24,7 +25,7 @@ export interface CopyCheckRequest {
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
-export function checkTheCopy(copy: string, holdMs = 0): CopyCheck {
+export function checkTheCopy(copy: string, holdMs = 0, readonly = false): CopyCheck {
   if (holdMs > 0) {
     // Holds this thread, as a long check would.
     const until = performance.now() + holdMs
@@ -34,17 +35,19 @@ export function checkTheCopy(copy: string, holdMs = 0): CopyCheck {
   }
   let db: Database.Database
   try {
-    db = new Database(copy, { fileMustExist: true })
+    db = new Database(copy, { fileMustExist: true, readonly })
   } catch (error) {
     return { kind: 'failed', message: messageOf(error) }
   }
   try {
-    const mode = String(db.pragma('journal_mode = DELETE', { simple: true }))
-    if (mode !== 'delete')
-      return {
-        kind: 'failed',
-        message: `SQLite kept the copy in ${mode} mode, so it is not one file`,
-      }
+    if (!readonly) {
+      const mode = String(db.pragma('journal_mode = DELETE', { simple: true }))
+      if (mode !== 'delete')
+        return {
+          kind: 'failed',
+          message: `SQLite kept the copy in ${mode} mode, so it is not one file`,
+        }
+    }
     // Some damage makes the check itself fail rather than report; either way the data is damaged.
     let check: string
     try {
@@ -83,7 +86,7 @@ export function verifyInAWorker(
 ): CopyVerifier {
   const live = new Map<Worker, Promise<void>>()
   let stopped = false
-  const verify: VerifyCopy = (copy) =>
+  const verify: VerifyCopy = (copy, readonly = false) =>
     new Promise((resolve) => {
       if (stopped) {
         resolve({ kind: 'failed', message: 'its check was not started, as BroCrew is closing' })
@@ -91,7 +94,11 @@ export function verifyInAWorker(
       }
       let worker: Worker
       try {
-        worker = start(holdMs === undefined ? { copy } : { copy, holdMs })
+        worker = start({
+          copy,
+          ...(holdMs === undefined ? {} : { holdMs }),
+          ...(readonly ? { readonly: true } : {}),
+        })
       } catch (error) {
         resolve({ kind: 'failed', message: `its check could not start: ${messageOf(error)}` })
         return

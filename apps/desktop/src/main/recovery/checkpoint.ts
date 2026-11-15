@@ -315,7 +315,7 @@ async function capture(
       beforeWrite: (bytes) => checkFreeSpace(userData, bytes, options.freeBytes ?? freeBytesOn),
       verifySource: verifySource
         ? async () => {
-            const checked = await verifySource(databaseFile(userData))
+            const checked = await verifySource(databaseFile(userData), true)
             if (checked.kind === 'damaged')
               throw new CheckpointFailed(
                 `The live database did not pass SQLite's own check (${checked.check}).`,

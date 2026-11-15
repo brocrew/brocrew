@@ -412,6 +412,7 @@ export function prepareDatabaseSnapshot(
     bytes,
     copyTo: async (copy) => {
       options.signal?.throwIfAborted()
+      await options.verifySource?.()
       try {
         const source = new Database(file, { fileMustExist: true })
         let recorded: MigrationsOnDisk
@@ -431,7 +432,6 @@ export function prepareDatabaseSnapshot(
           !sameMigrations(recorded.migrations, options.expectedMigrations)
         )
           throw new Error('The live database does not record the migrations admitted at startup.')
-        await options.verifySource?.()
         options.beforeWrite(bytes)
         const plain = await gzipCheckpoint(file, copy, fs, options.signal)
         if (plain.bytes !== bytes)
