@@ -617,6 +617,21 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       expect(held()).toBe(digestOf(another))
     })
 
+    it('does not retry when the agent copy rotates while the replacement waits for its lock', async () => {
+      await runningOnACopyThatDiesInATurn()
+      const rotated = signIn('acct-fictional-a', 'ROTATED', '2026-10-10T23:00:00Z')
+      accept(rotated)
+      await withProviderHomeLock(helperHome(), async () => {
+        await codex.handles[0]!.runTurnRefusedOnItsLogin()
+        await vi.waitFor(() => expect(writer.reached).toBe(1))
+        aHelperHolding(rotated)
+      })
+      await vi.waitFor(() => expect(writer.answered).toBe(1))
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      expect(starts).toEqual(digests(DEAD))
+      expect(held()).toBe(digestOf(rotated))
+    })
+
     it('⛔ the app closed while the writer waits for the home’s lock replaces nothing', async () => {
       await runningOnACopyThatDiesInATurn()
       let letGo: () => void = () => {}
