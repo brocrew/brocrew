@@ -1,4 +1,8 @@
-import { copiesBeforeEveryTurn, keepsTheKeySession, copiesBeforeApprovingAPlan } from './lib/automatic-codex-copy'
+import {
+  copiesBeforeEveryTurn,
+  keepsTheKeySession,
+  copiesBeforeApprovingAPlan,
+} from './lib/automatic-codex-copy'
 import { neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -207,19 +211,30 @@ describe('copying this install’s provider sign-ins', () => {
   })
 
   const automaticFixture = () => ({
-    host, root, sink, ops, copy, messages,
-    get launches() { return launches },
-    get stopped() { return stopped },
+    host,
+    root,
+    sink,
+    ops,
+    copy,
+    messages,
+    get launches() {
+      return launches
+    },
+    get stopped() {
+      return stopped
+    },
   })
 
-  it('automatically stops the cached server and copies a newer sign-in before sending', () => copiesBeforeEveryTurn(automaticFixture()))
+  it('automatically stops the cached server and copies a newer sign-in before sending', () =>
+    copiesBeforeEveryTurn(automaticFixture()))
 
   it('does not check or copy machine sign-ins for an API-key turn', async () => {
     keySaved = true
     await keepsTheKeySession(automaticFixture())
   })
 
-  it('copies a newer sign-in before the turn that approves a plan', () => copiesBeforeApprovingAPlan(automaticFixture()))
+  it('copies a newer sign-in before the turn that approves a plan', () =>
+    copiesBeforeApprovingAPlan(automaticFixture()))
 
   for (const opening of ['start', 'resume'] as const) {
     for (const change of ['native-refusal', 'cancel', 'timeout'] as const) {

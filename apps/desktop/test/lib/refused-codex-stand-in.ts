@@ -18,7 +18,6 @@ export const digestOf = (bytes: string | Buffer): string =>
   createHash('sha256').update(bytes).digest('hex').slice(0, 16)
 export const signInAt = (path: string): string => digestOf(readFileSync(path))
 
-
 export class StandInCodex extends FakeRuntime {
   readonly handles: FakeSessionHandle[] = []
   constructor(
@@ -103,9 +102,7 @@ export class StandInCodex extends FakeRuntime {
       },
       checkSignIn: () => this.checksItsSignIn(),
       signInCopyAtLaunch: () => beganOn,
-      // A turn of words, as the test says it goes: refused on its sign-in before doing anything,
-      // refused after a word of a reply, left open to be refused later, or answered. ⚑ As Codex's
-      // adapter does, the turn begins as it is handed over and goes on after the call returns.
+      // Like Codex, begin the turn at handover and report its outcome after send returns.
       send: async (text: string) => {
         this.sent.push(text)
         this.retained.set(handle.ref.sessionId, text)
@@ -155,5 +152,5 @@ export class StandInCodex extends FakeRuntime {
   }
 }
 
-export type TurnMode = 'refused' | 'refused-after-a-word' | 'held-open' | 'stopped-on-a-limit' | 'answered'
-
+export type TurnMode =
+  'refused' | 'refused-after-a-word' | 'held-open' | 'stopped-on-a-limit' | 'answered'
