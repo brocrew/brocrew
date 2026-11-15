@@ -30715,7 +30715,9 @@ export class RuntimeHost implements LiveHost {
       }
       for (const profileId of rows.keys()) await this.copyHomeWhenIdle(provider, profileId)
     }
-    const profiles = [...(rows?.values() ?? [])]
+    const profiles = [...(rows?.values() ?? [])].map((one) =>
+      one.state === 'pending' ? { profileId: one.profileId, state: one.state } : one,
+    )
     return {
       replaced: profiles.filter((one) => one.state === 'replaced').length,
       pending: profiles.filter((one) => one.state === 'pending').length,
