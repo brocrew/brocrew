@@ -130,6 +130,7 @@ describe('every Electron launcher under scripts/', () => {
     expect(verdictOf(readFileSync(join(SCRIPTS, 'mac-update-test.mjs'), 'utf8'))).toBe('visible')
     expect(by('own-main')).toEqual([
       'drop-hazard-probe.mjs',
+      'lib/mac-upgrade-preservation.mjs',
       'nav-order-probe.mjs',
       'one-app-probe.mjs',
     ])
@@ -150,6 +151,13 @@ describe('every Electron launcher under scripts/', () => {
       .filter((one) => showsAWindow(readFileSync(join(SCRIPTS, one.name), 'utf8')))
       .map((one) => one.name)
     expect(shown, 'an own-main probe puts a window on a person’s screen').toEqual([])
+    const delegated = readFileSync(join(SCRIPTS, 'lib/mac-upgrade-preservation.mjs'), 'utf8')
+    expect(delegated).toContain('decoded = readCompressedCheckpoint(')
+    const reader = readFileSync(join(SCRIPTS, 'lib/upgrade-database.mjs'), 'utf8')
+    expect(reader).toContain("ELECTRON_RUN_AS_NODE: '1'")
+    expect(reader).toContain(`'${HIDDEN_LAUNCH_ARG}'`)
+    expect(reader).toContain('`--user-data-dir=${isolation}`')
+    expect(showsAWindow(reader)).toBe(false)
   })
 
   it('…and that clause can fail (rule 12): each way to show a window, and the ways not to', () => {

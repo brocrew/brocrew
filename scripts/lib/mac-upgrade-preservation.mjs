@@ -121,6 +121,7 @@ export function requireOrdinaryMacFile(file, version) {
   }
 }
 
+// 695-own-main: gzip reads delegate to packaged Electron in Node-only mode, without an app window.
 export async function macCheckpointSnapshot(folder, app, run, evidence) {
   const manifest = JSON.parse(readFileSync(join(folder, 'manifest.json'), 'utf8'))
   let decoded
