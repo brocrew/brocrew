@@ -135,28 +135,63 @@ describe('visible Chrome profiles', () => {
       fault.mockRestore()
     }
   })
-  it.each([
-    ['https://fixture.test/committed', 'Timeout 15000ms exceeded'],
-    ['fictional-unsupported:page', 'net::ERR_UNKNOWN_URL_SCHEME'],
-  ])('reports the existing tab, current URL and Chrome error for %s', async (url, message) => {
+  it.each([true, false])(
+    'reports navigation timeout with committed=%s truthfully',
+    async (committed) => {
+      const h = setup()
+      const opened = (await h.call('open_tab', { profile: 'fern', url: 'about:blank' })).json as {
+        tabId: string
+      }
+      const page = h.browser.pages.get('fern')![0]
+      const listeners = page.listenerCount('framenavigated')
+      const fault = vi.spyOn(page, 'goto').mockImplementation(async (url) => {
+        if (committed) {
+          page.urlValue = url
+          page.emit('framenavigated', page.mainFrame())
+        }
+        throw Object.assign(new Error('Timeout 15000ms exceeded'), { name: 'TimeoutError' })
+      })
+      try {
+        const args = { tabId: opened.tabId, url: 'https://fixture.test/committed' }
+        if (committed) {
+          const result = (await h.call('navigate', args)).json
+          expect(result).toMatchObject({
+            url: args.url,
+            title: 'Title',
+            navigationError: 'Timeout 15000ms exceeded',
+          })
+        } else {
+          const error = await h.callError('navigate', args)
+          expect(error).toContain('Timeout 15000ms exceeded')
+          expect(error).toContain('about:blank')
+        }
+        expect(page.listenerCount('framenavigated')).toBe(listeners)
+        expect(h.browser.pages.get('fern')).toHaveLength(1)
+      } finally {
+        fault.mockRestore()
+      }
+    },
+  )
+  it('preserves a non-timeout navigation error even if the URL changes', async () => {
     const h = setup()
     const opened = (await h.call('open_tab', { profile: 'fern', url: 'about:blank' })).json as {
       tabId: string
     }
     const page = h.browser.pages.get('fern')![0]
+    const listeners = page.listenerCount('framenavigated')
     const fault = vi.spyOn(page, 'goto').mockImplementation(async (url) => {
       page.urlValue = url
-      throw new Error(message)
+      page.emit('framenavigated', page.mainFrame())
+      throw new Error('net::ERR_UNKNOWN_URL_SCHEME')
     })
     try {
       const error = await h.callError('navigate', {
         tabId: opened.tabId,
-        url,
+        url: 'fictional-unsupported:page',
       })
       expect(error).toContain(`NAVIGATION_FAILED ${opened.tabId}:`)
-      expect(error).toContain(url)
-      expect(error).toContain(message)
-      expect(h.browser.pages.get('fern')).toHaveLength(1)
+      expect(error).toContain('net::ERR_UNKNOWN_URL_SCHEME')
+      expect(page.listenerCount('framenavigated')).toBe(listeners)
     } finally {
       fault.mockRestore()
     }
