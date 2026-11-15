@@ -94,7 +94,8 @@ export function aNewerCodexSignInIsAvailable(
   const to = statOrNull(dest)
   if (to !== null && (!to.isFile() || from.mtimeMs <= to.mtimeMs)) return false
   const incoming = readFileSync(source)
-  if (codexAccountOf(incoming.toString('utf8')) === 'api-key') return false
+  const account = codexAccountOf(incoming.toString('utf8'))
+  if (account === null || account === 'api-key') return false
   if (to === null) return true
   const existing = readFileSync(dest)
   return !existing.equals(incoming) && codexAccountOf(existing.toString('utf8')) !== 'api-key'
@@ -494,6 +495,11 @@ export async function reprovisionCodexAuth(
         'codex',
         `personal Codex auth.json not found at ${source} — sign in with the codex CLI first, then try again`,
       )
+    }
+
+    if (opts.newerOnly) {
+      const account = codexAccountOf(data.toString('utf8'))
+      if (account === null || account === 'api-key') return 'unchanged'
     }
 
     // Report honestly when there was nothing to do. A surface that says "re-copied" over identical
