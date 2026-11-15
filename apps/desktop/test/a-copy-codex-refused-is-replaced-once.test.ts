@@ -643,9 +643,11 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       })
       const handle = codex.handles[0]!
       handle.awaitProcessExit = () => exit
+      const closing = vi.spyOn(handle, 'close')
       try {
         await handle.runTurnRefusedOnItsLogin()
-        await vi.waitFor(() => expect(handle.status()).toBe('ended'))
+        await vi.waitFor(() => expect(closing).toHaveBeenCalled())
+        expect(handle.status()).toBe('ended')
         expect(held()).toBe(digestOf(DEAD))
         expect(writer.reached).toBe(0)
       } finally {
