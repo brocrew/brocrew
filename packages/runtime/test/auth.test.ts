@@ -150,6 +150,51 @@ describe('provisionCodexAuth (022)', () => {
     rmSync(sourceDir, { recursive: true, force: true })
   })
 
+  it('refreshes an older subscription copy from this computer without changing the source', async () => {
+    const dest = join(home, 'auth.json')
+    const old = JSON.stringify({ auth_mode: 'chatgpt', tokens: { account_id: 'fictional-old' } })
+    const newer = JSON.stringify({ auth_mode: 'chatgpt', tokens: { account_id: 'fictional-new' } })
+    writeFileSync(dest, old)
+    writeFileSync(source, newer)
+    utimesSync(dest, 100, 100)
+    utimesSync(source, 200, 200)
+    const original = lstatSync(source)
+
+    await provisionCodexAuth(home, { ...{ sourceAuthPath: source, refresh: true } })
+
+    expect(signInAt(dest)).toBe(digestOf(newer))
+    expect(signInAt(source)).toBe(digestOf(newer))
+    expect(lstatSync(source).mtimeMs).toBe(original.mtimeMs)
+    expect(lstatSync(source).ino).toBe(original.ino)
+  })
+
+  it.each([100, 200])('keeps a subscription copy as new as the source (%s)', async (sourceTime) => {
+    const dest = join(home, 'auth.json')
+    const rotated = JSON.stringify({ auth_mode: 'chatgpt', tokens: { account_id: 'fictional-rotated' } })
+    writeFileSync(dest, rotated)
+    utimesSync(dest, 200, 200)
+    utimesSync(source, sourceTime, sourceTime)
+    const original = lstatSync(dest)
+
+    await provisionCodexAuth(home, { ...{ sourceAuthPath: source, refresh: true } })
+
+    expect(signInAt(dest)).toBe(digestOf(rotated))
+    expect(lstatSync(dest).mtimeMs).toBe(original.mtimeMs)
+    expect(lstatSync(dest).ino).toBe(original.ino)
+  })
+
+  it('leaves an API-key home unchanged even when the machine sign-in is newer', async () => {
+    const dest = join(home, 'auth.json')
+    const key = JSON.stringify({ auth_mode: 'apikey', OPENAI_API_KEY: 'fictional-test-key' })
+    writeFileSync(dest, key)
+    utimesSync(dest, 100, 100)
+    utimesSync(source, 200, 200)
+
+    await provisionCodexAuth(home, { ...{ sourceAuthPath: source, refresh: true } })
+
+    expect(signInAt(dest)).toBe(digestOf(key))
+  })
+
   it('copies auth.json content into the home at 0600, atomically, leaving no temp file', async () => {
     await provisionCodexAuth(home, { sourceAuthPath: source })
     const dest = join(home, 'auth.json')
