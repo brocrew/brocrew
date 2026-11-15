@@ -38,7 +38,8 @@ import {
   type AgentFacets,
   type Standing,
 } from '../lib/agent-state'
-import { appClosing } from '../lib/app-closing'
+import { epochDecision } from '../../../shared/data-version'
+import type { PublishedListing } from '../../../shared/listing-published'
 import {
   conversationList,
   withConversationStates,
@@ -411,9 +412,16 @@ const listError = ref<string | null>(null)
  * A pushed state outlives any list read already in flight when the push arrived.
  * A later read replaces it; the paired lists may otherwise contain an older state.
  */
-const said = shallowRef<ReadonlyMap<string, { readonly state: OneState; readonly after: number }>>(
-  new Map(),
-)
+const said = shallowRef<
+  ReadonlyMap<
+    string,
+    {
+      readonly state: OneState
+      readonly after: number
+      readonly published?: RuntimeStatesMessage['published']
+    }
+  >
+>(new Map())
 const localProviderBlocks = createProviderBlockStore()
 const providerBlocks = computed(() => props.providerBlocks ?? localProviderBlocks)
 /**
@@ -421,6 +429,7 @@ const providerBlocks = computed(() => props.providerBlocks ?? localProviderBlock
  * read the quit stops is counted too, which moves nothing: main pushes nothing once a quit begins.
  */
 let readsAsked = 0
+let lastShown: Pick<PublishedListing, 'published' | 'readAsOf'> | undefined
 
 /**
  * ⚑ **D-019 · main said what some agents are doing now** — the screen hands every message on
@@ -434,7 +443,31 @@ function hearStates(message: RuntimeStatesMessage): void {
   if (message.moved.length === 0) return
   const next = new Map(said.value)
   for (const moved of message.moved) {
-    next.set(moved.conversation, { state: moved.state, after: readsAsked })
+    if (lastShown !== undefined && message.published !== undefined) {
+      const epoch = epochDecision(lastShown.published.epoch, message.published.epoch)
+      if (epoch === 'drop') continue
+      if (
+        epoch === 'accept' &&
+        (lastShown.published.covers.complete ||
+          lastShown.published.covers.ids.includes(moved.conversation)) &&
+        message.published.seq <= lastShown.published.seq
+      )
+        continue
+    }
+    const previous = next.get(moved.conversation)?.published
+    if (
+      previous !== undefined &&
+      message.published !== undefined &&
+      (epochDecision(previous.epoch, message.published.epoch) === 'drop' ||
+        (epochDecision(previous.epoch, message.published.epoch) === 'accept' &&
+          message.published.seq <= previous.seq))
+    )
+      continue
+    next.set(moved.conversation, {
+      state: moved.state,
+      after: readsAsked,
+      published: message.published,
+    })
   }
   said.value = next
   if (!props.providerBlocks) localProviderBlocks.acceptMany(message.moved)
@@ -492,6 +525,7 @@ const listRecovery = useConversationListRecovery(
   () => {
     hostResumable.value = []
     hostUnresumable.value = []
+    lastShown = undefined
     said.value = new Map()
     looked.value = false
     listError.value = null
@@ -501,37 +535,85 @@ const listRecovery = useConversationListRecovery(
 
 async function refreshListed(): Promise<void> {
   const cycle = listRecovery.begin()
-  // ⚑ **D-019 · numbered before either half is asked** — see {@link said}.
-  readsAsked += 1
-  const asked = readsAsked
+  if (cycle === undefined) return
+  let retry = false
+  const asked = ++readsAsked
   const providerReadAt = providerBlocks.value.beginRead()
-  // 🔴 **Not while the app is closing** (273 §2, from `272` finding 1). The quit ends every
-  // conversation and each ending announces; `272` measured these re-reads landing on a database the
-  // quit had already shut. ⚑ Main refuses them too; this is the half that means an ordinary quit
-  // prints nothing at all. ⚠️ **Leaves the list exactly as it was**: there is nobody to report to.
-  if (appClosing.value) return
   try {
     const sessionsApi = client.sessions
-    if (!sessionsApi?.listResumable || !sessionsApi.listUnresumable)
-      throw new Error('The client does not provide session reads and intents')
-    const [resumable, unresumable] = await Promise.all([
-      sessionsApi.listResumable(),
-      sessionsApi.listUnresumable(),
-    ])
-    if (asked !== readsAsked || !listRecovery.current(cycle)) return
-    providerBlocks.value.acceptListed([...resumable, ...unresumable], providerReadAt)
-    hostResumable.value = resumable
-    hostUnresumable.value = unresumable
-    // ⛔ **D-019 · every push that arrived before this read was asked gives way to its answer.**
-    said.value = new Map([...said.value].filter(([, heard]) => heard.after >= asked))
+    let answer: PublishedListing | undefined
+    let resumable: readonly ResumableSessionInfo[]
+    let unresumable: readonly UnresumableSessionInfo[]
+    if (typeof sessionsApi?.listConversations === 'function') {
+      const result = await sessionsApi.listConversations()
+      if (!listRecovery.current(cycle)) return
+      if ('refused' in result) throw new Error(result.refused)
+      answer = result
+      retry = result.refresh === true
+      if (lastShown !== undefined) {
+        const epoch = epochDecision(lastShown.published.epoch, result.published.epoch)
+        if (epoch === 'drop' || epoch === 'hold') return
+        if (
+          epoch === 'accept' &&
+          (result.published.seq < lastShown.published.seq ||
+            (result.published.seq === lastShown.published.seq &&
+              (result.readAsOf ?? 0) <= (lastShown.readAsOf ?? 0)))
+        )
+          return
+      }
+      resumable = result.resumable
+      unresumable = result.unresumable
+      if (!result.published.covers.complete) {
+        const included = new Set([...resumable, ...unresumable].map((row) => row.sessionId))
+        resumable = [
+          ...resumable,
+          ...hostResumable.value.filter((row) => !included.has(row.sessionId)),
+        ]
+        unresumable = [
+          ...unresumable,
+          ...hostUnresumable.value.filter((row) => !included.has(row.sessionId)),
+        ]
+      }
+      lastShown = { published: result.published, readAsOf: result.readAsOf }
+    } else {
+      if (!sessionsApi?.listResumable || !sessionsApi.listUnresumable)
+        throw new Error('The client does not provide session reads and intents')
+      ;[resumable, unresumable] = await Promise.all([
+        sessionsApi.listResumable(),
+        sessionsApi.listUnresumable(),
+      ])
+    }
+    if (!listRecovery.current(cycle)) return
+    providerBlocks.value.acceptListed(
+      answer === undefined
+        ? [...resumable, ...unresumable]
+        : [...answer.resumable, ...answer.unresumable],
+      providerReadAt,
+    )
+    hostResumable.value = [...resumable]
+    hostUnresumable.value = [...unresumable]
+    // A dispatch floor cannot replace states pushed after that floor, even before this caller joined.
+    said.value = new Map(
+      [...said.value].filter(([id, heard]) => {
+        if (answer === undefined || heard.published === undefined) return heard.after >= asked
+        if (!answer.published.covers.complete && !answer.published.covers.ids.includes(id))
+          return true
+        const epoch = epochDecision(answer.published.epoch, heard.published.epoch)
+        return (
+          epoch === 'advance' || (epoch === 'accept' && heard.published.seq >= answer.published.seq)
+        )
+      }),
+    )
     looked.value = true
-    listRecovery.succeeded()
     listError.value = null
   } catch (cause) {
-    if (asked !== readsAsked || !listRecovery.current(cycle)) return
-    if (await listRecovery.retry(cycle)) return refreshListed()
-    if (asked !== readsAsked || !listRecovery.current(cycle)) return
+    if (!listRecovery.current(cycle)) return
     listError.value = readableError(cause)
+    retry = true
+  } finally {
+    listRecovery.finish(cycle, retry, () => {
+      void refreshListed()
+    })
   }
 }
 

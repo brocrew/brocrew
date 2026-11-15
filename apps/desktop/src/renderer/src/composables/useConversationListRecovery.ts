@@ -1,59 +1,66 @@
 import { onBeforeUnmount, watch } from 'vue'
 import { appClosing } from '../lib/app-closing'
 
-/** Allow two seconds for conversation reads to recover, retrying one second apart. */
+/** One list read at a time, with one follow-up after a change or a failed read. */
 export function useConversationListRecovery(workspace: () => string | null, reset: () => void) {
   let generation = 0
-  let failedSince: number | undefined
   let disposed = false
+  let reading = false
+  let again = false
   let timer: ReturnType<typeof setTimeout> | undefined
-  let finishWait: ((retry: boolean) => void) | undefined
   const cancel = () => {
     clearTimeout(timer)
     timer = undefined
-    finishWait?.(false)
-    finishWait = undefined
   }
   const current = (read: number) => !disposed && !appClosing.value && read === generation
-  const begin = () => {
+  const invalidate = () => {
     cancel()
-    return ++generation
+    generation++
+    reading = false
+    again = false
   }
   watch(
     workspace,
     () => {
-      begin()
-      failedSince = undefined
+      invalidate()
       reset()
+    },
+    { flush: 'sync' },
+  )
+  watch(
+    appClosing,
+    (closing) => {
+      if (closing) invalidate()
     },
     { flush: 'sync' },
   )
   onBeforeUnmount(() => {
     disposed = true
-    begin()
+    invalidate()
   })
   return {
-    begin,
-    current,
-    succeeded: () => {
-      failedSince = undefined
+    begin: (): number | undefined => {
+      if (!current(generation)) return undefined
+      if (reading) {
+        again = true
+        return undefined
+      }
+      cancel()
+      reading = true
+      again = false
+      return generation
     },
-    retry: (read: number): Promise<boolean> => {
-      if (!current(read)) return Promise.resolve(false)
-      failedSince ??= Date.now()
-      const remaining = 2_000 - (Date.now() - failedSince)
-      if (remaining <= 0) return Promise.resolve(false)
-      return new Promise((resolve) => {
-        finishWait = resolve
-        timer = setTimeout(
-          () => {
-            timer = undefined
-            finishWait = undefined
-            resolve(current(read))
-          },
-          Math.min(1_000, remaining),
-        )
-      })
+    current,
+    finish: (read: number, retry: boolean, refresh: () => void): void => {
+      if (!current(read)) return
+      reading = false
+      if (!retry && !again) return
+      again = false
+      cancel()
+      timer = setTimeout(() => {
+        timer = undefined
+        if (current(read)) refresh()
+      }, 1_000)
     },
   }
 }
