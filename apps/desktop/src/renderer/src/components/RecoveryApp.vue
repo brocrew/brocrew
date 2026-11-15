@@ -10,6 +10,7 @@ import {
   type RecoveryAction,
 } from '../lib/recovery-words'
 import { readableError } from '../lib/session-record'
+import { storageSize } from '../lib/storage-words'
 import type { TranscriptState } from '../lib/transcript'
 import { readOnlyTranscript } from '../lib/read-only-transcript'
 import TranscriptView from './TranscriptView.vue'
@@ -50,7 +51,9 @@ const verdict = shallowRef<StartupVerdict | null>(null)
 /** What is running: drawn as a progress line, and every press waits for it. */
 const busy = ref<string | null>(null)
 const progress = ref<{ done: number; total: number } | null>(null)
-const compacting = computed(() => verdict.value?.kind === 'working' && verdict.value.what === 'compact')
+const compacting = computed(
+  () => verdict.value?.kind === 'working' && verdict.value.what === 'compact',
+)
 /** A call that threw instead of answering a verdict. */
 const trouble = ref<string | null>(null)
 
@@ -60,6 +63,12 @@ const percent = computed(() => {
   const at = progress.value
   if (!at || at.total <= 0) return null
   return Math.max(0, Math.min(100, Math.round((at.done / at.total) * 100)))
+})
+
+const writtenSize = computed(() => {
+  const at = progress.value
+  const written = storageSize(at?.done ?? 0)
+  return at && at.total > 0 ? `${written} of about ${storageSize(at.total)}` : written
 })
 
 /** The heading of whichever screen is drawn; a new screen puts the cursor here to be read from the top. */
@@ -382,12 +391,15 @@ const messagePaths = useMessagePaths(
                 <span>Making your workspace smaller (one time)</span>
                 <span>{{ percent ?? 0 }}%</span>
               </div>
-              <ProgressBar
-                phase="downloading"
-                :received="progress?.done ?? 0"
-                :total="progress?.total ?? 0"
-                aria-label="Making your workspace smaller (one time)"
-              />
+              <div class="compaction-meter">
+                <ProgressBar
+                  phase="downloading"
+                  :received="progress?.done ?? 0"
+                  :total="progress?.total ?? 0"
+                  aria-label="Making your workspace smaller (one time)"
+                />
+                <span>{{ writtenSize }}</span>
+              </div>
             </div>
           </div>
         </section>
@@ -468,7 +480,12 @@ const messagePaths = useMessagePaths(
             <p class="detail" data-cy="recovery-detail">{{ trouble }}</p>
           </div>
           <footer class="dialog-foot">
-            <button type="button" class="bb-button" data-cy="recovery-close" @click="bridge?.quit()">
+            <button
+              type="button"
+              class="bb-button"
+              data-cy="recovery-close"
+              @click="bridge?.quit()"
+            >
               Close
             </button>
           </footer>
@@ -521,6 +538,16 @@ const messagePaths = useMessagePaths(
   display: flex;
   justify-content: space-between;
   gap: var(--space-4);
+}
+
+.compaction-meter {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.compaction-meter span {
+  flex-shrink: 0;
 }
 
 /* The refusal and failure screens: one card in the middle of the paper. */

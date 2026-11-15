@@ -69,7 +69,7 @@ export function workspaceCompaction(start: (request: Request) => Worker): {
         .then(
           (stats) => {
             if (!stopped && !reportingStopped)
-              progress(Math.min(stats.size, facts.keptBytes * 0.99), facts.keptBytes)
+              progress(stats.size, facts.keptBytes)
           },
           () => undefined,
         )
@@ -80,6 +80,8 @@ export function workspaceCompaction(start: (request: Request) => Worker): {
     timer.unref()
     try {
       await request<null>({ kind: 'compact', file, output })
+      reportingStopped = true
+      clearInterval(timer)
       if (stopped) throw new Error('The workspace is closing.')
       for (const suffix of ['-wal', '-journal']) {
         const sidecar = await fs.stat(file + suffix).catch((error: NodeJS.ErrnoException) => {
@@ -94,7 +96,7 @@ export function workspaceCompaction(start: (request: Request) => Worker): {
       await retrying(() => fs.rename(output, file))
       if (process.platform === 'win32') await flushFile(file, fs)
       else await syncFolder(dirname(file), fs)
-      progress(facts.keptBytes, facts.keptBytes)
+      progress((await fs.stat(file)).size, facts.keptBytes)
       if (stopped) throw new Error('The workspace is closing.')
       await capture()
       return true

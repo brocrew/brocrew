@@ -1,4 +1,10 @@
-import { databaseContents, fullCopyFs, treeOf, sha256Of, openCheckpointForRead } from './lib/recovery-files'
+import {
+  databaseContents,
+  fullCopyFs,
+  treeOf,
+  sha256Of,
+  openCheckpointForRead,
+} from './lib/recovery-files'
 import { aBuildWithOneMoreMigration as buildWithOneMoreMigration } from './lib/seat-b-folders'
 import { registerMigrationLineageCases } from './lib/migration-lineage-cases'
 import Database from 'better-sqlite3'
@@ -535,7 +541,9 @@ SELECT * FROM no_such_migration_table;`,
     })
     const verdict = await inspect(deps)
     expect(verdict).toMatchObject({ kind: 'failed', reason: 'checkpoint-failed', canRetry: true })
-    expect(verdict.kind === 'failed' ? verdict.detail : '').toMatch(/needs about .* more space.*Existing recovery files were kept/)
+    expect(verdict.kind === 'failed' ? verdict.detail : '').toMatch(
+      /needs about .* more space.*Existing recovery files were kept/,
+    )
     expect(seen.lines).toEqual([])
     expect(await treeOf(userData)).toEqual(before)
   })

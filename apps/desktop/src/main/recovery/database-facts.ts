@@ -435,7 +435,9 @@ export function prepareDatabaseSnapshot(
         options.beforeWrite(bytes)
         const plain = await gzipCheckpoint(file, copy, fs, options.signal)
         if (plain.bytes !== bytes)
-          throw new Error('The closed database changed size while its recovery copy was compressed.')
+          throw new Error(
+            'The closed database changed size while its recovery copy was compressed.',
+          )
         return { ...plain, migrations: recorded.migrations }
       } finally {
         if (wasWal) {

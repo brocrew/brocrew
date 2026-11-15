@@ -91,7 +91,10 @@ async function transcode(
   const closed = await Promise.allSettled([input.close(), ...(output ? [output.close()] : [])])
   const errors = closed.flatMap((one) => (one.status === 'rejected' ? [one.reason] : []))
   if (errors.length > 0)
-    throw new AggregateError(failed ? [failure, ...errors] : errors, 'Recovery stream close failed.')
+    throw new AggregateError(
+      failed ? [failure, ...errors] : errors,
+      'Recovery stream close failed.',
+    )
   if (failed) throw failure
   return result
 }

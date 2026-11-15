@@ -427,7 +427,7 @@ describe('makeCheckpoint', () => {
     expect(failure).toBeInstanceOf(CheckpointFailed)
     expect((failure as CheckpointFailed).canRetry).toBe(false)
     expect((failure as Error).message).toContain("did not pass SQLite's own check")
-    expect(readdirSync(join(userData, 'backups'))).toEqual(['workspace-id'])
+    expect(existsSync(join(userData, 'backups'))).toBe(false)
     expect(fingerprint(file)).toEqual(before)
   })
 

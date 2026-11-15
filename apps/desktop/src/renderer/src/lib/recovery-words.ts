@@ -257,9 +257,10 @@ const WORKING_HEADING = {
 export function workingWords(verdict: Extract<StartupVerdict, { kind: 'working' }>): RecoveryWords {
   return {
     heading: WORKING_HEADING[verdict.what],
-    body: verdict.what === 'compact'
-      ? []
-      : ['This can take a minute for a large workspace. Keep BroCrew open until it finishes.'],
+    body:
+      verdict.what === 'compact'
+        ? []
+        : ['This can take a minute for a large workspace. Keep BroCrew open until it finishes.'],
     actions: [],
   }
 }
