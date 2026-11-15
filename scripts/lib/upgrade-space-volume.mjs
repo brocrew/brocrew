@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  realpathSync,
   rmSync,
   statfsSync,
   writeFileSync,
@@ -43,7 +44,8 @@ export function createSafetyVolume(os, keep) {
     Number(backing.bavail) * Number(backing.bsize) >= 17 * 1024 ** 3,
     'The native safety volume needs its image budget plus15GiB backing headroom.',
   )
-  const root = mkdtempSync(join(tmpdir(), 'upgrade-space-'))
+  const created = mkdtempSync(join(tmpdir(), 'upgrade-space-'))
+  const root = os === 'mac' ? realpathSync(created) : created
   const mount = join(root, 'mount')
   const image = join(root, os === 'mac' ? 'space.dmg' : 'space.vhd')
   mkdirSync(mount)
@@ -77,6 +79,8 @@ export function createSafetyVolume(os, keep) {
       const attached = plist(
         command('/usr/bin/hdiutil', ['attach', '-nobrowse', '-mountpoint', mount, '-plist', image]),
       )
+      record.attachReceipt = attached
+      save()
       const mounted = attached['system-entities']?.find((entry) => entry['mount-point'] === mount)
       requireEvidence(
         typeof mounted?.['dev-entry'] === 'string',
