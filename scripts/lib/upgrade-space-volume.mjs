@@ -69,7 +69,7 @@ export function createSafetyVolume(os, keep) {
         '-fs',
         'APFS',
         '-type',
-        'UDRW',
+        'UDIF',
         '-volname',
         'BroCrewSafety',
         image,
@@ -137,11 +137,21 @@ export function createSafetyVolume(os, keep) {
             `Dismount-DiskImage -ImagePath ${quotePS(image)}; if((Get-DiskImage -ImagePath ${quotePS(image)}).Attached){throw 'Owned VHD remains attached'}`,
           )
         }
+        record.detached = true
+        save()
+        let entries
+        try {
+          entries = readdirSync(mount)
+          record.mountAfterDetach = 'present'
+        } catch (error) {
+          if (error.code !== 'ENOENT') throw error
+          entries = []
+          record.mountAfterDetach = 'absent'
+        }
         requireEvidence(
-          readdirSync(mount).length === 0,
+          entries.length === 0,
           'The volume mount directory is not empty after detach.',
         )
-        record.detached = true
         rmSync(image)
         record.imageDeleted = !existsSync(image)
         record.freeAfterDelete = freeBytes(tmpdir())

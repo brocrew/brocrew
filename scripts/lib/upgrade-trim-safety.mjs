@@ -148,6 +148,7 @@ async function proveTrimKills({
   alive,
   keep,
   settle,
+  restore,
 }) {
   const results = {}
   const original = readDatabase(baseline)
@@ -352,6 +353,8 @@ async function proveTrimKills({
     }
     keep('mid-compact.json', results.compact)
     keep('mid-compact-space-samples.json', samples)
+    clearInterval(sampler)
+    results.gzipRestore = await restore(compactRoot, manifest)
   } finally {
     clearInterval(sampler)
     await settle()
@@ -375,6 +378,18 @@ export async function runTrimUpgradeSafety(
   },
   { phase, launch, verdict, bridge, current, stop, alive, crash, quit, copies, keep, must },
 ) {
+  const gzipCase = (folder, checkpoint, stage) =>
+    proveGzipRestore({
+      folder,
+      checkpoint,
+      conversations: conversations.map((id) => ({ id, text: answers[id] })),
+      launch: async () => {
+        await launch(stage, 9363, { workspace: folder, hidden: true, recovery: true })
+        return current().cdp
+      },
+      quit: () => quit(stage),
+      keep,
+    })
   if (betaVersion === '0.2.23') {
     await phase('migration space refusal', async () => {
       summary.migrationSpace = await proveMigrationSpaceRefusal({
@@ -410,22 +425,12 @@ export async function runTrimUpgradeSafety(
         retained.length === 1,
         'the gzip Restore case has exactly one completed compressed checkpoint',
       )
-      summary.gzipRestore = await proveGzipRestore({
-        folder: data,
-        checkpoint: retained[0].manifest,
-        conversations: conversations.map((id) => ({ id, text: answers[id] })),
-        launch: async () => {
-          await launch('gzip-restore', 9360, { workspace: data, hidden: true, recovery: true })
-          return current().cdp
-        },
-        quit: () => quit('gzip Restore and Return'),
-        keep,
-      })
+      summary.gzipRestore = await gzipCase(data, retained[0].manifest, 'gzip-restore')
     })
   }
 
   if (betaVersion === '0.2.26') {
-    await phase('trim and compaction kills', async () => {
+    await phase('trim, compaction and gzip recovery', async () => {
       summary.trimSafety = await proveTrimKills({
         os,
         baseline: safetyBaseline,
@@ -433,6 +438,7 @@ export async function runTrimUpgradeSafety(
         candidateSkills,
         alive,
         keep,
+        restore: (folder, checkpoint) => gzipCase(folder, checkpoint, 'gzip-restore-after-compact'),
         launch: (stage, folder, beforeConnect) =>
           launch(stage, 9361, { workspace: folder, hidden: true, beforeConnect }),
         ready: async () => {

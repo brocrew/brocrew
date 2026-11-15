@@ -337,7 +337,7 @@ describe('hidden startup window allowance', () => {
   )
   const hidden = source.slice(
     source.indexOf('async function startHiddenProgram('),
-    source.indexOf('\nasync function recoveryProofCases('),
+    source.indexOf('\nlet exitCode = 1'),
   )
   const measurement = source.slice(
     source.indexOf('start: (program, workspace, stage, port) =>') + 'start: '.length,
