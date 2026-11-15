@@ -93,8 +93,11 @@ export function aNewerCodexSignInIsAvailable(
   const dest = join(providerHome, CODEX_AUTH_FILE)
   const to = statOrNull(dest)
   if (to !== null && (!to.isFile() || from.mtimeMs <= to.mtimeMs)) return false
-  if (codexAccountOf(readFileSync(source, 'utf8')) === 'api-key') return false
-  return to === null || codexAccountOf(readFileSync(dest, 'utf8')) !== 'api-key'
+  const incoming = readFileSync(source)
+  if (codexAccountOf(incoming.toString('utf8')) === 'api-key') return false
+  if (to === null) return true
+  const existing = readFileSync(dest)
+  return !existing.equals(incoming) && codexAccountOf(existing.toString('utf8')) !== 'api-key'
 }
 
 /**
