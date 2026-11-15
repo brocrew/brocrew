@@ -106,8 +106,7 @@ function replaceAttempts(database: AppDatabase, kept: KeptAttempts): void {
      ON CONFLICT(conversation_id) DO UPDATE SET record = excluded.record, at = excluded.at
      WHERE schedule_attempt.record IS NOT excluded.record OR schedule_attempt.at IS NOT excluded.at`,
   )
-  for (const [id, { at, ...record }] of entries)
-    insert.run(id, JSON.stringify(record), at)
+  for (const [id, { at, ...record }] of entries) insert.run(id, JSON.stringify(record), at)
   database
     .prepare(
       `DELETE FROM schedule_attempt WHERE conversation_id NOT IN
