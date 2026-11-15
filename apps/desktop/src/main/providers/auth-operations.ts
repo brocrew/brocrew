@@ -55,7 +55,9 @@ export interface ProviderAuthOps {
   reprovision(
     provider: Provider,
     profileId: string,
+    newerOnly?: true,
   ): ReprovisionOutcome | Promise<ReprovisionOutcome>
+  hasNewerCopy?(provider: Provider, profileId: string): boolean
   /**
    * Sign this profile into its own account. Resolves when the browser flow settles.
    *

@@ -13,6 +13,7 @@ import { join } from 'node:path'
 import { AuthUnavailableError, provisionProviderHome, type AgentRuntime } from '@brobot2/runtime'
 import {
   codexAuthHealth,
+  aNewerCodexSignInIsAvailable,
   personalCodexAuthPath,
   provisionCodexAuth,
   replaceARefusedCodexCopy,
@@ -196,6 +197,9 @@ export function codexAuth(paths: ProviderHomePaths, seams: CodexAuthSeams): Home
     credentialHome(profileId) {
       return paths.homeOf(profileId)
     },
+    hasNewerCopy(profileId) {
+      return aNewerCodexSignInIsAvailable(homePathFor(profileId), seams.machineAuthPath?.())
+    },
     async check(profileId, signal) {
       const providerHome = await homeFor(profileId)
 
@@ -204,10 +208,15 @@ export function codexAuth(paths: ProviderHomePaths, seams: CodexAuthSeams): Home
       const behind = machineLoginPresence(seams.machineAuthPath?.() ?? personalCodexAuthPath())
       return behind === undefined ? state : { ...state, loginBehindTheKey: behind }
     },
-    reprovision(profileId) {
+    reprovision(profileId, newerOnly) {
       refuseWhileAKeyIsSaved()
       const home = homePathFor(profileId)
-      return provisionProviderHome(paths.managedRoot, home).then(() => reprovisionCodexAuth(home))
+      return provisionProviderHome(paths.managedRoot, home).then(() =>
+        reprovisionCodexAuth(home, {
+          ...(seams.machineAuthPath === undefined ? {} : { sourceAuthPath: seams.machineAuthPath() }),
+          ...(newerOnly === undefined ? {} : { newerOnly }),
+        }),
+      )
     },
     async signIn(profileId, signal) {
       refuseWhileAKeyIsSaved()
