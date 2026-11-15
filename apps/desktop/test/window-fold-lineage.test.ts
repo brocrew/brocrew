@@ -148,7 +148,11 @@ it('reuses owner folds when two real worker requests post the same earlier capab
   const second = reader.read({ kind: 'routes', reuse: offered })
   const results = await Promise.all([first, second])
   for (const result of results)
-    expect(routing(result).work!.owners.map((owner) => owner.id).sort()).toEqual(['alpha', 'beta'])
+    expect(
+      routing(result)
+        .work!.owners.map((owner) => owner.id)
+        .sort(),
+    ).toEqual(['alpha', 'beta'])
   expect(measurements).toHaveLength(2)
   expect(measurements.map((one) => one.capability)).toEqual(['match', 'match'])
   expect(measurements.map((one) => one.folds.pieces?.rebuilt ?? 0)).toEqual([0, 0])
@@ -201,14 +205,18 @@ it('discards the lineage when publication recovers from a failed state read', ()
   const prepare = vi.mocked(database.prepare).getMockImplementation()!
   let fail = true
   vi.mocked(database.prepare).mockImplementation((sql) => {
-    if (
-      fail &&
-      sql === "SELECT DISTINCT session_id AS id FROM events WHERE type = 'request_routed'"
-    ) {
-      fail = false
-      throw new Error('Fictional state read failed')
+    const statement = prepare.call(database, sql)
+    if (sql === "SELECT DISTINCT session_id AS id FROM events WHERE type = 'request_routed'") {
+      const iterate = statement.iterate.bind(statement)
+      vi.spyOn(statement, 'iterate').mockImplementation((...args) => {
+        if (fail) {
+          fail = false
+          throw new Error('Fictional state read failed')
+        }
+        return iterate(...args)
+      })
     }
-    return prepare.call(database, sql)
+    return statement
   })
   const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
   const publication = w.read({
@@ -223,13 +231,10 @@ it('discards the lineage when publication recovers from a failed state read', ()
     'window worker could not read changed states',
     expect.objectContaining({ message: 'Fictional state read failed' }),
   )
-  const next = routing(
-    w.read({ kind: 'routes', reuse: { token: cold.cacheToken!, changed: [] } }),
-  )
+  const next = routing(w.read({ kind: 'routes', reuse: { token: cold.cacheToken!, changed: [] } }))
   expect(next.cacheToken).not.toBe(cold.cacheToken)
   expect(new Set(w.rebuilt)).toEqual(new Set(['alpha', 'beta']))
 })
-
 
 it('reuses the current piece fold when the incident turn has no ending', () => {
   const w = world()

@@ -5800,7 +5800,10 @@ export function createSessionStore(
         .get(turn, owner, current)
       if (known === undefined) return []
       const unread = rowsUnreadOnce()
-      const folded = foldPiecesOfSession(owner, unread.in(owner), false, ending?.ordinal)
+      const folded =
+        ending === undefined
+          ? piecesOfSession(owner, unread.in(owner))
+          : foldPiecesOfSession(owner, unread.in(owner), false, ending.ordinal)
       if (unread.count !== 0 || unread.ledgersSkipped !== 0)
         throw new Error('the cut work could not be read')
       const pieces = folded.filter((one) => one.state === 'working').map((one) => one.piece)
