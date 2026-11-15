@@ -403,14 +403,14 @@ export async function replaceARefusedCodexCopy(
               candidate.from === 'the-computers'
                 ? readFileSync(candidate.sourceAuthPath)
                 : fallbackSignIn(candidate.fallback)
+            if (opts.newerOnly && bytes !== null) {
+              const path = candidate.from === 'the-computers' ? candidate.sourceAuthPath : candidate.fallback.path
+              if (statSync(path, { bigint: true }).mtimeNs <= held.mtimeNs) continue
+            }
           } catch {
             continue
           }
           if (bytes === null || bytes.length > CODEX_AUTH_FILE_MAX) continue
-          if (opts.newerOnly) {
-            const path = candidate.from === 'the-computers' ? candidate.sourceAuthPath : candidate.fallback.path
-            if (statSync(path, { bigint: true }).mtimeNs <= held.mtimeNs) continue
-          }
           const text = bytes.toString('utf8')
           const when = codexRefreshedAt(text)
           if (codexAccountOf(text) !== account || when === null || when <= refreshed) continue
