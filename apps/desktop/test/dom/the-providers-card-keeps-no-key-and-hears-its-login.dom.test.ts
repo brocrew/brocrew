@@ -11,7 +11,6 @@ import { clockTimeFrom } from '../../src/shared/clock'
 import type { ProviderCondition } from '../../src/shared/provider-limit'
 import {
   DEFAULT_PROFILE_ID,
-  type ProviderHomesReprovision,
   type ApiKeyChanged,
   type ApiKeyCheck,
   type ApiKeyStatus,
@@ -109,11 +108,6 @@ interface Doors {
   setApiKey?: (input: { provider: string; key: string }) => Promise<ApiKeyChanged>
   removeApiKey?: () => Promise<ApiKeyChanged>
   checkApiKey?: () => Promise<ApiKeyCheck>
-  homeCopyStatus?: () => ProviderHomesReprovision
-  reprovisionProviderHomes?: (input: {
-    provider: string
-    statusOnly?: boolean
-  }) => Promise<ProviderHomesReprovision>
   reprovisionProviderAuth?: () => Promise<'replaced' | 'unchanged'>
 }
 
@@ -147,27 +141,13 @@ function theCard(
   const reprovisionProviderAuth: NonNullable<Doors['reprovisionProviderAuth']> =
     doors.reprovisionProviderAuth ?? (async () => 'replaced')
   const runtime = {
-    reprovisionProviderHomes: vi.fn(async (input: { provider: string; statusOnly?: boolean }) => {
-      if (input.statusOnly)
-        return (
-          doors.homeCopyStatus?.() ?? {
-            replaced: 0,
-            pending: 0,
-            skipped: 0,
-            failed: 0,
-            profiles: [],
-          }
-        )
-      return (
-        doors.reprovisionProviderHomes?.(input) ?? {
-          replaced: 0,
-          pending: 0,
-          skipped: 0,
-          failed: 0,
-          profiles: [],
-        }
-      )
-    }),
+    reprovisionProviderHomes: vi.fn(async () => ({
+      replaced: 0,
+      pending: 0,
+      skipped: 0,
+      failed: 0,
+      profiles: [],
+    })),
     checkProviderAuth: vi.fn(checkProviderAuth),
     apiKeyStatus: vi.fn(apiKeyStatus),
     setApiKey: vi.fn(setApiKey),
@@ -891,108 +871,26 @@ describe('Codex sign-in without a manual bulk action', () => {
     expect(runtime.checkProviderAuth).toHaveBeenCalled()
     expect(runtime.reprovisionProviderHomes).not.toHaveBeenCalled()
   })
-})
 
-describe('copying the machine sign-in for all agents', () => {
-  it('is available while signed in and reports counts, skipped profiles and failures', async () => {
-    const copy = held<ProviderHomesReprovision>()
-    const { m, runtime, authChanged } = theCard(
-      { reprovisionProviderHomes: () => copy.promise },
+  it('keeps individual Codex sign-in and machine-copy controls', async () => {
+    const { m, runtime } = theCard(
+      { checkProviderAuth: async () => SIGNED_OUT },
       { provider: 'codex' },
     )
     await settled()
-    const section = m.q('copy-all-sign-ins')
-    const button = section.querySelector('button')!
-    expect(button.textContent).toContain("Use this Mac's Codex sign-in for all agents")
-    button.click()
+    expect(m.all('sign-in-start')).toHaveLength(1)
+    expect(m.all('sign-in-reprovision')).toHaveLength(1)
+    m.q('sign-in-reprovision').click()
     await settled()
-    expect(button.disabled).toBe(true)
-    expect(runtime.reprovisionProviderHomes).toHaveBeenCalledWith({ provider: 'codex' })
-    copy.answer({
-      replaced: 1,
-      pending: 1,
-      skipped: 1,
-      failed: 1,
-      profiles: [
-        { profileId: 'alpha', state: 'replaced' },
-        { profileId: 'beta', state: 'skipped', reason: 'api-key' },
-        { profileId: 'gamma', state: 'pending' },
-        { profileId: 'delta', state: 'failed', reason: 'copy-failed' },
-      ],
+    expect(runtime.reprovisionProviderAuth).toHaveBeenCalledExactlyOnceWith({
+      provider: 'codex',
+      profileId: DEFAULT_PROFILE_ID,
     })
-    await settled()
-    expect(section.textContent).toContain(
-      '1 switched now, 1 will switch when they finish their current task.',
-    )
-    expect(section.textContent).toContain('beta: Saved API key')
-    expect(section.textContent).toContain('Agents restart automatically between tasks')
-    expect(section.textContent).toContain('delta: Could not copy')
-    expect(button.disabled).toBe(true)
-    expect(authChanged).toEqual([])
+    expect(m.all('copy-all-sign-ins')).toHaveLength(0)
+    expect(runtime.reprovisionProviderHomes).not.toHaveBeenCalled()
   })
 
-  it('updates a pending switch automatically and enables the button when it finishes', async () => {
-    let requested = false
-    const { m } = theCard(
-      {
-        reprovisionProviderHomes: async () => {
-          requested = true
-          return {
-            replaced: 0,
-            pending: 1,
-            skipped: 0,
-            failed: 0,
-            profiles: [{ profileId: 'alpha', state: 'pending' }],
-          }
-        },
-        homeCopyStatus: () =>
-          requested
-            ? {
-                replaced: 1,
-                pending: 0,
-                skipped: 0,
-                failed: 0,
-                profiles: [{ profileId: 'alpha', state: 'replaced' }],
-              }
-            : { replaced: 0, pending: 0, skipped: 0, failed: 0, profiles: [] },
-      },
-      { provider: 'codex' },
-    )
-    await settled()
-    const section = m.q('copy-all-sign-ins')
-    const button = section.querySelector('button')!
-    button.click()
-    await settled()
-    expect(section.textContent).toContain('1 will switch when they finish their current task.')
-    expect(button.disabled).toBe(true)
-    await vi.waitFor(
-      () => {
-        expect(section.textContent).toContain('1 switched now, 0 will switch')
-        expect(button.disabled).toBe(false)
-      },
-      { timeout: 3000 },
-    )
-  })
-
-  it('reports a request failure and enables retry', async () => {
-    const { m } = theCard(
-      {
-        reprovisionProviderHomes: async () => {
-          throw new Error('private details')
-        },
-      },
-      { provider: 'codex' },
-    )
-    await settled()
-    const section = m.q('copy-all-sign-ins')
-    section.querySelector('button')!.click()
-    await settled()
-    expect(section.textContent).toContain('Could not copy the sign-ins. Try again.')
-    expect(section.textContent).not.toContain('private details')
-    expect(section.querySelector('button')!.disabled).toBe(false)
-  })
-
-  it('does not offer the action for a provider without profile sign-ins', async () => {
+  it('does not offer a bulk action for a provider without profile sign-ins', async () => {
     const { m } = theCard()
     await settled()
     expect(m.all('copy-all-sign-ins')).toHaveLength(0)
