@@ -34,7 +34,7 @@ Database.prototype.prepare = function (this: Database.Database, sql: string) {
   const statement = prepare.call(this, sql) as Database.Statement<unknown[], unknown>
   if (!/^\s*(SELECT|WITH)\b/i.test(sql)) return statement
   const history = /\bevents\b/i.test(sql) && /\bpayload\b/i.test(sql)
-  return new Proxy(statement, {
+  const measured: Database.Statement<unknown[], unknown> = new Proxy(statement, {
     get(native, key) {
       if (key === 'iterate')
         return function* (...args: unknown[]) {
@@ -67,9 +67,15 @@ Database.prototype.prepare = function (this: Database.Database, sql: string) {
           return value
         }
       const value: unknown = Reflect.get(native, key, native)
-      return typeof value === 'function' ? value.bind(native) : value
+      return typeof value === 'function'
+        ? (...args: unknown[]) => {
+            const result: unknown = value.apply(native, args)
+            return result === native ? measured : result
+          }
+        : value
     },
   })
+  return measured
 } as typeof prepare
 if (parentPort !== null) {
   const port = parentPort

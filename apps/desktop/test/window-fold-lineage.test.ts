@@ -2,17 +2,22 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { Worker } from 'node:worker_threads'
 import { afterEach, expect, it, vi } from 'vitest'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
 import { WindowReadEngine } from '../src/main/db/window-read-engine'
 import type { WindowReadQuery, WindowReadResult } from '../src/main/db/window-read-protocol'
+import { WindowWorkerReader } from '../src/main/db/window-worker-reader'
+import { bundleAWorker } from './helpers/bundle-a-worker'
+import { observeLedgerFolds } from './helpers/observe-ledger-folds'
+import type { FoldCounts } from './helpers/observed-fold-counts'
 
-const cleanup: (() => void)[] = []
-afterEach(() => {
+const cleanup: (() => void | Promise<void>)[] = []
+afterEach(async () => {
   vi.restoreAllMocks()
-  for (const close of cleanup.splice(0).reverse()) close()
+  for (const close of cleanup.splice(0).reverse()) await close()
 })
 
 function world() {
@@ -79,7 +84,7 @@ function world() {
     heads.length = 0
     return engine.read(query)
   }
-  return { db, store, engine, read, rebuilt, heads }
+  return { db, store, engine, read, rebuilt, heads, folder, file }
 }
 
 function routing(result: WindowReadResult) {
@@ -114,6 +119,41 @@ it('reads each owner generation and newest fold row once per immutable worker sn
   w.read({ kind: 'routes', reuse: { token: cold.cacheToken!, changed: [] } })
   expect(w.heads.sort()).toEqual(['alpha', 'beta'])
   expect(w.rebuilt).toEqual([])
+})
+
+it('reuses owner folds when two real worker requests post the same earlier capability', async () => {
+  const w = world()
+  const bundle = await bundleAWorker(
+    'test/helpers/measured-window-worker.ts',
+    w.folder,
+    'lineage-worker.cjs',
+    [observeLedgerFolds()],
+  )
+  const worker = new Worker(bundle, {
+    workerData: { file: w.file },
+    resourceLimits: { maxOldGenerationSizeMb: 128, maxYoungGenerationSizeMb: 16 },
+  })
+  const reader = new WindowWorkerReader(worker)
+  cleanup.push(() => reader.close())
+  const measurements: { capability: string; folds: Record<string, FoldCounts> }[] = []
+  worker.on('message', (message) => {
+    if (message.type === 'read') measurements.push(message.measurement)
+  })
+  const cold = routing(await reader.read({ kind: 'incidents' }))
+  measurements.length = 0
+  const offered = { token: cold.cacheToken!, changed: [] }
+  const first = reader.read({ kind: 'listing', reuse: offered })
+  const second = reader.read({ kind: 'routes', reuse: offered })
+  const results = await Promise.all([first, second])
+  for (const result of results)
+    expect(routing(result).work!.owners.map((owner) => owner.id).sort()).toEqual(['alpha', 'beta'])
+  expect(measurements).toHaveLength(2)
+  expect(measurements.map((one) => one.capability)).toEqual(['match', 'match'])
+  expect(measurements.map((one) => one.folds.pieces?.rebuilt ?? 0)).toEqual([0, 0])
+  expect(results.map((result) => routing(result).cacheToken)).toEqual([
+    cold.cacheToken,
+    cold.cacheToken,
+  ])
 })
 
 it('rebuilds changed owners and discards the lineage after cancellation or an unknown capability', () => {
