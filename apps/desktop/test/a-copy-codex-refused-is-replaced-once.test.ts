@@ -810,6 +810,30 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       expect(handedOver()).toEqual([MESSAGE])
     })
 
+    it('copies a newer different Mac account after refusal but waits for the person to resume', async () => {
+      aHelperHolding(DEAD)
+      const other = signIn('acct-fictional-b', 'NEW-MAC-ACCOUNT', '2026-10-10T23:00:00Z')
+      accept(DEAD, other)
+      const { sessionId: id } = await start()
+      codex.turnModes.push('held-open')
+      await host.send(id, MESSAGE, watching)
+      Object.assign(codex.handles[0]!, {
+        checkSignIn: async () => held() === digestOf(other),
+      })
+      writeFileSync(machine, other)
+      codex.refuseTheOpenTurn()
+      await vi.waitFor(() => expect(writer.answered).toBeGreaterThanOrEqual(1))
+      await settled()
+      expect(held()).toBe(digestOf(other))
+      expect(starts).toEqual(digests(DEAD))
+      expect(codex.carriedOn).toBe(0)
+      expect(handedOver()).toEqual([MESSAGE])
+
+      await host.resumeSession(id, watching)
+      expect(starts).toEqual(digests(DEAD, other))
+      expect(codex.carriedOn).toBe(0)
+    })
+
     it('⛔ a refused turn reopened on another account’s sign-in carries nothing on, and its reopen asks for the message again', async () => {
       aHelperHolding(DEAD)
       accept(DEAD, ANOTHER_ACCOUNT)
