@@ -363,6 +363,7 @@ export async function replaceARefusedCodexCopy(
   opts: {
     managedRoot: string
     candidates: readonly CodexCopyCandidate[]
+    newerOnly?: boolean
     /** The copy Codex refused, as it stood then. A copy that is no longer that one is left alone. */
     refused: CodexCopyIdentity
     /**
@@ -406,6 +407,10 @@ export async function replaceARefusedCodexCopy(
             continue
           }
           if (bytes === null || bytes.length > CODEX_AUTH_FILE_MAX) continue
+          if (opts.newerOnly) {
+            const path = candidate.from === 'the-computers' ? candidate.sourceAuthPath : candidate.fallback.path
+            if (statSync(path, { bigint: true }).mtimeNs <= held.mtimeNs) continue
+          }
           const text = bytes.toString('utf8')
           const when = codexRefreshedAt(text)
           if (codexAccountOf(text) !== account || when === null || when <= refreshed) continue
