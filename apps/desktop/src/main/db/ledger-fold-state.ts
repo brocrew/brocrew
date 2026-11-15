@@ -126,9 +126,10 @@ export function createLedgerFoldState(
     const head = snapshotHead(sessionId)
     if (head.newest === undefined)
       head.newest =
-        (selectNewestFoldRow.get(sessionId, head.generation) as
-          | { through: number | null }
-          | undefined)?.through ?? null
+        (
+          selectNewestFoldRow.get(sessionId, head.generation) as
+            { through: number | null } | undefined
+        )?.through ?? null
     return { generation: head.generation, newest: head.newest }
   }
 
