@@ -170,7 +170,10 @@ describe('provisionCodexAuth (022)', () => {
 
   it.each([100, 200])('keeps a subscription copy as new as the source (%s)', async (sourceTime) => {
     const dest = join(home, 'auth.json')
-    const rotated = JSON.stringify({ auth_mode: 'chatgpt', tokens: { account_id: 'fictional-rotated' } })
+    const rotated = JSON.stringify({
+      auth_mode: 'chatgpt',
+      tokens: { account_id: 'fictional-rotated' },
+    })
     writeFileSync(dest, rotated)
     utimesSync(dest, 200, 200)
     utimesSync(source, sourceTime, sourceTime)

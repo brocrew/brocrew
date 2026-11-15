@@ -397,7 +397,10 @@ export async function replaceARefusedCodexCopy(
                 ? readFileSync(candidate.sourceAuthPath)
                 : fallbackSignIn(candidate.fallback)
             if (opts.newerOnly && bytes !== null) {
-              const path = candidate.from === 'the-computers' ? candidate.sourceAuthPath : candidate.fallback.path
+              const path =
+                candidate.from === 'the-computers'
+                  ? candidate.sourceAuthPath
+                  : candidate.fallback.path
               if (statSync(path, { bigint: true }).mtimeNs <= held.mtimeNs) continue
             }
           } catch {

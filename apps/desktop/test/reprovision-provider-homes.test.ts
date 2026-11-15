@@ -220,7 +220,9 @@ describe('copying this install’s provider sign-ins', () => {
 
     await host.send(current.sessionId, 'use the newer fictional sign-in', sink)
 
-    await vi.waitFor(() => expect(copy).toHaveBeenCalledWith('codex', 'alpha', true, expect.any(Function)))
+    await vi.waitFor(() =>
+      expect(copy).toHaveBeenCalledWith('codex', 'alpha', true, expect.any(Function)),
+    )
     await vi.waitFor(() => expect(launches).toBe(2))
     await vi.waitFor(() =>
       expect(messages.some((one) => one.event.type === 'permission_request')).toBe(true),
@@ -229,14 +231,22 @@ describe('copying this install’s provider sign-ins', () => {
     expect(host.sessionIds).toContain(current.sessionId)
     await host.respondPermission(current.sessionId, 'turn_1_perm', { outcome: 'allow' }, sink)
     await vi.waitFor(() =>
-      expect(messages.some((one) => one.event.type === 'turn' && one.event.state === 'completed')).toBe(true),
+      expect(
+        messages.some((one) => one.event.type === 'turn' && one.event.state === 'completed'),
+      ).toBe(true),
     )
     fresh = true
     await host.send(current.sessionId, 'check the machine sign-in again for this turn', sink)
     await vi.waitFor(() => expect(copy).toHaveBeenCalledTimes(2))
     await vi.waitFor(() => expect(launches).toBe(3))
     await vi.waitFor(() =>
-      expect(messages.some((one) => one.event.type === 'user_turn' && one.event.text === 'check the machine sign-in again for this turn')).toBe(true),
+      expect(
+        messages.some(
+          (one) =>
+            one.event.type === 'user_turn' &&
+            one.event.text === 'check the machine sign-in again for this turn',
+        ),
+      ).toBe(true),
     )
   })
 
@@ -272,7 +282,9 @@ describe('copying this install’s provider sign-ins', () => {
     await host.endPlanMode(current.sessionId, sink, goAhead)
     await vi.waitFor(() => expect(launches).toBe(2))
     await vi.waitFor(() =>
-      expect(messages.some((one) => one.event.type === 'user_turn' && one.event.text === goAhead)).toBe(true),
+      expect(
+        messages.some((one) => one.event.type === 'user_turn' && one.event.text === goAhead),
+      ).toBe(true),
     )
     expect(copy).toHaveBeenCalledTimes(1)
   })

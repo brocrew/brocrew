@@ -3,7 +3,15 @@ import type { RuntimeHostDeps } from '../src/main/runtime/host-dependencies'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import type { UserTurnEvent } from '../src/shared/human-answer-contracts'
 import { createHash } from 'node:crypto'
-import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
