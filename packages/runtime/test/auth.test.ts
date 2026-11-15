@@ -136,6 +136,7 @@ describe('claudeKeychainTokenProvider (022)', () => {
 })
 
 describe('provisionCodexAuth (022)', () => {
+  const subscription = JSON.stringify({ tokens: { account_id: 'fictional-machine' } })
   let home: string
   let sourceDir: string
   let source: string
@@ -151,7 +152,22 @@ describe('provisionCodexAuth (022)', () => {
     rmSync(sourceDir, { recursive: true, force: true })
   })
 
+  it.each(['{', '{}', '{"tokens":{}}'])('keeps a working copy when the newer machine account is unreadable (%s)', async (incoming) => {
+    const dest = join(home, 'auth.json')
+    writeFileSync(dest, subscription)
+    writeFileSync(source, incoming)
+    utimesSync(dest, 100, 100)
+    utimesSync(source, 200, 200)
+
+    expect(aNewerCodexSignInIsAvailable(home, source)).toBe(false)
+    expect(await reprovisionCodexAuth(home, { sourceAuthPath: source, newerOnly: true })).toBe(
+      'unchanged',
+    )
+    expect(signInAt(dest)).toBe(digestOf(subscription))
+  })
+
   it('does not request a server stop for identical sign-in bytes with a newer source timestamp', async () => {
+    writeFileSync(source, subscription)
     const dest = join(home, 'auth.json')
     writeFileSync(dest, readFileSync(source))
     utimesSync(dest, 100, 100)
@@ -183,6 +199,7 @@ describe('provisionCodexAuth (022)', () => {
   })
 
   it.each([100, 200])('keeps a subscription copy as new as the source (%s)', async (sourceTime) => {
+    writeFileSync(source, subscription)
     const dest = join(home, 'auth.json')
     const rotated = JSON.stringify({
       auth_mode: 'chatgpt',
@@ -201,6 +218,7 @@ describe('provisionCodexAuth (022)', () => {
   })
 
   it('leaves an API-key home unchanged even when the machine sign-in is newer', async () => {
+    writeFileSync(source, subscription)
     const dest = join(home, 'auth.json')
     const key = JSON.stringify({ auth_mode: 'apikey', OPENAI_API_KEY: 'fictional-test-key' })
     writeFileSync(dest, key)
@@ -213,6 +231,7 @@ describe('provisionCodexAuth (022)', () => {
   })
 
   it('keeps an agent rotation that happened while the copy waited for the home lock', async () => {
+    writeFileSync(source, subscription)
     const dest = join(home, 'auth.json')
     writeFileSync(dest, '{"tokens":{"account_id":"fictional-before"}}')
     utimesSync(dest, 50, 50)
