@@ -10,31 +10,20 @@ import { SkillsRequest } from '../../shared/skills-window'
 import { SharedSkillLibrary } from './shared-library'
 import type { VerifiedBuiltInSkills } from './built-in-catalogue'
 import { nodeFs, writeAtomically } from '../recovery/files'
-import { creationAllowedSkills } from './built-in-catalogue'
 import { foldProfileName } from '../db/identity'
 import type { SessionStore } from '../db/session-store'
-import { DEFAULT_PROFILE_ID } from '../runtime/provider-homes'
 
 export interface ProfileSkillAccess {
   readonly profileId: string
-  readonly canCreateAgents: boolean
-  readonly isCoordinator: boolean
 }
 
-/** Read existing grants without creating an identity or accepting grants from a window. */
+/** Resolve an existing profile without creating an identity from a window request. */
 export function profileSkillAccess(
   store: Pick<SessionStore, 'capabilitiesOf'>,
   profileId: string,
 ): ProfileSkillAccess | null {
   const profile = foldProfileName(profileId)
-  const grants = store.capabilitiesOf(profile)
-  return grants === null
-    ? null
-    : {
-        profileId: profile,
-        canCreateAgents: grants.canCreateAgents === 'any',
-        isCoordinator: profile === DEFAULT_PROFILE_ID,
-      }
+  return store.capabilitiesOf(profile) === null ? null : { profileId: profile }
 }
 
 const oneLine = (text: string, limit: number): string =>
@@ -238,25 +227,18 @@ export class SharedSkillDiscovery {
     return skills
   }
   /** A read-only page uses bounded headers, never the full-body or conversion paths. */
-  private async profileMetadata(
-    access: ProfileSkillAccess,
-  ): Promise<readonly ProfileSkillMetadata[]> {
+  private async profileMetadata(): Promise<readonly ProfileSkillMetadata[]> {
     await this.ready
     if (this.closed)
       throw new Error(`${this.library.active}: shared skill discovery is closed or unavailable`)
     const bundle = this.shipped()
-    const selected = new Set(
-      creationAllowedSkills(bundle.catalogue, access.canCreateAgents, access.isCoordinator).map(
-        (one) => one.name,
-      ),
-    )
     const skills: ProfileSkillMetadata[] = bundle.catalogue.skills.map((one) => ({
       folder: one.name,
       name: one.name,
       description: one.description,
       builtIn: true,
       enabled: true,
-      given: selected.has(one.name),
+      given: true,
     }))
     for (const [root, enabled] of [
       [this.library.active, true],
@@ -312,7 +294,7 @@ export class SharedSkillDiscovery {
       if (!this.access) return { operation: 'refused', reason: 'source-unavailable' }
       const access = this.access(parsed.data.profileId)
       if (!access) return { operation: 'refused', reason: 'identity' }
-      const skills = await this.profileMetadata(access)
+      const skills = await this.profileMetadata()
       const offset = parsed.data.offset ?? 0
       return {
         operation: 'profile-list',

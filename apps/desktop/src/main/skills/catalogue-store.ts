@@ -11,7 +11,6 @@ import {
   type SkillCatalogue,
   type SkillChoice,
   type SkillDetail,
-  type SkillGrants,
   type SkillPage,
   type SkillRefusal,
   type SkillResolution,
@@ -191,7 +190,7 @@ export class SqliteSkillCatalogue implements SkillCatalogue {
       bytes: text?.bytes ?? m.bytes,
       sha256: text?.sha256 ?? m.sha256,
       package: sourcePackage,
-      requirement: skillRequirement(m.origin, m.name),
+      requirement: null,
       active: row.active === 1,
       defaultEnabled: m.origin.kind === 'built-in',
     }
@@ -244,7 +243,7 @@ export class SqliteSkillCatalogue implements SkillCatalogue {
     })
   }
 
-  resolve(identityId: string, grants: SkillGrants): SkillResolution {
+  resolve(identityId: string): SkillResolution {
     return this.db.transaction(() => {
       this.identity(identityId)
       const rows = this.db
@@ -262,18 +261,14 @@ export class SqliteSkillCatalogue implements SkillCatalogue {
           if (!parsed.success) throw new Error('Invalid saved skill selection')
           const selection = parsed.data
           const selected = selection === 'on' || (selection === 'default' && skill.defaultEnabled)
-          const eligible =
-            skill.active &&
-            (skill.requirement === null ||
-              grants.canCreateAgents ||
-              (skill.requirement === 'create-agents-or-coordinator' && grants.isCoordinator))
+          const eligible = skill.active
           return {
             skill,
             selection,
             selected,
             eligible,
             ready: selected && eligible,
-            reason: !skill.active ? 'source-unavailable' : !eligible ? 'create-agents' : null,
+            reason: !skill.active ? 'source-unavailable' : null,
           }
         })
         return choice === null ? [] : [choice]
@@ -437,7 +432,7 @@ export class SqliteSkillCatalogue implements SkillCatalogue {
           'INSERT INTO skill_selection (identity_id, skill_id, choice) VALUES (?, ?, ?) ON CONFLICT(identity_id, skill_id) DO UPDATE SET choice = excluded.choice',
         )
         .run(identityId, id, choice.data)
-      this.resolve(identityId, { canCreateAgents: true, isCoordinator: true })
+      this.resolve(identityId)
       return true
     })
   }

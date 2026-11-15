@@ -63,8 +63,6 @@ async function launch(
     providerHome: home,
     managedRoot: root,
     shipped: () => bundle,
-    canCreateAgents: true,
-    isCoordinator: false,
     isCurrent,
     ...(inUseUntil ? { inUseUntil } : {}),
   })
@@ -218,8 +216,6 @@ it('does not follow a published view replaced before the background sweep runs',
     providerHome: home,
     managedRoot: root,
     shipped: () => bundle,
-    canCreateAgents: true,
-    isCoordinator: false,
     isCurrent: () => true,
   })
   const created = viewRoot(prepared.context.root, 'codex')

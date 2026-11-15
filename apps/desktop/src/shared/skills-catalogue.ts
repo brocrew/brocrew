@@ -84,10 +84,6 @@ export interface SkillResolution {
   readonly identityId: string
   readonly choices: readonly SkillChoice[]
 }
-export interface SkillGrants {
-  readonly canCreateAgents: boolean
-  readonly isCoordinator: boolean
-}
 export type SkillRefusal =
   | 'invalid'
   | 'duplicate-name'
@@ -107,7 +103,7 @@ export type SkillRefusal =
 export interface SkillCatalogue {
   list(offset?: number, limit?: number): SkillPage
   detail(id: string, versionId?: string): SkillDetail | null
-  resolve(identityId: string, grants: SkillGrants): SkillResolution
+  resolve(identityId: string): SkillResolution
   savePersonal(
     draft: SkillDraft,
     expectedRevision: number,

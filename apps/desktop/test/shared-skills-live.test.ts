@@ -141,8 +141,6 @@ it('lists good neighbors and names a broken linked folder in both shared and pro
   service.close()
   service = new SharedSkillDiscovery(root, Promise.resolve(), shipped, undefined, (profileId) => ({
     profileId,
-    canCreateAgents: true,
-    isCoordinator: false,
   }))
   const good = join(root, 'skills', 'good')
   await mkdir(good, { recursive: true })

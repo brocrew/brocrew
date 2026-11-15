@@ -15,7 +15,6 @@ import { type Provider } from '@brobot2/shared'
 import { BUILT_IN_SKILLS_FAILURE, BUILT_IN_SKILL_NAMES } from '../../shared/built-in-skills'
 import {
   builtInSkillReminders,
-  creationAllowedSkills,
   verifyBuiltInSkills,
   type VerifiedBuiltInSkills,
 } from './built-in-catalogue'
@@ -103,9 +102,6 @@ export async function prepareBuiltInSkills(input: {
   shipped: () => VerifiedBuiltInSkills
   /** The skills a text pack gives, already held to the shipped catalogue's rules. */
   skills?: VerifiedBuiltInSkills
-  allShipped?: boolean
-  canCreateAgents: boolean
-  isCoordinator: boolean
   selection?: Pick<SkillLaunchSelection, 'revision' | 'skills'>
   isCurrent: () => boolean
   /** Settles only after the provider is confirmed stopped, including a slow close. */
@@ -113,18 +109,7 @@ export async function prepareBuiltInSkills(input: {
 }): Promise<PreparedBuiltInSkills> {
   try {
     const bundle = input.skills ?? input.shipped()
-    const selected = input.allShipped
-      ? bundle.catalogue.skills
-      : creationAllowedSkills(bundle.catalogue, input.canCreateAgents, input.isCoordinator)
-    if (
-      input.selection?.skills.some(
-        (skill) =>
-          skill.requirement !== null &&
-          !input.canCreateAgents &&
-          !(skill.requirement === 'create-agents-or-coordinator' && input.isCoordinator),
-      )
-    )
-      throw new Error('Skill grant is no longer available.')
+    const selected = bundle.catalogue.skills
     const expanded = input.selection
       ? selectedSkillView(
           input.provider,

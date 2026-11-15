@@ -17,18 +17,17 @@ import { SqliteSkillCatalogue, skillAlias } from '../src/main/skills/catalogue-s
 import { readBuiltInSkills, prepareBuiltInSkills } from '../src/main/skills/prepare-built-in-skills'
 import { launchSkillSelections } from '../src/main/skills/launch-selection'
 import { selectedSkillView } from '../src/main/skills/selected-skill-view'
-import { verifyBuiltInSkills, creationAllowedSkills } from '../src/main/skills/built-in-catalogue'
+import { verifyBuiltInSkills } from '../src/main/skills/built-in-catalogue'
 import { registerCodexBuiltInSkills } from '../../../packages/runtime/src/codex/built-in-skills'
 import { verifyClaudeBuiltInSkills } from '../../../packages/runtime/src/claude/built-in-skills'
 import { validateBuiltInSkills } from '../../../packages/runtime/src/built-in-skills'
-import type { SkillDetail, SkillGrants } from '../src/shared/skills-catalogue'
+import type { SkillDetail } from '../src/shared/skills-catalogue'
 
 const resources = resolve(import.meta.dirname, '../resources/built-in-skills')
 const migrations = resolve(import.meta.dirname, '../src/main/db/migrations')
 const shipped = () => readBuiltInSkills(resources)
 const hash = (body: string) => createHash('sha256').update(body).digest('hex')
 const id = 'aid:recipe-writer'
-const grants = { canCreateAgents: true, isCoordinator: false }
 function draft(
   name: string,
   text = 'Check the fictional recipe.',
@@ -102,53 +101,40 @@ function legacyPlugin(pluginId: string, source: ReturnType<typeof draft>) {
 describe.each(['claude', 'codex'] as const)(
   'the selected %s launch view in a fictional home',
   (provider) => {
-    function prepare(currentGrants: SkillGrants = grants, current?: () => boolean) {
-      const selection = select('recipe-writer', currentGrants)
+    function prepare() {
+      const selection = select('recipe-writer')
       return prepareBuiltInSkills({
         provider,
         managedRoot: root,
         providerHome: home,
         shipped,
-        ...currentGrants,
         selection,
-        isCurrent: () => selection.isCurrent() && (current?.() ?? true),
+        isCurrent: selection.isCurrent,
       })
     }
-    it.each([
-      { canCreateAgents: false, isCoordinator: false },
-      { canCreateAgents: false, isCoordinator: true },
-      grants,
-    ])(
-      'keeps unchanged defaults for $canCreateAgents creation and $isCoordinator coordination',
-      async (currentGrants) => {
-        const legacy = await prepareBuiltInSkills({
-          provider,
-          managedRoot: root,
-          providerHome: home,
-          shipped,
-          ...currentGrants,
-          isCurrent: () => true,
-        })
-        const selected = await prepare(currentGrants)
-        expect(selected.context.skills.map((one) => [one.name, one.description])).toEqual(
-          legacy.context.skills.map((one) => [one.name, one.description]),
-        )
-        expect(selected.reminder).toBe(legacy.reminder)
-        for (const [index, item] of selected.context.skills.entries()) {
-          const old = legacy.context.skills[index]
-          if (!old) throw new Error('Missing fictional launch entry')
-          expect(readFileSync(item.path, 'utf8')).toBe(readFileSync(old.path, 'utf8'))
-        }
-        expect(selected.context.skills.map((one) => one.name.replace(/^brobot:/, ''))).toEqual(
-          creationAllowedSkills(
-            shipped().catalogue,
-            currentGrants.canCreateAgents,
-            currentGrants.isCoordinator,
-          ).map((one) => one.name),
-        )
-        expect(selected.versions).toHaveLength(legacy.context.skills.length)
-      },
-    )
+    it('keeps unchanged shipped defaults for the selected launch', async () => {
+      const legacy = await prepareBuiltInSkills({
+        provider,
+        managedRoot: root,
+        providerHome: home,
+        shipped,
+        isCurrent: () => true,
+      })
+      const selected = await prepare()
+      expect(selected.context.skills.map((one) => [one.name, one.description])).toEqual(
+        legacy.context.skills.map((one) => [one.name, one.description]),
+      )
+      expect(selected.reminder).toBe(legacy.reminder)
+      for (const [index, item] of selected.context.skills.entries()) {
+        const old = legacy.context.skills[index]
+        if (!old) throw new Error('Missing fictional launch entry')
+        expect(readFileSync(item.path, 'utf8')).toBe(readFileSync(old.path, 'utf8'))
+      }
+      expect(selected.context.skills.map((one) => one.name.replace(/^brobot:/, ''))).toEqual(
+        shipped().catalogue.skills.map((one) => one.name),
+      )
+      expect(selected.versions).toHaveLength(legacy.context.skills.length)
+    })
     it('publishes an existing empty discovery root and verifies exactly zero owned skills', async () => {
       for (const skill of catalogue.list().items) catalogue.select(id, skill.id, 'off', revision())
       const prepared = await prepare()
@@ -284,14 +270,13 @@ describe.each(['claude', 'codex'] as const)(
       },
     )
     it('keeps the captured choice during launch and applies a toggle at the next launch', async () => {
-      const selection = select('recipe-writer', grants)
+      const selection = select('recipe-writer')
       let checks = 0
       const first = await prepareBuiltInSkills({
         provider,
         managedRoot: root,
         providerHome: home,
         shipped,
-        ...grants,
         selection,
         isCurrent: () => {
           if (++checks === 3) catalogue.select(id, 'built-in/remember', 'off', revision())
@@ -303,13 +288,12 @@ describe.each(['claude', 'codex'] as const)(
           (one) => one.name === `${provider === 'claude' ? 'brobot:' : ''}remember`,
         ),
       ).toBe(true)
-      const next = select('recipe-writer', grants)
+      const next = select('recipe-writer')
       const second = await prepareBuiltInSkills({
         provider,
         managedRoot: root,
         providerHome: home,
         shipped,
-        ...grants,
         selection: next,
         isCurrent: next.isCurrent,
       })
@@ -320,7 +304,7 @@ describe.each(['claude', 'codex'] as const)(
       ).toBe(false)
     })
     it('cancels actual copying without publishing a view', async () => {
-      const selection = select('recipe-writer', grants)
+      const selection = select('recipe-writer')
       let checks = 0
       await expect(
         prepareBuiltInSkills({
@@ -328,7 +312,6 @@ describe.each(['claude', 'codex'] as const)(
           managedRoot: root,
           providerHome: home,
           shipped,
-          ...grants,
           selection,
           isCurrent: () => ++checks < 3,
         }),
@@ -336,19 +319,18 @@ describe.each(['claude', 'codex'] as const)(
     })
     it('keeps a captured empty choice and applies later changes only on the next launch', async () => {
       for (const skill of catalogue.list().items) catalogue.select(id, skill.id, 'off', revision())
-      const selection = select('recipe-writer', grants)
+      const selection = select('recipe-writer')
       catalogue.select(id, 'built-in/remember', 'on', revision())
       const first = await prepareBuiltInSkills({
         provider,
         managedRoot: root,
         providerHome: home,
         shipped,
-        ...grants,
         selection,
         isCurrent: selection.isCurrent,
       })
       expect(first.context.skills).toHaveLength(0)
-      const next = select('recipe-writer', grants)
+      const next = select('recipe-writer')
       expect(
         (
           await prepareBuiltInSkills({
@@ -356,7 +338,6 @@ describe.each(['claude', 'codex'] as const)(
             managedRoot: root,
             providerHome: home,
             shipped,
-            ...grants,
             selection: next,
             isCurrent: next.isCurrent,
           })
@@ -369,13 +350,12 @@ describe.each(['claude', 'codex'] as const)(
       bodies.set('delegate', bodies.get('delegate')! + '\nA valid changed shipped instruction.\n')
       const edited = verifyBuiltInSkills(original.catalogue, bodies)
       const choose = launchSkillSelections(db, () => edited)
-      const selection = choose('recipe-writer', grants)
+      const selection = choose('recipe-writer')
       const installed = await prepareBuiltInSkills({
         provider,
         managedRoot: root,
         providerHome: home,
         shipped: () => edited,
-        ...grants,
         selection,
         isCurrent: selection.isCurrent,
       })
@@ -405,14 +385,13 @@ describe.each(['claude', 'codex'] as const)(
         },
         bodies,
       )
-      const selection = select('recipe-writer', grants)
+      const selection = select('recipe-writer')
       const prepared = await prepareBuiltInSkills({
         provider,
         managedRoot: root,
         providerHome: home,
         shipped,
         skills: pack,
-        ...grants,
         selection,
         isCurrent: selection.isCurrent,
       })
@@ -441,18 +420,18 @@ describe.each(['claude', 'codex'] as const)(
     })
   },
 )
-it('keeps new/anonymous defaults grant-limited and detects a newly replaced identity', () => {
+it('keeps new/anonymous defaults and detects a newly replaced identity', () => {
   for (const name of ['new-recipe-writer', null]) {
-    const selection = select(name, { canCreateAgents: false, isCoordinator: false })
-    expect(selection.skills).toHaveLength(6)
+    const selection = select(name)
+    expect(selection.skills).toHaveLength(8)
     expect(
       selection.skills.some(
         (one) => one.name === 'build-a-team' || one.name === 'add-a-capability',
       ),
-    ).toBe(false)
+    ).toBe(true)
     expect(selection.isCurrent()).toBe(true)
   }
-  const selection = select('new-recipe-writer', grants)
+  const selection = select('new-recipe-writer')
   db.prepare('INSERT INTO agent_identity (id, slug, created_at) VALUES (?, ?, ?)').run(
     'aid:new-recipe-writer',
     'new-recipe-writer',
@@ -503,7 +482,6 @@ it.each(['claude', 'codex'] as const)(
       managedRoot: root,
       providerHome: home,
       shipped,
-      ...grants,
       selection: { revision: 1, skills },
       isCurrent: () => true,
     })
@@ -537,7 +515,6 @@ it.each(['claude', 'codex'] as const)(
         managedRoot: root,
         providerHome: home,
         shipped,
-        ...grants,
         selection: { revision: 1, skills: [...skills, personalSource(64)] },
         isCurrent: () => true,
       }),
@@ -557,9 +534,6 @@ it('the shared-folder flow keeps every app-owned built-in without per-agent choi
     providerHome: home,
     managedRoot: root,
     shipped,
-    canCreateAgents: false,
-    isCoordinator: false,
-    allShipped: true,
     isCurrent: () => true,
   })
   expect(prepared.context.skills).toHaveLength(8)

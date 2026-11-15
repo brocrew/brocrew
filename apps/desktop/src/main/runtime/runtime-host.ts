@@ -282,10 +282,7 @@ import type {
   MoveRequestAck,
   DecideMoveRequestInput,
 } from '../../shared/move-contracts'
-import {
-  BUILT_IN_SKILLS_FAILURE,
-  permittedInstalledSkillReminders,
-} from '../../shared/built-in-skills'
+import { BUILT_IN_SKILLS_FAILURE } from '../../shared/built-in-skills'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { returnedDocumentIndex } from '../resources/returned-document-index'
 import type { ConversationProviderBlock } from '../../shared/runtime-ipc'
@@ -3587,7 +3584,7 @@ const A_SERVICE_IT_MAY_BE =
 /** A service's conversation whose delete could not be noted first, so nothing was deleted. */
 const A_SERVICE_IT_STAYS = 'Not deleted: the services list could not be saved.'
 
-/** Why words kept for a service that is not running wait, while services are off. */
+/** Why held words wait when a service is off. */
 const THEY_WAIT_FOR_SERVICES = 'It waits until services are on.'
 
 /** Why a start of a service's conversation that no person's window asks for is not made. */
@@ -19946,42 +19943,20 @@ export class RuntimeHost implements LiveHost {
     pack: TextPackRead | undefined,
   ): Promise<PreparedBuiltInSkills | undefined> {
     if (!this.deps.prepareBuiltInSkills) return undefined
-    const permissions = () => {
-      const grants =
-        profileId === null
-          ? null
-          : (this.deps.store.capabilitiesOf(foldProfileName(profileId)) ?? DEFAULT_CAPABILITIES)
-      return {
-        canCreateAgents: grants?.canCreateAgents === 'any',
-        isCoordinator: profileId === DEFAULT_PROFILE_ID,
-      }
-    }
     const sharedRoot = await this.deps.sharedSkillsRoot?.()
     if (sharedRoot) await this.deps.prepareSharedSkills?.()
-    const selected = permissions()
     let selection: SkillLaunchSelection | undefined
     try {
       selection = this.deps.readSelectedSkills?.(
         profileId === null ? null : foldProfileName(profileId),
-        selected,
       )
     } catch (cause) {
       throw new Error(`${BUILT_IN_SKILLS_FAILURE} ${String(cause)}`, { cause })
     }
     const isCurrent = () => {
-      const current = permissions()
-      const grantsRemain = selection
-        ? selection.skills.every(
-            (skill) =>
-              skill.requirement === null ||
-              current.canCreateAgents ||
-              (skill.requirement === 'create-agents-or-coordinator' && current.isCoordinator),
-          )
-        : !selected.canCreateAgents || current.canCreateAgents
       return (
         this.whyNotOurs(slot) === null &&
         !slot.launch.signal.aborted &&
-        grantsRemain &&
         (selection?.isCurrent() ?? true)
       )
     }
@@ -19989,7 +19964,6 @@ export class RuntimeHost implements LiveHost {
       provider,
       providerHome,
       ...(selection ? { selection } : {}),
-      ...selected,
       isCurrent,
       inUseUntil: slot.launch.settled,
       ...(pack ? { pack } : {}),
@@ -21459,13 +21433,7 @@ export class RuntimeHost implements LiveHost {
       )
     )
       return context
-    const grants =
-      this.deps.store.capabilitiesOf(foldProfileName(session.profileId)) ?? DEFAULT_CAPABILITIES
-    const reminders = permittedInstalledSkillReminders(
-      session.builtInSkills.reminder,
-      grants.canCreateAgents === 'any',
-      session.profileId === DEFAULT_PROFILE_ID,
-    )
+    const reminders = session.builtInSkills.reminder
     return reminders === '' ? context : `${context}\n${reminders}`
   }
 
@@ -41261,13 +41229,9 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * ⚑ **Why words held for this conversation wait** — for its reopen on the current sign-in
-   * ({@link whyItWaitsForItsSignIn}), for a person to answer what its turn is stopped on
-   * ({@link whyItWaitsForAPerson}), or (F074) for its provider's usage limit to reset
-   * ({@link whyItWaitsForItsLimit}), or for services to be on ({@link whyItWaitsForServices}) — or
-   * `null`: they wait only until it is free.
-   * ⚑ `itsStopIsSaid`: the reader already says what its turn is stopped on (`list_tasks` beside the
-   * holder's card), so only what else holds the words is said.
+   * Why held words wait for services, sign-in, a person's answer or a provider usage reset.
+   * Null means the conversation only needs to become free. `itsStopIsSaid` avoids repeating
+   * a stop already shown beside the holder's card in `list_tasks`.
    */
   whyWhatIsHeldWaits(sessionId: string, itsStopIsSaid = false): string | null {
     return (
@@ -41278,11 +41242,7 @@ export class RuntimeHost implements LiveHost {
     )
   }
 
-  /**
-   * Why words kept for a service wait while services are off: nothing starts it until a person turns
-   * them on. Only where it is neither running nor starting, and something waits for its start.
-   * ⛔ It never throws.
-   */
+  /** Explain held words for an off service that is neither running nor starting. */
   private whyItWaitsForServices(sessionId: string): string | null {
     const id = this.theOneInItsPlace(sessionId)
     if (this.servicesAreOn()) return null

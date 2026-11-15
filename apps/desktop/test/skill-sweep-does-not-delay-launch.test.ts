@@ -64,8 +64,6 @@ function launch(provider: 'claude' | 'codex' = 'codex') {
     providerHome: home,
     managedRoot: root,
     shipped: () => bundle,
-    canCreateAgents: true,
-    isCoordinator: false,
     isCurrent: () => true,
   })
 }

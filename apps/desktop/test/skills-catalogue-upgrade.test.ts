@@ -128,7 +128,7 @@ describe('skills follow the database upgrade and recovery boundary', () => {
     applyMigrations(db, migrations)
     expect(
       new SqliteSkillCatalogue(db, source())
-        .resolve('aid:recipe-worker', { canCreateAgents: true, isCoordinator: false })
+        .resolve('aid:recipe-worker')
         .choices.find((one) => one.skill.id === 'built-in/delegate')?.selection,
     ).toBe('off')
   })
@@ -226,9 +226,8 @@ describe('skills follow the database upgrade and recovery boundary', () => {
     expect(catalogue.detail(first.id)?.body).toBe(second.body)
     expect(catalogue.detail(first.id, first.versionId)?.body).toBe(first.body)
     expect(
-      catalogue
-        .resolve('aid:recipe-worker', { canCreateAgents: true, isCoordinator: false })
-        .choices.find((one) => one.skill.id === first.id)?.selection,
+      catalogue.resolve('aid:recipe-worker').choices.find((one) => one.skill.id === first.id)
+        ?.selection,
     ).toBe('off')
   })
   it('real checkpoint restore and return keep source bodies and choices from the same database', async () => {
@@ -276,7 +275,7 @@ describe('skills follow the database upgrade and recovery boundary', () => {
       const result = {
         body: view.detail(first.id)?.body,
         selection: view
-          .resolve('aid:recipe-worker', { canCreateAgents: true, isCoordinator: false })
+          .resolve('aid:recipe-worker')
           .choices.find((one) => one.skill.id === first.id)?.selection,
       }
       db.close()

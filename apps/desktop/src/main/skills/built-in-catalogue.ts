@@ -87,7 +87,7 @@ export const BuiltInSkillCatalogueSchema = z
   ])
   .pipe(neutralCatalogue)
 
-export type BuiltInSkillCatalogue = z.infer<typeof BuiltInSkillCatalogueSchema>
+type BuiltInSkillCatalogue = z.infer<typeof BuiltInSkillCatalogueSchema>
 export type BuiltInSkill = BuiltInSkillCatalogue['skills'][number]
 
 export function builtInSkillReminders(provider: Provider, skills: readonly BuiltInSkill[]): string {
@@ -144,17 +144,4 @@ export function verifyBuiltInSkills(
     }
   }
   return { catalogue, digest: skillDigest(JSON.stringify(catalogue)), bodies: new Map(bodies) }
-}
-
-/** Creation is checked again by the tool; this controls only what the launch offers. */
-export function creationAllowedSkills(
-  catalogue: BuiltInSkillCatalogue,
-  canCreateAgents: boolean,
-  isCoordinator = false,
-): readonly BuiltInSkill[] {
-  return catalogue.skills.filter((item) => {
-    if (item.name === 'build-a-team') return canCreateAgents
-    if (item.name === 'add-a-capability') return isCoordinator || canCreateAgents
-    return true
-  })
 }

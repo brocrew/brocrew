@@ -70,7 +70,6 @@ afterEach(() => {
   rmSync(folder, { recursive: true, force: true })
 })
 const revision = () => catalogue.list().revision
-const capable = { canCreateAgents: true, isCoordinator: false }
 
 describe('the SQLite skills catalogue', () => {
   it('seeds exactly the eight shipped v24 files and preserves the source bytes', () => {
@@ -95,6 +94,55 @@ describe('the SQLite skills catalogue', () => {
     new SqliteSkillCatalogue(db, shipped())
     expect(revision()).toBe(1)
   })
+  it('reuses old built-in requirement rows without relaxing version conflicts', () => {
+    const source = shipped()
+    const withVersion = (version: string) =>
+      verifyBuiltInSkills({ ...source.catalogue, version }, source.bodies)
+    const insertOldRow = (
+      version: string,
+      name: 'build-a-team' | 'add-a-capability',
+      requirement: 'create-agents' | 'create-agents-or-coordinator' | null,
+      alteredBody = false,
+    ) => {
+      const id = `built-in/${name}`
+      const old = db
+        .prepare('SELECT metadata, body FROM skill_version WHERE skill_id=? AND version_key=?')
+        .get(id, 'v24') as { metadata: string; body: string }
+      const body = alteredBody ? `${old.body}\n` : old.body
+      const bytes = Buffer.byteLength(body)
+      const sha256 = digest(body)
+      const metadata = { ...JSON.parse(old.metadata), version, requirement, bytes, sha256 }
+      db.prepare(
+        'INSERT INTO skill_version (id, skill_id, version_key, metadata, body, sha256, bytes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      ).run(
+        `${id}@${digest(version)}`,
+        id,
+        version,
+        JSON.stringify(metadata),
+        body,
+        sha256,
+        bytes,
+        1,
+      )
+    }
+    insertOldRow('v23', 'build-a-team', 'create-agents')
+    insertOldRow('v23', 'add-a-capability', 'create-agents-or-coordinator')
+    catalogue.seedBuiltins(withVersion('v23'))
+    for (const name of ['build-a-team', 'add-a-capability'] as const) {
+      expect(catalogue.detail(`built-in/${name}`)).toMatchObject({
+        version: 'v23',
+        requirement: null,
+      })
+      expect(catalogue.detail(`built-in/${name}`)?.body).toBe(source.bodies.get(name))
+    }
+    const stableRevision = revision()
+    insertOldRow('v22', 'build-a-team', null)
+    refused(() => catalogue.seedBuiltins(withVersion('v22')), 'version-conflict')
+    insertOldRow('v21', 'build-a-team', 'create-agents', true)
+    refused(() => catalogue.seedBuiltins(withVersion('v21')), 'version-conflict')
+    expect(revision()).toBe(stableRevision)
+    expect(catalogue.detail('built-in/build-a-team')?.version).toBe('v23')
+  })
   it('keeps an omitted built-in source and choice, but never offers it as ready', () => {
     const legacy = draft('recipe-check')
     const id = `built-in/${legacy.name}`
@@ -116,14 +164,14 @@ describe('the SQLite skills catalogue', () => {
     ).run(id, legacy.name, versionId)
     catalogue.select('aid:recipe-worker', id, 'on', revision())
     expect(
-      catalogue.resolve('aid:recipe-worker', capable).choices.find((one) => one.skill.id === id),
+      catalogue.resolve('aid:recipe-worker').choices.find((one) => one.skill.id === id),
     ).toMatchObject({ ready: true, selection: 'on' })
     const before = revision()
     catalogue = new SqliteSkillCatalogue(db, shipped())
     expect(revision()).toBe(before + 1)
     expect(catalogue.detail(id, versionId)).toMatchObject({ body, active: false, versionId })
     expect(
-      catalogue.resolve('aid:recipe-worker', capable).choices.find((one) => one.skill.id === id),
+      catalogue.resolve('aid:recipe-worker').choices.find((one) => one.skill.id === id),
     ).toMatchObject({ ready: false, selected: true, selection: 'on', reason: 'source-unavailable' })
     new SqliteSkillCatalogue(db, shipped())
     expect(revision()).toBe(before + 1)
@@ -143,7 +191,7 @@ describe('the SQLite skills catalogue', () => {
       // The saved workspace has the unavailable head left by a build that omitted this source.
       db.prepare('UPDATE skill_current SET active = 0 WHERE id = ?').run(id)
       expect(
-        catalogue.resolve('aid:recipe-worker', capable).choices.find((one) => one.skill.id === id),
+        catalogue.resolve('aid:recipe-worker').choices.find((one) => one.skill.id === id),
       ).toMatchObject({ ready: false, selection: choice, reason: 'source-unavailable' })
       const returning = shipped()
       const next = verifyBuiltInSkills({ ...returning.catalogue, version: 'v24' }, returning.bodies)
@@ -151,45 +199,30 @@ describe('the SQLite skills catalogue', () => {
       expect(catalogue.detail(id)).toMatchObject({ active: true, version: 'v24', body: first.body })
       expect(catalogue.detail(id, first.versionId)?.body).toBe(first.body)
       expect(
-        catalogue.resolve('aid:recipe-worker', capable).choices.find((one) => one.skill.id === id),
+        catalogue.resolve('aid:recipe-worker').choices.find((one) => one.skill.id === id),
       ).toMatchObject({ ready: choice === 'on', selection: choice, reason: null })
       db.close()
       db = openDatabase(join(folder, 'catalogue.sqlite'))
       catalogue = new SqliteSkillCatalogue(db, next)
       expect(
-        catalogue.resolve('aid:recipe-worker', capable).choices.find((one) => one.skill.id === id),
+        catalogue.resolve('aid:recipe-worker').choices.find((one) => one.skill.id === id),
       ).toMatchObject({ ready: choice === 'on', selection: choice, reason: null })
     },
   )
-  it('separates saved choices, grant eligibility and an explicitly empty selection', () => {
-    const plain = catalogue.resolve('aid:recipe-worker', {
-      canCreateAgents: false,
-      isCoordinator: false,
-    })
-    expect(plain.choices.filter((one) => one.ready)).toHaveLength(6)
-    expect(
-      catalogue
-        .resolve('aid:recipe-worker', { canCreateAgents: false, isCoordinator: true })
-        .choices.filter((one) => one.ready),
-    ).toHaveLength(7)
-    expect(
-      catalogue.resolve('aid:recipe-worker', capable).choices.filter((one) => one.ready),
-    ).toHaveLength(8)
+  it('separates saved choices and an explicitly empty selection', () => {
+    const plain = catalogue.resolve('aid:recipe-worker')
+    expect(plain.choices.filter((one) => one.ready)).toHaveLength(8)
     for (const item of catalogue.list().items)
       catalogue.select('aid:recipe-worker', item.id, 'off', revision())
-    expect(
-      catalogue.resolve('aid:recipe-worker', capable).choices.filter((one) => one.ready),
-    ).toEqual([])
-    refused(() => catalogue.resolve('missing', capable), 'identity')
+    expect(catalogue.resolve('aid:recipe-worker').choices.filter((one) => one.ready)).toEqual([])
+    refused(() => catalogue.resolve('missing'), 'identity')
   })
   it('starts personal skills off, refuses duplicate Add, and edits without losing choices/history', () => {
     catalogue.savePersonal(draft(), revision())
     const first = catalogue.detail('person/recipe-check')!
     expect(first.defaultEnabled).toBe(false)
     expect(
-      catalogue
-        .resolve('aid:recipe-worker', capable)
-        .choices.find((one) => one.skill.id === first.id),
+      catalogue.resolve('aid:recipe-worker').choices.find((one) => one.skill.id === first.id),
     ).toMatchObject({ selection: 'default', selected: false, ready: false })
     catalogue.select('aid:recipe-worker', first.id, 'on', revision())
     refused(() => catalogue.savePersonal(draft(), revision()), 'duplicate-name')
@@ -203,9 +236,8 @@ describe('the SQLite skills catalogue', () => {
     expect(second.alias).toBe(first.alias)
     expect(catalogue.detail(first.id, first.versionId)?.body).toBe(first.body)
     expect(
-      catalogue
-        .resolve('aid:recipe-worker', capable)
-        .choices.find((one) => one.skill.id === first.id)?.ready,
+      catalogue.resolve('aid:recipe-worker').choices.find((one) => one.skill.id === first.id)
+        ?.ready,
     ).toBe(true)
     refused(() => catalogue.savePersonal(draft(), revision(), first.versionId), 'stale')
     db.prepare('UPDATE agent_identity SET display_name = ? WHERE id = ?').run(
@@ -216,9 +248,7 @@ describe('the SQLite skills catalogue', () => {
     db = openDatabase(join(folder, 'catalogue.sqlite'))
     catalogue = new SqliteSkillCatalogue(db, shipped())
     expect(
-      catalogue
-        .resolve('aid:recipe-worker', capable)
-        .choices.find((one) => one.skill.id === first.id),
+      catalogue.resolve('aid:recipe-worker').choices.find((one) => one.skill.id === first.id),
     ).toMatchObject({ selection: 'on', ready: true })
     expect(catalogue.detail(first.id)?.body).toBe(second.body)
   })
@@ -235,9 +265,7 @@ describe('the SQLite skills catalogue', () => {
     expect(catalogue.detail('built-in/delegate')?.version).toBe('v24')
     expect(catalogue.detail('built-in/delegate', previous.versionId)?.body).toBe(previous.body)
     expect(
-      catalogue
-        .resolve('aid:recipe-worker', capable)
-        .choices.find((one) => one.skill.id === previous.id),
+      catalogue.resolve('aid:recipe-worker').choices.find((one) => one.skill.id === previous.id),
     ).toMatchObject({ selection: 'off', ready: false })
   })
   it.each([
@@ -268,7 +296,7 @@ describe('the SQLite skills catalogue', () => {
     )
     expect(
       catalogue
-        .resolve('aid:recipe-worker', capable)
+        .resolve('aid:recipe-worker')
         .choices.find((one) => one.skill.id === 'person/recipe-check')?.selected,
     ).toBe(false)
   })
@@ -298,7 +326,7 @@ describe('the SQLite skills catalogue', () => {
       'person/edited',
     )
     db.prepare('UPDATE skill_version SET metadata=? WHERE skill_id=?').run('{}', 'person/broken')
-    const ready = catalogue.resolve('aid:recipe-worker', capable).choices.filter((one) => one.ready)
+    const ready = catalogue.resolve('aid:recipe-worker').choices.filter((one) => one.ready)
     expect(ready.some((one) => one.skill.id === 'person/edited')).toBe(true)
     expect(ready.some((one) => one.skill.id === 'person/broken')).toBe(false)
     expect(catalogue.detail('person/edited')).toMatchObject({
@@ -321,7 +349,7 @@ describe('the SQLite skills catalogue', () => {
     expect(catalogue.detail('built-in/delegate')).toBeNull()
     expect(catalogue.list().items).toHaveLength(7)
     for (const profile of [null, 'recipe-worker']) {
-      const launch = launchSkillSelections(db, shipped)(profile, capable)
+      const launch = launchSkillSelections(db, shipped)(profile)
       expect(launch.skills).toHaveLength(7)
       expect(launch.skills.some((skill) => skill.id === 'built-in/delegate')).toBe(false)
       expect(launch.skills.some((skill) => skill.id === 'built-in/hand-back')).toBe(true)
@@ -333,16 +361,16 @@ describe('the SQLite skills catalogue', () => {
       catalogue.savePersonal(item, revision())
       catalogue.select('aid:recipe-worker', `person/${item.name}`, 'on', revision())
     }
-    expect(
-      catalogue.resolve('aid:recipe-worker', capable).choices.filter((one) => one.ready),
-    ).toHaveLength(64)
+    expect(catalogue.resolve('aid:recipe-worker').choices.filter((one) => one.ready)).toHaveLength(
+      64,
+    )
     catalogue.savePersonal(draft('one-more'), revision())
     const was = revision()
     refused(() => catalogue.select('aid:recipe-worker', 'person/one-more', 'on', was), 'limit')
     expect(revision()).toBe(was)
     expect(
       catalogue
-        .resolve('aid:recipe-worker', capable)
+        .resolve('aid:recipe-worker')
         .choices.find((one) => one.skill.id === 'person/one-more')?.selection,
     ).toBe('default')
   })

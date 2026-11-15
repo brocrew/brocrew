@@ -7,7 +7,6 @@ import * as discoveryModule from '../src/main/skills/shared-discovery'
 import { SharedSkillDiscovery } from '../src/main/skills/shared-discovery'
 import { SharedSkillLibrary } from '../src/main/skills/shared-library'
 import { readBuiltInSkills } from '../src/main/skills/prepare-built-in-skills'
-import { creationAllowedSkills } from '../src/main/skills/built-in-catalogue'
 import { writeAtomically } from '../src/main/recovery/files'
 import { executeRuntimeCommand, runtimeCommandSchema } from '../src/main/runtime/ipc'
 import type { RuntimeHost, RuntimeEventSink } from '../src/main/runtime/runtime-host'
@@ -21,8 +20,6 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 
 interface Access {
   profileId: string
-  canCreateAgents: boolean
-  isCoordinator: boolean
 }
 interface Entry {
   folder: string
@@ -51,9 +48,9 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'fictional-profile-skills-'))
   await new SharedSkillLibrary(root).convert(async () => [])
   known = new Map([
-    ['quill', { profileId: 'quill', canCreateAgents: false, isCoordinator: false }],
-    ['wren', { profileId: 'wren', canCreateAgents: true, isCoordinator: false }],
-    ['brobot', { profileId: 'brobot', canCreateAgents: false, isCoordinator: true }],
+    ['quill', { profileId: 'quill' }],
+    ['wren', { profileId: 'wren' }],
+    ['brobot', { profileId: 'brobot' }],
   ])
   // The private main-owned resolver is separate from the window request.
   service = Reflect.construct(SharedSkillDiscovery, [
@@ -92,40 +89,27 @@ function sink(person: boolean): RuntimeEventSink {
 }
 
 describe('the profile Skills inventory uses the real delivery policy', () => {
-  it('derives a known folded profile and its creation grant without inventing an identity', () => {
+  it('derives a known folded profile without inventing an identity', () => {
     const readAccess = Reflect.get(discoveryModule, 'profileSkillAccess') as
       | undefined
       | ((
-          store: { capabilitiesOf(profile: string): { canCreateAgents: string } | null },
+          store: { capabilitiesOf(profile: string): object | null },
           profile: string,
         ) => Access | null)
     expect(readAccess, 'profile Skills access must come from the main-owned store').toBeTypeOf(
       'function',
     )
     const capabilitiesOf = vi.fn((profile: string) =>
-      profile === 'quill' || profile === 'brobot' ? { canCreateAgents: 'none' } : null,
+      profile === 'quill' || profile === 'brobot' ? {} : null,
     )
     expect(readAccess!({ capabilitiesOf }, 'QuIll')).toEqual({
       profileId: 'quill',
-      canCreateAgents: false,
-      isCoordinator: false,
     })
     expect(readAccess!({ capabilitiesOf }, 'brobot')).toEqual({
       profileId: 'brobot',
-      canCreateAgents: false,
-      isCoordinator: true,
     })
     expect(readAccess!({ capabilitiesOf }, 'missing-agent')).toBeNull()
     expect(capabilitiesOf.mock.calls).toEqual([['quill'], ['brobot'], ['missing-agent']])
-    for (const reach of ['none', 'any'] as const) {
-      const reachOf = vi.fn(() => ({ canCreateAgents: reach }))
-      expect(readAccess!({ capabilitiesOf: reachOf }, 'QuIll')).toEqual({
-        profileId: 'quill',
-        canCreateAgents: reach === 'any',
-        isCoordinator: false,
-      })
-      expect(reachOf).toHaveBeenCalledExactlyOnceWith('quill')
-    }
   })
 
   it('opens a shared header once and keeps valid neighbors beside a broken link', async () => {
@@ -156,12 +140,7 @@ describe('the profile Skills inventory uses the real delivery policy', () => {
     'offers the same built-ins as the launch selector for %s',
     async (profileId) => {
       const answer = await inventory(profileId)
-      const access = known.get(profileId)!
-      const selected = creationAllowedSkills(
-        shipped().catalogue,
-        access.canCreateAgents,
-        access.isCoordinator,
-      ).map((one) => one.name)
+      const selected = shipped().catalogue.skills.map((one) => one.name)
       expect(answer.profileId).toBe(profileId)
       expect(
         answer.skills.filter((one) => one.builtIn && one.given).map((one) => one.name),
@@ -171,12 +150,12 @@ describe('the profile Skills inventory uses the real delivery policy', () => {
       const capability = answer.skills.find(
         (one) => one.builtIn && one.name === 'add-a-capability',
       )!
-      expect(team.given).toBe(access.canCreateAgents)
-      expect(capability.given).toBe(access.canCreateAgents || access.isCoordinator)
+      expect(team.given).toBe(true)
+      expect(capability.given).toBe(true)
     },
   )
 
-  it('keeps shared global off separate from a built-in grant, even with the same native name', async () => {
+  it('keeps shared global off separate from a built-in, even with the same native name', async () => {
     await service.library.save('shared-helper/SKILL.md', body('build-a-team'))
     await service.library.save('recipe-check/SKILL.md', body())
     await service.library.setEnabled('recipe-check', false)
@@ -189,7 +168,7 @@ describe('the profile Skills inventory uses the real delivery policy', () => {
     ).toMatchObject({ enabled: false, given: false })
     expect(answer.skills.find((one) => one.builtIn && one.name === 'build-a-team')).toMatchObject({
       enabled: true,
-      given: false,
+      given: true,
     })
   })
 
