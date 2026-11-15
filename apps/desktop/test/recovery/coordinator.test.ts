@@ -268,37 +268,26 @@ describe('a copy before a migration', () => {
     expect(await listCheckpoints(userData)).toHaveLength(3)
   })
 
-  it('reports insufficient room while preserving the selected rollback anchor', async () => {
-    const { userData, fixture } = await workspaceWithCopies([dated(9), dated(2), dated(1)])
-    const { deps } = await checkingWithoutRoom(userData)
+  it.each([1, 3])(
+    'reports insufficient room while preserving all %i rollback copies',
+    async (count) => {
+      const { userData, fixture } = await workspaceWithCopies(
+        [dated(9), dated(2), dated(1)].slice(0, count),
+      )
+      const { deps } = await checkingWithoutRoom(userData)
 
-    expect(await inspect(deps)).toEqual({
-      kind: 'failed',
-      reason: 'checkpoint-failed',
-      canRetry: true,
-      detail: await noRoom(userData),
-    })
-    expect(existsSync(fixture.checkpoints[0]!.dir)).toBe(true)
-    expect(existsSync(fixture.checkpoints[2]!.dir)).toBe(true)
-    expect((await listCheckpoints(userData)).map(({ manifest }) => manifest.id)).toEqual([
-      fixture.checkpoints[2]!.id,
-      fixture.checkpoints[1]!.id,
-      fixture.checkpoints[0]!.id,
-    ])
-  })
-
-  it('keeps a lone copy when the estimated replacement budget is short', async () => {
-    const { userData, fixture } = await workspaceWithCopies([dated(9)])
-    const { deps } = await checkingWithoutRoom(userData)
-
-    expect(await inspect(deps)).toEqual({
-      kind: 'failed',
-      reason: 'checkpoint-failed',
-      canRetry: true,
-      detail: await noRoom(userData),
-    })
-    expect(existsSync(fixture.checkpoints[0]!.dir)).toBe(true)
-  })
+      expect(await inspect(deps)).toEqual({
+        kind: 'failed',
+        reason: 'checkpoint-failed',
+        canRetry: true,
+        detail: await noRoom(userData),
+      })
+      for (const checkpoint of fixture.checkpoints) expect(existsSync(checkpoint.dir)).toBe(true)
+      expect((await listCheckpoints(userData)).map(({ manifest }) => manifest.id)).toEqual(
+        fixture.checkpoints.toReversed().map(({ id }) => id),
+      )
+    },
+  )
 
   it.each(['copy', 'verify', 'files', 'manifest'] as const)(
     'retires old copies before replacement step %s and keeps live data if that step stops',
