@@ -206,6 +206,47 @@ describe('copying this install’s provider sign-ins', () => {
     rmSync(root, { recursive: true, force: true })
   })
 
+  it('automatically stops the cached server and copies a newer sign-in before sending', async () => {
+    const current = await host.createSession(
+      { provider: 'codex', profileId: 'alpha', cwd: root },
+      sink,
+    )
+    let fresh = true
+    Object.assign(ops, { hasNewerCopy: () => fresh })
+    copy.mockImplementation(async () => {
+      expect(stopped).toBe(1)
+      expect(launches).toBe(1)
+      fresh = false
+      return 'replaced'
+    })
+
+    await host.send(current.sessionId, 'use the newer fictional sign-in', sink)
+
+    await vi.waitFor(() => expect(copy).toHaveBeenCalledWith('codex', 'alpha', true))
+    await vi.waitFor(() => expect(launches).toBe(2))
+    await vi.waitFor(() =>
+      expect(messages.some((one) => one.event.type === 'permission_request')).toBe(true),
+    )
+    expect(copy).toHaveBeenCalledTimes(1)
+    expect(host.sessionIds).toContain(current.sessionId)
+  })
+
+  it('does not check or copy machine sign-ins for an API-key turn', async () => {
+    keySaved = true
+    const newer = vi.fn(() => true)
+    Object.assign(ops, { hasNewerCopy: newer })
+    const current = await host.createSession(
+      { provider: 'codex', profileId: 'alpha', cwd: root },
+      sink,
+    )
+
+    await host.send(current.sessionId, 'keep the API-key session', sink)
+
+    expect(newer).not.toHaveBeenCalled()
+    expect(copy).not.toHaveBeenCalled()
+    expect(launches).toBe(1)
+  })
+
   for (const opening of ['start', 'resume'] as const) {
     for (const change of ['native-refusal', 'cancel', 'timeout'] as const) {
       for (const proof of ['held', 'rejected'] as const) {
