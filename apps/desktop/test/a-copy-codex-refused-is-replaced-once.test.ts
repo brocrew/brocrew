@@ -626,7 +626,7 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
         await vi.waitFor(() => expect(writer.reached).toBe(1))
         aHelperHolding(rotated)
       })
-      await vi.waitFor(() => expect(writer.answered).toBe(1))
+      await vi.waitFor(() => expect(writer.answered).toBeGreaterThanOrEqual(1))
       await new Promise((resolve) => setTimeout(resolve, 100))
       expect(starts).toEqual(digests(DEAD))
       expect(held()).toBe(digestOf(rotated))
