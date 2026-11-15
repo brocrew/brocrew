@@ -15430,7 +15430,9 @@ export class RuntimeHost implements LiveHost {
               : result
         if (folded?.kind === 'routes' || folded?.kind === 'listing')
           this.windowFoldKept =
-            folded.cacheToken === undefined ? undefined : { stamp: after!, token: folded.cacheToken }
+            folded.cacheToken === undefined
+              ? undefined
+              : { stamp: after!, token: folded.cacheToken }
         if (query.kind === 'routes') this.windowRoutesKept = { stamp: after!, result }
         if (query.kind === 'listing') this.windowListingKept = { stamp: after!, result }
         if (query.kind === 'incidents') {
