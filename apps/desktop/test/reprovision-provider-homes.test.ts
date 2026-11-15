@@ -154,12 +154,11 @@ describe('copying this install’s provider sign-ins', () => {
           await beforeResume?.()
           if (resumeFails) throw new Error('fictional restart failure')
           const handle = await runtime.resume(ref, options)
-          if (replacementCloseFails) {
-            const close = handle.close.bind(handle)
-            handle.close = async () => {
-              await close()
-              throw new Error('fictional replacement close failed')
-            }
+          const close = handle.close.bind(handle)
+          handle.close = async () => {
+            stopped++
+            await close()
+            if (replacementCloseFails) throw new Error('fictional replacement close failed')
           }
           handle.awaitProcessExit = () => oldProcessExit
           await beforeReturn?.()

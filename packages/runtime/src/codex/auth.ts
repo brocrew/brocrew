@@ -453,30 +453,10 @@ function isTheSameCopy(held: BigIntStats, refused: CodexCopyIdentity): boolean {
 }
 
 /**
- * Copy the personal Codex `auth.json` into the profile home **again**, replacing what is there
- * (098) — the one sanctioned writer over a credential {@link provisionCodexAuth} refuses to touch.
- *
- * ## Why this is a second function and not a flag on the first
- *
- * `provisionCodexAuth`'s copy-once rule is correct and stays exactly as it was. It runs on **every**
- * session launch, and an overwrite there would clobber a profile credential that had refreshed
- * independently — silently, on a schedule, for the whole life of the app. That is the stomp the rule
- * exists to prevent, and a parameter that switched it off would put the stomp one careless call site
- * away.
- *
- * What the rule did not anticipate is that a copy can go **stale**, and then nothing could ever
- * replace it: the app had no way back short of deleting a file by hand. So the overwrite lives here,
- * in a function whose only caller is a person pressing a button. Automatic callers get the safe one;
- * this one is reachable only by asking for it by name.
- *
- * ⚠️ **This does not end the sharing.** The copy and `~/.codex` hold one rotating refresh token
- * between them, so the next refresh by either side breaks the other again — see `codex-login.ts` for
- * the measurement and for the remedy that does end it. Any surface offering this must say so.
- *
- * Everything else is {@link provisionCodexAuth}'s: the per-home lock, `0600`, content-not-symlink,
- * a temp created `O_EXCL|O_NOFOLLOW`, and a refusal if the destination has been replaced by a
- * symlink or a directory. Only the final install differs — `rename` (which replaces atomically)
- * where the first uses `link` (which refuses to).
+ * Replace a profile's copy while its app-servers are stopped. Automatic callers request
+ * `newerOnly`; freshness and whether the copy is still wanted are checked under the home lock.
+ * Explicit individual re-copy requests keep their existing replacement behavior. Both paths use
+ * the atomic writer and never write to the source file.
  */
 export async function reprovisionCodexAuth(
   providerHome: string,
