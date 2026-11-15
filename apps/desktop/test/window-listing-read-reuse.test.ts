@@ -68,3 +68,70 @@ it('legacy listing callers share admission, warm reads and failures at the same 
     await world.cleanUp()
   }
 })
+
+it('carries the last worker fold token across listing and routing reads', async () => {
+  const world = aServiceWorld()
+  for (const id of ['alpha', 'beta'])
+    world.store.create({
+      id,
+      provider: 'codex',
+      profileId: 'brobot',
+      cwd: world.folder,
+      approvalMode: 'ask',
+    })
+  const engine = new WindowReadEngine(join(world.folder, 'brobot2.sqlite'))
+  const tokens: string[] = []
+  const read = vi.fn(async (query: WindowReadQuery) => {
+    const result = engine.read(query)
+    if (result.kind === 'listing' || result.kind === 'routes') tokens.push(result.cacheToken!)
+    return result
+  })
+  const host = aLibraryHost(world.folder, {
+    store: world.store,
+    windowReader: { read, close: async () => engine.close() },
+    afterFirstWindowLoad: new Promise<void>(() => {}),
+    windowWriterStamp: windowWriterSampler(world.db, () => true),
+    limitsWriterStamp: limitsWriterSampler(world.db, () => true),
+  })
+  try {
+    const first = await host.listConversations()
+    expect('refused' in first).toBe(false)
+    expect((await host.readForWindow(() => host.questionsForAPerson())).rows).toEqual([])
+    const routingToken = tokens.at(-1)!
+    world.store.append(
+      'alpha',
+      world.store.nextOrdinal('alpha'),
+      {
+        type: 'work_retitled',
+        piece: world.store.rootOf('alpha')!.piece,
+        title: 'Changed alpha',
+        by: null,
+      },
+      world.clock++,
+    )
+    const changed = await host.listConversations()
+    if ('refused' in changed) throw new Error(changed.refused)
+    expect(changed.unresumable).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sessionId: 'alpha',
+          named: expect.objectContaining({ title: 'Changed alpha' }),
+        }),
+        expect.objectContaining({ sessionId: 'beta' }),
+      ]),
+    )
+    expect(read.mock.calls.at(-1)![0]).toEqual({
+      kind: 'listing',
+      reuse: { token: routingToken, changed: ['alpha'] },
+    })
+    const listingToken = tokens.at(-1)!
+    expect((await host.readForWindow(() => host.questionsForAPerson())).rows).toEqual([])
+    expect(read.mock.calls.at(-1)![0]).toEqual({
+      kind: 'routes',
+      reuse: { token: listingToken, changed: [] },
+    })
+  } finally {
+    await host.closeAll()
+    await world.cleanUp()
+  }
+})
