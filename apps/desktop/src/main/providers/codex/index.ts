@@ -244,6 +244,7 @@ export function codexAuth(paths: ProviderHomePaths, seams: CodexAuthSeams): Home
       const managedRoot = paths.managedRoot
       return await replaceARefusedCodexCopy(home, {
         managedRoot,
+        newerOnly: true,
         refused: refused as import('@brobot2/runtime/codex').CodexCopyIdentity,
         stillWanted,
         candidates: [

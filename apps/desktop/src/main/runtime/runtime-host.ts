@@ -2592,6 +2592,8 @@ interface HostedSession {
   itsSignInMovedOn?: true
   /** Codex refused this life's copy of its sign-in, and a fresh copy of the same account replaced it. */
   itsCopyWasReplaced?: true
+  /** A refused copy is considered for replacement only after this server has exited. */
+  copyToReplaceAfterExit?: unknown
   /** This life's one turn was a carrying on after a repaired sign-in: its refusal is never carried on again. */
   itCarriedOnAfterARepair?: true
   /** This rejected turn may request one provider-owned renewal and safe carry-on. */
@@ -20290,7 +20292,6 @@ export class RuntimeHost implements LiveHost {
     readonly loginRenewed: boolean
     readonly runtime?: AgentRuntime
   }> {
-    this.queueANewerHomeCopy(provider, profileId)
     const barrier = this.homeCopyBarriers.get(profileSignInKey(provider, profileId))
     const launch = sessionId === undefined ? undefined : this.slots.get(sessionId)?.launch
     if (barrier !== undefined) {
@@ -39677,20 +39678,13 @@ export class RuntimeHost implements LiveHost {
         !onItsWayOut(now)
       )
     }
-    const replaced =
+    const replaceAfterExit =
       !moved &&
       refusedCopy !== null &&
-      stillItsLife() &&
-      (await this.replaceARefusedCopy(
-        session.provider,
-        session.profileId,
-        'in a turn',
-        refusedCopy,
-        stillItsLife,
-      ))
+      stillItsLife()
     const slot = this.slots.get(session.id)
     if (
-      (!moved && !replaced) ||
+      (!moved && !replaceAfterExit) ||
       this.launches.closed ||
       session.diedOnAStaleSignIn === true ||
       !this.isCurrentLife(session) ||
@@ -39706,7 +39700,7 @@ export class RuntimeHost implements LiveHost {
       session.itsSignInMovedOn = true
       this.publishStateIfChanged(session)
     } else {
-      session.itsCopyWasReplaced = true
+      session.copyToReplaceAfterExit = refusedCopy
     }
     session.diedOnAStaleSignIn = true
     session.whatItsFailedTurnWasFor = wasFor
@@ -40028,6 +40022,29 @@ export class RuntimeHost implements LiveHost {
     try {
       // ⚠️ The id is refused as *not confirmed stopped* until the old launch is released.
       if (this.launches.closed || this.keptStopped(session.id)) return
+      if (session.copyToReplaceAfterExit !== undefined) {
+        const refused = session.copyToReplaceAfterExit
+        delete session.copyToReplaceAfterExit
+        const stillWanted = () =>
+          !this.launches.closed &&
+          !this.keptStopped(session.id) &&
+          !this.slots.has(session.id) &&
+          this.aReopenIsBeingDecidedFor.has(session.id)
+        if (!stillWanted()) return
+        if (this.queueANewerHomeCopy(session.provider, session.profileId)) {
+          const ready = this.homeCopyBarriers.get(profileSignInKey(session.provider, session.profileId))?.ready
+          void this.copyHomeWhenIdle(session.provider, session.profileId)
+          await ready
+          if (
+            !stillWanted() ||
+            this.aKeyIsSaved(session.provider) ||
+            providerAuthPolicies[session.provider].copy.same(refused, this.theCopyHeldNow(session))
+          ) return
+        } else if (!(await this.replaceARefusedCopy(
+          session.provider, session.profileId, 'after its refused server exited', refused, stillWanted,
+        ))) return
+        session.itsCopyWasReplaced = true
+      }
       // A rejection can precede local expiry; an already replaced token needs no helper run.
       const renewal = this.deps.loginRenewal?.(session.provider)
       const rejected = session.renewItsRejectedLogin === true
