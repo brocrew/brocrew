@@ -201,7 +201,10 @@ it('discards the lineage when publication recovers from a failed state read', ()
   const prepare = vi.mocked(database.prepare).getMockImplementation()!
   let fail = true
   vi.mocked(database.prepare).mockImplementation((sql) => {
-    if (fail && sql.includes('SELECT DISTINCT session_id')) {
+    if (
+      fail &&
+      sql === "SELECT DISTINCT session_id AS id FROM events WHERE type = 'request_routed'"
+    ) {
       fail = false
       throw new Error('Fictional state read failed')
     }
@@ -225,4 +228,47 @@ it('discards the lineage when publication recovers from a failed state read', ()
   )
   expect(next.cacheToken).not.toBe(cold.cacheToken)
   expect(new Set(w.rebuilt)).toEqual(new Set(['alpha', 'beta']))
+})
+
+
+it('reuses the current piece fold when the incident turn has no ending', () => {
+  const w = world()
+  w.store.append(
+    'alpha',
+    w.store.nextOrdinal('alpha'),
+    { type: 'user_turn', text: 'Fictional live work', drives: 'alpha-child' },
+    2,
+  )
+  const cold = routing(w.read({ kind: 'incidents' }))
+  const warm = w.read({
+    kind: 'incidents',
+    reuse: { token: cold.cacheToken!, changed: [] },
+  })
+  if (warm.kind !== 'incidents') throw new Error('Expected incidents')
+  expect(warm.owners.find((owner) => owner.sessionId === 'alpha')!.history.driven).toEqual({
+    value: ['alpha-child'],
+  })
+  expect(w.rebuilt).toEqual([])
+})
+
+it('keeps the historical turn cut after the current piece has closed', () => {
+  const w = world()
+  w.store.append(
+    'alpha',
+    w.store.nextOrdinal('alpha'),
+    { type: 'user_turn', text: 'Fictional completed work', drives: 'alpha-child' },
+    2,
+  )
+  w.store.append('alpha', w.store.nextOrdinal('alpha'), { type: 'status', state: 'idle' }, 3)
+  w.store.append(
+    'alpha',
+    w.store.nextOrdinal('alpha'),
+    { type: 'work_closed', piece: 'alpha-child', by: 'beta' },
+    4,
+  )
+  const cut = w.read({ kind: 'incidents' })
+  if (cut.kind !== 'incidents') throw new Error('Expected incidents')
+  const owner = cut.owners.find((one) => one.sessionId === 'alpha')!
+  expect(owner.history.driven).toEqual({ value: ['alpha-child'] })
+  expect(owner.history.states).toContainEqual(['alpha-child', 'closed'])
 })
