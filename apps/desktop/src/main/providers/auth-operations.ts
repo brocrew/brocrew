@@ -45,7 +45,8 @@ export interface ProviderAuthOps {
    */
   check(provider: Provider, profileId: string, signal?: AbortSignal): Promise<AuthState>
   /**
-   * Re-copy the machine credential over the profile's. Explicit, user-initiated, does NOT end the race.
+   * Re-copy the machine credential over the profile's. Automatic callers request newerOnly after
+   * stopping the home's servers; explicit individual gestures retain their existing behavior.
    *
    * ⚠️ **The union is what keeps every existing double honest** (243). The real implementation
    * became promise-returning when the provisioning lock did; a test double that answers
@@ -58,6 +59,7 @@ export interface ProviderAuthOps {
     newerOnly?: true,
     stillWanted?: () => boolean,
   ): ReprovisionOutcome | Promise<ReprovisionOutcome>
+  /** A read-only freshness check before arranging the existing stop/copy/restart sequence. */
   hasNewerCopy?(provider: Provider, profileId: string): boolean
   /**
    * Sign this profile into its own account. Resolves when the browser flow settles.

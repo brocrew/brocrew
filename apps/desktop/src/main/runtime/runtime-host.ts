@@ -30827,11 +30827,8 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * Re-copy the machine credential over this profile's — the quick way out, on an explicit gesture.
-   *
-   * ⚠️ **Nothing calls this on its own and nothing may.** It is the one path allowed to overwrite a
-   * profile credential (see `reprovisionCodexAuth`), and an automatic caller would recreate exactly
-   * the clobber that `provisionCodexAuth`'s copy-once rule exists to prevent — on a schedule.
+   * Re-copy the machine sign-in. Automatic callers stop its servers first and request newerOnly;
+   * an explicit individual request retains its existing replacement behavior.
    *
    * 🔴 **716 · `710` F-4 — a machine that ran short is said as one** (R52's class, at this door).
    * ⛔ Until `716` a person pressing *Copy my machine sign-in* read either the false *"personal Codex
