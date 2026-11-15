@@ -30633,7 +30633,10 @@ export class RuntimeHost implements LiveHost {
   >()
   private readonly homeCopyJobs = new Map<string, Promise<void>>()
   private readonly homeCopyRestarts = new Map<string, Promise<void>>()
-  private readonly homeCopyBarriers = new Map<string, { ready: Promise<boolean>; release(replaced: boolean): void }>()
+  private readonly homeCopyBarriers = new Map<
+    string,
+    { ready: Promise<boolean>; release(replaced: boolean): void }
+  >()
   private readonly homeLaunches = new Map<
     Launch,
     { provider: Provider; profileId: string; uncertain?: boolean }
