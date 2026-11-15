@@ -7,10 +7,9 @@ import { createHash } from 'node:crypto'
 import manifest from '../resources/built-in-skills/manifest.json'
 import {
   BuiltInSkillCatalogueSchema,
-  creationAllowedSkills,
   builtInSkillReminders,
 } from '../src/main/skills/built-in-catalogue'
-import { BUILT_IN_SKILLS_FAILURE, BUILT_IN_SKILL_NAMES } from '../src/shared/built-in-skills'
+import { BUILT_IN_SKILL_NAMES } from '../src/shared/built-in-skills'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -156,18 +155,12 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         ? {
             prepareBuiltInSkills: async (input: {
               provider: Provider
-              canCreateAgents: boolean
-              isCoordinator: boolean
               isCurrent: () => boolean
               pack?: TextPackRead
             }) => {
               packsGivenToSkills.push(input.pack)
               const catalogue = BuiltInSkillCatalogueSchema.parse(manifest)
-              const selected = creationAllowedSkills(
-                catalogue,
-                input.canCreateAgents,
-                input.isCoordinator,
-              )
+              const selected = catalogue.skills
               return {
                 context: {
                   root: `/fictional/skills/${input.provider}`,
@@ -392,63 +385,50 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
   }
 
   for (const opening of ['start', 'resume'] as const) {
-    for (const revoke of [false, true]) {
-      it(`a held ${opening} ${revoke ? 'returns its handle without registration after revocation' : 'registers with unchanged grants'}`, async () => {
-        const seeded = await personOpens('worker')
-        await waitFor(() => store.find(seeded)?.ref != null, 'seeded provider identity')
-        await host.closeAll()
-        host = buildHost(true)
-        let release!: () => void
-        const held = {
-          opening,
-          handle: null as FakeSessionHandle | null,
-          waiting: new Promise<void>((done) => {
-            release = done
-          }),
-          release: () => release(),
-          closed: false,
-        }
-        heldReturn = held
-        const priorLaunches =
-          opening === 'resume' ? ledger(seeded).filter((one) => one.type === 'launched').length : 0
-        const operation =
-          opening === 'start'
-            ? host.createSession(
-                { provider: 'claude', profileId: 'worker', approvalMode: 'ask', cwd: root },
-                window,
-              )
-            : host.resumeSession(seeded, window)
-        const outcome = operation.then(
-          () => ({ ok: true }),
-          (error: unknown) => ({
-            ok: false,
-            message: error instanceof Error ? error.message : String(error),
-          }),
-        )
-        try {
-          await waitFor(() => held.handle !== null, 'provider return after skill preparation')
-          const id = opening === 'start' ? `sess_${counter}` : seeded
-          if (revoke)
-            expect(store.setCapabilities('worker', { canCreateAgents: 'none' })).toBe(true)
-          held.release()
-          if (revoke) {
-            expect(await outcome).toEqual({ ok: false, message: BUILT_IN_SKILLS_FAILURE })
-            expect(held.closed).toBe(true)
-            expect(ledger(id).filter((one) => one.type === 'launched')).toHaveLength(priorLaunches)
-            expect(ledger(id).filter((one) => one.type === 'user_turn')).toHaveLength(0)
-          } else {
-            expect(await outcome).toEqual({ ok: true })
-            expect(held.closed).toBe(false)
-            expect(ledger(id).filter((one) => one.type === 'launched')).toHaveLength(
-              priorLaunches + 1,
+    it(`a held ${opening} registers its returned handle`, async () => {
+      const seeded = await personOpens('worker')
+      await waitFor(() => store.find(seeded)?.ref != null, 'seeded provider identity')
+      await host.closeAll()
+      host = buildHost(true)
+      let release!: () => void
+      const held = {
+        opening,
+        handle: null as FakeSessionHandle | null,
+        waiting: new Promise<void>((done) => {
+          release = done
+        }),
+        release: () => release(),
+        closed: false,
+      }
+      heldReturn = held
+      const priorLaunches =
+        opening === 'resume' ? ledger(seeded).filter((one) => one.type === 'launched').length : 0
+      const operation =
+        opening === 'start'
+          ? host.createSession(
+              { provider: 'claude', profileId: 'worker', approvalMode: 'ask', cwd: root },
+              window,
             )
-          }
-        } finally {
-          held.release()
-          heldReturn = null
-        }
-      })
-    }
+          : host.resumeSession(seeded, window)
+      const outcome = operation.then(
+        () => ({ ok: true }),
+        (error: unknown) => ({
+          ok: false,
+          message: error instanceof Error ? error.message : String(error),
+        }),
+      )
+      try {
+        await waitFor(() => held.handle !== null, 'provider return after skill preparation')
+        const id = opening === 'start' ? `sess_${counter}` : seeded
+        held.release()
+        expect(await outcome).toEqual({ ok: true })
+        expect(held.closed).toBe(false)
+        expect(ledger(id).filter((one) => one.type === 'launched')).toHaveLength(priorLaunches + 1)
+      } finally {
+        held.release()
+        heldReturn = null
+      }
+    })
   }
 
   function selectedHost(beforeInstructions?: () => void) {
@@ -512,12 +492,11 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
     },
   )
   it.each(['claude', 'codex'] as const)(
-    '%s starts with zero selected skills and resumes with current personal versions and grant-limited reminders',
+    '%s starts with zero selected skills and resumes with current personal versions and installed reminders',
     async (provider) => {
       const seeded = await personOpens('worker', provider)
       await host.closeAll()
       const { catalogue, identity, revision, draft } = selectedHost()
-      expect(store.setCapabilities('worker', { canCreateAgents: 'any' })).toBe(true)
       for (const skill of catalogue.list().items)
         catalogue.select(identity, skill.id, 'off', revision())
       const worker = await personOpens('worker', provider)
@@ -552,14 +531,13 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       )
       expect(composedEndOfTheCurrentLife(worker)).toContain(`${source.alias} — Check quantities.`)
       expect(composedEndOfTheCurrentLife(worker)).not.toContain('Check fictional temperatures.')
-      expect(store.setCapabilities('worker', { canCreateAgents: 'none' })).toBe(true)
-      const revoked = composedEndOfTheCurrentLife(worker)
-      expect(revoked).not.toContain('build-a-team — ')
-      expect(revoked).not.toContain('add-a-capability — ')
-      expect(revoked).toContain(`${source.alias} — Check quantities.`)
+      const current = composedEndOfTheCurrentLife(worker)
+      expect(current).toContain('build-a-team — ')
+      expect(current).toContain('add-a-capability — ')
+      expect(current).toContain(`${source.alias} — Check quantities.`)
       await host.close(worker, window)
       await host.resumeSession(worker, window)
-      expect(launchContexts.at(-1)?.context?.skills).toHaveLength(9)
+      expect(launchContexts.at(-1)?.context?.skills).toHaveLength(11)
       expect(composedEndOfTheCurrentLife(worker)).toContain(
         `${source.alias} — Check fictional temperatures.`,
       )
@@ -568,60 +546,49 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
   )
   for (const provider of ['claude', 'codex'] as const)
     for (const opening of ['start', 'resume'] as const) {
-      it.each(['grant', 'cancel'] as const)(
-        `${provider} ${opening} refuses registration after a held %s change`,
-        async (change) => {
-          const seeded = await personOpens('worker', provider)
-          await host.closeAll()
-          selectedHost()
-          expect(store.setCapabilities('worker', { canCreateAgents: 'any' })).toBe(true)
-          let release!: () => void
-          const held = {
-            opening,
-            handle: null as FakeSessionHandle | null,
-            waiting: new Promise<void>((done) => {
-              release = done
-            }),
-            release: () => release(),
-            closed: false,
-          }
-          heldReturn = held
-          const previous =
-            opening === 'resume'
-              ? ledger(seeded).filter((one) => one.type === 'launched').length
-              : 0
-          const operation =
-            opening === 'start'
-              ? host.createSession(
-                  { provider, profileId: 'worker', approvalMode: 'ask', cwd: root },
-                  window,
-                )
-              : host.resumeSession(seeded, window)
-          const outcome = operation.then(
-            () => true,
-            () => false,
-          )
-          try {
-            await waitFor(() => held.handle !== null, 'fictional native launch return')
-            const sessionId = opening === 'start' ? `sess_${counter}` : seeded
-            let closed: Promise<void> | undefined
-            if (change === 'grant')
-              expect(store.setCapabilities('worker', { canCreateAgents: 'none' })).toBe(true)
-            if (change === 'cancel') closed = host.close(sessionId, window)
-            held.release()
-            expect(await outcome).toBe(false)
-            await closed
-            expect(held.closed).toBe(true)
-            expect(ledger(sessionId).filter((one) => one.type === 'launched')).toHaveLength(
-              previous,
-            )
-            expect(ledger(sessionId).filter((one) => one.type === 'user_turn')).toHaveLength(0)
-          } finally {
-            held.release()
-            heldReturn = null
-          }
-        },
-      )
+      it(`${provider} ${opening} refuses registration after cancellation`, async () => {
+        const seeded = await personOpens('worker', provider)
+        await host.closeAll()
+        selectedHost()
+        let release!: () => void
+        const held = {
+          opening,
+          handle: null as FakeSessionHandle | null,
+          waiting: new Promise<void>((done) => {
+            release = done
+          }),
+          release: () => release(),
+          closed: false,
+        }
+        heldReturn = held
+        const previous =
+          opening === 'resume' ? ledger(seeded).filter((one) => one.type === 'launched').length : 0
+        const operation =
+          opening === 'start'
+            ? host.createSession(
+                { provider, profileId: 'worker', approvalMode: 'ask', cwd: root },
+                window,
+              )
+            : host.resumeSession(seeded, window)
+        const outcome = operation.then(
+          () => true,
+          () => false,
+        )
+        try {
+          await waitFor(() => held.handle !== null, 'fictional native launch return')
+          const sessionId = opening === 'start' ? `sess_${counter}` : seeded
+          const closed = host.close(sessionId, window)
+          held.release()
+          expect(await outcome).toBe(false)
+          await closed
+          expect(held.closed).toBe(true)
+          expect(ledger(sessionId).filter((one) => one.type === 'launched')).toHaveLength(previous)
+          expect(ledger(sessionId).filter((one) => one.type === 'user_turn')).toHaveLength(0)
+        } finally {
+          held.release()
+          heldReturn = null
+        }
+      })
     }
 
   it('reads a text pack once for each launch, and hands its skills and its instructions that one reading', async () => {
@@ -667,20 +634,15 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       await itsTurnEnds(worker, surface)
       const expected = builtInSkillReminders(
         provider,
-        creationAllowedSkills(BuiltInSkillCatalogueSchema.parse(manifest), true),
+        BuiltInSkillCatalogueSchema.parse(manifest).skills,
       )
       expect(handedOver(worker).at(-1)).toContain(expected)
       const person = await theBlockOfATurn(worker, 'Fictional person request.', surface, surface)
       expect(person).toContain(expected)
-      expect(store.setCapabilities('worker', { canCreateAgents: 'none' })).toBe(true)
-      const denied = builtInSkillReminders(
-        provider,
-        creationAllowedSkills(BuiltInSkillCatalogueSchema.parse(manifest), false),
-      )
       const notice = await theBlockOfATurn(worker, 'Fictional app notice.', THE_APP_ITSELF, surface)
-      expect(notice).toContain(denied)
-      expect(notice).not.toContain('build-a-team — ')
-      expect(notice).not.toContain('add-a-capability — ')
+      expect(notice).toContain(expected)
+      expect(notice).toContain('build-a-team — ')
+      expect(notice).toContain('add-a-capability — ')
       await host.closeAll()
       host = buildHost(true)
       await host.resumeSession(worker, surface)
@@ -689,7 +651,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         () => handedOver(worker).some((one) => one.includes('Fictional resumed request.')),
         'resumed words',
       )
-      expect(handedOver(worker).at(-1)).toContain(denied)
+      expect(handedOver(worker).at(-1)).toContain(expected)
       await itsTurnEnds(worker, surface)
     },
   )

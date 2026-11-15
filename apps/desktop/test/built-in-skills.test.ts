@@ -1,15 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import {
-  BUILT_IN_SKILL_NAMES,
-  permittedInstalledSkillReminders,
-} from '../src/shared/built-in-skills'
-import {
-  builtInSkillReminders,
-  creationAllowedSkills,
-  verifyBuiltInSkills,
-} from '../src/main/skills/built-in-catalogue'
+import { BUILT_IN_SKILL_NAMES } from '../src/shared/built-in-skills'
+import { verifyBuiltInSkills } from '../src/main/skills/built-in-catalogue'
 import {
   builtInSkillView,
   installNewSkillView,
@@ -57,34 +50,6 @@ describe('the shipped instruction-only catalogue', () => {
     expect(bundle.bodies.size).toBe(8)
     expect(bundle.digest).toMatch(/^[a-f0-9]{64}$/)
   })
-  it('omits build-a-team when creation is denied and restores it when allowed', () => {
-    const catalogue = verified().catalogue
-    expect(creationAllowedSkills(catalogue, false).map((item) => item.name)).toEqual(
-      BUILT_IN_SKILL_NAMES.filter((name) => name !== 'build-a-team' && name !== 'add-a-capability'),
-    )
-    expect(creationAllowedSkills(catalogue, true)).toEqual(catalogue.skills)
-    expect(creationAllowedSkills(catalogue, false, true).map((item) => item.name)).toEqual(
-      BUILT_IN_SKILL_NAMES.filter((name) => name !== 'build-a-team'),
-    )
-  })
-  it.each(['claude', 'codex'] as const)(
-    'filters %s reminders after a grant change without offering uninstalled skills',
-    (provider) => {
-      const all = builtInSkillReminders(provider, verified().catalogue.skills)
-      expect(permittedInstalledSkillReminders(all, true, false)).toBe(all)
-      expect(permittedInstalledSkillReminders(all, false, false)).toBe(
-        builtInSkillReminders(provider, creationAllowedSkills(verified().catalogue, false)),
-      )
-      expect(permittedInstalledSkillReminders(all, false, true)).toBe(
-        builtInSkillReminders(provider, creationAllowedSkills(verified().catalogue, false, true)),
-      )
-      const installed = builtInSkillReminders(
-        provider,
-        creationAllowedSkills(verified().catalogue, false),
-      )
-      expect(permittedInstalledSkillReminders(installed, true, true)).toBe(installed)
-    },
-  )
   it('takes a later version label, so a running build still reads texts a newer commit wrote', () => {
     for (const version of ['v12', 'v9.1'])
       expect(
@@ -113,7 +78,9 @@ describe('the shipped instruction-only catalogue', () => {
 describe.each(['claude', 'codex'] as const)('the %s launch view', (provider) => {
   it('contains only the selected body files and the Claude plugin manifest', () => {
     const bundle = verified()
-    const selected = creationAllowedSkills(bundle.catalogue, false)
+    const selected = bundle.catalogue.skills.filter(
+      (one) => one.name !== 'build-a-team' && one.name !== 'add-a-capability',
+    )
     const view = builtInSkillView(provider, bundle, selected)
     expect(view.files.size).toBe(provider === 'claude' ? 7 : 6)
     expect([...view.files.keys()].some((path) => path.includes('build-a-team'))).toBe(false)

@@ -1,6 +1,6 @@
 import type { AppDatabase } from '../db/connection'
 import { BUILT_IN_SKILL_NAMES } from '../../shared/built-in-skills'
-import type { SkillDetail, SkillGrants } from '../../shared/skills-catalogue'
+import type { SkillDetail } from '../../shared/skills-catalogue'
 import type { VerifiedBuiltInSkills } from './built-in-catalogue'
 import { SqliteSkillCatalogue } from './catalogue-store'
 
@@ -26,7 +26,7 @@ export function launchSkillSelections(db: AppDatabase, shipped: () => VerifiedBu
           db.prepare('SELECT id FROM agent_identity WHERE slug = ?').get(profileId) as
             { id: string } | undefined
         )?.id
-  return (profileId: string | null, grants: SkillGrants): SkillLaunchSelection => {
+  return (profileId: string | null): SkillLaunchSelection => {
     const store = (catalogue ??= new SqliteSkillCatalogue(db, shipped()))
     return db.transaction(() => {
       const id = identity(profileId)
@@ -35,15 +35,9 @@ export function launchSkillSelections(db: AppDatabase, shipped: () => VerifiedBu
           ? BUILT_IN_SKILL_NAMES.flatMap((name) => {
               const skill = store.detail(`built-in/${name}`)
               return skill ? [skill] : []
-            }).filter(
-              (skill) =>
-                skill.active &&
-                (skill.requirement === null ||
-                  grants.canCreateAgents ||
-                  (skill.requirement === 'create-agents-or-coordinator' && grants.isCoordinator)),
-            )
+            }).filter((skill) => skill.active)
           : store
-              .resolve(id, grants)
+              .resolve(id)
               .choices.filter((choice) => choice.ready)
               .map((choice) => choice.skill)
       const stamp = revision()

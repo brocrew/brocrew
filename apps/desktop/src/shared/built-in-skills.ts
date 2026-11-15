@@ -13,19 +13,3 @@ export const BUILT_IN_SKILL_NAMES = [
 ] as const
 
 export type BuiltInSkillName = (typeof BUILT_IN_SKILL_NAMES)[number]
-
-/** Current grants can remove a reminder; they cannot offer a skill absent from the launch view. */
-export function permittedInstalledSkillReminders(
-  installed: string,
-  canCreateAgents: boolean,
-  isCoordinator: boolean,
-): string {
-  return installed
-    .split('\n')
-    .filter((line) => {
-      if (/^(?:brobot:)?build-a-team — /.test(line)) return canCreateAgents
-      if (/^(?:brobot:)?add-a-capability — /.test(line)) return canCreateAgents || isCoordinator
-      return true
-    })
-    .join('\n')
-}

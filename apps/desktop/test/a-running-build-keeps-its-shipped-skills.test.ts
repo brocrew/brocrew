@@ -49,8 +49,6 @@ describe('the shipped skills, kept for the run', () => {
         providerHome: home,
         managedRoot: root,
         shipped: kept,
-        canCreateAgents: true,
-        isCoordinator: false,
         isCurrent: () => true,
       })
   }

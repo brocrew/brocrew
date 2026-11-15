@@ -10,7 +10,6 @@ import type { StartAttemptLine } from '../start-attempt-line'
 import type { ThemeStore } from '../themes/store'
 import type { MainThreadWork } from '../stall-watch'
 import type { SkillLaunchSelection } from '../skills/launch-selection'
-import type { SkillGrants } from '../../shared/skills-catalogue'
 import type { PreparedBuiltInSkills } from '../skills/prepare-built-in-skills'
 import type { SavedMethodsUse } from '../../shared/saved-methods'
 import type { TextPackUse } from '../../shared/text-pack'
@@ -101,12 +100,10 @@ export interface RuntimeHostDeps {
   prepareProviderHome(provider: Provider, profileId: string): string | Promise<string>
   /** Wait for transcript clearing before a provider process can start. */
   beforeProviderLaunch?: () => Promise<void>
-  readSelectedSkills?: (profileId: string | null, grants: SkillGrants) => SkillLaunchSelection
+  readSelectedSkills?: (profileId: string | null) => SkillLaunchSelection
   prepareBuiltInSkills?: (input: {
     provider: Provider
     providerHome: string
-    canCreateAgents: boolean
-    isCoordinator: boolean
     isCurrent: () => boolean
     inUseUntil?: Promise<void>
     selection?: Pick<SkillLaunchSelection, 'revision' | 'skills'>
