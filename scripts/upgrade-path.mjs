@@ -2334,7 +2334,10 @@ async function runUpgradePath() {
     return { ...copy, files, unfinished: existsSync(join(folder, 'unfinished')) }
   })
   const firstCopy = firstCopyPolicy(before.lineage, candidateLineage, completedCopies, {
-    workspaceId: readFileSync(join(data, 'backups', 'workspace-id'), 'utf8').trim(),
+    workspaceId:
+      completedCopies.length > 0
+        ? readFileSync(join(data, 'backups', 'workspace-id'), 'utf8').trim()
+        : undefined,
     stateFiles,
   })
   const previousWhole = completedCopies.filter(({ manifest }) =>
