@@ -1,4 +1,6 @@
 import { parentPort, workerData } from 'node:worker_threads'
+import { trimOldEvents } from './db/event-retention'
+import { inspectCompaction, writeCompactedWorkspace } from './db/workspace-compaction'
 import {
   StorageEngine,
   storageReason,
@@ -8,10 +10,29 @@ import {
 
 const port = parentPort
 if (port) {
-  const { roots, request } = workerData as { roots: StorageRoots; request: StorageRequest }
-  const engine = new StorageEngine(roots)
   void (async () => {
     try {
+      if ('maintenance' in workerData) {
+        const request = workerData.maintenance
+        if (request.kind === 'inspect') {
+          port.postMessage({ ok: true, value: inspectCompaction(request.file) })
+          return
+        }
+        if (request.kind === 'compact') {
+          writeCompactedWorkspace(request.file, request.output)
+          port.postMessage({ ok: true, value: null })
+          return
+        }
+        let stopped = false
+        port.on('message', () => {
+          stopped = true
+        })
+        const value = await trimOldEvents(request.file, () => stopped)
+        port.postMessage({ ok: true, value })
+        return
+      }
+      const { roots, request } = workerData as { roots: StorageRoots; request: StorageRequest }
+      const engine = new StorageEngine(roots)
       const value =
         request.kind === 'measure'
           ? await engine.measure()

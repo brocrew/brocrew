@@ -20,6 +20,8 @@ import startStorageWorker from './storage.worker?nodeWorker'
 import startRecoveryVerifier from './recovery-verify.worker?nodeWorker'
 import { verifyInAWorker } from './recovery/copy-check'
 import { StorageService } from './storage/service'
+import { startEventRetention } from './storage/event-retention'
+import { workspaceCompaction } from './storage/workspace-compaction'
 import { clearHttpCache, httpCacheFolder } from './storage/cache'
 import { registerStorageIpc } from './storage/ipc'
 import { StorageFailure } from './storage/engine'
@@ -167,7 +169,7 @@ import {
   type DockLabelHost,
 } from './dock-label'
 import { DOCK_LABEL_CHANNELS, isDockLabelChange } from '../shared/dock-label'
-import { freeBytesOn, nativeTranscriptPath } from './archive/native-file'
+import { nativeTranscriptPath } from './archive/native-file'
 import { createMemoryAmendmentObserver, createSessionStore } from './db/session-store'
 import { applyMigrations } from './db/migrate'
 import { NewerDatabaseError, openOrRefuse, UnreadableDatabaseError } from './db/newer-database'
@@ -194,7 +196,6 @@ import {
 } from './recovery/log-lines'
 import { createRecoveryCalls, type RecoveryCalls } from './recovery/window-calls'
 import { openRecoveryWindow, registerRecoveryIpc, tellTheWindow } from './recovery-window'
-import { compactWhenMuchIsFree } from './db/compact'
 import { aCommandsKind, registerRuntimeIpc, webContentsSink } from './runtime/ipc'
 import { sinkOwnerId } from './runtime/window-caller'
 import { DEFAULT_SILENCE_WINDOW_MS } from './runtime/liveness'
@@ -377,6 +378,12 @@ const recoveryCopyVerifier = verifyInAWorker((request) =>
 )
 const recoveryWork = new Set<Promise<unknown>>()
 const recoveryCaptureAbort = new AbortController()
+const launchCompaction = workspaceCompaction((maintenance) =>
+  startStorageWorker({
+    workerData: { maintenance },
+    resourceLimits: { maxOldGenerationSizeMb: 64, maxYoungGenerationSizeMb: 8 },
+  }),
+)
 const recoveryCopyHasher = verifyInAWorker((request) =>
   startRecoveryVerifier({
     workerData: { ...request, hashOnly: true },
@@ -402,6 +409,7 @@ function withRecoveryWork<T>(work: () => Promise<T>): Promise<T> {
 function stopRecoveryWork(): Promise<void> {
   stoppingRecoveryWork ??= (async () => {
     recoveryCaptureAbort.abort()
+    await launchCompaction.stop()
     await recoveryCopyHasher.stop()
     await recoveryCopyVerifier.stop()
     await Promise.allSettled([...recoveryWork])
@@ -421,6 +429,7 @@ let host: RuntimeHost | null = null
 const pluginSupervisor = new PluginSupervisorAttachment()
 let updates: ReturnType<typeof startUpdates> | null = null
 let transcriptRetention: TranscriptRetentionHost | undefined
+let eventRetention: ReturnType<typeof startEventRetention> | undefined
 let recoveryMaintenance: Promise<unknown> = Promise.resolve()
 let recoveryStartSucceeded = false
 let recoveryStartRecorded: Promise<void> | undefined
@@ -525,23 +534,6 @@ function initDatabase(): AppDatabase {
   importTurnsTheAppCutFile(database, app.getPath('userData'))
   importDraftsFile(database, app.getPath('userData'))
   importProfileExecutionFile(database, app.getPath('userData'))
-  try {
-    const compaction = compactWhenMuchIsFree(database, freeBytesOn(app.getPath('userData')))
-    if (compaction === 'compacted') console.info('BroCrew gave its free database space back')
-    if (compaction === 'compacted-log-held') {
-      console.info('BroCrew gave its free database space back; its log file shrinks later')
-    }
-    if (compaction === 'deferred-too-large') {
-      console.info(
-        'BroCrew kept its free database space: the file is too large to compact at launch',
-      )
-    }
-    if (compaction === 'not-enough-disk') {
-      console.warn('BroCrew kept its free database space: the disk has no room to compact it')
-    }
-  } catch (error) {
-    console.warn('BroCrew could not give its free database space back:', error)
-  }
   db = database
   recoveryStartRecorded = withRecoveryCopies(() =>
     recordSuccessfulStart(app.getPath('userData'), theBuildsMigrations(), {
@@ -2151,6 +2143,16 @@ function start(ownership: HostGateVerdict): void {
       recoveryStartSucceeded = true
       void letGoOfOldCopies()
       sayAtOnce(READY_LINE)
+      eventRetention = startEventRetention(
+        () => startStorageWorker({
+          workerData: { maintenance: { kind: 'trim', file: databaseFile(app.getPath('userData')) } },
+          resourceLimits: { maxOldGenerationSizeMb: 64, maxYoungGenerationSizeMb: 8 },
+        }),
+        async (result) => {
+          if (result.removed > 0) console.info('BroCrew trimmed old event history:', result)
+        },
+        (error) => console.warn('BroCrew could not trim old event history:', error),
+      )
     })
     .catch((error: unknown) => {
       pluginStartupTrace.failure('app-startup', error)
@@ -2182,6 +2184,7 @@ const lifetime = createAppLifetime({
   },
   keepUnsentDrafts: () => theLastDraftSaves(),
   stopArchiveWork: () => {
+    void eventRetention?.stop()
     void stopRecoveryWork()
     void stopProviderSetup?.()
     updates?.stop()
@@ -2197,6 +2200,7 @@ const lifetime = createAppLifetime({
     void themes?.close().catch(() => undefined)
   },
   drainArchiveWork: async () => {
+    await eventRetention?.stop()
     await stopRecoveryWork()
     await stopProviderSetup?.()
     await updates?.drain()

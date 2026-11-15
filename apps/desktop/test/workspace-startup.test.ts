@@ -350,8 +350,6 @@ it('main passes the must-exist option into SQLite when the database disappears a
     theBuildsMigrations: () => [],
     applyMigrations: () => {},
     mainThreadWork: { timed: <T>(_what: string, work: () => T): T => work() },
-    compactWhenMuchIsFree: () => 'unchanged',
-    freeBytesOn: () => null,
     db: null,
     presentation: { hidden: false },
   }

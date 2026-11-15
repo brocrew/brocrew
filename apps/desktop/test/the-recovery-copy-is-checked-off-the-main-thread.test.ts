@@ -8,7 +8,8 @@ import { Worker } from 'node:worker_threads'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
-import { compactWhenMuchIsFree } from '../src/main/db/compact'
+import { inspectCompaction } from '../src/main/db/workspace-compaction'
+import { workspaceCompaction } from '../src/main/storage/workspace-compaction'
 import { CheckpointFailed, makeCheckpoint } from '../src/main/recovery/checkpoint'
 import { checkTheCopy, verifyInAWorker, type VerifyCopy } from '../src/main/recovery/copy-check'
 import { bundleAWorker } from './helpers/bundle-a-worker'
@@ -18,12 +19,13 @@ const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db
 /**
  * A recovery copy is checked in a worker, so a long check never holds the main thread; its three
  * outcomes are kept apart, as a checkpoint says and retries them; and the copy is released before
- * anything touches it next. Launch compaction never rewrites a file above its ceiling.
+ * anything touches it next. Launch compaction runs off the main thread and installs only its closed output.
  */
 describe('the recovery copy is checked off the main thread', () => {
   let folder: string
   let bundle: string
   let checkBundle: string
+  let storageBundle: string
   const roots: string[] = []
   const aRoot = () => {
     const root = mkdtempSync(join(folder, 'root-'))
@@ -79,6 +81,7 @@ describe('the recovery copy is checked off the main thread', () => {
     folder = mkdtempSync(join(tmpdir(), 'fictional-copy-check-'))
     bundle = await bundleAWorker('src/main/recovery-verify.worker.ts', folder, 'verify.cjs')
     checkBundle = await bundleAWorker('src/main/recovery/copy-check.ts', folder, 'check.cjs')
+    storageBundle = await bundleAWorker('src/main/storage.worker.ts', folder, 'storage.cjs')
   }, 120_000)
   afterAll(() => {
     rmSync(folder, { recursive: true, force: true })
@@ -298,26 +301,41 @@ describe('the recovery copy is checked off the main thread', () => {
       Number(db.pragma('page_count', { simple: true })) *
       Number(db.pragma('page_size', { simple: true }))
 
-    it('never rewrites a file whose size is above its ceiling, however much is free', () => {
-      const { db } = aLooseDatabase()
+    it('inspects a large loose file without rewriting it', () => {
+      const { file, db } = aLooseDatabase()
       try {
         const before = fileBytes(db)
-        expect(compactWhenMuchIsFree(db, 10 * before, before - 1)).toBe('deferred-too-large')
+        const facts = inspectCompaction(file)!
+        expect(facts.eligible).toBe(true)
+        expect(facts.bytes).toBe(before)
+        expect(facts.keptBytes).toBeLessThan(before / 2)
         expect(fileBytes(db)).toBe(before)
       } finally {
         db.close()
       }
     })
 
-    it('compacts as before below its ceiling', () => {
-      const { db } = aLooseDatabase()
+    it('joins the production compaction worker before installing and reopening its output', async () => {
+      const { file, db } = aLooseDatabase()
+      const before = fileBytes(db)
+      db.close()
+      const maintenance = workspaceCompaction((request) => new Worker(storageBundle, {
+        workerData: { maintenance: request },
+      }))
+      let copied = false
       try {
-        const before = fileBytes(db)
-        expect(compactWhenMuchIsFree(db, 10 * before, before + 1)).toMatch(/^compacted/)
-        expect(fileBytes(db)).toBeLessThan(before)
-      } finally {
-        db.close()
-      }
+        const longest = await longestGapDuring(async () => {
+          expect(await maintenance.run(file, async () => {}, async () => { copied = true }, () => {})).toBe(true)
+        })
+        expect(longest).toBeLessThan(100)
+        expect(copied).toBe(true)
+        const reopened = openDatabase(file)
+        try {
+          expect(fileBytes(reopened)).toBeLessThan(before)
+          expect(reopened.pragma('auto_vacuum', { simple: true })).toBe(2)
+          expect(reopened.prepare('SELECT count(*) AS n FROM filler').get()).toEqual({ n: 0 })
+        } finally { reopened.close() }
+      } finally { await maintenance.stop() }
     })
   })
 })
