@@ -301,10 +301,7 @@ import {
 } from './data-folder'
 import { WorkspaceUnavailable } from './workspace-startup'
 import { nodeFs as recoveryFiles } from './recovery/files'
-import {
-  prepareCheckpointReplacement,
-  captureAfterCompaction,
-} from './recovery/replace-checkpoint'
+import { prepareCheckpointReplacement, captureAfterCompaction } from './recovery/replace-checkpoint'
 
 const updateReopenAtLaunch =
   app.isPackaged && !app.commandLine.hasSwitch('brobot-hidden')
@@ -1525,14 +1522,20 @@ async function compactDataBeforeOpen(): Promise<void> {
         launchCompaction.run(
           databaseFile(userData),
           (needed) => prepareCheckpointReplacement(options, theBuildsMigrations(), needed),
-          () =>
-            captureAfterCompaction({
+          () => {
+            sayWorkingIfItTakesLong('checkpoint')
+            return captureAfterCompaction({
               ...options,
               build: commit === '' ? null : commit,
               verifyCopy: recoveryCopyVerifier.verify,
               hashCopy: recoveryCopyHasher.verify,
-            }),
-          (done, total) => recoveryCalls?.progress(done, total),
+              progress: (done, total) => recoveryCalls?.progress(done, total),
+            })
+          },
+          (done, total) => {
+            sayWorkingIfItTakesLong('compact')
+            recoveryCalls?.progress(done, total)
+          },
         ),
       ),
     )
@@ -1541,6 +1544,9 @@ async function compactDataBeforeOpen(): Promise<void> {
     console.warn('BroCrew could not make its workspace smaller at this launch:', error)
   } finally {
     checkingTheData = false
+    if (workingTimer !== null) clearTimeout(workingTimer)
+    workingTimer = null
+    workingOnNow = null
   }
   existing?.assertDatabase()
 }

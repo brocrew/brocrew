@@ -13,7 +13,7 @@ export type StartupVerdict =
       readonly offers: OfferedCheckpoint | null
     }
   | { readonly kind: 'history-only'; readonly gate: HistoryOnlyGate; readonly database: string }
-  | { readonly kind: 'working'; readonly what: 'check' | 'checkpoint' | 'restore' | 'return' }
+  | { readonly kind: 'working'; readonly what: 'check' | 'checkpoint' | 'restore' | 'return' | 'compact' }
   | {
       readonly kind: 'failed'
       readonly reason: StartFailure

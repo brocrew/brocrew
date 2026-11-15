@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3'
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { createHash } from 'node:crypto'
 import { dirname, join } from 'node:path'
@@ -264,7 +264,7 @@ describe('the recovery copy is checked off the main thread', () => {
       expect((failure as Error).message).toContain(
         "did not pass SQLite's own check (row 7 missing)",
       )
-      expect(readdirSync(join(userData, 'backups'))).toEqual(['workspace-id'])
+      expect(existsSync(join(userData, 'backups'))).toBe(false)
     })
 
     it('a check that could not run is retried, and the copy is not kept', async () => {
@@ -273,7 +273,7 @@ describe('the recovery copy is checked off the main thread', () => {
       expect(failure).toBeInstanceOf(CheckpointFailed)
       expect((failure as CheckpointFailed).canRetry).toBe(true)
       expect((failure as Error).message).toContain('locked')
-      expect(readdirSync(join(userData, 'backups'))).toEqual(['workspace-id'])
+      expect(existsSync(join(userData, 'backups'))).toBe(false)
     })
 
     it('a copy the worker passes is kept', async () => {

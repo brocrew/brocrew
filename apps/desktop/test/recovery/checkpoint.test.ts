@@ -1,4 +1,4 @@
-import { databaseContents, openCheckpointForRead } from './lib/recovery-files'
+import { databaseContents, fingerprint, openCheckpointForRead } from './lib/recovery-files'
 import { gunzipSync } from 'node:zlib'
 import {
   MIGRATIONS_FOLDER as MIGRATIONS,
@@ -537,7 +537,7 @@ describe('makeCheckpoint, on disk', () => {
         event.startsWith(`sync wx ${join(folder, 'manifest.json')}.`) && event.endsWith('.tmp'),
     )
     expect(manifest).toBeGreaterThan(-1)
-    const copy = at(`sync r+ ${join(folder, 'database.sqlite')}`)
+    const copy = at(`sync wx ${join(folder, 'database.sqlite')}`)
     const drafts = at(`sync r+ ${join(folder, 'drafts.json')}`)
     expect(copy).toBeLessThan(drafts)
     expect(drafts).toBeLessThan(manifest)

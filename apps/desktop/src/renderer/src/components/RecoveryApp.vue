@@ -14,6 +14,8 @@ import type { TranscriptState } from '../lib/transcript'
 import { readOnlyTranscript } from '../lib/read-only-transcript'
 import TranscriptView from './TranscriptView.vue'
 import IconSprite from './IconSprite.vue'
+import ProgressBar from './ProgressBar.vue'
+import appIcon from '../../../../build/logo-256.png'
 import MessageLinks from './MessageLinks.vue'
 import type { ResolvedMessageLink } from '../lib/message-links'
 import { useMessagePaths } from '../composables/useMessagePaths'
@@ -48,6 +50,7 @@ const verdict = shallowRef<StartupVerdict | null>(null)
 /** What is running: drawn as a progress line, and every press waits for it. */
 const busy = ref<string | null>(null)
 const progress = ref<{ done: number; total: number } | null>(null)
+const compacting = computed(() => verdict.value?.kind === 'working' && verdict.value.what === 'compact')
 /** A call that threw instead of answering a verdict. */
 const trouble = ref<string | null>(null)
 
@@ -240,12 +243,8 @@ const messagePaths = useMessagePaths(
     >
       <!-- The window's own icons: it is a separate entry, so nothing else mounts them. -->
       <IconSprite />
-      <section v-if="!bridge" class="dialog" data-cy="recovery-no-bridge">
-        <p class="lone">{{ NO_BRIDGE_WORDS }}</p>
-      </section>
-
       <section
-        v-else-if="verdict?.kind === 'history-only' && words"
+        v-if="bridge && verdict?.kind === 'history-only' && words"
         class="history"
         data-cy="recovery-history"
       >
@@ -366,91 +365,119 @@ const messagePaths = useMessagePaths(
         </div>
       </section>
 
-      <section
-        v-else-if="words"
-        class="dialog"
-        role="alertdialog"
-        aria-labelledby="recovery-heading"
-        :aria-describedby="describedBy"
-        data-cy="recovery-dialog"
-      >
-        <div class="dialog-body">
-          <h1
-            id="recovery-heading"
-            ref="heading"
-            tabindex="-1"
-            class="bb-title"
-            data-cy="recovery-heading"
-          >
-            {{ words.heading }}
-          </h1>
-          <p
-            v-for="(line, index) in words.body"
-            :id="`recovery-body-${index}`"
-            :key="index"
-            data-cy="recovery-body"
-          >
-            {{ line }}
-          </p>
-          <p v-if="words.detail" id="recovery-detail" class="detail" data-cy="recovery-detail">
-            {{ words.detail }}
-          </p>
-          <div
-            v-if="busy || verdict?.kind === 'working'"
-            class="progress"
-            data-cy="recovery-progress"
-          >
-            <span v-if="busy">{{ busy }}</span>
-            <div
-              class="bb-meter"
-              role="progressbar"
-              :aria-label="busy ?? words.heading"
-              :aria-valuenow="percent ?? undefined"
-              aria-valuemin="0"
-              aria-valuemax="100"
-            >
-              <span :style="{ width: `${percent ?? 0}%` }"></span>
+      <div v-else class="startup">
+        <header class="startup-brand">
+          <img :src="appIcon" alt="" width="32" height="32" />
+          <span>BroCrew</span>
+        </header>
+        <section v-if="!bridge" class="dialog" data-cy="recovery-no-bridge">
+          <p class="lone">{{ NO_BRIDGE_WORDS }}</p>
+        </section>
+
+        <section v-else-if="compacting" class="dialog" role="status" data-cy="recovery-dialog">
+          <div class="dialog-body">
+            <p ref="heading" tabindex="-1">Checking this workspace’s data…</p>
+            <div class="progress" data-cy="recovery-progress">
+              <div class="compaction-caption">
+                <span>Making your workspace smaller (one time)</span>
+                <span>{{ percent ?? 0 }}%</span>
+              </div>
+              <ProgressBar
+                phase="downloading"
+                :received="progress?.done ?? 0"
+                :total="progress?.total ?? 0"
+                aria-label="Making your workspace smaller (one time)"
+              />
             </div>
           </div>
-          <p v-if="trouble" class="trouble" data-cy="recovery-trouble">
-            That didn't finish. Close BroCrew and open it again.
-            <span class="detail">{{ trouble }}</span>
-          </p>
-        </div>
-        <footer class="dialog-foot">
-          <button
-            v-for="action in words.actions"
-            :key="action.kind"
-            type="button"
-            class="bb-button"
-            :class="{ 'bb-button--primary': action.kind !== 'close' }"
-            :disabled="busy !== null"
-            :data-cy="`recovery-${action.kind}`"
-            @click="act(action)"
-          >
-            {{ action.label }}
-          </button>
-        </footer>
-      </section>
+        </section>
 
-      <section v-else-if="trouble" class="dialog" data-cy="recovery-dialog">
-        <div class="dialog-body">
-          <h1 ref="heading" tabindex="-1" class="bb-title" data-cy="recovery-heading">
-            BroCrew couldn't check this workspace
-          </h1>
-          <p>Close BroCrew and open it again.</p>
-          <p class="detail" data-cy="recovery-detail">{{ trouble }}</p>
-        </div>
-        <footer class="dialog-foot">
-          <button type="button" class="bb-button" data-cy="recovery-close" @click="bridge?.quit()">
-            Close
-          </button>
-        </footer>
-      </section>
+        <section
+          v-else-if="words"
+          class="dialog"
+          role="alertdialog"
+          aria-labelledby="recovery-heading"
+          :aria-describedby="describedBy"
+          data-cy="recovery-dialog"
+        >
+          <div class="dialog-body">
+            <h1
+              id="recovery-heading"
+              ref="heading"
+              tabindex="-1"
+              class="bb-title"
+              data-cy="recovery-heading"
+            >
+              {{ words.heading }}
+            </h1>
+            <p
+              v-for="(line, index) in words.body"
+              :id="`recovery-body-${index}`"
+              :key="index"
+              data-cy="recovery-body"
+            >
+              {{ line }}
+            </p>
+            <p v-if="words.detail" id="recovery-detail" class="detail" data-cy="recovery-detail">
+              {{ words.detail }}
+            </p>
+            <div
+              v-if="busy || verdict?.kind === 'working'"
+              class="progress"
+              data-cy="recovery-progress"
+            >
+              <span v-if="busy">{{ busy }}</span>
+              <div
+                class="bb-meter"
+                role="progressbar"
+                :aria-label="busy ?? words.heading"
+                :aria-valuenow="percent ?? undefined"
+                aria-valuemin="0"
+                aria-valuemax="100"
+              >
+                <span :style="{ width: `${percent ?? 0}%` }"></span>
+              </div>
+            </div>
+            <p v-if="trouble" class="trouble" data-cy="recovery-trouble">
+              That didn't finish. Close BroCrew and open it again.
+              <span class="detail">{{ trouble }}</span>
+            </p>
+          </div>
+          <footer class="dialog-foot">
+            <button
+              v-for="action in words.actions"
+              :key="action.kind"
+              type="button"
+              class="bb-button"
+              :class="{ 'bb-button--primary': action.kind !== 'close' }"
+              :disabled="busy !== null"
+              :data-cy="`recovery-${action.kind}`"
+              @click="act(action)"
+            >
+              {{ action.label }}
+            </button>
+          </footer>
+        </section>
 
-      <section v-else class="dialog" role="status" data-cy="recovery-pending">
-        <p class="lone">Checking this workspace’s data…</p>
-      </section>
+        <section v-else-if="trouble" class="dialog" data-cy="recovery-dialog">
+          <div class="dialog-body">
+            <h1 ref="heading" tabindex="-1" class="bb-title" data-cy="recovery-heading">
+              BroCrew couldn't check this workspace
+            </h1>
+            <p>Close BroCrew and open it again.</p>
+            <p class="detail" data-cy="recovery-detail">{{ trouble }}</p>
+          </div>
+          <footer class="dialog-foot">
+            <button type="button" class="bb-button" data-cy="recovery-close" @click="bridge?.quit()">
+              Close
+            </button>
+          </footer>
+        </section>
+
+        <section v-else class="dialog" role="status" data-cy="recovery-pending">
+          <p class="lone">Checking this workspace’s data…</p>
+        </section>
+      </div>
     </main>
   </MessageLinks>
 </template>
@@ -465,17 +492,46 @@ const messagePaths = useMessagePaths(
   overflow: auto;
 }
 
-/* The refusal and failure screens: one card in the middle of the paper. */
-.dialog {
+.startup {
   display: flex;
   width: min(560px, calc(100% - 2 * var(--dialog-gutter)));
   margin: auto;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+.startup-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  padding: 0 var(--space-2);
+  color: var(--text);
+  font-size: var(--type-title);
+  font-weight: 600;
+  line-height: var(--space-16);
+}
+
+.startup-brand img {
+  width: var(--space-16);
+  height: var(--space-16);
+  border-radius: var(--radius-sm);
+}
+
+.compaction-caption {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+/* The refusal and failure screens: one card in the middle of the paper. */
+.dialog {
+  display: flex;
+  width: 100%;
   flex-direction: column;
   overflow: hidden;
   border: var(--border-width) solid var(--line-strong);
   border-radius: var(--radius-lg);
   background: var(--panel);
-  box-shadow: var(--shadow);
 }
 
 .dialog-body {

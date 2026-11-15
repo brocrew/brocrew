@@ -62,10 +62,11 @@ import { prepareCheckpointReplacement } from './replace-checkpoint'
 /** Whether this process is the only app on the data folder, as the launch's one-app check found. */
 export type Ownership = HostGateVerdict
 
-export type WorkingOn = 'check' | 'checkpoint' | 'restore' | 'return'
+export type WorkingOn = 'check' | 'checkpoint' | 'restore' | 'return' | 'compact'
 
 /** What a start that ended while still working was working on, in the line it prints. */
 const WORKING_SAID: Readonly<Record<WorkingOn, string>> = {
+  compact: 'workspace compaction',
   check: 'check of its data',
   checkpoint: 'recovery copy',
   restore: 'restore',

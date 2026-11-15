@@ -43,6 +43,7 @@ async function transcode(
   let output: RecoveryFileHandle | undefined
   let failed = false
   let failure: unknown
+  let result!: PlainDatabaseFacts
   try {
     output = await fs.open(target, 'wx', 0o600)
     const destination = output
@@ -82,18 +83,15 @@ async function transcode(
       throw new Error('The recovery copy does not hold its recorded database size.')
     await destination.sync()
     await syncFolder(dirname(target), fs)
-    return { bytes, sha256: hash.digest('hex') }
+    result = { bytes, sha256: hash.digest('hex') }
   } catch (error) {
     failed = true
     failure = error
-    throw error
-  } finally {
-    const closed = await Promise.allSettled([input.close(), ...(output ? [output.close()] : [])])
-    const errors = closed.flatMap((one) => (one.status === 'rejected' ? [one.reason] : []))
-    if (errors.length > 0)
-      throw new AggregateError(
-        failed ? [failure, ...errors] : errors,
-        'Recovery stream close failed.',
-      )
   }
+  const closed = await Promise.allSettled([input.close(), ...(output ? [output.close()] : [])])
+  const errors = closed.flatMap((one) => (one.status === 'rejected' ? [one.reason] : []))
+  if (errors.length > 0)
+    throw new AggregateError(failed ? [failure, ...errors] : errors, 'Recovery stream close failed.')
+  if (failed) throw failure
+  return result
 }

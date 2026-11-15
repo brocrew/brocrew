@@ -399,10 +399,12 @@ export function prepareDatabaseSnapshot(
   const fs = options.fs ?? nodeFs
   const readonlySource = new Database(file, { readonly: true, fileMustExist: true })
   let bytes: number
+  let wasWal: boolean
   try {
     bytes =
       Number(readonlySource.pragma('page_count', { simple: true })) *
       Number(readonlySource.pragma('page_size', { simple: true }))
+    wasWal = String(readonlySource.pragma('journal_mode', { simple: true })) === 'wal'
   } finally {
     readonlySource.close()
   }
@@ -410,30 +412,41 @@ export function prepareDatabaseSnapshot(
     bytes,
     copyTo: async (copy) => {
       options.signal?.throwIfAborted()
-      const source = new Database(file, { fileMustExist: true })
-      let recorded: MigrationsOnDisk
       try {
-        if (String(source.pragma('journal_mode = DELETE', { simple: true })) !== 'delete')
-          throw new Error(
-            'The live database must be closed before its recovery copy is compressed.',
-          )
-        recorded = migrationsRecordedIn(source)
+        const source = new Database(file, { fileMustExist: true })
+        let recorded: MigrationsOnDisk
+        try {
+          if (String(source.pragma('journal_mode = DELETE', { simple: true })) !== 'delete')
+            throw new Error(
+              'The live database must be closed before its recovery copy is compressed.',
+            )
+          recorded = migrationsRecordedIn(source)
+        } finally {
+          source.close()
+        }
+        if (recorded.kind !== 'recorded')
+          throw new Error('The live database has no readable migration record.')
+        if (
+          options.expectedMigrations &&
+          !sameMigrations(recorded.migrations, options.expectedMigrations)
+        )
+          throw new Error('The live database does not record the migrations admitted at startup.')
+        await options.verifySource?.()
+        options.beforeWrite(bytes)
+        const plain = await gzipCheckpoint(file, copy, fs, options.signal)
+        if (plain.bytes !== bytes)
+          throw new Error('The closed database changed size while its recovery copy was compressed.')
+        return { ...plain, migrations: recorded.migrations }
       } finally {
-        source.close()
+        if (wasWal) {
+          const source = new Database(file, { fileMustExist: true })
+          try {
+            source.pragma('journal_mode = WAL')
+          } finally {
+            source.close()
+          }
+        }
       }
-      if (recorded.kind !== 'recorded')
-        throw new Error('The live database has no readable migration record.')
-      if (
-        options.expectedMigrations &&
-        !sameMigrations(recorded.migrations, options.expectedMigrations)
-      )
-        throw new Error('The live database does not record the migrations admitted at startup.')
-      await options.verifySource?.()
-      options.beforeWrite(bytes)
-      const plain = await gzipCheckpoint(file, copy, fs, options.signal)
-      if (plain.bytes !== bytes)
-        throw new Error('The closed database changed size while its recovery copy was compressed.')
-      return { ...plain, migrations: recorded.migrations }
     },
   }
 }

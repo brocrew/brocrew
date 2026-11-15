@@ -1,4 +1,4 @@
-import { databaseContents, fullCopyFs, treeOf, sha256Of } from './lib/recovery-files'
+import { databaseContents, fullCopyFs, treeOf, sha256Of, openCheckpointForRead } from './lib/recovery-files'
 import { aBuildWithOneMoreMigration as buildWithOneMoreMigration } from './lib/seat-b-folders'
 import { registerMigrationLineageCases } from './lib/migration-lineage-cases'
 import Database from 'better-sqlite3'
@@ -535,7 +535,7 @@ SELECT * FROM no_such_migration_table;`,
     })
     const verdict = await inspect(deps)
     expect(verdict).toMatchObject({ kind: 'failed', reason: 'checkpoint-failed', canRetry: true })
-    expect(verdict.kind === 'failed' ? verdict.detail : '').toMatch(/needs about .* free/)
+    expect(verdict.kind === 'failed' ? verdict.detail : '').toMatch(/needs about .* more space.*Existing recovery files were kept/)
     expect(seen.lines).toEqual([])
     expect(await treeOf(userData)).toEqual(before)
   })
@@ -1256,7 +1256,7 @@ it.each([
       expect(copy.manifest.reason).toBe('before-migration')
       expect(copy.manifest.database.migrations).toHaveLength(migrations)
       const live = new Database(databaseFile(userData), { readonly: true })
-      const saved = new Database(join(copy.folder, 'database.sqlite'), { readonly: true })
+      const saved = openCheckpointForRead(join(copy.folder, 'database.sqlite'))
       try {
         expect(saved.prepare('SELECT id FROM provider_session ORDER BY id').all()).toEqual(
           live.prepare('SELECT id FROM provider_session ORDER BY id').all(),
