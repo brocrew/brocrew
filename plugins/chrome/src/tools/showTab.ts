@@ -67,7 +67,9 @@ export function buildShowTabDefs(): ToolDef[] {
               tabId: id,
               url: tab.page.url(),
               title,
-              ...(!focused ? { note: `focus pending${focusError ? `: ${focusError}` : ''}` } : {}),
+              ...(!focused || focusError
+                ? { note: `focus pending${focusError ? `: ${focusError}` : ''}` }
+                : {}),
             },
           }
         })

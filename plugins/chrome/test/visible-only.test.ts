@@ -135,6 +135,25 @@ describe('visible Chrome profiles', () => {
       fault.mockRestore()
     }
   })
+  it('keeps a known bookkeeping error even when focusing succeeds', async () => {
+    const h = setup()
+    const opened = (await h.call('open_tab', { profile: 'fern', url: 'about:blank' })).json as {
+      tabId: string
+    }
+    const fault = vi
+      .spyOn(h.browser, 'usePage')
+      .mockRejectedValue(new Error('fictional identity failure'))
+    try {
+      const result = (await h.call('show_tab', { tabId: opened.tabId })).json as {
+        tabId: string
+        note: string
+      }
+      expect(result.tabId).toBe(opened.tabId)
+      expect(result.note).toContain('fictional identity failure')
+    } finally {
+      fault.mockRestore()
+    }
+  })
   it('lists known metadata while fresh title and window lookups remain pending', async () => {
     const h = setup()
     const opened = (
