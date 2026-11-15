@@ -195,6 +195,38 @@ describe('provisionCodexAuth (022)', () => {
     expect(signInAt(dest)).toBe(digestOf(key))
   })
 
+  it('keeps an agent rotation that happened while the copy waited for the home lock', async () => {
+    const dest = join(home, 'auth.json')
+    writeFileSync(dest, '{"tokens":{"account_id":"fictional-before"}}')
+    utimesSync(dest, 50, 50)
+    utimesSync(source, 100, 100)
+    let entered!: () => void
+    let release!: () => void
+    const held = new Promise<void>((resolve) => {
+      entered = resolve
+    })
+    const ready = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const owner = withProviderHomeLock(home, async () => {
+      entered()
+      await ready
+    })
+    await held
+    const copying = provisionCodexAuth(home, { ...{ sourceAuthPath: source, refresh: true } })
+    const rotated = '{"tokens":{"account_id":"fictional-rotated-under-lock"}}'
+    try {
+      writeFileSync(dest, rotated)
+      utimesSync(dest, 200, 200)
+    } finally {
+      release()
+    }
+    await owner
+    await copying
+    expect(signInAt(dest)).toBe(digestOf(rotated))
+    expect(lstatSync(dest).mtimeMs).toBe(200_000)
+  })
+
   it('copies auth.json content into the home at 0600, atomically, leaving no temp file', async () => {
     await provisionCodexAuth(home, { sourceAuthPath: source })
     const dest = join(home, 'auth.json')
