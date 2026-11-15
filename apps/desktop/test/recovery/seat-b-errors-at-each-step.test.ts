@@ -7,6 +7,7 @@ import { FAULT_CODES, type RecoveryFaults } from '../../src/main/recovery/coordi
 import { STEPS, type Step } from '../../src/main/recovery/contract'
 import type { RecoveryFs } from '../../src/main/recovery/files'
 import {
+  DATABASE_FILE,
   FAMILY,
   copyNameOf,
   databaseFile,
@@ -126,6 +127,16 @@ function liveOf(userData: string): Record<string, string | null> {
   )
 }
 
+/** Expected header counters for this closed-WAL fixture; every other byte stays exact. */
+function liveAfterCopies(userData: string, copies: number): Record<string, string | null> {
+  const expected = liveOf(userData)
+  const bytes = Buffer.from(readFileSync(databaseFile(userData)))
+  // DELETE then WAL advances the file-change counter and its version-valid-for field twice.
+  for (const offset of [24, 92]) bytes.writeUInt32BE(bytes.readUInt32BE(offset) + 2 * copies, offset)
+  expected[DATABASE_FILE] = sha256(bytes)
+  return expected
+}
+
 describe.each(FAULT_CODES)('%s at each step of a restore', (code) => {
   it('stops with nothing changed and words for it, or finishes once the copy was checked', async () => {
     const outcomes = new Set<string>()
@@ -228,6 +239,9 @@ describe.each(FAULT_CODES)('%s at each step of a copy made before a migration', 
       const said = `${code} ${after ? 'after' : 'before'} ${at}`
       const userData = await aCopyOf(scratch, workspace)
       const live = liveOf(userData)
+      const afterOneCopy = liveAfterCopies(userData, 1)
+      const afterTwoCopies = liveAfterCopies(userData, 2)
+      const copiedBeforeFailure = at !== 'copy' || after
       const service = aService(userData, {
         migrationsFolder,
         faults: { at, ...(after ? { after } : {}), error: code },
@@ -240,12 +254,12 @@ describe.each(FAULT_CODES)('%s at each step of a copy made before a migration', 
       })
       expect(verdict.kind === 'failed' ? verdict.detail : '', said).toContain(code)
       expectWorded(verdict, said)
-      expect(liveOf(userData), said).toEqual(live)
+      expect(liveOf(userData), said).toEqual(copiedBeforeFailure ? afterOneCopy : live)
       expect(await listCheckpoints(userData), said).toEqual([])
       // The cause gone, a retry makes the copy.
       expect(await service.retry(), said).toEqual({ kind: 'open', checkpoint: 'made' })
       expect(await listCheckpoints(userData), said).toHaveLength(1)
-      expect(liveOf(userData), said).toEqual(live)
+      expect(liveOf(userData), said).toEqual(copiedBeforeFailure ? afterTwoCopies : afterOneCopy)
     }
   })
 })
