@@ -524,7 +524,7 @@ const messagePaths = useMessagePaths(
   padding: 0 var(--space-2);
   color: var(--text);
   font-size: var(--type-title);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   line-height: var(--space-16);
 }
 

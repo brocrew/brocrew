@@ -113,7 +113,15 @@ function liveOf(userData: string): Record<string, string | null> {
   return Object.fromEntries(
     [...FAMILY, 'drafts.json'].map((name) => {
       const path = join(userData, name)
-      return [name, existsSync(path) ? sha256(readFileSync(path)) : null]
+      const bytes = existsSync(path) ? readFileSync(path) : null
+      return [
+        name,
+        name.endsWith('-shm') || (name.endsWith('-wal') && bytes?.length === 0)
+          ? null
+          : bytes === null
+            ? null
+            : sha256(bytes),
+      ]
     }),
   )
 }
@@ -315,7 +323,8 @@ describe('the same errors from the file system itself', () => {
     expect(existsSync(databaseFile(userData))).toBe(false)
     expect(await aService(userData).inspect()).toMatchObject({ kind: 'history-only' })
     expect(sha256(readFileSync(databaseFile(userData)))).toBe(
-      template.fixture.checkpoints[0]?.manifest.database.sha256,
+      template.fixture.checkpoints[0]?.manifest.database.uncompressedSha256 ??
+        template.fixture.checkpoints[0]?.manifest.database.sha256,
     )
   })
 })

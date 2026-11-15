@@ -284,7 +284,7 @@ describe('a copy before a migration', () => {
       })
       for (const checkpoint of fixture.checkpoints) expect(existsSync(checkpoint.dir)).toBe(true)
       expect((await listCheckpoints(userData)).map(({ manifest }) => manifest.id)).toEqual(
-        fixture.checkpoints.toReversed().map(({ id }) => id),
+        [...fixture.checkpoints].reverse().map(({ id }) => id),
       )
     },
   )

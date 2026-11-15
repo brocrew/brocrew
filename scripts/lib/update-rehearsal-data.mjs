@@ -10,7 +10,9 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  writeFileSync,
 } from 'node:fs'
+import { gunzipSync } from 'node:zlib'
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -228,7 +230,9 @@ export function databaseRows(file) {
   const scratch = mkdtempSync(join(tmpdir(), 'brobot-rehearsal-db-'))
   try {
     const copy = join(scratch, 'copy.sqlite')
-    copyFileSync(file, copy)
+    const bytes = readFileSync(file)
+    if (bytes[0] === 0x1f && bytes[1] === 0x8b) writeFileSync(copy, gunzipSync(bytes))
+    else copyFileSync(file, copy)
     for (const side of ['-wal', '-shm']) {
       if (existsSync(`${file}${side}`)) copyFileSync(`${file}${side}`, `${copy}${side}`)
     }
@@ -541,10 +545,20 @@ export function verifyCheckpoint(copy) {
       problems.push('the database is not the size its manifest says')
     if (sha256(bytes) !== manifest.database.sha256)
       problems.push('the database is not the one its manifest hashed')
-    if (bytes[18] !== 1 || bytes[19] !== 1) problems.push('the database is not in rollback mode')
     const scratch = mkdtempSync(join(tmpdir(), 'brobot-rehearsal-copy-'))
     try {
-      copyFileSync(database, join(scratch, 'copy.sqlite'))
+      const plain =
+        manifest.database.compression === 'gzip'
+          ? gunzipSync(bytes, { maxOutputLength: manifest.database.uncompressedBytes })
+          : bytes
+      if (
+        manifest.database.compression === 'gzip' &&
+        (plain.length !== manifest.database.uncompressedBytes ||
+          sha256(plain) !== manifest.database.uncompressedSha256)
+      )
+        problems.push('the decoded database differs from its recorded size or hash')
+      if (plain[18] !== 1 || plain[19] !== 1) problems.push('the database is not in rollback mode')
+      writeFileSync(join(scratch, 'copy.sqlite'), plain)
       const opened = new DatabaseSync(join(scratch, 'copy.sqlite'), { readOnly: true })
       try {
         const integrity = opened

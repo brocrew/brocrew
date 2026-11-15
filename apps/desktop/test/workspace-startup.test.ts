@@ -130,6 +130,7 @@ async function startup(
     resolveMigrationsFolder: () => migrations,
     ownershipFrom: () => ({ ask: async () => 'unknown' }),
     createRecoveryService,
+    compactDataBeforeOpen: async () => workspaceStartup(fake)?.assertDatabase(),
     withRecoveryWork: <T>(work: () => Promise<T>) => work(),
     recoveryCopyVerifier: { verify: checkTheCopyHere, stop: async () => {} },
     recoveryCopyHasher: { verify: checkTheCopyHere, stop: async () => {} },

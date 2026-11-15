@@ -1,4 +1,6 @@
 import { existsSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { gzipSync } from 'node:zlib'
+import { checkpointBytes } from './lib/recovery-files'
 import { readFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -18,6 +20,7 @@ import {
   checkpointDatabase,
   checkpointDir,
   databaseFile,
+  isUuid,
   manifestFile,
   stateFile,
 } from '../../src/main/recovery/layout'
@@ -147,7 +150,9 @@ describe('a copy a newer BroBot made before it migrated', () => {
       gate: { checkpointId: made.id, checkpointCreatedAt: MADE_AT[1] },
       database: databaseFile(userData),
     })
-    expect(sha256(readFileSync(databaseFile(userData)))).toBe(made.manifest.database.sha256)
+    expect(sha256(readFileSync(databaseFile(userData)))).toBe(
+      made.manifest.database.uncompressedSha256 ?? made.manifest.database.sha256,
+    )
 
     // Each conversation was begun an hour before the copy after it, its answer a second later.
     const begun = (copy: 0 | 1 | 2): number => Date.parse(MADE_AT[copy]) - HOUR
@@ -298,14 +303,23 @@ describe('a copy this build must not restore', () => {
   it('a copy whose bytes match a rewritten manifest but are not a database is refused at restore', async () => {
     const { userData, faulty } = await aWorkspaceWith(null)
     const copy = checkpointDatabase(userData, faulty.id)
-    const bytes = readFileSync(copy)
-    bytes.fill(0, 0, 100)
+    const raw = checkpointBytes(copy)
+    raw.fill(0, 0, 100)
+    const bytes = gzipSync(raw, { level: 1 })
     writeFileSync(copy, bytes)
     const path = manifestFile(userData, faulty.id)
     const manifest = JSON.parse(readFileSync(path, 'utf8')) as {
-      database: { bytes: number; sha256: string }
+      database: {
+        bytes: number
+        sha256: string
+        uncompressedBytes: number
+        uncompressedSha256: string
+      }
     }
+    manifest.database.bytes = bytes.length
     manifest.database.sha256 = sha256(bytes)
+    manifest.database.uncompressedBytes = raw.length
+    manifest.database.uncompressedSha256 = sha256(raw)
     writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`)
 
     const service = aService(userData)
@@ -441,8 +455,13 @@ describe('a folder with no manifest', () => {
     expect(await service.inspect()).toMatchObject({ kind: 'failed', reason: 'checkpoint-failed' })
     expect(stopping.stopped()).toBe(true)
 
-    const left = readdirSync(backupsDir(userData)).filter((name) => !known.has(name))
+    const added = readdirSync(backupsDir(userData)).filter((name) => !known.has(name))
+    const left = added.filter(isUuid)
     expect(left).toHaveLength(1)
+    expect(added.sort()).toEqual([...left, 'deletion.json'].sort())
+    const retired = JSON.parse(readFileSync(join(backupsDir(userData), 'deletion.json'), 'utf8'))
+    expect(retired.format).toBe('brocrew-recovery-delete')
+    expect(known.has(retired.manifest.id)).toBe(true)
     const id = left[0] ?? ''
     const folder = checkpointDir(userData, id)
     expect(Object.keys(filesIn(folder))).toEqual([UNFINISHED_FILE])

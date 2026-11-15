@@ -6,6 +6,11 @@ import Database from 'better-sqlite3'
 import { gunzipSync } from 'node:zlib'
 import { nodeFs, type RecoveryFs } from '../../../src/main/recovery/files'
 
+export function checkpointBytes(file: string): Buffer {
+  const bytes = readFileSync(file)
+  return bytes[0] === 0x1f && bytes[1] === 0x8b ? gunzipSync(bytes) : bytes
+}
+
 export function openCheckpointForRead(file: string): Database.Database {
   const bytes = readFileSync(file)
   return bytes[0] === 0x1f && bytes[1] === 0x8b
