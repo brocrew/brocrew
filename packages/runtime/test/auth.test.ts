@@ -688,12 +688,14 @@ describe('a copy Codex refused, replaced once by the one refreshed last', () => 
   const replace = (
     refused: CodexCopyIdentity | null = codexCopyIdentityIn(helper),
     stillWanted: () => boolean = () => true,
+    newerOnly?: true,
   ) =>
     replaceARefusedCodexCopy(helper, {
       managedRoot: root,
       // A home that holds no copy has none to name; the writer finds none either.
       refused: refused ?? { dev: 0n, ino: 0n, size: 0n, mtimeNs: 0n },
       stillWanted,
+      ...(newerOnly === undefined ? {} : { newerOnly }),
       candidates: [
         { from: 'the-computers', sourceAuthPath: computers },
         { from: 'brobots-own', fallback: { path: join(ownHome, 'auth.json'), managedRoot: root } },
@@ -702,6 +704,19 @@ describe('a copy Codex refused, replaced once by the one refreshed last', () => 
   const holds = (text: string) => writeFileSync(join(helper, 'auth.json'), text, { mode: 0o600 })
   const own = (text: string) => writeFileSync(join(ownHome, 'auth.json'), text, { mode: 0o600 })
   const held = () => signInAt(join(helper, 'auth.json'))
+
+  it('does not replace a newer agent file with an older recovery candidate', async () => {
+    writeFileSync(computers, FRESH)
+    own(FRESHER)
+    utimesSync(computers, 100, 100)
+    utimesSync(join(ownHome, 'auth.json'), 100, 100)
+    utimesSync(join(helper, 'auth.json'), 200, 200)
+    expect(await replace(undefined, undefined, true)).toBe('not-tried')
+    expect(held()).toBe(digestOf(DEAD))
+    utimesSync(join(ownHome, 'auth.json'), 300, 300)
+    expect(await replace(undefined, undefined, true)).toBe('brobots-own')
+    expect(held()).toBe(digestOf(FRESHER))
+  })
 
   it('🔴 replaces it with this computer’s, refreshed later, of the same account, atomically and private', async () => {
     writeFileSync(computers, FRESH)
