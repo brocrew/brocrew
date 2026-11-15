@@ -450,7 +450,7 @@ function hearStates(message: RuntimeStatesMessage): void {
         epoch === 'accept' &&
         (lastShown.published.covers.complete ||
           lastShown.published.covers.ids.includes(moved.conversation)) &&
-        message.published.seq <= lastShown.published.seq
+        message.published.seq < lastShown.published.seq
       )
         continue
     }

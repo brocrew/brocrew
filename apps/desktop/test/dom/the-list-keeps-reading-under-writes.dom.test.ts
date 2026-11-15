@@ -201,7 +201,7 @@ it('does not publish an in-flight result after unmount', async () => {
   expect(read).toHaveBeenCalledOnce()
 })
 
-it('ignores a late state push older than the listing already shown', async () => {
+it('ignores older pushes but retains pushes at or beyond the listing floor', async () => {
   const view = rail(async () => answer(10, 1, ['shown']))
   await tick()
   ;(view.vm.hearStates as (message: RuntimeStatesMessage) => void)({
@@ -214,10 +214,17 @@ it('ignores a late state push older than the listing already shown', async () =>
   ;(view.vm.hearStates as (message: RuntimeStatesMessage) => void)({
     moved: [{ conversation: 'shown', state: { is: 'needs-you' } }],
     kept: [],
-    published: { epoch, seq: 11 },
+    published: { epoch, seq: 10 },
   })
   await tick()
   expect(listed(view, 'shown')?.state.is).toBe('needs-you')
+  ;(view.vm.hearStates as (message: RuntimeStatesMessage) => void)({
+    moved: [{ conversation: 'shown', state: { is: 'idle' } }],
+    kept: [],
+    published: { epoch, seq: 11 },
+  })
+  await tick()
+  expect(listed(view, 'shown')?.state.is).toBe('idle')
 })
 
 it('does not replay omitted provider facts from a partial listing', async () => {
