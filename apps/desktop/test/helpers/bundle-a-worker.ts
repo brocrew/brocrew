@@ -1,7 +1,7 @@
 import { createRequire } from 'node:module'
 import { dirname, join, posix, resolve, win32 } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { build } from 'vite'
+import { build, type PluginOption } from 'vite'
 
 /** The desktop app's own folder. */
 const APP = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
@@ -36,12 +36,14 @@ export async function bundleAWorker(
   entry: string,
   outDir: string,
   fileName: string,
+  observers: PluginOption[] = [],
 ): Promise<string> {
   await build({
     configFile: false,
     root: APP,
     logLevel: 'error',
     plugins: [
+      ...observers,
       {
         name: 'workspace-packages',
         enforce: 'pre',

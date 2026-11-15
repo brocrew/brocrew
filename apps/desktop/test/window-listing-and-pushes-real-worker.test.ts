@@ -9,6 +9,7 @@ import { serialize } from 'node:v8'
 import { expect, it, vi } from 'vitest'
 import { aServiceWorld } from './helpers/a-service-world'
 import { bundleAWorker } from './helpers/bundle-a-worker'
+import { observeLedgerFolds } from './helpers/observe-ledger-folds'
 import { WindowWorkerReader } from '../src/main/db/window-worker-reader'
 import { windowWriterSampler } from '../src/main/db/window-writer-stamp'
 import { limitsWriterSampler } from '../src/main/db/fresh-limits-snapshot'
@@ -109,6 +110,7 @@ it('measures window reads with 1960 conversations and nine live agents', async (
     'test/helpers/measured-window-worker.ts',
     world.folder,
     'measured-window.cjs',
+    [observeLedgerFolds()],
   )
   const worker = new Worker(bundle, {
     workerData: { file: join(world.folder, 'brobot2.sqlite') },
@@ -120,6 +122,15 @@ it('measures window reads with 1960 conversations and nine live agents', async (
     }),
   )
   worker.on('message', (message) => {
+    if (message.type === 'read' || message.type === 'failed')
+      console.info(
+        JSON.stringify({
+          windowReadFinished: message.id,
+          kind: message.result?.kind,
+          outcome: message.type,
+          measurement: message.measurement,
+        }),
+      )
     if (message.type === 'read')
       readings.push({
         kind: message.result.kind,
