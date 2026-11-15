@@ -135,6 +135,59 @@ describe('visible Chrome profiles', () => {
       fault.mockRestore()
     }
   })
+  it('lists known metadata while fresh title and window lookups remain pending', async () => {
+    const h = setup()
+    const opened = (
+      await h.call('open_tab', { profile: 'fern', url: 'https://fixture.test/known' })
+    ).json as { tabId: string }
+    const page = h.browser.pages.get('fern')![0]
+    const title = vi.spyOn(page, 'title').mockImplementation(() => new Promise(() => {}))
+    const window = vi.spyOn(h.browser, 'windowId').mockImplementation(() => new Promise(() => {}))
+    try {
+      const result = (await h.call('list_tabs')).json as Array<Record<string, unknown>>
+      expect(result).toEqual([
+        expect.objectContaining({
+          tabId: opened.tabId,
+          url: 'https://fixture.test/known',
+          title: 'Title',
+        }),
+      ])
+      expect(title).not.toHaveBeenCalled()
+      expect(window).not.toHaveBeenCalled()
+    } finally {
+      title.mockRestore()
+      window.mockRestore()
+    }
+  })
+  it.each(['pending', 'failed'])(
+    'reads a snapshot while window bookkeeping is %s',
+    async (state) => {
+      const h = setup()
+      const opened = (
+        await h.call('open_tab', { profile: 'fern', url: 'https://fixture.test/known' })
+      ).json as { tabId: string }
+      const page = h.browser.pages.get('fern')![0]
+      const title = vi.spyOn(page, 'title').mockImplementation(() => new Promise(() => {}))
+      const window = vi
+        .spyOn(h.browser, 'usePage')
+        .mockImplementation(() =>
+          state === 'pending'
+            ? new Promise(() => {})
+            : Promise.reject(new Error('fictional metadata failure')),
+        )
+      try {
+        const result = (await h.call('snapshot', { tabId: opened.tabId })).text as string
+        expect(result).toContain('url: https://fixture.test/known')
+        expect(result).toContain('title: Title')
+        expect(result).toContain('[ref=')
+        expect(title).not.toHaveBeenCalled()
+        if (state === 'failed') expect(result).toContain('fictional metadata failure')
+      } finally {
+        title.mockRestore()
+        window.mockRestore()
+      }
+    },
+  )
   it.each([true, false])(
     'reports navigation timeout with committed=%s truthfully',
     async (committed) => {
