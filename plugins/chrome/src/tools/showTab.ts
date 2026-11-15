@@ -61,7 +61,7 @@ export function buildShowTabDefs(): ToolDef[] {
             focused = true
           }, failed)
           watchWindow(deps, profile)
-          const title = await titleOf(tab.page)
+          const title = (tab.title = await titleOf(tab.page))
           return {
             json: {
               tabId: id,

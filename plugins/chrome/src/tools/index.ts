@@ -282,7 +282,7 @@ export function buildToolDefs(): ToolDef[] {
                 notes.push(`created, focus pending: ${windowError}`)
               },
             )
-            const title = await titleAfterLoad(page)
+            const title = (tab.title = await titleAfterLoad(page))
             const note = [
               !updated
                 ? `created, focus pending${windowError ? `: ${windowError}` : ''}`
@@ -318,16 +318,15 @@ export function buildToolDefs(): ToolDef[] {
         if (a.profile !== undefined) usableProfile(deps, a.profile as string)
         const tabs = deps.tabs.list(generationOf(deps), a.profile as string | undefined)
         return {
-          json: await Promise.all(
-            tabs.map(async (t) => ({
-              tabId: t.id,
-              windowId: await deps.browser.windowId(t.profile, t.page),
-              profile: t.profile,
-              url: t.page.url(),
-              title: await titleOf(t.page),
-              ...(openDialogNote(t) ? { dialog: openDialogNote(t) } : {}),
-            })),
-          ),
+          json: tabs.map((t) => ({
+            tabId: t.id,
+            windowId: deps.browser.knownWindowId?.(t.profile, t.page) ?? null,
+            profile: t.profile,
+            url: t.page.url(),
+            title: t.title ?? '',
+            ...(t.notes.length ? { notes: [...t.notes] } : {}),
+            ...(openDialogNote(t) ? { dialog: openDialogNote(t) } : {}),
+          })),
         }
       },
     },
@@ -403,7 +402,7 @@ export function buildToolDefs(): ToolDef[] {
           deps.activity?.('page-loaded')
           return {
             url: page.url(),
-            title: navigationError ? await titleOf(page) : await titleAfterLoad(page),
+            title: (tab.title = navigationError ? await titleOf(page) : await titleAfterLoad(page)),
             status: res ? res.status() : null,
             ...(navigationError ? { navigationError } : {}),
           }
@@ -433,53 +432,58 @@ export function buildToolDefs(): ToolDef[] {
         const ms = timeoutOf(a)
         const offset = (a.offset as number | undefined) ?? 0
         const max = (a.maxChars as number | undefined) ?? MAX_TEXT
-        const { value, notes } = await onTab(deps, a.tabId as string, async ({ tab, page }) => {
-          const head = async (extra = ''): Promise<string> =>
-            `url: ${page.url()}\ntitle: ${await titleOf(page)}\n${offset ? `offset: ${offset}\n` : ''}${extra}\n`
-          const aria = async (
-            timeout: number,
-          ): Promise<{
-            body: string
-            next: number | null
-          }> => {
-            const full = await page.ariaSnapshot({ mode: 'ai', timeout })
-            tab.refs = new Set([...full.matchAll(/\[ref=([A-Za-z0-9]+)\]/g)].map((m) => m[1]))
-            return pageText(full, offset, max)
-          }
-          if (a.mode === 'text') {
-            let got: string | undefined
-            try {
-              got = String(
-                await raceTimeout(
-                  page.evaluate(
-                    (r: { from: number; to: number }) =>
-                      (document.body?.innerText ?? '').slice(r.from, r.to),
-                    { from: offset, to: offset + max + 1 },
+        const { value, notes } = await onTab(
+          deps,
+          a.tabId as string,
+          async ({ tab, page }) => {
+            const head = async (extra = ''): Promise<string> =>
+              `url: ${page.url()}\ntitle: ${tab.title ?? ''}\n${offset ? `offset: ${offset}\n` : ''}${extra}\n`
+            const aria = async (
+              timeout: number,
+            ): Promise<{
+              body: string
+              next: number | null
+            }> => {
+              const full = await page.ariaSnapshot({ mode: 'ai', timeout })
+              tab.refs = new Set([...full.matchAll(/\[ref=([A-Za-z0-9]+)\]/g)].map((m) => m[1]))
+              return pageText(full, offset, max)
+            }
+            if (a.mode === 'text') {
+              let got: string | undefined
+              try {
+                got = String(
+                  await raceTimeout(
+                    page.evaluate(
+                      (r: { from: number; to: number }) =>
+                        (document.body?.innerText ?? '').slice(r.from, r.to),
+                      { from: offset, to: offset + max + 1 },
+                    ),
+                    Math.ceil(ms / 2),
                   ),
-                  Math.ceil(ms / 2),
-                ),
-              )
-            } catch {
-              const f = await aria(Math.floor(ms / 2))
+                )
+              } catch {
+                const f = await aria(Math.floor(ms / 2))
+                return {
+                  header: await head(
+                    '[text mode timed out on this page; showing the aria tree instead]\n',
+                  ),
+                  body: f.body + moreMarker('snapshot', f.next),
+                }
+              }
+              const more = got.length > max
               return {
-                header: await head(
-                  '[text mode timed out on this page; showing the aria tree instead]\n',
-                ),
-                body: f.body + moreMarker('snapshot', f.next),
+                header: await head(),
+                body: got.slice(0, max) + moreMarker('snapshot', more ? offset + max : null),
               }
             }
-            const more = got.length > max
+            const f = await aria(ms)
             return {
               header: await head(),
-              body: got.slice(0, max) + moreMarker('snapshot', more ? offset + max : null),
+              body: f.body + moreMarker('snapshot', f.next),
             }
-          }
-          const f = await aria(ms)
-          return {
-            header: await head(),
-            body: f.body + moreMarker('snapshot', f.next),
-          }
-        })
+          },
+          false,
+        )
         return {
           text: value.header + value.body + (notes.length ? `\n\nnotes: ${notes.join('; ')}` : ''),
         }

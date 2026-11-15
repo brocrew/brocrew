@@ -48,6 +48,7 @@ export interface TabState {
   profile: string
   generation: number
   page: Page
+  title?: string
   refs: Set<string> | null
   console: Ring<ConsoleLine>
   network: Ring<NetworkEntry>

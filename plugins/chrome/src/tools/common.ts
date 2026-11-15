@@ -171,6 +171,7 @@ export async function onTab<T>(
   deps: ToolDeps,
   id: string,
   fn: (c: TabCall) => Promise<T>,
+  waitForWindow = true,
 ): Promise<{
   value: T
   notes: string[]
@@ -183,7 +184,13 @@ export async function onTab<T>(
       deps.tabs.resolve(id, generationOf(deps))
       usableProfile(deps, tab.profile)
       requireNoDialog(tab)
-      await deps.browser.usePage(tab.profile, tab.page)
+      if (waitForWindow) await deps.browser.usePage(tab.profile, tab.page)
+      else {
+        const notes = tab.notes
+        void deps.browser.usePage(tab.profile, tab.page).catch((error: unknown) => {
+          notes.push(describeError(error))
+        })
+      }
       deps.activity?.('page-ready')
       deps.tabs.resolve(id, generationOf(deps))
       usableProfile(deps, tab.profile)
