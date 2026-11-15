@@ -21151,7 +21151,11 @@ export class RuntimeHost implements LiveHost {
       try {
         await this.assertCanTakeTurn(session, 'send', { text, attached: 0, from: null })
       } catch (error) {
-        if (!(error instanceof ItsSignInMovedOn) || this.homeCopies.get(session.provider)?.get(session.profileId)?.state !== 'pending') throw error
+        if (
+          !(error instanceof ItsSignInMovedOn) ||
+          this.homeCopies.get(session.provider)?.get(session.profileId)?.state !== 'pending'
+        )
+          throw error
         copyWait = error
       }
     }
@@ -22307,7 +22311,8 @@ export class RuntimeHost implements LiveHost {
       // they go first when it reopens on the current one ({@link reopenForWhatWaits}).
       if (
         how.ifItLosesTheRace === 'hold-it' &&
-        (aPersonIsAsking(by) || this.homeCopies.get(session.provider)?.get(session.profileId)?.state === 'pending') &&
+        (aPersonIsAsking(by) ||
+          this.homeCopies.get(session.provider)?.get(session.profileId)?.state === 'pending') &&
         this.aReopenCarriesIt(error, by, session)
       ) {
         await this.queueAs(
@@ -25969,7 +25974,10 @@ export class RuntimeHost implements LiveHost {
     // after that event has already passed — the winning turn ended during the wait — so nothing
     // would ever send it. ⚑ A no-op whenever the conversation is busy or a flush is running.
     // ⚑ **Held for a sign-in that moved on, it goes at the reopen** — now, if nothing is in its way.
-    if (itsSignInMovedOn && this.homeCopies.get(session.provider)?.get(session.profileId)?.state === 'pending')
+    if (
+      itsSignInMovedOn &&
+      this.homeCopies.get(session.provider)?.get(session.profileId)?.state === 'pending'
+    )
       void this.copyHomeWhenIdle(session.provider, session.profileId)
     else if (itsSignInMovedOn) this.reopenForWhatWaits(session)
     else this.flushQueued(session)
@@ -26711,7 +26719,9 @@ export class RuntimeHost implements LiveHost {
    */
   private async assertSignInCurrent(session: HostedSession, verb: 'send' | 'queue'): Promise<void> {
     if (this.queueANewerHomeCopy(session.provider, session.profileId))
-      throw new ItsSignInMovedOn('A newer Codex sign-in is being copied before this turn. Nothing has been sent.')
+      throw new ItsSignInMovedOn(
+        'A newer Codex sign-in is being copied before this turn. Nothing has been sent.',
+      )
     if ((await session.handle.checkSignIn?.()) !== true) {
       // ⚑ A life this app reopened for what waited reads as current: its loop guard is done.
       delete session.reopenedForWhatWaited
@@ -30370,7 +30380,13 @@ export class RuntimeHost implements LiveHost {
 
   private readonly homeCopies = new Map<
     Provider,
-    Map<string, ProviderHomesReprovision['profiles'][number] & { newerOnly?: true; stillWanted?: () => boolean }>
+    Map<
+      string,
+      ProviderHomesReprovision['profiles'][number] & {
+        newerOnly?: true
+        stillWanted?: () => boolean
+      }
+    >
   >()
   private readonly homeCopyJobs = new Map<string, Promise<void>>()
   private readonly homeCopyRestarts = new Map<string, Promise<void>>()
@@ -30398,7 +30414,11 @@ export class RuntimeHost implements LiveHost {
   }
 
   /** Use the existing home-copy gate so every server using this copy stops before its replacement. */
-  private queueANewerHomeCopy(provider: Provider, profileId: string, stillWanted?: () => boolean): boolean {
+  private queueANewerHomeCopy(
+    provider: Provider,
+    profileId: string,
+    stillWanted?: () => boolean,
+  ): boolean {
     if (provider !== 'codex' || this.aKeyIsSaved(provider)) return false
     const rows = this.homeCopies.get(provider)
     if (rows?.get(profileId)?.state === 'pending')
@@ -30406,7 +30426,12 @@ export class RuntimeHost implements LiveHost {
     if (!this.deps.providerAuth?.hasNewerCopy?.(provider, profileId)) return false
     const copies = rows ?? new Map()
     this.homeCopies.set(provider, copies)
-    copies.set(profileId, { profileId, state: 'pending', newerOnly: true, ...(stillWanted === undefined ? {} : { stillWanted }) })
+    copies.set(profileId, {
+      profileId,
+      state: 'pending',
+      newerOnly: true,
+      ...(stillWanted === undefined ? {} : { stillWanted }),
+    })
     let release!: () => void
     const ready = new Promise<void>((resolve) => {
       release = resolve
@@ -30533,7 +30558,9 @@ export class RuntimeHost implements LiveHost {
         }
         const request = rows.get(profileId)
         const outcome = await this.reprovisionProviderAuth(
-          provider, profileId, request?.newerOnly,
+          provider,
+          profileId,
+          request?.newerOnly,
           () => !this.launches.closed && request?.stillWanted?.() !== false,
         )
         copied =
@@ -30738,7 +30765,12 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  private async recopy(provider: Provider, profileId: string, newerOnly?: true, stillWanted?: () => boolean): Promise<ReprovisionOutcome> {
+  private async recopy(
+    provider: Provider,
+    profileId: string,
+    newerOnly?: true,
+    stillWanted?: () => boolean,
+  ): Promise<ReprovisionOutcome> {
     const ops = this.deps.providerAuth
     if (!ops) throw new Error('this app build cannot re-copy provider sign-ins')
     // 🔴 **The second writer, admitted through the same door as the first since 265 §2.** This method
@@ -39711,10 +39743,16 @@ export class RuntimeHost implements LiveHost {
       this.publishStateIfChanged(session)
     } else {
       session.copyToReplaceAfterExit = refusedCopy
-      this.queueANewerHomeCopy(session.provider, session.profileId, () =>
-        !this.launches.closed &&
-        !this.keptStopped(session.id) &&
-        providerAuthPolicies[session.provider].copy.same(refusedCopy, this.theCopyHeldNow(session)),
+      this.queueANewerHomeCopy(
+        session.provider,
+        session.profileId,
+        () =>
+          !this.launches.closed &&
+          !this.keptStopped(session.id) &&
+          providerAuthPolicies[session.provider].copy.same(
+            refusedCopy,
+            this.theCopyHeldNow(session),
+          ),
       )
     }
     session.diedOnAStaleSignIn = true
@@ -40046,19 +40084,34 @@ export class RuntimeHost implements LiveHost {
           !this.slots.has(session.id) &&
           this.aReopenIsBeingDecidedFor.has(session.id)
         if (!stillWanted()) return
-        if (providerAuthPolicies[session.provider].copy.same(refused, this.theCopyHeldNow(session))) {
+        if (
+          providerAuthPolicies[session.provider].copy.same(refused, this.theCopyHeldNow(session))
+        ) {
           if (this.queueANewerHomeCopy(session.provider, session.profileId, stillWanted)) {
-            const ready = this.homeCopyBarriers.get(profileSignInKey(session.provider, session.profileId))?.ready
+            const ready = this.homeCopyBarriers.get(
+              profileSignInKey(session.provider, session.profileId),
+            )?.ready
             void this.copyHomeWhenIdle(session.provider, session.profileId)
             await ready
             if (
               !stillWanted() ||
               this.aKeyIsSaved(session.provider) ||
-              providerAuthPolicies[session.provider].copy.same(refused, this.theCopyHeldNow(session))
-            ) return
-          } else if (!(await this.replaceARefusedCopy(
-            session.provider, session.profileId, 'after its refused server exited', refused, stillWanted,
-          ))) return
+              providerAuthPolicies[session.provider].copy.same(
+                refused,
+                this.theCopyHeldNow(session),
+              )
+            )
+              return
+          } else if (
+            !(await this.replaceARefusedCopy(
+              session.provider,
+              session.profileId,
+              'after its refused server exited',
+              refused,
+              stillWanted,
+            ))
+          )
+            return
         }
         session.itsCopyWasReplaced = true
       }

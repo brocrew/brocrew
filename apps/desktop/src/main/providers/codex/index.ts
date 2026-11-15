@@ -213,7 +213,9 @@ export function codexAuth(paths: ProviderHomePaths, seams: CodexAuthSeams): Home
       const home = homePathFor(profileId)
       return provisionProviderHome(paths.managedRoot, home).then(() =>
         reprovisionCodexAuth(home, {
-          ...(seams.machineAuthPath === undefined ? {} : { sourceAuthPath: seams.machineAuthPath() }),
+          ...(seams.machineAuthPath === undefined
+            ? {}
+            : { sourceAuthPath: seams.machineAuthPath() }),
           ...(newerOnly === undefined ? {} : { newerOnly }),
           ...(stillWanted === undefined ? {} : { stillWanted }),
         }),
