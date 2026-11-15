@@ -237,7 +237,7 @@ describe('copying this install’s provider sign-ins', () => {
     await vi.waitFor(() => expect(copy).toHaveBeenCalledTimes(2))
     await vi.waitFor(() => expect(launches).toBe(3))
     await vi.waitFor(() =>
-      expect(messages.filter((one) => one.event.type === 'permission_request')).toHaveLength(2),
+      expect(messages.some((one) => one.event.type === 'user_turn' && one.event.text === 'check the machine sign-in again for this turn')).toBe(true),
     )
   })
 
@@ -255,6 +255,27 @@ describe('copying this install’s provider sign-ins', () => {
     expect(newer).not.toHaveBeenCalled()
     expect(copy).not.toHaveBeenCalled()
     expect(launches).toBe(1)
+  })
+
+  it('copies a newer sign-in before the turn that approves a plan', async () => {
+    const current = await host.createSession(
+      { provider: 'codex', profileId: 'alpha', cwd: root, planMode: true },
+      sink,
+    )
+    let fresh = true
+    Object.assign(ops, { hasNewerCopy: () => fresh })
+    copy.mockImplementation(async () => {
+      expect(stopped).toBe(1)
+      fresh = false
+      return 'replaced'
+    })
+    const goAhead = 'Proceed with the approved fictional plan.'
+    await host.endPlanMode(current.sessionId, sink, goAhead)
+    await vi.waitFor(() => expect(launches).toBe(2))
+    await vi.waitFor(() =>
+      expect(messages.some((one) => one.event.type === 'user_turn' && one.event.text === goAhead)).toBe(true),
+    )
+    expect(copy).toHaveBeenCalledTimes(1)
   })
 
   for (const opening of ['start', 'resume'] as const) {
