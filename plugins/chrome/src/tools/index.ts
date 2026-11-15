@@ -374,24 +374,38 @@ export function buildToolDefs(): ToolDef[] {
           }
           const history = { waitUntil: 'commit' as const, timeout: ms }
           tab.refs = null
-          const navigating =
-            target !== undefined
+          let committed = false
+          const reached = (frame: ReturnType<typeof page.mainFrame>) => {
+            if (frame === page.mainFrame()) committed = true
+          }
+          page.on('framenavigated', reached)
+          let res: Awaited<ReturnType<typeof page.goto>> | undefined
+          let navigationError: string | undefined
+          try {
+            res = await (target !== undefined
               ? page.goto(target, opts)
               : a.action === 'back'
                 ? page.goBack(history)
                 : a.action === 'forward'
                   ? page.goForward(history)
-                  : page.reload(opts)
-          const res = await navigating.catch((error: unknown) => {
-            throw new ToolError(
-              `NAVIGATION_FAILED ${tab.id}: ${describeError(error)}; current URL ${page.url()}`,
-            )
-          })
+                  : page.reload(opts))
+          } catch (error) {
+            if (committed && error instanceof Error && error.name === 'TimeoutError') {
+              navigationError = describeError(error)
+            } else {
+              throw new ToolError(
+                `NAVIGATION_FAILED ${tab.id}: ${describeError(error)}; current URL ${page.url()}`,
+              )
+            }
+          } finally {
+            page.off('framenavigated', reached)
+          }
           deps.activity?.('page-loaded')
           return {
             url: page.url(),
-            title: await titleAfterLoad(page),
+            title: navigationError ? await titleOf(page) : await titleAfterLoad(page),
             status: res ? res.status() : null,
+            ...(navigationError ? { navigationError } : {}),
           }
         })
         return withNotes(value, notes)
