@@ -2607,7 +2607,7 @@ interface HostedSession {
   /** Codex refused this life's copy of its sign-in, and a fresh copy of the same account replaced it. */
   itsCopyWasReplaced?: true
   /** A refused copy is considered for replacement only after this server has exited. */
-  copyToReplaceAfterExit?: unknown
+  copyToReplaceAfterExit?: { refused: unknown; replacement: Promise<boolean> | undefined }
   /** This life's one turn was a carrying on after a repaired sign-in: its refusal is never carried on again. */
   itCarriedOnAfterARepair?: true
   /** This rejected turn may request one provider-owned renewal and safe carry-on. */
@@ -30633,7 +30633,7 @@ export class RuntimeHost implements LiveHost {
   >()
   private readonly homeCopyJobs = new Map<string, Promise<void>>()
   private readonly homeCopyRestarts = new Map<string, Promise<void>>()
-  private readonly homeCopyBarriers = new Map<string, { ready: Promise<void>; release(): void }>()
+  private readonly homeCopyBarriers = new Map<string, { ready: Promise<boolean>; release(replaced: boolean): void }>()
   private readonly homeLaunches = new Map<
     Launch,
     { provider: Provider; profileId: string; uncertain?: boolean }
@@ -30650,9 +30650,9 @@ export class RuntimeHost implements LiveHost {
     })
   }
 
-  private releaseHomeCopyBarrier(provider: Provider, profileId: string): void {
+  private releaseHomeCopyBarrier(provider: Provider, profileId: string, replaced = false): void {
     const key = profileSignInKey(provider, profileId)
-    this.homeCopyBarriers.get(key)?.release()
+    this.homeCopyBarriers.get(key)?.release(replaced)
     this.homeCopyBarriers.delete(key)
   }
 
@@ -30675,8 +30675,8 @@ export class RuntimeHost implements LiveHost {
       newerOnly: true,
       ...(stillWanted === undefined ? {} : { stillWanted }),
     })
-    let release!: () => void
-    const ready = new Promise<void>((resolve) => {
+    let release!: (replaced: boolean) => void
+    const ready = new Promise<boolean>((resolve) => {
       release = resolve
     })
     this.homeCopyBarriers.set(profileSignInKey(provider, profileId), { ready, release })
@@ -30707,8 +30707,8 @@ export class RuntimeHost implements LiveHost {
       )
       this.homeCopies.set(provider, rows)
       for (const profileId of rows.keys()) {
-        let release!: () => void
-        const ready = new Promise<void>((resolve) => {
+        let release!: (replaced: boolean) => void
+        const ready = new Promise<boolean>((resolve) => {
           release = resolve
         })
         this.homeCopyBarriers.set(profileSignInKey(provider, profileId), { ready, release })
@@ -30820,7 +30820,7 @@ export class RuntimeHost implements LiveHost {
         }
       } finally {
         this.homeCopyJobs.delete(key)
-        this.releaseHomeCopyBarrier(provider, profileId)
+        this.releaseHomeCopyBarrier(provider, profileId, copied?.state === 'replaced')
       }
     })
     this.homeCopyJobs.set(key, job)
@@ -40007,7 +40007,6 @@ export class RuntimeHost implements LiveHost {
       session.itsSignInMovedOn = true
       this.publishStateIfChanged(session)
     } else {
-      session.copyToReplaceAfterExit = refusedCopy
       this.queueANewerHomeCopy(
         session.provider,
         session.profileId,
@@ -40019,6 +40018,12 @@ export class RuntimeHost implements LiveHost {
             this.theCopyHeldNow(session),
           ),
       )
+      session.copyToReplaceAfterExit = {
+        refused: refusedCopy,
+        replacement: this.homeCopyBarriers.get(
+          profileSignInKey(session.provider, session.profileId),
+        )?.ready,
+      }
     }
     session.diedOnAStaleSignIn = true
     session.whatItsFailedTurnWasFor = wasFor
@@ -40341,7 +40346,7 @@ export class RuntimeHost implements LiveHost {
       // ⚠️ The id is refused as *not confirmed stopped* until the old launch is released.
       if (this.launches.closed || this.keptStopped(session.id)) return
       if (session.copyToReplaceAfterExit !== undefined) {
-        const refused = session.copyToReplaceAfterExit
+        const { refused, replacement } = session.copyToReplaceAfterExit
         delete session.copyToReplaceAfterExit
         const stillWanted = () =>
           !this.launches.closed &&
@@ -40349,35 +40354,30 @@ export class RuntimeHost implements LiveHost {
           !this.slots.has(session.id) &&
           this.aReopenIsBeingDecidedFor.has(session.id)
         if (!stillWanted()) return
-        if (
-          providerAuthPolicies[session.provider].copy.same(refused, this.theCopyHeldNow(session))
-        ) {
-          if (this.queueANewerHomeCopy(session.provider, session.profileId, stillWanted)) {
-            const ready = this.homeCopyBarriers.get(
-              profileSignInKey(session.provider, session.profileId),
-            )?.ready
-            void this.copyHomeWhenIdle(session.provider, session.profileId)
-            await ready
-            if (
-              !stillWanted() ||
-              this.aKeyIsSaved(session.provider) ||
-              providerAuthPolicies[session.provider].copy.same(
-                refused,
-                this.theCopyHeldNow(session),
-              )
-            )
-              return
-          } else if (
-            !(await this.replaceARefusedCopy(
-              session.provider,
-              session.profileId,
-              'in a turn',
-              refused,
-              stillWanted,
-            ))
+        let ready = replacement
+        if (ready === undefined) {
+          if (
+            !providerAuthPolicies[session.provider].copy.same(refused, this.theCopyHeldNow(session))
           )
             return
+          if (this.queueANewerHomeCopy(session.provider, session.profileId, stillWanted))
+            ready = this.homeCopyBarriers.get(
+              profileSignInKey(session.provider, session.profileId),
+            )?.ready
         }
+        if (ready !== undefined) {
+          void this.copyHomeWhenIdle(session.provider, session.profileId)
+          if (!(await ready) || !stillWanted() || this.aKeyIsSaved(session.provider)) return
+        } else if (
+          !(await this.replaceARefusedCopy(
+            session.provider,
+            session.profileId,
+            'in a turn',
+            refused,
+            stillWanted,
+          ))
+        )
+          return
         session.itsCopyWasReplaced = true
       }
       // A rejection can precede local expiry; an already replaced token needs no helper run.
