@@ -645,7 +645,7 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       handle.awaitProcessExit = () => exit
       try {
         await handle.runTurnRefusedOnItsLogin()
-        await vi.waitFor(() => expect(handle.status()).toBe('closed'))
+        await vi.waitFor(() => expect(handle.status()).toBe('ended'))
         expect(held()).toBe(digestOf(DEAD))
         expect(writer.reached).toBe(0)
       } finally {
