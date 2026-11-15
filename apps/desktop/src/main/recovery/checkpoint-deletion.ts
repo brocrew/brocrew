@@ -34,6 +34,7 @@ const FIXED_FILES = [
   UNFINISHED_FILE,
 ]
 const ALLOWED = new Set([...FIXED_FILES, ...COPIED_TREES])
+const CAPTURE_STAGING = /^\.copy-[A-Za-z0-9]{6}$/
 
 /** Progress/visibility metadata, not permission to delete anything beyond the fixed names. */
 export interface CheckpointDeletion {
@@ -226,12 +227,25 @@ async function removeBoundCheckpointCopy(
 ): Promise<void> {
   await copyRoot(userData, folder, fs)
   await verifyParents(parents, fs)
-  if ((await fs.readdir(folder)).some((name) => !ALLOWED.has(name))) throw failed()
+  const staging = await captureStagingFolders(userData, folder, fs)
+  if (
+    (await fs.readdir(folder)).some(
+      (name) => !ALLOWED.has(name) && !staging.some((one) => one.name === name),
+    )
+  )
+    throw failed()
   for (const name of FIXED_FILES.filter(
     (name) => ![MANIFEST_FILE, COPY_FILE, UNFINISHED_FILE].includes(name),
   ))
     await removeEntry(userData, folder, name, fs, parents)
   for (const name of COPIED_TREES) await removeEntry(userData, folder, name, fs, parents)
+  for (const { name, root } of staging) {
+    const path = join(folder, name)
+    const chain = [...parents, { path, ...root }]
+    if (await statOrNull(join(path, 'copy'), fs))
+      await removeBound(join(path, 'copy'), userData, fs, chain)
+    await removeBound(path, userData, fs, chain, true)
+  }
   for (const name of [MANIFEST_FILE, COPY_FILE, UNFINISHED_FILE])
     await removeEntry(userData, folder, name, fs, parents)
   await removeBound(folder, userData, fs, parents, true)
@@ -289,6 +303,16 @@ export async function deletionRemnant(
   const actual = rootIdentity(stats)
   if (actual.dev !== deletion.root.dev || actual.ino !== deletion.root.ino) throw failed()
   const folder = after ? removing : original
+  return { folder, bytes: await checkpointFileBytes(userData, folder, fs) }
+}
+
+/** File lengths to estimate retirement, never allocated or guaranteed freed bytes. */
+export async function checkpointFileBytes(
+  userData: string,
+  folder: string,
+  fs: RecoveryFs,
+): Promise<number> {
+  await copyRoot(userData, folder, fs)
   let bytes = 0
   for (const name of FIXED_FILES.filter(
     (name) => ![MANIFEST_FILE, UNFINISHED_FILE, DELETION_FILE].includes(name),
@@ -297,7 +321,39 @@ export async function deletionRemnant(
     if (one?.isFile() && !one.isSymbolicLink()) bytes += one.size
   }
   for (const name of COPIED_TREES) bytes += await tree(join(folder, name), userData, fs, false)
-  return { folder, bytes }
+  for (const { name } of await captureStagingFolders(userData, folder, fs))
+    bytes += (await statOrNull(join(folder, name, 'copy'), fs))?.size ?? 0
+  return bytes
+}
+
+/** A killed historical cp-c may leave only its literal staging file in a marked capture. */
+export async function captureStagingFolders(
+  userData: string,
+  folder: string,
+  fs: RecoveryFs,
+): Promise<{ name: string; root: CheckpointDeletion['root'] }[]> {
+  await copyRoot(userData, folder, fs)
+  const names = (await fs.readdir(folder)).filter((name) => CAPTURE_STAGING.test(name))
+  if (names.length === 0) return []
+  const marker = await statOrNull(join(folder, UNFINISHED_FILE), fs)
+  if (
+    !marker?.isFile() ||
+    marker.isSymbolicLink() ||
+    (await statOrNull(join(folder, MANIFEST_FILE), fs))
+  )
+    throw failed()
+  const found: { name: string; root: CheckpointDeletion['root'] }[] = []
+  for (const name of names) {
+    const path = join(folder, name)
+    const stats = await fs.lstat(path)
+    if (!stats.isDirectory() || stats.isSymbolicLink()) throw failed()
+    await assertOwnedPathsAreReal(userData, [path], fs)
+    if ((await fs.readdir(path)).some((entry) => entry !== 'copy')) throw failed()
+    const file = await statOrNull(join(path, 'copy'), fs)
+    if (file && (!file.isFile() || file.isSymbolicLink())) throw failed()
+    found.push({ name, root: rootIdentity(stats) })
+  }
+  return found
 }
 
 /** Called after the existing initial ownership, intact-copy and personal-file checks. */

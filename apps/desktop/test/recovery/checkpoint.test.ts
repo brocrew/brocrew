@@ -1,4 +1,5 @@
-import { fingerprint } from './lib/recovery-files'
+import { databaseContents, openCheckpointForRead } from './lib/recovery-files'
+import { gunzipSync } from 'node:zlib'
 import {
   MIGRATIONS_FOLDER as MIGRATIONS,
   firstMigrationsIn,
@@ -59,6 +60,7 @@ import {
 import {
   buildLineage,
   migrationsOf,
+  migrationsRecordedIn,
   type BuildMigration,
   type MigrationsOnDisk,
 } from '../../src/main/recovery/database-facts'
@@ -160,7 +162,7 @@ function make(userData: string, options: Partial<MakeCheckpointOptions> = {}): P
 }
 
 function rows(file: string): number {
-  const db = new Database(file, { readonly: true, fileMustExist: true })
+  const db = openCheckpointForRead(file)
   try {
     return (db.prepare('SELECT count(*) AS n FROM filler').get() as { n: number }).n
   } finally {
@@ -228,7 +230,9 @@ describe('makeCheckpoint', () => {
     })
     const workspaceId = readFileSync(join(userData, 'backups', 'workspace-id'), 'utf8').trim()
     const copy = join(folder, 'database.sqlite')
-    const recorded = await migrationsOf(copy)
+    const db = openCheckpointForRead(copy)
+    const decoded = gunzipSync(readFileSync(copy))
+    const recorded = migrationsRecordedIn(db)
     expect(recorded.kind).toBe('recorded')
     expect(manifest).toEqual({
       format: 'brobot-checkpoint',
@@ -242,6 +246,9 @@ describe('makeCheckpoint', () => {
         file: 'database.sqlite',
         bytes: statSync(copy).size,
         sha256: sha256(readFileSync(copy)),
+        compression: 'gzip',
+        uncompressedBytes: decoded.length,
+        uncompressedSha256: sha256(decoded),
         migrations: recorded.kind === 'recorded' ? recorded.migrations : [],
       },
       files: APP_STATE_FILES.map(({ name }) => {
@@ -255,7 +262,6 @@ describe('makeCheckpoint', () => {
       expect(readFileSync(join(folder, name), 'utf8')).toBe(text)
     }
 
-    const db = new Database(copy, { readonly: true, fileMustExist: true })
     expect(db.pragma('integrity_check', { simple: true })).toBe('ok')
     db.close()
     expect(rows(copy)).toBe(FILLER_ROWS)
@@ -278,7 +284,7 @@ describe('makeCheckpoint', () => {
     const copy = join(folder, 'database.sqlite')
 
     expect(readdirSync(folder).sort()).toEqual(['database.sqlite', 'drafts.json', 'manifest.json'])
-    const header = readFileSync(copy).subarray(0, 100)
+    const header = gunzipSync(readFileSync(copy)).subarray(0, 100)
     expect([header[18], header[19]], 'the header says rollback journal, not WAL').toEqual([1, 1])
 
     expect(rows(copy)).toBe(FILLER_ROWS)
@@ -287,14 +293,14 @@ describe('makeCheckpoint', () => {
     expect(readFileSync(join(folder, 'drafts.json'), 'utf8')).toBe('{}\n')
   })
 
-  it('leaves the live database and its folder as they were', async () => {
+  it('keeps live data and state while preparing a closed database for compression', async () => {
     const userData = aLiveWorkspace()
-    const before = fingerprint(liveFile(userData))
+    const before = databaseContents(liveFile(userData))
     const names = readdirSync(userData).sort()
 
     await make(userData)
 
-    expect(fingerprint(liveFile(userData))).toEqual(before)
+    expect(databaseContents(liveFile(userData))).toEqual(before)
     expect(readdirSync(userData).sort()).toEqual([...names, 'backups'].sort())
   })
 
@@ -478,7 +484,7 @@ describe('makeCheckpoint', () => {
       mkdirSync(join(userData, 'backups'))
       writeFileSync(join(userData, 'backups', 'workspace-id'), workspaceId)
       writeFileSync(join(userData, 'drafts.json'), '{}\n')
-      const before = fingerprint(liveFile(userData))
+      const before = databaseContents(liveFile(userData))
       const lines: string[] = []
 
       const failure = await make(userData, {
@@ -495,7 +501,7 @@ describe('makeCheckpoint', () => {
       expect(await listOfferable(userData, LINEAGE)).toEqual([])
       expect(await listCheckpoints(userData)).toEqual([])
       expect(lines).toEqual([])
-      expect(fingerprint(liveFile(userData))).toEqual(before)
+      expect(databaseContents(liveFile(userData))).toEqual(before)
     },
   )
 })
@@ -569,14 +575,14 @@ describe('makeCheckpoint, on disk', () => {
     const elsewhere = join(aRoot(), 'elsewhere')
     mkdirSync(elsewhere)
     symlinkSync(elsewhere, join(userData, 'backups'))
-    const before = fingerprint(liveFile(userData))
+    const before = databaseContents(liveFile(userData))
 
     const failure = await make(userData).catch((error: unknown) => error)
 
     expect(failure).toBeInstanceOf(CheckpointFailed)
     expect((failure as Error).message).toContain('is a link')
     expect(readdirSync(elsewhere)).toEqual([])
-    expect(fingerprint(liveFile(userData))).toEqual(before)
+    expect(databaseContents(liveFile(userData))).toEqual(before)
   })
 })
 
@@ -2135,7 +2141,7 @@ describe('private capture before background v1 completion', () => {
       sha256(readFileSync(join(folder, 'database.sqlite'))),
     )
     expect(readFileSync(join(folder, 'drafts.json'), 'utf8')).toBe('{"draft":"before"}')
-    const copy = new Database(join(folder, 'database.sqlite'), { readonly: true })
+    const copy = openCheckpointForRead(join(folder, 'database.sqlite'))
     try {
       expect(
         copy.prepare("SELECT name FROM sqlite_master WHERE name='only_after_capture'").get(),

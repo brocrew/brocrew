@@ -2,7 +2,32 @@ import { createHash } from 'node:crypto'
 import { readFileSync, statSync } from 'node:fs'
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
+import Database from 'better-sqlite3'
+import { gunzipSync } from 'node:zlib'
 import { nodeFs, type RecoveryFs } from '../../../src/main/recovery/files'
+
+export function openCheckpointForRead(file: string): Database.Database {
+  const bytes = readFileSync(file)
+  return bytes[0] === 0x1f && bytes[1] === 0x8b
+    ? new Database(gunzipSync(bytes))
+    : new Database(file, { readonly: true, fileMustExist: true })
+}
+
+export function databaseContents(file: string) {
+  const db = new Database(file, { readonly: true, fileMustExist: true })
+  try {
+    const tables = db
+      .prepare("SELECT name, sql FROM sqlite_master WHERE type='table' ORDER BY name")
+      .all() as { name: string; sql: string }[]
+    return tables.map(({ name, sql }) => ({
+      name,
+      sql,
+      rows: db.prepare(`SELECT * FROM "${name.replace(/"/g, '""')}"`).all(),
+    }))
+  } finally {
+    db.close()
+  }
+}
 
 // Simulated process stops cannot observe flushes to disk.
 export const UNFLUSHED: RecoveryFs = {

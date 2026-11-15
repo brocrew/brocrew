@@ -1,4 +1,4 @@
-import { fullCopyFs, treeOf, sha256Of } from './lib/recovery-files'
+import { databaseContents, fullCopyFs, treeOf, sha256Of } from './lib/recovery-files'
 import { aBuildWithOneMoreMigration as buildWithOneMoreMigration } from './lib/seat-b-folders'
 import { registerMigrationLineageCases } from './lib/migration-lineage-cases'
 import Database from 'better-sqlite3'
@@ -181,7 +181,15 @@ describe('a copy before a migration', () => {
   })
   const noRoom = async (userData: string): Promise<string> => {
     const bytes = (await stat(databaseFile(userData))).size
-    return `There isn't enough free space for a recovery copy: it needs about ${inWords(Math.ceil(bytes * 1.1) + 64 * 1024 * 1024)}, and 1 MB is free.`
+    const copies = await listCheckpoints(userData)
+    const retiring = copies.reduce(
+      (sum, { manifest }) =>
+        sum +
+        manifest.database.bytes +
+        manifest.files.reduce((total, file) => total + (file.present ? file.bytes : 0), 0),
+      0,
+    )
+    return `BroCrew needs about ${inWords(Math.ceil(bytes * 1.1) + 64 * 1024 * 1024 - retiring)} more space to replace its recovery copy. Existing recovery files were kept.`
   }
 
   const workspaceWithCopies = async (checkpoints: RecoveryFixtureOptions['checkpoints']) => {
@@ -217,12 +225,13 @@ describe('a copy before a migration', () => {
     })
     const oldest = fixture.checkpoints[2]!
     const newest = fixture.checkpoints[4]!
+    const needed = Math.ceil((await stat(databaseFile(userData))).size * 1.1) + 64 * 1024 * 1024
     const { deps } = checkOf(userData, {
       buildMigrationsFolder: await aBuildWithOneMoreMigration(),
       verifyCopy: checkTheCopyHere,
       now: () => now,
       fs: fullCopyFs,
-      freeBytes: () => (existsSync(oldest.dir) ? 0 : 1_000_000_000),
+      freeBytes: () => (existsSync(oldest.dir) ? needed - 1 : 1_000_000_000),
     })
 
     expect(await inspect(deps)).toEqual({ kind: 'open', checkpoint: 'made' })
@@ -244,16 +253,13 @@ describe('a copy before a migration', () => {
     ).toBe(true)
   })
 
-  it('a failed update keeps its selected rollback anchor after removing legacy surplus', async () => {
+  it('a short preliminary budget keeps every recovery copy and the live data unchanged', async () => {
     const { userData } = await workspaceWithCopies([dated(9), dated(2), dated(1)])
-    const selected = (await listCheckpoints(userData))[0]!
-    const before = await treeOf(selected.folder)
+    const before = await treeOf(userData)
     const { deps } = await checkingWithoutRoom(userData)
     expect(await inspect(deps)).toMatchObject({ kind: 'failed', reason: 'checkpoint-failed' })
-    expect(await treeOf(selected.folder)).toEqual(before)
-    expect((await listCheckpoints(userData)).map(({ manifest }) => manifest.id)).toEqual([
-      selected.manifest.id,
-    ])
+    expect(await treeOf(userData)).toEqual(before)
+    expect(await listCheckpoints(userData)).toHaveLength(3)
   })
 
   it('reports insufficient room while preserving the selected rollback anchor', async () => {
@@ -266,14 +272,16 @@ describe('a copy before a migration', () => {
       canRetry: true,
       detail: await noRoom(userData),
     })
-    expect(existsSync(fixture.checkpoints[0]!.dir)).toBe(false)
+    expect(existsSync(fixture.checkpoints[0]!.dir)).toBe(true)
     expect(existsSync(fixture.checkpoints[2]!.dir)).toBe(true)
     expect((await listCheckpoints(userData)).map(({ manifest }) => manifest.id)).toEqual([
       fixture.checkpoints[2]!.id,
+      fixture.checkpoints[1]!.id,
+      fixture.checkpoints[0]!.id,
     ])
   })
 
-  it('keeps a lone copy and uses only the first sentence when none can be pruned', async () => {
+  it('keeps a lone copy when the estimated replacement budget is short', async () => {
     const { userData, fixture } = await workspaceWithCopies([dated(9)])
     const { deps } = await checkingWithoutRoom(userData)
 
@@ -287,7 +295,7 @@ describe('a copy before a migration', () => {
   })
 
   it.each(['copy', 'verify', 'files', 'manifest'] as const)(
-    'keeps the newest verified fallback when newer copies are damaged and the replacement stops at %s',
+    'retires old copies before replacement step %s and keeps live data if that step stops',
     async (stoppedAt) => {
       const userData = join(await aRoot(), 'data')
       const fixture = await makeRecoveryFixture(userData, {
@@ -302,7 +310,7 @@ describe('a copy before a migration', () => {
       })
       const oldest = fixture.checkpoints[0]!
       const fallback = fixture.checkpoints[1]!
-      const before = await treeOf(fallback.dir)
+      const before = databaseContents(databaseFile(userData))
       const checked = { folder: fallback.dir, manifest: fallback.manifest }
       expect(await isIntact(checked)).toBe(true)
       const reached: { step: string; fallbackExists: boolean }[] = []
@@ -328,15 +336,9 @@ describe('a copy before a migration', () => {
         'legacy surplus is removed before the replacement starts',
       ).toBe(false)
       expect(reached.at(-1)?.step).toBe(stoppedAt)
-      expect(reached.every(({ fallbackExists }) => fallbackExists)).toBe(true)
-      expect(await treeOf(fallback.dir)).toEqual(before)
-      expect(await isIntact(checked)).toBe(true)
-      expect((await listCheckpoints(userData)).map(({ manifest }) => manifest.id).sort()).toEqual(
-        fixture.checkpoints
-          .filter(({ id }) => id !== oldest.id)
-          .map(({ id }) => id)
-          .sort(),
-      )
+      expect(reached.every(({ fallbackExists }) => !fallbackExists)).toBe(true)
+      expect(databaseContents(databaseFile(userData))).toEqual(before)
+      expect(await listCheckpoints(userData)).toEqual([])
       expect(seen.lines).not.toContain(CHECKPOINT_LINE)
     },
   )
@@ -372,7 +374,7 @@ describe('a copy before a migration', () => {
 
   it('is made and checked before a pending migration, said once, and the data is unchanged', async () => {
     const userData = await aWorkspace({ migrations: THIS_BUILD, checkpoints: [] })
-    const live = await sha256Of(databaseFile(userData))
+    const live = databaseContents(databaseFile(userData))
     const { deps, seen } = checkOf(userData, {
       buildMigrationsFolder: await aBuildWithOneMoreMigration(),
       verifyCopy: checkTheCopyHere,
@@ -382,7 +384,7 @@ describe('a copy before a migration', () => {
     expect(seen.working).toEqual(['check', 'checkpoint'])
     const last = seen.progress.at(-1)
     expect(last?.[0]).toBe(last?.[1])
-    expect(await sha256Of(databaseFile(userData))).toBe(live)
+    expect(databaseContents(databaseFile(userData))).toEqual(live)
     const [made] = await listCheckpoints(userData)
     expect(made?.manifest.reason).toBe('before-migration')
     expect(made?.manifest.database.migrations).toHaveLength(THIS_BUILD)

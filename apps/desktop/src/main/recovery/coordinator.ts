@@ -8,6 +8,7 @@ import type { HostGateVerdict } from '../one-host-gate'
 import {
   CheckpointFailed,
   CheckpointNoRoom,
+  checkpointSpaceNeeded,
   checkpointNeeded,
   inWords,
   listCheckpoints,
@@ -56,6 +57,7 @@ import {
   type Recovered,
 } from './restore'
 import type { VerifyCopy } from './copy-check'
+import { prepareCheckpointReplacement } from './replace-checkpoint'
 
 /** Whether this process is the only app on the data folder, as the launch's one-app check found. */
 export type Ownership = HostGateVerdict
@@ -499,8 +501,12 @@ async function decide(
   }
   working('checkpoint')
   const make = async (): Promise<void> => {
-    await rotate()
-    const captured = await captureCheckpoint({ ...options, reason })
+    const captured = await captureCheckpoint({
+      ...options,
+      reason,
+      beforeCopy: (bytes) =>
+        prepareCheckpointReplacement(options, lineage, checkpointSpaceNeeded(bytes)),
+    })
     await captured.finish()
     await rotate()
   }

@@ -1,4 +1,4 @@
-import { removeCheckpointEntry } from './checkpoint-deletion'
+import { gzipCheckpoint, type PlainDatabaseFacts } from './checkpoint-compression'
 import Database from 'better-sqlite3'
 import { createHash, randomUUID } from 'node:crypto'
 import { basename, dirname, join } from 'node:path'
@@ -8,7 +8,6 @@ import {
   assertOwnedPathsAreReal,
   errorCode,
   nodeFs,
-  pathExists,
   privateDir,
   retrying,
   type RecoveryFs,
@@ -381,97 +380,62 @@ function readMigrations(path: string, readonly: boolean): MigrationsOnDisk {
   }
 }
 
-function snapshotFacts(file: string): {
-  pages: number
-  pageSize: number
-  checkpointed: boolean
-} {
-  const source = new Database(file, { fileMustExist: true })
-  let pages: number
-  let pageSize: number
-  let checkpointed: boolean
-  try {
-    pages = Number(source.pragma('page_count', { simple: true }))
-    pageSize = Number(source.pragma('page_size', { simple: true }))
-    const mode = String(source.pragma('journal_mode', { simple: true }))
-    const result =
-      mode === 'wal' ? (source.pragma('wal_checkpoint(TRUNCATE)') as { busy: number }[]) : []
-    checkpointed = mode !== 'wal' || result[0]?.busy === 0
-  } finally {
-    source.close()
-  }
-  return { pages, pageSize, checkpointed }
+export interface DatabaseSnapshotPlan {
+  readonly bytes: number
+  copyTo(copy: string): Promise<PlainDatabaseFacts & { migrations: readonly Migration[] }>
 }
 
+/** Read the budget without a write; the source is closed again before gzip starts. */
 export function prepareDatabaseSnapshot(
   file: string,
   options: {
     readonly fs?: RecoveryFs
     readonly signal?: AbortSignal
-    readonly progress?: (done: number, total: number) => void
-    readonly beforeFallback: (bytes: number) => void
+    readonly expectedMigrations?: readonly Migration[]
+    readonly beforeWrite: (bytes: number) => void
+    readonly verifySource?: () => Promise<void>
   },
-): (copy: string) => Promise<void> {
+): DatabaseSnapshotPlan {
   const fs = options.fs ?? nodeFs
-  const { pages, pageSize, checkpointed } = snapshotFacts(file)
-  return async (copy) => {
-    let copied = false
-    if (checkpointed && process.platform === 'darwin') {
-      try {
-        await fs.cloneFile(file, copy, options.signal, () =>
-          options.beforeFallback(pages * pageSize),
-        )
-        copied = true
-      } catch (error) {
-        if (
-          !['ENOTSUP', 'EOPNOTSUPP', 'ENOSYS', 'EXDEV', 'EINVAL'].includes(errorCode(error) ?? '')
-        )
-          throw error
-        await fs.rm(copy, { force: true })
-      }
-    }
-    if (!copied) {
-      options.beforeFallback(pages * pageSize)
-      const live = new Database(file, { fileMustExist: true })
-      try {
-        await live.backup(copy, {
-          progress: ({ totalPages, remainingPages }) => {
-            options.signal?.throwIfAborted()
-            options.progress?.((totalPages - remainingPages) / totalPages, 3)
-            return Math.max(1, Math.round((4 * 1024 * 1024) / pageSize))
-          },
-        })
-      } finally {
-        live.close()
-      }
-    }
-  }
-}
-
-export async function prepareSnapshotDatabase(
-  userData: string,
-  copy: string,
-  expectedMigrations: readonly Migration[] | undefined,
-  fs: RecoveryFs = nodeFs,
-): Promise<readonly Migration[]> {
-  const destination = new Database(copy, { fileMustExist: true })
-  let recorded: MigrationsRead
+  const readonlySource = new Database(file, { readonly: true, fileMustExist: true })
+  let bytes: number
   try {
-    if (String(destination.pragma('journal_mode = DELETE', { simple: true })) !== 'delete') {
-      throw new Error('The recovery copy could not become a single SQLite file.')
-    }
-    recorded = migrationsRecordedIn(destination)
+    bytes =
+      Number(readonlySource.pragma('page_count', { simple: true })) *
+      Number(readonlySource.pragma('page_size', { simple: true }))
   } finally {
-    destination.close()
+    readonlySource.close()
   }
-  if (recorded.kind !== 'recorded')
-    throw new Error('The recovery copy has no readable migration record.')
-  if (expectedMigrations && !sameMigrations(recorded.migrations, expectedMigrations)) {
-    throw new Error('The recovery copy does not record the migrations admitted at startup.')
+  return {
+    bytes,
+    copyTo: async (copy) => {
+      options.signal?.throwIfAborted()
+      const source = new Database(file, { fileMustExist: true })
+      let recorded: MigrationsOnDisk
+      try {
+        if (String(source.pragma('journal_mode = DELETE', { simple: true })) !== 'delete')
+          throw new Error(
+            'The live database must be closed before its recovery copy is compressed.',
+          )
+        recorded = migrationsRecordedIn(source)
+      } finally {
+        source.close()
+      }
+      if (recorded.kind !== 'recorded')
+        throw new Error('The live database has no readable migration record.')
+      if (
+        options.expectedMigrations &&
+        !sameMigrations(recorded.migrations, options.expectedMigrations)
+      )
+        throw new Error('The live database does not record the migrations admitted at startup.')
+      await options.verifySource?.()
+      options.beforeWrite(bytes)
+      const plain = await gzipCheckpoint(file, copy, fs, options.signal)
+      if (plain.bytes !== bytes)
+        throw new Error('The closed database changed size while its recovery copy was compressed.')
+      return { ...plain, migrations: recorded.migrations }
+    },
   }
-  await leaveOneFile(userData, copy, fs)
-  await putOnDisk(copy, fs)
-  return recorded.migrations
 }
 
 export function sameMigrations(a: readonly Migration[], b: readonly Migration[]): boolean {
@@ -481,20 +445,13 @@ export function sameMigrations(a: readonly Migration[], b: readonly Migration[])
   )
 }
 
-async function leaveOneFile(userData: string, copy: string, fs: RecoveryFs): Promise<void> {
-  if (await pathExists(`${copy}-journal`, fs)) {
-    throw new Error('the copy was left with an unfinished write beside it')
-  }
-  for (const suffix of ['-wal', '-shm']) {
-    await assertOwnedPathsAreReal(userData, [`${copy}${suffix}`], fs)
-    await removeCheckpointEntry(userData, dirname(copy), `${basename(copy)}${suffix}`, fs)
-  }
-}
-
-async function putOnDisk(path: string, fs: RecoveryFs): Promise<void> {
-  const handle = await fs.open(path, 'r+')
+/** Whether a SQLite file's header says rollback-journal mode: bytes 18 and 19 are both 1. */
+export async function inRollbackMode(path: string, fs: RecoveryFs): Promise<boolean> {
+  const header = new Uint8Array(20)
+  const handle = await fs.open(path, 'r')
   try {
-    await handle.sync()
+    const { bytesRead } = await handle.read(header, 0, header.length, 0)
+    return bytesRead === header.length && header[18] === 1 && header[19] === 1
   } finally {
     await handle.close()
   }

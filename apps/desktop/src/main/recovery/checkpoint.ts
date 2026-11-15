@@ -18,7 +18,6 @@ import {
 import {
   hasPendingMigrations,
   isLineagePrefix,
-  prepareSnapshotDatabase,
   sameMigrations,
   prepareDatabaseSnapshot,
   type BuildMigration,
@@ -57,6 +56,8 @@ import {
 import { CHECKPOINT_LINE } from './log-lines'
 import {
   beginCheckpointDeletion,
+  checkpointFileBytes,
+  captureStagingFolders,
   deletionRemnant,
   finishCheckpointDeletion,
   readCheckpointDeletion,
@@ -67,33 +68,15 @@ import {
 import { APP_STATE_FILES } from './state-files'
 import { copySkillTree, stateContentAt as contentAt } from './trees'
 import { SKILL_TREES, SKILLS_CONVERSION_FILE } from '../skills/shared-paths'
+import { CheckpointFailed, checkFreeSpace, failureFrom } from './checkpoint-space'
+export {
+  CheckpointFailed,
+  CheckpointNoRoom,
+  checkpointSpaceNeeded,
+  inWords,
+} from './checkpoint-space'
 
 export type CheckpointStep = 'copy' | 'verify' | 'files' | 'manifest'
-
-export class CheckpointFailed extends Error {
-  constructor(
-    message: string,
-    readonly canRetry: boolean,
-    options?: ErrorOptions,
-  ) {
-    super(message, options)
-    this.name = 'CheckpointFailed'
-  }
-}
-
-export class CheckpointNoRoom extends CheckpointFailed {
-  constructor(
-    readonly needed: number,
-    readonly free: number,
-  ) {
-    super(
-      `A recovery copy of this workspace's data needs about ${inWords(needed)} free on its disk, ` +
-        `and ${inWords(free)} is free.`,
-      true,
-    )
-    this.name = 'CheckpointNoRoom'
-  }
-}
 
 export interface Checkpoint {
   readonly folder: string
@@ -112,8 +95,6 @@ const RESTORED_WITH_THE_DATABASE: ReadonlySet<string> = new Set(
 )
 
 const KEEP_NEWEST = 1
-const HEADROOM_SHARE = 1.1
-const HEADROOM_BYTES = 64 * 1024 * 1024
 
 export interface CheckpointFacts {
   readonly database: MigrationsRead
@@ -235,6 +216,7 @@ export interface MakeCheckpointOptions {
   readonly hashCopy?: VerifyCopy
   readonly signal?: AbortSignal
   readonly expectedMigrations?: readonly Migration[]
+  readonly beforeCopy?: (snapshotBytes: number) => Promise<void>
 }
 
 type CapturedManifest = Omit<CheckpointManifest, 'database'> & {
@@ -289,17 +271,9 @@ function completion(
 }
 
 export async function makeCheckpoint(options: MakeCheckpointOptions): Promise<Checkpoint> {
-  const captured = await captureCheckpoint(options)
+  const captured = await capture(options, options.verifyCopy)
   const folder = checkpointDir(options.userData, captured.manifest.id)
   try {
-    const checked = await options.verifyCopy(join(folder, COPY_FILE))
-    if (checked.kind === 'damaged') {
-      throw new CheckpointFailed(
-        `BroCrew's copy did not pass SQLite's own check (${checked.check}).`,
-        false,
-      )
-    }
-    if (checked.kind === 'failed') throw new Error(checked.message)
     return await captured.finish()
   } catch (error) {
     const fs = options.fs ?? nodeFs
@@ -312,6 +286,13 @@ export async function makeCheckpoint(options: MakeCheckpointOptions): Promise<Ch
 
 export async function captureCheckpoint(
   options: MakeCheckpointOptions,
+): Promise<CapturedCheckpoint> {
+  return capture(options)
+}
+
+async function capture(
+  options: MakeCheckpointOptions,
+  verifySource?: VerifyCopy,
 ): Promise<CapturedCheckpoint> {
   const { userData } = options
   const fs = options.fs ?? nodeFs
@@ -330,9 +311,23 @@ export async function captureCheckpoint(
     const copyDatabase = prepareDatabaseSnapshot(databaseFile(userData), {
       fs,
       signal: options.signal,
-      progress: options.progress,
-      beforeFallback: (bytes) => checkFreeSpace(userData, bytes, options.freeBytes ?? freeBytesOn),
+      expectedMigrations: options.expectedMigrations,
+      beforeWrite: (bytes) => checkFreeSpace(userData, bytes, options.freeBytes ?? freeBytesOn),
+      verifySource: verifySource
+        ? async () => {
+            const checked = await verifySource(databaseFile(userData))
+            if (checked.kind === 'damaged')
+              throw new CheckpointFailed(
+                `The live database did not pass SQLite's own check (${checked.check}).`,
+                false,
+              )
+            if (checked.kind === 'failed') throw new Error(checked.message)
+          }
+        : undefined,
     })
+    await options.beforeCopy?.(copyDatabase.bytes)
+    options.signal?.throwIfAborted()
+    checkFreeSpace(userData, copyDatabase.bytes, options.freeBytes ?? freeBytesOn)
     await privateDir(backupsDir(userData), fs)
     await assertOwnedPathsAreReal(userData, [folder], fs)
     await fs.mkdir(folder, { mode: 0o700 })
@@ -341,11 +336,10 @@ export async function captureCheckpoint(
     await syncFolder(backupsDir(userData), fs)
     beforeStep('copy')
     options.progress?.(0, 3)
-    await copyDatabase(copy)
+    const snapshot = await copyDatabase.copyTo(copy)
     options.signal?.throwIfAborted()
     options.progress?.(1, 3)
     beforeStep('verify')
-    const migrations = await prepareSnapshotDatabase(userData, copy, options.expectedMigrations, fs)
     beforeStep('files')
     const files = await copyStateFiles(userData, folder, fs)
     options.progress?.(2, 3)
@@ -361,7 +355,10 @@ export async function captureCheckpoint(
       database: {
         file: COPY_FILE,
         bytes: (await fs.lstat(copy)).size,
-        migrations,
+        compression: 'gzip',
+        uncompressedBytes: snapshot.bytes,
+        uncompressedSha256: snapshot.sha256,
+        migrations: snapshot.migrations,
       },
       files,
     }
@@ -399,14 +396,14 @@ export async function resumeCapturedCheckpoints(
       continue
     }
     if (
-      manifest.format !== MANIFEST_FORMAT ||
-      manifest.version !== 1 ||
+      !parseManifest(
+        JSON.stringify({
+          ...manifest,
+          database: { ...manifest.database, sha256: '0'.repeat(64) },
+        }),
+      ).ok ||
       manifest.id !== name ||
-      manifest.workspaceId !== workspace.id ||
-      manifest.database?.file !== COPY_FILE ||
-      !Array.isArray(manifest.database.migrations) ||
-      !Array.isArray(manifest.files) ||
-      typeof manifest.madeBy?.appVersion !== 'string'
+      manifest.workspaceId !== workspace.id
     ) {
       throw new Error(`The unfinished recovery copy ${name} has unreadable capture metadata.`)
     }
@@ -471,6 +468,8 @@ export interface PruneOptions {
   readonly now?: () => number
   readonly warn?: (line: string) => void
   readonly currentAppVersion?: string
+  readonly replacing?: boolean
+  readonly beforeDelete?: (estimatedFileBytes: number) => void | Promise<void>
 }
 
 export async function prune(
@@ -478,10 +477,15 @@ export async function prune(
   lineage: readonly BuildMigration[],
   options: PruneOptions,
 ): Promise<string[]> {
-  if (options.ownership !== 'sole') return []
+  if (options.ownership !== 'sole') {
+    if (options.replacing)
+      throw new CheckpointFailed('Another copy may have this workspace open.', false)
+    return []
+  }
   const fs = options.fs ?? nodeFs
   const warn = options.warn ?? ((line: string) => console.warn(line))
   const notThisTime = (why: string): string[] => {
+    if (options.replacing) throw new CheckpointFailed(why, true)
     warn(`BroCrew kept every old recovery copy this time: ${why}`)
     return []
   }
@@ -497,7 +501,8 @@ export async function prune(
   } catch (error) {
     return notThisTime(messageOf(error))
   }
-  if (await hasPendingCapture(userData, folders, fs)) return []
+  if (await hasPendingCapture(userData, folders, fs))
+    return notThisTime('A recovery copy is waiting to finish.')
   const unread = folders.find(({ found }) => found.kind === 'unknown')
   if (unread !== undefined) {
     return notThisTime(`${checkpointDir(userData, unread.name)} could not be read.`)
@@ -529,10 +534,11 @@ export async function prune(
     if (!couldBeOffered(checkpoint, lineage)) continue
     const found = await wholeness(checkpoint, fs)
     if (found === 'unknown') return notThisTime(`${checkpoint.folder} could not be read.`)
-    if (found === 'whole') whole.push(checkpoint)
+    if (found === 'whole' || options.replacing) whole.push(checkpoint)
   }
   let candidates = whole
   const keepingOf = (copies: readonly Checkpoint[]): Set<string> => {
+    if (options.replacing) return new Set<string>()
     const beforeMigration = copies.filter(({ manifest }) => manifest.reason === 'before-migration')
     const latest = beforeMigration.length > 0 ? beforeMigration : copies
     return new Set(latest.slice(0, KEEP_NEWEST).map(({ manifest }) => manifest.id))
@@ -554,13 +560,19 @@ export async function prune(
     if (!kept.has(checkpoint.manifest.id)) {
       try {
         if (await onlyCheckpointFiles(checkpoint, fs)) goes.push(checkpoint.manifest.id)
+        else if (options.replacing)
+          return notThisTime('The previous recovery folder contains other files.')
       } catch (error) {
         return notThisTime(messageOf(error))
       }
     }
   }
 
-  const removed: string[] = []
+  const unfinished = options.replacing
+    ? folders.filter(({ found }) => found.kind === 'unfinished' && found.marked)
+    : []
+  if (unfinished.some(({ found }) => found.kind === 'unfinished' && !found.onlyTheWritersFiles))
+    return notThisTime('An unfinished recovery folder contains other files.')
   if (deletion) {
     const selected = {
       folder: checkpointDir(userData, deletion.manifest.id),
@@ -572,6 +584,17 @@ export async function prune(
         newerAppVersion(deletion.manifest.madeBy.appVersion, options.currentAppVersion))
     )
       return notThisTime('An unfinished deletion belongs to a newer recovery copy.')
+  }
+  if (options.beforeDelete) {
+    let bytes = deletion ? ((await deletionRemnant(userData, deletion, fs))?.bytes ?? 0) : 0
+    for (const name of goes)
+      bytes += await checkpointFileBytes(userData, checkpointDir(userData, name), fs)
+    for (const { name } of unfinished)
+      bytes += await checkpointFileBytes(userData, checkpointDir(userData, name), fs)
+    await options.beforeDelete(bytes)
+  }
+  const removed: string[] = []
+  if (deletion) {
     try {
       if (await finishCheckpointDeletion(userData, deletion, fs)) removed.push(deletion.manifest.id)
     } catch (error) {
@@ -589,9 +612,14 @@ export async function prune(
       )
       removed.push(name)
     } catch (error) {
+      if (options.replacing) return notThisTime(messageOf(error))
       warn(`BroCrew could not remove the old recovery copy in ${folder}: ${messageOf(error)}`)
       return removed
     }
+  }
+  for (const { name } of unfinished) {
+    await removeCheckpointCopy(userData, checkpointDir(userData, name), fs)
+    removed.push(name)
   }
   return removed
 }
@@ -631,39 +659,12 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-function failureFrom(error: unknown): CheckpointFailed {
-  if (error instanceof CheckpointFailed) return error
-  return new CheckpointFailed(
-    `BroCrew could not make a recovery copy of this workspace's data: ${messageOf(error)}`,
-    true,
-    { cause: error },
-  )
-}
-
 async function statOrNull(path: string, fs: RecoveryFs): Promise<RecoveryStats | null> {
   try {
     return await fs.stat(path)
   } catch (error) {
     if (errorCode(error) === 'ENOENT') return null
     throw error
-  }
-}
-
-export function inWords(bytes: number): string {
-  return bytes >= 1e9
-    ? `${(bytes / 1e9).toFixed(1)} GB`
-    : `${String(Math.max(1, Math.round(bytes / 1e6)))} MB`
-}
-
-function checkFreeSpace(
-  userData: string,
-  databaseBytes: number,
-  freeBytes: (path: string) => number | null,
-): void {
-  const needed = Math.ceil(databaseBytes * HEADROOM_SHARE) + HEADROOM_BYTES
-  const free = freeBytes(userData)
-  if (free !== null && free < needed) {
-    throw new CheckpointNoRoom(needed, free)
   }
 }
 
@@ -870,10 +871,12 @@ async function unfinished(
   let changedAt = stats.mtimeMs
   let marked = false
   let onlyTheWritersFiles = true
+  const staging = await captureStagingFolders(userData, folder, fs)
   for (const entry of await fs.readdir(folder)) {
     const inside = await lstatOrNull(join(folder, entry), fs)
     if (inside === null) continue
     changedAt = Math.max(changedAt, inside.mtimeMs)
+    if (staging.some((one) => one.name === entry)) continue
     if (
       !(inside.isFile() || (inside.isDirectory() && SKILL_TREES.includes(entry))) ||
       !isTheWritersName(entry)
