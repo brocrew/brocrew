@@ -24,6 +24,11 @@ export async function copiesBeforeEveryTurn(fixture: AutomaticCopyFixture): Prom
   Object.assign(ops, { hasNewerCopy: () => fresh })
   copy.mockImplementation(async () => {
     expect(fixture.stopped).toBe(fixture.launches)
+    const progress = await host.reprovisionProviderHomes('codex', true)
+    expect.soft(progress.profiles.find((one) => one.profileId === 'alpha')).toEqual({
+      profileId: 'alpha',
+      state: 'pending',
+    })
     fresh = false
     return 'replaced'
   })

@@ -3,14 +3,7 @@ import { StandInCodex, digestOf, signInAt, type TurnMode } from './lib/refused-c
 import type { RuntimeHostDeps } from '../src/main/runtime/host-dependencies'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import type { UserTurnEvent } from '../src/shared/human-answer-contracts'
-import {
-  mkdirSync,
-  mkdtempSync,
-  renameSync,
-  rmSync,
-  utimesSync,
-  writeFileSync,
-} from 'node:fs'
+import { mkdirSync, mkdtempSync, renameSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -49,7 +42,6 @@ import { neutralHostDeps } from './lib/host-fixture'
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
-
 const signIn = (account: string, token: string, refreshed: string): string =>
   JSON.stringify({
     auth_mode: 'chatgpt',
@@ -78,7 +70,6 @@ class Sink implements RuntimeEventSink {
 const says = (handle: FakeSessionHandle, error: RuntimeEvent): void =>
   (handle as unknown as { push(event: RuntimeEvent): void }).push(error)
 const REFUSED = { type: 'error', message: 'refused', fatal: false, cause: 'auth' } as const
-
 
 class AClaude extends FakeRuntime {
   constructor(private readonly kept: FakeSessionHandle[]) {
