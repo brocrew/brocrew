@@ -234,7 +234,7 @@ describe('the existing workflow’s same-artifact route', () => {
   const libRequire = createRequire(builderRequire.resolve('app-builder-lib/package.json'))
   const { load } = libRequire('js-yaml')
   const workflow = load(readFileSync(join(ROOT, '.github/workflows/upgrade-path.yml'), 'utf8'))
-  const script = workflow.jobs.assets.steps[0].with.script
+  const script = workflow.jobs.assets.steps.find((step) => step.id === 'assets').with.script
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
   const source = 'a'.repeat(40)
   const predecessor = 'b'.repeat(40)
@@ -305,9 +305,14 @@ describe('the existing workflow’s same-artifact route', () => {
     expect(binding.value.artifacts.map(({ id }) => id)).toEqual([101, 102])
     for (const os of ['windows', 'mac']) {
       const steps = workflow.jobs[os].steps
-      const download = steps.find((step) => step.uses === 'actions/download-artifact@v4')
+      const download = steps.find(
+        (step) =>
+          step.uses === 'actions/download-artifact@v4' && step.with.path === 'apps/desktop/dist',
+      )
       expect(download.with['run-id']).toContain('inputs.original_run_id')
       expect(download.with['github-token']).toBe('${{ github.token }}')
+      const predecessorDownload = steps.find((step) => step.with?.path === 'upgrade-path-beta')
+      expect(predecessorDownload.with['run-id']).toContain('needs.assets.outputs.predecessor')
       expect(steps.find((step) => step.name?.startsWith('Build the candidate')).if).toContain(
         os === 'windows' ? '!inputs.windows_artifact_id' : '!inputs.original_run_id',
       )

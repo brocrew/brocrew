@@ -1,3 +1,4 @@
+import { withdrawnPublicationOf } from './lib/withdrawn-upgrade-beta.mjs'
 import { recoveryProofCases } from './lib/upgrade-recovery-proof.mjs'
 import { spawn, spawnSync } from 'node:child_process'
 import { firstCopyPolicy, checkCheckpointRetention } from './lib/upgrade-candidate-evidence.mjs'
@@ -1865,11 +1866,24 @@ async function runUpgradePath() {
   summary.candidateSchema = candidateLineage.length
 
   const release = JSON.parse(readFileSync(resolve(args['beta-release']), 'utf8'))
+  const previousPublication = withdrawnPublicationOf(release, args['beta-tag'])
   must(
-    isPublishedRelease(release, args['beta-tag']),
-    `the release is ${args['beta-tag']}, a published release`,
-    { tag: release.tag_name, prerelease: release.prerelease, publishedAt: release.published_at },
+    isPublishedRelease(release, args['beta-tag']) || previousPublication,
+    previousPublication
+      ? `the release ${args['beta-tag']} retains its originally published assets after withdrawal`
+      : `the release is ${args['beta-tag']}, a published release`,
+    {
+      tag: release.tag_name,
+      draft: release.draft,
+      publishedAt: release.published_at,
+      previousPublication,
+    },
   )
+  summary.betaPublication = previousPublication ?? {
+    tag: release.tag_name,
+    currentDraft: release.draft,
+    publishedAt: release.published_at,
+  }
   const asset = betaAsset(release.assets, os)
   const betaFile = join(resolve(args['beta-dir']), asset.name)
   const downloaded = fileFacts(betaFile)

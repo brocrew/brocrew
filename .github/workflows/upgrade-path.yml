@@ -9,6 +9,10 @@ on:
         description: Run only the Mac upgrade, retaining both original artifact bindings
         type: boolean
         default: false
+      withdrawn_025_predecessor:
+        description: Use the withdrawn 0.2.25 release's original predecessor artifacts
+        type: boolean
+        default: false
       recovery_proof:
         description: Run the three recovery cases with published 0.2.19
         type: boolean
@@ -86,11 +90,16 @@ jobs:
     timeout-minutes: 5
     outputs:
       binding: ${{ steps.assets.outputs.binding }}
+      predecessor: ${{ steps.assets.outputs.predecessor }}
     steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - id: assets
         uses: actions/github-script@v8
         env:
           ORIGINAL_RUN: ${{ inputs.original_run_id }}
+          WITHDRAWN_025: ${{ inputs.withdrawn_025_predecessor }}
           WINDOWS_ARTIFACT: ${{ inputs.windows_artifact_id }}
           MAC_ARTIFACT: ${{ inputs.mac_artifact_id }}
           CANDIDATE_SOURCE: ${{ inputs.candidate_source }}
@@ -101,6 +110,23 @@ jobs:
             const { ORIGINAL_RUN: run, WINDOWS_ARTIFACT: windows, MAC_ARTIFACT: mac,
               CANDIDATE_SOURCE: candidate, PREDECESSOR_SOURCE: predecessor } = process.env
             const demand = (ok, message) => { if (!ok) throw new Error(message) }
+            let withdrawn
+            if (process.env.WITHDRAWN_025 === 'true') {
+              demand(process.env.WINDOWS_BETA === 'v0.2.25' && process.env.MAC_BETA === 'v0.2.25',
+                'Withdrawn predecessor artifacts are only the installed 0.2.25 row.')
+              const { PREVIOUS_PUBLIC_025: old, withdrawnOriginalBinding } = await import(
+                `${process.env.GITHUB_WORKSPACE}/scripts/lib/withdrawn-upgrade-beta.mjs`)
+              const { data: original } = await github.rest.actions.getWorkflowRun({ ...context.repo, run_id: old.runId })
+              const artifacts = []
+              for (const id of [old.macArtifactId, old.windowsArtifactId]) {
+                const { data: artifact } = await github.rest.actions.getArtifact({ ...context.repo, artifact_id: id })
+                artifacts.push(artifact)
+              }
+              withdrawn = withdrawnOriginalBinding(original, artifacts)
+              demand(withdrawn, 'The withdrawn predecessor must bind its original release run and artifacts.')
+              core.setOutput('predecessor', JSON.stringify(withdrawn))
+              core.info(JSON.stringify(withdrawn))
+            }
             if (!run) {
               demand(!mac && !candidate && !predecessor &&
                 (context.eventName !== 'workflow_dispatch' || !windows),
@@ -121,8 +147,12 @@ jobs:
             demand(oldWindows.sha === predecessor && oldMac.sha === predecessor,
               'Both selected predecessor tags must bind the supplied predecessor SHA.')
             for (const tag of new Set([process.env.WINDOWS_BETA, process.env.MAC_BETA])) {
-              const { data: release } = await github.rest.repos.getReleaseByTag({ ...repo, tag })
-              demand(!release.draft && release.tag_name === tag, 'The predecessor must be published.')
+              if (tag === 'v0.2.25' && withdrawn) {
+                demand(predecessor === withdrawn.source, 'The withdrawn predecessor source must match its original run.')
+              } else {
+                const { data: release } = await github.rest.repos.getReleaseByTag({ ...repo, tag })
+                demand(!release.draft && release.tag_name === tag, 'The predecessor must be published.')
+              }
             }
             const artifacts = []
             for (const [os, id] of [['windows', windows], ['macos', mac]]) {
@@ -179,7 +209,25 @@ jobs:
       - name: The check's own rules fail what they should
         run: pnpm exec vitest run --project scripts scripts/test/upgrade-path.test.mjs scripts/test/upgrade-candidate-evidence.test.mjs
 
+      - name: Download the withdrawn predecessor's original release artifacts
+        if: inputs.withdrawn_025_predecessor
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ format('{0},{1}', fromJSON(needs.assets.outputs.predecessor).macArtifactId, fromJSON(needs.assets.outputs.predecessor).windowsArtifactId) }}
+          run-id: ${{ fromJSON(needs.assets.outputs.predecessor).runId }}
+          github-token: ${{ github.token }}
+          merge-multiple: true
+          path: upgrade-path-beta
+
+      - name: Check the withdrawn predecessor against its historical public bytes
+        if: inputs.withdrawn_025_predecessor
+        shell: bash
+        env:
+          PREDECESSOR_BINDING: ${{ needs.assets.outputs.predecessor }}
+        run: node scripts/prepare-withdrawn-upgrade-beta.mjs "$WINDOWS_BETA" upgrade-path-beta upgrade-path-evidence
+
       - name: Fetch the beta a tester runs, as its release publishes it
+        if: ${{ !inputs.withdrawn_025_predecessor }}
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -303,7 +351,25 @@ jobs:
       - name: The check's own rules fail what they should
         run: pnpm exec vitest run --project scripts scripts/test/upgrade-path.test.mjs scripts/test/upgrade-candidate-evidence.test.mjs
 
+      - name: Download the withdrawn predecessor's original release artifacts
+        if: inputs.withdrawn_025_predecessor
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ format('{0},{1}', fromJSON(needs.assets.outputs.predecessor).macArtifactId, fromJSON(needs.assets.outputs.predecessor).windowsArtifactId) }}
+          run-id: ${{ fromJSON(needs.assets.outputs.predecessor).runId }}
+          github-token: ${{ github.token }}
+          merge-multiple: true
+          path: upgrade-path-beta
+
+      - name: Check the withdrawn predecessor against its historical public bytes
+        if: inputs.withdrawn_025_predecessor
+        shell: bash
+        env:
+          PREDECESSOR_BINDING: ${{ needs.assets.outputs.predecessor }}
+        run: node scripts/prepare-withdrawn-upgrade-beta.mjs "$MAC_BETA" upgrade-path-beta upgrade-path-evidence
+
       - name: Fetch the beta a tester runs, as its release publishes it
+        if: ${{ !inputs.withdrawn_025_predecessor }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
