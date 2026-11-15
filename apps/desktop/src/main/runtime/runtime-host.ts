@@ -40345,6 +40345,7 @@ export class RuntimeHost implements LiveHost {
     let held = false
     const carried = this.heldAtAStop.has(session.id)
     let attempted = false
+    let waitsForThePerson = false
     try {
       // ⚠️ The id is refused as *not confirmed stopped* until the old launch is released.
       if (this.launches.closed || this.keptStopped(session.id)) return
@@ -40381,6 +40382,13 @@ export class RuntimeHost implements LiveHost {
           ))
         )
           return
+        if ((await session.handle.checkSignIn?.()) === true) {
+          waitsForThePerson = true
+          session.itsSignInMovedOn = true
+          this.publishStateIfChanged(session)
+          this.aSignInChanged(session.provider, session.lifeSince, session.profileId)
+          return
+        }
         session.itsCopyWasReplaced = true
       }
       // A rejection can precede local expiry; an already replaced token needs no helper run.
@@ -40488,7 +40496,13 @@ export class RuntimeHost implements LiveHost {
         )
       }
     } finally {
-      if (!attempted && carried && !this.launches.closed && !this.slots.has(session.id)) {
+      if (
+        !attempted &&
+        !waitsForThePerson &&
+        carried &&
+        !this.launches.closed &&
+        !this.slots.has(session.id)
+      ) {
         await this.timedReopen('runtime sign-in held resume', () =>
           this.startForWhatItHeld(session),
         )
