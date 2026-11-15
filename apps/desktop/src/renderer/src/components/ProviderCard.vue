@@ -11,7 +11,6 @@ import type {
   ProviderResources,
   ProviderUsageReading,
   ProviderVersion,
-  ProviderHomesReprovision,
 } from '../../../shared/runtime-ipc'
 import {
   A_STANDING_IN_A_WORD,
@@ -281,10 +280,6 @@ async function cancelSignIn(): Promise<void> {
   }
 }
 
-const copyingHomes = ref(false)
-const copiedHomes = ref<ProviderHomesReprovision | null>(null)
-const copyHomesError = ref<string | null>(null)
-let copyHomesTimer: ReturnType<typeof setTimeout> | undefined
 const descriptor = computed(
   () =>
     props.descriptor ??
@@ -292,59 +287,6 @@ const descriptor = computed(
       ? catalogueState.value.providers.find((item) => item.id === props.provider)
       : undefined),
 )
-const keepsProfileSignIns = computed(() => descriptor.value?.credential === 'profile-or-key')
-async function readHomeCopies(statusOnly = false): Promise<void> {
-  const result = await client.reprovisionProviderHomes({
-    provider: props.provider,
-    ...(statusOnly ? { statusOnly: true } : {}),
-  })
-  if (!cardOpen) return
-  copiedHomes.value = result.profiles.length === 0 ? null : result
-  if (result.pending > 0)
-    copyHomesTimer = setTimeout(() => {
-      void readHomeCopies(true).catch(() => {
-        copyHomesError.value = 'Could not read the switch progress. Open Providers again to check.'
-      })
-    }, 1000)
-}
-async function copyAllMachineSignIns(): Promise<void> {
-  if (copyingHomes.value || (copiedHomes.value?.pending ?? 0) > 0) return
-  copyingHomes.value = true
-  copiedHomes.value = null
-  copyHomesError.value = null
-  clearTimeout(copyHomesTimer)
-  try {
-    await readHomeCopies()
-  } catch {
-    copyHomesError.value = 'Could not copy the sign-ins. Try again.'
-  } finally {
-    copyingHomes.value = false
-  }
-}
-function copyHomeReason(
-  reason:
-    | 'api-key'
-    | 'key-status-unavailable'
-    | 'unchanged'
-    | 'copy-failed'
-    | 'restart-failed'
-    | 'stop-failed',
-): string {
-  switch (reason) {
-    case 'api-key':
-      return 'Saved API key: all agents using this provider keep their key.'
-    case 'key-status-unavailable':
-      return 'API key status could not be checked. Try again.'
-    case 'unchanged':
-      return 'Already uses this Mac’s sign-in.'
-    case 'copy-failed':
-      return 'Could not copy the sign-in. Check this Mac’s sign-in and try again.'
-    case 'restart-failed':
-      return 'Sign-in copied, but this agent could not restart. Try again.'
-    case 'stop-failed':
-      return 'Could not confirm this agent stopped. Its sign-in was left unchanged.'
-  }
-}
 
 /** ⚑ The plan in the provider's own word, as a person writes it: `max` → *Max*. */
 const plan = computed(() => {
@@ -572,7 +514,6 @@ watch(
 )
 onBeforeUnmount(() => {
   cardOpen = false
-  clearTimeout(copyHomesTimer)
   modelRefresh?.abort()
 })
 
@@ -907,7 +848,6 @@ onMounted(() => {
     void check()
     void readKey()
   }
-  if (keepsProfileSignIns.value) void readHomeCopies(true).catch(() => {})
   if (!programMissing.value) void lists.value.read(props.provider, undefined, { once: true })
 })
 watch(programMissing, (missing) => {
@@ -1310,44 +1250,6 @@ defineExpose({ beginSetup })
         >
           {{ authNotice }}
         </p>
-        <div v-if="keepsProfileSignIns" data-cy="copy-all-sign-ins">
-          <p class="line quiet">
-            Copies this Mac’s sign-in for every agent in this install; saved API keys stay as they
-            are.
-          </p>
-          <button
-            type="button"
-            class="action"
-            :disabled="copyingHomes || setupBusy || (copiedHomes?.pending ?? 0) > 0"
-            @click="copyAllMachineSignIns"
-          >
-            {{
-              copyingHomes ? 'Copying sign-ins…' : `Use this Mac's ${name} sign-in for all agents`
-            }}
-          </button>
-          <div v-if="copiedHomes" role="status">
-            <p class="line quiet">
-              Agents restart automatically between tasks to use the new sign-in. BroCrew does not
-              need restarting.
-            </p>
-            <p class="line">
-              {{ copiedHomes.replaced }} switched now, {{ copiedHomes.pending }} will switch when
-              they finish their current task. {{ copiedHomes.skipped }} skipped /
-              {{ copiedHomes.failed }} failed.
-            </p>
-            <p
-              v-for="profile in copiedHomes.profiles.filter(
-                (one) => one.state === 'skipped' || one.state === 'failed',
-              )"
-              :key="profile.profileId"
-              class="line quiet"
-            >
-              {{ profile.profileId }}:
-              {{ 'reason' in profile ? copyHomeReason(profile.reason) : '' }}
-            </p>
-          </div>
-          <p v-if="copyHomesError" role="alert" class="line">{{ copyHomesError }}</p>
-        </div>
         <p v-if="renewalSends !== null" class="line quiet" data-cy="provider-login-renewal">
           {{ renewalSends }}
         </p>

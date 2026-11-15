@@ -202,18 +202,24 @@ it('renders supplied installer words and preserves an older observation without 
   expect(m.q('provider-version').textContent).toContain('native-installer')
   expect(m.q('provider-version').textContent).not.toContain('Anthropic')
 })
-it('copies all profiles through the injected operation and retains its result', async () => {
+it('keeps the supplied login and individual check without offering or sampling a bulk copy', async () => {
   const { m, api, forbidden } = card()
+  const check = vi.spyOn(api, 'checkProviderAuth')
   await settle()
-  expect(api.reprovisionProviderHomes).toHaveBeenCalledExactlyOnceWith({
-    provider: 'claude',
-    statusOnly: true,
-  })
-  vi.mocked(api.reprovisionProviderHomes).mockClear()
-  m.q('copy-all-sign-ins').querySelector('button')!.click()
+  expect(m.q('provider-account').textContent).toContain('Runs on your Fern login')
+  expect(m.all('copy-all-sign-ins')).toHaveLength(0)
+  expect(api.reprovisionProviderHomes).not.toHaveBeenCalled()
+  const before = check.mock.calls.length
+  const button = [...m.q('provider-status').querySelectorAll<HTMLButtonElement>('button')].find(
+    (item) => item.textContent?.trim() === 'Check again',
+  )!
+  button.click()
   await settle()
-  expect(api.reprovisionProviderHomes).toHaveBeenCalledExactlyOnceWith({ provider: 'claude' })
-  expect(m.q('copy-all-sign-ins').textContent).toContain('1 switched now, 0 will switch')
+  expect(check).toHaveBeenCalledTimes(before + 1)
+  expect(check).toHaveBeenLastCalledWith(
+    expect.objectContaining({ provider: 'claude', profileId: DEFAULT_PROFILE_ID }),
+  )
+  expect(api.reprovisionProviderHomes).not.toHaveBeenCalled()
   expect(forbidden).not.toHaveBeenCalled()
 })
 
