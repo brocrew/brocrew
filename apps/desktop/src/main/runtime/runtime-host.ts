@@ -40371,7 +40371,7 @@ export class RuntimeHost implements LiveHost {
             !(await this.replaceARefusedCopy(
               session.provider,
               session.profileId,
-              'after its refused server exited',
+              'in a turn',
               refused,
               stillWanted,
             ))
