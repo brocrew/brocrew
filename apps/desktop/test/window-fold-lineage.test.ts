@@ -118,7 +118,11 @@ it('reads each owner generation and newest fold row once per immutable worker sn
   w.read({ kind: 'routes', reuse: { token: cold.cacheToken!, changed: [] } })
   expect(w.heads.sort()).toEqual(['alpha', 'beta'])
   expect(w.rebuilt).toEqual([])
-  console.info(JSON.stringify({ generationEngine: { cold: coldGenerations, warm: w.generationReads.generations } }))
+  console.info(
+    JSON.stringify({
+      generationEngine: { cold: coldGenerations, warm: w.generationReads.generations },
+    }),
+  )
   expect(coldGenerations.sort()).toEqual(['alpha', 'beta'])
   expect(w.generationReads.generations.sort()).toEqual(['alpha', 'beta'])
 })

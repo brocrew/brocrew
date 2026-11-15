@@ -2994,8 +2994,12 @@ export function createSessionStore(
     return last?.id ?? null
   }
 
-  function activeGeneration(sessionId: string): number {
+  function readGeneration(sessionId: string): number {
     return (selectGeneration.get(sessionId) as GenerationRow | undefined)?.active ?? 0
+  }
+
+  function activeGeneration(sessionId: string): number {
+    return oneSnapshot ? snapshotGeneration(sessionId) : readGeneration(sessionId)
   }
 
   /** The requests one ledger routed, with what carries its fold forward. */
@@ -3009,6 +3013,7 @@ export function createSessionStore(
   const ROUTED_ENTRIES_KEPT_AT_MOST = 1024
 
   const {
+    generationOf: snapshotGeneration,
     invalidateForAppend,
     markOwnAppend,
     forgetTheKeptFoldsOf,
@@ -3018,7 +3023,7 @@ export function createSessionStore(
   } = createLedgerFoldState(
     db,
     connection,
-    activeGeneration,
+    readGeneration,
     oneSnapshot,
     theFoldIndexHolds,
     invalidateWorkReads,

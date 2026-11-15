@@ -103,15 +103,11 @@ export function createLedgerFoldState(
   )
   theFoldIndexHolds(selectNewestFoldRow)
 
-  const snapshotHeads = new Map<string, { generation: number; newest: number | null }>()
-  function foldHead(sessionId: string): { generation: number; newest: number | null } {
+  const snapshotHeads = new Map<string, { generation: number; newest?: number | null }>()
+  function snapshotHead(sessionId: string): { generation: number; newest?: number | null } {
     const known = oneSnapshot ? snapshotHeads.get(sessionId) : undefined
     if (known !== undefined) return known
-    const generation = activeGeneration(sessionId)
-    const newest =
-      (selectNewestFoldRow.get(sessionId, generation) as { through: number | null } | undefined)
-        ?.through ?? null
-    const head = { generation, newest }
+    const head = { generation: activeGeneration(sessionId) }
     if (oneSnapshot) {
       snapshotHeads.set(sessionId, head)
       if (snapshotHeads.size > KEPT_FOLDS_AT_MOST) {
@@ -120,6 +116,20 @@ export function createLedgerFoldState(
       }
     }
     return head
+  }
+
+  function generationOf(sessionId: string): number {
+    return oneSnapshot ? snapshotHead(sessionId).generation : activeGeneration(sessionId)
+  }
+
+  function foldHead(sessionId: string): { generation: number; newest: number | null } {
+    const head = snapshotHead(sessionId)
+    if (head.newest === undefined)
+      head.newest =
+        (selectNewestFoldRow.get(sessionId, head.generation) as
+          | { through: number | null }
+          | undefined)?.through ?? null
+    return { generation: head.generation, newest: head.newest }
   }
 
   function keptUntilItsLedgerGrows<T>(
@@ -218,6 +228,7 @@ export function createLedgerFoldState(
   }
 
   return {
+    generationOf,
     invalidateForAppend,
     markOwnAppend,
     forgetTheKeptFoldsOf,
