@@ -487,10 +487,11 @@ function isTheSameCopy(held: BigIntStats, refused: CodexCopyIdentity): boolean {
  */
 export async function reprovisionCodexAuth(
   providerHome: string,
-  opts: { sourceAuthPath?: string; newerOnly?: boolean } = {},
+  opts: { sourceAuthPath?: string; newerOnly?: boolean; stillWanted?: () => boolean } = {},
 ): Promise<ReprovisionOutcome> {
   const source = opts.sourceAuthPath ?? personalCodexAuthPath()
   return await withProviderHomeLock(providerHome, () => {
+    if (opts.stillWanted?.() === false) return 'unchanged'
     const dest = join(providerHome, CODEX_AUTH_FILE)
 
     // A directory here is no sign-in. A link is replaced by the copy: `rename` replaces the link
