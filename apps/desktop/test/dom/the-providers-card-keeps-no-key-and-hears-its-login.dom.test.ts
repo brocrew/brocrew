@@ -872,6 +872,27 @@ describe('§6 · each usage box shows how much of its window has gone, and says 
   })
 })
 
+describe('Codex sign-in without a manual bulk action', () => {
+  it('keeps the current login and API-key controls without a bulk sign-in button or results', async () => {
+    const { m } = theCard({}, { provider: 'codex' })
+    await settled()
+    expect(text(m.q('provider-account'))).toContain('Runs on your Codex login')
+    expect(m.all('provider-key-input')).toHaveLength(1)
+    expect(m.all('copy-all-sign-ins')).toHaveLength(0)
+    expect(text(m.host)).not.toContain('Copies this Mac’s sign-in for every agent')
+    expect(text(m.host)).not.toContain('switched now')
+  })
+
+  it('does not sample bulk-copy results on mount or after a login notice', async () => {
+    const { runtime, moved } = theCard({}, { provider: 'codex' })
+    await settled()
+    moved.value++
+    await settled()
+    expect(runtime.checkProviderAuth).toHaveBeenCalled()
+    expect(runtime.reprovisionProviderHomes).not.toHaveBeenCalled()
+  })
+})
+
 describe('copying the machine sign-in for all agents', () => {
   it('is available while signed in and reports counts, skipped profiles and failures', async () => {
     const copy = held<ProviderHomesReprovision>()
