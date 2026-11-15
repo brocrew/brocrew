@@ -4934,6 +4934,7 @@ export class RuntimeHost implements LiveHost {
   /** Live hosts share the supplied writer's identity, independent of the scoped window view. */
   private readonly ledgerIdentity: object
   private windowReadCallers = 0
+  private windowFoldKept: { readonly stamp: WindowWriterStamp; readonly token: string } | undefined
   private windowRoutesPending:
     { readonly stamp: WindowWriterStamp; readonly read: Promise<WindowReadResult> } | undefined
   private windowRoutesKept:
@@ -15342,6 +15343,7 @@ export class RuntimeHost implements LiveHost {
         this.windowRoutesKept = undefined
         this.windowListingKept = undefined
         this.windowIncidentsKept = undefined
+        this.windowFoldKept = undefined
         throw new WindowReadMissed('writer-unsampled')
       }
       const reusable =
@@ -15367,18 +15369,17 @@ export class RuntimeHost implements LiveHost {
       )
         throw failed.missed
       const requested = (): WindowReadQuery => {
-        const previous = query.kind === 'listing' ? this.windowListingKept : this.windowRoutesKept
+        const previous = this.windowFoldKept
         if (
           (query.kind === 'routes' ||
             query.kind === 'listing' ||
             query.kind === 'publication' ||
             query.kind === 'incidents') &&
-          (previous?.result.kind === 'routes' || previous?.result.kind === 'listing')
+          previous !== undefined
         ) {
           const changed = this.deps.windowWriterStamp?.changedOwners?.(previous.stamp, before)
-          const token = previous.result.cacheToken
-          if (token !== undefined && changed != null)
-            return { ...query, reuse: { token, changed: [...changed] } }
+          if (changed != null)
+            return { ...query, reuse: { token: previous.token, changed: [...changed] } }
         }
         return query
       }
@@ -15421,6 +15422,15 @@ export class RuntimeHost implements LiveHost {
       this.deps.store.checkCommitted()
       const after = this.sampleWindowWriter(query)
       if (sameWindowWriter(origin, before) && sameWindowWriter(origin, after)) {
+        const folded =
+          result.kind === 'incidents'
+            ? result.routing
+            : result.kind === 'publication'
+              ? result.states
+              : result
+        if (folded?.kind === 'routes' || folded?.kind === 'listing')
+          this.windowFoldKept =
+            folded.cacheToken === undefined ? undefined : { stamp: after!, token: folded.cacheToken }
         if (query.kind === 'routes') this.windowRoutesKept = { stamp: after!, result }
         if (query.kind === 'listing') this.windowListingKept = { stamp: after!, result }
         if (query.kind === 'incidents') {
@@ -39905,6 +39915,7 @@ export class RuntimeHost implements LiveHost {
       this.windowRoutesKept = undefined
       this.windowListingKept = undefined
       this.windowIncidentsKept = undefined
+      this.windowFoldKept = undefined
       this.workReconciler?.close()
       clearInterval(this.reconciliationTimer)
       this.launches.closeAdmission()
