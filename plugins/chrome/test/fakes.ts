@@ -332,6 +332,9 @@ export class FakeBrowser implements ProfileBrowser {
   state(profile: string) {
     return this.states.get(profile) ?? null
   }
+  knownWindowId(_profile: string, page: Page): number | undefined {
+    return this.windowIds.get(page)
+  }
   async windowId(profile: string, page: Page): Promise<number> {
     if (!this.pages.get(profile)?.includes(page as unknown as FakePage) || page.isClosed())
       throw new Error('selected tab is closed')

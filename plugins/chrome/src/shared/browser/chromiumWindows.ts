@@ -210,6 +210,9 @@ export class ChromiumWindows {
       await this.detach(session)
     }
   }
+  knownWindowId(page: Page): number | undefined {
+    return this.pages.get(page)?.windowId
+  }
   async windowId(page: Page, deadline = this.now() + this.timeoutMs): Promise<number> {
     const id = await this.identity(page, deadline)
     this.budget(deadline)
@@ -268,6 +271,7 @@ export class ChromiumWindows {
     const preferred = anchor ? await this.identity(anchor, deadline) : undefined
     const operation: Operation = { active: true, attempts: [] }
     const { attempts } = operation
+    let admittedId: number | undefined
     let admitted: Page | undefined
     if (this.operations.size >= MAX_UNRESOLVED)
       throw new WindowTargetError(
@@ -363,6 +367,7 @@ export class ChromiumWindows {
           `WINDOW_TARGET_MISMATCH: Chrome placed the tab in window ${id} instead of ${preferred}`,
         )
       admitted = phase.page!
+      admittedId = id
       phase.resolved = true
       if (!separate && preferred !== undefined && preferred !== id)
         opts.onNote?.(
@@ -389,7 +394,10 @@ export class ChromiumWindows {
       this.releaseOperations()
       // Failed page identities remain private independently of their current URLs.
       this.flush()
-      if (admitted && !this.pages.has(admitted)) this.admit(admitted)
+      if (admitted) {
+        if (!this.pages.has(admitted)) this.admit(admitted)
+        this.pages.get(admitted)!.windowId = admittedId
+      }
       if (session) await this.detach(session)
     }
   }

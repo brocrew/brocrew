@@ -1,5 +1,5 @@
 import { browserIdentity, fenceToolDefs } from './authorization.js'
-import { generationOf, tabId, titleOf, usableProfile } from './common.js'
+import { describeError, generationOf, tabId, titleOf, usableProfile } from './common.js'
 import type { ToolDef, ToolDeps } from './common.js'
 const WATCH_MS = 6 * 60 * 60 * 1000
 const watched = new WeakMap<object, Set<string>>()
@@ -49,10 +49,27 @@ export function buildShowTabDefs(): ToolDef[] {
         return deps.browser.exclusive(profile, async () => {
           usableProfile(deps, profile)
           const tab = deps.tabs.resolve(id, generationOf(deps))
-          await deps.browser.usePage(profile, tab.page)
-          await tab.page.bringToFront()
+          let focused = false
+          let focusError: string | undefined
+          const notes = tab.notes
+          const failed = (error: unknown) => {
+            focusError = describeError(error)
+            notes.push(`focus pending: ${focusError}`)
+          }
+          void deps.browser.usePage(profile, tab.page).catch(failed)
+          void tab.page.bringToFront().then(() => {
+            focused = true
+          }, failed)
           watchWindow(deps, profile)
-          return { json: { tabId: id, url: tab.page.url(), title: await titleOf(tab.page) } }
+          const title = await titleOf(tab.page)
+          return {
+            json: {
+              tabId: id,
+              url: tab.page.url(),
+              title,
+              ...(!focused ? { note: `focus pending${focusError ? `: ${focusError}` : ''}` } : {}),
+            },
+          }
         })
       },
     },

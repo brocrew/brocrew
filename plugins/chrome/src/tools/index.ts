@@ -211,7 +211,7 @@ export function buildToolDefs(): ToolDef[] {
       spec: {
         name: 'open_tab',
         description:
-          'Open a background tab at a URL or absolute local path. Returns tabId, numeric windowId, url and title. If later work fails, TAB_CREATED identifies the existing tab. windowOf selects an existing tab’s window and fails clearly if the helper cannot place it there; it never opens elsewhere as a fallback. Otherwise use Chrome’s most recently active available window. Chrome is never brought forward. newWindow:true opens a separate window.',
+          'Open a background tab at a URL or absolute local path. Returns tabId, known windowId (null while unknown), url and title. Created tabs remain successful while window bookkeeping is pending; notes retain lookup failures. windowOf selects an existing tab’s window and fails clearly if the helper cannot place it there; it never opens elsewhere as a fallback. Otherwise use Chrome’s most recently active available window. Chrome is never brought forward. newWindow:true opens a separate window.',
         props: {
           profile: profileName,
           url,
@@ -258,7 +258,6 @@ export function buildToolDefs(): ToolDef[] {
           })
           const tab = deps.tabs.add(name, generation, page)
           try {
-            await deps.browser.usePage(name, page)
             deps.activity?.('page-ready')
             usableProfile(deps, name)
             let loadError: string | undefined
@@ -271,14 +270,35 @@ export function buildToolDefs(): ToolDef[] {
             } catch (e) {
               loadError = openDialogNote(tab) ?? describeError(e)
             }
+            let updated = false
+            let windowError: string | undefined
+            const notes = tab.notes
+            void deps.browser.usePage(name, page).then(
+              () => {
+                updated = true
+              },
+              (error: unknown) => {
+                windowError = describeError(error)
+                notes.push(`created, focus pending: ${windowError}`)
+              },
+            )
+            const title = await titleAfterLoad(page)
+            const note = [
+              !updated
+                ? `created, focus pending${windowError ? `: ${windowError}` : ''}`
+                : undefined,
+              openingNote,
+            ]
+              .filter(Boolean)
+              .join('; ')
             return {
               tabId: tab.id,
-              windowId: await deps.browser.windowId(name, page),
+              windowId: deps.browser.knownWindowId?.(name, page) ?? null,
               url: page.url(),
-              title: await titleAfterLoad(page),
+              title,
+              ...(note ? { note } : {}),
               ...(openDialogNote(tab) ? { dialog: openDialogNote(tab) } : {}),
               ...(loadError ? { loadError } : {}),
-              ...(openingNote ? { note: openingNote } : {}),
             }
           } catch (error) {
             throw new ToolError(`TAB_CREATED ${tab.id}: ${describeError(error)}`)

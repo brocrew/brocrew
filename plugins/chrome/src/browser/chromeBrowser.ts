@@ -786,6 +786,9 @@ export class ChromeBrowser implements ProfileBrowser {
     this.opts.rememberHelper?.(profile, 'turning-on')
     await this.entries.get(profile)?.helper?.turnOn()
   }
+  knownWindowId(profile: string, page: Page): number | undefined {
+    return this.entries.get(profile)?.windows?.knownWindowId(page)
+  }
   async windowId(profile: string, page: Page): Promise<number> {
     const windows = this.entries.get(profile)?.windows
     if (!windows) throw new Error('profile is not open')

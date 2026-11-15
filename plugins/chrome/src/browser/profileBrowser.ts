@@ -26,6 +26,7 @@ export interface ProfileBrowser {
       onNote?: (note: string) => void
     },
   ): Promise<Page>
+  knownWindowId?(profile: string, page: Page): number | undefined
   windowId(profile: string, page: Page): Promise<number>
   /** The person turned the BroCrew helper on in the Chrome panel. */
   turnHelperOn(profile: string): Promise<void>
