@@ -635,6 +635,26 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       accept(THE_COMPUTERS)
     }
 
+    it('waits for the refused server to exit before replacing its cached sign-in', async () => {
+      await runningOnACopyThatDiesInATurn()
+      let exited!: () => void
+      const exit = new Promise<void>((resolve) => {
+        exited = resolve
+      })
+      const handle = codex.handles[0]!
+      handle.awaitProcessExit = () => exit
+      try {
+        await handle.runTurnRefusedOnItsLogin()
+        await vi.waitFor(() => expect(handle.status()).toBe('closed'))
+        expect(held()).toBe(digestOf(DEAD))
+        expect(writer.reached).toBe(0)
+      } finally {
+        exited()
+      }
+      await vi.waitFor(() => expect(starts).toEqual(digests(DEAD, THE_COMPUTERS)))
+      expect(held()).toBe(digestOf(THE_COMPUTERS))
+    })
+
     it('🔴 Codex refuses the copy in a turn: it is replaced, and the conversation reopened on the fresh one', async () => {
       await runningOnACopyThatDiesInATurn()
       await codex.handles[0]!.runTurnRefusedOnItsLogin()
