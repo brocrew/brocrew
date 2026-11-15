@@ -103,6 +103,25 @@ export function createLedgerFoldState(
   )
   theFoldIndexHolds(selectNewestFoldRow)
 
+  const snapshotHeads = new Map<string, { generation: number; newest: number | null }>()
+  function foldHead(sessionId: string): { generation: number; newest: number | null } {
+    const known = oneSnapshot ? snapshotHeads.get(sessionId) : undefined
+    if (known !== undefined) return known
+    const generation = activeGeneration(sessionId)
+    const newest =
+      (selectNewestFoldRow.get(sessionId, generation) as { through: number | null } | undefined)
+        ?.through ?? null
+    const head = { generation, newest }
+    if (oneSnapshot) {
+      snapshotHeads.set(sessionId, head)
+      if (snapshotHeads.size > KEPT_FOLDS_AT_MOST) {
+        const oldest = snapshotHeads.keys().next().value
+        if (oldest !== undefined) snapshotHeads.delete(oldest)
+      }
+    }
+    return head
+  }
+
   function keptUntilItsLedgerGrows<T>(
     fold: (sessionId: string, noteSkip?: SkipNote) => T,
     carriedForward?: CarriedForward<T>,
@@ -124,10 +143,7 @@ export function createLedgerFoldState(
     // The same answer, only where it is kept and still current: this read never makes the fold.
     onlyIfKept.set(fold, (sessionId) => {
       if (!theFoldsMayBeKept()) return null
-      const generation = activeGeneration(sessionId)
-      const newest =
-        (selectNewestFoldRow.get(sessionId, generation) as { through: number | null } | undefined)
-          ?.through ?? null
+      const { generation, newest } = foldHead(sessionId)
       const held = folded.get(sessionId)
       return held?.generation === generation && held.newest === newest
         ? { answer: held.answer }
@@ -135,10 +151,7 @@ export function createLedgerFoldState(
     })
     return (sessionId, noteSkip) => {
       if (!theFoldsMayBeKept()) return fold(sessionId, noteSkip)
-      const generation = activeGeneration(sessionId)
-      const newest =
-        (selectNewestFoldRow.get(sessionId, generation) as { through: number | null } | undefined)
-          ?.through ?? null
+      const { generation, newest } = foldHead(sessionId)
       const held = folded.get(sessionId)
       if (held?.generation === generation) {
         if (held.newest === newest) {

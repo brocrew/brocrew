@@ -47,11 +47,12 @@ export class WindowReadEngine {
       query.kind === 'publication' ||
       query.kind === 'incidents'
     if (keepsFolds) {
-      if (query.reuse === undefined || query.reuse.token !== this.cacheToken) this.answers.clear()
-      else
+      if (query.reuse === undefined || query.reuse.token !== this.cacheToken) {
+        this.answers.clear()
+        this.cacheToken = undefined
+      } else
         for (const answers of this.answers.values())
           for (const owner of query.reuse.changed) answers.delete(owner)
-      this.cacheToken = undefined
     }
     let refused: WindowReadUnavailable | undefined
     const checkCancelled = () => {
@@ -329,6 +330,7 @@ export class WindowReadEngine {
           } catch (error) {
             console.warn('window worker could not read changed states', error)
             this.answers.clear()
+            this.cacheToken = undefined
           }
           const files: ReturnType<typeof store.filesKept>[number][] = []
           const failedFiles: string[] = []
@@ -358,13 +360,13 @@ export class WindowReadEngine {
       checkCancelled()
       this.db.exec('COMMIT')
       if (result.kind === 'routes' || result.kind === 'listing') {
-        this.cacheToken = randomUUID()
+        this.cacheToken ??= randomUUID()
         result = { ...result, cacheToken: this.cacheToken }
       } else if (result.kind === 'incidents') {
-        this.cacheToken = randomUUID()
+        this.cacheToken ??= randomUUID()
         result = { ...result, routing: { ...result.routing, cacheToken: this.cacheToken } }
       } else if (result.kind === 'publication' && result.states !== null) {
-        this.cacheToken = randomUUID()
+        this.cacheToken ??= randomUUID()
         result = { ...result, states: { ...result.states, cacheToken: this.cacheToken } }
       }
       return result
@@ -379,6 +381,8 @@ export class WindowReadEngine {
   }
 
   close(): void {
+    this.answers.clear()
+    this.cacheToken = undefined
     this.db.close()
   }
 }

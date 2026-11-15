@@ -10,6 +10,7 @@ import { expect, it, vi } from 'vitest'
 import { aServiceWorld } from './helpers/a-service-world'
 import { bundleAWorker } from './helpers/bundle-a-worker'
 import { observeLedgerFolds } from './helpers/observe-ledger-folds'
+import { reportWindowReadFailure } from './helpers/report-window-read-failure'
 import { WindowWorkerReader } from '../src/main/db/window-worker-reader'
 import { windowWriterSampler } from '../src/main/db/window-writer-stamp'
 import { limitsWriterSampler } from '../src/main/db/fresh-limits-snapshot'
@@ -106,6 +107,8 @@ it('measures window reads with 1960 conversations and nine live agents', async (
     elapsedMs: number
     bytes: number
   }[] = []
+  const phases: { phase: string; elapsedMs: number; reads: number; rows: number }[] = []
+  reportWindowReadFailure(() => ({ phase, phases, readCount: readings.length, readings }))
   const bundle = await bundleAWorker(
     'test/helpers/measured-window-worker.ts',
     world.folder,
@@ -332,7 +335,6 @@ it('measures window reads with 1960 conversations and nine live agents', async (
       last = now
     }, 10)
     release()
-    const phases: { phase: string; elapsedMs: number; reads: number; rows: number }[] = []
     const list = async (label: string) => {
       phase = label
       const before = readings.length

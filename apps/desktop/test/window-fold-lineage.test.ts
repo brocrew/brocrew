@@ -66,7 +66,9 @@ function world() {
     if (sql.includes('json_remove')) {
       const iterate = statement.iterate.bind(statement)
       vi.spyOn(statement, 'iterate').mockImplementation(function* (...args) {
-        rebuilt.push(String(args[0]))
+        rebuilt.push(
+          typeof args[0] === 'string' ? args[0] : String((args[0] as { session: string }).session),
+        )
         yield* iterate(...args)
       })
     }

@@ -157,7 +157,7 @@ it('reuses unrelated owners while corrections, rollback, import and external wri
     })
     expect(rejected.valid).toBe(false)
     expect(read('after-rejection').title).toBe('After rejected snapshot')
-    expect(new Set(owners)).toEqual(new Set(['alpha', 'beta']))
+    expect(new Set(owners)).toEqual(new Set(['alpha']))
     const external = openDatabase(file)
     try {
       external
