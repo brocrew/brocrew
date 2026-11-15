@@ -833,7 +833,7 @@ async function readFolder(userData: string, name: string, fs: RecoveryFs): Promi
     const stats = await lstatOrNull(folder, fs)
     if (stats === null || stats.isSymbolicLink() || !stats.isDirectory()) return OTHER
     const manifest = await lstatOrNull(manifestPath, fs)
-    if (manifest === null) return await unfinished(folder, stats, fs)
+    if (manifest === null) return await unfinished(userData, folder, stats, fs)
     if (manifest.isSymbolicLink() || !manifest.isFile()) return OTHER
     const text = await readTextOrNull(manifestPath, fs)
     if (text === null) return UNKNOWN
@@ -864,6 +864,7 @@ function isTheWritersName(name: string): boolean {
 }
 
 async function unfinished(
+  userData: string,
   folder: string,
   stats: RecoveryStats,
   fs: RecoveryFs,

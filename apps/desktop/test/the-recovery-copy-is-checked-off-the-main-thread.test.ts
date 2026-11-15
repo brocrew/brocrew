@@ -319,13 +319,25 @@ describe('the recovery copy is checked off the main thread', () => {
       const { file, db } = aLooseDatabase()
       const before = fileBytes(db)
       db.close()
-      const maintenance = workspaceCompaction((request) => new Worker(storageBundle, {
-        workerData: { maintenance: request },
-      }))
+      const maintenance = workspaceCompaction(
+        (request) =>
+          new Worker(storageBundle, {
+            workerData: { maintenance: request },
+          }),
+      )
       let copied = false
       try {
         const longest = await longestGapDuring(async () => {
-          expect(await maintenance.run(file, async () => {}, async () => { copied = true }, () => {})).toBe(true)
+          expect(
+            await maintenance.run(
+              file,
+              async () => {},
+              async () => {
+                copied = true
+              },
+              () => {},
+            ),
+          ).toBe(true)
         })
         expect(longest).toBeLessThan(100)
         expect(copied).toBe(true)
@@ -334,8 +346,12 @@ describe('the recovery copy is checked off the main thread', () => {
           expect(fileBytes(reopened)).toBeLessThan(before)
           expect(reopened.pragma('auto_vacuum', { simple: true })).toBe(2)
           expect(reopened.prepare('SELECT count(*) AS n FROM filler').get()).toEqual({ n: 0 })
-        } finally { reopened.close() }
-      } finally { await maintenance.stop() }
+        } finally {
+          reopened.close()
+        }
+      } finally {
+        await maintenance.stop()
+      }
     })
   })
 })

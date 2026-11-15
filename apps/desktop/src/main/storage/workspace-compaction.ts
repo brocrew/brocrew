@@ -24,31 +24,32 @@ export function workspaceCompaction(start: (request: Request) => Worker): {
   let worker: Worker | null = null
   let exited: Promise<void> = Promise.resolve()
   let running: Promise<boolean> | null = null
-  const request = <T>(data: Request): Promise<T> => new Promise((resolve, reject) => {
-    if (stopped) {
-      reject(new Error('The workspace is closing.'))
-      return
-    }
-    const current = start(data)
-    worker = current
-    let answer: { ok: boolean; value: T; error?: string } | undefined
-    let problem: Error | undefined
-    current.once('message', (message) => {
-      answer = message
-    })
-    current.once('error', (error) => {
-      problem = error
-    })
-    exited = new Promise<void>((done) => {
-      current.once('exit', (code) => {
-        worker = null
-        if (stopped || code !== 0 || problem || !answer?.ok)
-          reject(problem ?? new Error(answer?.error ?? 'Workspace compaction stopped.'))
-        else resolve(answer.value)
-        done()
+  const request = <T>(data: Request): Promise<T> =>
+    new Promise((resolve, reject) => {
+      if (stopped) {
+        reject(new Error('The workspace is closing.'))
+        return
+      }
+      const current = start(data)
+      worker = current
+      let answer: { ok: boolean; value: T; error?: string } | undefined
+      let problem: Error | undefined
+      current.once('message', (message) => {
+        answer = message
+      })
+      current.once('error', (error) => {
+        problem = error
+      })
+      exited = new Promise<void>((done) => {
+        current.once('exit', (code) => {
+          worker = null
+          if (stopped || code !== 0 || problem || !answer?.ok)
+            reject(problem ?? new Error(answer?.error ?? 'Workspace compaction stopped.'))
+          else resolve(answer.value)
+          done()
+        })
       })
     })
-  })
   const run: CompactionRun = async (file, prepare, capture, progress) => {
     const output = file + '.compact-events'
     for (const suffix of ['', '-wal', '-shm', '-journal'])
@@ -63,12 +64,18 @@ export function workspaceCompaction(start: (request: Request) => Worker): {
     const timer = setInterval(() => {
       if (reporting) return
       reporting = true
-      void fs.stat(output).then(
-        (stats) => {
-          if (!stopped && !reportingStopped) progress(Math.min(stats.size, facts.keptBytes * 0.99), facts.keptBytes)
-        },
-        () => undefined,
-      ).finally(() => { reporting = false })
+      void fs
+        .stat(output)
+        .then(
+          (stats) => {
+            if (!stopped && !reportingStopped)
+              progress(Math.min(stats.size, facts.keptBytes * 0.99), facts.keptBytes)
+          },
+          () => undefined,
+        )
+        .finally(() => {
+          reporting = false
+        })
     }, 250)
     timer.unref()
     try {
@@ -99,7 +106,8 @@ export function workspaceCompaction(start: (request: Request) => Worker): {
   }
   return {
     run(...args) {
-      if (running !== null) return Promise.reject(new Error('Workspace compaction is already running.'))
+      if (running !== null)
+        return Promise.reject(new Error('Workspace compaction is already running.'))
       running = run(...args).finally(() => {
         running = null
       })

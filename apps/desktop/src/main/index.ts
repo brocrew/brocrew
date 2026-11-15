@@ -301,6 +301,10 @@ import {
 } from './data-folder'
 import { WorkspaceUnavailable } from './workspace-startup'
 import { nodeFs as recoveryFiles } from './recovery/files'
+import {
+  prepareCheckpointReplacement,
+  captureAfterCompaction,
+} from './recovery/replace-checkpoint'
 
 const updateReopenAtLaunch =
   app.isPackaged && !app.commandLine.hasSwitch('brobot-hidden')
@@ -409,9 +413,11 @@ function withRecoveryWork<T>(work: () => Promise<T>): Promise<T> {
 function stopRecoveryWork(): Promise<void> {
   stoppingRecoveryWork ??= (async () => {
     recoveryCaptureAbort.abort()
-    await launchCompaction.stop()
-    await recoveryCopyHasher.stop()
-    await recoveryCopyVerifier.stop()
+    await Promise.all([
+      launchCompaction.stop(),
+      recoveryCopyHasher.stop(),
+      recoveryCopyVerifier.stop(),
+    ])
     await Promise.allSettled([...recoveryWork])
   })()
   return stoppingRecoveryWork
@@ -1500,6 +1506,45 @@ async function theVerdictBeforeTheData(launchOwnership: HostGateVerdict): Promis
   }
 }
 
+async function compactDataBeforeOpen(): Promise<void> {
+  const userData = app.getPath('userData')
+  const existing = workspaceStartup(app)
+  existing?.assertDatabase()
+  const { commit } = buildIdentity()
+  const options = {
+    userData,
+    ownership: theOneAppAnswer,
+    appVersion: app.getVersion(),
+    signal: recoveryCaptureAbort.signal,
+    ...(existing ? { fs: { ...recoveryFiles, mkdir: existing.mkdir.bind(existing) } } : {}),
+  }
+  checkingTheData = true
+  try {
+    await withRecoveryWork(() =>
+      withRecoveryCopies(() =>
+        launchCompaction.run(
+          databaseFile(userData),
+          (needed) => prepareCheckpointReplacement(options, theBuildsMigrations(), needed),
+          () =>
+            captureAfterCompaction({
+              ...options,
+              build: commit === '' ? null : commit,
+              verifyCopy: recoveryCopyVerifier.verify,
+              hashCopy: recoveryCopyHasher.verify,
+            }),
+          (done, total) => recoveryCalls?.progress(done, total),
+        ),
+      ),
+    )
+  } catch (error) {
+    if (recoveryCaptureAbort.signal.aborted) throw error
+    console.warn('BroCrew could not make its workspace smaller at this launch:', error)
+  } finally {
+    checkingTheData = false
+  }
+  existing?.assertDatabase()
+}
+
 function sayWorkingIfItTakesLong(what: WorkingOn): void {
   if (recoveryCalls !== null) {
     if (workingShown !== null && workingShown !== what) showRecovery({ kind: 'working', what })
@@ -1946,6 +1991,8 @@ function start(ownership: HostGateVerdict): void {
         endInRecovery(verdict)
         return
       }
+      await compactDataBeforeOpen()
+      if (closedWhileCheckingSaid || recoveryCaptureAbort.signal.aborted) return
       const startBegan = performance.now()
       const localZone = keepTheSystemZone((moved) => {
         for (const window of BrowserWindow.getAllWindows()) {
@@ -2144,10 +2191,13 @@ function start(ownership: HostGateVerdict): void {
       void letGoOfOldCopies()
       sayAtOnce(READY_LINE)
       eventRetention = startEventRetention(
-        () => startStorageWorker({
-          workerData: { maintenance: { kind: 'trim', file: databaseFile(app.getPath('userData')) } },
-          resourceLimits: { maxOldGenerationSizeMb: 64, maxYoungGenerationSizeMb: 8 },
-        }),
+        () =>
+          startStorageWorker({
+            workerData: {
+              maintenance: { kind: 'trim', file: databaseFile(app.getPath('userData')) },
+            },
+            resourceLimits: { maxOldGenerationSizeMb: 64, maxYoungGenerationSizeMb: 8 },
+          }),
         async (result) => {
           if (result.removed > 0) console.info('BroCrew trimmed old event history:', result)
         },

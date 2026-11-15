@@ -27,27 +27,32 @@ export function startEventRetention(
     }
     running = new Promise<EventTrimResult | null>((resolve) => {
       let result: EventTrimResult | null = null
-      current.once('message', (message: { ok: boolean; value?: EventTrimResult; error?: string }) => {
-        if (message.ok && message.value) result = message.value
-        else warn(message.error ?? 'Event history cleanup failed.')
-      })
+      current.once(
+        'message',
+        (message: { ok: boolean; value?: EventTrimResult; error?: string }) => {
+          if (message.ok && message.value) result = message.value
+          else warn(message.error ?? 'Event history cleanup failed.')
+        },
+      )
       current.once('error', warn)
       current.once('exit', (code) => {
         worker = null
         resolve(code === 0 ? result : null)
       })
-    }).then(async (result) => {
-      if (closed) return
-      if (result !== null) {
-        try {
-          await trimmed(result)
-        } catch (error) {
-          warn(error)
-        }
-      }
-    }).finally(() => {
-      busy = false
     })
+      .then(async (result) => {
+        if (closed) return
+        if (result !== null) {
+          try {
+            await trimmed(result)
+          } catch (error) {
+            warn(error)
+          }
+        }
+      })
+      .finally(() => {
+        busy = false
+      })
   }
 
   const timer = setInterval(run, SWEEP_EVERY_MS)

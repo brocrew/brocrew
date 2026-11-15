@@ -59,7 +59,7 @@ export const eventRetentionRowsSQL = `WITH active AS MATERIALIZED (
       CASE WHEN e.id IN (epoch.command,epoch.inventory,epoch.declaration)
         OR (e.type='launched' AND e.generation=epoch.generation AND e.ordinal>epoch.after)
         THEN 1 ELSE 0 END AS readerAnchor,
-      CASE WHEN e.type NOT IN (${HISTORY_TYPES.map(x=>`'${x}'`).join(',')}) THEN 1
+      CASE WHEN e.type NOT IN (${HISTORY_TYPES.map((x) => `'${x}'`).join(',')}) THEN 1
         WHEN NOT json_valid(e.payload) THEN 1
         WHEN json_type(e.payload)!='object' OR json_extract(e.payload,'$.type') IS NOT e.type THEN 1
         WHEN e.type='unknown' THEN

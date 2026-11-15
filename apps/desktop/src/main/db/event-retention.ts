@@ -42,10 +42,19 @@ export async function trimOldEvents(
   let deferredConversations = 0
   let incremental = { steps: 0, reclaimedPages: 0, longestLockMs: 0 }
   const result = (interrupted: boolean): EventTrimResult => ({
-    removed, batches, longestBatchMs, longestSelectionMs, largestCandidateListRows,
-    peakHeapBytes, longestCheckpointMs, incrementalSteps: incremental.steps,
-    reclaimedPages: incremental.reclaimedPages, longestIncrementalLockMs: incremental.longestLockMs,
-    budgetReached: removed >= ROWS_PER_SWEEP, interrupted, deferredConversations,
+    removed,
+    batches,
+    longestBatchMs,
+    longestSelectionMs,
+    largestCandidateListRows,
+    peakHeapBytes,
+    longestCheckpointMs,
+    incrementalSteps: incremental.steps,
+    reclaimedPages: incremental.reclaimedPages,
+    longestIncrementalLockMs: incremental.longestLockMs,
+    budgetReached: removed >= ROWS_PER_SWEEP,
+    interrupted,
+    deferredConversations,
   })
   try {
     db.pragma('foreign_keys = ON')
@@ -62,8 +71,8 @@ export async function trimOldEvents(
         AND (created_at < ? OR type IN ('provider_commands','tool_inventory','launched'))`)
     const generation = db.prepare(`SELECT coalesce(g.active,0) AS active, g.building
       FROM provider_session s LEFT JOIN derived_generation g ON g.session_id=s.id WHERE s.id=?`)
-    const currentGeneration = (session: string) => generation.get(session) as
-      { active: number; building: number | null } | undefined
+    const currentGeneration = (session: string) =>
+      generation.get(session) as { active: number; building: number | null } | undefined
     const select = db.transaction((session: string, limit: number) => {
       const current = currentGeneration(session)
       if (!current || current.building !== null) return null
@@ -103,8 +112,7 @@ export async function trimOldEvents(
           }
           removed += changed
         } catch (error) {
-          if ((error as { code?: string }).code === 'SQLITE_BUSY')
-            return result(true)
+          if ((error as { code?: string }).code === 'SQLITE_BUSY') return result(true)
           throw error
         }
         batches += 1
