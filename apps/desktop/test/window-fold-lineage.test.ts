@@ -193,3 +193,36 @@ it('rebuilds changed owners and discards the lineage after cancellation or an un
   w.read({ kind: 'listing', reuse: { token: 'unknown', changed: [] } })
   expect(new Set(w.rebuilt)).toEqual(new Set(['alpha', 'beta']))
 })
+
+it('discards the lineage when publication recovers from a failed state read', () => {
+  const w = world()
+  const cold = routing(w.read({ kind: 'incidents' }))
+  const database = (w.engine as unknown as { db: AppDatabase }).db
+  const prepare = vi.mocked(database.prepare).getMockImplementation()!
+  let fail = true
+  vi.mocked(database.prepare).mockImplementation((sql) => {
+    if (fail && sql.includes('SELECT DISTINCT session_id')) {
+      fail = false
+      throw new Error('Fictional state read failed')
+    }
+    return prepare.call(database, sql)
+  })
+  const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  const publication = w.read({
+    kind: 'publication',
+    kept: [],
+    reuse: { token: cold.cacheToken!, changed: [] },
+  })
+  expect(publication.kind).toBe('publication')
+  if (publication.kind !== 'publication') throw new Error('Expected publication')
+  expect(publication.states).toBeNull()
+  expect(warning).toHaveBeenCalledWith(
+    'window worker could not read changed states',
+    expect.objectContaining({ message: 'Fictional state read failed' }),
+  )
+  const next = routing(
+    w.read({ kind: 'routes', reuse: { token: cold.cacheToken!, changed: [] } }),
+  )
+  expect(next.cacheToken).not.toBe(cold.cacheToken)
+  expect(new Set(w.rebuilt)).toEqual(new Set(['alpha', 'beta']))
+})
