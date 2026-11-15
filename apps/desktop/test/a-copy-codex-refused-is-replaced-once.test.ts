@@ -146,7 +146,7 @@ class StandInCodex extends FakeRuntime {
       push(event: RuntimeEvent): void
     }
     const refused = (loginRefused = true): void => {
-      this.asItRefuses()
+      if (loginRefused) this.asItRefuses()
       inside.machine.completeTurn('failed', 'simulated refusal', undefined, undefined, {
         ...(loginRefused ? { loginRefused: true } : {}),
       })
@@ -333,6 +333,14 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
   }
   const brobotsOwnIs = (copy: string) =>
     writeFileSync(join(ownHome(), 'auth.json'), copy, { mode: 0o600 })
+  function aNewerSignInArrivesOnRefusal(): void {
+    codex.asItRefuses = () => {
+      writeFileSync(machine, THE_COMPUTERS)
+      accepted.clear()
+      accept(THE_COMPUTERS)
+      codex.asItRefuses = () => {}
+    }
+  }
   let watching: Sink
   const start = () => {
     watching = new Sink()
@@ -812,12 +820,7 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       aHelperHolding(DEAD)
       accept(DEAD)
       const { sessionId } = await start()
-      codex.asItRefuses = () => {
-        writeFileSync(machine, THE_COMPUTERS)
-        accepted.clear()
-        accept(THE_COMPUTERS)
-        codex.asItRefuses = () => {}
-      }
+      aNewerSignInArrivesOnRefusal()
       codex.turnModes.push(mode)
       beforeTheMessage()
       await host.send(sessionId, MESSAGE, watching)
@@ -1757,8 +1760,7 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
           { provider: 'claude', profileId: DEFAULT_PROFILE_ID },
           watching,
         )
-        writeFileSync(machine, THE_COMPUTERS)
-        accept(THE_COMPUTERS)
+        aNewerSignInArrivesOnRefusal()
         codex.turnModes.push('refused')
         const given = await host.giveWork(
           newConversationGive('farah', 'The open pull requests', MESSAGE),
@@ -1852,8 +1854,7 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
           { provider: 'claude', profileId: DEFAULT_PROFILE_ID },
           watching,
         )
-        writeFileSync(machine, THE_COMPUTERS)
-        accept(THE_COMPUTERS)
+        aNewerSignInArrivesOnRefusal()
         codex.turnModes.push('held-open', 'refused')
         const older = await host.giveWork(
           newConversationGive('farah', 'The release notes', 'Draft the release notes.'),

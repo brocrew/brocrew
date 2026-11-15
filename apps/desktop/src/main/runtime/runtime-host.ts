@@ -39686,7 +39686,8 @@ export class RuntimeHost implements LiveHost {
     const replaceAfterExit =
       !moved &&
       refusedCopy !== null &&
-      stillItsLife()
+      stillItsLife() &&
+      providerAuthPolicies[session.provider].copy.same(refusedCopy, this.theCopyHeldNow(session))
     const slot = this.slots.get(session.id)
     if (
       (!moved && !replaceAfterExit) ||
@@ -39706,6 +39707,11 @@ export class RuntimeHost implements LiveHost {
       this.publishStateIfChanged(session)
     } else {
       session.copyToReplaceAfterExit = refusedCopy
+      this.queueANewerHomeCopy(session.provider, session.profileId, () =>
+        !this.launches.closed &&
+        !this.keptStopped(session.id) &&
+        providerAuthPolicies[session.provider].copy.same(refusedCopy, this.theCopyHeldNow(session)),
+      )
     }
     session.diedOnAStaleSignIn = true
     session.whatItsFailedTurnWasFor = wasFor
@@ -40036,7 +40042,9 @@ export class RuntimeHost implements LiveHost {
           !this.slots.has(session.id) &&
           this.aReopenIsBeingDecidedFor.has(session.id)
         if (!stillWanted()) return
-        if (this.queueANewerHomeCopy(session.provider, session.profileId, stillWanted)) {
+        if (!providerAuthPolicies[session.provider].copy.same(refused, this.theCopyHeldNow(session))) {
+          // The existing copy gate may have finished while this reopen waited its turn.
+        } else if (this.queueANewerHomeCopy(session.provider, session.profileId, stillWanted)) {
           const ready = this.homeCopyBarriers.get(profileSignInKey(session.provider, session.profileId))?.ready
           void this.copyHomeWhenIdle(session.provider, session.profileId)
           await ready
