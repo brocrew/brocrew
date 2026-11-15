@@ -59,6 +59,46 @@ it('shows the conversation list while a writer moves after every consistent snap
     expect(read).toHaveBeenCalledTimes(4)
     await host.listConversations()
     expect(read).toHaveBeenCalledTimes(4)
+    expect(read.mock.calls[3]![0]).toMatchObject({
+      kind: 'listing',
+      reuse: { changed: ['fictional-root'] },
+    })
+
+    read.mockImplementation(async (query) => {
+      const result = engine.read(query)
+      world.store.append(
+        'fictional-root',
+        world.store.nextOrdinal('fictional-root'),
+        { type: 'status', state: 'idle' },
+        world.clock++,
+      )
+      return result
+    })
+    await expect(host.readForWindow(() => host.questionsForAPerson())).rejects.toMatchObject({
+      missed: 'writer-moved',
+    })
+
+    let schema = 0
+    read.mockImplementation(async (query) => {
+      const result = engine.read(query)
+      world.db.exec(`CREATE TABLE fictional_schema_${schema++} (id INTEGER)`)
+      return result
+    })
+    expect(await host.listConversations()).toHaveProperty('refused')
+
+    let release!: () => void
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    read.mockImplementation(async (query) => {
+      const result = engine.read(query)
+      await waiting
+      return result
+    })
+    const closingRead = host.listConversations()
+    await host.closeAll()
+    release()
+    expect(await closingRead).toHaveProperty('refused')
   } finally {
     await host.closeAll()
     await world.cleanUp()

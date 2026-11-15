@@ -3,6 +3,7 @@ import { defineComponent, h, nextTick, ref, type Ref } from 'vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import type { ListingAnswer, PublishedListing } from '../../src/shared/listing-published'
 import type { UnresumableSessionInfo, RuntimeStatesMessage } from '../../src/shared/runtime-ipc'
+import type { ListedConversation } from '../../src/renderer/src/lib/conversation-list'
 import { appClosing } from '../../src/renderer/src/lib/app-closing'
 import { useConversationListRecovery } from '../../src/renderer/src/composables/useConversationListRecovery'
 import { mount, unmountAll, type Mounted } from './harness'
@@ -48,7 +49,7 @@ const tick = async () => {
 }
 const refresh = (rail: Mounted) => (rail.vm.refreshResumable as () => Promise<void>)()
 const listed = (rail: Mounted, id: string) =>
-  (rail.vm.listedOf as (id: string) => { state: { is: string } } | null)(id)
+  (rail.vm.listedOf as (id: string) => ListedConversation | null)(id)
 const pending = () => {
   let resolve!: (value: ListingAnswer) => void
   const promise = new Promise<ListingAnswer>((done) => {
@@ -125,6 +126,7 @@ it('retains later pushes and incomplete membership while retrying beyond two sec
   await tick()
   ;(view.vm.hearStates as (message: RuntimeStatesMessage) => void)({
     moved: [{ conversation: 'active', state: { is: 'needs-you' } }],
+    kept: [],
     published: { epoch, seq: 9 },
   })
   read.mockRejectedValue(new Error('fictional read failure'))
@@ -197,4 +199,62 @@ it('does not publish an in-flight result after unmount', async () => {
   expect(listed(view, 'late')).toBeNull()
   await vi.advanceTimersByTimeAsync(5_000)
   expect(read).toHaveBeenCalledOnce()
+})
+
+it('ignores a late state push older than the listing already shown', async () => {
+  const view = rail(async () => answer(10, 1, ['shown']))
+  await tick()
+  ;(view.vm.hearStates as (message: RuntimeStatesMessage) => void)({
+    moved: [{ conversation: 'shown', state: { is: 'needs-you' } }],
+    kept: [],
+    published: { epoch, seq: 9 },
+  })
+  await tick()
+  expect(listed(view, 'shown')?.state.is).toBe('idle')
+  ;(view.vm.hearStates as (message: RuntimeStatesMessage) => void)({
+    moved: [{ conversation: 'shown', state: { is: 'needs-you' } }],
+    kept: [],
+    published: { epoch, seq: 11 },
+  })
+  await tick()
+  expect(listed(view, 'shown')?.state.is).toBe('needs-you')
+})
+
+it('does not replay omitted provider facts from a partial listing', async () => {
+  const initial = answer(1, 1, ['included', 'omitted'])
+  const read = vi.fn().mockResolvedValue({
+    ...initial,
+    unresumable: initial.unresumable.map((row) => ({
+      ...row,
+      providerBlock: null,
+      providerBlockStatus: 'current',
+    })),
+  })
+  const view = rail(read)
+  await tick()
+  const blocked = { provider: 'codex' as const, resetsAt: null }
+  ;(view.vm.hearStates as (message: RuntimeStatesMessage) => void)({
+    moved: [
+      {
+        conversation: 'omitted',
+        state: { is: 'idle' },
+        providerBlock: blocked,
+        providerBlockStatus: 'current',
+      },
+    ],
+    kept: [],
+    published: { epoch, seq: 2 },
+  })
+  await tick()
+  expect(listed(view, 'omitted')?.providerBlock).toEqual(blocked)
+  const partial = answer(3, 2, ['included'])
+  read.mockResolvedValue({
+    ...partial,
+    published: {
+      ...partial.published,
+      covers: { population: 'listing', complete: false, ids: ['included'] },
+    },
+  })
+  await refresh(view)
+  expect(listed(view, 'omitted')?.providerBlock).toEqual(blocked)
 })
