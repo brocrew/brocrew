@@ -60,7 +60,7 @@ function world() {
   cleanup.push(() => engine.close())
   const worker = (engine as unknown as { db: AppDatabase }).db
   const generationReads = observeGenerationReads(worker)
-  const prepare = vi.mocked(worker.prepare).getMockImplementation()!
+  const prepare = vi.mocked(worker.prepare).getMockImplementation()! as AppDatabase['prepare']
   const rebuilt: string[] = []
   const heads = generationReads.newest
   vi.spyOn(worker, 'prepare').mockImplementation((sql) => {
@@ -206,10 +206,10 @@ it('discards the lineage when publication recovers from a failed state read', ()
   const w = world()
   const cold = routing(w.read({ kind: 'incidents' }))
   const database = (w.engine as unknown as { db: AppDatabase }).db
-  const prepare = vi.mocked(database.prepare).getMockImplementation()!
+  const prepare = vi.mocked(database.prepare).getMockImplementation()! as AppDatabase['prepare']
   let fail = true
   vi.mocked(database.prepare).mockImplementation((sql) => {
-    const statement = prepare.call(database, sql)
+    const statement = prepare(sql)
     if (sql === "SELECT DISTINCT session_id AS id FROM events WHERE type = 'request_routed'") {
       const iterate = statement.iterate.bind(statement)
       vi.spyOn(statement, 'iterate').mockImplementation(() => {
