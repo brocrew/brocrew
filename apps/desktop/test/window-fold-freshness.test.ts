@@ -10,6 +10,7 @@ import { WindowReadEngine } from '../src/main/db/window-read-engine'
 import { windowWriterSampler, type WindowWriterStamp } from '../src/main/db/window-writer-stamp'
 import { sameWindowWriter } from '../src/main/db/window-routing-reads'
 import { withWindowWriteFence } from '../src/main/db/window-write-fence'
+import { adoptOwnerWithChild } from './helpers/adopt-owner-with-child'
 
 it('reuses unrelated owners while corrections, rollback, import and external writes stay fresh', () => {
   const directory = mkdtempSync(join(tmpdir(), 'fictional-fold-freshness-'))
@@ -18,29 +19,7 @@ it('reuses unrelated owners while corrections, rollback, import and external wri
   applyMigrations(db, join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations'))
   const store = createSessionStore(db)
   for (const id of ['alpha', 'beta']) {
-    store.adopt({
-      id,
-      provider: 'codex',
-      sessionId: `fictional-${id}`,
-      cwd: directory,
-      profileId: 'fictional',
-      createdAt: 1,
-      updatedAt: 1,
-    })
-    store.append(
-      id,
-      0,
-      {
-        type: 'work_given',
-        piece: `${id}-child`,
-        parent: store.rootOf(id)!.piece,
-        label: `${store.rootOf(id)!.label}.1`,
-        givenBy: 'alpha',
-        title: 'Fictional',
-        brief: 'Fictional',
-      },
-      1,
-    )
+    adoptOwnerWithChild(store, id, directory, 'Fictional')
     db.prepare(
       `WITH RECURSIVE n(value) AS (SELECT 1 UNION ALL SELECT value + 1 FROM n WHERE value < 1000)
       INSERT INTO events(id,session_id,generation,ordinal,type,payload,created_at)

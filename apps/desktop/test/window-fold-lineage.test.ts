@@ -14,6 +14,7 @@ import { bundleAWorker } from './helpers/bundle-a-worker'
 import { observeLedgerFolds } from './helpers/observe-ledger-folds'
 import { observeGenerationReads } from './helpers/observe-generation-reads'
 import type { FoldCounts } from './helpers/observed-fold-counts'
+import { adoptOwnerWithChild } from './helpers/adopt-owner-with-child'
 
 const cleanup: (() => void | Promise<void>)[] = []
 afterEach(async () => {
@@ -32,29 +33,7 @@ function world() {
   applyMigrations(db, join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations'))
   const store = createSessionStore(db)
   for (const id of ['alpha', 'beta']) {
-    store.adopt({
-      id,
-      provider: 'codex',
-      sessionId: `fictional-${id}`,
-      cwd: folder,
-      profileId: 'fictional',
-      createdAt: 1,
-      updatedAt: 1,
-    })
-    store.append(
-      id,
-      0,
-      {
-        type: 'work_given',
-        piece: `${id}-child`,
-        parent: store.rootOf(id)!.piece,
-        label: `${store.rootOf(id)!.label}.1`,
-        givenBy: 'alpha',
-        title: id,
-        brief: 'Fictional',
-      },
-      1,
-    )
+    adoptOwnerWithChild(store, id, folder, id)
   }
   const engine = new WindowReadEngine(file)
   cleanup.push(() => engine.close())
