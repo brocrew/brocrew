@@ -12,6 +12,7 @@ import type { WindowReadQuery, WindowReadResult } from '../src/main/db/window-re
 import { WindowWorkerReader } from '../src/main/db/window-worker-reader'
 import { bundleAWorker } from './helpers/bundle-a-worker'
 import { observeLedgerFolds } from './helpers/observe-ledger-folds'
+import { observeGenerationReads } from './helpers/observe-generation-reads'
 import type { FoldCounts } from './helpers/observed-fold-counts'
 
 const cleanup: (() => void | Promise<void>)[] = []
@@ -58,9 +59,10 @@ function world() {
   const engine = new WindowReadEngine(file)
   cleanup.push(() => engine.close())
   const worker = (engine as unknown as { db: AppDatabase }).db
-  const prepare = worker.prepare.bind(worker)
+  const generationReads = observeGenerationReads(worker)
+  const prepare = vi.mocked(worker.prepare).getMockImplementation()!
   const rebuilt: string[] = []
-  const heads: string[] = []
+  const heads = generationReads.newest
   vi.spyOn(worker, 'prepare').mockImplementation((sql) => {
     const statement = prepare(sql)
     if (sql.includes('json_remove')) {
@@ -72,21 +74,15 @@ function world() {
         yield* iterate(...args)
       })
     }
-    if (sql.includes('SELECT max(ordinal) AS through')) {
-      const get = statement.get.bind(statement)
-      vi.spyOn(statement, 'get').mockImplementation((...args) => {
-        heads.push(String(args[0]))
-        return get(...args)
-      })
-    }
     return statement
   })
   function read(query: WindowReadQuery) {
     rebuilt.length = 0
     heads.length = 0
+    generationReads.generations.length = 0
     return engine.read(query)
   }
-  return { db, store, engine, read, rebuilt, heads, folder, file }
+  return { db, store, engine, read, rebuilt, heads, generationReads, folder, file }
 }
 
 function routing(result: WindowReadResult) {
@@ -118,9 +114,13 @@ it('keeps unchanged owner folds for different kinds already sent with the same c
 it('reads each owner generation and newest fold row once per immutable worker snapshot', () => {
   const w = world()
   const cold = routing(w.read({ kind: 'incidents' }))
+  const coldGenerations = [...w.generationReads.generations]
   w.read({ kind: 'routes', reuse: { token: cold.cacheToken!, changed: [] } })
   expect(w.heads.sort()).toEqual(['alpha', 'beta'])
   expect(w.rebuilt).toEqual([])
+  console.info(JSON.stringify({ generationEngine: { cold: coldGenerations, warm: w.generationReads.generations } }))
+  expect(coldGenerations.sort()).toEqual(['alpha', 'beta'])
+  expect(w.generationReads.generations.sort()).toEqual(['alpha', 'beta'])
 })
 
 it('reuses owner folds when two real worker requests post the same earlier capability', async () => {
@@ -208,12 +208,12 @@ it('discards the lineage when publication recovers from a failed state read', ()
     const statement = prepare.call(database, sql)
     if (sql === "SELECT DISTINCT session_id AS id FROM events WHERE type = 'request_routed'") {
       const iterate = statement.iterate.bind(statement)
-      vi.spyOn(statement, 'iterate').mockImplementation((...args) => {
+      vi.spyOn(statement, 'iterate').mockImplementation(() => {
         if (fail) {
           fail = false
           throw new Error('Fictional state read failed')
         }
-        return iterate(...args)
+        return iterate()
       })
     }
     return statement
