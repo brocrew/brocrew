@@ -1,3 +1,4 @@
+import { copiesBeforeEveryTurn, keepsTheKeySession, copiesBeforeApprovingAPlan } from './lib/automatic-codex-copy'
 import { neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -205,89 +206,20 @@ describe('copying this install’s provider sign-ins', () => {
     rmSync(root, { recursive: true, force: true })
   })
 
-  it('automatically stops the cached server and copies a newer sign-in before sending', async () => {
-    const current = await host.createSession(
-      { provider: 'codex', profileId: 'alpha', cwd: root },
-      sink,
-    )
-    let fresh = true
-    Object.assign(ops, { hasNewerCopy: () => fresh })
-    copy.mockImplementation(async () => {
-      expect(stopped).toBe(launches)
-      fresh = false
-      return 'replaced'
-    })
-
-    await host.send(current.sessionId, 'use the newer fictional sign-in', sink)
-
-    await vi.waitFor(() =>
-      expect(copy).toHaveBeenCalledWith('codex', 'alpha', true, expect.any(Function)),
-    )
-    await vi.waitFor(() => expect(launches).toBe(2))
-    await vi.waitFor(() =>
-      expect(messages.some((one) => one.event.type === 'permission_request')).toBe(true),
-    )
-    expect(copy).toHaveBeenCalledTimes(1)
-    expect(host.sessionIds).toContain(current.sessionId)
-    await host.respondPermission(current.sessionId, 'turn_1_perm', { outcome: 'allow' }, sink)
-    await vi.waitFor(() =>
-      expect(
-        messages.some((one) => one.event.type === 'turn' && one.event.state === 'completed'),
-      ).toBe(true),
-    )
-    fresh = true
-    await host.send(current.sessionId, 'check the machine sign-in again for this turn', sink)
-    await vi.waitFor(() => expect(copy).toHaveBeenCalledTimes(2))
-    await vi.waitFor(() => expect(launches).toBe(3))
-    await vi.waitFor(() =>
-      expect(
-        messages.some(
-          (one) =>
-            one.event.type === 'user_turn' &&
-            one.event.text === 'check the machine sign-in again for this turn',
-        ),
-      ).toBe(true),
-    )
+  const automaticFixture = () => ({
+    host, root, sink, ops, copy, messages,
+    get launches() { return launches },
+    get stopped() { return stopped },
   })
+
+  it('automatically stops the cached server and copies a newer sign-in before sending', () => copiesBeforeEveryTurn(automaticFixture()))
 
   it('does not check or copy machine sign-ins for an API-key turn', async () => {
     keySaved = true
-    const newer = vi.fn(() => true)
-    Object.assign(ops, { hasNewerCopy: newer })
-    const current = await host.createSession(
-      { provider: 'codex', profileId: 'alpha', cwd: root },
-      sink,
-    )
-
-    await host.send(current.sessionId, 'keep the API-key session', sink)
-
-    expect(newer).not.toHaveBeenCalled()
-    expect(copy).not.toHaveBeenCalled()
-    expect(launches).toBe(1)
+    await keepsTheKeySession(automaticFixture())
   })
 
-  it('copies a newer sign-in before the turn that approves a plan', async () => {
-    const current = await host.createSession(
-      { provider: 'codex', profileId: 'alpha', cwd: root, planMode: true },
-      sink,
-    )
-    let fresh = true
-    Object.assign(ops, { hasNewerCopy: () => fresh })
-    copy.mockImplementation(async () => {
-      expect(stopped).toBe(1)
-      fresh = false
-      return 'replaced'
-    })
-    const goAhead = 'Proceed with the approved fictional plan.'
-    await host.endPlanMode(current.sessionId, sink, goAhead)
-    await vi.waitFor(() => expect(launches).toBe(2))
-    await vi.waitFor(() =>
-      expect(
-        messages.some((one) => one.event.type === 'user_turn' && one.event.text === goAhead),
-      ).toBe(true),
-    )
-    expect(copy).toHaveBeenCalledTimes(1)
-  })
+  it('copies a newer sign-in before the turn that approves a plan', () => copiesBeforeApprovingAPlan(automaticFixture()))
 
   for (const opening of ['start', 'resume'] as const) {
     for (const change of ['native-refusal', 'cancel', 'timeout'] as const) {
