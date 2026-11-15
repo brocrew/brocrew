@@ -95,11 +95,18 @@ export function scheduleAttemptsIn(database: AppDatabase): AttemptsKept {
 }
 
 function replaceAttempts(database: AppDatabase, kept: KeptAttempts): void {
-  database.prepare('DELETE FROM schedule_attempt').run()
+  const entries = Object.entries(kept.conversations)
+  database
+    .prepare(
+      'DELETE FROM schedule_attempt WHERE conversation_id NOT IN (SELECT value FROM json_each(?))',
+    )
+    .run(JSON.stringify(entries.map(([id]) => id)))
   const insert = database.prepare(
-    'INSERT INTO schedule_attempt (conversation_id, record, at) VALUES (?, ?, ?)',
+    `INSERT INTO schedule_attempt (conversation_id, record, at) VALUES (?, ?, ?)
+     ON CONFLICT(conversation_id) DO UPDATE SET record = excluded.record, at = excluded.at
+     WHERE schedule_attempt.record IS NOT excluded.record OR schedule_attempt.at IS NOT excluded.at`,
   )
-  for (const [id, { at, ...record }] of Object.entries(kept.conversations))
+  for (const [id, { at, ...record }] of entries)
     insert.run(id, JSON.stringify(record), at)
   database
     .prepare(
