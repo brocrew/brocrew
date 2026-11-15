@@ -152,19 +152,22 @@ describe('provisionCodexAuth (022)', () => {
     rmSync(sourceDir, { recursive: true, force: true })
   })
 
-  it.each(['{', '{}', '{"tokens":{}}'])('keeps a working copy when the newer machine account is unreadable (%s)', async (incoming) => {
-    const dest = join(home, 'auth.json')
-    writeFileSync(dest, subscription)
-    writeFileSync(source, incoming)
-    utimesSync(dest, 100, 100)
-    utimesSync(source, 200, 200)
+  it.each(['{', '{}', '{"tokens":{}}'])(
+    'keeps a working copy when the newer machine account is unreadable (%s)',
+    async (incoming) => {
+      const dest = join(home, 'auth.json')
+      writeFileSync(dest, subscription)
+      writeFileSync(source, incoming)
+      utimesSync(dest, 100, 100)
+      utimesSync(source, 200, 200)
 
-    expect(aNewerCodexSignInIsAvailable(home, source)).toBe(false)
-    expect(await reprovisionCodexAuth(home, { sourceAuthPath: source, newerOnly: true })).toBe(
-      'unchanged',
-    )
-    expect(signInAt(dest)).toBe(digestOf(subscription))
-  })
+      expect(aNewerCodexSignInIsAvailable(home, source)).toBe(false)
+      expect(await reprovisionCodexAuth(home, { sourceAuthPath: source, newerOnly: true })).toBe(
+        'unchanged',
+      )
+      expect(signInAt(dest)).toBe(digestOf(subscription))
+    },
+  )
 
   it('does not request a server stop for identical sign-in bytes with a newer source timestamp', async () => {
     writeFileSync(source, subscription)
