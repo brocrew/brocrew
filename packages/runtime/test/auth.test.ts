@@ -19,6 +19,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { withProviderHomeLock } from '../src/internal/provider-home'
 import { AuthUnavailableError } from '../src/internal/auth'
 import {
+  aNewerCodexSignInIsAvailable,
   NoCodexSignInOnThisComputerError,
   fallbackSignIn,
   codexAuthHealth,
@@ -148,6 +149,19 @@ describe('provisionCodexAuth (022)', () => {
   afterEach(() => {
     rmSync(home, { recursive: true, force: true })
     rmSync(sourceDir, { recursive: true, force: true })
+  })
+
+  it('does not request a server stop for identical sign-in bytes with a newer source timestamp', async () => {
+    const dest = join(home, 'auth.json')
+    writeFileSync(dest, readFileSync(source))
+    utimesSync(dest, 100, 100)
+    utimesSync(source, 200, 200)
+
+    expect(aNewerCodexSignInIsAvailable(home, source)).toBe(false)
+    expect(await reprovisionCodexAuth(home, { sourceAuthPath: source, newerOnly: true })).toBe(
+      'unchanged',
+    )
+    expect(lstatSync(dest).mtimeMs).toBe(100_000)
   })
 
   it('refreshes an older subscription copy from this computer without changing the source', async () => {
