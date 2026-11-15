@@ -34,7 +34,8 @@ export interface HomeAuthOperations {
   probe?(profileId: string, signal?: AbortSignal): Promise<AuthState>
   credentialHome(profileId: string): string
   check(profileId: string, signal?: AbortSignal): Promise<AuthState>
-  reprovision(profileId: string): ReprovisionOutcome | Promise<ReprovisionOutcome>
+  hasNewerCopy?(profileId: string): boolean
+  reprovision(profileId: string, newerOnly?: true): ReprovisionOutcome | Promise<ReprovisionOutcome>
   signIn(profileId: string, signal?: AbortSignal): Promise<ProviderSignIn>
   bringTheKeyToItsHomes(): Promise<string | null>
   replaceARefusedCopy(

@@ -66,6 +66,7 @@ export {
   NoCodexSignInOnThisComputerError,
   CodexRefusedItsSignInError,
   codexCopyIdentityIn,
+  aNewerCodexSignInIsAvailable,
   isTheSameCodexCopy,
   type CodexCopyIdentity,
   provisionCodexAuth,

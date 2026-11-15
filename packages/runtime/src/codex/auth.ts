@@ -482,7 +482,7 @@ function isTheSameCopy(held: BigIntStats, refused: CodexCopyIdentity): boolean {
  */
 export async function reprovisionCodexAuth(
   providerHome: string,
-  opts: { sourceAuthPath?: string } = {},
+  opts: { sourceAuthPath?: string; newerOnly?: boolean } = {},
 ): Promise<ReprovisionOutcome> {
   const source = opts.sourceAuthPath ?? personalCodexAuthPath()
   return await withProviderHomeLock(providerHome, () => {
@@ -491,6 +491,7 @@ export async function reprovisionCodexAuth(
     // A directory here is no sign-in. A link is replaced by the copy: `rename` replaces the link
     // itself, never the file it leads to.
     const destStat = lstatOrNull(dest)
+    if (opts.newerOnly && !aNewerCodexSignInIsAvailable(providerHome, source)) return 'unchanged'
     if (destStat && !destStat.isFile() && !destStat.isSymbolicLink()) {
       throw new AuthUnavailableError('codex', `profile auth.json is not a regular file: ${dest}`)
     }

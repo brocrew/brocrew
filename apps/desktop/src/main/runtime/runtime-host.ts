@@ -20592,6 +20592,7 @@ export class RuntimeHost implements LiveHost {
     readonly loginRenewed: boolean
     readonly runtime?: AgentRuntime
   }> {
+    this.queueANewerHomeCopy(provider, profileId)
     const barrier = this.homeCopyBarriers.get(profileSignInKey(provider, profileId))
     const launch = sessionId === undefined ? undefined : this.slots.get(sessionId)?.launch
     if (barrier !== undefined) {
@@ -22600,7 +22601,7 @@ export class RuntimeHost implements LiveHost {
       // they go first when it reopens on the current one ({@link reopenForWhatWaits}).
       if (
         how.ifItLosesTheRace === 'hold-it' &&
-        aPersonIsAsking(by) &&
+        (aPersonIsAsking(by) || this.homeCopies.get(session.provider)?.get(session.profileId)?.state === 'pending') &&
         this.aReopenCarriesIt(error, by, session)
       ) {
         await this.queueAs(
@@ -26245,7 +26246,9 @@ export class RuntimeHost implements LiveHost {
     // after that event has already passed — the winning turn ended during the wait — so nothing
     // would ever send it. ⚑ A no-op whenever the conversation is busy or a flush is running.
     // ⚑ **Held for a sign-in that moved on, it goes at the reopen** — now, if nothing is in its way.
-    if (itsSignInMovedOn) this.reopenForWhatWaits(session)
+    if (itsSignInMovedOn && this.homeCopies.get(session.provider)?.get(session.profileId)?.state === 'pending')
+      void this.copyHomeWhenIdle(session.provider, session.profileId)
+    else if (itsSignInMovedOn) this.reopenForWhatWaits(session)
     else this.flushQueued(session)
     return { outcome: 'queued', messageId: id }
   }
@@ -26928,6 +26931,8 @@ export class RuntimeHost implements LiveHost {
    * know: nothing was sent. The composer puts the words back (`019`), so that is true.
    */
   private async assertSignInCurrent(session: HostedSession, verb: 'send' | 'queue'): Promise<void> {
+    if (this.queueANewerHomeCopy(session.provider, session.profileId))
+      throw new ItsSignInMovedOn('A newer Codex sign-in is being copied before this turn. Nothing has been sent.')
     if ((await session.handle.checkSignIn?.()) !== true) {
       // ⚑ A life this app reopened for what waited reads as current: its loop guard is done.
       delete session.reopenedForWhatWaited
@@ -27145,6 +27150,7 @@ export class RuntimeHost implements LiveHost {
    * "unreachable"; there is a test now that pins it by making the two disagree.
    */
   private flushQueued(session: HostedSession): void {
+    this.queueANewerHomeCopy(session.provider, session.profileId)
     if (this.homeCopies.get(session.provider)?.get(session.profileId)?.state === 'pending') {
       void this.copyHomeWhenIdle(session.provider, session.profileId)
       if (this.homeCopyJobs.has(profileSignInKey(session.provider, session.profileId))) return
@@ -30599,7 +30605,7 @@ export class RuntimeHost implements LiveHost {
 
   private readonly homeCopies = new Map<
     Provider,
-    Map<string, ProviderHomesReprovision['profiles'][number]>
+    Map<string, ProviderHomesReprovision['profiles'][number] & { newerOnly?: true }>
   >()
   private readonly homeCopyJobs = new Map<string, Promise<void>>()
   private readonly homeCopyRestarts = new Map<string, Promise<void>>()
@@ -30624,6 +30630,24 @@ export class RuntimeHost implements LiveHost {
     const key = profileSignInKey(provider, profileId)
     this.homeCopyBarriers.get(key)?.release()
     this.homeCopyBarriers.delete(key)
+  }
+
+  /** Use the existing home-copy gate so every server using this copy stops before its replacement. */
+  private queueANewerHomeCopy(provider: Provider, profileId: string): boolean {
+    if (provider !== 'codex' || this.aKeyIsSaved(provider)) return false
+    const rows = this.homeCopies.get(provider)
+    if (rows?.get(profileId)?.state === 'pending')
+      return this.homeCopyBarriers.has(profileSignInKey(provider, profileId))
+    if (!this.deps.providerAuth?.hasNewerCopy?.(provider, profileId)) return false
+    const copies = rows ?? new Map()
+    this.homeCopies.set(provider, copies)
+    copies.set(profileId, { profileId, state: 'pending', newerOnly: true })
+    let release!: () => void
+    const ready = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    this.homeCopyBarriers.set(profileSignInKey(provider, profileId), { ready, release })
+    return true
   }
 
   /** A person's batch request; pending homes are retried at an idle or termination boundary. */
@@ -30742,7 +30766,7 @@ export class RuntimeHost implements LiveHost {
           copied = { profileId, state: 'skipped', reason: 'api-key' }
           return
         }
-        const outcome = await this.reprovisionProviderAuth(provider, profileId)
+        const outcome = await this.reprovisionProviderAuth(provider, profileId, rows.get(profileId)?.newerOnly)
         copied =
           outcome === 'replaced'
             ? { profileId, state: 'replaced' }
@@ -30809,9 +30833,10 @@ export class RuntimeHost implements LiveHost {
   async reprovisionProviderAuth(
     provider: Provider,
     profileId: string,
+    newerOnly?: true,
   ): Promise<ReprovisionOutcome> {
     try {
-      return await this.recopy(provider, profileId)
+      return await this.recopy(provider, profileId, newerOnly)
     } catch (error) {
       const shortage = transientSetupFailureOf(error)
       if (shortage === null) throw error
@@ -30946,7 +30971,7 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  private async recopy(provider: Provider, profileId: string): Promise<ReprovisionOutcome> {
+  private async recopy(provider: Provider, profileId: string, newerOnly?: true): Promise<ReprovisionOutcome> {
     const ops = this.deps.providerAuth
     if (!ops) throw new Error('this app build cannot re-copy provider sign-ins')
     // 🔴 **The second writer, admitted through the same door as the first since 265 §2.** This method
@@ -30964,7 +30989,9 @@ export class RuntimeHost implements LiveHost {
     // nothing is left that could still write to this home. A sign-in leaves an app-server behind,
     // which is why that path holds its claim against the teardown instead.
     try {
-      return await ops.reprovision(provider, profileId)
+      return await (newerOnly === undefined
+        ? ops.reprovision(provider, profileId)
+        : ops.reprovision(provider, profileId, newerOnly))
     } finally {
       credential.release()
       this.forgetModels(provider)
