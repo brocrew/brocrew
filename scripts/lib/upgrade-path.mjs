@@ -199,13 +199,16 @@ export function startOrder(
     'The completion branch must be explicit.',
   )
   requireEvidence(
-    checkpoint ? copies.length === 1 : copies.length === 0,
+    copies.length === (typeof checkpoint === 'number' ? checkpoint : Number(Boolean(checkpoint))),
     checkpoint
-      ? `Exactly one completed-copy line is required; found ${String(copies.length)}.`
+      ? `Expected ${String(Number(checkpoint))} completed-copy lines; found ${String(copies.length)}.`
       : 'A start of the same version made another recovery copy.',
   )
   if (checkpoint && completion === 'before-ready')
-    requireEvidence(copies[0] < ready[0], 'The checked-copy line must come before READY.')
+    requireEvidence(
+      copies.every((line) => line < ready[0]),
+      'Every checked-copy line must come before READY.',
+    )
   const backgroundObservation =
     checkpoint && completion !== 'before-ready'
       ? requireResponsiveBeforeCompletion(observation, completion === 'functional-background')

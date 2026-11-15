@@ -82,6 +82,7 @@ export async function captureWorkspaceBaseline(
   const before = databaseSnapshot(join(data, 'brobot2.sqlite'), {
     credentials: true,
     movedState: true,
+    retention: true,
   })
   const files = stateBytes(data)
   const state = stateBytes(data, before),

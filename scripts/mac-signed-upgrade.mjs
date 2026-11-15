@@ -1,3 +1,8 @@
+import {
+  macCheckpointSnapshot,
+  requireOrdinaryMacFixture,
+  requireOrdinaryMacFile,
+} from './lib/mac-upgrade-preservation.mjs'
 import * as macLineage from './lib/mac-candidate-lineage.mjs'
 import { readWorkspaceForUpdate } from '../apps/desktop/src/main/one-host-gate.ts'
 import {
@@ -281,12 +286,14 @@ async function checkRetention(
   const after = databaseSnapshot(join(data, 'brobot2.sqlite'), {
     credentials: true,
     movedState: true,
+    retention: true,
   })
   const resumed = currentWorkspace.result.interruptedSession
   if (resumed) continuedEventsOnly(before, after, resumed.sessionId)
   const comparison = dataPreserved(before, after, {
     allowAppended: Boolean(resumed),
     candidateLineage,
+    retentionVersion: VERSION_B,
   })
   legacyCredentialsPreserved(before.provider_api_key, after.provider_api_key)
   credentialPreserved(
@@ -597,6 +604,7 @@ async function captureBaseline(workspace, registryBefore, settingsBefore) {
     nativeRoot,
     evidence,
   })
+  requireOrdinaryMacFixture(workspace.baseline.before, VERSION_B)
 }
 
 async function reopenFirst(workspace) {
@@ -636,10 +644,7 @@ async function reopenFirst(workspace) {
     evidence,
   })
   if (checkpoint !== null) {
-    const copy = databaseSnapshot(join(checkpoint, 'database.sqlite'), {
-      credentials: true,
-      movedState: true,
-    })
+    const copy = await macCheckpointSnapshot(checkpoint, app, run, evidence)
     statePreserved(baseline.state, stateBytes(checkpoint, copy))
     const resumed = workspace.result.interruptedSession
     if (resumed) continuedEventsOnly(baseline.before, copy, resumed.sessionId)
@@ -679,6 +684,7 @@ async function reopenFirst(workspace) {
 async function reopenSecond(workspace) {
   selectWorkspace(workspace)
   const baseline = workspace.baseline
+  requireOrdinaryMacFile(join(data, 'brobot2.sqlite'), VERSION_B)
   const cdp = await launch('b-second', workspace.port, VERSION_B)
   workspace.cdp = cdp
   recoveryOrder(await readFile(join(evidence, 'b-second.log'), 'utf8'), { checkpoint: false })
@@ -850,8 +856,12 @@ try {
   for (const workspace of workspaces) {
     selectWorkspace(workspace)
     const baseline = workspace.baseline,
-      after = databaseSnapshot(join(data, 'brobot2.sqlite'), { credentials: true })
-    dataPreserved(baseline.before, after, { allowAppended: true, candidateLineage })
+      after = databaseSnapshot(join(data, 'brobot2.sqlite'), { credentials: true, retention: true })
+    dataPreserved(baseline.before, after, {
+      allowAppended: true,
+      candidateLineage,
+      retentionVersion: VERSION_B,
+    })
     legacyCredentialsPreserved(baseline.before.provider_api_key, after.provider_api_key)
     workspace.result.finalCredential = credentialPreserved(
       baseline.credential,

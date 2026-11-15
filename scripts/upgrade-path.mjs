@@ -1,6 +1,13 @@
+import { recoveryProofCases } from './lib/upgrade-recovery-proof.mjs'
 import { spawn, spawnSync } from 'node:child_process'
 import { firstCopyPolicy, checkCheckpointRetention } from './lib/upgrade-candidate-evidence.mjs'
 import { readStateEntry } from './lib/skill-tree-state.mjs'
+import {
+  retainedFixtureTables,
+  startupLogEvidence,
+  replacementSetMatches,
+} from './lib/upgrade-retention.mjs'
+import { keepSafetyBaseline, runTrimUpgradeSafety } from './lib/upgrade-trim-safety.mjs'
 import {
   aCrashAfterTheSavedKey,
   keepPluginDrainEvidence,
@@ -14,11 +21,14 @@ import {
   measurementSize,
   retainRecoveryProgram,
   proofManifests,
-  completedProofCopy,
-  checkedProofCopy,
 } from './lib/recovery-measurement.mjs'
 import { withMovedFiles } from './lib/moved-state-files.mjs'
-import { describeDatabase, readDatabase, whole } from './lib/upgrade-database.mjs'
+import {
+  describeDatabase,
+  readDatabase,
+  verifyFixtureCheckpoint,
+  whole,
+} from './lib/upgrade-database.mjs'
 import {
   appendFileSync,
   closeSync,
@@ -36,8 +46,7 @@ import { createServer } from 'node:http'
 import { createServer as createHttpsServer } from 'node:https'
 import { homedir, tmpdir } from 'node:os'
 import { basename, dirname, join, relative, resolve } from 'node:path'
-import { DatabaseSync } from 'node:sqlite'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 import {
   appExeIn,
@@ -78,16 +87,12 @@ import {
   keychainEntryFor,
   sessionsKept,
   sha256,
-  startOrder,
-  makeEarlierMigrationFixture,
-  recoveryProofSequence,
   stateFileNames,
   stateKept,
   theCandidateInstaller,
   transcriptsOf,
   turnOutcome,
   verifyCandidateSkills,
-  verifyCheckpoint,
   whatRunsIsSaid,
 } from './lib/upgrade-path.mjs'
 import {
@@ -149,6 +154,7 @@ if (!['packaged', 'legacy'].includes(args['beta-registry'])) {
 }
 const os = args.os
 const measurementBytes = measurementSize(args['recovery-measurement-bytes'])
+const trimsEvents = /^0\.2\.(?:2[7-9]|[3-9]\d)(?:$|[-+])/.test(args['candidate-version'])
 const evidence = resolve(args.evidence)
 mkdirSync(evidence, { recursive: true })
 
@@ -767,7 +773,13 @@ const claudeRouteEnv = () =>
 let installedExe = null
 let installedProgram = null
 async function launch(stage, port, options = {}) {
-  const { workspace, hidden = false, recovery = false, windowWithin = 120_000 } = options
+  const {
+    workspace,
+    hidden = false,
+    recovery = false,
+    windowWithin = 120_000,
+    beforeConnect,
+  } = options
   const log = join(evidence, `${stage}.log`)
   const debugging = [
     '--remote-debugging-address=127.0.0.1',
@@ -803,6 +815,13 @@ async function launch(stage, port, options = {}) {
     running = { stage, pid: null, port, log, launchedAt: at, launchedMono }
   }
   const root = `http://127.0.0.1:${String(port)}`
+  if (beforeConnect) {
+    must(
+      hidden && Number.isInteger(running.pid),
+      `${stage}: the observer owns a directly spawned hidden app`,
+    )
+    if ((await beforeConnect(running)) === false) return null
+  }
   running.root = root
   const version = await until(async () => {
     try {
@@ -1178,24 +1197,7 @@ async function verdict(stage) {
   return Date.now() - running.launchedAt
 }
 
-function wholeLog(stage, { checkpoint, completion, observation }) {
-  const log = readFileSync(join(evidence, `${stage}.log`), 'utf8')
-  const order = holds(
-    checkpoint
-      ? `${stage}: over its whole log, one checked recovery copy (${completion}), one READY, and no failure`
-      : `${stage}: over its whole log, READY, no recovery copy and no failure`,
-    () => startOrder(log, { checkpoint, completion, observation }),
-  )
-  const other = join(evidence, `${stage}.stdout.log`)
-  if (existsSync(other)) {
-    const out = readFileSync(other, 'utf8')
-    check(
-      ![READY_LINE, CHECKPOINT_LINE, FAIL_LINE].some((line) => out.includes(line)),
-      `${stage}: none of the start's lines is on its other stream`,
-    )
-  }
-  return order
-}
+const wholeLog = (stage, options) => startupLogEvidence(evidence, check, holds, stage, options)
 
 async function quit(stage) {
   const { pid } = running
@@ -1846,243 +1848,6 @@ async function startHiddenProgram(program, workspace, stage, port, options = {})
   return running
 }
 
-async function recoveryProofCases({
-  old,
-  candidate,
-  before,
-  candidateLineage,
-  migrations,
-  conversations,
-  betaAnswers,
-  besideBefore,
-}) {
-  const proof = recoveryProofSequence({
-    launch,
-    currentPid: () => running?.pid,
-    alive,
-    phase,
-    check,
-  })
-  async function proofOrdinary(program, folder, stage, port) {
-    await startHiddenProgram(program, folder, stage, port, { launchProgram: proof.launch })
-    const info = await running.cdp.evaluate('return await window.api.getAppInfo()')
-    const responsive = performance.now()
-    const manifestAbsent = !(await proofManifests(folder)).some((one) => !ids.has(one.manifest.id))
-    const absent = performance.now()
-    must(
-      info.version === (program === candidate ? args['candidate-version'] : '0.2.19'),
-      `${stage}: actual binary version answered.`,
-      { version: info.version },
-    )
-    if (program === candidate)
-      must(
-        info.build?.commit === args['source-sha'],
-        `${stage}: candidate source identity answered.`,
-        info.build,
-      )
-    for (const id of conversations) {
-      const read = await running.cdp.evaluate(
-        `return JSON.stringify(await window.api.runtime.latestHistory({ sessionId: ${JSON.stringify(id)} }))`,
-      )
-      must(
-        read.includes(answerText(betaAnswers[id])),
-        `${stage}: seeded history survives in the actual binary.`,
-        { id },
-      )
-    }
-    return { launched: running.launchedMono, responsive, absent, manifestAbsent }
-  }
-
-  const result = (summary.recoveryProof = { compatible: {}, syntheticFuture: {}, synchronous: {} })
-  const ids = new Set((await proofManifests(data)).map((one) => one.manifest.id))
-  try {
-    const state = readState()
-    const cases = {
-      compatible: async () => {
-        const observed = await proofOrdinary(candidate, data, 'proof-candidate', 9350)
-        const copy = await completedProofCopy(data, ids)
-        observed.completed = performance.now()
-        await until(() => readFileSync(running.log, 'utf8').includes(CHECKPOINT_LINE), 10_000, 100)
-        result.compatible.observed = observed
-        result.compatible.copy = await checkedProofCopy(
-          copy,
-          {
-            reason: 'first-start-of-release',
-            version: args['candidate-version'],
-            build: args['source-sha'],
-            lineage: before.lineage,
-          },
-          state,
-          stateFiles,
-          must,
-        )
-        result.compatible.order = startOrder(readFileSync(running.log, 'utf8'), {
-          checkpoint: true,
-          completion: 'functional-background',
-          observation: observed,
-        })
-        await quit('proof candidate completed')
-      },
-      compatible019: async () => {
-        await proofOrdinary(old, data, 'proof-019-compatible', 9351)
-        await quit('proof019 compatible')
-        await proofOrdinary(candidate, data, 'proof-candidate-again', 9352)
-        await quit('proof candidate again')
-        result.compatible.actual019ThenCandidate = true
-      },
-      syntheticFuture: async () => {
-        const { runnerImport } = await import(
-          pathToFileURL(join(REPO, 'apps/desktop/node_modules/vite/dist/node/index.js')).href
-        )
-        const { module } = await runnerImport(
-          join(REPO, 'apps/desktop/test/recovery/lib/recovery-fixture.ts'),
-          { configFile: false, root: join(REPO, 'apps/desktop'), logLevel: 'error' },
-        )
-        const db = new DatabaseSync(join(data, 'brobot2.sqlite'))
-        try {
-          db.prepare('INSERT INTO __drizzle_migrations (hash, created_at) VALUES (?, ?)').run(
-            module.NEWER_MIGRATION.hash,
-            module.NEWER_MIGRATION.createdAt,
-          )
-        } finally {
-          db.close()
-        }
-        result.syntheticFuture.label =
-          'Existing synthetic NEWER_MIGRATION; not a shipping candidate migration.'
-        result.syntheticFuture.migration = module.NEWER_MIGRATION
-        const newer = await digest(join(data, 'brobot2.sqlite'))
-        const newerState = readState()
-        installedExe = old.exe
-        installedProgram = old.program
-        await proof.launch('proof-019-recovery', 9353, {
-          workspace: data,
-          hidden: true,
-          recovery: true,
-        })
-        const verdict = await until(
-          async () => {
-            const verdict = await running.cdp.evaluate('return window.recovery?.verdict()')
-            return verdict?.kind === 'working' ? null : verdict
-          },
-          600_000,
-          100,
-        )
-        must(
-          verdict?.kind === 'newer' && verdict.offers?.id === result.compatible.copy.id,
-          'Actual019 offers the candidate-created v1 snapshot.',
-          verdict,
-        )
-        await running.cdp.evaluate(
-          'document.querySelector("[data-cy=recovery-restore]").click(); return true',
-        )
-        must(
-          await until(
-            async () =>
-              (await running.cdp.evaluate('return window.recovery.verdict()')).kind ===
-              'history-only',
-            600_000,
-            100,
-          ),
-          'Actual019 entered restored history.',
-        )
-        for (const id of conversations) {
-          const read = await running.cdp.evaluate(
-            `return JSON.stringify(await window.recovery.history.transcript(${JSON.stringify(id)}))`,
-          )
-          must(
-            read.includes(answerText(betaAnswers[id])),
-            'Actual019 reads the restored transcript.',
-            {
-              id,
-            },
-          )
-        }
-        await running.cdp.evaluate(
-          'document.querySelector("[data-cy=recovery-return]").click(); return true',
-        )
-        must(
-          await until(
-            async () =>
-              (await running.cdp.evaluate('return window.recovery.verdict()')).kind === 'newer',
-            600_000,
-            100,
-          ),
-          'Actual019 returned to the newer state.',
-        )
-        await quit('proof019 Return')
-        must(
-          (await digest(join(data, 'brobot2.sqlite'))) === newer,
-          'Return preserved the synthetic newer database exactly.',
-        )
-        must(
-          stateKept(newerState, readState(), stateFiles).lost.length === 0,
-          'Return preserved coupled state.',
-        )
-        besideKept('proof019 Return kept current', besideBefore)
-        result.syntheticFuture.actual019RestoreReturn = true
-      },
-      synchronous: async () => {
-        const root = mkdtempSync(join(tmpdir(), 'upgrade-prefix-'))
-        result.synchronous.workspace = root
-        const journal = JSON.parse(readFileSync(join(migrations, 'meta/_journal.json'), 'utf8'))
-        const prefix = new DatabaseSync(join(root, 'brobot2.sqlite'))
-        let lineage
-        try {
-          lineage = makeEarlierMigrationFixture(prefix, journal, (tag) =>
-            readFileSync(join(migrations, `${tag}.sql`), 'utf8'),
-          )
-        } finally {
-          prefix.close()
-        }
-        const state = readState(root)
-        must(
-          (await proofManifests(root)).length === 0,
-          'The earlier prefix has no completed fallback.',
-        )
-        installedExe = candidate.exe
-        installedProgram = candidate.program
-        await proof.launch('proof-synchronous', 9354, { workspace: root, hidden: true })
-        await bridge('proof synchronous')
-        await onScreen('proof synchronous', true)
-        const copy = await completedProofCopy(root, new Set())
-        result.synchronous.copy = await checkedProofCopy(
-          copy,
-          {
-            reason: 'before-migration',
-            version: args['candidate-version'],
-            build: args['source-sha'],
-            lineage,
-          },
-          state,
-          stateFiles,
-          must,
-        )
-        result.synchronous.order = startOrder(readFileSync(running.log, 'utf8'), {
-          checkpoint: true,
-        })
-        await quit('proof synchronous')
-        const db = new DatabaseSync(join(root, 'brobot2.sqlite'), { readOnly: true })
-        try {
-          must(
-            db.prepare('SELECT count(*) AS n FROM __drizzle_migrations').get().n ===
-              candidateLineage.length,
-            'The real remaining migration applied after the completed snapshot.',
-          )
-        } finally {
-          db.close()
-        }
-      },
-    }
-    await proof.collect(result, cases, { state, readState, stateFiles })
-  } finally {
-    keep('recovery-proof.json', result)
-    await stop()
-    if (proof.closed() && result.synchronous.workspace)
-      rmSync(result.synchronous.workspace, { recursive: true, force: true })
-    if (proof.closed()) rmSync(old.root, { recursive: true, force: true })
-  }
-}
-
 let exitCode = 1
 async function runUpgradePath() {
   summary.names = { appId: candidateNames.appId, candidate: candidateNames.productName, installKey }
@@ -2423,6 +2188,8 @@ async function runUpgradePath() {
     )
   }
   const before = readDatabase(data)
+  const safetyBaseline =
+    trimsEvents && ['0.2.23', '0.2.26'].includes(betaVersion) ? keepSafetyBaseline(data) : null
   // File-backed betas need no Keychain entry. Keep attributes of any entry an older beta left.
   summary.keychain = { candidateAppName, afterTheBeta: keychainEntries('after-beta') }
   if (os === 'mac')
@@ -2536,7 +2303,14 @@ async function runUpgradePath() {
       candidate: candidateLineage,
     },
   )
-  const expectedReason = candidateLineage.length > before.lineage.length ? 'before-migration' : null
+  const firstCompaction = trimsEvents && before.storage.free * 2 > before.storage.pages
+  const migrationCopy = candidateLineage.length > before.lineage.length
+  const expectedReason = firstCompaction
+    ? 'after-compaction'
+    : migrationCopy
+      ? 'before-migration'
+      : null
+  const firstCheckpointCount = Number(migrationCopy) + Number(firstCompaction)
   const completedCopies = copiesTheBetaLeft.map((copy) => {
     const folder = join(data, 'backups', copy.folder)
     const files = {}
@@ -2636,16 +2410,44 @@ async function runUpgradePath() {
       before.lineage.length === candidateLineage.length,
       'Compatible proof is distinct from a real newer migration.',
     )
-    await recoveryProofCases({
-      old: proofOld,
-      candidate,
-      before,
-      candidateLineage,
-      migrations,
-      conversations,
-      betaAnswers,
-      besideBefore,
-    })
+    await recoveryProofCases(
+      {
+        old: proofOld,
+        candidate,
+        before,
+        candidateLineage,
+        migrations,
+        conversations,
+        betaAnswers,
+        besideBefore,
+        data,
+        args,
+        REPO,
+        stateFiles,
+        summary,
+      },
+      {
+        launch,
+        current: () => running,
+        useProgram: (program) => {
+          installedExe = program.exe
+          installedProgram = program.program
+        },
+        alive,
+        phase,
+        check,
+        startHiddenProgram,
+        bridge,
+        onScreen,
+        must,
+        answerText,
+        quit,
+        readState,
+        besideKept,
+        keep,
+        stop,
+      },
+    )
     exitCode = summary.failures.length === 0 ? 0 : 1
     return
   }
@@ -2740,6 +2542,7 @@ async function runUpgradePath() {
   summary.firstStart.order = existsSync(join(evidence, 'candidate-first.log'))
     ? wholeLog('candidate-first', {
         checkpoint: expectedReason !== null,
+        checkpointCount: firstCheckpointCount,
         completion: firstCopyCompletion,
         observation: firstCopyObservation,
       })
@@ -2749,50 +2552,27 @@ async function runUpgradePath() {
   const sinceTheBeta = copiesSince(copiesTheBetaLeft, copiesAfterFirst, args['candidate-version'])
   summary.copiesAfterFirst = { ...sinceTheBeta, copies: copiesAfterFirst.map(copySaid) }
   if (expectedReason !== null)
-    holds('the first start made one recovery copy, of exactly what the beta left', () => {
+    holds('the first start retained one recovery copy with exactly the beta’s data', () => {
       requireEvidence(
         sinceTheBeta.made.length === 1 &&
           sinceTheBeta.others.length === 0 &&
           sinceTheBeta.unread.length === 0,
         `The first start left ${String(sinceTheBeta.made.length)} new copies that name the candidate’s version, not one, and ${String(sinceTheBeta.others.length + sinceTheBeta.unread.length)} that do not: ${JSON.stringify(summary.copiesAfterFirst.copies)}`,
       )
-      const [made] = sinceTheBeta.made
-      const folder = join(data, 'backups', made)
-      requireEvidence(existsSync(join(folder, 'manifest.json')), 'The copy has no manifest.')
-      summary.checkpointMarkerLeft = existsSync(join(folder, 'unfinished'))
-      requireEvidence(
-        !summary.checkpointMarkerLeft,
-        'The copy still carries its unfinished marker.',
-      )
-      const manifest = JSON.parse(readFileSync(join(folder, 'manifest.json'), 'utf8'))
-      keep('checkpoint-manifest.json', manifest)
-      const files = { 'database.sqlite': readFileSync(join(folder, 'database.sqlite')) }
-      for (const name of stateFiles) {
-        if (existsSync(join(folder, name))) files[name] = readStateEntry(join(folder, name))
-      }
-      const workspaceIdFile = join(data, 'backups', 'workspace-id')
-      summary.checkpoint = verifyCheckpoint(manifest, files, {
-        folder: made,
-        workspaceId: existsSync(workspaceIdFile)
-          ? readFileSync(workspaceIdFile, 'utf8').trim()
-          : null,
+      summary.checkpoint = verifyFixtureCheckpoint({
+        data,
+        made: sinceTheBeta.made[0],
+        baseline: before,
+        state: filesBefore,
+        stateFiles,
         reason: expectedReason,
         version: args['candidate-version'],
-        build: args['source-sha'],
-        lineage: before.lineage,
-        stateFiles,
-        state: filesBefore,
+        source: args['source-sha'],
+        program: installedProgram,
+        os,
+        prefix: 'checkpoint',
+        keep,
       })
-      const inTheCopy = readDatabase(folder, 'database.sqlite')
-      requireEvidence(
-        whole(inTheCopy),
-        `The copy's database is not whole: ${inTheCopy.integrity.join('; ')}`,
-      )
-      const compared = rowsPreserved(before.tables, inTheCopy.tables, {}, before.keys)
-      requireEvidence(
-        compared.lost.length === 0 && Object.keys(compared.added).length === 0,
-        `The copy's rows are not the beta's: ${JSON.stringify(compared).slice(0, 1_000)}`,
-      )
     })
 
   checkCheckpointRetention(check, {
@@ -2873,8 +2653,20 @@ async function runUpgradePath() {
       due,
     )
   }
+  const firstRetention = retainedFixtureTables(
+    before.tables,
+    afterFirst.tables,
+    args['candidate-version'],
+  )
+  keep('candidate-first-retention.json', firstRetention.removed)
+  if (firstCompaction)
+    check(
+      afterFirst.storage.autoVacuum === 2,
+      'the eligible first-launch compaction installed an incremental database',
+      afterFirst.storage,
+    )
   const keptRows = rowsPreserved(
-    keptTables(before.tables),
+    keptTables(firstRetention.tables),
     afterFirst.tables,
     undefined,
     before.keys,
@@ -2891,7 +2683,7 @@ async function runUpgradePath() {
   check(whole(afterFirst), "the candidate's database is whole", afterFirst.integrity)
   check(
     keptRows.lost.length === 0,
-    'every conversation, event, saved key and other row the beta left is there, unchanged',
+    'every conversation, protected event, retained history row, saved key and other state the beta left is unchanged',
     { lost: keptRows.lost.slice(0, 40), added: keptRows.added },
   )
   check(
@@ -2933,18 +2725,44 @@ async function runUpgradePath() {
   besideKept('after the first start', besideBefore)
 
   summary.secondStart = {}
+  let copiesAtSecondReady = null
+  const secondCopyState = readState(data, afterFirst.tables)
+  const secondCompaction = trimsEvents && afterFirst.storage.free * 2 > afterFirst.storage.pages
   await phase('second start', async () => {
     await launch('candidate-second', 9341)
     summary.secondStart.readyAfterMs = await verdict('second start')
     await bridge('second start')
     await onScreen('second start')
     await dialogsAtAStart('second start', summary.secondStart)
-    const sinceTheFirst = copiesSince(copiesAfterFirst, await copies(), args['candidate-version'])
+    copiesAtSecondReady = await copies()
+    const sinceTheFirst = copiesSince(
+      copiesAfterFirst,
+      copiesAtSecondReady,
+      args['candidate-version'],
+    )
     check(
-      sinceTheFirst.same,
-      'the second start made no recovery copy and left the retained migration checkpoint as it was',
+      replacementSetMatches(
+        { ...sinceTheFirst, previousCount: copiesAfterFirst.length },
+        secondCompaction,
+      ),
+      'the second start obeyed its measured compaction eligibility and retained one checkpoint',
       sinceTheFirst,
     )
+    if (secondCompaction)
+      summary.secondStart.checkpoint = verifyFixtureCheckpoint({
+        data,
+        made: sinceTheFirst.made[0],
+        baseline: afterFirst,
+        state: secondCopyState,
+        stateFiles,
+        reason: 'after-compaction',
+        version: args['candidate-version'],
+        source: args['source-sha'],
+        program: installedProgram,
+        os,
+        prefix: 'second-checkpoint',
+        keep,
+      })
     await observeTheSavedKey('second start')
     summary.secondStart.turns = []
     const carriedOn = []
@@ -3036,10 +2854,19 @@ async function runUpgradePath() {
     await quit('the candidate, after its second start')
   })
   if (existsSync(join(evidence, 'candidate-second.log'))) {
-    summary.secondStart.order = wholeLog('candidate-second', { checkpoint: false })
+    summary.secondStart.order = wholeLog('candidate-second', {
+      checkpoint: secondCompaction,
+      checkpointCount: Number(secondCompaction),
+    })
   } else check(false, 'second start: its log was kept')
 
   const afterSecond = readDatabase(data)
+  if (secondCompaction)
+    check(
+      afterSecond.storage.autoVacuum === 2,
+      'the eligible second-launch compaction retained incremental mode',
+      afterSecond.storage,
+    )
   for (const owed of theStartsOwed()) {
     theStartAndTheKey(owed.conversation, owed.called, summary.claude.firstOpen?.starts?.[owed.of])
   }
@@ -3079,8 +2906,14 @@ async function runUpgradePath() {
       due,
     )
   }
+  const secondRetention = retainedFixtureTables(
+    before.tables,
+    afterSecond.tables,
+    args['candidate-version'],
+  )
+  keep('candidate-second-retention.json', secondRetention.removed)
   const stillKept = rowsPreserved(
-    keptTables(before.tables),
+    keptTables(secondRetention.tables),
     afterSecond.tables,
     undefined,
     before.keys,
@@ -3096,7 +2929,7 @@ async function runUpgradePath() {
   summary.afterSecond = { database: describeDatabase(afterSecond), added: stillKept.added }
   check(
     whole(afterSecond) && stillKept.lost.length === 0,
-    'after the second start and its turns, every row the beta left is there, unchanged',
+    'after the second start, protected events, retained history and all other state the beta left are unchanged',
     { integrity: afterSecond.integrity, lost: stillKept.lost.slice(0, 40) },
   )
   ownTranscriptsKept('after the second start', history, transcriptsBefore, afterSecond.tables)
@@ -3106,15 +2939,16 @@ async function runUpgradePath() {
     stateKept(stateBefore, readState(data, afterSecond.tables), stateFiles).lost.length === 0,
     'after the second start, every state file the beta left still says what it said',
   )
-  const sinceTheFirstStart = copiesSince(
-    copiesAfterFirst,
+  must(copiesAtSecondReady !== null, 'the second READY checkpoint inventory was retained')
+  const sinceSecondReady = copiesSince(
+    copiesAtSecondReady,
     await copies(),
     args['candidate-version'],
   )
   check(
-    sinceTheFirstStart.same,
-    'the recovery copies are still the ones the first start left, each as it was',
-    sinceTheFirstStart,
+    sinceSecondReady.same,
+    'after second READY, the completed checkpoint and its bytes stayed unchanged',
+    sinceSecondReady,
   )
   besideKept('after the second start', besideBefore)
 
@@ -3158,7 +2992,38 @@ async function runUpgradePath() {
     })
   }
 
+  if (trimsEvents)
+    await runTrimUpgradeSafety(
+      {
+        os,
+        betaVersion,
+        version: args['candidate-version'],
+        source: args['source-sha'],
+        data,
+        safetyBaseline,
+        candidateSkills,
+        conversations,
+        answers: Object.fromEntries(conversations.map((id) => [id, answerText(betaAnswers[id])])),
+        summary,
+      },
+      {
+        phase,
+        launch,
+        verdict,
+        bridge,
+        current: () => running,
+        stop,
+        alive,
+        crash,
+        quit,
+        copies,
+        keep,
+        must,
+      },
+    )
+
   exitCode = summary.failures.length === 0 ? 0 : 1
+  if (exitCode === 0 && safetyBaseline) rmSync(safetyBaseline, { recursive: true })
 }
 try {
   await runUpgradePath()
