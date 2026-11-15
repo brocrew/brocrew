@@ -102,8 +102,7 @@ export function aNewerCodexSignInIsAvailable(
  * mode `0600` (022, from 015). It copies **only** `auth.json` (never history/config/
  * db), copies its **content** (never symlinks the profile to the personal file,
  * which Codex may truncate/rewrite), and **never overwrites** an existing profile
- * credential unless `refresh` is requested after stopping its app-server. A refresh copies only
- * a newer machine sign-in and leaves an equally new, newer, or API-key profile copy alone.
+ * credential. Automatic refreshes use {@link reprovisionCodexAuth} after stopping its app-server.
  *
  * Where the computer has no Codex sign-in, it copies `fallbackAuthPath` instead when one is given:
  * BroBot's own profile's sign-in, so an agent can start on a computer signed in to Codex only
@@ -118,7 +117,6 @@ export async function provisionCodexAuth(
     sourceAuthPath?: string
     managedRoot?: string
     fallbackAuthPath?: string
-    refresh?: boolean
   } = {},
 ): Promise<void> {
   const source = opts.sourceAuthPath ?? personalCodexAuthPath()
@@ -143,7 +141,6 @@ export async function provisionCodexAuth(
       opts.fallbackAuthPath === undefined || opts.managedRoot === undefined
         ? undefined
         : { path: opts.fallbackAuthPath, managedRoot: opts.managedRoot },
-      opts.refresh === true,
     )
   } finally {
     ancestry?.release()
@@ -278,7 +275,6 @@ async function provisionCodexAuthLocked(
   source: string,
   ancestry: TrustedAncestry | null,
   fallback: Fallback | undefined,
-  refresh: boolean,
 ): Promise<void> {
   // Serialize concurrent provisioning/auth writes for this home (027 P1-H).
   // ⚠️ `async` since 243: the copy is the same synchronous sequence it always was, and only the
@@ -289,7 +285,7 @@ async function provisionCodexAuthLocked(
       ancestry?.verify()
       const dest = join(providerHome, CODEX_AUTH_FILE)
 
-      // An existing copy is kept unless a stopped server requested a newer machine sign-in.
+      // Existing copies can have rotated independently; provisioning leaves them alone.
       const destStat = statOrNull(dest)
       // A link that leads nowhere is no sign-in: it goes, and a fresh copy takes its place.
       if (destStat === null && lstatOrNull(dest)?.isSymbolicLink()) unlinkSync(dest)
@@ -300,9 +296,6 @@ async function provisionCodexAuthLocked(
             `profile auth.json is not a regular file: ${dest}`,
           )
         }
-        if (!refresh || !aNewerCodexSignInIsAvailable(providerHome, source)) return
-        ancestry?.verify()
-        writeAtomicallySync(dest, readFileSync(source))
         return
       }
 

@@ -21146,8 +21146,14 @@ export class RuntimeHost implements LiveHost {
     // ⚑ `attached: 0` is a FACT here, not a default: the go-ahead carries no attachments (234 §3).
     // ⚑ **708 · `from: null`, the app's** — the go-ahead is BroBot's own sentence (see the send
     // below), so it is never a person's command whatever it says.
+    let copyWait: ItsSignInMovedOn | undefined
     if (text !== undefined) {
-      await this.assertCanTakeTurn(session, 'send', { text, attached: 0, from: null })
+      try {
+        await this.assertCanTakeTurn(session, 'send', { text, attached: 0, from: null })
+      } catch (error) {
+        if (!(error instanceof ItsSignInMovedOn) || this.homeCopies.get(session.provider)?.get(session.profileId)?.state !== 'pending') throw error
+        copyWait = error
+      }
     }
     // Throws where the gesture does not apply — a session that never planned, one already
     // released, or a provider whose plan mode ends through its own approval card. The handle owns
@@ -21180,6 +21186,7 @@ export class RuntimeHost implements LiveHost {
     }
     const moveHandoff = this.beginMoveHandoff(session, false)
     try {
+      if (copyWait !== undefined) throw copyWait
       // 🔴 **The fourth door, and the ONLY one that must never carry a frame** (414). ⛔ It
       // reaches no {@link handToProvider} here — a go-ahead has no attachments and hands over no
       // task — and, more to the point, **these are not the caller's words.** ⚠️ **670 · a held
@@ -21223,7 +21230,7 @@ export class RuntimeHost implements LiveHost {
       // the go-ahead's own shape. ⚠️ Drawing that row as the go-ahead's entry is the frontend's. ⚠️ The
       // hold asks the gates as BroBot because the words are BroBot's; the presser's own wall was
       // asked at the top of this gesture, and the release it admitted has already happened.
-      if (error instanceof TurnInProgress) {
+      if (error instanceof TurnInProgress || (copyWait !== undefined && error === copyWait)) {
         try {
           await this.queueAs(
             sessionId,
@@ -40042,20 +40049,20 @@ export class RuntimeHost implements LiveHost {
           !this.slots.has(session.id) &&
           this.aReopenIsBeingDecidedFor.has(session.id)
         if (!stillWanted()) return
-        if (!providerAuthPolicies[session.provider].copy.same(refused, this.theCopyHeldNow(session))) {
-          // The existing copy gate may have finished while this reopen waited its turn.
-        } else if (this.queueANewerHomeCopy(session.provider, session.profileId, stillWanted)) {
-          const ready = this.homeCopyBarriers.get(profileSignInKey(session.provider, session.profileId))?.ready
-          void this.copyHomeWhenIdle(session.provider, session.profileId)
-          await ready
-          if (
-            !stillWanted() ||
-            this.aKeyIsSaved(session.provider) ||
-            providerAuthPolicies[session.provider].copy.same(refused, this.theCopyHeldNow(session))
-          ) return
-        } else if (!(await this.replaceARefusedCopy(
-          session.provider, session.profileId, 'after its refused server exited', refused, stillWanted,
-        ))) return
+        if (providerAuthPolicies[session.provider].copy.same(refused, this.theCopyHeldNow(session))) {
+          if (this.queueANewerHomeCopy(session.provider, session.profileId, stillWanted)) {
+            const ready = this.homeCopyBarriers.get(profileSignInKey(session.provider, session.profileId))?.ready
+            void this.copyHomeWhenIdle(session.provider, session.profileId)
+            await ready
+            if (
+              !stillWanted() ||
+              this.aKeyIsSaved(session.provider) ||
+              providerAuthPolicies[session.provider].copy.same(refused, this.theCopyHeldNow(session))
+            ) return
+          } else if (!(await this.replaceARefusedCopy(
+            session.provider, session.profileId, 'after its refused server exited', refused, stillWanted,
+          ))) return
+        }
         session.itsCopyWasReplaced = true
       }
       // A rejection can precede local expiry; an already replaced token needs no helper run.

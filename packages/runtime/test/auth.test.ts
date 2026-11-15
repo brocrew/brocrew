@@ -160,7 +160,7 @@ describe('provisionCodexAuth (022)', () => {
     utimesSync(source, 200, 200)
     const original = lstatSync(source)
 
-    await provisionCodexAuth(home, { ...{ sourceAuthPath: source, refresh: true } })
+    await reprovisionCodexAuth(home, { sourceAuthPath: source, newerOnly: true })
 
     expect(signInAt(dest)).toBe(digestOf(newer))
     expect(signInAt(source)).toBe(digestOf(newer))
@@ -176,7 +176,7 @@ describe('provisionCodexAuth (022)', () => {
     utimesSync(source, sourceTime, sourceTime)
     const original = lstatSync(dest)
 
-    await provisionCodexAuth(home, { ...{ sourceAuthPath: source, refresh: true } })
+    await reprovisionCodexAuth(home, { sourceAuthPath: source, newerOnly: true })
 
     expect(signInAt(dest)).toBe(digestOf(rotated))
     expect(lstatSync(dest).mtimeMs).toBe(original.mtimeMs)
@@ -190,7 +190,7 @@ describe('provisionCodexAuth (022)', () => {
     utimesSync(dest, 100, 100)
     utimesSync(source, 200, 200)
 
-    await provisionCodexAuth(home, { ...{ sourceAuthPath: source, refresh: true } })
+    await reprovisionCodexAuth(home, { sourceAuthPath: source, newerOnly: true })
 
     expect(signInAt(dest)).toBe(digestOf(key))
   })
@@ -213,7 +213,7 @@ describe('provisionCodexAuth (022)', () => {
       await ready
     })
     await held
-    const copying = provisionCodexAuth(home, { ...{ sourceAuthPath: source, refresh: true } })
+    const copying = reprovisionCodexAuth(home, { sourceAuthPath: source, newerOnly: true })
     const rotated = '{"tokens":{"account_id":"fictional-rotated-under-lock"}}'
     try {
       writeFileSync(dest, rotated)
