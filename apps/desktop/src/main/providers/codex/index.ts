@@ -208,13 +208,14 @@ export function codexAuth(paths: ProviderHomePaths, seams: CodexAuthSeams): Home
       const behind = machineLoginPresence(seams.machineAuthPath?.() ?? personalCodexAuthPath())
       return behind === undefined ? state : { ...state, loginBehindTheKey: behind }
     },
-    reprovision(profileId, newerOnly) {
+    reprovision(profileId, newerOnly, stillWanted) {
       refuseWhileAKeyIsSaved()
       const home = homePathFor(profileId)
       return provisionProviderHome(paths.managedRoot, home).then(() =>
         reprovisionCodexAuth(home, {
           ...(seams.machineAuthPath === undefined ? {} : { sourceAuthPath: seams.machineAuthPath() }),
           ...(newerOnly === undefined ? {} : { newerOnly }),
+          ...(stillWanted === undefined ? {} : { stillWanted }),
         }),
       )
     },

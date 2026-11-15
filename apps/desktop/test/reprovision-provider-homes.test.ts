@@ -214,21 +214,31 @@ describe('copying this install’s provider sign-ins', () => {
     let fresh = true
     Object.assign(ops, { hasNewerCopy: () => fresh })
     copy.mockImplementation(async () => {
-      expect(stopped).toBe(1)
-      expect(launches).toBe(1)
+      expect(stopped).toBe(launches)
       fresh = false
       return 'replaced'
     })
 
     await host.send(current.sessionId, 'use the newer fictional sign-in', sink)
 
-    await vi.waitFor(() => expect(copy).toHaveBeenCalledWith('codex', 'alpha', true))
+    await vi.waitFor(() => expect(copy).toHaveBeenCalledWith('codex', 'alpha', true, expect.any(Function)))
     await vi.waitFor(() => expect(launches).toBe(2))
     await vi.waitFor(() =>
       expect(messages.some((one) => one.event.type === 'permission_request')).toBe(true),
     )
     expect(copy).toHaveBeenCalledTimes(1)
     expect(host.sessionIds).toContain(current.sessionId)
+    await host.respondPermission(current.sessionId, 'turn_1_perm', { outcome: 'allow' }, sink)
+    await vi.waitFor(() =>
+      expect(messages.some((one) => one.event.type === 'turn' && one.event.state === 'completed')).toBe(true),
+    )
+    fresh = true
+    await host.send(current.sessionId, 'check the machine sign-in again for this turn', sink)
+    await vi.waitFor(() => expect(copy).toHaveBeenCalledTimes(2))
+    await vi.waitFor(() => expect(launches).toBe(3))
+    await vi.waitFor(() =>
+      expect(messages.filter((one) => one.event.type === 'permission_request')).toHaveLength(2),
+    )
   })
 
   it('does not check or copy machine sign-ins for an API-key turn', async () => {

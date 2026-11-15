@@ -74,10 +74,10 @@ function forwardAuth(auth: Readonly<Record<Provider, HomeAuthOperations>>): Prov
     probe: (provider, profileId, signal) =>
       auth[provider].probe?.(profileId, signal) ?? auth[provider].check(profileId, signal),
     hasNewerCopy: (provider, profileId) => auth[provider].hasNewerCopy?.(profileId) ?? false,
-    reprovision: (provider, profileId, newerOnly) =>
+    reprovision: (provider, profileId, newerOnly, stillWanted) =>
       newerOnly === undefined
         ? auth[provider].reprovision(profileId)
-        : auth[provider].reprovision(profileId, newerOnly),
+        : auth[provider].reprovision(profileId, newerOnly, stillWanted),
     signIn: (provider, profileId, signal) => auth[provider].signIn(profileId, signal),
     replaceARefusedCopy: (provider, profileId, refused, stillWanted) =>
       auth[provider].replaceARefusedCopy(profileId, refused, stillWanted),

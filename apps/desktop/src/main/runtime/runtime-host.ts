@@ -27151,7 +27151,7 @@ export class RuntimeHost implements LiveHost {
    * "unreachable"; there is a test now that pins it by making the two disagree.
    */
   private flushQueued(session: HostedSession): void {
-    this.queueANewerHomeCopy(session.provider, session.profileId)
+    if (session.mailbox.length > 0) this.queueANewerHomeCopy(session.provider, session.profileId)
     if (this.homeCopies.get(session.provider)?.get(session.profileId)?.state === 'pending') {
       void this.copyHomeWhenIdle(session.provider, session.profileId)
       if (this.homeCopyJobs.has(profileSignInKey(session.provider, session.profileId))) return
@@ -30606,7 +30606,7 @@ export class RuntimeHost implements LiveHost {
 
   private readonly homeCopies = new Map<
     Provider,
-    Map<string, ProviderHomesReprovision['profiles'][number] & { newerOnly?: true }>
+    Map<string, ProviderHomesReprovision['profiles'][number] & { newerOnly?: true; stillWanted?: () => boolean }>
   >()
   private readonly homeCopyJobs = new Map<string, Promise<void>>()
   private readonly homeCopyRestarts = new Map<string, Promise<void>>()
@@ -30634,7 +30634,7 @@ export class RuntimeHost implements LiveHost {
   }
 
   /** Use the existing home-copy gate so every server using this copy stops before its replacement. */
-  private queueANewerHomeCopy(provider: Provider, profileId: string): boolean {
+  private queueANewerHomeCopy(provider: Provider, profileId: string, stillWanted?: () => boolean): boolean {
     if (provider !== 'codex' || this.aKeyIsSaved(provider)) return false
     const rows = this.homeCopies.get(provider)
     if (rows?.get(profileId)?.state === 'pending')
@@ -30642,7 +30642,7 @@ export class RuntimeHost implements LiveHost {
     if (!this.deps.providerAuth?.hasNewerCopy?.(provider, profileId)) return false
     const copies = rows ?? new Map()
     this.homeCopies.set(provider, copies)
-    copies.set(profileId, { profileId, state: 'pending', newerOnly: true })
+    copies.set(profileId, { profileId, state: 'pending', newerOnly: true, ...(stillWanted === undefined ? {} : { stillWanted }) })
     let release!: () => void
     const ready = new Promise<void>((resolve) => {
       release = resolve
@@ -30767,7 +30767,11 @@ export class RuntimeHost implements LiveHost {
           copied = { profileId, state: 'skipped', reason: 'api-key' }
           return
         }
-        const outcome = await this.reprovisionProviderAuth(provider, profileId, rows.get(profileId)?.newerOnly)
+        const request = rows.get(profileId)
+        const outcome = await this.reprovisionProviderAuth(
+          provider, profileId, request?.newerOnly,
+          () => !this.launches.closed && request?.stillWanted?.() !== false,
+        )
         copied =
           outcome === 'replaced'
             ? { profileId, state: 'replaced' }
@@ -30835,9 +30839,10 @@ export class RuntimeHost implements LiveHost {
     provider: Provider,
     profileId: string,
     newerOnly?: true,
+    stillWanted?: () => boolean,
   ): Promise<ReprovisionOutcome> {
     try {
-      return await this.recopy(provider, profileId, newerOnly)
+      return await this.recopy(provider, profileId, newerOnly, stillWanted)
     } catch (error) {
       const shortage = transientSetupFailureOf(error)
       if (shortage === null) throw error
@@ -30972,7 +30977,7 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  private async recopy(provider: Provider, profileId: string, newerOnly?: true): Promise<ReprovisionOutcome> {
+  private async recopy(provider: Provider, profileId: string, newerOnly?: true, stillWanted?: () => boolean): Promise<ReprovisionOutcome> {
     const ops = this.deps.providerAuth
     if (!ops) throw new Error('this app build cannot re-copy provider sign-ins')
     // 🔴 **The second writer, admitted through the same door as the first since 265 §2.** This method
@@ -30992,7 +30997,7 @@ export class RuntimeHost implements LiveHost {
     try {
       return await (newerOnly === undefined
         ? ops.reprovision(provider, profileId)
-        : ops.reprovision(provider, profileId, newerOnly))
+        : ops.reprovision(provider, profileId, newerOnly, stillWanted))
     } finally {
       credential.release()
       this.forgetModels(provider)
@@ -40294,7 +40299,7 @@ export class RuntimeHost implements LiveHost {
           !this.slots.has(session.id) &&
           this.aReopenIsBeingDecidedFor.has(session.id)
         if (!stillWanted()) return
-        if (this.queueANewerHomeCopy(session.provider, session.profileId)) {
+        if (this.queueANewerHomeCopy(session.provider, session.profileId, stillWanted)) {
           const ready = this.homeCopyBarriers.get(profileSignInKey(session.provider, session.profileId))?.ready
           void this.copyHomeWhenIdle(session.provider, session.profileId)
           await ready

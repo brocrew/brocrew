@@ -3,7 +3,7 @@ import type { RuntimeHostDeps } from '../src/main/runtime/host-dependencies'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import type { UserTurnEvent } from '../src/shared/human-answer-contracts'
 import { createHash } from 'node:crypto'
-import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -145,10 +145,12 @@ class StandInCodex extends FakeRuntime {
       }
       push(event: RuntimeEvent): void
     }
-    const refused = (loginRefused = true): void =>
+    const refused = (loginRefused = true): void => {
+      this.asItRefuses()
       inside.machine.completeTurn('failed', 'simulated refusal', undefined, undefined, {
         ...(loginRefused ? { loginRefused: true } : {}),
       })
+    }
     const answered = (): void => {
       this.answeredInputs.push(this.retained.get(handle.ref.sessionId) ?? '')
       inside.push({ type: 'assistant_message', text: 'answered' })
@@ -293,6 +295,10 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       providerAuth: {
         ...ops,
         signIn: () => aSignIn(),
+        reprovision: (...asked) => {
+          writer.reached += 1
+          return Promise.resolve(ops.reprovision(...asked)).finally(() => (writer.answered += 1))
+        },
         replaceARefusedCopy: (...asked) => {
           writer.reached += 1
           return ops.replaceARefusedCopy(...asked).finally(() => (writer.answered += 1))
@@ -320,7 +326,10 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
 
   function aHelperHolding(copy: string): void {
     mkdirSync(helperHome(), { recursive: true, mode: 0o700 })
-    writeFileSync(join(helperHome(), 'auth.json'), copy, { mode: 0o600 })
+    const path = join(helperHome(), 'auth.json')
+    writeFileSync(path, copy, { mode: 0o600 })
+    const refreshed = Date.parse((JSON.parse(copy) as { last_refresh: string }).last_refresh) / 1000
+    utimesSync(path, refreshed, refreshed)
   }
   const brobotsOwnIs = (copy: string) =>
     writeFileSync(join(ownHome(), 'auth.json'), copy, { mode: 0o600 })
@@ -803,9 +812,12 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       aHelperHolding(DEAD)
       accept(DEAD)
       const { sessionId } = await start()
-      writeFileSync(machine, THE_COMPUTERS)
-      accepted.clear()
-      accept(THE_COMPUTERS)
+      codex.asItRefuses = () => {
+        writeFileSync(machine, THE_COMPUTERS)
+        accepted.clear()
+        accept(THE_COMPUTERS)
+        codex.asItRefuses = () => {}
+      }
       codex.turnModes.push(mode)
       beforeTheMessage()
       await host.send(sessionId, MESSAGE, watching)

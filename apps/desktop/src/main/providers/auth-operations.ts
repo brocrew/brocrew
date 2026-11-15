@@ -56,6 +56,7 @@ export interface ProviderAuthOps {
     provider: Provider,
     profileId: string,
     newerOnly?: true,
+    stillWanted?: () => boolean,
   ): ReprovisionOutcome | Promise<ReprovisionOutcome>
   hasNewerCopy?(provider: Provider, profileId: string): boolean
   /**
