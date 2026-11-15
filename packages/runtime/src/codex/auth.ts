@@ -74,7 +74,7 @@ export class CodexRefusedItsSignInError extends AuthUnavailableError {
   }
 }
 
-// --- Codex: copy auth.json once into the profile home (0600, atomic) ---
+// Codex auth copies use the profile home's lock and atomic writer.
 
 const CODEX_AUTH_FILE = 'auth.json'
 
@@ -83,13 +83,27 @@ export function personalCodexAuthPath(): string {
   return join(homedir(), '.codex', CODEX_AUTH_FILE)
 }
 
+/** Check before stopping a server; the writer checks freshness again under the home's lock. */
+export function aNewerCodexSignInIsAvailable(
+  providerHome: string,
+  source = personalCodexAuthPath(),
+): boolean {
+  const from = statOrNull(source)
+  if (from === null || !from.isFile()) return false
+  const dest = join(providerHome, CODEX_AUTH_FILE)
+  const to = statOrNull(dest)
+  if (to !== null && (!to.isFile() || from.mtimeMs <= to.mtimeMs)) return false
+  if (codexAccountOf(readFileSync(source, 'utf8')) === 'api-key') return false
+  return to === null || codexAccountOf(readFileSync(dest, 'utf8')) !== 'api-key'
+}
+
 /**
  * Copy the personal Codex `auth.json` into the profile home **once**, atomically, at
  * mode `0600` (022, from 015). It copies **only** `auth.json` (never history/config/
  * db), copies its **content** (never symlinks the profile to the personal file,
  * which Codex may truncate/rewrite), and **never overwrites** an existing profile
- * credential — that copy may have been refreshed independently, and re-copying the
- * personal one on an mtime change would clobber it.
+ * credential unless `refresh` is requested after stopping its app-server. A refresh copies only
+ * a newer machine sign-in and leaves an equally new, newer, or API-key profile copy alone.
  *
  * Where the computer has no Codex sign-in, it copies `fallbackAuthPath` instead when one is given:
  * BroBot's own profile's sign-in, so an agent can start on a computer signed in to Codex only
@@ -100,7 +114,12 @@ export function personalCodexAuthPath(): string {
  */
 export async function provisionCodexAuth(
   providerHome: string,
-  opts: { sourceAuthPath?: string; managedRoot?: string; fallbackAuthPath?: string } = {},
+  opts: {
+    sourceAuthPath?: string
+    managedRoot?: string
+    fallbackAuthPath?: string
+    refresh?: boolean
+  } = {},
 ): Promise<void> {
   const source = opts.sourceAuthPath ?? personalCodexAuthPath()
   if (opts.fallbackAuthPath !== undefined && opts.managedRoot === undefined) {
@@ -124,6 +143,7 @@ export async function provisionCodexAuth(
       opts.fallbackAuthPath === undefined || opts.managedRoot === undefined
         ? undefined
         : { path: opts.fallbackAuthPath, managedRoot: opts.managedRoot },
+      opts.refresh === true,
     )
   } finally {
     ancestry?.release()
@@ -258,6 +278,7 @@ async function provisionCodexAuthLocked(
   source: string,
   ancestry: TrustedAncestry | null,
   fallback: Fallback | undefined,
+  refresh: boolean,
 ): Promise<void> {
   // Serialize concurrent provisioning/auth writes for this home (027 P1-H).
   // ⚠️ `async` since 243: the copy is the same synchronous sequence it always was, and only the
@@ -268,8 +289,7 @@ async function provisionCodexAuthLocked(
       ancestry?.verify()
       const dest = join(providerHome, CODEX_AUTH_FILE)
 
-      // Copy exactly once: never clobber a possibly-refreshed profile credential. A link the
-      // person made to a sign-in file is kept as the file it leads to.
+      // An existing copy is kept unless a stopped server requested a newer machine sign-in.
       const destStat = statOrNull(dest)
       // A link that leads nowhere is no sign-in: it goes, and a fresh copy takes its place.
       if (destStat === null && lstatOrNull(dest)?.isSymbolicLink()) unlinkSync(dest)
@@ -280,6 +300,9 @@ async function provisionCodexAuthLocked(
             `profile auth.json is not a regular file: ${dest}`,
           )
         }
+        if (!refresh || !aNewerCodexSignInIsAvailable(providerHome, source)) return
+        ancestry?.verify()
+        writeAtomicallySync(dest, readFileSync(source))
         return
       }
 
