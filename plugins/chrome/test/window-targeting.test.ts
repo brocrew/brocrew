@@ -70,7 +70,10 @@ describe('window-targeted tools and local navigation', () => {
       throw new Error('fictional admission failure')
     }
     expect(
-      await h.callError('open_tab', { profile: 'p', url: 'about:blank', windowOf: a.tabId }),
+      (
+        (await h.call('open_tab', { profile: 'p', url: 'about:blank', windowOf: a.tabId }))
+          .json as { note: string }
+      ).note,
     ).toContain('fictional admission failure')
   })
   it('rejects conflict, foreign/unknown/closed selectors without opening profiles', async () => {
