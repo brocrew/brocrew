@@ -19,11 +19,10 @@ import {
   permission,
   record,
   show,
-  unmountAll,
   visible,
   type Mounted,
 } from './harness'
-import { usageCards } from './usage-cards'
+import { resetUsageCards, usageCards } from './usage-cards'
 import { providersBridge } from '../../look/fixtures/providers'
 import { railFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { attributedUsageFixtures, runningSignInFixtures } from './provider-launch.fixture'
@@ -35,12 +34,7 @@ import { attributedUsageFixtures, runningSignInFixtures } from './provider-launc
 
 const ORIGINAL = { width: window.innerWidth, height: window.innerHeight }
 
-afterEach(async () => {
-  unmountAll()
-  railFacts().update({ runningConversations: null })
-  delete (window as { api?: unknown }).api
-  await page.viewport(ORIGINAL.width, ORIGINAL.height)
-})
+afterEach(() => resetUsageCards(ORIGINAL.width, ORIGINAL.height))
 
 async function configuredUsageCards(width: number, height: number): Promise<Mounted> {
   providersBridge()
