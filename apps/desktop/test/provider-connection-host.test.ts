@@ -298,7 +298,6 @@ for (const provider of ['claude', 'codex'] as const) {
     })
   }
 
-
   it(`${provider}: the default command retains the chosen connection with its model`, async () => {
     const f = fixture()
     f.store.createAgentIdentity({ slug: 'fern', displayName: null, provider }, { by: 'a-person' })
