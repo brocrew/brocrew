@@ -67,7 +67,10 @@ describe('window writer revisions follow the selected facts', () => {
     row('status', '{"type":"status","state":"ended"}')
     const ended = sample(routes)
     expect(sameWindowWriter(before, ended)).toBe(false)
-    expect(sample.changedOwners!(before!, ended!)).toEqual(['alpha'])
+    row('assistant_message', '{"type":"assistant_message","text":"fictional"}')
+    const answered = sample(routes)!
+    expect(sameWindowWriter(ended, answered)).toBe(false)
+    expect(sample.changedOwners!(ended!, answered)).toEqual([])
     row('status', '{')
     expect(sameWindowWriter(ended, sample(routes))).toBe(false)
   })
