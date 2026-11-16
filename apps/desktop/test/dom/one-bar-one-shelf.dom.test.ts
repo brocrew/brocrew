@@ -115,7 +115,7 @@ async function cardsWithUnreadWeeks() {
 describe('§2 · the usage cells, and each one answers for itself', () => {
   it('🔴 the title bar draws three usage blocks, provider by provider, then agents and memory; the shelf spans the transcript AND the companion', async () => {
     await page.viewport(1200, 808)
-    const usage = await cards(NO_USAGE)
+    const usage = await cards(unreadUsage())
     expect(
       [...usage.q('app-usage-cards').querySelectorAll<HTMLElement>('[data-cy^="shelf-usage-"]')]
         .map((el) => el.dataset['cy'])
