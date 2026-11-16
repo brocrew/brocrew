@@ -242,9 +242,11 @@ describe('the recovery copy is checked off the main thread', () => {
       const file = join(aRoot(), 'busy-trim.sqlite')
       const db = openDatabase(file)
       applyMigrations(db, migrations)
-      db.prepare(`INSERT INTO provider_session
+      db.prepare(
+        `INSERT INTO provider_session
         (id, provider, cwd, status, created_at, updated_at)
-        VALUES ('fictional', 'claude', '/', 'idle', 0, 0)`).run()
+        VALUES ('fictional', 'claude', '/', 'idle', 0, 0)`,
+      ).run()
       const insert = db.prepare(`INSERT INTO events
         (id, session_id, ordinal, type, payload, created_at) VALUES (?, 'fictional', ?, ?, ?, 0)`)
       db.transaction(() => {
@@ -280,8 +282,8 @@ describe('the recovery copy is checked off the main thread', () => {
           n: held ? 1002 : 1000,
         })
         expect(
-        db.prepare("SELECT count(*) AS n FROM events WHERE type IN ('user_turn','turn')").get(),
-      ).toEqual({ n: 2 })
+          db.prepare("SELECT count(*) AS n FROM events WHERE type IN ('user_turn','turn')").get(),
+        ).toEqual({ n: 2 })
       } finally {
         clearTimeout(release)
         if (db.inTransaction) db.exec('ROLLBACK')
