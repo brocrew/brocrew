@@ -49,12 +49,18 @@ describe('F071 · the ledger folds read through their own index', () => {
     rmSync(dir, { recursive: true, force: true })
   })
 
-  const throughTheIndex = (): string[] =>
-    prepared.filter(
+  const isOwnerSchedule = (sql: string): boolean =>
+    sql.includes('AS first_listed') && sql.includes('AND session_id = ?')
+  const throughTheIndex = (): string[] => {
+    const reads = prepared.filter(
       (sql) =>
         sql.includes('events_fold_idx') ||
         (sql.includes('events_kind_owner_idx') && sql.includes(FOLD_TERM)),
     )
+    expect(reads.filter(isOwnerSchedule)).toHaveLength(1)
+    expect(reads.filter((sql) => !isOwnerSchedule(sql))).toHaveLength(23)
+    return reads
+  }
 
   describe('§1 · one list: the migration’s index and the statements', () => {
     it('⛔ the index the migrations create holds FOLD_EVENT_TYPES, in its order', () => {
@@ -70,11 +76,10 @@ describe('F071 · the ledger folds read through their own index', () => {
 
     it('⛔ every statement that names the index carries the same list', () => {
       const reads = throughTheIndex()
-      expect(reads).toHaveLength(23)
       const kindReads = reads.filter((sql) => sql.includes('events_kind_owner_idx'))
-      // Four single-type reads seek their type on it: replacements, schedule levels, the
-      // decision on a request and the latest move offer.
-      expect(kindReads).toHaveLength(13)
+      // The keyed schedule read joins the thirteen existing type-index reads.
+      expect(kindReads.filter(isOwnerSchedule)).toHaveLength(1)
+      expect(kindReads.filter((sql) => !isOwnerSchedule(sql))).toHaveLength(13)
       expect(
         kindReads.filter((sql) => sql.includes("json_remove(payload, '$.sent', '$.given')")),
       ).toHaveLength(2)
@@ -123,7 +128,6 @@ describe('F071 · the ledger folds read through their own index', () => {
   describe('§2 · SQLite reads each of them through it', () => {
     it('each indexed read uses its declared event range', () => {
       const reads = throughTheIndex()
-      expect(reads).toHaveLength(23)
       for (const sql of reads) {
         const named = [...new Set([...sql.matchAll(/@([A-Za-z_]\w*)/g)].map((one) => one[1]))]
         const args: unknown[] = []

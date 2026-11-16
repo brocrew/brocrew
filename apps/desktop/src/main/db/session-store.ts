@@ -805,12 +805,15 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   closePastWorkSearch(): void
   pastWorkSearchSource(caller: string): PastWorkSource | null
   replacements(): readonly { readonly replaced: string; readonly by: string }[]
-  newestScheduleLevels(): readonly {
+  newestScheduleLevels(owners?: ReadonlySet<string>): readonly {
     readonly conversation: string
     readonly level: ScheduleLevel
     readonly compactedAt: number | null
     readonly notStartedSaid?: Readonly<Record<string, NotStartedBecause>>
   }[]
+  newestScheduleLevel(
+    sessionId: string,
+  ): ReturnType<SessionStore['newestScheduleLevels']>[number] | null
   scheduleEvidenceRows(sessionId: string): ScheduleEvidenceRead
   lastStatusAt(sessionId: string): number | null
   find(sessionId: string): ResumableSession | null
@@ -852,8 +855,8 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   ): ReadonlyMap<number, HumanFinalContext>
   ledgerStatus(sessionId: string): LedgerStatus
   beginGeneration(sessionId: string): number
-  clearOrphanBuilds(running: ReadonlySet<string>): number
-  settleOrphanRuns(at: number, running: ReadonlySet<string>): number
+  clearOrphanBuilds(running: ReadonlySet<string>, owners?: ReadonlySet<string>): number
+  settleOrphanRuns(at: number, running: ReadonlySet<string>, owners?: ReadonlySet<string>): number
   whatACrashLeftRunning(running: ReadonlySet<string>): readonly LeftRunning[]
   recordedTurnOpening(sessionId: string, turnId: string): UserTurnEvent | null
   recordedTurnMessage(
@@ -875,13 +878,30 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
     sessionId: string,
     messageId: string,
   ): 'sent' | 'ended' | 'waiting' | 'absent'
-  settleStrandedMessages(at: number, running: ReadonlySet<string>, unread?: RowsUnread): number
+  startupRepairOwners(phase?: 'builds' | 'runs' | 'requests' | 'work'): readonly string[]
+  settleStrandedMessagesInSteps(
+    at: number,
+    running: ReadonlySet<string>,
+    unread?: RowsUnread,
+    owners?: ReadonlySet<string>,
+  ): Generator<() => void, number>
+  settleStrandedMessages(
+    at: number,
+    running: ReadonlySet<string>,
+    unread?: RowsUnread,
+    owners?: ReadonlySet<string>,
+  ): number
   messagesWaitingIn(
     sessionId: string,
     unread?: RowsUnread,
     maximumRows?: number,
   ): readonly WaitingMessage[]
-  settleStrandedRequests(at: number, running: ReadonlySet<string>, unread?: RowsUnread): number
+  settleStrandedRequests(
+    at: number,
+    running: ReadonlySet<string>,
+    unread?: RowsUnread,
+    owners?: ReadonlySet<string>,
+  ): number
   stalledWorkNobodyWasToldAbout(unread?: RowsUnread): LedgerWalk<PieceRow>
   stalledWorkItsGiverWasToldAbout(unread?: RowsUnread): LedgerWalk<PieceRow>
   waitsThatNeedClassifying(unread?: RowsUnread): LedgerWalk<PieceRow>
@@ -901,6 +921,7 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
     wokenForAJob?: ReadonlySet<string>,
     diedInTheBackground?: Set<string>,
     continuing?: ReadonlySet<string>,
+    owners?: ReadonlySet<string>,
   ): number
   questionsAPersonMustAnswer(unread?: RowsUnread): LedgerWalk<RoutedRequest>
   decisionsAwaitingAPerson(unread?: RowsUnread): LedgerWalk<RequestOnlyAPersonCanSettle>
@@ -1096,11 +1117,14 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   reopened(sessionId: string, at: number): boolean
   closedByTheQuit(sessionIds: readonly string[], at: number): void
   whatTheQuitClosed(): readonly string[]
+  whatTheNewestQuitClosed(notBefore: number): readonly string[]
   restartedWorkLate(conversation: string, pieces: readonly string[], at: number): void
   backgroundTheRestartStopped(
     alsoTheseDied: readonly string[],
     before: number,
     notBefore: number,
+    owners?: ReadonlySet<string>,
+    quitClosed?: readonly string[],
   ): readonly { conversation: string; stopped: readonly string[]; endedAt: number }[]
   terminate(
     sessionId: string,
@@ -1224,6 +1248,11 @@ export const NULL_SESSION_STORE: SessionStore = {
   whereItWasRouted: () => null,
   piecesOwnedBefore: () => [],
   whatBecameOfAMessage: () => 'absent',
+  startupRepairOwners: () => [],
+  *settleStrandedMessagesInSteps() {
+    yield* []
+    return 0
+  },
   settleStrandedMessages: () => 0,
   messagesWaitingIn: () => [],
   // ⚠️ **0 for {@link settleStrandedMessages}' reason**: a store with no database repaired nothing.
@@ -1360,6 +1389,7 @@ export const NULL_SESSION_STORE: SessionStore = {
   pastWorkSearchSource: () => null,
   replacements: () => [],
   newestScheduleLevels: () => [],
+  newestScheduleLevel: () => null,
   scheduleEvidenceRows: () => ({ rows: [], cut: false }),
   lastStatusAt: () => null,
   find: () => null,
@@ -1377,6 +1407,7 @@ export const NULL_SESSION_STORE: SessionStore = {
   backgroundTheRestartStopped: () => [],
   restartedWorkLate: () => {},
   whatTheQuitClosed: () => [],
+  whatTheNewestQuitClosed: () => [],
   terminate: () => false,
   nextOrdinal: () => 0,
   lastOrdinalWrite: () => undefined,
@@ -2016,6 +2047,11 @@ export function createSessionStore(
       WHERE closed_by_the_quit_at = (SELECT max(closed_by_the_quit_at) FROM provider_session)
       ORDER BY id`,
   )
+  function newestQuitClosed(notBefore: number): readonly string[] {
+    return (selectClosedByTheNewestQuit.all() as { id: string; at: number }[])
+      .filter((row) => row.at >= notBefore)
+      .map((row) => row.id)
+  }
   const selectBackgroundNewestFirst = db.prepare(
     `SELECT type, payload FROM events INDEXED BY events_fold_idx
       WHERE ${FOLD_TERM} AND session_id = ? AND type IN ('background_work', 'launched')
@@ -2058,11 +2094,12 @@ export function createSessionStore(
                      WHERE provider_session.id = json_extract(events.payload, '$.sessionId'))
       ORDER BY events.rowid`,
   )
-  const selectNewestScheduleLevels = db.prepare(
+  const scheduleLevelsSql = (owners: string) =>
     `WITH levels AS MATERIALIZED (
        SELECT session_id, created_at, generation, ordinal, payload
          FROM events INDEXED BY events_kind_owner_idx
         WHERE ${FOLD_TERM} AND type = 'scheduled_work'
+          AND ${owners}
           AND CASE WHEN json_valid(payload) THEN json_type(payload, '$.jobs') = 'array' ELSE 1 END
      ), candidates AS MATERIALIZED (
        SELECT session_id, payload FROM (
@@ -2087,8 +2124,11 @@ export function createSessionStore(
               WHERE f.session_id = n.session_id) AS first_listed,
             (SELECT max(e.created_at) FROM events e INDEXED BY events_session_idx
               WHERE e.session_id = n.session_id AND e.type = 'compaction') AS compacted_at
-       FROM candidates n`,
+       FROM candidates n`
+  const selectNewestScheduleLevels = db.prepare(
+    scheduleLevelsSql('(? IS NULL OR session_id IN (SELECT value FROM json_each(?)))'),
   )
+  const selectNewestScheduleLevel = db.prepare(scheduleLevelsSql('session_id = ?'))
   const selectNewestTurnsOpened = db.prepare(
     `SELECT CASE WHEN json_valid(payload) THEN payload END AS payload, created_at AS at
        FROM events INDEXED BY events_fold_idx
@@ -2647,10 +2687,14 @@ export function createSessionStore(
   )
   theFoldIndexHolds(selectHeldMessageRowsOf)
 
-  function strandedMessages(): {
+  type StrandedMessages = {
     stranded: { session_id: string; message_id: string; text: string | null; payload: string }[]
     torn: { session_id: string; ordinal: number }[]
-  } {
+  }
+
+  function* strandedMessageSteps(
+    owners?: ReadonlySet<string>,
+  ): Generator<() => void, StrandedMessages> {
     const stranded: {
       row: number
       session_id: string
@@ -2659,60 +2703,71 @@ export function createSessionStore(
       payload: string
     }[] = []
     const torn: { row: number; session_id: string; ordinal: number }[] = []
-    for (const conversation of selectEveryConversationAndStatus.all() as {
-      id: string
-      status: string
-    }[]) {
-      const rows = selectHeldMessageRowsOf.all(conversation.id, conversation.id) as {
-        row: number
-        type: string
-        ordinal: number
-        valid: number
-        message_id: unknown
-        for_its_next_start: unknown
-        text: unknown
-        payload: string | null
-      }[]
-      const ended = new Set<unknown>()
-      let lastTornEnding = -Infinity
-      let lastStart = -Infinity
-      for (const one of rows) {
-        if (one.type === 'launched') lastStart = Math.max(lastStart, one.ordinal)
-        else if (one.valid !== 1) {
-          torn.push({ row: one.row, session_id: conversation.id, ordinal: one.ordinal })
-          if (one.type === 'message_unqueued')
-            lastTornEnding = Math.max(lastTornEnding, one.ordinal)
-        } else if (one.type === 'message_unqueued') ended.add(one.message_id)
-      }
-      if (conversation.status === 'ended' || conversation.status === 'errored') continue
-      for (const one of rows) {
-        if (one.type !== 'message_queued' || one.valid !== 1 || one.message_id === null) continue
-        if (one.payload === null) continue
-        if (one.for_its_next_start === 1 && lastStart <= one.ordinal) continue
-        const origin = moveOriginOf(aStoredObject(one.payload)?.movedFrom)
-        if (origin !== undefined) {
-          const decisionRow = selectTheDecisionOn.get(
-            origin.sessionId,
-            activeGeneration(origin.sessionId),
-            origin.requestId,
-          ) as { payload: string } | undefined
-          const decision = aStoredObject(decisionRow?.payload ?? null)
-          const receipt = moveReceiptOf(decision?.movedTo)
-          if (
-            actedByFrom(decision?.by)?.who === 'a-person' &&
-            receipt?.sessionId === conversation.id &&
-            receipt.messageId === one.message_id
-          )
-            continue
+    let conversations: { id: string; status: string }[] = []
+    yield () => {
+      conversations = selectEveryConversationAndStatus.all() as typeof conversations
+    }
+    for (const conversation of conversations) {
+      if (owners !== undefined && !owners.has(conversation.id)) continue
+      yield () => {
+        const heldHere: typeof stranded = []
+        const tornHere: typeof torn = []
+        const rows = selectHeldMessageRowsOf.all(conversation.id, conversation.id) as {
+          row: number
+          type: string
+          ordinal: number
+          valid: number
+          message_id: unknown
+          for_its_next_start: unknown
+          text: unknown
+          payload: string | null
+        }[]
+        const ended = new Set<unknown>()
+        let lastTornEnding = -Infinity
+        let lastStart = -Infinity
+        for (const one of rows) {
+          if (one.type === 'launched') lastStart = Math.max(lastStart, one.ordinal)
+          else if (one.valid !== 1) {
+            tornHere.push({ row: one.row, session_id: conversation.id, ordinal: one.ordinal })
+            if (one.type === 'message_unqueued')
+              lastTornEnding = Math.max(lastTornEnding, one.ordinal)
+          } else if (one.type === 'message_unqueued') ended.add(one.message_id)
         }
-        if (ended.has(one.message_id) || lastTornEnding > one.ordinal) continue
-        stranded.push({
-          row: one.row,
-          session_id: conversation.id,
-          message_id: one.message_id as string,
-          text: one.text as string | null,
-          payload: one.payload,
-        })
+        if (conversation.status === 'ended' || conversation.status === 'errored') {
+          torn.push(...tornHere)
+          return
+        }
+        for (const one of rows) {
+          if (one.type !== 'message_queued' || one.valid !== 1 || one.message_id === null) continue
+          if (one.payload === null) continue
+          if (one.for_its_next_start === 1 && lastStart <= one.ordinal) continue
+          const origin = moveOriginOf(aStoredObject(one.payload)?.movedFrom)
+          if (origin !== undefined) {
+            const decisionRow = selectTheDecisionOn.get(
+              origin.sessionId,
+              activeGeneration(origin.sessionId),
+              origin.requestId,
+            ) as { payload: string } | undefined
+            const decision = aStoredObject(decisionRow?.payload ?? null)
+            const receipt = moveReceiptOf(decision?.movedTo)
+            if (
+              actedByFrom(decision?.by)?.who === 'a-person' &&
+              receipt?.sessionId === conversation.id &&
+              receipt.messageId === one.message_id
+            )
+              continue
+          }
+          if (ended.has(one.message_id) || lastTornEnding > one.ordinal) continue
+          heldHere.push({
+            row: one.row,
+            session_id: conversation.id,
+            message_id: one.message_id as string,
+            text: one.text as string | null,
+            payload: one.payload,
+          })
+        }
+        stranded.push(...heldHere)
+        torn.push(...tornHere)
       }
     }
     const byRow = (a: { row: number }, b: { row: number }): number => a.row - b.row
@@ -2725,6 +2780,16 @@ export function createSessionStore(
       })),
       torn: torn.sort(byRow).map((one) => ({ session_id: one.session_id, ordinal: one.ordinal })),
     }
+  }
+
+  function strandedMessages(owners?: ReadonlySet<string>): StrandedMessages {
+    const steps = strandedMessageSteps(owners)
+    let next = steps.next()
+    while (!next.done) {
+      next.value()
+      next = steps.next()
+    }
+    return next.value
   }
   const selectWorkflowOutput = db.prepare(
     `SELECT run.readable AS readable, run.ordinal AS ordinal,
@@ -2855,15 +2920,20 @@ export function createSessionStore(
   const selectBuildingSessions = db.prepare(
     `SELECT session_id FROM derived_generation WHERE building IS NOT NULL`,
   )
-  const clearOrphanBuildsTx = db.transaction((at: number, running: ReadonlySet<string>): number => {
-    const rows = selectBuildingSessions.all() as { session_id: string }[]
-    let cleared = 0
-    for (const row of rows) {
-      if (running.has(row.session_id)) continue
-      cleared += clearBuilding.run(at, row.session_id).changes
-    }
-    return cleared
-  })
+  const clearOrphanBuildsTx = db.transaction(
+    (at: number, running: ReadonlySet<string>, owners?: ReadonlySet<string>): number => {
+      const rows = selectBuildingSessions.all() as { session_id: string }[]
+      let cleared = 0
+      for (const row of rows) {
+        if (owners !== undefined && !owners.has(row.session_id)) continue
+        if (running.has(row.session_id)) continue
+        const changed = clearBuilding.run(at, row.session_id).changes
+        if (changed > 0) committed.whole(row.session_id, 'listing')
+        cleared += changed
+      }
+      return cleared
+    },
+  )
   const deleteEventGeneration = db.prepare(
     `DELETE FROM events WHERE rowid IN
        (SELECT rowid FROM events WHERE session_id = ? AND generation = ? LIMIT ?)`,
@@ -3890,83 +3960,119 @@ export function createSessionStore(
         AND CASE WHEN json_valid(payload) THEN CASE WHEN json_type(payload, '$.piece') = 'text' AND length(CAST(json_extract(payload, '$.piece') AS BLOB)) BETWEEN 1 AND 512 THEN json_extract(payload, '$.piece') END END = ?
       LIMIT 1`,
   )
-  const settleStrandedMessagesTx = db.transaction(
-    (at: number, running: ReadonlySet<string>, unread?: RowsUnread): number => {
-      const { stranded, torn } = strandedMessages()
-      // Every torn row the sweep passes over, warned.
-      for (const one of torn) noteUnreadRow(one.session_id, one.ordinal, undefined)
-      let settled = 0
-      for (const held of stranded) {
-        if (running.has(held.session_id)) continue
-        try {
-          const generation = activeGeneration(held.session_id)
-          const max = selectMaxOrdinal.get(held.session_id, generation) as
+  function settleHeldMessages(
+    stranded: StrandedMessages['stranded'],
+    at: number,
+    running: ReadonlySet<string>,
+    unread?: RowsUnread,
+  ): number {
+    let settled = 0
+    for (const held of stranded) {
+      if (running.has(held.session_id)) continue
+      try {
+        const generation = activeGeneration(held.session_id)
+        const max = selectMaxOrdinal.get(held.session_id, generation) as
+          { max_ordinal: number | null } | undefined
+        appendTx(
+          held.session_id,
+          (max?.max_ordinal ?? -1) + 1,
+          {
+            type: 'message_unqueued',
+            messageId: held.message_id,
+            reason: 'abandoned',
+            text: held.text ?? '',
+            detail: 'the app stopped while this message was still waiting to be sent',
+            ...authorshipStoredOn(held.payload),
+            ...attachmentsStoredOn(held.payload),
+          },
+          at,
+          generation,
+          true,
+        )
+        const answer = theAnswerItCarries(authorshipStoredOn(held.payload))
+        if (
+          answer !== null &&
+          !running.has(answer.owner) &&
+          selectConversationHeld.get(answer.owner) !== undefined &&
+          selectALostAnswerRecorded.get(answer.owner, answer.piece) === undefined
+        ) {
+          const itsGeneration = activeGeneration(answer.owner)
+          const itsMax = selectMaxOrdinal.get(answer.owner, itsGeneration) as
             { max_ordinal: number | null } | undefined
-          appendTx(
-            held.session_id,
-            (max?.max_ordinal ?? -1) + 1,
-            {
-              type: 'message_unqueued',
-              messageId: held.message_id,
-              reason: 'abandoned',
-              text: held.text ?? '',
-              detail: 'the app stopped while this message was still waiting to be sent',
-              ...authorshipStoredOn(held.payload),
-              ...attachmentsStoredOn(held.payload),
-            },
-            at,
-            generation,
-            true,
-          )
-          const answer = theAnswerItCarries(authorshipStoredOn(held.payload))
-          if (
-            answer !== null &&
-            !running.has(answer.owner) &&
-            selectConversationHeld.get(answer.owner) !== undefined &&
-            selectALostAnswerRecorded.get(answer.owner, answer.piece) === undefined
-          ) {
-            const itsGeneration = activeGeneration(answer.owner)
-            const itsMax = selectMaxOrdinal.get(answer.owner, itsGeneration) as
-              { max_ordinal: number | null } | undefined
-            try {
-              appendTx(
-                answer.owner,
-                (itsMax?.max_ordinal ?? -1) + 1,
-                {
-                  type: 'reply_undelivered',
-                  piece: answer.piece,
-                  parent: held.session_id,
-                  because: AN_ANSWER_HELD_THEN_LOST,
-                },
-                at,
-                itsGeneration,
-                true,
-              )
-            } catch (error) {
-              console.warn(
-                `messages: could not record that ${answer.owner}'s answer to ${answer.label} was lost: ${
-                  error instanceof Error ? error.message : String(error)
-                }`,
-              )
-            }
+          try {
+            appendTx(
+              answer.owner,
+              (itsMax?.max_ordinal ?? -1) + 1,
+              {
+                type: 'reply_undelivered',
+                piece: answer.piece,
+                parent: held.session_id,
+                because: AN_ANSWER_HELD_THEN_LOST,
+              },
+              at,
+              itsGeneration,
+              true,
+            )
+          } catch (error) {
+            console.warn(
+              `messages: could not record that ${answer.owner}'s answer to ${answer.label} was lost: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            )
           }
-          settled += 1
-        } catch (error) {
-          skipTheLedger(held.session_id, error, unread?.in(held.session_id))
         }
+        settled += 1
+      } catch (error) {
+        skipTheLedger(held.session_id, error, unread?.in(held.session_id))
       }
-      return settled
+    }
+    return settled
+  }
+  const settleHeldMessagesTx = db.transaction(settleHeldMessages)
+  const settleStrandedMessagesTx = db.transaction(
+    (
+      at: number,
+      running: ReadonlySet<string>,
+      unread?: RowsUnread,
+      owners?: ReadonlySet<string>,
+    ): number => {
+      const { stranded, torn } = strandedMessages(owners)
+      for (const one of torn) noteUnreadRow(one.session_id, one.ordinal, undefined)
+      return settleHeldMessages(stranded, at, running, unread)
     },
   )
+
+  function* settleStrandedMessagesInSteps(
+    at: number,
+    running: ReadonlySet<string>,
+    unread?: RowsUnread,
+    owners?: ReadonlySet<string>,
+  ): Generator<() => void, number> {
+    const { stranded, torn } = yield* strandedMessageSteps(owners)
+    for (const one of torn) yield () => noteUnreadRow(one.session_id, one.ordinal, undefined)
+    let settled = 0
+    for (const held of stranded) {
+      yield () => {
+        settled += settleHeldMessagesTx([held], at, running, unread)
+      }
+    }
+    return settled
+  }
 
   const selectALaunch = db.prepare(
     `SELECT 1 AS yes FROM events WHERE session_id = ? AND generation = ? AND type = 'launched' LIMIT 1`,
   )
   const settleStrandedRequestsTx = db.transaction(
-    (at: number, running: ReadonlySet<string>, unread?: RowsUnread): number => {
+    (
+      at: number,
+      running: ReadonlySet<string>,
+      unread?: RowsUnread,
+      owners?: ReadonlySet<string>,
+    ): number => {
       const candidates = selectSessionsThatRouted.all() as { id: string }[]
       let settled = 0
       for (const asker of candidates) {
+        if (owners !== undefined && !owners.has(asker.id)) continue
         if (running.has(asker.id)) continue
         try {
           const generation = activeGeneration(asker.id)
@@ -4099,10 +4205,12 @@ export function createSessionStore(
       wokenForAJob?: ReadonlySet<string>,
       diedInTheBackground?: Set<string>,
       continuing?: ReadonlySet<string>,
+      owners?: ReadonlySet<string>,
     ): number => {
       let written = 0
       const services = new Set((selectServicesBorn.all() as { id: string }[]).map(({ id }) => id))
       for (const worker of selectOwnersOfGivenPieces.all() as { id: string }[]) {
+        if (owners !== undefined && !owners.has(worker.id)) continue
         if (running.has(worker.id)) continue
         try {
           const woken = wokenForAJob?.has(worker.id) === true
@@ -4155,12 +4263,16 @@ export function createSessionStore(
     whatBecameOfAMessage,
   } = createTurnEvidenceRead(db, activeGeneration)
 
-  const settleOrphanRunsTx = db.transaction((at: number, running: ReadonlySet<string>): number => {
-    const rows = selectRunningSessions.all() as { id: string }[]
-    const stranded = rows.filter((row) => !running.has(row.id))
-    for (const row of stranded) settleTx(row.id, 'unknown', at, null)
-    return stranded.length
-  })
+  const settleOrphanRunsTx = db.transaction(
+    (at: number, running: ReadonlySet<string>, owners?: ReadonlySet<string>): number => {
+      const rows = selectRunningSessions.all() as { id: string }[]
+      const stranded = rows.filter(
+        (row) => !running.has(row.id) && (owners === undefined || owners.has(row.id)),
+      )
+      for (const row of stranded) settleTx(row.id, 'unknown', at, null)
+      return stranded.length
+    },
+  )
 
   let workStatements: {
     bump: AppStatement
@@ -5474,12 +5586,12 @@ export function createSessionStore(
       })()
     },
 
-    clearOrphanBuilds(running) {
-      return clearOrphanBuildsTx(now(), running)
+    clearOrphanBuilds(running, owners) {
+      return clearOrphanBuildsTx(now(), running, owners)
     },
 
-    settleOrphanRuns(at, running) {
-      return settleOrphanRunsTx(at, running)
+    settleOrphanRuns(at, running, owners) {
+      return settleOrphanRunsTx(at, running, owners)
     },
 
     whatACrashLeftRunning,
@@ -5538,8 +5650,8 @@ export function createSessionStore(
 
     whatBecameOfAMessage,
 
-    settleStrandedRequests(at, running, unread) {
-      return settleStrandedRequestsTx(at, running, unread)
+    settleStrandedRequests(at, running, unread, owners) {
+      return settleStrandedRequestsTx(at, running, unread, owners)
     },
 
     stalledWorkNobodyWasToldAbout(counted) {
@@ -5755,10 +5867,40 @@ export function createSessionStore(
       })
     },
 
-    settleStrandedMessages(at, running, unread) {
-      return settleStrandedMessagesTx(at, running, unread)
+    startupRepairOwners(phase) {
+      if (phase === 'builds')
+        return (selectBuildingSessions.all() as { session_id: string }[]).map(
+          (row) => row.session_id,
+        )
+      if (phase === 'runs')
+        return (selectRunningSessions.all() as { id: string }[]).map(({ id }) => id)
+      if (phase === 'requests')
+        return (selectSessionsThatRouted.all() as { id: string }[]).map(({ id }) => id)
+      if (phase === 'work')
+        return (selectOwnersOfGivenPieces.all() as { id: string }[]).map(({ id }) => id)
+      return [
+        ...new Set(
+          [
+            ...(selectEveryConversationAndStatus.all() as { id: string }[]),
+            ...(selectSessionsThatRouted.all() as { id: string }[]),
+            ...(selectOwnersOfGivenPieces.all() as { id: string }[]),
+          ].map(({ id }) => id),
+        ),
+      ]
     },
-    settleRestartedWork(at, running, unread, wokenForAJob, diedInTheBackground, continuing) {
+    settleStrandedMessagesInSteps,
+    settleStrandedMessages(at, running, unread, owners) {
+      return settleStrandedMessagesTx(at, running, unread, owners)
+    },
+    settleRestartedWork(
+      at,
+      running,
+      unread,
+      wokenForAJob,
+      diedInTheBackground,
+      continuing,
+      owners,
+    ) {
       return settleRestartedWorkTx(
         at,
         running,
@@ -5766,6 +5908,7 @@ export function createSessionStore(
         wokenForAJob,
         diedInTheBackground,
         continuing,
+        owners,
       )
     },
     questionsAPersonMustAnswer(unread) {
@@ -6775,11 +6918,13 @@ export function createSessionStore(
       )
     },
 
-    backgroundTheRestartStopped(alsoTheseDied, before, notBefore) {
-      const stamped = selectClosedByTheNewestQuit.all() as { id: string; at: number }[]
-      const quit = stamped.filter((row) => row.at >= notBefore).map((row) => row.id)
+    whatTheNewestQuitClosed: newestQuitClosed,
+
+    backgroundTheRestartStopped(alsoTheseDied, before, notBefore, owners, quitClosed) {
+      const quit = quitClosed ?? newestQuitClosed(notBefore)
       const found: { conversation: string; stopped: readonly string[]; endedAt: number }[] = []
       for (const conversation of new Set([...quit, ...alsoTheseDied])) {
+        if (owners !== undefined && !owners.has(conversation)) continue
         try {
           const ended = new Set<string>()
           let running: readonly string[] = []
@@ -6858,31 +7003,24 @@ export function createSessionStore(
       )
     },
 
-    newestScheduleLevels() {
-      const rows = selectNewestScheduleLevels.all() as {
+    newestScheduleLevels(owners) {
+      const selected = owners === undefined ? null : JSON.stringify([...owners])
+      const rows = selectNewestScheduleLevels.all(selected, selected) as {
         session_id: string
         payload: string
         first_listed: string | null
         compacted_at: number | null
       }[]
       return rows.flatMap((row) => {
-        try {
-          const said = notStartedSaidIn(row.payload)
-          return [
-            {
-              conversation: row.session_id,
-              level: scheduleLevelOf(row.payload, row.first_listed),
-              compactedAt: row.compacted_at,
-              ...(Object.keys(said).length === 0 ? {} : { notStartedSaid: said }),
-            },
-          ]
-        } catch (error) {
-          console.warn(
-            `session store skipped an unreadable schedule in ${row.session_id}: ${error instanceof Error ? error.message : String(error)}`,
-          )
-          return []
-        }
+        const level = scheduleLevelFromRow(row)
+        return level === null ? [] : [level]
       })
+    },
+
+    newestScheduleLevel(sessionId) {
+      const row = selectNewestScheduleLevel.get(sessionId) as
+        Parameters<typeof scheduleLevelFromRow>[0] | undefined
+      return row === undefined ? null : scheduleLevelFromRow(row)
     },
 
     lastStatusAt(sessionId) {
@@ -6944,6 +7082,28 @@ export function mergeDescent(
     Object.entries(live).filter(([, value]) => value !== undefined),
   ) as ChildDescent
   return stored === null ? answered : { ...stored, ...answered }
+}
+
+function scheduleLevelFromRow(row: {
+  session_id: string
+  payload: string
+  first_listed: string | null
+  compacted_at: number | null
+}): ReturnType<SessionStore['newestScheduleLevels']>[number] | null {
+  try {
+    const said = notStartedSaidIn(row.payload)
+    return {
+      conversation: row.session_id,
+      level: scheduleLevelOf(row.payload, row.first_listed),
+      compactedAt: row.compacted_at,
+      ...(Object.keys(said).length === 0 ? {} : { notStartedSaid: said }),
+    }
+  } catch (error) {
+    console.warn(
+      `session store skipped an unreadable schedule in ${row.session_id}: ${error instanceof Error ? error.message : String(error)}`,
+    )
+    return null
+  }
 }
 
 /** What a stored level says this app does not start its conversation for, by job; a word it does not know is passed over. */

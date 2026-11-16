@@ -381,7 +381,9 @@ describe('services a person turns on and off', () => {
     })
 
     /** The service stopped on `caller`'s piece, in a new run with services off. */
-    const aStoppedServiceWhileOff = async (): Promise<{
+    const aStoppedServiceWhileOff = async (
+      deferred = false,
+    ): Promise<{
       after: RuntimeHost
       caller: string
       service: string
@@ -394,7 +396,8 @@ describe('services a person turns on and off', () => {
         expect(stateOf(service, one.piece)).toBe('stalled')
       })
       await host.closeAll()
-      const after = world.aHost({ servicesOn: false })
+      const after = world.aHost({ servicesOn: false, deferStartupUntilListPaint: deferred })
+      if (deferred) after.firstListPainted()
       await after.resumeSession(caller, world.window)
       return { after, caller, service, one, two }
     }
@@ -595,22 +598,25 @@ describe('services a person turns on and off', () => {
       })
     })
 
-    it('keeps a new brief for a stopped service while off, and it goes in once they are on', async () => {
-      const { after, caller, service, one } = await aStoppedServiceWhileOff()
-      const brief = 'Look at the second floor instead.'
-      const updated = await call(after, caller, 'update_work', { piece: one.label, brief })
-      expect(updated.text).toContain('the new brief is held. It waits until services are on.')
-      await new Promise((settled) => setTimeout(settled, 100))
-      expect(wentIn(service, brief)).toBe(false)
-      after.setServicesOn(true)
-      await vi.waitFor(() => {
-        expect(wentIn(service, brief)).toBe(true)
-      })
-      const turn = rows(service, 'user_turn').find(
-        (row) => row.type === 'user_turn' && row.text.includes(brief),
-      )
-      expect(turn).toMatchObject({ piece: one.piece })
-    })
+    it.each([false, true])(
+      'keeps a new brief for a stopped service while off, and it goes in once they are on (deferred %s)',
+      async (deferred) => {
+        const { after, caller, service, one } = await aStoppedServiceWhileOff(deferred)
+        const brief = 'Look at the second floor instead.'
+        const updated = await call(after, caller, 'update_work', { piece: one.label, brief })
+        expect(updated.text).toContain('the new brief is held. It waits until services are on.')
+        await new Promise((settled) => setTimeout(settled, 100))
+        expect(wentIn(service, brief)).toBe(false)
+        after.setServicesOn(true)
+        await vi.waitFor(() => {
+          expect(wentIn(service, brief)).toBe(true)
+        })
+        const turn = rows(service, 'user_turn').find(
+          (row) => row.type === 'user_turn' && row.text.includes(brief),
+        )
+        expect(turn).toMatchObject({ piece: one.piece })
+      },
+    )
   })
 
   describe('what is shown of a service', () => {

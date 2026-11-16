@@ -181,7 +181,7 @@ describe('scheduled jobs across a crash', () => {
   }
 
   /** The app starts at this moment: a new life over the same database file. */
-  const starts = (moment: number, stops: Stops = {}): Life => {
+  const starts = (moment: number, stops: Stops = {}, deferred = false, paint = deferred): Life => {
     clock = moment
     // ⚠️ Its own folder, taken now: a life left behind may still write when a timer of its fires.
     const folder = userData
@@ -197,6 +197,7 @@ describe('scheduled jobs across a crash', () => {
       asked,
       host: new RuntimeHost({
         store,
+        deferStartupUntilListPaint: deferred,
         ...neutralHostDeps(() => folder),
         resourcesRoot: () => resourcesRoot(folder),
         createRuntime: (provider: Provider) => new ProviderOfALife(provider, stops, asked),
@@ -230,6 +231,7 @@ describe('scheduled jobs across a crash', () => {
       }),
     }
     lives.push(life)
+    if (paint) life.host.firstListPainted()
     now = life
     return life
   }
@@ -382,34 +384,54 @@ describe('scheduled jobs across a crash', () => {
     },
   ] as const
 
+  it('reads a cancellation made after pre-use repair before activating deferred jobs', async () => {
+    const conversation = await aConversationWith((id) => makes(id, ONE_SHOT))
+    starts(AFTER_DUE, {}, true, false)
+    await now.host.look(conversation, window, false)
+    now.store.append(
+      conversation,
+      now.store.nextOrdinal(conversation),
+      { type: 'scheduled_work', jobs: [], source: 'test' },
+      tick(),
+    )
+    now.host.firstListPainted()
+    await settle()
+    expect(askedFor(now, conversation)).toBe(0)
+    expect(heldWords(conversation)).toEqual([])
+    expect(saidWords(conversation)).toEqual([])
+  })
+
   for (const { kind, schedule, at, words, notStarted } of KINDS) {
     describe(`a crash while it is started for ${kind}`, () => {
-      it('after the words are held and before the start is kept as made: the next launch holds no second copy, makes the one start and says the words once', async () => {
-        const a = await aConversationWith(schedule)
-        // The file cannot be written, so the start is never kept as made, and never made.
-        const crashed = starts(at, { attemptsCannotBeKept: true })
-        await waitFor(() => heldWords(a).length === 1, 'the words to be held')
-        await settle()
-        expect(askedFor(crashed, a)).toBe(0)
-        expect(keptAsMade(a)).toBe(false)
+      it.each([false, true])(
+        'after the words are held and before the start is kept as made: the next launch holds no second copy, makes the one start and says the words once (deferred %s)',
+        async (deferred) => {
+          const a = await aConversationWith(schedule)
+          // The file cannot be written, so the start is never kept as made, and never made.
+          const crashed = starts(at, { attemptsCannotBeKept: true }, deferred)
+          await waitFor(() => heldWords(a).length === 1, 'the words to be held')
+          await settle()
+          expect(askedFor(crashed, a)).toBe(0)
+          expect(keptAsMade(a)).toBe(false)
 
-        starts(at + 60_000)
-        await waitFor(() => saidWords(a).length === 1, 'the words to be said')
-        await settle()
-        expect(askedFor(now, a)).toBe(1)
-        expect(heldWords(a)).toHaveLength(1)
-        expect(saidWords(a)).toEqual(heldWords(a))
-        expect(saidWords(a)[0]).toContain(words)
-        expect(keptAsMade(a)).toBe(true)
-        expect(kept(a)?.told).toHaveLength(1)
-        await now.host.closeAll()
+          starts(at + 60_000, {}, deferred)
+          await waitFor(() => saidWords(a).length === 1, 'the words to be said')
+          await settle()
+          expect(askedFor(now, a)).toBe(1)
+          expect(heldWords(a)).toHaveLength(1)
+          expect(saidWords(a)).toEqual(heldWords(a))
+          expect(saidWords(a)[0]).toContain(words)
+          expect(keptAsMade(a)).toBe(true)
+          expect(kept(a)?.told).toHaveLength(1)
+          await now.host.closeAll()
 
-        starts(at + 3_600_000)
-        await settle()
-        expect(askedFor(now, a)).toBe(0)
-        expect(saidWords(a)).toHaveLength(1)
-        expect(heldWords(a)).toHaveLength(1)
-      })
+          starts(at + 3_600_000, {}, deferred)
+          await settle()
+          expect(askedFor(now, a)).toBe(0)
+          expect(saidWords(a)).toHaveLength(1)
+          expect(heldWords(a)).toHaveLength(1)
+        },
+      )
 
       it('🔴 after the start is kept as made and before its provider is up: no second start is ever made, and the words stay held until anyone starts it, said once', async () => {
         const a = await aConversationWith(schedule)

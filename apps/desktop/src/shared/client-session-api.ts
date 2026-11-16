@@ -92,6 +92,10 @@ export type ClientSessionApi = Pick<
   Partial<
     Pick<
       RuntimeBridge,
-      'resolveMessagePaths' | 'revealMessagePath' | 'openMessagePath' | 'resolveLink'
+      | 'resolveMessagePaths'
+      | 'revealMessagePath'
+      | 'openMessagePath'
+      | 'resolveLink'
+      | 'firstListPainted'
     >
   >

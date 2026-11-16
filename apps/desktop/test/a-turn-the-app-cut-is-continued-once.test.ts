@@ -1,4 +1,9 @@
-import { neutralHostDeps } from './lib/host-fixture'
+import {
+  fixtureHostPaths,
+  fixtureDatabase,
+  fixtureProviderConfig,
+  RecordingSink,
+} from './lib/host-fixture'
 import {
   registerPersistedCutIdentityCases,
   registerLegacyCutIdentityCase,
@@ -8,37 +13,31 @@ import {
   type Stops,
 } from './helpers/cut-account-cases'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, sep } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join, sep } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeProviderSessions, FakeRuntime, FakeSessionHandle } from '@brobot2/runtime'
 import { CodexSessionHandle } from '@brobot2/runtime/codex'
 import type { CodexTransport } from '@brobot2/runtime/codex'
 import type { ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import type { AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { readProfileExecution, writeProfileExecution } from '../src/main/profile-execution-file'
 import { RuntimeHost, THE_APP_ITSELF, aTurnTheAppCutText } from './helpers/giver-notice-host'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import {
   readKeptAccounts,
   writeKeptAccounts,
   providerAccountsFile,
 } from '../src/main/providers/claude/account-record'
 import { usageKeptIn } from '../src/main/provider-usage-file'
-import { resourcesRoot } from '../src/main/resources/resources'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import {
   turnsTheAppCutIn,
   type CutState,
   type NotContinuedBecause,
 } from '../src/main/turns-the-app-cut-file'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * **A turn this app's quit, or a crash, cut is continued once, on the account it ran on, at the
@@ -49,9 +48,6 @@ import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
  * `scheduled-jobs-across-a-crash.test.ts` makes them: a crashed life is never closed, and the next
  * one reads the same database. Accounts are fictional.
  */
-
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 
 const local = (hour: number, minute: number, second = 0): number =>
   new Date(2026, 9, 10, hour, minute, second).getTime()
@@ -79,17 +75,6 @@ async function settle(): Promise<void> {
     for (let turn = 0; turn < 5; turn++) await new Promise((resolve) => setImmediate(resolve))
     await new Promise((resolve) => setTimeout(resolve, GAP + 30))
   }
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
 }
 
 function held(why: string): Held {
@@ -222,11 +207,10 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
     }
   }
 
-  const starts = (moment: number, stops: Stops = {}): Life => {
+  const starts = (moment: number, stops: Stops = {}, deferred = false, paint = deferred): Life => {
     clock = moment
     const folder = userData
-    const db = openDatabase(join(folder, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    const db = fixtureDatabase(folder)
     const store = createSessionStore(db, tick)
     const asked: string[] = []
     const startedAt: number[] = []
@@ -238,27 +222,14 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       startedAt,
       host: new RuntimeHost({
         store,
-        ...neutralHostDeps(() => folder),
-        resourcesRoot: () => resourcesRoot(folder),
+        deferStartupUntilListPaint: deferred,
+        ...fixtureHostPaths(() => folder),
         createRuntime: (provider: Provider) =>
           new ProviderOfALife(provider, stops, asked, startedAt),
-        prepareProviderHome: (provider: Provider, profileId?: string) => {
-          const home = join(folder, 'provider-homes', profileId ?? 'default', provider)
-          mkdirSync(home, { recursive: true })
-          return home
-        },
-        providerHomePath: (provider: Provider) => join(folder, 'provider-homes', provider),
-        resolveCwd: (sessionId, requested) => resolveSessionCwd(folder, sessionId, requested),
         newSessionId: () => `sess_${++counter}`,
         now: tick,
         interruptWaitMs: 40,
-        readProviderConfig: (_provider, home) => ({
-          home,
-          homeEnv: 'CLAUDE_CONFIG_DIR',
-          model: 'm',
-          authNote: null,
-          files: [],
-        }),
+        readProviderConfig: fixtureProviderConfig,
         ...(stops.nobodyListens === true ? {} : { statesMoved: () => {} }),
         ...(stops.services === true
           ? {
@@ -296,6 +267,7 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       }),
     }
     lives.push(life)
+    if (paint) life.host.firstListPainted()
     now = life
     return life
   }
@@ -419,28 +391,50 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
     SOON,
   }
 
+  it('does not continue a cut overtaken after pre-use repair but before deferred activation', async () => {
+    const conversation = await aTurnRunsIn()
+    await now.host.closeAll()
+    starts(SOON, {}, true, false)
+    await now.host.look(conversation, window, false)
+    expect(stateOf(conversation)).toBe('pending')
+    now.store.append(
+      conversation,
+      now.store.nextOrdinal(conversation),
+      { type: 'user_turn', text: 'Newer work before the deferred activation' },
+      tick(),
+    )
+    now.host.firstListPainted()
+    await settle()
+    expect(askedFor(now, conversation)).toBe(0)
+    expect(continuations(conversation)).toEqual([])
+    expect(stateOf(conversation)).toEqual({ ended: 'overtaken' })
+  })
+
   describe('a quit that cut a running turn', () => {
     registerPersistedCutIdentityCases(accountCases)
 
-    it('the next launch continues it once, on the same account, saying when the app restarted', async () => {
-      const a = await aTurnRunsIn()
-      await now.host.closeAll()
-      expect(stateOf(a)).toBe('pending')
+    it.each([false, true])(
+      'the next launch continues it once, on the same account, saying when the app restarted (deferred %s)',
+      async (deferred) => {
+        const a = await aTurnRunsIn()
+        await now.host.closeAll()
+        expect(stateOf(a)).toBe('pending')
 
-      starts(SOON)
-      await waitFor(() => continuations(a).length === 1, 'the continuation')
-      await settle()
-      expect(askedFor(now, a)).toBe(1)
-      expect(continuations(a)).toEqual([aTurnTheAppCutText('quit', CUT, clock, 'claude')])
-      expect(stateOf(a)).toBe('sent')
+        starts(SOON, {}, deferred)
+        await waitFor(() => continuations(a).length === 1, 'the continuation')
+        await settle()
+        expect(askedFor(now, a)).toBe(1)
+        expect(continuations(a)).toEqual([aTurnTheAppCutText('quit', CUT, clock, 'claude')])
+        expect(stateOf(a)).toBe('sent')
 
-      // ⛔ …and once: a further launch does nothing more.
-      await now.host.closeAll()
-      starts(SOON + 60_000)
-      await settle()
-      expect(askedFor(now, a)).toBe(0)
-      expect(continuations(a)).toHaveLength(1)
-    })
+        // ⛔ …and once: a further launch does nothing more.
+        await now.host.closeAll()
+        starts(SOON + 60_000, {}, deferred)
+        await settle()
+        expect(askedFor(now, a)).toBe(0)
+        expect(continuations(a)).toHaveLength(1)
+      },
+    )
 
     it('an idle conversation at the quit has no cut', async () => {
       starts(CUT - 60_000)
@@ -466,18 +460,21 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       expect(stateOf(a)).toEqual({ ended: 'too-old' })
     })
 
-    it('⛔ on another account, it is not continued, and the life started for it is stopped again', async () => {
-      const a = await aTurnRunsIn()
-      await now.host.closeAll()
-      starts(SOON, { account: 'bea' })
-      await waitFor(() => typeof stateOf(a) === 'object', 'the cut to end')
-      await settle()
-      expect(askedFor(now, a)).toBe(1)
-      expect(continuations(a)).toEqual([])
-      expect(heldCount(a)).toBe(0)
-      expect(stateOf(a)).toEqual({ ended: 'not-same-account' })
-      expect(running(now, a)).toBe(false)
-    })
+    it.each([false, true])(
+      '⛔ on another account, it is not continued, and the life started for it is stopped again (deferred %s)',
+      async (deferred) => {
+        const a = await aTurnRunsIn()
+        await now.host.closeAll()
+        starts(SOON, { account: 'bea' }, deferred)
+        await waitFor(() => typeof stateOf(a) === 'object', 'the cut to end')
+        await settle()
+        expect(askedFor(now, a)).toBe(1)
+        expect(continuations(a)).toEqual([])
+        expect(heldCount(a)).toBe(0)
+        expect(stateOf(a)).toEqual({ ended: 'not-same-account' })
+        expect(running(now, a)).toBe(false)
+      },
+    )
 
     registerLegacyCutIdentityCase(accountCases)
 

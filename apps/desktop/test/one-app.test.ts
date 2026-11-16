@@ -261,6 +261,30 @@ describe('one app per data folder', () => {
       expect(store.ledgerStatus('sess_abandoned').derived).not.toBe('rebuilding')
     })
 
+    it('keeps foreign turns and rebuilds untouched through the deferred paint repair', async () => {
+      crashedMidTurn('sess_live')
+      crashedMidTurn('sess_stranded')
+      adopted('sess_building')
+      adopted('sess_abandoned')
+      store.beginGeneration('sess_building')
+      store.beginGeneration('sess_abandoned')
+      anotherHostRunning('sess_live', 'sess_building')
+      const host = buildHost({ deferStartupUntilListPaint: true })
+      try {
+        expect(statusOf('sess_stranded')).toBe('working')
+        host.firstListPainted()
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        expect(statusOf('sess_live')).toBe('working')
+        expect(store.turns('sess_live')[0]?.endReason).toBeNull()
+        expect(store.ledgerStatus('sess_building').derived).toBe('rebuilding')
+        expect(statusOf('sess_stranded')).toBe('idle')
+        expect(store.turns('sess_stranded')[0]?.endReason).toBe('unknown')
+        expect(store.ledgerStatus('sess_abandoned').derived).not.toBe('rebuilding')
+      } finally {
+        await host.closeAll()
+      }
+    })
+
     it('a live host says a session in a slot is work in flight', async () => {
       const host = buildHost()
       const created = await host.createSession({ provider: 'claude', cwd: dir }, SINK)

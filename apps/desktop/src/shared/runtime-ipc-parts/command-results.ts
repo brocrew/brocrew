@@ -268,6 +268,7 @@ export interface RuntimeCommandResults {
   currentEpoch: PublicationEpoch
   personsQueue: PersonsQueueAnswer
   listConversations: ListingAnswer
+  firstListPainted: void
   stoppedWorkForAPerson: LedgerWalk<StoppedWorkForAPerson>
   workIncidentsForAPerson: LedgerWalk<WorkIncident>
   /**

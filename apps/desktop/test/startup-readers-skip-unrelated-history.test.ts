@@ -154,6 +154,54 @@ describe('startup readers skip unrelated history', () => {
     ])
   })
 
+  it('reads only one owner using the canonical level ordering, metadata and empty-state rules', () => {
+    const live = conversation('keyed')
+    const other = conversation('other')
+    row(live, 'scheduled_work', { jobs: [{ id: 'kept' }] }, 10, 0)
+    row(
+      live,
+      'scheduled_work',
+      { jobs: [{ id: 'kept', prompt: 'current', notStarted: 'time-not-known' }, null] },
+      20,
+      2,
+    )
+    row(live, 'compaction', {}, 30, 3)
+    row(live, 'scheduled_work', { source: 'receipt without a level' }, 40, 4)
+    row(other, 'scheduled_work', 'not JSON', 50)
+    const lists = vi.spyOn(store, 'newestScheduleLevels')
+    expect(store.newestScheduleLevel(live)).toEqual({
+      conversation: live,
+      level: { jobs: [{ id: 'kept', prompt: 'current', listedSince: 10 }], dropped: 1 },
+      compactedAt: 30,
+      notStartedSaid: { kept: 'time-not-known' },
+    })
+    expect(console.warn).not.toHaveBeenCalled()
+    row(live, 'scheduled_work', { jobs: [] }, 60, 5)
+    expect(store.newestScheduleLevel(live)).toBeNull()
+    row(live, 'scheduled_work', { jobs: [], dropped: 2 }, 70, 6)
+    expect(store.newestScheduleLevel(live)).toEqual({
+      conversation: live,
+      level: { jobs: [], dropped: 2 },
+      compactedAt: 30,
+    })
+    row(live, 'scheduled_work', 'not JSON', 80, 7)
+    expect(store.newestScheduleLevel(live)).toBeNull()
+    expect(console.warn).toHaveBeenCalledOnce()
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining('unreadable schedule in keyed'),
+    )
+    expect(store.newestScheduleLevel('missing')).toBeNull()
+    expect(lists).not.toHaveBeenCalled()
+    const keyed = prepared.filter(
+      (sql) => sql.includes('AS first_listed') && !sql.includes('json_each(?)'),
+    )
+    expect(keyed).toHaveLength(1)
+    const plan = db.prepare(`EXPLAIN QUERY PLAN ${keyed[0]}`).all(live) as { detail: string }[]
+    expect(
+      plan.some((one) => one.detail.includes('events_kind_owner_idx (type=? AND session_id=?)')),
+    ).toBe(true)
+  })
+
   it('keeps replacement insertion order across generations and excludes torn or deleted targets', () => {
     const old = conversation('old')
     const first = conversation('first')
@@ -242,7 +290,7 @@ describe('startup readers skip unrelated history', () => {
         (sql.includes("type IN ('background_work', 'launched')") && sql.includes('LIMIT 200')) ||
         sql.startsWith('WITH walk AS MATERIALIZED'),
     )
-    expect(wanted).toHaveLength(4)
+    expect(wanted).toHaveLength(5)
     for (const sql of wanted) {
       const parameters = (sql.match(/\?/g) ?? []).map(() => live)
       const plan = db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...parameters) as {

@@ -1,4 +1,4 @@
-import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import type { AgentState as OneState } from '../../../shared/agent-state-contracts'
 import type { ClientSessionApi } from '../../../shared/client-session-api'
 import type {
@@ -176,6 +176,8 @@ export function useRecoveredConversationList(
     void refreshListed()
   })
 
+  let firstPaintReported = false
+
   async function refreshListed(): Promise<void> {
     const cycle = listRecovery.begin()
     if (cycle === undefined) return
@@ -251,6 +253,15 @@ export function useRecoveredConversationList(
       looked.value = true
       listRecovery.succeeded()
       listError.value = null
+      if (!firstPaintReported && sessionsApi?.firstListPainted !== undefined) {
+        await nextTick()
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+        })
+        if (!listRecovery.current(cycle)) return
+        await sessionsApi.firstListPainted()
+        firstPaintReported = true
+      }
     } catch (cause) {
       if (!listRecovery.current(cycle)) return
       if (listRecovery.failed()) listError.value = readableError(cause)

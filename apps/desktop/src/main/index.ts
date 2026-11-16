@@ -764,6 +764,7 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     savedMethods: methodKnowledge,
     memoryKnowledge,
     afterFirstWindowLoad: firstWindowLoad,
+    deferStartupUntilListPaint: true,
     transcriptsCleared: (from, to) => transcriptRetention?.recent(from, to) ?? Promise.resolve([]),
     workSearchReader: startWorkSearch(database.name),
     pastWorkSearchReader: startPastWorkSearch(),

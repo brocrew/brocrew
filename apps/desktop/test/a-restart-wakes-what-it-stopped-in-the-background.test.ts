@@ -1,3 +1,4 @@
+import { setImmediate as afterIO } from 'node:timers/promises'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -12,15 +13,8 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import { resourcesRoot } from '../src/main/resources/resources'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { type RuntimeStatesMessage } from '../src/shared/runtime-ipc'
-import {
-  RecordingSink,
-  syntheticProviderHome,
-  neutralHostDeps,
-  fixtureProviderConfig,
-} from './lib/host-fixture'
+import { RecordingSink, fixtureHostPaths, fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * # ⚑ A restart wakes the conversations whose background work it stopped
@@ -99,15 +93,12 @@ describe('a restart wakes what it stopped in the background', () => {
   let warnSpy: MockInstance<typeof console.warn>
   const tick = (): number => clock++
 
-  const buildHost = (listening = true): RuntimeHost => {
+  const buildHost = (listening = true, deferred = false): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      ...neutralHostDeps(() => userData),
-      resourcesRoot: () => resourcesRoot(userData),
+      deferStartupUntilListPaint: deferred,
+      ...fixtureHostPaths(() => userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, control, issued),
-      prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       interruptWaitMs: 40,
@@ -202,62 +193,76 @@ describe('a restart wakes what it stopped in the background', () => {
       local(9, 28, 11, 30),
     )
   }
-  const restartsAt = (moment: number, listening = true): RuntimeHost => {
+  const restartsAt = (moment: number, listening = true, deferred = false): RuntimeHost => {
     clock = moment
-    host = buildHost(listening)
+    host = buildHost(listening, deferred)
+    if (deferred) host.firstListPainted()
     return host
   }
 
-  it('🔴 a conversation whose background work the quit stopped is held a notice at once and started five seconds on, and the notice goes in as its turn', async () => {
-    const [a, b] = await aFirstLife('agent-a', 'agent-b')
-    if (a === undefined || b === undefined) throw new Error('two conversations were opened')
-    runsInTheBackground(a, 'Run the full live test')
-    const before = { a: handlesOf(a).length, b: handlesOf(b).length }
+  it.each([false, true])(
+    '🔴 a conversation whose background work the quit stopped is held a notice at once and started five seconds on, and the notice goes in as its turn (deferred %s)',
+    async (deferred) => {
+      const [a, b] = await aFirstLife('agent-a', 'agent-b')
+      if (a === undefined || b === undefined) throw new Error('two conversations were opened')
+      runsInTheBackground(a, 'Run the full live test')
+      const before = { a: handlesOf(a).length, b: handlesOf(b).length }
 
-    restartsAt(local(9, 28, 12, 0))
-    // Held, at once, in its own words, as the app's own notice; the conversation is not started yet.
-    const held = noticesIn(a)
-    expect(held).toHaveLength(1)
-    expect(held[0]?.text).toContain('stopped your background work: “Run the full live test”')
-    expect(held[0]?.text).toContain('Start it again if it’s still needed.')
-    expect(handlesOf(a)).toHaveLength(before.a)
-    await waitFor(() => spacings().length === 1, 'the first spacing to be armed')
+      restartsAt(local(9, 28, 12, 0), true, deferred)
+      if (deferred) {
+        expect(noticesIn(a)).toHaveLength(0)
+        await afterIO()
+      }
+      // Held, at once, in its own words, as the app's own notice; the conversation is not started yet.
+      const held = noticesIn(a)
+      expect(held).toHaveLength(1)
+      expect(held[0]?.text).toContain('stopped your background work: “Run the full live test”')
+      expect(held[0]?.text).toContain('Start it again if it’s still needed.')
+      expect(handlesOf(a)).toHaveLength(before.a)
+      await waitFor(() => spacings().length === 1, 'the first spacing to be armed')
 
-    // The spacing runs: it is started, and what was held goes in first.
-    spacings()[0]?.()
-    await waitFor(() => handlesOf(a).length === before.a + 1, 'the conversation to be started')
-    await waitFor(
-      () =>
-        ledger(a).some(
-          (event) =>
-            event.type === 'user_turn' && event.text.includes('stopped your background work'),
-        ),
-      'the notice to go in as its turn',
-    )
-    // The conversation with nothing running was neither told nor started.
-    expect(noticesIn(b)).toEqual([])
-    expect(handlesOf(b)).toHaveLength(before.b)
-  })
+      // The spacing runs: it is started, and what was held goes in first.
+      spacings()[0]?.()
+      await waitFor(() => handlesOf(a).length === before.a + 1, 'the conversation to be started')
+      await waitFor(
+        () =>
+          ledger(a).some(
+            (event) =>
+              event.type === 'user_turn' && event.text.includes('stopped your background work'),
+          ),
+        'the notice to go in as its turn',
+      )
+      // The conversation with nothing running was neither told nor started.
+      expect(noticesIn(b)).toEqual([])
+      expect(handlesOf(b)).toHaveLength(before.b)
+    },
+  )
 
-  it('⚑ …and the control: a host nobody listens to starts nothing and holds no notice', async () => {
-    const [a] = await aFirstLife('agent-a')
-    if (a === undefined) throw new Error('a conversation was opened')
-    runsInTheBackground(a, 'Run the full live test')
-    restartsAt(local(9, 28, 12, 0), false)
-    await settle()
-    expect(noticesIn(a)).toEqual([])
-    expect(spacings()).toHaveLength(0)
-  })
+  it.each([false, true])(
+    '⚑ …and the control: a host nobody listens to starts nothing and holds no notice (deferred %s)',
+    async (deferred) => {
+      const [a] = await aFirstLife('agent-a')
+      if (a === undefined) throw new Error('a conversation was opened')
+      runsInTheBackground(a, 'Run the full live test')
+      restartsAt(local(9, 28, 12, 0), false, deferred)
+      await settle()
+      expect(noticesIn(a)).toEqual([])
+      expect(spacings()).toHaveLength(0)
+    },
+  )
 
-  it('⛔ a quit older than a day wakes nobody', async () => {
-    const [a] = await aFirstLife('agent-a')
-    if (a === undefined) throw new Error('a conversation was opened')
-    runsInTheBackground(a, 'Run the full live test')
-    restartsAt(local(9, 30, 12, 0))
-    await settle()
-    expect(noticesIn(a)).toEqual([])
-    expect(spacings()).toHaveLength(0)
-  })
+  it.each([false, true])(
+    '⛔ a quit older than a day wakes nobody (deferred %s)',
+    async (deferred) => {
+      const [a] = await aFirstLife('agent-a')
+      if (a === undefined) throw new Error('a conversation was opened')
+      runsInTheBackground(a, 'Run the full live test')
+      restartsAt(local(9, 30, 12, 0), true, deferred)
+      await settle()
+      expect(noticesIn(a)).toEqual([])
+      expect(spacings()).toHaveLength(0)
+    },
+  )
 
   it('🔴 the starts are one at a time: the second waits for the first to end, and then for its own five seconds', async () => {
     const [a, b] = await aFirstLife('agent-a', 'agent-b')

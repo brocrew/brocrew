@@ -4343,6 +4343,14 @@ export class RuntimeHost implements LiveHost {
    */
   private readonly upSince: number
 
+  private readonly startupRepairs = new Set<string>()
+  private startupSteps: Iterator<() => void> | undefined
+  private startupStep: (() => void) | undefined
+  private startupAdvance: Promise<void> | undefined
+  private finishStartup: (() => void) | undefined
+  private repairingStartup = false
+  private startupHasPainted = false
+
   /**
    * ⚑ **D-017 · R1 — the one start {@link ensureRunning} is making for each conversation**, and the
    * conversation it comes up as — ⚑ **R10**: the one that took its place, when it could never be
@@ -5256,150 +5264,191 @@ export class RuntimeHost implements LiveHost {
           `process and are left exactly as they are`,
       )
     }
-    // ⛔ **612 · there is no escalation clock at all now** (HO-088 §3.1), and the note that stood
-    // here explained why there was no LAUNCH sweep for it: `settleStrandedRequests`, a few lines
-    // below, closes EVERY open routed request at every launch, so by the time a launch could look,
-    // nothing is open for a parent to have failed to answer.
-    //
-    // ⚑ **That argument is kept because it is still the reason a launch writes nothing about
-    // questions** — a question cannot outlive a restart as something anybody can still answer.
-    // ⚠️ **What went is the LIVE half**, `watchForEscalation`, armed per question.
-    // ⚠️ **The durable half of "nothing is rebuilding right now"** (065; the review's own HIGH).
-    // A `building` marker means a projection is being built AT THIS MOMENT — and at this moment
-    // nothing is, because the host has only just been constructed. So any marker on disk belongs to
-    // a run that ended without saying so, and leaving it there is a state nothing can get out of:
-    // the session reads `rebuilding` forever, and the library withholds the Rebuild button from a
-    // session that is already rebuilding. Cleared here for the same reason `resumeSession` closes an
-    // orphan turn as `unknown` — because we did not watch it end, and pretending otherwise is worse.
-    const orphans = this.deps.store.clearOrphanBuilds(elsewhere)
-    if (orphans > 0) {
-      console.info(
-        `derived generations: cleared ${orphans} rebuild marker(s) left by a previous run`,
+    // Read crash evidence before any repair closes its turn.
+    const leftRunning = this.whatACrashLeftRunning(elsewhere)
+    let orphans = 0
+    let stranded = 0
+    const stillOpen = new Set([...elsewhere, ...this.deps.store.whatTheQuitClosed()])
+    const listening = this.deps.statesMoved !== undefined
+    let quitBackground: readonly string[] | null = null
+    if (listening) {
+      try {
+        quitBackground = this.deps.store.whatTheNewestQuitClosed(
+          launchedAt - RESTART_STOPPED_WITHIN_MS,
+        )
+      } catch (error) {
+        console.warn(
+          `runtime host could not read what the restart stopped in the background: ${errorMessage(error)}`,
+        )
+      }
+    }
+    const messagesSkipped = rowsUnreadOnce()
+    const askedSkipped = rowsUnreadOnce()
+    const undrivenSkipped = rowsUnreadOnce()
+    let waiting = 0
+    let asked = 0
+    let undriven = 0
+    const levels: Array<ScheduleLevelsAtTheLaunch[number]> = []
+    const diedInTheBackground = new Set<string>()
+    const stoppedBackground: Array<
+      ReturnType<SessionStore['backgroundTheRestartStopped']>[number]
+    > = []
+    const continuing = new Set<string>()
+    const runningNow = (): Set<string> => new Set([...elsewhere, ...workRunningElsewhere(this)])
+    const openNow = (): Set<string> => new Set([...stillOpen, ...runningNow()])
+    const repairTime = (): number => (deps.deferStartupUntilListPaint ? launchedAt : this.now())
+    const woken = new Set<string>()
+    const readSchedulesAndCuts = (): void => {
+      const scheduled = listening ? this.theScheduleLevelsAtTheLaunch() : null
+      if (scheduled !== null) levels.push(...scheduled)
+      for (const one of this.whoAWakeUpWillStartForAJob(runningNow(), scheduled)) {
+        woken.add(one)
+        this.notStalledAtTheLaunch.add(one)
+      }
+      if (listening) {
+        for (const one of this.theCutsToContinue(leftRunning, launchedAt)) continuing.add(one)
+      }
+    }
+    const repairWork = (owners?: ReadonlySet<string>): void => {
+      undriven += this.deps.store.settleRestartedWork(
+        repairTime(),
+        runningNow(),
+        undrivenSkipped,
+        woken,
+        diedInTheBackground,
+        continuing,
+        owners,
       )
     }
-    // ⚠️ **The same repair, on the other column a dead process can strand** (074, from 069 §2.5).
-    // `status` is reconciled on resume and in the finalizer, and a crash reaches neither — so a
-    // session that was `working` when the power went out keeps saying so, and `resumable()` puts
-    // that word straight on the reopen list. It never recovers on its own: nothing revisits the row
-    // until someone resumes that one conversation. Here, at construction, nothing is running, so
-    // every such row belongs to a run that ended without saying so. Same argument as above, same
-    // honest reason code — `unknown`, because we did not watch it end.
-    // 🔴 **What a crash left running, read before the repair below closes it**: the repair clears a
-    // turn's block and closes it, so whether that turn waited on a person is only true now.
-    const leftRunning = this.whatACrashLeftRunning(elsewhere)
-    const stranded = this.deps.store.settleOrphanRuns(this.now(), elsewhere)
-    if (stranded > 0) {
-      console.info(`sessions: settled ${stranded} left mid-run by a previous run`)
+    const captureBackground = (owners?: ReadonlySet<string>): void => {
+      if (listening && quitBackground !== null) {
+        try {
+          stoppedBackground.push(
+            ...this.deps.store.backgroundTheRestartStopped(
+              [...diedInTheBackground],
+              launchedAt,
+              launchedAt - RESTART_STOPPED_WITHIN_MS,
+              owners,
+              quitBackground,
+            ),
+          )
+        } catch (error) {
+          console.warn(
+            `runtime host could not read what the restart stopped in the background: ${errorMessage(error)}`,
+          )
+        }
+      }
     }
-    // 🔴 **The same repair again, on the one thing `354` measured and did not fix** (379 §1).
-    //
-    // ⛔ **`UnqueuedMessageEvent` promises an ending *"always, exactly once, for every
-    // `message_queued`"* and a crash breaks that promise silently.** A stop reaches `runFinalize` →
-    // {@link handOnWhatItHeld}, which hands them to the next start; a crash reaches neither, and `354`
-    // measured that the
-    // NEXT launch wrote no ending either — *"a second `RuntimeHost` over the same store leaves the
-    // ledger byte-identical"*. So a message that was waiting when the power went out waits forever,
-    // and the task derived from it reads *"still waiting"* for the life of the row.
-    //
-    // ⚠️ **It has to be a WRITE and it has to be here.** The ledger of an app that is live and
-    // holding a message and the ledger of an app that died holding one are the same bytes — so no
-    // function over the ledger can tell them apart, and `derivePieces` deliberately does not try.
-    // This launch is the only party that knows the difference, for the same reason the two repairs
-    // above are only correct at construction: nothing is running yet.
-    // 🔴 **D-017 · R8 — one bad row never stops the app**: each sweep skips a ledger that throws,
-    // and its line says how many it skipped.
-    const messagesSkipped = rowsUnreadOnce()
-    // ⚑ **D-017 · R3 — a conversation a quit closed keeps what it held**: those messages wait for
-    // its next start ({@link putBackWhatWaitedForThisStart}), so only a crash's are settled here.
-    // ⚑ **D-030 · and so does every message no crash cut** — words held while nothing ran in their
-    // conversation, and what a life that ended handed on: the store asks each message
-    // (`SessionStore.settleStrandedMessages`).
-    const stillOpen = new Set([...elsewhere, ...this.deps.store.whatTheQuitClosed()])
-    const waiting = this.deps.store.settleStrandedMessages(this.now(), stillOpen, messagesSkipped)
-    sayTheSweep(
-      waiting,
-      messagesSkipped,
-      `messages: settled ${waiting} left waiting to be sent by a previous run`,
-    )
-    // 🔴 **The same repair a fourth time, on the one thing `394` measured and did not fix** (396 §1).
-    //
-    // ⛔ **A routed request reads `open` while the provider that raised it is gone.** `394`'s own
-    // note says why it could not close it: *"a provider's pending request lives in the provider's
-    // process; an app restart takes it with it, and nothing writes a row saying so"* — so the ledger
-    // of an app that is live and holding a question and the ledger of an app that died holding one
-    // are the same bytes, and `deriveRoutedRequests` deliberately does not guess.
-    //
-    // ⚠️ **Left alone it is an unenumerated state counting as success**, and with `list_questions`
-    // published it is worse than untidy: the parent is OFFERED a question nobody is waiting on, and
-    // `admitAnswer` admits it, and the answer goes to a process that does not exist.
-    //
-    // ⛔ **It has to be a WRITE and it has to be here**, for the reason its three neighbours give:
-    // this launch is the only party that can tell the two ledgers apart, because nothing is running
-    // yet. ⚑ **And never a timer** — *a timeout decides that silence means failure after N seconds,
-    // which is a guess dressed as a fact* (396 §4).
-    // 🔴 **D-009 · F012 — decision 4: a conversation a quit left OPEN keeps its questions open**, as
-    // it keeps its work. ⚑ So it is not a stranded asker. ⚠️ Since D-017 · R4 a question this app
-    // asked outlives the stop, so a quit abandons none of them and nothing here routes one again
-    // (D-016 · ruling 14 took the sweep that did, for ledgers written before then).
-    const askedSkipped = rowsUnreadOnce()
-    const asked = this.deps.store.settleStrandedRequests(this.now(), stillOpen, askedSkipped)
-    sayTheSweep(
-      asked,
-      askedSkipped,
-      `questions: settled ${asked} left waiting for an answer by a previous run`,
-    )
-    // 🔴 **The LAST repair, and the one HO-018 §2.3 asked for** (400, criterion 14). ⛔ **Its
-    // subject is the WORK and not the turn, the message or the question** — those have a repair
-    // each above, and a task whose child was simply mid-turn when the app died is the one
-    // shape none of them writes anything about: `settleOrphanRuns` closes the turn row and appends
-    // no event at all, so the fold went on reading `working` for the rest of the row's life.
-    //
-    // ⛔ **LAST, and the order is a decision.** It writes only for a conversation that still holds an
-    // open task in `waiting` or `working`, and the two repairs above it change exactly that: a
-    // stranded message lands `message_unqueued: 'abandoned'`, which already stalls the task it
-    // named. ⚑ So running it here is what keeps *"the app restarted during this"* one row rather
-    // than two spellings of one restart, and `never-close-what-you-did-not-see-finish.test.ts` §5
-    // asserts the order rather than trusting this note.
-    //
-    // ⚠️ **A repair like its neighbours, not a deadline**: it rests on *nothing is running yet*
-    // and is never called again while the app is up. There is nothing to look at later — the app
-    // restarts once per launch, and this is the launch.
-    const undrivenSkipped = rowsUnreadOnce()
-    // 🔴 **Work its owner's scheduled job will drive is not stalled by the restart**: the wake-up
-    // armed below starts the owner for that job, so the work reads `working`, as before the restart.
-    // ⚑ Asked before the sweep, by the same rule the wake-up is armed by ({@link planItsWake}).
-    // ⚑ **Whether anybody listens** — the one read the launch makes, for its wake-ups below too.
-    const listening = this.deps.statesMoved !== undefined
-    // Each conversation's newest schedule, read once for the launch — it scans every ledger — and
-    // used twice: for who a wake-up will start, then to arm the wake-ups. Nothing in between writes
-    // a schedule or a compaction.
-    const levels = listening ? this.theScheduleLevelsAtTheLaunch() : null
-    const wokenForAJob = this.whoAWakeUpWillStartForAJob(elsewhere, levels)
-    for (const one of wokenForAJob) this.notStalledAtTheLaunch.add(one)
-    // ⚑ …and the owners whose work it does stall while that work waited on background work a crash
-    // killed — a crash leaves no ending in the ledger, so the sweep is where they are found.
-    const diedInTheBackground = new Set<string>()
-    // 🔴 **…and none of the work a continuation of its cut turn will drive** ({@link theCutsToContinue}).
-    // ⛔ Nobody listening, nothing continued, so nothing is spared.
-    const continuing = listening
-      ? this.theCutsToContinue(leftRunning, launchedAt)
-      : new Set<string>()
-    const undriven = this.deps.store.settleRestartedWork(
-      this.now(),
-      elsewhere,
-      undrivenSkipped,
-      wokenForAJob,
-      diedInTheBackground,
-      continuing,
-    )
-    sayTheSweep(
-      undriven,
-      undrivenSkipped,
-      `pieces: ${undriven} conversation(s) held work a previous run did not finish`,
-    )
-    // ⚑ **D-017 · R1 — this run begins once the launch's own repairs are written**: a stall one of
-    // them wrote (`message_never_sent` for a message a crash stranded, the restart's own) is from
-    // before it, so it starts nobody ({@link startTheGiverFor}). ⛔ Taken at the top, it let them in.
+    const repair = (): void => {
+      orphans += this.deps.store.clearOrphanBuilds(runningNow())
+      stranded += this.deps.store.settleOrphanRuns(repairTime(), runningNow())
+      waiting += this.deps.store.settleStrandedMessages(repairTime(), openNow(), messagesSkipped)
+      asked += this.deps.store.settleStrandedRequests(repairTime(), openNow(), askedSkipped)
+      readSchedulesAndCuts()
+      repairWork()
+      captureBackground()
+    }
+    const sayRepairs = (): void => {
+      if (orphans > 0)
+        console.info(
+          `derived generations: cleared ${orphans} rebuild marker(s) left by a previous run`,
+        )
+      if (stranded > 0) console.info(`sessions: settled ${stranded} left mid-run by a previous run`)
+      sayTheSweep(
+        waiting,
+        messagesSkipped,
+        `messages: settled ${waiting} left waiting to be sent by a previous run`,
+      )
+      sayTheSweep(
+        asked,
+        askedSkipped,
+        `questions: settled ${asked} left waiting for an answer by a previous run`,
+      )
+      sayTheSweep(
+        undriven,
+        undrivenSkipped,
+        `pieces: ${undriven} conversation(s) held work a previous run did not finish`,
+      )
+    }
+    if (deps.deferStartupUntilListPaint) {
+      const owners = new Set([
+        ...this.deps.store.startupRepairOwners(),
+        ...Object.keys(this.cutsKept.cuts),
+      ])
+      for (const owner of owners) this.startupRepairs.add(owner)
+      this.startupSteps = (function* (host: RuntimeHost): Generator<() => void> {
+        let selected: readonly string[] = []
+        for (const phase of ['builds', 'runs'] as const) {
+          yield () => {
+            selected = host.deps.store.startupRepairOwners(phase).filter((one) => owners.has(one))
+          }
+          for (const owner of selected) {
+            yield () => {
+              const one = new Set([owner])
+              if (phase === 'builds')
+                orphans += host.deps.store.clearOrphanBuilds(runningNow(), one)
+              else stranded += host.deps.store.settleOrphanRuns(repairTime(), runningNow(), one)
+            }
+          }
+        }
+        const open = openNow()
+        const messages = host.deps.store.settleStrandedMessagesInSteps(
+          repairTime(),
+          open,
+          messagesSkipped,
+          owners,
+        )
+        let message = messages.next()
+        while (!message.done) {
+          const apply = message.value
+          yield () => {
+            open.clear()
+            for (const owner of openNow()) open.add(owner)
+            apply()
+          }
+          message = messages.next()
+        }
+        waiting += message.value
+        yield () => {
+          selected = host.deps.store
+            .startupRepairOwners('requests')
+            .filter((one) => owners.has(one))
+        }
+        for (const owner of selected) {
+          yield () => {
+            asked += host.deps.store.settleStrandedRequests(
+              repairTime(),
+              openNow(),
+              askedSkipped,
+              new Set([owner]),
+            )
+          }
+        }
+        yield readSchedulesAndCuts
+        yield () => {
+          selected = host.deps.store.startupRepairOwners('work').filter((one) => owners.has(one))
+        }
+        for (const owner of new Set([...selected, ...owners])) {
+          yield () => {
+            const one = new Set([owner])
+            repairWork(one)
+            captureBackground(one)
+            host.startupRepairs.delete(owner)
+          }
+        }
+        yield () => {
+          const order = new Map(
+            [...new Set([...(quitBackground ?? []), ...diedInTheBackground])].map(
+              (owner, index) => [owner, index],
+            ),
+          )
+          stoppedBackground.sort((a, b) => order.get(a.conversation)! - order.get(b.conversation)!)
+        }
+      })(this)
+    } else {
+      repair()
+      sayRepairs()
+    }
     this.upSince = this.now()
     // ⚑ **D-017 · R10 — which conversations were replaced**, so a message to one goes on to the one
     // that took its place. ⚠️ One bad row never stops the app (R8): an unreadable one is skipped.
@@ -5420,31 +5469,32 @@ export class RuntimeHost implements LiveHost {
       } catch (error) {
         console.warn(`runtime host could not read who its agents are: ${errorMessage(error)}`)
       }
-      // 🔴 **D-029 · R1 — every stopped conversation holding a job gets its wake-up**, off its
-      // newest level in the ledger — after the replacements, which decide who can be started.
-      // ⛔ Nobody listening, nothing started ({@link armItsWakeUp}).
-      this.armTheWakeUpsTheLedgerHolds(elsewhere, levels)
-      // 🔴 **…and every conversation whose background work the restart stopped is started again and
-      // told what stopped** ({@link wakeWhatTheRestartStopped}).
-      this.wakeWhatTheRestartStopped([...diedInTheBackground], elsewhere, launchedAt)
-      // 🔴 **…and each turn that was cut — by this app's quit, a crash, or, in the run before, its
-      // program stopping or a usage limit — is continued, on the account it ran on**
-      // ({@link continueTheCutTurns}).
-      this.continueTheCutTurns(continuing, elsewhere)
     }
-    // ⚑ A service with work queued, and none being worked on, takes its next piece; one on a piece
-    // with words kept for its next start is started for them.
-    if (this.servicesAreOn()) {
-      try {
-        for (const one of this.deps.store.servicesBorn()) {
-          if (elsewhere.has(one.conversation)) continue
-          this.aServiceMayTakeItsNext(one.conversation)
-          this.startForWhatWaits(one.conversation)
-        }
-      } catch (error) {
-        console.warn(
-          `runtime host could not read which conversations serve: ${errorMessage(error)}`,
+    const activateAfterRepairs = (): void => {
+      const foreign = new Set([...elsewhere, ...workRunningElsewhere(this)])
+      const running = new Set([...foreign, ...this.slots.keys()])
+      if (listening) {
+        this.armTheWakeUpsTheLedgerHolds(running, levels)
+        this.wakeWhatTheRestartStopped(stoppedBackground, foreign)
+        this.continueTheCutTurns(
+          deps.deferStartupUntilListPaint
+            ? new Set([...continuing].filter((one) => this.aCutToContinue(one)))
+            : continuing,
+          foreign,
         )
+      }
+      if (this.servicesAreOn()) {
+        try {
+          for (const one of this.deps.store.servicesBorn()) {
+            if (running.has(one.conversation)) continue
+            this.aServiceMayTakeItsNext(one.conversation)
+            this.startForWhatWaits(one.conversation)
+          }
+        } catch (error) {
+          console.warn(
+            `runtime host could not read which conversations serve: ${errorMessage(error)}`,
+          )
+        }
       }
     }
     this.workReconciler = new WorkReconciler({
@@ -5462,14 +5512,105 @@ export class RuntimeHost implements LiveHost {
       id: () => randomUUID(),
       now: () => this.now(),
     })
-    void (deps.afterFirstWindowLoad ?? Promise.resolve()).then(() => {
-      if (this.launches.closed) return
-      this.reconciliationTimer = setInterval(() => this.reconcileWork(), WORK_RECONCILIATION_MS)
-      this.reconciliationTimer.unref?.()
-      setImmediate(() => this.reconcileWork())
-    })
-    // Heard from here on: the launch's repairs above are written before this host listens.
+    const reconcileAfterRepairs = (): void => {
+      void (deps.afterFirstWindowLoad ?? Promise.resolve()).then(() => {
+        if (this.launches.closed) return
+        this.reconciliationTimer = setInterval(() => this.reconcileWork(), WORK_RECONCILIATION_MS)
+        this.reconciliationTimer.unref?.()
+        setImmediate(() => this.reconcileWork())
+      })
+    }
+    if (deps.deferStartupUntilListPaint) {
+      this.finishStartup = () => {
+        sayRepairs()
+        activateAfterRepairs()
+        reconcileAfterRepairs()
+      }
+    } else {
+      activateAfterRepairs()
+      reconcileAfterRepairs()
+    }
     this.stopHearingCommits = this.deps.store.onCommitted((change) => this.heardACommit(change))
+  }
+
+  /** The renderer has committed the list and passed a paint opportunity. */
+  firstListPainted(): void {
+    if (this.startupHasPainted || this.launches.closed) return
+    this.startupHasPainted = true
+    void this.finishStartupAfterPaint()
+  }
+
+  private async finishStartupAfterPaint(): Promise<void> {
+    try {
+      while (this.startupSteps !== undefined && !this.launches.closed) {
+        await this.advanceStartup()
+      }
+      if (this.launches.closed) return
+      const finish = this.finishStartup
+      this.finishStartup = undefined
+      finish?.()
+    } catch (error) {
+      console.error(`startup repairs did not finish: ${errorMessage(error)}`)
+    }
+  }
+
+  /** One pending step is retained if it throws; no transaction crosses the yield. */
+  private advanceStartup(): Promise<void> {
+    if (this.startupAdvance !== undefined) return this.startupAdvance
+    const advance = new Promise<void>((resolve, reject) => {
+      setImmediate(() => {
+        try {
+          for (let count = 0; count < 25 && !this.launches.closed; count += 1) {
+            if (this.startupStep === undefined) {
+              let next: IteratorResult<() => void> | undefined
+              try {
+                next = this.startupSteps?.next()
+              } catch (error) {
+                this.startupStep = () => {
+                  throw error
+                }
+                throw error
+              }
+              if (next === undefined || next.done) {
+                this.startupSteps = undefined
+                break
+              }
+              this.startupStep = next.value
+            }
+            this.repairingStartup = true
+            try {
+              this.startupStep()
+              this.startupStep = undefined
+            } finally {
+              this.repairingStartup = false
+            }
+          }
+          resolve()
+        } catch (error) {
+          reject(error)
+        }
+      })
+    })
+    this.startupAdvance = advance
+    const clear = (): void => {
+      if (this.startupAdvance === advance) this.startupAdvance = undefined
+    }
+    void advance.then(clear, clear)
+    return advance
+  }
+
+  /** Foreground use advances the canonical prefix through this owner's repair. */
+  private async settleBeforeUse(owner: string): Promise<void> {
+    if (!this.startupRepairs.has(owner)) return
+    while (this.startupRepairs.has(owner) && !this.launches.closed) {
+      await this.advanceStartup()
+    }
+    if (this.launches.closed) {
+      throw new SessionUnavailable(
+        'shutting-down',
+        `BroCrew shut down before ${owner} was repaired`,
+      )
+    }
   }
 
   /**
@@ -5521,27 +5662,17 @@ export class RuntimeHost implements LiveHost {
    * calls it.
    */
   private wakeWhatTheRestartStopped(
-    died: readonly string[],
+    found: ReturnType<SessionStore['backgroundTheRestartStopped']>,
     elsewhere: ReadonlySet<string>,
-    launchedAt: number,
   ): void {
-    let found: ReturnType<SessionStore['backgroundTheRestartStopped']>
-    try {
-      found = this.deps.store.backgroundTheRestartStopped(
-        died,
-        launchedAt,
-        launchedAt - RESTART_STOPPED_WITHIN_MS,
-      )
-    } catch (error) {
-      console.warn(
-        `runtime host could not read what the restart stopped in the background: ${errorMessage(error)}`,
-      )
-      return
-    }
     const now = this.now()
     for (const { conversation, stopped, endedAt } of found) {
       try {
-        if (elsewhere.has(conversation) || this.startable(conversation) === null) continue
+        if (
+          elsewhere.has(conversation) ||
+          (!this.runsOrStartsHere(conversation) && this.startable(conversation) === null)
+        )
+          continue
         if (this.archived.has(conversation)) continue
         // ⚑ **Told once, however many launches find it**: words an earlier launch held, whose
         // start never came, go — these take their place.
@@ -5550,6 +5681,12 @@ export class RuntimeHost implements LiveHost {
           NEWER_WORDS_ABOUT_WHAT_THE_RESTART_STOPPED,
           'background-work-a-restart-stopped',
         )
+        if (
+          this.aCutToContinue(conversation) &&
+          this.cutsKept.cuts[conversation]?.kind !== 'limit'
+        ) {
+          this.cutHoldsTheFirstBatch.add(conversation)
+        }
         this.holdUntilItStarts(
           conversation,
           backgroundTheRestartStoppedText(stopped, endedAt, now),
@@ -5558,6 +5695,7 @@ export class RuntimeHost implements LiveHost {
         this.startComingAfterTheRestart.add(conversation)
         this.restartWakes = this.restartWakes.then(() => this.wakeForStoppedWork(conversation))
       } catch (error) {
+        this.releaseTheFirstBatch(conversation)
         console.warn(
           `runtime host could not plan ${conversation}'s start after the restart: ${errorMessage(error)}`,
         )
@@ -5626,6 +5764,7 @@ export class RuntimeHost implements LiveHost {
       else if (aCutGoesNow) this.notContinued(conversation, 'start-failed')
       // ⚑ Marked only for its own start, as a wake-up for jobs is: a delivery that joins it takes
       // the mark off, and may replace a conversation that can never be reopened.
+      const owned = !this.runsOrStartsHere(conversation)
       this.wakingForStoppedWork.add(conversation)
       try {
         await this.ensureRunning(conversation, null)
@@ -5633,7 +5772,7 @@ export class RuntimeHost implements LiveHost {
         this.wakingForStoppedWork.delete(conversation)
       }
       if (andItsCut && itsCut !== undefined) {
-        await this.continueOnItsLife(conversation, true, itsCut.noticeId)
+        await this.continueOnItsLife(conversation, owned, itsCut.noticeId)
       }
     } catch (error) {
       // ⚑ A cut turn it was to continue is not continued.
@@ -5659,6 +5798,7 @@ export class RuntimeHost implements LiveHost {
         'background-work-a-restart-stopped',
       )
     } finally {
+      this.releaseTheFirstBatch(conversation)
       this.lastPacedStart = performance.now()
       // ⚑ Its givers are asked again now: told nothing if its turn is driving their work, and the
       // truth — what stopped, and the restart — if it could not be started. ⚑ Unless a program's
@@ -5797,7 +5937,11 @@ export class RuntimeHost implements LiveHost {
    *
    * ⛔ **Nothing is continued when what is decided cannot be kept.** ⛔ **It never throws.**
    */
-  private theCutsToContinue(leftRunning: readonly LeftRunning[], launchedAt: number): Set<string> {
+  private theCutsToContinue(
+    leftRunning: readonly LeftRunning[],
+    launchedAt: number,
+    owners?: ReadonlySet<string>,
+  ): Set<string> {
     const continuing = new Set<string>()
     if (this.deps.turnsTheAppCut === undefined) return continuing
     try {
@@ -5809,6 +5953,7 @@ export class RuntimeHost implements LiveHost {
         if (record !== undefined) cuts[conversation] = { ...record, state: { ended: why }, at: now }
       }
       for (const [conversation, record] of Object.entries(cuts)) {
+        if (owners !== undefined && !owners.has(conversation)) continue
         if (record.state === 'starting') end(conversation, 'start-uncertain')
         else if (record.state === 'queued') {
           const became = this.deps.store.whatBecameOfAMessage(conversation, record.noticeId)
@@ -5817,6 +5962,7 @@ export class RuntimeHost implements LiveHost {
         }
       }
       for (const left of leftRunning) {
+        if (owners !== undefined && !owners.has(left.sessionId)) continue
         if (left.turn === null) continue
         const blocked = left.turn.blocked || left.status === 'waiting_permission'
         // A quit that kept this turn and then died before closing it: it stands, unless the turn
@@ -5850,6 +5996,7 @@ export class RuntimeHost implements LiveHost {
         }
       }
       for (const [conversation, record] of Object.entries(cuts)) {
+        if (owners !== undefined && !owners.has(conversation)) continue
         if (record.state !== 'pending') continue
         // ⚑ A limit's is as old as its reset, which may still be ahead.
         const since = record.kind === 'limit' ? (record.resetsAt ?? record.cutAt) : record.cutAt
@@ -5930,7 +6077,7 @@ export class RuntimeHost implements LiveHost {
     for (const { conversation, record } of order) {
       try {
         if (elsewhere.has(conversation)) this.notContinued(conversation, 'elsewhere')
-        else if (this.startable(conversation) === null) {
+        else if (!this.runsOrStartsHere(conversation) && this.startable(conversation) === null) {
           this.notContinued(conversation, 'not-startable')
         } else if (this.archived.has(conversation) || this.keptStopped(conversation)) {
           this.notContinued(conversation, 'kept-stopped')
@@ -6022,10 +6169,7 @@ export class RuntimeHost implements LiveHost {
       // ⚑ A life still on its way out is not one that runs it: this start waits it out
       // ({@link ensureRunning}). A start someone else began is ridden.
       const slot = this.slots.get(conversation)
-      const beingStarted =
-        this.startsInFlight.has(conversation) ||
-        (slot !== undefined && slot.session === null && !onItsWayOut(slot))
-      if (!this.runsNow(conversation) && !beingStarted) {
+      if (!this.runsOrStartsHere(conversation)) {
         if (!this.moveTheCut(conversation, 'starting')) {
           this.notContinued(conversation, 'start-failed')
           return
@@ -7570,7 +7714,7 @@ export class RuntimeHost implements LiveHost {
   /**
    * 🔴 **D-019 · a row went into this conversation's ledger: what it can move in the one state.**
    * Called for each row of each commit the store records ({@link heardACommit}), whichever door
-   * wrote it, once it is committed. The launch's repairs are written before this host listens.
+   * wrote it, once it is committed. Startup repairs invalidate reads without starting services.
    *
    *  - **a row its wait reads select** ({@link aWaitReads}) — who owes it the next move may have
    *    moved, so what was kept of those reads is forgotten ({@link waitAsLastRead});
@@ -7588,16 +7732,18 @@ export class RuntimeHost implements LiveHost {
   private aRowWasWritten(conversation: string, event: CommittedRow): void {
     const type = event.rowType
     if (
-      type === 'work_replied' ||
-      type === 'work_closed' ||
-      type === 'work_taken_back' ||
-      type === 'request_resolved' ||
-      type === 'question_withdrawn' ||
-      type === 'request_interrupted' ||
-      type === 'question_recipient_ended'
+      !this.repairingStartup &&
+      (type === 'work_replied' ||
+        type === 'work_closed' ||
+        type === 'work_taken_back' ||
+        type === 'request_resolved' ||
+        type === 'question_withdrawn' ||
+        type === 'request_interrupted' ||
+        type === 'question_recipient_ended')
     )
       queueMicrotask(() => this.reconcileWork(new Set([conversation])))
-    if (MAY_FREE_A_SERVICE.has(type)) this.aServiceMayTakeItsNext(conversation)
+    if (!this.repairingStartup && MAY_FREE_A_SERVICE.has(type))
+      this.aServiceMayTakeItsNext(conversation)
     // 🔴 **W4.189 · a piece given or ended moves the grants a window is shown**, read again once
     // this stretch is over.
     if (GRANTS_MAY_MOVE.has(type)) {
@@ -8265,11 +8411,13 @@ export class RuntimeHost implements LiveHost {
   private aServiceMayTakeItsNext(conversation: string): void {
     if (!this.servicesAreOn() || this.servicesToAdvance.has(conversation)) return
     this.servicesToAdvance.add(conversation)
-    queueMicrotask(() => {
-      this.servicesToAdvance.delete(conversation)
+    queueMicrotask(async () => {
       try {
+        if (this.startupRepairs.has(conversation)) await this.settleBeforeUse(conversation)
+        this.servicesToAdvance.delete(conversation)
         this.advanceTheService(conversation)
       } catch (error) {
+        this.servicesToAdvance.delete(conversation)
         console.warn(
           `runtime host could not hand ${conversation} its next piece: ${errorMessage(error)}`,
         )
@@ -8595,6 +8743,15 @@ export class RuntimeHost implements LiveHost {
    * instead ({@link advanceTheService}).
    */
   private startForWhatWaits(service: string): void {
+    if (this.startupRepairs.has(service)) {
+      void this.settleBeforeUse(service).then(
+        () => this.startForWhatWaits(service),
+        (error: unknown) => {
+          console.warn(`runtime host could not repair ${service}: ${errorMessage(error)}`)
+        },
+      )
+      return
+    }
     if (!this.servicesAreOn() || this.deps.profileExecution?.owned !== true) return
     if (this.slots.has(service) || this.startsInFlight.has(service)) return
     if (this.launches.closed || this.keptStopped(service)) return
@@ -9344,15 +9501,17 @@ export class RuntimeHost implements LiveHost {
     levels: ScheduleLevelsAtTheLaunch | null,
   ): void {
     if (levels === null) return
-    for (const { conversation, level, notStartedSaid } of levels) {
+    for (const { conversation } of levels) {
       if (elsewhere.has(conversation)) continue
       try {
+        const current = this.deps.store.newestScheduleLevel(conversation)
+        if (current === null) continue
         this.armItsWakeUp(
           conversation,
           Promise.resolve(),
           NEWER_WORDS_ABOUT_ITS_JOBS,
-          level,
-          notStartedSaid ?? {},
+          current.level,
+          current.notStartedSaid ?? {},
         )
       } catch (error) {
         console.warn(`runtime host could not arm ${conversation}'s wake-up: ${errorMessage(error)}`)
@@ -11235,6 +11394,7 @@ export class RuntimeHost implements LiveHost {
    * piece it could never close.
    */
   async takeBackPiece(input: { readonly piece: string }, by: Caller): Promise<TakeBackOutcome> {
+    if (this.startupRepairs.size > 0) await this.settlePieceBeforeUse(input.piece)
     const asking = sessionSpeakingAs(by)
     const waiting = this.untilTheCopiesCanBeEnded(
       asking !== null
@@ -11398,6 +11558,7 @@ export class RuntimeHost implements LiveHost {
   }
 
   async closeForAPerson(spelled: string, by: Caller): Promise<WorkClosedByAPerson> {
+    if (this.startupRepairs.size > 0) await this.settlePieceBeforeUse(spelled)
     const notStopped = { ok: false, rail: 'not-a-stopped-piece' } as const
     if (!this.aPersonMayCloseIt(spelled)) return notStopped
     const waiting = this.untilTheCopiesCanBeEnded(this.pieceNamed(spelled))
@@ -12402,6 +12563,7 @@ export class RuntimeHost implements LiveHost {
     if (speaking === null) {
       return { ok: false, refusal: refuseReply('no-piece-by-that-name', { piece: input.piece }) }
     }
+    if (this.startupRepairs.size > 0) await this.settlePieceBeforeUse(input.piece)
     // ⚑ A main document the call does not list is refused at once, before any wait.
     const itsPiece = this.pieceNamed(input.piece)
     const itsDocumentIsListed =
@@ -12897,6 +13059,15 @@ export class RuntimeHost implements LiveHost {
     /** ⚑ **D-017 · R6** — told once the row is down, whenever that is. */
     landed?: () => void,
   ): void {
+    if (!this.repairingStartup && this.startupRepairs.has(sessionId)) {
+      void this.settleBeforeUse(sessionId).then(
+        () => this.writeIntoItsLedger(sessionId, row, landed),
+        (error: unknown) => {
+          console.warn(`runtime host could not write into ${sessionId}: ${errorMessage(error)}`)
+        },
+      )
+      return
+    }
     const slot = this.slots.get(sessionId)
     if (slot?.session != null) {
       this.publishOurs(slot.session, row)
@@ -12946,6 +13117,19 @@ export class RuntimeHost implements LiveHost {
     /** A caller's words held for a service while services are off: whose they are. */
     left?: WordsLeftForAService,
   ): void {
+    if (this.startupRepairs.has(sessionId)) {
+      void this.settleBeforeUse(sessionId).then(
+        () => {
+          if (this.launches.closed) kept?.('nowhere')
+          else this.holdUntilItStarts(sessionId, text, facts, kind, kept, id, left)
+        },
+        (error: unknown) => {
+          console.warn(`runtime host could not hold words for ${sessionId}: ${errorMessage(error)}`)
+          kept?.('nowhere')
+        },
+      )
+      return
+    }
     const slot = this.slots.get(sessionId)
     const session = slot?.session ?? null
     if (slot !== undefined && session === null && !onItsWayOut(slot)) {
@@ -14077,6 +14261,7 @@ export class RuntimeHost implements LiveHost {
     note: string | null,
     by: Caller,
   ): Promise<AnswerAck> {
+    if (this.startupRepairs.has(sessionId)) await this.settleBeforeUse(sessionId)
     const asked = this.theWordsOf(sessionId, requestId)
     if (asked?.action === undefined) {
       return { outcome: 'refused', reason: NO_SUCH_QUESTION_TO_ANSWER, stillOpen: false }
@@ -14460,6 +14645,11 @@ export class RuntimeHost implements LiveHost {
     // 🔴 **679 · and the id is the ASKER's** — {@link theQuestionNamed}, the answer door's own
     // lookup. ⛔ It took the last row for the id ACROSS askers, so a child sharing a session-local
     // id with its sibling had its sibling's words carried up under its own id.
+    if (this.startupRepairs.size > 0) {
+      for (const one of this.questionsRoutedToWhatItStandsFor(speaking)) {
+        if (one.requestId === input.requestId) await this.settleBeforeUse(one.askedBy)
+      }
+    }
     const named = this.theQuestionNamed(speaking, input.requestId, input.askedBy ?? null)
     if (named.is === 'refused') return { ok: false, refusal: named.refusal }
     const request = named.request
@@ -14975,6 +15165,7 @@ export class RuntimeHost implements LiveHost {
   ): void {
     if (this.launches.closed || piece.stalledBecause === 'app_restarted') return
     if (piece.stalledAt === null || piece.stalledAt < this.upSince) return
+    if (this.repairingStartup) return
     // ⚑ **D-017 · R10** — the giver as it stands now: the one in its place, when it was replaced.
     const giver = this.theOneInItsPlace(piece.giver)
     if (this.startable(giver) === null) return
@@ -18828,6 +19019,11 @@ export class RuntimeHost implements LiveHost {
     // {@link theQuestionNamed}, which both doors share. ⛔ A request id is session-local, so two
     // children's can be one string, and the last row for it across askers is simply the one that
     // asked most recently: `675` F-b, measured by `679` — the older child's answer, taken by the newer.
+    if (this.startupRepairs.size > 0) {
+      for (const one of this.questionsRoutedToWhatItStandsFor(speaking)) {
+        if (one.requestId === input.questionId) await this.settleBeforeUse(one.askedBy)
+      }
+    }
     const named = this.theQuestionNamed(speaking, input.questionId, input.askedBy ?? null)
     if (named.is === 'refused') return { ok: false, refusal: named.refusal }
     const request = named.request
@@ -18855,6 +19051,7 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **D-017 · R1 — a question this app asked is answered in its asker's ledger, running or not,
     // and the answer starts it** ({@link deliverAnswer}). ⛔ A provider's own request lives in its
     // process: with none running, nobody is waiting for it any more.
+    if (this.startupRepairs.has(request.askedBy)) await this.settleBeforeUse(request.askedBy)
     const words = this.theWordsOf(request.askedBy, request.requestId)
     const session = this.slots.get(request.askedBy)?.session ?? null
     if (words === undefined && session === null) {
@@ -23377,6 +23574,16 @@ export class RuntimeHost implements LiveHost {
     return !this.arrivals.has(sessionId) && this.runsNow(sessionId)
   }
 
+  /** A local life the restart recovery can join instead of starting another. */
+  private runsOrStartsHere(sessionId: string): boolean {
+    const slot = this.slots.get(sessionId)
+    return (
+      this.runsNow(sessionId) ||
+      this.startsInFlight.has(sessionId) ||
+      (slot !== undefined && slot.session === null && !onItsWayOut(slot))
+    )
+  }
+
   /** ⚑ **D-017 · R1 — running, registered, not on its way out and not over.** */
   private runsNow(sessionId: string): boolean {
     const slot = this.slots.get(sessionId)
@@ -23729,6 +23936,7 @@ export class RuntimeHost implements LiveHost {
           if (goes.conversation !== null) service = goes.conversation
           else if (goes.provider === null) throw new Error(`${goes.profileId} has no provider`)
           else service = this.recordTheServiceConversation(goes.profileId, goes.provider)
+          if (this.startupRepairs.has(service)) await this.settleBeforeUse(service)
           this.acceptAtTheService(service, giving, newQueuedMessageId(), choice)
         } catch (error) {
           return gaveNothing(error)
@@ -24208,6 +24416,7 @@ export class RuntimeHost implements LiveHost {
       if (unread.count > 0 || unread.ledgersSkipped > 0) throw new Error('unread work')
       const root = this.deps.store.rootOf(session.id)
       if (asked.piece !== undefined) {
+        if (this.startupRepairs.size > 0) await this.settlePieceBeforeUse(asked.piece)
         parent = this.pieceNamed(asked.piece)
         if (parent === null || parent.owner !== session.id)
           return malformed(['That parent is not work you hold.'])
@@ -24992,6 +25201,11 @@ export class RuntimeHost implements LiveHost {
     ]
   }
 
+  private async settlePieceBeforeUse(spelled: string): Promise<void> {
+    const row = this.pieceNamed(spelled)
+    if (row !== null) await this.settleBeforeUse(row.owner)
+  }
+
   /**
    * ⚑ **D-016 · the piece a caller spelled — by its label (`W1.2`) or its id (`work_…`)** — or `null`.
    * ⛔ It answers what exists; whether the caller may name it is each door's own question.
@@ -25252,6 +25466,7 @@ export class RuntimeHost implements LiveHost {
     if (caller === null) return notFound
     let row: WorkRow | null
     if (input.piece !== null) {
+      if (this.startupRepairs.size > 0) await this.settlePieceBeforeUse(input.piece)
       row = this.pieceNamed(input.piece)
     } else {
       const held = this.heldBy(caller).filter((one) => one.received)
@@ -25587,6 +25802,7 @@ export class RuntimeHost implements LiveHost {
   ): Promise<T> {
     const onArrival = (async () => {
       const arriving = this.theOneInItsPlace(sessionId)
+      if (this.startupRepairs.has(arriving)) await this.settleBeforeUse(arriving)
       if (!this.runsNow(arriving)) {
         await this.refuseBeforeAStart(arriving, text, by, attachments, says)
       }
@@ -25861,6 +26077,9 @@ export class RuntimeHost implements LiveHost {
    * but by a person's own window: an agent's words to one were kept for its next start before this.
    */
   private ensureRunning(sessionId: string, window: RuntimeEventSink | null): Promise<string> {
+    if (this.startupRepairs.has(sessionId)) {
+      return this.settleBeforeUse(sessionId).then(() => this.ensureRunning(sessionId, window))
+    }
     const inFlight = this.startsInFlight.get(sessionId)
     if (inFlight === undefined && this.runsNow(sessionId)) {
       this.aPersonsWindowTakesIt(sessionId, window)
@@ -29094,6 +29313,7 @@ export class RuntimeHost implements LiveHost {
     const sourceRecord = this.deps.store.recordedOne(input.sessionId)
     if (sourceRecord === null || sourceRecord.restoredFromBundle || sourceRecord.foundInUserHome)
       return { outcome: 'refused', reason: MOVE_WORDS.noOriginal }
+    if (this.startupRepairs.has(input.sessionId)) await this.settleBeforeUse(input.sessionId)
     const asked = this.theWordsOf(input.sessionId, input.requestId)
     if (asked?.move === undefined) return { outcome: 'refused', reason: MOVE_WORDS.ended }
     const request = this.deps.store
@@ -29148,6 +29368,7 @@ export class RuntimeHost implements LiveHost {
         return { outcome: 'refused', reason: errorMessage(error) }
       }
     }
+    if (this.startupRepairs.has(offer.destination)) await this.settleBeforeUse(offer.destination)
     const target = this.deps.store.recordedOne(offer.destination)!
     const handed = await recheckHandedPaths(original.event.attachments ?? [], target.cwd)
     if ('refusal' in handed) return { outcome: 'refused', reason: handed.refusal }
@@ -29246,6 +29467,7 @@ export class RuntimeHost implements LiveHost {
     // question that survived a stop is answered like any other: see
     // {@link aPersonAnswersAQuestionThisAppAsked}. ⚠️ Answered on the conversation that ASKED — a
     // caller naming another session's id finds nothing there and falls through to the provider.
+    if (this.startupRepairs.has(sessionId)) await this.settleBeforeUse(sessionId)
     const asked = this.theWordsOf(sessionId, requestId)
     if (asked !== undefined) {
       return await this.aPersonAnswersAQuestionThisAppAsked(
@@ -32593,6 +32815,11 @@ export class RuntimeHost implements LiveHost {
    * any stop.
    */
   async deleteConversation(sessionId: string, ticked: readonly string[]): Promise<DeleteOutcome> {
+    if (this.startupRepairs.size > 0) {
+      for (const owner of this.deps.store.conversationTree(sessionId)) {
+        await this.settleBeforeUse(owner)
+      }
+    }
     const listed = this.deleteVerdict(sessionId)
     if (!listed.ok) return { done: false, refusal: listed.refusal }
     if (ticked.length === 0) {
@@ -33362,6 +33589,7 @@ export class RuntimeHost implements LiveHost {
    * learned that the hard way, and an outcome word is not proof.
    */
   async importRecordedSession(sessionId: string): Promise<ImportedRecording> {
+    if (this.startupRepairs.has(sessionId)) await this.settleBeforeUse(sessionId)
     const session = this.deps.store.find(sessionId)
     if (session === null)
       return { outcome: 'unknown-session', readable: false, note: 'There is no such conversation.' }
@@ -33647,6 +33875,7 @@ export class RuntimeHost implements LiveHost {
    * and the caller is told so — the rebuild is there next time.
    */
   async rebuildLedger(sessionId: string): Promise<RebuiltLedger> {
+    if (this.startupRepairs.has(sessionId)) await this.settleBeforeUse(sessionId)
     // 🔴 **702 · `recordedOne` and NOT `find`** (`697` H-f) — {@link folderOf}'s rule, for its
     // reason. ⛔ `find` *"drops a row with no provider ref"*, so a conversation closed before its
     // provider named it — which the library lists — answered `unknown-session` here (measured on
@@ -37916,6 +38145,7 @@ export class RuntimeHost implements LiveHost {
     // be a fence no release can ever trip — a line that looks like a guard and guards nothing.
     const waiting = sink === null ? null : this.beginOwnedWait(sink.ownerId)
     try {
+      if (this.startupRepairs.has(sessionId)) await this.settleBeforeUse(sessionId)
       await this.settleTeardown(sessionId)
       // ⛔ **The generation fence.** Between the line above and this one the window may have been
       // reloaded, crashed or destroyed, and `closeSessionsForOwner` will have closed the slots that
@@ -38958,39 +39188,46 @@ export class RuntimeHost implements LiveHost {
    * draws it from the ledger: the page holds everything the life said, and `liveFrom` is where it
    * stopped.
    *
-   * ⚑ **The attach and the claim are made before anything is awaited**, for {@link claimSession}'s
-   * reason: an owner that changes changes in the block that swaps the sink and reads the page.
+   * A live attach or claim still changes ownership in the same block that reads its page.
+   * A pending startup repair first waits under the window's existing owned-wait lifetime.
    */
   async look(sessionId: string, sink: RuntimeEventSink, claim: boolean): Promise<ResumedSession> {
-    this.deps.store.checkCommitted()
     // ⚑ Counted as looking from the start, so a window that stops looking or goes while this look
     // waits for a life to end is not counted again when the wait is over.
     const thisLook = this.startLooking(sessionId, sink)
-    const slot = this.slots.get(sessionId)
-    if (slot !== undefined && slot.session !== null && !onItsWayOut(slot)) {
-      const session = slot.session
-      const status = session.handle.status()
-      if (status === 'ended' || status === 'errored') {
-        await settledWithin(session.pump, this.closeDrainTimeoutMs)
-        await this.settleTeardown(sessionId)
-      } else {
-        const handed = mayControl(slot, sink)
-          ? this.attachHeldSession(sessionId, sink, 'attach')
-          : claim
-            ? this.attachHeldSession(sessionId, sink, 'claim')
-            : null
-        if (handed !== null) {
-          // ⚑ A life this window is fed, not a record it is shown.
-          this.stopThisLook(sessionId, thisLook)
-          return handed
+    const waiting = this.startupRepairs.has(sessionId) ? this.beginOwnedWait(sink.ownerId) : null
+    try {
+      if (waiting !== null) {
+        await this.settleBeforeUse(sessionId)
+        this.refusalsTranslated(() => this.assertSurfaceIsStillThere(waiting, sessionId))
+      }
+      this.deps.store.checkCommitted()
+      const slot = this.slots.get(sessionId)
+      if (slot !== undefined && slot.session !== null && !onItsWayOut(slot)) {
+        const session = slot.session
+        const status = session.handle.status()
+        if (status === 'ended' || status === 'errored') {
+          await settledWithin(session.pump, this.closeDrainTimeoutMs)
+          await this.settleTeardown(sessionId)
+        } else {
+          const handed = mayControl(slot, sink)
+            ? this.attachHeldSession(sessionId, sink, 'attach')
+            : claim
+              ? this.attachHeldSession(sessionId, sink, 'claim')
+              : null
+          if (handed !== null) {
+            // ⚑ A life this window is fed, not a record it is shown.
+            this.stopThisLook(sessionId, thisLook)
+            return handed
+          }
         }
       }
-    }
-    try {
       return this.recordedHandover(sessionId, sink)
     } catch (error) {
       this.stopThisLook(sessionId, thisLook)
       throw error
+    } finally {
+      if (waiting !== null) this.ownedWaits.delete(waiting)
     }
   }
 
@@ -39983,6 +40220,10 @@ export class RuntimeHost implements LiveHost {
     const failures: unknown[] = []
     let confirmed = false
     try {
+      this.startupSteps = undefined
+      this.startupStep = undefined
+      this.startupRepairs.clear()
+      this.finishStartup = undefined
       this.recordOpenForQuit()
       this.stopHearingCommits()
       this.deps.store.closePastWorkSearch?.()
@@ -40022,6 +40263,7 @@ export class RuntimeHost implements LiveHost {
     } catch (error) {
       failures.push(error)
     } finally {
+      if (this.startupAdvance !== undefined) await Promise.allSettled([this.startupAdvance])
       for (const result of await readersClosed)
         if (result.status === 'rejected') failures.push(result.reason)
       await this.flushInFlight

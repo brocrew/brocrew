@@ -366,6 +366,8 @@ export interface RuntimeHostDeps {
   /** The window's display reads use their own read-only connection. */
   limitsReader?: LimitsReaderLifetime
   afterFirstWindowLoad?: Promise<void>
+  /** Production startup repairs wait for the renderer to acknowledge its first list paint. */
+  deferStartupUntilListPaint?: boolean
   windowReader?: WindowStoreReader
   filesLibraries?: FilesLibraryWindows
   filesLibraryRevision?: () => string | null

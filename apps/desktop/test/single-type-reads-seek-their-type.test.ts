@@ -10,7 +10,7 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
 /**
- * Four reads that each want one event type seek that type on the type/owner index, rather than
+ * Five reads that each want one event type seek that type on the type/owner index, rather than
  * walking every fold row in their range, and answer exactly what the fold-index form answered:
  * the same rows in the same order, over ledgers where their type is rare among the others.
  */
@@ -47,7 +47,9 @@ describe('single-type reads seek their type', () => {
   const READS = {
     replacements: () =>
       statement("type = 'replaced_by' AND json_valid(payload)", 'ORDER BY events.rowid'),
-    scheduleLevels: () => statement('AS first_listed', "type = 'scheduled_work'"),
+    scheduleLevels: () => statement('AS first_listed', "type = 'scheduled_work'", 'json_each(?)'),
+    scheduleLevel: () =>
+      statement('AS first_listed', "type = 'scheduled_work'", 'AND session_id = ?'),
     decisionOn: () =>
       statement(
         "type = 'user_decision'",
@@ -64,6 +66,12 @@ describe('single-type reads seek their type', () => {
     ).map((one) => one.detail)
 
   it('each seeks its one type on the type/owner index, and none walks the fold index', () => {
+    expect(READS.scheduleLevel()).toBe(
+      READS.scheduleLevels().replace(
+        '(? IS NULL OR session_id IN (SELECT value FROM json_each(?)))',
+        'session_id = ?',
+      ),
+    )
     for (const [name, read] of Object.entries(READS)) {
       const plan = planOf(read())
       const onEvents = plan.filter((detail) => /^(SEARCH|SCAN) events(?: |$)/.test(detail))
@@ -72,6 +80,8 @@ describe('single-type reads seek their type', () => {
         expect(detail, name).toMatch(
           /^SEARCH events USING (?:COVERING )?INDEX events_kind_owner_idx \(type=\?/,
         )
+      if (name === 'scheduleLevel')
+        expect(onEvents[0]).toMatch(/events_kind_owner_idx \(type=\? AND session_id=\?\)/)
       expect(plan.join('\n'), name).not.toContain('events_fold_idx')
     }
   })

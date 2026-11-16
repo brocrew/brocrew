@@ -1,3 +1,4 @@
+import { expect, vi } from 'vitest'
 import { neutralHostDeps } from '../lib/host-fixture'
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { RuntimeHost as GiverNoticeHost } from './giver-notice-host'
@@ -156,6 +157,7 @@ export interface AServiceWorld {
   aHost(opts?: {
     owned?: boolean
     servicesOn?: boolean
+    deferStartupUntilListPaint?: boolean
     store?: SessionStore
     interruptWaitMs?: number
     deliveryWaitMs?: number
@@ -351,6 +353,7 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
       const Host = fixture.holderReminders === 'declined' ? GiverNoticeHost : RuntimeHost
       const host = new Host({
         store: opts.store ?? world.store,
+        deferStartupUntilListPaint: opts.deferStartupUntilListPaint ?? false,
         ...neutralHostDeps(() => folder),
         resourcesRoot: () => resourcesRoot(folder),
         createRuntime: (provider: Provider) =>
@@ -479,4 +482,34 @@ export async function aGiverAndHelper() {
   const host = world.aHost({ servicesOn: false })
   const giver = await world.aPersonOpens(host, 'giver')
   return { world, host, giver }
+}
+
+export async function aServiceAndCaller(world: AServiceWorld, opts: { auto?: boolean } = {}) {
+  world.anAgent('browser-driver')
+  world.anAgent('caller', 'nothing kept')
+  if (opts.auto === true) world.store.setDefaultApprovalMode('auto')
+  const host = world.aHost()
+  return { host, caller: await world.aPersonOpens(host, 'caller') }
+}
+
+export async function aServiceWithHeldFirstBrief(world: AServiceWorld) {
+  const { host, caller } = await aServiceAndCaller(world)
+  let release = (): void => {}
+  world.startsWait = new Promise((done) => {
+    release = done
+  })
+  const one = await world.gives(host, caller, 'browser-driver')
+  if (!one.ok) throw new Error(`refused (${one.refusal.rail}): ${one.refusal.reason}`)
+  await vi.waitFor(() => {
+    expect(world.startedAs).toContain('browser-driver')
+  })
+  return {
+    host,
+    caller,
+    one,
+    release: () => {
+      world.startsWait = null
+      release()
+    },
+  }
 }

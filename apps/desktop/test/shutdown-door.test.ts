@@ -143,6 +143,7 @@ const SAMPLES: Record<RuntimeCommandKind, RuntimeCommand> = {
   currentEpoch: { kind: 'currentEpoch' },
   personsQueue: { kind: 'personsQueue' },
   listConversations: { kind: 'listConversations' },
+  firstListPainted: { kind: 'firstListPainted' },
   workIncidentsForAPerson: { kind: 'workIncidentsForAPerson' },
   // F097 · no arguments either, for its neighbours' reason: a person is not inside one family.
   waitingOnWhoWroteForAPerson: { kind: 'waitingOnWhoWroteForAPerson' },
@@ -402,6 +403,7 @@ const ANSWERED_DURING_A_QUIT: ReadonlySet<RuntimeCommandKind> = new Set([
   'providerCatalogue',
   // What this run is called: nothing is read.
   'currentEpoch',
+  'firstListPainted',
   'profiles',
   'checkCwd',
   'checkProviderAuth',

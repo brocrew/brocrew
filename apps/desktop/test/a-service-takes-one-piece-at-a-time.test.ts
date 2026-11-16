@@ -12,7 +12,12 @@ import {
 
 import { clockTime } from '../src/shared/clock'
 
-import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
+import {
+  aServiceWorld,
+  aServiceAndCaller,
+  aServiceWithHeldFirstBrief,
+  type AServiceWorld,
+} from './helpers/a-service-world'
 
 /** The active piece keeps the service until it ends. */
 
@@ -29,15 +34,7 @@ describe('a service takes one piece at a time', () => {
     if (!outcome.ok) throw new Error(`refused (${outcome.refusal.rail}): ${outcome.refusal.reason}`)
     return outcome
   }
-  const aServiceAndACaller = async (
-    opts: { auto?: boolean } = {},
-  ): Promise<{ host: RuntimeHost; caller: string }> => {
-    world.anAgent('browser-driver')
-    world.anAgent('caller', 'nothing kept')
-    if (opts.auto === true) world.store.setDefaultApprovalMode('auto')
-    const host = world.aHost()
-    return { host, caller: await world.aPersonOpens(host, 'caller') }
-  }
+  const aServiceAndACaller = (opts: { auto?: boolean } = {}) => aServiceAndCaller(world, opts)
   const piecesOf = (service: string): readonly PieceRow[] => world.store.piecesOwnedBy(service)
   const stateOf = (service: string, piece: string): string | undefined =>
     piecesOf(service).find((one) => one.piece === piece)?.state
@@ -206,47 +203,33 @@ describe('a service takes one piece at a time', () => {
     expect(held.map((row) => row.messageId)).toEqual([oldest?.messageId])
   })
 
-  it('keeps a brief held when this app quits while its start is under way, and hands it over at the next launch', async () => {
-    const { host, caller } = await aServiceAndACaller()
-    let release = (): void => {}
-    world.startsWait = new Promise((done) => {
-      release = done
-    })
-    const one = accepted(await world.gives(host, caller, 'browser-driver'))
-    await vi.waitFor(() => {
-      expect(world.startedAs).toContain('browser-driver')
-    })
-    const quiet = [
-      vi.spyOn(console, 'info').mockImplementation(() => {}),
-      vi.spyOn(console, 'warn').mockImplementation(() => {}),
-    ]
-    const closing = host.closeAll()
-    world.startsWait = null
-    release()
-    await closing
-    expect(world.ledger(one.owner).some((row) => row.type === 'message_unqueued')).toBe(false)
-    expect(stateOf(one.owner, one.piece)).toBe('waiting')
-    world.aHost()
-    await handedOver(one.owner, one.piece)
-    for (const spy of quiet) spy.mockRestore()
-    expect(handedOverIn(one.owner)).toEqual([one.piece])
-  })
+  it.each([false, true])(
+    'keeps a brief held when this app quits while its start is under way, and hands it over at the next launch (deferred %s)',
+    async (deferred) => {
+      const { host, one, release } = await aServiceWithHeldFirstBrief(world)
+      const quiet = [
+        vi.spyOn(console, 'info').mockImplementation(() => {}),
+        vi.spyOn(console, 'warn').mockImplementation(() => {}),
+      ]
+      const closing = host.closeAll()
+      release()
+      await closing
+      expect(world.ledger(one.owner).some((row) => row.type === 'message_unqueued')).toBe(false)
+      expect(stateOf(one.owner, one.piece)).toBe('waiting')
+      const next = world.aHost({ deferStartupUntilListPaint: deferred })
+      if (deferred) next.firstListPainted()
+      await handedOver(one.owner, one.piece)
+      for (const spy of quiet) spy.mockRestore()
+      expect(handedOverIn(one.owner)).toEqual([one.piece])
+    },
+  )
 
   it('keeps a head whose start is under way from being taken back or closed, and hands it over once started', async () => {
-    const { host, caller } = await aServiceAndACaller()
-    let release = (): void => {}
-    world.startsWait = new Promise((done) => {
-      release = done
-    })
-    const one = accepted(await world.gives(host, caller, 'browser-driver'))
-    await vi.waitFor(() => {
-      expect(world.startedAs).toContain('browser-driver')
-    })
+    const { host, caller, one, release } = await aServiceWithHeldFirstBrief(world)
     const taken = await call(host, caller, 'withdraw_task', { piece: one.label })
     expect(taken.structured).toMatchObject({ rail: 'that-conversation-has-not-started' })
     const closed = await call(host, caller, 'update_work', { piece: one.label, close: true })
     expect(closed.structured).toMatchObject({ rail: 'that-conversation-has-not-started' })
-    world.startsWait = null
     release()
     await handedOver(one.owner, one.piece)
     expect(handedOverIn(one.owner)).toEqual([one.piece])
@@ -510,29 +493,33 @@ describe('a service takes one piece at a time', () => {
       warned.mockRestore()
     })
 
-    it('writes nothing when this app quits while it is read, and hands the piece over at the next launch', async () => {
-      const { host, service, one, two, release } = await aReadHeldForTheSecondPiece()
-      const quiet = [
-        vi.spyOn(console, 'info').mockImplementation(() => {}),
-        vi.spyOn(console, 'warn').mockImplementation(() => {}),
-      ]
-      const rows = world.ledger(service).length
-      const closing = host.closeAll()
-      release()
-      await closing
-      await new Promise((settled) => setTimeout(settled, 50))
-      expect(
-        world
-          .ledger(service)
-          .slice(rows)
-          .map((row) => row.type),
-      ).not.toContain('message_queued')
-      expect(stateOf(service, two.piece)).toBe('waiting')
-      world.aHost()
-      await handedOver(service, two.piece)
-      for (const spy of quiet) spy.mockRestore()
-      expect(handedOverIn(service)).toEqual([one.piece, two.piece])
-    })
+    it.each([false, true])(
+      'writes nothing when this app quits while it is read, and hands the piece over at the next launch (deferred %s)',
+      async (deferred) => {
+        const { host, service, one, two, release } = await aReadHeldForTheSecondPiece()
+        const quiet = [
+          vi.spyOn(console, 'info').mockImplementation(() => {}),
+          vi.spyOn(console, 'warn').mockImplementation(() => {}),
+        ]
+        const rows = world.ledger(service).length
+        const closing = host.closeAll()
+        release()
+        await closing
+        await new Promise((settled) => setTimeout(settled, 50))
+        expect(
+          world
+            .ledger(service)
+            .slice(rows)
+            .map((row) => row.type),
+        ).not.toContain('message_queued')
+        expect(stateOf(service, two.piece)).toBe('waiting')
+        const next = world.aHost({ deferStartupUntilListPaint: deferred })
+        if (deferred) next.firstListPainted()
+        await handedOver(service, two.piece)
+        for (const spy of quiet) spy.mockRestore()
+        expect(handedOverIn(service)).toEqual([one.piece, two.piece])
+      },
+    )
 
     it('reads nothing where a person chose the pair it runs on, and hands the piece over on theirs', async () => {
       const { host, caller, service, one, reads } = await aCodexServiceOnAPieceThatAskedHigh()
@@ -851,26 +838,34 @@ describe('a service takes one piece at a time', () => {
       return { service, pieces, caller }
     }
 
-    it('starts the oldest piece of a queue nothing was on', async () => {
-      const { service, pieces } = aQueueLeftBehind('nothing')
-      const info = vi.spyOn(console, 'info').mockImplementation(() => {})
-      world.aHost()
-      await handedOver(service, pieces[0] ?? '')
-      info.mockRestore()
-      expect(stateOf(service, pieces[1] ?? '')).toBe('waiting')
-      expect(handedOverIn(service)).toEqual([pieces[0]])
-    })
+    it.each([false, true])(
+      'starts the oldest piece of a queue nothing was on (deferred %s)',
+      async (deferred) => {
+        const { service, pieces } = aQueueLeftBehind('nothing')
+        const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+        const next = world.aHost({ deferStartupUntilListPaint: deferred })
+        if (deferred) next.firstListPainted()
+        await handedOver(service, pieces[0] ?? '')
+        info.mockRestore()
+        expect(stateOf(service, pieces[1] ?? '')).toBe('waiting')
+        expect(handedOverIn(service)).toEqual([pieces[0]])
+      },
+    )
 
-    it('hands over a brief held for its next start, which never reached it', async () => {
-      const { service, pieces } = aQueueLeftBehind('for-its-next-start')
-      const info = vi.spyOn(console, 'info').mockImplementation(() => {})
-      world.aHost()
-      await handedOver(service, pieces[0] ?? '')
-      info.mockRestore()
-      expect(handedOverIn(service)).toEqual([pieces[0]])
-      // The one held row was handed over; no second brief was queued for it.
-      expect(world.ledger(service).filter((row) => row.type === 'message_queued')).toHaveLength(1)
-    })
+    it.each([false, true])(
+      'hands over a brief held for its next start, which never reached it (deferred %s)',
+      async (deferred) => {
+        const { service, pieces } = aQueueLeftBehind('for-its-next-start')
+        const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+        const next = world.aHost({ deferStartupUntilListPaint: deferred })
+        if (deferred) next.firstListPainted()
+        await handedOver(service, pieces[0] ?? '')
+        info.mockRestore()
+        expect(handedOverIn(service)).toEqual([pieces[0]])
+        // The one held row was handed over; no second brief was queued for it.
+        expect(world.ledger(service).filter((row) => row.type === 'message_queued')).toHaveLength(1)
+      },
+    )
 
     it('hands a brief held for its start over in a turn of its own, apart from words held before it', async () => {
       const { service, pieces } = aQueueLeftBehind('after-a-note')

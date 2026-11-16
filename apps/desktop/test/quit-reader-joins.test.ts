@@ -41,6 +41,7 @@ it.each(['success', 'sign-in failure', 'session failure'])(
     // Only the surrounding host effects are fictional; closeAll and its join are the product methods.
     const host = Object.assign(Object.create(RuntimeHost.prototype), {
       deps: { ...deps, store: {} },
+      startupRepairs: new Set<string>(),
       recordOpenForQuit() {},
       stopHearingCommits() {},
       windowIncidentReads: { invalidate() {} },

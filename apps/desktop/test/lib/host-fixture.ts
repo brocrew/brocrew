@@ -3,6 +3,8 @@ import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { openDatabase } from '../../src/main/db/connection'
 import { applyMigrations } from '../../src/main/db/migrate'
+import { resourcesRoot } from '../../src/main/resources/resources'
+import { resolveSessionCwd } from '../../src/main/runtime/scratch-cwd'
 import {
   FakeRuntime,
   type FakeSessionHandle,
@@ -54,6 +56,27 @@ export function neutralHostDeps(
     discoverSessions: NO_DISCOVERY,
     nativeTranscriptPath: () => null,
     exportDirectory: () => join(rootGetter(), 'exports'),
+  }
+}
+
+export function fixtureHostPaths(
+  rootGetter: () => string,
+): Pick<
+  RuntimeHostDeps,
+  | 'discoverSessions'
+  | 'nativeTranscriptPath'
+  | 'exportDirectory'
+  | 'resourcesRoot'
+  | 'prepareProviderHome'
+  | 'providerHomePath'
+  | 'resolveCwd'
+> {
+  return {
+    ...neutralHostDeps(rootGetter),
+    resourcesRoot: () => resourcesRoot(rootGetter()),
+    prepareProviderHome: syntheticProviderHome(rootGetter),
+    providerHomePath: (provider) => join(rootGetter(), 'provider-homes', provider),
+    resolveCwd: (sessionId, requested) => resolveSessionCwd(rootGetter(), sessionId, requested),
   }
 }
 
