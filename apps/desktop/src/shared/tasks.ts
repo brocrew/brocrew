@@ -23,8 +23,8 @@ import type {
   WorkReport,
 } from './task-contracts'
 import { whoCancelledIt, type AskToStop } from './how-work-stopped'
+import { aPersonDrove } from './piece-fold'
 import type { AsTheCutLeftIt, PieceFold, PieceTurnAuthorship } from './piece-fold'
-
 import { aPersonsOwnWords } from './a-persons-own-words'
 // ⚑ **A TYPE and nothing else** (467), so this module's own rule survives the import: it cannot
 // reach a database, a host, a clock or a filesystem, and an edge that is erased at build time
@@ -1013,13 +1013,6 @@ function aPersonOpenedTheTurnFor(
       .filter((one): one is string => one !== null),
   )
   return { everyPiece, theirPieces, anotherNamed }
-}
-
-function aPersonDrove(authorship: PieceTurnAuthorship, piece: string): boolean {
-  return (
-    (authorship.everyPiece || authorship.theirPieces.has(piece)) &&
-    !authorship.anotherNamed.has(piece)
-  )
 }
 
 /**

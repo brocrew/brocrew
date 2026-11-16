@@ -33,6 +33,13 @@ export interface PieceTurnAuthorship {
   readonly anotherNamed: ReadonlySet<string>
 }
 
+export function aPersonDrove(authorship: PieceTurnAuthorship, piece: string): boolean {
+  return (
+    (authorship.everyPiece || authorship.theirPieces.has(piece)) &&
+    !authorship.anotherNamed.has(piece)
+  )
+}
+
 interface WentBackTo {
   readonly cause: TaskStallCause
   readonly at: number
