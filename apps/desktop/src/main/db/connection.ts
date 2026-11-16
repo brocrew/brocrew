@@ -13,6 +13,7 @@ export function openDatabase(
     db.pragma('auto_vacuum = INCREMENTAL')
   }
   db.pragma('journal_mode = WAL')
+  db.pragma('journal_size_limit = 8388608')
   db.pragma('foreign_keys = ON')
   return db
 }
