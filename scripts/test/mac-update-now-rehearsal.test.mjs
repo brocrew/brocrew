@@ -159,7 +159,7 @@ it('holds an existing conversation only after the model request and working stat
   const { before } = histories()
   before.provider_session[0].status = 'working'
   const workspace = { data: '/held', conversations: ['conversation'], cdp: {} }
-  fake.snapshots.set('/held/brobot2.sqlite', before)
+  fake.snapshots.set(join(workspace.data, 'brobot2.sqlite'), before)
   await holdUpdateTurn(workspace, { requests: [{ held: true, completed: false }] })
   expect(workspace.interrupted).toEqual({ sessionId: 'conversation', before })
   delete workspace.interrupted

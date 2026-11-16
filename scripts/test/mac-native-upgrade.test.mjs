@@ -179,7 +179,7 @@ it('presses native restart and keeps B alive until its candidate checkpoint comp
           if (path === fixture.settings)
             return JSON.stringify({
               updateReopen: {
-                executable: `${fixture.app}/Contents/MacOS/BroCrew`,
+                executable: join(fixture.app, 'Contents', 'MacOS', 'BroCrew'),
                 version: '0.2.23',
                 folders: [workspace.data],
               },
@@ -265,7 +265,7 @@ it('presses native restart and keeps B alive until its candidate checkpoint comp
       )
       if (confirmsRestart)
         expect(workspace.result.nativeInstallChoice).toEqual({
-          executable: `${fixture.app}/Contents/MacOS/BroCrew`,
+          executable: join(fixture.app, 'Contents', 'MacOS', 'BroCrew'),
           version: '0.2.23',
           folders: [workspace.data],
         })
