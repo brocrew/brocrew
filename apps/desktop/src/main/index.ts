@@ -34,6 +34,7 @@ import { convertSharedSkills } from './skills/shared-conversion'
 import { SharedSkillLibrary } from './skills/shared-library'
 import { providerProcessesAreInFlight } from './runtime/live-hosts'
 import { RECOVERY_RETENTION_CHANNELS } from '../shared/recovery-retention'
+import type { ListingAnswer } from '../shared/listing-published'
 import {
   prune,
   recordSuccessfulStart,
@@ -433,6 +434,7 @@ const pluginSupervisor = new PluginSupervisorAttachment()
 let updates: ReturnType<typeof startUpdates> | null = null
 let transcriptRetention: TranscriptRetentionHost | undefined
 let eventRetention: ReturnType<typeof startEventRetention> | undefined
+let firstListAcceptedAt: number | undefined
 let recoveryMaintenance: Promise<unknown> = Promise.resolve()
 let recoveryStartSucceeded = false
 let recoveryStartRecorded: Promise<void> | undefined
@@ -1330,9 +1332,15 @@ function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null
   registerRuntimeIpc({
     ipc: {
       handle: (channel, listener) =>
-        ipcMain.handle(channel, (event, ...args) =>
-          mainThreadWork.timed(`command ${aCommandsKind(args[0])}`, () => listener(event, ...args)),
-        ),
+        ipcMain.handle(channel, async (event, ...args) => {
+          const kind = aCommandsKind(args[0])
+          const answer = await mainThreadWork.timed(`command ${kind}`, () => listener(event, ...args))
+          if (kind === 'listConversations' && !('refused' in (answer as ListingAnswer))) {
+            firstListAcceptedAt ??= performance.now()
+            eventRetention?.firstListAccepted(firstListAcceptedAt)
+          }
+          return answer
+        }),
     },
     host: runtimeHost,
     sinkFor: (event) => {
@@ -2209,6 +2217,7 @@ function start(ownership: HostGateVerdict): void {
         },
         (error) => console.warn('BroCrew could not trim old event history:', error),
       )
+      if (firstListAcceptedAt !== undefined) eventRetention.firstListAccepted(firstListAcceptedAt)
     })
     .catch((error: unknown) => {
       pluginStartupTrace.failure('app-startup', error)
