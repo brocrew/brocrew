@@ -307,3 +307,23 @@ it('logs pre-controller time, nested phases and failures across retries', async 
   expect(log).toContain('Exit code 1')
   expect(log).toContain('Error: missing module')
 })
+
+it('reports startup phase-local time and failure at info without ending a phase twice', async () => {
+  const captured = await capture()
+  let now = 100
+  const trace = createPluginStartupTrace(() => now)
+  const recovery = trace.begin('workspace-recovery', 'startup')
+  now = 120
+  const migration = trace.begin('database-migration', 'startup')
+  now = 125
+  recovery()
+  now = 130
+  migration(new Error('fictional migration failure'))
+  migration()
+  const lines = await captured.lines(4)
+  expect(lines).toHaveLength(4)
+  expect(lines[0]).toMatch(/\[info\] \(startup\) workspace-recovery start.*ms: 0/)
+  expect(lines[1]).toMatch(/database-migration start.*ms: 0/)
+  expect(lines[2]).toMatch(/workspace-recovery end.*elapsed: 25.*ms: 25/)
+  expect(lines[3]).toMatch(/\[info\] \(startup\) database-migration failure.*elapsed: 30.*ms: 10/)
+})

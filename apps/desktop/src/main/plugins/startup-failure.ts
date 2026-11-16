@@ -214,21 +214,30 @@ export function createPluginStartupTrace(now = () => performance.now()) {
     began = now()
   let ordinal = 0
   const active = new Set<(error?: unknown) => void>()
-  const mark = (phase: string, state: string, attempt = ordinal) => {
-    const facts = { launch, elapsed: Math.round(now() - began), attempt }
-    if (state.startsWith('failure')) logWarn('plugin-startup', `${phase} ${state}`, facts)
-    else logInfo('plugin-startup', `${phase} ${state}`, facts)
+  const mark = (
+    phase: string,
+    state: string,
+    attempt = ordinal,
+    ms = 0,
+    part: 'startup' | 'plugin-startup' = 'plugin-startup',
+  ) => {
+    const facts = { launch, elapsed: Math.round(now() - began), attempt, ms: Math.round(ms) }
+    if (part === 'plugin-startup' && state.startsWith('failure'))
+      logWarn(part, `${phase} ${state}`, facts)
+    else logInfo(part, `${phase} ${state}`, facts)
   }
   return {
     attempt() {
       ordinal++
     },
-    begin(phase: string) {
+    begin(phase: string, part: 'startup' | 'plugin-startup' = 'plugin-startup') {
       const attempt = ordinal
-      mark(phase, 'start', attempt)
+      const started = now()
+      mark(phase, 'start', attempt, 0, part)
       let ended = false
       const finish = (error?: unknown) => {
-        if (!ended) mark(phase, error === undefined ? 'end' : 'failure', attempt)
+        if (!ended)
+          mark(phase, error === undefined ? 'end' : 'failure', attempt, now() - started, part)
         ended = true
         active.delete(finish)
       }

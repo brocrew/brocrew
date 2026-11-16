@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, expect, it, vi } from 'vitest'
 import {
   appLogFile,
+  createDatabaseWriteLog,
   debugIsOn,
   logDebug,
   logError,
@@ -226,6 +227,45 @@ it('always keeps errors and info, keeps debug detail only in Debug mode, and sho
   await vi.waitFor(async () => expect(await text(file)).toContain('detail while on'))
   written = await text(file)
   expect(written).toContain('detail while on')
+})
+
+it('keeps minute writer totals at info with Debug off', async () => {
+  const file = appLogFile(await folder())
+  openLog(file, { console: false })
+  const writer = createDatabaseWriteLog()
+  writer.record({ component: 'store.append', rows: 3, ms: 2 }, new Set(['events']))
+  writer.stop()
+  await vi.waitFor(async () => expect(await text(file)).toContain('committed writes'))
+  expect(await text(file)).toContain('[info]')
+  expect(await text(file)).toContain('store.append')
+})
+
+it.each([true, false])('colours live terminal warnings/errors only (TTY %s)', async (tty) => {
+  const file = appLogFile(await folder())
+  const child = run(
+    `
+    Object.defineProperty(process.stderr, 'isTTY', { value: process.argv[3] === 'true' })
+    const logger = require(process.argv[1])
+    logger.openLog(process.argv[2], { sync: true })
+    console.warn('fictional terminal warning')
+    console.error('fictional terminal error')
+    logger.logWarn('test', 'fictional scoped warning')
+    logger.logError('test', 'fictional scoped error')
+  `,
+    file,
+    String(tty),
+  )
+  expect(child.status, child.stderr).toBe(0)
+  if (tty) {
+    expect(child.stderr).toContain('\u001b[31m')
+    expect(child.stderr).toContain('\u001b[33m')
+    expect(child.stderr).toContain('\u001b[0m')
+  } else expect(child.stderr).not.toContain('\u001b[')
+  for (const message of ['terminal warning', 'terminal error', 'scoped warning', 'scoped error']) {
+    expect(child.stderr.split(`fictional ${message}`)).toHaveLength(2)
+    expect((await text(file)).split(`fictional ${message}`)).toHaveLength(2)
+  }
+  expect(await text(file)).not.toContain('\u001b[')
 })
 
 it('rotates a full file to one older copy, so the two never pass twice the cap', async () => {
