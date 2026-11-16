@@ -40,7 +40,6 @@ export async function themeDirectory(path: string): Promise<string | null> {
   }
 }
 
-/** Whether `error` is the system saying a path is not there, rather than refusing to answer. */
 export const saysAbsent = (error: unknown): boolean => {
   const code = errorCode(error)
   return code === 'ENOENT' || code === 'ENOTDIR'
@@ -49,7 +48,6 @@ export const saysAbsent = (error: unknown): boolean => {
 export type ThemeFolderState =
   | { readonly kind: 'here'; readonly root: string }
   | { readonly kind: 'absent' }
-  /** The system would not say, even after waiting out a brief hold. */
   | { readonly kind: 'unresolved' }
 
 export async function themeFolderState(
@@ -70,9 +68,7 @@ export async function themeFolderState(
 }
 
 export type ThemeChoice =
-  | { readonly kind: 'chosen'; readonly id: string | null }
-  /** The choice file is there but the system would not let it be read. */
-  | { readonly kind: 'unresolved' }
+  { readonly kind: 'chosen'; readonly id: string | null } | { readonly kind: 'unresolved' }
 
 export async function readThemeChoice(
   userData: string,
@@ -105,16 +101,9 @@ export async function readThemeChoice(
   }
 }
 
-export async function readActiveTheme(userData: string): Promise<string | null> {
-  const choice = await readThemeChoice(userData)
-  return choice.kind === 'chosen' ? choice.id : null
-}
-
 export interface ThemeCommitFiles {
   readonly rename: typeof rename
-  /** How the store looks at a theme folder or a set-aside copy; the real one unless given. */
   readonly lstat?: (path: string) => Promise<Stats>
-  /** How the store lists a folder of themes; the real one unless given. */
   readonly readdir?: (path: string) => Promise<string[]>
 }
 
