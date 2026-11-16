@@ -55,3 +55,31 @@ it('releases its budget on changed-owner deletion and on a complete reset', () =
   fresh.set('epsilon', answer())
   expect(fresh.size).toBe(2)
 })
+
+it('leaves an answer with opaque captured state uncached', () => {
+  const cache = windowFoldCache(6000)
+  const pieces = aFold(cache, 'pieces')
+  const named = new Set(Array.from({ length: 1000 }, (_, n) => `piece-${n}`))
+  pieces.set('opaque', {
+    generation: 0,
+    newest: 1,
+    answer: { matches: (piece: string) => named.has(piece) },
+  })
+  expect(pieces.has('opaque')).toBe(false)
+})
+
+it('rejects an oversized container before visiting or queuing all its members', () => {
+  const cache = windowFoldCache(6000)
+  const questions = aFold(cache, 'questions')
+  const wide = new Map(Array.from({ length: 1000 }, (_, n) => [n, n]))
+  let visits = 0
+  wide[Symbol.iterator] = function* () {
+    for (const entry of Map.prototype.entries.call(this)) {
+      visits++
+      yield entry
+    }
+  }
+  questions.set('wide', { generation: 0, newest: 1, answer: wide })
+  expect(questions.has('wide')).toBe(false)
+  expect(visits).toBe(0)
+})
