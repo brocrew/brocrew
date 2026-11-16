@@ -71,7 +71,7 @@ function rail(read: () => Promise<ListingAnswer>) {
   })
 }
 beforeEach(() => {
-  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
   ;(appClosing as Ref<boolean>).value = false
 })
 afterEach(() => {
@@ -131,8 +131,10 @@ it('retains later pushes and incomplete membership while retrying beyond two sec
   })
   read.mockRejectedValue(new Error('fictional read failure'))
   await refresh(view)
+  expect(view.all('conversations-error')).toHaveLength(0)
+  await vi.advanceTimersByTimeAsync(2_000)
   expect(view.q('conversations-error').textContent).toContain('fictional read failure')
-  await vi.advanceTimersByTimeAsync(4_000)
+  await vi.advanceTimersByTimeAsync(2_000)
   expect(read).toHaveBeenCalledTimes(6)
   expect(listed(view, 'kept')).not.toBeNull()
   const partial = answer(3, 3, ['active'])

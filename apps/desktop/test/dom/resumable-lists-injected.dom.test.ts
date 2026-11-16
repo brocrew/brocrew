@@ -185,7 +185,7 @@ it.each(surfaces)(
     if (surface === 'rail') out.selected.listUnresumable.mockRejectedValue(failure)
     else out.selected.listUnresumable.mockRejectedValueOnce(failure)
     await out.refresh()
-    expect(out.error()).toContain(failure.message)
+    await vi.waitFor(() => expect(out.error()).toContain(failure.message), { timeout: 3_000 })
     expect(out.adoptionCaptures()).toBe(captured)
     expect(out.rows()).toBe(surface === 'page' ? 0 : 2)
     out.failGetter(new Error('Fern getter failed'))
@@ -220,7 +220,10 @@ it.each(surfaces)(
     await settle()
     Reflect.deleteProperty(out.selected, 'listUnresumable')
     await out.refresh()
-    expect(out.error()).toContain('The client does not provide session reads and intents')
+    await vi.waitFor(
+      () => expect(out.error()).toContain('The client does not provide session reads and intents'),
+      { timeout: 3_000 },
+    )
     out.omit()
     await out.refresh()
     expect(out.error()).toContain('The client does not provide session reads and intents')

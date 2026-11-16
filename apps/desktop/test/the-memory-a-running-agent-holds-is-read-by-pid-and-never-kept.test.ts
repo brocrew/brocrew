@@ -1,3 +1,4 @@
+import { once, sliceOf } from './lib/source-markers'
 import { neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -47,27 +48,6 @@ const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 const SRC = join(here, '../src')
 const MiB = 1024 ** 2
-
-/** The index of a marker that is in the source exactly once. */
-function once(marker: string, file: string, source: string): number {
-  const at = source.indexOf(marker)
-  expect(at, `${JSON.stringify(marker)} is no longer in ${file}`).toBeGreaterThan(-1)
-  expect(
-    source.indexOf(marker, at + 1),
-    `${JSON.stringify(marker)} is in ${file} more than once`,
-  ).toBe(-1)
-  return at
-}
-
-/** From a marker that is in the source once, to (not including) the first `closing` after it. */
-function sliceOf(marker: string, closing: string, file: string, source: string): string {
-  const at = once(marker, file, source)
-  const end = source.indexOf(closing, at)
-  expect(end, `${marker} is never closed by ${JSON.stringify(closing)} in ${file}`).toBeGreaterThan(
-    at,
-  )
-  return source.slice(at, end)
-}
 
 // ─── the host rig (§2) ─────────────────────────────────────────────────────────────────────────
 

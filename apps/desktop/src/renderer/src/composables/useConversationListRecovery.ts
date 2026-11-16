@@ -15,6 +15,7 @@ import { appClosing } from '../lib/app-closing'
 /** One list read at a time, with one follow-up after a change or a failed read. */
 export function useConversationListRecovery(workspace: () => string | null, reset: () => void) {
   let generation = 0
+  let failedSince: number | undefined
   let disposed = false
   let reading = false
   let again = false
@@ -27,6 +28,7 @@ export function useConversationListRecovery(workspace: () => string | null, rese
   const invalidate = () => {
     cancel()
     generation++
+    failedSince = undefined
     reading = false
     again = false
   }
@@ -62,16 +64,27 @@ export function useConversationListRecovery(workspace: () => string | null, rese
       return generation
     },
     current,
+    succeeded: () => {
+      failedSince = undefined
+    },
+    failed: () => {
+      failedSince ??= Date.now()
+      return Date.now() - failedSince >= 2_000
+    },
     finish: (read: number, retry: boolean, refresh: () => void): void => {
       if (!current(read)) return
       reading = false
       if (!retry && !again) return
       again = false
       cancel()
-      timer = setTimeout(() => {
-        timer = undefined
-        if (current(read)) refresh()
-      }, 1_000)
+      const quietRemaining = failedSince === undefined ? 0 : 2_000 - (Date.now() - failedSince)
+      timer = setTimeout(
+        () => {
+          timer = undefined
+          if (current(read)) refresh()
+        },
+        quietRemaining > 0 ? Math.min(1_000, quietRemaining) : 1_000,
+      )
     },
   }
 }
@@ -236,10 +249,11 @@ export function useRecoveredConversationList(
         }),
       )
       looked.value = true
+      listRecovery.succeeded()
       listError.value = null
     } catch (cause) {
       if (!listRecovery.current(cycle)) return
-      listError.value = readableError(cause)
+      if (listRecovery.failed()) listError.value = readableError(cause)
       retry = true
     } finally {
       listRecovery.finish(cycle, retry, () => {

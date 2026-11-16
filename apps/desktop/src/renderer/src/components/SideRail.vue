@@ -67,7 +67,7 @@ import type { ProviderBlockStore } from '../lib/provider-limit-facts'
 import { useMinuteClock } from '../composables/useMinuteClock'
 import { railFacts, useWhoCalledWhom, type RailSays } from '../composables/useWhoCalledWhom'
 import type { WorkspaceReading } from '../../../shared/workspace-reading'
-import type { WorkEdge } from '../../../shared/who-called-whom'
+import { workByConversation } from '../lib/working-together'
 import type { AppInfo } from '@brobot2/shared'
 import { profileItRunsAs, whereItWorks } from '../lib/session-record'
 import { agentName } from '../../../shared/runtime-ipc'
@@ -427,16 +427,7 @@ const listed = computed(() =>
 )
 const cast = useWhoCalledWhom()
 // Index the forest once per reading, rather than walking it for every row on every render.
-const workByHolder = computed(() => {
-  const holders = new Map<string, WorkEdge[]>()
-  for (const node of cast.forest.value?.nodes.rows ?? []) {
-    if (node.node !== 'a-task') continue
-    const pieces = holders.get(node.work.to)
-    if (pieces) pieces.push(node.work)
-    else holders.set(node.work.to, [node.work])
-  }
-  return holders
-})
+const workByHolder = computed(() => workByConversation(cast.forest.value))
 watchEffect(() => {
   lists.update({ listedConversations: looked.value ? listed.value : null })
   if (!looked.value) {

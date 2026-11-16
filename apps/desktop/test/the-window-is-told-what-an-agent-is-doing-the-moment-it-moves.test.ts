@@ -1,3 +1,4 @@
+import { once, sliceOf } from './lib/source-markers'
 import { waitFor } from './lib/f093-host'
 import type { AgentState } from '../src/shared/agent-state-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -133,33 +134,12 @@ function code(file: string, source: string): string {
   return lines.join('\n')
 }
 
-/** The index of a marker that is in the source exactly once. */
-function once(marker: string, file: string, source: string): number {
-  const at = source.indexOf(marker)
-  expect(at, `${JSON.stringify(marker)} is no longer in ${file}`).toBeGreaterThan(-1)
-  expect(
-    source.indexOf(marker, at + 1),
-    `${JSON.stringify(marker)} is in ${file} more than once`,
-  ).toBe(-1)
-  return at
-}
-
 /** A function, from its signature to the closing brace at the same indentation. */
 function functionOf(signature: string, file: string, source: string): string {
   const at = once(signature, file, source)
   const indent = source.slice(source.lastIndexOf('\n', at) + 1, at)
   const end = source.indexOf(`\n${indent}}`, at)
   expect(end, `${signature} has no closing brace at its indentation`).toBeGreaterThan(at)
-  return source.slice(at, end)
-}
-
-/** From a marker that is in the source once, to (not including) the first `closing` after it. */
-function sliceOf(marker: string, closing: string, file: string, source: string): string {
-  const at = once(marker, file, source)
-  const end = source.indexOf(closing, at)
-  expect(end, `${marker} is never closed by ${JSON.stringify(closing)} in ${file}`).toBeGreaterThan(
-    at,
-  )
   return source.slice(at, end)
 }
 
