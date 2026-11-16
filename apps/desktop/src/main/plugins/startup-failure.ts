@@ -222,9 +222,13 @@ export function createPluginStartupTrace(now = () => performance.now()) {
     part: 'startup' | 'plugin-startup' = 'plugin-startup',
   ) => {
     const facts = { launch, elapsed: Math.round(now() - began), attempt, ms: Math.round(ms) }
-    if (part === 'plugin-startup' && state.startsWith('failure'))
-      logWarn(part, `${phase} ${state}`, facts)
-    else logInfo(part, `${phase} ${state}`, facts)
+    try {
+      if (part === 'plugin-startup' && state.startsWith('failure'))
+        logWarn(part, `${phase} ${state}`, facts)
+      else logInfo(part, `${phase} ${state}`, facts)
+    } catch {
+      // A failed log must not fail the startup phase being observed.
+    }
   }
   return {
     attempt() {

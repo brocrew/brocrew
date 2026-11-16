@@ -20,6 +20,7 @@ import {
 import { PluginSupervisorError } from '../src/main/plugins/supervisor/protocol'
 import { randomUUID } from 'node:crypto'
 import { captureLog } from './lib/log-file'
+import log from 'electron-log'
 const captures: Awaited<ReturnType<typeof captureLog>>[] = []
 async function capture() {
   const one = await captureLog()
@@ -326,4 +327,12 @@ it('reports startup phase-local time and failure at info without ending a phase 
   expect(lines[1]).toMatch(/database-migration start.*ms: 0/)
   expect(lines[2]).toMatch(/workspace-recovery end.*elapsed: 25.*ms: 25/)
   expect(lines[3]).toMatch(/\[info\] \(startup\) database-migration failure.*elapsed: 30.*ms: 10/)
+})
+
+it('a logger failure cannot fail a startup phase or its completion', () => {
+  vi.spyOn(log, 'scope').mockImplementation(() => {
+    throw new Error('fictional logger failure')
+  })
+  const trace = createPluginStartupTrace()
+  expect(() => trace.begin('database-migration', 'startup')()).not.toThrow()
 })

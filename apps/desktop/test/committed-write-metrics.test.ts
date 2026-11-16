@@ -88,6 +88,8 @@ it('counts direct autocommit changes, zero changes and trigger effects honestly'
 
 it('keeps writer scopes synchronous, nested and receiver-preserving', async () => {
   const recorder = committedChangesOf(db)
+  const value = { same: true }
+  let pending: Promise<unknown> | undefined
   const target = {
     id: 0,
     add() {
@@ -98,19 +100,31 @@ it('keeps writer scopes synchronous, nested and receiver-preserving', async () =
     fail() {
       throw failure
     },
-    async later() {
-      await Promise.resolve()
-      insert(++this.id)
+    value() {
+      return value
+    },
+    later() {
+      return (pending = Promise.resolve().then(() => insert(++this.id)))
     },
   }
   const failure = new Error('fictional method failure')
   const store = timedMethods(target, 'store', new MainThreadWork(), (name, call) =>
     recorder.withWriter(name, call),
   )
+  expect(store.add).toBe(store.add)
+  expect(store.value()).toBe(value)
   store.add()
-  expect(() => store.fail()).toThrow(failure)
+  let caught: unknown
+  try {
+    store.fail()
+  } catch (error) {
+    caught = error
+  }
+  expect(caught).toBe(failure)
   insert(99)
-  await store.later()
+  const returned = store.later()
+  expect(returned).toBe(pending)
+  await returned
   expect(seen.map((one) => one.write.component)).toEqual([
     'store.add',
     'nested',

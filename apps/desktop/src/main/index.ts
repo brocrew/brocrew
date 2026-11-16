@@ -55,6 +55,7 @@ import { keptShippedSkills, prepareBuiltInSkills } from './skills/prepare-built-
 import { factoryTextOf, readTextPack } from './skills/text-pack'
 import {
   appLogFile,
+  createDatabaseWriteLog,
   debugIsOn,
   logInfo,
   logWarn,
@@ -172,6 +173,7 @@ import {
 import { DOCK_LABEL_CHANNELS, isDockLabelChange } from '../shared/dock-label'
 import { nativeTranscriptPath } from './archive/native-file'
 import { createMemoryAmendmentObserver, createSessionStore } from './db/session-store'
+import { committedChangesOf } from './db/committed-changes'
 import { applyMigrations } from './db/migrate'
 import { NewerDatabaseError, openOrRefuse, UnreadableDatabaseError } from './db/newer-database'
 import type { RecoveryService, StartupVerdict } from '../shared/recovery'
@@ -517,11 +519,14 @@ function initDatabase(): AppDatabase {
   openOrRefuse(database, theBuildsMigrations(), {
     folder: app.getPath('userData'),
   })
+  const finishMigration = pluginStartupTrace.begin('database-migration', 'startup')
   try {
     mainThreadWork.timed('database migrations before the window', () =>
       applyMigrations(database, migrationsFolder),
     )
+    finishMigration()
   } catch (error) {
+    finishMigration(error)
     try {
       database.close()
     } catch {
@@ -621,10 +626,18 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
   keepDraftedPastes(database, userData, Date.now())
   void sweepPastedImages(pastedImagesRoot(userData), Date.now()).catch(() => 0)
 
-  const store = timedMethods(
-    createSessionStore(database, Date.now, mainThreadWork),
-    'store',
-    mainThreadWork,
+  const originalStore = createSessionStore(database, Date.now, mainThreadWork)
+  const committed = committedChangesOf(database)
+  const writeLog = createDatabaseWriteLog()
+  const stopWriteLog = committed.listen((change) => {
+    if (!change.resync && change.write) writeLog.record(change.write, change.tables)
+  })
+  app.once('will-quit', () => {
+    stopWriteLog()
+    writeLog.stop()
+  })
+  const store = timedMethods(originalStore, 'store', mainThreadWork, (name, call) =>
+    committed.withWriter(name, call),
   )
   const sharedDiscovery = new SharedSkillDiscovery(
     userData,
@@ -1334,14 +1347,27 @@ function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null
       handle: (channel, listener) =>
         ipcMain.handle(channel, async (event, ...args) => {
           const kind = aCommandsKind(args[0])
-          const answer = await mainThreadWork.timed(`command ${kind}`, () =>
-            listener(event, ...args),
-          )
-          if (kind === 'listConversations' && !('refused' in (answer as ListingAnswer))) {
-            firstListAcceptedAt ??= performance.now()
-            eventRetention?.firstListAccepted(firstListAcceptedAt)
+          const finishFirstList =
+            kind === 'listConversations' && firstListAcceptedAt === undefined
+              ? pluginStartupTrace.begin('first-list', 'startup')
+              : undefined
+          try {
+            const answer = await mainThreadWork.timed(`command ${kind}`, () =>
+              listener(event, ...args),
+            )
+            if (kind === 'listConversations') {
+              const refused = 'refused' in (answer as ListingAnswer)
+              if (!refused) {
+                firstListAcceptedAt ??= performance.now()
+                eventRetention?.firstListAccepted(firstListAcceptedAt)
+              }
+              finishFirstList?.(refused ? 'refused' : undefined)
+            }
+            return answer
+          } catch (error) {
+            finishFirstList?.(error)
+            throw error
           }
-          return answer
         }),
     },
     host: runtimeHost,
@@ -1526,6 +1552,7 @@ async function compactDataBeforeOpen(): Promise<void> {
     ...(existing ? { fs: { ...recoveryFiles, mkdir: existing.mkdir.bind(existing) } } : {}),
   }
   checkingTheData = true
+  const finishCompaction = pluginStartupTrace.begin('workspace-compaction', 'startup')
   try {
     await withRecoveryWork(() =>
       withRecoveryCopies(() =>
@@ -1549,7 +1576,9 @@ async function compactDataBeforeOpen(): Promise<void> {
         ),
       ),
     )
+    finishCompaction()
   } catch (error) {
+    finishCompaction(error)
     if (recoveryCaptureAbort.signal.aborted) throw error
     console.warn('BroCrew could not make its workspace smaller at this launch:', error)
   } finally {
@@ -1999,7 +2028,7 @@ function start(ownership: HostGateVerdict): void {
       } catch (error) {
         console.warn('the stall watch could not start:', error)
       }
-      let finishStartupPhase = pluginStartupTrace.begin('workspace-recovery')
+      let finishStartupPhase = pluginStartupTrace.begin('workspace-recovery', 'startup')
       const verdict = await theVerdictBeforeTheData(ownership)
       finishStartupPhase(verdict.kind === 'open' ? undefined : verdict.kind)
       if (closedWhileCheckingSaid) return
