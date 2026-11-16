@@ -32,6 +32,27 @@ const ANSWER_MS = 1500
 /** A timed-out question gets one retry with more time for a busy host to answer. */
 const RETRY_ANSWER_MS = 3000
 
+/** The step in which an answer deadline counts this process's own running time. */
+const AWAKE_STEP_MS = 100
+
+/**
+ * Calls `expire` once this process has run for about `ms` while waiting. A frozen main thread
+ * spends none of it: Node fires a late interval once rather than once per missed step, and each
+ * step leaves the event loop a turn to read what the other side has already sent. So a busy
+ * workspace never blames another for its own freeze. Returns a function that cancels the deadline.
+ */
+function awakeDeadline(ms: number, expire: () => void): () => void {
+  let left = Math.ceil(ms / AWAKE_STEP_MS)
+  const timer = setInterval(() => {
+    left -= 1
+    if (left > 0) return
+    clearInterval(timer)
+    expire()
+  }, AWAKE_STEP_MS)
+  timer.unref()
+  return () => clearInterval(timer)
+}
+
 /** Presence listeners are held for the process lifetime without keeping it alive. */
 const holding = new Set<Server>()
 
@@ -205,15 +226,14 @@ function listen(
         socket.end(token)
         return
       }
+      // The caller closes the connection. Hanging up after a deadline here would drop the request
+      // of a caller whose own main thread was frozen while this reply waited to be read.
       socket.write(`${JSON.stringify({ ...updates.details(), token, updateProtocol: 1 })}\n`)
-      // Older presence callers wait for EOF instead of reading the first line.
-      socket.setTimeout(ANSWER_MS, () => socket.end())
       socket.setEncoding('utf8')
       let request = ''
       socket.on('data', (chunk: string) => {
         request += chunk
         if (!request.includes('\n')) return
-        socket.setTimeout(0)
         socket.removeAllListeners('data')
         void Promise.resolve()
           .then(() => updates.receive(JSON.parse(request) as WorkspaceUpdateRequest))
@@ -257,12 +277,11 @@ function askOnce(path: string, timeoutMs: number): Promise<Answer | { kind: 'tim
     let said = ''
     const socket = connect(path)
     const settle = (answer: Answer | { kind: 'timeout' }): void => {
-      clearTimeout(timer)
+      stopWaiting()
       socket.destroy()
       resolve(answer)
     }
-    const timer = setTimeout(() => settle({ kind: 'timeout' }), timeoutMs)
-    timer.unref()
+    const stopWaiting = awakeDeadline(timeoutMs, () => settle({ kind: 'timeout' }))
     socket.setEncoding('utf8')
     socket.on('data', (chunk: string) => {
       said += chunk
@@ -378,9 +397,12 @@ export async function readWorkspaceForUpdate(
   throw new Error(`BroCrew could not prepare the running workspace ${userData}`)
 }
 
-/** Preparation has no deadline: only a completed reply acknowledges saved drafts and teardown. */
+/**
+ * The workspace must say who it is within {@link ANSWER_MS} of this process's running time.
+ * Preparation has no deadline: only a completed reply acknowledges saved drafts and teardown.
+ */
 export function requestWorkspaceUpdate(
-  peer: UpdateWorkspaceId,
+  peer: UpdateWorkspaceId & Pick<UpdateWorkspace, 'name'>,
   request: WorkspaceUpdateRequest,
   platform: string = process.platform,
   outside: Partial<OutsideGates> = {},
@@ -391,9 +413,9 @@ export function requestWorkspaceUpdate(
     let identified = false
     let acknowledged = false
     let refused = false
-    const timer = setTimeout(
-      () => socket.destroy(new Error(`BroCrew could not reach ${peer.folder}`)),
-      ANSWER_MS,
+    const who = `${peer.name} (${peer.folder})`
+    const stopWaiting = awakeDeadline(ANSWER_MS, () =>
+      socket.destroy(new Error(`The workspace ${who} did not answer`)),
     )
     socket.setEncoding('utf8')
     socket.on('data', (chunk: string) => {
@@ -406,10 +428,10 @@ export function requestWorkspaceUpdate(
           const value = JSON.parse(line) as UpdateWorkspace & { ok?: boolean; error?: string }
           if (!identified) {
             if (value.pid !== peer.pid || value.folder !== peer.folder) {
-              throw new Error(`The workspace ${peer.folder} restarted while preparing the update`)
+              throw new Error(`The workspace ${who} restarted while preparing the update`)
             }
             identified = true
-            clearTimeout(timer)
+            stopWaiting()
             socket.write(`${JSON.stringify(request)}\n`)
           } else {
             if (value.error !== undefined) {
@@ -431,13 +453,12 @@ export function requestWorkspaceUpdate(
       reject(Object.assign(error, { updateRequestSent: identified && !refused })),
     )
     socket.on('close', () => {
-      clearTimeout(timer)
+      stopWaiting()
       if (!acknowledged)
         reject(
-          Object.assign(
-            new Error(`The workspace ${peer.folder} closed before acknowledging the update`),
-            { updateRequestSent: identified && !refused },
-          ),
+          Object.assign(new Error(`The workspace ${who} closed before acknowledging the update`), {
+            updateRequestSent: identified && !refused,
+          }),
         )
     })
   })

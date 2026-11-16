@@ -25,8 +25,10 @@ interface WorkspaceUpdateDeps {
   readonly self: Omit<UpdateWorkspace, 'owner' | 'ready'>
   ready(): boolean
   discover(): Promise<readonly UpdateWorkspace[]>
-  request(peer: UpdateWorkspaceId, request: WorkspaceUpdateRequest): Promise<void>
+  request(peer: UpdateWorkspace, request: WorkspaceUpdateRequest): Promise<void>
   prepare(): Promise<void>
+  /** Start this workspace again on the version it runs, once preparation has closed it down. */
+  reopen(): void
   remember(version: string, folders: readonly string[]): void
   report(error: unknown): void
   quit(): void
@@ -45,6 +47,8 @@ export function workspaceUpdate(deps: WorkspaceUpdateDeps) {
   let installed = false
   let quitChosen = false
   let installRequested = false
+  /** Preparation began here: its teardown closes sessions and the database for good. */
+  let stopped = false
 
   const quit = (): void => {
     if (quitChosen) return
@@ -60,7 +64,7 @@ export function workspaceUpdate(deps: WorkspaceUpdateDeps) {
     }
     return peers
   }
-  const call = (peer: UpdateWorkspaceId, request: WorkspaceUpdateRequest): Promise<void> =>
+  const call = (peer: UpdateWorkspace, request: WorkspaceUpdateRequest): Promise<void> =>
     same(peer, deps.self) ? receive(request) : deps.request(peer, request)
 
   async function receive(request: WorkspaceUpdateRequest): Promise<void> {
@@ -83,9 +87,12 @@ export function workspaceUpdate(deps: WorkspaceUpdateDeps) {
     }
     if (request.kind === 'cancel') {
       owner = null
+      // A workspace with the update ready installs it as it exits, so it stays as it is.
+      if (stopped && !deps.ready()) deps.reopen()
       return
     }
     owner = request.owner
+    stopped = true
     preparation ??= deps.prepare().catch((error: unknown) => {
       preparation = null
       throw error
@@ -107,7 +114,14 @@ export function workspaceUpdate(deps: WorkspaceUpdateDeps) {
       throw new Error('The workspace with the downloaded update could not be reached')
     }
     try {
-      await Promise.all(peers.map((peer) => call(peer, { kind: 'prepare', owner: deps.self })))
+      // The installer stops last, so a failure before it leaves the workspace showing the update
+      // untouched, and every other workspace that stopped can reopen.
+      await Promise.all(
+        peers
+          .filter((peer) => !same(peer, chosen))
+          .map((peer) => call(peer, { kind: 'prepare', owner: deps.self })),
+      )
+      await call(chosen, { kind: 'prepare', owner: deps.self })
       const folders = [
         chosen.folder,
         ...peers.filter((peer) => !same(peer, chosen)).map((peer) => peer.folder),
@@ -131,9 +145,13 @@ export function workspaceUpdate(deps: WorkspaceUpdateDeps) {
       if (!same(chosen, deps.self)) quit()
     } catch (error) {
       if (!installRequested) {
+        // This workspace hears its own cancel last: reopening ends it, so the others hear first.
         await Promise.allSettled(
-          peers.map((peer) => call(peer, { kind: 'cancel', owner: deps.self })),
+          peers
+            .filter((peer) => !same(peer, deps.self))
+            .map((peer) => call(peer, { kind: 'cancel', owner: deps.self })),
         )
+        await receive({ kind: 'cancel', owner: deps.self })
       }
       throw error
     }
@@ -142,6 +160,8 @@ export function workspaceUpdate(deps: WorkspaceUpdateDeps) {
   return {
     details,
     holdsQuit: () => owner !== null && !quitChosen,
+    /** Whether this workspace stopped its agents for an update that did not happen. */
+    stoppedWithoutUpdate: () => stopped && owner === null && !quitChosen,
     receive,
     plan: participants,
     restart: async (version: string): Promise<void> => {

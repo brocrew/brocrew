@@ -16,6 +16,7 @@ function cluster(held = false, ownerReady = false) {
   const journal: string[] = []
   const saves = new Map<string, () => void>()
   const failures = new Set<string>()
+  const silent = new Set<string>()
   let remembered: readonly string[] | null = null
   let loseInstallReply = false
   let refuseInstall = false
@@ -32,6 +33,7 @@ function cluster(held = false, ownerReady = false) {
       request: async (peer, request) => {
         const target = actors.get(peer.folder)
         if (!target) throw new Error('workspace closed before acknowledgement')
+        if (silent.has(peer.folder)) throw new Error(`The workspace ${peer.name} did not answer`)
         if (request.kind === 'quit' && refuseQuit) throw new Error('quit not delivered')
         if (request.kind === 'install' && refuseInstall) throw new Error('not delivered')
         await target.receive(request)
@@ -54,6 +56,7 @@ function cluster(held = false, ownerReady = false) {
         actor.finishQuit()
       },
       install: () => journal.push(`native install ${i}`),
+      reopen: () => journal.push(`reopen ${i}`),
     })
     actors.set(folder, actor)
   }
@@ -62,6 +65,7 @@ function cluster(held = false, ownerReady = false) {
     journal,
     saves,
     failures,
+    silent,
     remembered: () => remembered,
     refuseQuit: () => {
       refuseQuit = true
@@ -83,14 +87,18 @@ function cluster(held = false, ownerReady = false) {
   }
 }
 
-it('waits for all three durable preparations, then invokes one installer and quits the leader last', async () => {
+it('waits for all three durable preparations with the installer last, then installs once and quits the leader last', async () => {
   const c = cluster(true)
   const updating = c.first.restart('0.2.24')
+  for (let tick = 0; tick < 12; tick += 1) await Promise.resolve()
+  expect(c.journal.filter((step) => step.startsWith('prepare'))).toEqual(['prepare 0', 'prepare 2'])
+  c.saves.get('/workspace-0')!()
+  c.saves.get('/workspace-2')!()
   for (let tick = 0; tick < 12; tick += 1) await Promise.resolve()
   expect(c.journal.filter((step) => step.startsWith('prepare'))).toHaveLength(3)
   expect(c.remembered()).toBeNull()
   expect(c.journal.some((step) => step.includes('native'))).toBe(false)
-  for (const release of c.saves.values()) release()
+  c.saves.get('/workspace-1')!()
   await updating
   expect(c.remembered()).toEqual(['/workspace-1', '/workspace-0', '/workspace-2'])
   expect(c.journal.slice(-4)).toEqual(['quit 2', 'quit 1', 'native install 1', 'quit 0'])
@@ -128,6 +136,29 @@ it('a failed final save neither remembers a reopen set nor installs, and an expl
   c.failures.clear()
   await c.first.restart('0.2.24')
   expect(c.journal.filter((step) => step.includes('native install'))).toHaveLength(1)
+})
+
+it('a workspace that does not answer stops the update before the installer stops, and the stopped ones reopen', async () => {
+  const c = cluster()
+  c.silent.add('/workspace-2')
+  await expect(c.first.restart('0.2.24')).rejects.toThrow(
+    'The workspace /workspace-2 did not answer',
+  )
+  expect(c.journal).toContain('prepare 0')
+  expect(c.journal).not.toContain('prepare 1')
+  expect(c.journal.filter((step) => step.startsWith('reopen'))).toEqual(['reopen 0'])
+  expect(c.journal.some((step) => step.startsWith('quit') || step.includes('native'))).toBe(false)
+  expect(c.first.stoppedWithoutUpdate()).toBe(false)
+  expect([...c.actors.values()].some((actor) => actor.holdsQuit())).toBe(false)
+})
+
+it('when the installer itself fails to stop, the others reopen and it says it has stopped', async () => {
+  const c = cluster()
+  c.failures.add('/workspace-1')
+  await expect(c.first.restart('0.2.24')).rejects.toThrow('disk full')
+  expect(c.journal.filter((step) => step.startsWith('reopen'))).toEqual(['reopen 0'])
+  expect(c.journal.some((step) => step.startsWith('quit') || step.includes('native'))).toBe(false)
+  expect(c.first.stoppedWithoutUpdate()).toBe(true)
 })
 
 it('does not elect a different installer when the workspace owning an active operation disappears', async () => {

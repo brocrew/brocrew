@@ -1,3 +1,5 @@
+import { spawn } from 'node:child_process'
+import { once } from 'node:events'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
@@ -11,6 +13,8 @@ import {
   whoIsOn,
 } from '../src/main/one-host-gate'
 import type { UpdateWorkspace } from '../src/main/update-workspaces'
+
+const GATE = new URL('../src/main/one-host-gate.ts', import.meta.url).href
 
 const folders: string[] = []
 const closers: (() => Promise<void>)[] = []
@@ -104,4 +108,76 @@ it('socket EOF without a completion reply is an error, not preparation success',
   await expect(
     requestWorkspaceUpdate(peer, { kind: 'prepare', owner: peer }, process.platform, outside),
   ).rejects.toThrow('closed before acknowledging')
+})
+
+/** Blocks this thread, as a busy main process is blocked, without spending the CPU. */
+function freeze(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+}
+
+/** A workspace in its own process, so it keeps running while this one is frozen. */
+async function workspaceElsewhere(peer: UpdateWorkspace, outside: { folder: string }) {
+  const child = spawn(
+    process.execPath,
+    [
+      '--no-warnings',
+      '--experimental-strip-types',
+      '--input-type=module',
+      '--eval',
+      `const { publishWorkspacePresence } = await import(${JSON.stringify(GATE)})
+const [peer, outside] = process.argv.slice(1).map((value) => JSON.parse(value))
+await publishWorkspacePresence(peer.folder, process.platform, outside, {
+  details: () => ({ ...peer, pid: process.pid }),
+  receive: async () => void process.stdout.write('received\\n'),
+})
+process.stdout.write('listening\\n')
+process.stdin.resume()`,
+      JSON.stringify(peer),
+      JSON.stringify(outside),
+    ],
+    {
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined },
+      stdio: ['pipe', 'pipe', 'inherit'],
+    },
+  )
+  closers.push(async () => {
+    if (child.exitCode === null) {
+      child.kill()
+      await once(child, 'exit')
+    }
+  })
+  let said = ''
+  child.stdout.setEncoding('utf8')
+  child.stdout.on('data', (chunk: string) => (said += chunk))
+  await vi.waitFor(() => expect(said).toContain('listening'), { timeout: 15_000 })
+  return { ...peer, pid: child.pid!, said: () => said }
+}
+
+it('a 2 s freeze of the updating workspace during the handshake does not fail the update', async () => {
+  const { peer, outside } = fixture()
+  const elsewhere = await workspaceElsewhere(peer, outside)
+  const pending = requestWorkspaceUpdate(
+    elsewhere,
+    { kind: 'prepare', owner: peer },
+    process.platform,
+    outside,
+  )
+  freeze(2_000)
+  await expect(pending).resolves.toBeUndefined()
+  await vi.waitFor(() => expect(elsewhere.said()).toContain('received'))
+}, 30_000)
+
+it('a workspace that accepts the connection but never answers is named', async () => {
+  const { peer, outside } = fixture()
+  const path = hostGatePath(peer.folder, process.platform, outside)
+  if (process.platform !== 'win32') mkdirSync(dirname(path), { recursive: true })
+  const server = createServer(() => {})
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(path, resolve)
+  })
+  closers.push(() => new Promise((resolve) => server.close(() => resolve())))
+  await expect(
+    requestWorkspaceUpdate(peer, { kind: 'prepare', owner: peer }, process.platform, outside),
+  ).rejects.toThrow(`The workspace Bakery (${peer.folder}) did not answer`)
 })

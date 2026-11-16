@@ -146,6 +146,12 @@ export function startUpdates(options: {
     },
     request: requestWorkspaceUpdate,
     prepare: options.prepareForQuit,
+    // A later turn, so the reply to the workspace that asked is written before this one quits.
+    reopen: () =>
+      setImmediate(() => {
+        app.relaunch()
+        app.quit()
+      }),
     remember: (version, folders) =>
       rememberUpdateWorkspaces(settings.file, { executable: process.execPath, version, folders }),
     report: (error) => console.error('BroCrew update could not confirm a workspace reply:', error),
@@ -291,10 +297,13 @@ export function startUpdates(options: {
       await workspaceUpdates.restart(state.version)
     } catch (error) {
       console.error('BroCrew could not update its workspaces:', error)
+      const reason = error instanceof Error ? error.message : String(error)
       if (!options.hidden)
         dialog.showErrorBox(
           'BroCrew could not update',
-          error instanceof Error ? error.message : String(error),
+          workspaceUpdates.stoppedWithoutUpdate()
+            ? `${reason}\n\nThis workspace has stopped its agents. Quit BroCrew and open it again to start them.`
+            : reason,
         )
       throw error
     }
