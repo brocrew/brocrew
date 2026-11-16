@@ -23,7 +23,7 @@ import {
   deriveProviderHome,
   prepareProviderHome,
   providerHomesRoot,
-} from '../src/main/runtime/provider-homes'
+} from '../src/main/connections/homes'
 import { bundledCodexTransportFactory } from '../../../packages/runtime/smoke/bundled-codex'
 import { runEvidence, runScratch } from '../../../packages/runtime/smoke/run-paths'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'

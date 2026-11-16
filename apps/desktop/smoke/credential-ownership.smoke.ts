@@ -12,7 +12,7 @@ import {
 } from '../../../scripts/lib/personal-home-guard.mjs'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
-import { createProviderAuthOps } from '../src/main/runtime/provider-homes'
+import { createProviderAuthOps } from '../src/main/connections/homes'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 
 /**

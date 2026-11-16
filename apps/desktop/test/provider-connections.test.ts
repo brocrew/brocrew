@@ -4,10 +4,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
-import {
-  listProviderConnections,
-  resolveProviderConnection,
-} from '../src/main/connections/records'
+import { listProviderConnections, resolveProviderConnection } from '../src/main/connections/records'
 
 let db: AppDatabase
 beforeEach(() => {

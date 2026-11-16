@@ -4,10 +4,7 @@
  * account, plan or figure here is anybody's.
  */
 import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
-import {
-  providerLaunchChoices,
-  resolveProviderLaunch,
-} from '../../src/main/runtime/provider-launch'
+import { providerLaunchChoices, resolveProviderLaunch } from '../../src/main/connections/launch'
 
 const NOW = Date.now()
 const HOUR = 3_600_000

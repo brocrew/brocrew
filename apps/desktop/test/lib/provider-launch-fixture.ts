@@ -1,10 +1,7 @@
 import type { ClientProviderApi } from '../../src/shared/client-provider-api'
 import type { AuthState, Provider, RuntimeBridge } from '../../src/shared/runtime-ipc'
 import type { ModelList } from '../../src/shared/model-choice-contracts'
-import {
-  providerLaunchChoices,
-  resolveProviderLaunch,
-} from '../../src/main/connections/launch'
+import { providerLaunchChoices, resolveProviderLaunch } from '../../src/main/connections/launch'
 import { createModelLists as holdModelLists } from '../../src/renderer/src/lib/model-lists'
 
 type ListDoors = Pick<RuntimeBridge, 'modelList' | 'addHandAddedModel' | 'deleteHandAddedModel'> &

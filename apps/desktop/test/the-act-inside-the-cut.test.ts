@@ -31,7 +31,11 @@ import { REPLY_RAILS, refuseReply, replyUnkeptFileReason } from '../src/main/run
 import { QUESTION_RAILS, refuseQuestion } from '../src/main/runtime/question-rails'
 import { INTERRUPT_RAILS, refuseInterrupt } from '../src/main/runtime/interrupt-rails'
 import { RESOURCE_RAILS, refuseResource } from '../src/main/resources/resources'
-import { MODEL_RAILS, refuseModel, type ModelRefusalDetail } from '../src/main/connections/model-rails'
+import {
+  MODEL_RAILS,
+  refuseModel,
+  type ModelRefusalDetail,
+} from '../src/main/connections/model-rails'
 import { RAIL_PERMANENCES } from '../src/shared/refusals'
 import { pastWorkSearchRefusal } from '../src/shared/past-work-search'
 import {

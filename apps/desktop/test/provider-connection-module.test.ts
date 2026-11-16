@@ -3,10 +3,7 @@ import { providerRecord } from '@brobot2/shared'
 import { createProviderModules } from '../src/main/providers'
 import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
-import {
-  listProviderConnections,
-  resolveProviderConnection,
-} from '../src/main/connections/records'
+import { listProviderConnections, resolveProviderConnection } from '../src/main/connections/records'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
