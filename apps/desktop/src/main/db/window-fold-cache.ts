@@ -1,6 +1,6 @@
 import type { KeptFold, SnapshotFoldAnswers } from './ledger-fold-state'
 
-/** A conservative estimate of strings, containers and their entries, without serializing a fold. */
+/** Estimates strings, containers and their entries without serializing a fold. */
 function retainedBytes(value: unknown, limit: number): number {
   const pending = [value]
   const seen = new Set<object>()

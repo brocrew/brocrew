@@ -28,8 +28,11 @@ it('leaves a single oversized fold uncached without dropping smaller kept answer
   const cache = windowFoldCache(6000)
   const pieces = aFold(cache, 'pieces')
   pieces.set('small', answer())
-  pieces.set('large', { generation: 0, newest: 1,
-    answer: new Map([['nested', new Set(['Fictional'.repeat(1024)])]]) })
+  pieces.set('large', {
+    generation: 0,
+    newest: 1,
+    answer: new Map([['nested', new Set(['Fictional'.repeat(1024)])]]),
+  })
   expect(pieces.has('small')).toBe(true)
   expect(pieces.has('large')).toBe(false)
 })
