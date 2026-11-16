@@ -12,7 +12,7 @@ export const WORK_RECONCILIATION_MS = 60_000
  * conversation that ever held work; the first one after a launch folds each ledger afresh, which
  * in one piece holds the main thread for seconds.
  */
-export const HOLDERS_READ_AT_ONCE = 100
+const HOLDERS_READ_AT_ONCE = 100
 
 export type ReminderProgress = 'pending' | 'running' | 'turn-ended' | 'not-delivered'
 export type WorkDisposition = 'working' | 'waiting' | 'ended' | 'unresolved' | 'unknown'
