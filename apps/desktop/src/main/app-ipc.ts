@@ -1,7 +1,5 @@
 import { ipcMain as raw } from 'electron'
 import type { IpcMain, IpcMainEvent } from 'electron'
-import { isPluginSender } from './plugins/ui/senders'
-import { PLUGIN_UI_UNAVAILABLE } from '../shared/plugin-ui'
 import { errorText, logDebug, logError } from './logging/log'
 
 let calls = 0
@@ -20,7 +18,6 @@ function logTheCall(channel: string, invoke: () => unknown): unknown {
     throw error
   }
 }
-/** Every existing app invocation passes this guard; dedicated plugin RPC uses the raw registrar. */
 export function guardedAppIpc(
   backend: Pick<IpcMain, 'handle' | 'removeHandler' | 'on' | 'removeListener'>,
 ): Pick<IpcMain, 'handle' | 'removeHandler' | 'on' | 'removeListener'> {
@@ -29,7 +26,6 @@ export function guardedAppIpc(
   const app: Pick<IpcMain, 'handle' | 'removeHandler' | 'on' | 'removeListener'> = {
     handle(channel, listener) {
       backend.handle(channel, (event, ...args) => {
-        if (isPluginSender(event.sender)) throw new Error(PLUGIN_UI_UNAVAILABLE)
         return logTheCall(channel, () => listener(event, ...args))
       })
     },
@@ -38,10 +34,6 @@ export function guardedAppIpc(
     },
     on(channel, listener) {
       const forward: Listener = (event, ...args) => {
-        if (isPluginSender(event.sender)) {
-          event.returnValue = null
-          return
-        }
         listener(event, ...args)
       }
       const channelListeners = listeners.get(channel) ?? new Map<Listener, Listener[]>()
