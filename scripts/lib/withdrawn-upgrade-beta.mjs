@@ -59,34 +59,6 @@ export const PREVIOUS_PUBLIC_025 = {
   ],
 }
 
-export function withdrawnOriginalBinding(run, artifacts) {
-  const old = PREVIOUS_PUBLIC_025
-  if (run.id !== old.runId || run.head_sha !== old.source || run.head_branch !== old.tag)
-    return null
-  for (const [id, name] of [
-    [old.macArtifactId, 'release-macos-1'],
-    [old.windowsArtifactId, 'release-windows-1'],
-  ]) {
-    const artifact = artifacts.find((one) => one.id === id)
-    if (
-      !artifact ||
-      artifact.expired !== false ||
-      artifact.name !== name ||
-      artifact.workflow_run?.id !== old.runId ||
-      artifact.workflow_run.head_sha !== old.source ||
-      artifact.workflow_run.head_branch !== old.tag
-    )
-      return null
-  }
-  return {
-    runId: old.runId,
-    source: old.source,
-    tag: old.tag,
-    macArtifactId: old.macArtifactId,
-    windowsArtifactId: old.windowsArtifactId,
-  }
-}
-
 export function withdrawnPublicationOf(release, tag) {
   const old = PREVIOUS_PUBLIC_025
   if (
