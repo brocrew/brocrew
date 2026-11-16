@@ -1,5 +1,5 @@
 import { computed, type ComputedRef } from 'vue'
-import { providerDescriptor, providerRecord, SUPPORTED_PROVIDERS } from '@brobot2/shared/providers'
+import { SUPPORTED_PROVIDERS } from '@brobot2/shared/providers'
 import type { Provider, ProviderUsageReading } from '../../../shared/runtime-ipc'
 import { agoWords, fullTime } from '../lib/clock'
 import { NOT_MEASURED } from '../lib/agent-panel'
@@ -31,15 +31,6 @@ const WINDOWS = [
 ] as const
 
 const PROVIDERS = SUPPORTED_PROVIDERS
-
-/**
- * The windows each provider's cells wait for before any reading has arrived. A window left out is
- * one that provider no longer reports: it gets no "Not read yet" cell, and is drawn only if a
- * reading for it does arrive.
- */
-const AWAITED = providerRecord<readonly string[]>(
-  (provider) => providerDescriptor(provider).usageWindows,
-)
 
 export interface UsageCell {
   readonly key: string
@@ -120,7 +111,7 @@ export function useUsageCells(
         provider,
         windows: WINDOWS.flatMap(({ word, short }) => {
           const reading = readingIn(readings, word)
-          if (reading === null && !AWAITED[provider].includes(word)) return []
+          if (reading === null) return []
           return [{ word, short, reading }]
         }),
       }
@@ -133,7 +124,7 @@ export function useUsageCells(
     return windows.value.flatMap(({ provider, windows: theirs }) =>
       theirs.map(({ word, short, reading }): UsageCell => {
         const label = `${nameOf(provider)} · ${short}`
-        if (reading === null) {
+        if (reading.usedPercent === null && reading.resetsAt === null) {
           return {
             key: `${provider}-${short}`,
             label,

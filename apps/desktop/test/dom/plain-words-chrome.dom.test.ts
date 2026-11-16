@@ -1,3 +1,4 @@
+import { unreadUsage } from './usage-cards'
 import { afterEach, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import type { AppInfo } from '@brobot2/shared'
@@ -74,7 +75,7 @@ it.each([true, false])(
 
 it('explains unknown title-bar usage through its tooltip and accessible name', async () => {
   providersBridge()
-  window.api.runtime.providerUsage = async () => ({ claude: [], codex: [] })
+  window.api.runtime.providerUsage = async () => unreadUsage()
   const m = mount(AppTitleBar, { info: null, error: null }, { width: 1180, height: 32 })
   await settle()
   const usage = m.q('app-usage')

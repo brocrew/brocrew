@@ -228,13 +228,14 @@ describe('a kept usage reading is not yet confirmed', () => {
     expect(m.q('shelf-usage-claude-week').title).not.toContain('Not yet confirmed')
   })
 
-  it('shows Not read yet when another sign-in drops the kept top-bar readings', async () => {
+  it('removes the previous account windows when another sign-in drops its kept readings', async () => {
     const m = await shelf(readings(Date.now(), true))
     current = { claude: [], codex: [] }
     notify!({ what: 'usage', provider: 'claude' })
     await settled()
-    expect(m.all('shelf-missing')).toHaveLength(3)
-    for (const missing of m.all('shelf-missing')) expect(text(missing)).toBe('Not read yet')
+    expect(m.all('shelf-missing')).toHaveLength(0)
+    for (const key of ['claude-5h', 'claude-week', 'codex-week'])
+      expect(m.all(`shelf-usage-${key}`)).toHaveLength(0)
     expect(m.all('shelf-usage-age')).toHaveLength(0)
     expect(text(m.host)).not.toContain('Not yet confirmed')
   })

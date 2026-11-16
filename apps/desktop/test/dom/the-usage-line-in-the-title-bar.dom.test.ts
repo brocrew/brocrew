@@ -111,11 +111,9 @@ describe('the usage line', () => {
     expect(line.title).toContain('Codex weekly usage: 35% used')
   })
 
-  it('⚑ before anything is read it says so with a question mark, and keeps every window', async () => {
+  it('does not name account windows before any are reported', async () => {
     const m = await bar({ claude: [], codex: [] })
-    expect((m.q('app-usage').textContent ?? '').trim()).toBe(
-      'Claude 5h ? · week ? · Codex week ? · ? agents · ?',
-    )
+    expect((m.q('app-usage').textContent ?? '').trim()).toBe('? agents · ?')
   })
 
   it('⛔ it can be pressed inside the bar the window is moved by', async () => {

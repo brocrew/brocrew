@@ -17,7 +17,7 @@ import {
   visible,
   type Mounted,
 } from './harness'
-import { usageCards } from './usage-cards'
+import { usageCards, unreadUsage } from './usage-cards'
 
 afterEach(windowCleanup())
 
@@ -96,6 +96,7 @@ async function settled(): Promise<void> {
 async function cardsWithUnreadWeeks() {
   await page.viewport(1200, 808)
   const now = Date.now()
+  const declared = unreadUsage()
   return cards({
     claude: [
       {
@@ -105,8 +106,9 @@ async function cardsWithUnreadWeeks() {
         resetsAt: now + 3 * HOUR,
         at: now - 60_000,
       },
+      declared.claude[1]!,
     ],
-    codex: [],
+    codex: declared.codex,
   })
 }
 
@@ -161,7 +163,7 @@ describe('§2 · the usage cells, and each one answers for itself', () => {
     const m = await cardsWithUnreadWeeks()
     expect(m.q('shelf-usage-claude-5h').querySelector('[data-cy="shelf-missing"]')).toBeNull()
     expect(m.q('shelf-usage-claude-5h').innerText).toContain('28% · resets in 3 h')
-    // ⛔ The neighbours have no reading and say so, each in its own cell: nothing composite.
+    // Reported neighbours with no measurement remain unread in their own cells.
     for (const key of ['claude-week', 'codex-week']) {
       expect(m.q(`shelf-usage-${key}`).innerText).toContain('Not read yet')
     }
