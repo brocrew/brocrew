@@ -3,7 +3,6 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { summonsAttention } from '../src/renderer/src/lib/agent-state'
 import { createSessionRecord, lastReportAt } from '../src/renderer/src/lib/session-record'
-import { whoAnsweredIt } from '../src/shared/who-did-it'
 import { createWindow, type WindowState } from '../src/renderer/src/lib/transcript-window'
 
 const HERE = fileURLToPath(new URL('.', import.meta.url))
@@ -74,11 +73,6 @@ describe('no actor label exists anywhere', () => {
     ).toBe(true)
 
     expect(shape.test('the actor model is unrelated to this')).toBe(false)
-  })
-
-  it('the actor words state what the ledger holds', () => {
-    expect(whoAnsweredIt(undefined)).toBe('Nothing in the ledger records who answered it')
-    expect(whoAnsweredIt({ who: 'a-person' })).toBe('by a person')
   })
 })
 

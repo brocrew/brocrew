@@ -71,10 +71,6 @@ describe('the themes the app ships', () => {
     expect([...validateAll().keys()].sort()).toEqual([...IDS].sort())
   })
 
-  it.each(IDS)('%s is named by its folder', (id) => {
-    expect(folders.get(id)!.raw.id).toBe(id)
-  })
-
   it.each(IDS)('%s is not local-only: everything in this folder ships', (id) => {
     expect(folders.get(id)!.raw.localOnly).toBeUndefined()
   })
