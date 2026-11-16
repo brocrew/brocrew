@@ -67,11 +67,12 @@ describe('window writer revisions follow the selected facts', () => {
     row('status', '{"type":"status","state":"ended"}')
     const ended = sample(routes)
     expect(sameWindowWriter(before, ended)).toBe(false)
+    expect(sample.changedOwners!(before!, ended!)).toEqual(['alpha'])
     row('status', '{')
     expect(sameWindowWriter(ended, sample(routes))).toBe(false)
   })
 
-  it('an unclassified metadata write moves the complete fence and resets folds', () => {
+  it('a write to a table no fold reads moves the complete fence and changes no folds', () => {
     const before = sample(routes)
     usageKeptIn(db).write({
       readings: {
@@ -82,7 +83,7 @@ describe('window writer revisions follow the selected facts', () => {
     })
     const after = sample(routes)!
     expect(sameWindowWriter(before, after)).toBe(false)
-    expect(sample.changedOwners!(before!, after)).toBeNull()
+    expect(sample.changedOwners!(before!, after)).toEqual([])
   })
 
   it('includes old-row payload updates, reclassification, deletion and rolled-back changes', () => {
@@ -191,7 +192,7 @@ describe('window writer revisions follow the selected facts', () => {
     expect(sample.changedOwners!(before, schema)).toBeNull()
     db.exec("INSERT INTO fictional_metadata VALUES ('first')")
     const written = sample(routes)!
-    expect(sample.changedOwners!(schema, written)).toBeNull()
+    expect(sample.changedOwners!(schema, written)).toEqual([])
     db.exec("BEGIN; UPDATE fictional_metadata SET value = 'rolled back'; ROLLBACK")
     expect(sameWindowWriter(written, sample(routes))).toBe(true)
     db.exec("UPDATE fictional_metadata SET value = 'corrected'")

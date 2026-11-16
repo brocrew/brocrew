@@ -135,3 +135,45 @@ it('carries the last worker fold token across listing and routing reads', async 
     await world.cleanUp()
   }
 })
+
+it('passes the fold token of a read a writer overtook on to the next read', async () => {
+  const world = aServiceWorld()
+  world.store.create({
+    id: 'alpha',
+    provider: 'codex',
+    profileId: 'brobot',
+    cwd: world.folder,
+    approvalMode: 'ask',
+  })
+  const engine = new WindowReadEngine(join(world.folder, 'brobot2.sqlite'))
+  const read = vi.fn(async (query: WindowReadQuery) => {
+    const result = engine.read(query)
+    world.store.append(
+      'alpha',
+      world.store.nextOrdinal('alpha'),
+      { type: 'status', state: 'idle' },
+      world.clock++,
+    )
+    return result
+  })
+  const host = aLibraryHost(world.folder, {
+    store: world.store,
+    windowReader: { read, close: async () => engine.close() },
+    afterFirstWindowLoad: new Promise<void>(() => {}),
+    windowWriterStamp: windowWriterSampler(world.db, () => true),
+    limitsWriterStamp: limitsWriterSampler(world.db, () => true),
+  })
+  try {
+    await expect(host.readForWindow(() => host.questionsForAPerson())).rejects.toMatchObject({
+      missed: 'writer-moved',
+    })
+    expect(read).toHaveBeenCalledTimes(2)
+    expect(read.mock.calls[1]![0]).toEqual({
+      kind: 'routes',
+      reuse: { token: expect.any(String), changed: ['alpha'] },
+    })
+  } finally {
+    await host.closeAll()
+    await world.cleanUp()
+  }
+})
