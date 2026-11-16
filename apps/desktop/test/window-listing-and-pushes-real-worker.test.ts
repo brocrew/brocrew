@@ -315,6 +315,10 @@ it('measures window reads with 1960 conversations and nine live agents', async (
     // Let the independent startup reconciler finish before measuring the window read boundary.
     await new Promise<void>((resolve) => setImmediate(resolve))
     await workerReady
+    // The whole sweep yields between slices, so it can still be running here.
+    const reconciler = (host as unknown as { workReconciler: { running: Promise<void> | null } })
+      .workReconciler
+    while (reconciler.running !== null) await reconciler.running
     const setupSettledMs = performance.now() - setupStarted
     clearInterval(heartbeat)
     setupGaps.push(Math.max(0, performance.now() - setupLast - 10))
