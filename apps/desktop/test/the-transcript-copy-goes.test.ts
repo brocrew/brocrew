@@ -1,11 +1,19 @@
-import { cpSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import {
+  cpSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, it } from 'vitest'
 import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
-import { compactWhenMuchIsFree } from '../src/main/db/compact'
+import { writeCompactedWorkspace } from '../src/main/db/workspace-compaction'
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
@@ -18,7 +26,7 @@ it('upgrades a large fictional transcript copy, preserves the ledger and returns
   const journal = JSON.parse(readFileSync(journalPath, 'utf8')) as { entries: { idx: number }[] }
   journal.entries = journal.entries.filter((one) => one.idx < 11)
   writeFileSync(journalPath, JSON.stringify(journal))
-  const db = openDatabase(file)
+  let db = openDatabase(file)
   try {
     applyMigrations(db, before)
     const session = db.prepare(
@@ -56,7 +64,10 @@ it('upgrades a large fictional transcript copy, preserves the ledger and returns
     expect(
       db.prepare('SELECT count(*) AS rows, sum(length(payload)) AS bytes FROM events').get(),
     ).toEqual(kept)
-    expect(compactWhenMuchIsFree(db, 1024 ** 3)).toBe('compacted')
+    db.close()
+    writeCompactedWorkspace(file, file + '.compact')
+    renameSync(file + '.compact', file)
+    db = openDatabase(file)
     const bytesAfter = statSync(file).size
     expect(bytesAfter).toBeLessThan(bytesBefore / 2)
     applyMigrations(db, migrations)

@@ -246,6 +246,7 @@ function openWords(): RecoveryWords {
 }
 
 const WORKING_HEADING = {
+  compact: 'Checking this workspace’s data…',
   check: 'Checking this workspace’s data',
   checkpoint: 'Making a checked copy of this workspace’s data',
   restore: 'Restoring the copy',
@@ -256,7 +257,10 @@ const WORKING_HEADING = {
 export function workingWords(verdict: Extract<StartupVerdict, { kind: 'working' }>): RecoveryWords {
   return {
     heading: WORKING_HEADING[verdict.what],
-    body: ['This can take a minute for a large workspace. Keep BroCrew open until it finishes.'],
+    body:
+      verdict.what === 'compact'
+        ? []
+        : ['This can take a minute for a large workspace. Keep BroCrew open until it finishes.'],
     actions: [],
   }
 }

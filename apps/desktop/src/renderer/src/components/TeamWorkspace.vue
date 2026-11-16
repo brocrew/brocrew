@@ -4,7 +4,7 @@ import { computed, ref } from 'vue'
 import AgentBookButton from './AgentBookButton.vue'
 import type { AgentIdentities } from '../../../shared/runtime-ipc'
 import type { WhatIsBeingDone } from '../../../shared/what-is-being-done'
-import type { WorkEdge } from '../../../shared/who-called-whom'
+import { workByConversation } from '../lib/working-together'
 import type { AgentStore } from '../lib/agent-store'
 import { AGENT_REMOVAL_MEANS } from '../../../shared/agent-roster'
 import { activityWords, STANDING_TONE } from '../lib/agent-state'
@@ -56,16 +56,7 @@ import { useProviderNames } from '../composables/useProviderNames'
 const cast = useWhoCalledWhom()
 const nameOf = useProviderNames(useClientProviders())
 const names = computed(() => providerNamesIn(nameOf))
-const workByHolder = computed(() => {
-  const holders = new Map<string, WorkEdge[]>()
-  for (const node of cast.forest.value?.nodes.rows ?? []) {
-    if (node.node !== 'a-task') continue
-    const pieces = holders.get(node.work.to)
-    if (pieces) pieces.push(node.work)
-    else holders.set(node.work.to, [node.work])
-  }
-  return holders
-})
+const workByHolder = computed(() => workByConversation(cast.forest.value))
 const props = withDefaults(
   defineProps<{
     agents: AgentIdentities | null

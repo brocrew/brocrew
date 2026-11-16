@@ -4152,6 +4152,12 @@ function tieInWords(how: TiedOutside['how'], here: string, other: string): strin
   }
 }
 
+type ListingReadFloor = {
+  readonly epoch: PublicationEpoch
+  readonly seq: number
+  readonly read: number
+}
+
 export class RuntimeHost implements LiveHost {
   /**
    * Every session id this host owns — from the moment it is RESERVED, not from the moment a
@@ -4935,16 +4941,42 @@ export class RuntimeHost implements LiveHost {
   private readonly ledgerIdentity: object
   private windowReadCallers = 0
   private windowFoldKept: { readonly stamp: WindowWriterStamp; readonly token: string } | undefined
+  private windowListingRead = 0
   private windowRoutesPending:
-    { readonly stamp: WindowWriterStamp; readonly read: Promise<WindowReadResult> } | undefined
+    | {
+        readonly stamp: WindowWriterStamp
+        readonly read: Promise<WindowReadResult>
+        readonly floor?: ListingReadFloor
+      }
+    | undefined
   private windowRoutesKept:
-    { readonly stamp: WindowWriterStamp; readonly result: WindowReadResult } | undefined
+    | {
+        readonly stamp: WindowWriterStamp
+        readonly result: WindowReadResult
+        readonly floor?: ListingReadFloor
+      }
+    | undefined
   private windowListingPending:
-    { readonly stamp: WindowWriterStamp; readonly read: Promise<WindowReadResult> } | undefined
+    | {
+        readonly stamp: WindowWriterStamp
+        readonly read: Promise<WindowReadResult>
+        readonly floor?: ListingReadFloor
+      }
+    | undefined
   private windowListingKept:
-    { readonly stamp: WindowWriterStamp; readonly result: WindowReadResult } | undefined
+    | {
+        readonly stamp: WindowWriterStamp
+        readonly result: WindowReadResult
+        readonly floor?: ListingReadFloor
+      }
+    | undefined
   private windowIncidentsPending:
-    { readonly stamp: WindowWriterStamp; readonly read: Promise<WindowReadResult> } | undefined
+    | {
+        readonly stamp: WindowWriterStamp
+        readonly read: Promise<WindowReadResult>
+        readonly floor?: ListingReadFloor
+      }
+    | undefined
   /** A shared window read the worker failed, by kind: at which stamp, why, and until when. */
   private readonly windowReadsFailed = new Map<
     'routes' | 'listing' | 'incidents',
@@ -4956,7 +4988,12 @@ export class RuntimeHost implements LiveHost {
     }
   >()
   private windowIncidentsKept:
-    { readonly stamp: WindowWriterStamp; readonly result: WindowReadResult } | undefined
+    | {
+        readonly stamp: WindowWriterStamp
+        readonly result: WindowReadResult
+        readonly floor?: ListingReadFloor
+      }
+    | undefined
 
   private readonly workReads: WorkReads
   private readonly schedulePlanning: SchedulePlanning
@@ -15292,16 +15329,26 @@ export class RuntimeHost implements LiveHost {
   }
 
   /** Compose a window answer only after its canonical routing snapshot was read off main. */
-  async readForWindow<T>(answer: () => T, kind: 'routes' | 'listing' = 'routes'): Promise<T> {
+  async readForWindow<T>(
+    answer: (floor?: ListingReadFloor & { refresh: boolean }) => T,
+    kind: 'routes' | 'listing' = 'routes',
+  ): Promise<T> {
     if (this.deps.windowReader === undefined) {
       this.deps.store.checkCommitted()
       return answer()
     }
     if (this.launches.closed) throw new WindowReadUnavailable()
-    const compose = (result: WindowReadResult): T => {
+    const compose = (result: WindowReadResult, floor?: ListingReadFloor, refresh = false): T => {
       if (result.kind !== kind || (result.kind !== 'routes' && result.kind !== 'listing'))
         throw new WindowReadMissed('worker-gone')
-      return this.windowRoutingReads.run(result, answer)
+      if (refresh) this.listingKept = undefined
+      try {
+        return this.windowRoutingReads.run(result, () =>
+          answer(floor === undefined ? undefined : { ...floor, refresh }),
+        )
+      } finally {
+        if (refresh) this.listingKept = undefined
+      }
     }
     if (this.windowReadCallers >= WINDOW_READ_BOUNDS.callers)
       return this.freshWindowQuery({ kind }, compose, undefined, true)
@@ -15329,7 +15376,7 @@ export class RuntimeHost implements LiveHost {
 
   private async freshWindowQuery<T>(
     query: WindowReadQuery,
-    compose: (result: WindowReadResult) => T,
+    compose: (result: WindowReadResult, floor?: ListingReadFloor, refresh?: boolean) => T,
     signal?: AbortSignal,
     joinOnly = false,
   ): Promise<T> {
@@ -15354,9 +15401,18 @@ export class RuntimeHost implements LiveHost {
           : query.kind === 'listing'
             ? this.windowListingKept
             : this.windowRoutesKept
-      if (reusable && kept !== undefined && sameWindowWriter(kept.stamp, before)) {
+      if (
+        reusable &&
+        kept !== undefined &&
+        sameWindowWriter(kept.stamp, before) &&
+        (query.kind !== 'listing' || kept.floor?.seq === this.publicationSeq)
+      ) {
         this.deps.store.checkCommitted()
-        if (sameWindowWriter(before, this.sampleWindowWriter(query))) return compose(kept.result)
+        if (
+          sameWindowWriter(before, this.sampleWindowWriter(query)) &&
+          (query.kind !== 'listing' || kept.floor?.seq === this.publicationSeq)
+        )
+          return compose(kept.result, kept.floor)
         continue
       }
       const kind =
@@ -15385,6 +15441,7 @@ export class RuntimeHost implements LiveHost {
       }
       let pending: Promise<WindowReadResult>
       let origin = before
+      let floor: ListingReadFloor | undefined
       if (reusable) {
         const key =
           query.kind === 'incidents'
@@ -15395,7 +15452,15 @@ export class RuntimeHost implements LiveHost {
         let shared = this[key]
         if (shared === undefined && joinOnly) throw new WindowReadMissed('callers-full')
         if (shared === undefined) {
-          shared = { stamp: before, read: reader.read(requested()) }
+          const floor =
+            query.kind === 'listing'
+              ? {
+                  epoch: this.publicationEpoch,
+                  seq: this.publicationSeq,
+                  read: ++this.windowListingRead,
+                }
+              : undefined
+          shared = { stamp: before, floor, read: reader.read(requested()) }
           this[key] = shared
           const owned = shared
           // Settled before any caller's wait resumes, so they all find the failure remembered.
@@ -15411,6 +15476,7 @@ export class RuntimeHost implements LiveHost {
         }
         pending = shared.read
         origin = shared.stamp
+        floor = shared.floor
       } else pending = reader.read(requested(), signal)
       let result: WindowReadResult
       try {
@@ -15421,6 +15487,25 @@ export class RuntimeHost implements LiveHost {
       if (this.launches.closed) throw new WindowReadUnavailable()
       this.deps.store.checkCommitted()
       const after = this.sampleWindowWriter(query)
+      if (
+        query.kind === 'listing' &&
+        after !== null &&
+        origin.writer === before.writer &&
+        origin.writer === after.writer &&
+        origin.watcher === before.watcher &&
+        origin.watcher === after.watcher &&
+        origin.schemaVersion === before.schemaVersion &&
+        origin.schemaVersion === after.schemaVersion &&
+        Number.isFinite(origin.at) &&
+        Number.isFinite(before.at) &&
+        Number.isFinite(after.at) &&
+        origin.at <= before.at &&
+        before.at <= after.at
+      ) {
+        // The fold token belongs to the original read, never the writer that overtook it.
+        this.windowListingKept = { stamp: origin, result, floor }
+        return compose(result, floor, !sameWindowWriter(origin, after))
+      }
       if (sameWindowWriter(origin, before) && sameWindowWriter(origin, after)) {
         const folded =
           result.kind === 'incidents'
@@ -15434,7 +15519,6 @@ export class RuntimeHost implements LiveHost {
               ? undefined
               : { stamp: after!, token: folded.cacheToken }
         if (query.kind === 'routes') this.windowRoutesKept = { stamp: after!, result }
-        if (query.kind === 'listing') this.windowListingKept = { stamp: after!, result }
         if (query.kind === 'incidents') {
           this.windowIncidentsKept = { stamp: after!, result }
           if (result.kind === 'incidents')
@@ -16826,23 +16910,24 @@ export class RuntimeHost implements LiveHost {
 
   /** The queue refused as a whole, at the stamp current now. Reads nothing. */
   /**
-   * The listing as one publication: both halves of one composition, stamped with the sequence they
-   * are exact at, complete only if every row was read. A listing that cannot be read at all is
-   * refused at the stamp it failed against.
+   * Both halves of one composition, with the worker read's conservative publication floor.
+   * Main-side metadata and live facts may be later; they do not advance that floor. A listing
+   * is complete only if every row was read.
    */
   async listConversations(): Promise<ListingAnswer> {
     try {
-      return await this.readForWindow((): PublishedListing => {
+      return await this.readForWindow((floor): PublishedListing => {
         const { resumable, unresumable, complete } = this.theListing()
         // A successful listing resumes pending state delivery, including when the listing was cached.
         if ([...resumable, ...unresumable].some((row) => this.statesToAsk.has(row.sessionId)))
           this.askTheFlush()
-        const seq = this.publicationSeq
+        const seq = floor?.seq ?? this.publicationSeq
         return {
           resumable,
           unresumable,
+          ...(floor === undefined ? {} : { readAsOf: floor.read, refresh: floor.refresh }),
           published: {
-            epoch: this.publicationEpoch,
+            epoch: floor?.epoch ?? this.publicationEpoch,
             seq,
             covers: complete
               ? { population: 'listing', complete: true }

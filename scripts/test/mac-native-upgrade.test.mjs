@@ -9,9 +9,9 @@ import {
   unpackDownloadedMacZip,
   quitRestartedMacApp,
   waitForNativeMacDownload,
+  requestNativeMacRestart,
 } from '../lib/mac-native-upgrade.mjs'
 import { requireEvidence } from '../lib/mac-update-test.mjs'
-import { nativeRestartRecorded } from '../mac-signed-upgrade-contract.mjs'
 import { nativeWorkspaceFromRegistry, nativeWorkspaceStartup } from '../mac-native-workspace.mjs'
 
 const folders = []
@@ -76,148 +76,204 @@ it('does not signal a restarted process whose identity changed', async () => {
 })
 
 it('presses native restart and keeps B alive until its candidate checkpoint completes', async () => {
-  const source = ts.createSourceFile(
-    'mac-signed-upgrade.mjs',
-    readFileSync(new URL('../mac-signed-upgrade.mjs', import.meta.url), 'utf8'),
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.JS,
-  )
-  const restart = source.statements.find(
-    (node) => ts.isFunctionDeclaration(node) && node.name?.text === 'nativeRestart',
-  )
-  expect(restart).toBeDefined()
-  const order = [],
-    previous = { pid: 123, stage: 'a', log: '/evidence/a.log', browser: { close: vi.fn() } }
-  const workspace = {
-    name: 'Default',
-    data: '/fictional/default',
-    cdp: { close: vi.fn() },
-    result: {},
-    baseline: {
-      copiesBefore: ['default-A-copy'],
-      registryBefore: {
-        workspaces: [
-          { path: '/fictional/default', lastOpenedAt: 1 },
-          { path: '/fictional/WorkspaceB', lastOpenedAt: 2 },
-        ],
-      },
-    },
-  }
-  const nativeWorkspace = {
-    name: 'WorkspaceB',
-    data: '/fictional/WorkspaceB',
-    result: {},
-    baseline: {
-      workspaceId: 'workspace-B',
-      copiesBefore: ['A-copy'],
-      before: { migrations: [{ created_at: 1, hash: 'a' }] },
-    },
-  }
-  const startup = {
-    appVersion: '0.2.23',
-    successfulStarts: 1,
-    checkpointId: 'B-copy',
-    workspaceId: 'workspace-B',
-  }
-  const summary = { replacementCount: 0 }
-  const fixture = {
-    active: previous,
-    squirrelApp: null,
-    workspace,
-    summary,
-    app: '/Applications/BroCrew.app',
-    data: '/fictional/default',
-    evidence: '/evidence',
-    join,
-    nativeRestartRecorded,
-    nativeWorkspaceFromRegistry,
-    nativeWorkspaceStartup,
-    macLineage: {
-      ...macLineage,
-      packagedCandidateLineage: vi.fn(() => {
-        expect(summary.installedCandidate).toEqual({ version: '0.2.23' })
-        return [
-          { createdAt: 1, hash: 'a' },
-          { createdAt: 2, hash: 'b' },
-        ]
-      }),
-    },
-    candidateLineage: undefined,
-    workspaces: [workspace, nativeWorkspace],
-    VERSION_B: '0.2.23',
-    candidate: { source: 'original-signed-source' },
-    selectWorkspace: vi.fn(),
-    requireEvidence,
-    click: vi.fn(async () => order.push('restart-choice')),
-    run: vi.fn(),
-    processInfo: vi.fn(async () => null),
-    waitFor: async (check) => {
-      expect(await check()).toBe(true)
-    },
-    readFile: vi.fn(async (path) =>
-      path === join(fixture.evidence, 'a.stdout.log')
-        ? 'updates: restarting to install 0.2.23'
-        : 'BroCrew shut down in 10ms\nclose its sessions\nkeep its unsent drafts\ndrain its archive work\nclose its database',
-    ),
-    observeMacReplacement: vi.fn(async () => {
-      order.push('native-B')
-      return { pid: 456 }
-    }),
-    macFirstStartReceipt: vi.fn(async () => {
-      expect(summary.restart.restarted).toEqual({ pid: 456 })
-      expect(summary.restart.workspace).toEqual({ name: 'WorkspaceB', path: nativeWorkspace.data })
-      expect(summary.restart.origin).toEqual({ name: 'Default', path: workspace.data })
-      return startup
-    }),
-    completedProofCopy: vi.fn(async () => {
-      order.push('completed-B-copy')
-      return {
-        manifest: {
-          id: 'B-copy',
-          workspaceId: 'workspace-B',
-          madeBy: { appVersion: '0.2.23', build: 'original-signed-source' },
+  for (const confirmsRestart of [false, true]) {
+    for (const disconnected of [false, true]) {
+      const source = ts.createSourceFile(
+        'mac-signed-upgrade.mjs',
+        readFileSync(new URL('../mac-signed-upgrade.mjs', import.meta.url), 'utf8'),
+        ts.ScriptTarget.Latest,
+        true,
+        ts.ScriptKind.JS,
+      )
+      const restart = source.statements.find(
+        (node) => ts.isFunctionDeclaration(node) && node.name?.text === 'nativeRestart',
+      )
+      expect(restart).toBeDefined()
+      const order = [],
+        previous = { pid: 123, stage: 'a', log: '/evidence/a.log', browser: { close: vi.fn() } }
+      const workspace = {
+        name: 'Default',
+        data: '/fictional/default',
+        cdp: { close: vi.fn(), evaluate: vi.fn(async () => confirmsRestart) },
+        result: {},
+        baseline: {
+          workspaceId: 'workspace-Default',
+          before: { migrations: [{ created_at: 1, hash: 'a' }] },
+          copiesBefore: ['default-A-copy'],
+          registryBefore: {
+            workspaces: [
+              { path: '/fictional/default', lastOpenedAt: 1 },
+              { path: '/fictional/WorkspaceB', lastOpenedAt: 2 },
+            ],
+          },
         },
       }
-    }),
-    bundleChecked: vi.fn(async () => ({ version: '0.2.23' })),
-    passed: vi.fn(),
-    quitSquirrelApp: vi.fn(async () => order.push('quit-native-B')),
-    requireNoInstalledProcesses: vi.fn(async () => order.push('no-app-or-ShipIt')),
+      const nativeWorkspace = {
+        name: 'WorkspaceB',
+        data: '/fictional/WorkspaceB',
+        result: {},
+        baseline: {
+          workspaceId: 'workspace-B',
+          copiesBefore: ['A-copy'],
+          before: { migrations: [{ created_at: 1, hash: 'a' }] },
+        },
+      }
+      const restartedWorkspace = confirmsRestart ? workspace : nativeWorkspace
+      const startup = {
+        appVersion: '0.2.23',
+        successfulStarts: 1,
+        checkpointId: 'B-copy',
+        workspaceId: restartedWorkspace.baseline.workspaceId,
+      }
+      const summary = { replacementCount: 0 }
+      const fixture = {
+        active: previous,
+        squirrelApp: null,
+        workspace,
+        summary,
+        app: '/Applications/BroCrew.app',
+        data: '/fictional/default',
+        evidence: '/evidence',
+        settings: '/fictional/settings.json',
+        join,
+        requestNativeMacRestart: (workspace, version, options) =>
+          requestNativeMacRestart(workspace, version, { ...options, readLog: fixture.readFile }),
+        nativeWorkspaceFromRegistry,
+        nativeWorkspaceStartup,
+        macLineage: {
+          ...macLineage,
+          packagedCandidateLineage: vi.fn(() => {
+            expect(summary.installedCandidate).toEqual({ version: '0.2.23' })
+            return [
+              { createdAt: 1, hash: 'a' },
+              { createdAt: 2, hash: 'b' },
+            ]
+          }),
+        },
+        candidateLineage: undefined,
+        workspaces: [workspace, nativeWorkspace],
+        VERSION_B: '0.2.23',
+        candidate: { source: 'original-signed-source' },
+        selectWorkspace: vi.fn(),
+        requireEvidence,
+        click: vi.fn(async (_cdp, selector) => {
+          order.push(
+            selector === '[data-cy=updates-restart]' ? 'restart-choice' : 'confirm-restart',
+          )
+          if (
+            disconnected &&
+            selector ===
+              (confirmsRestart ? '[data-cy=updates-confirm-now]' : '[data-cy=updates-restart]')
+          )
+            throw new Error('Input.dispatchMouseEvent: the window’s DevTools connection closed')
+        }),
+        run: vi.fn(),
+        processInfo: vi.fn(async () => {
+          expect(order).toContain(confirmsRestart ? 'confirm-restart' : 'restart-choice')
+          return null
+        }),
+        waitFor: async (check) => {
+          expect(await check()).toBe(true)
+        },
+        readFile: vi.fn(async (path) => {
+          if (path === fixture.settings)
+            return JSON.stringify({
+              updateReopen: {
+                executable: `${fixture.app}/Contents/MacOS/BroCrew`,
+                version: '0.2.23',
+                folders: [workspace.data],
+              },
+            })
+          return path === join(fixture.evidence, 'a.stdout.log')
+            ? confirmsRestart
+              ? 'updates: 0.2.23 is ready: restart to update'
+              : 'updates: restarting to install 0.2.23'
+            : 'BroCrew shut down in 10ms\nclose its sessions\nkeep its unsent drafts\ndrain its archive work\nclose its database'
+        }),
+        observeMacReplacement: vi.fn(async () => {
+          order.push('native-B')
+          return { pid: 456 }
+        }),
+        macFirstStartReceipt: vi.fn(async () => {
+          expect(summary.restart.restarted).toEqual({ pid: 456 })
+          expect(summary.restart.workspace).toEqual({
+            name: restartedWorkspace.name,
+            path: restartedWorkspace.data,
+          })
+          expect(summary.restart.origin).toEqual({ name: 'Default', path: workspace.data })
+          return startup
+        }),
+        completedProofCopy: vi.fn(async () => {
+          order.push('completed-B-copy')
+          return {
+            manifest: {
+              id: 'B-copy',
+              workspaceId: restartedWorkspace.baseline.workspaceId,
+              madeBy: { appVersion: '0.2.23', build: 'original-signed-source' },
+            },
+          }
+        }),
+        bundleChecked: vi.fn(async () => ({ version: '0.2.23' })),
+        passed: vi.fn(),
+        quitRestartedMacApp: vi.fn(async () => {
+          order.push('quit-native-B')
+          return null
+        }),
+        requireNoInstalledProcesses: vi.fn(async () => order.push('no-app-or-ShipIt')),
+      }
+      const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
+      await new AsyncFunction(
+        'fixture',
+        `let { ${Object.keys(fixture).join(', ')} } = fixture\n${restart.getText(source)}\nawait nativeRestart(workspace)`,
+      )(fixture)
+      expect(order).toEqual([
+        'restart-choice',
+        ...(confirmsRestart ? ['confirm-restart'] : []),
+        'native-B',
+        'completed-B-copy',
+        'quit-native-B',
+        'no-app-or-ShipIt',
+      ])
+      expect(fixture.readFile).toHaveBeenCalledWith(join(fixture.evidence, 'a.stdout.log'), 'utf8')
+      expect(fixture.readFile).toHaveBeenCalledWith('/evidence/a.log', 'utf8')
+      expect(workspace.cdp.evaluate).toHaveBeenCalledExactlyOnceWith(
+        "return typeof window.api.updates.restartPlan === 'function'",
+      )
+      expect(fixture.click.mock.calls).toEqual([
+        [workspace.cdp, '[data-cy=updates-restart]'],
+        ...(confirmsRestart ? [[workspace.cdp, '[data-cy=updates-confirm-now]']] : []),
+      ])
+      expect(fixture.observeMacReplacement).toHaveBeenCalledExactlyOnceWith({
+        app: fixture.app,
+        version: '0.2.23',
+        previous,
+        run: fixture.run,
+        processInfo: fixture.processInfo,
+      })
+      expect(fixture.run).not.toHaveBeenCalled()
+      expect(fixture.quitRestartedMacApp).toHaveBeenCalledExactlyOnceWith(
+        { pid: 456 },
+        fixture.processInfo,
+      )
+      expect(fixture.completedProofCopy).toHaveBeenCalledExactlyOnceWith(
+        restartedWorkspace.data,
+        new Set(restartedWorkspace.baseline.copiesBefore),
+      )
+      expect(fixture.macFirstStartReceipt).toHaveBeenCalledExactlyOnceWith(
+        restartedWorkspace.data,
+        '0.2.23',
+      )
+      if (confirmsRestart)
+        expect(workspace.result.nativeInstallChoice).toEqual({
+          executable: `${fixture.app}/Contents/MacOS/BroCrew`,
+          version: '0.2.23',
+          folders: [workspace.data],
+        })
+      else expect(workspace.result.nativeInstallChoice).toBeUndefined()
+      expect(summary.replacementCount).toBe(1)
+      expect((confirmsRestart ? nativeWorkspace : workspace).result.nativeStartup).toBeUndefined()
+      expect(restartedWorkspace.result.nativeStartup.completedCheckpointId).toBe('B-copy')
+      expect(restartedWorkspace.result.nativeStartup.checkpointId).toBe('B-copy')
+    }
   }
-  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
-  await new AsyncFunction(
-    'fixture',
-    `let { ${Object.keys(fixture).join(', ')} } = fixture\n${restart.getText(source)}\nawait nativeRestart(workspace)`,
-  )(fixture)
-  expect(order).toEqual([
-    'restart-choice',
-    'native-B',
-    'completed-B-copy',
-    'quit-native-B',
-    'no-app-or-ShipIt',
-  ])
-  expect(fixture.readFile).toHaveBeenCalledWith(join(fixture.evidence, 'a.stdout.log'), 'utf8')
-  expect(fixture.readFile).toHaveBeenCalledWith('/evidence/a.log', 'utf8')
-  expect(fixture.click).toHaveBeenCalledExactlyOnceWith(workspace.cdp, '[data-cy=updates-restart]')
-  expect(fixture.observeMacReplacement).toHaveBeenCalledExactlyOnceWith({
-    app: fixture.app,
-    version: '0.2.23',
-    previous,
-    run: fixture.run,
-    processInfo: fixture.processInfo,
-  })
-  expect(fixture.run).not.toHaveBeenCalled()
-  expect(fixture.completedProofCopy).toHaveBeenCalledExactlyOnceWith(
-    '/fictional/WorkspaceB',
-    new Set(['A-copy']),
-  )
-  expect(fixture.macFirstStartReceipt).toHaveBeenCalledExactlyOnceWith(
-    nativeWorkspace.data,
-    '0.2.23',
-  )
-  expect(summary.replacementCount).toBe(1)
-  expect(workspace.result.nativeStartup).toBeUndefined()
-  expect(nativeWorkspace.result.nativeStartup.completedCheckpointId).toBe('B-copy')
-  expect(nativeWorkspace.result.nativeStartup.checkpointId).toBe('B-copy')
 })

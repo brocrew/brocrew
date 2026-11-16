@@ -8,6 +8,7 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -25,7 +26,9 @@ import {
   isLineagePrefix,
   lineageFit,
   migrationsOf,
+  migrationsRecordedIn,
 } from '../../src/main/recovery/database-facts'
+import { checkpointBytes, openCheckpointForRead } from './lib/recovery-files'
 import { sha256Of } from '../../src/main/recovery/files'
 import { createHistoryReader } from '../../src/main/recovery/history-reader'
 import {
@@ -68,7 +71,16 @@ function aPlace(): { userData: string; scratch: string } {
 const text = (path: string): string => readFileSync(path, 'utf8')
 
 async function applied(file: string, scratch: string): Promise<readonly number[] | string> {
-  const facts = await migrationsOf(file, { userData: scratch })
+  const bytes = readFileSync(file)
+  let facts
+  if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
+    const db = openCheckpointForRead(file)
+    try {
+      facts = migrationsRecordedIn(db)
+    } finally {
+      db.close()
+    }
+  } else facts = await migrationsOf(file, { userData: scratch })
   return facts.kind === 'recorded' ? facts.migrations.map(({ createdAt }) => createdAt) : facts.kind
 }
 
@@ -79,7 +91,7 @@ async function applied(file: string, scratch: string): Promise<readonly number[]
 function contentsOf(file: string, scratch: string): { conversations: string[]; keys: number } {
   const folder = mkdtempSync(join(scratch, 'read-'))
   const copy = join(folder, 'copy.sqlite')
-  copyFileSync(file, copy)
+  writeFileSync(copy, checkpointBytes(file))
   for (const suffix of ['-wal', '-shm']) {
     if (existsSync(`${file}${suffix}`)) copyFileSync(`${file}${suffix}`, `${copy}${suffix}`)
   }
@@ -97,7 +109,7 @@ function contentsOf(file: string, scratch: string): { conversations: string[]; k
 
 /** A rollback-mode SQLite file: header bytes 18 and 19 are both 1. */
 function isRollbackMode(file: string): boolean {
-  const header = readFileSync(file).subarray(0, 20)
+  const header = checkpointBytes(file).subarray(0, 20)
   return header[18] === 1 && header[19] === 1
 }
 
@@ -361,7 +373,10 @@ async function expectTheRestoreAt(
   expect(database).toMatchObject({
     live: 'brobot2.sqlite',
     role: 'database',
-    becomes: { present: true, sha256: restored.manifest.database.sha256 },
+    becomes: {
+      present: true,
+      sha256: restored.manifest.database.uncompressedSha256 ?? restored.manifest.database.sha256,
+    },
   })
   expect(others.map(({ live, was }) => [live, was.present])).toEqual([
     ['brobot2.sqlite-wal', false],
@@ -388,7 +403,7 @@ async function expectTheRestoreAt(
     expect(gate.ok && gate.value.installed[0]).toEqual({
       live: 'brobot2.sqlite',
       present: true,
-      sha256: restored.manifest.database.sha256,
+      sha256: restored.manifest.database.uncompressedSha256 ?? restored.manifest.database.sha256,
     })
     expect(gate.ok && gate.value.preservedFiles).toEqual(
       journal.value.participants.map(({ live, was }) => ({ live, ...was })),
@@ -403,7 +418,9 @@ async function expectTheRestoreAt(
   )
 
   if (after('moving')) {
-    expect(await sha256Of(fixture.database)).toBe(restored.manifest.database.sha256)
+    expect(await sha256Of(fixture.database)).toBe(
+      restored.manifest.database.uncompressedSha256 ?? restored.manifest.database.sha256,
+    )
     expect(await applied(fixture.database, scratch)).toEqual(BUILD_LINEAGE)
     expect(text(join(userData, 'drafts.json'))).toContain(
       `at copy ${String(fixture.checkpoints.indexOf(restored) + 1)}`,
@@ -416,7 +433,7 @@ async function expectTheRestoreAt(
   else {
     expect(staged).toEqual(['database.sqlite', 'drafts.json'])
     expect(await sha256Of(join(restore.staged, 'database.sqlite'))).toBe(
-      restored.manifest.database.sha256,
+      restored.manifest.database.uncompressedSha256 ?? restored.manifest.database.sha256,
     )
   }
   expect(existsSync(restore.preserved)).toBe(after('moving'))

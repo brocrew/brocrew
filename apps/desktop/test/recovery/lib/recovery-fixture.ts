@@ -579,7 +579,7 @@ async function checkpointByTheWriter(
       reason: plan.reason,
       fs: UNFLUSHED,
       now: () => Date.parse(plan.createdAt),
-      freeBytes: () => null,
+      freeBytes: () => 1_000_000_000,
       log: () => undefined,
     })
     await moveFolder(made.folder, checkpointDir(userData, made.manifest.id))

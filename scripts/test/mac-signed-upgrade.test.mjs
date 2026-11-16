@@ -33,7 +33,7 @@ test('the installed public feed remains public rather than rewritten to a sandbo
   ])
     assert.throws(() => publicFeedUnchanged(text))
 })
-test('native restart requires the choice in stdout and every successful drain step in stderr', () => {
+test('native restart requires its install choice and every successful drain step', () => {
   const choice = 'updates: restarting to install 0.2.24'
   const steps = [
     'close its sessions',
@@ -42,6 +42,39 @@ test('native restart requires the choice in stdout and every successful drain st
     'close its database',
   ]
   const drain = ['BroCrew shut down in 226ms', ...steps].join('\n')
+
+  const updateNow = {
+    executable: '/Applications/BroCrew.app/Contents/MacOS/BroCrew',
+    folder: '/fixture/Default',
+    recorded: {
+      executable: '/Applications/BroCrew.app/Contents/MacOS/BroCrew',
+      version: '0.2.24',
+      folders: ['/fixture/Default'],
+    },
+  }
+  nativeRestartRecorded('updates: 0.2.24 is ready: restart to update', drain, '0.2.24', updateNow)
+  for (const recorded of [
+    undefined,
+    null,
+    {},
+    { ...updateNow.recorded, version: '0.2.25' },
+    { ...updateNow.recorded, executable: '/other/BroCrew' },
+    { ...updateNow.recorded, folders: ['/other/Workspace'] },
+    { ...updateNow.recorded, folders: ['/fixture/Default', '/other/Workspace'] },
+  ])
+    assert.throws(() => nativeRestartRecorded(choice, drain, '0.2.24', { ...updateNow, recorded }))
+  for (const step of steps) {
+    assert.throws(() => nativeRestartRecorded('', drain.replace(step, ''), '0.2.24', updateNow))
+    assert.throws(() =>
+      nativeRestartRecorded(
+        '',
+        `${drain}\nBroCrew failed to ${step}: fictional`,
+        '0.2.24',
+        updateNow,
+      ),
+    )
+  }
+  assert.throws(() => nativeRestartRecorded('', steps.join('\n'), '0.2.24', updateNow))
   nativeRestartRecorded(choice, drain, '0.2.24')
   for (const [stdout, stderr, version] of [
     ['', drain, '0.2.24'],

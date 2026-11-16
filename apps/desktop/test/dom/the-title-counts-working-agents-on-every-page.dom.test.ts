@@ -1,6 +1,6 @@
 import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import type { AgentState } from '../../src/shared/agent-state-contracts'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, reactive, ref } from 'vue'
 import { page } from 'vitest/browser'
 import AppTitleBar from '../../src/renderer/src/components/AppTitleBar.vue'
@@ -24,6 +24,7 @@ import { mount, unmountAll, type Mounted } from './harness'
 const original = { width: window.innerWidth, height: window.innerHeight }
 afterEach(async () => {
   unmountAll()
+  vi.useRealTimers()
   delete (window as { api?: unknown }).api
   railFacts().update({ runningConversations: null })
   screenFacts().update({ forest: null })
@@ -237,38 +238,53 @@ describe('working counts in the title bar', () => {
     expect(text(m)).toContain('8 agents · 3 working')
   })
 
-  it('a newer list reply fences an older reply that arrives afterwards', async () => {
+  it('a queued list refresh replaces the completed active reading in the title', async () => {
     const { m, rail, setReply } = await windowWith()
+    vi.useFakeTimers()
     const older = deferred<ResumableSessionInfo[]>()
     const newer = deferred<ResumableSessionInfo[]>()
-    setReply(() => older.promise)
+    const read = vi.fn().mockReturnValueOnce(older.promise).mockReturnValue(newer.promise)
+    setReply(read)
     const oldRead = rail.value!.refreshResumable()
-    setReply(() => newer.promise)
-    const newRead = rail.value!.refreshResumable()
+    await rail.value!.refreshResumable()
     newer.resolve([row('fresh', 'codex', { is: 'active' })])
-    await newRead
     await nextTick()
-    expect(text(m)).toContain('1 agents · 1 working')
+    expect(read).toHaveBeenCalledTimes(1)
+    expect(text(m)).toContain('8 agents · 3 working')
     older.resolve(mixed())
     await oldRead
     await nextTick()
+    expect(text(m)).toContain('8 agents · 3 working')
+    await vi.advanceTimersByTimeAsync(1_000)
+    await nextTick()
+    expect(read).toHaveBeenCalledTimes(2)
     expect(text(m)).toContain('1 agents · 1 working')
     expect(m.q('shelf-usage-agents').textContent).toContain('Codex 1 (1 working)')
   })
 
-  it('an older failed read cannot replace a newer successful result with an error', async () => {
+  it('a queued successful refresh replaces an active failed read without an error flash', async () => {
     const { m, rail, setReply } = await windowWith()
+    vi.useFakeTimers()
     let reject!: (cause: Error) => void
     const older = new Promise<ResumableSessionInfo[]>((_, fail) => {
       reject = fail
     })
-    setReply(() => older)
+    const read = vi
+      .fn()
+      .mockReturnValueOnce(older)
+      .mockResolvedValue([row('fresh', 'codex', { is: 'active' })])
+    setReply(read)
     const oldRead = rail.value!.refreshResumable()
-    setReply(() => Promise.resolve([row('fresh', 'codex', { is: 'active' })]))
     await rail.value!.refreshResumable()
+    expect(read).toHaveBeenCalledTimes(1)
     reject(new Error('Fictional older read failed'))
     await oldRead
     await nextTick()
+    expect(text(m)).toContain('8 agents · 3 working')
+    expect(m.all('conversations-error')).toHaveLength(0)
+    await vi.advanceTimersByTimeAsync(1_000)
+    await nextTick()
+    expect(read).toHaveBeenCalledTimes(2)
     expect(text(m)).toContain('1 agents · 1 working')
     expect(m.all('conversations-error')).toHaveLength(0)
   })

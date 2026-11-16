@@ -63,7 +63,7 @@ async function fixture(withTrees = false) {
     appVersion: '0.1.9',
     build: null,
     reason: 'first-start-of-release',
-    freeBytes: () => null,
+    freeBytes: () => 1_000_000_000,
     log: () => {},
   })
   const options = { ownership: 'sole' as const, currentAppVersion: '0.1.9', warn: () => {} }
@@ -501,7 +501,7 @@ it('removes both fixed copied trees bottom-up without recursive rm', async () =>
     appVersion: '0.1.9',
     build: null,
     reason: 'first-start-of-release',
-    freeBytes: () => null,
+    freeBytes: () => 1_000_000_000,
     log: () => {},
   })
   await recordSuccessfulStart(userData, lineage, options)
@@ -545,7 +545,7 @@ it('failed writer cleanup uses the fixed names and preserves a personal addition
       appVersion: '0.1.9',
       build: null,
       reason: 'first-start-of-release',
-      freeBytes: () => null,
+      freeBytes: () => 1_000_000_000,
       log: () => {},
       fs,
       beforeStep: (step) => {
@@ -629,7 +629,7 @@ it('ordinary retention pruning also preserves a note arriving at final rmdir and
       appVersion: '0.1.9',
       build: null,
       reason: 'first-start-of-release',
-      freeBytes: () => null,
+      freeBytes: () => 1_000_000_000,
       log: () => {},
       now: () => Date.parse(copy.manifest.createdAt) + n * 1000,
     })

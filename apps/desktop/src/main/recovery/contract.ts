@@ -15,7 +15,11 @@ export const MANIFEST_FORMAT = 'brobot-checkpoint'
 export const JOURNAL_FORMAT = 'brobot-restore'
 export const GATE_FORMAT = 'brobot-history-only'
 
-const CHECKPOINT_REASONS = ['first-start-of-release', 'before-migration'] as const
+const CHECKPOINT_REASONS = [
+  'first-start-of-release',
+  'before-migration',
+  'after-compaction',
+] as const
 export type CheckpointReason = (typeof CHECKPOINT_REASONS)[number]
 
 /** Whether a restore installs a state file with the database or leaves the live one in place. */
@@ -57,7 +61,10 @@ export interface CheckpointManifest {
     readonly file: typeof COPY_FILE
     readonly bytes: number
     readonly sha256: string
-    /** Read from the copy's own migration record, oldest first. */
+    readonly compression?: 'gzip'
+    readonly uncompressedBytes?: number
+    readonly uncompressedSha256?: string
+    /** Read from the closed source's migration record, oldest first. */
     readonly migrations: readonly Migration[]
   }
   /** Every app state file, copied beside the database, or recorded as absent. */
@@ -292,6 +299,11 @@ function readManifest(record: Fields): CheckpointManifest {
   oneOf(database, 'file', [COPY_FILE], `${where}.database`)
   byteCount(database, 'bytes', `${where}.database`)
   sha256(database, 'sha256', `${where}.database`)
+  if (database.compression !== undefined) {
+    oneOf(database, 'compression', ['gzip'], `${where}.database`)
+    byteCount(database, 'uncompressedBytes', `${where}.database`)
+    sha256(database, 'uncompressedSha256', `${where}.database`)
+  }
   let before = Number.NEGATIVE_INFINITY
   list(database, 'migrations', `${where}.database`).forEach((entry, index) => {
     const here = `${where}.database.migrations[${String(index)}]`

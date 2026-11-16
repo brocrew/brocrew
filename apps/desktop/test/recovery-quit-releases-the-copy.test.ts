@@ -1,4 +1,5 @@
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runInNewContext } from 'node:vm'
@@ -16,6 +17,7 @@ import {
   type VerifyCopy,
 } from '../src/main/recovery/copy-check'
 import { nodeFs } from '../src/main/recovery/files'
+import { UNFINISHED_FILE, workspaceIdFile } from '../src/main/recovery/layout'
 import { bundleAWorker } from './helpers/bundle-a-worker'
 
 const index = readFileSync(new URL('../src/main/index.ts', import.meta.url), 'utf8')
@@ -89,6 +91,8 @@ for (const route of [
     const db = openDatabase(join(userData, 'brobot2.sqlite'))
     applyMigrations(db, migrations)
     db.close()
+    mkdirSync(join(userData, 'backups'))
+    writeFileSync(workspaceIdFile(userData), `${randomUUID()}\n`)
     const order: string[] = [],
       workers: Worker[] = []
     const started = gate(),
@@ -115,6 +119,7 @@ for (const route of [
     const context: Record<string, unknown> = {
       recoveryCopyVerifier: verifier,
       recoveryCopyHasher: { stop: async () => undefined },
+      launchCompaction: { stop: async () => undefined },
       recoveryCaptureAbort: new AbortController(),
       recoveryWork: new Set(),
       stoppingRecoveryWork: null,
@@ -153,7 +158,7 @@ for (const route of [
             fs: {
               ...nodeFs,
               unlink: async (file) => {
-                if (file.endsWith('database.sqlite')) {
+                if (file.endsWith(UNFINISHED_FILE)) {
                   order.push('cleanup entered')
                   cleaning.resolve()
                   await clean.promise
@@ -178,6 +183,7 @@ for (const route of [
       themes: null,
       updates: null,
       transcriptRetention: undefined,
+      eventRetention: undefined,
       stopProviderSetup: undefined,
       stopThemeIpc: undefined,
       stopStorageIpc: undefined,

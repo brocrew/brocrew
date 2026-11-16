@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { useClientApi } from '../client-provider/injection'
-import { useConversationListRecovery } from '../composables/useConversationListRecovery'
+import { useRecoveredConversationList } from '../composables/useConversationListRecovery'
 import { useModalDepth } from './OverlayHost.vue'
 import { useProviderNames } from '../composables/useProviderNames'
 import { providerNamesIn } from '../lib/front-door-words'
-import type { AgentState as OneState } from '../../../shared/agent-state-contracts'
 import type { WhatEachConversationIsWaitingOn } from '../../../shared/task-contracts'
 
 import { chordKeys, chordSaid, platformHere } from '../lib/this-computer'
@@ -15,17 +14,11 @@ import {
   onMounted,
   nextTick,
   ref,
-  shallowRef,
   useId,
   watch,
   watchEffect,
   type Ref,
 } from 'vue'
-import type {
-  ResumableSessionInfo,
-  RuntimeStatesMessage,
-  UnresumableSessionInfo,
-} from '../../../shared/runtime-ipc'
 import { agentStateWords } from '../../../shared/agent-state'
 import {
   facetsOfState,
@@ -38,7 +31,6 @@ import {
   type AgentFacets,
   type Standing,
 } from '../lib/agent-state'
-import { appClosing } from '../lib/app-closing'
 import {
   conversationList,
   withConversationStates,
@@ -71,15 +63,15 @@ import { ROWS_UNREAD_LEAD } from '../lib/rows-unread'
 
 import type { ProviderLimitsView } from '../lib/persons-queue'
 import { providerLimitDisplay } from '../lib/provider-limit-status'
-import { createProviderBlockStore, type ProviderBlockStore } from '../lib/provider-limit-facts'
+import type { ProviderBlockStore } from '../lib/provider-limit-facts'
 import { useMinuteClock } from '../composables/useMinuteClock'
 import { railFacts, useWhoCalledWhom, type RailSays } from '../composables/useWhoCalledWhom'
 import type { WorkspaceReading } from '../../../shared/workspace-reading'
-import type { WorkEdge } from '../../../shared/who-called-whom'
+import { workByConversation } from '../lib/working-together'
 import type { AppInfo } from '@brobot2/shared'
 import { profileItRunsAs, whereItWorks } from '../lib/session-record'
 import { agentName } from '../../../shared/runtime-ipc'
-import { readableError, type SessionRecord } from '../lib/session-record'
+import type { SessionRecord } from '../lib/session-record'
 import { useSpawnSafety } from '../lib/spawn-safety'
 import {
   RAIL_SECTION_REMEMBERED,
@@ -401,44 +393,23 @@ const liveSignal = computed(() =>
    with the conversations this window holds drawn from their own records beside it.
    --------------------------------------------------------------------------- */
 
-const hostResumable = ref<ResumableSessionInfo[]>([])
-const hostUnresumable = ref<UnresumableSessionInfo[]>([])
-/** Whether the list has ever looked. Until it has, it has no count to give — not a count of 0. */
-const looked = ref(false)
-const listError = ref<string | null>(null)
+const lists = railFacts()
+onBeforeUnmount(() => lists.clear())
 
-/**
- * A pushed state outlives any list read already in flight when the push arrived.
- * A later read replaces it; the paired lists may otherwise contain an older state.
- */
-const said = shallowRef<ReadonlyMap<string, { readonly state: OneState; readonly after: number }>>(
-  new Map(),
+const {
+  hostResumable,
+  hostUnresumable,
+  looked,
+  listError,
+  said,
+  providerBlocks,
+  hearStates,
+  refreshListed,
+} = useRecoveredConversationList(
+  () => props.workspaceFolder?.path ?? null,
+  () => client.sessions,
+  () => props.providerBlocks,
 )
-const localProviderBlocks = createProviderBlockStore()
-const providerBlocks = computed(() => props.providerBlocks ?? localProviderBlocks)
-/**
- * ⚑ How many list reads this rail has begun — the number {@link said} dates each push by. ⚠️ A
- * read the quit stops is counted too, which moves nothing: main pushes nothing once a quit begins.
- */
-let readsAsked = 0
-
-/**
- * ⚑ **D-019 · main said what some agents are doing now** — the screen hands every message on
- * `runtime:states` here. ⚠️ A conversation the list does not name yet is kept too, because the read
- * already in flight may name it; a read asked after it names it in its own answer.
- *
- * ⚑ **D-026 · a message that moved no state leaves the list as it was** — files kept, alone: the
- * rail draws no files, and a copy of what it heard would redraw every row for nothing.
- */
-function hearStates(message: RuntimeStatesMessage): void {
-  if (message.moved.length === 0) return
-  const next = new Map(said.value)
-  for (const moved of message.moved) {
-    next.set(moved.conversation, { state: moved.state, after: readsAsked })
-  }
-  said.value = next
-  if (!props.providerBlocks) localProviderBlocks.acceptMany(message.moved)
-}
 
 const readList = computed(() =>
   conversationList({
@@ -455,18 +426,8 @@ const listed = computed(() =>
   ),
 )
 const cast = useWhoCalledWhom()
-const lists = railFacts()
 // Index the forest once per reading, rather than walking it for every row on every render.
-const workByHolder = computed(() => {
-  const holders = new Map<string, WorkEdge[]>()
-  for (const node of cast.forest.value?.nodes.rows ?? []) {
-    if (node.node !== 'a-task') continue
-    const pieces = holders.get(node.work.to)
-    if (pieces) pieces.push(node.work)
-    else holders.set(node.work.to, [node.work])
-  }
-  return holders
-})
+const workByHolder = computed(() => workByConversation(cast.forest.value))
 watchEffect(() => {
   lists.update({ listedConversations: looked.value ? listed.value : null })
   if (!looked.value) {
@@ -485,55 +446,6 @@ watchEffect(() => {
     }),
   })
 })
-onBeforeUnmount(() => lists.clear())
-
-const listRecovery = useConversationListRecovery(
-  () => props.workspaceFolder?.path ?? null,
-  () => {
-    hostResumable.value = []
-    hostUnresumable.value = []
-    said.value = new Map()
-    looked.value = false
-    listError.value = null
-    void refreshListed()
-  },
-)
-
-async function refreshListed(): Promise<void> {
-  const cycle = listRecovery.begin()
-  // ⚑ **D-019 · numbered before either half is asked** — see {@link said}.
-  readsAsked += 1
-  const asked = readsAsked
-  const providerReadAt = providerBlocks.value.beginRead()
-  // 🔴 **Not while the app is closing** (273 §2, from `272` finding 1). The quit ends every
-  // conversation and each ending announces; `272` measured these re-reads landing on a database the
-  // quit had already shut. ⚑ Main refuses them too; this is the half that means an ordinary quit
-  // prints nothing at all. ⚠️ **Leaves the list exactly as it was**: there is nobody to report to.
-  if (appClosing.value) return
-  try {
-    const sessionsApi = client.sessions
-    if (!sessionsApi?.listResumable || !sessionsApi.listUnresumable)
-      throw new Error('The client does not provide session reads and intents')
-    const [resumable, unresumable] = await Promise.all([
-      sessionsApi.listResumable(),
-      sessionsApi.listUnresumable(),
-    ])
-    if (asked !== readsAsked || !listRecovery.current(cycle)) return
-    providerBlocks.value.acceptListed([...resumable, ...unresumable], providerReadAt)
-    hostResumable.value = resumable
-    hostUnresumable.value = unresumable
-    // ⛔ **D-019 · every push that arrived before this read was asked gives way to its answer.**
-    said.value = new Map([...said.value].filter(([, heard]) => heard.after >= asked))
-    looked.value = true
-    listRecovery.succeeded()
-    listError.value = null
-  } catch (cause) {
-    if (asked !== readsAsked || !listRecovery.current(cycle)) return
-    if (await listRecovery.retry(cycle)) return refreshListed()
-    if (asked !== readsAsked || !listRecovery.current(cycle)) return
-    listError.value = readableError(cause)
-  }
-}
 
 onMounted(refreshListed)
 

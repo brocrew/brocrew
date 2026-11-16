@@ -9,6 +9,10 @@ on:
         description: Run only the Mac upgrade, retaining both original artifact bindings
         type: boolean
         default: false
+      withdrawn_025_predecessor:
+        description: Use the withdrawn 0.2.25 release's original predecessor artifacts
+        type: boolean
+        default: false
       recovery_proof:
         description: Run the three recovery cases with published 0.2.19
         type: boolean
@@ -86,11 +90,16 @@ jobs:
     timeout-minutes: 5
     outputs:
       binding: ${{ steps.assets.outputs.binding }}
+      predecessor: ${{ steps.assets.outputs.predecessor }}
     steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - id: assets
         uses: actions/github-script@v8
         env:
           ORIGINAL_RUN: ${{ inputs.original_run_id }}
+          WITHDRAWN_025: ${{ inputs.withdrawn_025_predecessor }}
           WINDOWS_ARTIFACT: ${{ inputs.windows_artifact_id }}
           MAC_ARTIFACT: ${{ inputs.mac_artifact_id }}
           CANDIDATE_SOURCE: ${{ inputs.candidate_source }}
@@ -101,6 +110,49 @@ jobs:
             const { ORIGINAL_RUN: run, WINDOWS_ARTIFACT: windows, MAC_ARTIFACT: mac,
               CANDIDATE_SOURCE: candidate, PREDECESSOR_SOURCE: predecessor } = process.env
             const demand = (ok, message) => { if (!ok) throw new Error(message) }
+            let withdrawn
+            if (process.env.WITHDRAWN_025 === 'true') {
+              demand(process.env.WINDOWS_BETA === 'v0.2.25' && process.env.MAC_BETA === 'v0.2.25',
+                'Withdrawn predecessor artifacts are only the installed 0.2.25 row.')
+              const { PREVIOUS_PUBLIC_025: old } = await import(
+                `${process.env.GITHUB_WORKSPACE}/scripts/lib/withdrawn-upgrade-beta.mjs`)
+              const { data: original } = await github.rest.actions.getWorkflowRun({ ...context.repo, run_id: old.runId })
+              const artifacts = []
+              for (const id of [old.macArtifactId, old.windowsArtifactId]) {
+                const { data: artifact } = await github.rest.actions.getArtifact({ ...context.repo, artifact_id: id })
+                artifacts.push(artifact)
+              }
+              function withdrawnOriginalBinding(run, artifacts) {
+                if (run.id !== old.runId || run.head_sha !== old.source || run.head_branch !== old.tag)
+                  return null
+                for (const [id, name] of [
+                  [old.macArtifactId, 'release-macos-1'],
+                  [old.windowsArtifactId, 'release-windows-1'],
+                ]) {
+                  const artifact = artifacts.find((one) => one.id === id)
+                  if (
+                    !artifact ||
+                    artifact.expired !== false ||
+                    artifact.name !== name ||
+                    artifact.workflow_run?.id !== old.runId ||
+                    artifact.workflow_run.head_sha !== old.source ||
+                    artifact.workflow_run.head_branch !== old.tag
+                  )
+                    return null
+                }
+                return {
+                  runId: old.runId,
+                  source: old.source,
+                  tag: old.tag,
+                  macArtifactId: old.macArtifactId,
+                  windowsArtifactId: old.windowsArtifactId,
+                }
+              }
+              withdrawn = withdrawnOriginalBinding(original, artifacts)
+              demand(withdrawn, 'The withdrawn predecessor must bind its original release run and artifacts.')
+              core.setOutput('predecessor', JSON.stringify(withdrawn))
+              core.info(JSON.stringify(withdrawn))
+            }
             if (!run) {
               demand(!mac && !candidate && !predecessor &&
                 (context.eventName !== 'workflow_dispatch' || !windows),
@@ -121,8 +173,12 @@ jobs:
             demand(oldWindows.sha === predecessor && oldMac.sha === predecessor,
               'Both selected predecessor tags must bind the supplied predecessor SHA.')
             for (const tag of new Set([process.env.WINDOWS_BETA, process.env.MAC_BETA])) {
-              const { data: release } = await github.rest.repos.getReleaseByTag({ ...repo, tag })
-              demand(!release.draft && release.tag_name === tag, 'The predecessor must be published.')
+              if (tag === 'v0.2.25' && withdrawn) {
+                demand(predecessor === withdrawn.source, 'The withdrawn predecessor source must match its original run.')
+              } else {
+                const { data: release } = await github.rest.repos.getReleaseByTag({ ...repo, tag })
+                demand(!release.draft && release.tag_name === tag, 'The predecessor must be published.')
+              }
             }
             const artifacts = []
             for (const [os, id] of [['windows', windows], ['macos', mac]]) {
@@ -161,25 +217,37 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 75
     steps:
-      - uses: actions/checkout@v7
+      - &upgrade-checkout
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: '.nvmrc'
-          cache: pnpm
-      - uses: actions/cache@v4
-        with:
-          path: .cache
-          key: ${{ runner.os }}-electron-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: ${{ runner.os }}-electron-
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup-desktop
 
       - name: The check's own rules fail what they should
         run: pnpm exec vitest run --project scripts scripts/test/upgrade-path.test.mjs scripts/test/upgrade-candidate-evidence.test.mjs
 
+      - &withdrawn-artifacts
+        name: Download the withdrawn predecessor's original release artifacts
+        if: inputs.withdrawn_025_predecessor
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ format('{0},{1}', fromJSON(needs.assets.outputs.predecessor).macArtifactId, fromJSON(needs.assets.outputs.predecessor).windowsArtifactId) }}
+          run-id: ${{ fromJSON(needs.assets.outputs.predecessor).runId }}
+          github-token: ${{ github.token }}
+          merge-multiple: true
+          path: upgrade-path-beta
+
+      - &withdrawn-byte-check
+        name: Check the withdrawn predecessor against its historical public bytes
+        if: inputs.withdrawn_025_predecessor
+        shell: bash
+        env:
+          PREDECESSOR_BINDING: ${{ needs.assets.outputs.predecessor }}
+          BETA_TAG: ${{ runner.os == 'Windows' && env.WINDOWS_BETA || env.MAC_BETA }}
+        run: node scripts/prepare-withdrawn-upgrade-beta.mjs "$BETA_TAG" upgrade-path-beta upgrade-path-evidence
+
       - name: Fetch the beta a tester runs, as its release publishes it
+        if: ${{ !inputs.withdrawn_025_predecessor }}
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -267,6 +335,7 @@ jobs:
           --candidate-dir apps/desktop/dist
           --candidate-version "$CANDIDATE_VERSION" --source-sha "$CANDIDATE_SOURCE"
           --evidence upgrade-path-evidence
+          ${{ inputs.windows_artifact_id && '--ordinary-only' || '' }}
           ${{ inputs.recovery_proof && '--recovery-proof' || '' }}
 
       - name: Keep the evidence, whatever happened
@@ -285,25 +354,17 @@ jobs:
     runs-on: ${{ vars.MAC_RUNNER || 'macos-15' }}
     timeout-minutes: 75
     steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: '.nvmrc'
-          cache: pnpm
-      - uses: actions/cache@v4
-        with:
-          path: .cache
-          key: ${{ runner.os }}-electron-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: ${{ runner.os }}-electron-
-      - run: pnpm install --frozen-lockfile
+      - *upgrade-checkout
+      - uses: ./.github/actions/setup-desktop
 
       - name: The check's own rules fail what they should
         run: pnpm exec vitest run --project scripts scripts/test/upgrade-path.test.mjs scripts/test/upgrade-candidate-evidence.test.mjs
 
+      - *withdrawn-artifacts
+      - *withdrawn-byte-check
+
       - name: Fetch the beta a tester runs, as its release publishes it
+        if: ${{ !inputs.withdrawn_025_predecessor }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

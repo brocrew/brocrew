@@ -8,6 +8,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { inspect } from '../src/main/recovery/coordinator'
 import { listCheckpoints } from '../src/main/recovery/checkpoint'
 import { checkpointDatabase } from '../src/main/recovery/layout'
+import { openCheckpointForRead } from './recovery/lib/recovery-files'
 import { checkTheCopyHere } from './helpers/check-the-copy-here'
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
@@ -104,7 +105,7 @@ it('upgrades from 0007 without losing old rows and makes the automatic pre-migra
     const copies = await listCheckpoints(folder)
     expect(copies).toHaveLength(1)
     expect(copies[0]!.manifest.reason).toBe('before-migration')
-    const copy = openDatabase(checkpointDatabase(folder, copies[0]!.manifest.id))
+    const copy = openCheckpointForRead(checkpointDatabase(folder, copies[0]!.manifest.id))
     try {
       expect(copy.prepare('SELECT * FROM events ORDER BY ordinal').all()).toEqual(before)
       expect(copy.prepare('SELECT count(*) AS n FROM __drizzle_migrations').get()).toEqual({ n: 8 })

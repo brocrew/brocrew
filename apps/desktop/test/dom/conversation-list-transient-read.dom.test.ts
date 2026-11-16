@@ -137,27 +137,44 @@ it('initial persistent failure reports the cause after three reads without claim
   expect(out.m.q('conversations-error').textContent).toContain(unavailable.message)
 })
 
-it('a newer successful read and pushed state defeat an older response', async () => {
+it('a queued refresh follows the active read and preserves pushes received during each read', async () => {
   const out = open()
   await flush()
   let oldAnswer!: (value: ResumableSessionInfo[]) => void
-  out.read.mockImplementationOnce(
-    () =>
-      new Promise((resolve) => {
-        oldAnswer = resolve
-      }),
-  )
+  let newAnswer!: (value: ResumableSessionInfo[]) => void
+  out.read
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          oldAnswer = resolve
+        }),
+    )
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          newAnswer = resolve
+        }),
+    )
   const older = out.refresh()
-  const newer = out.refresh()
+  await out.refresh()
+  expect(out.read).toHaveBeenCalledTimes(2)
   out.rail.value!.hearStates({
     moved: [{ conversation: rows[0]!.sessionId, state: { is: 'needs-you' } }],
     kept: [],
   })
-  await newer
   oldAnswer([])
   await older
+  expect(count(out)).toBe(0)
+  await vi.advanceTimersByTimeAsync(1_000)
+  expect(out.read).toHaveBeenCalledTimes(3)
+  out.rail.value!.hearStates({
+    moved: [{ conversation: rows[0]!.sessionId, state: { is: 'active' } }],
+    kept: [],
+  })
+  newAnswer(rows)
+  await flush()
   expect(count(out)).toBe(1)
-  expect(out.rail.value!.theOneList![0]!.state).toEqual({ is: 'needs-you' })
+  expect(out.rail.value!.theOneList![0]!.state).toEqual({ is: 'active' })
 })
 
 it('workspace replacement cancels a retry and rejects a late answer from the old workspace', async () => {

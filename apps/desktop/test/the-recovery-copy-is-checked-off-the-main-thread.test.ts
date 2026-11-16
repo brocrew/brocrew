@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3'
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { createHash } from 'node:crypto'
 import { dirname, join } from 'node:path'
@@ -8,7 +8,9 @@ import { Worker } from 'node:worker_threads'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
-import { compactWhenMuchIsFree } from '../src/main/db/compact'
+import { inspectCompaction } from '../src/main/db/workspace-compaction'
+import type { EventTrimResult } from '../src/main/db/event-retention'
+import { workspaceCompaction } from '../src/main/storage/workspace-compaction'
 import { CheckpointFailed, makeCheckpoint } from '../src/main/recovery/checkpoint'
 import { checkTheCopy, verifyInAWorker, type VerifyCopy } from '../src/main/recovery/copy-check'
 import { bundleAWorker } from './helpers/bundle-a-worker'
@@ -18,12 +20,14 @@ const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db
 /**
  * A recovery copy is checked in a worker, so a long check never holds the main thread; its three
  * outcomes are kept apart, as a checkpoint says and retries them; and the copy is released before
- * anything touches it next. Launch compaction never rewrites a file above its ceiling.
+ * anything touches it next. Launch compaction runs off the main thread and installs only its closed output.
  */
 describe('the recovery copy is checked off the main thread', () => {
   let folder: string
   let bundle: string
   let checkBundle: string
+  let storageBundle: string
+  let trimBundle: string
   const roots: string[] = []
   const aRoot = () => {
     const root = mkdtempSync(join(folder, 'root-'))
@@ -79,6 +83,8 @@ describe('the recovery copy is checked off the main thread', () => {
     folder = mkdtempSync(join(tmpdir(), 'fictional-copy-check-'))
     bundle = await bundleAWorker('src/main/recovery-verify.worker.ts', folder, 'verify.cjs')
     checkBundle = await bundleAWorker('src/main/recovery/copy-check.ts', folder, 'check.cjs')
+    storageBundle = await bundleAWorker('src/main/storage.worker.ts', folder, 'storage.cjs')
+    trimBundle = await bundleAWorker('src/main/db/event-retention.ts', folder, 'trim.cjs')
   }, 120_000)
   afterAll(() => {
     rmSync(folder, { recursive: true, force: true })
@@ -96,7 +102,7 @@ describe('the recovery copy is checked off the main thread', () => {
         `const { parentPort, workerData } = require('node:worker_threads');
         const { checkTheCopy } = require(workerData.checkBundle);
         parentPort.once('message', () => {
-          parentPort.postMessage(checkTheCopy(workerData.copy, workerData.holdMs));
+          parentPort.postMessage(checkTheCopy(workerData.copy, workerData.holdMs, workerData.readonly));
           parentPort.close();
         });
         parentPort.postMessage('ready');`,
@@ -230,6 +236,64 @@ describe('the recovery copy is checked off the main thread', () => {
     }
   })
 
+  it.each([false, true])(
+    'retention waits for a writer, or safely defers a persistent lock: %s',
+    async (held) => {
+      const file = join(aRoot(), 'busy-trim.sqlite')
+      const db = openDatabase(file)
+      applyMigrations(db, migrations)
+      db.prepare(
+        `INSERT INTO provider_session
+        (id, provider, cwd, status, created_at, updated_at)
+        VALUES ('fictional', 'claude', '/', 'idle', 0, 0)`,
+      ).run()
+      const insert = db.prepare(`INSERT INTO events
+        (id, session_id, ordinal, type, payload, created_at) VALUES (?, 'fictional', ?, ?, ?, 0)`)
+      db.transaction(() => {
+        for (let n = 0; n < 1002; n++) {
+          insert.run(String(n), n, 'thinking', JSON.stringify({ type: 'thinking' }))
+        }
+        for (const [n, type] of ['user_turn', 'turn'].entries()) {
+          insert.run(`protected-${n}`, 1002 + n, type, JSON.stringify({ type }))
+        }
+      })()
+      db.exec('BEGIN IMMEDIATE')
+      const worker = new Worker(
+        `const { parentPort, workerData } = require('node:worker_threads');
+        const { trimOldEvents } = require(workerData.bundle);
+        parentPort.postMessage({ starting: true });
+        trimOldEvents(workerData.file, () => false).then(
+          value => parentPort.postMessage({ value }),
+          error => { throw error; });`,
+        { eval: true, workerData: { bundle: trimBundle, file } },
+      )
+      let release: ReturnType<typeof setTimeout> | undefined
+      try {
+        const result = await new Promise<EventTrimResult>((resolve, reject) => {
+          worker.once('error', reject)
+          worker.on('message', (message: { starting?: boolean; value?: EventTrimResult }) => {
+            if (message.starting && !held) release = setTimeout(() => db.exec('COMMIT'), 500)
+            if (message.value) resolve(message.value)
+          })
+        })
+        expect(result.interrupted).toBe(held)
+        expect(result.removed).toBe(held ? 0 : 2)
+        expect(db.prepare("SELECT count(*) AS n FROM events WHERE type='thinking'").get()).toEqual({
+          n: held ? 1002 : 1000,
+        })
+        expect(
+          db.prepare("SELECT count(*) AS n FROM events WHERE type IN ('user_turn','turn')").get(),
+        ).toEqual({ n: 2 })
+      } finally {
+        clearTimeout(release)
+        if (db.inTransaction) db.exec('ROLLBACK')
+        await worker.terminate()
+        db.close()
+      }
+    },
+    15_000,
+  )
+
   describe('a checkpoint says each outcome as it did, and keeps nothing it could not check', () => {
     const aWorkspace = (): string => {
       const userData = join(aRoot(), 'data')
@@ -261,7 +325,7 @@ describe('the recovery copy is checked off the main thread', () => {
       expect((failure as Error).message).toContain(
         "did not pass SQLite's own check (row 7 missing)",
       )
-      expect(readdirSync(join(userData, 'backups'))).toEqual(['workspace-id'])
+      expect(existsSync(join(userData, 'backups'))).toBe(false)
     })
 
     it('a check that could not run is retried, and the copy is not kept', async () => {
@@ -270,7 +334,7 @@ describe('the recovery copy is checked off the main thread', () => {
       expect(failure).toBeInstanceOf(CheckpointFailed)
       expect((failure as CheckpointFailed).canRetry).toBe(true)
       expect((failure as Error).message).toContain('locked')
-      expect(readdirSync(join(userData, 'backups'))).toEqual(['workspace-id'])
+      expect(existsSync(join(userData, 'backups'))).toBe(false)
     })
 
     it('a copy the worker passes is kept', async () => {
@@ -298,25 +362,56 @@ describe('the recovery copy is checked off the main thread', () => {
       Number(db.pragma('page_count', { simple: true })) *
       Number(db.pragma('page_size', { simple: true }))
 
-    it('never rewrites a file whose size is above its ceiling, however much is free', () => {
-      const { db } = aLooseDatabase()
+    it('inspects a large loose file without rewriting it', () => {
+      const { file, db } = aLooseDatabase()
       try {
         const before = fileBytes(db)
-        expect(compactWhenMuchIsFree(db, 10 * before, before - 1)).toBe('deferred-too-large')
+        const facts = inspectCompaction(file)!
+        expect(facts.eligible).toBe(true)
+        expect(facts.bytes).toBe(before)
+        expect(facts.keptBytes).toBeLessThan(before / 2)
         expect(fileBytes(db)).toBe(before)
       } finally {
         db.close()
       }
     })
 
-    it('compacts as before below its ceiling', () => {
-      const { db } = aLooseDatabase()
+    it('joins the production compaction worker before installing and reopening its output', async () => {
+      const { file, db } = aLooseDatabase()
+      const before = fileBytes(db)
+      db.close()
+      const maintenance = workspaceCompaction(
+        (request) =>
+          new Worker(storageBundle, {
+            workerData: { maintenance: request },
+          }),
+      )
+      let copied = false
       try {
-        const before = fileBytes(db)
-        expect(compactWhenMuchIsFree(db, 10 * before, before + 1)).toMatch(/^compacted/)
-        expect(fileBytes(db)).toBeLessThan(before)
+        const longest = await longestGapDuring(async () => {
+          expect(
+            await maintenance.run(
+              file,
+              async () => {},
+              async () => {
+                copied = true
+              },
+              () => {},
+            ),
+          ).toBe(true)
+        })
+        expect(longest).toBeLessThan(100)
+        expect(copied).toBe(true)
+        const reopened = openDatabase(file)
+        try {
+          expect(fileBytes(reopened)).toBeLessThan(before)
+          expect(reopened.pragma('auto_vacuum', { simple: true })).toBe(2)
+          expect(reopened.prepare('SELECT count(*) AS n FROM filler').get()).toEqual({ n: 0 })
+        } finally {
+          reopened.close()
+        }
       } finally {
-        db.close()
+        await maintenance.stop()
       }
     })
   })

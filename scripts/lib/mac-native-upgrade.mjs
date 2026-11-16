@@ -3,6 +3,52 @@ import { readFile, lstat, realpath } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { digest, packageOfAsar, requireEvidence, waitFor } from './mac-update-test.mjs'
+import { nativeRestartRecorded } from '../mac-signed-upgrade-contract.mjs'
+
+export async function requestNativeMacRestart(
+  workspace,
+  version,
+  { previous, click, processInfo, evidence, settings, app, readLog = readFile },
+) {
+  const confirmsRestart = await workspace.cdp.evaluate(
+    "return typeof window.api.updates.restartPlan === 'function'",
+  )
+  if (confirmsRestart) await click(workspace.cdp, '[data-cy=updates-restart]')
+  try {
+    await click(
+      workspace.cdp,
+      confirmsRestart ? '[data-cy=updates-confirm-now]' : '[data-cy=updates-restart]',
+    )
+  } catch (error) {
+    if (error?.message !== 'Input.dispatchMouseEvent: the window’s DevTools connection closed')
+      throw error
+  }
+  let updateReopen
+  await waitFor(
+    async () => {
+      if (confirmsRestart)
+        updateReopen = JSON.parse(await readLog(settings, 'utf8')).updateReopen ?? updateReopen
+      return !(await processInfo(previous.pid))
+    },
+    'A quits for Squirrel.Mac',
+    60_000,
+  )
+  const stdout = await readLog(join(evidence, `${previous.stage}.stdout.log`), 'utf8')
+  nativeRestartRecorded(
+    stdout,
+    await readLog(previous.log, 'utf8'),
+    version,
+    confirmsRestart
+      ? {
+          recorded: updateReopen,
+          executable: join(app, 'Contents', 'MacOS', 'BroCrew'),
+          folder: workspace.data,
+        }
+      : undefined,
+  )
+  if (confirmsRestart) workspace.result.nativeInstallChoice = updateReopen
+  return confirmsRestart
+}
 
 export async function waitForNativeMacDownload(cdp, version, label) {
   await waitFor(

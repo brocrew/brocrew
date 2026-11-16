@@ -1,3 +1,8 @@
+import {
+  macCheckpointSnapshot,
+  requireOrdinaryMacFixture,
+  requireOrdinaryMacFile,
+} from './lib/mac-upgrade-preservation.mjs'
 import * as macLineage from './lib/mac-candidate-lineage.mjs'
 import { readWorkspaceForUpdate } from '../apps/desktop/src/main/one-host-gate.ts'
 import {
@@ -20,6 +25,7 @@ import {
   quitRestartedMacApp,
   observeMacReplacement,
   macFirstStartReceipt,
+  requestNativeMacRestart,
 } from './lib/mac-native-upgrade.mjs'
 import { execFile } from 'node:child_process'
 import { promisify, parseArgs, isDeepStrictEqual } from 'node:util'
@@ -63,7 +69,6 @@ import { completedProofCopy, proofManifests } from './lib/recovery-measurement.m
 import {
   candidateNames,
   publicFeedUnchanged,
-  nativeRestartRecorded,
   fixturePermissions,
   permissionsKept,
   registriesKept,
@@ -266,9 +271,6 @@ async function launch(
   await screenshot(cdp, `${stage}-window.png`)
   return cdp
 }
-async function quit() {
-  active = await quitMacChild(active, app, processInfo, passed)
-}
 async function checkRetention(
   before,
   state,
@@ -281,12 +283,14 @@ async function checkRetention(
   const after = databaseSnapshot(join(data, 'brobot2.sqlite'), {
     credentials: true,
     movedState: true,
+    retention: true,
   })
   const resumed = currentWorkspace.result.interruptedSession
   if (resumed) continuedEventsOnly(before, after, resumed.sessionId)
   const comparison = dataPreserved(before, after, {
     allowAppended: Boolean(resumed),
     candidateLineage,
+    retentionVersion: VERSION_B,
   })
   legacyCredentialsPreserved(before.provider_api_key, after.provider_api_key)
   credentialPreserved(
@@ -371,7 +375,7 @@ async function seedWorkspace(workspace) {
     await cdp.evaluate(
       `return await window.api.runtime.close({sessionId:${JSON.stringify(sessionId)}})`,
     )
-  await quit()
+  active = await quitMacChild(active, app, processInfo, passed)
   cdp.close()
   const settled = databaseSnapshot(join(data, 'brobot2.sqlite'), { credentials: true })
   cdp = await launch('a-settled', workspace.port, VERSION_A)
@@ -465,7 +469,7 @@ async function quitAll(stage, except = null) {
     if (workspace === except) continue
     selectWorkspace(workspace)
     const child = active
-    await quit()
+    active = await quitMacChild(active, app, processInfo, passed)
     workspace.active = null
     workspace.cdp?.close()
     if (child) {
@@ -526,18 +530,20 @@ async function nativeDownload(workspace, published) {
   passed('native-download-zip-sha512-and-signed-bundle', summary.download)
 }
 
-async function quitSquirrelApp() {
-  squirrelApp = await quitRestartedMacApp(squirrelApp, processInfo)
-}
-
 async function nativeRestart(workspace) {
   selectWorkspace(workspace)
   const previous = active
-  const nativeWorkspace = nativeWorkspaceFromRegistry(workspace.baseline.registryBefore, workspaces)
-  await click(workspace.cdp, '[data-cy=updates-restart]')
-  await waitFor(async () => !(await processInfo(previous.pid)), 'A quits for Squirrel.Mac', 60_000)
-  const stdout = await readFile(join(evidence, `${previous.stage}.stdout.log`), 'utf8')
-  nativeRestartRecorded(stdout, await readFile(previous.log, 'utf8'), VERSION_B)
+  const confirmsRestart = await requestNativeMacRestart(workspace, VERSION_B, {
+    previous,
+    click,
+    processInfo,
+    evidence,
+    settings,
+    app,
+  })
+  const nativeWorkspace = confirmsRestart
+    ? workspace
+    : nativeWorkspaceFromRegistry(workspace.baseline.registryBefore, workspaces)
   workspace.result.shutdowns ??= []
   workspace.result.shutdowns.push({
     stage: 'native-restart',
@@ -587,7 +593,7 @@ async function nativeRestart(workspace) {
   }
   Object.assign(summary.restart, { startup, completedCheckpointId: completed?.manifest.id ?? null })
   passed('squirrel-replacement-restart-and-first-start', summary.restart)
-  await quitSquirrelApp()
+  squirrelApp = await quitRestartedMacApp(squirrelApp, processInfo)
   await requireNoInstalledProcesses()
 }
 
@@ -597,6 +603,7 @@ async function captureBaseline(workspace, registryBefore, settingsBefore) {
     nativeRoot,
     evidence,
   })
+  requireOrdinaryMacFixture(workspace.baseline.before, VERSION_B)
 }
 
 async function reopenFirst(workspace) {
@@ -636,10 +643,7 @@ async function reopenFirst(workspace) {
     evidence,
   })
   if (checkpoint !== null) {
-    const copy = databaseSnapshot(join(checkpoint, 'database.sqlite'), {
-      credentials: true,
-      movedState: true,
-    })
+    const copy = await macCheckpointSnapshot(checkpoint, app, run, evidence)
     statePreserved(baseline.state, stateBytes(checkpoint, copy))
     const resumed = workspace.result.interruptedSession
     if (resumed) continuedEventsOnly(baseline.before, copy, resumed.sessionId)
@@ -679,6 +683,7 @@ async function reopenFirst(workspace) {
 async function reopenSecond(workspace) {
   selectWorkspace(workspace)
   const baseline = workspace.baseline
+  requireOrdinaryMacFile(join(data, 'brobot2.sqlite'), VERSION_B)
   const cdp = await launch('b-second', workspace.port, VERSION_B)
   workspace.cdp = cdp
   recoveryOrder(await readFile(join(evidence, 'b-second.log'), 'utf8'), { checkpoint: false })
@@ -850,8 +855,12 @@ try {
   for (const workspace of workspaces) {
     selectWorkspace(workspace)
     const baseline = workspace.baseline,
-      after = databaseSnapshot(join(data, 'brobot2.sqlite'), { credentials: true })
-    dataPreserved(baseline.before, after, { allowAppended: true, candidateLineage })
+      after = databaseSnapshot(join(data, 'brobot2.sqlite'), { credentials: true, retention: true })
+    dataPreserved(baseline.before, after, {
+      allowAppended: true,
+      candidateLineage,
+      retentionVersion: VERSION_B,
+    })
     legacyCredentialsPreserved(baseline.before.provider_api_key, after.provider_api_key)
     workspace.result.finalCredential = credentialPreserved(
       baseline.credential,
@@ -922,7 +931,7 @@ try {
     selectWorkspace(workspace)
     if (active) {
       try {
-        await quit()
+        active = await quitMacChild(active, app, processInfo, passed)
         workspace.active = null
       } catch (error) {
         summary.cleanupFailure = String(error)
@@ -932,7 +941,7 @@ try {
     }
   }
   try {
-    await quitSquirrelApp()
+    squirrelApp = await quitRestartedMacApp(squirrelApp, processInfo)
   } catch (error) {
     summary.cleanupFailure = String(error)
     summary.success = false

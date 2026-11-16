@@ -8,6 +8,7 @@ import ts from 'typescript'
 import { openUpdates } from '../lib/update-rehearsal-app.mjs'
 import { waitForNativeMacDownload } from '../lib/mac-native-upgrade.mjs'
 import { credentialPreserved } from '../mac-upgrade-credentials.mjs'
+import { requireOrdinaryMacFile } from '../lib/mac-upgrade-preservation.mjs'
 import {
   databaseSnapshot,
   keepModelFailureEvidence,
@@ -612,6 +613,7 @@ it('preserves the released plain-file key and resumes without saving it again', 
       selectWorkspace: vi.fn(),
       launch: async () => cdp,
       VERSION_B: '0.2.24',
+      requireOrdinaryMacFile,
       recoveryOrder: vi.fn(),
       readFile: vi.fn(async (path) => {
         if (!path.endsWith('api-keys.json')) return ''

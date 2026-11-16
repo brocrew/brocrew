@@ -1,33 +1,32 @@
 import type { AppDatabase } from './connection'
+import { setTimeout as pause } from 'node:timers/promises'
 
-/** Below this much free space, giving it back is not worth a pause at launch. */
-export const COMPACT_FROM_FREE_BYTES = 64 * 1024 * 1024
-
-export const COMPACT_AT_MOST_BYTES = 512 * 1024 * 1024
-
-/** What {@link compactWhenMuchIsFree} did. */
-export type Compaction =
-  | 'not-needed'
-  | 'not-enough-disk'
-  /** Much is free, but the file is above {@link COMPACT_AT_MOST_BYTES}: not rewritten at launch. */
-  | 'deferred-too-large'
-  | 'compacted'
-  /** Compacted, but a reader held the log, so the log file keeps its size until later. */
-  | 'compacted-log-held'
-
-export function compactWhenMuchIsFree(
+export async function incrementallyCompact(
   db: AppDatabase,
-  freeOnDisk: number | null,
-  atMostBytes: number = COMPACT_AT_MOST_BYTES,
-): Compaction {
-  const pageSize = Number(db.pragma('page_size', { simple: true }))
-  const pages = Number(db.pragma('page_count', { simple: true }))
-  const free = Number(db.pragma('freelist_count', { simple: true }))
-  if (free * pageSize < COMPACT_FROM_FREE_BYTES || free * 4 < pages) return 'not-needed'
-  if (pages * pageSize > atMostBytes) return 'deferred-too-large'
-  const kept = (pages - free) * pageSize
-  if (freeOnDisk === null || freeOnDisk < 2 * kept) return 'not-enough-disk'
-  db.exec('VACUUM')
-  const [checkpoint] = db.pragma('wal_checkpoint(TRUNCATE)') as { busy: number }[]
-  return checkpoint?.busy === 0 ? 'compacted' : 'compacted-log-held'
+  stopped: () => boolean,
+): Promise<{ steps: number; reclaimedPages: number; longestLockMs: number }> {
+  let steps = 0
+  let reclaimedPages = 0
+  let longestLockMs = 0
+  const vacuum = db.transaction(() => {
+    db.pragma('incremental_vacuum(16)')
+  })
+  while (!stopped()) {
+    const before = Number(db.pragma('freelist_count', { simple: true }))
+    const began = performance.now()
+    try {
+      vacuum.immediate()
+    } catch (error) {
+      if ((error as { code?: string }).code === 'SQLITE_BUSY') break
+      throw error
+    }
+    longestLockMs = Math.max(longestLockMs, performance.now() - began)
+    steps += 1
+    const after = Number(db.pragma('freelist_count', { simple: true }))
+    reclaimedPages += Math.max(0, before - after)
+    db.pragma('wal_checkpoint(PASSIVE)')
+    if (after === 0 || after >= before) break
+    await pause(25)
+  }
+  return { steps, reclaimedPages, longestLockMs }
 }

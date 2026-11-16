@@ -102,7 +102,8 @@ beforeAll(async () => {
   const drafts = restored.manifest.files.find((file) => file.name === 'drafts.json')
   RESTORED = {
     ...Object.fromEntries(LIVE_NAMES.map((name) => [name, null])),
-    'brobot2.sqlite': restored.manifest.database.sha256,
+    'brobot2.sqlite':
+      restored.manifest.database.uncompressedSha256 ?? restored.manifest.database.sha256,
     'drafts.json': drafts?.present === true ? drafts.sha256 : null,
   }
 

@@ -1,4 +1,5 @@
-import { lineageFits } from './upgrade-path.mjs'
+import { USAGE_TABLES } from './mac-upgrade-preservation.mjs'
+export { dataPreserved } from './mac-upgrade-preservation.mjs'
 import { createHash } from 'node:crypto'
 import { spawn, spawnSync, execFile } from 'node:child_process'
 import { createReadStream } from 'node:fs'
@@ -156,12 +157,6 @@ export function measurementFilesystem(root, commands, invoke = spawnSync) {
     ),
   )
 }
-
-const USAGE_TABLES = [
-  'provider_usage_reading',
-  'provider_usage_window_seen',
-  'provider_usage_read_on',
-]
 
 /** Packaged launches keep their list apart from development launches' workspaces.json. */
 export function packagedRegistryFile(dataRoot) {
@@ -397,77 +392,6 @@ export function registryPreserved(before, after, reopenedPath) {
     afterRows.find((row) => row.path === reopenedPath).lastOpenedAt >=
       beforeRows.find((row) => row.path === reopenedPath).lastOpenedAt,
     'Workspace registry opening time moved backwards.',
-  )
-}
-
-function rowsKept(before, after, table, ignored = []) {
-  const withoutIgnored = (row) =>
-    Object.fromEntries(Object.entries(row).filter(([key]) => !ignored.includes(key)))
-  const indexed = new Map(after.map((row) => [row.id, withoutIgnored(row)]))
-  for (const row of before) {
-    requireEvidence(indexed.has(row.id), `${table} lost row ${row.id}.`)
-    requireEvidence(
-      isDeepStrictEqual(withoutIgnored(row), indexed.get(row.id)),
-      `${table} changed row ${row.id}.`,
-    )
-  }
-}
-
-export function dataPreserved(
-  before,
-  after,
-  { allowAppended = false, usage = false, candidateLineage } = {},
-) {
-  for (const table of ['provider_session', 'events']) {
-    requireEvidence(
-      Array.isArray(before[table]) && Array.isArray(after[table]) && before[table].length > 0,
-      `No baseline evidence for ${table}.`,
-    )
-  }
-  requireEvidence(
-    before.provider_session.length >= 2,
-    'Fixture must create at least two conversations.',
-  )
-  requireEvidence(
-    before.provider_session.length === after.provider_session.length,
-    'Conversation count changed.',
-  )
-  rowsKept(before.provider_session, after.provider_session, 'provider_session', [
-    'status',
-    'updated_at',
-    'closed_by_the_quit_at',
-  ])
-  rowsKept(before.events, after.events, 'events')
-  if (!allowAppended) {
-    requireEvidence(
-      before.events.length === after.events.length,
-      'Unexpected new events rows before any resume.',
-    )
-  }
-  requireEvidence(
-    candidateLineage
-      ? isDeepStrictEqual(before.migrations, after.migrations.slice(0, before.migrations.length)) &&
-          after.migrations.length === candidateLineage.length &&
-          lineageFits(
-            after.migrations.map((m) => ({ createdAt: m.created_at, hash: m.hash })),
-            candidateLineage,
-          )
-      : isDeepStrictEqual(before.migrations, after.migrations),
-    'Migration records differ from the expected lineage.',
-  )
-  if (usage)
-    for (const table of USAGE_TABLES)
-      requireEvidence(
-        Array.isArray(before[table]) &&
-          Array.isArray(after[table]) &&
-          isDeepStrictEqual(before[table], after[table]),
-        `${table} rows changed or are missing.`,
-      )
-  return Object.fromEntries(
-    ['provider_session', 'events', ...(usage ? USAGE_TABLES : [])].map((name) => [
-      name,
-      { before: before[name].length, after: after[name].length, preserved: before[name].length },
-    ]),
   )
 }
 
@@ -740,7 +664,7 @@ export function macCommands(record) {
 }
 export function databaseSnapshot(
   file,
-  { credentials = false, usage = false, movedState = false } = {},
+  { credentials = false, usage = false, movedState = false, retention = false } = {},
 ) {
   const db = new DatabaseSync(file, { readOnly: true })
   try {
@@ -774,6 +698,15 @@ export function databaseSnapshot(
       const tables = new Set(['imported_side_file', ...Object.values(MOVED_STATE_TABLES).flat()])
       for (const table of tables)
         snapshot[table] = db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()
+    }
+    if (retention) {
+      snapshot.derived_generation = db
+        .prepare('SELECT * FROM derived_generation ORDER BY session_id')
+        .all()
+      snapshot.storage = {
+        pages: Number(db.prepare('PRAGMA page_count').get().page_count),
+        free: Number(db.prepare('PRAGMA freelist_count').get().freelist_count),
+      }
     }
     snapshot.migrations = db.prepare('SELECT * FROM __drizzle_migrations ORDER BY id').all()
     db.exec('COMMIT')

@@ -130,6 +130,7 @@ async function startup(
     resolveMigrationsFolder: () => migrations,
     ownershipFrom: () => ({ ask: async () => 'unknown' }),
     createRecoveryService,
+    compactDataBeforeOpen: async () => workspaceStartup(fake)?.assertDatabase(),
     withRecoveryWork: <T>(work: () => Promise<T>) => work(),
     recoveryCopyVerifier: { verify: checkTheCopyHere, stop: async () => {} },
     recoveryCopyHasher: { verify: checkTheCopyHere, stop: async () => {} },
@@ -350,8 +351,6 @@ it('main passes the must-exist option into SQLite when the database disappears a
     theBuildsMigrations: () => [],
     applyMigrations: () => {},
     mainThreadWork: { timed: <T>(_what: string, work: () => T): T => work() },
-    compactWhenMuchIsFree: () => 'unchanged',
-    freeBytesOn: () => null,
     db: null,
     presentation: { hidden: false },
   }

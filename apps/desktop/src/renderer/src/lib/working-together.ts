@@ -677,3 +677,15 @@ export function inTheirPlace(
   }
   return out
 }
+
+/** Index the work in this reading by the conversation holding it. */
+export function workByConversation(forest: TheWholeForest | null): Map<string, WorkEdge[]> {
+  const holders = new Map<string, WorkEdge[]>()
+  for (const node of forest?.nodes.rows ?? []) {
+    if (node.node !== 'a-task') continue
+    const pieces = holders.get(node.work.to)
+    if (pieces) pieces.push(node.work)
+    else holders.set(node.work.to, [node.work])
+  }
+  return holders
+}

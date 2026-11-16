@@ -22,7 +22,7 @@ import {
   type RestoreKind,
   type Step,
 } from './contract'
-import { migrationsOf } from './database-facts'
+import { inRollbackMode, migrationsOf } from './database-facts'
 import {
   OwnedPathIsALink,
   assertOwnedPathsAreReal,
@@ -67,6 +67,7 @@ import {
 } from './layout'
 import { APP_STATE_FILES } from './state-files'
 import { copySkillTree, stateContentAt as contentAt } from './trees'
+import { gunzipCheckpoint } from './checkpoint-compression'
 import { SKILL_TREES, SKILLS_CONVERSION_FILE } from '../skills/shared-paths'
 
 /** A restore or return that stopped. The message is a sentence a person can read. */
@@ -652,7 +653,13 @@ async function planARestore(
     if (role === 'database' && !was.present) refuse(NOTHING_TO_SET_ASIDE)
     let becomes: FileState = { present: false }
     if (role === 'database') {
-      becomes = { present: true, sha256: manifest.database.sha256 }
+      becomes = {
+        present: true,
+        sha256:
+          manifest.database.compression === 'gzip'
+            ? manifest.database.uncompressedSha256!
+            : manifest.database.sha256,
+      }
     } else if (role === 'state') {
       const entry = manifest.files.find((file) => file.name === live)
       if (entry?.present === true) becomes = { present: true, sha256: entry.sha256 }
@@ -782,7 +789,12 @@ async function stage(run: Run, manifest: CheckpointManifest): Promise<void> {
     const copy = pathOf(userData, participant, 'incoming')
     await assertOwnedPathsAreReal(userData, [source, copy], fs)
     if (!(await pathExists(source, fs))) refuse(FAILED_CHECK)
-    if (SKILL_TREES.includes(participant.live)) await copySkillTree(source, copy, fs)
+    if (participant.role === 'database' && manifest.database.compression === 'gzip') {
+      const compressed = await contentAt(source, fs)
+      if (compressed.kind !== 'file' || compressed.sha256 !== manifest.database.sha256)
+        refuse(FAILED_CHECK)
+      await gunzipCheckpoint(source, copy, manifest.database.uncompressedBytes!, fs)
+    } else if (SKILL_TREES.includes(participant.live)) await copySkillTree(source, copy, fs)
     else await copyDurably(source, copy, fs)
     if (!holds(await contentAt(copy, fs), participant.becomes)) refuse(FAILED_CHECK)
   }
@@ -802,18 +814,6 @@ async function stage(run: Run, manifest: CheckpointManifest): Promise<void> {
     )
   ) {
     refuse(FAILED_CHECK)
-  }
-}
-
-/** Whether a SQLite file's header says rollback-journal mode: bytes 18 and 19 are both 1. */
-async function inRollbackMode(path: string, fs: RecoveryFs): Promise<boolean> {
-  const header = new Uint8Array(20)
-  const handle = await fs.open(path, 'r')
-  try {
-    const { bytesRead } = await handle.read(header, 0, header.length, 0)
-    return bytesRead === header.length && header[18] === 1 && header[19] === 1
-  } finally {
-    await handle.close()
   }
 }
 

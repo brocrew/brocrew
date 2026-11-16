@@ -1,17 +1,26 @@
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  cpSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  existsSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
-import { COMPACT_FROM_FREE_BYTES, compactWhenMuchIsFree } from '../src/main/db/compact'
+import { inspectCompaction, writeCompactedWorkspace } from '../src/main/db/workspace-compaction'
+import { incrementallyCompact } from '../src/main/db/compact'
 
 /**
  * Migration `0004` · **Claude's stream fragments go, and what stays is renumbered** — landing
  * coverage for what the commit's scratch check showed once and nothing committed: exactly the
  * fragments are removed, every other kind survives, and each conversation's ordinals keep only the
- * holes they already had. And `compactWhenMuchIsFree`, the launch-time step that gives the space back.
+ * holes they already had. And the offline launch compaction that gives the space back.
  */
 
 const real = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
@@ -256,7 +265,7 @@ describe('0004 · the stream fragments', () => {
   })
 })
 
-describe('compactWhenMuchIsFree', () => {
+describe('offline launch compaction', () => {
   let dir: string
   let db: AppDatabase
 
@@ -286,43 +295,70 @@ describe('compactWhenMuchIsFree', () => {
     Number(db.pragma('freelist_count', { simple: true })) *
     Number(db.pragma('page_size', { simple: true }))
 
-  it('🔴 leaves a database with little free space alone, whatever the disk holds', () => {
-    fillAndEmpty(2, 2)
-    expect(freeBytes()).toBeLessThan(COMPACT_FROM_FREE_BYTES)
-    expect(compactWhenMuchIsFree(db, 1e12)).toBe('not-needed')
+  it('leaves a database with less than half its pages free alone', () => {
+    fillAndEmpty(8, 2)
+    const facts = inspectCompaction(join(dir, 'test.sqlite'))
+    expect(facts?.eligible).toBe(false)
     expect(freeBytes()).toBeGreaterThan(0)
   })
 
-  it('⛔ never starts a copy the disk cannot hold, nor one it cannot measure', () => {
+  it('estimates output and one margin without writing a second file', () => {
     fillAndEmpty(8, 70)
-    expect(freeBytes()).toBeGreaterThanOrEqual(COMPACT_FROM_FREE_BYTES)
     const before = freeBytes()
-    expect(compactWhenMuchIsFree(db, null)).toBe('not-enough-disk')
-    // Less than twice what is kept: the copy and the log beside it would not fit.
-    expect(compactWhenMuchIsFree(db, 2 * 8 * MB - 10 * MB)).toBe('not-enough-disk')
+    const facts = inspectCompaction(join(dir, 'test.sqlite'))!
+    expect(facts.eligible).toBe(true)
+    expect(facts.neededBytes).toBe(Math.ceil(facts.keptBytes * 1.1) + 64 * MB)
+    expect(facts.bytes).toBeGreaterThan(facts.keptBytes * 2)
     expect(freeBytes()).toBe(before)
+    expect(existsSync(join(dir, 'test.sqlite.compact'))).toBe(false)
   })
 
-  it('🔴 gives the free pages back when a quarter of the file or more is free and the disk has room', () => {
+  it('compacts a closed database, preserves its rows and enables incremental mode', () => {
     fillAndEmpty(8, 70)
-    expect(compactWhenMuchIsFree(db, 1e12)).toBe('compacted')
+    const file = join(dir, 'test.sqlite')
+    db.close()
+    writeCompactedWorkspace(file, file + '.compact')
+    renameSync(file + '.compact', file)
+    db = openDatabase(file)
     expect(freeBytes()).toBe(0)
+    expect(db.pragma('auto_vacuum', { simple: true })).toBe(2)
     expect(db.prepare('SELECT count(*) AS n FROM filler').get()).toEqual({ n: 8 })
-    // A second launch finds nothing to do.
-    expect(compactWhenMuchIsFree(db, 1e12)).toBe('not-needed')
+    expect(inspectCompaction(file)?.eligible).toBe(false)
   })
 
-  it('⚑ says so when a reader holds the log and it keeps its size', () => {
+  it('keeps the original when another connection holds uncheckpointed work', () => {
     fillAndEmpty(8, 70)
-    const reader = openDatabase(join(dir, 'test.sqlite'))
+    const file = join(dir, 'test.sqlite')
+    const reader = openDatabase(file)
     try {
       reader.exec('BEGIN')
       reader.prepare('SELECT count(*) FROM filler').get()
-      expect(compactWhenMuchIsFree(db, 1e12)).toBe('compacted-log-held')
-      expect(freeBytes()).toBe(0)
+      db.prepare('INSERT INTO filler VALUES (1000, zeroblob(100))').run()
+      expect(() => writeCompactedWorkspace(file, file + '.compact')).toThrow()
+      expect(db.prepare('SELECT count(*) AS n FROM filler').get()).toEqual({ n: 9 })
+      expect(existsSync(file + '.compact')).toBe(false)
     } finally {
       reader.exec('ROLLBACK')
       reader.close()
+    }
+  })
+
+  it('returns free pages after normal hourly runs without another full compaction', async () => {
+    fillAndEmpty(8, 0)
+    expect(db.pragma('auto_vacuum', { simple: true })).toBe(2)
+    const insert = db.prepare('INSERT INTO filler VALUES (?, zeroblob(?))')
+    for (let run = 0; run < 3; run++) {
+      db.transaction(() => {
+        insert.run(100, MB)
+        insert.run(101, MB)
+        db.prepare('DELETE FROM filler WHERE id >= 100').run()
+      })()
+      expect(freeBytes()).toBeGreaterThan(0)
+      const compacted = await incrementallyCompact(db, () => false)
+      expect(compacted.reclaimedPages).toBeGreaterThan(0)
+      expect(freeBytes()).toBe(0)
+      expect(inspectCompaction(join(dir, 'test.sqlite'))?.eligible).toBe(false)
+      expect(db.prepare('SELECT count(*) AS n FROM filler').get()).toEqual({ n: 8 })
     }
   })
 })
