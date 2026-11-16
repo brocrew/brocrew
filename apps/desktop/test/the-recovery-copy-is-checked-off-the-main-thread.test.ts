@@ -67,6 +67,15 @@ describe('the recovery copy is checked off the main thread', () => {
   }
   const inAWorker = (holdMs?: number): VerifyCopy =>
     verifyInAWorker((request) => new Worker(bundle, { workerData: request }), holdMs).verify
+  const trimCompletion = <T>() => {
+    let done!: (result: T) => void
+    let failed!: (error: unknown) => void
+    const result = new Promise<T>((resolve, reject) => {
+      done = resolve
+      failed = reject
+    })
+    return { result, done, failed }
+  }
   /** The longest gap between ticks of a 10 ms heartbeat while `work` runs. */
   const longestGapDuring = async (work: () => Promise<unknown>): Promise<number> => {
     let last = performance.now()
@@ -351,12 +360,7 @@ describe('the recovery copy is checked off the main thread', () => {
     const batchSizes: number[] = []
     let exited = false
     let ordinaryWrite = false
-    let done!: (result: EventTrimResult) => void
-    let failed!: (error: unknown) => void
-    const finished = new Promise<EventTrimResult>((resolve, reject) => {
-      done = resolve
-      failed = reject
-    })
+    const { result: finished, done, failed } = trimCompletion<EventTrimResult>()
     const retention = startEventRetention(
       db,
       () => {
@@ -432,12 +436,7 @@ describe('the recovery copy is checked off the main thread', () => {
     const file = join(aRoot(), 'stopped-trim.sqlite')
     const db = aHistory(file, 1002)
     let exited = false
-    let done!: () => void
-    let failed!: (error: unknown) => void
-    const stopped = new Promise<void>((resolve, reject) => {
-      done = resolve
-      failed = reject
-    })
+    const { result: stopped, done, failed } = trimCompletion<void>()
     const retention = startEventRetention(
       db,
       () => {
