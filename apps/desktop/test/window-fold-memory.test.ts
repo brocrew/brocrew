@@ -56,10 +56,16 @@ it('releases its budget on changed-owner deletion and on a complete reset', () =
   expect(fresh.size).toBe(2)
 })
 
-it('leaves an answer with opaque captured state uncached', () => {
+it('accounts for turn authorship sets and leaves opaque state uncached', () => {
   const cache = windowFoldCache(6000)
   const pieces = aFold(cache, 'pieces')
   const named = new Set(Array.from({ length: 1000 }, (_, n) => `piece-${n}`))
+  pieces.set('named', {
+    generation: 0,
+    newest: 1,
+    answer: { everyPiece: false, theirPieces: named, anotherNamed: new Set() },
+  })
+  expect(pieces.has('named')).toBe(false)
   pieces.set('opaque', {
     generation: 0,
     newest: 1,
