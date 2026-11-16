@@ -335,6 +335,7 @@ jobs:
           --candidate-dir apps/desktop/dist
           --candidate-version "$CANDIDATE_VERSION" --source-sha "$CANDIDATE_SOURCE"
           --evidence upgrade-path-evidence
+          ${{ inputs.windows_artifact_id && '--ordinary-only' || '' }}
           ${{ inputs.recovery_proof && '--recovery-proof' || '' }}
 
       - name: Keep the evidence, whatever happened

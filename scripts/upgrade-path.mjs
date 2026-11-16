@@ -123,6 +123,7 @@ const { values: args } = parseArgs({
   options: {
     os: { type: 'string' },
     'recovery-proof': { type: 'boolean', default: false },
+    'ordinary-only': { type: 'boolean', default: false },
     'recovery-measurement-bytes': { type: 'string', default: '0' },
     'beta-tag': { type: 'string' },
     'beta-registry': { type: 'string', default: 'packaged' },
@@ -156,6 +157,7 @@ if (!['packaged', 'legacy'].includes(args['beta-registry'])) {
 const os = args.os
 const measurementBytes = measurementSize(args['recovery-measurement-bytes'])
 const trimsEvents = /^0\.2\.(?:2[7-9]|[3-9]\d)(?:$|[-+])/.test(args['candidate-version'])
+const runsTrimSafety = trimsEvents && !args['ordinary-only']
 const evidence = resolve(args.evidence)
 mkdirSync(evidence, { recursive: true })
 
@@ -213,6 +215,17 @@ const summary = {
     'an install folder a tester chose, or another Windows user',
     'what macOS itself asks: its windows are outside the app’s (a picture of the whole screen is kept)',
   ],
+  safetyCases: {
+    selected: runsTrimSafety,
+    carriedFrom:
+      trimsEvents && args['ordinary-only']
+        ? {
+            source: 'f3e6c5f1c6543cba669972d5f8fa86a9d5f7cd17',
+            run: '43776974418',
+            scope: 'MID trim/compaction kill and resume; first-run scheduling qualified separately',
+          }
+        : null,
+  },
   knownLimits: [],
   checks: [],
   failures: [],
@@ -2203,7 +2216,7 @@ async function runUpgradePath() {
   }
   const before = readDatabase(data)
   const safetyBaseline =
-    trimsEvents && ['0.2.23', '0.2.26'].includes(betaVersion) ? keepSafetyBaseline(data) : null
+    runsTrimSafety && ['0.2.23', '0.2.26'].includes(betaVersion) ? keepSafetyBaseline(data) : null
   // File-backed betas need no Keychain entry. Keep attributes of any entry an older beta left.
   summary.keychain = { candidateAppName, afterTheBeta: keychainEntries('after-beta') }
   if (os === 'mac')
@@ -3009,7 +3022,7 @@ async function runUpgradePath() {
     })
   }
 
-  if (trimsEvents)
+  if (runsTrimSafety)
     await runTrimUpgradeSafety(
       {
         os,

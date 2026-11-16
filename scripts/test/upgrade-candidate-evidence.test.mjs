@@ -335,15 +335,22 @@ describe('the existing workflow’s same-artifact route', () => {
           inputs,
         ),
       )
+    const install = workflow.jobs.windows.steps.find((step) =>
+      step.name?.startsWith('Install the beta, make data with it'),
+    ).run
+    const ordinaryExpression = /\$\{\{\s*([^}]*'--ordinary-only'[^}]*)\s*\}\}/.exec(install)[1]
+    const ordinary = (inputs) => new Function('inputs', `return (${ordinaryExpression})`)(inputs)
     const reuse = { original_run_id: '100', windows_artifact_id: '101' }
     for (const inputs of [{}, { mac_only: false }, reuse]) {
       expect(selected('windows', inputs)).toBe(true)
       expect(selected('mac', inputs)).toBe(true)
+      expect(ordinary(inputs)).toBe(inputs.windows_artifact_id ? '--ordinary-only' : '')
     }
     expect(selected('windows', { ...reuse, mac_only: true })).toBe(false)
     expect(selected('mac', { ...reuse, mac_only: true })).toBe(true)
     expect(selected('windows', { windows_artifact_id: '101' })).toBe(true)
     expect(selected('mac', { windows_artifact_id: '101' })).toBe(false)
+    expect(ordinary({ windows_artifact_id: '101' })).toBe('--ordinary-only')
   })
 
   it('refuses partial reuse, another run/source/version, mismatched predecessors and expired outputs', async () => {
