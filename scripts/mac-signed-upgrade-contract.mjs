@@ -34,9 +34,17 @@ export function publicFeedUnchanged(text) {
   )
 }
 
-export function nativeRestartRecorded(stdout, stderr, version) {
+export function nativeRestartRecorded(stdout, stderr, version, updateNow) {
+  const installChosen =
+    updateNow === undefined
+      ? stdout.includes(`updates: restarting to install ${version}`)
+      : isDeepStrictEqual(updateNow.recorded, {
+          executable: updateNow.executable,
+          version,
+          folders: [updateNow.folder],
+        })
   requireEvidence(
-    stdout.includes(`updates: restarting to install ${version}`) &&
+    installChosen &&
       /BroCrew shut down in \d+ms/.test(stderr) &&
       [
         'close its sessions',

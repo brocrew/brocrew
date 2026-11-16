@@ -134,6 +134,7 @@ it('presses native restart and keeps B alive until its candidate checkpoint comp
         app: '/Applications/BroCrew.app',
         data: '/fictional/default',
         evidence: '/evidence',
+        settings: '/fictional/settings.json',
         join,
         requestNativeMacRestart: (workspace, version, options) =>
           requestNativeMacRestart(workspace, version, { ...options, readLog: fixture.readFile }),
@@ -174,11 +175,21 @@ it('presses native restart and keeps B alive until its candidate checkpoint comp
         waitFor: async (check) => {
           expect(await check()).toBe(true)
         },
-        readFile: vi.fn(async (path) =>
-          path === join(fixture.evidence, 'a.stdout.log')
-            ? 'updates: restarting to install 0.2.23'
-            : 'BroCrew shut down in 10ms\nclose its sessions\nkeep its unsent drafts\ndrain its archive work\nclose its database',
-        ),
+        readFile: vi.fn(async (path) => {
+          if (path === fixture.settings)
+            return JSON.stringify({
+              updateReopen: {
+                executable: `${fixture.app}/Contents/MacOS/BroCrew`,
+                version: '0.2.23',
+                folders: [workspace.data],
+              },
+            })
+          return path === join(fixture.evidence, 'a.stdout.log')
+            ? confirmsRestart
+              ? 'updates: 0.2.23 is ready: restart to update'
+              : 'updates: restarting to install 0.2.23'
+            : 'BroCrew shut down in 10ms\nclose its sessions\nkeep its unsent drafts\ndrain its archive work\nclose its database'
+        }),
         observeMacReplacement: vi.fn(async () => {
           order.push('native-B')
           return { pid: 456 }
@@ -252,6 +263,13 @@ it('presses native restart and keeps B alive until its candidate checkpoint comp
         restartedWorkspace.data,
         '0.2.23',
       )
+      if (confirmsRestart)
+        expect(workspace.result.nativeInstallChoice).toEqual({
+          executable: `${fixture.app}/Contents/MacOS/BroCrew`,
+          version: '0.2.23',
+          folders: [workspace.data],
+        })
+      else expect(workspace.result.nativeInstallChoice).toBeUndefined()
       expect(summary.replacementCount).toBe(1)
       expect((confirmsRestart ? nativeWorkspace : workspace).result.nativeStartup).toBeUndefined()
       expect(restartedWorkspace.result.nativeStartup.completedCheckpointId).toBe('B-copy')

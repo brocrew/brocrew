@@ -538,6 +538,8 @@ async function nativeRestart(workspace) {
     click,
     processInfo,
     evidence,
+    settings,
+    app,
   })
   const nativeWorkspace = confirmsRestart
     ? workspace
