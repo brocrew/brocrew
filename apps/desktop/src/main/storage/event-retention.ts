@@ -1,5 +1,7 @@
 import type { Worker } from 'node:worker_threads'
-import type { EventTrimResult } from '../db/event-retention'
+import { eventTrimWriter, type EventTrimBatch, type EventTrimResult } from '../db/event-retention'
+import type { AppDatabase } from '../db/connection'
+import { incrementallyCompact } from '../db/compact'
 
 const SWEEP_EVERY_MS = 60 * 60 * 1000
 const FIRST_SWEEP_DELAY_MS = 10 * 60 * 1000
@@ -7,10 +9,12 @@ const FIRST_SWEEP_LATEST_MS = 20 * 60 * 1000
 
 /** One periodic history sweep; stopping joins its worker before the app closes its database. */
 export function startEventRetention(
+  db: AppDatabase,
   start: () => Worker,
   trimmed: (result: EventTrimResult) => Promise<void>,
   warn: (error: unknown) => void,
 ): { firstListAccepted(at: number): void; stop(): Promise<void> } {
+  const write = eventTrimWriter(db)
   let closed = false
   let busy = false
   let ready = false
@@ -31,10 +35,26 @@ export function startEventRetention(
     }
     running = new Promise<EventTrimResult | null>((resolve) => {
       let result: EventTrimResult | null = null
-      current.once(
+      current.on(
         'message',
-        (message: { ok: boolean; value?: EventTrimResult; error?: string }) => {
-          if (message.ok && message.value) result = message.value
+        (message: {
+          kind?: 'trim-batch'
+          batch: EventTrimBatch
+          ok?: boolean
+          value?: EventTrimResult
+          error?: string
+        }) => {
+          if (closed) return
+          if (message.kind === 'trim-batch') {
+            try {
+              current.postMessage({ value: write(message.batch) })
+            } catch (error) {
+              current.postMessage({
+                error: error instanceof Error ? error.message : String(error),
+                code: (error as { code?: string }).code,
+              })
+            }
+          } else if (message.ok && message.value) result = message.value
           else warn(message.error ?? 'Event history cleanup failed.')
         },
       )
@@ -48,7 +68,16 @@ export function startEventRetention(
         if (closed) return
         if (result !== null) {
           try {
-            await trimmed(result)
+            const compacted = result.interrupted
+              ? { steps: 0, reclaimedPages: 0, longestLockMs: 0 }
+              : await incrementallyCompact(db, () => closed)
+            if (closed) return
+            await trimmed({
+              ...result,
+              incrementalSteps: compacted.steps,
+              reclaimedPages: compacted.reclaimedPages,
+              longestIncrementalLockMs: compacted.longestLockMs,
+            })
           } catch (error) {
             warn(error)
           }

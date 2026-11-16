@@ -2,14 +2,20 @@ import Database from 'better-sqlite3'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { createHash } from 'node:crypto'
+import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Worker } from 'node:worker_threads'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { inspectCompaction } from '../src/main/db/workspace-compaction'
-import type { EventTrimResult } from '../src/main/db/event-retention'
+import { eventTrimWriter, type EventTrimResult } from '../src/main/db/event-retention'
+import { committedChangesOf, type Committed } from '../src/main/db/committed-changes'
+import { windowWriterSampler } from '../src/main/db/window-writer-stamp'
+import { createSessionStore } from '../src/main/db/session-store'
+import { rowsUnreadOnce } from '../src/main/db/rows-unread'
+import { startEventRetention } from '../src/main/storage/event-retention'
 import { workspaceCompaction } from '../src/main/storage/workspace-compaction'
 import { CheckpointFailed, makeCheckpoint } from '../src/main/recovery/checkpoint'
 import { checkTheCopy, verifyInAWorker, type VerifyCopy } from '../src/main/recovery/copy-check'
@@ -236,36 +242,56 @@ describe('the recovery copy is checked off the main thread', () => {
     }
   })
 
+  const aHistory = (file: string, count: number, padding = 0) => {
+    const db = openDatabase(file)
+    applyMigrations(db, migrations)
+    db.prepare(
+      `INSERT INTO provider_session
+      (id, provider, cwd, status, created_at, updated_at)
+      VALUES ('fictional', 'claude', '/', 'idle', 0, 0)`,
+    ).run()
+    const insert = db.prepare(`INSERT INTO events
+      (id, session_id, ordinal, type, payload, created_at) VALUES (?, 'fictional', ?, ?, ?, 0)`)
+    db.transaction(() => {
+      for (let n = 0; n < count; n++) {
+        insert.run(
+          String(n),
+          n,
+          'thinking',
+          JSON.stringify({ type: 'thinking', text: 'x'.repeat(padding) }),
+        )
+      }
+      for (const [n, type] of ['user_turn', 'turn'].entries()) {
+        insert.run(`protected-${n}`, count + n, type, JSON.stringify({ type }))
+      }
+    })()
+    return db
+  }
+
   it.each([false, true])(
     'retention waits for a writer, or safely defers a persistent lock: %s',
     async (held) => {
       const file = join(aRoot(), 'busy-trim.sqlite')
-      const db = openDatabase(file)
-      applyMigrations(db, migrations)
-      db.prepare(
-        `INSERT INTO provider_session
-        (id, provider, cwd, status, created_at, updated_at)
-        VALUES ('fictional', 'claude', '/', 'idle', 0, 0)`,
-      ).run()
-      const insert = db.prepare(`INSERT INTO events
-        (id, session_id, ordinal, type, payload, created_at) VALUES (?, 'fictional', ?, ?, ?, 0)`)
-      db.transaction(() => {
-        for (let n = 0; n < 1002; n++) {
-          insert.run(String(n), n, 'thinking', JSON.stringify({ type: 'thinking' }))
-        }
-        for (const [n, type] of ['user_turn', 'turn'].entries()) {
-          insert.run(`protected-${n}`, 1002 + n, type, JSON.stringify({ type }))
-        }
-      })()
+      const db = aHistory(file, 1002)
       db.exec('BEGIN IMMEDIATE')
       const worker = new Worker(
         `const { parentPort, workerData } = require('node:worker_threads');
-        const { trimOldEvents } = require(workerData.bundle);
+        const { trimOldEvents, eventTrimWriter } = require(workerData.bundle);
+        const Database = require(workerData.database);
+        const writer = new Database(workerData.file);
+        const write = eventTrimWriter(writer);
         parentPort.postMessage({ starting: true });
-        trimOldEvents(workerData.file, () => false).then(
+        trimOldEvents(workerData.file, () => false, async batch => write(batch)).finally(() => writer.close()).then(
           value => parentPort.postMessage({ value }),
           error => { throw error; });`,
-        { eval: true, workerData: { bundle: trimBundle, file } },
+        {
+          eval: true,
+          workerData: {
+            bundle: trimBundle,
+            file,
+            database: createRequire(import.meta.url).resolve('better-sqlite3'),
+          },
+        },
       )
       let release: ReturnType<typeof setTimeout> | undefined
       try {
@@ -293,6 +319,232 @@ describe('the recovery copy is checked off the main thread', () => {
     },
     15_000,
   )
+
+  it('worker selections commit on the ordinary writer without a foreign-write resync', async () => {
+    const file = join(aRoot(), 'owned-trim.sqlite')
+    const db = aHistory(file, 1402, 8192)
+    db.prepare(
+      `INSERT INTO events (id,session_id,ordinal,type,payload,created_at) VALUES
+      ('old-launch','fictional',1404,'launched','{"type":"launched"}',0),
+      ('last-launch','fictional',1405,'launched','{"type":"launched"}',0),
+      ('cut','fictional',1406,'compaction','{"type":"compaction"}',0)`,
+    ).run()
+    const store = createSessionStore(db)
+    db.prepare(
+      `INSERT INTO provider_session (id,provider,cwd,status,created_at,updated_at)
+      VALUES ('untouched','claude','/','idle',0,0)`,
+    ).run()
+    const unread = rowsUnreadOnce()
+    const untouched = store.piecesOwnedBy('untouched', unread)
+    const changed = store.piecesOwnedBy('fictional', unread)
+    const sample = windowWriterSampler(db, () => true)
+    const before = sample({ kind: 'routes' })!
+    expect(before).not.toBeNull()
+    const pages = Number(db.pragma('page_count', { simple: true }))
+    const committed = committedChangesOf(db)
+    const seen: Committed[] = []
+    const unsubscribe = committed.listen((change) => {
+      expect(db.inTransaction).toBe(false)
+      seen.push(change)
+    })
+    const version = db.pragma('data_version', { simple: true })
+    const batchSizes: number[] = []
+    let exited = false
+    let ordinaryWrite = false
+    let done!: (result: EventTrimResult) => void
+    let failed!: (error: unknown) => void
+    const finished = new Promise<EventTrimResult>((resolve, reject) => {
+      done = resolve
+      failed = reject
+    })
+    const retention = startEventRetention(
+      db,
+      () => {
+        const worker = new Worker(storageBundle, {
+          workerData: { maintenance: { kind: 'trim', file } },
+        })
+        worker.on('message', (message) => {
+          if (message.kind !== 'trim-batch') return
+          batchSizes.push(message.batch.ids.length)
+          if (batchSizes.length === 1)
+            setTimeout(() => {
+              db.prepare(
+                "INSERT INTO events (id,session_id,ordinal,type,payload,created_at) VALUES ('new-stream','fictional',1407,'thinking','{\"type\":\"thinking\"}',0)",
+              ).run()
+              ordinaryWrite = true
+            }, 0)
+        })
+        worker.once('exit', () => {
+          exited = true
+        })
+        return worker
+      },
+      async (result) => {
+        done(result)
+      },
+      failed,
+    )
+    try {
+      retention.firstListAccepted(-600_000)
+      const result = await finished
+      expect(exited).toBe(true)
+      expect(ordinaryWrite).toBe(true)
+      expect(batchSizes).toEqual([200, 200, 3])
+      expect(result.removed).toBe(403)
+      expect(result.batches).toBe(3)
+      expect(result.incrementalSteps).toBeGreaterThan(0)
+      expect(result.reclaimedPages).toBeGreaterThan(0)
+      expect(Number(db.pragma('page_count', { simple: true }))).toBeLessThan(pages)
+      const after = sample({ kind: 'routes' })!
+      expect(after.foldReset).toBe(before.foldReset)
+      expect(sample.changedOwners!(before, after)).toEqual(['fictional'])
+      expect(store.piecesOwnedBy('untouched', unread)).toBe(untouched)
+      expect(store.piecesOwnedBy('fictional', unread)).not.toBe(changed)
+      expect(unread.count).toBe(0)
+      expect(result.longestBatchMs).toBeGreaterThan(0)
+      expect(
+        db.prepare("SELECT count(*) AS n FROM events WHERE type IN ('user_turn','turn')").get(),
+      ).toEqual({ n: 2 })
+      committed.check()
+      expect(db.pragma('data_version', { simple: true })).toBe(version)
+      expect(seen.every((change) => !change.resync)).toBe(true)
+      expect(seen.flatMap((change) => (change.resync ? [] : [...change.whole]))).toEqual([
+        ['fictional', 'trimmed'],
+        ['fictional', 'trimmed'],
+        ['fictional', 'trimmed'],
+      ])
+      const foreign = new Database(file)
+      try {
+        foreign.prepare("UPDATE provider_session SET updated_at=1 WHERE id='fictional'").run()
+      } finally {
+        foreign.close()
+      }
+      committed.check()
+      expect(seen.at(-1)?.resync).toBe(true)
+    } finally {
+      await retention.stop()
+      unsubscribe()
+      db.close()
+    }
+  }, 15_000)
+
+  it('quitting before a selected batch is applied joins the worker and leaves its rows', async () => {
+    const file = join(aRoot(), 'stopped-trim.sqlite')
+    const db = aHistory(file, 1002)
+    let exited = false
+    let done!: () => void
+    let failed!: (error: unknown) => void
+    const stopped = new Promise<void>((resolve, reject) => {
+      done = resolve
+      failed = reject
+    })
+    const retention = startEventRetention(
+      db,
+      () => {
+        const worker = new Worker(storageBundle, {
+          workerData: { maintenance: { kind: 'trim', file } },
+        })
+        worker.once('exit', () => {
+          exited = true
+        })
+        worker.once('message', () => {
+          void retention.stop().then(done, failed)
+        })
+        return worker
+      },
+      async () => {
+        failed(new Error('Stopped trim was published'))
+      },
+      failed,
+    )
+    try {
+      retention.firstListAccepted(-600_000)
+      await stopped
+      expect(exited).toBe(true)
+      expect(db.prepare('SELECT count(*) AS n FROM events').get()).toEqual({ n: 1004 })
+    } finally {
+      await retention.stop()
+      db.close()
+    }
+  }, 15_000)
+
+  it('a quit during incremental compaction waits for the writer after the worker exits', async () => {
+    const file = join(aRoot(), 'compacting-trim.sqlite')
+    const db = aHistory(file, 1402, 8192)
+    let exited = false
+    let compactions = 0
+    let stopped!: Promise<void>
+    let reached!: () => void
+    const compacting = new Promise<void>((resolve) => {
+      reached = resolve
+    })
+    const warnings: unknown[] = []
+    const published: EventTrimResult[] = []
+    const retention = startEventRetention(
+      db,
+      () => {
+        const worker = new Worker(storageBundle, {
+          workerData: { maintenance: { kind: 'trim', file } },
+        })
+        worker.once('exit', () => {
+          exited = true
+        })
+        return worker
+      },
+      async (result) => {
+        published.push(result)
+      },
+      (error) => {
+        warnings.push(error)
+      },
+    )
+    const pragma = db.pragma.bind(db)
+    const spy = vi.spyOn(db, 'pragma').mockImplementation((source, options) => {
+      const result = pragma(source, options)
+      if (source === 'incremental_vacuum(16)') {
+        compactions++
+        expect(exited).toBe(true)
+        queueMicrotask(() => {
+          stopped = retention.stop()
+          reached()
+        })
+      }
+      return result
+    })
+    try {
+      retention.firstListAccepted(-600_000)
+      await compacting
+      await stopped
+      expect(compactions).toBe(1)
+      expect(db.inTransaction).toBe(false)
+      expect(db.open).toBe(true)
+      expect(published).toEqual([])
+      expect(warnings).toEqual([])
+    } finally {
+      await retention.stop()
+      spy.mockRestore()
+      db.close()
+    }
+  }, 15_000)
+
+  it('a selected batch is deferred when its generation changes or a rebuild starts', () => {
+    const db = aHistory(join(aRoot(), 'changed-trim.sqlite'), 1002)
+    try {
+      const write = eventTrimWriter(db)
+      const batch = { session: 'fictional', active: 0, ids: ['0', '1'], before: Date.now() }
+      db.prepare(
+        "INSERT INTO derived_generation (session_id,active,building,normalizer_version,derived_through,highest,updated_at) VALUES ('fictional',0,1,1,0,1,0)",
+      ).run()
+      expect(write(batch).changed).toBeNull()
+      db.prepare(
+        "UPDATE derived_generation SET active=1,building=NULL WHERE session_id='fictional'",
+      ).run()
+      expect(write(batch).changed).toBeNull()
+      expect(db.prepare('SELECT count(*) AS n FROM events').get()).toEqual({ n: 1004 })
+    } finally {
+      db.close()
+    }
+  })
 
   describe('a checkpoint says each outcome as it did, and keeps nothing it could not check', () => {
     const aWorkspace = (): string => {

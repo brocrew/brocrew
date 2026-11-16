@@ -1,5 +1,5 @@
 import { parentPort, workerData } from 'node:worker_threads'
-import { trimOldEvents } from './db/event-retention'
+import { trimOldEvents, type EventTrimWrite } from './db/event-retention'
 import { inspectCompaction, writeCompactedWorkspace } from './db/workspace-compaction'
 import {
   StorageEngine,
@@ -24,10 +24,22 @@ if (port) {
           return
         }
         let stopped = false
-        port.on('message', () => {
-          stopped = true
+        port.on('message', (message) => {
+          if (message.kind === 'stop') stopped = true
         })
-        const value = await trimOldEvents(request.file, () => stopped)
+        const value = await trimOldEvents(
+          request.file,
+          () => stopped,
+          (batch) =>
+            new Promise<EventTrimWrite>((resolve, reject) => {
+              port.once('message', (reply) => {
+                if (reply.error !== undefined)
+                  reject(Object.assign(new Error(reply.error), { code: reply.code }))
+                else resolve(reply.value)
+              })
+              port.postMessage({ kind: 'trim-batch', batch })
+            }),
+        )
         port.postMessage({ ok: true, value })
         return
       }

@@ -2236,6 +2236,7 @@ function start(ownership: HostGateVerdict): void {
       void letGoOfOldCopies()
       sayAtOnce(READY_LINE)
       eventRetention = startEventRetention(
+        db!,
         () =>
           startStorageWorker({
             workerData: {

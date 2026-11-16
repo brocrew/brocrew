@@ -42,7 +42,7 @@ export function committedRowOf(
 }
 
 /** Why a session changed as a whole, without a row each. */
-export type WholeChange = 'imported' | 'promoted' | 'deleted' | 'listing'
+export type WholeChange = 'imported' | 'promoted' | 'deleted' | 'listing' | 'trimmed'
 
 export interface CommittedWrite {
   readonly component: string

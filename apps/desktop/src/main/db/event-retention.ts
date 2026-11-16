@@ -1,7 +1,8 @@
 import Database from 'better-sqlite3'
 import { setTimeout as pause } from 'node:timers/promises'
 import { eventRetentionRowsSQL } from './event-retention-policy'
-import { incrementallyCompact } from './compact'
+import type { AppDatabase } from './connection'
+import { committedChangesOf } from './committed-changes'
 
 const KEEP_DAYS = 3
 const BATCH_ROWS = 200
@@ -24,13 +25,53 @@ export interface EventTrimResult {
   readonly deferredConversations: number
 }
 
+export interface EventTrimBatch {
+  readonly session: string
+  readonly active: number
+  readonly ids: readonly string[]
+  readonly before: number
+}
+
+export interface EventTrimWrite {
+  readonly changed: number | null
+  readonly durationMs: number
+  readonly checkpointMs: number
+}
+
+/** Apply the worker's bounded selection on the connection that records ordinary commits. */
+export function eventTrimWriter(db: AppDatabase): (batch: EventTrimBatch) => EventTrimWrite {
+  const committed = committedChangesOf(db)
+  const generation = db.prepare(`SELECT coalesce(g.active,0) AS active, g.building
+    FROM provider_session s LEFT JOIN derived_generation g ON g.session_id=s.id WHERE s.id=?`)
+  const remove = db.prepare(`DELETE FROM events
+    WHERE session_id = @session AND id IN (SELECT value FROM json_each(@ids))
+      AND (created_at < @before OR type IN ('provider_commands','tool_inventory','launched'))`)
+  const write = db.transaction((batch: EventTrimBatch) => {
+    const current = generation.get(batch.session) as
+      { active: number; building: number | null } | undefined
+    if (!current || current.active !== batch.active || current.building !== null) return null
+    const changed = remove.run({ ...batch, ids: JSON.stringify(batch.ids) }).changes
+    if (changed > 0) committed.whole(batch.session, 'trimmed')
+    return changed
+  })
+  return (batch) => {
+    const began = performance.now()
+    const changed = write.immediate(batch)
+    const durationMs = performance.now() - began
+    const checkpointBegan = performance.now()
+    if (changed !== null) db.pragma('wal_checkpoint(PASSIVE)')
+    return { changed, durationMs, checkpointMs: performance.now() - checkpointBegan }
+  }
+}
+
 /** Trim known history, retaining human/final records and the state/input anchors they use. */
 export async function trimOldEvents(
   file: string,
   stopped: () => boolean,
+  write: (batch: EventTrimBatch) => Promise<EventTrimWrite>,
   now: number = Date.now(),
 ): Promise<EventTrimResult> {
-  const db = new Database(file, { fileMustExist: true, timeout: 5000 })
+  const db = new Database(file, { readonly: true, fileMustExist: true, timeout: 5000 })
   const before = now - KEEP_DAYS * 86_400_000
   let removed = 0
   let batches = 0
@@ -40,7 +81,6 @@ export async function trimOldEvents(
   let peakHeapBytes = 0
   let longestCheckpointMs = 0
   let deferredConversations = 0
-  let incremental = { steps: 0, reclaimedPages: 0, longestLockMs: 0 }
   const result = (interrupted: boolean): EventTrimResult => ({
     removed,
     batches,
@@ -49,16 +89,14 @@ export async function trimOldEvents(
     largestCandidateListRows,
     peakHeapBytes,
     longestCheckpointMs,
-    incrementalSteps: incremental.steps,
-    reclaimedPages: incremental.reclaimedPages,
-    longestIncrementalLockMs: incremental.longestLockMs,
+    incrementalSteps: 0,
+    reclaimedPages: 0,
+    longestIncrementalLockMs: 0,
     budgetReached: removed >= ROWS_PER_SWEEP,
     interrupted,
     deferredConversations,
   })
   try {
-    db.pragma('foreign_keys = ON')
-    db.pragma('wal_autocheckpoint = 0')
     const conversations = db.prepare('SELECT id FROM provider_session ORDER BY id').all() as {
       id: string
     }[]
@@ -66,9 +104,6 @@ export async function trimOldEvents(
       WHERE protected=0 AND anchor=0 AND nth>cap
         AND (at<@cutoff OR t IN ('provider_commands','tool_inventory','launched'))
       ORDER BY g,o LIMIT @limit`)
-    const remove = db.prepare(`DELETE FROM events
-      WHERE id IN (SELECT value FROM json_each(?))
-        AND (created_at < ? OR type IN ('provider_commands','tool_inventory','launched'))`)
     const generation = db.prepare(`SELECT coalesce(g.active,0) AS active, g.building
       FROM provider_session s LEFT JOIN derived_generation g ON g.session_id=s.id WHERE s.id=?`)
     const currentGeneration = (session: string) =>
@@ -80,11 +115,6 @@ export async function trimOldEvents(
         active: current.active,
         rows: candidates.all({ session, cutoff: before, limit }) as { id: string }[],
       }
-    })
-    const write = db.transaction((session: string, active: number, ids: readonly string[]) => {
-      const current = currentGeneration(session)
-      if (!current || current.active !== active || current.building !== null) return null
-      return remove.run(JSON.stringify(ids), before).changes
     })
     sweep: for (const conversation of conversations) {
       if (stopped() || removed >= ROWS_PER_SWEEP) break
@@ -103,9 +133,11 @@ export async function trimOldEvents(
         const take = Math.min(BATCH_ROWS, ROWS_PER_SWEEP - removed)
         const ids = rows.slice(from, from + take).map((row) => row.id)
         from += ids.length
-        const began = performance.now()
         try {
-          const changed = write.immediate(conversation.id, active, ids)
+          const batch = await write({ session: conversation.id, active, ids, before })
+          const changed = batch.changed
+          longestBatchMs = Math.max(longestBatchMs, batch.durationMs)
+          longestCheckpointMs = Math.max(longestCheckpointMs, batch.checkpointMs)
           if (changed === null) {
             deferredConversations += 1
             break
@@ -116,14 +148,9 @@ export async function trimOldEvents(
           throw error
         }
         batches += 1
-        longestBatchMs = Math.max(longestBatchMs, performance.now() - began)
-        const checkpointBegan = performance.now()
-        db.pragma('wal_checkpoint(PASSIVE)')
-        longestCheckpointMs = Math.max(longestCheckpointMs, performance.now() - checkpointBegan)
         await pause(BETWEEN_BATCHES_MS)
       }
     }
-    incremental = await incrementallyCompact(db, stopped)
     return result(stopped())
   } finally {
     db.close()
