@@ -217,20 +217,11 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 75
     steps:
-      - uses: actions/checkout@v7
+      - &upgrade-checkout
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: '.nvmrc'
-          cache: pnpm
-      - uses: actions/cache@v4
-        with:
-          path: .cache
-          key: ${{ runner.os }}-electron-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: ${{ runner.os }}-electron-
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup-desktop
 
       - name: The check's own rules fail what they should
         run: pnpm exec vitest run --project scripts scripts/test/upgrade-path.test.mjs scripts/test/upgrade-candidate-evidence.test.mjs
@@ -362,20 +353,8 @@ jobs:
     runs-on: ${{ vars.MAC_RUNNER || 'macos-15' }}
     timeout-minutes: 75
     steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: '.nvmrc'
-          cache: pnpm
-      - uses: actions/cache@v4
-        with:
-          path: .cache
-          key: ${{ runner.os }}-electron-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: ${{ runner.os }}-electron-
-      - run: pnpm install --frozen-lockfile
+      - *upgrade-checkout
+      - uses: ./.github/actions/setup-desktop
 
       - name: The check's own rules fail what they should
         run: pnpm exec vitest run --project scripts scripts/test/upgrade-path.test.mjs scripts/test/upgrade-candidate-evidence.test.mjs
