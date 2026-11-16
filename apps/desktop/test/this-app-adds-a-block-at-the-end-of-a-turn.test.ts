@@ -1821,6 +1821,8 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       host = buildHost(false, { afterFirstWindowLoad: new Promise<void>(() => {}) })
       await host.resumeSession(worker, surface)
       theWindowLooks()
+      // The window's reads may keep the stranger's pieces; a row since leaves them out of date.
+      store.append(stranger, store.nextOrdinal(stranger), { type: 'status', state: 'idle' }, tick())
       expect(store.piecesAtHand(stranger)).toBeNull()
       const block = await theBlockOfATurn(worker, 'who waits on me?', surface, surface)
       expect(block).toContain(
