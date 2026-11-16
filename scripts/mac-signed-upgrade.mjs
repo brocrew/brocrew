@@ -271,9 +271,6 @@ async function launch(
   await screenshot(cdp, `${stage}-window.png`)
   return cdp
 }
-async function quit() {
-  active = await quitMacChild(active, app, processInfo, passed)
-}
 async function checkRetention(
   before,
   state,
@@ -378,7 +375,7 @@ async function seedWorkspace(workspace) {
     await cdp.evaluate(
       `return await window.api.runtime.close({sessionId:${JSON.stringify(sessionId)}})`,
     )
-  await quit()
+  active = await quitMacChild(active, app, processInfo, passed)
   cdp.close()
   const settled = databaseSnapshot(join(data, 'brobot2.sqlite'), { credentials: true })
   cdp = await launch('a-settled', workspace.port, VERSION_A)
@@ -472,7 +469,7 @@ async function quitAll(stage, except = null) {
     if (workspace === except) continue
     selectWorkspace(workspace)
     const child = active
-    await quit()
+    active = await quitMacChild(active, app, processInfo, passed)
     workspace.active = null
     workspace.cdp?.close()
     if (child) {
@@ -533,15 +530,17 @@ async function nativeDownload(workspace, published) {
   passed('native-download-zip-sha512-and-signed-bundle', summary.download)
 }
 
-async function quitSquirrelApp() {
-  squirrelApp = await quitRestartedMacApp(squirrelApp, processInfo)
-}
-
 async function nativeRestart(workspace) {
   selectWorkspace(workspace)
   const previous = active
-  const nativeWorkspace = nativeWorkspaceFromRegistry(workspace.baseline.registryBefore, workspaces)
+  const confirmsRestart = await workspace.cdp.evaluate(
+    "return typeof window.api.updates.restartPlan === 'function'",
+  )
+  const nativeWorkspace = confirmsRestart
+    ? workspace
+    : nativeWorkspaceFromRegistry(workspace.baseline.registryBefore, workspaces)
   await click(workspace.cdp, '[data-cy=updates-restart]')
+  if (confirmsRestart) await click(workspace.cdp, '[data-cy=updates-confirm-now]')
   await waitFor(async () => !(await processInfo(previous.pid)), 'A quits for Squirrel.Mac', 60_000)
   const stdout = await readFile(join(evidence, `${previous.stage}.stdout.log`), 'utf8')
   nativeRestartRecorded(stdout, await readFile(previous.log, 'utf8'), VERSION_B)
@@ -594,7 +593,7 @@ async function nativeRestart(workspace) {
   }
   Object.assign(summary.restart, { startup, completedCheckpointId: completed?.manifest.id ?? null })
   passed('squirrel-replacement-restart-and-first-start', summary.restart)
-  await quitSquirrelApp()
+  squirrelApp = await quitRestartedMacApp(squirrelApp, processInfo)
   await requireNoInstalledProcesses()
 }
 
@@ -932,7 +931,7 @@ try {
     selectWorkspace(workspace)
     if (active) {
       try {
-        await quit()
+        active = await quitMacChild(active, app, processInfo, passed)
         workspace.active = null
       } catch (error) {
         summary.cleanupFailure = String(error)
@@ -942,7 +941,7 @@ try {
     }
   }
   try {
-    await quitSquirrelApp()
+    squirrelApp = await quitRestartedMacApp(squirrelApp, processInfo)
   } catch (error) {
     summary.cleanupFailure = String(error)
     summary.success = false
