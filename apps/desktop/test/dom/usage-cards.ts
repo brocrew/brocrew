@@ -1,6 +1,15 @@
 import { nextTick } from 'vue'
+import { page } from 'vitest/browser'
 import TitleUsage from '../../src/renderer/src/components/TitleUsage.vue'
-import { mount, type Mounted } from './harness'
+import { railFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { mount, unmountAll, type Mounted } from './harness'
+
+export async function resetUsageCards(width: number, height: number): Promise<void> {
+  unmountAll()
+  railFacts().update({ runningConversations: null })
+  delete (window as { api?: unknown }).api
+  await page.viewport(width, height)
+}
 
 /**
  * The title bar's usage line, mounted on its own, with its cards opened by a press as a person opens
