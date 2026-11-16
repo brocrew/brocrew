@@ -90,6 +90,18 @@ it('keeps unchanged owner folds for different kinds already sent with the same c
   }
 })
 
+it('keeps owner folds for a read queued with a capability this worker gave before its newest', () => {
+  const w = world()
+  const cold = routing(w.read({ kind: 'incidents' }))
+  const fresh = routing(w.read({ kind: 'routes' }))
+  expect(fresh.cacheToken).not.toBe(cold.cacheToken)
+  const queued = routing(
+    w.read({ kind: 'listing', reuse: { token: cold.cacheToken!, changed: [] } }),
+  )
+  expect(w.rebuilt).toEqual([])
+  expect(queued.cacheToken).toBe(fresh.cacheToken)
+})
+
 it('reads each owner generation and newest fold row once per immutable worker snapshot', () => {
   const w = world()
   const cold = routing(w.read({ kind: 'incidents' }))
