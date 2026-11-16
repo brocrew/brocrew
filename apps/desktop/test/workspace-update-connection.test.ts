@@ -188,6 +188,9 @@ it('a freeze just before the deadline does not fail a reply that arrived during 
     outside,
   )
   await new Promise((resolve) => setTimeout(resolve, 1_460))
+  // Frozen outside the timers phase, as a busy main process is: the next turn's timers then run
+  // before the reply is read.
+  await new Promise((resolve) => setImmediate(resolve))
   freeze(1_000)
   await expect(pending).resolves.toBeUndefined()
   await vi.waitFor(() => expect(elsewhere.said()).toContain('received'))
