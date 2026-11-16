@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3'
 import { randomUUID } from 'node:crypto'
 import type { SnapshotFoldAnswers } from './ledger-fold-state'
+import { windowFoldCache } from './window-fold-cache'
 import { readWindowWork } from './window-work-reading'
 import { recentActivity } from '../runtime/recent-activity'
 import { createSessionStore, type ThreadLeadRow } from './session-store'
@@ -26,7 +27,7 @@ const TOKENS_KEPT = 256
 /** Canonical folds over one read-only WAL snapshot, consuming SQLite iterators incrementally. */
 export class WindowReadEngine {
   private readonly db: Database.Database
-  private readonly answers: SnapshotFoldAnswers = new Map()
+  private readonly answers: SnapshotFoldAnswers = windowFoldCache()
   private cacheToken: string | undefined
   /**
    * Every capability this engine gave, newest last. Each was given after a snapshot older than every
