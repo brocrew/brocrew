@@ -1,15 +1,8 @@
+import { readSizedUtf8Sync } from '../sized-read'
 import { MAX_SETTINGS_BYTES } from '../settings-limits'
 export { MAX_SETTINGS_BYTES } from '../settings-limits'
 import { execFile } from 'node:child_process'
-import {
-  closeSync,
-  constants,
-  fstatSync,
-  lstatSync,
-  openSync,
-  readSync,
-  realpathSync,
-} from 'node:fs'
+import { closeSync, constants, fstatSync, lstatSync, openSync, realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
@@ -25,7 +18,6 @@ function realOrResolved(path: string): string {
   }
 }
 
-// Untrusted repository settings cannot grant permissions; deny and ask still apply.
 async function carriedByTheRepository(folder: string, signal?: AbortSignal): Promise<boolean> {
   if (realOrResolved(folder) === realOrResolved(homedir())) return false
   for (const one of [join(folder, '.claude'), join(folder, '.claude', 'settings.local.json')]) {
@@ -57,7 +49,6 @@ interface GitAnswer {
   readonly stderr: string
 }
 
-/** Whether git tracks the folder's `.claude/settings.local.json`, asked without blocking. */
 function gitTracks(folder: string, signal?: AbortSignal): Promise<GitAnswer> {
   return new Promise((done) => {
     execFile(
@@ -169,14 +160,7 @@ function readSmall(file: string): string | undefined {
     const stat = fstatSync(fd)
     const size = stat.size
     if (!stat.isFile() || size > MAX_SETTINGS_BYTES) return undefined
-    const buffer = Buffer.alloc(size)
-    let read = 0
-    while (read < size) {
-      const got = readSync(fd, buffer, read, size - read, read)
-      if (got === 0) break
-      read += got
-    }
-    return buffer.subarray(0, read).toString('utf8')
+    return readSizedUtf8Sync(fd, size)
   } catch {
     return undefined
   } finally {
