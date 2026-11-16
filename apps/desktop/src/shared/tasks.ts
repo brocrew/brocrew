@@ -23,7 +23,7 @@ import type {
   WorkReport,
 } from './task-contracts'
 import { whoCancelledIt, type AskToStop } from './how-work-stopped'
-import type { AsTheCutLeftIt, PieceFold } from './piece-fold'
+import type { AsTheCutLeftIt, PieceFold, PieceTurnAuthorship } from './piece-fold'
 
 import { aPersonsOwnWords } from './a-persons-own-words'
 // ⚑ **A TYPE and nothing else** (467), so this module's own rule survives the import: it cannot
@@ -1000,9 +1000,10 @@ function aPersonOpenedTheTurnFor(
     Extract<TranscriptEvent, { type: 'user_turn' }>,
     'attribution' | 'work' | 'relayedFrom' | 'appNotice' | 'piece' | 'drives' | 'says'
   >[],
-): (piece: string) => boolean {
+): PieceTurnAuthorship {
   const theirs = parts.filter(aPersonsOwnWords)
-  if (theirs.length === 0) return () => false
+  if (theirs.length === 0)
+    return { everyPiece: false, theirPieces: new Set(), anotherNamed: new Set() }
   const everyPiece = theirs.some((one) => theDriveOf(one) === null)
   const theirPieces = new Set(theirs.map(theDriveOf).filter((one): one is string => one !== null))
   const anotherNamed = new Set(
@@ -1011,7 +1012,14 @@ function aPersonOpenedTheTurnFor(
       .map(theDriveOf)
       .filter((one): one is string => one !== null),
   )
-  return (piece) => (everyPiece || theirPieces.has(piece)) && !anotherNamed.has(piece)
+  return { everyPiece, theirPieces, anotherNamed }
+}
+
+function aPersonDrove(authorship: PieceTurnAuthorship, piece: string): boolean {
+  return (
+    (authorship.everyPiece || authorship.theirPieces.has(piece)) &&
+    !authorship.anotherNamed.has(piece)
+  )
 }
 
 /**
@@ -2049,7 +2057,7 @@ export function derivePieces(
           !substantive.some((one) => theDriveOf(one) === null || theDriveOf(one) === piece)
         )
           continue
-        whoseWordsDroveItLast.set(piece, aPersonsFor(piece))
+        whoseWordsDroveItLast.set(piece, aPersonDrove(aPersonsFor, piece))
       }
       // A follow-up naming a piece ends its wait on purpose; any other words leave it standing.
       for (const one of parts) {
@@ -2106,7 +2114,7 @@ export function derivePieces(
       rows.push(row)
       // ⚑ Work its owner took on for a person in a turn: whose words opened that turn drove it.
       if (event.givenBy === null && aTurnIsOpen && aPersonOpenedThisTurnFor !== null) {
-        whoseWordsDroveItLast.set(event.piece, aPersonOpenedThisTurnFor(event.piece))
+        whoseWordsDroveItLast.set(event.piece, aPersonDrove(aPersonOpenedThisTurnFor, event.piece))
       }
       continue
     }
@@ -2303,7 +2311,10 @@ export function derivePieces(
       // the owner at work.
       if (event.type === 'work_status_set' && event.by === owner && (aTurnIsOpen || driving)) {
         if (aTurnIsOpen && aPersonOpenedThisTurnFor !== null) {
-          whoseWordsDroveItLast.set(event.piece, aPersonOpenedThisTurnFor(event.piece))
+          whoseWordsDroveItLast.set(
+            event.piece,
+            aPersonDrove(aPersonOpenedThisTurnFor, event.piece),
+          )
         }
         drivenAgain(event.piece)
         // ⚑ Driven for real now, so its drive's end judges it as any other.
