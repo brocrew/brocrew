@@ -7,6 +7,13 @@ import type { WorkIncidentKind } from '../../shared/work-incidents'
 
 export const WORK_RECONCILIATION_MS = 60_000
 
+/**
+ * How many holders a whole sweep reads before it lets other work run. A sweep reads every
+ * conversation that ever held work; the first one after a launch folds each ledger afresh, which
+ * in one piece holds the main thread for seconds.
+ */
+export const HOLDERS_READ_AT_ONCE = 100
+
 export type ReminderProgress = 'pending' | 'running' | 'turn-ended' | 'not-delivered'
 export type WorkDisposition = 'working' | 'waiting' | 'ended' | 'unresolved' | 'unknown'
 
@@ -30,7 +37,8 @@ export interface ReconciliationPiece {
 }
 
 export interface ReconciliationReads {
-  pieces(holders?: ReadonlySet<string>): readonly ReconciliationPiece[]
+  holders(): readonly string[]
+  pieces(holders: ReadonlySet<string>): readonly ReconciliationPiece[]
   receiptsFor?(
     pieces: readonly ReconciliationPiece[],
   ): ReadonlyMap<string, readonly ReconciliationReceipt[]>
@@ -101,14 +109,26 @@ export class WorkReconciler {
   }
 
   private async walk(holders?: ReadonlySet<string>): Promise<void> {
-    if (holders === undefined) this.watching.clear()
-    else
-      for (const holder of holders) {
-        for (const [target, owners] of this.watching) {
-          owners.delete(holder)
-          if (owners.size === 0) this.watching.delete(target)
-        }
+    if (holders === undefined) {
+      this.watching.clear()
+      const all = this.reads.holders()
+      for (let at = 0; at < all.length; at += HOLDERS_READ_AT_ONCE) {
+        if (this.closed) return
+        if (at > 0) await new Promise((resolve) => setImmediate(resolve))
+        await this.walkHolders(new Set(all.slice(at, at + HOLDERS_READ_AT_ONCE)))
       }
+      return
+    }
+    for (const holder of holders) {
+      for (const [target, owners] of this.watching) {
+        owners.delete(holder)
+        if (owners.size === 0) this.watching.delete(target)
+      }
+    }
+    await this.walkHolders(holders)
+  }
+
+  private async walkHolders(holders: ReadonlySet<string>): Promise<void> {
     const pieces = this.reads
       .pieces(holders)
       .filter((one) => one.disposition !== 'ended' && one.disposition !== 'unknown')

@@ -5448,6 +5448,7 @@ export class RuntimeHost implements LiveHost {
       }
     }
     this.workReconciler = new WorkReconciler({
+      holders: () => this.deps.store.reconciliationOwners(),
       pieces: (holders) => this.reconciliationReading(undefined, holders).rows,
       receiptsFor: (pieces) => this.reconciliationReceiptsFor(pieces),
       receipts: (piece) => {

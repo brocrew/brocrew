@@ -27,6 +27,7 @@ function fixture() {
   const accepted = new Map<string, boolean>()
   let gate: Promise<void> | null = null
   const reads = {
+    holders: () => [...new Set(pieces.map((one) => one.holder))],
     pieces: (holders?: ReadonlySet<string>) =>
       pieces.filter((one) => holders === undefined || holders.has(one.holder)),
     receipts: (key: string) => receipts.filter((one) => one.piece === key),
