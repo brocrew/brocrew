@@ -226,6 +226,42 @@ describe('the shelf says each provider’s usage', () => {
     expect(m.all('shelf-missing')).toHaveLength(1)
   })
 
+  it.each(['absent', 'present', 'unread'] as const)(
+    'draws only account-reported windows when Claude 5h is %s',
+    async (state) => {
+      const now = Date.now()
+      const readings = both(now)
+      const fiveHour = readings.claude[0]!
+      const m = await shelf({
+        claude: [
+          ...(state === 'absent'
+            ? []
+            : [
+                {
+                  ...fiveHour,
+                  ...(state === 'unread' ? { usedPercent: null, resetsAt: null } : {}),
+                },
+              ]),
+          readings.claude[1]!,
+        ],
+        codex: readings.codex.slice(1, 2),
+      })
+      expect(m.all('shelf-usage-claude-5h')).toHaveLength(state === 'absent' ? 0 : 1)
+      expect(text(m.q('shelf-usage-claude-week'))).toContain('61%')
+      const line = text(m.q('app-usage'))
+      if (state === 'absent') {
+        expect(line).not.toContain('5h')
+        expect(m.all('shelf-missing')).toHaveLength(0)
+      } else if (state === 'unread') {
+        expect(text(m.q('shelf-usage-claude-5h'))).toContain('Not read yet')
+        expect(line).toContain('5h ?')
+      } else {
+        expect(text(m.q('shelf-usage-claude-5h'))).toContain('28%')
+        expect(line).toContain('5h 28%')
+      }
+    },
+  )
+
   it('🔴 a provider that reported only its weekly window draws that one cell, and no 5-hour one', async () => {
     const now = Date.now()
     const weekly = both(now).codex.slice(1, 2)
