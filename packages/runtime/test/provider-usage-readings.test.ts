@@ -56,6 +56,48 @@ describe('Claude · rate_limit_event → provider_usage', () => {
     })
   })
 
+  it.each([{}, { seven_day: { utilization: 0.49 } }])(
+    'keeps the named top-level window beside a partial unified snapshot: %j',
+    (unifiedWindows) => {
+      const usage = usageOf(
+        claudeFrame({
+          status: 'allowed',
+          rateLimitType: 'five_hour',
+          utilization: 0.28,
+          resetsAt: 1_800_000_000,
+          unifiedWindows,
+        }),
+      )
+      expect(usage).toMatchObject({
+        type: 'provider_usage',
+        readings: expect.arrayContaining([
+          { window: 'five_hour', usedPercent: 28, resetsAt: 1_800_000_000_000 },
+        ]),
+      })
+      if ('seven_day' in unifiedWindows) {
+        expect(usage).toMatchObject({
+          readings: expect.arrayContaining([
+            { window: 'seven_day', usedPercent: 49, resetsAt: null },
+          ]),
+        })
+      }
+    },
+  )
+
+  it('uses the unified reading once when both parts name the same window', () => {
+    const usage = usageOf(
+      claudeFrame({
+        rateLimitType: 'five_hour',
+        utilization: 0.28,
+        unifiedWindows: { five_hour: { utilization: 0.31 } },
+      }),
+    )
+    expect(usage).toEqual({
+      type: 'provider_usage',
+      readings: [{ window: 'five_hour', usedPercent: 31, resetsAt: null }],
+    })
+  })
+
   it('⛔ a throttle keeps its error AND carries the reading beside it', () => {
     const events = claudeFrame({
       status: 'rejected',

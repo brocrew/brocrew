@@ -1,7 +1,6 @@
 import { computed, type ComputedRef } from 'vue'
 import { providerDescriptor, providerRecord, SUPPORTED_PROVIDERS } from '@brobot2/shared/providers'
 import type { Provider, ProviderUsageReading } from '../../../shared/runtime-ipc'
-import type { ForestConversation } from '../../../shared/the-whole-forest'
 import { agoWords, fullTime } from '../lib/clock'
 import { NOT_MEASURED } from '../lib/agent-panel'
 import { processMemoryWords } from '../lib/process-memory'
@@ -158,18 +157,14 @@ export function useUsageCells(
     )
   })
 
-  /** The agents running now and the memory their processes hold, or `null` before the forest. */
+  /** The rail supplies running membership on every page, independently of graph reads. */
   const running = computed(() => {
-    const forest = cast.forest.value
-    if (forest === null) return null
-    const rows = forest.nodes.rows.filter(
-      (node): node is ForestConversation =>
-        node.node === 'a-conversation' && node.running !== 'not-running',
-    )
+    const rows = cast.runningConversations.value
+    if (rows === null) return null
     // Where main could measure no process, the memory says so as the agent cards do.
     const unmeasured = cast.memoryUnmeasured.value
     const bytes = rows.reduce(
-      (sum, node) => sum + (cast.processMemory.value.get(node.conversation) ?? 0),
+      (sum, node) => sum + (cast.processMemory.value.get(node.sessionId) ?? 0),
       0,
     )
     return {

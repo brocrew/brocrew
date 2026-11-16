@@ -2820,9 +2820,9 @@ let castRead = 0
  * one ledger per conversation the work went to, and a tick nothing paints is pure cost.
  */
 async function readTheCast(): Promise<void> {
+  void readProcessMemory()
   const asked = surface.value === 'conversation' ? activeId.value : null
   if (asked === null) return
-  void readProcessMemory()
   castRead += 1
   const mine = castRead
   castFacts.update({ loadingFor: asked })
@@ -2859,9 +2859,7 @@ async function readTheCast(): Promise<void> {
 // ⚑ **Opening a conversation re-reads immediately** — a band just opened is read, never one left
 // from before; every move after that is pushed (W4.74).
 watch(activeId, () => void readTheCast())
-watch(surface, (now) => {
-  if (now === 'conversation') void readTheCast()
-})
+watch(surface, () => void readTheCast())
 
 /**
  * 🔴 **D-018 · the memory each running conversation's process holds, for the agent cards** —
@@ -2892,10 +2890,8 @@ async function readProcessMemory(): Promise<void> {
  * what each agent is doing at this moment (its tool, its phase — `whatIsBeingDone`, which reads no
  * store) and the memory each conversation's process holds (`processMemory`, one shared listing).
  *
- * ⛔ **Only while a person can see them** — this window in front, the page visible, and the Team
- * page or a conversation on screen. ⚑ Arriving on either re-reads at once, and so does this window
- * coming back to the front, so the glance bounds how old a page being LOOKED at can get, never how
- * old a page just opened is.
+ * Memory is visible in the title bar on every page. The existing visible-window glance refreshes
+ * it there too; graph and conversation activity remain scoped to the page drawing them.
  *
  * ⚑ **And a read that did not answer is asked again here** — the clock was the only retry the
  * work's readers had, and a quiet workspace may push nothing for a long time.
@@ -2907,6 +2903,7 @@ async function glance(): Promise<void> {
   if (document.visibilityState !== 'visible' || !document.hasFocus()) return
   glanceRead += 1
   const mine = glanceRead
+  void readProcessMemory()
   if (surface.value === 'team') {
     // Rolling windows and their counts advance together on the existing visible-page glance.
     void readWhoIsWorking()
@@ -2914,7 +2911,6 @@ async function glance(): Promise<void> {
   }
   const asked = surface.value === 'conversation' ? activeId.value : null
   if (asked === null) return
-  void readProcessMemory()
   // ⚑ Rows kept after a read that did not answer are asked again, whole.
   if (work.value?.conversation === asked && !work.value.answered) void readTheWork()
   if (cast.reading.value?.conversation === asked && !cast.reading.value.answered) {
@@ -3252,6 +3248,7 @@ onMounted(() => {
     void readTheWorkspace()
     void readWhatIsWaiting()
   }, LOOK_EVERY_MS)
+  void readProcessMemory()
   void readActivity()
   readingActivity = setInterval(() => void readActivity(), ACTIVITY_READ_EVERY_MS)
   // 🔴 **W4.74 · D-033 · no re-read of the work on a clock.** The Team page's forest, the band and

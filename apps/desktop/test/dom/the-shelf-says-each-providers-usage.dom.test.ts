@@ -381,8 +381,8 @@ describe('the agents running now, and the memory they hold', () => {
     conv('sess_d', 'sess_a', { running: 'not-running', provider: 'codex' }),
   ])
 
-  it('🔴 how many agents run, by provider, and the memory their processes hold', async () => {
-    screenFacts().update({ forest: FOREST })
+  it('shows running agents and their memory before any graph has been opened', async () => {
+    screenFacts().update({ forest: null })
     railFacts().update({
       runningConversations: [
         { sessionId: 'sess_a', provider: 'claude', state: { is: 'idle' } },
@@ -399,7 +399,7 @@ describe('the agents running now, and the memory they hold', () => {
         ['sess_a', 300 * MB],
         ['sess_b', 200 * MB],
         ['sess_c', 100 * MB],
-        // A figure for a conversation the forest says is not running is not added in.
+        // A stopped conversation in the previous memory sample is not added in.
         ['sess_d', 900 * MB],
       ]),
     })

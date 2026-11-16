@@ -803,13 +803,12 @@ function rateLimitUsage(message: SDKMessage): RuntimeEvent | null {
   const info = (message as unknown as { rate_limit_info?: Record<string, unknown> }).rate_limit_info
   if (!isRecord(info)) return null
   const unified = info['unifiedWindows']
-  const windows: [string, Record<string, unknown>][] = isRecord(unified)
-    ? Object.entries(unified).flatMap(([window, value]) =>
-        isRecord(value) ? [[window, value] as [string, Record<string, unknown>]] : [],
-      )
-    : typeof info['rateLimitType'] === 'string'
-      ? [[info['rateLimitType'], info]]
-      : []
+  const windows = Object.entries({
+    ...(typeof info['rateLimitType'] === 'string' ? { [info['rateLimitType']]: info } : {}),
+    ...(isRecord(unified) ? unified : {}),
+  }).flatMap(([window, value]) =>
+    isRecord(value) ? [[window, value] as [string, Record<string, unknown>]] : [],
+  )
   const readings = windows
     .slice(0, MAX_USAGE_WINDOWS)
     .map(([window, value]) => {

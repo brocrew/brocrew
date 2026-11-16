@@ -38,8 +38,7 @@ import { everythingOverTheWire } from './lib/the-wire'
  *    gone is absent and never `0 MB`, nothing forks when nothing runs, askers share the read in
  *    flight and a finished read is never kept, and the window door answers the host's own reading.
  *  - **§3** the renderer store turns a refusal into `null`, never into an empty population.
- *  - **§4** the three places nothing mounts, read as source: main's `ps` call, the preload verb and
- *    the screen's two reads of it.
+ *  - The main process's `ps` call, the preload verb and the screen's memory lifecycle.
  *
  * Source is read as TEXT: this is a node file and imports no `.vue`.
  */
@@ -554,42 +553,6 @@ describe('§4 · where the read is made, asked for and drawn', () => {
     .replace(/<!--[\s\S]*?-->/g, '')
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^\s*\/\/.*$/gm, '')
-
-  it('§4 · RuntimeScreen asks for the memory with the band, on the conversation surface only', () => {
-    const band = sliceOf(
-      'async function readTheCast(): Promise<void> {',
-      '\n}',
-      'RuntimeScreen.vue',
-      screen,
-    )
-    const gated = band.indexOf("surface.value === 'conversation'")
-    const returned = band.indexOf('if (asked === null) return')
-    const asks = band.indexOf('void readProcessMemory()')
-    const together = band.indexOf('const answerPending = store.whoCalledWhom(asked)')
-    // Presence first: an absent anchor is `-1`, which is "before" everything.
-    expect(gated).toBeGreaterThan(-1)
-    expect(returned).toBeGreaterThan(-1)
-    expect(asks).toBeGreaterThan(-1)
-    expect(together).toBeGreaterThan(-1)
-    // Two asks in the whole screen: the band's, and the glance's between pushes (W4.74 — the band's
-    // own tick went, and the memory moves with no push), both beside the definition.
-    expect(screen.match(/\bvoid readProcessMemory\(\)/g)).toHaveLength(2)
-    const glance = sliceOf(
-      'async function glance(): Promise<void> {',
-      '\n}',
-      'RuntimeScreen.vue',
-      screen,
-    )
-    expect(glance.indexOf("surface.value === 'conversation'")).toBeGreaterThan(-1)
-    expect(glance.indexOf("surface.value === 'conversation'")).toBeLessThan(
-      glance.indexOf('void readProcessMemory()'),
-    )
-    expect(screen).toContain('async function readProcessMemory(): Promise<void> {')
-    // After the surface gate and the early return, before the band's own round trip.
-    expect(gated).toBeLessThan(returned)
-    expect(returned).toBeLessThan(asks)
-    expect(asks).toBeLessThan(together)
-  })
 
   it('§4 · a read that did not answer draws no figure, and the screen empties the figures when it goes', () => {
     const reading = sliceOf(
