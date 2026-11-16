@@ -16,6 +16,43 @@ import { fixtureProviderConfig, neutralHostDeps, syntheticProviderHome } from '.
 let world: AServiceWorld
 let host: RuntimeHost
 
+for (const provider of ['claude', 'codex'] as const) {
+  it(`${provider}: a failed connection pick rolls back its pair and names the session table`, async () => {
+    const f = fixture(provider)
+    const created = await f.start()
+    const before = world.store.whatItRunsOn(created.sessionId)
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const write = vi.spyOn(world.store, 'aPersonSetItsModelOrEffort').mockImplementationOnce(() => {
+      throw Object.assign(new Error('fictional full disk'), { code: 'SQLITE_FULL' })
+    })
+    const change = {
+      kind: 'model' as const,
+      model: 'fictional-large',
+      connectionId: `${provider}:sign-in`,
+    }
+    await expect(host.setSessionSetting(created.sessionId, change, world.window)).rejects.toThrow(
+      'could not save',
+    )
+    expect(world.store.whatItRunsOn(created.sessionId)).toEqual(before)
+    expect(world.store.connectionOf(created.sessionId)).toBe(`${provider}:api-key`)
+    expect(warned).toHaveBeenCalledWith(
+      expect.stringContaining(`session=${created.sessionId} table=provider_session code=SQLITE_FULL`),
+    )
+    write.mockRestore()
+    await expect(host.setSessionSetting(created.sessionId, change, world.window)).resolves.toEqual(
+      expect.objectContaining({
+        settings: expect.objectContaining({
+          nextConnection: expect.objectContaining({
+            connectionId: `${provider}:sign-in`,
+            model: 'fictional-large',
+            effort: 'low',
+          }),
+        }),
+      }),
+    )
+  })
+}
+
 afterEach(async () => {
   await host?.closeAll()
   await world?.cleanUp()
