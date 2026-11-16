@@ -5,7 +5,7 @@ import { FOLD_EVENT_TYPES, FOLD_TERM } from './fold-index'
 import { foldWatchTriggers, watchFoldWrites } from './fold-write-watch'
 
 /** One ledger's kept fold: the generation and newest fold row it was read at, and its answer. */
-interface KeptFold<T> {
+export interface KeptFold<T> {
   readonly generation: number
   readonly newest: number | null
   readonly answer: T
