@@ -20,7 +20,7 @@ export type {
 import { providerDefinitions } from './providers/index'
 import { SUPPORTED_PROVIDERS } from '@brobot2/shared'
 import type { TranscriptRetention } from '../shared/transcript-retention'
-import { PROVIDER_HOMES_DIRNAME } from './runtime/provider-homes'
+import { PROVIDER_HOMES_DIRNAME } from './connections/homes'
 
 const DAY = 86_400_000
 const SCAN_BATCH_SIZE = 4

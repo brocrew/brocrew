@@ -18,7 +18,7 @@ import {
   type RuntimeEventSink,
 } from '../src/main/runtime/runtime-host'
 import type { CodexSignIn } from '../src/main/providers/codex/types'
-import type { ProviderAuthOps } from '../src/main/runtime/provider-homes'
+import type { ProviderAuthOps } from '../src/main/connections/homes'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
 
 /**

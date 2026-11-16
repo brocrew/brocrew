@@ -9,7 +9,7 @@ import { ApiKeys } from '../src/main/runtime/api-keys'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
-import { resolveProviderConnection } from '../src/main/db/provider-connections'
+import { resolveProviderConnection } from '../src/main/connections/records'
 import { createClaudeModule } from '../src/main/providers/claude'
 
 const native = vi.hoisted(() => ({

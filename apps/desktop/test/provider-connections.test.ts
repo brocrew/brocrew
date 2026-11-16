@@ -7,7 +7,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import {
   listProviderConnections,
   resolveProviderConnection,
-} from '../src/main/db/provider-connections'
+} from '../src/main/connections/records'
 
 let db: AppDatabase
 beforeEach(() => {

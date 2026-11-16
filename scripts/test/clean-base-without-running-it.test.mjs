@@ -141,7 +141,7 @@ describe('the source census — a new durable write under userData must not slip
     expect(code('apps/desktop/src/main/runtime/workspace.ts')).toContain(
       "export const WORKSPACE_DIRNAME = 'brobot-workspace'",
     )
-    expect(code('apps/desktop/src/main/runtime/provider-homes.ts')).toContain(
+    expect(code('apps/desktop/src/main/connections/homes.ts')).toContain(
       "export const PROVIDER_HOMES_DIRNAME = 'provider-homes'",
     )
     const sharedSkills = code('apps/desktop/src/main/skills/shared-paths.ts')
@@ -300,7 +300,7 @@ describe('the manifest agrees with the product it is a manifest of', () => {
   })
 
   it('the folder the launcher menu reads is the one the app pins', () => {
-    const homes = code('apps/desktop/src/main/runtime/provider-homes.ts')
+    const homes = code('apps/desktop/src/main/connections/homes.ts')
     expect(homes).toContain("export const HOME_FOLDER = 'default'")
     expect(HOME_FOLDER).toBe('default')
     expect(

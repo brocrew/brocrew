@@ -7,7 +7,7 @@ import {
   type IpcHandleRegistrar,
 } from '../src/main/runtime/ipc'
 import { ACommandTakesNoAttachments } from '../src/main/runtime/a-command-goes-as-typed'
-import { ProfileUnopenable } from '../src/main/runtime/provider-homes'
+import { ProfileUnopenable } from '../src/main/connections/homes'
 import type { RuntimeEventSink, RuntimeHost } from '../src/main/runtime/runtime-host'
 import { readableError } from '../src/renderer/src/lib/session-record'
 import { RUNTIME_COMMAND_CHANNEL } from '../src/shared/runtime-ipc'

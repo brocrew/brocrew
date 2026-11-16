@@ -34,7 +34,7 @@ export function aChoiceIsInForce(choice: AgentModelChoice, itsProvider: Provider
  * ⚑ **D-042 · the provider's effort ladder** — every level any of its rows offers, in the
  * provider's own order: each row's list is merged in, a level it adds placed after the one before it
  * in that row. ⚑ What a hand-added model offers ({@link theList}), and a model the list no longer
- * holds (`main/runtime/model-rails.ts`).
+ * holds (`main/connections/model-rails.ts`).
  */
 export function theEffortLadder(rows: readonly ModelChoice[]): readonly string[] {
   const ladder: string[] = []

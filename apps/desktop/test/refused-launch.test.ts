@@ -13,7 +13,7 @@ import {
   deriveProviderHome,
   listProfileIds,
   prepareProviderHome,
-} from '../src/main/runtime/provider-homes'
+} from '../src/main/connections/homes'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { brobotWorkspace } from '../src/main/runtime/workspace'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'

@@ -27,8 +27,8 @@ const DECLARED_IN = {
   DEFAULT_PROVIDER: '../../packages/shared/src/providers.ts',
   ASKED_TO_STOP: 'src/shared/how-work-stopped.ts',
   DEFAULT_PROFILE_ID: 'src/shared/runtime-ipc.ts',
-  PROVIDER_HOMES_DIRNAME: 'src/main/runtime/provider-homes.ts',
-  HOME_FOLDER: 'src/main/runtime/provider-homes.ts',
+  PROVIDER_HOMES_DIRNAME: 'src/main/connections/homes.ts',
+  HOME_FOLDER: 'src/main/connections/homes.ts',
 }
 
 /**

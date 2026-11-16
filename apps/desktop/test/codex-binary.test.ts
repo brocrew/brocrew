@@ -21,7 +21,7 @@ import {
   type BundledCodex,
 } from '../src/main/providers/codex/program'
 import { providerVersionsReader } from '../src/main/providers/index'
-import { createProviderRuntime } from '../src/main/runtime/provider-homes'
+import { createProviderRuntime } from '../src/main/connections/homes'
 import { readableError } from '../src/renderer/src/lib/session-record'
 
 const here = dirname(fileURLToPath(import.meta.url))

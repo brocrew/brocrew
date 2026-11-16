@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
-import { DEFAULT_PROFILE_ID, listProfileIds } from '../src/main/runtime/provider-homes'
+import { DEFAULT_PROFILE_ID, listProfileIds } from '../src/main/connections/homes'
 
 const folders: string[] = []
 afterEach(() =>

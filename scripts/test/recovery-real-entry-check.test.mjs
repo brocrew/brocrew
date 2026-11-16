@@ -290,7 +290,7 @@ describe('the scenarios', () => {
     expect(read('src/main/runtime/workspace.ts')).toContain(
       `WORKSPACE_DIRNAME = '${MADE_ONLY_BY_AN_OPEN_START[0]}'`,
     )
-    expect(read('src/main/runtime/provider-homes.ts')).toContain(
+    expect(read('src/main/connections/homes.ts')).toContain(
       `PROVIDER_HOMES_DIRNAME = '${MADE_ONLY_BY_AN_OPEN_START[1]}'`,
     )
     // The workspace is the first thing main makes when it creates its runtime host.

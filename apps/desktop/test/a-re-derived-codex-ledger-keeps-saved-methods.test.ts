@@ -20,7 +20,7 @@ import {
 } from '../src/main/runtime/factory-text'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
 import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
-import { savedMethodsFolder } from '../src/main/runtime/provider-homes'
+import { savedMethodsFolder } from '../src/main/connections/homes'
 import {
   readSavedMethods,
   SAVED_METHODS_INDEX,

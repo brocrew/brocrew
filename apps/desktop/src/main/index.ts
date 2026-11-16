@@ -153,7 +153,7 @@ import {
   totalBytes,
 } from './process-tree'
 import { openDatabase, type AppDatabase } from './db/connection'
-import { listProviderConnections, resolveProviderConnection } from './db/provider-connections'
+import { listProviderConnections, resolveProviderConnection } from './connections/records'
 import { newProviderSessionId } from './db/ids'
 import { discoverSessionsIn } from './adopt/discover-sessions'
 import {
@@ -210,7 +210,7 @@ import {
   homePathsForProvider,
   providerHomesRoot,
   savedMethodsFolder,
-} from './runtime/provider-homes'
+} from './connections/homes'
 import {
   createProviderModules,
   desktopProviderInputs,

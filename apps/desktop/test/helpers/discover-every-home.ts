@@ -1,5 +1,5 @@
 import { discoverSessionsIn, type Discovery } from '../../src/main/adopt/discover-sessions'
-import { listProviderHomes } from '../../src/main/runtime/provider-homes'
+import { listProviderHomes } from '../../src/main/connections/homes'
 
 /** Every recorded conversation in every provider home under `userData`, as one discovery. */
 export function discoverEveryHomeIn(userData: string): Discovery {

@@ -8,7 +8,7 @@ import {
   DEFAULT_PROFILE_ID,
   deriveProviderHome,
   prepareProviderHome,
-} from '../src/main/runtime/provider-homes'
+} from '../src/main/connections/homes'
 import { aFictionalHome } from './lib/a-fictional-home'
 
 /**

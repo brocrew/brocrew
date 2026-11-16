@@ -27,7 +27,7 @@ import {
   createProviderAuthOps,
   deriveProviderHome,
   prepareProviderHome,
-} from '../src/main/runtime/provider-homes'
+} from '../src/main/connections/homes'
 import { RuntimeHost, type RuntimeEventSink } from './helpers/giver-notice-host'
 import type { CodexSignIn } from '../src/main/providers/codex/types'
 import { ITS_OWNER_RUNNING_AGAIN_DRIVES_IT, derivePieces } from '../src/shared/tasks'

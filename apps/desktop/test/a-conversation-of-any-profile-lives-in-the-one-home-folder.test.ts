@@ -14,7 +14,7 @@ import {
   createProviderAuthOps,
   deriveProviderHome,
   prepareProviderHome,
-} from '../src/main/runtime/provider-homes'
+} from '../src/main/connections/homes'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 
 /**

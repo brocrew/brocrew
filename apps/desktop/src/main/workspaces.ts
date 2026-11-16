@@ -25,7 +25,7 @@ import {
   WORKSPACE_FILE,
   WORKSPACE_NAME_MAX,
 } from './data-folder'
-import { PROVIDER_HOMES_DIRNAME } from './runtime/provider-homes'
+import { PROVIDER_HOMES_DIRNAME } from './connections/homes'
 import { insideBySpelling, samePath } from './same-folder'
 
 /**

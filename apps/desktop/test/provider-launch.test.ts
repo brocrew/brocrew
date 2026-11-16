@@ -3,7 +3,7 @@ import { AuthUnavailableError, FakeRuntime, type AuthState } from '@brobot2/runt
 import { DEFAULT_CONVERSATION_PROVIDER } from '@brobot2/shared'
 import { modelSetupRequired } from '../src/main/runtime/launch-refusal'
 import type { ModelList } from '../src/shared/model-choice-contracts'
-import { providerLaunchChoices, resolveProviderLaunch } from '../src/main/runtime/provider-launch'
+import { providerLaunchChoices, resolveProviderLaunch } from '../src/main/connections/launch'
 import { RuntimeHost, type RuntimeHostDeps } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand, runtimeCommandSchema } from '../src/main/runtime/ipc'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'

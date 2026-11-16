@@ -85,7 +85,7 @@ export const MANIFEST = Object.freeze([
     name: 'provider-homes',
     expect: 'dir',
     why: HOMES,
-    source: 'main/runtime/provider-homes.ts:80',
+    source: 'main/connections/homes.ts:80',
   },
   { name: 'one-host.sock', expect: 'unlink', why: GATE, source: 'main/one-host-gate.ts:127' },
   {

@@ -14,7 +14,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { capabilitiesFor, SUPPORTED_PROVIDERS } from '@brobot2/runtime'
 import { provisionCodexAuth } from '@brobot2/runtime/codex'
 import type { Provider } from '@brobot2/shared'
-import { prepareProviderHome } from '../src/main/runtime/provider-homes'
+import { prepareProviderHome } from '../src/main/connections/homes'
 
 /**
  * 329 · **The credential disclosure answers to the code that does the copying.**

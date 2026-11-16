@@ -1,5 +1,5 @@
 import { SKILL_CATALOGUE_TABLES } from '../db/skill-catalogue-tables'
-import { PROVIDER_HOMES_DIRNAME } from '../runtime/provider-homes'
+import { PROVIDER_HOMES_DIRNAME } from '../connections/homes'
 import type { RestoreRule } from './contract'
 import { BACKUPS_DIRNAME, DATABASE_FILE, RECOVERY_DIRNAME, familyOf } from './layout'
 

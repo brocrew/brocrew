@@ -30,7 +30,7 @@ import { REPLY_RAILS, refuseReply } from '../src/main/runtime/reply-rails'
 import { QUESTION_RAILS, refuseQuestion } from '../src/main/runtime/question-rails'
 import { INTERRUPT_RAILS, refuseInterrupt } from '../src/main/runtime/interrupt-rails'
 import { RESOURCE_RAILS, refuseResource } from '../src/main/resources/resources'
-import { MODEL_RAILS, refuseModel } from '../src/main/runtime/model-rails'
+import { MODEL_RAILS, refuseModel } from '../src/main/connections/model-rails'
 import {
   WORK_SEARCH_RAILS,
   WORK_SEARCH_REFUSAL_WORDS,

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { resolveProviderConnection } from '../src/main/db/provider-connections'
+import { resolveProviderConnection } from '../src/main/connections/records'
 import { FakeRuntime, RejectedSessionLaunch } from '@brobot2/runtime'
 import { reprovisionCodexAuth } from '@brobot2/runtime/codex'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
@@ -17,7 +17,7 @@ import {
   deriveProviderHome,
   listProfileIds,
   type ProviderAuthOps,
-} from '../src/main/runtime/provider-homes'
+} from '../src/main/connections/homes'
 
 const messages: RuntimeEventMessage[] = []
 const sink: RuntimeEventSink = {

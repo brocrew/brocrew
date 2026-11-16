@@ -36,7 +36,7 @@ import {
   type GivingConversation,
   type WhatItRunsOn,
 } from '../src/main/runtime/spawn-rails'
-import { judgeAnAgentsChoice } from '../src/main/runtime/model-rails'
+import { judgeAnAgentsChoice } from '../src/main/connections/model-rails'
 import {
   MODEL_CHOICE_SAID,
   judgeAgainstTheList,

@@ -22,7 +22,7 @@ import {
   theCheapestModel,
   whyNotAKey,
 } from '../src/main/runtime/api-keys'
-import { prepareProviderHome } from '../src/main/runtime/provider-homes'
+import { prepareProviderHome } from '../src/main/connections/homes'
 import { bringTheCodexKeyTo } from '../src/main/providers/codex'
 import type { CodexKeySeam } from '../src/main/providers/codex/types'
 

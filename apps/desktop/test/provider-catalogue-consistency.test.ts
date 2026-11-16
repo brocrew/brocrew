@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Provider } from '@brobot2/shared'
 import type { ModelChoice } from '@brobot2/runtime'
 import { createModelLists } from '../src/renderer/src/lib/model-lists'
-import { ModelCatalogues } from '../src/main/runtime/model-catalogues'
+import { ModelCatalogues } from '../src/main/connections/catalogues'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 

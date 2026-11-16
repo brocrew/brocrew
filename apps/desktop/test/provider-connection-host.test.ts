@@ -9,7 +9,7 @@ import type { Provider } from '@brobot2/shared'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
-import { resolveProviderConnection } from '../src/main/db/provider-connections'
+import { resolveProviderConnection } from '../src/main/connections/records'
 import { createCodexModule } from '../src/main/providers/codex/index'
 import { ApiKeys } from '../src/main/runtime/api-keys'
 import {

@@ -37,7 +37,7 @@ import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
 import { sectionsOf, theLeadOwed } from '../src/main/runtime/codex-lead'
 import { aLaunchRecordIn } from '../src/main/runtime/what-this-agent-was-given'
-import { savedMethodsFolder } from '../src/main/runtime/provider-homes'
+import { savedMethodsFolder } from '../src/main/connections/homes'
 import { requestTabs, type ReaderRow } from '../src/renderer/src/lib/request-order'
 import { givenAnswer } from './dom/what-this-agent-was-given.fixture'
 

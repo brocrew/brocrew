@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
-import { resolveProviderConnection } from '../src/main/db/provider-connections'
+import { resolveProviderConnection } from '../src/main/connections/records'
 import {
   createSessionStore,
   type NewSessionRecord,

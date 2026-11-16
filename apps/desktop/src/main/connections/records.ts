@@ -4,7 +4,7 @@ import {
   type Provider,
   type ProviderConnection,
 } from '@brobot2/shared'
-import type { AppDatabase } from './connection'
+import type { AppDatabase } from '../db/connection'
 
 interface ConnectionRow {
   id: string

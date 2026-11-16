@@ -12,7 +12,7 @@ import {
 } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
-import { judgeAnAgentsChoice, refuseModel } from '../src/main/runtime/model-rails'
+import { judgeAnAgentsChoice, refuseModel } from '../src/main/connections/model-rails'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { neutralHostDeps } from './lib/host-fixture'

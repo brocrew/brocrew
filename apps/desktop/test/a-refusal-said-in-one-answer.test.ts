@@ -34,7 +34,7 @@ import {
 } from '../src/main/runtime/agent-tool-answer-words'
 import { refuseTool, refusalIn, TOOL_REFUSALS } from '../src/main/runtime/agent-tools'
 import { refuse, SPAWN_RAILS } from '../src/main/runtime/spawn-rails'
-import { refuseModel, MODEL_RAILS } from '../src/main/runtime/model-rails'
+import { refuseModel, MODEL_RAILS } from '../src/main/connections/model-rails'
 import { refuseReply, REPLY_RAILS } from '../src/main/runtime/reply-rails'
 import { refuseQuestion, QUESTION_RAILS } from '../src/main/runtime/question-rails'
 import { refuseInterrupt, INTERRUPT_RAILS } from '../src/main/runtime/interrupt-rails'

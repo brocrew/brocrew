@@ -33,7 +33,7 @@ import type { CallerIdentity } from './conversation-caller'
 import type { TellDelivery } from './message-records'
 import type { MessageRefusal } from './message-rails'
 import type { ResourceRefusal } from '../resources/resources'
-import type { ModelRefusal } from './model-rails'
+import type { ModelRefusal } from '../connections/model-rails'
 
 /**
  * 🔴 **D-016 · the rails of the GIVE — `give_work`'s, asked before anything can be written** (341's

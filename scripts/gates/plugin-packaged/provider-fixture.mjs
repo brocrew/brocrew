@@ -5,7 +5,7 @@ import { FakeRuntime } from '../../../packages/runtime/src/fake-runtime.ts'
 import { Client } from '../../../apps/desktop/node_modules/@modelcontextprotocol/sdk/dist/esm/client/index.js'
 import { StreamableHTTPClientTransport } from '../../../apps/desktop/node_modules/@modelcontextprotocol/sdk/dist/esm/client/streamableHttp.js'
 import { managedPluginHttpServers } from '../../../packages/runtime/src/managed-plugin-mcp.ts'
-import { deriveProviderHome } from '../../../apps/desktop/src/main/runtime/provider-homes.ts'
+import { deriveProviderHome } from '../../../apps/desktop/src/main/connections/homes.ts'
 import { fixtureTitle, fixtureText } from './fake-browser.mjs'
 import { providerErrors } from './provider-state.mjs'
 

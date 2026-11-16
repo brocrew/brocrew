@@ -37,7 +37,7 @@ import {
   type ModelRefusal,
   type TheListAsked,
 } from './model-rails'
-import { SessionUnavailable } from './session-unavailable'
+import { SessionUnavailable } from '../runtime/session-unavailable'
 
 /** The existing model choices and the one per-host catalogue cache. */
 export class ModelCatalogues {

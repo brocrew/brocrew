@@ -9,7 +9,7 @@ import { AGENT_TOOL_INSTRUCTIONS, AGENT_TOOL_SERVER, type ToolName } from './too
 import { type AgentToolAnswer, type AgentToolDefinition, type AgentToolset } from '@brobot2/runtime'
 import { type AgentToolHost } from './tool-families/host'
 import { type Caller, agentCallerId } from './conversation-caller'
-import { type ListsAsLastRead, theEffortsSaid, theModelsSaid } from './model-rails'
+import { type ListsAsLastRead, theEffortsSaid, theModelsSaid } from '../connections/model-rails'
 import { NAVIGATION_LINKS_DESCRIPTION } from '../../shared/links'
 import { NAVIGATION_TOOL_NAMES, withNavigationLinks } from './tool-navigation-links'
 import { aLaunchRefused, aLaunchThatDidNotStart } from './tool-families/launch-failures'

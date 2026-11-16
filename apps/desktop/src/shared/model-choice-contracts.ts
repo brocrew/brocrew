@@ -17,7 +17,7 @@ import type { Provider } from '@brobot2/shared'
  *  - **R3 · the list, one door**: the provider's own models (with what an alias points at, and each
  *    model's efforts), then the models a person added by hand ({@link theList}).
  *  - **R4 · agents choose** anything in that list — the person's hand-added ones included. ⚑ The
- *    agents' seam is `main/runtime/model-rails.ts`; ⛔ a person's own choice in the window never
+ *    agents' seam is `main/connections/model-rails.ts`; ⛔ a person's own choice in the window never
  *    passes it.
  *
  * ## ⚑ Validated against what the PROVIDER answered, never a list written here

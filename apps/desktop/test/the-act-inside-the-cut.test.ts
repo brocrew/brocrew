@@ -31,7 +31,7 @@ import { REPLY_RAILS, refuseReply, replyUnkeptFileReason } from '../src/main/run
 import { QUESTION_RAILS, refuseQuestion } from '../src/main/runtime/question-rails'
 import { INTERRUPT_RAILS, refuseInterrupt } from '../src/main/runtime/interrupt-rails'
 import { RESOURCE_RAILS, refuseResource } from '../src/main/resources/resources'
-import { MODEL_RAILS, refuseModel, type ModelRefusalDetail } from '../src/main/runtime/model-rails'
+import { MODEL_RAILS, refuseModel, type ModelRefusalDetail } from '../src/main/connections/model-rails'
 import { RAIL_PERMANENCES } from '../src/shared/refusals'
 import { pastWorkSearchRefusal } from '../src/shared/past-work-search'
 import {
@@ -144,7 +144,7 @@ import {
  * ⚠️ **D-039's** `THE_NEW_AGENT_WAS_MADE`, a give's only, is no row of its own: it is said AFTER
  * whichever launch sentence a give with `new: true` met, so every row's act keeps its place — see
  * the note in {@link OVERRIDES}.
- * ⚑ **D-042 added a vocabulary** — `MODEL_RAILS` (`runtime/model-rails.ts`), the one seam
+ * ⚑ **D-042 added a vocabulary** — `MODEL_RAILS` (`connections/model-rails.ts`), the one seam
  * `give_work` and `create_agent` judge an agent's model and effort by: seven words and twelve rows,
  * planted in {@link MODEL_DETAILS}, nine of them over the bound. Every one is act-first — *Pick…*,
  * *Leave…*, *Ask a person to check…*, *Name…* or *Give again* — so each act ends inside the cut
@@ -417,7 +417,7 @@ const VOCABULARIES: readonly {
   // `create_agent`'s `model`/`effort`, answered in the same `refused (<rail>): <sentence>` row.
   {
     name: 'MODEL_RAILS',
-    module: 'runtime/model-rails.ts',
+    module: 'connections/model-rails.ts',
     rails: MODEL_RAILS,
     arms: (rail) =>
       (MODEL_DETAILS[rail as (typeof MODEL_RAILS)[number]] ?? [{}]).map(

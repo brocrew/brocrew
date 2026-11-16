@@ -56,11 +56,17 @@ import { WorkAncestryRead } from './work-ancestry'
 import type { RuntimeHostDeps } from './host-dependencies'
 export type { RuntimeHostDeps } from './host-dependencies'
 import { ConversationIdle } from './conversation-idle'
-import { ModelCatalogues } from './model-catalogues'
+import { ModelCatalogues } from '../connections/catalogues'
+import {
+  aKeyIsSaved,
+  connectionForLaunch,
+  prepareConnectionHome,
+  providerConnections,
+} from '../connections/runtime'
 import {
   providerLaunchChoices as launchChoicesFor,
   resolveProviderLaunch as resolveLaunch,
-} from './provider-launch'
+} from '../connections/launch'
 import type {
   ProviderLaunchChoices,
   ResolveProviderLaunchInput,
@@ -482,7 +488,7 @@ import {
   type ListsAsLastRead,
   type ModelRefusal,
   type TheListAsked,
-} from './model-rails'
+} from '../connections/model-rails'
 import type {
   AdmittedSpawn,
   AStallAGiveNames,
@@ -1235,7 +1241,11 @@ import {
   type McpServerRequestWaiting,
 } from '../../shared/mcp-server-requests'
 import type { QueuedMessage } from './queued-message'
-import { DEFAULT_PROFILE_ID, ProfileUnopenable, assertProfileMayBeCreated } from './provider-homes'
+import {
+  DEFAULT_PROFILE_ID,
+  ProfileUnopenable,
+  assertProfileMayBeCreated,
+} from '../connections/homes'
 import { LivenessTracker } from './liveness'
 // ⚑ **575 · the sibling of the line above** — see {@link BeingDoneTracker}, which is fed from the
 // same line of {@link RuntimeHost.deliver} and for the same reason.
@@ -20018,23 +20028,14 @@ export class RuntimeHost implements LiveHost {
     }
     await this.homeCopyJobs.get(profileSignInKey(provider, profileId))
     const renewedForIt = sessionId !== undefined && this.renewedForItsReopen.delete(sessionId)
-    let runtime: AgentRuntime | undefined
-    const prepare = async (): Promise<string> => {
-      if (this.deps.prepareProviderLaunch !== undefined) {
-        const prepared = await this.deps.prepareProviderLaunch(provider, profileId, connection)
-        runtime = prepared.runtime
-        return prepared.home
-      }
-      return this.deps.prepareProviderHome(provider, profileId)
-    }
-    const renewal = this.deps.loginRenewal?.(provider)
-    if (renewal === undefined || this.aKeyIsSaved(provider)) {
-      return { home: await prepare(), loginRenewed: renewedForIt, runtime }
-    }
-    const prepared = await renewal.prepare(prepare, () =>
-      this.withProviderLaunch(renewal.launchLabel, renewal.renew),
+    return prepareConnectionHome(
+      this.deps,
+      provider,
+      profileId,
+      connection,
+      renewedForIt,
+      (what, run) => this.withProviderLaunch(what, run),
     )
-    return { home: prepared.home, loginRenewed: renewedForIt || prepared.loginRenewed, runtime }
   }
 
   private async theSkillsForALaunch(
@@ -20077,11 +20078,7 @@ export class RuntimeHost implements LiveHost {
 
   /** Whether a key is saved for a provider: then it is what a launch runs on, not the login. */
   private aKeyIsSaved(provider: Provider): boolean {
-    try {
-      return this.deps.apiKeys?.status(provider).set === true
-    } catch {
-      return true
-    }
+    return aKeyIsSaved(this.deps, provider)
   }
 
   private runtimeWithPlugins(
@@ -20131,9 +20128,7 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **A folder a person or the spawn rails named, else the durable workspace** — `resolveCwd`'s
     // blank branch, which is where every conversation that asked for none runs.
     const cwd = this.deps.resolveCwd(id, input.cwd)
-    const connection = recorded
-      ? this.deps.connectionFor?.(input.provider, this.deps.store.connectionOf(id))
-      : this.deps.connectionFor?.(input.provider)
+    const connection = connectionForLaunch(this.deps, input.provider, recorded ? id : undefined)
     const {
       home: providerHome,
       loginRenewed,
@@ -34591,16 +34586,7 @@ export class RuntimeHost implements LiveHost {
 
   /** Return declared metadata only, without invoking any provider or credential operation. */
   providerConnections(): readonly ProviderConnection[] {
-    return (this.deps.listConnections?.() ?? []).map((row) => ({
-      id: row.id,
-      provider: row.provider,
-      name: row.name,
-      authMethod: row.authMethod,
-      credentialSource: row.credentialSource,
-      baseUrl: row.baseUrl,
-      enabled: row.enabled,
-      contractVersion: row.contractVersion,
-    }))
+    return providerConnections(this.deps)
   }
 
   /**
@@ -37182,7 +37168,7 @@ export class RuntimeHost implements LiveHost {
     let preparedRuntime: AgentRuntime | undefined
     let connection: ProviderConnection | undefined
     try {
-      connection = this.deps.connectionFor?.(provider)
+      connection = connectionForLaunch(this.deps, provider)
       const preparation = this.launches.open(`${provider} model home preparation`)
       try {
         if (this.deps.beforeProviderLaunch) await this.deps.beforeProviderLaunch()
@@ -38251,10 +38237,7 @@ export class RuntimeHost implements LiveHost {
     // ⚑ `592` recorded that move deliberately: see `test/session-profile.test.ts`'s *"the path for
     // an omitted profile moved, and only because the SLUG did"*.
     const profileId = row.profileId ?? DEFAULT_PROFILE_ID
-    const connection = this.deps.connectionFor?.(
-      row.provider,
-      this.deps.store.connectionOf(sessionId),
-    )
+    const connection = connectionForLaunch(this.deps, row.provider, sessionId)
     const {
       home: providerHome,
       loginRenewed,

@@ -97,7 +97,7 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand, withoutItsClassName } from '../src/main/runtime/ipc'
-import { prepareProviderHome } from '../src/main/runtime/provider-homes'
+import { prepareProviderHome } from '../src/main/connections/homes'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { describeUnavailable } from '../src/main/runtime/session-unavailable'
 import { readableError } from '../src/renderer/src/lib/session-record'

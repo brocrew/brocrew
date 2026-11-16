@@ -5,7 +5,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { basename, join, resolve } from 'node:path'
 import { errorCode, nodeFs, syncFolder, writeAtomically, type RecoveryFs } from '../recovery/files'
 import { ordinarySkillTree } from './ordinary-tree'
-import { deriveProviderHome, HOME_FOLDER, providerHomesRoot } from '../runtime/provider-homes'
+import { deriveProviderHome, HOME_FOLDER, providerHomesRoot } from '../connections/homes'
 import { OFF_SKILLS_DIRNAME, SHARED_SKILLS_DIRNAME, SKILLS_CONVERSION_FILE } from './shared-paths'
 import { RECENT_ACTIVITY_LINES, type SkillImportNotice } from '../../shared/recent-activity'
 
