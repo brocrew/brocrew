@@ -1,3 +1,4 @@
+import { headerOf } from './sqlite-header'
 import { providerSchema } from '@brobot2/shared'
 import Database from 'better-sqlite3'
 import { MAX_CAPABILITY_COUNT } from '../../shared/capabilities'
@@ -16,22 +17,18 @@ export interface HistoryReaderOptions {
   readonly fs?: RecoveryFs
 }
 
-/** A {@link HistoryReader} over one file, and the connection it holds once it has read. */
 export interface ClosableHistoryReader extends HistoryReader {
-  /** The folder a conversation worked in, for the paths its messages wrote; `null` for none. */
   workingFolder(id: string): Promise<string | null>
   close(): void
 }
 
-/** The sidecars that hold data the main file does not; `-shm` is only an index of a `-wal`. */
 const DATA_SIDECARS = SIDECARS.filter((suffix) => suffix !== '-shm')
-const HEADER_BYTES = 100
+
 const SQLITE_MAGIC = 'SQLite format 3\u0000'
 const CLOSED = 'the history reader is closed'
 
 const MAX_PIECE_DEPTH = MAX_CAPABILITY_COUNT + 2
 
-/** The piece event types, as the partial index over them lists them. */
 const PIECE_TYPES_SQL = PIECE_EVENT_TYPES.map((type) => `'${type}'`).join(', ')
 
 interface ConversationRow {
@@ -98,7 +95,6 @@ export function createHistoryReader(
     conversations: () =>
       read((c) =>
         (c.conversations.all() as ConversationRow[]).flatMap((row): HistoryConversation[] => {
-          // The column's CHECK admits only the providers this build knows.
           const provider = providerSchema.safeParse(row.provider).data
           if (provider === undefined) return []
           return [
@@ -151,7 +147,7 @@ async function mayBeReadInPlace(file: string, fs: RecoveryFs): Promise<void> {
   if (header === null || Buffer.from(header.subarray(0, 16)).toString('latin1') !== SQLITE_MAGIC) {
     throw new Error(`${file} is not a database`)
   }
-  // Bytes 18 and 19 are 1 in rollback-journal mode and 2 in WAL mode.
+
   if (header[18] !== 1 || header[19] !== 1) {
     throw new Error(
       `${file} is not in rollback-journal mode, and reading it could write files beside it`,
@@ -164,28 +160,12 @@ async function mayBeReadInPlace(file: string, fs: RecoveryFs): Promise<void> {
   }
 }
 
-async function headerOf(file: string, fs: RecoveryFs): Promise<Uint8Array | null> {
-  const header = new Uint8Array(HEADER_BYTES)
-  const handle = await fs.open(file, 'r')
-  try {
-    let filled = 0
-    while (filled < HEADER_BYTES) {
-      const { bytesRead } = await handle.read(header, filled, HEADER_BYTES - filled, filled)
-      if (bytesRead === 0) return null
-      filled += bytesRead
-    }
-    return header
-  } finally {
-    await handle.close()
-  }
-}
-
 function connect(file: string): Connection {
   const db = new Database(file, { readonly: true, fileMustExist: true })
   try {
     return {
       db,
-      // Newest activity first, then the id, so two rows touched in one millisecond cannot swap.
+
       conversations: db.prepare(
         `SELECT s.id, s.provider, s.profile_id, s.adopted_at, s.restored_at, s.created_at,
                 s.updated_at, identity.display_name

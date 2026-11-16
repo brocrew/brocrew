@@ -1,3 +1,4 @@
+import { headerOf } from './sqlite-header'
 import { gzipCheckpoint, type PlainDatabaseFacts } from './checkpoint-compression'
 import Database from 'better-sqlite3'
 import { createHash, randomUUID } from 'node:crypto'
@@ -15,41 +16,35 @@ import {
 } from './files'
 import { COPY_FILE, DATABASE_FILE, isSafeName, recoveryDir, scratchDir } from './layout'
 
-/** What a database file records about its migrations. */
 export type MigrationsOnDisk =
   | { readonly kind: 'absent' }
-  /** No tables, or only an empty migration record: a new workspace. */
   | { readonly kind: 'empty' }
   | { readonly kind: 'unreadable'; readonly detail: string }
-  /** Each applied migration as the migrator recorded it, oldest first. */
   | { readonly kind: 'recorded'; readonly migrations: readonly Migration[] }
 
 export type MigrationsRead =
   MigrationsOnDisk | { readonly kind: 'no-room'; readonly needed: number; readonly free: number }
 
-/** One migration this build carries. */
 export interface BuildMigration extends Migration {
   readonly recordedAs: readonly string[]
 }
 
-export type LineageFit =
-  /** This build's first migrations, some or all: this build opens it, applying any left. */
-  'fits' | 'newer' | 'foreign'
+export type LineageFit = 'fits' | 'newer' | 'foreign'
 
 export interface MigrationsOfOptions {
   readonly fs?: RecoveryFs
   readonly userData?: string
-  /** Bytes free on the disk holding a path, or null when that cannot be told. */
+
   readonly freeBytes?: (path: string) => number | null
 }
 
 const EMPTY: MigrationsOnDisk = { kind: 'empty' }
-const HEADER_BYTES = 100
+
 const SQLITE_MAGIC = 'SQLite format 3\u0000'
-/** The sidecars that hold data the main file does not; `-shm` is only an index SQLite rebuilds. */
+
 const DATA_SIDECARS = ['-wal', '-journal'] as const
 const SHA256_HEX = /^[0-9a-f]{64}$/
-/** Room a read through a copy keeps free for the files SQLite makes beside the copy. */
+
 const SCRATCH_HEADROOM_BYTES = 64 * 1024 * 1024
 
 export async function buildLineage(
@@ -72,7 +67,7 @@ export async function buildLineage(
     if (typeof when !== 'number' || !Number.isSafeInteger(when)) throw unreadable()
     if (typeof tag !== 'string' || !isSafeName(tag)) throw unreadable()
     if (when <= (lineage.at(-1)?.createdAt ?? Number.NEGATIVE_INFINITY)) throw unreadable()
-    // The migrator hashes the file's text as it reads it: decoded as UTF-8, hashed as a string.
+
     const text = await fs.readFile(join(migrationsFolder, `${tag}.sql`))
     const lf = text.replace(/\r\n/g, '\n')
     lineage.push({
@@ -84,7 +79,6 @@ export async function buildLineage(
   return lineage
 }
 
-/** Whether a migration a database records is this one of the build's: the same time and file. */
 export function isTheBuildsMigration(
   applied: Migration,
   built: BuildMigration | undefined,
@@ -106,7 +100,6 @@ export function isLineagePrefix(
   )
 }
 
-/** How `applied` stands against `lineage`; see {@link LineageFit}. */
 export function lineageFit(
   applied: readonly Migration[],
   lineage: readonly BuildMigration[],
@@ -127,7 +120,6 @@ export function hasPendingMigrations(
   return lineage.some(({ createdAt }) => createdAt > latest)
 }
 
-/** The migrations `file` records, read from its own `__drizzle_migrations`. Never throws. */
 export async function migrationsOf(
   file: string,
   options: MigrationsOfOptions = {},
@@ -146,7 +138,6 @@ export async function migrationsOf(
 
     const sidecars = await dataSidecarsOf(file, fs)
     if (size === 0) {
-      // SQLite drops a -wal or -journal beside an empty file, and with it the data it holds.
       const holding = sidecars.find((sidecar) => sidecar.bytes > 0)
       return holding === undefined
         ? EMPTY
@@ -157,7 +148,7 @@ export async function migrationsOf(
     if (Buffer.from(header.subarray(0, 16)).toString('latin1') !== SQLITE_MAGIC) {
       return unreadable('it is not a SQLite database')
     }
-    // SQLite reads committed WAL pages itself; only a rollback journal needs recovery on a copy.
+
     if (!sidecars.some(({ suffix, bytes }) => suffix === '-journal' && bytes > 0)) {
       return readMigrations(file, true)
     }
@@ -209,7 +200,7 @@ export function migrationsRecordedIn(db: Database.Database): MigrationsOnDisk {
       ) {
         return unreadable('its migration record holds a row this build cannot read')
       }
-      // The migrator never records two migrations at one time.
+
       if (createdAt <= (migrations.at(-1)?.createdAt ?? Number.NEGATIVE_INFINITY)) {
         return unreadable('its migration record lists two migrations at the same time')
       }
@@ -229,7 +220,6 @@ function sha256Of(text: string): string {
   return createHash('sha256').update(text).digest('hex')
 }
 
-/** The `-wal` and `-journal` beside `file`, with their sizes. */
 async function dataSidecarsOf(
   file: string,
   fs: RecoveryFs,
@@ -249,23 +239,6 @@ async function dataSidecarsOf(
   return found
 }
 
-async function headerOf(file: string, fs: RecoveryFs): Promise<Uint8Array | null> {
-  const header = new Uint8Array(HEADER_BYTES)
-  const handle = await fs.open(file, 'r')
-  try {
-    let filled = 0
-    while (filled < HEADER_BYTES) {
-      const { bytesRead } = await handle.read(header, filled, HEADER_BYTES - filled, filled)
-      if (bytesRead === 0) return null
-      filled += bytesRead
-    }
-    return header
-  } finally {
-    await handle.close()
-  }
-}
-
-/** A database file to read through the scratch folder, with its sidecars that hold data. */
 interface ToRead {
   readonly file: string
   readonly bytes: number
@@ -321,7 +294,7 @@ async function throughScratch(
     if (!copied) {
       const needed = spaceToReadThroughACopy(toRead)
       const free = freeBytes(folder)
-      // A disk that cannot be asked is not refused: the copy itself says when the space runs out.
+
       if (free !== null && free < needed) return { kind: 'no-room', needed, free }
       try {
         for (const [from, to] of pairs) await fs.copyFile(from, to)
@@ -358,7 +331,6 @@ async function copyWithCloneAdapter(
   return true
 }
 
-/** Best effort: a folder left behind is removed by the next start that owns the data folder. */
 async function removeScratch(userData: string, folder: string, fs: RecoveryFs): Promise<void> {
   try {
     await assertOwnedPathsAreReal(userData, [folder], fs)
@@ -367,7 +339,7 @@ async function removeScratch(userData: string, folder: string, fs: RecoveryFs): 
       await fs.rmdir(emptied)
     }
   } catch {
-    // Still in use, or not empty: either way it stays.
+    // A later start can remove scratch folders that are still in use.
   }
 }
 
@@ -385,7 +357,6 @@ export interface DatabaseSnapshotPlan {
   copyTo(copy: string): Promise<PlainDatabaseFacts & { migrations: readonly Migration[] }>
 }
 
-/** Read the budget without a write; the source is closed again before gzip starts. */
 export function prepareDatabaseSnapshot(
   file: string,
   options: {
@@ -460,7 +431,6 @@ export function sameMigrations(a: readonly Migration[], b: readonly Migration[])
   )
 }
 
-/** Whether a SQLite file's header says rollback-journal mode: bytes 18 and 19 are both 1. */
 export async function inRollbackMode(path: string, fs: RecoveryFs): Promise<boolean> {
   const header = new Uint8Array(20)
   const handle = await fs.open(path, 'r')
