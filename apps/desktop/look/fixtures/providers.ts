@@ -8,10 +8,7 @@ import {
   compatibilityConnectionId,
   type ProviderConnection,
 } from '@brobot2/shared'
-import {
-  providerLaunchChoices,
-  resolveProviderLaunch,
-} from '../../src/main/connections/launch'
+import { providerLaunchChoices, resolveProviderLaunch } from '../../src/main/connections/launch'
 
 const NOW = Date.now()
 const HOUR = 3_600_000
