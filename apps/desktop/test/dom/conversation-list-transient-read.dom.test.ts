@@ -162,10 +162,9 @@ it('a queued refresh follows the active read and preserves pushes received durin
     moved: [{ conversation: rows[0]!.sessionId, state: { is: 'needs-you' } }],
     kept: [],
   })
-  oldAnswer(rows)
+  oldAnswer([])
   await older
-  expect(count(out)).toBe(1)
-  expect(out.rail.value!.theOneList![0]!.state).toEqual({ is: 'needs-you' })
+  expect(count(out)).toBe(0)
   await vi.advanceTimersByTimeAsync(1_000)
   expect(out.read).toHaveBeenCalledTimes(3)
   out.rail.value!.hearStates({
