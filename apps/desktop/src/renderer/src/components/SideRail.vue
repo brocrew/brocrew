@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { useClientApi } from '../client-provider/injection'
-import { useConversationListRecovery } from '../composables/useConversationListRecovery'
+import { useRecoveredConversationList } from '../composables/useConversationListRecovery'
 import { useModalDepth } from './OverlayHost.vue'
 import { useProviderNames } from '../composables/useProviderNames'
 import { providerNamesIn } from '../lib/front-door-words'
-import type { AgentState as OneState } from '../../../shared/agent-state-contracts'
 import type { WhatEachConversationIsWaitingOn } from '../../../shared/task-contracts'
 
 import { chordKeys, chordSaid, platformHere } from '../lib/this-computer'
@@ -15,17 +14,11 @@ import {
   onMounted,
   nextTick,
   ref,
-  shallowRef,
   useId,
   watch,
   watchEffect,
   type Ref,
 } from 'vue'
-import type {
-  ResumableSessionInfo,
-  RuntimeStatesMessage,
-  UnresumableSessionInfo,
-} from '../../../shared/runtime-ipc'
 import { agentStateWords } from '../../../shared/agent-state'
 import {
   facetsOfState,
@@ -38,8 +31,6 @@ import {
   type AgentFacets,
   type Standing,
 } from '../lib/agent-state'
-import { epochDecision } from '../../../shared/data-version'
-import type { PublishedListing } from '../../../shared/listing-published'
 import {
   conversationList,
   withConversationStates,
@@ -72,7 +63,7 @@ import { ROWS_UNREAD_LEAD } from '../lib/rows-unread'
 
 import type { ProviderLimitsView } from '../lib/persons-queue'
 import { providerLimitDisplay } from '../lib/provider-limit-status'
-import { createProviderBlockStore, type ProviderBlockStore } from '../lib/provider-limit-facts'
+import type { ProviderBlockStore } from '../lib/provider-limit-facts'
 import { useMinuteClock } from '../composables/useMinuteClock'
 import { railFacts, useWhoCalledWhom, type RailSays } from '../composables/useWhoCalledWhom'
 import type { WorkspaceReading } from '../../../shared/workspace-reading'
@@ -80,7 +71,7 @@ import type { WorkEdge } from '../../../shared/who-called-whom'
 import type { AppInfo } from '@brobot2/shared'
 import { profileItRunsAs, whereItWorks } from '../lib/session-record'
 import { agentName } from '../../../shared/runtime-ipc'
-import { readableError, type SessionRecord } from '../lib/session-record'
+import type { SessionRecord } from '../lib/session-record'
 import { useSpawnSafety } from '../lib/spawn-safety'
 import {
   RAIL_SECTION_REMEMBERED,
@@ -402,76 +393,20 @@ const liveSignal = computed(() =>
    with the conversations this window holds drawn from their own records beside it.
    --------------------------------------------------------------------------- */
 
-const hostResumable = ref<ResumableSessionInfo[]>([])
-const hostUnresumable = ref<UnresumableSessionInfo[]>([])
-/** Whether the list has ever looked. Until it has, it has no count to give — not a count of 0. */
-const looked = ref(false)
-const listError = ref<string | null>(null)
-
-/**
- * A pushed state outlives any list read already in flight when the push arrived.
- * A later read replaces it; the paired lists may otherwise contain an older state.
- */
-const said = shallowRef<
-  ReadonlyMap<
-    string,
-    {
-      readonly state: OneState
-      readonly after: number
-      readonly published?: RuntimeStatesMessage['published']
-    }
-  >
->(new Map())
-const localProviderBlocks = createProviderBlockStore()
-const providerBlocks = computed(() => props.providerBlocks ?? localProviderBlocks)
-/**
- * ⚑ How many list reads this rail has begun — the number {@link said} dates each push by. ⚠️ A
- * read the quit stops is counted too, which moves nothing: main pushes nothing once a quit begins.
- */
-let readsAsked = 0
-let lastShown: Pick<PublishedListing, 'published' | 'readAsOf'> | undefined
-
-/**
- * ⚑ **D-019 · main said what some agents are doing now** — the screen hands every message on
- * `runtime:states` here. ⚠️ A conversation the list does not name yet is kept too, because the read
- * already in flight may name it; a read asked after it names it in its own answer.
- *
- * ⚑ **D-026 · a message that moved no state leaves the list as it was** — files kept, alone: the
- * rail draws no files, and a copy of what it heard would redraw every row for nothing.
- */
-function hearStates(message: RuntimeStatesMessage): void {
-  if (message.moved.length === 0) return
-  const next = new Map(said.value)
-  for (const moved of message.moved) {
-    if (lastShown !== undefined && message.published !== undefined) {
-      const epoch = epochDecision(lastShown.published.epoch, message.published.epoch)
-      if (epoch === 'drop') continue
-      if (
-        epoch === 'accept' &&
-        (lastShown.published.covers.complete ||
-          lastShown.published.covers.ids.includes(moved.conversation)) &&
-        message.published.seq < lastShown.published.seq
-      )
-        continue
-    }
-    const previous = next.get(moved.conversation)?.published
-    if (
-      previous !== undefined &&
-      message.published !== undefined &&
-      (epochDecision(previous.epoch, message.published.epoch) === 'drop' ||
-        (epochDecision(previous.epoch, message.published.epoch) === 'accept' &&
-          message.published.seq <= previous.seq))
-    )
-      continue
-    next.set(moved.conversation, {
-      state: moved.state,
-      after: readsAsked,
-      published: message.published,
-    })
-  }
-  said.value = next
-  if (!props.providerBlocks) localProviderBlocks.acceptMany(message.moved)
-}
+const {
+  hostResumable,
+  hostUnresumable,
+  looked,
+  listError,
+  said,
+  providerBlocks,
+  hearStates,
+  refreshListed,
+} = useRecoveredConversationList(
+  () => props.workspaceFolder?.path ?? null,
+  () => client.sessions,
+  () => props.providerBlocks,
+)
 
 const readList = computed(() =>
   conversationList({
@@ -519,103 +454,6 @@ watchEffect(() => {
   })
 })
 onBeforeUnmount(() => lists.clear())
-
-const listRecovery = useConversationListRecovery(
-  () => props.workspaceFolder?.path ?? null,
-  () => {
-    hostResumable.value = []
-    hostUnresumable.value = []
-    lastShown = undefined
-    said.value = new Map()
-    looked.value = false
-    listError.value = null
-    void refreshListed()
-  },
-)
-
-async function refreshListed(): Promise<void> {
-  const cycle = listRecovery.begin()
-  if (cycle === undefined) return
-  let retry = false
-  const asked = ++readsAsked
-  const providerReadAt = providerBlocks.value.beginRead()
-  try {
-    const sessionsApi = client.sessions
-    let answer: PublishedListing | undefined
-    let resumable: readonly ResumableSessionInfo[]
-    let unresumable: readonly UnresumableSessionInfo[]
-    if (typeof sessionsApi?.listConversations === 'function') {
-      const result = await sessionsApi.listConversations()
-      if (!listRecovery.current(cycle)) return
-      if ('refused' in result) throw new Error(result.refused)
-      answer = result
-      retry = result.refresh === true
-      if (lastShown !== undefined) {
-        const epoch = epochDecision(lastShown.published.epoch, result.published.epoch)
-        if (epoch === 'drop' || epoch === 'hold') return
-        if (
-          epoch === 'accept' &&
-          (result.published.seq < lastShown.published.seq ||
-            (result.published.seq === lastShown.published.seq &&
-              (result.readAsOf ?? 0) <= (lastShown.readAsOf ?? 0)))
-        )
-          return
-      }
-      resumable = result.resumable
-      unresumable = result.unresumable
-      if (!result.published.covers.complete) {
-        const included = new Set([...resumable, ...unresumable].map((row) => row.sessionId))
-        resumable = [
-          ...resumable,
-          ...hostResumable.value.filter((row) => !included.has(row.sessionId)),
-        ]
-        unresumable = [
-          ...unresumable,
-          ...hostUnresumable.value.filter((row) => !included.has(row.sessionId)),
-        ]
-      }
-      lastShown = { published: result.published, readAsOf: result.readAsOf }
-    } else {
-      if (!sessionsApi?.listResumable || !sessionsApi.listUnresumable)
-        throw new Error('The client does not provide session reads and intents')
-      ;[resumable, unresumable] = await Promise.all([
-        sessionsApi.listResumable(),
-        sessionsApi.listUnresumable(),
-      ])
-    }
-    if (!listRecovery.current(cycle)) return
-    providerBlocks.value.acceptListed(
-      answer === undefined
-        ? [...resumable, ...unresumable]
-        : [...answer.resumable, ...answer.unresumable],
-      providerReadAt,
-    )
-    hostResumable.value = [...resumable]
-    hostUnresumable.value = [...unresumable]
-    // A dispatch floor cannot replace states pushed after that floor, even before this caller joined.
-    said.value = new Map(
-      [...said.value].filter(([id, heard]) => {
-        if (answer === undefined || heard.published === undefined) return heard.after >= asked
-        if (!answer.published.covers.complete && !answer.published.covers.ids.includes(id))
-          return true
-        const epoch = epochDecision(answer.published.epoch, heard.published.epoch)
-        return (
-          epoch === 'advance' || (epoch === 'accept' && heard.published.seq >= answer.published.seq)
-        )
-      }),
-    )
-    looked.value = true
-    listError.value = null
-  } catch (cause) {
-    if (!listRecovery.current(cycle)) return
-    listError.value = readableError(cause)
-    retry = true
-  } finally {
-    listRecovery.finish(cycle, retry, () => {
-      void refreshListed()
-    })
-  }
-}
 
 onMounted(refreshListed)
 
