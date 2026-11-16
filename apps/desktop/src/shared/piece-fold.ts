@@ -27,6 +27,12 @@ export type AsTheCutLeftIt =
   | { readonly waitsOnItsPerson: true }
   | { readonly heldForTheBackground: true }
 
+export interface PieceTurnAuthorship {
+  readonly everyPiece: boolean
+  readonly theirPieces: ReadonlySet<string>
+  readonly anotherNamed: ReadonlySet<string>
+}
+
 interface WentBackTo {
   readonly cause: TaskStallCause
   readonly at: number
@@ -51,7 +57,7 @@ export interface PieceFold {
   readonly travelled: ReadonlySet<string>
   readonly asked: Pick<AskToStop, 'by' | 'asker'> | null
   readonly whoseWordsDroveItLast: ReadonlyMap<string, boolean>
-  readonly aPersonOpenedThisTurnFor: ((piece: string) => boolean) | null
+  readonly aPersonOpenedThisTurnFor: PieceTurnAuthorship | null
   readonly waitsOnWhoWroteSince: ReadonlyMap<
     string,
     { readonly at: number; readonly cause: TaskStallCause }
