@@ -1,13 +1,6 @@
+import { readSizedUtf8Sync } from '@brobot2/runtime/sized-read'
 import { writeAtomicallySync } from '@brobot2/runtime/atomic-write'
-import {
-  closeSync,
-  constants,
-  fstatSync,
-  openSync,
-  readSync,
-  realpathSync,
-  writeFileSync,
-} from 'node:fs'
+import { closeSync, constants, fstatSync, openSync, realpathSync, writeFileSync } from 'node:fs'
 import { MAX_SETTINGS_BYTES, isStillTheFileOpened } from '@brobot2/runtime'
 export const NO_LONGER_KEPT = 'That rule is no longer kept there.'
 
@@ -16,10 +9,6 @@ type Read =
   | { readonly state: 'read'; readonly text: string }
   | { readonly state: 'unreadable'; readonly why: string }
 
-/**
- * A file's text, read only when it is a regular file no larger than a settings file a person's
- * choices make — opened without blocking, so a pipe planted at the name cannot hang the read.
- */
 export function readSmall(file: string): Read {
   let fd: number | null = null
   try {
@@ -32,23 +21,12 @@ export function readSmall(file: string): Read {
     const stat = fstatSync(fd)
     if (!stat.isFile()) return { state: 'unreadable', why: 'it is not a regular file' }
     if (stat.size > MAX_SETTINGS_BYTES) return { state: 'unreadable', why: 'it is too large' }
-    return { state: 'read', text: readAll(fd, stat.size) }
+    return { state: 'read', text: readSizedUtf8Sync(fd, stat.size) }
   } catch (error) {
     return { state: 'unreadable', why: error instanceof Error ? error.message : String(error) }
   } finally {
     if (fd !== null) closeSync(fd)
   }
-}
-
-function readAll(fd: number, size: number): string {
-  const buffer = Buffer.alloc(size)
-  let read = 0
-  while (read < size) {
-    const got = readSync(fd, buffer, read, size - read, read)
-    if (got === 0) break
-    read += got
-  }
-  return buffer.subarray(0, read).toString('utf8')
 }
 
 export function rewrite(
@@ -68,7 +46,7 @@ export function rewrite(
     const stat = fstatSync(fd)
     if (!stat.isFile()) throw new Error(`${file} is not a regular file, so it was not rewritten`)
     if (stat.size > MAX_SETTINGS_BYTES) throw new Error(`${file} is too large to rewrite`)
-    text = readAll(fd, stat.size)
+    text = readSizedUtf8Sync(fd, stat.size)
     mode = stat.mode & 0o7777
     names = stat.nlink
   } finally {
