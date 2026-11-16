@@ -25,6 +25,7 @@ import {
   quitRestartedMacApp,
   observeMacReplacement,
   macFirstStartReceipt,
+  requestNativeMacRestart,
 } from './lib/mac-native-upgrade.mjs'
 import { execFile } from 'node:child_process'
 import { promisify, parseArgs, isDeepStrictEqual } from 'node:util'
@@ -68,7 +69,6 @@ import { completedProofCopy, proofManifests } from './lib/recovery-measurement.m
 import {
   candidateNames,
   publicFeedUnchanged,
-  nativeRestartRecorded,
   fixturePermissions,
   permissionsKept,
   registriesKept,
@@ -533,17 +533,15 @@ async function nativeDownload(workspace, published) {
 async function nativeRestart(workspace) {
   selectWorkspace(workspace)
   const previous = active
-  const confirmsRestart = await workspace.cdp.evaluate(
-    "return typeof window.api.updates.restartPlan === 'function'",
-  )
+  const confirmsRestart = await requestNativeMacRestart(workspace, VERSION_B, {
+    previous,
+    click,
+    processInfo,
+    evidence,
+  })
   const nativeWorkspace = confirmsRestart
     ? workspace
     : nativeWorkspaceFromRegistry(workspace.baseline.registryBefore, workspaces)
-  await click(workspace.cdp, '[data-cy=updates-restart]')
-  if (confirmsRestart) await click(workspace.cdp, '[data-cy=updates-confirm-now]')
-  await waitFor(async () => !(await processInfo(previous.pid)), 'A quits for Squirrel.Mac', 60_000)
-  const stdout = await readFile(join(evidence, `${previous.stage}.stdout.log`), 'utf8')
-  nativeRestartRecorded(stdout, await readFile(previous.log, 'utf8'), VERSION_B)
   workspace.result.shutdowns ??= []
   workspace.result.shutdowns.push({
     stage: 'native-restart',
