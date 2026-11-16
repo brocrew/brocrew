@@ -213,7 +213,7 @@ async function startup(
     ['theRecoveryService', 'theVerdictBeforeTheData', 'endAFailedStart']
       .map(declaration)
       .join('\n') +
-    `\n(async () => { const ownership = 'unknown'; try { ${index.slice(begin, end)} } catch(error) { pluginStartupTrace.failure('app-startup', error); await endAFailedStart(error, ownership) } })()`
+    `\n(async () => { const ownership = 'unknown'; try { ${index.slice(begin, end)} } catch(error) { pluginStartupTrace.failure('app-startup', error, 'all'); await endAFailedStart(error, ownership) } })()`
   try {
     await runInNewContext(
       ts.transpileModule(code, {
