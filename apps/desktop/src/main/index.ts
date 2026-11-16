@@ -1334,7 +1334,9 @@ function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null
       handle: (channel, listener) =>
         ipcMain.handle(channel, async (event, ...args) => {
           const kind = aCommandsKind(args[0])
-          const answer = await mainThreadWork.timed(`command ${kind}`, () => listener(event, ...args))
+          const answer = await mainThreadWork.timed(`command ${kind}`, () =>
+            listener(event, ...args),
+          )
           if (kind === 'listConversations' && !('refused' in (answer as ListingAnswer))) {
             firstListAcceptedAt ??= performance.now()
             eventRetention?.firstListAccepted(firstListAcceptedAt)
