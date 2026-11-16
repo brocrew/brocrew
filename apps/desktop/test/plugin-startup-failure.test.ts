@@ -323,10 +323,12 @@ it('reports startup phase-local time and failure at info without ending a phase 
   migration()
   const lines = await captured.lines(4)
   expect(lines).toHaveLength(4)
-  expect(lines[0]).toMatch(/\[info\] \(startup\) workspace-recovery start.*ms: 0/)
+  expect(lines[0]).toMatch(/\[info\][ \t]+\(startup\)[ \t]+workspace-recovery start.*ms: 0/)
   expect(lines[1]).toMatch(/database-migration start.*ms: 0/)
   expect(lines[2]).toMatch(/workspace-recovery end.*elapsed: 25.*ms: 25/)
-  expect(lines[3]).toMatch(/\[info\] \(startup\) database-migration failure.*elapsed: 30.*ms: 10/)
+  expect(lines[3]).toMatch(
+    /\[info\][ \t]+\(startup\)[ \t]+database-migration failure.*elapsed: 30.*ms: 10/,
+  )
 })
 
 it('a logger failure cannot fail a startup phase or its completion', () => {
@@ -357,7 +359,7 @@ it('a plugin failure leaves a pending first list open until its actual completio
   await vi.waitFor(async () => expect(await captured.text()).toContain('first-list end'))
   written = await captured.text()
   expect(written.match(/first-list end/g)).toHaveLength(1)
-  expect(written).toMatch(/\[info\] \(startup\) first-list end.*ms: 150/)
+  expect(written).toMatch(/\[info\][ \t]+\(startup\)[ \t]+first-list end.*ms: 150/)
   expect(written).not.toContain('first-list failure')
   expect(written.match(/catalogue failure/g)).toHaveLength(1)
 })
@@ -376,8 +378,8 @@ it('an explicit app startup failure ends both parts once at their own elapsed ti
   await vi.waitFor(async () => expect(await captured.text()).toContain('app-startup failure'))
   const written = await captured.text()
   expect(written.match(/first-list failure/g)).toHaveLength(1)
-  expect(written).toMatch(/\[info\] \(startup\) first-list failure.*ms: 40/)
+  expect(written).toMatch(/\[info\][ \t]+\(startup\)[ \t]+first-list failure.*ms: 40/)
   expect(written.match(/catalogue failure/g)).toHaveLength(1)
-  expect(written).toMatch(/\[warn\] \(plugin-startup\) catalogue failure.*ms: 30/)
+  expect(written).toMatch(/\[warn\][ \t]+\(plugin-startup\)[ \t]+catalogue failure.*ms: 30/)
   expect(written).not.toMatch(/(first-list|catalogue) end/)
 })

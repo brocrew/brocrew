@@ -108,7 +108,7 @@ async function startup(
     stores: ThemeStore[] = []
   let databaseStarts = 0
   const begin = index.indexOf(
-    "      let finishStartupPhase = pluginStartupTrace.begin('workspace-recovery')",
+    "      let finishStartupPhase = pluginStartupTrace.begin('workspace-recovery', 'startup')",
   )
   const endLine = '      host = await createRuntimeHost(initDatabase())\n      finishStartupPhase()'
   const end = index.indexOf(endLine, begin) + endLine.length
