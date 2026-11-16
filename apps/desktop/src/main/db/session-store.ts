@@ -212,6 +212,7 @@ import {
   aStallItsGiverCanBeToldOf,
   composeWhatEachPieceIsWaitingOn,
   derivePieces,
+  type PieceFold,
   theWorkThatNamesItAmong,
   waitsOnWhoWrote,
   workGivenOut,
@@ -3034,12 +3035,15 @@ export function createSessionStore(
   const selectLegacyStallCut = db.prepare(
     'SELECT generation, through_ordinal FROM work_legacy_stall_cut WHERE session_id = ?',
   )
-  const piecesOfSession = keptUntilItsLedgerGrows(foldPiecesOfSession, undefined, 'pieces')
-  const turnBlockPiecesOfSession = keptUntilItsLedgerGrows(
-    (owner, noteSkip) => foldPiecesOfSession(owner, noteSkip, true),
-    undefined,
+  const piecesKept = keptUntilItsLedgerGrows(foldPiecesKept, carryThePiecesForward(false), 'pieces')
+  const piecesOfSession = (owner: string, noteSkip?: SkipNote) => piecesKept(owner, noteSkip).answer
+  const turnBlockPiecesKept = keptUntilItsLedgerGrows(
+    (owner, noteSkip) => foldPiecesKept(owner, noteSkip, true),
+    carryThePiecesForward(true),
     'turn-pieces',
   )
+  const turnBlockPiecesOfSession = (owner: string, noteSkip?: SkipNote) =>
+    turnBlockPiecesKept(owner, noteSkip).answer
   const stallsToldToSession = keptUntilItsLedgerGrows(
     foldStallsToldToSession,
     (session, generation, after, held) =>
@@ -3059,7 +3063,8 @@ export function createSessionStore(
       selectQuestionsRaisedMoved.get({ session, generation, after }) === undefined ? held : null,
     'questions',
   )
-  const piecesAtHand = theKeptOnly(foldPiecesOfSession)
+  const piecesKeptOnly = theKeptOnly(foldPiecesKept)
+  const piecesAtHand = (owner: string) => piecesKeptOnly(owner)?.answer ?? null
   const routedRequestsKeptOnly = theKeptOnly(foldRoutedRequestsOfSession)
   const routedRequestsAtHand = (sessionId: string) =>
     routedRequestsKeptOnly(sessionId)?.answer ?? null
@@ -3071,25 +3076,92 @@ export function createSessionStore(
     'question-states',
   )
 
+  /** One ledger's pieces, and where their fold stood after its last row, to carry it forward. */
+  interface PiecesKept {
+    readonly answer: readonly PieceRow[]
+    /** `null` when no piece was ever given there, so nothing was folded. */
+    readonly fold: PieceFold | null
+  }
+
+  function foldPiecesKept(owner: string, noteSkip?: SkipNote, trackChanges = false): PiecesKept {
+    const kept: { fold?: PieceFold } = {}
+    const answer = foldPiecesOfSession(owner, noteSkip, trackChanges, undefined, (at) => {
+      kept.fold = at
+    })
+    return { answer, fold: kept.fold ?? null }
+  }
+
+  function carryThePiecesForward(trackChanges: boolean) {
+    return (owner: string, generation: number, after: number, held: PiecesKept) => {
+      const rows = selectPieceEvents.all(owner, generation, after + 1) as EventRow[]
+      if (rows.length === 0) return held
+      // A row the whole fold would count as unread, or a first piece given, is the whole fold's.
+      let readable = true
+      const added = [
+        ...persistedEventsFrom(rows, () => {
+          readable = false
+        }),
+      ]
+      if (!readable) return null
+      if (held.fold === null)
+        return added.some((entry) => entry.event.type === 'work_given') ? null : held
+      const stalled = new Map(pieceStallOrdinals.get(held.answer))
+      const kept: { fold?: PieceFold } = {}
+      try {
+        const answer = derivePieces(owner, added, {
+          ...pieceFoldOptions(owner, trackChanges, stalled),
+          from: held.fold,
+          keep: (at) => {
+            kept.fold = at
+          },
+        })
+        if (kept.fold === undefined) return null
+        pieceStallOrdinals.set(answer, stalled)
+        return { answer, fold: kept.fold }
+      } catch {
+        return null
+      }
+    }
+  }
+
+  function pieceFoldOptions(owner: string, trackChanges: boolean, stalled: Map<string, number>) {
+    const provider = (selectProviderOf.get(owner) as { provider: string } | undefined)?.provider
+    const supported =
+      provider !== undefined && (SUPPORTED_PROVIDERS as readonly string[]).includes(provider)
+        ? (provider as Provider)
+        : undefined
+    return {
+      ...(checkFoldState === undefined
+        ? {}
+        : {
+            checkState: (state: readonly unknown[], complete?: boolean) =>
+              checkFoldState([...state, stalled], complete),
+          }),
+      backgroundWakesIt:
+        supported !== undefined && isAvailable(capabilitiesFor(supported).backgroundWake),
+      trackChanges,
+      onStall: (piece: string, ordinal: number) => stalled.set(piece, ordinal),
+      ...(supported === undefined ? {} : { provider: supported }),
+    }
+  }
+
   function foldPiecesOfSession(
     owner: string,
     noteSkip?: SkipNote,
     trackChanges = false,
     before?: number,
+    keep?: (fold: PieceFold) => void,
   ): readonly PieceRow[] {
     const generation = activeGeneration(owner)
-    const provider = (selectProviderOf.get(owner) as { provider: string } | undefined)?.provider
-    const backgroundWakesIt =
-      provider !== undefined &&
-      (SUPPORTED_PROVIDERS as readonly string[]).includes(provider) &&
-      isAvailable(capabilitiesFor(provider as Provider).backgroundWake)
+    const stalled = new Map<string, number>()
+    const options = pieceFoldOptions(owner, trackChanges, stalled)
     let complete = true
     const skipped: SkipNote = (ordinal) => {
       complete = false
       noteSkip?.(ordinal)
     }
     return readOrSkip(owner, skipped, [], () => {
-      const floor = pieceFoldFloor(owner, generation, backgroundWakesIt)
+      const floor = pieceFoldFloor(owner, generation, options.backgroundWakesIt)
       if (floor === null) return []
       const rows = selectPieceEvents.iterate(owner, generation, floor) as Iterable<EventRow>
       function* beforeTheBound() {
@@ -3097,17 +3169,16 @@ export function createSessionStore(
           if (before === undefined || row.ordinal < before) yield row
         }
       }
-      const stalled = new Map<string, number>()
       const pieces = derivePieces(owner, persistedEventsFrom(beforeTheBound(), skipped), {
-        ...(checkFoldState === undefined
+        ...options,
+        // Told after the last row: a fold that skipped one is never carried forward.
+        ...(keep === undefined
           ? {}
-          : { checkState: (state, complete) => checkFoldState([...state, stalled], complete) }),
-        backgroundWakesIt,
-        trackChanges,
-        onStall: (piece, ordinal) => stalled.set(piece, ordinal),
-        ...(provider !== undefined && (SUPPORTED_PROVIDERS as readonly string[]).includes(provider)
-          ? { provider: provider as Provider }
-          : {}),
+          : {
+              keep: (at: PieceFold) => {
+                if (complete) keep(at)
+              },
+            }),
       })
       if (complete) {
         if (before === undefined) pieceStallOrdinals.set(pieces, stalled)

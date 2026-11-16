@@ -1038,6 +1038,85 @@ export function thePiecesTheTurnNames(
   return [...new Set(messages.flatMap((one) => theDriveOf(one) ?? []))]
 }
 
+interface HeldForTheQueue {
+  readonly cause: TaskStallCause
+  readonly by: PieceRow['stalledBy']
+  readonly stopped?: readonly string[]
+  /** ⚑ **F076** — the login rider its drive's end chose, handed on at the release. */
+  readonly login?: StoppedOnALogin
+  /** ⚑ **F097** — a person's own words opened the turn that drive ended, handed on at the release. */
+  readonly aPersonWroteIt?: boolean
+  /** ⚑ **F097** — since when it waited on that person, for a reply held for it. */
+  readonly since?: number
+}
+
+interface HeldForTheBackground {
+  readonly cause: TaskStallCause
+  readonly by: PieceRow['stalledBy']
+  /** ⚑ **F076** — the login rider its drive's end chose, handed on at the release. */
+  readonly login?: StoppedOnALogin
+  /** ⚑ **F097** — a person's own words opened the turn that drive ended, handed on at the release. */
+  readonly aPersonWroteIt?: boolean
+}
+
+type AsTheCutLeftIt =
+  | { readonly stalledAt: number; readonly wentBack: boolean }
+  | { readonly waitsOnItsPerson: true }
+  | { readonly heldForTheBackground: true }
+
+interface WentBackTo {
+  readonly cause: TaskStallCause
+  readonly at: number
+  readonly by: PieceRow['stalledBy']
+  readonly limit?: StoppedOnALimit
+  readonly login?: StoppedOnALogin
+}
+
+/**
+ * Everything {@link derivePieces} holds after a row. Handed back to it, it folds only the rows after
+ * and answers as a fold of the whole ledger would. Never changed once made.
+ */
+export interface PieceFold {
+  readonly rows: readonly PieceRow[]
+  readonly changeTimes: ReadonlyMap<string, { readonly at: number; readonly order: number }>
+  readonly changeAt: number
+  readonly changeOrder: number
+  readonly sourceOrdinal: number
+  readonly open: ReadonlyMap<string, { readonly row: PieceRow; readonly index: number }>
+  readonly indexOfPiece: ReadonlyMap<string, number>
+  readonly byMessage: ReadonlyMap<string, string>
+  readonly travelled: ReadonlySet<string>
+  readonly asked: Pick<AskToStop, 'by' | 'asker'> | null
+  readonly whoseWordsDroveItLast: ReadonlyMap<string, boolean>
+  readonly aPersonOpenedThisTurnFor: ((piece: string) => boolean) | null
+  readonly waitsOnWhoWroteSince: ReadonlyMap<
+    string,
+    { readonly at: number; readonly cause: TaskStallCause }
+  >
+  readonly waitingToDriveIt: ReadonlyMap<
+    string,
+    { readonly target: string | null; readonly note: boolean }
+  >
+  readonly heldForTheQueue: ReadonlyMap<string, HeldForTheQueue>
+  readonly inTheBackground: ReadonlyMap<string, string>
+  readonly scheduled: ReadonlyMap<string, string>
+  readonly heldForTheBackground: ReadonlyMap<string, HeldForTheBackground>
+  readonly stalledAsItsWakeWasDue: ReadonlyMap<string, number>
+  readonly theStopWasARefusedLogin: boolean
+  readonly theStopWasOnAKey: boolean
+  readonly reopenedSinceItsLoginWasRefused: boolean
+  readonly aTurnIsOpen: boolean
+  readonly aDriveWaitsForItsTurn: boolean
+  readonly pendingDriveAt: number
+  readonly pendingDriveOrder: number
+  readonly driving: boolean
+  readonly cutByAnInterrupt: ReadonlyMap<string, number>
+  readonly theTurnNames: ReadonlySet<string> | null
+  readonly theTurnGoesBackTo: ReadonlyMap<string, number>
+  readonly theCutTurnDrove: ReadonlyMap<string, AsTheCutLeftIt>
+  readonly wentBackTo: ReadonlyMap<string, WentBackTo>
+}
+
 /**
  * 🔴 **The whole of S1: one conversation's ledger folded into the pieces it was given** (379 as
  * tasks; pieces since D-016).
@@ -1196,13 +1275,18 @@ export function derivePieces(
     readonly backgroundWakesIt?: boolean
     /** ⚑ **F076** — this conversation's provider, for whose login a refusal names ({@link StoppedOnALogin.provider}). */
     readonly provider?: TurnLimitOnTheRow['provider']
+    /** Where an earlier fold of the same ledger stood: only the rows after it are in `entries`. */
+    readonly from?: PieceFold
+    /** Told where this fold stands after its last row, to be carried on from there later. */
+    readonly keep?: (fold: PieceFold) => void
   } = {},
 ): readonly PieceRow[] {
-  const rows: PieceRow[] = []
-  const changeTimes = new Map<string, { at: number; order: number }>()
-  let changeAt = 0
-  let changeOrder = 0
-  let sourceOrdinal = -1
+  const from = options.from
+  const rows: PieceRow[] = [...(from?.rows ?? [])]
+  const changeTimes = new Map<string, { at: number; order: number }>(from?.changeTimes)
+  let changeAt = from?.changeAt ?? 0
+  let changeOrder = from?.changeOrder ?? 0
+  let sourceOrdinal = from?.sourceOrdinal ?? -1
   const noteChange = (before: PieceRow, after: PieceRow): void => {
     if (
       options.trackChanges &&
@@ -1215,16 +1299,16 @@ export function derivePieces(
   }
   // ⚠️ **Mutable state per open piece, folded down at the end.** A `PieceRow` is `readonly` because a
   // caller must not be able to edit a derivation; the fold keeps its own boxes.
-  const open = new Map<string, { row: PieceRow; index: number }>()
+  const open = new Map<string, { row: PieceRow; index: number }>(from?.open)
   // ⚑ **724 · where each piece's row is, open or not** — `reply_undelivered` lands AFTER the reply
   // that closed the piece, and a line about a title or a status can land on an ended one, so `open`
   // has already let it go.
-  const indexOfPiece = new Map<string, number>()
-  const byMessage = new Map<string, string>()
+  const indexOfPiece = new Map<string, number>(from?.indexOfPiece)
+  const byMessage = new Map<string, string>(from?.byMessage)
   // ⚑ **Which of this conversation's questions were the PARENT's to answer** (400) — see
   // {@link PieceRow.questionLostAtRestart}. ⛔ Ids only: what became of each one is
   // `deriveRoutedRequests`' answer and this fold must not grow a second opinion about it.
-  const travelled = new Set<string>()
+  const travelled = new Set<string>(from?.travelled)
   /**
    * 🔴 **484/491 · the ask the current turn ending belongs to, and nothing further back.**
    *
@@ -1245,10 +1329,11 @@ export function derivePieces(
    * ⚠️ The clearing paragraph's example moved with it — a permission answered `cancel` now writes
    * its own actor here, so what an idle ask must not cross into is a LATER turn, not this one.
    */
-  let asked: Pick<AskToStop, 'by' | 'asker'> | null = null
+  let asked: Pick<AskToStop, 'by' | 'asker'> | null = from?.asked ?? null
   /** Whose words last drove each piece; notes preserve the author behind an existing person wait. */
-  const whoseWordsDroveItLast = new Map<string, boolean>()
-  let aPersonOpenedThisTurnFor: ((piece: string) => boolean) | null = null
+  const whoseWordsDroveItLast = new Map<string, boolean>(from?.whoseWordsDroveItLast)
+  let aPersonOpenedThisTurnFor: ((piece: string) => boolean) | null =
+    from?.aPersonOpenedThisTurnFor ?? null
   /** ⚑ **F097** — a person's own words last drove this piece ({@link whoseWordsDroveItLast}). */
   const aPersonOpenedItFor = (piece: string): boolean => whoseWordsDroveItLast.get(piece) === true
   /**
@@ -1258,7 +1343,7 @@ export function derivePieces(
   const waitsOnWhoWroteSince = new Map<
     string,
     { readonly at: number; readonly cause: TaskStallCause }
-  >()
+  >(from?.waitsOnWhoWroteSince)
 
   // ⚠️ **`carried` is what the REPLY brings and nothing else ever passes** — every other transition
   // moves a state and touches no field the agent authored. ⛔ Written as an explicit parameter
@@ -1477,7 +1562,9 @@ export function derivePieces(
    * ({@link theDriveOf}): the one piece its row names, or `null` — every open piece, as every row
    * written before commit 6 does. ⚑ So work is held only for a message that will drive it.
    */
-  const waitingToDriveIt = new Map<string, { target: string | null; note: boolean }>()
+  const waitingToDriveIt = new Map<string, { target: string | null; note: boolean }>(
+    from?.waitingToDriveIt,
+  )
   const aWaitingMessageDrives = (piece: string, preservesPersonWait = false): boolean =>
     [...waitingToDriveIt.values()].some(
       ({ target, note }) =>
@@ -1489,20 +1576,7 @@ export function derivePieces(
    * that it is still written if no waiting message that drives it goes out (HO-018 §2.1: *nobody
    * waits forever in silence*). The row reads `working` meanwhile.
    */
-  const heldForTheQueue = new Map<
-    string,
-    {
-      readonly cause: TaskStallCause
-      readonly by: PieceRow['stalledBy']
-      readonly stopped?: readonly string[]
-      /** ⚑ **F076** — the login rider its drive's end chose, handed on at the release. */
-      readonly login?: StoppedOnALogin
-      /** ⚑ **F097** — a person's own words opened the turn that drive ended, handed on at the release. */
-      readonly aPersonWroteIt?: boolean
-      /** ⚑ **F097** — since when it waited on that person, for a reply held for it ({@link aReplyIsHeldFor}). */
-      readonly since?: number
-    }
-  >()
+  const heldForTheQueue = new Map<string, HeldForTheQueue>(from?.heldForTheQueue)
   const holdsAPersonReply = (
     piece: string,
     held:
@@ -1522,43 +1596,33 @@ export function derivePieces(
    * each is (`background_work`'s level, less what it says ENDED) and the wake-ups it has scheduled
    * (`scheduled_work`'s level). Levels REPLACE, never merge (`247`).
    */
-  const inTheBackground = new Map<string, string>()
-  const scheduled = new Map<string, string>()
+  const inTheBackground = new Map<string, string>(from?.inTheBackground)
+  const scheduled = new Map<string, string>(from?.scheduled)
   const backgroundWakesIt = options.backgroundWakesIt === true
   /** ⚑ **D-013 · a drive ended on these while waking background work ran** — see {@link PieceRow.inTheBackground}. */
-  const heldForTheBackground = new Map<
-    string,
-    {
-      readonly cause: TaskStallCause
-      readonly by: PieceRow['stalledBy']
-      /** ⚑ **F076** — the login rider its drive's end chose, handed on at the release. */
-      readonly login?: StoppedOnALogin
-      /** ⚑ **F097** — a person's own words opened the turn that drive ended, handed on at the release. */
-      readonly aPersonWroteIt?: boolean
-    }
-  >()
+  const heldForTheBackground = new Map<string, HeldForTheBackground>(from?.heldForTheBackground)
   /**
    * ⚑ **F076 — work its held background stalled as that work finished, while the provider's wake
    * was still to come** ({@link backgroundWakesIt}), by when: the wake's drive judges it again — and
    * a session a refused login ends before that wake ran stalls it on the login instead. ⚑ **F097** —
    * work that release left waiting on the person who wrote, too, by the same moment.
    */
-  const stalledAsItsWakeWasDue = new Map<string, number>()
+  const stalledAsItsWakeWasDue = new Map<string, number>(from?.stalledAsItsWakeWasDue)
   /**
    * ⚑ **F076 — the stop being read ended the session on a refused login** — set around the stop
    * arm's own {@link endOfDrive}, so the drive it cut stalls `login_refused` rather than
    * `turn_interrupted`.
    */
-  let theStopWasARefusedLogin = false
+  let theStopWasARefusedLogin = from?.theStopWasARefusedLogin ?? false
   /** ⚑ …and that login was an API key a person saved (`onAKey` on the stop's `status`). */
-  let theStopWasOnAKey = false
+  let theStopWasOnAKey = from?.theStopWasOnAKey ?? false
   /**
    * ⚑ **F076 — a `reopened` row since the last refused login** — so a stall written after the
    * reopen (a hold let go later, a stall put back) says it was reopened.
    */
-  let reopenedSinceItsLoginWasRefused = false
+  let reopenedSinceItsLoginWasRefused = from?.reopenedSinceItsLoginWasRefused ?? false
   /** ⚑ **D-013 · a turn is open** (a received message opened it, and its `turn` has not closed it). */
-  let aTurnIsOpen = false
+  let aTurnIsOpen = from?.aTurnIsOpen ?? false
   /**
    * 🔴 **D-016 · commit 6 · R4 — a drive began (`status: working` with no turn open) and its turn's
    * row has not come**: that row says what it drives. ⚑ Until it comes — and for a wake, which no
@@ -1567,15 +1631,15 @@ export function derivePieces(
    * coming turn drives. ⚑ Resolved by {@link aDriveNamedNothing} wherever the drive's end is judged,
    * and at the end of the read.
    */
-  let aDriveWaitsForItsTurn = false
-  let pendingDriveAt = 0
-  let pendingDriveOrder = 0
+  let aDriveWaitsForItsTurn = from?.aDriveWaitsForItsTurn ?? false
+  let pendingDriveAt = from?.pendingDriveAt ?? 0
+  let pendingDriveOrder = from?.pendingDriveOrder ?? 0
   /**
    * ⚑ **D-013 · the provider is running and no `turn` has ended the drive yet** — set by `working`,
    * cleared by a `turn` or a stop. ⚑ A background wake ends on its own `turn` row since F080
    * (`startedBy`); in a ledger written before, it went idle again, or was stopped, with no turn.
    */
-  let driving = false
+  let driving = from?.driving ?? false
   /**
    * 🔴 **The work an interrupt cut, and the turn it made room for** — measured: an interrupt made
    * room for another piece's brief, and its owner answered that piece and went back, in the same
@@ -1597,30 +1661,20 @@ export function derivePieces(
    * ({@link restoreTheEarlierStalls}) — ⛔ never a new `turn_ended`, and never held for the
    * background.
    */
-  let cutByAnInterrupt = new Map<string, number>()
-  let theTurnNames: Set<string> | null = null
-  let theTurnGoesBackTo = new Map<string, number>()
+  let cutByAnInterrupt = new Map<string, number>(from?.cutByAnInterrupt)
+  let theTurnNames: Set<string> | null =
+    from?.theTurnNames === undefined || from.theTurnNames === null
+      ? null
+      : new Set(from.theTurnNames)
+  let theTurnGoesBackTo = new Map<string, number>(from?.theTurnGoesBackTo)
   /**
    * ⚑ **What a drive a stop cut was driving, as the cut left each piece** — stalled at a moment
    * (and whether that drive had only gone back to it), waiting on the person who gave it, or held
    * for the background — for a next turn whose words asked for that stop
    * ({@link UserTurnEvent.askedForTheStop}): it carries on with them, as the cut drive did.
    */
-  type AsTheCutLeftIt =
-    | { readonly stalledAt: number; readonly wentBack: boolean }
-    | { readonly waitsOnItsPerson: true }
-    | { readonly heldForTheBackground: true }
-  let theCutTurnDrove = new Map<string, AsTheCutLeftIt>()
-  const wentBackTo = new Map<
-    string,
-    {
-      readonly cause: TaskStallCause
-      readonly at: number
-      readonly by: PieceRow['stalledBy']
-      readonly limit?: StoppedOnALimit
-      readonly login?: StoppedOnALogin
-    }
-  >()
+  let theCutTurnDrove = new Map<string, AsTheCutLeftIt>(from?.theCutTurnDrove)
+  const wentBackTo = new Map<string, WentBackTo>(from?.wentBackTo)
   /**
    * ⚑ **D-005a** — nothing will go out of the queue (the conversation was replaced): write what each
    * held piece's drive ended as, now.
@@ -2684,6 +2738,42 @@ export function derivePieces(
       if (event.state === 'working') stalledAsItsWakeWasDue.clear()
     }
   }
+
+  // Copies: what follows reads the fold as ended here, which a later row may not.
+  options.keep?.({
+    rows: [...rows],
+    changeTimes: new Map(changeTimes),
+    changeAt,
+    changeOrder,
+    sourceOrdinal,
+    open: new Map(open),
+    indexOfPiece: new Map(indexOfPiece),
+    byMessage: new Map(byMessage),
+    travelled: new Set(travelled),
+    asked,
+    whoseWordsDroveItLast: new Map(whoseWordsDroveItLast),
+    aPersonOpenedThisTurnFor,
+    waitsOnWhoWroteSince: new Map(waitsOnWhoWroteSince),
+    waitingToDriveIt: new Map(waitingToDriveIt),
+    heldForTheQueue: new Map(heldForTheQueue),
+    inTheBackground: new Map(inTheBackground),
+    scheduled: new Map(scheduled),
+    heldForTheBackground: new Map(heldForTheBackground),
+    stalledAsItsWakeWasDue: new Map(stalledAsItsWakeWasDue),
+    theStopWasARefusedLogin,
+    theStopWasOnAKey,
+    reopenedSinceItsLoginWasRefused,
+    aTurnIsOpen,
+    aDriveWaitsForItsTurn,
+    pendingDriveAt,
+    pendingDriveOrder,
+    driving,
+    cutByAnInterrupt: new Map(cutByAnInterrupt),
+    theTurnNames: theTurnNames === null ? null : new Set(theTurnNames),
+    theTurnGoesBackTo: new Map(theTurnGoesBackTo),
+    theCutTurnDrove: new Map(theCutTurnDrove),
+    wentBackTo: new Map(wentBackTo),
+  })
 
   // ⚑ **D-016 · commit 6 · R4 — a read taken between a `status: working` and its turn's row** sees
   // the work driven, as it did when that row drove every piece.
