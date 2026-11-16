@@ -2045,19 +2045,29 @@ describe('a work wait is reconciled without a window', () => {
     }
   }
 
-  it.each(['failed', 'abandoned', 'unsampled', 'moved'] as const)(
+  it('an incident snapshot a writer overtook twice is shown, never read again on main', async () => {
+    const fixture = await incidentWindow()
+    fixture.read.mockImplementation(async (query) => {
+      const result = fixture.engine.read(query)
+      record(fixture.owner, { type: 'status', state: 'working' })
+      return result
+    })
+    try {
+      expect(await fixture.look()).toMatchObject({ rows: [{ piece: fixture.work.piece }] })
+      expect(fixture.read).toHaveBeenCalledTimes(2)
+      expect(fixture.main).not.toHaveBeenCalled()
+    } finally {
+      fixture.close()
+    }
+  })
+
+  it.each(['failed', 'abandoned', 'unsampled'] as const)(
     'incident worker %s reports failure without repeating its work on main',
     async (failure) => {
       const fixture = await incidentWindow()
       let at = 1000
       vi.spyOn(performance, 'now').mockImplementation(() => at)
       if (failure === 'unsampled') stampsAvailable = false
-      else if (failure === 'moved')
-        fixture.read.mockImplementation(async (query) => {
-          const result = fixture.engine.read(query)
-          record(fixture.owner, { type: 'status', state: 'working' })
-          return result
-        })
       else
         fixture.read.mockRejectedValue(
           new WindowReadUnavailable(failure === 'failed' ? 'failed' : 'unavailable'),
