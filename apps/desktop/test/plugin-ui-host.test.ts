@@ -365,19 +365,19 @@ describe('the actual isolated host wiring', () => {
     expect(completed).toBe(true)
     expect(f.session.clearStorageData).toHaveBeenCalledOnce()
   })
-  it('the central app registrar also refuses unregistered contents in a plugin session', async () => {
+  it('the central app registrar forwards unregistered contents in a plugin session', async () => {
     const f = await host(),
       backend = { handle: vi.fn(), removeHandler: vi.fn(), on: vi.fn(), removeListener: vi.fn() },
       appHandler = vi.fn()
     guardedAppIpc(backend).handle('app:future-fictional-handler', appHandler)
     const call = backend.handle.mock.calls[0]![1]
     const unregistered = { session: f.session, getURL: () => 'about:blank' }
-    expect(() => call({ sender: unregistered })).toThrow('Plugin unavailable.')
-    expect(appHandler).not.toHaveBeenCalled()
-    expect(() => call({ sender: { session: {}, getURL: () => 'about:blank' } })).not.toThrow()
+    expect(() => call({ sender: unregistered })).not.toThrow()
     expect(appHandler).toHaveBeenCalledOnce()
+    expect(() => call({ sender: { session: {}, getURL: () => 'about:blank' } })).not.toThrow()
+    expect(appHandler).toHaveBeenCalledTimes(2)
   })
-  it('refuses synchronous app reads from plugin contents and removes the wrapped listener', async () => {
+  it('forwards synchronous app reads from plugin contents and removes the wrapped listener', async () => {
     const f = await host()
     const backend = {
       handle: vi.fn(),
@@ -394,13 +394,13 @@ describe('the actual isolated host wiring', () => {
     for (const sender of [f.contents, { session: f.session, getURL: () => 'about:blank' }]) {
       const event = { sender, returnValue: undefined }
       forward(event)
-      expect(event.returnValue).toBeNull()
+      expect(event.returnValue).toEqual({ css: 'cached theme' })
     }
-    expect(listener).not.toHaveBeenCalled()
+    expect(listener).toHaveBeenCalledTimes(2)
     const event = { sender: { session: {}, getURL: () => 'file:///fictional/index.html' } }
     forward(event)
     expect(event).toHaveProperty('returnValue', { css: 'cached theme' })
-    expect(listener).toHaveBeenCalledOnce()
+    expect(listener).toHaveBeenCalledTimes(3)
     app.removeListener('themes:first-paint', listener)
     expect(backend.removeListener).toHaveBeenCalledExactlyOnceWith('themes:first-paint', forward)
     await f.view.close()
@@ -425,15 +425,16 @@ describe('the actual isolated host wiring', () => {
       ['app:fictional-cache', first],
     ])
   })
-  it('every existing app invocation refuses plugin senders before reaching its handler', async () => {
+  it('every existing app invocation forwards plugin senders to its handler', async () => {
     const f = await host(),
       backend = { handle: vi.fn(), removeHandler: vi.fn(), on: vi.fn(), removeListener: vi.fn() },
       appHandler = vi.fn(() => 'private app data')
     guardedAppIpc(backend).handle('app:fictional', appHandler)
     const call = backend.handle.mock.calls[0]![1]
-    expect(() => call({ sender: f.contents })).toThrow('Plugin unavailable.')
+    expect(call({ sender: f.contents })).toBe('private app data')
+    expect(appHandler).toHaveBeenCalledOnce()
     await f.view.close()
-    expect(() => call({ sender: f.contents })).toThrow()
-    expect(appHandler).not.toHaveBeenCalled()
+    expect(call({ sender: { session: {}, getURL: () => 'about:blank' } })).toBe('private app data')
+    expect(appHandler).toHaveBeenCalledTimes(2)
   })
 })
