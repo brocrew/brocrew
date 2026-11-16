@@ -20799,13 +20799,17 @@ export class RuntimeHost implements LiveHost {
       nextConnection != null &&
       nextConnection !== session.connection?.id
     ) {
-      this.record(session, () => {
-        if (named.kind === 'model')
-          this.deps.store.setModel(sessionId, named.model, requestedConnection)
-        if (named.kind === 'reasoningEffort' || named.effort !== undefined)
-          this.deps.store.setReasoningEffort(sessionId, named.effort ?? null)
-        this.deps.store.aPersonSetItsModelOrEffort(sessionId, this.now())
-      })
+      this.record(
+        session,
+        () => {
+          if (named.kind === 'model')
+            this.deps.store.setModel(sessionId, named.model, requestedConnection)
+          if (named.kind === 'reasoningEffort' || named.effort !== undefined)
+            this.deps.store.setReasoningEffort(sessionId, named.effort ?? null)
+          this.deps.store.aPersonSetItsModelOrEffort(sessionId, this.now())
+        },
+        'provider_session',
+      )
       const row = this.deps.store.whatItRunsOn(sessionId)
       const thePick =
         list === null
@@ -20816,7 +20820,6 @@ export class RuntimeHost implements LiveHost {
               row?.model == null ? null : { model: row.model, effort: row.reasoningEffort },
               list,
             )
-      if (session.sink.alive) this.reportRecordingFailure(session)
       this.publishStateIfChanged(session)
       return { settings: settingsDisclosure(session), thePick }
     }

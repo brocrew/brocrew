@@ -36,7 +36,9 @@ for (const provider of ['claude', 'codex'] as const) {
     expect(world.store.whatItRunsOn(created.sessionId)).toEqual(before)
     expect(world.store.connectionOf(created.sessionId)).toBe(`${provider}:api-key`)
     expect(warned).toHaveBeenCalledWith(
-      expect.stringContaining(`session=${created.sessionId} table=provider_session code=SQLITE_FULL`),
+      expect.stringContaining(
+        `session=${created.sessionId} table=provider_session code=SQLITE_FULL`,
+      ),
     )
     write.mockRestore()
     await expect(host.setSessionSetting(created.sessionId, change, world.window)).resolves.toEqual(
