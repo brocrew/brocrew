@@ -18,7 +18,11 @@ import {
   type RuntimeHost,
 } from '../src/main/runtime/runtime-host'
 
-import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
+import {
+  aServiceWorld,
+  acceptedGive as accepted,
+  type AServiceWorld,
+} from './helpers/a-service-world'
 
 /**
  * Work given to a service queues on its one conversation: owned by it, given by its caller, in the
@@ -35,10 +39,6 @@ describe('a service queues the work it is given', () => {
     await world.cleanUp()
   })
 
-  const accepted = (outcome: GiveOutcome): Extract<GiveOutcome, { ok: true }> => {
-    if (!outcome.ok) throw new Error(`refused (${outcome.refusal.rail}): ${outcome.refusal.reason}`)
-    return outcome
-  }
   const refusedAs = (outcome: GiveOutcome): string => {
     if (outcome.ok) throw new Error(`given, to ${outcome.owner}`)
     return outcome.refusal.rail

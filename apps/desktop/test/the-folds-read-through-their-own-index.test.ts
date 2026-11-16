@@ -1,11 +1,6 @@
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fixtureStoreStatements } from './lib/host-fixture'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore } from '../src/main/db/session-store'
+import type { AppDatabase } from '../src/main/db/connection'
 import { FOLD_EVENT_TYPES, FOLD_TERM, FOLD_TYPE_LIST } from '../src/main/db/fold-index'
 
 /**
@@ -21,32 +16,18 @@ import { FOLD_EVENT_TYPES, FOLD_TERM, FOLD_TYPE_LIST } from '../src/main/db/fold
  * through it. ⛔ SQLite uses a partial index only for a WHERE that implies the index's, word for
  * word — a list that drifted would stop the store from starting, and §1's control shows that.
  */
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
-
 describe('F071 · the ledger folds read through their own index', () => {
-  let dir: string
+  let close: () => void
   let db: AppDatabase
   /** The SQL of every statement the store prepares, as it prepares it. */
   let prepared: string[]
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'brobot2-fold-index-'))
-    db = openDatabase(join(dir, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
-    prepared = []
-    const prepare = db.prepare.bind(db)
-    ;(db as unknown as { prepare: typeof db.prepare }).prepare = ((sql: string) => {
-      prepared.push(sql)
-      return prepare(sql)
-    }) as typeof db.prepare
-    createSessionStore(db, () => 1)
-    ;(db as unknown as { prepare: typeof db.prepare }).prepare = prepare
+    ;({ db, prepared, close } = fixtureStoreStatements('brobot2-fold-index-'))
   })
 
   afterEach(() => {
-    db.close()
-    rmSync(dir, { recursive: true, force: true })
+    close()
   })
 
   const isOwnerSchedule = (sql: string): boolean =>

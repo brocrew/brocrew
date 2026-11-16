@@ -2,6 +2,7 @@ import { tmpdir } from 'node:os'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { openDatabase } from '../../src/main/db/connection'
+import { createSessionStore } from '../../src/main/db/session-store'
 import { applyMigrations } from '../../src/main/db/migrate'
 import { resourcesRoot } from '../../src/main/resources/resources'
 import { resolveSessionCwd } from '../../src/main/runtime/scratch-cwd'
@@ -138,4 +139,32 @@ export async function waitFor(predicate: () => boolean, what: string): Promise<v
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
   throw new Error(`timed out waiting for ${what}`)
+}
+
+export async function settleFixtureTurns(rounds: number, delay: number): Promise<void> {
+  for (let round = 0; round < rounds; round++) {
+    for (let turn = 0; turn < 5; turn++) await new Promise((resolve) => setImmediate(resolve))
+    await new Promise((resolve) => setTimeout(resolve, delay))
+  }
+}
+
+export function fixtureStoreStatements(prefix: string) {
+  const folder = fixtureFolder(prefix)
+  const db = fixtureDatabase(folder)
+  const prepared: string[] = []
+  const prepare = db.prepare.bind(db)
+  ;(db as unknown as { prepare: typeof db.prepare }).prepare = ((sql: string) => {
+    prepared.push(sql)
+    return prepare(sql)
+  }) as typeof db.prepare
+  createSessionStore(db, () => 1)
+  ;(db as unknown as { prepare: typeof db.prepare }).prepare = prepare
+  return {
+    db,
+    prepared,
+    close: () => {
+      db.close()
+      rmSync(folder, { recursive: true, force: true })
+    },
+  }
 }

@@ -1,5 +1,6 @@
 import {
   fixtureHostPaths,
+  settleFixtureTurns,
   fixtureDatabase,
   fixtureProviderConfig,
   RecordingSink,
@@ -70,12 +71,7 @@ async function waitFor(predicate: () => boolean, what: string): Promise<void> {
   throw new Error(`timed out waiting for ${what}`)
 }
 
-async function settle(): Promise<void> {
-  for (let round = 0; round < 4; round++) {
-    for (let turn = 0; turn < 5; turn++) await new Promise((resolve) => setImmediate(resolve))
-    await new Promise((resolve) => setTimeout(resolve, GAP + 30))
-  }
-}
+const settle = (): Promise<void> => settleFixtureTurns(4, GAP + 30)
 
 function held(why: string): Held {
   let end = (): void => {}

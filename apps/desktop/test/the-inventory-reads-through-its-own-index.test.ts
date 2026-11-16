@@ -1,11 +1,6 @@
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fixtureStoreStatements } from './lib/host-fixture'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore } from '../src/main/db/session-store'
+import type { AppDatabase } from '../src/main/db/connection'
 
 /**
  * 🔴 **D-035 · the tool inventory in force where a page begins is read through its own index** —
@@ -19,32 +14,18 @@ import { createSessionStore } from '../src/main/db/session-store'
  * ⚑ **What this pins**: the migrations create the index on the key and type it was built for, and
  * SQLite reads the one statement that names it through it — a seek, whatever the ledger holds.
  */
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
-
 describe('D-035 · the tool inventory reads through its own index', () => {
-  let dir: string
+  let close: () => void
   let db: AppDatabase
   /** The SQL of every statement the store prepares, as it prepares it. */
   let prepared: string[]
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'brobot2-inventory-index-'))
-    db = openDatabase(join(dir, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
-    prepared = []
-    const prepare = db.prepare.bind(db)
-    ;(db as unknown as { prepare: typeof db.prepare }).prepare = ((sql: string) => {
-      prepared.push(sql)
-      return prepare(sql)
-    }) as typeof db.prepare
-    createSessionStore(db, () => 1)
-    ;(db as unknown as { prepare: typeof db.prepare }).prepare = prepare
+    ;({ db, prepared, close } = fixtureStoreStatements('brobot2-inventory-index-'))
   })
 
   afterEach(() => {
-    db.close()
-    rmSync(dir, { recursive: true, force: true })
+    close()
   })
 
   const throughTheIndex = (): string[] =>

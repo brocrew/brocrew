@@ -14,6 +14,7 @@ import { clockTime } from '../src/shared/clock'
 
 import {
   aServiceWorld,
+  acceptedGive as accepted,
   aServiceAndCaller,
   aServiceWithHeldFirstBrief,
   type AServiceWorld,
@@ -30,10 +31,6 @@ describe('a service takes one piece at a time', () => {
     await world.cleanUp()
   })
 
-  const accepted = (outcome: GiveOutcome): Extract<GiveOutcome, { ok: true }> => {
-    if (!outcome.ok) throw new Error(`refused (${outcome.refusal.rail}): ${outcome.refusal.reason}`)
-    return outcome
-  }
   const aServiceAndACaller = (opts: { auto?: boolean } = {}) => aServiceAndCaller(world, opts)
   const piecesOf = (service: string): readonly PieceRow[] => world.store.piecesOwnedBy(service)
   const stateOf = (service: string, piece: string): string | undefined =>

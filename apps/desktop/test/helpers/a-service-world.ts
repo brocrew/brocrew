@@ -484,6 +484,11 @@ export async function aGiverAndHelper() {
   return { world, host, giver }
 }
 
+export function acceptedGive(outcome: GiveOutcome): Extract<GiveOutcome, { ok: true }> {
+  if (!outcome.ok) throw new Error(`refused (${outcome.refusal.rail}): ${outcome.refusal.reason}`)
+  return outcome
+}
+
 export async function aServiceAndCaller(world: AServiceWorld, opts: { auto?: boolean } = {}) {
   world.anAgent('browser-driver')
   world.anAgent('caller', 'nothing kept')
