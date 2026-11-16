@@ -327,11 +327,6 @@ function restoredFrom(before: Record<string, string>): Standing {
   return { files, gate: theGate(drafts !== undefined, before) }
 }
 
-/** `before` after a finished restore and return: all as it was, with no redundant restored copy. */
-function returnedFrom(before: Record<string, string>): Standing {
-  return { files: before, gate: null }
-}
-
 /** Where a test stops a restore or a return: before or after a step, or after one rename. */
 type Fault =
   | { readonly at: Step; readonly after?: boolean }
@@ -789,7 +784,7 @@ describe('drafts.json and each sidecar, restored and returned', () => {
       expect(existsSync(join(userData, `brobot2.sqlite${suffix}`))).toBe(false)
     }
     await returnToNewer({ userData })
-    expect(standing(userData)).toEqual(returnedFrom(before))
+    expect(standing(userData)).toEqual(asItWas(before))
     expect(existsSync(join(userData, PRESERVED))).toBe(false)
   })
 })
@@ -884,7 +879,7 @@ describe('a return stopped at any boundary, then recovered', () => {
           expect(standing(userData), said(fault)).toEqual(restoredFrom(before))
         } else {
           expect(recovered, said(fault)).toEqual({ kind: 'finished', what: 'return' })
-          expect(standing(userData), said(fault)).toEqual(returnedFrom(before))
+          expect(standing(userData), said(fault)).toEqual(asItWas(before))
         }
         expect(await recoverInterrupted({ userData })).toEqual({ kind: 'nothing-to-do' })
         throwAway(userData)
@@ -1016,7 +1011,7 @@ describe('a return that stops after any one change to the disk', () => {
         const underway = existsSync(join(userData, JOURNAL)) || !existsSync(join(userData, GATE))
         await recoverInterrupted({ userData, fs: UNFLUSHED })
         expect(standing(userData), `stopped at change ${String(at)} of ${String(total)}`).toEqual(
-          underway ? returnedFrom(before) : restoredFrom(before),
+          underway ? asItWas(before) : restoredFrom(before),
         )
         throwAway(userData)
       }
@@ -1046,7 +1041,7 @@ describe('a return that stops after any one change to the disk', () => {
           )
           await recoverInterrupted({ userData, fs: UNFLUSHED })
           const where = `return stopped at change ${String(at)}, recovery at change ${String(dies)}`
-          expect(standing(userData), where).toEqual(returnedFrom(before))
+          expect(standing(userData), where).toEqual(asItWas(before))
           throwAway(userData)
           recoveries += 1
           if (finished && recovery.changes() < dies) break
@@ -1728,7 +1723,7 @@ describe('returnToNewer', () => {
     const seen: number[] = []
     const returned = await returnToNewer({ userData, progress: (done) => seen.push(done) })
     expect(returned).toEqual({ database: join(userData, 'brobot2.sqlite') })
-    expect(standing(userData)).toEqual(returnedFrom(before))
+    expect(standing(userData)).toEqual(asItWas(before))
     expect(existsSync(join(userData, PRESERVED))).toBe(false)
     expect(seen).toEqual([0, 1, 2, 3, 4, 5, 6])
   })
@@ -1849,7 +1844,7 @@ describe('returnToNewer', () => {
     )
     await stoppedBy(returnToNewer({ userData, ...stoppingAt({ at: 'moving' }) }))
     expect(await recoverInterrupted({ userData })).toEqual({ kind: 'finished', what: 'return' })
-    expect(standing(userData)).toEqual(returnedFrom(before))
+    expect(standing(userData)).toEqual(asItWas(before))
   })
 
   it('refuses, changing nothing, a gate that lists a file this build does not move', async () => {

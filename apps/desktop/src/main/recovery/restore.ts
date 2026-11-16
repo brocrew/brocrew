@@ -29,6 +29,9 @@ import {
   copyDurably,
   errorCode,
   nodeFs,
+  remove,
+  removeIfEmpty,
+  sweepLeftovers,
   pathExists,
   privateDir,
   readTextOrNull,
@@ -43,8 +46,6 @@ import {
 import {
   DATABASE_FILE,
   FAMILY,
-  GATE_FILE,
-  JOURNAL_FILE,
   checkpointDatabase,
   checkpointDir,
   databaseFile,
@@ -59,12 +60,12 @@ import {
   preservedRoot,
   recoveryDir,
   restoredAsideDir,
-  scratchDir,
   stagedDir,
   stagedRoot,
   stateFile,
   workspaceIdFile,
 } from './layout'
+export { sweepLeftovers } from './files'
 import { APP_STATE_FILES } from './state-files'
 import { copySkillTree, stateContentAt as contentAt } from './trees'
 import { gunzipCheckpoint } from './checkpoint-compression'
@@ -392,47 +393,6 @@ export function readGateOnDisk(
   return recordOnDisk(gateFile(userData), parseGate, 'history-only record', fs)
 }
 
-export async function sweepLeftovers(userData: string, fs: RecoveryFs = nodeFs): Promise<boolean> {
-  let hasGate: boolean
-  try {
-    await assertOwnedPathsAreReal(userData, [], fs)
-    if (await pathExists(journalFile(userData), fs)) return false
-    hasGate = await pathExists(gateFile(userData), fs)
-  } catch {
-    return false
-  }
-  const entriesOf = (folder: string): Promise<string[]> => fs.readdir(folder).catch(() => [])
-  for (const root of [stagedRoot(userData), scratchDir(userData)]) {
-    for (const entry of await entriesOf(root)) {
-      if (!isUuid(entry)) continue
-      await remove(userData, join(root, entry), fs).catch(() => undefined)
-    }
-    await removeIfEmpty(userData, root, fs).catch(() => undefined)
-  }
-  let returnedCopiesRemoved = true
-  if (!hasGate) {
-    const restoredSuffix = '-restored'
-    const preserved = await fs.readdir(preservedRoot(userData)).catch((error) => {
-      if (errorCode(error) !== 'ENOENT') returnedCopiesRemoved = false
-      return []
-    })
-    for (const entry of preserved) {
-      if (!entry.endsWith(restoredSuffix) || !isUuid(entry.slice(0, -restoredSuffix.length)))
-        continue
-      await remove(userData, join(preservedRoot(userData), entry), fs).catch(() => {
-        returnedCopiesRemoved = false
-      })
-    }
-    await removeIfEmpty(userData, preservedRoot(userData), fs).catch(() => undefined)
-  }
-  for (const entry of await entriesOf(recoveryDir(userData))) {
-    if (isRecordLeftover(entry)) {
-      await remove(userData, join(recoveryDir(userData), entry), fs).catch(() => undefined)
-    }
-  }
-  return returnedCopiesRemoved
-}
-
 // ---------------------------------------------------------------------------------------------
 
 /** The state files a restore installs and sets aside together with the database. */
@@ -615,32 +575,6 @@ async function ownedFolder(userData: string, folder: string, fs: RecoveryFs): Pr
   await assertOwnedPathsAreReal(userData, [folder], fs)
   await privateDir(folder, fs)
   await syncFolder(dirname(folder), fs)
-}
-
-/** Removes a file or a folder and all it holds, once nothing on the way to it is a link. */
-async function remove(userData: string, path: string, fs: RecoveryFs): Promise<void> {
-  await assertOwnedPathsAreReal(userData, [path], fs)
-  await retrying(() => fs.rm(path, { recursive: true, force: true }))
-}
-
-/** Removes a folder only when nothing is in it. */
-async function removeIfEmpty(userData: string, folder: string, fs: RecoveryFs): Promise<void> {
-  let entries: string[]
-  try {
-    entries = await fs.readdir(folder)
-  } catch (error) {
-    if (errorCode(error) === 'ENOENT') return
-    throw error
-  }
-  if (entries.length === 0) await remove(userData, folder, fs)
-}
-
-/** Whether `name` is a temporary file `writeAtomically` left while writing the journal or gate. */
-function isRecordLeftover(name: string): boolean {
-  return [JOURNAL_FILE, GATE_FILE].some(
-    (record) =>
-      name.startsWith(`${record}.`) && /^\.[0-9a-f]{12}\.tmp$/.test(name.slice(record.length)),
-  )
 }
 
 async function readTheCheckpoint(
