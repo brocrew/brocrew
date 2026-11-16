@@ -15689,6 +15689,17 @@ export class RuntimeHost implements LiveHost {
       if (this.launches.closed) throw new WindowReadUnavailable()
       this.deps.store.checkCommitted()
       const after = this.sampleWindowWriter(query)
+      // The worker read its snapshot after `origin`, so the owners changed since `origin` cover its
+      // folds, even when a writer overtook the read.
+      const folded =
+        result.kind === 'incidents'
+          ? result.routing
+          : result.kind === 'publication'
+            ? result.states
+            : result
+      if (folded?.kind === 'routes' || folded?.kind === 'listing')
+        this.windowFoldKept =
+          folded.cacheToken === undefined ? undefined : { stamp: origin, token: folded.cacheToken }
       if (
         query.kind === 'listing' &&
         after !== null &&
@@ -15704,27 +15715,10 @@ export class RuntimeHost implements LiveHost {
         origin.at <= before.at &&
         before.at <= after.at
       ) {
-        // The fold token belongs to the original read, never the writer that overtook it.
         this.windowListingKept = { stamp: origin, result, floor }
-        if (result.kind === 'listing')
-          this.windowFoldKept =
-            result.cacheToken === undefined
-              ? undefined
-              : { stamp: origin, token: result.cacheToken }
         return compose(result, floor, !sameWindowWriter(origin, after))
       }
       if (sameWindowWriter(origin, before) && sameWindowWriter(origin, after)) {
-        const folded =
-          result.kind === 'incidents'
-            ? result.routing
-            : result.kind === 'publication'
-              ? result.states
-              : result
-        if (folded?.kind === 'routes' || folded?.kind === 'listing')
-          this.windowFoldKept =
-            folded.cacheToken === undefined
-              ? undefined
-              : { stamp: after!, token: folded.cacheToken }
         if (query.kind === 'routes') this.windowRoutesKept = { stamp: after!, result }
         if (query.kind === 'incidents') {
           this.windowIncidentsKept = { stamp: after!, result }

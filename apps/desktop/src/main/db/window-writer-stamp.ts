@@ -29,14 +29,12 @@ const generationTriggers = operations.map((operation) => `window_read_generation
 const foldTriggers = operations.map((operation) => `window_read_fold_${operation}`)
 const quote = (name: string) => '"' + name.replaceAll('"', '""') + '"'
 const streamTypes = ['assistant_delta', 'thinking', 'text']
-const metadataOnly = new Set([
-  'agent_identity',
-  'identity_instruction',
-  'identity_instruction_seen',
-  'work_resource',
-  'work_sequence',
-  'archived_conversation',
-])
+// The tables besides `events` and `derived_generation` that kept folds read, by their owner column.
+const foldOwners: Readonly<Record<string, string>> = {
+  provider_session: 'id',
+  work: 'owner_session_id',
+  work_legacy_stall_cut: 'session_id',
+}
 const integer = (value: unknown): value is bigint => typeof value === 'bigint' && value >= 0n
 const watchers = new WeakMap<
   Database.Database,
@@ -142,14 +140,25 @@ export function windowWriterSampler(
         'id',
       ])
       const snapshotChanged = `(${routesChanged} AND (${rows.map((row) => `${row}.type NOT IN (${terms(streamTypes)})`).join(' OR ')}))`
+      // Other content changes only its own conversation's folds.
+      const otherContent = (row: string) =>
+        `${row}.type NOT IN (${FOLD_TYPE_LIST}, ${terms(streamTypes)})`
       db.exec(`CREATE TEMP TRIGGER IF NOT EXISTS window_read_event_${operation}
         AFTER ${operation} ON main.events
         WHEN ${snapshotChanged} OR (${routesChanged} AND (${rows.map(relevant).join(' OR ')}))
           OR (${leadsChanged} AND (${rows.map((row) => selects(row, THREAD_LEAD_EVENT_TYPES)).join(' OR ')}))
         BEGIN
           UPDATE window_read_revision SET revision = revision + 1 WHERE id = -3 AND ${snapshotChanged};
-          UPDATE window_read_revision SET revision = revision + 1 WHERE id = -2 AND ${snapshotChanged}
-            AND (${rows.map((row) => `${row}.type NOT IN (${FOLD_TYPE_LIST}, ${terms(streamTypes)})`).join(' OR ')});
+          UPDATE window_read_revision SET revision = revision + 1 WHERE id = -1 AND ${snapshotChanged}
+            AND (${rows.map(otherContent).join(' OR ')});
+          ${rows
+            .map(
+              (row) => `INSERT INTO window_read_fold_owners(session, revision)
+            SELECT ${row}.session_id, revision FROM window_read_revision
+              WHERE id = -1 AND ${snapshotChanged} AND ${otherContent(row)}
+            ON CONFLICT(session) DO UPDATE SET revision = excluded.revision;`,
+            )
+            .join('\n')}
           UPDATE window_read_revision SET revision = revision + 1
             WHERE id = 0 AND (${rows.map(route).join(' OR ')});
           UPDATE window_read_revision SET revision = revision + 1
@@ -211,10 +220,9 @@ export function windowWriterSampler(
           operation === 'UPDATE'
             ? `WHEN ${columns.map((column) => `OLD.${quote(column)} IS NOT NEW.${quote(column)}`).join(' OR ')}`
             : ''
-        const ownerColumn =
-          name === 'provider_session' ? 'id' : name === 'work' ? 'owner_session_id' : null
+        const ownerColumn = foldOwners[name]
         const owners =
-          ownerColumn === null
+          ownerColumn === undefined
             ? ''
             : `
           UPDATE window_read_revision SET revision = revision + 1 WHERE id = -1;
@@ -225,14 +233,10 @@ export function windowWriterSampler(
             ON CONFLICT(session) DO UPDATE SET revision = excluded.revision;`,
             )
             .join('\n')}`
-        const reset =
-          ownerColumn === null && !metadataOnly.has(name)
-            ? 'UPDATE window_read_revision SET revision = revision + 1 WHERE id = -2;'
-            : ''
         db.exec(`CREATE TEMP TRIGGER IF NOT EXISTS ${quote(trigger)} AFTER ${operation} ON main.${quote(name)} ${changed}
           BEGIN
             UPDATE window_read_revision SET revision = revision + 1 WHERE id = -3;
-            ${owners} ${reset}
+            ${owners}
           END;`)
       }
     }
