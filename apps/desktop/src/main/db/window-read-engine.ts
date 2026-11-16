@@ -20,11 +20,20 @@ import {
   type WindowListingStates,
 } from './window-read-protocol'
 
+/** How many of its capabilities an engine still honours. */
+const TOKENS_KEPT = 256
+
 /** Canonical folds over one read-only WAL snapshot, consuming SQLite iterators incrementally. */
 export class WindowReadEngine {
   private readonly db: Database.Database
   private readonly answers: SnapshotFoldAnswers = new Map()
   private cacheToken: string | undefined
+  /**
+   * Every capability this engine gave, newest last. Each was given after a snapshot older than every
+   * answer kept since, so the owners changed since its read cover those answers too: a read queued
+   * behind a newer lineage keeps them.
+   */
+  private readonly tokensGiven = new Set<string>()
 
   constructor(file: string) {
     this.db = new Database(file, { readonly: true, fileMustExist: true, timeout: 1000 })
@@ -47,7 +56,7 @@ export class WindowReadEngine {
       query.kind === 'publication' ||
       query.kind === 'incidents'
     if (keepsFolds) {
-      if (query.reuse === undefined || query.reuse.token !== this.cacheToken) {
+      if (query.reuse === undefined || !this.tokensGiven.has(query.reuse.token)) {
         this.answers.clear()
         this.cacheToken = undefined
       } else
@@ -360,13 +369,13 @@ export class WindowReadEngine {
       checkCancelled()
       this.db.exec('COMMIT')
       if (result.kind === 'routes' || result.kind === 'listing') {
-        this.cacheToken ??= randomUUID()
+        this.cacheToken ??= this.aNewToken()
         result = { ...result, cacheToken: this.cacheToken }
       } else if (result.kind === 'incidents') {
-        this.cacheToken ??= randomUUID()
+        this.cacheToken ??= this.aNewToken()
         result = { ...result, routing: { ...result.routing, cacheToken: this.cacheToken } }
       } else if (result.kind === 'publication' && result.states !== null) {
-        this.cacheToken ??= randomUUID()
+        this.cacheToken ??= this.aNewToken()
         result = { ...result, states: { ...result.states, cacheToken: this.cacheToken } }
       }
       return result
@@ -383,6 +392,17 @@ export class WindowReadEngine {
   close(): void {
     this.answers.clear()
     this.cacheToken = undefined
+    this.tokensGiven.clear()
     this.db.close()
+  }
+
+  private aNewToken(): string {
+    const token = randomUUID()
+    this.tokensGiven.add(token)
+    if (this.tokensGiven.size > TOKENS_KEPT) {
+      const oldest = this.tokensGiven.values().next().value
+      if (oldest !== undefined) this.tokensGiven.delete(oldest)
+    }
+    return token
   }
 }
