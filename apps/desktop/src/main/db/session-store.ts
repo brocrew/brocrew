@@ -3093,21 +3093,22 @@ export function createSessionStore(
 
   function carryThePiecesForward(trackChanges: boolean) {
     return (owner: string, generation: number, after: number, held: PiecesKept) => {
-      const rows = selectPieceEvents.all(owner, generation, after + 1) as EventRow[]
-      if (rows.length === 0) return held
-      // A row the whole fold would count as unread, or a first piece given, is the whole fold's.
-      let readable = true
-      const added = [
-        ...persistedEventsFrom(rows, () => {
-          readable = false
-        }),
-      ]
-      if (!readable) return null
-      if (held.fold === null)
-        return added.some((entry) => entry.event.type === 'work_given') ? null : held
-      const stalled = new Map(pieceStallOrdinals.get(held.answer))
-      const kept: { fold?: PieceFold } = {}
+      // A row the whole fold would count as unread, a first piece given, or a read that fails is
+      // the whole fold's.
       try {
+        const rows = selectPieceEvents.all(owner, generation, after + 1) as EventRow[]
+        if (rows.length === 0) return held
+        let readable = true
+        const added = [
+          ...persistedEventsFrom(rows, () => {
+            readable = false
+          }),
+        ]
+        if (!readable) return null
+        if (held.fold === null)
+          return added.some((entry) => entry.event.type === 'work_given') ? null : held
+        const stalled = new Map(pieceStallOrdinals.get(held.answer))
+        const kept: { fold?: PieceFold } = {}
         const answer = derivePieces(owner, added, {
           ...pieceFoldOptions(owner, trackChanges, stalled),
           from: held.fold,
