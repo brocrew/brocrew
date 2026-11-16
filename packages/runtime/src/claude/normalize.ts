@@ -521,7 +521,7 @@ function subAgentEvent(
     subtype === 'task_updated'
       ? readString(readField(message, 'patch'), 'status')
       : readString(message, 'status')
-  const outcome = subAgentOutcome(status)
+  const outcome = taskOutcome(status)
   if (subtype === 'task_updated' && !outcome) return null
   const summary = readString(message, 'summary')
   return {
@@ -585,7 +585,7 @@ function workflowRunEvent(
     subtype === 'task_updated'
       ? readString(readField(message, 'patch'), 'status')
       : readString(message, 'status')
-  const outcome = workflowOutcome(status)
+  const outcome = taskOutcome(status)
   if (subtype === 'task_updated' && !outcome) return null
   const outputFile = readString(message, 'output_file')
   return {
@@ -593,12 +593,6 @@ function workflowRunEvent(
     outcome: outcome ?? 'unknown',
     ...(outputFile ? { outputFile } : {}),
   }
-}
-
-function workflowOutcome(status: string): 'completed' | 'failed' | undefined {
-  if (status === 'completed') return 'completed'
-  if (status === 'failed' || status === 'error') return 'failed'
-  return undefined
 }
 
 function admitsWorkflow(
@@ -693,7 +687,7 @@ function admitsSubAgent(
   return subtype === 'task_progress' && tasks.join(agentId, kind)
 }
 
-function subAgentOutcome(status: string): 'completed' | 'failed' | undefined {
+function taskOutcome(status: string): 'completed' | 'failed' | undefined {
   if (status === 'completed') return 'completed'
   if (status === 'failed' || status === 'error') return 'failed'
   return undefined
