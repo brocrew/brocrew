@@ -84,6 +84,7 @@ jobs:
         run: |
           mkdir -p windows-suite
           pnpm exec vitest run --project '!dom' --shard=${{ matrix.shard }}/4 \
+            ${{ matrix.shard == 4 && '--no-file-parallelism' || '' }} \
             --reporter=default --reporter=json \
             --outputFile.json=windows-suite/test-${{ matrix.shard }}.json
 
