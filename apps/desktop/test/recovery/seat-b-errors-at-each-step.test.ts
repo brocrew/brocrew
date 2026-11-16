@@ -132,7 +132,8 @@ function liveAfterCopies(userData: string, copies: number): Record<string, strin
   const expected = liveOf(userData)
   const bytes = Buffer.from(readFileSync(databaseFile(userData)))
   // DELETE then WAL advances the file-change counter and its version-valid-for field twice.
-  for (const offset of [24, 92]) bytes.writeUInt32BE(bytes.readUInt32BE(offset) + 2 * copies, offset)
+  for (const offset of [24, 92])
+    bytes.writeUInt32BE(bytes.readUInt32BE(offset) + 2 * copies, offset)
   expected[DATABASE_FILE] = sha256(bytes)
   return expected
 }
