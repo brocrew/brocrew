@@ -23,6 +23,7 @@ import type {
   WorkReport,
 } from './task-contracts'
 import { whoCancelledIt, type AskToStop } from './how-work-stopped'
+import type { AsTheCutLeftIt, PieceFold } from './piece-fold'
 
 import { aPersonsOwnWords } from './a-persons-own-words'
 // ⚑ **A TYPE and nothing else** (467), so this module's own rule survives the import: it cannot
@@ -1038,85 +1039,6 @@ export function thePiecesTheTurnNames(
   return [...new Set(messages.flatMap((one) => theDriveOf(one) ?? []))]
 }
 
-interface HeldForTheQueue {
-  readonly cause: TaskStallCause
-  readonly by: PieceRow['stalledBy']
-  readonly stopped?: readonly string[]
-  /** ⚑ **F076** — the login rider its drive's end chose, handed on at the release. */
-  readonly login?: StoppedOnALogin
-  /** ⚑ **F097** — a person's own words opened the turn that drive ended, handed on at the release. */
-  readonly aPersonWroteIt?: boolean
-  /** ⚑ **F097** — since when it waited on that person, for a reply held for it. */
-  readonly since?: number
-}
-
-interface HeldForTheBackground {
-  readonly cause: TaskStallCause
-  readonly by: PieceRow['stalledBy']
-  /** ⚑ **F076** — the login rider its drive's end chose, handed on at the release. */
-  readonly login?: StoppedOnALogin
-  /** ⚑ **F097** — a person's own words opened the turn that drive ended, handed on at the release. */
-  readonly aPersonWroteIt?: boolean
-}
-
-type AsTheCutLeftIt =
-  | { readonly stalledAt: number; readonly wentBack: boolean }
-  | { readonly waitsOnItsPerson: true }
-  | { readonly heldForTheBackground: true }
-
-interface WentBackTo {
-  readonly cause: TaskStallCause
-  readonly at: number
-  readonly by: PieceRow['stalledBy']
-  readonly limit?: StoppedOnALimit
-  readonly login?: StoppedOnALogin
-}
-
-/**
- * Everything {@link derivePieces} holds after a row. Handed back to it, it folds only the rows after
- * and answers as a fold of the whole ledger would. Never changed once made.
- */
-export interface PieceFold {
-  readonly rows: readonly PieceRow[]
-  readonly changeTimes: ReadonlyMap<string, { readonly at: number; readonly order: number }>
-  readonly changeAt: number
-  readonly changeOrder: number
-  readonly sourceOrdinal: number
-  readonly open: ReadonlyMap<string, { readonly row: PieceRow; readonly index: number }>
-  readonly indexOfPiece: ReadonlyMap<string, number>
-  readonly byMessage: ReadonlyMap<string, string>
-  readonly travelled: ReadonlySet<string>
-  readonly asked: Pick<AskToStop, 'by' | 'asker'> | null
-  readonly whoseWordsDroveItLast: ReadonlyMap<string, boolean>
-  readonly aPersonOpenedThisTurnFor: ((piece: string) => boolean) | null
-  readonly waitsOnWhoWroteSince: ReadonlyMap<
-    string,
-    { readonly at: number; readonly cause: TaskStallCause }
-  >
-  readonly waitingToDriveIt: ReadonlyMap<
-    string,
-    { readonly target: string | null; readonly note: boolean }
-  >
-  readonly heldForTheQueue: ReadonlyMap<string, HeldForTheQueue>
-  readonly inTheBackground: ReadonlyMap<string, string>
-  readonly scheduled: ReadonlyMap<string, string>
-  readonly heldForTheBackground: ReadonlyMap<string, HeldForTheBackground>
-  readonly stalledAsItsWakeWasDue: ReadonlyMap<string, number>
-  readonly theStopWasARefusedLogin: boolean
-  readonly theStopWasOnAKey: boolean
-  readonly reopenedSinceItsLoginWasRefused: boolean
-  readonly aTurnIsOpen: boolean
-  readonly aDriveWaitsForItsTurn: boolean
-  readonly pendingDriveAt: number
-  readonly pendingDriveOrder: number
-  readonly driving: boolean
-  readonly cutByAnInterrupt: ReadonlyMap<string, number>
-  readonly theTurnNames: ReadonlySet<string> | null
-  readonly theTurnGoesBackTo: ReadonlyMap<string, number>
-  readonly theCutTurnDrove: ReadonlyMap<string, AsTheCutLeftIt>
-  readonly wentBackTo: ReadonlyMap<string, WentBackTo>
-}
-
 /**
  * 🔴 **The whole of S1: one conversation's ledger folded into the pieces it was given** (379 as
  * tasks; pieces since D-016).
@@ -1332,18 +1254,14 @@ export function derivePieces(
   let asked: Pick<AskToStop, 'by' | 'asker'> | null = from?.asked ?? null
   /** Whose words last drove each piece; notes preserve the author behind an existing person wait. */
   const whoseWordsDroveItLast = new Map<string, boolean>(from?.whoseWordsDroveItLast)
-  let aPersonOpenedThisTurnFor: ((piece: string) => boolean) | null =
-    from?.aPersonOpenedThisTurnFor ?? null
+  let aPersonOpenedThisTurnFor = from?.aPersonOpenedThisTurnFor ?? null
   /** ⚑ **F097** — a person's own words last drove this piece ({@link whoseWordsDroveItLast}). */
   const aPersonOpenedItFor = (piece: string): boolean => whoseWordsDroveItLast.get(piece) === true
   /**
    * ⚑ **F097** — the ending each piece waiting on the person who wrote went to wait from: its moment
    * ({@link PieceRow.answeredAPersonAt}) and its cause, for a reply held for it ({@link aReplyIsHeldFor}).
    */
-  const waitsOnWhoWroteSince = new Map<
-    string,
-    { readonly at: number; readonly cause: TaskStallCause }
-  >(from?.waitsOnWhoWroteSince)
+  const waitsOnWhoWroteSince = new Map(from?.waitsOnWhoWroteSince)
 
   // ⚠️ **`carried` is what the REPLY brings and nothing else ever passes** — every other transition
   // moves a state and touches no field the agent authored. ⛔ Written as an explicit parameter
@@ -1562,9 +1480,7 @@ export function derivePieces(
    * ({@link theDriveOf}): the one piece its row names, or `null` — every open piece, as every row
    * written before commit 6 does. ⚑ So work is held only for a message that will drive it.
    */
-  const waitingToDriveIt = new Map<string, { target: string | null; note: boolean }>(
-    from?.waitingToDriveIt,
-  )
+  const waitingToDriveIt = new Map(from?.waitingToDriveIt)
   const aWaitingMessageDrives = (piece: string, preservesPersonWait = false): boolean =>
     [...waitingToDriveIt.values()].some(
       ({ target, note }) =>
@@ -1576,7 +1492,7 @@ export function derivePieces(
    * that it is still written if no waiting message that drives it goes out (HO-018 §2.1: *nobody
    * waits forever in silence*). The row reads `working` meanwhile.
    */
-  const heldForTheQueue = new Map<string, HeldForTheQueue>(from?.heldForTheQueue)
+  const heldForTheQueue = new Map(from?.heldForTheQueue)
   const holdsAPersonReply = (
     piece: string,
     held:
@@ -1600,7 +1516,7 @@ export function derivePieces(
   const scheduled = new Map<string, string>(from?.scheduled)
   const backgroundWakesIt = options.backgroundWakesIt === true
   /** ⚑ **D-013 · a drive ended on these while waking background work ran** — see {@link PieceRow.inTheBackground}. */
-  const heldForTheBackground = new Map<string, HeldForTheBackground>(from?.heldForTheBackground)
+  const heldForTheBackground = new Map(from?.heldForTheBackground)
   /**
    * ⚑ **F076 — work its held background stalled as that work finished, while the provider's wake
    * was still to come** ({@link backgroundWakesIt}), by when: the wake's drive judges it again — and
@@ -1662,10 +1578,7 @@ export function derivePieces(
    * background.
    */
   let cutByAnInterrupt = new Map<string, number>(from?.cutByAnInterrupt)
-  let theTurnNames: Set<string> | null =
-    from?.theTurnNames === undefined || from.theTurnNames === null
-      ? null
-      : new Set(from.theTurnNames)
+  let theTurnNames = from?.theTurnNames ? new Set(from.theTurnNames) : null
   let theTurnGoesBackTo = new Map<string, number>(from?.theTurnGoesBackTo)
   /**
    * ⚑ **What a drive a stop cut was driving, as the cut left each piece** — stalled at a moment
@@ -1674,7 +1587,7 @@ export function derivePieces(
    * ({@link UserTurnEvent.askedForTheStop}): it carries on with them, as the cut drive did.
    */
   let theCutTurnDrove = new Map<string, AsTheCutLeftIt>(from?.theCutTurnDrove)
-  const wentBackTo = new Map<string, WentBackTo>(from?.wentBackTo)
+  const wentBackTo = new Map(from?.wentBackTo)
   /**
    * ⚑ **D-005a** — nothing will go out of the queue (the conversation was replaced): write what each
    * held piece's drive ended as, now.

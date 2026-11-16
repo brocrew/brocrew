@@ -212,7 +212,6 @@ import {
   aStallItsGiverCanBeToldOf,
   composeWhatEachPieceIsWaitingOn,
   derivePieces,
-  type PieceFold,
   theWorkThatNamesItAmong,
   waitsOnWhoWrote,
   workGivenOut,
@@ -221,6 +220,7 @@ import {
   theWaitItMarks,
 } from '../../shared/tasks'
 import { pieceCalled, pieceNumbersOf, type WorkThatNamesIt } from '../../shared/piece-called'
+import type { PieceFold } from '../../shared/piece-fold'
 import {
   REQUEST_IS_OPEN,
   aPersonOwesAnAnswerIn,
