@@ -7,8 +7,7 @@ export function keyCantBeRead(status: ApiKeyStatus | null | undefined): boolean 
 
 /**
  * What the app says of a saved key it can't read: main's own sentence where it gave one, else the
- * card's. A saved key outranks the sign-in, so the provider starts nothing until it is saved again
- * or removed.
+ * card's. This describes only API-key connections; choosing a sign-in connection is explicit.
  */
 export function unreadableKeySays(
   status: ApiKeyStatus,
@@ -17,6 +16,6 @@ export function unreadableKeySays(
 ): string {
   if (status.unreadableReason !== undefined) return status.unreadableReason
   return loginBehindTheKey
-    ? `This computer can’t read it, so ${name} won’t start. Save it again, or remove it to use the sign-in.`
-    : `This computer can’t read it, so ${name} won’t start. Save it again.`
+    ? `This computer can’t read it, so the ${name} API-key connection won’t start. Save it again, or choose a sign-in connection for a new conversation.`
+    : `This computer can’t read it, so the ${name} API-key connection won’t start. Save it again.`
 }

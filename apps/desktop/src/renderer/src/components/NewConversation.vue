@@ -4,16 +4,10 @@ import type { LaunchRefusal } from '../../../shared/runtime-ipc'
 /**
  * 🔴 **725 · `716` F-1 — whether the automatic sign-in check could say anything the refusal did not.**
  *
- * ⚑ **Main's own table, read as it is written** (`LAUNCH_REFUSALS`, `runtime-ipc.ts`): for a
- * `sign-in` refusal the check is *"the remedy — its buttons are how a person fixes it"*; for
- * `program`, `folder`, `machine` and `launch` it *"says nothing the refusal did not"*; a `cancelled`
- * start never reaches here (the store swallows it as a Cancel). ⚠️ **And a refusal with NO word is
- * the case the check exists for** — *"the launcher's check is then the only diagnosis there is"* —
- * so `null` and absent both run it.
- *
- * ⛔ **`710` F-7 is the defect**: after a start the machine ran short for, the launcher drew TWO
- * boxes — the refusal's sentence, and *"Could not check this profile’s sign-in"* with the same
- * shortage as its reason. One fact, said twice.
+ * Sign-in and unclassified refusals need the check; other launch failures already explain them.
+ * A cancelled start is consumed by the store before this component.
+ * A resource-shortage refusal already explains the failed launch; repeating it in a sign-in
+ * check adds a second box without another diagnosis.
  *
  * ⚑ Exported and pure for `shouldRestoreDraft`'s reason (`lib/drafts.ts`): a watcher is not
  * reachable from a node test, and a seventh word added to main's table must be answered here, not
@@ -48,6 +42,7 @@ export function blockingGroupShows(input: {
 
 <script setup lang="ts">
 import type { HandedPath } from '../../../shared/attachment-contracts'
+import { additionalConnectionId } from '@brobot2/shared/provider-connections'
 import { computed, nextTick, onMounted, ref, useId, watch } from 'vue'
 import type {
   CapabilityStatus,
@@ -63,7 +58,6 @@ import type { LaunchChoices } from '../lib/launch-choices'
 // 🔴 **UI-012 · the one model picker, and the lists it reads** — see `lib/model-lists.ts`.
 import { theFormSends, type ModelLists, type PickedModel } from '../lib/model-lists'
 import { useModelLists } from '../composables/useModelLists'
-import { CHANGEABLE_LIVE_IN } from '../lib/front-door-words'
 import { joiningTheBox, shouldRestoreDraft, type DraftHanding } from '../lib/drafts'
 import type { SendBlock } from '../lib/composer-notice'
 import { createSignInGesture } from '../lib/sign-in-gesture'
@@ -598,17 +592,60 @@ const modelMatchesProvider = computed(
   () => props.choices.provider === null || props.choices.provider === props.defaultProvider,
 )
 
+const readConnectionId = computed(
+  () =>
+    (modelMatchesProvider.value ? props.choices.connectionId : undefined) ??
+    lists.value.choices(props.defaultProvider)?.defaultConnectionId,
+)
+const launchChoices = computed(() =>
+  lists.value.choices(props.defaultProvider, undefined, readConnectionId.value),
+)
+const launchReadiness = computed(() => {
+  if (readConnectionId.value === undefined) return props.providerReadiness
+  const check = lists.value.readiness(props.defaultProvider, undefined, readConnectionId.value)
+  return {
+    ...props.providerReadiness,
+    [props.defaultProvider]: check.state === 'settled' ? check.ready : null,
+  }
+})
+const connectionToSend = computed(
+  () =>
+    (modelMatchesProvider.value ? props.choices.connectionId : undefined) ??
+    additionalConnectionId(props.defaultProvider, readConnectionId.value),
+)
+onMounted(() => {
+  watch(
+    [() => props.defaultProvider, readConnectionId, lists],
+    () => {
+      if (readConnectionId.value !== undefined)
+        void lists.value.read(props.defaultProvider, undefined, {
+          once: true,
+          connectionId: readConnectionId.value,
+        })
+    },
+    { immediate: true },
+  )
+})
+
 const shownPick = computed<PickedModel | null>(() => {
+  if (readConnectionId.value !== undefined && launchChoices.value === null) return null
   const model = props.choices.model.trim()
   if (model !== '' && modelMatchesProvider.value) {
     return {
       provider: props.defaultProvider,
       model,
       effort: props.choices.reasoningEffort === '' ? null : props.choices.reasoningEffort,
+      ...(readConnectionId.value === undefined ? {} : { connectionId: readConnectionId.value }),
     }
   }
-  const starts = lists.value.choices(props.defaultProvider)?.defaultModel ?? null
-  return starts === null ? null : { provider: props.defaultProvider, ...starts }
+  const starts = launchChoices.value?.defaultModel ?? null
+  return starts === null
+    ? null
+    : {
+        provider: props.defaultProvider,
+        ...starts,
+        ...(readConnectionId.value === undefined ? {} : { connectionId: readConnectionId.value }),
+      }
 })
 
 /**
@@ -623,11 +660,16 @@ const shownEmpty = computed(() => 'Choose a model')
  * now (R-3). ⛔ Nothing is sent: the launch carries it.
  */
 function startOn(pick: PickedModel): Promise<string | null> {
-  choose({ provider: pick.provider, model: pick.model, reasoningEffort: pick.effort ?? '' })
+  choose({
+    provider: pick.provider,
+    model: pick.model,
+    reasoningEffort: pick.effort ?? '',
+    connectionId: pick.connectionId,
+  })
   return Promise.resolve(null)
 }
 
-const startsOnSays = `This conversation starts on it. You can change it later in ${CHANGEABLE_LIVE_IN}.`
+const startsOnSays = 'Applies to the new conversation.'
 
 /**
  * 🔴 **The caret starts in the composer** (HO-025 §5: *"Defaults applied, composer focused"*).
@@ -647,53 +689,14 @@ onMounted(() => {
 })
 
 /**
- * ⛔ **Everything this door asks the host for, and it is three fields** (417, HO-022 §2).
- *
- * ⚑ **Written as OMISSIONS wherever the screen has no opinion**, which is the rule `292 §3` set
- * for `reasoningEffort` and this dispatch applies to the rest of them: an absent field is what the
- * whole stack reads as *"leave the default alone"*, and a value sent from a control nobody was
- * shown is the defect that rule exists for.
- *
- * - **`cwd` is omitted**, so the host resolves it — `brobot-workspace` (`scratch-cwd.ts`). ⚑ HO-022:
- *   *"BroBot has his workspace."*
- * - 🔴 **`approvalMode` is sent, explicitly, and it is the mode the PERSON set** (500,
- *   HO-036 §3.1). The host would resolve an absent field to `'ask'`, and saying it is still worth
- *   more than omitting it — a test can hold what this surface SENT without having to know a host
- *   rule it cannot see — but what it says has changed.
- *
- *   ⛔ **The clause that used to be here was *the assertion that no front-door conversation can
- *   begin unattended*, and HO-036 §3.1 withdrew it.** `417 §1.6` measured that safety property
- *   getting stronger when the checkbox left, and it was right about the checkbox; what the PO has
- *   since ruled is that a person may make this choice ONCE and have it hold. ⚑ So the property that
- *   survives is the weaker, still-true one: **the front door asks nothing, and begins in the mode
- *   the person already chose — disclosed before they type.** ⚠️ **It is still not a per-launch
- *   control**: pressing it changes every conversation started after it, which is what
- *   {@link LAUNCH_APPROVAL_BOUND} says out loud.
- *
- *   ⛔ **`?? 'ask'` and never `?? 'auto'`.** `null` is *the row has not been read*, and the value a
- *   launch must send in that window is the one that keeps somebody being asked.
- * - 🔴 **`model` and `reasoningEffort` are sent ONLY when a person asked for one** (435) — see
- *   below. **`planMode` and `ultracode` stay absent**: HO-025 §4 names three settings and neither of
- *   those is one, `ultracode` still has no mid-session door at all (`417 §10.2`), and plan mode has
- *   a live control on the agent card that says what it does.
- *
- * ## 🔴 **Three fields when nobody chooses, and that is the assertion** (435, HO-025 §5)
- *
- * ⛔ **An untouched front door puts exactly what `417` put on the wire.** *Asks nothing* survives as
- * a property of the PAYLOAD: `model` and `reasoningEffort` are written as OMISSIONS, which is
- * `292 §3`'s rule and what the whole stack reads as *leave the default alone*. ⚠️ **A value sent
- * from a control nobody touched is the defect that rule exists for** — and the empty string is a
- * legal `ReasoningEffort` (the type is `string`), so *we did not ask* could not be expressed by
- * sending one.
- *
- * 🔴 **UI-012 · R-1 — and an untouched form names the LAST pick where the host would start on
- * another** (`09` §8) — see `theFormSends`. ⚑ With no last pick, or one the host starts on anyway,
- * the three fields stand.
+ * An untouched legacy/default-family launch keeps model and effort omitted unless the last pick
+ * differs. Additional connections carry their read identity so a later default change cannot
+ * combine another endpoint with these models. Approval still uses the person's chosen mode.
  */
 const sends = computed(() =>
   modelMatchesProvider.value
-    ? theFormSends(props.choices, lists.value.choices(props.defaultProvider))
-    : (lists.value.choices(props.defaultProvider)?.defaultModelToSend ?? null),
+    ? theFormSends(props.choices, launchChoices.value)
+    : (launchChoices.value?.defaultModelToSend ?? null),
 )
 
 const firstApproval = ref<'ask' | 'auto' | null>(null)
@@ -704,10 +707,20 @@ const launchMode = computed(
   () => firstApproval.value ?? (needsApproval.value ? null : props.defaultApprovalMode),
 )
 const canChooseProvider = computed(
-  () => props.providerReadiness === null || props.providerReadiness[props.defaultProvider] === true,
+  () =>
+    readConnectionId.value !== undefined ||
+    launchReadiness.value === null ||
+    launchReadiness.value[props.defaultProvider] === true,
 )
 const providerChecks = computed(() =>
-  providers.value.map((provider) => ({ provider, check: lists.value.readiness(provider) })),
+  providers.value.map((provider) => ({
+    provider,
+    check: lists.value.readiness(
+      provider,
+      undefined,
+      provider === props.defaultProvider ? readConnectionId.value : undefined,
+    ),
+  })),
 )
 const providerProblems = computed(() =>
   providerChecks.value.flatMap(({ provider, check }) =>
@@ -716,31 +729,31 @@ const providerProblems = computed(() =>
 )
 const checkingProviders = computed(
   () =>
-    props.providerReadiness !== null &&
+    launchReadiness.value !== null &&
     providerChecks.value.some(
       ({ provider, check }) =>
-        props.providerReadiness?.[provider] == null && check.state === 'pending',
+        launchReadiness.value?.[provider] == null && check.state === 'pending',
     ),
 )
 const providerFailure = computed(() => {
-  if (props.providerReadiness === null || props.providerReadiness[props.defaultProvider] === true)
+  if (launchReadiness.value === null || launchReadiness.value[props.defaultProvider] === true)
     return null
-  const check = lists.value.readiness(props.defaultProvider)
+  const check = lists.value.readiness(props.defaultProvider, undefined, readConnectionId.value)
   return check.state === 'settled' ? check.reason : null
 })
 const headerProvider = computed(() =>
-  props.providerReadiness === null
+  launchReadiness.value === null
     ? (providerName(props.defaultProvider) ?? 'this provider')
-    : canChooseProvider.value
+    : launchReadiness.value[props.defaultProvider] === true
       ? `${providerName(props.defaultProvider) ?? 'this provider'} · Ready`
       : undefined,
 )
 const approvalBlocked = computed(
   () =>
     providerFailure.value ??
-    (props.providerReadiness?.[props.defaultProvider] === false
+    (launchReadiness.value?.[props.defaultProvider] === false
       ? `${providerName(props.defaultProvider) ?? 'this provider'} isn't set up. Set it up in Settings → Providers.`
-      : props.providerReadiness !== null && props.providerReadiness[props.defaultProvider] !== true
+      : launchReadiness.value !== null && launchReadiness.value[props.defaultProvider] !== true
         ? `${providerName(props.defaultProvider) ?? 'this provider'} · Checking…`
         : props.defaultApprovalMode === null || launchMode.value === null
           ? 'Choose Ask or Auto before sending.'
@@ -756,6 +769,7 @@ const settings = computed<CreateSessionInput>(() => ({
   provider: props.defaultProvider,
   profileId: DEFAULT_PROFILE_ID,
   approvalMode: launchMode.value ?? 'ask',
+  ...(connectionToSend.value === undefined ? {} : { connectionId: connectionToSend.value }),
   ...(sends.value === null ? {} : { model: sends.value.model }),
   ...(sends.value?.effort == null ? {} : { reasoningEffort: sends.value.effort }),
 }))
@@ -938,11 +952,13 @@ watch(
                 <div class="choice">
                   <span class="lbl">model</span>
                   <ModelPicker
+                    choose-connection
                     :providers="providers"
-                    :readiness="props.providerReadiness"
+                    :readiness="launchReadiness"
                     :programs="props.programs"
                     :set-up="(provider) => emit('open-providers', provider)"
                     :shown="shownPick"
+                    :connection-id="readConnectionId"
                     :empty="shownEmpty"
                     take-words="Start on this"
                     :take="startOn"

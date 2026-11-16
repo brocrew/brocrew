@@ -45,6 +45,7 @@ function fixture() {
     providerVersions: vi.fn<ClientProviderApi['providerVersions']>(),
     providerResources: vi.fn<ClientProviderApi['providerResources']>(),
     providerConnections: vi.fn<ClientProviderApi['providerConnections']>(),
+    updateProviderConnection: vi.fn<ClientProviderApi['updateProviderConnection']>(),
     setApiKey: vi.fn<ClientProviderApi['setApiKey']>(),
     removeApiKey: vi.fn<ClientProviderApi['removeApiKey']>(),
     checkApiKey: vi.fn<ClientProviderApi['checkApiKey']>(),
@@ -343,4 +344,22 @@ it('keeps throwing setup suppliers and operation getters inside the guide reader
   await expect(readProviderSetup(api)).resolves.toBeNull()
   expect(getter).toHaveBeenCalledExactlyOnceWith()
   expect(api.setup).toBeUndefined()
+})
+
+it('forwards metadata edits with the original promise and exact selected identity', async () => {
+  const { transport, api } = fixture()
+  const input = {
+    provider: 'claude' as const,
+    connectionId: 'claude:sign-in',
+    name: 'Fictional renamed account',
+    description: 'Fictional description',
+  }
+  const pending = Promise.reject(new Error('Fictional duplicate name.'))
+  transport.updateProviderConnection.mockReturnValueOnce(pending)
+  const answer = api.updateProviderConnection(input)
+  expect(answer).toBe(pending)
+  await expect(answer).rejects.toThrow('Fictional duplicate name.')
+  expect(transport.updateProviderConnection.mock.calls).toEqual([[input]])
+  expect(transport.checkProviderAuth).not.toHaveBeenCalled()
+  expect(transport.setApiKey).not.toHaveBeenCalled()
 })

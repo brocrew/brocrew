@@ -1,3 +1,5 @@
+import { attributedUsageFixtures } from './provider-launch.fixture'
+import { providerConnectionFixtures } from '../../look/fixtures/providers'
 import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import { createModelLists } from '../lib/provider-launch-fixture'
 import type { ModelList } from '../../src/shared/model-choice-contracts'
@@ -146,10 +148,11 @@ function theScreen(
   const listeners: ((message: ProvidersChangedMessage) => void)[] = []
   const unsubscribe = vi.fn()
   const runtime = {
+    providerConnections: async () => providerConnectionFixtures(),
     providerCatalogue: async () => PROVIDER_DESCRIPTORS,
     providerVersions: vi.fn(async () => versions),
     providerSetup: vi.fn(async () => ({})),
-    providerUsage: vi.fn(async () => USAGE),
+    providerUsage: vi.fn(async () => attributedUsageFixtures(USAGE)),
     providerResources: vi.fn(sample),
     onProvidersChanged: vi.fn((listener: (message: ProvidersChangedMessage) => void) => {
       listeners.push(listener)
@@ -406,15 +409,16 @@ describe('§2 · 25cca325 · the provider’s own change notices redraw the scre
     expect(text(await inCard(m, 'claude', 'provider-usage-reading'))).toBe(
       readingSays(FIVE_HOURS, Math.max(NOW, Date.now())),
     )
-    expect(text(await inCard(m, 'codex', 'provider-usage-none'))).toBe(
-      'Usage is unknown. No reading yet from Codex.',
-    )
+    await inCard(m, 'codex', 'provider-key')
+    expect(m.all('provider-usage-none')).toHaveLength(0)
+    expect(m.all('provider-usage-reading')).toHaveLength(0)
+    const checkedBefore = runtime.checkProviderAuth.mock.calls.slice()
     tell({ what: 'usage', provider: 'claude' })
     await settled()
     expect(runtime.providerUsage).toHaveBeenCalledTimes(2)
     expect(usageMoved).toHaveBeenCalledTimes(1)
     // ⛔ A usage notice is not a login notice.
-    expect(runtime.checkProviderAuth).toHaveBeenCalledTimes(2)
+    expect(runtime.checkProviderAuth.mock.calls).toEqual(checkedBefore)
   })
 
   it('🔴 a login notice re-checks THAT provider’s card — its login and its key — and no other', async () => {

@@ -72,9 +72,7 @@ describe('§1 · the conversation’s notice names the credential Codex refused'
       (item) => item.level === 'error',
     )
     expect(notice?.level).toBe('error')
-    expect(notice?.text).toBe(
-      'The API key this conversation was started with was refused, so this conversation cannot run on it. Check or replace the key under “API key” on the Codex card in Providers — “Check it works” there asks whether a saved key still works — then start a new conversation, which runs on the key saved then.',
-    )
+    expect(notice?.text).toBe('Key refused. Check its balance or switch connection.')
     expect(notice?.text).not.toMatch(/sign in|sign-in|launcher/)
     // ⚑ The provider's own words stay out of the notice, as for a sign-in (085's split).
     expect(notice?.text).not.toContain('Incorrect API key provided')
@@ -128,7 +126,7 @@ describe('§1b · a refused sign-in this app replaces by itself says so', () => 
 
   it('⛔ a saved API key keeps its own sentence, whatever the fact says', () => {
     const key = errorOf(started('codex'), REFUSED(true))
-    expect(key).toContain('The API key this conversation was started with was refused')
+    expect(key).toBe('Key refused. Check its balance or switch connection.')
     expect(errorOf(started('codex'), replaced(true))).toBe(key)
   })
 

@@ -218,7 +218,7 @@ describe('a service’s one conversation', () => {
       warned.mockRestore()
     })
 
-    it('is never offered a message or a setting that would start another in its place', async () => {
+    it('still cannot be replaced, while recorded settings remain editable', async () => {
       world.anAgent('browser-driver')
       world.anAgent('caller', 'nothing kept')
       const host = world.aHost()
@@ -234,16 +234,16 @@ describe('a service’s one conversation', () => {
       })
       const view = await host.look(service, world.window, false)
       expect(view.cannotTakeAMessage).not.toBeNull()
-      expect(view.settingsFixed).toBe(true)
-      await expect(host.setApprovalMode(service, 'auto', world.window)).rejects.toThrow(
-        'no message continues this conversation, so a setting changed here would not reach it',
-      )
+      expect(view).not.toHaveProperty('settingsFixed')
+      await expect(host.setApprovalMode(service, 'auto', world.window)).resolves.toBeDefined()
+      expect(world.store.findLive(service)?.approvalMode).toBe('auto')
       // The control: a person's is continued by a message, which starts one in its place.
       const persons = await host.look('sess_persons_row', world.window, false)
       expect(persons.cannotTakeAMessage).toBeNull()
-      await expect(host.setApprovalMode('sess_persons_row', 'auto', world.window)).rejects.toThrow(
-        'its next message starts a new conversation in its place',
-      )
+      await expect(
+        host.setApprovalMode('sess_persons_row', 'auto', world.window),
+      ).resolves.toBeDefined()
+      expect(world.store.findLive('sess_persons_row')?.approvalMode).toBe('auto')
     })
   })
 

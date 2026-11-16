@@ -521,13 +521,13 @@ export function createAgentStore(bridge: ClientAgentApi): AgentStore {
 
     async chooseModelFor(profileId, choice) {
       try {
-        // ⛔ **Four primitives, built HERE** (363's two questions): the caller's draft comes off
-        // `ref`s, and a clear is the three `null`s the door reads as one.
+        // Project the draft into explicit wire fields; a clear keeps the same three nulls.
         const saved = await bridge.setAgentModelAndEffort({
           profileId,
           provider: choice?.provider ?? null,
           model: choice?.model ?? null,
           effort: choice?.effort ?? null,
+          ...(choice?.connectionId === undefined ? {} : { connectionId: choice.connectionId }),
         })
         return saved.ok ? { ok: true, held: saved.choice } : { ok: false, reason: saved.reason }
       } catch (error) {

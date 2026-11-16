@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Provider } from '@brobot2/shared'
 import type { ModelChoice } from '@brobot2/runtime'
+import type { ModelCatalogue, ModelList } from '../src/shared/model-choice-contracts'
 import { createModelLists } from '../src/renderer/src/lib/model-lists'
 import { ModelCatalogues } from '../src/main/connections/catalogues'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
@@ -21,13 +22,21 @@ const currentModels: ModelChoice[] = [
 ]
 
 function catalogue(
-  read: (provider: Provider, profile: string) => Promise<ModelChoice[]>,
+  read: (
+    provider: Provider,
+    profile: string,
+    connectionId?: string,
+  ) => Promise<ModelChoice[] | ModelCatalogue>,
   closing: () => boolean = () => false,
 ) {
-  const probe = vi.fn(async (provider: Provider, profile: string) => ({
-    ok: true as const,
-    models: await read(provider, profile),
-  }))
+  const probe = vi.fn(
+    async (provider: Provider, profile: string, connectionId?: string): Promise<ModelCatalogue> => {
+      const answer = await (connectionId === undefined
+        ? read(provider, profile)
+        : read(provider, profile, connectionId))
+      return Array.isArray(answer) ? { ok: true, models: answer } : answer
+    },
+  )
   const holder = new ModelCatalogues(
     NULL_SESSION_STORE,
     () => [DEFAULT_PROFILE_ID, 'fern'],
@@ -224,3 +233,204 @@ describe('one current catalogue per provider', () => {
     },
   )
 })
+
+function scopedList(
+  holder: ModelCatalogues,
+  provider: Provider,
+  connectionId: string,
+  profileId = DEFAULT_PROFILE_ID,
+) {
+  const read: (
+    provider: Provider,
+    profileId?: string,
+    connectionId?: string,
+  ) => Promise<ModelList> = holder.modelList.bind(holder)
+  return read(provider, profileId, connectionId)
+}
+
+const endpointRows = (id: string): ModelChoice[] => [
+  { id, label: id, isDefault: true, efforts: [] },
+]
+
+function changingEndpoints() {
+  let a = 0
+  let b = 0
+  return catalogue(async (_provider, _profile, id) =>
+    endpointRows(
+      id === 'fictional-server-a'
+        ? `a-${++a}`
+        : id === 'fictional-server-b'
+          ? `b-${++b}`
+          : 'legacy-model',
+    ),
+  )
+}
+
+for (const provider of ['claude', 'codex'] as const) {
+  describe(`${provider} connection catalogue identity`, () => {
+    it('keeps two endpoints independent while profiles of one endpoint share a probe', async () => {
+      const { holder, probe } = catalogue(async (_provider, _profile, id) =>
+        endpointRows(
+          id === 'fictional-server-a'
+            ? 'model-a'
+            : id === 'fictional-server-b'
+              ? 'model-b'
+              : 'legacy-model',
+        ),
+      )
+      const a = await scopedList(holder, provider, 'fictional-server-a')
+      const b = await scopedList(holder, provider, 'fictional-server-b')
+      const otherProfile = await scopedList(holder, provider, 'fictional-server-a', 'fern')
+      expect(a.models.map((one) => one.id)).toEqual(['model-a'])
+      expect(b.models.map((one) => one.id)).toEqual(['model-b'])
+      expect(otherProfile.models).toEqual(a.models)
+      expect(probe.mock.calls).toEqual([
+        [provider, DEFAULT_PROFILE_ID, 'fictional-server-a'],
+        [provider, DEFAULT_PROFILE_ID, 'fictional-server-b'],
+      ])
+    })
+
+    it('invalidates only the named connection after its credential changes', async () => {
+      const { holder, probe } = changingEndpoints()
+      await scopedList(holder, provider, 'fictional-server-a')
+      await scopedList(holder, provider, 'fictional-server-b')
+      const forget: (provider: Provider, connectionId?: string) => void =
+        holder.forgetModels.bind(holder)
+      forget(provider, 'fictional-server-a')
+      expect(
+        (await scopedList(holder, provider, 'fictional-server-b')).models.map((one) => one.id),
+      ).toEqual(['b-1'])
+      expect(
+        (await scopedList(holder, provider, 'fictional-server-a')).models.map((one) => one.id),
+      ).toEqual(['a-2'])
+      expect(probe.mock.calls.map((call) => call[2])).toEqual([
+        'fictional-server-a',
+        'fictional-server-b',
+        'fictional-server-a',
+      ])
+    })
+
+    it('compares program versions within each connection rather than across the provider', async () => {
+      const { holder, probe } = changingEndpoints()
+      const version: (provider: Provider, value: string | null, connectionId?: string) => void =
+        holder.setProviderVersion.bind(holder)
+      version(provider, '1.0', 'fictional-server-a')
+      await scopedList(holder, provider, 'fictional-server-a')
+      version(provider, '7.0', 'fictional-server-b')
+      await scopedList(holder, provider, 'fictional-server-b')
+      version(provider, '7.1', 'fictional-server-b')
+      expect(
+        (await scopedList(holder, provider, 'fictional-server-a')).models.map((one) => one.id),
+      ).toEqual(['a-1'])
+      expect(
+        (await scopedList(holder, provider, 'fictional-server-b')).models.map((one) => one.id),
+      ).toEqual(['b-2'])
+      version(provider, '7.1', 'fictional-server-b')
+      await scopedList(holder, provider, 'fictional-server-b')
+      expect(probe).toHaveBeenCalledTimes(3)
+    })
+
+    it('a late old answer follows its own replacement and never another connection', async () => {
+      let release!: (models: ModelChoice[]) => void
+      let first = true
+      const { holder } = catalogue(async (_provider, _profile, id) => {
+        if (first) {
+          first = false
+          return new Promise<ModelChoice[]>((resolve) => {
+            release = resolve
+          })
+        }
+        return endpointRows(
+          id === 'fictional-server-a'
+            ? 'fresh-a'
+            : id === 'fictional-server-b'
+              ? 'stable-b'
+              : 'legacy-model',
+        )
+      })
+      const before = scopedList(holder, provider, 'fictional-server-a')
+      const b = scopedList(holder, provider, 'fictional-server-b')
+      const forget: (provider: Provider, connectionId?: string) => void =
+        holder.forgetModels.bind(holder)
+      forget(provider, 'fictional-server-a')
+      const after = scopedList(holder, provider, 'fictional-server-a')
+      release(endpointRows('old-a'))
+      expect((await before).models.map((one) => one.id)).toEqual(['fresh-a'])
+      expect((await after).models.map((one) => one.id)).toEqual(['fresh-a'])
+      expect((await b).models.map((one) => one.id)).toEqual(['stable-b'])
+    })
+  })
+}
+
+for (const provider of ['claude', 'codex'] as const) {
+  it(`${provider}: both built-in modes share the unchanged default catalogue memo`, async () => {
+    const { holder, probe } = catalogue(async () => endpointRows('legacy-model'))
+    const original = await holder.modelList(provider)
+    for (const method of ['sign-in', 'api-key'] as const) {
+      expect(await scopedList(holder, provider, `${provider}:${method}`)).toEqual(original)
+    }
+    expect(probe).toHaveBeenCalledExactlyOnceWith(provider, DEFAULT_PROFILE_ID)
+  })
+}
+
+for (const provider of ['claude', 'codex'] as const) {
+  it(`${provider}: concurrent readers retry only their failed connection`, async () => {
+    let release!: (answer: ModelCatalogue) => void
+    let first = true
+    const { holder, probe } = catalogue(async (_provider, _profile, id) => {
+      if (first) {
+        first = false
+        return new Promise<ModelCatalogue>((resolve) => {
+          release = resolve
+        })
+      }
+      return endpointRows(id === 'fictional-server-a' ? 'fresh-a' : 'stable-b')
+    })
+    const a = scopedList(holder, provider, 'fictional-server-a')
+    const anotherA = scopedList(holder, provider, 'fictional-server-a', 'fern')
+    const b = scopedList(holder, provider, 'fictional-server-b')
+    release({ ok: false, reason: 'refused', detail: 'Fictional endpoint unavailable' })
+    const [firstA, sharedA, stableB] = await Promise.all([a, anotherA, b])
+    expect(firstA.notAsked).toEqual({
+      ok: false,
+      reason: 'refused',
+      detail: 'Fictional endpoint unavailable',
+    })
+    expect(sharedA.notAsked).toEqual(firstA.notAsked)
+    expect(stableB.models.map((row) => row.id)).toEqual(['stable-b'])
+    const next = await Promise.all([
+      scopedList(holder, provider, 'fictional-server-a'),
+      scopedList(holder, provider, 'fictional-server-a', 'fern'),
+    ])
+    expect(next.map((list) => list.models.map((row) => row.id))).toEqual([['fresh-a'], ['fresh-a']])
+    expect((await scopedList(holder, provider, 'fictional-server-b')).models).toEqual(
+      stableB.models,
+    )
+    expect(probe.mock.calls.map((call) => call[2])).toEqual([
+      'fictional-server-a',
+      'fictional-server-b',
+      'fictional-server-a',
+    ])
+  })
+
+  it(`${provider}: shutdown serves only the cached connection and starts no cold probe`, async () => {
+    let closing = false
+    const models = endpointRows('fictional-model')
+    const { holder, probe } = catalogue(
+      async () => models,
+      () => closing,
+    )
+    await scopedList(holder, provider, 'fictional-server-a')
+    closing = true
+    const read: (profile: string, provider: Provider, id?: string) => Promise<ModelCatalogue> =
+      holder.providerModels.bind(holder)
+    expect(await read(DEFAULT_PROFILE_ID, provider, 'fictional-server-a')).toEqual({
+      ok: true,
+      models,
+    })
+    await expect(read(DEFAULT_PROFILE_ID, provider, 'fictional-server-b')).rejects.toThrow(
+      'shutting down',
+    )
+    expect(probe).toHaveBeenCalledTimes(1)
+  })
+}

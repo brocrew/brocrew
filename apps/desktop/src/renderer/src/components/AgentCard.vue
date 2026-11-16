@@ -37,6 +37,7 @@ import {
   type ConversationControls,
 } from '../composables/useConversationControls'
 import ModelPicker from './ModelPicker.vue'
+import { conversationModelFace } from '../lib/model-picker-section'
 import AgentBookButton from './AgentBookButton.vue'
 import CardApproval from './CardApproval.vue'
 import AgentState from './AgentState.vue'
@@ -155,6 +156,16 @@ const emit = defineEmits<{
 const run = computed(() => props.agent?.panel.value.run ?? null)
 const picker = ref<InstanceType<typeof ModelPicker> | null>(null)
 const mayPick = computed(() => props.modelPick?.changeable.value === true)
+const mayOpenPicker = computed(() => props.modelPick?.picker.value != null)
+const modelFace = computed(() =>
+  conversationModelFace(
+    picker.value,
+    props.modelPick?.picker.value?.connectionId,
+    run.value?.model.value,
+    mayPick.value,
+    mayOpenPicker.value,
+  ),
+)
 const plan = computed(() => props.controls?.plan.value ?? null)
 const approval = computed(() => props.controls?.approval.value ?? null)
 const pending = computed(() => props.controls?.pending.value ?? [])
@@ -493,28 +504,16 @@ const fileManager = fileManagerHere()
       <span class="run-settings">
         <!-- With no model known yet, a conversation that can change it still offers the picker. -->
         <component
-          :is="mayPick ? 'button' : 'span'"
-          v-if="run?.model.value || mayPick"
-          v-bind="
-            mayPick
-              ? {
-                  type: 'button',
-                  popovertarget: picker?.panelId,
-                  'aria-haspopup': 'dialog',
-                  'aria-expanded': picker?.isOpen ?? false,
-                  'aria-label': run?.model.value
-                    ? `Change model, now ${run.model.value}`
-                    : 'Choose a model',
-                }
-              : {}
-          "
+          :is="mayOpenPicker ? 'button' : 'span'"
+          v-if="run?.model.value || mayOpenPicker"
+          v-bind="modelFace.attributes"
           class="run-item run-model"
-          :title="run?.model.value ? `Model: ${run.model.value}` : 'No model named yet'"
+          :title="modelFace.title"
           data-cy="card-run-model"
-          @click="(event: MouseEvent) => mayPick && openThePicker(event, 'model')"
+          @click="(event: MouseEvent) => mayOpenPicker && openThePicker(event, 'model')"
         >
           <svg class="icon" aria-hidden="true"><use href="#i-cube" /></svg>
-          <span class="run-value">{{ run?.model.value || 'Choose model' }}</span>
+          <span class="run-value">{{ modelFace.text || 'Choose model' }}</span>
         </component>
         <component
           :is="mayPick ? 'button' : 'span'"
@@ -592,7 +591,7 @@ const fileManager = fileManagerHere()
     <!-- The conversation's own model picker; its panel is placed by whichever of the model and
          the effort was pressed. -->
     <ModelPicker
-      v-if="mayPick && props.modelPick?.picker.value"
+      v-if="mayOpenPicker && props.modelPick?.picker.value"
       ref="picker"
       faceless
       v-bind="props.modelPick.picker.value"

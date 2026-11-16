@@ -16,6 +16,7 @@ import type { TextPackUse } from '../../shared/text-pack'
 import type { TextPackRead } from '../skills/text-pack'
 import type { AgentRuntime, SessionRef } from '@brobot2/runtime'
 import type { Provider, ProviderConnection } from '@brobot2/shared'
+import type { UpdateProviderConnectionInput } from '../../shared/provider-connection-edit'
 import type { ArchivedConversations } from '../archived-file'
 import type { InstructionContext, TheBuildRunning } from './factory-text'
 import type { MessagePathPlace } from '../message-paths'
@@ -76,6 +77,7 @@ export interface RuntimeHostDeps {
   /** Resolve metadata before home/provider work; absence preserves legacy test/runtime wiring. */
   connectionFor?(provider: Provider, recordedConnection?: string | null): ProviderConnection
   listConnections?(): readonly ProviderConnection[]
+  updateConnectionMetadata?(input: UpdateProviderConnectionInput): ProviderConnection
   prepareProviderLaunch?(
     provider: Provider,
     profileId: string,
@@ -97,7 +99,11 @@ export interface RuntimeHostDeps {
    * outright is still telling the truth about where the home is, so declaring `Promise<string>`
    * would have turned dozens of honest stubs into compile errors for nothing.
    */
-  prepareProviderHome(provider: Provider, profileId: string): string | Promise<string>
+  prepareProviderHome(
+    provider: Provider,
+    profileId: string,
+    connectionId?: string,
+  ): string | Promise<string>
   /** Wait for transcript clearing before a provider process can start. */
   beforeProviderLaunch?: () => Promise<void>
   readSelectedSkills?: (profileId: string | null) => SkillLaunchSelection
@@ -137,7 +143,7 @@ export interface RuntimeHostDeps {
    * `provider-homes.ts` (*"merely ASKING a question wrote a credential to disk"*). This is
    * `deriveProviderHome` on its own: containment-checked, pure, and it touches nothing.
    */
-  providerHomePath(provider: Provider, profileId: string): string
+  providerHomePath(provider: Provider, profileId: string, connectionId?: string): string
   /**
    * **Which profiles exist** (167) — the ids, {@link DEFAULT_PROFILE_ID} first.
    *
@@ -192,7 +198,9 @@ export interface RuntimeHostDeps {
    * read once per run, the person's Claude Code whenever it changed. Optional: without it each
    * says it cannot be told.
    */
-  providerVersions?(): Promise<Readonly<Record<Provider, ProviderVersion>>>
+  providerVersions?(
+    connection?: ProviderConnection,
+  ): Promise<Readonly<Record<Provider, ProviderVersion>>>
   /**
    * The rules an *Always allow* kept beyond its conversation, and the one way to remove one
    * (`kept-rules.ts`). Optional: without them the list is empty and nothing can be removed.

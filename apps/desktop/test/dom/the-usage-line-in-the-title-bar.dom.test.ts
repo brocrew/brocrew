@@ -4,12 +4,23 @@ import { defineComponent, h, nextTick, provide } from 'vue'
 import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import { createDesktopProviderApi } from '../../src/renderer/src/client-provider/desktop'
 import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
-import { providersBridge } from '../../look/fixtures/providers'
+import { providerConnectionFixtures, providersBridge } from '../../look/fixtures/providers'
 import AppTitleBar from '../../src/renderer/src/components/AppTitleBar.vue'
-import { railFacts, screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import {
+  railFacts,
+  screenFacts,
+  useWhoCalledWhom,
+  type RunningConversation,
+} from '../../src/renderer/src/composables/useWhoCalledWhom'
 import type { ProviderUsageReading } from '../../src/shared/runtime-ipc'
 import { conv, forestOf } from './forest-fixture'
 import { mount, unmountAll, type Mounted } from './harness'
+import { drawnReady } from './drawn'
+import {
+  attributedUsageFixtures,
+  provideIdlePlaceNavigator,
+  runningSignInFixtures,
+} from './provider-launch.fixture'
 
 /**
  * The window's usage on one line in its title bar, for every screen: each provider's windows, the
@@ -33,18 +44,33 @@ afterEach(async () => {
 
 type Usage = Record<'claude' | 'codex', ProviderUsageReading[]>
 
-async function bar(usage: Usage): Promise<Mounted> {
+async function settledTitle(): Promise<void> {
+  await drawnReady()
+  await new Promise<void>((done) => requestAnimationFrame(() => done()))
+  await nextTick()
+}
+
+async function bar(
+  usage: Usage,
+  running: readonly RunningConversation[] | null = runningSignInFixtures(),
+): Promise<Mounted> {
+  railFacts().update({ runningConversations: running })
   ;(window as { api?: unknown }).api = {
     runtime: {
       providerCatalogue: async () => PROVIDER_DESCRIPTORS,
-      providerUsage: () => Promise.resolve(usage),
+      providerConnections: async () => providerConnectionFixtures(),
+      providerUsage: () => Promise.resolve(attributedUsageFixtures(usage)),
       onProvidersChanged: () => () => {},
     },
   }
   await page.viewport(1180, 840)
-  const m = mount(AppTitleBar, { info: null, error: null }, { width: 1180, height: 32 })
-  await new Promise((done) => setTimeout(done, 0))
-  await nextTick()
+  const Frame = defineComponent(() => {
+    provideIdlePlaceNavigator()
+    return () => h(AppTitleBar, { info: null, error: null })
+  })
+  const m = mount(Frame, {}, { width: 1180, height: 32 })
+  m.host.style.flexDirection = 'column'
+  await settledTitle()
   return m
 }
 
@@ -83,8 +109,18 @@ describe('the usage line', () => {
   it('🔴 says each window’s use, then the agents and their memory, with the same words as its name', async () => {
     railFacts().update({
       runningConversations: [
-        { sessionId: 'sess_a', provider: 'claude', state: { is: 'active' } },
-        { sessionId: 'sess_b', provider: 'codex', state: { is: 'idle' } },
+        {
+          sessionId: 'sess_a',
+          provider: 'claude',
+          connectionId: 'claude:sign-in',
+          state: { is: 'active' },
+        },
+        {
+          sessionId: 'sess_b',
+          provider: 'codex',
+          connectionId: 'codex:sign-in',
+          state: { is: 'idle' },
+        },
       ],
     })
     screenFacts().update({
@@ -100,10 +136,13 @@ describe('the usage line', () => {
         ['sess_b', 700 * 1024 * 1024],
       ]),
     })
-    const m = await bar(READ)
+    const m = await bar(READ, useWhoCalledWhom().runningConversations.value)
     const line = m.q('app-usage')
     const said = (line.textContent ?? '').trim()
-    expect(said).toBe('Claude 5h 28% · week 61% · Codex week 35% · 2 agents · 1 working · 1.3 GB')
+    expect(said).toBe('Claude 5h 28% · week 61% · +1')
+    expect(line.title).toContain(
+      'Claude 5h 28% · week 61% · Codex week 35% · 2 agents · 1 working · 1.3 GB',
+    )
     // Short cells retain full plain usage sentences for hover and accessibility.
     expect(line.getAttribute('aria-label')).toBe(line.title)
     expect(line.title).toContain('Claude 5-hour usage: 28% used')
@@ -111,11 +150,11 @@ describe('the usage line', () => {
     expect(line.title).toContain('Codex weekly usage: 35% used')
   })
 
-  it('⚑ before anything is read it says so with a question mark, and keeps every window', async () => {
-    const m = await bar({ claude: [], codex: [] })
-    expect((m.q('app-usage').textContent ?? '').trim()).toBe(
-      'Claude 5h ? · week ? · Codex week ? · ? agents · ?',
-    )
+  it('⚑ before the running list is read it says unknown without inventing provider windows', async () => {
+    const m = await bar({ claude: [], codex: [] }, null)
+    expect((m.q('app-usage').textContent ?? '').trim()).toBe('? agents · ?')
+    expect(m.all('shelf-usage-claude-5h')).toHaveLength(0)
+    expect(m.all('shelf-usage-codex-week')).toHaveLength(0)
   })
 
   it('⛔ it can be pressed inside the bar the window is moved by', async () => {
@@ -215,6 +254,7 @@ it('places fictional raw windows by supplied period facts and excludes supplied 
 
 async function namedTitle(name: string, delayed = false) {
   providersBridge()
+  railFacts().update({ runningConversations: runningSignInFixtures() })
   const raw = vi.spyOn(window.api.runtime, 'providerCatalogue')
   let release!: () => void
   const hold = new Promise<void>((resolve) => {
@@ -222,7 +262,7 @@ async function namedTitle(name: string, delayed = false) {
   })
   const runtime = {
     ...window.api.runtime,
-    providerUsage: vi.fn(async () => READ),
+    providerUsage: vi.fn(async () => attributedUsageFixtures(READ)),
     providerCatalogue: vi.fn(async function (this: object) {
       expect(this).toBe(runtime)
       if (delayed) await hold
@@ -238,20 +278,24 @@ async function namedTitle(name: string, delayed = false) {
   )
   const Root = defineComponent({
     setup() {
+      provideIdlePlaceNavigator()
       provide(CLIENT_PROVIDERS, api)
       return () => h(AppTitleBar, { info: null, error: null })
     },
   })
   const m = mount(Root, {}, { width: 1180, height: 32 })
-  await new Promise((done) => setTimeout(done, 0))
-  await nextTick()
+  m.host.style.flexDirection = 'column'
+  await settledTitle()
   return { m, raw, runtime, release: () => release() }
 }
 
 it('uses selected names in real title usage with the same numbers and popover action', async () => {
   const first = await namedTitle('Fern')
   const line = first.m.q('app-usage')
-  expect(line.textContent).toContain('Fern 5h 28% · week 61% · Birch week 35%')
+  expect(line.textContent).toBe(
+    'Fern 5h 28% · week 61% · Birch week 35% · 2 agents · 0 working · ?',
+  )
+  expect(line.title).toContain('Fern 5h 28% · week 61% · Birch week 35%')
   expect(line.getAttribute('aria-label')).toBe(line.title)
   expect(line.title).toContain('Fern 5-hour usage: 28% used')
   const second = await namedTitle('Willow')

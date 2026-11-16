@@ -61,9 +61,6 @@ class FakeAuthOps implements ProviderAuthOps {
   async replaceARefusedCopy(): Promise<'not-tried'> {
     return 'not-tried'
   }
-  async bringTheKeyToItsHomes(): Promise<string | null> {
-    return null
-  }
 
   /** Resolves once `signIn` has actually been entered, so a test can settle without racing it. */
   started(): Promise<void> {

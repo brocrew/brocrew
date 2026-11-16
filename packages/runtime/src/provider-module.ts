@@ -23,7 +23,7 @@ export type ProvisionHome = (managedRoot: string, home: string) => void | Promis
 export interface ProviderHomePaths {
   readonly managedRoot: string
   readonly defaultProfile: string
-  homeOf(profileId: string): string
+  homeOf(profileId: string, connectionId?: string): string
   profiles(): string[]
   assertMayOpen(profileId: string): void
 }
@@ -31,16 +31,31 @@ export interface ProviderHomePaths {
 /** Operations on one provider's bound paths, with no provider selection at the call site. */
 export interface HomeAuthOperations {
   readonly renewal?: LoginRenewalOperations
-  probe?(profileId: string, signal?: AbortSignal): Promise<AuthState>
-  credentialHome(profileId: string): string
-  check(profileId: string, signal?: AbortSignal): Promise<AuthState>
-  reprovision(profileId: string): ReprovisionOutcome | Promise<ReprovisionOutcome>
-  signIn(profileId: string, signal?: AbortSignal): Promise<ProviderSignIn>
-  bringTheKeyToItsHomes(): Promise<string | null>
+  probe?(
+    profileId: string,
+    signal?: AbortSignal,
+    connection?: ProviderConnection,
+  ): Promise<AuthState>
+  credentialHome(profileId: string, connection?: ProviderConnection): string
+  check(
+    profileId: string,
+    signal?: AbortSignal,
+    connection?: ProviderConnection,
+  ): Promise<AuthState>
+  reprovision(
+    profileId: string,
+    connection?: ProviderConnection,
+  ): ReprovisionOutcome | Promise<ReprovisionOutcome>
+  signIn(
+    profileId: string,
+    signal?: AbortSignal,
+    connection?: ProviderConnection,
+  ): Promise<ProviderSignIn>
   replaceARefusedCopy(
     profileId: string,
     refused: unknown,
     stillWanted: () => boolean,
+    connection?: ProviderConnection,
   ): Promise<SignInCopySource | 'not-tried'>
 }
 
@@ -50,7 +65,7 @@ export interface HomeAuthOperations {
  * those folders, or first provide a profile registry. Existing conversations keep their paths.
  */
 export interface ProviderHomeStrategy {
-  prepare(profileId: string): Promise<string>
+  prepare(profileId: string, connectionId?: string): Promise<string>
 }
 
 /** Bound selection operations; adapters own the connection value and its native protocol. */
@@ -65,7 +80,7 @@ export interface PreparedProviderLaunch {
 }
 
 export interface ProviderModule<H extends ProviderHostValues, Connection = ProviderConnection> {
-  readonly program?: ProviderProgramOperations
+  readonly program?: ProviderProgramOperations<Connection>
   readonly authPolicy: ProviderAuthPolicy
   readonly transcripts: TranscriptPolicy<H>
   readonly discovery: DiscoveryPolicy<H>

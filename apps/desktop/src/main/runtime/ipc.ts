@@ -71,9 +71,7 @@ import { sinkOwnerId } from './window-caller'
 import { isAPageReport, type PageReceipt } from './page-performance'
 
 /**
- * One renderer→main `invoke` channel validates the command union with the runtime's own schemas.
- * Page freeze reports use `page-performance.ts` instead and never reach the host.
- * Electron imports stay type-only so plain Node tests can load this module.
+ * Renderer invokes use runtime schemas; page reports use page-performance.ts. Electron imports stay type-only.
  */
 
 /**
@@ -403,6 +401,7 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('createSession'),
     provider: providerSchema,
+    connectionId: z.string().optional(),
     /** Absent/blank means the durable BroBot workspace. */
     cwd: z.string().optional(),
     /**
@@ -546,7 +545,11 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
     kind: z.literal('setSessionSetting'),
     sessionId,
     body: z.discriminatedUnion('kind', [
-      z.object({ kind: z.literal('model'), value: z.string().min(1).max(120).optional() }),
+      z.object({
+        kind: z.literal('model'),
+        value: z.string().min(1).max(120).optional(),
+        connectionId: z.string().min(1).optional(),
+      }),
       z.object({ kind: z.literal('reasoningEffort'), value: z.string().min(1).max(60).optional() }),
       // Only `true` is accepted: turning plan mode OFF is the go-ahead and has its own command,
       // which sends a message with it. `z.literal(true)` makes that a REJECTED command at the
@@ -945,6 +948,15 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('capabilities') }),
   z.object({ kind: z.literal('providerCatalogue') }),
   z.object({ kind: z.literal('providerConnections') }),
+  z
+    .object({
+      kind: z.literal('updateProviderConnection'),
+      provider: providerSchema,
+      connectionId: z.string().min(1),
+      name: z.string(),
+      description: z.string().nullable(),
+    })
+    .strict(),
   /**
    * Which profiles exist (167). Parameterless for the same reason again, and one more: the renderer
    * has nothing to narrow the answer WITH — it is asking precisely because it does not know what
@@ -963,6 +975,7 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
     kind: z.literal('checkProviderAuth'),
     provider: providerSchema,
     profileId,
+    connectionId: z.string().min(1).optional(),
     probe: z.boolean().optional(),
   }),
   z.object({
@@ -970,8 +983,18 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
     provider: providerSchema,
     statusOnly: z.boolean().optional(),
   }),
-  z.object({ kind: z.literal('reprovisionProviderAuth'), provider: providerSchema, profileId }),
-  z.object({ kind: z.literal('signInProvider'), provider: providerSchema, profileId }),
+  z.object({
+    kind: z.literal('reprovisionProviderAuth'),
+    provider: providerSchema,
+    profileId,
+    connectionId: z.string().min(1).optional(),
+  }),
+  z.object({
+    kind: z.literal('signInProvider'),
+    provider: providerSchema,
+    profileId,
+    connectionId: z.string().min(1).optional(),
+  }),
   z.object({ kind: z.literal('cancelProviderSignIn'), provider: providerSchema, profileId }),
   /**
    * Would the launch accept this folder (203). Bounded like every other renderer-supplied string
@@ -1165,6 +1188,7 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
       provider: providerSchema.nullable(),
       model: z.string().min(1).max(120).nullable(),
       effort: z.string().min(1).max(60).nullable(),
+      connectionId: z.string().optional(),
     })
     .refine(
       (command) =>
@@ -1179,8 +1203,18 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
    * 🔴 **D-042 · R3 — the one list a person picks from**: a provider off the closed enum and the
    * `isPathSegment`-checked profile, absent meaning BroBot's own — the credential gestures' shape.
    */
-  z.object({ kind: z.literal('modelList'), provider: providerSchema, profileId }),
-  z.object({ kind: z.literal('providerLaunchChoices'), provider: providerSchema, profileId }),
+  z.object({
+    kind: z.literal('modelList'),
+    provider: providerSchema,
+    profileId,
+    connectionId: z.string().min(1).optional(),
+  }),
+  z.object({
+    kind: z.literal('providerLaunchChoices'),
+    provider: providerSchema,
+    profileId,
+    connectionId: z.string().min(1).optional(),
+  }),
   resolveProviderLaunchSchema(profileId),
   /**
    * ⚑ **D-042 · R3 — a model a person adds to, or takes off, a provider's list** — bounded as
@@ -1558,6 +1592,7 @@ const DURING_A_QUIT: Record<RuntimeCommandKind, QuitRuling> = {
 
   // Connection names and references are database records, not build-time capabilities.
   providerConnections: 'refused',
+  updateProviderConnection: 'refused',
 
   // ⛔ **The capability door, refused for its neighbours' reason** (355). Both statements are the
   // ledger's. The READ is worth nothing — the surface asking is on a window that is going — and the
@@ -2043,6 +2078,7 @@ export async function executeRuntimeCommand(
         const created = await host.createSession(
           {
             provider: command.provider,
+            ...(command.connectionId === undefined ? {} : { connectionId: command.connectionId }),
             cwd: command.cwd,
             approvalMode: command.approvalMode,
             profileId: command.profileId,
@@ -2211,7 +2247,7 @@ export async function executeRuntimeCommand(
       const result = await host.setSessionSetting(
         command.sessionId,
         command.body.kind === 'model'
-          ? { kind: 'model', model: command.body.value }
+          ? { kind: 'model', model: command.body.value, connectionId: command.body.connectionId }
           : command.body.kind === 'reasoningEffort'
             ? { kind: 'reasoningEffort', effort: command.body.value }
             : { kind: 'planMode', on: command.body.on },
@@ -2639,6 +2675,8 @@ export async function executeRuntimeCommand(
       return host.providerCatalogue() satisfies Answer<'providerCatalogue'>
     case 'providerConnections':
       return host.providerConnections() satisfies Answer<'providerConnections'>
+    case 'updateProviderConnection':
+      return host.updateProviderConnection(command) satisfies Answer<'updateProviderConnection'>
     case 'profiles':
       // Synchronous host-side — it is a `readdir` under `userData` — and returned without an
       // `await` for the same reason `attachOpen` is: there is nothing asynchronous to wait for.
@@ -2646,26 +2684,39 @@ export async function executeRuntimeCommand(
     // 098. The profile defaults HERE rather than in the host, so that every credential path resolves
     // "which profile" in one place — the same rule `createSession` follows.
     case 'checkProviderAuth':
-      return (await host.checkProviderAuth(
-        command.provider,
-        command.profileId ?? DEFAULT_PROFILE_ID,
-        command.probe,
-      )) satisfies Answer<'checkProviderAuth'>
+      return (await (command.connectionId === undefined
+        ? host.checkProviderAuth(
+            command.provider,
+            command.profileId ?? DEFAULT_PROFILE_ID,
+            command.probe,
+          )
+        : host.checkProviderAuth(
+            command.provider,
+            command.profileId ?? DEFAULT_PROFILE_ID,
+            command.probe,
+            command.connectionId,
+          ))) satisfies Answer<'checkProviderAuth'>
     case 'reprovisionProviderHomes':
       return (await host.reprovisionProviderHomes(
         command.provider,
         command.statusOnly,
       )) satisfies Answer<'reprovisionProviderHomes'>
     case 'reprovisionProviderAuth':
-      return (await host.reprovisionProviderAuth(
-        command.provider,
-        command.profileId ?? DEFAULT_PROFILE_ID,
-      )) satisfies Answer<'reprovisionProviderAuth'>
+      return (await (command.connectionId === undefined
+        ? host.reprovisionProviderAuth(command.provider, command.profileId ?? DEFAULT_PROFILE_ID)
+        : host.reprovisionProviderAuth(
+            command.provider,
+            command.profileId ?? DEFAULT_PROFILE_ID,
+            command.connectionId,
+          ))) satisfies Answer<'reprovisionProviderAuth'>
     case 'signInProvider':
-      return (await host.signInProvider(
-        command.provider,
-        command.profileId ?? DEFAULT_PROFILE_ID,
-      )) satisfies Answer<'signInProvider'>
+      return (await (command.connectionId === undefined
+        ? host.signInProvider(command.provider, command.profileId ?? DEFAULT_PROFILE_ID)
+        : host.signInProvider(
+            command.provider,
+            command.profileId ?? DEFAULT_PROFILE_ID,
+            command.connectionId,
+          ))) satisfies Answer<'signInProvider'>
     case 'cancelProviderSignIn':
       return (await host.cancelProviderSignIn(
         command.provider,
@@ -2733,7 +2784,12 @@ export async function executeRuntimeCommand(
         command.profileId,
         command.provider === null || command.model === null
           ? null
-          : { provider: command.provider, model: command.model, effort: command.effort },
+          : {
+              provider: command.provider,
+              model: command.model,
+              effort: command.effort,
+              ...(command.connectionId === undefined ? {} : { connectionId: command.connectionId }),
+            },
       ) satisfies Answer<'setAgentModelAndEffort'>
     case 'agentModelAndEffort':
       // ⚑ **Gated like `agentIdentities`, the roster it sits beside** (677): the sheet is a person's.
@@ -2741,9 +2797,14 @@ export async function executeRuntimeCommand(
       return host.agentModelAndEffort(command.profileId) satisfies Answer<'agentModelAndEffort'>
     case 'providerLaunchChoices':
       requireAPerson(sink, command.kind)
-      return host.providerLaunchChoices(
-        command.provider,
-        command.profileId ?? DEFAULT_PROFILE_ID,
+      return (
+        command.connectionId === undefined
+          ? host.providerLaunchChoices(command.provider, command.profileId ?? DEFAULT_PROFILE_ID)
+          : host.providerLaunchChoices(
+              command.provider,
+              command.profileId ?? DEFAULT_PROFILE_ID,
+              command.connectionId,
+            )
       ) satisfies Answer<'providerLaunchChoices'>
     case 'resolveProviderLaunch':
       requireAPerson(sink, command.kind)
@@ -2753,9 +2814,14 @@ export async function executeRuntimeCommand(
       // last pick. ⚑ The profile defaults HERE, the credential gestures' rule: every path that
       // resolves "which profile" does it in one place (257 §2).
       requireAPerson(sink, command.kind)
-      return host.modelList(
-        command.provider,
-        command.profileId ?? DEFAULT_PROFILE_ID,
+      return (
+        command.connectionId === undefined
+          ? host.modelList(command.provider, command.profileId ?? DEFAULT_PROFILE_ID)
+          : host.modelList(
+              command.provider,
+              command.profileId ?? DEFAULT_PROFILE_ID,
+              command.connectionId,
+            )
       ) satisfies Answer<'modelList'>
     case 'addHandAddedModel':
       return host.addHandAddedModel(

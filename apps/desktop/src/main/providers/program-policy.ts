@@ -1,4 +1,9 @@
-import { providerRecord, SUPPORTED_PROVIDERS, type Provider } from '@brobot2/shared'
+import {
+  providerRecord,
+  SUPPORTED_PROVIDERS,
+  type Provider,
+  type ProviderConnection,
+} from '@brobot2/shared'
 import type { ProviderVersion } from '@brobot2/runtime/provider-module'
 export type { ProviderProgramOperations } from '@brobot2/runtime/provider-module'
 
@@ -11,9 +16,11 @@ export const VERSION_TIMEOUT_MS = 15_000
 
 /** Start each read in registry order, then retain the existing ordered await and output keys. */
 export function orderedProgramVersions(
-  readers: Readonly<Partial<Record<Provider, () => Promise<ProviderVersion>>>>,
-): () => Promise<Readonly<Record<Provider, ProviderVersion>>> {
-  return async () => {
+  readers: Readonly<
+    Partial<Record<Provider, (connection?: ProviderConnection) => Promise<ProviderVersion>>>
+  >,
+): (connection?: ProviderConnection) => Promise<Readonly<Record<Provider, ProviderVersion>>> {
+  return async (connection) => {
     const pending = providerRecord((provider) => {
       const read = readers[provider]
       return read === undefined
@@ -21,7 +28,9 @@ export function orderedProgramVersions(
             version: null,
             reason: 'This provider does not publish a program version.',
           })
-        : read()
+        : connection?.provider === provider
+          ? read(connection)
+          : read()
     })
     const answer = {} as Record<Provider, ProviderVersion>
     for (const provider of SUPPORTED_PROVIDERS) answer[provider] = await pending[provider]

@@ -1,5 +1,6 @@
 import { computed, type ComputedRef } from 'vue'
 import { providerDescriptor, providerRecord, SUPPORTED_PROVIDERS } from '@brobot2/shared/providers'
+import { compatibilityConnectionId, type ProviderConnection } from '@brobot2/shared'
 import type { Provider, ProviderUsageReading } from '../../../shared/runtime-ipc'
 import { agoWords, fullTime } from '../lib/clock'
 import { NOT_MEASURED } from '../lib/agent-panel'
@@ -15,7 +16,7 @@ import { useProviderUsage } from './useProviderUsage'
 import { useWhoCalledWhom, type RunningConversation } from './useWhoCalledWhom'
 
 /**
- * Each provider's usage, window by window, and the agents running now with their memory: the cells
+ * Each running connection's attributed windows and the agents running now with their memory: the cells
  * the usage cards draw and the words the title bar's line is made of. Providers are iterated and
  * never named (`provider-neutrality.test.ts`).
  *
@@ -33,9 +34,8 @@ const WINDOWS = [
 const PROVIDERS = SUPPORTED_PROVIDERS
 
 /**
- * The windows each provider's cells wait for before any reading has arrived. A window left out is
- * one that provider no longer reports: it gets no "Not read yet" cell, and is drawn only if a
- * reading for it does arrive.
+ * The windows each connection waits for before the first usage answer. After an answer,
+ * only its returned periods are shown, including periods whose amount has not been said.
  */
 const AWAITED = providerRecord<readonly string[]>(
   (provider) => providerDescriptor(provider).usageWindows,
@@ -93,68 +93,115 @@ function titleWords(reading: ProviderUsageReading, now: number): string {
 }
 
 export interface UsageCells {
-  /** One cell per provider window, then the agents and their memory. */
+  /** Running connection windows only, then the agents and their memory. */
   readonly cells: ComputedRef<readonly UsageCell[]>
   /** Provider usage, running and working totals, then process memory. */
   readonly line: ComputedRef<string>
   readonly description: ComputedRef<string>
+  readonly variants: ComputedRef<readonly string[]>
 }
 
 export function useUsageCells(
-  readiness: () => Readonly<Partial<Record<Provider, boolean | null>>> | null = () => null,
   names?: () => UsageProviderNames,
+  connections: () => readonly ProviderConnection[] = () => [],
 ): UsageCells {
   const nameOf = (provider: Provider): string => usageProviderName(provider, names?.(), 'Provider')
   const usage = useProviderUsage()
   const cast = useWhoCalledWhom()
   const minute = useMinuteClock()
 
-  /** Each provider's windows, as `[short, reading or null]`, in the order the cells draw them. */
-  const windows = computed(() =>
-    PROVIDERS.map((provider) => {
-      const readings = (usage.value?.[provider] ?? []).map((reading) => ({
-        reading,
-        window: reading.period,
-      }))
+  const windows = computed(() => {
+    const running = cast.runningConversations.value ?? []
+    const identities = PROVIDERS.flatMap((provider) =>
+      [
+        ...new Set(
+          running.filter((row) => row.provider === provider).map((row) => row.connectionId ?? null),
+        ),
+      ]
+        .sort((a, b) => (a ?? '').localeCompare(b ?? ''))
+        .map((connectionId) => ({ provider, connectionId })),
+    ).sort(
+      (a, b) =>
+        a.provider.localeCompare(b.provider) ||
+        (a.connectionId ?? '').localeCompare(b.connectionId ?? ''),
+    )
+    return identities.map(({ provider, connectionId }) => {
+      const metadata = connections().find(
+        (row) => row.provider === provider && row.id === connectionId,
+      )
+      const several = identities.filter((row) => row.provider === provider).length > 1
+      const label =
+        connectionId === null
+          ? `${nameOf(provider)} · unknown connection`
+          : several
+            ? `${nameOf(provider)} · ${metadata?.name ?? connectionId}`
+            : nameOf(provider)
+      const readings =
+        connectionId === null
+          ? []
+          : (usage.value?.[provider] ?? [])
+              .filter((reading) => reading.connectionId === connectionId)
+              .map((reading) => ({ reading, window: reading.period }))
+      const key =
+        connectionId === compatibilityConnectionId(provider, 'sign-in')
+          ? provider
+          : JSON.stringify([provider, connectionId])
       return {
         provider,
+        connectionId,
+        key,
+        label,
         windows: WINDOWS.flatMap(({ word, short }) => {
           const reading = readingIn(readings, word)
-          if (reading === null && !AWAITED[provider].includes(word)) return []
+          if (
+            reading === null &&
+            (usage.value !== null ||
+              !(metadata?.authMethod === 'sign-in' && AWAITED[provider].includes(word)))
+          )
+            return []
           return [{ word, short, reading }]
         }),
       }
-    }),
-  )
+    })
+  })
 
   const usageCells = computed<UsageCell[]>(() => {
-    // The minute clock is what moves the words; a reading newer than its last tick reads from now.
     const now = Math.max(minute.value, Date.now())
-    return windows.value.flatMap(({ provider, windows: theirs }) =>
-      theirs.map(({ word, short, reading }): UsageCell => {
-        const label = `${nameOf(provider)} · ${short}`
-        if (reading === null) {
+    return windows.value.flatMap(({ key, label: groupLabel, windows: theirs }) => {
+      if (theirs.length === 0)
+        return [
+          {
+            key: `${key}-unknown`,
+            label: groupLabel,
+            age: null,
+            value: null,
+            title: null,
+            name: `${groupLabel} usage: unknown`,
+          },
+        ]
+      return theirs.map(({ word, short, reading }): UsageCell => {
+        const label = `${groupLabel} · ${short}`
+        if (reading === null)
           return {
-            key: `${provider}-${short}`,
+            key: `${key}-${short}`,
             label,
             age: null,
             value: null,
             title: null,
-            name: `${nameOf(provider)} ${word} limit: not read yet`,
+            name: `${groupLabel} ${word} limit: not read yet`,
           }
-        }
         const value = valueWords(reading, now)
         const title = titleWords(reading, now)
         return {
-          key: `${provider}-${short}`,
+          key: `${key}-${short}`,
           label,
           age: `read ${agoWords(reading.at, now)}`,
           value,
           title,
-          name: `${nameOf(provider)} ${word} limit: ${value}. ${title.replace(`\n${UNCONFIRMED_USAGE}`, '').replace('\n', '. ')}.`,
+          name: `${groupLabel} ${word} limit: ${value}. ${title.replace(`\n${UNCONFIRMED_USAGE}`, '').replace('\n', '. ')}.`,
         }
-      }),
-    )
+      })
+    })
   })
 
   /** The rail supplies running membership on every page, independently of graph reads. */
@@ -163,6 +210,8 @@ export function useUsageCells(
     if (rows === null) return null
     // Where main could measure no process, the memory says so as the agent cards do.
     const unmeasured = cast.memoryUnmeasured.value
+    if (unmeasured === null && rows.some((row) => !cast.processMemory.value.has(row.sessionId)))
+      return null
     const bytes = rows.reduce(
       (sum, node) => sum + (cast.processMemory.value.get(node.sessionId) ?? 0),
       0,
@@ -233,50 +282,73 @@ export function useUsageCells(
     ]
   })
 
+  const score = (reading: ProviderUsageReading | null): number =>
+    reading?.usedPercent != null &&
+    reading.unconfirmed !== true &&
+    (reading.resetsAt === null || reading.resetsAt > Math.max(minute.value, Date.now()))
+      ? reading.usedPercent
+      : -1
+  type Group = (typeof windows.value)[number]
+  function groupWords(group: Group, tightestOnly = false): string {
+    const theirs = tightestOnly
+      ? [...group.windows].sort((a, b) => score(b.reading) - score(a.reading)).slice(0, 1)
+      : group.windows
+    if (theirs.length === 0) return `${group.label} · usage ${NOT_READ_MARK}`
+    return `${group.label} ${theirs
+      .map(({ short, reading }) => {
+        const used =
+          reading?.usedPercent == null
+            ? NOT_READ_MARK
+            : `${reading.resetsAt !== null && reading.resetsAt <= Math.max(minute.value, Date.now()) ? 'was ' : ''}${Math.round(reading.usedPercent)}%`
+        return `${short} ${used}`
+      })
+      .join(' · ')}`
+  }
   const line = computed(() => {
     const population = agentsNow.value
     const agents =
       population === null
         ? `${NOT_READ_MARK} agents`
         : `${population.count} agents${population.count === 0 ? '' : ` · ${population.working} working`}`
-    const providers = windows.value.flatMap(({ provider, windows: theirs }) => {
-      const ready = readiness()?.[provider]
-      if (ready === false) return [`${nameOf(provider)} · Needs setup`]
-      if (ready === true && theirs.every(({ reading }) => reading === null))
-        return [`${nameOf(provider)} · Ready · usage not read yet`]
-      return theirs.map(({ short, reading }, index) => {
-        const used =
-          reading?.usedPercent == null
-            ? NOT_READ_MARK
-            : `${String(Math.round(reading.usedPercent))}%`
-        return `${index === 0 ? `${nameOf(provider)}${ready === true ? ' · Ready' : ''} ` : ''}${short} ${used}`
-      })
-    })
     const now = running.value
-    return [...providers, agents, now === null ? NOT_READ_MARK : now.memory].join(' · ')
+    return [
+      ...windows.value.map((group) => groupWords(group)),
+      agents,
+      now === null ? NOT_READ_MARK : now.memory,
+    ].join(' · ')
   })
-
+  const variants = computed(() => {
+    const ranked = [...windows.value].sort(
+      (a, b) =>
+        Math.max(-1, ...b.windows.map(({ reading }) => score(reading))) -
+          Math.max(-1, ...a.windows.map(({ reading }) => score(reading))) ||
+        a.provider.localeCompare(b.provider) ||
+        (a.connectionId ?? '').localeCompare(b.connectionId ?? ''),
+    )
+    const first = ranked[0]
+    if (!first) return [line.value]
+    const more = ranked.length > 1 ? ` · +${ranked.length - 1}` : ''
+    return [...new Set([line.value, groupWords(first) + more, groupWords(first, true) + more])]
+  })
   const description = computed(() =>
     [
-      ...PROVIDERS.flatMap((provider) => {
-        const ready = readiness()?.[provider]
-        return ready === true
-          ? [`${nameOf(provider)} is ready`]
-          : ready === false
-            ? [`${nameOf(provider)} needs setup`]
-            : []
-      }),
-      ...windows.value.flatMap(({ provider, windows: theirs }) =>
-        theirs.map(
-          ({ word, reading }) =>
-            `${nameOf(provider)} ${word} usage: ${
-              reading?.usedPercent == null ? 'unknown' : `${Math.round(reading.usedPercent)}% used`
-            }${reading?.unconfirmed === true ? ` (${UNCONFIRMED_USAGE})` : ''}`,
-        ),
+      line.value,
+      ...windows.value.flatMap(({ label, windows: theirs }) =>
+        theirs.length === 0
+          ? [`${label} usage: unknown`]
+          : theirs.map(
+              ({ word, reading }) =>
+                `${label} ${word} usage: ${reading?.usedPercent == null ? 'unknown' : `${Math.round(reading.usedPercent)}% used`}${reading?.unconfirmed === true ? ` (${UNCONFIRMED_USAGE})` : ''}${reading ? `; ${resetWords(reading.resetsAt, Math.max(minute.value, Date.now())) ?? 'reset time not said'}` : ''}`,
+            ),
       ),
       ...totals.value.map((cell) => cell.name),
     ].join('. '),
   )
 
-  return { cells: computed(() => [...usageCells.value, ...totals.value]), line, description }
+  return {
+    cells: computed(() => [...usageCells.value, ...totals.value]),
+    line,
+    variants,
+    description,
+  }
 }

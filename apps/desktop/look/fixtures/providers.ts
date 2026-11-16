@@ -3,8 +3,15 @@
  * current versions; or one signed out and the other running on a saved key. Fake data only: no
  * account, plan or figure here is anybody's.
  */
-import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
-import { providerLaunchChoices, resolveProviderLaunch } from '../../src/main/connections/launch'
+import {
+  PROVIDER_DESCRIPTORS,
+  compatibilityConnectionId,
+  type ProviderConnection,
+} from '@brobot2/shared'
+import {
+  providerLaunchChoices,
+  resolveProviderLaunch,
+} from '../../src/main/connections/launch'
 
 const NOW = Date.now()
 const HOUR = 3_600_000
@@ -117,40 +124,31 @@ const SIGNED_OUT_AND_KEY = {
   codex: { state: 'usable', login: 'api-key', expiresAt: null },
 }
 
-/** ⚑ The bridge the Providers page reads. `signedOut`: Claude signed out, Codex on a saved key. */
+/** Enabled compatibility rows for a valid migrated fixture; readiness is read separately. */
+export function providerConnectionFixtures(): ProviderConnection[] {
+  return (['claude', 'codex'] as const).flatMap((provider) =>
+    (['sign-in', 'api-key'] as const).map((authMethod): ProviderConnection => ({
+      id: compatibilityConnectionId(provider, authMethod),
+      provider,
+      name:
+        authMethod === 'api-key' ? 'API key' : provider === 'claude' ? 'subscription' : 'ChatGPT',
+      authMethod,
+      credentialSource: authMethod === 'api-key' ? 'provider-api-key' : 'provider-sign-in',
+      baseUrl: null,
+      enabled: true,
+      contractVersion: 1,
+    })),
+  )
+}
+
+/** The bridge the Providers page reads. `signedOut`: Claude signed out, Codex on a saved key. */
 export function providersBridge(signedOut = false): void {
   const auth = signedOut ? SIGNED_OUT_AND_KEY : SIGNED_IN
   const keySet = (provider: Provider) => signedOut && provider === 'codex'
   window.api = {
     runtime: {
       providerCatalogue: async () => PROVIDER_DESCRIPTORS,
-      providerConnections: async () =>
-        (['claude', 'codex'] as const).flatMap((provider) => [
-          {
-            id: `${provider}:sign-in`,
-            provider,
-            name: provider === 'claude' ? 'subscription' : 'ChatGPT',
-            authMethod: 'sign-in',
-            credentialSource: 'provider-sign-in',
-            baseUrl: null,
-            enabled: true,
-            contractVersion: 1,
-          },
-          ...(keySet(provider)
-            ? [
-                {
-                  id: `${provider}:api-key`,
-                  provider,
-                  name: 'API key',
-                  authMethod: 'api-key',
-                  credentialSource: 'provider-api-key',
-                  baseUrl: null,
-                  enabled: true,
-                  contractVersion: 1,
-                },
-              ]
-            : []),
-        ]),
+      providerConnections: async () => providerConnectionFixtures(),
       checkProviderAuth: async ({ provider }: { provider: Provider }) => auth[provider],
       reprovisionProviderAuth: async () => 'unchanged',
       signInProvider: async () => ({ success: true, state: null, detail: null }),

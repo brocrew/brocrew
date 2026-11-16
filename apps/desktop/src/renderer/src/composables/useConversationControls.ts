@@ -15,7 +15,7 @@ export interface ConversationControlsSources {
   readonly session: () => CreatedSession | null
   readonly capabilities: () => ProviderCapabilityMap | null
   readonly saving?: () => boolean
-  /** Nothing set here would reach the conversation (`CreatedSession.settingsFixed`). */
+  /** Whether this host offers approval and planning changes. */
   readonly fixed: () => boolean
   /** Drawn from its ledger: its next start leaves planning, so plan first is not offered. */
   readonly recorded: () => boolean

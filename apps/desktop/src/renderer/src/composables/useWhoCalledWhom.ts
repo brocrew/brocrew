@@ -7,7 +7,7 @@ import type { ResumableSessionInfo } from '../../../shared/runtime-ipc'
 import type { ListedConversation } from '../lib/conversation-list'
 
 export type RunningConversation = Readonly<
-  Pick<ResumableSessionInfo, 'sessionId' | 'provider' | 'state'>
+  Pick<ResumableSessionInfo, 'sessionId' | 'provider' | 'connectionId' | 'state'>
 >
 
 /**

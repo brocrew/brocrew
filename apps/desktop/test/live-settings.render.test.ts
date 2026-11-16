@@ -62,7 +62,7 @@ const meta = (over: Partial<CreatedSession> = {}): CreatedSession => ({
 /** The drawer on its Open tab, as the pane mounts it for a live conversation. */
 function render(props: {
   session: CreatedSession
-  /** ⚑ D-017b · nothing set here would reach the conversation (`CreatedSession.settingsFixed`). */
+  /** Inspection mode for approval and planning controls. */
   fixed?: boolean
   /** Drawn from its ledger: its next start leaves planning. */
   recorded?: boolean
@@ -246,15 +246,16 @@ describe('the live settings, on the agent card (076)', () => {
     expect(plan.toLowerCase()).not.toContain('will not run')
   })
 
-  it('a conversation whose settings are fixed states them instead of offering to change them', async () => {
-    // ⚑ **D-017b · `fixed`, not `ended`** — the controls are statements where nothing set here
-    // would reach the conversation. ⚑ Handed a Take, so only `fixed` can make them statements.
+  it('an inspection host keeps plan and approval fixed while its model callback remains available', async () => {
+    // Model and effort use their supplied callback; plan and approval retain inspection mode.
     const html = await render({
       session: meta({ settings: { ...noSettings, model: 'm-1', reasoningEffort: 'low' } }),
       fixed: true,
     })
-    expect(tag(html, 'card-run-model')).toMatch(/^<span/)
-    expect(tag(html, 'card-run-effort')).toMatch(/^<span/)
+    expect(tag(html, 'card-run-model')).toMatch(/^<button/)
+    expect(tag(html, 'card-run-model')).toContain('aria-label="Change model, now m-1"')
+    expect(tag(html, 'card-run-model')).not.toContain('disabled')
+    expect(tag(html, 'card-run-effort')).toMatch(/^<button/)
     expect(tag(html, 'card-run-plan')).toMatch(/^<span/)
     expect(tag(html, 'card-run-plan')).toContain(FIXED_SAYS)
     expect(tag(html, 'card-approval')).toContain('data-changeable="false"')

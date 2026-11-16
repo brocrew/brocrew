@@ -787,7 +787,6 @@ describe('716 · `710` F-4 — a re-copy the machine ran short for', () => {
         signIn: async () => {
           throw new Error('no sign-in in this section')
         },
-        bringTheKeyToItsHomes: async () => null,
         replaceARefusedCopy: async () => 'not-tried',
       },
     })

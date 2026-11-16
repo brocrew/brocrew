@@ -106,11 +106,7 @@ describe('§1 · the billing refusal’s notice names the key and the ways out',
     const errors = notices.filter((notice) => notice.level === 'error')
     expect(errors.map((notice) => notice.text)).toEqual([billingNotice('claude', true)])
     const said = billingNotice('claude', true)
-    expect(said).toContain('the API key saved for Claude')
-    expect(said).toContain('Add credit to that account, then send this conversation a message')
-    expect(said).toContain('“API key” on the Claude card in Providers')
-    // A new key reaches only conversations started after it: a running one keeps its key.
-    expect(said).toContain('conversations started after that run on the new key')
+    expect(said).toBe('Key refused. Check its balance or switch connection.')
     expect(notices.map((notice) => notice.text).join(' ')).not.toContain(BILLING)
   })
 
@@ -128,7 +124,7 @@ describe('§1 · the billing refusal’s notice names the key and the ways out',
       (one) => one.level === 'error',
     )
     expect(notice?.text).toBe(billingNotice('codex', true))
-    expect(notice?.text).toContain('the API key saved for Codex')
+    expect(notice?.text).toBe('Key refused. Check its balance or switch connection.')
   })
 
   it('⚑ a second refusal in the same turn is said once', () => {

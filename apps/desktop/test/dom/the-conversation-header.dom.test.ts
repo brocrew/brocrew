@@ -19,18 +19,36 @@ import {
   permission,
   record,
   show,
-  windowCleanup,
+  unmountAll,
   visible,
   type Mounted,
 } from './harness'
 import { usageCards } from './usage-cards'
+import { providersBridge } from '../../look/fixtures/providers'
+import { railFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { attributedUsageFixtures, runningSignInFixtures } from './provider-launch.fixture'
 
 /**
  * Measure header actions and status at the app's minimum and default widths, after the rail
  * takes its column. The drawing sensor catches clipped labels that textContent cannot detect.
  */
 
-afterEach(windowCleanup())
+const ORIGINAL = { width: window.innerWidth, height: window.innerHeight }
+
+afterEach(async () => {
+  unmountAll()
+  railFacts().update({ runningConversations: null })
+  delete (window as { api?: unknown }).api
+  await page.viewport(ORIGINAL.width, ORIGINAL.height)
+})
+
+async function configuredUsageCards(width: number, height: number): Promise<Mounted> {
+  providersBridge()
+  const usage = attributedUsageFixtures(await window.api.runtime.providerUsage())
+  window.api.runtime.providerUsage = async () => usage
+  railFacts().update({ runningConversations: runningSignInFixtures() })
+  return usageCards(width, height)
+}
 
 /** ⛔ Derived from `tokens.css`, not chosen — see the file note. */
 const APP_MIN_W = 1180
@@ -186,7 +204,7 @@ describe('§0 · the bar and the strip, drawn as themselves (the ledger’s own 
     const width = PANE_WIDTHS[0]
     await page.viewport(width, PANE_H)
     // ⚑ The cards as the title bar opens them, at the pane's narrowest.
-    const m = await usageCards(width, 300)
+    const m = await configuredUsageCards(width, 300)
     await drawnReady()
 
     const strip = m.q('shelf-settings')
@@ -718,7 +736,7 @@ describe('§5 · the strip below the bar says usage; the settings are the Agent 
     // ⚑ …and the bar drew: it names the provider. The usage cells are the title bar's now.
     expect(m.q('session-header').innerText).toContain('claude')
     expect(m.all('shelf-usage-claude-5h')).toHaveLength(0)
-    const cards = await usageCards(PANE_WIDTHS[0], 300)
+    const cards = await configuredUsageCards(PANE_WIDTHS[0], 300)
     await drawnReady()
     assertDrawn(cards.q('shelf-usage-claude-5h'), 'the first usage cell')
   })
@@ -738,7 +756,7 @@ describe('§5 · the strip below the bar says usage; the settings are the Agent 
    */
   it('⚠️ the cells share the strip equally, and none of it is left over', async () => {
     await page.viewport(PANE_WIDTHS[0], PANE_H)
-    const m = await usageCards(PANE_WIDTHS[0], 300)
+    const m = await configuredUsageCards(PANE_WIDTHS[0], 300)
     const strip = m.host.querySelector<HTMLElement>('[data-cy="shelf-settings"]')
     expect(strip).not.toBeNull()
     // ⚑ The strip's own children: each cell holds hooks of its own (its age, its value).

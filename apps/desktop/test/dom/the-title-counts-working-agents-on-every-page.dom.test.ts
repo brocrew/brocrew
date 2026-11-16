@@ -20,6 +20,8 @@ import type {
 import { conv, forestOf } from './forest-fixture'
 import { assertDrawn, drawnReady, inkRects, lineCount } from './drawn'
 import { mount, unmountAll, type Mounted } from './harness'
+import { provideIdlePlaceNavigator } from './provider-launch.fixture'
+import { providerConnectionFixtures } from '../../look/fixtures/providers'
 
 const original = { width: window.innerWidth, height: window.innerHeight }
 afterEach(async () => {
@@ -42,6 +44,7 @@ function row(
   return {
     sessionId,
     provider,
+    connectionId: `${provider}:sign-in`,
     state,
     running,
     cwd: '/made-up/bakery',
@@ -96,8 +99,12 @@ function castTheRows(rows: readonly ResumableSessionInfo[]): void {
 const expected = '8 agents · 3 working'
 const split = 'Claude 5 (2 working)\nCodex 3 (1 working)'
 const text = (m: Mounted) => (m.q('app-usage').textContent ?? '').trim()
+const fullText = (m: Mounted) => m.q('app-usage').title
 async function settle() {
   await new Promise((resolve) => setTimeout(resolve, 0))
+  await nextTick()
+  await drawnReady()
+  await new Promise<void>((done) => requestAnimationFrame(() => done()))
   await nextTick()
 }
 function deferred<T>() {
@@ -121,6 +128,7 @@ async function windowWith(
   ;(window as { api?: unknown }).api = {
     runtime: {
       providerCatalogue: async () => PROVIDER_DESCRIPTORS,
+      providerConnections: async () => providerConnectionFixtures(),
       listResumable: () => reply(),
       listUnresumable: async () => unreadable,
       providerUsage: async () => usage,
@@ -129,9 +137,10 @@ async function windowWith(
   }
   const rail = ref<Rail | null>(null)
   const navigation = reactive({ activeId: null as string | null, place: 'tools' as string | null })
-  const shell = defineComponent(
-    () => () =>
-      h('div', [
+  const shell = defineComponent(() => {
+    provideIdlePlaceNavigator()
+    return () =>
+      h('div', { style: 'display:flex;flex-direction:column;width:100%;height:100%' }, [
         h(AppTitleBar, { info: null, error: null }),
         h(SideRail, {
           ref: rail,
@@ -139,8 +148,8 @@ async function windowWith(
           activeId: navigation.activeId,
           place: navigation.place,
         }),
-      ]),
-  )
+      ])
+  })
   await page.viewport(1180, 840)
   const m = mount(shell, {}, { width: 1180, height: 840 })
   await settle()
@@ -177,7 +186,7 @@ describe('working counts in the title bar', () => {
       [...rows, row('stopped', 'claude', { is: 'active' }, 'not-running')],
       [noRef, outside, restored],
     )
-    expect(text(m)).toContain(expected)
+    expect(fullText(m)).toContain(expected)
     expect(useWhoCalledWhom().runningConversations.value).toHaveLength(8)
     expect(useWhoCalledWhom().forest.value).toBeNull()
   })
@@ -196,7 +205,7 @@ describe('working counts in the title bar', () => {
       },
     ]
     const { m } = await windowWith(rows)
-    expect(text(m)).toContain('6 agents · 0 working')
+    expect(fullText(m)).toContain('6 agents · 0 working')
     expect(useWhoCalledWhom().runningConversations.value?.map((one) => one.state.is)).toEqual(
       rows.map((one) => one.state.is),
     )
@@ -204,21 +213,21 @@ describe('working counts in the title bar', () => {
 
   it('a read with no running conversations gives real zeros', async () => {
     const { m } = await windowWith([row('stopped', 'claude', { is: 'active' }, 'not-running')])
-    expect(text(m)).toContain('0 agents')
-    expect(text(m)).not.toContain(' working')
+    expect(fullText(m)).toContain('0 agents')
+    expect(fullText(m)).not.toContain(' working')
   })
 
   it('updates immediately from the same state push the rail receives', async () => {
     const { m, rail } = await windowWith()
     rail.value!.hearStates(moved('menu', { is: 'active' }))
     await nextTick()
-    expect(text(m)).toContain('8 agents · 4 working')
+    expect(fullText(m)).toContain('8 agents · 4 working')
     rail.value!.hearStates(moved('design', { is: 'idle' }))
     await nextTick()
-    expect(text(m)).toContain('8 agents · 3 working')
+    expect(fullText(m)).toContain('8 agents · 3 working')
     rail.value!.hearStates(moved('stock', { is: 'in-the-background', what: 'read the stock list' }))
     await nextTick()
-    expect(text(m)).toContain('8 agents · 4 working')
+    expect(fullText(m)).toContain('8 agents · 4 working')
   })
 
   it('a state push wins over a list reply already in flight', async () => {
@@ -231,11 +240,11 @@ describe('working counts in the title bar', () => {
     pending.resolve(mixed())
     await refresh
     await nextTick()
-    expect(text(m)).toContain('8 agents · 4 working')
+    expect(fullText(m)).toContain('8 agents · 4 working')
     setReply(() => Promise.resolve(mixed()))
     await rail.value!.refreshResumable()
     await nextTick()
-    expect(text(m)).toContain('8 agents · 3 working')
+    expect(fullText(m)).toContain('8 agents · 3 working')
   })
 
   it('a queued list refresh replaces the completed active reading in the title', async () => {
@@ -250,15 +259,15 @@ describe('working counts in the title bar', () => {
     newer.resolve([row('fresh', 'codex', { is: 'active' })])
     await nextTick()
     expect(read).toHaveBeenCalledTimes(1)
-    expect(text(m)).toContain('8 agents · 3 working')
+    expect(fullText(m)).toContain('8 agents · 3 working')
     older.resolve(mixed())
     await oldRead
     await nextTick()
-    expect(text(m)).toContain('8 agents · 3 working')
+    expect(fullText(m)).toContain('8 agents · 3 working')
     await vi.advanceTimersByTimeAsync(1_000)
     await nextTick()
     expect(read).toHaveBeenCalledTimes(2)
-    expect(text(m)).toContain('1 agents · 1 working')
+    expect(fullText(m)).toContain('1 agents · 1 working')
     expect(m.q('shelf-usage-agents').textContent).toContain('Codex 1 (1 working)')
   })
 
@@ -280,12 +289,12 @@ describe('working counts in the title bar', () => {
     reject(new Error('Fictional older read failed'))
     await oldRead
     await nextTick()
-    expect(text(m)).toContain('8 agents · 3 working')
+    expect(fullText(m)).toContain('8 agents · 3 working')
     expect(m.all('conversations-error')).toHaveLength(0)
     await vi.advanceTimersByTimeAsync(1_000)
     await nextTick()
     expect(read).toHaveBeenCalledTimes(2)
-    expect(text(m)).toContain('1 agents · 1 working')
+    expect(fullText(m)).toContain('1 agents · 1 working')
     expect(m.all('conversations-error')).toHaveLength(0)
   })
 
@@ -294,7 +303,7 @@ describe('working counts in the title bar', () => {
     setReply(() => Promise.resolve([...mixed(), row('new-worker', 'codex', { is: 'active' })]))
     await rail.value!.refreshResumable()
     await nextTick()
-    expect(text(m)).toContain('9 agents · 4 working')
+    expect(fullText(m)).toContain('9 agents · 4 working')
   })
 
   it('does not depend on which conversation or destination is open', async () => {
@@ -303,38 +312,38 @@ describe('working counts in the title bar', () => {
       navigation.place = place
       navigation.activeId = place === null ? 'recipe' : null
       await nextTick()
-      expect(text(m)).toContain(expected)
+      expect(fullText(m)).toContain(expected)
     }
     navigation.activeId = 'design'
     await nextTick()
-    expect(text(m)).toContain(expected)
+    expect(fullText(m)).toContain(expected)
   })
 
   it('reload reads the list again, and starts with unknown instead of a kept count', async () => {
     const first = await windowWith()
-    expect(text(first.m)).toContain(expected)
+    expect(fullText(first.m)).toContain(expected)
     unmountAll()
     expect(useWhoCalledWhom().runningConversations.value).toBeNull()
     const next = await windowWith([row('new', 'codex', { is: 'active' })])
-    expect(text(next.m)).toContain('1 agents · 1 working')
+    expect(fullText(next.m)).toContain('1 agents · 1 working')
   })
 
   it('an initial list still in flight says unknown, then updates when it answers', async () => {
     const pending = deferred<ResumableSessionInfo[]>()
     const { m } = await windowWith([], [], () => pending.promise)
-    expect(text(m)).toContain('? agents')
-    expect(text(m)).not.toContain(' working')
+    expect(fullText(m)).toContain('? agents')
+    expect(fullText(m)).not.toContain(' working')
     pending.resolve(mixed())
     await settle()
-    expect(text(m)).toContain(expected)
+    expect(fullText(m)).toContain(expected)
   })
 
   it('a failed first read cannot invent a zero-working count', async () => {
     const { m } = await windowWith([], [], () =>
       Promise.reject(new Error('Fictional first read failed')),
     )
-    expect(text(m)).toContain('? agents')
-    expect(text(m)).not.toContain(' working')
+    expect(fullText(m)).toContain('? agents')
+    expect(fullText(m)).not.toContain(' working')
   })
 
   it('a failed later list read keeps the last good count', async () => {
@@ -342,7 +351,7 @@ describe('working counts in the title bar', () => {
     setReply(() => Promise.reject(new Error('Fictional list read failed')))
     await rail.value!.refreshResumable()
     await nextTick()
-    expect(text(m)).toContain(expected)
+    expect(fullText(m)).toContain(expected)
   })
 
   it('puts each provider’s working subset in the popup and keeps memory detail', async () => {
@@ -401,7 +410,7 @@ describe('working counts in the title bar', () => {
   })
 
   it.each([true, false])(
-    'the whole usage/count/memory line fits at1180, working=%s',
+    'the compact line fits at1180 and retains whole usage/count/memory accessibly, working=%s',
     async (working) => {
       const rows = mixed().map((one) => ({
         ...one,
@@ -415,6 +424,7 @@ describe('working counts in the title bar', () => {
       const { m } = await windowWith(rows, [], () => Promise.resolve(rows), {
         claude: [
           {
+            connectionId: 'claude:sign-in',
             window: 'five_hour',
             period: { word: '5-hour', durationMs: 5 * 3_600_000, bucket: false, bucketName: null },
             usedPercent: 28,
@@ -422,6 +432,7 @@ describe('working counts in the title bar', () => {
             at: now,
           },
           {
+            connectionId: 'claude:sign-in',
             window: 'seven_day',
             period: {
               word: 'weekly',
@@ -436,6 +447,7 @@ describe('working counts in the title bar', () => {
         ],
         codex: [
           {
+            connectionId: 'codex:sign-in',
             window: 'seven_day',
             period: {
               word: 'weekly',
@@ -451,9 +463,9 @@ describe('working counts in the title bar', () => {
       })
       const line = m.q('app-usage')
       const whole = `Claude 5h 28% · week 61% · Codex week 35% · 8 agents · ${working ? '3 working' : '0 working'} · 800 MB`
-      expect(text(m)).toBe(whole)
+      expect(text(m)).toBe('Claude 5h 28% · week 61% · +1')
       // The short line keeps the approved full usage sentences in its tooltip and name.
-      const description = `Claude 5-hour usage: 28% used. Claude weekly usage: 61% used. Codex weekly usage: 35% used. Agents running: Claude 5 (${working ? '2 working' : 'none working'})\nCodex 3 (${working ? '1 working' : 'none working'}). Their memory: 800 MB`
+      const description = `${whole}. Claude 5-hour usage: 28% used; resets in 1 h. Claude weekly usage: 61% used; resets in 2 h. Codex weekly usage: 35% used; resets in 2 h. Agents running: Claude 5 (${working ? '2 working' : 'none working'})\nCodex 3 (${working ? '1 working' : 'none working'}). Their memory: 800 MB`
       expect(line.title).toBe(description)
       expect(line.getAttribute('aria-label')).toBe(description)
       await drawnReady()
@@ -478,4 +490,53 @@ describe('working counts in the title bar', () => {
       expect(m.q('shelf-usage-memory').textContent).toContain('800 MB')
     },
   )
+})
+
+it('carries recorded connection identity through both real rail list paths without a default guess', async () => {
+  const known = {
+    ...row('fictional-title-known', 'claude', { is: 'active' }),
+    connectionId: 'claude:sign-in',
+  }
+  const legacy = { ...row('fictional-title-legacy', 'claude', { is: 'idle' }), connectionId: null }
+  const withoutRef = {
+    ...row('fictional-title-no-ref', 'codex', { is: 'active' }),
+    connectionId: 'codex:api-key',
+    foundInUserHome: false,
+    restoredFromBundle: false,
+    reason: 'Fictional provider reference not yet announced',
+  }
+  const stopped = {
+    ...row('fictional-title-stopped', 'codex', { is: 'idle' }, 'not-running'),
+    connectionId: 'codex:sign-in',
+  }
+  const { rail, setReply } = await windowWith([known, legacy, stopped], [withoutRef])
+  expect(useWhoCalledWhom().runningConversations.value).toHaveLength(3)
+  expect(useWhoCalledWhom().runningConversations.value).toEqual([
+    expect.objectContaining({
+      sessionId: known.sessionId,
+      provider: 'claude',
+      connectionId: known.connectionId,
+    }),
+    expect.objectContaining({
+      sessionId: legacy.sessionId,
+      provider: 'claude',
+      connectionId: null,
+    }),
+    expect.objectContaining({
+      sessionId: withoutRef.sessionId,
+      provider: 'codex',
+      connectionId: withoutRef.connectionId,
+    }),
+  ])
+  setReply(async () => [legacy, { ...known, running: 'not-running' }, stopped])
+  await rail.value!.refreshResumable()
+  await settle()
+  expect(useWhoCalledWhom().runningConversations.value).toHaveLength(2)
+  expect(useWhoCalledWhom().runningConversations.value).toEqual([
+    expect.objectContaining({ sessionId: legacy.sessionId, connectionId: null }),
+    expect.objectContaining({
+      sessionId: withoutRef.sessionId,
+      connectionId: withoutRef.connectionId,
+    }),
+  ])
 })

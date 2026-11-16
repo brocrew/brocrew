@@ -6,6 +6,7 @@ export function resolveProviderLaunchSchema(profileId: z.ZodOptional<z.ZodString
     kind: z.literal('resolveProviderLaunch'),
     profileId,
     askedProvider: providerSchema.nullable(),
+    askedConnectionId: z.string().optional(),
     providers: z.array(
       z.object({
         provider: providerSchema,

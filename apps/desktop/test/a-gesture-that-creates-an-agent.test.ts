@@ -446,7 +446,7 @@ describe('§3 · the identity’s default provider — every writer, measured', 
     ).toEqual([
       "SET ${CAPABILITY_COLUMNS.map((column) => `${column} = ?`).join(', ')}",
       'SET display_name = ?',
-      'SET model_choice = ?',
+      'SET model_choice = ?, connection_id = ?',
       'SET provider = ?',
     ])
     // …and `provider` is not one of those columns, which is the claim `AgentIdentity.provider`'s

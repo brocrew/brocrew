@@ -13,26 +13,22 @@ const AUTH_ERROR_NOTICE =
 const GENERIC_STALE_NOTICE =
   'The sign-in this conversation was launched with is no longer valid. Its transcript is kept. ' +
   'Check the provider’s sign-in in Providers before continuing.'
-const GENERIC_KEY_NOTICE =
-  'The API key this conversation was started with was refused. Its transcript is kept. ' +
-  'Check or replace the key under “API key” in Providers before continuing.'
+const KEY_REFUSED_NOTICE = 'Key refused. Check its balance or switch connection.'
 
 export function billingNotice(name: string | undefined, onAKey: boolean): string {
+  if (onAKey) return KEY_REFUSED_NOTICE
   if (name === undefined) {
     return (
       'The provider would not run this turn on the account this conversation runs on, because of ' +
       'that account’s billing. Add credit to it, then send this conversation a message to carry on.'
     )
   }
-  return onAKey
-    ? `This turn was refused on the API key saved for ${name}, because the account the key ` +
-        'belongs to can’t pay for it. Add credit to that account, then send this conversation a ' +
-        `message to carry on. Or replace the key under “API key” on the ${name} card in ` +
-        'Providers; conversations started after that run on the new key.'
-    : `This turn was refused on the account this conversation’s ${name} login belongs to, ` +
-        'because of that account’s billing. Check its plan and billing, then send this ' +
-        `conversation a message to carry on. Or save an API key under “API key” on the ${name} ` +
-        'card in Providers; conversations started after that run on it.'
+  return (
+    `This turn was refused on the account this conversation’s ${name} login belongs to, ` +
+    'because of that account’s billing. Check its plan and billing, then send this ' +
+    `conversation a message to carry on. Or save an API key under “API key” on the ${name} ` +
+    'card in Providers; conversations started after that run on it.'
+  )
 }
 
 export function replacedSignInNotice(name: string): string {
@@ -40,27 +36,6 @@ export function replacedSignInNotice(name: string): string {
     `${name} refused this agent’s sign-in, so this turn stopped. This app replaces it by itself ` +
     'when a newer sign-in to the same account is on this computer, and reopens this conversation. ' +
     `Signing in to ${name} again on the ${name} card in Providers gives it one.`
-  )
-}
-
-function keyNotice(name: string | undefined): string {
-  if (name === undefined) return GENERIC_KEY_NOTICE
-  return (
-    'The API key this conversation was started with was refused, so this conversation cannot run on ' +
-    `it. Check or replace the key under “API key” on the ${name} card in Providers — “Check it works” ` +
-    'there asks whether a saved key still works — then start a new conversation, which runs on the ' +
-    'key saved then.'
-  )
-}
-
-function staleKeyNotice(name: string | undefined): string {
-  if (name === undefined) return GENERIC_KEY_NOTICE
-  return (
-    'The API key this conversation was started with was refused, so it cannot continue on it. ' +
-    `Its transcript is kept. Press “Check it works” under “API key” on the ${name} card in Providers, and ` +
-    'replace the key if it is refused; then send this conversation a message to carry on, which ' +
-    'starts it again and reads the key afresh. It carries on without its “Allow for this ' +
-    'conversation” approvals or anything that was running in the background.'
   )
 }
 
@@ -108,6 +83,18 @@ export function errorForDisplay(event: TranscriptEvent, name?: string): Transcri
     (observed.cause === 'auth_stale' || observed.signIn !== undefined)
   )
     return observed
+  if (
+    observed.onAKey === true &&
+    (observed.cause === 'auth' ||
+      observed.cause === 'auth_stale' ||
+      observed.billingRefused === true)
+  )
+    return presented(observed, {
+      message: KEY_REFUSED_NOTICE,
+      level: 'error',
+      terminal: observed.billingRefused === true ? false : observed.fatal,
+      repeat: 'same-message-once',
+    })
   const supplied = errorPresentationSchema.safeParse(observed.presentation)
   if (supplied.success && supplied.data.message.trim() !== '') {
     return presented(observed, {
@@ -126,13 +113,9 @@ export function errorForDisplay(event: TranscriptEvent, name?: string): Transcri
     })
   if (observed.cause === 'auth' || observed.cause === 'auth_stale') {
     const message =
-      observed.onAKey === true
-        ? observed.cause === 'auth_stale'
-          ? staleKeyNotice(name)
-          : keyNotice(name)
-        : observed.replacesRefusedSignIn === true && name !== undefined
-          ? replacedSignInNotice(name)
-          : AUTH_ERROR_NOTICE
+      observed.replacesRefusedSignIn === true && name !== undefined
+        ? replacedSignInNotice(name)
+        : AUTH_ERROR_NOTICE
     return presented(observed, {
       message,
       level: 'error',

@@ -1,5 +1,7 @@
+import type { UpdateProviderConnectionInput } from './provider-connection-edit'
 import type {
   ProviderLaunchChoices,
+  ProviderModelReadInput,
   ResolveProviderLaunchInput,
   ResolvedProviderLaunch,
 } from './provider-launch'
@@ -31,7 +33,8 @@ export interface ClientProviderApi {
   providerVersions(): Promise<Readonly<Record<Provider, ProviderVersion>>>
   providerResources(): Promise<Readonly<Record<Provider, ProviderResources>>>
   providerConnections(): Promise<readonly ProviderConnection[]>
-  providerLaunchChoices(input: ProviderProfileInput): Promise<ProviderLaunchChoices>
+  updateProviderConnection(input: UpdateProviderConnectionInput): Promise<ProviderConnection>
+  providerLaunchChoices(input: ProviderModelReadInput): Promise<ProviderLaunchChoices>
   resolveProviderLaunch(input: ResolveProviderLaunchInput): Promise<ResolvedProviderLaunch>
   addHandAddedModel(input: { provider: Provider; model: string }): Promise<readonly string[]>
   deleteHandAddedModel(input: { provider: Provider; model: string }): Promise<readonly string[]>

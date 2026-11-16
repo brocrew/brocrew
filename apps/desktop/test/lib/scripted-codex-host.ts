@@ -140,6 +140,7 @@ export const THE_MODEL_LIST: ModelListResponse = {
 export class ScriptedAppServer implements CodexTransport {
   private readonly queue = new Wire<CodexIncoming>()
   private turns = 0
+  private apiKey: string | undefined
   readonly requests: { method: string; params: Record<string, unknown> }[] = []
   /** Every answer the adapter wrote to a request this app-server raised. */
   readonly responses: { id: string | number; result: unknown }[] = []
@@ -149,6 +150,14 @@ export class ScriptedAppServer implements CodexTransport {
   request(method: string, params?: unknown): Promise<unknown> {
     const asked = (params ?? {}) as Record<string, unknown>
     this.requests.push({ method, params: asked })
+    if (method === 'account/login/start' && asked['type'] === 'apiKey') {
+      this.apiKey = asked['apiKey'] as string
+      return Promise.resolve({ type: 'apiKey' })
+    }
+    if (this.apiKey !== undefined && method === 'getAuthStatus')
+      return Promise.resolve({ authMethod: 'apikey' })
+    if (this.apiKey !== undefined && method === 'account/read')
+      return Promise.resolve({ account: { type: 'apiKey' } })
     if (method === 'initialize') {
       return Promise.resolve({
         userAgent: `brobot2/${CODEX_PROTOCOL_VERSION} (Mac OS 26.3.0; arm64) vscode/1.130.0 (brobot2; 0.0.0)`,

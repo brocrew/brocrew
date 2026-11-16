@@ -1,12 +1,13 @@
-import { createModelLists } from '../lib/provider-launch-fixture'
-import { providerDescriptor } from '@brobot2/shared'
+import { compatibilityConnectionId, providerDescriptor } from '@brobot2/shared'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, reactive, type Component } from 'vue'
 import type { Provider, ProviderConnection } from '@brobot2/shared'
+import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
 import ProviderCard from '../../src/renderer/src/components/ProviderCard.vue'
 
 import { providersBridge } from '../../look/fixtures/providers'
 import { mount, unmountAll } from './harness'
+import { providerCardReadingProps } from './provider-launch.fixture'
 
 const rows = (provider: Provider, name = 'Fictional subscription'): ProviderConnection[] => [
   {
@@ -49,16 +50,7 @@ function card(read: () => Promise<readonly ProviderConnection[]>) {
     limitsRead: true,
     clock: Date.now(),
     version: { version: 'fictional' },
-    readings: [],
-    resources: null,
-    resourcesPaused: false,
-    resourcesError: null,
-    loginMoved: 0,
-    lists: createModelLists(() => ({
-      modelList: window.api.runtime.modelList,
-      addHandAddedModel: window.api.runtime.addHandAddedModel,
-      deleteHandAddedModel: window.api.runtime.deleteHandAddedModel,
-    })),
+    ...providerCardReadingProps([]),
   })
   const component = defineComponent({
     setup: () => () =>
@@ -86,14 +78,20 @@ it('shows named compatibility rows only in their provider drawer', async () => {
   await settle()
   const text = m.q('provider-connections').textContent
   expect(text).toContain('Claude · Fictional subscription')
-  expect(text).toContain('In use')
+  expect(text).not.toContain('In use')
   expect(text).toContain('Ready')
   expect(text).not.toContain('Other account')
-  expect(text).toContain('Standard address')
-  expect(m.q('provider-connections').querySelectorAll('input,select,button,a')).toHaveLength(0)
+  expect(text).toContain('Sign-in · Max plan')
+  expect(m.q('provider-connection').querySelectorAll('.meta')).toHaveLength(1)
+  const entry = m.q('provider-connection')
+  expect(entry.querySelectorAll('[data-cy="provider-status"]')).toHaveLength(1)
+  expect(entry.querySelectorAll('[data-cy="provider-usage"]')).toHaveLength(0)
+  expect(entry.querySelector('[data-cy="provider-key"]')).toBeNull()
+  expect(m.all('provider-status')).toHaveLength(1)
+  expect(m.all('provider-usage')).toHaveLength(0)
 })
 
-it('reads metadata without adding auth, model, sign-in or key operations', async () => {
+it('reads metadata beside separate overview and sign-in checks without adding mutations', async () => {
   const auth = vi.fn(window.api.runtime.checkProviderAuth)
   const model = vi.fn(window.api.runtime.modelList)
   const login = vi.fn(window.api.runtime.signInProvider)
@@ -103,7 +101,16 @@ it('reads metadata without adding auth, model, sign-in or key operations', async
   const { m } = card(async () => rows('claude'))
   await settle()
   expect(m.all('provider-connection')).toHaveLength(1)
-  expect(auth).toHaveBeenCalledTimes(1)
+  expect(auth.mock.calls).toEqual([
+    [
+      {
+        provider: 'claude',
+        profileId: DEFAULT_PROFILE_ID,
+        connectionId: compatibilityConnectionId('claude', 'sign-in'),
+      },
+    ],
+    [{ provider: 'claude', profileId: DEFAULT_PROFILE_ID }],
+  ])
   expect(model).toHaveBeenCalledTimes(1)
   expect(login).not.toHaveBeenCalled()
 })
@@ -123,8 +130,8 @@ it('does not advertise models below when the existing catalog read failed', asyn
   }
   const { m } = card(async () => rows('claude'))
   await settle()
-  expect(m.q('provider-connections').textContent).toContain('Models not checked.')
-  expect(m.q('provider-connections').textContent).not.toContain('Models are shown below.')
+  expect(m.q('provider-connections').textContent).not.toContain('Models not checked.')
+  expect(m.q('provider-connections').textContent).not.not.toContain('Models are shown below.')
 })
 
 it('shows an empty metadata result without a setup or selection control', async () => {
@@ -199,12 +206,20 @@ it('does not claim per-connection totals or checked models for an inactive conne
   const entries = m.all('provider-connection')
   expect(entries).toHaveLength(2)
   expect(entries[0]!.textContent).toContain('Not checked')
-  expect(entries[0]!.textContent).toContain('Models not checked.')
+  expect(entries[0]!.textContent).not.toContain('Models not checked.')
   expect(entries[0]!.textContent).not.toContain('Ready')
-  expect(entries[1]!.textContent).toContain('In use')
-  expect(m.q('provider-connections').textContent).toContain(
-    "Usage and cost per connection aren't shown yet.",
-  )
+  expect(entries[1]!.querySelector('[data-cy=connection-status]')?.textContent).toContain('Ready')
+  expect(entries[1]!.textContent).not.toContain('Models are shown below.')
+  expect(entries[0]!.querySelectorAll('[data-cy="provider-status"]')).toHaveLength(1)
+  expect(entries[1]!.querySelectorAll('[data-cy="provider-key"]')).toHaveLength(1)
+  expect(entries[0]!.querySelector('[data-cy="provider-key"]')).toBeNull()
+  expect(entries[1]!.querySelector('[data-cy="provider-status"]')).toBeNull()
+  expect(entries[1]!.querySelector('[data-cy="provider-usage"]')).toBeNull()
+  expect(m.all('provider-status')).toHaveLength(1)
+  expect(m.all('provider-key')).toHaveLength(1)
+  expect(entries[0]!.querySelectorAll('meter')).toHaveLength(0)
+  expect(entries[1]!.querySelectorAll('meter')).toHaveLength(0)
+  expect(m.q('provider-connections').textContent).not.toContain('In use')
 })
 
 it('rereads metadata when the existing provider login notice changes', async () => {

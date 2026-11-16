@@ -187,13 +187,25 @@ export function readingTitle(reading: ProviderUsageReading, now: number): string
  * ⛔ F096: readings are kept across a restart, so one whose window has reset since is routine — said
  * in the past (*"Weekly limit: was 95% used; it reset 2 days ago."*), never as the window now.
  */
-export function readingSays(reading: ProviderUsageReading, now: number): string {
+export function readingSays(
+  reading: ProviderUsageReading,
+  now: number,
+  presentation: 'full' | 'compact' = 'full',
+): string {
   const word = reading.period?.word ?? null
   const bucket = reading.period?.bucketName ?? null
-  const named =
-    word === null
-      ? reading.window
-      : `${word[0]!.toUpperCase()}${word.slice(1)} limit${bucket === null ? '' : ` (${bucket})`}`
+  const label = word === null ? reading.window : `${word[0]!.toUpperCase()}${word.slice(1)}`
+  const bucketWords = bucket === null ? '' : ` (${bucket})`
+  const named = word === null ? label : `${label} limit${bucketWords}`
+  if (
+    presentation === 'compact' &&
+    reading.unconfirmed !== true &&
+    reading.usedPercent !== null &&
+    word !== null &&
+    reading.resetsAt !== null &&
+    reading.resetsAt > now
+  )
+    return `${label}${bucketWords} ${Math.round(reading.usedPercent)}% used · ${resetWords(reading.resetsAt, now)}`
   if (reading.resetsAt !== null && reading.resetsAt <= now) {
     const was =
       reading.usedPercent === null

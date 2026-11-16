@@ -487,6 +487,10 @@ const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
   capabilities: { how: 'nothing' },
   providerCatalogue: { how: 'nothing' },
   providerConnections: { how: 'nothing' },
+  updateProviderConnection: {
+    how: 'plain-by-construction',
+    note: 'The editor captures provider/id and copies primitive name/description fields into a fresh literal; preload builds the command literal.',
+  },
   profiles: { how: 'nothing' },
   checkProviderAuth: { how: 'plain-by-construction' },
   reprovisionProviderHomes: { how: 'plain-by-construction' },

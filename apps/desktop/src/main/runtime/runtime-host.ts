@@ -61,9 +61,13 @@ import { ModelCatalogues } from '../connections/catalogues'
 import {
   aKeyIsSaved,
   connectionForLaunch,
+  nextConnectionPick,
+  freshConnectionId,
   prepareConnectionHome,
   providerConnections,
 } from '../connections/runtime'
+import { ProviderConnectionUnavailable } from '../connections/records'
+import type { UpdateProviderConnectionInput } from '../../shared/provider-connection-edit'
 import {
   providerLaunchChoices as launchChoicesFor,
   resolveProviderLaunch as resolveLaunch,
@@ -362,6 +366,9 @@ import {
   type ProviderCommand,
 } from '@brobot2/runtime'
 import {
+  DEFAULT_CONVERSATION_PROVIDER,
+  additionalConnectionId,
+  compatibilityConnectionId,
   providerDescriptor,
   providerRecord,
   providerSchema,
@@ -810,6 +817,7 @@ import type {
 } from '../../shared/human-answer-contracts'
 import type {
   SessionSettingChanged,
+  SessionSettingsDisclosure,
   WhatAPickBecame,
   ModelCatalogue,
 } from '../../shared/model-choice-contracts'
@@ -1987,6 +1995,8 @@ interface WhoseTurnItIs {
 }
 
 interface HostedSession {
+  readonly connection?: ProviderConnection
+  readonly nextConnectionPick: () => SessionSettingsDisclosure['nextConnection']
   readonly workAncestry: WorkAncestryRead
   workAncestryAfter: number
   ancestrySeed?: {
@@ -2990,8 +3000,11 @@ const RULES_BEGIN_CHARS = 200
 
 interface SessionSlot {
   readonly id: string
+  /** The saved-key change count before this launch starts waiting. */
+  readonly keyChange: number
   /** Fixed before the launch awaits, so provider-specific gives share only their own reservation. */
   readonly provider: Provider | null
+  connectionId?: string | null
   /**
    * The surface that asked for this session, carried on the RESERVATION rather than read from the
    * registered sink — because for the whole starting interval there is no registered sink to read
@@ -3594,30 +3607,6 @@ const NOT_REMOVED_OPEN_TWICE = 'Not removed: the app may be open twice.'
 
 /** An agent not removed: its entry could not be marked before the removal. */
 const NOT_REMOVED_NOT_SAVED = 'Not removed: services list not saved.'
-
-/**
- * ⚑ **D-017b · why a setting changed on a conversation nothing runs would not reach it**, or `null`
- * when its next start takes it: one that is or will be replaced has a new conversation in its place
- * (R10), and one no message continues has no next start. ⛔ Read by the recorded view
- * (`settingsFixed`) and by the door that writes a setting, so the controls a view offers are the
- * ones the host takes.
- */
-function whyNoSettingForItsNextStart(
-  row: RecordedSession,
-  replacedBy: ReadonlyMap<string, string>,
-  isAService: boolean,
-): string | null {
-  if (
-    replacedBy.has(row.sessionId) ||
-    (row.neverStarted && aRowADeliveryCanStart(row) && !isAService)
-  ) {
-    return 'its next message starts a new conversation in its place, so a setting changed here would not reach it'
-  }
-  if (row.unresumableReason !== null) {
-    return 'no message continues this conversation, so a setting changed here would not reach it'
-  }
-  return null
-}
 
 function onItsWayOut(slot: SessionSlot): boolean {
   if (slot.phase === 'closing') return true
@@ -4790,28 +4779,28 @@ export class RuntimeHost implements LiveHost {
   /** MCP server requests a press is deciding right now. */
   private readonly mcpServerRequestsBeingDecided = new Set<string>()
   /**
-   * ⚑ Each provider's newest usage reading, by window ({@link providerUsage}), with the account it
+   * ⚑ Each connection's newest usage reading, by window ({@link providerUsage}), with the account it
    * was read on when that is known ({@link accountOf}).
    */
-  private readonly usage = new Map<Provider, Map<string, KeptReading>>()
+  private readonly usage = new Map<Provider, Map<string | null, Map<string, KeptReading>>>()
   /** The Claude account this computer was last seen on, and the id its readings carry. */
   private knownAccount: KnownAccount | null = null
   private knownAccounts: readonly KnownAccount[] = []
   /**
-   * The sign-in each provider's latest reading was read on, as the conversation that reported it
+   * The sign-in each connection's latest reading was read on, as the conversation that reported it
    * tagged it ({@link SessionHandle.signInTag}), and when the latest life that reported on that
    * sign-in began (0 for readings a run before this one kept); none when that reading came untagged.
    */
   private readonly usageReadOn = new Map<
     Provider,
-    { readonly tag: string; readonly lifeSince: number }
+    Map<string | null, { readonly tag: string; readonly lifeSince: number }>
   >()
   /**
-   * The providers whose held readings were kept by a run before this one, and that no conversation
+   * The connection groups whose held readings were kept by a run before this one, and that no conversation
    * of this run has reported usage for yet: they may be another sign-in's, so they are shown and
    * raise no warning ({@link takeTheUsage} settles them).
    */
-  private readonly usageUnconfirmed = new Set<Provider>()
+  private readonly usageUnconfirmed = new Map<Provider, Set<string | null>>()
   /** ⚑ F096 — each window a provider has reported, first and last ({@link usageWindowsSeen}). */
   private readonly windowsSeen = new Map<Provider, Map<string, UsageWindowSeen>>()
   /** ⚑ F096 — a window was seen for the first time since the readings were last kept. */
@@ -5150,12 +5139,21 @@ export class RuntimeHost implements LiveHost {
     this.modelCatalogues = new ModelCatalogues(
       this.deps.store,
       (provider) => this.profiles(provider),
-      (provider, profileId) => this.askProviderForModels(provider, profileId),
+      (provider, profileId, connectionId) =>
+        connectionId === undefined
+          ? this.askProviderForModels(provider, profileId)
+          : this.askProviderForModels(provider, profileId, connectionId),
       () => this.launches.closed,
       (conversation) => this.theProviderOfConversation(conversation),
       () => this.now(),
       () => this.theWorldMoved('agents'),
       errorMessage,
+      async (provider, connectionId) => {
+        const connection = this.deps.connectionFor?.(provider, connectionId)
+        return connection === undefined
+          ? null
+          : (await this.providerVersions(connection))[provider].version
+      },
     )
     deps.limitsReader?.observeReads({
       before: () => ({
@@ -7333,9 +7331,11 @@ export class RuntimeHost implements LiveHost {
     const arrived = new Promise<void>((resolve) => {
       settle = resolve
     })
+    const provider = held.provider ?? this.deps.store.recordedOne(id)?.provider ?? null
     const slot: SessionSlot = {
       id,
-      provider: held.provider ?? this.deps.store.recordedOne(id)?.provider ?? null,
+      provider,
+      keyChange: provider === null ? 0 : (this.keyChanges.get(provider) ?? 0),
       ownerId,
       // ⛔ **Beside the id it qualifies, and taken from the same argument** (349). Both halves of
       // *"who is watching this"* are written here and move together from here on — see
@@ -8295,7 +8295,11 @@ export class RuntimeHost implements LiveHost {
    * written, then kept as the service's; the next start settles a crash between any two
    * (`reconcileProfileExecution`).
    */
-  private recordTheServiceConversation(profile: string, provider: Provider): string {
+  private recordTheServiceConversation(
+    profile: string,
+    provider: Provider,
+    connectionId?: string,
+  ): string {
     const agent = this.theServiceAgent(profile)
     if (agent.is !== 'service' || agent.conversation !== null) {
       throw new Error(`${foldProfileName(profile)} is not a service without a conversation`)
@@ -8309,6 +8313,11 @@ export class RuntimeHost implements LiveHost {
     // Read before the reservation, so nothing between it and the row can leave it standing.
     const pair = this.modelCatalogues.theSelectedPairIfNamed(provider, itsName)
     const cwd = this.deps.resolveCwd(id, undefined)
+    const selected = this.freshConnectionId(provider, itsName, connectionId)
+    const connection =
+      selected === undefined
+        ? this.deps.connectionFor?.(provider)
+        : this.deps.connectionFor?.(provider, selected)
     this.keepTheProfileEntry(agent.identity, { ...entry, reserved: id }, true)
     try {
       this.deps.store.create({
@@ -8320,6 +8329,7 @@ export class RuntimeHost implements LiveHost {
         ...(pair === null ? {} : { model: pair.model }),
         ...(pair?.effort == null ? {} : { reasoningEffort: pair.effort }),
         service: true,
+        ...(connection === undefined ? {} : { connectionId: connection.id }),
       })
     } catch (error) {
       this.keepTheProfileEntry(agent.identity, entry, false)
@@ -8514,16 +8524,13 @@ export class RuntimeHost implements LiveHost {
     this.theWorldMoved('work')
   }
 
-  /**
-   * Read the pair a running service's agent starts on, for `piece`, its next one. ⛔ Nothing is placed
-   * meanwhile, and once it is read the dispatcher looks again with every check made anew: a close, a
-   * reopen or a take-back in between leaves that read unused.
-   */
+  /** Read scoped defaults before placement; dispatch rechecks the life and piece after the read. */
   private readTheHeadsPair(life: HostedSession, piece: string): void {
     const conversation = life.id
     const agent = this.deps.store.identityOf(conversation)?.profileSlug ?? null
+    const connectionId = this.deps.connectionFor ? this.deps.store.connectionOf(conversation) : null
     this.servicesReadingAPair.add(conversation)
-    void this.theSelectedModel(life.provider, agent, {})
+    void this.theSelectedModel(life.provider, agent, {}, connectionId ?? undefined)
       .then(
         (own) => {
           this.pairsReadForTheHead.set(conversation, { piece, life, pair: own })
@@ -8589,6 +8596,11 @@ export class RuntimeHost implements LiveHost {
     const agent = this.deps.store.identityOf(conversation)
     const provider = this.theProviderOfConversation(conversation)
     if (agent === null || provider === null) return null
+    if (
+      this.deps.connectionFor &&
+      additionalConnectionId(provider, this.deps.store.connectionOf(conversation)) !== undefined
+    )
+      return null
     return this.modelCatalogues.theSelectedPairIfNamed(provider, agent.profileSlug)
   }
 
@@ -10281,6 +10293,7 @@ export class RuntimeHost implements LiveHost {
     slot: SessionSlot,
     opening: { readonly provider: Provider; readonly kind: 'fresh' | 'resume' },
     launch: (startPhases: StartPhaseSink) => Promise<SessionHandle>,
+    connection?: ProviderConnection,
   ): Promise<SessionHandle> {
     if (this.deps.beforeProviderLaunch) {
       await this.deps.beforeProviderLaunch()
@@ -10351,6 +10364,7 @@ export class RuntimeHost implements LiveHost {
         slot.profileId,
         () => launch(progress),
         () => !this.launches.closed && this.slots.get(slot.id) === slot && !onItsWayOut(slot),
+        connection,
       ))()
     // Settled EITHER WAY, deliberately: this race asks only whether the launch is over. What it
     // answered with is `await started` below, which is the one place a rejection is reported from —
@@ -20148,9 +20162,9 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * Prepares a start's home. A Claude start on the person's own login, with no key saved, has their
-   * Claude Code renew the login first when it needs renewing; `loginRenewed` says it did, so the
-   * conversation can say so.
+   * Prepares a start's home. A selected Claude sign-in has Claude Code renew the login first when
+   * needed; omitted selections retain legacy key precedence. `loginRenewed` records a renewal so
+   * the conversation can say so.
    */
   private async prepareAHome(
     provider: Provider,
@@ -20223,9 +20237,9 @@ export class RuntimeHost implements LiveHost {
     return sharedRoot ? { ...installed, sharedRoot } : installed
   }
 
-  /** Whether a key is saved for a provider: then it is what a launch runs on, not the login. */
-  private aKeyIsSaved(provider: Provider): boolean {
-    return aKeyIsSaved(this.deps, provider)
+  /** The selected mode, or legacy saved-key precedence when no connection was captured. */
+  private aKeyIsSaved(provider: Provider, connection?: ProviderConnection): boolean {
+    return aKeyIsSaved(this.deps, provider, connection)
   }
 
   private runtimeWithPlugins(
@@ -20275,7 +20289,16 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **A folder a person or the spawn rails named, else the durable workspace** — `resolveCwd`'s
     // blank branch, which is where every conversation that asked for none runs.
     const cwd = this.deps.resolveCwd(id, input.cwd)
-    const connection = connectionForLaunch(this.deps, input.provider, recorded ? id : undefined)
+    const connectionId = recorded
+      ? undefined
+      : this.freshConnectionId(input.provider, profileId, input.connectionId)
+    const connection = connectionForLaunch(
+      this.deps,
+      input.provider,
+      recorded ? id : undefined,
+      connectionId,
+    )
+    slot.connectionId = recorded ? this.deps.store.connectionOf(id) : connection?.id
     const {
       home: providerHome,
       loginRenewed,
@@ -20316,10 +20339,15 @@ export class RuntimeHost implements LiveHost {
     // (a launch of its own) comes first. Recorded on the row below, which every later start
     // replays. Nothing runs on an unnamed default; the effort is absent only for a model that
     // offers none.
-    const selected = await this.theSelectedModel(input.provider, profileId, {
-      ...(input.model === undefined ? {} : { model: input.model }),
-      ...(input.reasoningEffort === undefined ? {} : { effort: input.reasoningEffort }),
-    })
+    const selected = await this.theSelectedModel(
+      input.provider,
+      profileId,
+      {
+        ...(input.model === undefined ? {} : { model: input.model }),
+        ...(input.reasoningEffort === undefined ? {} : { effort: input.reasoningEffort }),
+      },
+      slot.connectionId ?? undefined,
+    )
     const model = selected.model
     const reasoningEffort = selected.effort ?? undefined
     // The composition root resolves the mode ONCE (078): absent ⇒ the prompting default, and only
@@ -20429,6 +20457,7 @@ export class RuntimeHost implements LiveHost {
           ...workFoldersIn(this.theWorkFoldersALaunchCarries(id)),
         })
       },
+      connection,
     )
 
     // ⚠️ **Nothing may await between here and `register`.** See {@link SessionSlot}: a close that
@@ -20470,6 +20499,7 @@ export class RuntimeHost implements LiveHost {
       cwd,
       providerHome,
       profileId,
+      ...(connection === undefined ? {} : { connection }),
       launchGave,
       createdApprovalMode: approvalMode,
       handle,
@@ -20575,6 +20605,7 @@ export class RuntimeHost implements LiveHost {
     return {
       sessionId: id,
       provider: session.provider,
+      ...(slot.connectionId == null ? {} : { connectionId: slot.connectionId }),
       cwd,
       providerHome,
       profileId,
@@ -20687,20 +20718,30 @@ export class RuntimeHost implements LiveHost {
   async setSessionSetting(
     sessionId: string,
     change:
-      | { kind: 'model'; model: string | undefined }
+      | { kind: 'model'; model: string | undefined; connectionId?: string }
       | { kind: 'reasoningEffort'; effort: string | undefined }
       | { kind: 'planMode'; on: boolean },
     by: Caller,
   ): Promise<SessionSettingChanged> {
+    sessionId = this.theOneInItsPlace(sessionId)
+    const starting = this.slots.get(sessionId)
+    if (starting?.session === null && !onItsWayOut(starting)) {
+      await Promise.allSettled([starting.arrived])
+      sessionId = this.theOneInItsPlace(sessionId)
+    }
     // ⛔ **Gated before anything is asked**: a caller this door refuses costs no provider list (a
     // list is a launch, `070`). ⚑ Asked again below, after the naming's await.
     if (change.kind !== 'planMode' && this.aSettingForItsNextStart(sessionId, by) === null) {
       this.require(sessionId, by)
     }
-    const { named, list } =
+    const { named, list, provider } =
       change.kind === 'planMode'
-        ? { named: change, list: null }
+        ? { named: change, list: null, provider: undefined }
         : await this.theSettingNamed(sessionId, change)
+    sessionId = this.theOneInItsPlace(sessionId)
+    if (provider !== undefined && this.deps.store.recordedOne(sessionId)?.provider !== provider) {
+      throw new Error('Provider changed. Pick again.')
+    }
     // ⚑ **D-017b · a conversation nothing runs takes the model or the effort on its row**, for its
     // next start — ⛔ never plan mode: a start leaves planning (R99), so a plan asked for now would
     // be taken away by the start that carries it.
@@ -20709,7 +20750,12 @@ export class RuntimeHost implements LiveHost {
       if (named.kind === 'planMode') {
         throw new Error('planning is chosen once this conversation has taken its next message')
       }
-      if (named.kind === 'model') this.deps.store.setModel(sessionId, named.model)
+      if (named.kind === 'model')
+        this.deps.store.setModel(
+          sessionId,
+          named.model,
+          change.kind === 'model' ? change.connectionId : undefined,
+        )
       // ⚑ A new model's effort, when the one it ran at is not one the model offers.
       if (named.kind === 'reasoningEffort' || named.effort !== undefined) {
         this.deps.store.setReasoningEffort(sessionId, named.effort ?? null)
@@ -20717,12 +20763,23 @@ export class RuntimeHost implements LiveHost {
       // 🔴 **682 · `R31c` — a PERSON set this conversation's model or effort**, as the live arms do.
       this.deps.store.aPersonSetItsModelOrEffort(sessionId, this.now())
       const row = this.deps.store.findLive(sessionId)
+      const connectionId = this.deps.store.connectionOf(sessionId)
+      const reasoningEffort = resolveReasoningEffort(row ?? undefined) ?? null
       const pair = row?.model == null ? null : { model: row.model, effort: row.reasoningEffort }
       return {
         settings: {
+          ...(connectionId === null
+            ? {}
+            : {
+                nextConnection: {
+                  connectionId,
+                  model: row?.model ?? null,
+                  effort: reasoningEffort,
+                },
+              }),
           model: row?.model ?? null,
           pendingModel: null,
-          reasoningEffort: resolveReasoningEffort(row ?? undefined) ?? null,
+          reasoningEffort,
           pendingReasoningEffort: null,
           planMode: false,
           pendingPlanMode: null,
@@ -20735,6 +20792,34 @@ export class RuntimeHost implements LiveHost {
       }
     }
     const session = this.require(sessionId, by)
+    const requestedConnection = change.kind === 'model' ? change.connectionId : undefined
+    const nextConnection = requestedConnection ?? this.deps.store.connectionOf(sessionId)
+    if (
+      named.kind !== 'planMode' &&
+      nextConnection != null &&
+      nextConnection !== session.connection?.id
+    ) {
+      this.record(session, () => {
+        if (named.kind === 'model')
+          this.deps.store.setModel(sessionId, named.model, requestedConnection)
+        if (named.kind === 'reasoningEffort' || named.effort !== undefined)
+          this.deps.store.setReasoningEffort(sessionId, named.effort ?? null)
+        this.deps.store.aPersonSetItsModelOrEffort(sessionId, this.now())
+      })
+      const row = this.deps.store.whatItRunsOn(sessionId)
+      const thePick =
+        list === null
+          ? null
+          : this.aPersonPickedItFor(
+              session.provider,
+              session.profileId,
+              row?.model == null ? null : { model: row.model, effort: row.reasoningEffort },
+              list,
+            )
+      if (session.sink.alive) this.reportRecordingFailure(session)
+      this.publishStateIfChanged(session)
+      return { settings: settingsDisclosure(session), thePick }
+    }
     switch (named.kind) {
       case 'model':
         await session.handle.setModel(named.model)
@@ -20749,7 +20834,7 @@ export class RuntimeHost implements LiveHost {
         }
         this.record(
           session,
-          () => this.deps.store.setModel(sessionId, named.model),
+          () => this.deps.store.setModel(sessionId, named.model, requestedConnection),
           'provider_session',
         )
         // 🔴 **682 · `R31c` — a PERSON set this conversation's model**, and since D-042 that keeps it
@@ -20819,39 +20904,40 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * 🔴 **D-042 · R1 — a person's setting, NAMED**: a model left blank is the provider's own default
-   * model, by name (a default row that names no effort of its own, where it offers the one the
-   * conversation runs at — {@link theProvidersDefaultIn}); an effort left blank is the
-   * conversation's model's own default effort ({@link theEffortOfAModelNamedAlone} — `null` for a
-   * model that offers none). ⚑ **And a new model brings its effort along**: the effort the
-   * conversation runs at is kept when that model offers it, else it becomes the model's own default
-   * — so the pair stays one the list holds. ⚑ Read from the list a window reads
-   * ({@link theListFor}), so nothing here creates a folder — and handed back with the setting, for
-   * {@link aPersonPickedItFor}'s question. ⚠️ **A model or an effort nobody can name is said, never
-   * sent as an absence** — by its cause: the provider's list could not be read, or it names no
-   * default (a model and effort, or an effort the model offers).
+   * Resolve model and effort changes against the conversation's recorded connection.
+   * Clearing uses its defaults. A named model keeps the current effort where offered, otherwise
+   * uses its own default. An unknown effort is reported rather than sent as an omitted change.
+   * Catalogue reads and setting/default writes retain their existing ownership.
    */
   private async theSettingNamed(
     sessionId: string,
     change:
-      | { kind: 'model'; model: string | undefined }
+      | { kind: 'model'; model: string | undefined; connectionId?: string }
       | { kind: 'reasoningEffort'; effort: string | undefined },
   ): Promise<{
     readonly named:
       | { kind: 'model'; model: string; effort?: string | null }
       | { kind: 'reasoningEffort'; effort: string | null }
     readonly list: TheListAsked
+    readonly provider: Provider
   }> {
     const live = this.slots.get(sessionId)?.session ?? null
     const row = live === null ? this.deps.store.recordedOne(sessionId) : null
     const provider = live?.provider ?? row?.provider
     if (provider === undefined) throw new Error('there is no record of this conversation here')
+    const connectionId =
+      change.kind === 'model' && change.connectionId !== undefined
+        ? (connectionForLaunch(this.deps, provider, undefined, change.connectionId)?.id ??
+          change.connectionId)
+        : this.deps.store.connectionOf(sessionId)
+    const scope: [] | [string] = connectionId == null ? [] : [connectionId]
     const list = await this.modelCatalogues.theListFor(
       provider,
       live?.profileId ?? row?.profileId ?? DEFAULT_PROFILE_ID,
+      ...scope,
     )
     if (change.kind === 'reasoningEffort' && change.effort !== undefined) {
-      return { named: { kind: 'reasoningEffort', effort: change.effort }, list }
+      return { named: { kind: 'reasoningEffort', effort: change.effort }, list, provider }
     }
     const said = (model: string, effort: string | null | undefined): string | null => {
       if (effort !== undefined) return effort
@@ -20862,17 +20948,29 @@ export class RuntimeHost implements LiveHost {
       )
     }
     const effortOf = (model: string): string | null =>
-      said(model, this.modelCatalogues.theEffortOfAModelNamedAlone(list, provider, model))
-    const runs = this.thePairItRunsOn(sessionId)
+      said(model, this.modelCatalogues.theEffortOfAModelNamedAlone(list, provider, model, ...scope))
+    const next = live?.nextConnectionPick()
+    const runs =
+      next === undefined
+        ? this.thePairItRunsOn(sessionId)
+        : next.model === null
+          ? null
+          : { model: next.model, effort: next.effort }
     if (change.kind === 'reasoningEffort') {
       return {
         named: { kind: 'reasoningEffort', effort: runs === null ? null : effortOf(runs.model) },
         list,
+        provider,
       }
     }
     const model =
       change.model ??
-      this.modelCatalogues.theProvidersDefaultIn(list, provider, runs?.effort ?? undefined)?.model
+      this.modelCatalogues.theProvidersDefaultIn(
+        list,
+        provider,
+        runs?.effort ?? undefined,
+        ...scope,
+      )?.model
     if (model === undefined) {
       throw new Error(
         list.notAsked === null
@@ -20896,6 +20994,7 @@ export class RuntimeHost implements LiveHost {
       named:
         follows === effort ? { kind: 'model', model } : { kind: 'model', model, effort: follows },
       list,
+      provider,
     }
   }
 
@@ -20967,30 +21066,15 @@ export class RuntimeHost implements LiveHost {
         }
   }
 
-  /**
-   * ⚑ **D-017b · a person changing how a conversation nothing runs will start** — the row a setting
-   * is written to, or `null` when the live door decides (a slot: the setting goes to the running
-   * provider, or is refused as it always was).
-   *
-   * ⚑ **The send's own premise**: a row whose next start is its own — {@link whyNoSettingForItsNextStart},
-   * the predicate the recorded view's `settingsFixed` reads, so a control that view offers is one
-   * this takes. ⛔ **A person's window only** ({@link aPersonIsAsking}): an agent changes nothing
-   * about how another conversation runs. ⚠️ Refused in words otherwise, so a control pressed on a
-   * stale view says why nothing moved.
-   */
+  /** The stored settings for a conversation without a running provider. */
   private aSettingForItsNextStart(sessionId: string, by: Caller): RecordedSession | null {
-    if (this.slots.has(sessionId)) return null
+    const slot = this.slots.get(sessionId)
+    if (slot !== undefined && !onItsWayOut(slot)) return null
     const row = this.deps.store.recordedOne(sessionId)
     if (row === null) throw new Error('there is no record of this conversation here')
     if (!aPersonIsAsking(by)) {
       throw new Error('only a person changes how another conversation will start')
     }
-    const refused = whyNoSettingForItsNextStart(
-      row,
-      this.replacedBy,
-      this.theServiceOf(sessionId) !== null,
-    )
-    if (refused !== null) throw new Error(refused)
     return row
   }
 
@@ -23704,10 +23788,15 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  private createFromGive(start: AdmittedSpawn, startsOn: ModelAndEffort | null) {
+  private createFromGive(
+    start: AdmittedSpawn,
+    startsOn: ModelAndEffort | null,
+    connectionId?: string,
+  ) {
     return this.createSession(
       {
         provider: start.provider,
+        ...(connectionId === undefined ? {} : { connectionId }),
         cwd: start.cwd,
         approvalMode: start.approvalMode,
         profileId: start.profileId,
@@ -23887,11 +23976,20 @@ export class RuntimeHost implements LiveHost {
       if (goes.to === 'a-service') {
         // ⛔ Queued, never handed over: nothing is sent until the service's turn for it comes.
         let service: string
+        let connectionNotice: string | undefined
         try {
           if (goes.conversation !== null) service = goes.conversation
           else if (goes.provider === null) throw new Error(`${goes.profileId} has no provider`)
-          else service = this.recordTheServiceConversation(goes.profileId, goes.provider)
+          else
+            service = this.recordTheServiceConversation(
+              goes.profileId,
+              goes.provider,
+              asked.connectionId,
+            )
           if (this.startupRepairs.has(service)) await this.settleBeforeUse(service)
+          const recorded = this.deps.store.connectionOf(service)
+          if (asked.connectionId !== undefined && asked.connectionId !== recorded)
+            connectionNotice = `Service keeps ${recorded ?? 'its legacy connection'}; ${asked.connectionId} was requested.`
           this.acceptAtTheService(service, giving, newQueuedMessageId(), choice)
         } catch (error) {
           return gaveNothing(error)
@@ -23907,6 +24005,7 @@ export class RuntimeHost implements LiveHost {
           found: service,
           profile: asked.profile,
           delivery: 'held',
+          ...(connectionNotice === undefined ? {} : { connectionNotice }),
           // ⚑ What its turn will run on: the pair it asked for, kept for that turn, else the row's.
           runsOn: {
             ...this.whatItRunsOnNow(service, judged, 'unchanged', null, named),
@@ -23985,7 +24084,7 @@ export class RuntimeHost implements LiveHost {
         normal?.fact === null || normal === null
           ? null
           : { conversation: normal.conversation, fact: normal.fact }
-      const starting = this.createFromGive(start, startsOn)
+      const starting = this.createFromGive(start, startsOn, asked.connectionId)
       this.reservingAStartFrom = null
       this.reservingNormalWorker = null
       // ⚠️ Awaited in a `try`, for the hand-over's reason below: a `.catch()` adds a tick.
@@ -24584,9 +24683,10 @@ export class RuntimeHost implements LiveHost {
       mayGiveWork: () => this.mayReachAtAll('assign', by),
       depthOf: (piece) => this.deps.store.depthOf(piece),
       capabilitiesOf: (profileSlug) => this.deps.store.capabilitiesOf(profileSlug),
-      helperAs: (giver, profileSlug, provider) => this.helperAs(giver, profileSlug, provider),
-      workerAt: (giver, profileSlug, parallel, provider) => {
-        const selected = this.normalWorkerAt(giver, profileSlug, parallel, provider)
+      helperAs: (giver, profileSlug, provider, connectionId) =>
+        this.helperAs(giver, profileSlug, provider, connectionId),
+      workerAt: (giver, profileSlug, parallel, provider, connectionId) => {
+        const selected = this.normalWorkerAt(giver, profileSlug, parallel, provider, connectionId)
         if (selected.is === 'legacy') return { is: 'legacy' }
         if (selected.is === 'full') return selected
         if (selected.is !== 'known') return { is: 'unknown' }
@@ -24598,6 +24698,8 @@ export class RuntimeHost implements LiveHost {
               : null,
         }
       },
+      connectionIdOf: (provider, requested) =>
+        this.deps.connectionFor?.(provider, requested)?.id ?? requested,
       serviceAt: (giver, profileSlug) => this.theServiceAtAGive(giver, profileSlug),
       spawningEnabled: () => this.deps.store.spawnPolicy().spawningEnabled,
       // ⚑ **The answer `create_agent` is given** ({@link mayCreateAgents}), with who is creating.
@@ -24653,6 +24755,7 @@ export class RuntimeHost implements LiveHost {
       asked.profile,
       asked.parallel === true,
       provider,
+      asked.connectionId,
     )
     if (selected.is !== 'known') {
       if (asked.parallel !== true) return null
@@ -24823,6 +24926,7 @@ export class RuntimeHost implements LiveHost {
     profile: string,
     parallel: boolean,
     provider?: Provider,
+    connectionId?: string,
   ):
     | { readonly is: 'legacy' | 'unknown' }
     | { readonly is: 'full'; readonly noProvider?: true }
@@ -24865,7 +24969,7 @@ export class RuntimeHost implements LiveHost {
       if (pools.length > 1) return { is: 'unknown' }
       let pool = pools[0] ?? null
       if (pool?.removing === true) return { is: 'unknown' }
-      if (pool === null && !parallel) return { is: 'legacy' }
+      if (pool === null && !parallel && connectionId === undefined) return { is: 'legacy' }
       let poolGiver = pool?.giver ?? giver
       if (pool === null) {
         const legacy = this.legacyHelperAs(giver, profile)
@@ -24889,20 +24993,35 @@ export class RuntimeHost implements LiveHost {
         }
       }
       // Resolve every binding completely before selecting; a partial cache cannot pick an old worker.
-      const providers = new Map<string, Provider | null>()
+      const bindings = new Map<
+        string,
+        { provider: Provider | null; connectionId?: string | null }
+      >()
       for (const worker of pool?.workers ?? []) {
-        providers.set(
-          worker.conversation,
-          this.theProviderOfConversation(this.currentNormalWorker(worker)),
-        )
+        const current = this.currentNormalWorker(worker)
+        bindings.set(worker.conversation, {
+          provider: this.theProviderOfConversation(current),
+          ...(connectionId === undefined
+            ? {}
+            : {
+                connectionId:
+                  this.deps.store.recordedOne(current) === null
+                    ? this.slots.get(current)?.connectionId
+                    : this.deps.store.connectionOf(current),
+              }),
+        })
       }
+      const matches = (conversation: string) =>
+        (provider === undefined || bindings.get(conversation)?.provider === provider) &&
+        (connectionId === undefined || bindings.get(conversation)?.connectionId === connectionId)
       if (!parallel && provider !== undefined && pool !== null) {
         // A provider's older ordinary conversation remains its primary when another provider adds a pool.
         const bound = pool.workers.flatMap((worker) => [
           worker.conversation,
           ...this.normalWorkerLineage(worker),
         ])
-        if (this.legacyHelperAs(giver, profile, provider, bound) !== null) return { is: 'legacy' }
+        if (this.legacyHelperAs(giver, profile, provider, bound, connectionId) !== null)
+          return { is: 'legacy' }
       }
       const budget = { rowsLeft: 8192, bytesLeft: 8 * 1024 * 1024 }
       const snapshots = new Map<string, ReturnType<SessionStore['workerLedger']>>()
@@ -24917,13 +25036,13 @@ export class RuntimeHost implements LiveHost {
         parallel,
         (conversation) => this.freeForNormalWork(conversation, roster, snapshot),
         (conversation) => this.normalWorkerLeases.has(conversation),
-        (conversation) => provider === undefined || providers.get(conversation) === provider,
+        matches,
       )
       if (selection.kind === 'unknown') return { is: 'unknown' }
       if (selection.kind === 'full') {
         const noProvider =
-          provider !== undefined &&
-          !pool?.workers.some((one) => providers.get(one.conversation) === provider)
+          (provider !== undefined || connectionId !== undefined) &&
+          !pool?.workers.some((one) => matches(one.conversation))
         return { is: 'full', ...(noProvider ? { noProvider: true as const } : {}) }
       }
       return { is: 'known', identity, entry, pool, selection, poolGiver }
@@ -24932,8 +25051,13 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  private helperAs(giver: string, profile: string, provider?: Provider): string | null {
-    const selected = this.normalWorkerAt(giver, profile, false, provider)
+  private helperAs(
+    giver: string,
+    profile: string,
+    provider?: Provider,
+    connectionId?: string,
+  ): string | null {
+    const selected = this.normalWorkerAt(giver, profile, false, provider, connectionId)
     if (selected.is === 'legacy') {
       const identity = this.deps.store
         .agentIdentities()
@@ -24951,7 +25075,7 @@ export class RuntimeHost implements LiveHost {
             ...this.normalWorkerLineage(worker),
           ]),
         )
-      return this.legacyHelperAs(giver, profile, provider, bound)
+      return this.legacyHelperAs(giver, profile, provider, bound, connectionId)
     }
     if (selected.is !== 'known' || selected.selection.kind !== 'existing') return null
     return this.currentNormalWorker(selected.selection.worker)
@@ -25122,6 +25246,7 @@ export class RuntimeHost implements LiveHost {
     profileSlug: string,
     provider?: Provider,
     except: readonly string[] = [],
+    connectionId?: string,
   ): string | null {
     const wanted = foldProfileName(profileSlug)
     const parents = this.theIdsItStandsFor(giver)
@@ -25131,11 +25256,21 @@ export class RuntimeHost implements LiveHost {
       if (excluded.has(slot.id)) return false
       if (slot.spawnedBy === null || !theirs.has(slot.spawnedBy)) return false
       if (provider !== undefined && slot.provider !== provider) return false
+      if (
+        connectionId !== undefined &&
+        (this.deps.store.recordedOne(slot.id) === null
+          ? slot.connectionId
+          : this.deps.store.connectionOf(slot.id)) !== connectionId
+      )
+        return false
       const identity = slot.profileId ?? slot.session?.profileId ?? null
       return identity !== null && foldProfileName(identity) === wanted
     })
     const found =
-      reserved?.id ?? this.deps.store.newestChildAs(parents, profileSlug, provider, except)
+      reserved?.id ??
+      (connectionId === undefined
+        ? this.deps.store.newestChildAs(parents, profileSlug, provider, except)
+        : this.deps.store.newestChildAs(parents, profileSlug, provider, except, connectionId))
     return found === null ? null : this.theOneInItsPlace(found)
   }
 
@@ -26234,9 +26369,13 @@ export class RuntimeHost implements LiveHost {
     if (row === null) throw new Error(`unknown session: ${old}`)
     const identity = this.deps.store.identityOf(old)
     const profileId = identity?.profileSlug ?? row.profileId ?? DEFAULT_PROFILE_ID
-    // ⚑ **The provider its agent runs on NOW** (R10), else the one it ran on.
-    const provider = this.itsProvider(profileId).provider ?? row.provider
-    const approvalMode = this.deps.store.find(old)?.approvalMode ?? 'ask'
+    const itRan = this.deps.store.whatItRunsOn(old)
+    // A person's explicit pick keeps this conversation's provider across its replacement.
+    const provider =
+      itRan?.aPersonChoseItAt != null
+        ? row.provider
+        : (this.itsProvider(profileId).provider ?? row.provider)
+    const approvalMode = this.deps.store.findLive(old)?.approvalMode ?? 'ask'
     // ⚑ **The parent in its place**: a parent that was itself replaced is the one that took its
     // place, so the new child is started — and commanded — by a conversation that runs.
     const recorded = this.deps.store.parentOf(old)
@@ -26255,8 +26394,8 @@ export class RuntimeHost implements LiveHost {
     // 🔴 **D-042 · R1 — the same conversation, so its own pair** — the model and effort it was
     // selected to run, whoever chose them, when it runs on the same provider; ⚑ else R1's order, at
     // the launch. ⚑ And a person's choice of it holds across the replacement (F1).
-    const itRan = this.deps.store.whatItRunsOn(old)
     const named = provider === row.provider && itRan?.model != null ? itRan : null
+    const connectionId = provider === row.provider ? this.deps.store.connectionOf(old) : null
     // ⚑ **R5 — started with no window, it is a life a person's window may take**, as the one it
     // replaces would have been: {@link reserve} reads this in the synchronous stretch before the
     // create's first await, and it is lowered straight after.
@@ -26268,6 +26407,7 @@ export class RuntimeHost implements LiveHost {
         cwd: row.cwd,
         approvalMode,
         profileId,
+        ...(connectionId === null ? {} : { connectionId }),
         ...(named?.model == null ? {} : { model: named.model }),
         ...(named?.reasoningEffort == null ? {} : { reasoningEffort: named.reasoningEffort }),
       },
@@ -27287,7 +27427,8 @@ export class RuntimeHost implements LiveHost {
   ): Promise<WhatTheGateDecided> {
     if (!hasSomethingToSend(content.text, content.attached)) throw new Error(NOTHING_TO_SEND)
     this.assertAcceptsMessages(session, verb)
-    await this.assertSignInCurrent(session, verb)
+    if (session.nextConnectionPick() === undefined) await this.assertSignInCurrent(session, verb)
+    if (session.nextConnectionPick() !== undefined) throw new TurnInProgress()
     return this.whatTheseWordsAre(session, content)
   }
 
@@ -27460,7 +27601,10 @@ export class RuntimeHost implements LiveHost {
    * know: nothing was sent. The composer puts the words back (`019`), so that is true.
    */
   private async assertSignInCurrent(session: HostedSession, verb: 'send' | 'queue'): Promise<void> {
-    if ((await session.handle.checkSignIn?.()) !== true) {
+    const keyChanged =
+      this.deps.store.connectionOf(session.id) === `${session.provider}:api-key` &&
+      this.slots.get(session.id)?.keyChange !== (this.keyChanges.get(session.provider) ?? 0)
+    if (!keyChanged && (await session.handle.checkSignIn?.()) !== true) {
       // ⚑ A life this app reopened for what waited reads as current: its loop guard is done.
       delete session.reopenedForWhatWaited
       return
@@ -27471,10 +27615,21 @@ export class RuntimeHost implements LiveHost {
       this.providersMoved({ what: 'login', provider: session.provider })
       const { provider } = session
       const reopened = session.reopenedForWhatWaited
-      if (reopened !== undefined && this.now() - reopened.at < REOPEN_LOOP_GUARD_MS) {
+      if (
+        !keyChanged &&
+        reopened !== undefined &&
+        this.now() - reopened.at < REOPEN_LOOP_GUARD_MS
+      ) {
         // ⛔ **The loop guard, decided now** ({@link HostedSession.reopenedForWhatWaited}): no
         // change of sign-in, and no reopen by this app again.
         reopened.didNotHelp = true
+      } else if (session.connection?.authMethod === 'api-key') {
+        const connectionId = session.connection.id
+        for (const { session: peer } of this.slots.values()) {
+          if (peer?.provider === provider && peer.connection?.id === connectionId)
+            peer.runsOnAnOlderLogin = true
+        }
+        this.forgetTheUsage(provider, new Set<string | null>([connectionId]))
       } else if (this.noteASignInChange(provider, session.lifeSince, session.profileId)) {
         // ⚑ **W4.172 · noted now**, so what this delivery answers reads the limits without the old
         // ones; ⚑ what waited goes in a microtask, so this life is marked moved on and published
@@ -28050,6 +28205,7 @@ export class RuntimeHost implements LiveHost {
     for (const { session } of this.slots.values()) {
       if (
         session?.provider === provider &&
+        session.connection?.authMethod !== 'api-key' &&
         session.lifeSince <= lifeSince &&
         (itsProfile === undefined || session.profileId === itsProfile)
       ) {
@@ -28061,6 +28217,7 @@ export class RuntimeHost implements LiveHost {
     for (const { session } of this.slots.values()) {
       if (
         session?.provider === provider &&
+        session.connection?.authMethod !== 'api-key' &&
         (itsProfile === undefined || session.profileId === itsProfile) &&
         olderLogins.has(session.handle.signInTag?.() ?? '')
       ) {
@@ -28069,6 +28226,7 @@ export class RuntimeHost implements LiveHost {
     }
     const changed = [...this.slots.values()].flatMap(({ session }) =>
       session?.provider === provider &&
+      session.connection?.authMethod !== 'api-key' &&
       session.runsOnAnOlderLogin === true &&
       (itsProfile === undefined || session.profileId === itsProfile)
         ? [session.id]
@@ -28123,6 +28281,7 @@ export class RuntimeHost implements LiveHost {
     for (const slot of this.slots.values()) {
       const session = slot.session
       if (session === null || session.provider !== provider) continue
+      if (session.connection?.authMethod === 'api-key') continue
       if (session.itsSignInMovedOn === true || session.handle.checkSignIn === undefined) continue
       if (noted !== undefined && session.lifeSince < noted) continue
       if (oldest === null || session.lifeSince < oldest.lifeSince) oldest = session
@@ -30386,13 +30545,7 @@ export class RuntimeHost implements LiveHost {
     if (this.keyRefusedForBilling.delete(provider)) this.providersMoved({ what: 'key', provider })
   }
 
-  /**
-   * 🔒 **Keep a person's API key for a provider** — answers where it stands now, and `refused`, in
-   * words to act on, when it was not kept. ⛔ Nothing here echoes the key: not the answer, not an
-   * error, not a log line. ⚑ It outranks the provider's login from the next launch; a conversation
-   * already running keeps what it started with. ⚑ For Codex, every profile home is logged in with it
-   * now — Codex's own login — and any that cannot be is logged in at its next launch.
-   */
+  /** Save the key; conversations apply their recorded mode at launch or reopen. */
   async setApiKey(provider: Provider, key: string): Promise<ApiKeyChanged> {
     const keys = this.deps.apiKeys
     if (!keys) {
@@ -30405,32 +30558,27 @@ export class RuntimeHost implements LiveHost {
     if (refused !== null) return { ...this.apiKeyStatus(provider), refused }
     this.keyChanges.set(provider, (this.keyChanges.get(provider) ?? 0) + 1)
     this.keyRefusedForBilling.delete(provider)
-    const notice = await this.bringTheKeyToItsHomes(provider)
-    this.providerLoginChanged(provider)
+    this.providerLoginChanged(provider, undefined, 'api-key')
     this.letTheWakeUpsWaitingForItsKeyGo(provider)
-    return notice === null ? keys.status(provider) : { ...keys.status(provider), notice }
+    return keys.status(provider)
   }
 
-  /**
-   * 🔒 **Stop using a provider's API key** — answers where it stands now. ⚑ The provider runs on its
-   * login again; for Codex, every profile home is logged out now and takes the copied login back.
-   */
+  /** Remove the key without changing any conversation's recorded mode. */
   async removeApiKey(provider: Provider): Promise<ApiKeyChanged> {
     const keys = this.deps.apiKeys
     if (!keys) return this.apiKeyStatus(provider)
     await keys.remove(provider)
     this.keyChanges.set(provider, (this.keyChanges.get(provider) ?? 0) + 1)
     this.keyRefusedForBilling.delete(provider)
-    const notice = await this.bringTheKeyToItsHomes(provider)
-    this.providerLoginChanged(provider)
+    this.providerLoginChanged(provider, undefined, 'api-key')
     this.letTheWakeUpsWaitingForItsKeyGo(provider)
-    return notice === null ? keys.status(provider) : { ...keys.status(provider), notice }
+    return keys.status(provider)
   }
 
   /**
    * 🔒 Asks the provider whether it accepts the key that is set, only when a person presses the
-   * check ({@link RuntimeHostDeps.askTheProvider}). For Codex, the profile homes are logged in with
-   * the key first. The answer never quotes the key. What it learns about the key's account is kept
+   * check ({@link RuntimeHostDeps.askTheProvider}). The answer never quotes the key.
+   * What it learns about the key's account is kept
    * for the card: a check that finds the account can't pay marks the key refused, and one that saw
    * a request answered clears that.
    */
@@ -30455,8 +30603,6 @@ export class RuntimeHost implements LiveHost {
         reason: `No API key is saved for ${card}. Save one under “API key” on the ${card} card first.`,
       }
     }
-    const moved = await this.bringTheKeyToItsHomes(provider)
-    if (moved !== null) return { ok: false, reason: moved }
     const said = await ask(provider, key)
     if (
       this.keyChanges.get(provider) !== change ||
@@ -30477,7 +30623,9 @@ export class RuntimeHost implements LiveHost {
    * ⚑ **Each provider's program as this install bundles it** ({@link RuntimeHostDeps.providerVersions},
    * which reads each once per run). ⛔ Never rejects: an ask that failed says so.
    */
-  async providerVersions(): Promise<Readonly<Record<Provider, ProviderVersion>>> {
+  async providerVersions(
+    connection?: ProviderConnection,
+  ): Promise<Readonly<Record<Provider, ProviderVersion>>> {
     const ask = this.deps.providerVersions
     const unsaid = (reason: string): Readonly<Record<Provider, ProviderVersion>> =>
       providerRecord(() => ({ version: null, reason }))
@@ -30490,13 +30638,17 @@ export class RuntimeHost implements LiveHost {
       const work = this.deps.beforeProviderLaunch
         ? this.deps.beforeProviderLaunch().then(() => {
             owned.signal.throwIfAborted()
-            return ask()
+            return connection === undefined ? ask() : ask(connection)
           })
-        : ask()
+        : connection === undefined
+          ? ask()
+          : ask(connection)
       this.launches.finish(launch, work)
       const versions = await work
-      for (const provider of Object.keys(versions) as Provider[]) {
-        this.modelCatalogues.setProviderVersion(provider, versions[provider].version)
+      if (connection === undefined) {
+        for (const provider of Object.keys(versions) as Provider[]) {
+          this.modelCatalogues.setProviderVersion(provider, versions[provider].version)
+        }
       }
       return versions
     } catch (error) {
@@ -30559,23 +30711,33 @@ export class RuntimeHost implements LiveHost {
    * no warning meanwhile ({@link usageThatCounts}).
    */
   providerUsage(): Readonly<Record<Provider, readonly ProviderUsageReading[]>> {
-    const held = this.usageAsHeld()
     const now = this.now()
-    // ⛔ Without the account a reading was read on: it is told to no window and no agent.
-    const shown = (provider: Provider): readonly ProviderUsageReading[] =>
-      usageForDisplay(provider, held[provider], this.usageUnconfirmed.has(provider), now)
-    return providerRecord(shown)
+    return providerRecord((provider) =>
+      [...(this.usage.get(provider) ?? [])].flatMap(([connectionId, held]) =>
+        usageForDisplay(
+          provider,
+          [...held.values()],
+          this.usageUnconfirmed.get(provider)?.has(connectionId) === true,
+          now,
+        ),
+      ),
+    )
   }
 
   /** Each provider's readings as they are held and kept, each with the account it was read on. */
   private usageAsHeld(): Record<Provider, readonly KeptReading[]> {
-    return providerRecord((provider) => [...(this.usage.get(provider)?.values() ?? [])])
+    return providerRecord((provider) =>
+      [...(this.usage.get(provider)?.values() ?? [])].flatMap((held) => [...held.values()]),
+    )
   }
 
   /** The readings that may warn: every provider's but those not yet shown to be this sign-in's. */
   private usageThatCounts(): Record<Provider, readonly ProviderUsageReading[]> {
-    const held = this.usageAsHeld()
-    return providerRecord((provider) => (this.usageUnconfirmed.has(provider) ? [] : held[provider]))
+    return providerRecord((provider) =>
+      [...(this.usage.get(provider) ?? [])].flatMap(([connectionId, held]) =>
+        this.usageUnconfirmed.get(provider)?.has(connectionId) ? [] : [...held.values()],
+      ),
+    )
   }
 
   /**
@@ -30643,13 +30805,14 @@ export class RuntimeHost implements LiveHost {
    * ⚑ **A usage reading a conversation's provider sent, kept** — the newest per window, a field the
    * provider left out keeping what it last said (a sparse update is not a reset), `at` when this app
    * received it. ⚑ Windows are told only when a number moved. ⛔ At most {@link MAX_USAGE_WINDOWS}
-   * windows a provider.
+   * windows per connection.
    *
    * A reading belongs to its confirmed account when known. Codex's native account tag survives
    * token renewals. An unknown account cannot confirm readings kept by an earlier run.
    */
   private takeTheUsage(session: HostedSession, event: ProviderUsageEvent): void {
     const { provider } = session
+    const connectionId = session.connection?.id ?? null
     const named = this.accountOf(session)
     const by = {
       signIn: session.handle.signInTag?.() ?? null,
@@ -30658,18 +30821,21 @@ export class RuntimeHost implements LiveHost {
     }
     const at = this.now()
     let moved = false
-    const heldOn = this.usageReadOn.get(provider)
+    const tags =
+      this.usageReadOn.get(provider) ??
+      new Map<string | null, { readonly tag: string; readonly lifeSince: number }>()
+    const heldOn = tags.get(connectionId)
     // ⚑ The account decides when it is known for this reading and for what is held; otherwise the
     // sign-in does.
-    const heldAccount = this.oneAccountHeld(provider)
+    const heldAccount = this.oneAccountHeld(provider, connectionId)
     const onAnotherSignIn =
       by.account !== null && heldAccount !== undefined
         ? by.account !== heldAccount
         : by.signIn === null || heldOn?.tag !== by.signIn
-    if (this.usageUnconfirmed.delete(provider)) {
+    if (this.usageUnconfirmed.get(provider)?.delete(connectionId)) {
       // The first reading of this run settles what a run before it kept: read on the same
       // sign-in, those readings count again; on another, or on one nobody can name, they go.
-      if (onAnotherSignIn) this.usage.delete(provider)
+      if (onAnotherSignIn) this.usage.get(provider)?.delete(connectionId)
       moved = true
     } else if (
       onAnotherSignIn &&
@@ -30682,30 +30848,34 @@ export class RuntimeHost implements LiveHost {
       // not taken. A later one runs on the sign-in the Mac has now: what is held was read on the
       // one before, and goes.
       if (by.lifeSince < heldOn.lifeSince) return
-      if (this.usage.delete(provider)) moved = true
+      if (this.usage.get(provider)?.delete(connectionId)) moved = true
     }
     // Only a reading that is taken says which account this computer is on now.
     if (named?.learned !== undefined) this.keepTheAccount(named.learned)
     const tagMoved = (by.signIn ?? undefined) !== heldOn?.tag
-    if (by.signIn === null) this.usageReadOn.delete(provider)
+    if (by.signIn === null) tags.delete(connectionId)
     else {
-      this.usageReadOn.set(provider, {
+      tags.set(connectionId, {
         tag: by.signIn,
         lifeSince:
           heldOn?.tag === by.signIn ? Math.max(heldOn.lifeSince, by.lifeSince) : by.lifeSince,
       })
     }
+    if (tags.size === 0) this.usageReadOn.delete(provider)
+    else this.usageReadOn.set(provider, tags)
     // A reading whose account is not said yet, on the same sign-in as what is held, is that
     // account's; one on a sign-in nobody can name is no account's.
     const sameSignIn = onAnotherSignIn ? undefined : heldAccount
-    const held = this.usage.get(provider) ?? new Map<string, KeptReading>()
+    const groups = this.usage.get(provider) ?? new Map<string | null, Map<string, KeptReading>>()
+    const held = groups.get(connectionId) ?? new Map<string, KeptReading>()
     for (const reading of event.readings) {
       const found = held.get(reading.window)
       if (found === undefined && held.size >= MAX_USAGE_WINDOWS) continue
       // A figure the provider left out is kept from the reading before only when that one was read
       // on the same account, or on one nobody named.
       const before =
-        found?.account === undefined || by.account === null || found.account === by.account
+        found?.connectionId === session.connection?.id &&
+        (found?.account === undefined || by.account === null || found.account === by.account)
           ? found
           : undefined
       const usedPercent = reading.usedPercent ?? before?.usedPercent ?? null
@@ -30715,7 +30885,8 @@ export class RuntimeHost implements LiveHost {
       if (
         found?.usedPercent !== usedPercent ||
         found.resetsAt !== resetsAt ||
-        found.account !== account
+        found.account !== account ||
+        found.connectionId !== session.connection?.id
       ) {
         moved = true
       }
@@ -30725,9 +30896,11 @@ export class RuntimeHost implements LiveHost {
         resetsAt,
         at,
         ...(account === undefined ? {} : { account }),
+        ...(session.connection?.id === undefined ? {} : { connectionId: session.connection?.id }),
       })
     }
-    this.usage.set(provider, held)
+    groups.set(connectionId, held)
+    this.usage.set(provider, groups)
     // ⚑ **F096 — kept when a number moved**: a frame that says the same again writes nothing, so
     // the file is written as often as the provider's figures change, not as often as it speaks.
     // Claude's sign-in moving is kept too, so the file never names an older one; Codex's moves
@@ -30800,9 +30973,11 @@ export class RuntimeHost implements LiveHost {
     return { id: learned.id, learned }
   }
 
-  /** The one account every reading a provider holds was read on, or `undefined`: none, or several. */
-  private oneAccountHeld(provider: Provider): string | undefined {
-    const accounts = new Set([...(this.usage.get(provider)?.values() ?? [])].map((r) => r.account))
+  /** The one account a connection's readings share, or `undefined`: none, or several. */
+  private oneAccountHeld(provider: Provider, connectionId: string | null): string | undefined {
+    const accounts = new Set(
+      [...(this.usage.get(provider)?.get(connectionId)?.values() ?? [])].map((r) => r.account),
+    )
     const [only] = accounts
     return accounts.size === 1 ? only : undefined
   }
@@ -30866,18 +31041,26 @@ export class RuntimeHost implements LiveHost {
       return
     }
     for (const provider of SUPPORTED_PROVIDERS) {
-      const held = new Map<string, KeptReading>()
+      const groups = new Map<string | null, Map<string, KeptReading>>()
       for (const reading of read.readings[provider] ?? []) {
-        if (held.size >= MAX_USAGE_WINDOWS) break
+        const connectionId = reading.connectionId ?? null
+        const held = groups.get(connectionId) ?? new Map<string, KeptReading>()
+        if (held.size >= MAX_USAGE_WINDOWS) continue
         held.set(reading.window, reading)
+        groups.set(connectionId, held)
       }
-      if (held.size > 0) this.usage.set(provider, held)
-      // Read on a sign-in this run has not seen yet: it may have changed since.
-      if (held.size > 0) this.usageUnconfirmed.add(provider)
-      const readOn = read.readOn?.[provider]
-      if (held.size > 0 && readOn !== undefined) {
-        this.usageReadOn.set(provider, { tag: readOn, lifeSince: 0 })
+      if (groups.size > 0) {
+        this.usage.set(provider, groups)
+        this.usageUnconfirmed.set(provider, new Set(groups.keys()))
       }
+      const tags = new Map<string | null, { readonly tag: string; readonly lifeSince: number }>()
+      const legacy = read.readOn?.[provider]
+      if (groups.has(null) && legacy !== undefined) tags.set(null, { tag: legacy, lifeSince: 0 })
+      for (const on of read.readOnConnections ?? []) {
+        if (on.provider === provider && groups.has(on.connectionId))
+          tags.set(on.connectionId, { tag: on.tag, lifeSince: 0 })
+      }
+      if (tags.size > 0) this.usageReadOn.set(provider, tags)
       const seen = new Map<string, UsageWindowSeen>()
       for (const window of read.seen[provider] ?? []) {
         if (seen.size >= MAX_USAGE_WINDOWS) break
@@ -30896,13 +31079,20 @@ export class RuntimeHost implements LiveHost {
     this.aWindowFirstSeenUnkept = false
     const kept = this.deps.usageKept
     if (kept === undefined) return
+    const legacy: Partial<Record<Provider, string>> = {}
+    const scoped: { provider: Provider; connectionId: string; tag: string }[] = []
+    for (const [provider, tags] of this.usageReadOn) {
+      for (const [connectionId, on] of tags) {
+        if (connectionId === null) legacy[provider] = on.tag
+        else scoped.push({ provider, connectionId, tag: on.tag })
+      }
+    }
     try {
       kept.write({
         readings: this.usageAsHeld(),
         seen: this.usageWindowsSeen(),
-        ...(this.usageReadOn.size === 0
-          ? {}
-          : { readOn: Object.fromEntries([...this.usageReadOn].map(([p, on]) => [p, on.tag])) }),
+        ...(Object.keys(legacy).length === 0 ? {} : { readOn: legacy }),
+        ...(scoped.length === 0 ? {} : { readOnConnections: scoped }),
       })
     } catch (error) {
       console.warn(`runtime host could not keep the usage readings: ${errorMessage(error)}`)
@@ -30916,7 +31106,11 @@ export class RuntimeHost implements LiveHost {
    * ⚑ A conversation already running keeps what it started with, so what it reads from now on is
    * an older login's and is not kept ({@link HostedSession.runsOnAnOlderLogin}).
    */
-  private providerLoginChanged(provider: Provider, profileId?: string): void {
+  private providerLoginChanged(
+    provider: Provider,
+    profileId?: string,
+    method: ProviderConnection['authMethod'] = 'sign-in',
+  ): void {
     this.deps.limitsReader?.signInChanged()
     this.providerLimitFacts.retireHistory()
     this.publishProviderLimitFactsSoon()
@@ -30925,12 +31119,19 @@ export class RuntimeHost implements LiveHost {
         session !== null &&
         session !== undefined &&
         session.provider === provider &&
-        (profileId === undefined || session.profileId === profileId)
-      ) {
+        (profileId === undefined || session.profileId === profileId) &&
+        (session.connection === undefined || session.connection.authMethod === method)
+      )
         session.runsOnAnOlderLogin = true
-      }
     }
-    this.forgetTheUsage(provider)
+    const metadata = this.deps.listConnections?.() ?? []
+    const changed = new Set(
+      [...(this.usage.get(provider)?.keys() ?? [])].filter((id) => {
+        const known = this.usageAuthMethod(provider, id, metadata)
+        return known === null || known === method
+      }),
+    )
+    this.forgetTheUsage(provider, changed)
     this.providersMoved({ what: 'login', provider })
   }
 
@@ -30959,14 +31160,22 @@ export class RuntimeHost implements LiveHost {
    * ({@link takeTheUsage}). Otherwise they are forgotten ({@link forgetTheUsage}).
    */
   private doubtTheUsage(provider: Provider): void {
-    const held = this.oneAccountHeld(provider)
-    if (held === undefined || held !== this.knownAccount?.id) {
-      this.forgetTheUsage(provider)
-      return
+    const metadata = this.deps.listConnections?.() ?? []
+    const forgotten = new Set<string | null>()
+    const unconfirmed = this.usageUnconfirmed.get(provider) ?? new Set<string | null>()
+    let moved = false
+    for (const connectionId of this.usage.get(provider)?.keys() ?? []) {
+      if (this.usageAuthMethod(provider, connectionId, metadata) === 'api-key') continue
+      const held = this.oneAccountHeld(provider, connectionId)
+      if (held === undefined || held !== this.knownAccount?.id) forgotten.add(connectionId)
+      else if (!unconfirmed.has(connectionId)) {
+        unconfirmed.add(connectionId)
+        moved = true
+      }
     }
-    if (this.usageUnconfirmed.has(provider)) return
-    this.usageUnconfirmed.add(provider)
-    this.providersMoved({ what: 'usage', provider })
+    if (unconfirmed.size > 0) this.usageUnconfirmed.set(provider, unconfirmed)
+    if (forgotten.size > 0) this.forgetTheUsage(provider, forgotten)
+    else if (moved) this.providersMoved({ what: 'usage', provider })
   }
 
   /**
@@ -30975,12 +31184,35 @@ export class RuntimeHost implements LiveHost {
    * told. ⚑ For a login this app changed ({@link providerLoginChanged}) and for one the Mac moved
    * under it (F096, {@link aSignInChanged}).
    */
-  private forgetTheUsage(provider: Provider): void {
-    this.usageUnconfirmed.delete(provider)
-    this.usageReadOn.delete(provider)
-    if (!this.usage.delete(provider)) return
+  private forgetTheUsage(provider: Provider, connections?: ReadonlySet<string | null>): void {
+    let moved = false
+    if (connections === undefined) {
+      this.usageUnconfirmed.delete(provider)
+      this.usageReadOn.delete(provider)
+      moved = this.usage.delete(provider)
+    } else {
+      for (const connectionId of connections) {
+        this.usageUnconfirmed.get(provider)?.delete(connectionId)
+        this.usageReadOn.get(provider)?.delete(connectionId)
+        if (this.usage.get(provider)?.delete(connectionId)) moved = true
+      }
+    }
+    if (!moved) return
     this.keepTheUsage()
     this.providersMoved({ what: 'usage', provider })
+  }
+
+  private usageAuthMethod(
+    provider: Provider,
+    connectionId: string | null,
+    metadata: readonly ProviderConnection[],
+  ): ProviderConnection['authMethod'] | null {
+    if (connectionId === null) return null
+    const row = metadata.find((row) => row.provider === provider && row.id === connectionId)
+    if (row) return row.authMethod
+    for (const method of ['sign-in', 'api-key'] as const)
+      if (connectionId === compatibilityConnectionId(provider, method)) return method
+    return null
   }
 
   /** ⚑ {@link RuntimeHostDeps.providersMoved}, warned rather than thrown. */
@@ -31006,47 +31238,32 @@ export class RuntimeHost implements LiveHost {
     return await work
   }
 
-  /** ⚑ {@link ProviderAuthOps.bringTheKeyToItsHomes}, warned rather than thrown. */
-  private async bringTheKeyToItsHomes(provider: Provider): Promise<string | null> {
-    const ops = this.deps.providerAuth
-    if (!ops) return null
-    try {
-      return await this.withProviderLaunch(`${provider} API-key synchronization`, () =>
-        ops.bringTheKeyToItsHomes(provider),
-      )
-    } catch (error) {
-      console.warn(
-        `runtime host could not bring ${provider}'s homes in line with its API key: ${errorMessage(error)}`,
-      )
-      return 'BroCrew could not tell the provider about the key yet; it will at its next launch.'
-    }
-  }
-
   /**
-   * Whether this profile's credential can run a turn.
-   *
-   * ⚠️ **The home is resolved by the ops, not by `prepareProviderHome`** (review findings 4/17/19).
-   * That function is the SESSION-launch path and copies a credential as a side effect, so asking a
-   * question used to write one — and on a machine with no `~/.codex/auth.json` it threw instead of
-   * answering `absent`, which is the one state this exists to distinguish. See
-   * `createProviderAuthOps` for the directory-only provisioning that replaced it.
-   *
-   * Bounded, like every other provider round trip in this file: for Codex the check spawns a real
-   * app-server, and a spawn that hangs must become "could not ask" rather than a promise the
-   * renderer waits on forever with its buttons disabled.
-   *
-   * ⛔ **And the deadline releases the WAITER, not the work** (185, from 182 H2). `withDeadline`'s
-   * own docblock says so; on this path the work is a detached `codex app-server`, so for ten seconds
-   * the app said `unknown` and then walked away from a live child holding the home's boot gate —
-   * 5/5 trials, surviving the app's own quit. The controller below is what the deadline hands the
-   * child to.
+   * Auth operations retain their existing readers, probes and home provisioning. Session
+   * preparation may copy credentials, so checks bypass it. Native work stays owned by the
+   * launch registry until it settles; a timeout cancels the child rather than just its waiter.
    */
-  checkProviderAuth(provider: Provider, profileId: string, probe = false): Promise<AuthState> {
-    if (!probe) return this.runProviderAuthCheck(provider, profileId, false)
-    const key = `${provider}:${profileId}`
+  checkProviderAuth(
+    provider: Provider,
+    profileId: string,
+    probe = false,
+    connectionId?: string,
+  ): Promise<AuthState> {
+    if (connectionId !== undefined && this.deps.connectionFor === undefined)
+      return Promise.resolve({
+        state: 'unknown',
+        reason: 'This app build cannot check a named connection.',
+      })
+    const connection =
+      connectionId === undefined ? undefined : this.deps.connectionFor?.(provider, connectionId)
+    if (!probe) return this.runProviderAuthCheck(provider, profileId, false, connection)
+    const key =
+      connection === undefined
+        ? `${provider}:${profileId}`
+        : JSON.stringify([provider, profileId, connection.id])
     const held = this.manualAuthChecks.get(key)
     if (held !== undefined) return held
-    const work = this.runProviderAuthCheck(provider, profileId, true).finally(() => {
+    const work = this.runProviderAuthCheck(provider, profileId, true, connection).finally(() => {
       if (this.manualAuthChecks.get(key) === work) this.manualAuthChecks.delete(key)
     })
     this.manualAuthChecks.set(key, work)
@@ -31057,18 +31274,11 @@ export class RuntimeHost implements LiveHost {
     provider: Provider,
     profileId: string,
     probe: boolean,
+    connection?: ProviderConnection,
   ): Promise<AuthState> {
     const ops = this.deps.providerAuth
     if (!ops) return { state: 'unknown', reason: 'this app build cannot check provider sign-ins' }
-    // ⛔ **The one door, and it is the SAME door a session start goes through** (202, from 191 H1).
-    // This method used to make its own `AbortController` and add it to a private set that only
-    // `closeAll` read — so a quit fenced nothing: `closeAdmission()` refused new SESSIONS while this
-    // IPC stayed callable, took a snapshot of that set, and walked on. A renderer command queued
-    // behind the quit could then spawn a detached app-server the shutdown pass had already gone
-    // past, and the app exited with the child and its loopback listener alive.
-    //
-    // `open` throws once admission is closed, so the refusal is the registry's rather than a flag of
-    // ours — and it is the same sentence a refused session gets.
+    // Use the session launch registry so shutdown refuses new checks and drains owned work.
     let launch: Launch
     try {
       let copying: Promise<void> | undefined
@@ -31081,11 +31291,8 @@ export class RuntimeHost implements LiveHost {
       // answer, and it says nothing at all about the credential (098's rule).
       return { state: 'unknown', reason: 'BroCrew is shutting down, so it did not ask.' }
     }
-    // ⚠️ **`finish` is called immediately and ownership OUTLIVES it** (068 finding 2, and the whole
-    // of 191 H2). `probeCodexAuthInHome` closes its transport in a `finally`, and `close()` is a
-    // bounded stdin→SIGTERM→SIGKILL of the group — so this promise settling IS the child being down,
-    // whereas the ten-second deadline below settles only the waiter. Registering the un-deadlined
-    // promise is what makes `closeAll`'s drain wait for the process rather than for our patience.
+    // Registry ownership follows the underlying work past the deadline; provider cleanup
+    // closes its transport before that work settles.
     if (this.deps.beforeProviderLaunch) {
       try {
         await this.deps.beforeProviderLaunch()
@@ -31103,19 +31310,32 @@ export class RuntimeHost implements LiveHost {
     const work = Promise.resolve().then(() => {
       if (launch.signal.aborted)
         return { state: 'unknown' as const, reason: 'The sign-in check was cancelled.' }
-      return probe
-        ? (ops.probe?.(provider, profileId, launch.signal) ?? {
+      if (probe) {
+        const reading =
+          connection === undefined
+            ? ops.probe?.(provider, profileId, launch.signal)
+            : ops.probe?.(provider, profileId, launch.signal, connection)
+        return (
+          reading ?? {
             state: 'unknown' as const,
             reason: 'This app build cannot probe this sign-in.',
-          })
-        : ops.check(provider, profileId, launch.signal)
+          }
+        )
+      }
+      return connection === undefined
+        ? ops.check(provider, profileId, launch.signal)
+        : ops.check(provider, profileId, launch.signal, connection)
     })
     this.launches.finish(launch, work)
     try {
       const result = await withDeadline(work, AUTH_CHECK_TIMEOUT_MS, 'provider sign-in check')
       if (launch.signal.aborted || this.launches.closed)
         return { state: 'unknown', reason: 'The sign-in check was cancelled.' }
-      if (result.state !== 'usable' || result.login === 'api-key' || this.aKeyIsSaved(provider))
+      if (
+        result.state !== 'usable' ||
+        result.login === 'api-key' ||
+        (connection === undefined && this.aKeyIsSaved(provider))
+      )
         return result
       if (probe && this.rejectedMachineLogins.get(provider) === rejected) {
         this.rejectedMachineLogins.delete(provider)
@@ -31132,10 +31352,7 @@ export class RuntimeHost implements LiveHost {
       // ⛔ Aborted before the sentence is written, so "we could not ask" and "nothing of ours is
       // still running" become true in the same breath rather than ten seconds apart.
       this.launches.cancel(launch)
-      // ⛔ **This app declining to ask is not the provider failing to answer** (197 §2, from 190 H2
-      // and 086). The refusal below carries the whole reason — no such profile, or an existing one
-      // spelled differently — and folding it into *"could not ask"* would describe a spawn that
-      // hung. Still `unknown`, because we genuinely did not ask; the sentence is what differs.
+      // A profile refusal describes an unasked question, not an unresponsive provider.
       if (error instanceof ProfileUnopenable) return { state: 'unknown', reason: error.message }
       // ⚠️ `unknown`, never `absent`: a question we could not get an answer to says nothing about
       // the credential, and the reason is OURS rather than the provider's — see `probeCodexAuth`
@@ -31362,9 +31579,14 @@ export class RuntimeHost implements LiveHost {
   async reprovisionProviderAuth(
     provider: Provider,
     profileId: string,
+    connectionId?: string,
   ): Promise<ReprovisionOutcome> {
+    const connection =
+      connectionId === undefined ? undefined : this.deps.connectionFor?.(provider, connectionId)
+    if (connectionId !== undefined && connection === undefined)
+      throw new ProviderConnectionUnavailable()
     try {
-      return await this.recopy(provider, profileId)
+      return await this.recopy(provider, profileId, connection)
     } catch (error) {
       const shortage = transientSetupFailureOf(error)
       if (shortage === null) throw error
@@ -31395,13 +31617,23 @@ export class RuntimeHost implements LiveHost {
     profileId: string | null,
     launch: () => Promise<SessionHandle>,
     stillWanted: () => boolean,
+    connection?: ProviderConnection,
   ): Promise<SessionHandle> {
     try {
       return await launch()
     } catch (refused) {
-      const copy = this.theCopyRefused(provider, refused)
+      const copy = this.theCopyRefused(provider, refused, connection)
       if (profileId === null || copy === null || !stillWanted()) throw refused
-      if (!(await this.replaceARefusedCopy(provider, profileId, 'at a start', copy, stillWanted))) {
+      if (
+        !(await this.replaceARefusedCopy(
+          provider,
+          profileId,
+          'at a start',
+          copy,
+          stillWanted,
+          connection,
+        ))
+      ) {
         throw refused
       }
       if (!stillWanted()) throw refused
@@ -31413,9 +31645,9 @@ export class RuntimeHost implements LiveHost {
    * A Codex sign-in's refusal, said with what this app does about one: it replaces the refused copy
    * ({@link replaceARefusedCopy}) and reopens the conversation. ⚑ Said as the error is written,
    * before any fresher copy is looked for, so a surface can say what follows either way. Under the
-   * conditions the replacement itself has: on a sign-in, with no API key saved, and the home still
-   * holding the copy this conversation's program was started on, which only a provider that keeps
-   * a copy for each profile has. ⛔ Where the home holds another by now, nothing is replaced from
+   * conditions the replacement itself has: selected sign-in mode, and the home still holding the
+   * copy this conversation's program was started on. Omitted legacy selections retain saved-key
+   * precedence. Where the home holds another by now, nothing is replaced from
    * inside this conversation, and it is not said.
    */
   private sayingARefusedCopyIsReplaced(session: HostedSession, event: RuntimeEvent): RuntimeEvent {
@@ -31423,7 +31655,7 @@ export class RuntimeHost implements LiveHost {
       event.cause === 'auth' &&
       event.onAKey !== true &&
       this.deps.providerAuth !== undefined &&
-      !this.aKeyIsSaved(session.provider) &&
+      !this.aKeyIsSaved(session.provider, session.connection) &&
       providerAuthPolicies[session.provider].copy.same(
         session.handle.signInCopyAtLaunch?.(),
         this.theCopyHeldNow(session),
@@ -31434,11 +31666,17 @@ export class RuntimeHost implements LiveHost {
 
   /**
    * The copy of a Codex sign-in a start was refused for, when Codex itself refused it and this app
-   * replaces such a copy; null for every other failure, and while an API key is saved.
+   * replaces such a copy; null for other failures or an API-key mode. Legacy selection keeps key precedence.
    */
-  private theCopyRefused(provider: Provider, error: unknown): unknown | null {
+  private theCopyRefused(
+    provider: Provider,
+    error: unknown,
+    connection?: ProviderConnection,
+  ): unknown | null {
     const copy = providerAuthPolicies[provider].copy.refused(error)
-    return copy !== null && this.deps.providerAuth !== undefined && !this.aKeyIsSaved(provider)
+    return copy !== null &&
+      this.deps.providerAuth !== undefined &&
+      !this.aKeyIsSaved(provider, connection)
       ? copy
       : null
   }
@@ -31449,7 +31687,11 @@ export class RuntimeHost implements LiveHost {
     const copy = providerAuthPolicies[session.provider].copy
     if (copy.read === undefined || !ops) return null
     try {
-      return copy.read(ops.credentialHome(session.provider, session.profileId))
+      const home =
+        session.connection === undefined
+          ? ops.credentialHome(session.provider, session.profileId)
+          : ops.credentialHome(session.provider, session.profileId, session.connection)
+      return copy.read(home)
     } catch {
       return null
     }
@@ -31467,9 +31709,10 @@ export class RuntimeHost implements LiveHost {
     refused: 'at a start' | 'in a turn',
     copy: unknown,
     stillWanted: () => boolean,
+    connection?: ProviderConnection,
   ): Promise<boolean> {
     const ops = this.deps.providerAuth
-    if (!ops || this.aKeyIsSaved(provider)) return false
+    if (!ops || this.aKeyIsSaved(provider, connection)) return false
     let credential: ResourceClaim
     try {
       credential = this.claimCredentialHome(
@@ -31477,12 +31720,15 @@ export class RuntimeHost implements LiveHost {
         provider,
         profileId,
         'a refused copy’s replacement',
+        connection,
       )
     } catch {
       return false
     }
     try {
-      const from = await ops.replaceARefusedCopy(provider, profileId, copy, stillWanted)
+      const from = await (connection === undefined
+        ? ops.replaceARefusedCopy(provider, profileId, copy, stillWanted)
+        : ops.replaceARefusedCopy(provider, profileId, copy, stillWanted, connection))
       if (from === 'not-tried') return false
       console.warn(
         `runtime host replaced profile ${profileId}'s ${providerDescriptor(provider).displayName} sign-in, which ${providerDescriptor(provider).displayName} refused ${refused}, with ${from === 'the-computers' ? "this computer's" : "BroBot's own"}, refreshed later`,
@@ -31499,25 +31745,24 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  private async recopy(provider: Provider, profileId: string): Promise<ReprovisionOutcome> {
+  private async recopy(
+    provider: Provider,
+    profileId: string,
+    connection?: ProviderConnection,
+  ): Promise<ReprovisionOutcome> {
     const ops = this.deps.providerAuth
     if (!ops) throw new Error('this app build cannot re-copy provider sign-ins')
     // 🔴 **The second writer, admitted through the same door as the first since 265 §2.** This method
     // used to delegate immediately, consulting nothing — see {@link claimCredentialHome}.
-    const credential = this.claimCredentialHome(ops, provider, profileId, 'a re-copy')
-    // ⛔ **A credential landing in this home is an auth change, so the menu for it is dropped**
-    // (257 §2) — the same reason as {@link signInProvider}'s, and this is the other door that moves
-    // one. ⚠️ AFTER the copy settles rather than before it: a probe that starts mid-copy would
-    // otherwise memoize the old account's answer behind the new credential, and dropping the entry
-    // last catches that one too. A refusal drops it as well, which costs one re-probe on the next
-    // ask and is the cheaper direction to be wrong in.
-    //
-    // ⚠️ **The release below takes no `after`, and the asymmetry with the sign-in is the point**
-    // (293 §2). A re-copy owns no process: when `ops.reprovision` resolves the bytes are on disk and
-    // nothing is left that could still write to this home. A sign-in leaves an app-server behind,
-    // which is why that path holds its claim against the teardown instead.
+    const credential = this.claimCredentialHome(ops, provider, profileId, 'a re-copy', connection)
+    // Drop the model menu after the copy settles, including a refusal: a mid-copy probe may
+    // otherwise retain the old account's answer behind the new credential.
+    // Re-copy owns no process; once reprovision settles nothing can still write to this home.
+    // Sign-in instead holds its claim until the app-server's teardown.
     try {
-      return await ops.reprovision(provider, profileId)
+      return await (connection === undefined
+        ? ops.reprovision(provider, profileId)
+        : ops.reprovision(provider, profileId, connection))
     } finally {
       credential.release()
       this.forgetModels(provider)
@@ -31561,11 +31806,15 @@ export class RuntimeHost implements LiveHost {
     provider: Provider,
     profileId: string,
     gesture: string,
+    connection?: ProviderConnection,
   ): ResourceClaim {
     // ⚠️ **Resolved through the ops seam and not from a copy of the layout here.** The key has to be
     // the same string for both writers, and the only way to guarantee that is for one thing to
     // compute it. Synchronous, so nothing runs between deciding and claiming.
-    const home = ops.credentialHome(provider, profileId)
+    const home =
+      connection === undefined
+        ? ops.credentialHome(provider, profileId)
+        : ops.credentialHome(provider, profileId, connection)
     // 🔴 **Process-wide since 293 §2**, so a second `RuntimeHost` over the same home sees this claim
     // instead of an empty private map of its own. See `held-resources.ts` for the three things the
     // map this replaces could not do.
@@ -31597,23 +31846,21 @@ export class RuntimeHost implements LiveHost {
    * unbounded `openExternal`, an unbounded cancel, and a `finally` that could hang after the
    * deadline had already fired. All three are raced now.
    */
-  async signInProvider(provider: Provider, profileId: string): Promise<ProviderSignInResult> {
+  async signInProvider(
+    provider: Provider,
+    profileId: string,
+    connectionId?: string,
+  ): Promise<ProviderSignInResult> {
     const ops = this.deps.providerAuth
     if (!ops) throw new Error('this app build cannot start provider sign-ins')
+    const connection =
+      connectionId === undefined ? undefined : this.deps.connectionFor?.(provider, connectionId)
+    if (connectionId !== undefined && connection === undefined)
+      throw new ProviderConnectionUnavailable()
     const key = signInKey(provider, profileId)
-    // ⚠️ **Reserved BEFORE the await, not after** (review finding 5). `has()` → `await` → `set()` is
-    // a check-then-act: two clicks in the same tick both passed the check, both spawned an
-    // app-server, and the second overwrote the first in the map — leaking a process that held the
-    // redirect port. The placeholder claims the key synchronously, so the second call loses.
-    //
-    // ⛔ **And it refuses HERE, which is before anything opens a browser** (257 §1). Everything the
-    // losing call would have done — the home, the app-server, `openExternal` — is below this line, so
-    // a refused attempt costs a sentence rather than a browser tab pointed at a redirect that has
-    // already moved on. ⚠️ **Refused, never queued**: a queued OAuth flow holds a tab open against a
-    // listener somebody else owns, which is the worst of both.
-    // 🔴 **Process-wide since 293 §2.** The private map this replaces could not see a second
-    // `RuntimeHost`, and — worse — it was deleted before the app-server holding the port had gone.
-    // See `held-resources.ts`.
+    // ⚠️ Claim synchronously before any await, browser or child: concurrent flows refuse,
+    // never queue. The process-wide port claim also covers another RuntimeHost and stays held
+    // until the app-server's actual teardown, even after its caller stops waiting.
     const port = claimResource(oauthPortKey(provider, profileId), profileId)
     if (!port.ok) throw signInHeldBy(provider, port.holder, profileId)
     // ⛔ **The second reservation, and the ORDER of the two is deliberate** (265 §2). Above is 257's
@@ -31623,13 +31870,13 @@ export class RuntimeHost implements LiveHost {
     // only it knows: a non-OAuth writer is in the same home.
     let credential: ResourceClaim
     try {
-      credential = this.claimCredentialHome(ops, provider, profileId, 'a sign-in')
+      credential = this.claimCredentialHome(ops, provider, profileId, 'a sign-in', connection)
     } catch (error) {
       port.claim.release() // nothing was started, so nothing has to be waited for
       throw error
     }
     try {
-      return await this.runSignIn(ops, provider, profileId, key, port.claim, credential)
+      return await this.runSignIn(ops, provider, profileId, key, port.claim, credential, connection)
     } finally {
       // ⚠️ **A backstop, and it can only ever fire on a path that started nothing.** `runSignIn`
       // releases both claims itself, against the un-deadlined teardown, and a claim's FIRST release
@@ -31655,6 +31902,7 @@ export class RuntimeHost implements LiveHost {
     key: string,
     port: ResourceClaim,
     credential: ResourceClaim,
+    connection?: ProviderConnection,
   ): Promise<ProviderSignInResult> {
     // ⛔ **The same door as a session start, and a quit closes it** (202, from 191 H1) — see
     // {@link checkProviderAuth} for the window this shuts. It throws when admission is closed, so a
@@ -31672,7 +31920,9 @@ export class RuntimeHost implements LiveHost {
         await this.deps.beforeProviderLaunch()
         launch.signal.throwIfAborted()
       }
-      signIn = await ops.signIn(provider, profileId, launch.signal)
+      signIn = await (connection === undefined
+        ? ops.signIn(provider, profileId, launch.signal)
+        : ops.signIn(provider, profileId, launch.signal, connection))
     } catch (error) {
       this.signIns.delete(key) // the reservation must not outlive a start that never happened
       // Nothing survived the start, so there is nothing for ownership to wait on — `finish` with no
@@ -31723,26 +31973,14 @@ export class RuntimeHost implements LiveHost {
       }
     } finally {
       this.signIns.delete(key)
-      // ⛔ **A settled sign-in is the one moment a catalogue can genuinely change under a running
-      // app** (257 §2), so this is where the memoized menu for that home is dropped. Unconditionally,
-      // not only on success: from out here we cannot tell whether a credential landed — a flow can
-      // fail after writing one, and the timeout path has no outcome at all — and the cost of being
-      // wrong is one short-lived child on the NEXT ask, against a menu that silently describes
-      // somebody else's account. Nothing re-probes on its own; see {@link providerModels}.
+      // ⚠️ Drop model menus even on failure or timeout: a credential may already have landed.
+      // The next explicit ask reads the current account; nothing re-probes on its own.
       this.forgetModels(provider)
       // Idempotent, reached on the timeout and throw paths too — and itself bounded, because the
       // thing being cancelled is exactly the app-server that may have stopped answering.
       const { teardown, bounded } = this.startCancel(signIn, launch)
-      // 🔴 **THIS is 289 rank 4's first interleaving** (293 §2). Both claims used to be dropped
-      // here — the port immediately above this line, the credential home in the caller's `finally`
-      // three lines later — and both of those are BEFORE the app-server has gone. The arithmetic is
-      // `boundedCancel`'s own: the cancel may spend two seconds on the provider's ack and `close()`
-      // is 2 s + 2 s + 2 s after that, so the child is not due to be dead until about t+8 s while
-      // the caller stops waiting at t+3 s. Between those two moments a second sign-in could take
-      // port 1455 and a re-copy could write the same `auth.json` the dying flow is about to.
-      // ⚑ **The un-deadlined promise, deliberately** — the one `LaunchRegistry.finish` already
-      // holds, for the same reason it holds it: *"a bounded caller may stop waiting while ownership
-      // does not"*.
+      // ⚠️ A caller deadline must not release either claim while a child may still write.
+      // Both claims wait for actual teardown; only the caller waits for its bounded view.
       port.release(teardown)
       credential.release(teardown)
       await bounded
@@ -32715,7 +32953,7 @@ export class RuntimeHost implements LiveHost {
         )
         continue
       }
-      const home = this.deps.providerHomePath(row.provider, row.profileId ?? DEFAULT_PROFILE_ID)
+      const home = this.providerHomeFor(row)
       const sessions = this.deps.store.providerSessionsOf(conversation)
       const files = providerFilesOf(row.provider, home, sessions)
       if (files.length > 0) {
@@ -32883,7 +33121,7 @@ export class RuntimeHost implements LiveHost {
         if (part === undefined || part.kind === 'records') continue
         const row = this.deps.store.recordedOne(part.conversation)
         if (row === null) continue
-        const home = this.deps.providerHomePath(row.provider, row.profileId ?? DEFAULT_PROFILE_ID)
+        const home = this.providerHomeFor(row)
         const leftHere = await removeFromHome(home, part.paths)
         left.push(...leftHere)
         if (leftHere.length === 0) removed.push(id)
@@ -33100,6 +33338,7 @@ export class RuntimeHost implements LiveHost {
       .filter(({ sessionId }) => !this.archived.has(sessionId))
     return shown.map(({ reportedModel, reportedEffort, ...session }) => ({
       ...session,
+      connectionId: this.deps.store.connectionOf(session.sessionId),
       // ⚑ **D-042 · R5 — what its provider last reported running**, absent until it has said.
       ...(reportedModel === null
         ? {}
@@ -33289,6 +33528,7 @@ export class RuntimeHost implements LiveHost {
       .filter(({ sessionId }) => !this.archived.has(sessionId))
     return shown.map((row) => ({
       ...row,
+      connectionId: this.deps.store.connectionOf(row.sessionId),
       running: this.runningStateOf(row.sessionId),
       ...this.workerFields(row.sessionId),
       state: stateOf(row.sessionId),
@@ -33521,10 +33761,7 @@ export class RuntimeHost implements LiveHost {
     // ⛔ **The PATH, never the launch call** ({@link RuntimeHostDeps.providerHomePath}). Reading a
     // transcript file this app already holds needs no credential: `prepareProviderHome` probes
     // Claude's login or key and throws without one. A home that was never made holds no transcript.
-    const providerHome = this.deps.providerHomePath(
-      session.provider,
-      session.profileId ?? DEFAULT_PROFILE_ID,
-    )
+    const providerHome = this.providerHomeFor(session)
     const path = this.deps.nativeTranscriptPath(session.provider, providerHome, session.ref)
     if (path === null) return 'skipped'
     return await this.importTranscript(session.sessionId, session.provider, path, cancelled)
@@ -33656,7 +33893,11 @@ export class RuntimeHost implements LiveHost {
   ): Promise<DeriveOutcome> {
     const row = this.deps.store.find(sessionId)
     const resolveImage =
-      row === null ? undefined : this.imageResolver(provider, row.ref.sessionId, homeProfileOf(row))
+      row === null
+        ? undefined
+        : this.imageResolver(provider, row.ref.sessionId, homeProfileOf(row), () =>
+            this.providerHomeFor(row),
+          )
     return this.whileBuilding(sessionId, () =>
       deriveLedger(
         this.deps.store,
@@ -33895,7 +34136,9 @@ export class RuntimeHost implements LiveHost {
     const resolveImage =
       row.providerSessionId === null
         ? undefined
-        : this.imageResolver(row.provider, row.providerSessionId, homeProfileOf(row))
+        : this.imageResolver(row.provider, row.providerSessionId, homeProfileOf(row), () =>
+            this.providerHomeFor(row),
+          )
     // ⛔ **Counted as in flight from before the queue, not from when the lane picks it up** (198).
     // The background lane queues behind any pass already running, so a rebuild can sit here for
     // minutes with a `building` marker about to be written — and a host constructed in that window
@@ -33930,66 +34173,26 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * A checker for one session's generated-image claims, or undefined (065, closing 067's gap).
-   *
-   * ⚠️ **It is built on the SAME function that serves the image, and that is the point.**
-   * `resolveGeneratedImage` in the runtime is deliberately not exported — it resolves against the
-   * home an adapter launched with — so the main process asks its own door instead: if
-   * {@link resolveAssetRequest} would serve this file, the path may go in the ledger, and otherwise
-   * nothing does. One implementation of "may this be shown", so the thing that records a path and
-   * the thing that later refuses one cannot disagree.
-   *
-   * Undefined for Claude (which generates no images — 067 measured that four ways). ⚑ **`726` ·
-   * R92 — a session found in the user's OWN home now gets one too**: until `726` its files were
-   * outside the served root and so unreachable however the claim was spelled; the door no longer
-   * has a root, so the provider's own `savedPath` claim is checked on its merits. With no home of
-   * ours there is no naming CONVENTION to try, so a claim is the only candidate.
-   *
-   * ⛔ **`null` here means "no home of ours", and it is the CALLER's job to have decided that**
-   * (188 §1, from 168 M6). This used to take the row's `profile_id` straight through and refuse
-   * every null, which is two different rows wearing one value: a row swept out of `~/.claude` /
-   * `~/.codex` (`adopted_at` non-null) genuinely has no home of ours, but a **pre-profile row** —
-   * `adopted_at` null, written before the column existed — ran in `default` and its images are
-   * sitting in that home right now. Those conversations lost every generated image on
-   * rebuild, silently, and the app had already settled the question everywhere else: three other
-   * places in this file resolve a null profile with `?? DEFAULT_PROFILE_ID`. This was the one that
-   * did not, so {@link homeProfileOf} makes the two nulls different values before they arrive.
-   *
-   * ⚠️ **The sweep's call site is deliberately NOT translated**: there, `profileId` comes from the
-   * home being walked, and `user-homes.ts` is the one module that blanks it to null. Null already
-   * means user home there, by construction rather than by inference.
-   *
-   * ## 🔴 It asks for the PATH now, and it should always have done (243)
-   *
-   * ⚠️ **What stood here was a mitigation for a call that did not belong**: *"The home is resolved
-   * LAZILY, inside the closure. `prepareProviderHome` PROVISIONS — it is three `mkdirSync` calls —
-   * so naming it here meant that importing any Codex conversation created an empty provider home on
-   * disk as a side effect."* Laziness narrowed that to rollouts carrying an image; it did not end
-   * it, and the rule was already written down three declarations away, in
-   * {@link RuntimeHostDeps.providerHomePath}'s doc: ⛔ ***"`prepareProviderHome` is the LAUNCH call
-   * and must not be used to answer a question"***. Rendering an archived image is a question.
-   *
-   * ⚑ **{@link RuntimeHostDeps.providerHomePath} is `deriveProviderHome` on its own** — pure,
-   * containment-checked, no lock, no `mkdir`, no credential — and this closure only ever wanted the
-   * string it returns, to build one `join(home, …)` whose every candidate is then re-checked by
-   * `resolveAssetRequest`. So the swap removes a write from a read path and
-   * loses nothing: an image that exists is still found, and one that does not is still `null`.
-   *
-   * ⛔ **243's own reason for touching it, said plainly.** When the provisioning lock's wait became
-   * asynchronous, `prepareProviderHome` became promise-returning — and `ResolveImagePath` is
-   * `(claim) => string | null`, consumed synchronously inside `importCodexRollout`'s frame loop.
-   * This was the **only** synchronous wall in the whole call graph. ⚑ **It was not a wall that had
-   * to be broken; it was a call that had to be corrected**, and the correction is one the docblock
-   * above was already arguing for.
+   * Resolve image claims lazily through the existing provider and asset readers.
+   * Recorded callers supply their stored home; other callers retain the profile path.
+   * homeProfileOf distinguishes user-home null from a pre-profile managed row's default.
+   * User-home imports pass their existing null directly, without convention lookup.
+   * This reads a path only: no home preparation or credential operation.
    */
   private imageResolver(
     provider: Provider,
     threadId: string,
     profileId: string | null,
+    recordedHome?: () => string,
   ): ResolveImagePath | undefined {
     return providerDefinitions[provider].transcripts.imageResolver?.(
       threadId,
-      () => (profileId === null ? null : this.deps.providerHomePath(provider, profileId)),
+      () =>
+        profileId === null
+          ? null
+          : recordedHome === undefined
+            ? this.deps.providerHomePath(provider, profileId)
+            : recordedHome(),
       (candidate) => {
         const asset = resolveAssetRequest(assetUrl(candidate))
         return asset?.path ?? null
@@ -34403,27 +34606,22 @@ export class RuntimeHost implements LiveHost {
    */
 
   /**
-   * Which provider home holds this session's own files (112, both providers since 115).
-   *
-   * ⚠️ **"Found in the user's own home" is `adoptedAt !== null && profileId === null`**, which is
-   * the predicate `reopenSession` and `session-store`'s `foundInUserHome` both use. `profileId ===
-   * null` ALONE is a different thing: a row written before profiles existed, which really ran in
-   * `default`. Reading `profileId === null` as "the user's home" sent every one of those rows to
-   * `~/.claude`, where the child is not — reporting `gone` for a transcript that is on disk, which
-   * is the quiet kind of lie. Found in review.
-   *
-   * ⚑ **The provider comes off the ROW rather than being written into the function** (115). It was
-   * `claudeHomeFor` with `'claude'` spelled in three places; a Codex child's rollout is under the
-   * Codex home by the identical rule, and a second copy of this predicate is a second place for the
-   * `adoptedAt` subtlety above to be got wrong.
+   * Locate the row's provider home without preparing a launch.
+   * Only adoptedAt !== null with profileId === null denotes a user-owned home; a null profile
+   * alone keeps the existing managed-profile fallback. Managed rows use their stored route,
+   * while a legacy null route keeps the original provider family.
    */
   private providerHomeFor(
-    session: Pick<ResumableSession, 'adoptedAt' | 'profileId' | 'provider'>,
+    session: Pick<ResumableSession, 'sessionId' | 'adoptedAt' | 'profileId' | 'provider'>,
   ): string {
     if (session.adoptedAt !== null && session.profileId === null) {
       return userProviderHomePath(session.provider)
     }
-    return this.deps.providerHomePath(session.provider, session.profileId ?? DEFAULT_PROFILE_ID)
+    const profileId = session.profileId ?? DEFAULT_PROFILE_ID
+    const connectionId = this.deps.store.connectionOf(session.sessionId)
+    return connectionId == null
+      ? this.deps.providerHomePath(session.provider, profileId)
+      : this.deps.providerHomePath(session.provider, profileId, connectionId)
   }
 
   /**
@@ -34783,6 +34981,14 @@ export class RuntimeHost implements LiveHost {
     return allProviderCapabilities()
   }
 
+  updateProviderConnection(input: UpdateProviderConnectionInput): ProviderConnection {
+    if (!this.deps.updateConnectionMetadata)
+      throw new Error('Connection editing is unavailable in this build.')
+    const changed = this.deps.updateConnectionMetadata(input)
+    this.providersMoved({ what: 'connections', provider: changed.provider })
+    return changed
+  }
+
   /** Static registration facts; this read starts no provider operation. */
   providerCatalogue(): ReturnType<typeof registeredProviderCatalogue> {
     return registeredProviderCatalogue()
@@ -34897,46 +35103,17 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * 🔴 **Bring an identity into existence — an AGENT's door** (419, HO-020 §4, brief §1).
-   *
-   * ⛔ **A second door and not a caller check on the one above, because HO-020 §4 licences both and
-   * they carry different guarantees.** A person is ungated; an agent meets three rails, answers with
-   * a refusal a model can read rather than an exception, and has every refusal written into its own
-   * ledger by the chokepoint that wraps every tool.
-   *
-   * ## ⚠️ The rails, in this order, and the order is argued
-   *
-   *  1. ⛔ **The kill switch** — see {@link RuntimeHost.mayCreateAgents}.
-   *  2. ⛔ **The grant**, `canCreateAgents`.
-   *  3. ⛔ **The name**, last, because *entitlement before existence*: an unentitled caller must not
-   *     be able to learn which identities exist from the shape of the refusal it gets (341's ruling,
-   *     one door over).
-   *
-   * 🔴 **486 · rails 1 and 2 moved into {@link RuntimeHost.mayCreateAgents} and did not change.**
-   * ⛔ **The order here is unchanged; what changed is that the TOOL can now ask them before it reads
-   * an argument** (HO-031 §2.5). ⚠️ They are asked through one function rather than written twice,
-   * so *the wall the tool reports* and *the wall the writer enforces* cannot drift apart — and rail
-   * 3 stays here, behind both, because only this method may create anything.
-   *
-   * ## 🔴 618 · and it now writes the new identity's own rules — `HO-078` §4
-   *
-   * ⛔ **A fourth STEP and deliberately not a fourth rail.** *"`create_agent` takes the new
-   * identity's own instructions"*, and *"the creator writes the initial text; after that it is the
-   * person's"* (`HO-078` §1.1) — so the write happens once, at the end, on the call that minted the
-   * row, and every later call naming that identity is refused by rail 3 before it reads anything.
-   * ⚑ **The step's own note is where the entitlement question is argued**, including what this
-   * widens and the measurement that ruled out gating it on `canWriteRules`.
+   * Create an identity for an agent after the shared switch and grant checks, then its name.
+   * Refusals return through the tool ledger; the person-facing creation door stays separate.
+   * Initial rules are written only by the call that mints it, before the roster is announced.
+   * A validated default supplies the provider when the request names none.
    */
   createAgentFor(
     me: string,
     said: NewAgent,
     by: Caller,
     itsOwnRules: string | null,
-    /**
-     * 🔴 **D-042 · R2 — the default model and effort `create_agent` named, judged by the one seam**
-     * ({@link judgeTheDefaultItNames}), or `null` — it named none. ⚑ Required, `itsOwnRules`' idiom:
-     * *it named none* is a value the door computes.
-     */
+    /** The judged default, or null when the request names none. */
     itsDefault: AgentModelChoice | null,
   ): CreateAgentOutcome {
     // ⛔ A service is made only while a person has services on: asked of the arguments, first.
@@ -35142,7 +35319,8 @@ export class RuntimeHost implements LiveHost {
       foldProfileName(profileId) === DEFAULT_PROFILE_ID &&
       (slot === undefined || slot.spawnedBy === null) &&
       this.deps.store.parentOf(sessionId) === null
-    return agentToolsFor(this, sessionId, this.theListsAsLastRead(), offersDirectRulesWrite)
+    const lists = this.theListsAsLastRead(sessionId)
+    return agentToolsFor(this, sessionId, lists, offersDirectRulesWrite)
   }
 
   /** Bind attribution to the actual running conversation, never a supplied profile or label. */
@@ -36316,33 +36494,86 @@ export class RuntimeHost implements LiveHost {
     return this.modelCatalogues.setAgentProvider(profileSlug, provider)
   }
 
-  setAgentModelAndEffort(
+  async setAgentModelAndEffort(
     profileSlug: string,
     choice: AgentModelChoice | null,
   ): Promise<ModelChoiceSaved> {
-    return this.modelCatalogues.setAgentModelAndEffort(profileSlug, choice)
+    if (choice === null || choice.connectionId === undefined)
+      return this.modelCatalogues.setAgentModelAndEffort(profileSlug, choice)
+    const connectionId =
+      this.deps.connectionFor?.(choice.provider, choice.connectionId)?.id ?? choice.connectionId
+    return this.modelCatalogues.setAgentModelAndEffort(profileSlug, { ...choice, connectionId })
   }
 
   agentModelAndEffort(profileSlug: string): AgentModelChoice | null {
     return this.modelCatalogues.agentModelAndEffort(profileSlug)
   }
 
-  modelList(provider: Provider, profileId: string = DEFAULT_PROFILE_ID): Promise<ModelList> {
-    return this.modelCatalogues.modelList(provider, profileId)
+  async modelList(
+    provider: Provider,
+    profileId: string = DEFAULT_PROFILE_ID,
+    connectionId?: string,
+  ): Promise<ModelList> {
+    if (connectionId === undefined) return this.modelCatalogues.modelList(provider, profileId)
+    const selected = this.deps.connectionFor?.(provider, connectionId)?.id ?? connectionId
+    return this.modelCatalogues.modelList(provider, profileId, selected)
+  }
+
+  private freshConnectionId(
+    provider: Provider,
+    profileId: string,
+    requested?: string,
+  ): string | undefined {
+    return freshConnectionId(this.deps, provider, profileId, requested)
   }
 
   async providerLaunchChoices(
     provider: Provider,
     profileId: string = DEFAULT_PROFILE_ID,
+    connectionId?: string,
   ): Promise<ProviderLaunchChoices> {
-    const list = await this.modelList(provider, profileId)
-    const auth = await this.checkProviderAuth(provider, profileId)
-    return launchChoicesFor(list, auth)
+    const explicit =
+      connectionId === undefined ? undefined : this.deps.connectionFor?.(provider, connectionId)
+    const selected = explicit?.id ?? connectionId
+    const list =
+      selected === undefined
+        ? await this.modelList(provider, profileId)
+        : await this.modelList(provider, profileId, selected)
+    const auth =
+      selected === undefined
+        ? await this.checkProviderAuth(provider, profileId)
+        : await this.checkProviderAuth(provider, profileId, false, selected)
+    const choices = launchChoicesFor(list, auth)
+    if (this.deps.listConnections === undefined) return choices
+    const connections = this.providerConnections().filter((row) => row.provider === provider)
+    const preferred = this.freshConnectionId(provider, profileId, selected)
+    const connection =
+      explicit ??
+      (preferred === undefined
+        ? this.deps.connectionFor?.(provider)
+        : this.deps.connectionFor?.(provider, preferred))
+    return {
+      ...choices,
+      connections,
+      ...(connection === undefined ? {} : { defaultConnectionId: connection.id }),
+    }
   }
 
   resolveProviderLaunch(input: ResolveProviderLaunchInput): ResolvedProviderLaunch {
-    const identity = this.modelCatalogues.itsProvider(input.profileId ?? DEFAULT_PROFILE_ID)
-    return resolveLaunch(input, identity.provider)
+    const profile = input.profileId ?? DEFAULT_PROFILE_ID
+    const identity = this.modelCatalogues.itsProvider(profile)
+    const provider = input.askedProvider ?? identity.provider ?? DEFAULT_CONVERSATION_PROVIDER
+    const selected = this.freshConnectionId(provider, profile, input.askedConnectionId)
+    if (selected !== undefined) {
+      const connectionId = this.deps.connectionFor?.(provider, selected)?.id ?? selected
+      return resolveLaunch(
+        { ...input, askedProvider: provider, askedConnectionId: connectionId },
+        identity.provider,
+      )
+    }
+    const resolved = resolveLaunch(input, identity.provider)
+    const connection = this.deps.connectionFor?.(resolved.provider)
+    return connection === undefined ? resolved : { ...resolved, connectionId: connection.id }
   }
 
   addHandAddedModel(provider: Provider, model: string): readonly string[] {
@@ -36357,19 +36588,54 @@ export class RuntimeHost implements LiveHost {
     return this.modelCatalogues.deleteHandAddedModel(provider, model)
   }
 
-  judgeTheDefaultItNames(
+  async judgeTheDefaultItNames(
     me: string,
     named: Provider | null,
-    asked: { readonly model?: string; readonly effort?: string },
+    asked: { readonly model?: string; readonly effort?: string; readonly connectionId?: string },
   ): Promise<
     | { readonly ok: true; readonly chosen: AgentModelChoice }
     | { readonly ok: false; readonly refusal: ModelRefusal }
   > {
-    return this.modelCatalogues.judgeTheDefaultItNames(me, named, asked)
+    const requested = asked.connectionId
+    if (requested === undefined)
+      return this.modelCatalogues.judgeTheDefaultItNames(me, named, asked)
+    const qualify = this.deps.connectionFor?.bind(this.deps)
+    if (qualify === undefined) throw new ProviderConnectionUnavailable()
+    const declared = this.providerConnections().find((row) => row.id === requested)
+    const providers = declared === undefined ? SUPPORTED_PROVIDERS : [declared.provider]
+    const candidates = providers.flatMap((provider) => {
+      try {
+        return [qualify(provider, requested)]
+      } catch (error) {
+        if (error instanceof ProviderConnectionUnavailable) return []
+        throw error
+      }
+    })
+    const connection = candidates.length === 1 ? candidates[0] : undefined
+    if (connection === undefined) throw new ProviderConnectionUnavailable()
+    if (named !== null && named !== connection.provider)
+      throw new ProviderConnectionUnavailable(
+        `This connection belongs to ${PROVIDER_NAME[connection.provider]}; the request named ${PROVIDER_NAME[named]}.`,
+      )
+    const judged = await this.modelCatalogues.judgeTheDefaultItNames(me, connection.provider, {
+      ...asked,
+      connectionId: connection.id,
+    })
+    return judged.ok
+      ? { ok: true, chosen: { ...judged.chosen, connectionId: connection.id } }
+      : judged
   }
 
-  private theListsAsLastRead(): ListsAsLastRead {
-    return this.modelCatalogues.theListsAsLastRead()
+  private theListsAsLastRead(sessionId: string): ListsAsLastRead {
+    const slot = this.slots.get(sessionId)
+    const provider = this.theProviderOfConversation(sessionId)
+    const connectionId =
+      slot?.connectionId === undefined && this.deps.connectionFor !== undefined
+        ? this.deps.store.connectionOf(sessionId)
+        : slot?.connectionId
+    return connectionId == null
+      ? this.modelCatalogues.theListsAsLastRead()
+      : this.modelCatalogues.theListsAsLastRead(provider ?? undefined, connectionId)
   }
 
   private theSelectedModel(
@@ -36377,22 +36643,16 @@ export class RuntimeHost implements LiveHost {
     /** The identity whose default is asked — `null` for a conversation no identity holds. */
     profileSlug: string | null,
     named: { readonly model?: string; readonly effort?: string },
+    connectionId?: string,
   ): Promise<SelectedModel> {
-    return this.modelCatalogues.theSelectedModel(provider, profileSlug, named)
+    return connectionId === undefined
+      ? this.modelCatalogues.theSelectedModel(provider, profileSlug, named)
+      : this.modelCatalogues.theSelectedModel(provider, profileSlug, named, connectionId)
   }
 
   /**
-   * 🔴 **D-042 · R5 — what the PROVIDER reports this conversation runs, kept on its row** — the
-   * model from Claude's per-turn `init` or Codex's handshake, settings and reroute; the effort only
-   * where the provider reports one: Codex's with its settings, ⚑ F099 · Claude's at each turn's end
-   * (its `Stop`), a request until then.
-   *
-   * ⚑ **Before the pump's watched gate**, so a helper nobody watches is recorded too; ⚑ written
-   * only when it moved. ⚑ **F099 · a Claude life's FIRST report keeps the effort on record** while
-   * its model is the same: a reopened conversation's first `init` names its model and no effort
-   * (Claude states one only as a turn ends), and is not a report that the effort became unknown.
-   * ⚠️ Only the first: later in a life, an `init` with no reported effort means the ask moved or
-   * the model did, and what was on record is not what it runs any more.
+   * Record changed reports before filtering. Adapters may keep the same model's earlier effort
+   * on the first report of a life; later absent efforts are unknown.
    */
   private recordWhatItReportsRunning(session: HostedSession): void {
     const model = session.handle.agentInfo?.model ?? null
@@ -37324,8 +37584,14 @@ export class RuntimeHost implements LiveHost {
     return { defaultApprovalMode: this.deps.store.defaultApprovalMode() }
   }
 
-  providerModels(profileId: string, provider: Provider): Promise<ModelCatalogue> {
-    return this.modelCatalogues.providerModels(profileId, provider)
+  async providerModels(
+    profileId: string,
+    provider: Provider,
+    connectionId?: string,
+  ): Promise<ModelCatalogue> {
+    if (connectionId === undefined) return this.modelCatalogues.providerModels(profileId, provider)
+    const selected = this.deps.connectionFor?.(provider, connectionId)?.id ?? connectionId
+    return this.modelCatalogues.providerModels(profileId, provider, selected)
   }
 
   private forgetModels(provider: Provider): void {
@@ -37335,30 +37601,17 @@ export class RuntimeHost implements LiveHost {
   private async askProviderForModels(
     provider: Provider,
     profileId: string,
+    connectionId?: string,
   ): Promise<ModelCatalogue> {
-    // ⚠️ **A probe is a LAUNCH** (070, from 068 finding 7), and this is the whole of that
-    // finding: it spawns a real, authenticated provider child — Claude ~1.4 s, Codex ~0.6 s
-    // measured, and up to fifteen seconds bounded — while `closeAll()` owned only session slots.
-    // Quitting shortly after launch terminated Electron before the adapter's `finally` ran, and
-    // repeated quick launches accumulated the children. It has no session id, which is exactly
-    // why it needed a registry that is not about sessions.
-    // ⛔ **`profileId`, not `DEFAULT_PROFILE_ID`** (257 §2). The probe runs in the SAME home a
-    // session would launch in because the answer depends on it — a model list is what THIS login
-    // may run — and until now that sentence was in the doc while the code named one home.
-    //
-    // 🔴 **682 · asked OUTSIDE the `try` below, because its failure is not a quit** (`677`'s inbox 9).
-    // ⛔ It sat inside, BEFORE the launch was opened, so a Claude machine login that was unavailable —
-    // `prepareProviderHome` throws `AuthUnavailableError` for Claude before any child exists — reached
-    // the `launch === null` arm and was reported as `closing`: *the app is quitting*, about a person
-    // who is not signed in, cached for the life of the app with no reason to give. ⚑ Now it is
-    // `refused`, in the provider's own words, like every other failure to answer — except a machine
-    // that ran short, said in words (`710`, {@link howAFailureReads}); the log keeps the errno.
+    // Model preparation and listing are owned launches, bounded by the same shutdown registry.
+    // Use the admitted profile's home. Preparation failures are refused in the provider's words;
+    // a machine shortage is rendered by howAFailureReads, and a quit remains closing.
     if (this.launches.closed) return { ok: false, reason: 'closing' }
     let providerHome: string
     let preparedRuntime: AgentRuntime | undefined
     let connection: ProviderConnection | undefined
     try {
-      connection = connectionForLaunch(this.deps, provider)
+      connection = connectionForLaunch(this.deps, provider, undefined, connectionId)
       const preparation = this.launches.open(`${provider} model home preparation`)
       try {
         if (this.deps.beforeProviderLaunch) await this.deps.beforeProviderLaunch()
@@ -37368,7 +37621,10 @@ export class RuntimeHost implements LiveHost {
           providerHome = prepared.home
           preparedRuntime = prepared.runtime
         } else {
-          providerHome = await this.deps.prepareProviderHome(provider, profileId)
+          providerHome =
+            connectionId === undefined
+              ? await this.deps.prepareProviderHome(provider, profileId)
+              : await this.deps.prepareProviderHome(provider, profileId, connectionId)
         }
       } finally {
         this.launches.finish(preparation)
@@ -37397,53 +37653,20 @@ export class RuntimeHost implements LiveHost {
       }
       const runtime = preparedRuntime ?? this.deps.createRuntime(provider)
       const listing = runtime.listModels({ providerHome, signal: launch.signal })
-      // Owned until the probe's own promise settles — both adapters close their child in a
-      // `finally`, so that is the nearest thing to a termination receipt a probe has. Handed
-      // over BEFORE the await, so a quit landing mid-probe finds it in the registry.
-      //
-      // ⚠️ **How near differs by provider, and the review was right to press on it.** Codex's
-      // `transport.close()` is a real bounded teardown — end stdin → SIGTERM the group → SIGKILL
-      // — and `listModels` awaits it, so its promise settling really does mean the child is
-      // gone. Claude's `probe.close()` detaches the SDK and returns `void`; the CLI's own exit is
-      // the SDK's business and there is nothing here to await. So for Claude this is *"we have
-      // asked and stopped holding it"*, which is the strongest claim the pinned SDK supports.
-      // Closing that gap is an SDK contract change, not something to fake with a sleep.
+      // Register before awaiting. Codex waits for transport teardown; Claude's existing probe
+      // only requests SDK teardown. Keep that distinction rather than inventing a receipt.
       this.launches.finish(launch, listing)
-      // ⚠️ **An empty list is `ok: true` and stays that way** (310). No provider has ever answered
-      // with zero rows, and if one did it would be the provider saying it has none — a fact, not a
-      // silence. See {@link ModelCatalogue}; the surfaces collapse the two to one INSTRUCTION (no
-      // menu) in one place, and say two different sentences.
+      // An empty provider answer is still a successful catalogue.
       return { ok: true, models: await listing }
     } catch (error) {
-      // A probe REFUSED by the registry never started, so it is not an unavailable model list —
-      // it is a quit. Reporting it in the same sentence as a login failure would put "model list
-      // unavailable" in the log for the one cause that has nothing to do with the provider.
-      //
-      // ⛔ **That distinction used to survive only in this comment** (310). Both arms returned
-      // `null`, so the sentence the launcher could draw was the same one — which is the whole of
-      // the defect this dispatch is about, present here in the file that argues against it.
+      // Registry refusal means shutdown before a probe started, rather than a provider refusal.
       if (launch === null) return { ok: false, reason: 'closing' }
       this.launches.finish(launch)
-      // Logged, not swallowed silently, and not surfaced as a command failure: the user's
-      // experience of this is "no menu", which the free-text field already covers. A developer
-      // looking for why has the reason here. A cancelled probe arrives here too, and reads
-      // correctly — during a quit there is no menu because there is no app.
-      //
-      // ⚑ **And the provider's sentence now reaches the PERSON**, which is what 098 asked for on the
-      // credential path and this path never did: a diagnostic in a log is a fact nobody in front of
-      // the app can act on. 🔒 It is a message about a failed call, never a credential. ⚠️ **710 ·
-      // except a machine that ran short**, whose errno stays in this log while the person reads
-      // {@link howAFailureReads}' clause.
+      // Keep diagnostics in the log and return the provider's reason; machine shortages use
+      // howAFailureReads rather than showing the machine's errno.
       const detail = errorMessage(error)
       console.warn(`model list for ${provider} unavailable: ${detail}`)
-      // ⛔ **A probe the quit ABORTED mid-flight is `closing`, not `refused`** (310), and this line
-      // is the one thing the union made newly WRONG before it was added. The comment above has said
-      // since 070 that *"a cancelled probe arrives here too, and reads correctly — during a quit
-      // there is no menu because there is no app"*, and under one `null` it did. Under a union it
-      // would have reported a provider as having turned us down, with a sign-in remedy beside it,
-      // because a quit interrupted the question. ⚑ The signal is the exact discriminator and it is
-      // right here: nothing else aborts it.
-      // A provider that was only too slow is marked as that; a quit that cut the probe is not.
+      // Shutdown aborts are closing; a live timeout keeps its retryable slow-read result.
       if (!launch.signal.aborted && didNotAnswerInTime(error)) {
         return this.aListReadTooSlowly(provider, error)
       }
@@ -38427,7 +38650,9 @@ export class RuntimeHost implements LiveHost {
     // ⚑ `592` recorded that move deliberately: see `test/session-profile.test.ts`'s *"the path for
     // an omitted profile moved, and only because the SLUG did"*.
     const profileId = row.profileId ?? DEFAULT_PROFILE_ID
-    const connection = connectionForLaunch(this.deps, row.provider, sessionId)
+    const connectionId =
+      this.deps.connectionFor === undefined ? undefined : this.deps.store.connectionOf(sessionId)
+    const connection = connectionForLaunch(this.deps, row.provider, undefined, connectionId)
     const {
       home: providerHome,
       loginRenewed,
@@ -38487,10 +38712,15 @@ export class RuntimeHost implements LiveHost {
     // The runtime first, as a start makes it: a missing program is refused in its own words, never
     // as a list that names no model.
     const rawRuntime = preparedRuntime ?? this.deps.createRuntime(row.provider)
-    const selected = await this.theSelectedModel(row.provider, row.profileId, {
-      ...(recordedModel === undefined ? {} : { model: recordedModel }),
-      ...(recordedEffort === undefined ? {} : { effort: recordedEffort }),
-    })
+    const selected = await this.theSelectedModel(
+      row.provider,
+      row.profileId,
+      {
+        ...(recordedModel === undefined ? {} : { model: recordedModel }),
+        ...(recordedEffort === undefined ? {} : { effort: recordedEffort }),
+      },
+      connectionId ?? undefined,
+    )
     const model = selected.model
     const reasoningEffort = selected.effort ?? undefined
     // …and whether it was PLANNING (030). Null is a row older than the column, which resumes
@@ -38620,6 +38850,7 @@ export class RuntimeHost implements LiveHost {
           ...workFoldersIn(this.theWorkFoldersALaunchCarries(sessionId)),
         })
       },
+      connection,
     ).catch((error: unknown) => {
       leadsDone.abort()
       // 🔴 **724 · `717` F-2 — a folder that went since the row was written** — see
@@ -38661,6 +38892,7 @@ export class RuntimeHost implements LiveHost {
       cwd: row.cwd,
       providerHome,
       profileId,
+      ...(connection === undefined ? {} : { connection }),
       launchGave,
       createdApprovalMode: approvalMode,
       handle,
@@ -38804,19 +39036,7 @@ export class RuntimeHost implements LiveHost {
     })
   }
 
-  /**
-   * What a conversation the renderer is being handed DISCLOSES about itself — one definition, for
-   * both ways of being handed one (100).
-   *
-   * Extracted because there are now two: {@link reopenSession}, which resumed a recording, and
-   * {@link attachHeldSession}, which hands back a session that never stopped. Every field but the
-   * parameters is the same question asked of the same registered session, and two literals
-   * answering it separately is how a field ends up in one and not the other — the shape 076 already
-   * paid for once, in `publishStateIfChanged`.
-   *
-   * Read off the SESSION and the ROW, never off the handle-and-locals the resume happened to have:
-   * that is what makes it usable by a caller that did no spawning and holds no locals.
-   */
+  /** One disclosure for resumed lives and attaches, using registered launch facts and the ledger row. */
   private discloseReopened(
     session: HostedSession,
     /**
@@ -38879,15 +39099,14 @@ export class RuntimeHost implements LiveHost {
       mayHandItBack: boolean
     },
   ): ResumedSession {
+    const connectionId = this.deps.store.connectionOf(session.id)
     return {
       sessionId: session.id,
       provider: session.provider,
+      ...(connectionId == null ? {} : { connectionId }),
       cwd: session.cwd,
       providerHome: session.providerHome,
-      // The RECORDED profile, resolved the same way the resume resolves it — null means a row that
-      // predates profiles, and {@link DEFAULT_PROFILE_ID} is what this app answers for one.
-      // ⛔ **620 · this named that answer `default`**, the word `592` renamed — see the longer note
-      // on the resume path, which is the derivation this line says it matches.
+      // Older rows resolve their recorded profile to DEFAULT_PROFILE_ID, as on resume.
       profileId: row.profileId ?? DEFAULT_PROFILE_ID,
       ref: session.handle.ref ?? row.ref,
       config: this.deps.readProviderConfig(session.provider, session.providerHome),
@@ -39252,13 +39471,6 @@ export class RuntimeHost implements LiveHost {
    *
    * ⚑ **`cannotTakeAMessage`** — another window has it open ({@link HELD_ELSEWHERE}), or no
    * message from here would continue it ({@link aMessageContinuesIt}), said as the reopen says it.
-   * ⚑ **`settingsFixed`** — a setting changed here would not reach it: the rows
-   * {@link aSettingForItsNextStart} refuses, off the same predicate.
-   *
-   * ⚑ **`ranAsNobody`** — a conversation found in a person's own provider folder, or restored from a
-   * bundle, was run by this app as no agent, and is handed over as that rather than as BroBot (154).
-   * ⚠️ `profileId` is then the row's resolved value for the type's sake, and names nothing.
-   * ⚠️ Rejects only for an id this app holds no record of.
    */
   private recordedHandover(sessionId: string, sink: RuntimeEventSink): ResumedSession {
     const row = this.deps.store.recordedOne(sessionId)
@@ -39276,6 +39488,7 @@ export class RuntimeHost implements LiveHost {
     const running = slot !== undefined && slot.session !== null && !onItsWayOut(slot)
     const heldElsewhere = running && slot.ownerId !== null && !mayControl(slot, sink)
     const parent = this.deps.store.parentOf(sessionId)
+    const connectionId = this.deps.store.connectionOf(sessionId)
     const providerHome = this.providerHomeFor(row)
     const recordedMode = launch?.approvalMode ?? null
     const approvalMode = recordedMode ?? 'ask'
@@ -39295,6 +39508,7 @@ export class RuntimeHost implements LiveHost {
     return {
       sessionId,
       provider: row.provider,
+      ...(connectionId == null ? {} : { connectionId }),
       ...this.providerBlockDisclosure(sessionId, row.provider),
       cwd: row.cwd,
       providerHome,
@@ -39337,10 +39551,6 @@ export class RuntimeHost implements LiveHost {
             : describeUnavailable('cannot-be-reopened', {
                 refusal: row.unresumableReason ?? undefined,
               }),
-      settingsFixed:
-        slot !== undefined ||
-        whyNoSettingForItsNextStart(row, this.replacedBy, this.theServiceOf(sessionId) !== null) !==
-          null,
     }
   }
 
@@ -39690,6 +39900,7 @@ export class RuntimeHost implements LiveHost {
       cwd: string
       providerHome: string
       profileId: string
+      connection?: ProviderConnection
       createdApprovalMode: 'ask' | 'auto'
       handle: SessionHandle
       sink: RuntimeEventSink
@@ -39748,11 +39959,13 @@ export class RuntimeHost implements LiveHost {
     const woken = wakeUp?.level ?? null
     const session: HostedSession = {
       currentProviderLimits: () => this.providerLimitDisclosures(session),
+      nextConnectionPick: () => nextConnectionPick(this.deps, id, session.connection),
       id,
       provider,
       cwd: options.cwd,
       providerHome: options.providerHome,
       profileId: options.profileId,
+      ...(options.connection === undefined ? {} : { connection: options.connection }),
       // ⚠️ **`NO_INSTRUCTIONS`, never a fabricated one.** A host with no reader appended nothing,
       // and the empty value says exactly that — the UI renders nothing at all for it, which is the
       // difference between "we injected nothing" and "we did not say".
@@ -40855,6 +41068,7 @@ export class RuntimeHost implements LiveHost {
         'in a turn',
         refusedCopy,
         stillItsLife,
+        session.connection,
       ))
     const slot = this.slots.get(session.id)
     if (
@@ -41205,13 +41419,13 @@ export class RuntimeHost implements LiveHost {
         !movedBeforeRenewal &&
         renewal !== undefined &&
         renew !== undefined &&
-        !this.aKeyIsSaved(session.provider) &&
+        !this.aKeyIsSaved(session.provider, session.connection) &&
         (await this.withProviderLaunch(renewal.launchLabel, renew)) === 'renewed'
       if (
         this.launches.closed ||
         this.keptStopped(session.id) ||
         !this.aReopenIsBeingDecidedFor.has(session.id) ||
-        (rejected && this.aKeyIsSaved(session.provider))
+        (rejected && this.aKeyIsSaved(session.provider, session.connection))
       )
         return
       // ⚑ A copy replaced by a fresh one of the same account: the account's limits still apply.
@@ -41349,6 +41563,7 @@ export class RuntimeHost implements LiveHost {
    * a reopen it will not make.
    */
   private aReopenCarriesIt(error: unknown, by: Caller, session: HostedSession): boolean {
+    if (error instanceof TurnInProgress && session.nextConnectionPick() !== undefined) return true
     if (!(error instanceof ItsSignInMovedOn)) return false
     return !aPersonIsAsking(by) || !this.itsReopenDidNotHelp(session)
   }
@@ -41383,7 +41598,8 @@ export class RuntimeHost implements LiveHost {
       return 'its-turn'
     }
     if (somethingRunning(session.background)) return 'its-background-work'
-    if (session.handle.settings.planMode.requested) return 'its-planning'
+    if (session.handle.settings.planMode.requested && session.nextConnectionPick() === undefined)
+      return 'its-planning'
     return null
   }
 
@@ -41411,10 +41627,12 @@ export class RuntimeHost implements LiveHost {
    * ({@link HostedSession.reopenedForWhatWaited}).
    */
   private reopenForWhatWaits(session: HostedSession): void {
-    if (session.itsSignInMovedOn !== true || !this.aReopenIsOwedFor(session)) return
+    const connectionPicked = session.nextConnectionPick() !== undefined
+    if ((!connectionPicked && session.itsSignInMovedOn !== true) || !this.aReopenIsOwedFor(session))
+      return
     if (session.reopeningOnTheCurrentSignIn === true || this.launches.closed) return
     // ⛔ **The loop guard** ({@link HostedSession.reopenedForWhatWaited}).
-    if (this.itsReopenDidNotHelp(session)) {
+    if (!connectionPicked && this.itsReopenDidNotHelp(session)) {
       if (session.reopenedForWhatWaited?.stopped === false) {
         session.reopenedForWhatWaited.stopped = true
         console.warn(
@@ -41430,8 +41648,9 @@ export class RuntimeHost implements LiveHost {
     this.signInRestarts.add(session)
     this.reopeningForWhatWaited.add(session.id)
     console.info(
-      `runtime host: ${session.id} holds a ${PROVIDER_NAME[session.provider]} sign-in that has moved on — reopening ` +
-        'it on the current one for what is held for it',
+      connectionPicked
+        ? `runtime host: ${session.id} reopening on its selected connection for what is held for it`
+        : `runtime host: ${session.id} reopening on the current sign-in for what is held for it`,
     )
     void this.signInReopens.run(async () => {
       try {
@@ -42067,7 +42286,8 @@ export class RuntimeHost implements LiveHost {
       event.onAKey !== true &&
       providerAuthPolicies[session.provider].remembersRejectedMachineLogin &&
       !this.readsAnOlderLogin(session) &&
-      !this.aKeyIsSaved(session.provider)
+      (session.connection?.authMethod === 'sign-in' ||
+        (session.connection === undefined && !this.aKeyIsSaved(session.provider)))
     ) {
       this.rejectedMachineLogins.set(session.provider, {})
       this.providersMoved({ what: 'login', provider: session.provider })
@@ -42077,7 +42297,7 @@ export class RuntimeHost implements LiveHost {
       const canRenewRejected =
         (event.cause === 'auth_stale' || event.cause === 'auth') &&
         event.onAKey !== true &&
-        !this.aKeyIsSaved(session.provider) &&
+        !this.aKeyIsSaved(session.provider, session.connection) &&
         session.itRetriedRejectedLogin !== true &&
         session.diedOnAStaleSignIn !== true &&
         this.deps.loginRenewal?.(session.provider)?.renewRejected !== undefined

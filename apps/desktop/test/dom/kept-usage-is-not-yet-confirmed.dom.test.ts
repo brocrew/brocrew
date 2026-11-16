@@ -1,5 +1,6 @@
+import { providerConnectionFixtures } from '../../look/fixtures/providers'
 import { createModelLists } from '../lib/provider-launch-fixture'
-import { providerDescriptor } from '@brobot2/shared'
+import { compatibilityConnectionId, providerDescriptor } from '@brobot2/shared'
 import type { ModelList } from '../../src/shared/model-choice-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
@@ -11,6 +12,8 @@ import { providerConditions, type ProviderLimitSeen } from '../../src/shared/pro
 import type { ProviderUsageReading, ProvidersChangedMessage } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, type Mounted } from './harness'
 import { usageCards } from './usage-cards'
+import { railFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { runningSignInFixtures } from './provider-launch.fixture'
 
 const MIN = 60_000
 const HOUR = 60 * MIN
@@ -35,6 +38,7 @@ function readings(now: number, kept: boolean): Usage {
     durationMs: number,
     provider: 'claude' | 'codex',
   ): ProviderUsageReading => ({
+    connectionId: compatibilityConnectionId(provider, 'sign-in'),
     period: { word, durationMs, bucket: false, bucketName: null },
     window,
     usedPercent: 82,
@@ -67,13 +71,18 @@ function readings(now: number, kept: boolean): Usage {
 
 function bridge(usage: Usage): void {
   current = usage
+  const listeners = new Set<(message: ProvidersChangedMessage) => void>()
+  notify = (message) => {
+    for (const listener of listeners) listener(message)
+  }
   ;(window as unknown as { api: unknown }).api = {
     runtime: {
+      providerConnections: async () => providerConnectionFixtures(),
       providerUsage: async () => current,
       onProvidersChanged: (listener: (message: ProvidersChangedMessage) => void) => {
-        notify = listener
+        listeners.add(listener)
         return () => {
-          notify = undefined
+          listeners.delete(listener)
         }
       },
       checkProviderAuth: async () => ({ state: 'absent', reason: 'Not signed in' }),
@@ -128,6 +137,7 @@ function supplyWalls(now: number, confirmed: boolean): void {
 }
 
 async function shelf(usage: Usage, width = 1100): Promise<Mounted> {
+  railFacts().update({ runningConversations: runningSignInFixtures() })
   bridge(usage)
   const m = await usageCards(width, 200)
   await settled()
@@ -183,6 +193,7 @@ async function waiting(now: number, usage: Usage, confirmed = false): Promise<Mo
 afterEach(() => {
   unmountAll()
   queue.forget()
+  railFacts().update({ runningConversations: null })
   delete (window as { api?: unknown }).api
 })
 
@@ -228,14 +239,18 @@ describe('a kept usage reading is not yet confirmed', () => {
     expect(m.q('shelf-usage-claude-week').title).not.toContain('Not yet confirmed')
   })
 
-  it('shows Not read yet when another sign-in drops the kept top-bar readings', async () => {
+  it('keeps running groups unknown without quota windows when another sign-in drops retained readings', async () => {
     const m = await shelf(readings(Date.now(), true))
     current = { claude: [], codex: [] }
     notify!({ what: 'usage', provider: 'claude' })
     await settled()
-    expect(m.all('shelf-missing')).toHaveLength(3)
+    expect(m.all('shelf-missing')).toHaveLength(2)
     for (const missing of m.all('shelf-missing')) expect(text(missing)).toBe('Not read yet')
     expect(m.all('shelf-usage-age')).toHaveLength(0)
+    for (const key of ['claude-5h', 'claude-week', 'codex-5h', 'codex-week'])
+      expect(m.all(`shelf-usage-${key}`)).toHaveLength(0)
+    expect(m.all('shelf-usage-claude-unknown')).toHaveLength(1)
+    expect(m.all('shelf-usage-codex-unknown')).toHaveLength(1)
     expect(text(m.host)).not.toContain('Not yet confirmed')
   })
 
@@ -259,7 +274,7 @@ describe('a kept usage reading is not yet confirmed', () => {
       expect(bar.getAttribute('aria-label')).toBe(
         'Time gone in this window · Not yet confirmed · read 4m ago',
       )
-    expect(m.q('provider-usage-says').classList.contains('warn')).toBe(false)
+    expect(m.all('provider-usage-says')).toHaveLength(0)
     expect(text(m.q('provider-usage'))).not.toContain('is near')
   })
 
@@ -281,7 +296,8 @@ describe('a kept usage reading is not yet confirmed', () => {
 
   it('keeps the Providers empty state for readings dropped on another sign-in', async () => {
     const m = await provider(Date.now(), { claude: [], codex: [] })
-    expect(text(m.q('provider-usage-none'))).toBe('Usage is unknown. No reading yet from Claude.')
+    expect(m.all('provider-usage-none')).toHaveLength(0)
+    expect(m.all('provider-usage')).toHaveLength(0)
     expect(m.all('provider-usage-unconfirmed')).toHaveLength(0)
     expect(m.all('provider-usage-ahead')).toHaveLength(0)
   })

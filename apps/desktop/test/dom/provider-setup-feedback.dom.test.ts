@@ -1,10 +1,14 @@
+import { providerConnectionFixtures } from '../../look/fixtures/providers'
 import { createModelLists } from '../lib/provider-launch-fixture'
 import { providerDescriptor } from '@brobot2/shared'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, reactive, ref } from 'vue'
 import ProviderCard from '../../src/renderer/src/components/ProviderCard.vue'
 
-import type { LimitsDisplayState } from '../../src/renderer/src/lib/limits-display'
+import {
+  limitsDisplayWords,
+  type LimitsDisplayState,
+} from '../../src/renderer/src/lib/limits-display'
 import type {
   AuthState,
   Provider,
@@ -12,7 +16,7 @@ import type {
   ProviderVersion,
   RuntimeBridge,
 } from '../../src/shared/runtime-ipc'
-import { mount, unmountAll, type Mounted } from './harness'
+import { mount, unmountAll, visible, type Mounted } from './harness'
 
 const NOW = Date.UTC(2026, 9, 24, 12)
 const USABLE: AuthState = { state: 'usable', login: 'account', expiresAt: null }
@@ -86,6 +90,8 @@ function card(provider: Provider = 'claude') {
     value: { writeText: async (value: string) => void copied.push(value) },
   })
   const runtime = {
+    providerConnections: async () => providerConnectionFixtures(),
+    onProvidersChanged: () => () => {},
     checkProviderAuth: vi.fn(async () => auth.value),
     apiKeyStatus: vi.fn(async () => ({ provider, set: false, setAt: null, inUse: false })),
     signInProvider: vi.fn<RuntimeBridge['signInProvider']>(async () => ({
@@ -252,7 +258,8 @@ describe('setup feedback follows the latest facts', () => {
     await settled()
     out.m.q('setup-done').click()
     await settled()
-    expect(words(out.m.q('provider-auth-notice'))).toBe('Signed in to Codex.')
+    expect(out.m.all('provider-auth-notice')).toHaveLength(0)
+    expect(words(out.m.q('provider-standing'))).toBe('Ready')
   })
 
   it('clears the inline failure when a login-change check becomes usable', async () => {
@@ -306,12 +313,11 @@ describe('usage readings and recorded warnings are separate evidence', () => {
   it('calls unread usage unknown and labels empty warning history without claiming allowance', async () => {
     const out = card()
     await settled()
-    expect(words(out.m.q('provider-usage-none'))).toBe(
-      'Usage is unknown. No reading yet from Claude.',
-    )
+    expect(out.m.all('provider-usage-none')).toHaveLength(0)
+    expect(out.m.all('provider-usage')).toHaveLength(0)
     expect(out.m.all('provider-limits-reading')).toHaveLength(0)
-    expect(words(out.m.q('provider-usage-says'))).toMatch(/^No limit warnings recorded as of /)
-    expect(words(out.m.q('provider-usage-says'))).not.toContain('No limits reported')
+    expect(out.m.all('provider-usage-overview')).toHaveLength(0)
+    expect(out.m.host.textContent).not.toContain('No limit warnings recorded as of')
   })
 
   it.each(['unavailable', 'updating', 'unread-rows', 'skipped-ledger', 'no-ledger'] as const)(
@@ -337,7 +343,12 @@ describe('usage readings and recorded warnings are separate evidence', () => {
             }
       await settled()
       expect(out.m.all('provider-limits-reading')).toHaveLength(0)
-      expect(words(out.m.q('provider-usage-says'))).not.toContain('No limit warnings recorded')
+      expect(words(out.m.q('provider-usage-overview'))).not.toContain('No limit warnings recorded')
+      expect(visible(out.m.q('provider-usage-overview'))).toBe(true)
+      expect(words(out.m.q('provider-usage-overview'))).toBe(
+        failure === 'updating' ? limitsDisplayWords.updating : limitsDisplayWords.unavailable,
+      )
+      expect(out.m.all('provider-usage-says')).toHaveLength(0)
       expect(out.m.all('provider-usage-reading')).toHaveLength(0)
     },
   )

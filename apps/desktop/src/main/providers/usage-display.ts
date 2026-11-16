@@ -10,11 +10,12 @@ export function usageForDisplay(
   now: number,
 ): readonly ProviderUsageReading[] {
   const shown = readings.map(
-    ({ window, usedPercent, resetsAt, at, period, unconfirmed: kept }) => ({
+    ({ window, usedPercent, resetsAt, at, period, connectionId, unconfirmed: kept }) => ({
       window,
       usedPercent,
       resetsAt,
       at,
+      ...(connectionId === undefined ? {} : { connectionId }),
       period: period ?? usagePeriod(provider, window),
       ...(unconfirmed || kept === true ? { unconfirmed: true as const } : {}),
     }),

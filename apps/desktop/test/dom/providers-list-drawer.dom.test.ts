@@ -1,12 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, ref } from 'vue'
 import { userEvent } from 'vitest/browser'
-import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
+import {
+  compatibilityConnectionId,
+  PROVIDER_DESCRIPTORS,
+  type ProviderConnection,
+} from '@brobot2/shared'
 import ProvidersScreen from '../../src/renderer/src/components/ProvidersScreen.vue'
 import OverlayHost, { provideOverlayLayer } from '../../src/renderer/src/components/OverlayHost.vue'
+import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
 import type { Provider } from '../../src/shared/runtime-ipc'
-import { providersBridge } from '../../look/fixtures/providers'
+import { providersBridge, providerConnectionFixtures } from '../../look/fixtures/providers'
 import { mount, unmountAll, type Mounted } from './harness'
+
+const CLAUDE_SIGN_IN = {
+  provider: 'claude',
+  profileId: DEFAULT_PROFILE_ID,
+  connectionId: compatibilityConnectionId('claude', 'sign-in'),
+}
 
 const NOW = Date.now()
 const settle = async () => {
@@ -38,6 +49,16 @@ const row = (m: Mounted, provider: string) => {
   )
   expect(found, 'a provider gets a row').not.toBeNull()
   return found!
+}
+
+function fableConnectionFixtures(): ProviderConnection[] {
+  return providerConnectionFixtures()
+    .filter((row) => row.provider === 'claude')
+    .map((row) => ({
+      ...row,
+      id: `fable:${row.authMethod}`,
+      provider: 'fable' as Provider,
+    }))
 }
 
 describe('the Providers list opens the existing controls in one drawer', () => {
@@ -178,6 +199,7 @@ describe('the Providers list opens the existing controls in one drawer', () => {
     expect(m.host.querySelector('[data-cy="provider-drawer"]')).toBeNull()
   })
   it('uses an injected descriptor’s sign-in policy in the reused card', async () => {
+    window.api.runtime.providerConnections = async () => fableConnectionFixtures()
     const check = window.api.runtime.checkProviderAuth
     window.api.runtime.checkProviderAuth = async (asked) =>
       (asked.provider as string) === 'fable'
@@ -193,11 +215,11 @@ describe('the Providers list opens the existing controls in one drawer', () => {
     await settle()
     row(m, 'fable').click()
     await settle()
-    expect(m.q('copy-all-sign-ins').textContent).toContain(
-      "Use this Mac's Fable sign-in for all agents",
-    )
+    expect(m.all('copy-all-sign-ins')).toHaveLength(0)
+    expect(m.q('provider-card').textContent).toContain('Fable')
   })
   it('uses supplied success words for a fictional provider’s manual check', async () => {
+    window.api.runtime.providerConnections = async () => fableConnectionFixtures()
     const check = window.api.runtime.checkProviderAuth
     const asked = vi.fn<typeof check>(async (request) =>
       (request.provider as string) === 'fable'
@@ -227,7 +249,8 @@ describe('the Providers list opens the existing controls in one drawer', () => {
     button.click()
     await settle()
     expect(asked.mock.calls.some(([request]) => request.probe === true)).toBe(true)
-    expect(m.q('provider-card').textContent).toContain('Fable is ready to answer.')
+    expect(m.q('provider-card').textContent).not.toContain('Fable is ready to answer.')
+    expect(m.q('provider-card').textContent).toContain('Ready')
     expect(m.q('provider-card').textContent).not.toContain('Claude sign-in works.')
   })
   it('opens the reused card and only that provider’s kept rules, then restores focus on Escape', async () => {
@@ -250,14 +273,14 @@ describe('the Providers list opens the existing controls in one drawer', () => {
     expect(
       dialog.querySelector('[data-cy="kept-rules-provider"]')?.getAttribute('data-provider'),
     ).toBe('claude')
-    expect(check.mock.calls).toHaveLength(before)
+    expect(check.mock.calls.slice(before)).toEqual([[CLAUDE_SIGN_IN]])
     await userEvent.keyboard('{Escape}')
     await settle()
     expect(m.host.querySelector('[data-cy="provider-drawer"]')).toBeNull()
     expect(document.activeElement).toBe(row(m, 'claude'))
     row(m, 'claude').click()
     await settle()
-    expect(check).toHaveBeenCalledTimes(before)
+    expect(check.mock.calls.slice(before)).toEqual([[CLAUDE_SIGN_IN], [CLAUDE_SIGN_IN]])
     expect(key).toHaveBeenCalledTimes(keysBefore)
   })
   it('puts setup first when signed out, without a tested-version badge or repeated instruction', async () => {
@@ -288,10 +311,12 @@ describe('the Providers list opens the existing controls in one drawer', () => {
     expect(m.q('provider-inline-setup').contains(document.activeElement)).toBe(true)
   })
   it('a login notice updates the row without restarting setup inside an open drawer', async () => {
-    let changed: Parameters<typeof window.api.runtime.onProvidersChanged>[0] = () => {}
+    const listeners = new Set<Parameters<typeof window.api.runtime.onProvidersChanged>[0]>()
     window.api.runtime.onProvidersChanged = (listener) => {
-      changed = listener
-      return () => {}
+      listeners.add(listener)
+      return () => {
+        listeners.delete(listener)
+      }
     }
     const original = window.api.runtime.checkProviderAuth
     let signedOut = false
@@ -307,10 +332,18 @@ describe('the Providers list opens the existing controls in one drawer', () => {
     await settle()
     expect(m.host.querySelector('[data-cy="provider-inline-setup"]')).toBeNull()
     signedOut = true
-    changed({ what: 'login', provider: 'claude' })
+    for (const listener of listeners) listener({ what: 'login', provider: 'claude' })
     await settle()
     expect(row(m, 'claude').textContent).toContain('Needs setup')
-    expect(check).toHaveBeenCalledTimes(3)
+    expect(check.mock.calls.filter(([input]) => input.connectionId === undefined)).toEqual([
+      [{ provider: 'claude', profileId: DEFAULT_PROFILE_ID }],
+      [{ provider: 'codex', profileId: DEFAULT_PROFILE_ID }],
+      [{ provider: 'claude', profileId: DEFAULT_PROFILE_ID }],
+    ])
+    expect(check.mock.calls.filter(([input]) => input.connectionId !== undefined)).toEqual([
+      [CLAUDE_SIGN_IN],
+      [CLAUDE_SIGN_IN],
+    ])
     expect(key).toHaveBeenCalledTimes(3)
     expect(m.host.querySelector('[data-cy="provider-inline-setup"]')).toBeNull()
     await userEvent.keyboard('{Escape}')

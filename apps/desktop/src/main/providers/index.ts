@@ -69,15 +69,31 @@ export function createProviderModules(
 function forwardAuth(auth: Readonly<Record<Provider, HomeAuthOperations>>): ProviderAuthOps {
   return {
     loginRenewal: (provider) => auth[provider].renewal,
-    credentialHome: (provider, profileId) => auth[provider].credentialHome(profileId),
-    check: (provider, profileId, signal) => auth[provider].check(profileId, signal),
-    probe: (provider, profileId, signal) =>
-      auth[provider].probe?.(profileId, signal) ?? auth[provider].check(profileId, signal),
-    reprovision: (provider, profileId) => auth[provider].reprovision(profileId),
-    signIn: (provider, profileId, signal) => auth[provider].signIn(profileId, signal),
-    replaceARefusedCopy: (provider, profileId, refused, stillWanted) =>
-      auth[provider].replaceARefusedCopy(profileId, refused, stillWanted),
-    bringTheKeyToItsHomes: (provider) => auth[provider].bringTheKeyToItsHomes(),
+    credentialHome: (provider, profileId, connection) =>
+      connection === undefined
+        ? auth[provider].credentialHome(profileId)
+        : auth[provider].credentialHome(profileId, connection),
+    check: (provider, profileId, signal, connection) =>
+      connection === undefined
+        ? auth[provider].check(profileId, signal)
+        : auth[provider].check(profileId, signal, connection),
+    probe: (provider, profileId, signal, connection) =>
+      connection === undefined
+        ? (auth[provider].probe?.(profileId, signal) ?? auth[provider].check(profileId, signal))
+        : (auth[provider].probe?.(profileId, signal, connection) ??
+          auth[provider].check(profileId, signal, connection)),
+    reprovision: (provider, profileId, connection) =>
+      connection === undefined
+        ? auth[provider].reprovision(profileId)
+        : auth[provider].reprovision(profileId, connection),
+    signIn: (provider, profileId, signal, connection) =>
+      connection === undefined
+        ? auth[provider].signIn(profileId, signal)
+        : auth[provider].signIn(profileId, signal, connection),
+    replaceARefusedCopy: (provider, profileId, refused, stillWanted, connection) =>
+      connection === undefined
+        ? auth[provider].replaceARefusedCopy(profileId, refused, stillWanted)
+        : auth[provider].replaceARefusedCopy(profileId, refused, stillWanted, connection),
   }
 }
 

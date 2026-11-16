@@ -51,6 +51,8 @@ export interface ResumableSessionInfo {
   /** Explicit null retires history; omission is no update. */
   readonly providerBlockLastKnown?: LastKnownProviderBlock | null
   sessionId: string
+  /** Recorded launch binding only; older or unavailable bindings remain unknown. */
+  readonly connectionId?: string | null
   provider: Provider
   ref: SessionRef
   cwd: string
@@ -163,6 +165,8 @@ export interface UnresumableSessionInfo {
   /** Explicit null retires history; omission is no update. */
   readonly providerBlockLastKnown?: LastKnownProviderBlock | null
   sessionId: string
+  /** Recorded launch binding only; older or unavailable bindings remain unknown. */
+  readonly connectionId?: string | null
   provider: Provider
   cwd: string
   status: SessionStatus

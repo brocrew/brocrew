@@ -13,12 +13,11 @@ export interface ApiKeyStatus {
   /** When it was saved, or `null` when none is. */
   readonly setAt: number | null
   /**
-   * The key is what this provider's agents start on: it is set, and this Mac can read it. ⚑ A set
-   * key outranks the provider's login from each conversation's next start; one already running may
-   * go on with what it started with until it starts again.
+   * The saved key can be used by API-key connections: it is set and this Mac can read it.
+   * This does not choose or change a conversation's recorded connection or credential mode.
    */
   readonly inUse: boolean
-  /** A key is saved but can't be used: a start of this provider refuses, with the reason. */
+  /** A key is saved but can't be used by an API-key connection; its reason is preserved. */
   readonly readState?: 'unreadable'
   readonly unreadableReason?: string
   /**
@@ -65,6 +64,8 @@ export type KeptRuleRemoved =
  * provider has not said is `null`.
  */
 export interface ProviderUsageReading {
+  /** The emitting life's selected connection, absent on unattributed retained readings. */
+  readonly connectionId?: string
   readonly window: string
   /** Core warning for this current reading; absent on older serialized readings. */
   readonly warning?: ProviderLimitSeen | null
@@ -122,7 +123,7 @@ export type ProviderResources = {
  */
 export interface ProvidersChangedMessage {
   /** `key`: whether the saved key's account can pay moved ({@link ApiKeyStatus.refusedForBilling}). */
-  readonly what: 'login' | 'usage' | 'key'
+  readonly what: 'login' | 'usage' | 'key' | 'connections'
   readonly provider: Provider
 }
 
@@ -171,6 +172,7 @@ export type ProviderCapabilityMap = Record<Provider, ProviderCapabilities>
  * question with one answer.
  */
 export interface CheckProviderAuthInput extends ProviderProfileInput {
+  connectionId?: string
   /** Explicit user gesture only; passive refreshes must omit this. */
   probe?: boolean
 }

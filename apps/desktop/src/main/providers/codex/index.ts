@@ -1,3 +1,4 @@
+import type { ProviderConnection } from '@brobot2/shared'
 import { authPolicy } from './auth-policy'
 import { machineLoginPresence } from './backing-login'
 export { machineLoginPresence } from './backing-login'
@@ -64,7 +65,7 @@ function codexKeyStampOf(home: string): number | null {
   }
 }
 
-export function bringTheCodexKeyTo(
+function bringTheCodexKeyTo(
   home: string,
   codexKey: CodexKeySeam,
 ): Promise<'the-key' | 'its-login'> {
@@ -103,8 +104,7 @@ async function bringTheCodexKeyToNow(
     if (done.authMethod !== 'apikey') {
       throw new AuthUnavailableError(
         'codex',
-        'Codex did not take the API key saved under “API key” on the Codex card in Providers. ' +
-          'Save it again there, or remove it to use your sign-in instead.',
+        'Codex did not accept the saved API key for this legacy launch.',
       )
     }
     writeFileSync(join(home, CODEX_KEY_STAMP), `${JSON.stringify({ setAt: current.setAt })}\n`, {
@@ -123,8 +123,12 @@ function theCodexCopy(
   paths: ProviderHomePaths,
   home: string,
   seams: CodexHomeSeams,
+  connectionId?: string,
 ): { managedRoot: string; sourceAuthPath?: string; fallbackAuthPath?: string } {
-  const own = paths.homeOf(paths.defaultProfile)
+  const own =
+    connectionId === undefined
+      ? paths.homeOf(paths.defaultProfile)
+      : paths.homeOf(paths.defaultProfile, connectionId)
   return {
     managedRoot: paths.managedRoot,
     ...(seams.machineAuthPath === undefined ? {} : { sourceAuthPath: seams.machineAuthPath() }),
@@ -132,35 +136,45 @@ function theCodexCopy(
   }
 }
 
-export function codexRuntime(seams: CodexRuntimeSeams): AgentRuntime {
-  return new CodexRuntime(createSpawnTransportFactory(seams.command()), codexAuthHealth)
+export function codexRuntime(seams: CodexRuntimeSeams, apiKey?: string): AgentRuntime {
+  return new CodexRuntime(createSpawnTransportFactory(seams.command()), codexAuthHealth, apiKey)
 }
 
 export async function prepareCodexHome(
   paths: ProviderHomePaths,
   profileId: string,
   seams: CodexHomeSeams,
+  connectionId?: string,
+  legacyKey?: CodexKeySeam,
 ): Promise<string> {
-  const home = await prepareStateHome(paths, profileId, seams.provisionHome)
+  const home = await prepareStateHome(paths, profileId, seams.provisionHome, connectionId)
 
   removeStaleCodexPermissionConfig(home)
 
   ensureCodexMemoryConfig(home)
 
-  const key = seams.key
-  if (key !== undefined && (await bringTheCodexKeyTo(home, key)) === 'the-key') {
-    return home
+  if (legacyKey !== undefined) {
+    if ((await bringTheCodexKeyTo(home, legacyKey)) === 'the-key') return home
+  } else if (codexKeyStampOf(home) !== null && seams.key !== undefined) {
+    const done = await seams.key.change(home)
+    if (!done.ok) throw new AuthUnavailableError('codex', `${done.reason} Try again in a moment.`)
+    rmSync(join(home, CODEX_KEY_STAMP), { force: true })
   }
 
   if (seams.provisionCodexAuth) await seams.provisionCodexAuth(home)
-  else await provisionCodexAuth(home, theCodexCopy(paths, home, seams))
+  else await provisionCodexAuth(home, theCodexCopy(paths, home, seams, connectionId))
   return home
 }
 
 export function codexAuth(paths: ProviderHomePaths, seams: CodexAuthSeams): HomeAuthOperations {
   const transports = (): TransportFactory => createSpawnTransportFactory(seams.command())
 
-  const refuseWhileAKeyIsSaved = (): void => {
+  const refuseWhileAKeyIsSaved = (connection?: ProviderConnection): void => {
+    if (connection?.authMethod === 'sign-in') return
+    if (connection?.authMethod === 'api-key')
+      throw new Error(
+        'Choose a sign-in connection to copy a machine sign-in; this connection uses an API key.',
+      )
     let saved: boolean
     try {
       if (seams.key?.isSaved !== undefined) saved = seams.key.isSaved()
@@ -183,35 +197,49 @@ export function codexAuth(paths: ProviderHomePaths, seams: CodexAuthSeams): Home
     }
   }
 
-  const homePathFor = (profileId: string): string => {
+  const homePathFor = (profileId: string, connectionId?: string): string => {
     paths.assertMayOpen(profileId)
-    return paths.homeOf(profileId)
+    return connectionId === undefined
+      ? paths.homeOf(profileId)
+      : paths.homeOf(profileId, connectionId)
   }
-  const homeFor = async (profileId: string): Promise<string> => {
-    const home = homePathFor(profileId)
+  const homeFor = async (profileId: string, connectionId?: string): Promise<string> => {
+    const home = homePathFor(profileId, connectionId)
     await provisionProviderHome(paths.managedRoot, home)
     return home
   }
   return {
-    credentialHome(profileId) {
-      return paths.homeOf(profileId)
+    credentialHome(profileId, connection) {
+      return connection === undefined
+        ? paths.homeOf(profileId)
+        : paths.homeOf(profileId, connection.id)
     },
-    async check(profileId, signal) {
-      const providerHome = await homeFor(profileId)
+    async check(profileId, signal, connection) {
+      if (connection?.authMethod === 'api-key')
+        return { state: 'unknown', reason: 'Use Check key to check this API-key connection.' }
+      const providerHome = await homeFor(profileId, connection?.id)
 
       const state = await probeCodexAuthInHome(transports(), providerHome, providerHome, signal)
       if (state.state !== 'usable' || state.login !== 'api-key' || signal?.aborted) return state
       const behind = machineLoginPresence(seams.machineAuthPath?.() ?? personalCodexAuthPath())
       return behind === undefined ? state : { ...state, loginBehindTheKey: behind }
     },
-    reprovision(profileId) {
-      refuseWhileAKeyIsSaved()
-      const home = homePathFor(profileId)
-      return provisionProviderHome(paths.managedRoot, home).then(() => reprovisionCodexAuth(home))
+    reprovision(profileId, connection) {
+      refuseWhileAKeyIsSaved(connection)
+      const home =
+        connection === undefined ? homePathFor(profileId) : homePathFor(profileId, connection.id)
+      return provisionProviderHome(paths.managedRoot, home).then(() =>
+        seams.machineAuthPath === undefined
+          ? reprovisionCodexAuth(home)
+          : reprovisionCodexAuth(home, { sourceAuthPath: seams.machineAuthPath() }),
+      )
     },
-    async signIn(profileId, signal) {
-      refuseWhileAKeyIsSaved()
-      const providerHome = await homeFor(profileId)
+    async signIn(profileId, signal, connection) {
+      refuseWhileAKeyIsSaved(connection)
+      const providerHome =
+        connection === undefined
+          ? await homeFor(profileId)
+          : await homeFor(profileId, connection.id)
       const { login, start } = await startCodexLogin(
         transports(),
         providerHome,
@@ -224,14 +252,19 @@ export function codexAuth(paths: ProviderHomePaths, seams: CodexAuthSeams): Home
         cancel: () => login.cancel(),
       }
     },
-    async replaceARefusedCopy(profileId, refused, stillWanted) {
+    async replaceARefusedCopy(profileId, refused, stillWanted, connection) {
+      if (connection?.authMethod === 'api-key') return 'not-tried'
       try {
-        refuseWhileAKeyIsSaved()
+        if (connection === undefined) refuseWhileAKeyIsSaved()
       } catch {
         return 'not-tried'
       }
-      const home = homePathFor(profileId)
-      const own = paths.homeOf(paths.defaultProfile)
+      const home =
+        connection === undefined ? homePathFor(profileId) : homePathFor(profileId, connection.id)
+      const own =
+        connection === undefined
+          ? paths.homeOf(paths.defaultProfile)
+          : paths.homeOf(paths.defaultProfile, connection.id)
       const managedRoot = paths.managedRoot
       return await replaceARefusedCodexCopy(home, {
         managedRoot,
@@ -245,38 +278,6 @@ export function codexAuth(paths: ProviderHomePaths, seams: CodexAuthSeams): Home
           { from: 'brobots-own', fallback: { path: join(own, 'auth.json'), managedRoot } },
         ],
       })
-    },
-    async bringTheKeyToItsHomes() {
-      const codexKey = seams.key
-      if (codexKey === undefined) return null
-
-      const homes = paths
-        .profiles()
-        .map((profileId) => paths.homeOf(profileId))
-        .filter((home) => existsSync(home))
-      let failed = 0
-      for (const home of homes) {
-        try {
-          if ((await bringTheCodexKeyTo(home, codexKey)) === 'its-login') {
-            await provisionCodexAuth(home, { managedRoot: paths.managedRoot }).catch(
-              (error: unknown) => {
-                if (!(error instanceof AuthUnavailableError)) throw error
-              },
-            )
-          }
-        } catch (error) {
-          failed += 1
-          console.warn(
-            `could not bring a Codex profile in line with its API key: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          )
-        }
-      }
-      if (failed === 0) return null
-      return failed === homes.length
-        ? 'BroCrew could not update Codex’s login in any profile yet; each is updated when it next starts.'
-        : `BroCrew could not update Codex’s login in ${String(failed)} of ${String(homes.length)} profiles yet; each is updated when it next starts.`
     },
   }
 }
@@ -294,7 +295,7 @@ export const codexModuleFactory = {
     () =>
       codexRuntime(seams),
   home: (paths: ProviderHomePaths, seams: CodexHomeSeams): ProviderHomeStrategy => ({
-    prepare: (profileId) => prepareCodexHome(paths, profileId, seams),
+    prepare: (profileId, connectionId) => prepareCodexHome(paths, profileId, seams, connectionId),
   }),
   auth: codexAuth,
 }
@@ -315,6 +316,10 @@ export function createCodexModule(
     discovery,
     createRuntime: codexModuleFactory.runtime(seams.runtime),
     async prepareLaunch(profileId, connection) {
+      if (connection === undefined) {
+        const home = await prepareCodexHome(paths, profileId, seams.home, undefined, seams.home.key)
+        return { home, runtime: codexRuntime(seams.runtime) }
+      }
       const reader = seams.home.key
       let current: Awaited<ReturnType<CodexKeySeam['current']>>
       try {
@@ -326,15 +331,18 @@ export function createCodexModule(
           throw new AuthUnavailableError('codex', error.message)
         throw error
       }
-      const key =
-        reader === undefined
-          ? undefined
-          : {
-              current: () => current,
-              change: (home: string, change: Parameters<CodexKeySeam['change']>[1]) =>
-                reader.change(home, change),
-            }
-      const home = await prepareCodexHome(paths, profileId, { ...seams.home, key })
+      if (current !== null) {
+        const home = await prepareStateHome(
+          paths,
+          profileId,
+          seams.home.provisionHome,
+          connection?.id,
+        )
+        removeStaleCodexPermissionConfig(home)
+        ensureCodexMemoryConfig(home)
+        return { home, runtime: codexRuntime(seams.runtime, current.key) }
+      }
+      const home = await prepareCodexHome(paths, profileId, seams.home, connection?.id)
       return { home, runtime: codexRuntime(seams.runtime) }
     },
     home: codexModuleFactory.home(paths, seams.home),

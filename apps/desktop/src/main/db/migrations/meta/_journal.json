@@ -232,6 +232,20 @@
       "when": 1794506138924,
       "tag": "0032_keep_empty_resources",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1794613934479,
+      "tag": "0033_smooth_triton",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "6",
+      "when": 1794620199784,
+      "tag": "0034_pretty_queen_noir",
+      "breakpoints": true
     }
   ]
 }

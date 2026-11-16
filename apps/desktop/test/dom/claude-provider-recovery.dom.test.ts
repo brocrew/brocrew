@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
 import ProvidersScreen from '../../src/renderer/src/components/ProvidersScreen.vue'
+import { compatibilityConnectionId } from '@brobot2/shared'
 import { providersBridge } from '../../look/fixtures/providers'
 import {
   DEFAULT_PROFILE_ID,
@@ -88,6 +89,9 @@ function fixture(initial: AuthState = READY) {
   return {
     check,
     providerSetup,
+    checked(next: AuthState) {
+      auth = next
+    },
     replyToProbe(next: AuthState) {
       probeReply = next
     },
@@ -120,11 +124,12 @@ async function screen() {
     .querySelector<HTMLButtonElement>('[data-cy="provider-row"][data-provider="claude"]')!
     .click()
   await settle()
-  const login = m
-    .q('provider-drawer')
-    .querySelector<HTMLButtonElement>('button[aria-controls$="-login"]')!
-  if (login.getAttribute('aria-expanded') !== 'true') login.click()
-  await settle()
+  const login = m.q('provider-status')
+  expect(
+    login.closest('[data-cy="provider-connection"]')?.querySelector('.meta')?.textContent,
+  ).toContain('Sign-in')
+  expect(login.querySelector('button.fold')).toBeNull()
+  expect(visible(login)).toBe(true)
   return m
 }
 afterEach(() => {
@@ -194,6 +199,7 @@ describe('Claude recovery in the real Providers drawer', () => {
     expect(api.check).toHaveBeenCalledWith({
       provider: 'claude',
       profileId: DEFAULT_PROFILE_ID,
+      connectionId: compatibilityConnectionId('claude', 'sign-in'),
       probe: true,
     })
     expect(m.q('provider-standing').innerText).not.toBe('Ready')
@@ -201,7 +207,7 @@ describe('Claude recovery in the real Providers drawer', () => {
     expect((m.q('native-sign-in') as HTMLButtonElement).disabled).toBe(false)
   })
 
-  it('a successful manual probe shows its result and restores Ready', async () => {
+  it('a successful manual probe restores the connection Ready status and recovery action', async () => {
     const api = fixture()
     const m = await screen()
     api.rejected()
@@ -215,7 +221,13 @@ describe('Claude recovery in the real Providers drawer', () => {
     await settle()
     expect(api.check.mock.calls.filter(([input]) => input.probe === true)).toHaveLength(1)
     expect(m.q('provider-standing').innerText).toBe('Ready')
-    expect(m.q('provider-auth-notice').innerText).toBe('Claude sign-in works.')
+    const again = m.q('native-sign-in-again')
+    expect(visible(again)).toBe(true)
+    expect(
+      again.closest('[data-cy=provider-connection]')?.querySelector('[data-cy=connection-status]')
+        ?.textContent,
+    ).toBe('Ready')
+    expect(m.all('provider-auth-notice')).toHaveLength(0)
   })
 
   it('shows a pending check once and restores recovery controls when it ends', async () => {
@@ -241,6 +253,7 @@ describe('Claude recovery in the real Providers drawer', () => {
     expect(signIn.disabled).toBe(true)
     check.click()
     expect(api.check.mock.calls.filter(([input]) => input.probe === true)).toHaveLength(1)
+    api.checked(READY)
     finish(READY)
     await settle()
     expect(m.q('provider-standing').innerText).toBe('Ready')

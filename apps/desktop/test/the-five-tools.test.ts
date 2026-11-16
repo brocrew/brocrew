@@ -1365,17 +1365,17 @@ describe('347 · the five tools', () => {
           // with it exactly as the paragraph above says a fourth argument would, and the two
           // negatives below are untouched: a caller still may not name the agent or choose its
           // display name.
-          // ⚑ **D-014 · `role` left it** — there are no roles, so the key a ruling closed joins the
-          // negatives below.
+          // Roles are absent; the negative below keeps that key out.
           // 🔴 **D-042 · R2 · `model` and `effort` joined it as its last two (the fourth and fifth,
           // since `role` left), and they arrived for the agent's DEFAULT** — what its new
           // conversations start on, judged by `model-rails.ts`' one seam. ⚑ The equality moved
           // with them as the paragraph above says it would; the three negatives below are
           // untouched — they still name no agent, display name or role.
-          // ⚑ `kind` is the sixth: a normal agent or a service, fixed when it is made.
+          // Kind selects normal or service; connectionId names its default route.
           expect(shape, tool.name).toEqual([
             'profile_slug',
             'provider',
+            'connectionId',
             'rules',
             'model',
             'effort',

@@ -1,3 +1,4 @@
+import { ProviderConnectionUnavailable } from '../connections/records'
 import type { AgentModelChoice, WhereItCameFrom } from '../../shared/model-choice-contracts'
 import type { TaskStallCause } from '../../shared/task-contracts'
 import type { WorkerBindingReading } from '../../shared/worker-reading'
@@ -656,12 +657,10 @@ export const giveRequestSchema = z
     new: z.boolean().optional(),
     /** Choose this provider's conversation; never change an existing conversation's provider. */
     provider: providerSchema.optional(),
+    connectionId: z.string().min(1).max(200).optional(),
     /** Choose a free worker of the same normal profile rather than queueing on its primary. */
     parallel: z.boolean().optional(),
-    /**
-     * 🔴 **D-016 · files handed over with the work, kept as the piece's inputs** — read from the
-     * giver's folder, and kept before anything is written or sent (`RuntimeHost.giveWork`).
-     */
+    /** Input files are read from the giver's folder and kept before writing or delivery. */
     inputs: z.array(z.string().min(1)).max(MAX_RESOURCES_PER_REPLY).optional(),
     /**
      * 🔴 **D-042 · R4 — the model that conversation runs on, from this piece on** — one in the list
@@ -685,16 +684,7 @@ export const takeOnWorkRequestSchema = giveRequestSchema
   .pick({ title: true, brief: true, definition_of_done: true, piece: true, inputs: true })
   .strict()
 
-/**
- * 🔴 **D-042 · what the helper's conversation runs on, as the give's answer says it** (R4: *"the
- * give's answer says what it now runs"*).
- *
- * ⚑ **Read after the brief was delivered**, from the running conversation or its row, so a start
- * that named the provider's default reports the name it sent. ⚑ `how` is what the give did:
- * `started` it, `switched` its pair from this piece on, left it `unchanged`, kept the pair a person
- * chose for it (F1), or reached a conversation that took its place on `another-provider`, whose
- * list never judged the choice. ⚑ `from` says, for a start, where its MODEL came from — R1's order.
- */
+/** The selected pair and where it came from, reported after the brief is delivered. */
 export interface WhatItRunsOn {
   readonly provider: Provider
   /** `null` only for a conversation that has named none yet. */
@@ -771,62 +761,40 @@ export interface HeldPiece {
   readonly received: boolean
 }
 
-/**
- * The world, as thunks.
- *
- * ⛔ **Lazy on purpose.** The order the rails are asked in is load-bearing (see this file's header),
- * and a world computed eagerly would run the folder check — the one clause that touches the disk —
- * for a give that was going to a conversation that already exists.
- */
+/** Lazy readers preserve admission order and avoid work for already-found conversations. */
 export interface GiveFacts {
-  /**
-   * ⚑ **The conversation the caller speaks as** — its session in this host, whether or not its
-   * process is stopping (`05`; D-016c: `message_agent` and `ask_question` never refuse a sender for
-   * it). ⚠️ `RuntimeHost.giveWork` answers a caller that speaks as none before the rails are asked.
-   */
+  /** The caller conversation, including a stopping process; resolved before admission. */
   readonly giver: () => GivingConversation
-  /**
-   * Its root, when it owns one, then its open pieces — in that order, each saying whether it is the
-   * root and whether it has reached it.
-   */
+  /** Its root and held pieces in order, including whether each brief has reached it. */
   readonly held: (giver: string) => readonly HeldPiece[]
-  /**
-   * 🔴 **D-022 · R4 — the piece of the caller's own the turn it is in drives** — the one its opening
-   * row names or drives (a brief, a new brief, words about one of its pieces or about work under
-   * one) — or `null`: that row names none, the messages it delivered drive different pieces
-   * (D-027), or no turn this app sent is open.
-   */
+  /** The piece driven by the open turn, or null when none is uniquely named. */
   readonly drivenByTheTurn: () => string | null
-  /**
-   * Whether the caller is a helper: a conversation another one started, whose own root holds only
-   * what a person asked it directly.
-   */
+  /** Whether the caller is a helper whose root holds its own person-given work. */
   readonly isAHelper: () => boolean
   /** ⚑ `can_assign_work` asked of the caller alone — `admitReachAtAll('assign', …)`. */
   readonly mayGiveWork: () => MessageRefusal | null
-  /**
-   * How far below the work a person gave a piece sits: a root is 0, and so is a piece taken on for
-   * a person (D-016 · commit 6).
-   */
+  /** Depth below person-given work; roots and person-taken pieces have depth zero. */
   readonly depthOf: (piece: string) => number
   readonly capabilitiesOf: (profileSlug: string) => ProfileCapabilities | null
-  /**
-   * 🔴 **The conversation this giver has with that agent on the chosen provider, or `null`** (R2 step 5) — over the
-   * reservations in flight and the rows, the giver's predecessors included, followed through
-   * `theOneInItsPlace`. ⛔ **A lookup and not a rail**: whatever state it is in, a give that finds
-   * it goes there.
-   */
-  readonly helperAs: (giver: string, profileSlug: string, provider?: Provider) => string | null
+  /** Existing helper lookup follows the giver's lineage, including reservations. */
+  readonly helperAs: (
+    giver: string,
+    profileSlug: string,
+    provider?: Provider,
+    connectionId?: string,
+  ) => string | null
   /** Stable normal-worker lookup; no binding is invented from an incomplete reading. */
   readonly workerAt?: (
     giver: string,
     profileSlug: string,
     parallel: boolean,
     provider?: Provider,
+    connectionId?: string,
   ) =>
     | { readonly is: 'legacy' | 'unknown' }
     | { readonly is: 'full'; readonly noProvider?: true }
     | { readonly is: 'known'; readonly conversation: string | null }
+  readonly connectionIdOf?: (provider: Provider, requested: string) => string
   /** Whether a give to `profileSlug` reaches a service, and how ({@link ServiceAtAGive}). */
   readonly serviceAt: (giver: string, profileSlug: string) => ServiceAtAGive
   readonly spawningEnabled: () => boolean
@@ -934,6 +902,7 @@ export type GiveOutcome =
       /** The conversation the lookup found or the start made, before any replacement. */
       readonly found: string
       readonly profile: string
+      readonly connectionNotice?: string
       /** The bound normal worker selected by an explicit parallel give. */
       readonly worker?: WorkerBindingReading
       /**
@@ -1070,9 +1039,13 @@ export function admitGive(
   by: CallerIdentity,
   facts: GiveFacts,
 ): GiveAdmission {
-  const no = (rail: SpawnRail, detail: SpawnRefusalDetail = {}): GiveAdmission => ({
+  const no = (
+    rail: SpawnRail,
+    detail: SpawnRefusalDetail = {},
+    reason?: string,
+  ): GiveAdmission => ({
     ok: false,
-    refusal: refuse(rail, detail),
+    refusal: { ...refuse(rail, detail), ...(reason === undefined ? {} : { reason }) },
   })
 
   // 1 · the shape.
@@ -1183,6 +1156,16 @@ export function admitGive(
         })
       }
     }
+    if (asked.connectionId !== undefined) {
+      try {
+        asked.connectionId =
+          facts.connectionIdOf?.(service.provider ?? giving.provider, asked.connectionId) ??
+          asked.connectionId
+      } catch (error) {
+        if (!(error instanceof ProviderConnectionUnavailable)) throw error
+        return no('malformed-request', { problems: [error.message] }, error.message)
+      }
+    }
     // The folder a give names is the piece's to work in, granted when it is used.
     const named = asked.folder?.trim() ?? ''
     const checked = named === '' ? null : facts.checkFolder(placedFrom(named, giving.cwd))
@@ -1212,11 +1195,21 @@ export function admitGive(
     facts,
     facts.theNamedModelsProvider(),
   )
+  if (asked.connectionId !== undefined && provider !== null) {
+    try {
+      asked.connectionId =
+        facts.connectionIdOf?.(provider, asked.connectionId) ?? asked.connectionId
+    } catch (error) {
+      if (!(error instanceof ProviderConnectionUnavailable)) throw error
+      return no('malformed-request', { problems: [error.message] }, error.message)
+    }
+  }
   const worker = facts.workerAt?.(
     giving.sessionId,
     asked.profile,
     asked.parallel === true && asked.new !== true,
     provider ?? undefined,
+    asked.connectionId,
   )
   if (worker?.is === 'full') {
     return asked.parallel === true && worker.noProvider !== true
@@ -1230,7 +1223,7 @@ export function admitGive(
   const found =
     worker?.is === 'known'
       ? worker.conversation
-      : facts.helperAs(giving.sessionId, asked.profile, provider ?? undefined)
+      : facts.helperAs(giving.sessionId, asked.profile, provider ?? undefined, asked.connectionId)
   if (found !== null) {
     // 5b · ⚑ a found conversation proves the agent exists, and reusing it would give "a new agent" a
     // memory — R3's own reason (D-016 spec D1).

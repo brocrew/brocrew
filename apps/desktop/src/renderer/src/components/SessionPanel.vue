@@ -151,7 +151,7 @@ const props = defineProps<{
   pickModel?: ((pick: PickedModel) => Promise<WhatAPickBecame | null | undefined>) | undefined
   /** What each provider can do, for the picker's remedy on a refused list. */
   capabilities?: ProviderCapabilityMap | null
-  /** Nothing set here would reach the conversation (`CreatedSession.settingsFixed`). */
+  /** Whether this host offers approval and planning changes. */
   fixed?: boolean
   /** Drawn from its ledger: its next start leaves planning, so plan first is not offered. */
   recorded?: boolean
@@ -253,7 +253,6 @@ const modelPick = useConversationModelPick({
   providerName,
   session: () => props.session ?? null,
   pickModel: () => props.pickModel,
-  fixed: () => props.fixed ?? true,
   capabilities: () => props.capabilities ?? null,
 })
 const controls = useConversationControls({

@@ -2,7 +2,9 @@
 import SheetShell from './SheetShell.vue'
 import type { HandedPath } from '../../../shared/attachment-contracts'
 
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { additionalConnectionId } from '@brobot2/shared/provider-connections'
+import { useModelLists } from '../composables/useModelLists'
 import {
   agentName,
   PROVIDER_NAME,
@@ -180,6 +182,38 @@ const who = computed(() =>
 const folder = ref<string | null>(null)
 const picked = ref<PickedModel | null>(null)
 const provider = computed(() => picked.value?.provider ?? props.provider)
+const modelLists = computed(() => props.lists ?? useModelLists())
+const readConnectionId = computed(
+  () =>
+    picked.value?.connectionId ??
+    modelLists.value.choices(provider.value, props.profileSlug)?.defaultConnectionId,
+)
+const readingConnection = computed(
+  () =>
+    readConnectionId.value !== undefined &&
+    modelLists.value.readiness(provider.value, props.profileSlug, readConnectionId.value).state ===
+      'pending',
+)
+const connectionBlocks = computed(() =>
+  readingConnection.value ? [{ words: 'Checking this connection…' }] : [],
+)
+const connectionToSend = computed(
+  () =>
+    picked.value?.connectionId ?? additionalConnectionId(provider.value, readConnectionId.value),
+)
+onMounted(() => {
+  watch(
+    [provider, () => props.profileSlug, readConnectionId, modelLists],
+    () => {
+      if (readConnectionId.value !== undefined)
+        void modelLists.value.read(provider.value, props.profileSlug, {
+          once: true,
+          connectionId: readConnectionId.value,
+        })
+    },
+    { immediate: true },
+  )
+})
 const providers = computed(() => Object.keys(PROVIDER_NAME) as Provider[])
 watch(
   () => props.profileSlug,
@@ -269,10 +303,12 @@ async function startWith(
   _intent?: unknown,
   attachments: HandedPath[] = [],
 ): Promise<void> {
+  if (readingConnection.value) return
   const input: CreateSessionInput & { profileId: string } = {
     provider: provider.value,
     profileId: props.profileSlug,
     ...(picked.value === null ? {} : { model: picked.value.model }),
+    ...(connectionToSend.value === undefined ? {} : { connectionId: connectionToSend.value }),
     ...(picked.value?.effort == null ? {} : { reasoningEffort: picked.value.effort }),
     ...(folder.value === null ? {} : { cwd: folder.value }),
     approvalMode: props.defaultApprovalMode ?? 'ask',
@@ -303,16 +339,18 @@ async function startWith(
       <div class="field">
         <span class="lbl">Model</span>
         <ModelPicker
+          choose-connection
           :providers="providers"
           :profile-id="props.profileSlug"
           :shown="picked"
+          :connection-id="readConnectionId"
           :empty="`Default: ${nameOf(provider) ?? 'the provider'}`"
           :fixed="props.busy ?? false"
           take-words="Start on this"
           :take="startOn"
           :reaches="() => 'This conversation starts on it. The agent’s default stays the same.'"
           :capabilities="props.capabilities"
-          :lists="props.lists"
+          :lists="modelLists"
         />
       </div>
       <div class="field">
@@ -378,6 +416,7 @@ async function startWith(
         :handing="props.handing"
         :submit="props.submit ? startWith : undefined"
         :can-attach="false"
+        :blocked="connectionBlocks"
         @send="startWith"
         @interrupt="cancel"
         @update:draft="(text: string) => (words = text)"

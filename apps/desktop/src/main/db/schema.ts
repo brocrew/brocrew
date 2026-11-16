@@ -141,6 +141,7 @@ export const providerConnection = sqliteTable(
     id: text('id').primaryKey(),
     provider: text('provider').notNull(),
     name: text('name').notNull(),
+    description: text('description'),
     authMethod: text('auth_method').notNull(),
     credentialSource: text('credential_source').notNull(),
     baseUrl: text('base_url'),
@@ -765,6 +766,7 @@ export const providerUsageReading = sqliteTable(
   'provider_usage_reading',
   {
     provider: text('provider').notNull(),
+    connectionId: text('connection_id'),
     window: text('window').notNull(),
     position: integer('position').notNull(),
     usedPercent: real('used_percent'),
@@ -772,7 +774,14 @@ export const providerUsageReading = sqliteTable(
     at: integer('at').notNull(),
     account: text('account'),
   },
-  (t) => [primaryKey({ columns: [t.provider, t.window] })],
+  (t) => [
+    uniqueIndex('provider_usage_reading_connection_uq')
+      .on(t.provider, t.connectionId, t.window)
+      .where(sql`${t.connectionId} IS NOT NULL`),
+    uniqueIndex('provider_usage_reading_legacy_uq')
+      .on(t.provider, t.window)
+      .where(sql`${t.connectionId} IS NULL`),
+  ],
 )
 
 export const providerUsageWindowSeen = sqliteTable(
@@ -787,10 +796,22 @@ export const providerUsageWindowSeen = sqliteTable(
   (t) => [primaryKey({ columns: [t.provider, t.window] })],
 )
 
-export const providerUsageReadOn = sqliteTable('provider_usage_read_on', {
-  provider: text('provider').primaryKey(),
-  tag: text('tag').notNull(),
-})
+export const providerUsageReadOn = sqliteTable(
+  'provider_usage_read_on',
+  {
+    provider: text('provider').notNull(),
+    connectionId: text('connection_id'),
+    tag: text('tag').notNull(),
+  },
+  (t) => [
+    uniqueIndex('provider_usage_read_on_connection_uq')
+      .on(t.provider, t.connectionId)
+      .where(sql`${t.connectionId} IS NOT NULL`),
+    uniqueIndex('provider_usage_read_on_legacy_uq')
+      .on(t.provider)
+      .where(sql`${t.connectionId} IS NULL`),
+  ],
+)
 
 export const scheduleAttempt = sqliteTable('schedule_attempt', {
   conversationId: text('conversation_id').primaryKey(),

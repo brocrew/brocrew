@@ -92,7 +92,7 @@ export interface ProviderProgram {
 }
 
 /** A provider may run its own harness without publishing an external program version. */
-export interface ProviderProgramOperations {
-  version?(): Promise<ProviderVersion>
+export interface ProviderProgramOperations<Connection = unknown> {
+  version?(connection?: Connection): Promise<ProviderVersion>
   installedPath?(): string | null
 }

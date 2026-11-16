@@ -84,15 +84,17 @@ const props = defineProps<{ cells: readonly UsageCell[] }>()
   font-size: var(--type-caption);
   letter-spacing: var(--tracking-normal);
   text-transform: none;
+  overflow-wrap: anywhere;
 }
 
-/* The provider and window on the left, the reading's age on the right, on one line. */
+/* Labels and ages wrap within their own cell at narrow widths. */
 .usage-label {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: var(--space-2);
-  white-space: nowrap;
+  white-space: normal;
 }
 
 /* One weight for every value line, read or not: only the colour says a window is unread. */

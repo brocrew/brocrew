@@ -25,6 +25,7 @@ import type {
   Provider,
   RefusedLaunch,
   RuntimeBridge,
+  ResumableSessionInfo,
 } from '../../src/shared/runtime-ipc'
 import type { ProviderSetupBridge, ProviderSetupState } from '../../src/shared/provider-setup'
 import { mount, unmountAll, META } from './harness'
@@ -81,7 +82,7 @@ function catalogue(provider: Provider, ready: boolean): ModelList {
     startsOn: ready ? { model: 'harbor-default', effort: null, from: 'its-default' } : null,
   }
 }
-function fixture(claudeReady = false, holdFirstUsage = false) {
+function fixture(claudeReady = false, holdFirstUsage = false, withRunningConnection = false) {
   providersBridge()
   let signedIn = claudeReady
   const listeners = new Set<Parameters<RuntimeBridge['onProvidersChanged']>[0]>()
@@ -149,6 +150,7 @@ function fixture(claudeReady = false, holdFirstUsage = false) {
       claude: authenticated
         ? [
             {
+              connectionId: 'claude:sign-in',
               window: 'five_hour',
               period: {
                 word: '5-hour',
@@ -165,6 +167,33 @@ function fixture(claudeReady = false, holdFirstUsage = false) {
       codex: [],
     }
   })
+  const running: ResumableSessionInfo[] = withRunningConnection
+    ? [
+        {
+          ...META,
+          connectionId: 'claude:sign-in',
+          status: 'idle',
+          ref: {
+            provider: 'claude',
+            sessionId: 'fictional-usage-thread',
+            cwd: '/fictional/harbor',
+            rotation: 0,
+          },
+          running: 'unwatched',
+          state: { is: 'idle' },
+          named: null,
+          model: null,
+          reasoningEffort: null,
+          planMode: null,
+          adoptedAt: null,
+          hasTranscript: true,
+          lastEnding: null,
+          child: null,
+          updatedAt: 1_800_000_000_000,
+          resumeRefusal: null,
+        },
+      ]
+    : []
   window.api = {
     ...window.api,
     providerSetup,
@@ -193,7 +222,7 @@ function fixture(claudeReady = false, holdFirstUsage = false) {
         }
       },
       attachOpen: async () => [],
-      listResumable: async () => [],
+      listResumable: async () => running,
       listUnresumable: async () => [],
       agentIdentities: async () => identities,
       profiles: async () => [DEFAULT_PROFILE_ID],
@@ -307,11 +336,12 @@ it('refreshes Claude across the real window after native browser sign-in complet
   expect(screen.q('provider-chip').textContent).toContain('Claude · Ready')
   screen.q('model-picker-face').click()
   await settle()
-  expect(screen.q('model-picker-choose-claude').closest('label')?.textContent).toContain(
-    'Claude · Ready',
+  expect(screen.q('model-picker-choose-claude').closest('label')?.textContent?.trim()).toBe(
+    'Claude',
   )
-  expect(screen.q('app-usage').textContent).toContain('Claude · Ready')
-  expect(screen.q('app-usage').textContent).toContain('5h 28%')
+  expect((screen.q('model-picker-choose-claude') as HTMLInputElement).disabled).toBe(false)
+  expect(screen.q('app-usage').textContent).toBe('0 agents · 0 MB')
+  expect(screen.q('app-usage').title).not.toContain('28%')
   expect(usage.mock.calls.length).toBeGreaterThan(1)
 })
 
@@ -328,7 +358,7 @@ it('does not treat an open browser, failure or cancellation as a ready provider'
   expect(screen.q('new-provider-setup').textContent).toContain('Set up a provider')
   await providerSetup.cancel('claude')
   await settle()
-  expect(screen.q('app-usage').textContent).toContain('Claude · Needs setup')
+  expect(screen.q('app-usage').textContent).toBe('0 agents · 0 MB')
   expect(screen.all('send-prompt')).toHaveLength(0)
 })
 
@@ -339,7 +369,7 @@ it('rechecks the real auth answer rather than trusting a signed-in setup phase',
   screen.q('new-conversation').click()
   await settle()
   expect(screen.q('new-provider-setup').textContent).toContain('Set up a provider')
-  expect(screen.q('app-usage').textContent).toContain('Claude · Needs setup')
+  expect(screen.q('app-usage').textContent).toBe('0 agents · 0 MB')
   expect(screen.all('provider-chip')).toHaveLength(0)
 })
 
@@ -356,7 +386,7 @@ it('releases provider notices with the window so late completion cannot refresh 
 })
 
 it('keeps the post-login usage answer when an older signed-out read arrives late', async () => {
-  const { screen, complete, releaseUsage } = fixture(false, true)
+  const { screen, complete, releaseUsage } = fixture(false, true, true)
   await settle()
   complete()
   await settle()

@@ -425,3 +425,35 @@ describe('the version floor, said so a person can act on it', () => {
     }
   })
 })
+
+for (const refusal of [
+  { cause: 'auth' as const },
+  { cause: 'auth_stale' as const },
+  { billingRefused: true as const },
+]) {
+  it(`v4 a refused key has one short remedy despite six provider diagnostics: ${JSON.stringify(refusal)}`, () => {
+    const state = createTranscript()
+    const errors = Array.from({ length: 6 }, (_, i): TranscriptEvent => ({
+      type: 'error',
+      message: `Fictional refused-key diagnostic ${i}.`,
+      fatal: false,
+      onAKey: true,
+      ...refusal,
+    }))
+    feed(
+      state,
+      ...errors,
+      { type: 'error', message: 'turn failed: Fictional refused-key diagnostic 5.', fatal: false },
+      { type: 'turn', state: 'failed' },
+    )
+    expect(notices(state)).toEqual([
+      'Key refused. Check its balance or switch connection.',
+      'turn failed',
+    ])
+    expect(
+      state.items.filter((item) => item.kind === 'notice' && item.level === 'error'),
+    ).toHaveLength(1)
+    expect(state.lastError?.raw).toBe('Fictional refused-key diagnostic 5.')
+    expect(errors[0]).not.toHaveProperty('presentation')
+  })
+}

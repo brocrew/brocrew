@@ -8,7 +8,6 @@ import { allProviderCapabilities } from '../../../../packages/runtime/src/capabi
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
 import { usePersistentChoice } from '../../src/renderer/src/composables/usePersistentToggle'
-import { FIXED_SAYS } from '../../src/renderer/src/composables/useConversationControls'
 import { DEFAULT_TAB, DRAWER_TABS, isDrawerTab } from '../../src/renderer/src/lib/drawer'
 import { LEAVE_PLAN_UNAVAILABLE } from '../../src/renderer/src/lib/plan-mode'
 import type { CreatedSession, SetSessionSettingInput } from '../../src/shared/runtime-ipc'
@@ -144,15 +143,15 @@ describe('the approval switch beside the plate', () => {
       expect(face.checked).toBe(mode !== 'auto')
     },
   )
-  it('cannot change a fixed conversation', async () => {
+  it('a recorded conversation can choose the approval mode for its next message', async () => {
     const { m, asked } = thePane({}, { fixed: true })
     await settle()
     const face = m.q('card-approval') as HTMLInputElement
-    expect(face.disabled).toBe(true)
+    expect(face.disabled).toBe(false)
     face.click()
     await settle()
-    expect(asked.approval).toEqual([])
-    expect(m.q('card-run-plan').title).toBe(FIXED_SAYS)
+    expect(asked.approval).toEqual(['auto'])
+    expect(m.q('card-run-plan').title).toContain('next start leaves planning')
   })
   it('a queued choice moves the switch while the header keeps the current mode', async () => {
     const { m } = thePane({ approvalMode: 'ask', pendingApprovalMode: 'auto' })

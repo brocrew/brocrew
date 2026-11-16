@@ -55,7 +55,6 @@ function fernModule(): ProviderModule<FernValues> {
         }),
         cancel: async () => {},
       }),
-      bringTheKeyToItsHomes: async () => null,
       replaceARefusedCopy: async () => 'not-tried',
     },
     authPolicy: {
@@ -198,6 +197,12 @@ describe('the portable module consumer', () => {
     const module: ProviderModule<FernValues, FernConnection> = {
       ...fernModule(),
       connections,
+      program: {
+        async version(connection) {
+          calls.push(['version', connection])
+          return { version: null, reason: connection?.workspace ?? 'Fictional default program' }
+        },
+      },
       async prepareLaunch(profile, connection) {
         calls.push(['prepare', profile, connection])
         return {
@@ -218,6 +223,11 @@ describe('the portable module consumer', () => {
     expect(launch.home).toBe(first.workspace)
     expect(calls.at(-1)).toEqual(['prepare', 'willow', first])
     expectTypeOf(module.prepareLaunch).parameter(1).toEqualTypeOf<FernConnection | undefined>()
+    await expect(module.program?.version?.(second)).resolves.toEqual({
+      version: null,
+      reason: second.workspace,
+    })
+    expect(calls.at(-1)).toEqual(['version', second])
   })
 
   it('implements real operations with its own host protocol and no program service', async () => {

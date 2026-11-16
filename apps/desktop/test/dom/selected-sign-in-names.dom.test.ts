@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, provide, reactive, type Component } from 'vue'
 import { renderToString } from 'vue/server-renderer'
-import { PROVIDER_DESCRIPTORS, providerDescriptor } from '@brobot2/shared'
+import {
+  compatibilityConnectionId,
+  PROVIDER_DESCRIPTORS,
+  providerDescriptor,
+} from '@brobot2/shared'
 import { allProviderCapabilities } from '../../../../packages/runtime/src/capabilities'
 import type { AuthState, Provider } from '../../src/shared/runtime-ipc'
 import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
@@ -186,9 +190,14 @@ it.each(['card', 'launcher', 'pane'] as const)(
         {
           provider: 'claude',
           profileId: DEFAULT_PROFILE_ID,
-          ...(kind === 'card' || kind === 'pane' ? { probe: true } : {}),
+          ...(kind === 'card'
+            ? { connectionId: compatibilityConnectionId('claude', 'sign-in'), probe: true }
+            : kind === 'pane'
+              ? { probe: true }
+              : {}),
         },
       ],
+      ...(kind === 'card' ? [[{ provider: 'claude', profileId: DEFAULT_PROFILE_ID }]] : []),
     ])
     expect(out.raw).not.toHaveBeenCalled()
     expect(out.rawAuth).not.toHaveBeenCalled()

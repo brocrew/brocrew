@@ -1,6 +1,7 @@
 import { command } from './runtime-command'
+import type { UpdateProviderConnectionInput } from '../shared/provider-connection-edit'
 import { loggingClient } from '../shared/logging'
-import type { ResolveProviderLaunchInput } from '../shared/provider-launch'
+import type { ResolveProviderLaunchInput, ProviderModelReadInput } from '../shared/provider-launch'
 import type { DecideMoveRequestInput, MoveRequestAck } from '../shared/move-contracts'
 import type { LedgerWalk, PersonsDecision, PersonsQuestion } from '../shared/question-contracts'
 import type { WhatEachConversationIsWaitingOn, WorkGivenOut } from '../shared/task-contracts'
@@ -197,7 +198,7 @@ import type {
 if (process.isMainFrame) themeBeforePaint(ipcRenderer)
 
 const runtime: RuntimeBridge = Object.freeze({
-  providerLaunchChoices: (input: ProviderProfileInput) =>
+  providerLaunchChoices: (input: ProviderModelReadInput) =>
     command({ kind: 'providerLaunchChoices', ...input }),
   resolveProviderLaunch: (input: ResolveProviderLaunchInput) =>
     command({ kind: 'resolveProviderLaunch', ...input }),
@@ -506,6 +507,8 @@ const runtime: RuntimeBridge = Object.freeze({
   providerCatalogue: () => command({ kind: 'providerCatalogue' }),
   providerConnections: (): Promise<readonly ProviderConnection[]> =>
     command({ kind: 'providerConnections' }),
+  updateProviderConnection: (input: UpdateProviderConnectionInput): Promise<ProviderConnection> =>
+    command({ kind: 'updateProviderConnection', ...input }),
   // Which profiles exist (167) — the launcher's menu. Re-asked after a launch, because starting a
   // session in a name that was typed is what brings that profile into existence.
   profiles: (): Promise<string[]> => command({ kind: 'profiles' }),
@@ -552,8 +555,7 @@ const runtime: RuntimeBridge = Object.freeze({
     command({ kind: 'agentModelAndEffort', ...input }),
   // ⚑ **D-042 · the model list's three doors** — each payload built here, so
   // `plain-by-construction` on both halves: each spreads its primitives (`{ kind, ...input }`).
-  modelList: (input: { provider: Provider; profileId?: string }) =>
-    command({ kind: 'modelList', ...input }),
+  modelList: (input: ProviderModelReadInput) => command({ kind: 'modelList', ...input }),
   addHandAddedModel: (input: { provider: Provider; model: string }) =>
     command({ kind: 'addHandAddedModel', ...input }),
   deleteHandAddedModel: (input: { provider: Provider; model: string }) =>

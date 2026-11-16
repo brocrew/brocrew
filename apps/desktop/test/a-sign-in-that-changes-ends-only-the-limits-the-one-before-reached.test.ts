@@ -258,7 +258,6 @@ describe('13a0ab52 · a sign-in that changes ends only the limits the sign-in be
           completed: Promise.resolve({ success: true, state: usable }),
           cancel: async () => {},
         }),
-        bringTheKeyToItsHomes: async () => null,
         replaceARefusedCopy: async () => 'not-tried',
       }
       host = new RuntimeHost({

@@ -1,3 +1,9 @@
+import type { CodexTransport } from '../codex-transport'
+import { withDeadline } from '../../internal/bounded'
+import { probeCodexAuth } from '../auth-probe'
+import { COMMAND_LIST_TIMEOUT_MS } from './turn-state'
+import { readString } from './wire-values'
+
 import type { ApprovalMode } from '../../runtime'
 import { StartFailed } from '../../runtime'
 import type { SessionRef } from '../../session-ref'
@@ -95,4 +101,21 @@ export function assertAuthHealthy(
   if (!health.ok) {
     throw new AuthUnavailableError('codex', health.reason ?? 'managed Codex credential unavailable')
   }
+}
+
+export async function logInWithCodexKey(transport: CodexTransport, apiKey: string): Promise<void> {
+  const response = await withDeadline(
+    transport.request('account/login/start', { type: 'apiKey', apiKey }),
+    COMMAND_LIST_TIMEOUT_MS,
+    'codex key login',
+  )
+  if (readString(response, 'type') !== 'apiKey')
+    throw new AuthUnavailableError('codex', 'Codex did not accept the selected API-key mode')
+  const state = await withDeadline(
+    probeCodexAuth(transport),
+    COMMAND_LIST_TIMEOUT_MS,
+    'codex key auth',
+  )
+  if (state.state !== 'usable' || state.login !== 'api-key')
+    throw new AuthUnavailableError('codex', 'Codex did not start with the selected API key')
 }

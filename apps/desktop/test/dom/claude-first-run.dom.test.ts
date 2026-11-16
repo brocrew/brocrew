@@ -364,8 +364,14 @@ it('uses CLI-owned browser sign-in and automatically retries a warming model cat
   await vi.waitFor(() => expect(m.all('provider-model-row')).toHaveLength(1))
   expect(modelList).toHaveBeenCalledTimes(3)
   await vi.waitFor(() =>
-    expect(m.q('provider-auth-notice').textContent).toBe('The supplied native sign-in completed.'),
+    expect(
+      m
+        .q('native-sign-in-again')
+        .closest('[data-cy=provider-connection]')
+        ?.querySelector('[data-cy=connection-status]')?.textContent,
+    ).toBe('Ready'),
   )
+  expect(m.all('provider-auth-notice')).toHaveLength(0)
 })
 
 it('shows a persistent catalogue failure only after the bounded post-Check retries', async () => {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
-import type { ProviderDescriptor } from '@brobot2/shared'
+import { compatibilityConnectionId, type ProviderDescriptor } from '@brobot2/shared'
 import { useClientProviders } from '../client-provider/injection'
 import { providerCatalogue } from '../client-provider/catalogue'
 import { PROVIDER_PARTS, type ProviderPart } from '../lib/provider-parts'
@@ -11,7 +11,6 @@ import type {
   ProviderResources,
   ProviderUsageReading,
   ProviderVersion,
-  ProviderHomesReprovision,
 } from '../../../shared/runtime-ipc'
 import {
   A_STANDING_IN_A_WORD,
@@ -19,13 +18,12 @@ import {
   DEFAULT_PROFILE_ID,
 } from '../../../shared/runtime-ipc'
 import type { ProviderCondition } from '../../../shared/provider-limit'
-import { currentUsageWarnings } from '../lib/current-usage-warnings'
+import { connectionUsageWarning, currentUsageWarnings } from '../lib/current-usage-warnings'
 import {
   limitsDisplayLabel,
   limitsDisplayWords,
   type LimitsDisplayState,
 } from '../lib/limits-display'
-import { localFormat } from '../../../shared/local-time'
 import { theListedRow } from '../../../shared/model-choice'
 import { fullTime } from '../lib/clock'
 import { modelField } from '../lib/model-field'
@@ -57,20 +55,15 @@ import ProviderSetupProgress from './ProviderSetupProgress.vue'
 import ProviderConnections from './ProviderConnections.vue'
 
 /**
- * ⚑ One provider, for BroBot's own profile — the one a new conversation runs on: whether it is
- * ready and on which login, its API key, its program's version, its usage, what its agents use right
- * now, and its models. ⚑ W4.26 · the screen reads the provider-wide facts (version, usage, what is
- * running, the change notices) and hands them down; the card reads the login and the key itself.
- *
- * 🔒 **The key field**: the key is in the field until it is sent, and the field is cleared as it is
- * sent. Nothing answers with the key, and nothing here logs it.
- *
+ * Provider facts and controls for the default profile. The screen supplies version, usage,
+ * resources and notices; this card reads login and key state.
+ * Key drafts are cleared when sent and are never returned or logged.
  * Display names and sign-in words come from supplied provider facts.
  */
 const props = withDefaults(
   defineProps<{
     setupRequested?: boolean
-    /** The list owns these readings; standalone cards keep their own controller. */
+    /** The list owns the overview/key readings; standalone cards keep that controller here. */
     access?: ProviderAccess
     frameless?: boolean
     displayName?: string
@@ -141,7 +134,7 @@ const nativeSetup = useProviderSetup(
     await nextTick()
     if (!cardOpen) return
     await aPersonChecksAgain(false)
-    if (operation === 'signIn' && auth.value?.state === 'usable')
+    if (operation === 'signIn' && signInAuth.value?.state === 'usable')
       noticeSays(nativeSetup.state.value?.completedSignInMessage ?? 'Signed in.', false)
   },
 )
@@ -161,28 +154,8 @@ const PENDING: CapabilityStatus = {
   reason: 'Still asking this provider what it can do.',
   checkedAgainst: 'the capability fetch has not returned yet',
 }
-/**
- * ⚑ **A saved key outranks a sign-in** — while one is saved, a sign-in or a copy is refused by the
- * host, so the panel offers neither and says why (an offer that could only refuse is not one).
- */
-function whileAKeyIsSaved(status: CapabilityStatus): CapabilityStatus {
-  if (status.state !== 'available' || keyStatus.value?.set !== true) return status
-  return {
-    state: 'absent',
-    reason: `${
-      keyStatus.value.inUse
-        ? `An API key is saved for ${name.value}, and it is what ${name.value} runs on.`
-        : `An API key is saved for ${name.value}.`
-    }${loginBehindTheKey.value ? ' Remove it under “API key” below to use a sign-in instead.' : ''}`,
-    checkedAgainst: 'the saved API key',
-  }
-}
-const signIn = computed(() =>
-  whileAKeyIsSaved(props.capabilities?.[props.provider]?.signIn ?? PENDING),
-)
-const reprovision = computed(() =>
-  whileAKeyIsSaved(props.capabilities?.[props.provider]?.reprovisionAuth ?? PENDING),
-)
+const signIn = computed(() => props.capabilities?.[props.provider]?.signIn ?? PENDING)
+const reprovision = computed(() => props.capabilities?.[props.provider]?.reprovisionAuth ?? PENDING)
 
 /* ------------------------------------------------------------------ status */
 
@@ -193,7 +166,14 @@ const access =
     () => emit('authChanged', DEFAULT_PROFILE_ID),
     () => client,
   )
-const { auth, authBusy, asked, withGesture, check } = access
+const auth = access.auth
+const signInAccess = createProviderAccess(
+  () => props.provider,
+  () => emit('authChanged', DEFAULT_PROFILE_ID),
+  () => client,
+  () => compatibilityConnectionId(props.provider, 'sign-in'),
+)
+const { auth: signInAuth, authBusy, asked, withGesture, check } = signInAccess
 const authNotice = ref<string | null>(null)
 /** Whether the notice above warns or refuses, rather than saying how a gesture is going. */
 const authNoticeWarns = ref(false)
@@ -206,20 +186,24 @@ function noticeSays(text: string | null, warns: boolean): void {
 /** A person's Check again: the login, and the program and its version with it. */
 async function aPersonChecksAgain(publishChange = true): Promise<void> {
   const provider = props.provider
+  const keyMode = settingUp.value && setupKey.value
+  const target = keyMode ? access : signInAccess
   const probe =
     publishChange &&
+    !keyMode &&
     descriptor.value?.signIn.manualProbe === true &&
-    !(auth.value?.state === 'usable' && auth.value.login === 'api-key')
+    !(target.auth.value?.state === 'usable' && target.auth.value.login === 'api-key')
   if (probe) noticeSays(null, false)
   if (props.readVersions === undefined) {
     emit('checkedAgain')
-    await check(probe)
+    await target.check(probe)
   } else {
-    await Promise.all([props.readVersions(), check(probe)])
+    await Promise.all([props.readVersions(), target.check(probe)])
   }
-  if (probe && provider === props.provider && auth.value?.state === 'usable')
+  if (target !== access) await access.check()
+  if (probe && provider === props.provider && target.auth.value?.state === 'usable')
     noticeSays(descriptor.value?.signIn.manualProbeSuccess ?? 'Sign-in works.', false)
-  if (cardOpen && provider === props.provider && auth.value?.state === 'usable') {
+  if (cardOpen && provider === props.provider && target.auth.value?.state === 'usable') {
     if (publishChange) emit('authChanged', DEFAULT_PROFILE_ID)
     await refreshConnectedModels()
   }
@@ -245,7 +229,7 @@ async function copyMachineSignIn(): Promise<void> {
 
 async function signInHere(): Promise<void> {
   if (nativeSignIn.value) {
-    if (keyStatus.value?.set === false) await nativeSetup.signIn()
+    await nativeSetup.signIn()
     return
   }
   let connected = false
@@ -253,8 +237,8 @@ async function signInHere(): Promise<void> {
     noticeSays('Finish signing in in your browser, then come back.', false)
     try {
       const result = await client.signInProvider(asked())
-      auth.value = result.state
-      connected = result.success && auth.value?.state === 'usable'
+      signInAuth.value = result.state
+      connected = result.success && signInAuth.value?.state === 'usable'
       noticeSays(
         result.success
           ? (result.presentation?.message ?? 'Signed in.')
@@ -265,7 +249,10 @@ async function signInHere(): Promise<void> {
       noticeSays(readableError(error), true)
     }
   })
-  if (connected) await refreshConnectedModels()
+  if (connected) {
+    await access.check()
+    await refreshConnectedModels()
+  }
 }
 
 async function cancelSignIn(): Promise<void> {
@@ -275,16 +262,12 @@ async function cancelSignIn(): Promise<void> {
   }
   noticeSays(null, false)
   try {
-    await client.cancelProviderSignIn(asked())
+    await client.cancelProviderSignIn({ provider: props.provider, profileId: DEFAULT_PROFILE_ID })
   } catch (error) {
     noticeSays(readableError(error), true)
   }
 }
 
-const copyingHomes = ref(false)
-const copiedHomes = ref<ProviderHomesReprovision | null>(null)
-const copyHomesError = ref<string | null>(null)
-let copyHomesTimer: ReturnType<typeof setTimeout> | undefined
 const descriptor = computed(
   () =>
     props.descriptor ??
@@ -292,81 +275,6 @@ const descriptor = computed(
       ? catalogueState.value.providers.find((item) => item.id === props.provider)
       : undefined),
 )
-const keepsProfileSignIns = computed(() => descriptor.value?.credential === 'profile-or-key')
-async function readHomeCopies(statusOnly = false): Promise<void> {
-  const result = await client.reprovisionProviderHomes({
-    provider: props.provider,
-    ...(statusOnly ? { statusOnly: true } : {}),
-  })
-  if (!cardOpen) return
-  copiedHomes.value = result.profiles.length === 0 ? null : result
-  if (result.pending > 0)
-    copyHomesTimer = setTimeout(() => {
-      void readHomeCopies(true).catch(() => {
-        copyHomesError.value = 'Could not read the switch progress. Open Providers again to check.'
-      })
-    }, 1000)
-}
-async function copyAllMachineSignIns(): Promise<void> {
-  if (copyingHomes.value || (copiedHomes.value?.pending ?? 0) > 0) return
-  copyingHomes.value = true
-  copiedHomes.value = null
-  copyHomesError.value = null
-  clearTimeout(copyHomesTimer)
-  try {
-    await readHomeCopies()
-  } catch {
-    copyHomesError.value = 'Could not copy the sign-ins. Try again.'
-  } finally {
-    copyingHomes.value = false
-  }
-}
-function copyHomeReason(
-  reason:
-    | 'api-key'
-    | 'key-status-unavailable'
-    | 'unchanged'
-    | 'copy-failed'
-    | 'restart-failed'
-    | 'stop-failed',
-): string {
-  switch (reason) {
-    case 'api-key':
-      return 'Saved API key: all agents using this provider keep their key.'
-    case 'key-status-unavailable':
-      return 'API key status could not be checked. Try again.'
-    case 'unchanged':
-      return 'Already uses this Mac’s sign-in.'
-    case 'copy-failed':
-      return 'Could not copy the sign-in. Check this Mac’s sign-in and try again.'
-    case 'restart-failed':
-      return 'Sign-in copied, but this agent could not restart. Try again.'
-    case 'stop-failed':
-      return 'Could not confirm this agent stopped. Its sign-in was left unchanged.'
-  }
-}
-
-/** ⚑ The plan in the provider's own word, as a person writes it: `max` → *Max*. */
-const plan = computed(() => {
-  const said = auth.value?.state === 'usable' ? auth.value.plan : undefined
-  return said === undefined || said === '' ? null : `${said[0]!.toUpperCase()}${said.slice(1)}`
-})
-
-const dayFormat = localFormat({ day: 'numeric', month: 'long', year: 'numeric' })
-
-/** Names the person's usable login, with expiry only when supplied by the provider. */
-const loginSays = computed<string | null>(() => {
-  const state = auth.value
-  if (state?.state !== 'usable') return null
-  // A saved key this computer can't read starts nothing, so the card says only how to recover.
-  if (keyCantBeRead.value) return null
-  if (state.login === 'api-key') return `Runs on the saved API key.`
-  const facts = [state.account, plan.value === null ? null : `${plan.value} plan`].filter(Boolean)
-  const of = facts.length === 0 ? '' : ` (${facts.join(', ')})`
-  const until = state.expiresAt === null ? '' : `, until ${dayFormat(state.expiresAt)}`
-  return `Runs on your ${props.setup?.tool ?? name.value} login${of}${until}.`
-})
-
 const standing = computed(() =>
   providerStanding({
     auth: auth.value,
@@ -388,6 +296,11 @@ const keyDraft = ref('')
 const keyBusy = ref(false)
 const keySaid = ref<{ text: string; tone: 'note' | 'warn' } | null>(null)
 const keyEditing = ref(false)
+const keyHasFocus = ref(false)
+function keyFocusLeft(event: FocusEvent): void {
+  if (!(event.relatedTarget instanceof Node) || !keyPart.value?.contains(event.relatedTarget))
+    keyHasFocus.value = false
+}
 
 watch(
   access.keyError,
@@ -421,7 +334,7 @@ async function saveKey(): Promise<void> {
     } else {
       keyEditing.value = false
       keySaid.value = {
-        text: changed.notice ?? `Key saved. ${name.value}’s new conversations start on it.`,
+        text: changed.notice ?? 'Key saved for this API-key connection.',
         tone: 'note',
       }
     }
@@ -429,6 +342,7 @@ async function saveKey(): Promise<void> {
     keySaid.value = { text: readableError(error), tone: 'warn' }
   } finally {
     keyBusy.value = false
+    keyHasFocus.value = false
   }
 }
 
@@ -441,10 +355,7 @@ async function removeKey(): Promise<void> {
     keyStatus.value = changed
     keySaid.value = {
       text:
-        changed.notice ??
-        (loginBehindTheKey.value
-          ? `Key removed. ${name.value}’s new conversations start on its sign-in again.`
-          : 'Key removed.'),
+        changed.notice ?? 'Key removed. This API-key connection needs a key before it can start.',
       tone: 'note',
     }
   } catch (error) {
@@ -455,10 +366,10 @@ async function removeKey(): Promise<void> {
 }
 
 /**
- * Only a confirmed sign-in can be offered as what runs after removing the saved key.
+ * Only a confirmed sign-in is offered as an option for a new conversation.
  */
 const loginBehindTheKey = computed(() => {
-  const state = auth.value
+  const state = signInAuth.value
   return (
     state?.state === 'usable' && (state.login === 'account' || state.loginBehindTheKey === true)
   )
@@ -468,9 +379,7 @@ const keyInUseSays = computed(() => {
   const status = keyStatus.value
   if (status === null) return ''
   if (status.unreadableReason === undefined && status.inUse) {
-    return loginBehindTheKey.value
-      ? `It outranks the sign-in: ${name.value}’s new conversations start on the key.`
-      : `${name.value}’s conversations start on this key.`
+    return 'This API-key connection uses the saved key.'
   }
   return unreadableKeySays(status, name.value, loginBehindTheKey.value)
 })
@@ -480,18 +389,6 @@ const checkSpends = computed(() =>
   keyStatus.value?.aCheckSpendsAToken === true
     ? `Checking sends ${name.value} “Hi”, which costs a tiny amount.`
     : `Checking only asks ${name.value} for its model list, which costs nothing.`,
-)
-
-/**
- * What a start sends when the provider renews an expired login with a short message. Said only
- * while no key is saved, since a saved key is what a start runs on then.
- */
-const renewalSends = computed(() =>
-  props.capabilities?.[props.provider]?.loginRenewalMessage?.state === 'available' &&
-  keyStatus.value !== null &&
-  !keyStatus.value.set
-    ? `When this login has expired, starting a conversation renews it by sending ${name.value} “ok”, with the instruction “Reply with: ok”.`
-    : null,
 )
 
 /** ⚑ One real request to the provider — a few seconds, so the button says it is checking. */
@@ -523,7 +420,7 @@ async function checkKey(): Promise<void> {
 
 /**
  * The saved key's account can't pay, said where the key is, with the ways out: credit for that
- * account, another key, or the login, where removing the key leaves one this provider runs on.
+ * account, another key, or a sign-in connection for a new conversation.
  * `null` while nothing has been refused.
  */
 const keyRefusedSays = computed<string | null>(() => {
@@ -531,7 +428,7 @@ const keyRefusedSays = computed<string | null>(() => {
   if (refused === undefined) return null
   const login =
     refused.aLoginRunsWithoutIt && loginBehindTheKey.value
-      ? ', or remove it to run on the sign-in'
+      ? ', or choose a sign-in connection for a new conversation'
       : ''
   return (
     `A request on this key was refused at ${fullTime(refused.at)}: the account the key belongs ` +
@@ -541,6 +438,7 @@ const keyRefusedSays = computed<string | null>(() => {
 })
 
 function cancelKeyEdit(): void {
+  keyHasFocus.value = false
   keyDraft.value = ''
   keyEditing.value = false
 }
@@ -572,7 +470,6 @@ watch(
 )
 onBeforeUnmount(() => {
   cardOpen = false
-  clearTimeout(copyHomesTimer)
   modelRefresh?.abort()
 })
 
@@ -711,17 +608,29 @@ const atItsLimit = computed(() => {
     : limitsDisplayWords.condition(words, reading.evaluatedAt)
 })
 
-/** ⚑ Each window's newest reading, in words — `null` before the read lands. */
-const readingLines = computed(() =>
+const signInReadings = computed(() =>
   props.readings === null
     ? null
-    : props.readings.map((reading) => {
+    : props.readings.filter(
+        (reading) => reading.connectionId === compatibilityConnectionId(props.provider, 'sign-in'),
+      ),
+)
+
+const signInUsage = computed(() => connectionUsageWarning(signInReadings.value, props.clock))
+
+/** Each sign-in window's attributed reading, or `null` before the read lands. */
+const readingLines = computed(() =>
+  signInReadings.value === null
+    ? null
+    : signInReadings.value.map((reading) => {
         const time = timeGone(reading, props.clock)
+        const fullText = readingSays(reading, props.clock)
         return {
           key: reading.window,
-          text: readingSays(reading, props.clock),
+          text: readingSays(reading, props.clock, 'compact'),
+          fullText,
           status: readingStatus(reading, props.clock),
-          title: readingTitle(reading, props.clock),
+          title: `${fullText}\n${readingTitle(reading, props.clock)}`,
           time,
           paceTitle:
             time === null || reading.usedPercent === null
@@ -773,16 +682,21 @@ const setupCopySays = ref<string | null>(null)
 const setupCheckFailure = ref<string | null>(null)
 const setupStep = ref<1 | 2 | 3>(1)
 const setupChecking = ref(false)
-const setupReady = computed(
-  () =>
+const setupReady = computed(() => {
+  const reading = setupKey.value ? auth.value : signInAuth.value
+  if (reading?.state !== 'usable' || reading.login !== (setupKey.value ? 'api-key' : 'account'))
+    return false
+  if (setupKey.value && keyStatus.value?.set !== true) return false
+  return (
     isReady({
       version: props.version,
       setup: props.setup,
-      auth: auth.value,
-      keyRefused: keyRefusedSays.value !== null,
-      keyUnreadable: keyCantBeRead.value ? keyInUseSays.value : null,
-    }) === true,
-)
+      auth: reading,
+      keyRefused: setupKey.value && keyRefusedSays.value !== null,
+      keyUnreadable: setupKey.value && keyCantBeRead.value ? keyInUseSays.value : null,
+    }) === true
+  )
+})
 watch(setupReady, (ready) => {
   if (ready) setupCheckFailure.value = null
 })
@@ -791,10 +705,9 @@ const setupBusy = computed(
 )
 const canSetUpSignIn = computed(
   () =>
-    keyStatus.value?.set === false &&
-    (nativeSignIn.value ||
-      signIn.value.state === 'available' ||
-      (props.capabilities?.[props.provider]?.signIn.state === 'absent' && Boolean(props.setup))),
+    nativeSignIn.value ||
+    signIn.value.state === 'available' ||
+    (props.capabilities?.[props.provider]?.signIn.state === 'absent' && Boolean(props.setup)),
 )
 function beginSetup(): void {
   setupStep.value = 1
@@ -849,7 +762,7 @@ async function checkSetup(): Promise<void> {
       await saveKey()
       if (keySaid.value?.tone === 'warn') return
     }
-    if (keyStatus.value?.set) {
+    if (setupKey.value) {
       await checkKey()
       if (keySaid.value?.tone === 'warn') return
     }
@@ -858,7 +771,7 @@ async function checkSetup(): Promise<void> {
     if (setupReady.value) setupStep.value = 3
     else
       setupCheckFailure.value =
-        auth.value?.state === 'usable'
+        (setupKey.value ? auth.value : signInAuth.value)?.state === 'usable'
           ? 'The provider program is not ready. Check its version below.'
           : 'Not connected yet. Sign in or check your API key, then try again.'
   } finally {
@@ -895,19 +808,21 @@ watch(
 watch(
   () => props.loginMoved,
   () => {
-    if (props.access !== undefined) return
     void check()
-    void readKey()
+    if (props.access === undefined) {
+      void access.check()
+      void readKey()
+    }
   },
 )
 
 onMounted(() => {
   if (props.descriptor === undefined) void catalogue.read()
+  void check()
   if (props.access === undefined) {
-    void check()
+    void access.check()
     void readKey()
   }
-  if (keepsProfileSignIns.value) void readHomeCopies(true).catch(() => {})
   if (!programMissing.value) void lists.value.read(props.provider, undefined, { once: true })
 })
 watch(programMissing, (missing) => {
@@ -1026,6 +941,22 @@ defineExpose({ beginSetup })
         Sign in or use an API key.
       </p>
       <p
+        v-if="
+          !programMissing &&
+          (usage.tone === 'warn' ||
+            (props.limitsDisplay !== undefined &&
+              [limitsDisplayWords.updating, limitsDisplayWords.unavailable].includes(
+                limitsDisplayLabel(props.limitsDisplay),
+              )))
+        "
+        class="line"
+        :class="{ warn: usage.tone === 'warn' }"
+        :title="usage.title ?? undefined"
+        data-cy="provider-usage-overview"
+      >
+        {{ usage.text }}
+      </p>
+      <p
         v-if="atItsLimit && !programMissing"
         class="at-limit"
         role="status"
@@ -1049,11 +980,304 @@ defineExpose({ beginSetup })
       <ProviderConnections
         :provider="props.provider"
         :name="name"
-        :auth="auth"
+        :key-auth="auth"
+        :sign-in-auth="signInAuth"
         :key-status="keyStatus"
         :login-moved="props.loginMoved"
-        :models-known="!programMissing && list !== null && list.notAsked === null"
-      />
+        :keep-controls="setupBusy || keyEditing || keyHasFocus"
+      >
+        <template #sign-in>
+          <section
+            v-if="
+              !programMissing && ((readingLines?.length ?? 0) > 0 || signInUsage.tone === 'warn')
+            "
+            class="connection-details"
+            data-cy="provider-usage"
+          >
+            <div class="part-body">
+              <!-- Only this connection's current readings qualify its warnings. -->
+              <p
+                v-if="signInUsage.tone === 'warn'"
+                class="line warn"
+                :title="signInUsage.title ?? undefined"
+                data-cy="provider-usage-says"
+              >
+                {{ signInUsage.text }}
+              </p>
+              <div v-if="readingLines && readingLines.length > 0" class="usage-windows">
+                <div v-for="(line, index) in readingLines" :key="line.key" class="usage-window">
+                  <svg class="icon" aria-hidden="true"><use href="#i-clock" /></svg>
+                  <p class="line" :title="line.title" data-cy="provider-usage-reading">
+                    {{ line.text }}
+                    <span v-if="line.status" class="quiet" data-cy="provider-usage-unconfirmed">
+                      {{ line.status }}
+                    </span>
+                  </p>
+                  <meter
+                    v-if="signInReadings?.[index]?.usedPercent != null"
+                    min="0"
+                    max="100"
+                    :value="signInReadings[index]!.usedPercent!"
+                    :aria-label="line.status ? `${line.fullText} ${line.status}` : line.fullText"
+                    :class="{
+                      historical:
+                        signInReadings[index]!.unconfirmed === true ||
+                        (signInReadings[index]!.resetsAt !== null &&
+                          signInReadings[index]!.resetsAt! <= props.clock),
+                      ahead: line.time?.ahead,
+                    }"
+                  />
+                  <span v-else class="empty-meter" aria-hidden="true"></span>
+                  <template v-if="line.time">
+                    <meter
+                      class="time-meter"
+                      min="0"
+                      max="1"
+                      :value="line.time.fraction"
+                      :aria-label="
+                        line.status
+                          ? `Time gone in this window · ${line.status}`
+                          : 'Time gone in this window'
+                      "
+                      :aria-valuetext="line.time.words"
+                      data-cy="provider-usage-time"
+                    />
+                    <p class="time-label" data-cy="provider-usage-time-words">
+                      time gone · {{ line.time.words }}
+                    </p>
+                    <p
+                      v-if="line.time.ahead"
+                      class="pace-warning"
+                      :title="line.paceTitle"
+                      data-cy="provider-usage-ahead"
+                    >
+                      Usage ahead of time
+                    </p>
+                  </template>
+                </div>
+              </div>
+            </div>
+          </section>
+          <section
+            v-if="!programMissing && !settingUp"
+            class="connection-details"
+            data-cy="provider-status"
+          >
+            <div class="part-body">
+              <template v-if="signInAuth?.state === 'usable'">
+                <div class="actions">
+                  <button
+                    type="button"
+                    :disabled="authBusy !== 'idle'"
+                    @click="aPersonChecksAgain()"
+                  >
+                    <svg class="icon" aria-hidden="true"><use href="#i-refresh" /></svg>
+                    {{ authBusy === 'checking' ? 'Checking…' : 'Check again' }}
+                  </button>
+                  <button
+                    v-if="nativeSignIn"
+                    type="button"
+                    data-cy="native-sign-in-again"
+                    :disabled="setupBusy"
+                    @click="signInHere"
+                  >
+                    {{ signInAuth.login === 'api-key' ? 'Sign in' : 'Sign in again' }}
+                  </button>
+                  <button
+                    v-else-if="signInAuth.login !== 'api-key'"
+                    type="button"
+                    disabled
+                    title="Sign out is not available yet"
+                  >
+                    Sign out
+                  </button>
+                  <button
+                    v-if="nativeSignIn && nativeSetup.busy.value"
+                    type="button"
+                    @click="cancelSignIn"
+                  >
+                    Cancel sign-in
+                  </button>
+                </div>
+                <ProviderSetupProgress
+                  v-if="nativeSignIn && nativeSetup.state.value?.phase !== 'idle'"
+                  :progress="nativeSetup.state.value?.progress ?? ''"
+                  :auth-url="nativeSetup.state.value?.authUrl ?? null"
+                  :error="nativeSetup.error.value"
+                />
+              </template>
+              <p v-else-if="signInAuth === null" class="line quiet">Asking {{ name }}…</p>
+              <template v-else>
+                <div v-if="nativeSignIn" class="native-sign-in">
+                  <p
+                    v-if="signInAuth.state === 'stale' || signInAuth.state === 'unknown'"
+                    class="line"
+                    data-cy="provider-auth-result"
+                  >
+                    {{ signInAuth.reason }}
+                  </p>
+                  <p class="line">Sign in with {{ props.setup?.tool ?? name }}.</p>
+                  <div class="actions">
+                    <button
+                      type="button"
+                      class="bb-button bb-button--primary"
+                      data-cy="native-sign-in"
+                      :disabled="setupBusy"
+                      @click="signInHere"
+                    >
+                      {{ signInAuth.state === 'stale' ? 'Sign in again' : 'Sign in' }}
+                    </button>
+                    <button
+                      v-if="nativeSetup.busy.value"
+                      type="button"
+                      class="bb-button"
+                      @click="cancelSignIn"
+                    >
+                      Cancel sign-in
+                    </button>
+                    <button
+                      type="button"
+                      class="bb-button"
+                      :disabled="setupBusy"
+                      @click="aPersonChecksAgain()"
+                    >
+                      {{ authBusy === 'checking' ? 'Checking…' : 'Check again' }}
+                    </button>
+                  </div>
+                  <ProviderSetupProgress
+                    :progress="nativeSetup.state.value?.progress ?? ''"
+                    :auth-url="nativeSetup.state.value?.authUrl ?? null"
+                    :error="nativeSetup.error.value"
+                  />
+                </div>
+                <SignInPanel
+                  v-else
+                  :provider="props.provider"
+                  :display-name="name"
+                  :state="signInAuth"
+                  :sign-in="signIn"
+                  :reprovision="reprovision"
+                  :busy="authBusy"
+                  :notice="authNotice"
+                  @check="aPersonChecksAgain()"
+                  @reprovision="copyMachineSignIn"
+                  @sign-in="signInHere"
+                  @cancel-sign-in="cancelSignIn"
+                />
+                <p
+                  v-if="keyStatus !== null && !keyStatus.set"
+                  class="line"
+                  data-cy="provider-key-prompt"
+                >
+                  Or add an API key below.
+                </p>
+              </template>
+              <p
+                v-if="signInAuth?.state === 'usable' && authNoticeWarns && authNotice"
+                class="line quiet"
+                data-cy="provider-auth-notice"
+              >
+                {{ authNotice }}
+              </p>
+            </div>
+          </section>
+        </template>
+        <template #api-key>
+          <section
+            v-if="!programMissing && !settingUp"
+            ref="keyPart"
+            @focusin="keyHasFocus = true"
+            @focusout="keyFocusLeft"
+            class="connection-details"
+            data-cy="provider-key"
+          >
+            <div class="part-body">
+              <p v-if="keyStatus === null" class="line quiet">Reading…</p>
+              <template v-else-if="keyStatus.set && !keyEditing">
+                <p v-if="!keyStatus.inUse" class="line warn" data-cy="provider-key-in-use">
+                  {{ keyInUseSays }}
+                </p>
+                <div
+                  class="key-remedy"
+                  :class="{ 'bb-notice bb-notice--waiting': keyRefusedSays !== null }"
+                >
+                  <p
+                    v-if="keyRefusedSays !== null"
+                    class="line warn"
+                    data-cy="provider-key-refused"
+                  >
+                    {{ keyRefusedSays }}
+                  </p>
+                  <div class="actions">
+                    <button
+                      type="button"
+                      data-cy="provider-key-check"
+                      :disabled="keyBusy"
+                      @click="checkKey"
+                    >
+                      {{ keyChecking ? 'Checking…' : 'Check key' }}
+                    </button>
+                    <button
+                      type="button"
+                      data-cy="provider-key-replace"
+                      :disabled="keyBusy"
+                      @click="keyEditing = true"
+                    >
+                      Replace
+                    </button>
+                    <button
+                      type="button"
+                      class="danger"
+                      data-cy="provider-key-remove"
+                      :disabled="keyBusy"
+                      @click="removeKey"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  <p class="line quiet" data-cy="provider-key-check-sends">{{ checkSpends }}</p>
+                </div>
+              </template>
+              <template v-else>
+                <form class="key-form" @submit.prevent="saveKey">
+                  <input
+                    v-model="keyDraft"
+                    type="password"
+                    autocomplete="new-password"
+                    :disabled="keyBusy"
+                    spellcheck="false"
+                    data-cy="provider-key-input"
+                    :aria-label="`${name} API key`"
+                    :placeholder="`Paste your ${name} API key`"
+                  />
+                  <button type="submit" :disabled="keyBusy || keyDraft.trim() === ''">
+                    {{ keyBusy ? 'Saving…' : 'Save key' }}
+                  </button>
+                  <button v-if="keyEditing" type="button" @click="cancelKeyEdit">Cancel</button>
+                </form>
+              </template>
+              <p
+                v-if="keySaid"
+                class="line"
+                :class="{ warn: keySaid.tone === 'warn' }"
+                data-cy="provider-key-said"
+                role="status"
+              >
+                {{ keySaid.text }}
+              </p>
+            </div>
+          </section>
+        </template>
+        <template #unlisted>
+          <button
+            v-if="authBusy === 'signing-in' || nativeSetup.busy.value"
+            type="button"
+            @click="cancelSignIn"
+          >
+            Cancel sign-in
+          </button>
+        </template>
+      </ProviderConnections>
     </div>
 
     <section
@@ -1148,7 +1372,9 @@ defineExpose({ beginSetup })
             data-cy="setup-check"
             :disabled="
               setupBusy ||
-              !(setupExternal || auth?.state === 'usable' || keyStatus?.set || keyDraft.trim())
+              !(setupKey
+                ? keyStatus?.set || keyDraft.trim()
+                : setupExternal || signInAuth?.state === 'usable')
             "
             @click="checkSetup"
           >
@@ -1176,288 +1402,6 @@ defineExpose({ beginSetup })
       <p v-if="keySaid" class="line" :class="{ warn: keySaid.tone === 'warn' }" role="status">
         {{ keySaid.text }}
       </p>
-    </section>
-
-    <section
-      v-if="!programMissing && !settingUp"
-      class="part"
-      data-cy="provider-status"
-      :data-open="isOpen('login')"
-    >
-      <h3>
-        <button
-          type="button"
-          class="fold"
-          :aria-expanded="isOpen('login')"
-          :aria-controls="`${partIds}-login`"
-          @click="emit('toggle', 'login')"
-        >
-          <svg class="icon section-icon" aria-hidden="true"><use href="#i-user" /></svg>Login<svg
-            class="icon chevron"
-            :class="{ folded: !isOpen('login') }"
-            aria-hidden="true"
-          >
-            <use href="#i-chevron" />
-          </svg>
-        </button>
-      </h3>
-      <div v-show="isOpen('login')" :id="`${partIds}-login`" class="part-body">
-        <template v-if="auth?.state === 'usable'">
-          <p v-if="loginSays !== null" class="line" data-cy="provider-account">{{ loginSays }}</p>
-          <div class="actions">
-            <button type="button" :disabled="authBusy !== 'idle'" @click="aPersonChecksAgain()">
-              <svg class="icon" aria-hidden="true"><use href="#i-refresh" /></svg>
-              {{ authBusy === 'checking' ? 'Checking…' : 'Check again' }}
-            </button>
-            <button
-              v-if="nativeSignIn && auth.login !== 'api-key'"
-              type="button"
-              data-cy="native-sign-in-again"
-              :disabled="setupBusy || keyStatus?.set !== false"
-              @click="signInHere"
-            >
-              Sign in again
-            </button>
-            <button
-              v-else-if="auth.login !== 'api-key'"
-              type="button"
-              disabled
-              title="Sign out is not available yet"
-            >
-              Sign out
-            </button>
-            <button
-              v-if="nativeSignIn && nativeSetup.busy.value"
-              type="button"
-              @click="cancelSignIn"
-            >
-              Cancel sign-in
-            </button>
-          </div>
-          <ProviderSetupProgress
-            v-if="nativeSignIn && nativeSetup.state.value?.phase !== 'idle'"
-            :progress="nativeSetup.state.value?.progress ?? ''"
-            :auth-url="nativeSetup.state.value?.authUrl ?? null"
-            :error="nativeSetup.error.value"
-          />
-        </template>
-        <p v-else-if="auth === null" class="line quiet">Asking {{ name }}…</p>
-        <template v-else>
-          <div v-if="nativeSignIn" class="native-sign-in">
-            <p
-              v-if="auth.state === 'stale' || auth.state === 'unknown'"
-              class="line"
-              data-cy="provider-auth-result"
-            >
-              {{ auth.reason }}
-            </p>
-            <p class="line">Sign in with {{ props.setup?.tool ?? name }}.</p>
-            <div class="actions">
-              <button
-                type="button"
-                class="bb-button bb-button--primary"
-                data-cy="native-sign-in"
-                :disabled="setupBusy || keyStatus?.set !== false"
-                @click="signInHere"
-              >
-                {{ auth.state === 'stale' ? 'Sign in again' : 'Sign in' }}
-              </button>
-              <button
-                v-if="nativeSetup.busy.value"
-                type="button"
-                class="bb-button"
-                @click="cancelSignIn"
-              >
-                Cancel sign-in
-              </button>
-              <button
-                type="button"
-                class="bb-button"
-                :disabled="setupBusy"
-                @click="aPersonChecksAgain()"
-              >
-                {{ authBusy === 'checking' ? 'Checking…' : 'Check again' }}
-              </button>
-            </div>
-            <ProviderSetupProgress
-              :progress="nativeSetup.state.value?.progress ?? ''"
-              :auth-url="nativeSetup.state.value?.authUrl ?? null"
-              :error="nativeSetup.error.value"
-            />
-          </div>
-          <SignInPanel
-            v-else
-            :provider="props.provider"
-            :display-name="name"
-            :state="auth"
-            :sign-in="signIn"
-            :reprovision="reprovision"
-            :busy="authBusy"
-            :notice="authNotice"
-            @check="aPersonChecksAgain()"
-            @reprovision="copyMachineSignIn"
-            @sign-in="signInHere"
-            @cancel-sign-in="cancelSignIn"
-          />
-          <p v-if="keyStatus !== null && !keyStatus.set" class="line" data-cy="provider-key-prompt">
-            Or add an API key below.
-          </p>
-        </template>
-        <p
-          v-if="auth?.state === 'usable' && authNotice"
-          class="line quiet"
-          data-cy="provider-auth-notice"
-        >
-          {{ authNotice }}
-        </p>
-        <div v-if="keepsProfileSignIns" data-cy="copy-all-sign-ins">
-          <p class="line quiet">
-            Copies this Mac’s sign-in for every agent in this install; saved API keys stay as they
-            are.
-          </p>
-          <button
-            type="button"
-            class="action"
-            :disabled="copyingHomes || setupBusy || (copiedHomes?.pending ?? 0) > 0"
-            @click="copyAllMachineSignIns"
-          >
-            {{
-              copyingHomes ? 'Copying sign-ins…' : `Use this Mac's ${name} sign-in for all agents`
-            }}
-          </button>
-          <div v-if="copiedHomes" role="status">
-            <p class="line quiet">
-              Agents restart automatically between tasks to use the new sign-in. BroCrew does not
-              need restarting.
-            </p>
-            <p class="line">
-              {{ copiedHomes.replaced }} switched now, {{ copiedHomes.pending }} will switch when
-              they finish their current task. {{ copiedHomes.skipped }} skipped /
-              {{ copiedHomes.failed }} failed.
-            </p>
-            <p
-              v-for="profile in copiedHomes.profiles.filter(
-                (one) => one.state === 'skipped' || one.state === 'failed',
-              )"
-              :key="profile.profileId"
-              class="line quiet"
-            >
-              {{ profile.profileId }}:
-              {{ 'reason' in profile ? copyHomeReason(profile.reason) : '' }}
-            </p>
-          </div>
-          <p v-if="copyHomesError" role="alert" class="line">{{ copyHomesError }}</p>
-        </div>
-        <p v-if="renewalSends !== null" class="line quiet" data-cy="provider-login-renewal">
-          {{ renewalSends }}
-        </p>
-      </div>
-    </section>
-
-    <section
-      v-if="!programMissing && !settingUp"
-      ref="keyPart"
-      class="part"
-      data-cy="provider-key"
-      :data-open="isOpen('key')"
-    >
-      <h3>
-        <button
-          type="button"
-          class="fold"
-          :aria-expanded="isOpen('key')"
-          :aria-controls="`${partIds}-key`"
-          @click="emit('toggle', 'key')"
-        >
-          <svg class="icon section-icon" aria-hidden="true"><use href="#i-lock" /></svg>API key<svg
-            class="icon chevron"
-            :class="{ folded: !isOpen('key') }"
-            aria-hidden="true"
-          >
-            <use href="#i-chevron" />
-          </svg>
-        </button>
-      </h3>
-      <div v-show="isOpen('key')" :id="`${partIds}-key`" class="part-body">
-        <p v-if="keyStatus === null" class="line quiet">Reading…</p>
-        <template v-else-if="keyStatus.set && !keyEditing">
-          <p class="line" data-cy="provider-key-set">
-            A key is set{{
-              keyStatus.setAt === null ? '' : `, since ${fullTime(keyStatus.setAt)}`
-            }}.
-          </p>
-          <p class="line" :class="{ warn: !keyStatus.inUse }" data-cy="provider-key-in-use">
-            {{ keyInUseSays }}
-          </p>
-          <div
-            class="key-remedy"
-            :class="{ 'bb-notice bb-notice--waiting': keyRefusedSays !== null }"
-          >
-            <p v-if="keyRefusedSays !== null" class="line warn" data-cy="provider-key-refused">
-              {{ keyRefusedSays }}
-            </p>
-            <div class="actions">
-              <button
-                type="button"
-                data-cy="provider-key-check"
-                :disabled="keyBusy"
-                @click="checkKey"
-              >
-                {{ keyChecking ? 'Checking…' : 'Check it works' }}
-              </button>
-              <button
-                type="button"
-                data-cy="provider-key-replace"
-                :disabled="keyBusy"
-                @click="keyEditing = true"
-              >
-                Replace
-              </button>
-              <button
-                type="button"
-                class="danger"
-                data-cy="provider-key-remove"
-                :disabled="keyBusy"
-                @click="removeKey"
-              >
-                Remove
-              </button>
-            </div>
-            <p class="line quiet" data-cy="provider-key-check-sends">{{ checkSpends }}</p>
-          </div>
-        </template>
-        <template v-else>
-          <p v-if="!keyEditing" class="line quiet" data-cy="provider-key-none">
-            No API key saved. You can sign in instead. If you save a key, new conversations will use
-            it instead of your signed-in account.
-          </p>
-          <form class="key-form" @submit.prevent="saveKey">
-            <input
-              v-model="keyDraft"
-              type="password"
-              autocomplete="new-password"
-              :disabled="keyBusy"
-              spellcheck="false"
-              data-cy="provider-key-input"
-              :aria-label="`${name} API key`"
-              :placeholder="`Paste your ${name} API key`"
-            />
-            <button type="submit" :disabled="keyBusy || keyDraft.trim() === ''">
-              {{ keyBusy ? 'Saving…' : 'Save key' }}
-            </button>
-            <button v-if="keyEditing" type="button" @click="cancelKeyEdit">Cancel</button>
-          </form>
-        </template>
-        <p
-          v-if="keySaid"
-          class="line"
-          :class="{ warn: keySaid.tone === 'warn' }"
-          data-cy="provider-key-said"
-          role="status"
-        >
-          {{ keySaid.text }}
-        </p>
-      </div>
     </section>
 
     <section
@@ -1603,98 +1547,6 @@ defineExpose({ beginSetup })
         >
           {{ props.version.reason }}
         </p>
-      </div>
-    </section>
-
-    <section
-      v-if="!programMissing"
-      class="part"
-      data-cy="provider-usage"
-      :data-open="isOpen('usage')"
-    >
-      <h3>
-        <button
-          type="button"
-          class="fold"
-          :aria-expanded="isOpen('usage')"
-          :aria-controls="`${partIds}-usage`"
-          @click="emit('toggle', 'usage')"
-        >
-          <svg class="icon section-icon" aria-hidden="true"><use href="#i-activity" /></svg
-          >Usage<svg class="icon chevron" :class="{ folded: !isOpen('usage') }" aria-hidden="true">
-            <use href="#i-chevron" />
-          </svg>
-        </button>
-      </h3>
-      <div v-show="isOpen('usage')" :id="`${partIds}-usage`" class="part-body">
-        <!-- The warnings' own read: said only when it adds something to the readings below. -->
-        <p
-          v-if="props.limitsRead !== null || props.limit !== null || !readingLines?.length"
-          class="line"
-          :class="{ warn: usage.tone === 'warn' }"
-          :title="usage.title ?? undefined"
-          data-cy="provider-usage-says"
-        >
-          {{ usage.text }}
-        </p>
-        <p v-if="readingLines === null" class="line quiet">Reading…</p>
-        <p
-          v-else-if="readingLines.length === 0"
-          class="line quiet usage-empty"
-          data-cy="provider-usage-none"
-        >
-          Usage is unknown. No reading yet from {{ name }}.
-        </p>
-        <div v-else class="usage-windows">
-          <div v-for="(line, index) in readingLines" :key="line.key" class="usage-window">
-            <svg class="icon" aria-hidden="true"><use href="#i-clock" /></svg>
-            <p class="line" :title="line.title" data-cy="provider-usage-reading">
-              {{ line.text }}
-              <span v-if="line.status" class="quiet" data-cy="provider-usage-unconfirmed">
-                {{ line.status }}
-              </span>
-            </p>
-            <meter
-              v-if="props.readings?.[index]?.usedPercent != null"
-              min="0"
-              max="100"
-              :value="props.readings[index]!.usedPercent!"
-              :aria-label="line.status ? `${line.text} ${line.status}` : line.text"
-              :class="{
-                historical:
-                  props.readings[index]!.unconfirmed === true ||
-                  (props.readings[index]!.resetsAt !== null &&
-                    props.readings[index]!.resetsAt! <= props.clock),
-                ahead: line.time?.ahead,
-              }"
-            />
-            <span v-else class="empty-meter" aria-hidden="true"></span>
-            <template v-if="line.time">
-              <meter
-                class="time-meter"
-                min="0"
-                max="1"
-                :value="line.time.fraction"
-                :aria-label="
-                  line.status
-                    ? `Time gone in this window · ${line.status}`
-                    : 'Time gone in this window'
-                "
-                :aria-valuetext="line.time.words"
-                data-cy="provider-usage-time"
-              />
-              <p class="time-label" data-cy="provider-usage-time-words">{{ line.time.words }}</p>
-              <p
-                v-if="line.time.ahead"
-                class="pace-warning"
-                :title="line.paceTitle"
-                data-cy="provider-usage-ahead"
-              >
-                Usage ahead of time
-              </p>
-            </template>
-          </div>
-        </div>
       </div>
     </section>
 
@@ -2187,16 +2039,16 @@ details[data-cy='provider-version-others'] > summary {
 
 .usage-windows {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: var(--space-5);
+  border: var(--border-width) solid var(--accent-border-weak);
+  border-radius: var(--radius-sm);
+  background: var(--accent-fill-weak);
 }
 .usage-window {
   position: relative;
   min-width: 0;
   padding: var(--space-5) var(--space-6) var(--space-5) var(--space-20);
-  border: var(--border-width) solid var(--accent-border-weak);
-  border-radius: var(--radius-sm);
-  background: var(--accent-fill-weak);
 }
 .usage-window > .icon {
   position: absolute;

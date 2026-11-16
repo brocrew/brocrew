@@ -28,6 +28,7 @@ import { inventoryAsOf, inventorySummary, readInventory } from '../lib/tool-inve
 import { stillThinkingSays } from '../lib/still-thinking'
 import type { ToolRegistry } from '../lib/transcript'
 import AgentState from './AgentState.vue'
+import { useConversationConnectionLabel } from '../composables/useProviderConnections'
 
 /**
  * What this conversation is, and what it is doing right now.
@@ -347,18 +348,10 @@ watch(
  * running"*. ⚑ A tooltip is not the strip; `EXT-010` §1.1 is about two answers a person meets in
  * one glance.
  */
-const providerChip = computed(() => {
-  // Not started yet: the only thing that can be said is which provider it WOULD start on, and
-  // that name is handed in — naming one here would put provider knowledge in the view (072/076).
-  //
-  // ⚠️ **The `· not started` suffix was dropped in 103, and it is a de-duplication rather than a
-  // loss.** 101 measured the launcher saying "not started" three times — this suffix, the plate's
-  // own aria, and the status pill — and ruled: *"the fix de-dupes the WORD, keeps the plate."* The
-  // plate is the single lifecycle signal, and the page's own "New conversation" heading says the
-  // rest. What is left here is the one fact the plate cannot carry: which provider it would be.
-  if (!props.session) return props.defaultProvider ?? ''
-  return props.session.provider
-})
+const providerChip = useConversationConnectionLabel(
+  () => props.session,
+  () => props.defaultProvider,
+)
 
 /** No session yet — this bar is titling the launcher rather than a conversation (101 §9). */
 const unstarted = computed(() => props.session === null)

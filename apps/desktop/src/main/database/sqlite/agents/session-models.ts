@@ -3,7 +3,7 @@ import type { SessionModelsStore } from './store-operations'
 
 export function createSqliteSessionModels(db: AppDatabase, now: () => number): SessionModelsStore {
   const writeModel = db.prepare(
-    `UPDATE provider_session SET model = ?, updated_at = ? WHERE id = ?`,
+    `UPDATE provider_session SET model = ?, connection_id = COALESCE(?, connection_id), updated_at = ? WHERE id = ?`,
   )
   const writeReasoningEffort = db.prepare(
     `UPDATE provider_session SET reasoning_effort = ?, updated_at = ? WHERE id = ?`,
@@ -19,8 +19,8 @@ export function createSqliteSessionModels(db: AppDatabase, now: () => number): S
        FROM provider_session WHERE id = ?`,
   )
   return {
-    setModel(sessionId, model) {
-      writeModel.run(model, now(), sessionId)
+    setModel(sessionId, model, connectionId) {
+      writeModel.run(model, connectionId ?? null, now(), sessionId)
     },
     setReasoningEffort(sessionId, effort) {
       writeReasoningEffort.run(effort, now(), sessionId)

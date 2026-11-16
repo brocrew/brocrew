@@ -1,5 +1,5 @@
 import { createModelLists } from '../lib/provider-launch-fixture'
-import { providerDescriptor } from '@brobot2/shared'
+import { compatibilityConnectionId, providerDescriptor } from '@brobot2/shared'
 import { afterEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, reactive } from 'vue'
 import KeptRules from '../../src/renderer/src/components/KeptRules.vue'
@@ -8,12 +8,13 @@ import ProviderCard from '../../src/renderer/src/components/ProviderCard.vue'
 import { PROVIDER_PARTS, type ProviderPart } from '../../src/renderer/src/lib/provider-parts'
 import { providersBridge } from '../../look/fixtures/providers'
 import { CAPABILITY_FIXTURE } from '../provider-capability-fixture'
-import { mount, unmountAll, type Mounted } from './harness'
+import { mount, unmountAll, visible, type Mounted } from './harness'
 
 /**
  * A part of the Providers screen a person folded opens itself when it has something new to say: an
  * operation's refusal that arrives after the fold, or a warning that arrives while it is folded.
  * Words already seen stay folded if the person folds them again, and a quiet answer stays folded.
+ * Connection login, key and usage details remain visible within their entries without folds.
  * Fictional data and fictional refusals only: no provider, account or key is anybody's.
  */
 
@@ -117,6 +118,19 @@ function shown(m: Mounted, part: ProviderPart): boolean {
   return getComputedStyle(body).display !== 'none'
 }
 
+/** Connection details stay visible inside the compatibility row that owns them. */
+function connectionPart(m: Mounted, part: 'login' | 'key' | 'usage'): HTMLElement {
+  const body = m.q(CY[part])
+  const entry = body.closest('[data-cy="provider-connection"]')
+  expect(entry).not.toBeNull()
+  expect(entry!.querySelector('.meta')?.textContent).toContain(
+    part === 'key' ? 'API key' : 'Sign-in',
+  )
+  expect(visible(body)).toBe(true)
+  expect(body.querySelector('h3 button.fold')).toBeNull()
+  return body
+}
+
 /* ------------------------------------------------------------------ Models */
 
 describe('Models: a refused add or removal that answers after the fold opens it', () => {
@@ -213,8 +227,8 @@ describe('Models: a refused add or removal that answers after the fold opens it'
 
 /* ------------------------------------------------------------------ the other parts */
 
-describe('every other part opens for what it has to say', () => {
-  it('🔴 API key: a refused save after the fold opens it; a save that lands stays folded', async () => {
+describe('connection details stay visible while the remaining parts keep their folds', () => {
+  it('🔴 API key: both a refused save and a saved key stay visible in their entry', async () => {
     for (const refused of [true, false]) {
       providersBridge()
       const answer = deferred<unknown>()
@@ -226,9 +240,10 @@ describe('every other part opens for what it has to say', () => {
       await nextTick()
       field.form!.requestSubmit()
       await nextTick()
-      fold(m, 'key')
+      open.key = false
       await nextTick()
-      expect(open.key).toBe(false)
+      connectionPart(m, 'key')
+      expect(field.value).toBe('')
       answer.resolve({
         provider: 'claude',
         set: !refused,
@@ -239,12 +254,17 @@ describe('every other part opens for what it has to say', () => {
       await settle()
       expect(open.key, `refused: ${String(refused)}`).toBe(refused)
       expect(revealed.includes('key')).toBe(refused)
-      if (refused) expect(m.q('provider-key-said').textContent).toContain('wasn’t saved')
+      connectionPart(m, 'key')
+      const notice = m.q('provider-key-said')
+      expect(visible(notice)).toBe(true)
+      expect(notice.textContent).toContain(
+        refused ? 'wasn’t saved' : 'Key saved for this API-key connection.',
+      )
       unmountAll()
     }
   })
 
-  /** A sign-in from a signed-out card, folded while it is out, answered by `result`. */
+  /** A sign-in from a signed-out card, answered by `result` while its entry stays visible. */
   async function signingIn(result: Record<string, unknown>) {
     providersBridge(true)
     const answer = deferred<unknown>()
@@ -252,16 +272,17 @@ describe('every other part opens for what it has to say', () => {
     const made = await card()
     made.m.q('sign-in-start').click()
     await nextTick()
-    // ⚑ The progress notice ("Finish signing in…") is there, and opened nothing: Login was open.
-    fold(made.m, 'login')
+    made.open.login = false
     await nextTick()
-    expect(made.open.login).toBe(false)
+    connectionPart(made.m, 'login')
+    expect(visible(made.m.q('sign-in-cancel'))).toBe(true)
+    expect(visible(made.m.q('sign-in-notice'))).toBe(true)
     answer.resolve(result)
     await settle()
     return made
   }
 
-  it('🔴 Login: a sign-in that fails after the fold opens it with its words', async () => {
+  it('🔴 a failed sign-in stays visible with its words in the sign-in entry', async () => {
     const { m, open, revealed } = await signingIn({
       success: false,
       state: { state: 'absent', reason: 'No login on this fictional Mac.', why: 'no-login' },
@@ -269,11 +290,12 @@ describe('every other part opens for what it has to say', () => {
     })
     expect(revealed).toContain('login')
     expect(open.login).toBe(true)
-    expect(shown(m, 'login')).toBe(true)
+    connectionPart(m, 'login')
     expect(m.q('provider-status').textContent).toContain('The fictional sign-in did not complete.')
+    expect(visible(m.q('sign-in-notice'))).toBe(true)
   })
 
-  it('⛔ Login: a sign-in that lands after the fold says so quietly, and stays folded', async () => {
+  it('⛔ a completed sign-in stays visible without revealing another part', async () => {
     const { m, open, revealed } = await signingIn({
       success: true,
       state: { state: 'usable', login: 'account', expiresAt: null },
@@ -282,30 +304,38 @@ describe('every other part opens for what it has to say', () => {
     })
     expect(revealed).not.toContain('login')
     expect(open.login).toBe(false)
-    expect(shown(m, 'login')).toBe(false)
-    // ⚑ The notice is there, folded with its part.
-    expect(m.q('provider-status').textContent).toContain('Signed in to Claude.')
+    connectionPart(m, 'login')
+    const entry = connectionPart(m, 'login').closest('[data-cy=provider-connection]')!
+    expect(entry.querySelector('[data-cy=connection-status]')?.textContent).toBe('Ready')
+    expect(m.all('provider-auth-notice')).toHaveLength(0)
   })
 
-  it('🔴 Usage: a warning that arrives while it is folded opens it', async () => {
+  it('🔴 a provider usage-history failure is visible outside the sign-in entry', async () => {
     providersBridge()
     const { m, open, state, revealed } = await card()
-    fold(m, 'usage')
+    open.usage = false
     await nextTick()
+    expect(m.all('provider-usage')).toHaveLength(0)
     state['limitsRead'] = false
     await settle()
     expect(revealed).toContain('usage')
     expect(open.usage).toBe(true)
-    expect(m.q('provider-usage-says').textContent).toContain('couldn’t read usage warnings')
+    expect(m.all('provider-usage')).toHaveLength(0)
+    expect(visible(m.q('provider-usage-overview'))).toBe(true)
+    expect(m.q('provider-usage-overview').textContent).toContain('couldn’t read usage warnings')
+    expect(m.q('provider-usage-overview').closest('[data-cy=provider-connection]')).toBeNull()
+    expect(m.all('provider-usage-says')).toHaveLength(0)
   })
 
-  it('⛔ Usage: a window running ahead of its time is a pace note, and leaves the fold as it is', async () => {
+  it('⛔ a window ahead of time stays visible without revealing another part', async () => {
     providersBridge()
     const { m, open, state, revealed } = await card()
-    fold(m, 'usage')
+    open.usage = false
     await nextTick()
+    expect(m.all('provider-usage')).toHaveLength(0)
     state['readings'] = [
       {
+        connectionId: compatibilityConnectionId('claude', 'sign-in'),
         window: 'five_hour',
         period: { word: '5-hour', durationMs: 5 * HOUR, bucket: false, bucketName: null },
         usedPercent: 90,
@@ -316,8 +346,9 @@ describe('every other part opens for what it has to say', () => {
     await settle()
     expect(revealed).not.toContain('usage')
     expect(open.usage).toBe(false)
-    // ⚑ The control: the note is really there, folded with its part.
+    connectionPart(m, 'usage')
     expect(m.all('provider-usage-ahead')).toHaveLength(1)
+    expect(visible(m.q('provider-usage-ahead'))).toBe(true)
   })
 
   it('🔴 Running now: a sample that could not be measured opens it', async () => {
@@ -347,16 +378,22 @@ describe('every other part opens for what it has to say', () => {
     expect(open.version).toBe(true)
   })
 
-  it('⛔ a warning already seen stays folded when folded again, while another part speaks', async () => {
+  it('⛔ a seen usage warning stays visible while another part speaks', async () => {
     providersBridge()
     const { m, open, state } = await card({ limitsRead: false })
-    fold(m, 'usage')
+    open.usage = false
     await nextTick()
-    expect(open.usage).toBe(false)
+    expect(m.all('provider-usage')).toHaveLength(0)
+    const warning = m.q('provider-usage-overview')
+    expect(visible(warning)).toBe(true)
+    expect(warning.textContent).toContain('couldn’t read usage warnings')
     state['resourcesError'] = 'Something else entirely.'
     await settle()
     expect(open.resources).toBe(true)
-    expect(open.usage, 'the seen usage warning opened again').toBe(false)
+    expect(open.usage, 'the seen usage warning revealed again').toBe(false)
+    expect(m.all('provider-usage')).toHaveLength(0)
+    expect(m.q('provider-usage-overview')).toBe(warning)
+    expect(visible(warning)).toBe(true)
   })
 })
 

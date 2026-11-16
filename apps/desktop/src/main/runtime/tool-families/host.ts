@@ -193,7 +193,7 @@ export interface AgentToolHost {
   judgeTheDefaultItNames(
     me: string,
     named: Provider | null,
-    asked: { readonly model?: string; readonly effort?: string },
+    asked: { readonly model?: string; readonly effort?: string; readonly connectionId?: string },
   ): Promise<
     | { readonly ok: true; readonly chosen: AgentModelChoice }
     | { readonly ok: false; readonly refusal: ModelRefusal }

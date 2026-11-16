@@ -1,5 +1,7 @@
+import { additionalConnectionId } from '@brobot2/shared/provider-connections'
 import type {
   ProviderLaunchChoices,
+  ProviderModelReadInput,
   ProviderReadiness,
   ResolveProviderLaunchInput,
   ResolvedProviderLaunch,
@@ -29,8 +31,9 @@ import type { SessionStore } from './session-store'
  *
  * Use one popover picker wherever a model is chosen: launch form, conversation settings and agent sheet. `modelList` supplies the provider's models followed by models the person added.
  *
- * One catalogue per provider supplies every screen; profile contexts retain only their choices
- * and readiness. Hand-added models are also shared across the provider's screens.
+ * One catalogue per connection supplies its profiles; the built-in modes share the legacy rows.
+ * Profile and mode contexts retain their own choices and readiness. Hand-added models stay shared
+ * across a provider's screens.
  *
  * ## ⚠️ A list read is a probe, and a probe is a LAUNCH
  *
@@ -49,6 +52,7 @@ import type { SessionStore } from './session-store'
 /** ⚑ **What a person picks** — a provider's model and the effort it runs at (`null`: none to name). */
 export interface PickedModel {
   readonly provider: Provider
+  readonly connectionId?: string
   readonly model: string
   readonly effort: string | null
 }
@@ -68,17 +72,25 @@ type HeldContext =
   | { readonly state: 'answered'; readonly list: Omit<ModelList, 'models'> }
 
 export interface ModelLists {
-  /** What is held for one provider's list in one profile — `null`: nobody asked yet. */
-  held(provider: Provider, profileId?: string): HeldList | null
-  choices(provider: Provider, profileId?: string): ProviderLaunchChoices | null
-  readiness(provider: Provider, profileId?: string): ProviderReadiness
+  /** What is held for one connection's list in one profile — `null`: nobody asked yet. */
+  held(provider: Provider, profileId?: string, connectionId?: string): HeldList | null
+  choices(
+    provider: Provider,
+    profileId?: string,
+    connectionId?: string,
+  ): ProviderLaunchChoices | null
+  readiness(provider: Provider, profileId?: string, connectionId?: string): ProviderReadiness
   resolve(input: ResolveProviderLaunchInput): Promise<ResolvedProviderLaunch>
   /**
    * Read one list. ⚑ Joins a read already out, and never re-asks a list the provider answered.
    * `once` (a screen warming up) re-asks nothing already held; without it (a person opening the
    * picker) a failed list is asked again.
    */
-  read(provider: Provider, profileId?: string, options?: { readonly once?: boolean }): Promise<void>
+  read(
+    provider: Provider,
+    profileId?: string,
+    options?: { readonly once?: boolean; readonly connectionId?: string },
+  ): Promise<void>
   /**
    * ⚑ **The agents subject moved** — a last pick, a default or a hand-added model: every list the
    * provider ANSWERED is read again (the host's memo answers it with no child). ⛔ A failing one is
@@ -108,38 +120,48 @@ type ListDoors = Pick<
  */
 export function createModelLists(bridge: () => ListDoors): ModelLists {
   const lists = shallowRef<Readonly<Record<string, HeldContext>>>({})
-  const catalogues = shallowRef<Partial<Record<Provider, Pick<ModelList, 'models' | 'notAsked'>>>>(
+  const catalogues = shallowRef<Readonly<Record<string, Pick<ModelList, 'models' | 'notAsked'>>>>(
     {},
   )
   const choices = new Map<string, Omit<ProviderLaunchChoices, 'list'>>()
-  const asked = new Map<string, { readonly provider: Provider; readonly profileId?: string }>()
+  const asked = new Map<string, ProviderModelReadInput>()
   const inFlight = new Map<string, Promise<void>>()
   // A sign-in change retires outstanding responses for the shared catalogue.
-  const tickets = new Map<Provider, number>()
+  const tickets = new Map<string, number>()
 
   const profileOf = (profileId: string | undefined): string => profileId ?? DEFAULT_PROFILE_ID
-  const keyOf = (provider: Provider, profileId: string | undefined): string =>
-    `${provider}:${profileOf(profileId)}`
+  const keyOf = (
+    provider: Provider,
+    profileId: string | undefined,
+    connectionId?: string,
+  ): string =>
+    connectionId === undefined
+      ? `${provider}:${profileOf(profileId)}`
+      : JSON.stringify([provider, profileOf(profileId), connectionId])
+  const catalogueKey = (provider: Provider, connectionId?: string): string => {
+    const own = additionalConnectionId(provider, connectionId)
+    return own === undefined ? provider : JSON.stringify([provider, own])
+  }
 
-  function put(key: string, next: HeldList): void {
+  function put(key: string, next: HeldList, scope: string): void {
     if (next.state !== 'answered') {
       lists.value = { ...lists.value, [key]: next }
       return
     }
     const { models, ...list } = next.list
-    if (list.notAsked?.reason !== 'no-profile' || catalogues.value[list.provider] === undefined) {
+    if (list.notAsked?.reason !== 'no-profile' || catalogues.value[scope] === undefined) {
       catalogues.value = {
         ...catalogues.value,
-        [list.provider]: { models, notAsked: list.notAsked },
+        [scope]: { models, notAsked: list.notAsked },
       }
     }
     lists.value = { ...lists.value, [key]: { state: 'answered', list } }
   }
 
-  function heldFor(provider: Provider, profileId?: string): HeldList | null {
-    const context = lists.value[keyOf(provider, profileId)]
+  function heldFor(provider: Provider, profileId?: string, connectionId?: string): HeldList | null {
+    const context = lists.value[keyOf(provider, profileId, connectionId)]
     if (context?.state !== 'answered') return context ?? null
-    const catalogue = catalogues.value[provider]!
+    const catalogue = catalogues.value[catalogueKey(provider, connectionId)]!
     const list = { ...context.list, ...catalogue }
     if (context.list.notAsked?.reason === 'no-profile') {
       list.notAsked = context.list.notAsked
@@ -148,30 +170,40 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
     return { state: 'answered', list }
   }
 
-  function ask(provider: Provider, profileId: string | undefined): Promise<void> {
-    const key = keyOf(provider, profileId)
+  function ask(
+    provider: Provider,
+    profileId: string | undefined,
+    connectionId?: string,
+  ): Promise<void> {
+    const key = keyOf(provider, profileId, connectionId)
     const running = inFlight.get(key)
     if (running !== undefined) return running
-    const ticket = tickets.get(provider) ?? 0
-    const ours = (): boolean => (tickets.get(provider) ?? 0) === ticket
-    asked.set(key, profileId === undefined ? { provider } : { provider, profileId })
+    const scope = catalogueKey(provider, connectionId)
+    const ticket = tickets.get(scope) ?? 0
+    const ours = (): boolean => (tickets.get(scope) ?? 0) === ticket
+    asked.set(key, {
+      provider,
+      ...(profileId === undefined ? {} : { profileId }),
+      ...(connectionId === undefined ? {} : { connectionId }),
+    })
     // ⚑ An answer stays on screen while it is asked again; only nothing, or a failure, says *asking*.
-    if (lists.value[key]?.state !== 'answered') put(key, { state: 'asking' })
+    if (lists.value[key]?.state !== 'answered') put(key, { state: 'asking' }, scope)
     const read = async (): Promise<void> => {
       try {
         const resolved = await bridge().providerLaunchChoices({
           provider,
           ...(profileId === undefined ? {} : { profileId }),
+          ...(connectionId === undefined ? {} : { connectionId }),
         })
         if (ours()) {
           const { list, ...facts } = resolved
           choices.set(key, facts)
-          put(key, { state: 'answered', list })
+          put(key, { state: 'answered', list }, scope)
         }
       } catch (error) {
         // ⛔ A failed re-read keeps the answer it had (`refreshProfiles`' rule).
         if (ours() && lists.value[key]?.state !== 'answered') {
-          put(key, { state: 'unread', why: readableError(error) })
+          put(key, { state: 'unread', why: readableError(error) }, scope)
         }
       }
     }
@@ -183,9 +215,13 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
   }
 
   /** ⚑ Asked again AFTER a read already out, so an answer from before a write is not the last word. */
-  async function askAfresh(provider: Provider, profileId: string | undefined): Promise<void> {
-    await inFlight.get(keyOf(provider, profileId))
-    await ask(provider, profileId)
+  async function askAfresh(
+    provider: Provider,
+    profileId: string | undefined,
+    connectionId?: string,
+  ): Promise<void> {
+    await inFlight.get(keyOf(provider, profileId, connectionId))
+    await ask(provider, profileId, connectionId)
   }
 
   /** ⚑ Every held list of one provider, read again — hand-added models are per provider. */
@@ -193,16 +229,16 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
     await Promise.all(
       [...asked.values()]
         .filter((parts) => parts.provider === provider)
-        .map((parts) => askAfresh(parts.provider, parts.profileId)),
+        .map((parts) => askAfresh(parts.provider, parts.profileId, parts.connectionId)),
     )
   }
 
   return {
-    held(provider, profileId) {
-      return heldFor(provider, profileId)
+    held(provider, profileId, connectionId) {
+      return heldFor(provider, profileId, connectionId)
     },
-    readiness(provider, profileId) {
-      const key = keyOf(provider, profileId)
+    readiness(provider, profileId, connectionId) {
+      const key = keyOf(provider, profileId, connectionId)
       const held = lists.value[key]
       if (held === undefined || held.state === 'asking') return { state: 'pending' }
       if (held.state === 'unread') return { state: 'settled', ready: null, reason: held.why }
@@ -212,36 +248,41 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
     resolve(input) {
       return bridge().resolveProviderLaunch(input)
     },
-    choices(provider, profileId) {
-      const key = keyOf(provider, profileId)
-      const held = heldFor(provider, profileId)
+    choices(provider, profileId, connectionId) {
+      const key = keyOf(provider, profileId, connectionId)
+      const held = heldFor(provider, profileId, connectionId)
       const facts = choices.get(key)
       return held?.state === 'answered' && facts !== undefined
         ? { ...facts, list: held.list }
         : null
     },
     read(provider, profileId, options) {
-      const key = keyOf(provider, profileId)
+      const connectionId = options?.connectionId
+      const key = keyOf(provider, profileId, connectionId)
       const running = inFlight.get(key)
       if (running !== undefined) return running
-      const now = heldFor(provider, profileId)
+      const now = heldFor(provider, profileId, connectionId)
       if (now?.state === 'answered' && now.list.notAsked === null) return Promise.resolve()
       if (options?.once === true && now !== null) return Promise.resolve()
-      return ask(provider, profileId)
+      return ask(provider, profileId, connectionId)
     },
     async reread() {
       await Promise.all(
         [...asked.values()]
-          .filter(({ provider, profileId }) => {
-            const held = heldFor(provider, profileId)
+          .filter(({ provider, profileId, connectionId }) => {
+            const held = heldFor(provider, profileId, connectionId)
             return held?.state === 'answered' && held.list.notAsked === null
           })
-          .map(({ provider, profileId }) => askAfresh(provider, profileId)),
+          .map(({ provider, profileId, connectionId }) =>
+            askAfresh(provider, profileId, connectionId),
+          ),
       )
     },
     forget(profileId) {
-      for (const provider of new Set([...asked.values()].map((parts) => parts.provider))) {
-        tickets.set(provider, (tickets.get(provider) ?? 0) + 1)
+      for (const scope of new Set(
+        [...asked.values()].map((parts) => catalogueKey(parts.provider, parts.connectionId)),
+      )) {
+        tickets.set(scope, (tickets.get(scope) ?? 0) + 1)
       }
       inFlight.clear()
       const next = { ...lists.value }
@@ -401,14 +442,20 @@ export async function pickInAConversation(
   sessionId: string,
   pick: PickedModel,
 ): Promise<WhatAPickBecame | null | undefined> {
-  const became = await store.setSessionSetting(sessionId, { kind: 'model', value: pick.model })
+  const became = await store.setSessionSetting(sessionId, {
+    kind: 'model',
+    value: pick.model,
+    ...(pick.connectionId === undefined ? {} : { connectionId: pick.connectionId }),
+  })
   const record = store.get(sessionId)
   if (record === null || record.error !== null || pick.effort === null) return became
   const settings = record.meta?.settings
   const holds =
-    settings?.pendingReasoningEffort != null
-      ? (settings.pendingReasoningEffort.value ?? null)
-      : (settings?.reasoningEffort ?? null)
+    settings?.nextConnection !== undefined
+      ? settings.nextConnection.effort
+      : settings?.pendingReasoningEffort != null
+        ? (settings.pendingReasoningEffort.value ?? null)
+        : (settings?.reasoningEffort ?? null)
   if (holds === pick.effort) return became
   const effort = { kind: 'reasoningEffort', value: pick.effort } as const
   const then = await store.setSessionSetting(sessionId, effort)
