@@ -38,19 +38,26 @@ const AWAKE_STEP_MS = 100
 /**
  * Calls `expire` once this process has run for about `ms` while waiting. A frozen main thread
  * spends none of it: Node fires a late interval once rather than once per missed step, and each
- * step leaves the event loop a turn to read what the other side has already sent. So a busy
- * workspace never blames another for its own freeze. Returns a function that cancels the deadline.
+ * step leaves the event loop a turn to read what the other side has already sent. The last step
+ * fails only after one more turn, because timers run before pending reads when a freeze ends. So a
+ * busy workspace never blames another for its own freeze. Returns a function that cancels it.
  */
 function awakeDeadline(ms: number, expire: () => void): () => void {
   let left = Math.ceil(ms / AWAKE_STEP_MS)
+  let waiting = true
   const timer = setInterval(() => {
     left -= 1
     if (left > 0) return
     clearInterval(timer)
-    expire()
+    setImmediate(() => {
+      if (waiting) expire()
+    })
   }, AWAKE_STEP_MS)
   timer.unref()
-  return () => clearInterval(timer)
+  return () => {
+    waiting = false
+    clearInterval(timer)
+  }
 }
 
 /** Presence listeners are held for the process lifetime without keeping it alive. */

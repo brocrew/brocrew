@@ -46,7 +46,7 @@ describe.skipIf(process.platform === 'win32')('a gate whose answer is slow', () 
 
   it('gives up within six seconds when a listener never answers, leaving its socket alone', async () => {
     await listening()
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'setImmediate', 'clearImmediate'] })
     const connected = new Promise<void>((resolve) => server.once('connection', () => resolve()))
     let verdict: string | undefined
     const answer = whoIsOn(dir, 'darwin').then((heard) => {

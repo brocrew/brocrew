@@ -29,6 +29,8 @@ interface WorkspaceUpdateDeps {
   prepare(): Promise<void>
   /** Start this workspace again on the version it runs, once preparation has closed it down. */
   reopen(): void
+  /** Tell the person this workspace stopped its agents for an update another workspace ended. */
+  stayStopped(): void
   remember(version: string, folders: readonly string[]): void
   report(error: unknown): void
   quit(): void
@@ -49,6 +51,8 @@ export function workspaceUpdate(deps: WorkspaceUpdateDeps) {
   let installRequested = false
   /** Preparation began here: its teardown closes sessions and the database for good. */
   let stopped = false
+  /** The person asked for the update here, so this workspace reports its failure itself. */
+  let asked = false
 
   const quit = (): void => {
     if (quitChosen) return
@@ -87,8 +91,9 @@ export function workspaceUpdate(deps: WorkspaceUpdateDeps) {
     }
     if (request.kind === 'cancel') {
       owner = null
-      // A workspace with the update ready installs it as it exits, so it stays as it is.
+      // A workspace with the update ready installs it as it exits, so it cannot reopen.
       if (stopped && !deps.ready()) deps.reopen()
+      else if (stopped && !asked) deps.stayStopped()
       return
     }
     owner = request.owner
@@ -114,14 +119,16 @@ export function workspaceUpdate(deps: WorkspaceUpdateDeps) {
       throw new Error('The workspace with the downloaded update could not be reached')
     }
     try {
-      // The installer stops last, so a failure before it leaves the workspace showing the update
-      // untouched, and every other workspace that stopped can reopen.
-      await Promise.all(
-        peers
-          .filter((peer) => !same(peer, chosen))
-          .map((peer) => call(peer, { kind: 'prepare', owner: deps.self })),
-      )
-      await call(chosen, { kind: 'prepare', owner: deps.self })
+      // A workspace with the update ready cannot reopen after a failure, so those stop last and
+      // the installer last of all: a failure before them leaves them untouched.
+      const others = peers.filter((peer) => !same(peer, chosen))
+      for (const group of [
+        others.filter((peer) => !peer.ready),
+        others.filter((peer) => peer.ready),
+        [chosen],
+      ]) {
+        await Promise.all(group.map((peer) => call(peer, { kind: 'prepare', owner: deps.self })))
+      }
       const folders = [
         chosen.folder,
         ...peers.filter((peer) => !same(peer, chosen)).map((peer) => peer.folder),
@@ -165,6 +172,7 @@ export function workspaceUpdate(deps: WorkspaceUpdateDeps) {
     receive,
     plan: participants,
     restart: async (version: string): Promise<void> => {
+      asked = true
       const peers = await participants()
       const active = peers.find((peer) => peer.owner !== null)?.owner
       if (active && peers.some((peer) => peer.owner !== null && !same(peer.owner, active))) {

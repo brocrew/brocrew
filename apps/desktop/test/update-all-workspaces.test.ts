@@ -57,6 +57,7 @@ function cluster(held = false, ownerReady = false) {
       },
       install: () => journal.push(`native install ${i}`),
       reopen: () => journal.push(`reopen ${i}`),
+      stayStopped: () => journal.push(`stays stopped ${i}`),
     })
     actors.set(folder, actor)
   }
@@ -91,8 +92,10 @@ it('waits for all three durable preparations with the installer last, then insta
   const c = cluster(true)
   const updating = c.first.restart('0.2.24')
   for (let tick = 0; tick < 12; tick += 1) await Promise.resolve()
-  expect(c.journal.filter((step) => step.startsWith('prepare'))).toEqual(['prepare 0', 'prepare 2'])
+  expect(c.journal.filter((step) => step.startsWith('prepare'))).toEqual(['prepare 0'])
   c.saves.get('/workspace-0')!()
+  for (let tick = 0; tick < 12; tick += 1) await Promise.resolve()
+  expect(c.journal.filter((step) => step.startsWith('prepare'))).toEqual(['prepare 0', 'prepare 2'])
   c.saves.get('/workspace-2')!()
   for (let tick = 0; tick < 12; tick += 1) await Promise.resolve()
   expect(c.journal.filter((step) => step.startsWith('prepare'))).toHaveLength(3)
@@ -152,11 +155,21 @@ it('a workspace that does not answer stops the update before the installer stops
   expect([...c.actors.values()].some((actor) => actor.holdsQuit())).toBe(false)
 })
 
-it('when the installer itself fails to stop, the others reopen and it says it has stopped', async () => {
+it('a failure among the workspaces that can reopen leaves every ready workspace untouched', async () => {
+  const c = cluster()
+  c.failures.add('/workspace-0')
+  await expect(c.first.restart('0.2.24')).rejects.toThrow('disk full')
+  expect(c.journal.filter((step) => step.startsWith('prepare'))).toEqual(['prepare 0'])
+  expect(c.journal.filter((step) => step.startsWith('reopen'))).toEqual(['reopen 0'])
+  expect(c.journal.some((step) => step.startsWith('stays stopped'))).toBe(false)
+})
+
+it('when the installer itself fails to stop, the others reopen or say they stopped, and so does it', async () => {
   const c = cluster()
   c.failures.add('/workspace-1')
   await expect(c.first.restart('0.2.24')).rejects.toThrow('disk full')
   expect(c.journal.filter((step) => step.startsWith('reopen'))).toEqual(['reopen 0'])
+  expect(c.journal.filter((step) => step.startsWith('stays stopped'))).toEqual(['stays stopped 2'])
   expect(c.journal.some((step) => step.startsWith('quit') || step.includes('native'))).toBe(false)
   expect(c.first.stoppedWithoutUpdate()).toBe(true)
 })

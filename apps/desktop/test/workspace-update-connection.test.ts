@@ -115,8 +115,15 @@ function freeze(ms: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
 }
 
-/** A workspace in its own process, so it keeps running while this one is frozen. */
-async function workspaceElsewhere(peer: UpdateWorkspace, outside: { folder: string }) {
+/**
+ * A workspace in its own process, so it keeps running while this one is frozen. It says who it is
+ * `answerAfterMs` after each connection.
+ */
+async function workspaceElsewhere(
+  peer: UpdateWorkspace,
+  outside: { folder: string },
+  answerAfterMs = 0,
+) {
   const child = spawn(
     process.execPath,
     [
@@ -125,15 +132,19 @@ async function workspaceElsewhere(peer: UpdateWorkspace, outside: { folder: stri
       '--input-type=module',
       '--eval',
       `const { publishWorkspacePresence } = await import(${JSON.stringify(GATE)})
-const [peer, outside] = process.argv.slice(1).map((value) => JSON.parse(value))
+const [peer, outside, answerAfterMs] = process.argv.slice(1).map((value) => JSON.parse(value))
 await publishWorkspacePresence(peer.folder, process.platform, outside, {
-  details: () => ({ ...peer, pid: process.pid }),
+  details: () => {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, answerAfterMs)
+    return { ...peer, pid: process.pid }
+  },
   receive: async () => void process.stdout.write('received\\n'),
 })
 process.stdout.write('listening\\n')
 process.stdin.resume()`,
       JSON.stringify(peer),
       JSON.stringify(outside),
+      JSON.stringify(answerAfterMs),
     ],
     {
       env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined },
@@ -163,6 +174,21 @@ it('a 2 s freeze of the updating workspace during the handshake does not fail th
     outside,
   )
   freeze(2_000)
+  await expect(pending).resolves.toBeUndefined()
+  await vi.waitFor(() => expect(elsewhere.said()).toContain('received'))
+}, 30_000)
+
+it('a freeze just before the deadline does not fail a reply that arrived during it', async () => {
+  const { peer, outside } = fixture()
+  const elsewhere = await workspaceElsewhere(peer, outside, 1_480)
+  const pending = requestWorkspaceUpdate(
+    elsewhere,
+    { kind: 'prepare', owner: peer },
+    process.platform,
+    outside,
+  )
+  await new Promise((resolve) => setTimeout(resolve, 1_460))
+  freeze(1_000)
   await expect(pending).resolves.toBeUndefined()
   await vi.waitFor(() => expect(elsewhere.said()).toContain('received'))
 }, 30_000)

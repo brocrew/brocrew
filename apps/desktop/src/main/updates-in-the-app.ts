@@ -31,6 +31,9 @@ import {
 
 declare const __BROCREW_RELEASE_BUILD__: boolean | undefined
 
+const STOPPED_FOR_NOTHING =
+  'This workspace has stopped its agents. Quit BroCrew and open it again to start them.'
+
 const NOBODY_IN_PARTICULAR = { 'x-user-staging-id': '00000000-0000-0000-0000-000000000000' }
 
 export function startUpdates(options: {
@@ -152,6 +155,14 @@ export function startUpdates(options: {
         app.relaunch()
         app.quit()
       }),
+    stayStopped: () => {
+      if (options.hidden) return
+      void dialog.showMessageBox({
+        type: 'warning',
+        message: 'BroCrew did not update',
+        detail: `${STOPPED_FOR_NOTHING} Quitting it installs the update this workspace downloaded.`,
+      })
+    },
     remember: (version, folders) =>
       rememberUpdateWorkspaces(settings.file, { executable: process.execPath, version, folders }),
     report: (error) => console.error('BroCrew update could not confirm a workspace reply:', error),
@@ -301,9 +312,7 @@ export function startUpdates(options: {
       if (!options.hidden)
         dialog.showErrorBox(
           'BroCrew could not update',
-          workspaceUpdates.stoppedWithoutUpdate()
-            ? `${reason}\n\nThis workspace has stopped its agents. Quit BroCrew and open it again to start them.`
-            : reason,
+          workspaceUpdates.stoppedWithoutUpdate() ? `${reason}\n\n${STOPPED_FOR_NOTHING}` : reason,
         )
       throw error
     }
