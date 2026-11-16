@@ -213,7 +213,7 @@ export function createPluginStartupTrace(now = () => performance.now()) {
   const launch = new Date().toISOString(),
     began = now()
   let ordinal = 0
-  const active = new Set<(error?: unknown) => void>()
+  const active = new Map<(error?: unknown) => void, 'startup' | 'plugin-startup'>()
   const mark = (
     phase: string,
     state: string,
@@ -245,11 +245,16 @@ export function createPluginStartupTrace(now = () => performance.now()) {
         ended = true
         active.delete(finish)
       }
-      active.add(finish)
+      active.set(finish, part)
       return finish
     },
-    failure(phase: string, error?: unknown) {
-      for (const finish of active) finish(error ?? phase)
+    failure(
+      phase: string,
+      error?: unknown,
+      part: 'startup' | 'plugin-startup' | 'all' = 'plugin-startup',
+    ) {
+      for (const [finish, pendingPart] of active)
+        if (part === 'all' || pendingPart === part) finish(error ?? phase)
       let stderr = ''
       for (let cause = error, depth = 0; depth < 6 && cause && typeof cause === 'object'; depth++) {
         if (cause instanceof PluginSupervisorLaunchFailure) {
@@ -262,6 +267,9 @@ export function createPluginStartupTrace(now = () => performance.now()) {
       mark(
         phase,
         `failure ${diagnostic ? pluginStartupDiagnosticNotice(diagnostic) : ''} ${phase === 'catalogue-response' ? pluginFailureCause(error) : ''}${stderr ? `\n${stderr}` : ''}`,
+        ordinal,
+        0,
+        part === 'all' ? 'startup' : part,
       )
     },
   }

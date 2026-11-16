@@ -336,3 +336,48 @@ it('a logger failure cannot fail a startup phase or its completion', () => {
   const trace = createPluginStartupTrace()
   expect(() => trace.begin('database-migration', 'startup')()).not.toThrow()
 })
+
+it('a plugin failure leaves a pending first list open until its actual completion', async () => {
+  const captured = await capture()
+  let now = 100
+  const trace = createPluginStartupTrace(() => now)
+  const firstList = trace.begin('first-list', 'startup')
+  const plugin = trace.begin('catalogue')
+  now = 140
+  trace.failure('service-start', new Error('fictional plugin failure'))
+  plugin()
+  await vi.waitFor(async () => expect(await captured.text()).toContain('service-start failure'))
+  let written = await captured.text()
+  expect(written).toMatch(/catalogue failure.*ms: 40/)
+  expect(written).not.toMatch(/first-list (end|failure)/)
+
+  now = 250
+  firstList()
+  firstList()
+  await vi.waitFor(async () => expect(await captured.text()).toContain('first-list end'))
+  written = await captured.text()
+  expect(written.match(/first-list end/g)).toHaveLength(1)
+  expect(written).toMatch(/\[info\] \(startup\) first-list end.*ms: 150/)
+  expect(written).not.toContain('first-list failure')
+  expect(written.match(/catalogue failure/g)).toHaveLength(1)
+})
+
+it('an explicit app startup failure ends both parts once at their own elapsed time', async () => {
+  const captured = await capture()
+  let now = 10
+  const trace = createPluginStartupTrace(() => now)
+  const firstList = trace.begin('first-list', 'startup')
+  now = 20
+  const plugin = trace.begin('catalogue')
+  now = 50
+  trace.failure('app-startup', new Error('fictional app failure'), 'all')
+  firstList()
+  plugin()
+  await vi.waitFor(async () => expect(await captured.text()).toContain('app-startup failure'))
+  const written = await captured.text()
+  expect(written.match(/first-list failure/g)).toHaveLength(1)
+  expect(written).toMatch(/\[info\] \(startup\) first-list failure.*ms: 40/)
+  expect(written.match(/catalogue failure/g)).toHaveLength(1)
+  expect(written).toMatch(/\[warn\] \(plugin-startup\) catalogue failure.*ms: 30/)
+  expect(written).not.toMatch(/(first-list|catalogue) end/)
+})

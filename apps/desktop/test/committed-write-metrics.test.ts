@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import {
   committedChangesOf,
@@ -10,6 +10,7 @@ import Database from 'better-sqlite3'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { createDatabaseWriteLog, type DatabaseWriteSummary } from '../src/main/logging/log'
 
 let db: AppDatabase
 let seen: { write: CommittedWrite; tables: string[]; inTransaction: boolean }[]
@@ -73,6 +74,69 @@ it('discards rolled-back savepoint counts and publishes nothing on outer rollbac
     })(),
   ).toThrow(failure)
   expect(seen).toHaveLength(1)
+})
+
+it('times outer and autocommit spans exactly, excludes listeners, and aggregates those durations', () => {
+  let clock = 100
+  const time = vi.spyOn(performance, 'now').mockImplementation(() => clock)
+  const summaries: DatabaseWriteSummary[] = []
+  const logger = createDatabaseWriteLog(
+    (line) => summaries.push(line),
+    () => clock,
+  )
+  const recorder = committedChangesOf(db)
+  const stop = recorder.listen((change) => {
+    if (!change.resync && change.write) {
+      logger.record(change.write, change.tables)
+      clock += 500
+    }
+  })
+  try {
+    db.function('advance_metric_clock', (ms: unknown) => {
+      clock += Number(ms)
+      return 0
+    })
+    const timedInsert = db.prepare(
+      "INSERT INTO metrics_fixture SELECT ?, 'fictional value' WHERE advance_metric_clock(?) = 0",
+    )
+    recorder.withWriter('store.batch', () =>
+      db.transaction(() => {
+        clock += 3
+        timedInsert.run(1, 11)
+        db.transaction(() => timedInsert.run(2, 13))()
+        clock += 7
+      })(),
+    )
+    recorder.withWriter('store.batch', () => timedInsert.run(3, 9))
+    expect(seen.map((one) => one.write.ms)).toEqual([34, 9])
+    expect(seen.map((one) => one.write.rows)).toEqual([2, 1])
+    logger.flush()
+    expect(summaries).toEqual([
+      {
+        component: 'store.batch',
+        tables: ['metrics_fixture'],
+        transactions: 2,
+        rows: 3,
+        ms: 43,
+        longestMs: 34,
+        periodMs: 1043,
+      },
+    ])
+
+    expect(() =>
+      db.transaction(() => {
+        timedInsert.run(4, 200)
+        throw new Error('fictional timed rollback')
+      })(),
+    ).toThrow('fictional timed rollback')
+    expect(seen.map((one) => one.write.ms)).toEqual([34, 9])
+    logger.flush()
+    expect(summaries).toHaveLength(1)
+  } finally {
+    stop()
+    logger.stop()
+    time.mockRestore()
+  }
 })
 
 it('counts direct autocommit changes, zero changes and trigger effects honestly', () => {

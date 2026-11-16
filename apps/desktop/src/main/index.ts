@@ -2251,7 +2251,7 @@ function start(ownership: HostGateVerdict): void {
       if (firstListAcceptedAt !== undefined) eventRetention.firstListAccepted(firstListAcceptedAt)
     })
     .catch((error: unknown) => {
-      pluginStartupTrace.failure('app-startup', error)
+      pluginStartupTrace.failure('app-startup', error, 'all')
       void endAFailedStart(error, ownership)
     })
 }
