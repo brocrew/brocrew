@@ -108,7 +108,7 @@ async function startup(
     stores: ThemeStore[] = []
   let databaseStarts = 0
   const begin = index.indexOf(
-    "      let finishStartupPhase = pluginStartupTrace.begin('workspace-recovery')",
+    "      let finishStartupPhase = pluginStartupTrace.begin('workspace-recovery', 'startup')",
   )
   const endLine = '      host = await createRuntimeHost(initDatabase())\n      finishStartupPhase()'
   const end = index.indexOf(endLine, begin) + endLine.length
@@ -213,7 +213,7 @@ async function startup(
     ['theRecoveryService', 'theVerdictBeforeTheData', 'endAFailedStart']
       .map(declaration)
       .join('\n') +
-    `\n(async () => { const ownership = 'unknown'; try { ${index.slice(begin, end)} } catch(error) { pluginStartupTrace.failure('app-startup', error); await endAFailedStart(error, ownership) } })()`
+    `\n(async () => { const ownership = 'unknown'; try { ${index.slice(begin, end)} } catch(error) { pluginStartupTrace.failure('app-startup', error, 'all'); await endAFailedStart(error, ownership) } })()`
   try {
     await runInNewContext(
       ts.transpileModule(code, {

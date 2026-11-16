@@ -44,6 +44,13 @@ export function committedRowOf(
 /** Why a session changed as a whole, without a row each. */
 export type WholeChange = 'imported' | 'promoted' | 'deleted' | 'listing'
 
+export interface CommittedWrite {
+  readonly component: string
+  /** Direct native statement changes, excluding trigger and cascade counts. */
+  readonly rows: number
+  readonly ms: number
+}
+
 /** One outermost commit that wrote something persistent. */
 interface CommittedChange {
   readonly commit: number
@@ -59,6 +66,7 @@ interface CommittedChange {
   readonly tables: ReadonlySet<string>
   /** Those of {@link tables} written outside a staged scope, which a reader of what is shown sees. */
   readonly visibleTables: ReadonlySet<string>
+  readonly write?: CommittedWrite
 }
 
 /** What was committed can't be told: every reader starts again. */
@@ -72,6 +80,8 @@ export type Committed = CommittedChange | CommittedResync
 export interface CommittedChanges {
   /** Calls `listener` once per outermost commit, in commit order, after the commit. */
   listen(listener: (change: Committed) => void): () => void
+  /** Names only this synchronous call; promise continuations keep no writer scope. */
+  withWriter<T>(component: string, write: () => T): T
   /** The rows a store door appends, recorded into the change of the commit that holds them. */
   appended(row: CommittedRow): void
   whole(session: string, why: WholeChange): void
@@ -95,6 +105,9 @@ interface Frame {
   tables: Set<string>
   visibleTables: Set<string>
   poisoned: boolean
+  affectedRows: number
+  component: string
+  started: number
 }
 
 const frame = (): Frame => ({
@@ -106,6 +119,9 @@ const frame = (): Frame => ({
   tables: new Set(),
   visibleTables: new Set(),
   poisoned: false,
+  affectedRows: 0,
+  component: 'database.direct',
+  started: 0,
 })
 
 const RECORDER = Symbol('committed changes')
@@ -143,6 +159,7 @@ export function committedChangesOf(db: AppDatabase): CommittedChanges {
     // A read-only connection never commits: nothing is patched, and nothing is published.
     const reader: CommittedChanges = {
       listen: () => () => undefined,
+      withWriter: (_component, write) => write(),
       appended: () => undefined,
       whole: () => undefined,
       staged: () => undefined,
@@ -162,6 +179,7 @@ export function committedChangesOf(db: AppDatabase): CommittedChanges {
   let commit = 0
   let wholeDepth = 0
   let stagedDepth = 0
+  let writer = 'database.direct'
   let seen: number | null = null
   const dataVersion = (): number | null => {
     try {
@@ -211,6 +229,11 @@ export function committedChangesOf(db: AppDatabase): CommittedChanges {
         kept: done.kept,
         tables: done.tables,
         visibleTables: done.visibleTables,
+        write: {
+          component: done.component,
+          rows: done.affectedRows,
+          ms: performance.now() - done.started,
+        },
       })
     } else return
     drain()
@@ -226,11 +249,14 @@ export function committedChangesOf(db: AppDatabase): CommittedChanges {
     for (const table of done.tables) into.tables.add(table)
     for (const table of done.visibleTables) into.visibleTables.add(table)
     into.poisoned ||= done.poisoned
+    into.affectedRows += done.affectedRows
   }
 
   /** Runs one transaction call inside its frame. */
   const framed = <T>(call: () => T): T => {
     const own = frame()
+    own.component = writer
+    if (frames.length === 0) own.started = performance.now()
     frames.push(own)
     let result: T
     try {
@@ -301,6 +327,8 @@ export function committedChangesOf(db: AppDatabase): CommittedChanges {
         configurable: true,
         writable: true,
         value: (...args: unknown[]) => {
+          const started = frames.length === 0 ? performance.now() : 0
+          const component = writer
           const result = run(...args)
           if (result.changes === 0) return result
           const current = frames.at(-1)
@@ -308,10 +336,14 @@ export function committedChangesOf(db: AppDatabase): CommittedChanges {
           const visible = stagedDepth === 0 && !DERIVED_TABLES.has(table)
           const written = [table, ...alsoWritten]
           if (current !== undefined) {
+            current.affectedRows += result.changes
             for (const one of written) current.tables.add(one)
             if (visible) current.visibleTables.add(table)
           } else if (!db.inTransaction) {
             const alone = frame()
+            alone.component = component
+            alone.started = started
+            alone.affectedRows = result.changes
             for (const one of written) alone.tables.add(one)
             if (visible) alone.visibleTables.add(table)
             publish(alone)
@@ -324,6 +356,15 @@ export function committedChangesOf(db: AppDatabase): CommittedChanges {
   })
 
   const recorder: CommittedChanges = {
+    withWriter(component, write) {
+      const before = writer
+      writer = component
+      try {
+        return write()
+      } finally {
+        writer = before
+      }
+    },
     listen(listener) {
       listeners.add(listener)
       if (seen === null) seen = dataVersion()

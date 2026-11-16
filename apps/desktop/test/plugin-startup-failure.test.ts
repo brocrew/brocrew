@@ -20,6 +20,7 @@ import {
 import { PluginSupervisorError } from '../src/main/plugins/supervisor/protocol'
 import { randomUUID } from 'node:crypto'
 import { captureLog } from './lib/log-file'
+import log from 'electron-log'
 const captures: Awaited<ReturnType<typeof captureLog>>[] = []
 async function capture() {
   const one = await captureLog()
@@ -306,4 +307,79 @@ it('logs pre-controller time, nested phases and failures across retries', async 
   expect(log).toMatch(/ready end.*attempt: 2/)
   expect(log).toContain('Exit code 1')
   expect(log).toContain('Error: missing module')
+})
+
+it('reports startup phase-local time and failure at info without ending a phase twice', async () => {
+  const captured = await capture()
+  let now = 100
+  const trace = createPluginStartupTrace(() => now)
+  const recovery = trace.begin('workspace-recovery', 'startup')
+  now = 120
+  const migration = trace.begin('database-migration', 'startup')
+  now = 125
+  recovery()
+  now = 130
+  migration(new Error('fictional migration failure'))
+  migration()
+  const lines = await captured.lines(4)
+  expect(lines).toHaveLength(4)
+  expect(lines[0]).toMatch(/\[info\][ \t]+\(startup\)[ \t]+workspace-recovery start.*ms: 0/)
+  expect(lines[1]).toMatch(/database-migration start.*ms: 0/)
+  expect(lines[2]).toMatch(/workspace-recovery end.*elapsed: 25.*ms: 25/)
+  expect(lines[3]).toMatch(
+    /\[info\][ \t]+\(startup\)[ \t]+database-migration failure.*elapsed: 30.*ms: 10/,
+  )
+})
+
+it('a logger failure cannot fail a startup phase or its completion', () => {
+  vi.spyOn(log, 'scope').mockImplementation(() => {
+    throw new Error('fictional logger failure')
+  })
+  const trace = createPluginStartupTrace()
+  expect(() => trace.begin('database-migration', 'startup')()).not.toThrow()
+})
+
+it('a plugin failure leaves a pending first list open until its actual completion', async () => {
+  const captured = await capture()
+  let now = 100
+  const trace = createPluginStartupTrace(() => now)
+  const firstList = trace.begin('first-list', 'startup')
+  const plugin = trace.begin('catalogue')
+  now = 140
+  trace.failure('service-start', new Error('fictional plugin failure'))
+  plugin()
+  await vi.waitFor(async () => expect(await captured.text()).toContain('service-start failure'))
+  let written = await captured.text()
+  expect(written).toMatch(/catalogue failure.*ms: 40/)
+  expect(written).not.toMatch(/first-list (end|failure)/)
+
+  now = 250
+  firstList()
+  firstList()
+  await vi.waitFor(async () => expect(await captured.text()).toContain('first-list end'))
+  written = await captured.text()
+  expect(written.match(/first-list end/g)).toHaveLength(1)
+  expect(written).toMatch(/\[info\][ \t]+\(startup\)[ \t]+first-list end.*ms: 150/)
+  expect(written).not.toContain('first-list failure')
+  expect(written.match(/catalogue failure/g)).toHaveLength(1)
+})
+
+it('an explicit app startup failure ends both parts once at their own elapsed time', async () => {
+  const captured = await capture()
+  let now = 10
+  const trace = createPluginStartupTrace(() => now)
+  const firstList = trace.begin('first-list', 'startup')
+  now = 20
+  const plugin = trace.begin('catalogue')
+  now = 50
+  trace.failure('app-startup', new Error('fictional app failure'), 'all')
+  firstList()
+  plugin()
+  await vi.waitFor(async () => expect(await captured.text()).toContain('app-startup failure'))
+  const written = await captured.text()
+  expect(written.match(/first-list failure/g)).toHaveLength(1)
+  expect(written).toMatch(/\[info\][ \t]+\(startup\)[ \t]+first-list failure.*ms: 40/)
+  expect(written.match(/catalogue failure/g)).toHaveLength(1)
+  expect(written).toMatch(/\[warn\][ \t]+\(plugin-startup\)[ \t]+catalogue failure.*ms: 30/)
+  expect(written).not.toMatch(/(first-list|catalogue) end/)
 })

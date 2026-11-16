@@ -213,30 +213,48 @@ export function createPluginStartupTrace(now = () => performance.now()) {
   const launch = new Date().toISOString(),
     began = now()
   let ordinal = 0
-  const active = new Set<(error?: unknown) => void>()
-  const mark = (phase: string, state: string, attempt = ordinal) => {
-    const facts = { launch, elapsed: Math.round(now() - began), attempt }
-    if (state.startsWith('failure')) logWarn('plugin-startup', `${phase} ${state}`, facts)
-    else logInfo('plugin-startup', `${phase} ${state}`, facts)
+  const active = new Map<(error?: unknown) => void, 'startup' | 'plugin-startup'>()
+  const mark = (
+    phase: string,
+    state: string,
+    attempt = ordinal,
+    ms = 0,
+    part: 'startup' | 'plugin-startup' = 'plugin-startup',
+  ) => {
+    const facts = { launch, elapsed: Math.round(now() - began), attempt, ms: Math.round(ms) }
+    try {
+      if (part === 'plugin-startup' && state.startsWith('failure'))
+        logWarn(part, `${phase} ${state}`, facts)
+      else logInfo(part, `${phase} ${state}`, facts)
+    } catch {
+      // A failed log must not fail the startup phase being observed.
+    }
   }
   return {
     attempt() {
       ordinal++
     },
-    begin(phase: string) {
+    begin(phase: string, part: 'startup' | 'plugin-startup' = 'plugin-startup') {
       const attempt = ordinal
-      mark(phase, 'start', attempt)
+      const started = now()
+      mark(phase, 'start', attempt, 0, part)
       let ended = false
       const finish = (error?: unknown) => {
-        if (!ended) mark(phase, error === undefined ? 'end' : 'failure', attempt)
+        if (!ended)
+          mark(phase, error === undefined ? 'end' : 'failure', attempt, now() - started, part)
         ended = true
         active.delete(finish)
       }
-      active.add(finish)
+      active.set(finish, part)
       return finish
     },
-    failure(phase: string, error?: unknown) {
-      for (const finish of active) finish(error ?? phase)
+    failure(
+      phase: string,
+      error?: unknown,
+      part: 'startup' | 'plugin-startup' | 'all' = 'plugin-startup',
+    ) {
+      for (const [finish, pendingPart] of active)
+        if (part === 'all' || pendingPart === part) finish(error ?? phase)
       let stderr = ''
       for (let cause = error, depth = 0; depth < 6 && cause && typeof cause === 'object'; depth++) {
         if (cause instanceof PluginSupervisorLaunchFailure) {
@@ -249,6 +267,9 @@ export function createPluginStartupTrace(now = () => performance.now()) {
       mark(
         phase,
         `failure ${diagnostic ? pluginStartupDiagnosticNotice(diagnostic) : ''} ${phase === 'catalogue-response' ? pluginFailureCause(error) : ''}${stderr ? `\n${stderr}` : ''}`,
+        ordinal,
+        0,
+        part === 'all' ? 'startup' : part,
       )
     },
   }

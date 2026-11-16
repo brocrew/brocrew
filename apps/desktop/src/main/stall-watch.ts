@@ -463,7 +463,12 @@ export function startWatchHealth(options: {
  * The same object, each method timed under `<name>.<method>` — for the session store, whose
  * synchronous SQLite work is most of what the main thread does. One wrapper per method, made once.
  */
-export function timedMethods<T extends object>(target: T, name: string, work: MainThreadWork): T {
+export function timedMethods<T extends object>(
+  target: T,
+  name: string,
+  work: MainThreadWork,
+  around: <R>(label: string, call: () => R) => R = (_label, call) => call(),
+): T {
   const wrappers = new Map<string, (...args: unknown[]) => unknown>()
   return new Proxy(target, {
     get(object, key, receiver) {
@@ -473,7 +478,8 @@ export function timedMethods<T extends object>(target: T, name: string, work: Ma
       if (wrapper === undefined) {
         const label = `${name}.${key}`
         const method = value as (...args: unknown[]) => unknown
-        wrapper = (...args: unknown[]) => work.timed(label, () => method.apply(object, args))
+        wrapper = (...args: unknown[]) =>
+          around(label, () => work.timed(label, () => method.apply(object, args)))
         wrappers.set(key, wrapper)
       }
       return wrapper
