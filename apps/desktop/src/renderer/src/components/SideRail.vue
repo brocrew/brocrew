@@ -393,6 +393,9 @@ const liveSignal = computed(() =>
    with the conversations this window holds drawn from their own records beside it.
    --------------------------------------------------------------------------- */
 
+const lists = railFacts()
+onBeforeUnmount(() => lists.clear())
+
 const {
   hostResumable,
   hostUnresumable,
@@ -423,7 +426,6 @@ const listed = computed(() =>
   ),
 )
 const cast = useWhoCalledWhom()
-const lists = railFacts()
 // Index the forest once per reading, rather than walking it for every row on every render.
 const workByHolder = computed(() => {
   const holders = new Map<string, WorkEdge[]>()
@@ -453,7 +455,6 @@ watchEffect(() => {
     }),
   })
 })
-onBeforeUnmount(() => lists.clear())
 
 onMounted(refreshListed)
 

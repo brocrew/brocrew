@@ -104,11 +104,21 @@ export function useRecoveredConversationList(
   >(new Map())
   const localProviderBlocks = createProviderBlockStore()
   const providerBlocks = computed(() => sharedProviderBlocks() ?? localProviderBlocks)
-  /** List reads begun, including those stopped by closing. */
+  /**
+   * ⚑ How many list reads this rail has begun — the number {@link said} dates each push by. ⚠️ A
+   * read the quit stops is counted too, which moves nothing: main pushes nothing once a quit begins.
+   */
   let readsAsked = 0
   let lastShown: Pick<PublishedListing, 'published' | 'readAsOf'> | undefined
 
-  /** Keep pushed states until a list reading covers them. */
+  /**
+   * ⚑ **D-019 · main said what some agents are doing now** — the screen hands every message on
+   * `runtime:states` here. ⚠️ A conversation the list does not name yet is kept too, because the read
+   * already in flight may name it; a read asked after it names it in its own answer.
+   *
+   * ⚑ **D-026 · a message that moved no state leaves the list as it was** — files kept, alone: the
+   * rail draws no files, and a copy of what it heard would redraw every row for nothing.
+   */
   function hearStates(message: RuntimeStatesMessage): void {
     if (message.moved.length === 0) return
     const next = new Map(said.value)

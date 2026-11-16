@@ -144,11 +144,12 @@ function once(marker: string, file: string, source: string): number {
   return at
 }
 
-/** A top-level function, from its signature to (not including) the `}` that closes it. */
+/** A function, from its signature to the closing brace at the same indentation. */
 function functionOf(signature: string, file: string, source: string): string {
   const at = once(signature, file, source)
-  const end = source.indexOf('\n}', at)
-  expect(end, `${signature} has no closing brace at column zero`).toBeGreaterThan(at)
+  const indent = source.slice(source.lastIndexOf('\n', at) + 1, at)
+  const end = source.indexOf(`\n${indent}}`, at)
+  expect(end, `${signature} has no closing brace at its indentation`).toBeGreaterThan(at)
   return source.slice(at, end)
 }
 
@@ -613,28 +614,28 @@ describe('D-019 · the rail draws what main pushed over the row’s own state', 
 
 /**
  * ⚑ **The rail's list read, and the one guard that lets a push outlive it.** A push is stamped
- * `after: readsAsked`, a read numbers itself `asked = readsAsked` before either half is asked, and
+ * `after: readsAsked`, a read numbers itself `asked = ++readsAsked` before either half is asked, and
  * when it lands it keeps every push with `after >= asked`: a push heard while THIS read was in
  * flight has `after === asked` and is newer than half of its answer.
  *
- * Returns what is wrong with `fn` (the body of `refreshListed`) and `whole` (the rail's whole code),
+ * Returns what is wrong with `fn` (the body of `refreshListed`) and `whole` (the reading's whole module),
  * so a broken guard is a list, not a boolean, and a plant says which clause it broke.
  */
 function raceGuardBroken(fn: string, whole: string): string[] {
   const broken: string[] = []
-  const numbers = fn.indexOf('readsAsked += 1')
-  const asked = fn.indexOf('const asked = readsAsked')
+  const numbers = fn.indexOf('++readsAsked')
+  const asked = fn.indexOf('const asked = ++readsAsked')
   const listsResumable = fn.indexOf('sessionsApi.listResumable()')
   if (numbers < 0) broken.push('the read never numbers itself')
   if (asked < 0) broken.push('the read never takes its own number')
   if (listsResumable < 0) broken.push('the read never asks the host')
-  if (numbers >= 0 && asked >= 0 && numbers > asked)
-    broken.push('it takes its number before it counts')
+  if (numbers >= 0 && asked >= 0 && numbers !== asked + 'const asked = '.length)
+    broken.push('it does not take the number it counts')
   if (asked >= 0 && listsResumable >= 0 && asked > listsResumable)
     broken.push('it asks the host before it takes its number')
 
   const filter =
-    /said\.value = new Map\(\[\.\.\.said\.value\]\.filter\(\(\[, (\w+)\]\) => \1\.after >= asked\)\)/g
+    /said\.value = new Map\(\s*\[\.\.\.said\.value\]\.filter\(\(\[id, (\w+)\]\) => \{\s*if \(answer === undefined \|\| \1\.published === undefined\) return \1\.after >= asked/g
   const statements = fn.match(filter) ?? []
   if (statements.length !== 1) {
     broken.push(`the filter with the comparison \`>=\` is here ${String(statements.length)} times`)
@@ -642,7 +643,7 @@ function raceGuardBroken(fn: string, whole: string): string[] {
   const at = fn.search(filter)
   const tryAt = fn.indexOf('try {')
   const catchAt = fn.indexOf('catch (cause)')
-  const unresumableAt = fn.indexOf('hostUnresumable.value = unresumable')
+  const unresumableAt = fn.indexOf('hostUnresumable.value = [...unresumable]')
   const lookedAt = fn.indexOf('looked.value = true')
   if (tryAt < 0 || catchAt < 0) broken.push('the read has no try/catch to be inside of')
   if (at >= 0) {
@@ -664,7 +665,7 @@ function raceGuardBroken(fn: string, whole: string): string[] {
 }
 
 describe('D-019 · a list read numbers itself before it is asked', () => {
-  const file = 'renderer/src/components/SideRail.vue'
+  const file = 'renderer/src/composables/useConversationListRecovery.ts'
   const whole = code(file, readFileSync(join(SRC, file), 'utf8'))
   const real = functionOf('async function refreshListed(): Promise<void> {', file, whole)
 
@@ -685,10 +686,10 @@ describe('D-019 · a list read numbers itself before it is asked', () => {
     expect(raceGuardBroken(strictly, whole)).not.toEqual([])
 
     const late = real
-      .replace('readsAsked += 1\n', '')
+      .replace('const asked = ++readsAsked', '')
       .replace(
-        'hostResumable.value = resumable',
-        'readsAsked += 1\n    hostResumable.value = resumable',
+        'hostResumable.value = [...resumable]',
+        'const asked = ++readsAsked\n    hostResumable.value = [...resumable]',
       )
     expect(late).not.toBe(real)
     expect(raceGuardBroken(late, whole)).not.toEqual([])
