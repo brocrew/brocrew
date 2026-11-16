@@ -2,34 +2,49 @@ import type { KeptFold, SnapshotFoldAnswers } from './ledger-fold-state'
 
 /** Estimates strings, containers and their entries without serializing a fold. */
 function retainedBytes(value: unknown, limit: number): number {
-  const pending = [value]
   const seen = new Set<object>()
   let bytes = 0
-  while (pending.length > 0 && bytes <= limit) {
-    const held = pending.pop()
+  const visit = (held: unknown): void => {
+    if (bytes > limit) return
     if (typeof held === 'string') bytes += held.length * 2
-    else if (typeof held === 'function') bytes += 512
+    else if (typeof held === 'function') bytes = limit + 1
     else if (held === null || typeof held !== 'object') bytes += 8
     else if (!seen.has(held)) {
       seen.add(held)
       bytes += 64
       if (held instanceof Map) {
         bytes += held.size * 48
-        for (const [key, entry] of held) pending.push(key, entry)
+        if (bytes > limit) return
+        for (const [key, entry] of held) {
+          visit(key)
+          visit(entry)
+          if (bytes > limit) return
+        }
       } else if (held instanceof Set) {
         bytes += held.size * 32
-        for (const entry of held) pending.push(entry)
+        if (bytes > limit) return
+        for (const entry of held) {
+          visit(entry)
+          if (bytes > limit) return
+        }
       } else if (Array.isArray(held)) {
         bytes += held.length * 8
-        for (const entry of held) pending.push(entry)
+        if (bytes > limit) return
+        for (const entry of held) {
+          visit(entry)
+          if (bytes > limit) return
+        }
       } else {
-        for (const [key, entry] of Object.entries(held)) {
+        for (const key in held) {
+          if (!Object.hasOwn(held, key)) continue
           bytes += key.length * 2 + 16
-          pending.push(entry)
+          visit((held as Record<string, unknown>)[key])
+          if (bytes > limit) return
         }
       }
     }
   }
+  visit(value)
   return bytes
 }
 
