@@ -498,7 +498,7 @@ describe('canonical window worker folds and independent live-store reads', () =>
     expect(host.readWorkspace()).toBe(recovered)
   })
 
-  it('refuses when the writer moves under both tries without composing on main', async () => {
+  it('composes the second snapshot once when the writer moves under both tries', async () => {
     const read = vi.fn(async (query: WindowReadQuery) => {
       const answer = engine.read(query)
       row('alpha', 'request_escalated', { type: 'request_escalated', requestId: 'second' })
@@ -507,9 +507,9 @@ describe('canonical window worker folds and independent live-store reads', () =>
     const { host } = hostWith({ read, close: async () => {} }, true)
     anotherQuestion()
     const answer = vi.fn(() => host.questionsForAPerson())
-    await expect(host.readForWindow(answer)).rejects.toThrow(WindowReadUnavailable)
+    await host.readForWindow(answer)
     expect(read).toHaveBeenCalledTimes(2)
-    expect(answer).not.toHaveBeenCalled()
+    expect(answer).toHaveBeenCalledOnce()
     expect(console.warn).not.toHaveBeenCalled()
   })
 

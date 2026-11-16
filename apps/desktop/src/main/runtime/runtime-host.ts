@@ -15700,8 +15700,8 @@ export class RuntimeHost implements LiveHost {
       if (folded?.kind === 'routes' || folded?.kind === 'listing')
         this.windowFoldKept =
           folded.cacheToken === undefined ? undefined : { stamp: origin, token: folded.cacheToken }
-      if (
-        query.kind === 'listing' &&
+      // The same writer and schema throughout: a consistent snapshot, at most one read behind.
+      const oneWriter =
         after !== null &&
         origin.writer === before.writer &&
         origin.writer === after.writer &&
@@ -15714,19 +15714,22 @@ export class RuntimeHost implements LiveHost {
         Number.isFinite(after.at) &&
         origin.at <= before.at &&
         before.at <= after.at
-      ) {
+      if (query.kind === 'listing' && oneWriter) {
         this.windowListingKept = { stamp: origin, result, floor }
         return compose(result, floor, !sameWindowWriter(origin, after))
       }
-      if (sameWindowWriter(origin, before) && sameWindowWriter(origin, after)) {
-        if (query.kind === 'routes') this.windowRoutesKept = { stamp: after!, result }
+      const current = sameWindowWriter(origin, before) && sameWindowWriter(origin, after)
+      // A writer that moves during every read still gets the last snapshot, kept under its origin
+      // so the next read asks again.
+      if (current || (reusable && oneWriter && attempt === (joinOnly ? 0 : 1))) {
+        const stamp = current ? after! : origin
+        if (query.kind === 'routes') this.windowRoutesKept = { stamp, result }
         if (query.kind === 'incidents') {
-          this.windowIncidentsKept = { stamp: after!, result }
-          if (result.kind === 'incidents')
-            this.windowRoutesKept = { stamp: after!, result: result.routing }
+          this.windowIncidentsKept = { stamp, result }
+          if (result.kind === 'incidents') this.windowRoutesKept = { stamp, result: result.routing }
         }
         if (result.kind === 'publication' && result.states !== null)
-          this.windowRoutesKept = { stamp: after!, result: result.states }
+          this.windowRoutesKept = { stamp, result: result.states }
         return compose(result)
       }
     }

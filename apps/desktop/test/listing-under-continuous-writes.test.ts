@@ -74,9 +74,12 @@ it('shows the conversation list while a writer moves after every consistent snap
       )
       return result
     })
-    await expect(host.readForWindow(() => host.questionsForAPerson())).rejects.toMatchObject({
-      missed: 'writer-moved',
-    })
+    const asked = read.mock.calls.length
+    expect((await host.readForWindow(() => host.questionsForAPerson())).rows).toEqual([])
+    expect(read).toHaveBeenCalledTimes(asked + 2)
+    // Kept under the snapshot's origin, so the next look reads again.
+    expect((await host.readForWindow(() => host.questionsForAPerson())).rows).toEqual([])
+    expect(read).toHaveBeenCalledTimes(asked + 4)
 
     let schema = 0
     read.mockImplementation(async (query) => {

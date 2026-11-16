@@ -164,9 +164,7 @@ it('passes the fold token of a read a writer overtook on to the next read', asyn
     limitsWriterStamp: limitsWriterSampler(world.db, () => true),
   })
   try {
-    await expect(host.readForWindow(() => host.questionsForAPerson())).rejects.toMatchObject({
-      missed: 'writer-moved',
-    })
+    expect((await host.readForWindow(() => host.questionsForAPerson())).rows).toEqual([])
     expect(read).toHaveBeenCalledTimes(2)
     expect(read.mock.calls[1]![0]).toEqual({
       kind: 'routes',
