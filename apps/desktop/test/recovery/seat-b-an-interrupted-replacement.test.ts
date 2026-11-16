@@ -263,8 +263,7 @@ describe('a return the process stops in, then the next start', () => {
       } else {
         expect(next, said).toMatchObject({ kind: 'newer', offers: { id: offer.id } })
         await expectOneWholeFamily(userData, 'newer', restoreId, said)
-        // The restored copy is kept aside, not deleted.
-        expect(setAsideIn(restoredAsideDir(userData, restoreId)), said).toEqual(RESTORED)
+        expect(existsSync(restoredAsideDir(userData, restoreId)), said).toBe(false)
         outcomes.add('returned')
       }
     }

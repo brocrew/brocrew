@@ -327,13 +327,9 @@ function restoredFrom(before: Record<string, string>): Standing {
   return { files, gate: theGate(drafts !== undefined, before) }
 }
 
-/** `before` after a finished restore and return: all as it was, and the restored copy kept aside. */
+/** `before` after a finished restore and return: all as it was, with no redundant restored copy. */
 function returnedFrom(before: Record<string, string>): Standing {
-  const files = { ...before }
-  files[`${RESTORED_ASIDE}/database.sqlite`] = hashAt(before, COPY_AT)
-  const drafts = before[OLDER_DRAFTS_AT]
-  if (drafts !== undefined) files[`${RESTORED_ASIDE}/drafts.json`] = drafts
-  return { files, gate: null }
+  return { files: before, gate: null }
 }
 
 /** Where a test stops a restore or a return: before or after a step, or after one rename. */
@@ -1670,7 +1666,7 @@ describe.skipIf(!LINKS)('a link where one of BroBot’s own folders should be', 
 })
 
 describe('sweepLeftovers', () => {
-  it('removes id-named leftovers in staged/ and scratch/, and temporary records, and keeps the rest', async () => {
+  it('removes staged, scratch and completed-return leftovers and temporary records, and keeps the rest', async () => {
     const userData = aDataFolder()
     for (const folder of ['staged', 'scratch']) {
       mkdirSync(join(userData, 'recovery', folder, ANOTHER), { recursive: true })
@@ -1678,12 +1674,18 @@ describe('sweepLeftovers', () => {
       mkdirSync(join(userData, 'recovery', folder, 'not-an-id'))
       writeFileSync(join(userData, 'recovery', folder, 'not-an-id', 'kept.txt'), 'kept')
     }
+    for (const entry of [`${ANOTHER}-restored`, ANOTHER, 'not-an-id-restored']) {
+      mkdirSync(join(userData, 'recovery', 'preserved', entry), { recursive: true })
+      writeFileSync(join(userData, 'recovery', 'preserved', entry, 'database.sqlite'), 'kept')
+    }
     writeFileSync(join(userData, 'recovery', 'restore-journal.json.0123456789ab.tmp'), 'half')
     writeFileSync(join(userData, 'recovery', 'notes.txt'), 'kept')
     await sweepLeftovers(userData)
     const left = Object.keys(filesIn(userData)).filter((path) => path.startsWith('recovery/'))
     expect(left.sort()).toEqual([
       'recovery/notes.txt',
+      `recovery/preserved/${ANOTHER}/database.sqlite`,
+      'recovery/preserved/not-an-id-restored/database.sqlite',
       'recovery/scratch/not-an-id/kept.txt',
       'recovery/staged/not-an-id/kept.txt',
     ])
@@ -1719,7 +1721,7 @@ describe('whatChangedSinceTheGate', () => {
 })
 
 describe('returnToNewer', () => {
-  it('puts the newer family and its drafts back byte for byte, removes the gate, and keeps the restored copy aside', async () => {
+  it('puts the newer family and its drafts back byte for byte, removes the gate and redundant restored copy', async () => {
     const userData = aDataFolder()
     const before = filesIn(userData)
     await restore(restoring(userData))

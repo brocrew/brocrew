@@ -68,6 +68,8 @@ import {
 import { APP_STATE_FILES } from './state-files'
 import { copySkillTree, stateContentAt as contentAt } from './trees'
 import { gunzipCheckpoint } from './checkpoint-compression'
+import { checkFreeSpace } from './checkpoint-space'
+import { freeBytesOn } from '../archive/native-file'
 import { SKILL_TREES, SKILLS_CONVERSION_FILE } from '../skills/shared-paths'
 
 /** A restore or return that stopped. The message is a sentence a person can read. */
@@ -94,6 +96,8 @@ export interface RestoreEngineOptions extends StepHooks {
 
 export interface RestoreOptions extends RestoreEngineOptions {
   readonly checkpointId: string
+  /** Available disk bytes, or null when they cannot be read. */
+  readonly freeBytes?: (path: string) => number | null
   /** Whether this build can open a database that applied these migrations, oldest first. */
   readonly canOpen: (migrations: readonly Migration[]) => boolean
   readonly now?: () => Date
@@ -168,7 +172,18 @@ export async function restore(options: RestoreOptions): Promise<Restored> {
     if (await pathExists(journalFile(userData), fs)) refuse(UNFINISHED)
     if (await pathExists(gateFile(userData), fs)) refuse(ALREADY_RESTORED)
     manifest = await readTheCheckpoint(userData, checkpointId, options.canOpen, fs)
-    await sweepLeftovers(userData, fs)
+    if (!(await sweepLeftovers(userData, fs)))
+      throw new Error('BroCrew could not remove a temporary recovery copy. Try again.')
+    const incomingBytes =
+      (manifest.database.compression === 'gzip'
+        ? manifest.database.uncompressedBytes!
+        : manifest.database.bytes) +
+      manifest.files.reduce(
+        (bytes, file) =>
+          bytes + (file.present && WITH_THE_DATABASE.includes(file.name) ? file.bytes : 0),
+        0,
+      )
+    checkFreeSpace(userData, incomingBytes, options.freeBytes ?? freeBytesOn)
     await assertTheRunsPlacesAreReal(userData, 'restore', id, fs)
     hooks.beforeStep('planned')
     const participants = await planARestore(userData, id, manifest, fs)
@@ -377,12 +392,14 @@ export function readGateOnDisk(
   return recordOnDisk(gateFile(userData), parseGate, 'history-only record', fs)
 }
 
-export async function sweepLeftovers(userData: string, fs: RecoveryFs = nodeFs): Promise<void> {
+export async function sweepLeftovers(userData: string, fs: RecoveryFs = nodeFs): Promise<boolean> {
+  let hasGate: boolean
   try {
     await assertOwnedPathsAreReal(userData, [], fs)
-    if (await pathExists(journalFile(userData), fs)) return
+    if (await pathExists(journalFile(userData), fs)) return false
+    hasGate = await pathExists(gateFile(userData), fs)
   } catch {
-    return
+    return false
   }
   const entriesOf = (folder: string): Promise<string[]> => fs.readdir(folder).catch(() => [])
   for (const root of [stagedRoot(userData), scratchDir(userData)]) {
@@ -392,11 +409,28 @@ export async function sweepLeftovers(userData: string, fs: RecoveryFs = nodeFs):
     }
     await removeIfEmpty(userData, root, fs).catch(() => undefined)
   }
+  let returnedCopiesRemoved = true
+  if (!hasGate) {
+    const restoredSuffix = '-restored'
+    const preserved = await fs.readdir(preservedRoot(userData)).catch((error) => {
+      if (errorCode(error) !== 'ENOENT') returnedCopiesRemoved = false
+      return []
+    })
+    for (const entry of preserved) {
+      if (!entry.endsWith(restoredSuffix) || !isUuid(entry.slice(0, -restoredSuffix.length)))
+        continue
+      await remove(userData, join(preservedRoot(userData), entry), fs).catch(() => {
+        returnedCopiesRemoved = false
+      })
+    }
+    await removeIfEmpty(userData, preservedRoot(userData), fs).catch(() => undefined)
+  }
   for (const entry of await entriesOf(recoveryDir(userData))) {
     if (isRecordLeftover(entry)) {
       await remove(userData, join(recoveryDir(userData), entry), fs).catch(() => undefined)
     }
   }
+  return returnedCopiesRemoved
 }
 
 // ---------------------------------------------------------------------------------------------

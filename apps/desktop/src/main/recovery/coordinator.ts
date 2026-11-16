@@ -669,6 +669,7 @@ async function restoreThenInspect(
     await restoreACheckpoint({
       userData: deps.userData,
       checkpointId,
+      freeBytes: deps.freeBytes,
       canOpen: (migrations) => isLineagePrefix(migrations, lineage),
       fs,
       progress,
