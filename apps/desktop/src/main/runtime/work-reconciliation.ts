@@ -113,8 +113,8 @@ export class WorkReconciler {
       this.watching.clear()
       const all = this.reads.holders()
       for (let at = 0; at < all.length; at += HOLDERS_READ_AT_ONCE) {
-        if (this.closed) return
         if (at > 0) await new Promise((resolve) => setImmediate(resolve))
+        if (this.closed) return
         await this.walkHolders(new Set(all.slice(at, at + HOLDERS_READ_AT_ONCE)))
       }
       return
