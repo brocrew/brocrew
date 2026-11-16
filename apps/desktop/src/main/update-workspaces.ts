@@ -51,8 +51,8 @@ export function workspaceUpdate(deps: WorkspaceUpdateDeps) {
   let installRequested = false
   /** Preparation began here: its teardown closes sessions and the database for good. */
   let stopped = false
-  /** The person asked for the update here, so this workspace reports its failure itself. */
-  let asked = false
+  /** Updates the person asked for here and not yet answered: each reports its own failure. */
+  let asking = 0
 
   const quit = (): void => {
     if (quitChosen) return
@@ -93,7 +93,7 @@ export function workspaceUpdate(deps: WorkspaceUpdateDeps) {
       owner = null
       // A workspace with the update ready installs it as it exits, so it cannot reopen.
       if (stopped && !deps.ready()) deps.reopen()
-      else if (stopped && !asked) deps.stayStopped()
+      else if (stopped && asking === 0) deps.stayStopped()
       return
     }
     owner = request.owner
@@ -172,21 +172,25 @@ export function workspaceUpdate(deps: WorkspaceUpdateDeps) {
     receive,
     plan: participants,
     restart: async (version: string): Promise<void> => {
-      asked = true
-      const peers = await participants()
-      const active = peers.find((peer) => peer.owner !== null)?.owner
-      if (active && peers.some((peer) => peer.owner !== null && !same(peer.owner, active))) {
-        throw new Error('The running workspaces disagree about which update is in progress')
+      asking += 1
+      try {
+        const peers = await participants()
+        const active = peers.find((peer) => peer.owner !== null)?.owner
+        if (active && peers.some((peer) => peer.owner !== null && !same(peer.owner, active))) {
+          throw new Error('The running workspaces disagree about which update is in progress')
+        }
+        const leader =
+          active === undefined || active === null
+            ? [...peers].sort(
+                (a, b) => a.startedAt - b.startedAt || a.folder.localeCompare(b.folder),
+              )[0]!
+            : peers.find((peer) => same(peer, active))
+        if (leader === undefined)
+          throw new Error('The workspace preparing the update is no longer reachable')
+        await call(leader, { kind: 'update', installer: deps.self, version })
+      } finally {
+        asking -= 1
       }
-      const leader =
-        active === undefined || active === null
-          ? [...peers].sort(
-              (a, b) => a.startedAt - b.startedAt || a.folder.localeCompare(b.folder),
-            )[0]!
-          : peers.find((peer) => same(peer, active))
-      if (leader === undefined)
-        throw new Error('The workspace preparing the update is no longer reachable')
-      await call(leader, { kind: 'update', installer: deps.self, version })
     },
     finishQuit: (): boolean => {
       if (!installChosen) return false

@@ -174,6 +174,17 @@ it('when the installer itself fails to stop, the others reopen or say they stopp
   expect(c.first.stoppedWithoutUpdate()).toBe(true)
 })
 
+it('a ready workspace whose own earlier attempt ended still says it stopped for a later one', async () => {
+  const c = cluster()
+  c.failures.add('/workspace-0')
+  await expect(c.first.restart('0.2.24')).rejects.toThrow('disk full')
+  c.failures.clear()
+  c.failures.add('/workspace-2')
+  await expect(c.second.restart('0.2.24')).rejects.toThrow('disk full')
+  expect(c.journal.filter((step) => step.startsWith('stays stopped'))).toEqual(['stays stopped 1'])
+  expect(c.first.stoppedWithoutUpdate()).toBe(true)
+})
+
 it('does not elect a different installer when the workspace owning an active operation disappears', async () => {
   const c = cluster()
   const owner = { folder: '/workspace-0', pid: 1 }
