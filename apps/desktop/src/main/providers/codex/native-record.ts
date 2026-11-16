@@ -3,7 +3,6 @@ import { basename, join, resolve, sep } from 'node:path'
 import { readProviderDatabase } from '../../archive/native-io'
 import type { SessionRef } from '@brobot2/runtime'
 
-/** The rollout Codex recorded for a thread, read from the newest state database in the home. */
 function codexRolloutPath(providerHome: string, threadId: string): string | null {
   const state = newestStateDatabase(providerHome)
   if (state === null) return null
@@ -14,10 +13,7 @@ function codexRolloutPath(providerHome: string, threadId: string): string | null
   })
 }
 
-/**
- * The newest `state_<n>.sqlite` in a Codex home. The number is a schema version, so the highest
- * one is the live database — an older one names threads Codex has already moved past.
- */
+/** Select the highest schema version; older databases can name threads Codex has moved past. */
 export function newestStateDatabase(home: string): string | null {
   if (!existsSync(home)) return null
   const versions = readdirSync(home)
