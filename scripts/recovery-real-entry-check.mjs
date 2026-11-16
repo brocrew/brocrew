@@ -15,8 +15,7 @@
  * is not, its icons, the history read through the real IPC, the controls a copy cannot serve, and
  * real presses of Restore, Return and Close.
  *
- * The copies hold every row kind whose controls the window must not draw, and after its other steps
- * each scenario checks that main started none of what a start that opened its data starts.
+ * Each scenario checks every row kind's inert controls and that no work starts.
  *
  * A step that needs a piece main does not have yet fails and names it in GAPS; nothing is skipped,
  * and a step after a failed one is reported as not reached, which is a failure too.
@@ -33,7 +32,6 @@
  */
 import { spawn, spawnSync } from 'node:child_process'
 import {
-  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -53,6 +51,7 @@ import { createServer } from 'node:net'
 import { homedir, tmpdir } from 'node:os'
 import { dirname, join, posix, resolve, win32 } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { gunzipSync } from 'node:zlib'
 import { HIDDEN_LAUNCH_ARG, pidsLaunchedOn } from './lib/hidden-launch.mjs'
 import { createOwnedProcessLifecycle } from './lib/owned-process.mjs'
 import { descendantsOf, tearDownAndRemove } from './lib/owned-teardown.mjs'
@@ -497,10 +496,11 @@ function changeTheTail(path) {
   utimesSync(path, before.atime, before.mtime)
 }
 
-/** The copy's own rows, read from a scratch copy of its file so the fixture is never opened. */
-function rowsOfCopy(database, scratch) {
+/** The copy's decoded rows, read from scratch so the checkpoint itself is never opened. */
+function rowsOfCopy({ database, manifest }, scratch) {
   const copy = join(scratch, 'copy.sqlite')
-  copyFileSync(database, copy)
+  const bytes = readFileSync(database)
+  writeFileSync(copy, manifest.database.compression === 'gzip' ? gunzipSync(bytes) : bytes)
   const Database = createRequire(join(DESKTOP, 'package.json'))('better-sqlite3')
   const db = new Database(copy, { readonly: true })
   try {
@@ -791,7 +791,7 @@ async function runScenario(scenario, makeRecoveryFixture, contract, keep, packag
       copy: scenario.copy,
       everyRowKind: scenario.fixture.everyRowKind === true,
     })
-    const drift = historyProblems(rowsOfCopy(copy.database, root), expected)
+    const drift = historyProblems(rowsOfCopy(copy, root), expected)
     if (drift.length > 0)
       throw new Error(`the fixture's copy is not what this check expects: ${drift.join('; ')}`)
 
