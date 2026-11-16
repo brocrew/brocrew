@@ -15504,6 +15504,11 @@ export class RuntimeHost implements LiveHost {
       ) {
         // The fold token belongs to the original read, never the writer that overtook it.
         this.windowListingKept = { stamp: origin, result, floor }
+        if (result.kind === 'listing')
+          this.windowFoldKept =
+            result.cacheToken === undefined
+              ? undefined
+              : { stamp: origin, token: result.cacheToken }
         return compose(result, floor, !sameWindowWriter(origin, after))
       }
       if (sameWindowWriter(origin, before) && sameWindowWriter(origin, after)) {
