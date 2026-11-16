@@ -19,7 +19,7 @@ import {
   listProfileIds,
   prepareProviderHome,
   providerHomesRoot,
-} from '../src/main/runtime/provider-homes'
+} from '../src/main/connections/homes'
 import {
   fixture,
   mustNameScratch,
