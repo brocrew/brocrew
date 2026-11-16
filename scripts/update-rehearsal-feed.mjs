@@ -64,6 +64,7 @@ export const SANDBOX_FILES = [
   'scripts/lib/upgrade-path.mjs',
   'scripts/lib/upgrade-retention.mjs',
   'scripts/lib/windows-update-test.mjs',
+  'scripts/mac-signed-upgrade-contract.mjs',
   'scripts/mac-update-test.mjs',
   'scripts/release-check.mjs',
   'scripts/update-rehearsal-feed.mjs',
