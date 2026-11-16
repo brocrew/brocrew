@@ -498,7 +498,28 @@ describe('canonical window worker folds and independent live-store reads', () =>
     expect(host.readWorkspace()).toBe(recovered)
   })
 
-  it('composes the second snapshot once when the writer moves under both tries', async () => {
+  // A stale answer cannot act: the person's answer is admitted against the live ledger at write
+  // (`admitAnswer` in `aPersonAnswersAQuestionThisAppAsked`; `an-answer-a-quit-cannot-lose.test.ts`).
+  it('an overtaken snapshot is shown and refreshed; a stale answer is refused at write', async () => {
+    const read = vi.fn(async (query: WindowReadQuery) => {
+      const answer = engine.read(query)
+      if (read.mock.calls.length === 1)
+        row('alpha', 'request_escalated', { type: 'request_escalated', requestId: 'second' })
+      if (read.mock.calls.length === 2)
+        row('alpha', 'request_resolved', { type: 'request_resolved', id: 'second' })
+      return answer
+    })
+    const { host } = hostWith({ read, close: async () => {} }, true)
+    anotherQuestion()
+    const answer = vi.fn(() => host.questionsForAPerson())
+    expect((await host.readForWindow(answer)).rows).toHaveLength(1)
+    expect(read).toHaveBeenCalledTimes(2)
+    expect(answer).toHaveBeenCalledOnce()
+    expect((await host.readForWindow(answer)).rows).toHaveLength(0)
+    expect(console.warn).not.toHaveBeenCalled()
+  })
+
+  it('a queue composed from overtaken snapshots covers nothing completely', async () => {
     const read = vi.fn(async (query: WindowReadQuery) => {
       const answer = engine.read(query)
       row('alpha', 'request_escalated', { type: 'request_escalated', requestId: 'second' })
@@ -506,11 +527,10 @@ describe('canonical window worker folds and independent live-store reads', () =>
     })
     const { host } = hostWith({ read, close: async () => {} }, true)
     anotherQuestion()
-    const answer = vi.fn(() => host.questionsForAPerson())
-    await host.readForWindow(answer)
-    expect(read).toHaveBeenCalledTimes(2)
-    expect(answer).toHaveBeenCalledOnce()
-    expect(console.warn).not.toHaveBeenCalled()
+    const queue = await host.personsQueue()
+    if ('refused' in queue) throw new Error(queue.refused)
+    expect(queue.questions?.rows).toHaveLength(1)
+    for (const covers of Object.values(queue.published.covers)) expect(covers.complete).toBe(false)
   })
 
   it('a post-write joiner rejects the shared older snapshot and joins the fresh retry', async () => {

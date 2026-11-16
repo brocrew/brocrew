@@ -4958,6 +4958,12 @@ export class RuntimeHost implements LiveHost {
   /** Live hosts share the supplied writer's identity, independent of the scoped window view. */
   private readonly ledgerIdentity: object
   private windowReadCallers = 0
+  /**
+   * True while a window answer is composed from a worker snapshot a writer overtook: its facts are
+   * older than the current versions, so nothing kept at those versions is read or written, and what
+   * it publishes covers nothing completely.
+   */
+  private composingAnOvertakenSnapshot = false
   private windowFoldKept: { readonly stamp: WindowWriterStamp; readonly token: string } | undefined
   private windowListingRead = 0
   private windowRoutesPending:
@@ -15489,6 +15495,7 @@ export class RuntimeHost implements LiveHost {
     complete: (value: T) => boolean = everyRowWasRead,
   ): T {
     this.deps.store.checkCommitted()
+    if (this.composingAnOvertakenSnapshot) return compose()
     const one = kept.get(name)
     if (one !== undefined && one.at === version()) return one.value as T
     const at = version()
@@ -15730,7 +15737,13 @@ export class RuntimeHost implements LiveHost {
         }
         if (result.kind === 'publication' && result.states !== null)
           this.windowRoutesKept = { stamp, result: result.states }
-        return compose(result)
+        if (current) return compose(result)
+        this.composingAnOvertakenSnapshot = true
+        try {
+          return compose(result)
+        } finally {
+          this.composingAnOvertakenSnapshot = false
+        }
       }
     }
     throw new WindowReadMissed('writer-moved')
@@ -17172,7 +17185,14 @@ export class RuntimeHost implements LiveHost {
     const boundary = { next: Number.POSITIVE_INFINITY }
     const walk = this.readWorkIncidentsForAPerson(holders, boundary)
     this.nextTimeBoundary = Math.min(this.nextTimeBoundary, boundary.next)
-    return { walk, seq, validUntil: boundary.next, holders, live: this.incidentsLiveFacts(holders) }
+    return {
+      walk,
+      seq,
+      // Incidents from an overtaken snapshot are never published as the current ones.
+      validUntil: this.composingAnOvertakenSnapshot ? Number.NEGATIVE_INFINITY : boundary.next,
+      holders,
+      live: this.incidentsLiveFacts(holders),
+    }
   }
 
   /** Moves the queue once the clock has passed a wait on a time a reading depended on. */
@@ -17220,7 +17240,11 @@ export class RuntimeHost implements LiveHost {
       if (this.publicationSeq !== seq) continue
       return {
         ...parts,
-        published: { epoch: this.publicationEpoch, seq, covers: personsCoverage(parts) },
+        published: {
+          epoch: this.publicationEpoch,
+          seq,
+          covers: personsCoverage(parts, this.composingAnOvertakenSnapshot),
+        },
       }
     }
     return this.personsQueueRefused('The queue changed while it was read.')
@@ -42639,7 +42663,10 @@ interface StampedIncidents {
 }
 
 /** Each part's coverage under one stamp: complete, partial with the rows it holds, or refused. */
-function personsCoverage(parts: Omit<PersonsQueue, 'published'>): Record<PersonsPart, Coverage> {
+function personsCoverage(
+  parts: Omit<PersonsQueue, 'published'>,
+  overtaken: boolean,
+): Record<PersonsPart, Coverage> {
   const covers = {} as Record<PersonsPart, Coverage>
   for (const part of PERSONS_PARTS) {
     const value = parts[part]
@@ -42647,7 +42674,7 @@ function personsCoverage(parts: Omit<PersonsQueue, 'published'>): Record<Persons
     covers[part] =
       value === null
         ? { population: 'persons', scope: part, complete: false, ids: [] }
-        : everyRowWasRead(value)
+        : !overtaken && everyRowWasRead(value)
           ? { population: 'persons', scope: part, complete: true }
           : {
               population: 'persons',
