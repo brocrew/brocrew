@@ -3,9 +3,28 @@ import { expect, it, vi } from 'vitest'
 import { aServiceWorld } from './helpers/a-service-world'
 import { aLibraryHost } from './helpers/files-library-fixture'
 import { WindowReadEngine } from '../src/main/db/window-read-engine'
-import { WindowReadUnavailable, type WindowReadQuery } from '../src/main/db/window-read-protocol'
+import {
+  WindowReadUnavailable,
+  type WindowReadQuery,
+  type WindowReadResult,
+} from '../src/main/db/window-read-protocol'
 import { windowWriterSampler } from '../src/main/db/window-writer-stamp'
 import { limitsWriterSampler } from '../src/main/db/fresh-limits-snapshot'
+
+/** A host whose window reads go through `read`, over the world's own database file. */
+function aWorkerHost(
+  world: ReturnType<typeof aServiceWorld>,
+  engine: WindowReadEngine,
+  read: (query: WindowReadQuery) => Promise<WindowReadResult>,
+) {
+  return aLibraryHost(world.folder, {
+    store: world.store,
+    windowReader: { read, close: async () => engine.close() },
+    afterFirstWindowLoad: new Promise<void>(() => {}),
+    windowWriterStamp: windowWriterSampler(world.db, () => true),
+    limitsWriterStamp: limitsWriterSampler(world.db, () => true),
+  })
+}
 
 it('legacy listing callers share admission, warm reads and failures at the same writer stamp', async () => {
   const world = aServiceWorld()
@@ -18,13 +37,7 @@ it('legacy listing callers share admission, warm reads and failures at the same 
   })
   const engine = new WindowReadEngine(join(world.folder, 'brobot2.sqlite'))
   const read = vi.fn(async (query: WindowReadQuery) => engine.read(query))
-  const host = aLibraryHost(world.folder, {
-    store: world.store,
-    windowReader: { read, close: async () => engine.close() },
-    afterFirstWindowLoad: new Promise<void>(() => {}),
-    windowWriterStamp: windowWriterSampler(world.db, () => true),
-    limitsWriterStamp: limitsWriterSampler(world.db, () => true),
-  })
+  const host = aWorkerHost(world, engine, read)
   const listing = async () => {
     const result = await host.listConversations()
     if ('refused' in result) throw new Error(result.refused)
@@ -86,13 +99,7 @@ it('carries the last worker fold token across listing and routing reads', async 
     if (result.kind === 'listing' || result.kind === 'routes') tokens.push(result.cacheToken!)
     return result
   })
-  const host = aLibraryHost(world.folder, {
-    store: world.store,
-    windowReader: { read, close: async () => engine.close() },
-    afterFirstWindowLoad: new Promise<void>(() => {}),
-    windowWriterStamp: windowWriterSampler(world.db, () => true),
-    limitsWriterStamp: limitsWriterSampler(world.db, () => true),
-  })
+  const host = aWorkerHost(world, engine, read)
   try {
     const first = await host.listConversations()
     expect('refused' in first).toBe(false)
@@ -156,13 +163,7 @@ it('passes the fold token of a read a writer overtook on to the next read', asyn
     )
     return result
   })
-  const host = aLibraryHost(world.folder, {
-    store: world.store,
-    windowReader: { read, close: async () => engine.close() },
-    afterFirstWindowLoad: new Promise<void>(() => {}),
-    windowWriterStamp: windowWriterSampler(world.db, () => true),
-    limitsWriterStamp: limitsWriterSampler(world.db, () => true),
-  })
+  const host = aWorkerHost(world, engine, read)
   try {
     expect((await host.readForWindow(() => host.questionsForAPerson())).rows).toEqual([])
     expect(read).toHaveBeenCalledTimes(2)
