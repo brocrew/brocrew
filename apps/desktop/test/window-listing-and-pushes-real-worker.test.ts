@@ -55,7 +55,7 @@ it('measures window reads with 1960 conversations and nine live agents', async (
     if (!/^\s*(SELECT|WITH)\b/i.test(sql) || !/\bevents\b/i.test(sql) || !/\bpayload\b/i.test(sql))
       return statement
     const record = () => {
-      const caller = new Error().stack ?? ''
+      const caller = measuring ? (new Error().stack ?? '') : ''
       const row = { sql, rows: 0, caller, phase }
       if (measuring) {
         if (

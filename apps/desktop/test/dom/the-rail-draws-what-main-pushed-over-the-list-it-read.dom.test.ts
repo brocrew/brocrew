@@ -1,5 +1,5 @@
 import type { AgentState } from '../../src/shared/agent-state-contracts'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 
@@ -353,7 +353,7 @@ describe('the rail draws what main pushed over the list it read', () => {
     expect(said(m.q('rail-needs-you-brobot'))).toBe('1')
     expect(m.all('conversations-error')).toHaveLength(0)
 
-    // The database is locked for one read.
+    // The database remains locked through the quiet retry interval.
     stubbed().api = {
       runtime: {
         listResumable: () => Promise.reject(new Error('the database is locked')),
@@ -361,6 +361,7 @@ describe('the rail draws what main pushed over the list it read', () => {
       },
     }
     await readAgain(m)
+    await vi.waitFor(() => expect(m.all('conversations-error')).toHaveLength(1), { timeout: 3_000 })
     const error = m.q('conversations-error')
     expect(visible(error)).toBe(true)
     expect(said(error)).toContain('the database is locked')
