@@ -6,7 +6,7 @@ import type { ProvidersChangedMessage, ProviderUsageReading } from '../../src/sh
 import { railFacts, screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { conv, forestOf } from './forest-fixture'
 import { unmountAll, type Mounted } from './harness'
-import { usageCards } from './usage-cards'
+import { usageCards, unreadUsage } from './usage-cards'
 import { drawnReady } from './drawn'
 
 /**
@@ -212,7 +212,7 @@ describe('the shelf says each provider’s usage', () => {
 
   it('🔴 an unread window stays unread, with no age and no title — and a read one beside it does not', async () => {
     const now = Date.now()
-    const m = await shelf({ claude: both(now).claude, codex: [] })
+    const m = await shelf({ claude: both(now).claude, codex: unreadUsage().codex })
     for (const [key, label] of [['codex-week', 'Codex · week']] as const) {
       const cell = m.q(`shelf-usage-${key}`)
       expect(text(cell.querySelector('.usage-label')!)).toBe(label)
@@ -283,20 +283,10 @@ describe('the shelf says each provider’s usage', () => {
     ).not.toContain('Not read yet')
   })
 
-  it('🔴 Codex draws no 5-hour cell before a reading; Claude, with no reading yet, still says both are not read yet', async () => {
+  it('does not invent account windows from an empty reading', async () => {
     const m = await shelf({ claude: [], codex: [] })
-    expect(m.all('shelf-usage-codex-5h')).toHaveLength(0)
-    expect(cells(m).map((cell) => cell.dataset['cy'])).toEqual([
-      'shelf-usage-claude-5h',
-      'shelf-usage-claude-week',
-      'shelf-usage-codex-week',
-    ])
-    for (const key of ['claude-5h', 'claude-week', 'codex-week']) {
-      expect(text(m.q(`shelf-usage-${key}`).querySelector('[data-cy="shelf-missing"]')!)).toBe(
-        'Not read yet',
-      )
-    }
-    expect(m.all('shelf-missing')).toHaveLength(3)
+    expect(cells(m)).toHaveLength(0)
+    expect(m.all('shelf-missing')).toHaveLength(0)
   })
 
   it('⚑ the control: a 5-hour reading from Codex is drawn, so a real reading is never lost', async () => {
@@ -379,11 +369,11 @@ describe('the shelf says each provider’s usage', () => {
 
   it('🔴 every value line is one weight, read or not', async () => {
     const now = Date.now()
-    const m = await shelf({ claude: [], codex: both(now).codex.slice(0, 2) })
+    const m = await shelf({ claude: unreadUsage().claude, codex: both(now).codex.slice(0, 2) })
     const values = cells(m).map((cell) => cell.querySelector('.fact-value') as HTMLElement)
     expect(values).toHaveLength(4)
     // Codex's 5-hour cell is drawn here because a reading for it arrived.
-    // The mix: Claude's two cells unread, Codex's read.
+    // This account reports two unread Claude windows and measured Codex windows.
     expect(values.filter((el) => el.dataset['cy'] === 'shelf-missing')).toHaveLength(2)
     const weights = values.map((el) => getComputedStyle(el).fontWeight)
     expect(new Set(weights).size, `weights ${weights.join(', ')}`).toBe(1)
@@ -391,9 +381,9 @@ describe('the shelf says each provider’s usage', () => {
     expect(getComputedStyle(m.q('app-usage')).fontWeight).not.toBe(weights[0])
   })
 
-  it('⚑ a usage notice reads the readings again; nothing polls', async () => {
+  it('a usage notice fills reported unread windows; nothing polls', async () => {
     const now = Date.now()
-    const m = await shelf({ claude: [], codex: [] })
+    const m = await shelf(unreadUsage())
     expect(m.all('shelf-missing')).toHaveLength(3)
     current = both(now)
     // ⛔ The control: nothing moves without a notice.
