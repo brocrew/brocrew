@@ -43,6 +43,10 @@ import { withManagedPluginAttachments } from '../../packages/runtime/src/managed
 import { fixtureTitle } from '../gates/plugin-packaged/fake-browser.mjs'
 const cleanup = [],
   roots = []
+const chromeTarget = { os: process.platform, cpu: process.arch }
+const chromePackageSupported =
+  (chromeTarget.os === 'darwin' && chromeTarget.cpu === 'arm64') ||
+  (chromeTarget.os === 'win32' && chromeTarget.cpu === 'x64')
 const protocolInstalled = fs.existsSync(
   new URL('../../plugins/chrome/node_modules/playwright-core/package.json', import.meta.url),
 )
@@ -277,8 +281,10 @@ describe.skipIf(process.platform === 'win32')(
       ).toThrow()
       expect(fs.readdirSync(outside)).toEqual([])
     })
-    it.skipIf(!protocolInstalled)(
-      'delivers the built Chrome package full inventory through the real binding and agent bridge before its provider turn',
+    it.skipIf(!protocolInstalled || !chromePackageSupported)(
+      process.platform === 'linux'
+        ? 'no Linux Chrome package'
+        : 'delivers the built Chrome package full inventory through the real binding and agent bridge before its provider turn',
       async () => {
         const { buildChromePackage } = await import('../../plugins/chrome/build.mjs')
         const root = scratch(),
@@ -291,7 +297,7 @@ describe.skipIf(process.platform === 'win32')(
           { mode: 0o700 },
         )
         const built = path.join(root, 'built')
-        const release = await buildChromePackage(built, 'a'.repeat(40))
+        const release = await buildChromePackage(built, 'a'.repeat(40), chromeTarget)
         const catalogue = Buffer.from(JSON.stringify(listFor(release)))
         const verified = createRepoAwarePluginVerifier({
           target: { os: process.platform, cpu: process.arch },
