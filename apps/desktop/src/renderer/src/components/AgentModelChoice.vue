@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { AgentModelChoice } from '../../../shared/model-choice-contracts'
 
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import type { Provider, ProviderCapabilityMap } from '../../../shared/runtime-ipc'
 import {
   aChoiceInWords,
@@ -131,6 +131,24 @@ watch(
  * screen's fallback — Codex's rows (`RuntimeScreen`'s `DEFAULT_PROVIDER`).
  */
 const menusFor = computed(() => theMenusAreFor(props.runsOn, props.itsProvider, held.value))
+const readConnectionId = computed(
+  () =>
+    (held.value?.provider === menusFor.value ? held.value?.connectionId : undefined) ??
+    modelLists.value.choices(menusFor.value, props.profileSlug)?.defaultConnectionId,
+)
+onMounted(() => {
+  watch(
+    [menusFor, () => props.profileSlug, readConnectionId, modelLists],
+    () => {
+      if (readConnectionId.value !== undefined)
+        void modelLists.value.read(menusFor.value, props.profileSlug, {
+          once: true,
+          connectionId: readConnectionId.value,
+        })
+    },
+    { immediate: true },
+  )
+})
 /**
  * ⚑ **`696` · the roster, so a sentence names the stand-in the way every surface names that agent**
  * — `theStandInNamed`. ⚠️ `null` before the read lands: `agentName` then answers the product's own
@@ -144,7 +162,7 @@ const roster = computed(() => store.value.identities.value?.identities ?? null)
  * so the picker says whose it is before the press.
  */
 const standInSays = computed(() => {
-  const listed = modelLists.value.held(menusFor.value, props.profileSlug)
+  const listed = modelLists.value.held(menusFor.value, props.profileSlug, readConnectionId.value)
   if (listed?.state !== 'answered' || listed.list.standIn === null) return null
   const named = theStandInNamed({ standIn: listed.list.standIn }, roster.value).standIn
   return `This is ${named}’s list: this agent has no list of its own to ask.`
@@ -223,9 +241,11 @@ async function clear(): Promise<void> {
         <strong v-if="!readOnce" data-cy="agent-model-unknown">Not known</strong>
         <template v-else>
           <ModelPicker
+            choose-connection
             :providers="[menusFor]"
             :profile-id="props.profileSlug"
             :shown="shown"
+            :connection-id="readConnectionId"
             empty="Nobody has chosen"
             take-words="Save as its default"
             :take="save"

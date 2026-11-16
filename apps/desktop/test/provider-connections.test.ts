@@ -13,11 +13,79 @@ beforeEach(() => {
 })
 afterEach(() => db.close())
 
-it('lists sign-ins first, and the saved key only while one is saved', () => {
-  expect(listProviderConnections(db, 'claude', false).map((row) => row.id)).toEqual([
+for (const provider of ['claude', 'codex'] as const) {
+  it(`${provider}: declared connection metadata includes the not-ready API route`, () => {
+    expect(listProviderConnections(db, provider).map((connection) => connection.id)).toEqual([
+      `${provider}:sign-in`,
+      `${provider}:api-key`,
+    ])
+  })
+
+  it(`${provider}: resolving an explicit not-ready route returns metadata without substituting a subscription`, () => {
+    expect(
+      resolveProviderConnection(db, {
+        provider,
+        connectionId: `${provider}:api-key`,
+        keySaved: false,
+      }),
+    ).toMatchObject({ id: `${provider}:api-key`, provider, authMethod: 'api-key' })
+  })
+
+  it(`${provider}: a provider-local connection name resolves to its canonical ID`, () => {
+    db.prepare('UPDATE provider_connection SET name=? WHERE id=?').run(
+      'Fern subscription',
+      `${provider}:sign-in`,
+    )
+    expect(
+      resolveProviderConnection(db, {
+        provider,
+        connectionId: 'fern SUBSCRIPTION',
+        keySaved: true,
+      }),
+    ).toMatchObject({ id: `${provider}:sign-in`, name: 'Fern subscription', authMethod: 'sign-in' })
+  })
+
+  it(`${provider}: a named API route keeps its method before adapter readiness is checked`, () => {
+    db.prepare('UPDATE provider_connection SET name=? WHERE id=?').run(
+      'Fern metered',
+      `${provider}:api-key`,
+    )
+    expect(
+      resolveProviderConnection(db, { provider, connectionId: 'Fern metered', keySaved: true }).id,
+    ).toBe(`${provider}:api-key`)
+    expect(
+      resolveProviderConnection(db, { provider, connectionId: 'Fern metered', keySaved: false }),
+    ).toMatchObject({ id: `${provider}:api-key`, authMethod: 'api-key' })
+  })
+
+  it(`${provider}: a canonical ID takes priority over another connection's name`, () => {
+    const id = `${provider}:api-key`
+    db.prepare('UPDATE provider_connection SET name=? WHERE id=?').run(id, `${provider}:sign-in`)
+    expect(resolveProviderConnection(db, { provider, connectionId: id, keySaved: true }).id).toBe(
+      id,
+    )
+  })
+}
+
+it('connection selection does not interpret an address or key as connection configuration', () => {
+  const before = db.prepare('SELECT * FROM provider_connection ORDER BY id').all()
+  for (const connectionId of [
+    'https://fictional.invalid/inference',
+    'fictional-unregistered-key',
+  ]) {
+    expect(() =>
+      resolveProviderConnection(db, { provider: 'claude', connectionId, keySaved: true }),
+    ).toThrow('The selected connection is unavailable')
+  }
+  expect(db.prepare('SELECT * FROM provider_connection ORDER BY id').all()).toEqual(before)
+})
+
+it('lists compatibility metadata sign-in first, without reading key availability', () => {
+  expect(listProviderConnections(db, 'claude').map((row) => row.id)).toEqual([
     'claude:sign-in',
+    'claude:api-key',
   ])
-  const records = listProviderConnections(db, 'claude', true)
+  const records = listProviderConnections(db, 'claude')
   expect(records.map((row) => [row.id, row.authMethod, row.credentialSource])).toEqual([
     ['claude:sign-in', 'sign-in', 'provider-sign-in'],
     ['claude:api-key', 'api-key', 'provider-api-key'],
@@ -33,11 +101,33 @@ it('keeps null and omitted old choices dynamic, including keys set or removed la
   }
 })
 
+for (const provider of ['claude', 'codex'] as const) {
+  it(`${provider}: an explicit subscription stays selected when a key is saved`, () => {
+    const connectionId = `${provider}:sign-in`
+    for (const keySaved of [false, true, false]) {
+      expect(resolveProviderConnection(db, { provider, connectionId, keySaved })).toMatchObject({
+        id: connectionId,
+        authMethod: 'sign-in',
+        credentialSource: 'provider-sign-in',
+      })
+    }
+  })
+}
+
 it('refuses a missing, cross-provider, disabled or noncompatibility explicit selection without fallback', () => {
-  for (const connectionId of ['missing', 'codex:sign-in', 'claude:api-key'])
+  for (const connectionId of ['missing', 'codex:sign-in'])
     expect(() =>
       resolveProviderConnection(db, { provider: 'claude', connectionId, keySaved: false }),
     ).toThrow()
+  db.prepare('UPDATE provider_connection SET enabled = 0 WHERE id = ?').run('claude:api-key')
+  expect(() =>
+    resolveProviderConnection(db, {
+      provider: 'claude',
+      connectionId: 'claude:api-key',
+      keySaved: false,
+    }),
+  ).toThrow('The selected connection is unavailable')
+  db.prepare('UPDATE provider_connection SET enabled = 1 WHERE id = ?').run('claude:api-key')
   db.prepare('UPDATE provider_connection SET enabled = 0 WHERE id = ?').run('claude:sign-in')
   expect(() => resolveProviderConnection(db, { provider: 'claude', keySaved: false })).toThrow()
   db.prepare('UPDATE provider_connection SET enabled = 1, base_url = ? WHERE id = ?').run(
@@ -53,8 +143,9 @@ it('does not expose extra rows even if a future or foreign writer inserted one',
     (id,provider,name,auth_method,credential_source,base_url,enabled,contract_version)
     VALUES ('fictional-extra','claude','company gateway','api-key','provider-api-key',NULL,1,1)`,
   ).run()
-  expect(listProviderConnections(db, 'claude', false).map((row) => row.id)).toEqual([
+  expect(listProviderConnections(db, 'claude').map((row) => row.id)).toEqual([
     'claude:sign-in',
+    'claude:api-key',
   ])
   expect(() =>
     resolveProviderConnection(db, {

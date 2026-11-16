@@ -630,7 +630,6 @@ describe('D-017b · a look takes what a press may take, and nothing else', () =>
         handover: 'recorded',
         liveFrom: 3,
         cannotTakeAMessage: null,
-        settingsFixed: false,
       }) satisfies ResumedSession
 
     const eventFor = (sessionId: string, ordinal: number): RuntimeEventMessage => ({

@@ -71,8 +71,9 @@ const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
  * the sentence names nothing more.
  */
 // Rules provenance, seen state and saved method recovery live in the database being removed.
-// Compatibility connection entries are recreated; personal defaults and credential rows are removed.
-const MIGRATIONS = 33
+// Compatibility connection entries and empty descriptions are recreated; personal defaults and credential rows are removed.
+// Retained usage and its connection identities start empty after removing the database.
+const MIGRATIONS = 35
 
 const FLAGS = new Set([
   '--dry-run',

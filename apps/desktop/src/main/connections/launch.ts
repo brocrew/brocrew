@@ -70,10 +70,14 @@ export function resolveProviderLaunch(
   const first = readiness.find((one) => one.ready === true)?.provider ?? null
   const isReady = (provider: Provider): boolean =>
     readiness.some((one) => one.provider === provider && one.ready === true)
+  const selected = input.askedConnectionId !== undefined && input.askedProvider !== null
   return {
     readiness,
-    provider: isReady(preferred) ? preferred : (first ?? preferred),
+    provider: selected ? preferred : isReady(preferred) ? preferred : (first ?? preferred),
     pickerProvider:
-      input.askedProvider !== null && isReady(input.askedProvider) ? input.askedProvider : first,
+      selected || (input.askedProvider !== null && isReady(input.askedProvider))
+        ? input.askedProvider
+        : first,
+    ...(selected ? { connectionId: input.askedConnectionId } : {}),
   }
 }

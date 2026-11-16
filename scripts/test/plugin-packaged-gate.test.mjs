@@ -85,6 +85,12 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
   it('projects only explicit scratch list/archive and inert-browser inputs into the packaged Settings path', () => {
     const config = read('apps/desktop/src/main/plugins/catalogue/build-config.ts')
     const entry = read('apps/desktop/src/main/index.ts')
+    const homePreparation = [
+      'const home = providerModules[provider].home',
+      '      return connectionId === undefined',
+      '        ? home.prepare(profileId)',
+      '        : home.prepare(profileId, connectionId)',
+    ].join('\n')
     const projected = projectBuild(
       config,
       entry,
@@ -95,7 +101,13 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
     expect(projected.entry).toContain(
       "import { RuntimeHost, type RuntimeHostDeps } from './runtime/runtime-host'",
     )
-    const homeDerivation = 'deriveProviderHome(userData, { profileId, provider })'
+    const homeDerivation = [
+      'deriveProviderHome(userData, {',
+      '        profileId,',
+      '        provider,',
+      '        ...(connectionId === undefined ? {} : { connectionId }),',
+      '      })',
+    ].join('\n')
     expect(entry.split(homeDerivation)).toHaveLength(2)
     expect(projected.entry.split(homeDerivation)).toHaveLength(2)
     expect(projected.entry).toContain(
@@ -107,7 +119,7 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
     expect(projected.entry).not.toContain('providerModules[provider].createRuntime(')
     expect(projected.entry).not.toContain('providerModules[provider].prepareLaunch(')
     expect(projected.entry.match(/new PackagedGateRuntime\(/g)).toHaveLength(2)
-    expect(projected.entry).not.toContain('providerModules[provider].home.prepare(profileId)')
+    expect(projected.entry).not.toContain('home.prepare(profileId')
     expect(projected.entry).toContain('fixtureSource: "/private/tmp/fictional/a/repo-fixture"')
     expect(projected.entry).toContain('browserExecutable: "/private/tmp/fictional/browser"')
     expect(projected.entry).toContain('app.setPath(\'appData\', "/private/tmp/fictional/a")')
@@ -149,7 +161,7 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
       '    loginRenewal: providerAuth.loginRenewal,\n',
       'providerModules[provider].createRuntime()',
       'return providerModules[provider].prepareLaunch(profileId, connection)',
-      'return providerModules[provider].home.prepare(profileId)',
+      homePreparation,
     ]) {
       expect(entry.split(anchor)).toHaveLength(2)
       for (const changed of [entry.replace(anchor, ''), entry + '\n' + anchor])

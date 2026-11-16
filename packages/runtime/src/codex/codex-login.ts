@@ -416,34 +416,21 @@ export async function probeCodexAuthInHome(
   }
 }
 
-/** What a person's API key does to one Codex profile home. */
+/** The legacy profile login change; explicit API-key connections keep their login in the child. */
 export type CodexKeyChange =
-  /** Log the home in with this key — Codex keeps it in its own `auth.json`. */
-  | { readonly to: 'the-key'; readonly apiKey: string }
-  /** Log the home out, so the copied machine login can take its place again. */
-  | { readonly to: 'no-key' }
+  { readonly to: 'the-key'; readonly apiKey: string } | { readonly to: 'no-key' }
 
 /** What the home holds after a {@link changeCodexKeyInHome}. */
 export type CodexKeyOutcome =
   | { readonly ok: true; readonly authMethod: string | null }
   | { readonly ok: false; readonly reason: string }
 
-/**
- * 🔒 **Log one Codex profile home in with a person's API key, or out of it** — Codex's own login
- * (`account/login/start {type:'apiKey'}`, `account/logout`), run in an app-server pinned to that home.
- *
- * ⚑ **Where the key goes**: into this app-server's stdin, as one JSON-RPC request, and from there
- * into the `auth.json` Codex writes in the profile home (`0600`), as a ChatGPT login is kept today.
- * ⛔ Never into an argument, an environment, a log or an error: a failure answers in this app's own
- * words, and the provider's text — which a request's rejection carries — is never handed on.
- *
- * The home's boot slot serializes startup, requests are bounded, and the app-server closes on every path.
- */
+/** Update a legacy profile login through Codex; bound startup and always close the child. */
 export async function changeCodexKeyInHome(
   transports: TransportFactory,
   providerHome: string,
-  change: CodexKeyChange,
   signal?: AbortSignal,
+  change: CodexKeyChange = { to: 'no-key' },
 ): Promise<CodexKeyOutcome> {
   let bootSettled: (() => void) | undefined
   let transport: CodexTransport | undefined

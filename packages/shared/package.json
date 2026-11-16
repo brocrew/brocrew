@@ -15,6 +15,10 @@
       "types": "./src/providers.ts",
       "default": "./src/providers.ts"
     },
+    "./provider-connections": {
+      "types": "./src/provider-connections.ts",
+      "default": "./src/provider-connections.ts"
+    },
     "./paths": {
       "types": "./src/paths.ts",
       "default": "./src/paths.ts"

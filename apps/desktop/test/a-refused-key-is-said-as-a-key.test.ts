@@ -67,11 +67,7 @@ describe('§1 · the refusal’s notice names the credential it refused', () => 
   it('🔴 on a key: the key, the card it is checked on, and what a message then does — no login', () => {
     const [notice] = noticesFor(REFUSED(true))
     expect(notice?.level).toBe('error')
-    expect(notice?.text).toContain(
-      'Anthropic refused the API key this conversation was started with',
-    )
-    expect(notice?.text).toContain('“API key” on the Claude card in Providers')
-    expect(notice?.text).toContain('send this conversation a message to carry on')
+    expect(notice?.text).toBe('Key refused. Check its balance or switch connection.')
     expect(notice?.text).not.toMatch(/login|renewed|elsewhere on this Mac/)
     // ⚑ The provider's own words stay out of the notice, as for the login (085's split).
     expect(notice?.text).not.toContain('Fix external API key')

@@ -2,7 +2,7 @@ import {
   // ⚑ **D-042 · R1 — a provider's own default, by name**, where no list need be read to know it.
   theDefaultByName,
 } from '@brobot2/runtime'
-import type { Provider } from '@brobot2/shared'
+import { additionalConnectionId, type Provider } from '@brobot2/shared'
 import {
   agentName,
   DEFAULT_PROFILE_ID,
@@ -39,12 +39,17 @@ import {
 } from './model-rails'
 import { SessionUnavailable } from '../runtime/session-unavailable'
 
+interface CatalogueVersion {
+  value?: string
+  reading?: Promise<void>
+}
+
 /** The existing model choices and the one per-host catalogue cache. */
 export class ModelCatalogues {
-  private readonly modelProbes = new Map<Provider, Promise<ModelCatalogue>>()
+  private readonly modelProbes = new Map<string, Promise<ModelCatalogue>>()
   private readonly settledModelProbes = new WeakSet<Promise<ModelCatalogue>>()
   private readonly modelsAnswered = new WeakMap<Promise<ModelCatalogue>, ModelCatalogue>()
-  private readonly modelVersions = new Map<Provider, string>()
+  private readonly modelVersions = new Map<string, CatalogueVersion>()
 
   constructor(
     private readonly store: Pick<
@@ -66,12 +71,17 @@ export class ModelCatalogues {
     private readonly askProviderForModels: (
       provider: Provider,
       profileId: string,
+      connectionId?: string,
     ) => Promise<ModelCatalogue>,
     private readonly isClosing: () => boolean,
     private readonly theProviderOfConversation: (conversation: string) => Provider | null,
     private readonly now: () => number,
     private readonly agentsMoved: () => void,
     private readonly errorMessage: (error: unknown) => string,
+    private readonly readVersionBeforeModels?: (
+      provider: Provider,
+      connectionId: string,
+    ) => Promise<string | null>,
   ) {}
 
   /**
@@ -197,7 +207,7 @@ export class ModelCatalogues {
         named: agentName(profileSlug, this.store.agentIdentities()),
       })
     }
-    const list = await this.theListFor(choice.provider, profileSlug)
+    const list = await this.theListFor(choice.provider, profileSlug, choice.connectionId)
     const row = theListedRow(list.rows, choice.model)
     // ⚠️ **A model a person added, while the provider's list could not be read, offers efforts
     // nobody knows** — not *"none"* — so it is the list's absence that is said, as the agents' seam
@@ -229,7 +239,13 @@ export class ModelCatalogues {
         named: agentName(profileSlug, this.store.agentIdentities()),
       })
     }
-    if (!this.store.setModelChoice(profileSlug, { provider: choice.provider, ...pair })) {
+    if (
+      !this.store.setModelChoice(profileSlug, {
+        provider: choice.provider,
+        ...pair,
+        ...(choice.connectionId === undefined ? {} : { connectionId: choice.connectionId }),
+      })
+    ) {
       return refuseModelChoice('no-such-agent', said)
     }
     this.store.aPersonPicked(choice.provider, pair, this.now())
@@ -251,17 +267,27 @@ export class ModelCatalogues {
    * ⚑ Asked as {@link providerModels} asks: an agent with no folder in {@link STAND_IN_PROFILE}'s
    * home, a failure already cached asked once more, and nothing creates a folder.
    */
-  async modelList(provider: Provider, profileId: string = DEFAULT_PROFILE_ID): Promise<ModelList> {
-    const list = await this.theListFor(provider, profileId)
+  async modelList(
+    provider: Provider,
+    profileId: string = DEFAULT_PROFILE_ID,
+    connectionId?: string,
+  ): Promise<ModelList> {
+    const list = await this.theListFor(provider, profileId, connectionId)
+    const lastPicked = this.store.lastPicked(provider)
     return {
       provider,
       notAsked: list.notAsked,
       standIn: list.standIn,
       models: list.rows,
-      lastPicked: this.store.lastPicked(provider),
+      lastPicked:
+        additionalConnectionId(provider, connectionId) !== undefined &&
+        lastPicked !== null &&
+        judgeAgainstTheList(list.rows, lastPicked) !== null
+          ? null
+          : lastPicked,
       startsOn:
-        this.theSelectedPairIfNamed(provider, profileId) ??
-        this.theProvidersDefaultIn(list, provider),
+        this.theSelectedPairIn(list, provider, profileId, connectionId) ??
+        this.theProvidersDefaultIn(list, provider, undefined, connectionId),
     }
   }
 
@@ -286,9 +312,14 @@ export class ModelCatalogues {
    * reads, memoized; ⚠️ never rejects — a pick not recorded is a later start resolving otherwise,
    * and the conversation it was made for has started either way.
    */
-  async aPersonPicked(provider: Provider, profileId: string, pair: ModelAndEffort): Promise<void> {
+  async aPersonPicked(
+    provider: Provider,
+    profileId: string,
+    pair: ModelAndEffort,
+    connectionId?: string,
+  ): Promise<void> {
     try {
-      const list = await this.theListFor(provider, profileId)
+      const list = await this.theListFor(provider, profileId, connectionId)
       const row = theListedRow(list.rows, pair.model)
       if (
         list.notAsked !== null ||
@@ -329,7 +360,7 @@ export class ModelCatalogues {
   async judgeTheDefaultItNames(
     me: string,
     named: Provider | null,
-    asked: { readonly model?: string; readonly effort?: string },
+    asked: { readonly model?: string; readonly effort?: string; readonly connectionId?: string },
   ): Promise<
     | { readonly ok: true; readonly chosen: AgentModelChoice }
     | { readonly ok: false; readonly refusal: ModelRefusal }
@@ -340,8 +371,18 @@ export class ModelCatalogues {
       this.theProviderOfConversation(me)
     // ⛔ **Unreachable while a tool call is made**: the caller is mid-call, so it runs.
     if (provider === null) throw new Error(`create_agent: ${me} runs on no provider`)
-    const list = await this.theListFor(provider, STAND_IN_PROFILE)
-    const verdict = judgeAnAgentsChoice(asked, provider, list, null, 'create')
+    const list =
+      asked.connectionId === undefined
+        ? await this.theListFor(provider, STAND_IN_PROFILE)
+        : await this.theListFor(provider, STAND_IN_PROFILE, asked.connectionId)
+    const otherwise =
+      asked.model === undefined && asked.effort === undefined
+        ? asked.connectionId === undefined
+          ? (this.store.lastPicked(provider) ?? this.theProvidersDefaultIn(list, provider))
+          : (this.theSelectedPairIn(list, provider, null, asked.connectionId) ??
+            this.theProvidersDefaultIn(list, provider, undefined, asked.connectionId))
+        : null
+    const verdict = judgeAnAgentsChoice(asked, provider, list, otherwise, 'create')
     return verdict.ok ? { ok: true, chosen: { provider, ...verdict.chosen } } : verdict
   }
 
@@ -382,14 +423,33 @@ export class ModelCatalogues {
    * 🔴 **Never during a quit** (`689`'s review): asking again runs `prepareProviderHome` before the
    * launch registry can refuse the child, and a quit hands back what it has (070, from 068 finding 7).
    */
-  private async modelsAskedAgainIfTheyFailed(provider: Provider): Promise<ModelCatalogue> {
-    const key = provider
+  private async modelsAskedAgainIfTheyFailed(
+    provider: Provider,
+    connectionId?: string,
+  ): Promise<ModelCatalogue> {
+    const key = this.catalogueKey(provider, connectionId)
+    const own = additionalConnectionId(provider, connectionId)
+    if (own !== undefined && this.readVersionBeforeModels !== undefined) {
+      if (this.isClosing()) return this.modelProbes.get(key) ?? { ok: false, reason: 'closing' }
+      const state: CatalogueVersion = this.modelVersions.get(key) ?? {}
+      this.modelVersions.set(key, state)
+      if (state.reading === undefined) {
+        const reading = this.readVersionBeforeModels(provider, own)
+          .then((version) => this.setProviderVersion(provider, version, own))
+          .finally(() => {
+            if (state.reading === reading) delete state.reading
+          })
+        state.reading = reading
+      }
+      await state.reading
+      if (this.isClosing()) return this.modelProbes.get(key) ?? { ok: false, reason: 'closing' }
+    }
     const cached = this.modelProbes.get(key)
     const stale = cached !== undefined && this.settledModelProbes.has(cached)
-    const catalogue = await this.probeModelsFor(provider)
+    const catalogue = await this.probeModelsFor(provider, connectionId)
     if (catalogue.ok || !stale || this.isClosing()) return catalogue
-    if (this.modelProbes.get(key) === cached) this.forgetModels(provider)
-    return this.probeModelsFor(provider)
+    if (this.modelProbes.get(key) === cached) this.forgetModels(provider, connectionId)
+    return this.probeModelsFor(provider, connectionId)
   }
 
   /**
@@ -398,8 +458,8 @@ export class ModelCatalogues {
    * {@link modelsAskedAgainIfTheyFailed}, the one memo every door shares, so a launch after a window
    * read costs no second child.
    */
-  private async theListIn(provider: Provider): Promise<TheListAsked> {
-    const catalogue = await this.modelsAskedAgainIfTheyFailed(provider)
+  private async theListIn(provider: Provider, connectionId?: string): Promise<TheListAsked> {
+    const catalogue = await this.modelsAskedAgainIfTheyFailed(provider, connectionId)
     return this.theListOf(provider, catalogue)
   }
 
@@ -417,13 +477,16 @@ export class ModelCatalogues {
   async theListFor(
     provider: Provider,
     profileId: string,
+    connectionId?: string,
   ): Promise<TheListAsked & { readonly standIn: string | null }> {
     const folded = foldProfileName(profileId)
     const own = this.profiles().find((named) => foldProfileName(named) === folded) ?? profileId
-    const catalogue = await this.providerModels(own, provider).catch((): ModelCatalogue => ({
-      ok: false,
-      reason: 'closing',
-    }))
+    const catalogue = await this.providerModels(own, provider, connectionId).catch(
+      (): ModelCatalogue => ({
+        ok: false,
+        reason: 'closing',
+      }),
+    )
     return {
       ...this.theListOf(provider, catalogue),
       standIn: catalogue.ok ? (catalogue.standIn ?? null) : null,
@@ -431,14 +494,18 @@ export class ModelCatalogues {
   }
 
   /** The latest shared provider rows, with hand-added models, without starting another read. */
-  theListsAsLastRead(): ListsAsLastRead {
+  theListsAsLastRead(selectedProvider?: Provider, connectionId?: string): ListsAsLastRead {
     const answered = (probe: Promise<ModelCatalogue> | undefined): ModelCatalogue | undefined => {
       const catalogue = probe === undefined ? undefined : this.modelsAnswered.get(probe)
       return catalogue?.ok === true ? catalogue : undefined
     }
     const lists: ListsAsLastRead = {}
     for (const provider of Object.keys(PROVIDER_NAME) as Provider[]) {
-      const read = answered(this.modelProbes.get(provider))
+      const key = this.catalogueKey(
+        provider,
+        provider === selectedProvider ? connectionId : undefined,
+      )
+      const read = answered(this.modelProbes.get(key))
       if (read !== undefined) lists[provider] = this.theListOf(provider, read).rows
     }
     return lists
@@ -476,6 +543,21 @@ export class ModelCatalogues {
     return byName === null ? null : { ...byName, from: 'the-providers-default' }
   }
 
+  /** Keep inherited choices only when this additional connection offers the whole pair. */
+  theSelectedPairIn(
+    list: TheListAsked,
+    provider: Provider,
+    profileSlug: string | null,
+    connectionId?: string,
+  ): SelectedModel | null {
+    const selected = this.theSelectedPairIfNamed(provider, profileSlug)
+    return additionalConnectionId(provider, connectionId) !== undefined &&
+      selected !== null &&
+      judgeAgainstTheList(list.rows, selected) !== null
+      ? null
+      : selected
+  }
+
   /**
    * ⚑ **D-042 · R1 — the provider's own default, BY NAME** — Claude's without asking, else the row
    * its list marks `isDefault`, at that row's own default effort ({@link theEffortWhenNoneIsNamed}).
@@ -488,8 +570,12 @@ export class ModelCatalogues {
     list: TheListAsked,
     provider: Provider,
     carried?: string,
+    connectionId?: string,
   ): SelectedModel | null {
-    const byName = theDefaultByName(provider)
+    const byName =
+      additionalConnectionId(provider, connectionId) === undefined
+        ? theDefaultByName(provider)
+        : null
     if (byName !== null) return { ...byName, from: 'the-providers-default' }
     const row = list.rows.find((one) => one.isDefault === true && one.addedBy === 'the-provider')
     const itsOwn = theEffortWhenNoneIsNamed(row, list.rows)
@@ -516,11 +602,16 @@ export class ModelCatalogues {
     list: TheListAsked,
     provider: Provider,
     model: string,
+    connectionId?: string,
   ): string | null | undefined {
     const row = theListedRow(list.rows, model)
     const itsDefault = theEffortWhenNoneIsNamed(row, list.rows)
     if (row?.addedBy === 'the-provider') return itsDefault
-    return itsDefault ?? this.theProvidersDefaultIn(list, provider)?.effort ?? undefined
+    return (
+      itsDefault ??
+      this.theProvidersDefaultIn(list, provider, undefined, connectionId)?.effort ??
+      undefined
+    )
   }
 
   /**
@@ -551,6 +642,7 @@ export class ModelCatalogues {
     /** The identity whose default is asked — `null` for a conversation no identity holds. */
     profileSlug: string | null,
     named: { readonly model?: string; readonly effort?: string },
+    connectionId?: string,
   ): Promise<SelectedModel> {
     const unnamed = (list: TheListAsked, model: string | null): SessionUnavailable => {
       const why =
@@ -567,23 +659,30 @@ export class ModelCatalogues {
         { listUnread: { provider, why, model } },
       )
     }
+    const own = additionalConnectionId(provider, connectionId)
+    let scoped: Promise<TheListAsked> | undefined
+    const readList = (): Promise<TheListAsked> =>
+      own === undefined ? this.theListIn(provider) : (scoped ??= this.theListIn(provider, own))
     if (named.model !== undefined) {
       if (named.effort !== undefined) {
         return { model: named.model, effort: named.effort, from: 'named' }
       }
-      const list = await this.theListIn(provider)
-      const effort = this.theEffortOfAModelNamedAlone(list, provider, named.model)
+      const list = await readList()
+      const effort = this.theEffortOfAModelNamedAlone(list, provider, named.model, connectionId)
       if (effort === undefined) throw unnamed(list, named.model)
       return { model: named.model, effort, from: 'named' }
     }
-    let selected = this.theSelectedPairIfNamed(provider, profileSlug)
+    let selected =
+      own === undefined
+        ? this.theSelectedPairIfNamed(provider, profileSlug)
+        : this.theSelectedPairIn(await readList(), provider, profileSlug, own)
     if (selected === null) {
-      const list = await this.theListIn(provider)
-      selected = this.theProvidersDefaultIn(list, provider, named.effort)
+      const list = await readList()
+      selected = this.theProvidersDefaultIn(list, provider, named.effort, connectionId)
       if (selected === null) throw unnamed(list, null)
     }
     if (named.effort === undefined) return selected
-    const list = await this.theListIn(provider)
+    const list = await readList()
     const row = theListedRow(list.rows, selected.model)
     const offered = row === undefined ? theEffortLadder(list.rows) : theEffortsOf(row)
     const judged = list.notAsked === null || offered.length > 0
@@ -593,7 +692,11 @@ export class ModelCatalogues {
   }
 
   /** Read the shared catalogue without creating a home for a profile that does not exist. */
-  providerModels(profileId: string, provider: Provider): Promise<ModelCatalogue> {
+  providerModels(
+    profileId: string,
+    provider: Provider,
+    connectionId?: string,
+  ): Promise<ModelCatalogue> {
     // ⚠️ **Refused once a quit has started, and only when nothing is cached** (070, from 068
     // finding 7). A probe answered earlier is a value, not a process, and handing it back during a
     // shutdown costs nothing. Starting a NEW one does: a give, a Save or an agent's tool asking for
@@ -611,7 +714,7 @@ export class ModelCatalogues {
     // stand-in list is refused during a quit rather than decided from a store that may be gone, and
     // a failure is handed back rather than asked again ({@link modelsAskedAgainIfTheyFailed}).
     if (this.isClosing()) {
-      const answered = this.modelProbes.get(provider)
+      const answered = this.modelProbes.get(this.catalogueKey(provider, connectionId))
       return (
         answered ??
         Promise.reject(
@@ -640,34 +743,45 @@ export class ModelCatalogues {
     }
     // ⚑ **689 · a failure already cached is asked once more** (`685` H1) — the Save door's rule;
     // see {@link modelsAskedAgainIfTheyFailed}.
-    return this.modelsAskedAgainIfTheyFailed(provider).then((one) =>
+    return this.modelsAskedAgainIfTheyFailed(provider, connectionId).then((one) =>
       standIn !== null && one.ok ? { ...one, standIn } : one,
     )
   }
 
-  /** Sign-in changes invalidate the provider's catalogue, regardless of which profile changed. */
-  forgetModels(provider: Provider): void {
-    this.modelProbes.delete(provider)
+  /** Forget only the selected connection's catalogue, shared by its profiles. */
+  forgetModels(provider: Provider, connectionId?: string): void {
+    this.modelProbes.delete(this.catalogueKey(provider, connectionId))
   }
 
-  setProviderVersion(provider: Provider, version: string | null): void {
-    if (version === null || this.modelVersions.get(provider) === version) return
-    this.modelVersions.set(provider, version)
-    const hadModels = this.modelProbes.has(provider)
-    this.forgetModels(provider)
+  setProviderVersion(provider: Provider, version: string | null, connectionId?: string): void {
+    const key = this.catalogueKey(provider, connectionId)
+    if (version === null || this.modelVersions.get(key)?.value === version) return
+    const state: CatalogueVersion = this.modelVersions.get(key) ?? {}
+    state.value = version
+    this.modelVersions.set(key, state)
+    const hadModels = this.modelProbes.has(key)
+    this.forgetModels(provider, connectionId)
     if (hadModels) this.agentsMoved()
   }
 
-  /** One provider-owned catalogue; profiles keep their choices, not copies of its model rows. */
-  private probeModelsFor(provider: Provider): Promise<ModelCatalogue> {
-    const known = this.modelProbes.get(provider)
+  private catalogueKey(provider: Provider, connectionId?: string): string {
+    const own = additionalConnectionId(provider, connectionId)
+    return own === undefined ? provider : JSON.stringify([provider, own])
+  }
+
+  /** One catalogue per connection; profiles keep choices rather than copies of its rows. */
+  private probeModelsFor(provider: Provider, connectionId?: string): Promise<ModelCatalogue> {
+    const key = this.catalogueKey(provider, connectionId)
+    const known = this.modelProbes.get(key)
     if (known) return known
     if (this.isClosing()) return Promise.resolve({ ok: false, reason: 'closing' })
-    const probe: Promise<ModelCatalogue> = this.askProviderForModels(
-      provider,
-      DEFAULT_PROFILE_ID,
-    ).then((catalogue) =>
-      this.modelProbes.get(provider) === probe ? catalogue : this.probeModelsFor(provider),
+    const own = additionalConnectionId(provider, connectionId)
+    const asked =
+      own === undefined
+        ? this.askProviderForModels(provider, DEFAULT_PROFILE_ID)
+        : this.askProviderForModels(provider, DEFAULT_PROFILE_ID, own)
+    const probe: Promise<ModelCatalogue> = asked.then((catalogue) =>
+      this.modelProbes.get(key) === probe ? catalogue : this.probeModelsFor(provider, connectionId),
     )
     const settled = (): void => {
       this.settledModelProbes.add(probe)
@@ -677,7 +791,7 @@ export class ModelCatalogues {
       (catalogue) => this.modelsAnswered.set(probe, catalogue),
       () => undefined,
     )
-    this.modelProbes.set(provider, probe)
+    this.modelProbes.set(key, probe)
     return probe
   }
 
@@ -710,7 +824,7 @@ export class ModelCatalogues {
     )
   }
 
-  forgetProviderModels(provider: Provider): void {
-    this.forgetModels(provider)
+  forgetProviderModels(provider: Provider, connectionId?: string): void {
+    this.forgetModels(provider, connectionId)
   }
 }

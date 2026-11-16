@@ -19,7 +19,7 @@ export {
   providerRecord,
 } from './providers'
 export type { ProviderDescriptor } from './providers'
-export { compatibilityConnectionId } from './provider-connections'
+export { compatibilityConnectionId, additionalConnectionId } from './provider-connections'
 export type {
   ConnectionAuthMethod,
   ConnectionCredentialSource,

@@ -12,22 +12,20 @@ export { ApiKeyUnreadableError } from '../providers/api-key-error'
 /** Saved API keys, in the clear, readable by the person's own account only. */
 export const API_KEYS_FILE = 'api-keys.json'
 
-export const API_KEY_MAX_LENGTH = 512
-
 export function whyNotAKey(key: string): string | null {
   if (key.trim() === '') return 'Enter the key, or remove the one that is saved.'
   if (/\s/.test(key.trim())) {
     return 'An API key has no spaces or line breaks. Paste it exactly as your provider shows it.'
   }
 
-  if (key.trim().length > API_KEY_MAX_LENGTH || !/^[\x21-\x7e]+$/.test(key.trim())) {
+  if (!/^[\x21-\x7e]+$/.test(key.trim())) {
     return 'That does not look like an API key. Paste it exactly as your provider shows it.'
   }
   return null
 }
 
 type Entry = { readonly key: string; readonly setAt: number }
-type Keys = Partial<Record<Provider, Entry>>
+type Keys = Partial<Record<Provider, { readonly key: string; readonly setAt: number | null }>>
 type KeysFile = {
   keys: Keys
   /** Providers whose key was in a file that couldn't be read, until saved again or removed. */
@@ -43,7 +41,7 @@ export class ApiKeys {
   constructor(
     userData: string,
     private readonly clock: () => number = Date.now,
-    /** A key an earlier version sealed: it is never opened, and can't be used until saved again. */
+    /** Legacy sealed rows are forgotten only when the person saves or removes a key. */
     private readonly sealed: Pick<SessionStore, 'hasSealedApiKey' | 'forgetSealedApiKey'> = {
       hasSealedApiKey: () => false,
       forgetSealedApiKey: () => {},
@@ -60,7 +58,7 @@ export class ApiKeys {
     const entry = file?.keys[provider]
     if (entry !== undefined)
       return { provider, set: true, setAt: entry.setAt, inUse: true, ...spends }
-    if (!this.cantBeUsed(provider, file))
+    if (!cantBeUsed(provider, file))
       return { provider, set: false, setAt: null, inUse: false, ...spends }
     return {
       provider,
@@ -85,8 +83,8 @@ export class ApiKeys {
   async current(provider: Provider): Promise<Entry | null> {
     const file = this.file()
     const entry = file?.keys[provider]
-    if (entry !== undefined) return entry
-    if (this.cantBeUsed(provider, file)) throw new ApiKeyUnreadableError(provider)
+    if (entry !== undefined) return { ...entry, setAt: entry.setAt ?? 0 }
+    if (cantBeUsed(provider, file)) throw new ApiKeyUnreadableError(provider)
     return null
   }
 
@@ -119,7 +117,7 @@ export class ApiKeys {
     await this.change((file) => {
       const setAt = file.keys[provider]?.setAt
       if (setAt === undefined && !file.cantRead?.includes(provider)) return false
-      if (setAt !== undefined) this.lastSetAt.set(provider, setAt)
+      if (setAt !== undefined && setAt !== null) this.lastSetAt.set(provider, setAt)
       delete file.keys[provider]
       file.cantRead = file.cantRead?.filter((one) => one !== provider)
       had = true
@@ -127,10 +125,6 @@ export class ApiKeys {
     })
     this.sealed.forgetSealedApiKey(provider)
     return had
-  }
-
-  private cantBeUsed(provider: Provider, file: KeysFile | null): boolean {
-    return cantBeUsed(provider, file) || this.sealed.hasSealedApiKey(provider)
   }
 
   private changed(provider: Provider): void {
@@ -187,8 +181,10 @@ function keysFileOf(parsed: unknown): KeysFile {
     const entry = (keys as Record<string, unknown>)[provider] as Partial<Entry> | undefined
     if (entry === undefined) continue
     if (typeof entry.key !== 'string' || entry.key === '') throw new Error('no key')
-    if (typeof entry.setAt !== 'number') throw new Error('bad time')
-    read[provider] = { key: entry.key, setAt: entry.setAt }
+    read[provider] = {
+      key: entry.key,
+      setAt: typeof entry.setAt === 'number' && Number.isFinite(entry.setAt) ? entry.setAt : null,
+    }
   }
   const unread = Array.isArray(cantRead)
     ? SUPPORTED_PROVIDERS.filter((provider) => cantRead.includes(provider))

@@ -87,6 +87,10 @@ export const HAND_WRITTEN_OBJECTS: readonly {
   { type: 'index', name: 'work_one_root_per_conversation_uq', guards: true },
   { type: 'index', name: 'work_parent_number_uq', guards: true },
   { type: 'index', name: 'work_root_number_uq', guards: true },
+  { type: 'index', name: 'provider_usage_reading_connection_uq', guards: true },
+  { type: 'index', name: 'provider_usage_reading_legacy_uq', guards: true },
+  { type: 'index', name: 'provider_usage_read_on_connection_uq', guards: true },
+  { type: 'index', name: 'provider_usage_read_on_legacy_uq', guards: true },
   { type: 'trigger', name: 'skill_version_no_update', guards: true },
   { type: 'trigger', name: 'skill_version_no_delete', guards: true },
 ]

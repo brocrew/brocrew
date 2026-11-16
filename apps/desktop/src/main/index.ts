@@ -153,7 +153,11 @@ import {
   totalBytes,
 } from './process-tree'
 import { openDatabase, type AppDatabase } from './db/connection'
-import { listProviderConnections, resolveProviderConnection } from './connections/records'
+import {
+  listProviderConnections,
+  resolveProviderConnection,
+  updateProviderConnection,
+} from './connections/records'
 import { newProviderSessionId } from './db/ids'
 import { discoverSessionsIn } from './adopt/discover-sessions'
 import {
@@ -705,8 +709,12 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     changed: (slug) => knowledgeChanged(slug),
   })
   const providerHomePaths: Pick<RuntimeHostDeps, 'providerHomePath'> = {
-    providerHomePath: (provider, profileId) =>
-      deriveProviderHome(userData, { profileId, provider }),
+    providerHomePath: (provider, profileId, connectionId) =>
+      deriveProviderHome(userData, {
+        profileId,
+        provider,
+        ...(connectionId === undefined ? {} : { connectionId }),
+      }),
   }
   const memoryKnowledge = await createMemoryService({
     store,
@@ -736,7 +744,7 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
       },
     }),
     (provider) => ({
-      list: () => listProviderConnections(database, provider, apiKeys.status(provider).set),
+      list: () => listProviderConnections(database, provider),
       resolve: (connectionId) =>
         resolveProviderConnection(database, {
           provider,
@@ -834,14 +842,18 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
       if (!connections) throw new Error('Provider connection services were not bound')
       return connections.resolve(connectionId)
     },
+    updateConnectionMetadata: (input) => updateProviderConnection(database, input),
     listConnections: () =>
       Object.values(providerModules).flatMap((module) => module.connections?.list() ?? []),
     beforeProviderLaunch: async () => {
       transcriptRetention?.beforeLaunch()
     },
-    prepareProviderHome: async (provider, profileId) => {
+    prepareProviderHome: async (provider, profileId, connectionId) => {
       transcriptRetention?.beforeLaunch()
-      return providerModules[provider].home.prepare(profileId)
+      const home = providerModules[provider].home
+      return connectionId === undefined
+        ? home.prepare(profileId)
+        : home.prepare(profileId, connectionId)
     },
     prepareBuiltInSkills: ({ pack, ...input }) =>
       prepareBuiltInSkills({

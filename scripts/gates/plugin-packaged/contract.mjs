@@ -106,7 +106,12 @@ export function projectBuild(config, entry, appData, browser) {
   )
   entry = replace(
     entry,
-    'return providerModules[provider].home.prepare(profileId)',
+    [
+      'const home = providerModules[provider].home',
+      '      return connectionId === undefined',
+      '        ? home.prepare(profileId)',
+      '        : home.prepare(profileId, connectionId)',
+    ].join('\n'),
     `/* ${GATE_BUILD_MARKER} */ return preparePackagedGateHome(${JSON.stringify(path.dirname(appData))}, userData, provider, profileId)`,
   )
   entry = replace(

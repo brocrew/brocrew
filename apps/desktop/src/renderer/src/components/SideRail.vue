@@ -111,14 +111,7 @@ const props = withDefaults(
     onScreen?: SessionRecord | null
     /** Which non-conversation destination is showing: a place, or null. */
     place: string | null
-    /**
-     * ⛔ **How many things need the user** — `homeAttention(...).total`, what *Waiting on you*
-     * lists (305 §1).
-     *
-     * Passed in rather than derived here, for the reason 099 made expensive: this rail already
-     * computes one `facets` call per conversation, and a second derivation of the same fact two
-     * components apart is how the rail and the pane came to disagree about one session.
-     */
+    /** The screen's attention total; reuse it so the rail and pane agree. */
     needsYou?: number
     /**
      * 🔴 **The agent identities** (355) — **and since `570` this rail draws no list of them.**
@@ -437,12 +430,18 @@ watchEffect(() => {
   const live = new Map(
     [...hostResumable.value, ...hostUnresumable.value]
       .filter((row) => row.running !== 'not-running')
-      .map((row) => [row.sessionId, row.provider]),
+      .map(
+        (row) =>
+          [
+            row.sessionId,
+            { provider: row.provider, connectionId: row.connectionId ?? null },
+          ] as const,
+      ),
   )
   lists.update({
     runningConversations: listed.value.flatMap(({ sessionId, state }) => {
-      const provider = live.get(sessionId)
-      return provider === undefined ? [] : [{ sessionId, provider, state }]
+      const life = live.get(sessionId)
+      return life === undefined ? [] : [{ sessionId, ...life, state }]
     }),
   })
 })

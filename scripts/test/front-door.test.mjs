@@ -269,11 +269,12 @@ describe('427 · the REAL placed door, and what it still cannot carry', () => {
    * ⚠️ Both halves matter here — the count `ui-live-smoke.mjs` prints about how much of its
    * interim door is waiting on a surface is computed from this list.
    */
-  it('⛔ the door’s payload is read out of the component and is exactly six fields', () => {
+  it('⛔ the door’s payload is read out of the component and is exactly seven fields', () => {
     expect(SENDS).toEqual([
       'provider',
       'profileId',
       'model',
+      'connectionId',
       'reasoningEffort',
       'cwd',
       'approvalMode',

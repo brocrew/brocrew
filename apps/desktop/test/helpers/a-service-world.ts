@@ -166,6 +166,12 @@ export interface AServiceWorld {
     windowReader?: ConstructorParameters<typeof RuntimeHost>[0]['windowReader']
     limitsWriterStamp?: ConstructorParameters<typeof RuntimeHost>[0]['limitsWriterStamp']
     listProfiles?: (provider?: Provider) => string[]
+    connectionFor?: ConstructorParameters<typeof RuntimeHost>[0]['connectionFor']
+    prepareProviderHome?: ConstructorParameters<typeof RuntimeHost>[0]['prepareProviderHome']
+    modelRows?: (
+      provider: Provider,
+      context: ProviderRuntimeContext,
+    ) => ReturnType<FakeRuntime['listModels']>
     readInstructions?: ConstructorParameters<typeof RuntimeHost>[0]['readInstructions']
     announce?: ConstructorParameters<typeof RuntimeHost>[0]['announce']
     statesMoved?: ConstructorParameters<typeof RuntimeHost>[0]['statesMoved']
@@ -339,6 +345,7 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
           world.listedOn.push(this.provider)
           if (world.listsWait !== null) await world.listsWait
           if (world.listsFail) throw new Error('the provider could not list its models')
+          if (opts.modelRows !== undefined) return opts.modelRows(this.provider, context)
           return super.listModels(context)
         }
       }
@@ -358,12 +365,15 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
         resourcesRoot: () => resourcesRoot(folder),
         createRuntime: (provider: Provider) =>
           new ProviderOfThisWorld(provider, { sessions: issued }),
-        prepareProviderHome: (provider: Provider, profileId?: string) => {
-          const home = join(folder, 'provider-homes', profileId ?? 'default', provider)
-          world.preparedIn.push(home)
-          mkdirSync(home, { recursive: true })
-          return home
-        },
+        ...(opts.connectionFor === undefined ? {} : { connectionFor: opts.connectionFor }),
+        prepareProviderHome:
+          opts.prepareProviderHome ??
+          ((provider: Provider, profileId?: string) => {
+            const home = join(folder, 'provider-homes', profileId ?? 'default', provider)
+            world.preparedIn.push(home)
+            mkdirSync(home, { recursive: true })
+            return home
+          }),
         providerHomePath: (provider: Provider) => join(folder, 'provider-homes', provider),
         ...(opts.listProfiles === undefined ? {} : { listProfiles: opts.listProfiles }),
         ...(opts.readInstructions === undefined ? {} : { readInstructions: opts.readInstructions }),

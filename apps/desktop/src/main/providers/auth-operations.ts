@@ -1,5 +1,5 @@
 import type { AuthState, ReprovisionOutcome } from '@brobot2/runtime'
-import type { Provider } from '@brobot2/shared'
+import type { Provider, ProviderConnection } from '@brobot2/shared'
 import type { LoginRenewalOperations, ProviderSignIn, SignInCopySource } from './auth-types'
 
 /**
@@ -14,7 +14,12 @@ import type { LoginRenewalOperations, ProviderSignIn, SignInCopySource } from '.
 export interface ProviderAuthOps {
   loginRenewal?(provider: Provider): LoginRenewalOperations | undefined
   /** An explicit user gesture may make a bounded model call; ordinary checks do not. */
-  probe?(provider: Provider, profileId: string, signal?: AbortSignal): Promise<AuthState>
+  probe?(
+    provider: Provider,
+    profileId: string,
+    signal?: AbortSignal,
+    connection?: ProviderConnection,
+  ): Promise<AuthState>
   /**
    * 🔴 **The home whose authentication state a gesture would change — the identity, not a
    * provisioning** (265 §2, from 259 lens B finding 2).
@@ -36,14 +41,19 @@ export interface ProviderAuthOps {
    * that one is provider-wide because the OAuth redirect PORT is, and this one is per home because
    * the credential file is. They are two resources and a gesture can need both.
    */
-  credentialHome(provider: Provider, profileId: string): string
+  credentialHome(provider: Provider, profileId: string, connection?: ProviderConnection): string
   /**
    * Ask the provider whether this profile's credential can run a turn. Never spends or refreshes it.
    *
    * ⛔ **`signal` reaches the app-server; the caller's deadline does not** (185). For Codex this
    * spawns a real detached child, and a host that has given up waiting has released only itself.
    */
-  check(provider: Provider, profileId: string, signal?: AbortSignal): Promise<AuthState>
+  check(
+    provider: Provider,
+    profileId: string,
+    signal?: AbortSignal,
+    connection?: ProviderConnection,
+  ): Promise<AuthState>
   /**
    * Re-copy the machine credential over the profile's. Explicit, user-initiated, does NOT end the race.
    *
@@ -55,6 +65,7 @@ export interface ProviderAuthOps {
   reprovision(
     provider: Provider,
     profileId: string,
+    connection?: ProviderConnection,
   ): ReprovisionOutcome | Promise<ReprovisionOutcome>
   /**
    * Sign this profile into its own account. Resolves when the browser flow settles.
@@ -63,21 +74,19 @@ export interface ProviderAuthOps {
    * handle that cancels it does not exist until then, so the whole spawn-and-handshake interval is
    * otherwise unreachable by Cancel and by quit.
    */
-  signIn(provider: Provider, profileId: string, signal?: AbortSignal): Promise<ProviderSignIn>
-  /**
-   * 🔒 **Bring every existing home of a provider in line with its API key** — at once, when a
-   * person saves or removes the key ({@link bringTheCodexKeyTo}); each home that cannot is brought
-   * in line at its next launch instead. ⚑ Answers `null`, or a sentence saying how many could not.
-   * Claude keeps nothing in its homes: always `null`.
-   */
-  bringTheKeyToItsHomes(provider: Provider): Promise<string | null>
+  signIn(
+    provider: Provider,
+    profileId: string,
+    signal?: AbortSignal,
+    connection?: ProviderConnection,
+  ): Promise<ProviderSignIn>
   /**
    * Replace a profile's Codex sign-in that Codex has just refused with a fresh copy of the same
    * account, from this computer's own or BroBot's own, whichever Codex refreshed last and later than
    * the copy, only while the copy on disk is still the one that was refused (`refused`), and only
    * while whoever asked still wants it, asked again once the home's lock is held. Says
-   * where the copy came from, or that none was made; never while an API key is saved,
-   * never for Claude. BroBot's own profile is one of its own candidates, and is never later than
+   * where the copy came from, or that none was made; never for an API-key connection or Claude.
+   * Omitted connections keep legacy key precedence. BroBot's own profile is never later than
    * itself.
    */
   replaceARefusedCopy(
@@ -85,5 +94,6 @@ export interface ProviderAuthOps {
     profileId: string,
     refused: unknown,
     stillWanted: () => boolean,
+    connection?: ProviderConnection,
   ): Promise<SignInCopySource | 'not-tried'>
 }

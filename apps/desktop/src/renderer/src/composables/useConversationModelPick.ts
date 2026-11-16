@@ -1,5 +1,6 @@
 import type { WhatAPickBecame } from '../../../shared/model-choice-contracts'
 import { computed, ref, watch, type ComputedRef, type Ref } from 'vue'
+import { useProviderConnections } from './useProviderConnections'
 import type { CreatedSession, ProviderCapabilityMap } from '../../../shared/runtime-ipc'
 import { whatAPickBecameSays, type PickedModel } from '../lib/model-lists'
 
@@ -14,8 +15,6 @@ export interface ConversationModelPickSources {
   /** The screen's pick, carried out for this conversation; absent, nothing here can change it. */
   readonly pickModel: () =>
     ((pick: PickedModel) => Promise<WhatAPickBecame | null | undefined>) | undefined
-  /** Nothing set here would reach the conversation (`CreatedSession.settingsFixed`). */
-  readonly fixed: () => boolean
   readonly capabilities: () => ProviderCapabilityMap | null
 }
 
@@ -23,11 +22,17 @@ export interface ConversationModelPickSources {
 interface ConversationPickerProps {
   readonly providers: readonly CreatedSession['provider'][]
   readonly profileId: string | undefined
+  readonly chooseConnection: boolean
+  readonly recordedConnection: boolean
+  readonly connectionName: string | undefined
+  readonly connectionId: CreatedSession['connectionId']
   readonly shown: PickedModel | null
   readonly drafted: PickedModel | null
   readonly empty: string
   readonly reported: CreatedSession['settings']['reported'] | null
   readonly fixed: boolean
+  readonly readOnly: boolean
+  readonly note: string | null
   readonly takeWords: string
   readonly take: (pick: PickedModel) => Promise<string | null>
   readonly capabilities: ProviderCapabilityMap | null
@@ -45,6 +50,7 @@ export interface ConversationModelPick {
 export function useConversationModelPick(
   sources: ConversationModelPickSources,
 ): ConversationModelPick {
+  const connections = useProviderConnections()
   const became = ref<string | null>(null)
   // Which press is the latest, so a slow answer to an earlier one draws nothing.
   let presses = 0
@@ -56,9 +62,7 @@ export function useConversationModelPick(
     },
   )
 
-  const changeable = computed(
-    () => sources.session() !== null && !sources.fixed() && sources.pickModel() !== undefined,
-  )
+  const changeable = computed(() => sources.session() !== null && sources.pickModel() !== undefined)
 
   // The picker's Take. A refusal is the conversation's own line, so Take itself refuses nothing.
   async function take(pick: PickedModel): Promise<string | null> {
@@ -82,34 +86,50 @@ export function useConversationModelPick(
     const shown: PickedModel | null =
       settings.model === null
         ? null
-        : { provider: session.provider, model: settings.model, effort: settings.reasoningEffort }
+        : {
+            provider: session.provider,
+            connectionId: session.connectionId,
+            model: settings.model,
+            effort: settings.reasoningEffort,
+          }
     // The draft starts on the queued pair, where one is: Take re-sends the model, so a draft
     // started on the running pair would undo a switch already queued. A queued provider default
     // has no name to draft, so the running model stands in for it.
-    const { pendingModel, pendingReasoningEffort } = settings
+    const { pendingModel, pendingReasoningEffort, nextConnection } = settings
     const queuedModel =
-      pendingModel === null && pendingReasoningEffort === null
+      pendingModel === null && pendingReasoningEffort === null && nextConnection === undefined
         ? null
-        : (pendingModel?.value ?? settings.model)
+        : (nextConnection?.model ?? pendingModel?.value ?? settings.model)
     const drafted: PickedModel | null =
       queuedModel === null
         ? null
         : {
             provider: session.provider,
+            connectionId: nextConnection?.connectionId ?? session.connectionId,
             model: queuedModel,
             effort:
-              pendingReasoningEffort === null
-                ? settings.reasoningEffort
-                : (pendingReasoningEffort.value ?? null),
+              nextConnection !== undefined
+                ? nextConnection.effort
+                : pendingReasoningEffort === null
+                  ? settings.reasoningEffort
+                  : (pendingReasoningEffort.value ?? null),
           }
     return {
       providers: [session.provider],
       profileId: session.profileId,
+      connectionId: session.connectionId,
+      chooseConnection: true,
+      recordedConnection: true,
+      connectionName: connections.value.find(
+        (row) => row.provider === session.provider && row.id === session.connectionId,
+      )?.name,
       shown,
       drafted,
       empty: 'Not named yet',
       reported: settings.reported ?? null,
-      fixed: !changeable.value,
+      fixed: false,
+      readOnly: !changeable.value,
+      note: changeable.value ? null : 'This conversation’s settings cannot be changed here.',
       takeWords: 'Switch from your next message',
       take,
       capabilities: sources.capabilities(),

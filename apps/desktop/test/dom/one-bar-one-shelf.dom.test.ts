@@ -13,13 +13,23 @@ import {
   paneProps,
   record,
   parseColor,
-  windowCleanup,
+  unmountAll,
   visible,
   type Mounted,
 } from './harness'
 import { usageCards } from './usage-cards'
+import { providerConnectionFixtures } from '../../look/fixtures/providers'
+import { railFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { attributedUsageFixtures, runningSignInFixtures } from './provider-launch.fixture'
 
-afterEach(windowCleanup())
+const ORIGINAL = { width: window.innerWidth, height: window.innerHeight }
+
+afterEach(async () => {
+  unmountAll()
+  railFacts().update({ runningConversations: null })
+  delete (window as { api?: unknown }).api
+  await page.viewport(ORIGINAL.width, ORIGINAL.height)
+})
 
 const INFO = {
   name: 'BroBot2',
@@ -76,9 +86,11 @@ const HOUR = 3_600_000
 
 /** The title bar's usage cards, opened, reading these usage readings. */
 async function cards(usage: Usage): Promise<Mounted> {
+  railFacts().update({ runningConversations: runningSignInFixtures() })
   ;(window as { api?: unknown }).api = {
     runtime: {
-      providerUsage: () => Promise.resolve(usage),
+      providerConnections: async () => providerConnectionFixtures(),
+      providerUsage: () => Promise.resolve(attributedUsageFixtures(usage)),
       onProvidersChanged: () => () => {},
     },
   }
@@ -111,7 +123,7 @@ async function cardsWithUnreadWeeks() {
 }
 
 describe('§2 · the usage cells, and each one answers for itself', () => {
-  it('🔴 the title bar draws three usage blocks, provider by provider, then agents and memory; the shelf spans the transcript AND the companion', async () => {
+  it('🔴 an empty answer keeps each running group unknown, then agents and memory; the shelf spans the transcript AND the companion', async () => {
     await page.viewport(1200, 808)
     const usage = await cards(NO_USAGE)
     expect(
@@ -119,9 +131,8 @@ describe('§2 · the usage cells, and each one answers for itself', () => {
         .map((el) => el.dataset['cy'])
         .filter((cy) => cy !== 'shelf-usage-age' && cy !== 'shelf-usage-value'),
     ).toEqual([
-      'shelf-usage-claude-5h',
-      'shelf-usage-claude-week',
-      'shelf-usage-codex-week',
+      'shelf-usage-claude-unknown',
+      'shelf-usage-codex-unknown',
       'shelf-usage-agents',
       'shelf-usage-memory',
     ])
@@ -157,22 +168,20 @@ describe('§2 · the usage cells, and each one answers for itself', () => {
     )
   })
 
-  it('🔴 an unread window is unread ON ITS OWN — the pair, in one mount', async () => {
+  it('🔴 unreported windows stay absent beside a read window and an unknown running group', async () => {
     const m = await cardsWithUnreadWeeks()
     expect(m.q('shelf-usage-claude-5h').querySelector('[data-cy="shelf-missing"]')).toBeNull()
     expect(m.q('shelf-usage-claude-5h').innerText).toContain('28% · resets in 3 h')
-    // ⛔ The neighbours have no reading and say so, each in its own cell: nothing composite.
-    for (const key of ['claude-week', 'codex-week']) {
-      expect(m.q(`shelf-usage-${key}`).innerText).toContain('Not read yet')
+    for (const key of ['claude-week', 'codex-week', 'codex-5h']) {
+      expect(m.all(`shelf-usage-${key}`)).toHaveLength(0)
     }
-    // Codex no longer reports a 5-hour window, so no cell waits for one.
-    expect(m.all('shelf-usage-codex-5h')).toHaveLength(0)
-    expect(m.all('shelf-missing')).toHaveLength(2)
+    expect(m.q('shelf-usage-codex-unknown').innerText).toContain('Not read yet')
+    expect(m.all('shelf-missing')).toHaveLength(1)
   })
 
   it('⚠️ an absence is drawn by its colour, at the same weight as a value', async () => {
     const m = await cardsWithUnreadWeeks()
-    const missing = m.q('shelf-usage-codex-week').querySelector('[data-cy="shelf-missing"]')
+    const missing = m.q('shelf-usage-codex-unknown').querySelector('[data-cy="shelf-missing"]')
     const present = m.q('shelf-usage-claude-5h').querySelector('[data-cy="shelf-usage-value"]')
     expect(missing).not.toBeNull()
     expect(present).not.toBeNull()

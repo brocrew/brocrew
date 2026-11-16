@@ -15,12 +15,18 @@ const opaqueTag = (tag: unknown): tag is string =>
 /** The file older builds kept these readings in, imported once into the `provider_usage_*` tables. */
 export const PROVIDER_USAGE_FILE = 'provider-usage.json'
 
-/** Each provider's newest usage reading per window, and the windows it has reported, across a restart. */
+/** Newest readings per connection/window, and provider-wide reported windows, across a restart. */
 export interface KeptUsage {
   readonly readings: Readonly<Record<Provider, readonly KeptReading[]>>
   readonly seen: Readonly<Record<Provider, readonly UsageWindowSeen[]>>
-  /** The sign-in each provider's latest reading was read on (`SessionHandle.signInTag`), when tagged. */
+  /** Legacy unknown-connection sign-in tags; never assigned to a recorded connection. */
   readonly readOn?: Readonly<Partial<Record<Provider, string>>>
+  /** The sign-in tag each recorded connection's latest reading was read on. */
+  readonly readOnConnections?: readonly {
+    readonly provider: Provider
+    readonly connectionId: string
+    readonly tag: string
+  }[]
 }
 
 /** A reading with the id of the account it was read on, when known; never the account's email. */
@@ -40,32 +46,51 @@ export interface UsageKept {
 
 export function usageKeptIn(database: AppDatabase): UsageKept {
   const readings = database.prepare(
-    `SELECT provider, "window", used_percent AS usedPercent, resets_at AS resetsAt, at, account
+    `SELECT provider, connection_id AS connectionId, "window", used_percent AS usedPercent, resets_at AS resetsAt, at, account
      FROM provider_usage_reading ORDER BY provider, position`,
   )
   const seen = database.prepare(
     'SELECT provider, "window", "first", "last" FROM provider_usage_window_seen ORDER BY provider, position',
   )
-  const readOn = database.prepare('SELECT provider, tag FROM provider_usage_read_on')
+  const readOn = database.prepare(
+    'SELECT provider, connection_id AS connectionId, tag FROM provider_usage_read_on ORDER BY provider, connection_id',
+  )
   return {
     read() {
       const held = providerRecord((): KeptReading[] => [])
-      for (const { provider, account, ...row } of readings.all() as (KeptReading & {
+      for (const { provider, account, connectionId, ...row } of readings.all() as (Omit<
+        KeptReading,
+        'account' | 'connectionId'
+      > & {
         provider: Provider
         account: string | null
+        connectionId: string | null
       })[]) {
-        held[provider].push(account === null ? row : { ...row, account })
+        held[provider].push({
+          ...row,
+          ...(account === null ? {} : { account }),
+          ...(connectionId === null ? {} : { connectionId }),
+        })
       }
       const windows = providerRecord((): UsageWindowSeen[] => [])
       for (const { provider, ...row } of seen.all() as (UsageWindowSeen & { provider: Provider })[])
         windows[provider].push(row)
-      const tags = readOn.all() as { provider: Provider; tag: string }[]
+      const tags = readOn.all() as {
+        provider: Provider
+        connectionId: string | null
+        tag: string
+      }[]
+      const legacy = tags.filter((row) => row.connectionId === null)
+      const scoped = tags.flatMap(({ provider, connectionId, tag }) =>
+        connectionId === null ? [] : [{ provider, connectionId, tag }],
+      )
       return {
         readings: held,
         seen: windows,
-        ...(tags.length === 0
+        ...(legacy.length === 0
           ? {}
-          : { readOn: Object.fromEntries(tags.map(({ provider, tag }) => [provider, tag])) }),
+          : { readOn: Object.fromEntries(legacy.map(({ provider, tag }) => [provider, tag])) }),
+        ...(scoped.length === 0 ? {} : { readOnConnections: scoped }),
       }
     },
     write: database.transaction((usage: KeptUsage) => replaceUsage(database, usage)),
@@ -81,25 +106,36 @@ function replaceUsage(database: AppDatabase, usage: KeptUsage): void {
     database.prepare(`DELETE FROM ${table}`).run()
   const reading = database.prepare(
     `INSERT OR IGNORE INTO provider_usage_reading
-     (provider, "window", position, used_percent, resets_at, at, account) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+     (provider, connection_id, "window", position, used_percent, resets_at, at, account) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   )
   const seen = database.prepare(
     `INSERT OR IGNORE INTO provider_usage_window_seen (provider, "window", position, "first", "last")
      VALUES (?, ?, ?, ?, ?)`,
   )
   const readOn = database.prepare(
-    'INSERT INTO provider_usage_read_on (provider, tag) VALUES (?, ?)',
+    'INSERT OR IGNORE INTO provider_usage_read_on (provider, connection_id, tag) VALUES (?, ?, ?)',
   )
   for (const provider of SUPPORTED_PROVIDERS) {
     usage.readings[provider].forEach((r, position) =>
-      reading.run(provider, r.window, position, r.usedPercent, r.resetsAt, r.at, r.account ?? null),
+      reading.run(
+        provider,
+        r.connectionId ?? null,
+        r.window,
+        position,
+        r.usedPercent,
+        r.resetsAt,
+        r.at,
+        r.account ?? null,
+      ),
     )
     usage.seen[provider].forEach((w, position) =>
       seen.run(provider, w.window, position, w.first, w.last),
     )
     const tag = usage.readOn?.[provider]
-    if (tag !== undefined) readOn.run(provider, tag)
+    if (tag !== undefined) readOn.run(provider, null, tag)
   }
+  for (const { provider, connectionId, tag } of usage.readOnConnections ?? [])
+    readOn.run(provider, connectionId, tag)
 }
 
 /** Imports `provider-usage.json` from `userData` once, skipping each row it cannot use. */

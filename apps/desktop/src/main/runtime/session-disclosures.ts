@@ -254,6 +254,7 @@ export function sessionDisclosures(session: {
   mailbox?: readonly QueuedMessage[]
   currentProviderLimits?: () => ProviderLimitDisclosure
   reportedBefore?: ReportedModel | null
+  nextConnectionPick?: () => SessionSettingsDisclosure['nextConnection']
   grants?: readonly HeldGrant[]
 }): {
   agent: { label: string; value: string }[]
@@ -367,6 +368,7 @@ function grantsDisclosed(
 export function settingsDisclosure(session: {
   handle: SessionHandle
   reportedBefore?: ReportedModel | null
+  nextConnectionPick?: () => SessionSettingsDisclosure['nextConnection']
 }): SessionSettingsDisclosure {
   const { model, reasoningEffort, planMode } = session.handle.settings
   const info = session.handle.agentInfo
@@ -374,7 +376,9 @@ export function settingsDisclosure(session: {
   // until a reopened conversation's first turn, and the rail and `get_agent_status` already read
   // the kept report (`ResumableSessionInfo.reported`, `AgentCard.runsOn`): one fact, three readers.
   const kept = session.reportedBefore ?? null
+  const nextConnection = session.nextConnectionPick?.()
   return {
+    ...(nextConnection === undefined ? {} : { nextConnection }),
     model: model.effective ?? null,
     pendingModel: Object.is(model.effective, model.requested) ? null : { value: model.requested },
     reasoningEffort: reasoningEffort.effective ?? null,

@@ -3815,7 +3815,7 @@ onUnmounted(() => {
         {{ persons.view.value?.announcement ?? '' }}
       </div>
 
-      <AppTitleBar :info="info" :error="infoError" :provider-readiness="launchReadiness" />
+      <AppTitleBar :info="info" :error="infoError" />
 
       <div class="shell" :data-rail="railFold.collapsed.value ? 'collapsed' : 'open'">
         <!-- ⛔ **`:agents` SURVIVES the AGENTS section that is gone** (570). `449` folds this roster

@@ -92,10 +92,9 @@ describe('session persistence', () => {
   }
 
   const sessionRows = () =>
-    db.prepare('SELECT * FROM provider_session ORDER BY created_at').all() as Record<
-      string,
-      unknown
-    >[]
+    db
+      .prepare<[], Record<string, unknown>>('SELECT * FROM provider_session ORDER BY created_at')
+      .all()
   const eventRows = (sessionId: string) =>
     db
       .prepare('SELECT * FROM events WHERE session_id = ? ORDER BY ordinal')
@@ -509,6 +508,7 @@ describe('session persistence', () => {
       {
         sessionId: 'sess_refless',
         provider: 'claude',
+        connectionId: null,
         cwd: dir,
         status: 'idle',
         // 🔴 **421 · `idle` and NOT running, in one row, which is why the column cannot answer

@@ -48,6 +48,7 @@ export interface ModelAndEffort {
  */
 export interface AgentModelChoice extends ModelAndEffort {
   readonly provider: Provider
+  readonly connectionId?: string
 }
 
 /** ⚑ **D-042 · R1 — where a conversation's selected pair came from**, in the ruling's order. */
@@ -116,6 +117,9 @@ export type ModelChoiceSaved =
  * pending; `{ value: undefined }` means "pending: no effort named".
  */
 export interface SessionSettingsDisclosure {
+  /** A manual connection choice waiting for the next message to reopen this conversation. */
+  nextConnection?: { connectionId: string; model: string | null; effort: string | null }
+
   /**
    * The model this conversation is selected to run (D-042 · R1: every call names one), or `null`
    * only for a conversation that has named none yet — an adopted one, or a row from before D-042.

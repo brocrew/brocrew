@@ -24,7 +24,7 @@ it('registers connection operations inside modules without probing a program, lo
     const sources = providerRecord((provider) => ({
       provider,
       list() {
-        return listProviderConnections(db, this.provider, false)
+        return listProviderConnections(db, this.provider)
       },
       resolve(connectionId?: string | null) {
         return resolveProviderConnection(db, {
@@ -51,10 +51,16 @@ it('registers connection operations inside modules without probing a program, lo
         typeof sources.claude | undefined
       expect(operations).toBeDefined()
       expect(operations).toBe(sources[provider])
-      expect(operations?.list().map((item) => item.id)).toEqual([`${provider}:sign-in`])
+      expect(operations?.list().map((item) => item.id)).toEqual([
+        `${provider}:sign-in`,
+        `${provider}:api-key`,
+      ])
       expect(operations?.resolve().id).toBe(`${provider}:sign-in`)
       expect(operations?.resolve(null)).toEqual(operations?.resolve(undefined))
-      expect(() => operations?.resolve(`${provider}:api-key`)).toThrow('connection')
+      expect(operations?.resolve(`${provider}:api-key`)).toMatchObject({
+        id: `${provider}:api-key`,
+        authMethod: 'api-key',
+      })
     }
     expect(sideEffect).not.toHaveBeenCalled()
   } finally {

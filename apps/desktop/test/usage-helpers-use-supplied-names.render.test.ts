@@ -20,6 +20,7 @@ vi.mock('../src/renderer/src/composables/useProviderUsage', () => ({
     value: {
       claude: [
         {
+          connectionId: 'claude:sign-in',
           window: 'opaque-window',
           usedPercent: 73,
           at: Date.UTC(2026, 10, 11, 12),
@@ -38,8 +39,8 @@ vi.mock('../src/renderer/src/composables/useWhoCalledWhom', () => ({
     memoryUnmeasured: { value: null },
     runningConversations: {
       value: [
-        { provider: 'claude', state: { is: 'active' } },
-        { provider: 'codex', state: { is: 'idle' } },
+        { provider: 'claude', connectionId: 'claude:sign-in', state: { is: 'active' } },
+        { provider: 'codex', connectionId: 'codex:sign-in', state: { is: 'idle' } },
       ],
     },
   }),
@@ -169,18 +170,13 @@ it('relabels cells, accessibility words, totals and title line when only current
   vi.setSystemTime(NOW)
   const selected = shallowRef<Names>(names)
   const scope = effectScope()
-  const cells = scope.run(() =>
-    useUsageCells(
-      () => ({ claude: true, codex: false }),
-      () => selected.value,
-    ),
-  )!
+  const cells = scope.run(() => useUsageCells(() => selected.value))!
   try {
     const first = cells.cells.value
     expect(first.find((cell) => cell.key === 'claude-5h')?.label).toBe('Fern · 5h')
     expect(first.find((cell) => cell.key === 'claude-5h')?.name).toContain('Fern 5-hour limit: 73%')
-    expect(cells.line.value).toContain('Birch · Needs setup')
-    expect(cells.description.value).toContain('Fern is ready')
+    expect(cells.line.value).toContain('Birch · usage ?')
+    expect(cells.description.value).toContain('Fern 5-hour usage: 73% used')
     expect(first.find((cell) => cell.key === 'agents')?.value).toBe(
       'Fern 1 (1 working)\nBirch 1 (none working)',
     )
@@ -188,8 +184,8 @@ it('relabels cells, accessibility words, totals and title line when only current
     const next = cells.cells.value
     expect(next.find((cell) => cell.key === 'claude-5h')?.label).toBe('Birch · 5h')
     expect(next.find((cell) => cell.key === 'claude-5h')?.name).toContain('Birch 5-hour limit: 73%')
-    expect(cells.line.value).toContain('Fern · Needs setup')
-    expect(cells.description.value).toContain('Birch is ready')
+    expect(cells.line.value).toContain('Fern · usage ?')
+    expect(cells.description.value).toContain('Birch 5-hour usage: 73% used')
     expect(next.find((cell) => cell.key === 'agents')?.value).toBe(
       'Birch 1 (1 working)\nFern 1 (none working)',
     )

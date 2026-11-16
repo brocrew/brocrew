@@ -5,12 +5,15 @@ import AppTitleBar from '../../src/renderer/src/components/AppTitleBar.vue'
 import SignInPanel from '../../src/renderer/src/components/SignInPanel.vue'
 import ProvidersScreen from '../../src/renderer/src/components/ProvidersScreen.vue'
 import { providersBridge } from '../../look/fixtures/providers'
+import { railFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { attributedUsageFixtures, runningSignInFixtures } from './provider-launch.fixture'
 import { CAPABILITY_FIXTURE } from '../provider-capability-fixture'
 import { mount, unmountAll } from './harness'
 import { assertDrawn, drawnReady } from './drawn'
 
 afterEach(() => {
   unmountAll()
+  railFacts().update({ runningConversations: null })
   vi.unstubAllEnvs()
 })
 const info: AppInfo = {
@@ -74,11 +77,19 @@ it.each([true, false])(
 
 it('explains unknown title-bar usage through its tooltip and accessible name', async () => {
   providersBridge()
-  window.api.runtime.providerUsage = async () => ({ claude: [], codex: [] })
+  const readingRows = attributedUsageFixtures(await window.api.runtime.providerUsage())
+  window.api.runtime.providerUsage = async () => ({
+    claude: readingRows.claude.map((row) => ({ ...row, usedPercent: null })),
+    codex: readingRows.codex.map((row) => ({ ...row, usedPercent: null })),
+  })
+  railFacts().update({ runningConversations: runningSignInFixtures() })
   const m = mount(AppTitleBar, { info: null, error: null }, { width: 1180, height: 32 })
   await settle()
   const usage = m.q('app-usage')
-  expect(usage.textContent).toContain('Claude 5h ? · week ? · Codex week ?')
+  expect(usage.textContent).toBe('Claude 5h ? · week ? · Codex week ? · 2 agents · 0 working · ?')
+  assertDrawn(usage, 'unknown usage', m.host)
+  expect(usage.scrollWidth).toBeLessThanOrEqual(usage.clientWidth + 1)
+  expect(usage.title).toContain('Claude 5h ? · week ? · Codex week ?')
   for (const words of [
     'Claude 5-hour usage: unknown',
     'Claude weekly usage: unknown',
@@ -110,15 +121,17 @@ it('explains the provider connection and the empty API key in plain words', asyn
     row!.click()
     await settle()
     expect(m.q('provider-card').getAttribute('data-provider')).toBe(provider)
-    const fold = m.q('provider-key').querySelector<HTMLButtonElement>('button.fold')!
-    if (fold.getAttribute('aria-expanded') === 'false') fold.click()
-    await settle()
-    const empty = m.all('provider-key-none')
-    expect(empty).toHaveLength(1)
-    assertDrawn(empty[0]!, `${provider} empty API key explanation`, m.host)
-    expect(empty[0]!.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-      'No API key saved. You can sign in instead. If you save a key, new conversations will use it instead of your signed-in account.',
-    )
+    const key = m.q('provider-key')
+    expect(
+      key.closest('[data-cy="provider-connection"]')?.querySelector('.meta')?.textContent,
+    ).toContain('API key')
+    expect(key.querySelector('button.fold')).toBeNull()
+    assertDrawn(key, `${provider} API key entry`, m.host)
+    expect(m.all('provider-key-none')).toHaveLength(0)
+    const field = m.q('provider-key-input') as HTMLInputElement
+    assertDrawn(field, `${provider} API key paste field`, m.host)
+    expect(field.placeholder).toContain('API key')
+    expect(field.value).toBe('')
     m.q('provider-drawer').querySelector<HTMLButtonElement>('.drawer-close')!.click()
     await settle()
     expect(m.all('provider-card')).toHaveLength(0)

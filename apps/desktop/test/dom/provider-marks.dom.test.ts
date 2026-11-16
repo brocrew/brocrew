@@ -59,6 +59,7 @@ function realMarks(
 ) {
   ;(window as unknown as { api: unknown }).api = {
     runtime: {
+      onProvidersChanged: () => () => {},
       checkProviderAuth: async () => ({ state: 'absent', reason: 'Not signed in.' }),
       apiKeyStatus: async () => ({ provider: 'codex', set: false, setAt: null, inUse: false }),
     },

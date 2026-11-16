@@ -63,8 +63,8 @@ export type AuthState =
        */
       readonly account?: string
       /**
-       * What it runs on: a sign-in to an account, or an API key a person saved. ⚑ A saved key
-       * outranks the sign-in, so `api-key` is what runs whenever one is saved.
+       * The credential mode checked: an account sign-in or a saved API key. An explicit
+       * connection keeps its recorded mode; legacy provider-wide checks keep their existing choice.
        */
       readonly login: 'account' | 'api-key'
       /**

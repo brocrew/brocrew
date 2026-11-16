@@ -711,6 +711,9 @@ function fakeBridge() {
     // a shape this file invented and nothing would notice if it stopped matching the wire.
     capabilities: async () => allProviderCapabilities(),
     providerConnections: async () => [],
+    updateProviderConnection: async () => {
+      throw new Error('No connection metadata edit expected by this store test')
+    },
     // 167 — the launcher's menu. Nothing in this file drives it; the entry exists so the stub is a
     // whole `RuntimeBridge` rather than one with a hole in it.
     profiles: async () => ['default'],

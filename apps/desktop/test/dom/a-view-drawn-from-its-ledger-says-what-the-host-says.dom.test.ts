@@ -142,7 +142,7 @@ async function looked(over: Handed = {}): Promise<SessionRecord> {
   // settle, because its page is the present.
   if (handed.liveFrom === undefined) delete handed.liveFrom
   if (over.cannot !== undefined) handed.cannotTakeAMessage = over.cannot
-  if (over.settingsFixed !== undefined) handed.settingsFixed = over.settingsFixed
+  if (over.settingsFixed !== undefined) Object.assign(handed, { settingsFixed: over.settingsFixed })
   const store = createSessionStore({
     onEvent: () => () => {},
     onLiveness: () => () => {},
@@ -356,18 +356,29 @@ describe('what the header and the drawer say of a view drawn from its ledger', (
     expect(plateOf(running.m).dataset.doing).toBe('idle')
   })
 
-  it("the controls on a view are statements where the host says nothing set there would reach it, told nothing counts as saying so, and a live conversation's never are", async () => {
+  it('a recorded view keeps its controls editable despite old fixed-setting metadata', async () => {
     await page.viewport(PANE_WIDTHS[1] + RAIL_W, PANE_H)
     const open = { drawerOpen: true, drawerTab: 'open' }
     const box = { width: PANE_WIDTHS[1], height: PANE_H }
     const controls = async (
       drawn: SessionRecord,
-    ): Promise<{ picker: boolean; mode: HTMLElement }> => {
+    ): Promise<{
+      picker: boolean
+      model: HTMLButtonElement
+      takeDisabled: boolean
+      mode: HTMLElement
+    }> => {
       const { m } = view(drawn, open, box)
       await settle()
-      // ⚑ UI-012 · the agent card mounts the model picker only where a pick reaches the
-      // conversation; the approval mode says whether its panel offers a change.
+      const model = m.q('card-run-model') as HTMLButtonElement
+      model.click()
+      await settle()
+      const takeDisabled = (m.q('model-picker-take') as HTMLButtonElement).disabled
+      m.q('model-picker-cancel').click()
+      await settle()
       return {
+        model,
+        takeDisabled,
         picker: m.host.querySelector('[data-cy="model-picker"]') !== null,
         mode: m.q('card-approval'),
       }
@@ -378,9 +389,11 @@ describe('what the header and the drawer say of a view drawn from its ledger', (
     // carries no `settingsFixed` at all (the phase guard's control).
     const reaches = await controls(await looked({ settingsFixed: false }))
     expect(reaches.picker).toBe(true)
+    expect(reaches.model.getAttribute('aria-label')).toMatch(/^(Change|Choose)/)
     expect(reaches.mode.dataset.changeable).toBe('true')
     const live = await controls(liveRecord([ev({ type: 'status', state: 'idle' })]))
     expect(live.picker).toBe(true)
+    expect(live.model.getAttribute('aria-label')).toMatch(/^(Change|Choose)/)
     expect(live.mode.dataset.changeable).toBe('true')
 
     // R1: the host said nothing set here would reach it. R2: it said nothing at all, and a record
@@ -390,10 +403,14 @@ describe('what the header and the drawer say of a view drawn from its ledger', (
       ['told nothing', {}],
     ] as const) {
       const fixed = await controls(await looked(over))
-      expect(fixed.picker, `${name}: the model picker`).toBe(false)
-      expect(fixed.mode.dataset.changeable, `${name}: the approval mode`).toBe('false')
-      expect((fixed.mode as HTMLInputElement).disabled, name).toBe(true)
-      expect(fixed.mode.closest('label')?.title, `${name}: why`).toContain('can’t be changed')
+      expect(fixed.picker, `${name}: model inspection`).toBe(true)
+      expect(fixed.model.tagName).toBe('BUTTON')
+      expect(fixed.model.disabled).toBe(false)
+      expect(fixed.model.getAttribute('aria-label')).toMatch(/^(Change|Choose)/)
+      expect(fixed.takeDisabled, `${name}: model editing`).toBe(true)
+      expect(fixed.mode.dataset.changeable, `${name}: the approval mode`).toBe('true')
+      expect((fixed.mode as HTMLInputElement).disabled, name).toBe(false)
+      expect(fixed.mode.closest('label')?.title, `${name}: next message`).toContain('next message')
     }
   })
 })

@@ -207,6 +207,13 @@ const SAMPLES: Record<RuntimeCommandKind, RuntimeCommand> = {
     providers: [{ provider: 'claude', ready: true }],
   },
   providerConnections: { kind: 'providerConnections' },
+  updateProviderConnection: {
+    kind: 'updateProviderConnection',
+    provider: 'claude',
+    connectionId: 'claude:sign-in',
+    name: 'Fictional renamed connection',
+    description: null,
+  },
   profiles: { kind: 'profiles' },
   checkProviderAuth: { kind: 'checkProviderAuth', provider: 'claude' },
   reprovisionProviderHomes: { kind: 'reprovisionProviderHomes', provider: 'codex' },

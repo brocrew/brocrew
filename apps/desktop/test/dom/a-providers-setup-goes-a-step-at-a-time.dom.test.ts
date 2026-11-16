@@ -1,5 +1,6 @@
+import { providerConnectionFixtures } from '../../look/fixtures/providers'
 import { createModelLists } from '../lib/provider-launch-fixture'
-import { providerDescriptor } from '@brobot2/shared'
+import { compatibilityConnectionId, providerDescriptor } from '@brobot2/shared'
 import { memoryStorage } from './memory-storage'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
@@ -11,6 +12,7 @@ import { forgetProfileSignIns } from '../../src/renderer/src/composables/useProf
 
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import type { ProviderSetupSays } from '../../src/renderer/src/lib/provider-setup'
+import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
 import type {
   ApiKeyStatus,
   RuntimeBridge,
@@ -132,6 +134,8 @@ function theBridge(over: {
   codexKey?: Partial<ApiKeyStatus>
 }) {
   const runtime = {
+    providerConnections: async () => providerConnectionFixtures(),
+    onProvidersChanged: () => () => {},
     providerVersions: vi.fn(async () => ({
       claude: over.claude,
       codex: version('tested', 'carried'),
@@ -192,6 +196,8 @@ describe('§8 · the Providers card’s Set up opens it', () => {
     options: { savedKey?: boolean; capabilities?: ProviderCapabilityMap | null } = {},
   ) {
     const runtime = {
+      providerConnections: async () => providerConnectionFixtures(),
+      onProvidersChanged: () => () => {},
       checkProviderAuth: vi.fn(async () => auth),
       apiKeyStatus: vi.fn(async () => ({
         provider: 'claude',
@@ -289,7 +295,25 @@ describe('§8 · the Providers card’s Set up opens it', () => {
     m.q('setup-check').click()
     await settled()
     expect(readVersions).toHaveBeenCalledTimes(1)
-    expect(runtime.checkProviderAuth).toHaveBeenCalledTimes(2)
+    expect(runtime.checkProviderAuth.mock.calls).toEqual([
+      [
+        {
+          provider: 'claude',
+          profileId: DEFAULT_PROFILE_ID,
+          connectionId: compatibilityConnectionId('claude', 'sign-in'),
+        },
+      ],
+      [{ provider: 'claude', profileId: DEFAULT_PROFILE_ID }],
+      [
+        {
+          provider: 'claude',
+          profileId: DEFAULT_PROFILE_ID,
+          connectionId: compatibilityConnectionId('claude', 'sign-in'),
+          probe: true,
+        },
+      ],
+      [{ provider: 'claude', profileId: DEFAULT_PROFILE_ID }],
+    ])
     expect(m.q('setup-ready').textContent).toContain('Claude is ready.')
     m.q('setup-done').click()
     await settled()
@@ -338,7 +362,7 @@ describe('§8 · the Providers card’s Set up opens it', () => {
     expect(m.q('provider-inline-setup').textContent).toContain('Storage unavailable.')
   })
   it.each([{ savedKey: true }, { capabilities: null }])(
-    'does not offer sign-in with a saved key or unread capabilities: %j',
+    'sign-in setup follows capability availability independently of a saved key: %j',
     async (options) => {
       const { m, runtime } = theCard(SIGNED_OUT, version('tested'), options)
       await settled()
@@ -349,10 +373,10 @@ describe('§8 · the Providers card’s Set up opens it', () => {
       m.q('provider-set-up').click()
       await settled()
       const signIn = m.q('setup-sign-in') as HTMLButtonElement
-      expect(signIn.disabled).toBe(true)
+      expect(signIn.disabled).toBe(options.capabilities === null)
       signIn.click()
       await settled()
-      expect(m.all('setup-command')).toHaveLength(0)
+      expect(m.all('setup-command')).toHaveLength(options.capabilities === null ? 0 : 1)
       expect(runtime.signInProvider).not.toHaveBeenCalled()
     },
   )
@@ -395,6 +419,8 @@ it.each([true, false, undefined])(
       .map(([facts]) => facts.keyUnreadable)
       .find((line) => line?.includes('Codex'))
     expect(said).toBeDefined()
-    expect(said?.includes('remove it to use the sign-in')).toBe(behind === true)
+    expect(said?.includes('choose a sign-in connection for a new conversation')).toBe(
+      behind === true,
+    )
   },
 )

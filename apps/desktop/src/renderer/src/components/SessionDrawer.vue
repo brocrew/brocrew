@@ -59,10 +59,7 @@ const props = defineProps<{
 
   sessionRef: SessionRef | null
   status: SessionStatus | null
-  /**
-   * Nothing set here would reach the conversation (`CreatedSession.settingsFixed`): the agent
-   * panel's model, effort, plan and approval mode are statements.
-   */
+  /** Host-supplied inspection mode for approval and planning controls. */
   fixed: boolean
   /** Drawn from its ledger: its next start takes the model and effort, and never planning. */
   recorded: boolean

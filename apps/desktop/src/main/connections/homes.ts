@@ -1,7 +1,7 @@
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { AgentRuntime } from '@brobot2/runtime'
-import { providerSchema, type Provider } from '@brobot2/shared'
+import { additionalConnectionId, providerSchema, type Provider } from '@brobot2/shared'
 import { providerAuthFromHomes } from '../providers'
 import { homeStrategyFor, legacyAuthOperations, runtimeFactoryFor } from '../providers'
 import type { ProviderAuthOps, ProviderHomeSeams, ProviderRuntimeSeams } from '../providers'
@@ -56,6 +56,7 @@ export { DEFAULT_PROFILE_ID }
 export interface ProviderHomeIdentity {
   profileId: string
   provider: Provider
+  connectionId?: string
 }
 
 /** The root every provider home must live under. */
@@ -78,7 +79,12 @@ function assertPathSegment(label: string, value: string): void {
 /** The per-profile home path for one provider. Pure — provisions nothing. */
 export function deriveProviderHome(userData: string, identity: ProviderHomeIdentity): string {
   assertPathSegment('profileId', identity.profileId)
-  return join(providerHomesRoot(userData), HOME_FOLDER, identity.profileId, identity.provider)
+  const root = join(providerHomesRoot(userData), HOME_FOLDER, identity.profileId)
+  const own = additionalConnectionId(identity.provider, identity.connectionId)
+  // Lowercase hex preserves opaque IDs even on a case-insensitive filesystem.
+  return own === undefined
+    ? join(root, identity.provider)
+    : join(root, 'connections', Buffer.from(own).toString('hex'), identity.provider)
 }
 
 /** The folder of a profile's saved methods, beside its provider homes. */
@@ -118,10 +124,31 @@ export function listProviderHomes(userData: string): ExistingProviderHome[] {
   const homes: ExistingProviderHome[] = []
   for (const profileId of subdirectories(root)) {
     if (!isPathSegment(profileId)) continue
-    for (const provider of subdirectories(join(root, profileId))) {
-      const parsed = providerSchema.safeParse(provider)
-      if (!parsed.success) continue
-      homes.push({ profileId, provider: parsed.data, path: join(root, profileId, provider) })
+    const profile = join(root, profileId)
+    const keep = (folder: string, connectionId?: string): void => {
+      for (const provider of subdirectories(folder)) {
+        const parsed = providerSchema.safeParse(provider)
+        if (!parsed.success) continue
+        if (
+          connectionId !== undefined &&
+          additionalConnectionId(parsed.data, connectionId) === undefined
+        )
+          continue
+        homes.push({
+          profileId,
+          provider: parsed.data,
+          ...(connectionId === undefined ? {} : { connectionId }),
+          path: join(folder, provider),
+        })
+      }
+    }
+    keep(profile)
+    const connections = join(profile, 'connections')
+    if (!existsSync(connections)) continue
+    for (const encoded of subdirectories(connections)) {
+      const connectionId = Buffer.from(encoded, 'hex').toString('utf8')
+      if (Buffer.from(connectionId).toString('hex') !== encoded) continue
+      keep(join(connections, encoded), connectionId)
     }
   }
   return homes
@@ -286,7 +313,8 @@ export function homePathsForProvider(userData: string, provider: Provider): Prov
   return {
     managedRoot: providerHomesRoot(userData),
     defaultProfile: DEFAULT_PROFILE_ID,
-    homeOf: (profileId) => deriveProviderHome(userData, { profileId, provider }),
+    homeOf: (profileId, connectionId) =>
+      deriveProviderHome(userData, { profileId, provider, connectionId }),
     profiles: () => listProfileIds(userData),
     assertMayOpen: (profileId) => assertProfileMayBeOpened(profileId, listProfileIds(userData)),
   }
@@ -297,11 +325,14 @@ export async function prepareProviderHome(
   identity: ProviderHomeIdentity,
   seams: ProviderHomeSeams = {},
 ): Promise<string> {
-  return await homeStrategyFor(
+  const strategy = homeStrategyFor(
     identity.provider,
     homePathsForProvider(userData, identity.provider),
     seams,
-  ).prepare(identity.profileId)
+  )
+  return identity.connectionId === undefined
+    ? await strategy.prepare(identity.profileId)
+    : await strategy.prepare(identity.profileId, identity.connectionId)
 }
 
 export function createProviderRuntime(

@@ -1,16 +1,21 @@
+import { providerConnectionFixtures } from '../../look/fixtures/providers'
 import { createModelLists } from '../lib/provider-launch-fixture'
-import { providerDescriptor } from '@brobot2/shared'
+import { compatibilityConnectionId, providerDescriptor } from '@brobot2/shared'
 import { afterEach, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, reactive, type Component } from 'vue'
 import ProviderCard from '../../src/renderer/src/components/ProviderCard.vue'
 
-import { providerConditions, readProviderLimit } from '../../src/shared/provider-limit'
+import {
+  providerConditions,
+  readProviderLimit,
+  type ProviderCondition,
+} from '../../src/shared/provider-limit'
 import {
   limitsDisplayWords,
   type LimitsDisplayState,
 } from '../../src/renderer/src/lib/limits-display'
 import type { ProviderUsageReading } from '../../src/shared/runtime-ipc'
-import { mount, unmountAll } from './harness'
+import { mount, unmountAll, visible } from './harness'
 
 const NOW = Date.UTC(2026, 9, 26, 19, 14, 52)
 const HOUR = 3_600_000
@@ -20,7 +25,7 @@ const WEEKLY_PERIOD = {
   bucket: false,
   bucketName: null,
 }
-const words = (node: Element) => (node.textContent ?? '').replace(/\s+/g, ' ').trim()
+const words = (node: Element | null) => (node?.textContent ?? '').replace(/\s+/g, ' ').trim()
 
 afterEach(unmountAll)
 
@@ -30,6 +35,7 @@ function currentReading(
   warningUsed: number | null,
 ): ProviderUsageReading {
   return {
+    connectionId: compatibilityConnectionId('claude', 'sign-in'),
     window: 'seven_day',
     period: WEEKLY_PERIOD,
     usedPercent,
@@ -79,7 +85,7 @@ function card(usedPercent: number, resetsAt: number, warningUsed: number | null)
     provider: 'claude' as const,
     descriptor: providerDescriptor('claude'),
     capabilities: null,
-    limit: providerConditions([wall], NOW)[0]!,
+    limit: providerConditions([wall], NOW)[0]! as ProviderCondition | null,
     limitsRead: true,
     limitsDisplay: display as LimitsDisplayState | undefined,
     clock: NOW,
@@ -105,6 +111,8 @@ function card(usedPercent: number, resetsAt: number, warningUsed: number | null)
   })
   ;(window as unknown as { api: unknown }).api = {
     runtime: {
+      providerConnections: async () => providerConnectionFixtures(),
+      onProvidersChanged: () => () => {},
       checkProviderAuth: async () => ({ state: 'usable', login: 'account', expiresAt: null }),
       apiKeyStatus: async () => ({ provider: 'claude', set: false, setAt: null, inUse: false }),
     },
@@ -125,15 +133,15 @@ it('does not repeat a retained 90% warning over the current 29% weekly card', as
   await settled()
   expect(words(m.q('provider-usage-reading'))).toContain('29% used')
   expect(words(m.q('provider-usage-reading'))).toContain('7 h 45 min')
-  expect(words(m.q('provider-usage-says'))).not.toContain('90% used')
-  expect(words(m.q('provider-usage-says'))).not.toContain('2 days')
+  expect(words(m.host.querySelector('[data-cy=provider-usage-says]'))).not.toContain('90% used')
+  expect(words(m.host.querySelector('[data-cy=provider-usage-says]'))).not.toContain('2 days')
 })
 
 it('takes both the percentage and reset from the same current near-limit reading', async () => {
   const { m, props } = card(84, NOW + 7.75 * HOUR, 84)
   await settled()
-  expect(words(m.q('provider-usage-says'))).toContain('84% used')
-  expect(words(m.q('provider-usage-says'))).toContain('7 h 45 min')
+  expect(words(m.host.querySelector('[data-cy=provider-usage-says]'))).toContain('84% used')
+  expect(words(m.host.querySelector('[data-cy=provider-usage-says]'))).toContain('7 h 45 min')
   props.readings = [
     {
       window: 'seven_day',
@@ -145,19 +153,20 @@ it('takes both the percentage and reset from the same current near-limit reading
     },
   ]
   await settled()
-  expect(words(m.q('provider-usage-says'))).not.toContain('is near')
+  expect(words(m.host.querySelector('[data-cy=provider-usage-says]'))).not.toContain('is near')
 })
 
 it('keeps a matching current near-limit warning', async () => {
   const { m } = card(90, NOW + 48 * HOUR, 90)
   await settled()
-  expect(words(m.q('provider-usage-says'))).toContain('90% used')
-  expect(words(m.q('provider-usage-says'))).toContain('2 days')
+  expect(words(m.host.querySelector('[data-cy=provider-usage-says]'))).toContain('90% used')
+  expect(words(m.host.querySelector('[data-cy=provider-usage-says]'))).toContain('2 days')
 })
 
 it('pairs each near-limit window with its own percentage and reset', async () => {
   const { m, props } = card(91, NOW + 72 * HOUR, 91)
   props.readings.unshift({
+    connectionId: compatibilityConnectionId('claude', 'sign-in'),
     window: 'five_hour',
     period: { word: '5-hour', durationMs: 5 * HOUR, bucket: false, bucketName: null },
     usedPercent: 88,
@@ -172,7 +181,7 @@ it('pairs each near-limit window with its own percentage and reset', async () =>
     },
   })
   await settled()
-  const warning = words(m.q('provider-usage-says'))
+  const warning = words(m.host.querySelector('[data-cy=provider-usage-says]'))
   expect(warning).toContain('its 5-hour limit (88% used); it resets in 1 h.')
   expect(warning).toContain('its weekly limit (91% used); it resets in 3 days.')
 })
@@ -181,10 +190,10 @@ it('does not confirm a retained warning from unconfirmed or absent readings', as
   const { m, props } = card(90, NOW + 48 * HOUR, 90)
   props.readings = [{ ...props.readings[0]!, unconfirmed: true }]
   await settled()
-  expect(words(m.q('provider-usage-says'))).not.toContain('is near')
+  expect(words(m.host.querySelector('[data-cy=provider-usage-says]'))).not.toContain('is near')
   props.readings = []
   await settled()
-  expect(words(m.q('provider-usage-says'))).not.toContain('90% used')
+  expect(words(m.host.querySelector('[data-cy=provider-usage-says]'))).not.toContain('90% used')
 })
 
 it('keeps the separately reported stop without changing it into a measured percentage', async () => {
@@ -195,8 +204,9 @@ it('keeps the separately reported stop without changing it into a measured perce
   }
   props.limit = providerConditions([stopped], NOW)[0]!
   await settled()
-  expect(words(m.q('provider-usage-says'))).toContain('has reached its weekly limit')
-  expect(words(m.q('provider-usage-says'))).not.toContain('29% used')
+  expect(words(m.q('provider-usage-overview'))).toContain('has reached its weekly limit')
+  expect(words(m.q('provider-usage-overview'))).not.toContain('29% used')
+  expect(words(m.host.querySelector('[data-cy=provider-usage-says]'))).not.toContain('has reached')
 })
 
 it('retains the supplied consequence for an intentionally raw-only legacy warning', async () => {
@@ -204,11 +214,12 @@ it('retains the supplied consequence for an intentionally raw-only legacy warnin
   const raw = readProviderLimit('claude is rate-limited (seven_day)', NOW)!
   props.limit = providerConditions([raw], NOW)[0]!
   await settled()
-  expect(words(m.q('provider-usage-says'))).toBe(
+  expect(words(m.q('provider-usage-overview'))).toBe(
     limitsDisplayWords.condition(props.limit.says, NOW),
   )
-  expect(words(m.q('provider-usage-says'))).not.toContain('weekly limit')
+  expect(words(m.q('provider-usage-overview'))).not.toContain('weekly limit')
   expect(raw.meaning).toBeUndefined()
+  expect(words(m.host.querySelector('[data-cy=provider-usage-says]'))).not.toContain('has reached')
 })
 
 it('uses supplied warning facts despite contradictory raw figures and window names', async () => {
@@ -223,19 +234,21 @@ it('uses supplied warning facts despite contradictory raw figures and window nam
   ]
   await settled()
   expect(words(m.q('provider-usage-reading'))).toContain('12% used')
-  expect(words(m.q('provider-usage-says'))).toContain('its Fern limit (92% used)')
+  expect(words(m.host.querySelector('[data-cy=provider-usage-says]'))).toContain(
+    'its Fern limit (92% used)',
+  )
   props.readings = [{ ...props.readings[0]!, usedPercent: 99, warning: null }]
   await settled()
-  expect(words(m.q('provider-usage-says'))).not.toContain('is near')
+  expect(words(m.host.querySelector('[data-cy=provider-usage-says]'))).not.toContain('is near')
 })
 
 it('retires a supplied warning at its reset without recreating it from raw usage', async () => {
   const { m, props } = card(90, NOW + HOUR, 90)
   await settled()
-  expect(words(m.q('provider-usage-says'))).toContain('90% used')
+  expect(words(m.host.querySelector('[data-cy=provider-usage-says]'))).toContain('90% used')
   props.clock = NOW + HOUR
   await settled()
-  expect(words(m.q('provider-usage-says'))).not.toContain('is near')
+  expect(words(m.host.querySelector('[data-cy=provider-usage-says]'))).not.toContain('is near')
   expect(words(m.q('provider-usage-reading'))).toContain('was 90% used')
 })
 
@@ -246,8 +259,37 @@ it('does not invent a warning for old readings without a supplied decision', asy
   props.readings = [legacy]
   await settled()
   expect(words(m.q('provider-usage-reading'))).toContain('90% used')
-  expect(words(m.q('provider-usage-says'))).not.toContain('is near')
+  expect(words(m.host.querySelector('[data-cy=provider-usage-says]'))).not.toContain('is near')
   props.limitsDisplay = undefined
   await settled()
-  expect(words(m.q('provider-usage-says'))).toContain('90% used')
+  expect(words(m.q('provider-usage-overview'))).toContain('90% used')
+  expect(words(m.host.querySelector('[data-cy=provider-usage-says]'))).not.toContain('is near')
 })
+
+for (const status of ['updating', 'unavailable', 'ready'] as const) {
+  it(`shows ${status} provider history only when it needs attention`, async () => {
+    const { m, props } = card(29, NOW + HOUR, null)
+    const reading = props.limitsDisplay!.reading!
+    props.limit = null
+    props.limitsRead = true
+    props.limitsDisplay = {
+      status,
+      reading: { ...reading, walked: { ...reading.walked, rows: [] } },
+    }
+    await settled()
+    const overview = m.host.querySelector<HTMLElement>('[data-cy=provider-usage-overview]')
+    if (status === 'ready') {
+      expect(overview).toBeNull()
+      expect(m.host.textContent).not.toContain('No limit warnings recorded as of')
+    } else {
+      expect(overview).not.toBeNull()
+      expect(visible(overview!)).toBe(true)
+      expect(words(overview)).toBe(limitsDisplayWords[status])
+      expect(overview!.getAttribute('title')).toBe(limitsDisplayWords.lastReading(NOW))
+    }
+    expect(words(m.host.querySelector('[data-cy=provider-usage-says]'))).not.toMatch(
+      /is near|has reached|Updating limits|Limits unavailable/,
+    )
+    expect(words(m.q('provider-usage-reading'))).toContain('29% used')
+  })
+}

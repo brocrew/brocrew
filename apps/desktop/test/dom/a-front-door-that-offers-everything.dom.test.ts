@@ -451,11 +451,13 @@ describe('§3 · the choices are reachable from THIS screen, and they reach the 
     asking.answers.value = { claude: 'pending', codex: 'pending' }
     await nextTick()
     await openPicker(asking.m)
-    // Unknown readiness is disabled as Checking… in the approved 0.1.3 picker.
+    // Provider selection stays available while readiness is unknown; the list has not answered.
     for (const provider of ['claude', 'codex']) {
       const radio = asking.m.q(`model-picker-choose-${provider}`) as HTMLInputElement
-      expect(radio.disabled).toBe(true)
-      expect(radio.closest('label')?.textContent).toContain(' · Checking…')
+      expect(radio.disabled).toBe(false)
+      expect(radio.closest('label')?.textContent?.trim()).toBe(
+        provider === 'claude' ? 'Claude' : 'Codex',
+      )
     }
     expect(asking.m.all('model-picker-row')).toHaveLength(0)
     expect(asking.m.all('model-picker-effort-none')).toHaveLength(0)

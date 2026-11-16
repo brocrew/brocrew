@@ -49,6 +49,8 @@ export interface LaunchChoices {
    * resolution at whatever it happened to be.
    */
   provider: Provider | null
+  /** Explicit route chosen for the next launch; omission leaves the host default in charge. */
+  connectionId?: string
   /**
    * The model id to ask for — `''` for *we did not ask*: then the form names the last pick, or
    * leaves the host to name what it starts on (`lib/model-lists.ts`' `theFormSends`, UI-012 · R-1).

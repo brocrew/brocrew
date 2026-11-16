@@ -1,10 +1,11 @@
+import type { UpdateProviderConnectionInput } from '../provider-connection-edit'
 import type { MemoryAmendmentAsked, MemoryCheckAsked, MemoryUndoAsked } from '../agent-memory'
 import type { RulesBaseline } from '../agent-rules'
 import type { CapabilityGrant } from '../capabilities'
 import type { ExternalMcpServerReach } from '../external-mcp'
 import type { DecideMoveRequestInput } from '../move-contracts'
 import type { OwnNotesWrite } from '../own-notes'
-import type { ResolveProviderLaunchInput } from '../provider-launch'
+import type { ProviderModelReadInput, ResolveProviderLaunchInput } from '../provider-launch'
 import type { MethodDeleteSelection } from '../saved-method-library'
 import type { SkillsRequest } from '../skills-window'
 import type { ForestScope } from '../the-whole-forest'
@@ -432,12 +433,13 @@ export type RuntimeCommand =
   | { kind: 'capabilities' }
   | { kind: 'providerCatalogue' }
   | { kind: 'providerConnections' }
+  | ({ kind: 'updateProviderConnection' } & UpdateProviderConnectionInput)
   /**
    * 🔴 **D-042 · R3 — the one list a person picks from**, for one provider and one agent
    * ({@link ModelList}). ⚑ `profileId` absent is BroBot's own.
    */
-  | ({ kind: 'modelList' } & ProviderProfileInput)
-  | ({ kind: 'providerLaunchChoices' } & ProviderProfileInput)
+  | ({ kind: 'modelList' } & ProviderModelReadInput)
+  | ({ kind: 'providerLaunchChoices' } & ProviderModelReadInput)
   | ({ kind: 'resolveProviderLaunch' } & ResolveProviderLaunchInput)
   /**
    * ⚑ **D-042 · R3 — a person adds a model to a provider's list by hand.** ⛔ Never checked when added:
@@ -482,9 +484,9 @@ export type RuntimeCommand =
   // 098 — the credential a profile runs on. Keyed by profile, because a credential belongs to a
   // provider home and "is Codex signed in?" therefore has one answer per profile, not one answer.
   | ({ kind: 'checkProviderAuth' } & CheckProviderAuthInput)
-  | ({ kind: 'reprovisionProviderAuth' } & ProviderProfileInput)
+  | ({ kind: 'reprovisionProviderAuth' } & ProviderProfileInput & { connectionId?: string })
   | { kind: 'reprovisionProviderHomes'; provider: Provider; statusOnly?: boolean }
-  | ({ kind: 'signInProvider' } & ProviderProfileInput)
+  | ({ kind: 'signInProvider' } & ProviderProfileInput & { connectionId?: string })
   | ({ kind: 'cancelProviderSignIn' } & ProviderProfileInput)
   /**
    * **Would the launch accept this folder** (203, from 195 H4) — the typed half of 076 §3's picker.
@@ -685,6 +687,7 @@ export type RuntimeCommand =
       provider: Provider | null
       model: string | null
       effort: string | null
+      connectionId?: string
     }
   /**
    * ⚑ **Read the default {@link RuntimeCommand} `setAgentModelAndEffort` wrote** (677) — `null` when

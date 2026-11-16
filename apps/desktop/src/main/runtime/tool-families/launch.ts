@@ -1,3 +1,4 @@
+import { ProviderConnectionUnavailable } from '../../connections/records'
 import { ABriefThatDidNotArrive, AGiveThatGaveNothing } from '../session-unavailable'
 import { type AgentModelChoice } from '../../../shared/model-choice-contracts'
 import {
@@ -107,6 +108,7 @@ interface CreateAgentArguments {
    * alone holds the model it names, else the creator's.
    */
   readonly provider?: Provider
+  readonly connectionId?: string
   /**
    * **618 · the new identity's own standing rules, or absent** (`HO-078` §4).
    *
@@ -133,6 +135,8 @@ interface CreateAgentArguments {
 const CREATE_SLUG_ARGUMENT = 'profile_slug' satisfies keyof CreateAgentArguments
 
 const CREATE_PROVIDER_ARGUMENT = 'provider' satisfies keyof CreateAgentArguments
+
+const CREATE_CONNECTION_ARGUMENT = 'connectionId' satisfies keyof CreateAgentArguments
 
 const CREATE_RULES_ARGUMENT = 'rules' satisfies keyof CreateAgentArguments
 
@@ -168,6 +172,8 @@ interface GiveWorkArguments {
   readonly new?: boolean
   /** Select this provider's conversation without changing the identity's default. */
   readonly provider?: Provider
+  /** A connection name or ID for this provider; never an address or credential. */
+  readonly connectionId?: string
   /** Select a free worker or start another worker of the same normal profile. */
   readonly parallel?: boolean
   /** **D-016 · R2** — files handed over with the work, kept as the piece's inputs. */
@@ -248,6 +254,7 @@ export function createGiveWorkTool(
           'Which provider this piece runs on. It selects that provider’s conversation with this normal agent, or starts one; never switches an existing conversation or changes the agent’s default. Services refuse a different provider.',
           'Leave it out to use the named model’s unique provider, else the agent’s default.',
         ).optional(),
+        connectionId: z.string().optional().describe('Connection name or ID for this provider.'),
         parallel: z
           .boolean()
           .optional()
@@ -384,6 +391,7 @@ export function createGiveWorkTool(
         // nothing drives, with the two acts a stall asks for.
         const stalled = given.stalled ?? []
         const stillHeld = stalled.length === 0 ? '' : ` ${stalledPiecesSaid(stalled)}`
+        const connectionNotice = given.connectionNotice
         return answer(
           {
             outcome: 'ok',
@@ -393,6 +401,7 @@ export function createGiveWorkTool(
             profile: given.profile,
             ...(given.worker === undefined ? {} : { worker: given.worker }),
             delivery: given.delivery,
+            ...(connectionNotice === undefined ? {} : { connection_notice: connectionNotice }),
             started: given.runsOn.how === 'started',
             runs_on: { model: given.runsOn.model, effort: given.runsOn.effort },
             ...(given.owner === given.found ? {} : { went_to: given.owner }),
@@ -402,7 +411,7 @@ export function createGiveWorkTool(
             ...(given.givenFolder === null ? {} : { folder: given.givenFolder }),
             ...(stalled.length === 0 ? {} : { stalled: stalled.map((one) => one.label) }),
           },
-          `${given.label} given to ${name} (${given.profile})${went}.${queuedSaid(queued, given.queueStalledAt)}${started}${unused}${where}${inputs}${stillHeld}${given.worker === undefined ? '' : ` ${workerLine(given.profile, given.worker.number)}`}`,
+          `${given.label} given to ${name} (${given.profile})${went}.${queuedSaid(queued, given.queueStalledAt)}${started}${unused}${where}${inputs}${stillHeld}${given.worker === undefined ? '' : ` ${workerLine(given.profile, given.worker.number)}`}${connectionNotice === undefined ? '' : `\n${connectionNotice}`}`,
         )
       }),
   }
@@ -451,6 +460,10 @@ export function createCreateAgentTool(
         'Omit it to take the provider of the model you name, else yours.',
       ).optional(),
 
+      connectionId: z
+        .string()
+        .optional()
+        .describe('The default connection name or ID for this provider.'),
       rules: z
         .string()
         .describe(
@@ -518,6 +531,10 @@ export function createCreateAgentTool(
             `${CREATE_MODEL_ARGUMENT} must be a model's name of at most 120 characters, or left out`,
           )
         }
+        const connectionId = args[CREATE_CONNECTION_ARGUMENT]
+        if (connectionId !== undefined && typeof connectionId !== 'string') {
+          problems.push(`${CREATE_CONNECTION_ARGUMENT} must be a string, or left out`)
+        }
         const effort = args[CREATE_EFFORT_ARGUMENT]
         if (
           effort !== undefined &&
@@ -537,15 +554,25 @@ export function createCreateAgentTool(
         // **D-042 · R4 — the default it names, judged by the one seam** (`model-rails.ts`: the
         // list, then the model's efforts) — above the mint, so a refused default creates nothing.
         let itsDefault: AgentModelChoice | null = null
-        if (model !== undefined || effort !== undefined) {
-          const judged = await host.judgeTheDefaultItNames(
-            me,
-            provider === undefined ? null : (provider as Provider),
-            {
-              ...(model === undefined ? {} : { model: model as string }),
-              ...(effort === undefined ? {} : { effort: effort as string }),
-            },
-          )
+        if (model !== undefined || effort !== undefined || connectionId !== undefined) {
+          let judged: Awaited<ReturnType<AgentToolHost['judgeTheDefaultItNames']>>
+          try {
+            judged = await host.judgeTheDefaultItNames(
+              me,
+              provider === undefined ? null : (provider as Provider),
+              {
+                ...(model === undefined ? {} : { model: model as string }),
+                ...(effort === undefined ? {} : { effort: effort as string }),
+                ...(connectionId === undefined ? {} : { connectionId: connectionId as string }),
+              },
+            )
+          } catch (error) {
+            if (!(error instanceof ProviderConnectionUnavailable)) throw error
+            return refusalAnswer({
+              ...refuseTool('malformed-request', { problems: [error.message] }),
+              reason: error.message,
+            })
+          }
           if (!judged.ok) {
             return answer(
               { ...judged.refusal },

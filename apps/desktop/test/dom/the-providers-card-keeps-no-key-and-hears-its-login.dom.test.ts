@@ -1,8 +1,8 @@
+import { providerConnectionFixtures } from '../../look/fixtures/providers'
 import { createModelLists } from '../lib/provider-launch-fixture'
-import { providerDescriptor } from '@brobot2/shared'
+import { compatibilityConnectionId, providerDescriptor } from '@brobot2/shared'
 import { settleDom as settled } from './settle-dom'
 import type { ModelList } from '../../src/shared/model-choice-contracts'
-// The approved plain words replace the former labels; the state and gesture checks remain.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, ref, type Component } from 'vue'
 import ProviderCard from '../../src/renderer/src/components/ProviderCard.vue'
@@ -16,33 +16,12 @@ import {
   type ApiKeyCheck,
   type ApiKeyStatus,
   type AuthState,
+  type RuntimeBridge,
   type ProviderCapabilityMap,
   type ProviderUsageReading,
 } from '../../src/shared/runtime-ipc'
 import { useKeyAsked } from '../../src/renderer/src/composables/useKeyAsked'
 import { mount, unmountAll, visible, type Mounted } from './harness'
-
-/**
- * # W4.26 · one provider's card — its API key, and a login notice that lands mid-gesture
- *
- * ⚑ **`25cca325`'s own "for landing"** (`providers-screen-2.md`): *"Tests for the card: the key
- * refusal path, the coalesced re-check, and the sampling gate."* The sampling gate is the screen's
- * (`the-providers-screen-samples-only-while-looked-at.dom.test.ts`); the other two are here, with the
- * card's other gestures.
- *
- * | § | gesture | 🔴 subject | ⚑ control, one fact over |
- * |---|---|---|---|
- * | 1 | Save key, refused | the field is empty while it is out, the host's refusal is said, no key is set, the key is nowhere on the page | Save key, accepted: *"Key saved…"*, and still nowhere on the page |
- * | 1 | Save a blank key | nothing is sent | — |
- * | 1 | Check it works / Remove | *Checking…* while out; the host's reason; *Key removed…* | — |
- * | 2 | a saved key, signed out | Sign in and Copy are not offered, and the panel says why | no key: both offered |
- * | 3 | Copy my machine sign-in, and a login notice while it is out | the check runs once the copy settles, and the card turns Ready | the copy alone asks nothing |
- * | 4 | — (`b975fa15`) | a stopped wall heads the card and its badge says *Signed in* | a wall about to stop: no heading, *Ready* |
- * | 5 | — (`5d5a991a`) | *New conversations start on* the list's spelling | a model the list does not hold, as given |
- *
- * ⚑ **In `dom/` because each is a TRANSITION** — a press, a promise held open, a prop moved while it
- * is held — which an SSR render never reaches: the card reads its login and key in `onMounted`.
- */
 
 afterEach(unmountAll)
 
@@ -85,6 +64,14 @@ const SIGNED_IN: AuthState = {
 }
 const SIGNED_OUT: AuthState = { state: 'absent', reason: 'This profile has never been signed in.' }
 
+const noHomeCopies = (): ProviderHomesReprovision => ({
+  replaced: 0,
+  pending: 0,
+  skipped: 0,
+  failed: 0,
+  profiles: [],
+})
+
 const NO_KEY: ApiKeyStatus = { provider: 'claude', set: false, setAt: null, inUse: false }
 const A_KEY: ApiKeyStatus = { provider: 'claude', set: true, setAt: NOW - 60_000, inUse: true }
 
@@ -104,7 +91,7 @@ const LIST: ModelList = {
 }
 
 interface Doors {
-  checkProviderAuth?: () => Promise<AuthState>
+  checkProviderAuth?: RuntimeBridge['checkProviderAuth']
   apiKeyStatus?: () => Promise<ApiKeyStatus>
   setApiKey?: (input: { provider: string; key: string }) => Promise<ApiKeyChanged>
   removeApiKey?: () => Promise<ApiKeyChanged>
@@ -147,28 +134,14 @@ function theCard(
   const reprovisionProviderAuth: NonNullable<Doors['reprovisionProviderAuth']> =
     doors.reprovisionProviderAuth ?? (async () => 'replaced')
   const runtime = {
-    reprovisionProviderHomes: vi.fn(async (input: { provider: string; statusOnly?: boolean }) => {
-      if (input.statusOnly)
-        return (
-          doors.homeCopyStatus?.() ?? {
-            replaced: 0,
-            pending: 0,
-            skipped: 0,
-            failed: 0,
-            profiles: [],
-          }
-        )
-      return (
-        doors.reprovisionProviderHomes?.(input) ?? {
-          replaced: 0,
-          pending: 0,
-          skipped: 0,
-          failed: 0,
-          profiles: [],
-        }
-      )
-    }),
-    checkProviderAuth: vi.fn(checkProviderAuth),
+    providerConnections: async () => providerConnectionFixtures(),
+    onProvidersChanged: () => () => {},
+    reprovisionProviderHomes: vi.fn(async (input: { provider: string; statusOnly?: boolean }) =>
+      input.statusOnly
+        ? (doors.homeCopyStatus?.() ?? noHomeCopies())
+        : (doors.reprovisionProviderHomes?.(input) ?? noHomeCopies()),
+    ),
+    checkProviderAuth: vi.fn<RuntimeBridge['checkProviderAuth']>(checkProviderAuth),
     apiKeyStatus: vi.fn(apiKeyStatus),
     setApiKey: vi.fn(setApiKey),
     removeApiKey: vi.fn(removeApiKey),
@@ -230,6 +203,15 @@ async function typeKey(m: Mounted, key: string): Promise<void> {
   await nextTick()
 }
 
+function authReadings(
+  signIn: AuthState,
+  overview: AuthState,
+  provider: 'claude' | 'codex' = 'claude',
+): RuntimeBridge['checkProviderAuth'] {
+  return async (input) =>
+    input.connectionId === compatibilityConnectionId(provider, 'sign-in') ? signIn : overview
+}
+
 /* ================================================================ §1 · the key field */
 
 describe('§1 · 25cca325 · the API key field — the key leaves the field as it is sent, and stays nowhere', () => {
@@ -239,9 +221,8 @@ describe('§1 · 25cca325 · the API key field — the key leaves the field as i
     const door = held<ApiKeyChanged>()
     const { m, runtime } = theCard({ setApiKey: () => door.promise })
     await settled()
-    expect(text(m.q('provider-key-none'))).toBe(
-      'No API key saved. You can sign in instead. If you save a key, new conversations will use it instead of your signed-in account.',
-    )
+    expect(m.all('provider-key-none')).toHaveLength(0)
+    expect(keyInput(m).placeholder).toBe('Paste your Claude API key')
 
     await typeKey(m, `  ${FAKE}  `)
     saveButton(m).click()
@@ -257,7 +238,8 @@ describe('§1 · 25cca325 · the API key field — the key leaves the field as i
     const said = m.q('provider-key-said')
     expect(text(said)).toBe('The key wasn’t saved. An API key has no spaces or line breaks.')
     expect(said.classList.contains('warn')).toBe(true)
-    expect(m.all('provider-key-none')).toHaveLength(1)
+    expect(m.all('provider-key-none')).toHaveLength(0)
+    expect(keyInput(m).placeholder).toContain('API key')
     expect(m.all('provider-key-set')).toHaveLength(0)
     expect(keyInput(m).disabled).toBe(false)
     // 🔒 The key is nowhere: not in the text, not in an attribute, not in the field.
@@ -265,7 +247,7 @@ describe('§1 · 25cca325 · the API key field — the key leaves the field as i
     expect(keyInput(m).value).toBe('')
   })
 
-  it('⚑ the control: an accepted key — "Key saved", a key is set and outranks the sign-in, and still nowhere on the page', async () => {
+  it('⚑ the control: an accepted key — "Key saved", a key is set for its explicit connection, and still nowhere on the page', async () => {
     const { m, runtime } = theCard({
       setApiKey: async () => ({ ...A_KEY }),
     })
@@ -274,14 +256,16 @@ describe('§1 · 25cca325 · the API key field — the key leaves the field as i
     saveButton(m).click()
     await settled()
     expect(runtime.setApiKey).toHaveBeenCalledTimes(1)
-    expect(text(m.q('provider-key-said'))).toBe(
-      'Key saved. Claude’s new conversations start on it.',
-    )
+    expect(text(m.q('provider-key-said'))).toBe('Key saved for this API-key connection.')
     expect(m.q('provider-key-said').classList.contains('warn')).toBe(false)
-    expect(visible(m.q('provider-key-set'))).toBe(true)
-    expect(text(m.q('provider-key-in-use'))).toBe(
-      'It outranks the sign-in: Claude’s new conversations start on the key.',
-    )
+    expect(m.host.querySelector('[data-cy=provider-key-input]')).toBeNull()
+    expect(
+      m
+        .all('provider-connection')
+        .find((one) => one.textContent?.includes('API key'))
+        ?.querySelector('.meta')?.textContent,
+    ).toContain('API key · saved')
+    expect(m.all('provider-key-in-use')).toHaveLength(0)
     expect(m.host.innerHTML).not.toContain('sk-ant-fake')
   })
 
@@ -312,12 +296,12 @@ describe('§1 · 25cca325 · the API key field — the key leaves the field as i
     await settled()
     const line = m.q('provider-key-in-use')
     expect(text(line)).toBe(
-      'This computer can’t read it, so Claude won’t start. Save it again, or remove it to use the sign-in.',
+      'This computer can’t read it, so the Claude API-key connection won’t start. Save it again, or choose a sign-in connection for a new conversation.',
     )
     expect(line.classList.contains('warn')).toBe(true)
   })
 
-  it('🔴 Check it works says it is checking while it is out, then the host’s reason', async () => {
+  it('🔴 Check key says it is checking while it is out, then the host’s reason', async () => {
     const door = held<ApiKeyCheck>()
     const { m, runtime } = theCard({
       apiKeyStatus: async () => ({ ...A_KEY }),
@@ -325,7 +309,7 @@ describe('§1 · 25cca325 · the API key field — the key leaves the field as i
     })
     await settled()
     const button = m.q('provider-key-check') as HTMLButtonElement
-    expect(text(button)).toBe('Check it works')
+    expect(text(button)).toBe('Check key')
     button.click()
     await nextTick()
     expect(text(button)).toBe('Checking…')
@@ -335,48 +319,53 @@ describe('§1 · 25cca325 · the API key field — the key leaves the field as i
     door.answer({ ok: false, reason: 'Anthropic did not accept this key.' })
     await settled()
     expect(runtime.checkApiKey).toHaveBeenCalledTimes(1)
-    expect(text(button)).toBe('Check it works')
+    expect(text(button)).toBe('Check key')
     expect(text(m.q('provider-key-said'))).toBe('Anthropic did not accept this key.')
     expect(m.q('provider-key-said').classList.contains('warn')).toBe(true)
   })
 
-  it('⚑ Remove: the card says the sign-in is back, and offers the field again', async () => {
+  it('⚑ Remove: the key connection needs a key, and the field is offered again', async () => {
     const { m, runtime } = theCard({ apiKeyStatus: async () => ({ ...A_KEY }) })
     await settled()
     m.q('provider-key-remove').click()
     await settled()
     expect(runtime.removeApiKey).toHaveBeenCalledWith({ provider: 'claude' })
     expect(text(m.q('provider-key-said'))).toBe(
-      'Key removed. Claude’s new conversations start on its sign-in again.',
+      'Key removed. This API-key connection needs a key before it can start.',
     )
-    expect(m.all('provider-key-none')).toHaveLength(1)
+    expect(m.all('provider-key-none')).toHaveLength(0)
+    expect(keyInput(m).placeholder).toContain('API key')
   })
 })
 
-/* ================================================================ §2 · a saved key outranks a sign-in */
+/* ================================================================ §2 · sign-in controls are independent of a saved key */
 
-describe('§2 · 25cca325 · while a key is saved, a sign-in is not offered, and the card says why', () => {
-  it('a saved key with no sign-in offers no sign-in fallback', async () => {
-    const { m } = theCard({
+describe('§2 · 25cca325 · a saved key does not suppress sign-in controls', () => {
+  it('a saved key does not hide an available sign-in', async () => {
+    const { m, runtime } = theCard({
       checkProviderAuth: async () => SIGNED_OUT,
       apiKeyStatus: async () => ({ ...A_KEY }),
     })
     await settled()
     expect(m.all('sign-in-panel')).toHaveLength(1)
-    expect(m.all('sign-in-start')).toHaveLength(0)
-    expect(m.all('sign-in-reprovision')).toHaveLength(0)
-    expect(text(m.q('sign-in-unavailable'))).toBe(
-      'An API key is saved for Claude, and it is what Claude runs on.',
-    )
+    expect(m.all('sign-in-start')).toHaveLength(1)
+    expect(m.all('sign-in-reprovision')).toHaveLength(1)
+    expect(m.all('sign-in-unavailable')).toHaveLength(0)
+    expect(runtime.removeApiKey).not.toHaveBeenCalled()
+    expect(runtime.setApiKey).not.toHaveBeenCalled()
   })
 
-  it('an unreadable saved key with no sign-in keeps the sentence short', async () => {
-    const { m } = theCard({
+  it('an unusable saved key does not hide an available sign-in', async () => {
+    const { m, runtime } = theCard({
       checkProviderAuth: async () => SIGNED_OUT,
       apiKeyStatus: async () => ({ ...A_KEY, inUse: false }),
     })
     await settled()
-    expect(text(m.q('sign-in-unavailable'))).toBe('An API key is saved for Claude.')
+    expect(m.all('sign-in-start')).toHaveLength(1)
+    expect(m.all('sign-in-reprovision')).toHaveLength(1)
+    expect(m.all('sign-in-unavailable')).toHaveLength(0)
+    expect(runtime.removeApiKey).not.toHaveBeenCalled()
+    expect(runtime.setApiKey).not.toHaveBeenCalled()
   })
 
   it('⚑ the control: no key saved — Sign in and Copy are both offered, and the field is pointed at', async () => {
@@ -394,15 +383,21 @@ describe('§2 · 25cca325 · while a key is saved, a sign-in is not offered, and
 /* ================================================================ §3 · a notice mid-gesture */
 
 describe('§3 · 25cca325 · a login notice that lands while a copy is out is not lost', () => {
+  const asked = {
+    provider: 'claude',
+    profileId: DEFAULT_PROFILE_ID,
+    connectionId: compatibilityConnectionId('claude', 'sign-in'),
+  }
+  const overviewAsked = { provider: 'claude', profileId: DEFAULT_PROFILE_ID }
   it('🔴 the check the notice asked for runs once the copy settles, and the card turns Ready', async () => {
-    const answers: AuthState[] = [SIGNED_OUT, SIGNED_IN]
+    let reading: AuthState = SIGNED_OUT
     const copy = held<'replaced' | 'unchanged'>()
     const { m, runtime, moved, authChanged } = theCard({
-      checkProviderAuth: async () => answers.shift() ?? SIGNED_IN,
+      checkProviderAuth: async () => reading,
       reprovisionProviderAuth: () => copy.promise,
     })
     await settled()
-    expect(runtime.checkProviderAuth).toHaveBeenCalledTimes(1)
+    expect(runtime.checkProviderAuth.mock.calls).toEqual([[asked], [overviewAsked]])
     expect(text(m.q('provider-standing'))).toBe('Needs setup')
 
     m.q('sign-in-reprovision').click()
@@ -410,39 +405,54 @@ describe('§3 · 25cca325 · a login notice that lands while a copy is out is no
     expect(runtime.reprovisionProviderAuth).toHaveBeenCalledWith({
       provider: 'claude',
       profileId: DEFAULT_PROFILE_ID,
+      connectionId: compatibilityConnectionId('claude', 'sign-in'),
     })
     // ⚑ The host says "login" before its answer to the copy arrives.
+    reading = SIGNED_IN
     moved.value += 1
     await settled()
-    // ⛔ Not asked while the copy is out — one gesture at a time…
-    expect(runtime.checkProviderAuth).toHaveBeenCalledTimes(1)
+    // ⛔ The sign-in row is not asked while the copy is out — one gesture at a time…
+    expect(runtime.checkProviderAuth.mock.calls).toEqual([
+      [asked],
+      [overviewAsked],
+      [overviewAsked],
+    ])
     // …but the key's status is read again at once.
     expect(runtime.apiKeyStatus).toHaveBeenCalledTimes(2)
 
     copy.answer('replaced')
     await settled()
     // 🔴 …and kept for when it settles: asked once more, and the card is Ready by itself.
-    expect(runtime.checkProviderAuth).toHaveBeenCalledTimes(2)
+    expect(runtime.checkProviderAuth.mock.calls).toEqual([
+      [asked],
+      [overviewAsked],
+      [overviewAsked],
+      [asked],
+    ])
     expect(text(m.q('provider-standing'))).toBe('Ready')
     // The person's own login, named by its tool: BroBot made no sign-in.
-    expect(text(m.q('provider-account'))).toBe(
-      'Runs on your Claude login (someone@example.com, Max plan).',
-    )
-    expect(text(m.q('provider-auth-notice'))).toBe('Copied your machine sign-in into this profile.')
+    expect(
+      m
+        .all('provider-connection')
+        .find((one) => one.querySelector('.meta')?.textContent?.includes('Sign-in'))
+        ?.querySelector('.meta')?.textContent,
+    ).toBe('Sign-in · Max plan')
+    expect(m.all('provider-account')).toHaveLength(0)
+    expect(m.all('provider-auth-notice')).toHaveLength(0)
     expect(authChanged).toEqual([DEFAULT_PROFILE_ID])
   })
 
   it('⚑ the control: a copy with no notice asks nothing by itself — the notice is what asks', async () => {
-    const answers: AuthState[] = [SIGNED_OUT, SIGNED_IN]
+    const reading = SIGNED_OUT
     const { m, runtime, authChanged } = theCard({
-      checkProviderAuth: async () => answers.shift() ?? SIGNED_IN,
+      checkProviderAuth: async () => reading,
       reprovisionProviderAuth: async () => 'replaced',
     })
     await settled()
     m.q('sign-in-reprovision').click()
     await settled()
     expect(runtime.reprovisionProviderAuth).toHaveBeenCalledTimes(1)
-    expect(runtime.checkProviderAuth).toHaveBeenCalledTimes(1)
+    expect(runtime.checkProviderAuth.mock.calls).toEqual([[asked], [overviewAsked]])
     expect(text(m.q('provider-standing'))).toBe('Needs setup')
     expect(authChanged).toEqual([DEFAULT_PROFILE_ID])
   })
@@ -450,10 +460,15 @@ describe('§3 · 25cca325 · a login notice that lands while a copy is out is no
   it('⚑ a notice with no gesture out is asked about at once', async () => {
     const { runtime, moved } = theCard()
     await settled()
-    expect(runtime.checkProviderAuth).toHaveBeenCalledTimes(1)
+    expect(runtime.checkProviderAuth.mock.calls).toEqual([[asked], [overviewAsked]])
     moved.value += 1
     await settled()
-    expect(runtime.checkProviderAuth).toHaveBeenCalledTimes(2)
+    expect(runtime.checkProviderAuth.mock.calls).toEqual([
+      [asked],
+      [overviewAsked],
+      [asked],
+      [overviewAsked],
+    ])
   })
 })
 
@@ -532,7 +547,7 @@ describe('a saved key this computer can’t read: the card says one true thing',
     it(`🔴 ${provider}: no Ready, no "runs on the saved key", and the recovery message with its two ways out`, async () => {
       const { m } = theCard(
         {
-          checkProviderAuth: async () => ON_THE_KEY,
+          checkProviderAuth: authReadings(SIGNED_OUT, ON_THE_KEY, provider),
           apiKeyStatus: async () => ({
             ...A_KEY,
             provider,
@@ -555,20 +570,24 @@ describe('a saved key this computer can’t read: the card says one true thing',
     it(`⚑ ${provider}, the controls: a key it can read is Ready on the key, and no key is Ready on the login`, async () => {
       const onTheKey = theCard(
         {
-          checkProviderAuth: async () => ON_THE_KEY,
+          checkProviderAuth: authReadings(SIGNED_IN, ON_THE_KEY, provider),
           apiKeyStatus: async () => ({ ...A_KEY, provider }),
         },
         { provider },
       )
       await settled()
       expect(text(onTheKey.m.q('provider-standing'))).toBe('Ready')
-      expect(text(onTheKey.m.q('provider-account'))).toBe('Runs on the saved API key.')
+      expect(onTheKey.m.all('provider-account')).toHaveLength(0)
+      expect(onTheKey.m.all('provider-key-in-use')).toHaveLength(0)
+      expect(onTheKey.m.host.textContent).toContain('Sign-in · Max plan')
+      expect(onTheKey.m.host.textContent).toContain('API key · saved')
       unmountAll()
 
       const noKey = theCard({ apiKeyStatus: async () => ({ ...NO_KEY, provider }) }, { provider })
       await settled()
       expect(text(noKey.m.q('provider-standing'))).toBe('Ready')
-      expect(text(noKey.m.q('provider-account'))).toContain('Runs on your')
+      expect(noKey.m.all('provider-account')).toHaveLength(0)
+      expect(noKey.m.host.textContent).toContain('Sign-in · Max plan')
     })
   }
 })
@@ -619,7 +638,7 @@ describe('§5 · 5d5a991a · the card says what new conversations start on in th
 })
 
 describe('§5 · a saved key whose account can’t pay is not ready', () => {
-  const ON_THE_KEY = { ...SIGNED_IN, login: 'api-key', loginBehindTheKey: true } as AuthState
+  const ON_THE_KEY = { ...SIGNED_IN, login: 'api-key' as const, loginBehindTheKey: true }
   const REFUSED_AT = NOW - 30_000
   const refused = (aLoginRunsWithoutIt: boolean): ApiKeyStatus => ({
     ...A_KEY,
@@ -628,7 +647,7 @@ describe('§5 · a saved key whose account can’t pay is not ready', () => {
 
   it('🔴 Not ready, and the key’s line says why and the ways out, the login among them where there is one', async () => {
     const { m } = theCard({
-      checkProviderAuth: async () => ON_THE_KEY,
+      checkProviderAuth: authReadings(SIGNED_IN, ON_THE_KEY),
       apiKeyStatus: async () => refused(true),
     })
     await settled()
@@ -636,14 +655,14 @@ describe('§5 · a saved key whose account can’t pay is not ready', () => {
     const line = text(m.q('provider-key-refused'))
     expect(line).toContain('the account the key belongs to can’t pay for it')
     expect(line).toContain(
-      'Add credit to that account, or replace the key, or remove it to run on the sign-in.',
+      'Add credit to that account, or replace the key, or choose a sign-in connection for a new conversation.',
     )
     expect(line).toContain('This clears once a turn or a check on the key works.')
   })
 
   it('🔴 where no login runs without the key, removing it is not offered', async () => {
     const { m } = theCard({
-      checkProviderAuth: async () => ON_THE_KEY,
+      checkProviderAuth: authReadings(SIGNED_OUT, ON_THE_KEY),
       apiKeyStatus: async () => refused(false),
     })
     await settled()
@@ -656,17 +675,19 @@ describe('§5 · a saved key whose account can’t pay is not ready', () => {
     'a refused key never promises a sign-in when its presence is %s',
     async (behind) => {
       const { m } = theCard({
-        checkProviderAuth: async () => ({ ...ON_THE_KEY, loginBehindTheKey: behind }),
+        checkProviderAuth: authReadings(SIGNED_OUT, { ...ON_THE_KEY, loginBehindTheKey: behind }),
         apiKeyStatus: async () => refused(true),
       })
       await settled()
-      expect(text(m.q('provider-key-refused'))).not.toContain('remove it to run on the sign-in')
+      expect(text(m.q('provider-key-refused'))).not.toContain(
+        'choose a sign-in connection for a new conversation',
+      )
     },
   )
 
   it('⚑ control: a key nothing refused is Ready, with no such line', async () => {
     const { m } = theCard({
-      checkProviderAuth: async () => ON_THE_KEY,
+      checkProviderAuth: authReadings(SIGNED_IN, ON_THE_KEY),
       apiKeyStatus: async () => ({ ...A_KEY }),
     })
     await settled()
@@ -696,9 +717,6 @@ describe('§5 · a saved key whose account can’t pay is not ready', () => {
 })
 
 describe('what the app sends to a provider is said where a person sees it', () => {
-  const RENEWAL =
-    'When this login has expired, starting a conversation renews it by sending Claude “ok”, with the instruction “Reply with: ok”.'
-
   it('a Codex key check says it only asks for the model list', async () => {
     const { m } = theCard(
       { apiKeyStatus: async () => ({ ...A_KEY, provider: 'codex' }) },
@@ -710,18 +728,18 @@ describe('what the app sends to a provider is said where a person sees it', () =
     )
   })
 
-  it('a Claude login with no key saved says a start renews it with one short message', async () => {
+  it('a usable Claude login offers its actions without a renewal paragraph', async () => {
     const { m } = theCard()
     await settled()
-    expect(text(m.q('provider-login-renewal'))).toBe(RENEWAL)
-    expect(visible(m.q('provider-login-renewal'))).toBe(true)
+    expect(m.all('provider-login-renewal')).toHaveLength(0)
+    expect(m.all('provider-connection')).toHaveLength(2)
   })
 
   it.each([
     ['claude', false],
     ['codex', true],
   ] as const)(
-    'renewal disclosure follows %s’s capability rather than its name',
+    'the %s renewal capability adds no explanatory paragraph',
     async (provider, renews) => {
       const capabilities = {
         ...CAPS,
@@ -736,20 +754,15 @@ describe('what the app sends to a provider is said where a person sees it', () =
       )
       await settled()
       const line = m.host.querySelector('[data-cy="provider-login-renewal"]')
-      if (renews) {
-        expect(line).not.toBeNull()
-        expect(visible(line!)).toBe(true)
-        expect(text(line!)).toContain(
-          'renews it by sending Codex “ok”, with the instruction “Reply with: ok”',
-        )
-      } else expect(line).toBeNull()
+      expect(line).toBeNull()
     },
   )
 
-  it('…and says nothing of it while a key is saved, or on Codex, where no start renews a login', async () => {
+  it('a saved key and an incapable provider both omit the renewal paragraph', async () => {
     const keyed = theCard({ apiKeyStatus: async () => ({ ...A_KEY }) })
     await settled()
-    expect(keyed.m.host.querySelector('[data-cy="provider-login-renewal"]')).toBeNull()
+    expect(keyed.m.all('provider-login-renewal')).toHaveLength(0)
+    expect(keyed.m.host.textContent).toContain('API key · saved')
     const codex = theCard(
       { apiKeyStatus: async () => ({ ...NO_KEY, provider: 'codex' }) },
       { provider: 'codex' },
@@ -769,10 +782,15 @@ describe('§6 · each usage box shows how much of its window has gone, and says 
     usedPercent: number | null,
     resetsAt: number | null,
     period?: ProviderUsageReading['period'],
-  ): ProviderUsageReading => ({ window, usedPercent, resetsAt, at: NOW, period })
-  const boxes = (m: Mounted): HTMLElement[] => [
-    ...m.host.querySelectorAll<HTMLElement>('.usage-window'),
-  ]
+  ): ProviderUsageReading => ({
+    connectionId: compatibilityConnectionId('claude', 'sign-in'),
+    window,
+    usedPercent,
+    resetsAt,
+    at: NOW,
+    period,
+  })
+  const boxes = (m: Mounted) => [...m.host.querySelectorAll<HTMLElement>('.usage-window')]
   const inBox = (box: HTMLElement, cy: string): HTMLElement | null =>
     box.querySelector<HTMLElement>(`[data-cy="${cy}"]`)
 
@@ -797,7 +815,9 @@ describe('§6 · each usage box shows how much of its window has gone, and says 
     expect(bar.value).toBe(0.5)
     expect(bar.getAttribute('aria-label')).toBe('Time gone in this window')
     expect(bar.getAttribute('aria-valuetext')).toBe('2 h 30 min of 5 h gone')
-    expect(text(inBox(box!, 'provider-usage-time-words')!)).toBe('2 h 30 min of 5 h gone')
+    expect(text(inBox(box!, 'provider-usage-time-words')!)).toBe(
+      'time gone · 2 h 30 min of 5 h gone',
+    )
     expect(visible(bar)).toBe(true)
     // Usage trails time: no warning, and the usage bar keeps its colour.
     expect(inBox(box!, 'provider-usage-ahead')).toBeNull()
@@ -820,7 +840,7 @@ describe('§6 · each usage box shows how much of its window has gone, and says 
     )
     await settled()
     const [box] = boxes(m)
-    expect(text(inBox(box!, 'provider-usage-time-words')!)).toBe('4 of 7 days gone')
+    expect(text(inBox(box!, 'provider-usage-time-words')!)).toBe('time gone · 4 of 7 days gone')
     expect(text(inBox(box!, 'provider-usage-ahead')!)).toBe('Usage ahead of time')
     const usage = box!.querySelector<HTMLMeterElement>('meter:not(.time-meter)')!
     expect(usage.classList.contains('ahead')).toBe(true)
@@ -872,108 +892,14 @@ describe('§6 · each usage box shows how much of its window has gone, and says 
   })
 })
 
-describe('copying the machine sign-in for all agents', () => {
-  it('is available while signed in and reports counts, skipped profiles and failures', async () => {
-    const copy = held<ProviderHomesReprovision>()
-    const { m, runtime, authChanged } = theCard(
-      { reprovisionProviderHomes: () => copy.promise },
-      { provider: 'codex' },
-    )
-    await settled()
-    const section = m.q('copy-all-sign-ins')
-    const button = section.querySelector('button')!
-    expect(button.textContent).toContain("Use this Mac's Codex sign-in for all agents")
-    button.click()
-    await settled()
-    expect(button.disabled).toBe(true)
-    expect(runtime.reprovisionProviderHomes).toHaveBeenCalledWith({ provider: 'codex' })
-    copy.answer({
-      replaced: 1,
-      pending: 1,
-      skipped: 1,
-      failed: 1,
-      profiles: [
-        { profileId: 'alpha', state: 'replaced' },
-        { profileId: 'beta', state: 'skipped', reason: 'api-key' },
-        { profileId: 'gamma', state: 'pending' },
-        { profileId: 'delta', state: 'failed', reason: 'copy-failed' },
-      ],
-    })
-    await settled()
-    expect(section.textContent).toContain(
-      '1 switched now, 1 will switch when they finish their current task.',
-    )
-    expect(section.textContent).toContain('beta: Saved API key')
-    expect(section.textContent).toContain('Agents restart automatically between tasks')
-    expect(section.textContent).toContain('delta: Could not copy')
-    expect(button.disabled).toBe(true)
-    expect(authChanged).toEqual([])
-  })
-
-  it('updates a pending switch automatically and enables the button when it finishes', async () => {
-    let requested = false
-    const { m } = theCard(
-      {
-        reprovisionProviderHomes: async () => {
-          requested = true
-          return {
-            replaced: 0,
-            pending: 1,
-            skipped: 0,
-            failed: 0,
-            profiles: [{ profileId: 'alpha', state: 'pending' }],
-          }
-        },
-        homeCopyStatus: () =>
-          requested
-            ? {
-                replaced: 1,
-                pending: 0,
-                skipped: 0,
-                failed: 0,
-                profiles: [{ profileId: 'alpha', state: 'replaced' }],
-              }
-            : { replaced: 0, pending: 0, skipped: 0, failed: 0, profiles: [] },
-      },
-      { provider: 'codex' },
-    )
-    await settled()
-    const section = m.q('copy-all-sign-ins')
-    const button = section.querySelector('button')!
-    button.click()
-    await settled()
-    expect(section.textContent).toContain('1 will switch when they finish their current task.')
-    expect(button.disabled).toBe(true)
-    await vi.waitFor(
-      () => {
-        expect(section.textContent).toContain('1 switched now, 0 will switch')
-        expect(button.disabled).toBe(false)
-      },
-      { timeout: 3000 },
-    )
-  })
-
-  it('reports a request failure and enables retry', async () => {
-    const { m } = theCard(
-      {
-        reprovisionProviderHomes: async () => {
-          throw new Error('private details')
-        },
-      },
-      { provider: 'codex' },
-    )
-    await settled()
-    const section = m.q('copy-all-sign-ins')
-    section.querySelector('button')!.click()
-    await settled()
-    expect(section.textContent).toContain('Could not copy the sign-ins. Try again.')
-    expect(section.textContent).not.toContain('private details')
-    expect(section.querySelector('button')!.disabled).toBe(false)
-  })
-
-  it('does not offer the action for a provider without profile sign-ins', async () => {
-    const { m } = theCard()
+describe('the removed manual all-agent sign-in action', () => {
+  it('has no button, result list or automatic status read in the drawer', async () => {
+    const { m, runtime, authChanged } = theCard({}, { provider: 'codex' })
     await settled()
     expect(m.all('copy-all-sign-ins')).toHaveLength(0)
+    expect(m.host.textContent).not.toContain('switched now')
+    expect(m.host.textContent).not.toContain('will switch when')
+    expect(runtime.reprovisionProviderHomes).not.toHaveBeenCalled()
+    expect(authChanged).toEqual([])
   })
 })

@@ -11,6 +11,7 @@ export interface ProviderConnection {
   readonly id: string
   readonly provider: Provider
   readonly name: string
+  readonly description?: string | null
   readonly authMethod: ConnectionAuthMethod
   readonly credentialSource: ConnectionCredentialSource
   readonly baseUrl: string | null
@@ -24,4 +25,20 @@ export function compatibilityConnectionId(
   method: ConnectionAuthMethod,
 ): string {
   return `${provider}:${method}`
+}
+
+/**
+ * The two built-in modes retain the existing local home and provider catalogue. A key using
+ * that default home is accepted under the existing local account/machine compatibility rule.
+ * Separating these modes later requires a migration of their recorded homes.
+ */
+export function additionalConnectionId(
+  provider: Provider,
+  connectionId?: string | null,
+): string | undefined {
+  return connectionId == null ||
+    connectionId === compatibilityConnectionId(provider, 'sign-in') ||
+    connectionId === compatibilityConnectionId(provider, 'api-key')
+    ? undefined
+    : connectionId
 }

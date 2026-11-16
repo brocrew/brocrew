@@ -19,6 +19,72 @@ beforeEach(() => {
 })
 afterEach(() => db.close())
 
+for (const provider of ['claude', 'codex'] as const) {
+  const selected = `${provider}:sign-in`
+  const choice = { provider, model: 'fictional-small', effort: 'medium' }
+
+  function agent() {
+    store.createAgentIdentity({ slug: 'fern', displayName: null, provider }, { by: 'a-person' })
+    store.setModelChoice('fern', choice)
+  }
+
+  function defaultRow() {
+    return db
+      .prepare('SELECT connection_id,model_choice FROM agent_identity WHERE slug=?')
+      .get('fern')
+  }
+
+  it(`${provider}: saves the connection beside the model and reads the complete default`, () => {
+    agent()
+    expect(store.setModelChoice('fern', { ...choice, connectionId: selected })).toBe(true)
+    expect(defaultRow()).toEqual({
+      connection_id: selected,
+      model_choice: JSON.stringify(choice),
+    })
+    expect(store.modelChoiceOf('fern')).toEqual({ ...choice, connectionId: selected })
+  })
+
+  it(`${provider}: a model-only edit keeps the connection already chosen`, () => {
+    agent()
+    db.prepare('UPDATE agent_identity SET connection_id=? WHERE slug=?').run(selected, 'fern')
+    const edited = { ...choice, model: 'fictional-larger' }
+    store.setModelChoice('fern', edited)
+    expect(defaultRow()).toEqual({
+      connection_id: selected,
+      model_choice: JSON.stringify(edited),
+    })
+    expect(store.modelChoiceOf('fern')).toEqual({ ...edited, connectionId: selected })
+  })
+
+  it(`${provider}: clearing the complete default clears its connection too`, () => {
+    agent()
+    db.prepare('UPDATE agent_identity SET connection_id=? WHERE slug=?').run(selected, 'fern')
+    store.setModelChoice('fern', null)
+    expect(defaultRow()).toEqual({ connection_id: null, model_choice: null })
+  })
+
+  it(`${provider}: changing provider clears the old provider's default connection`, () => {
+    agent()
+    db.prepare('UPDATE agent_identity SET connection_id=? WHERE slug=?').run(selected, 'fern')
+    store.setAgentProvider('fern', provider === 'claude' ? 'codex' : 'claude')
+    expect(defaultRow()).toEqual({ connection_id: null, model_choice: null })
+  })
+
+  it(`${provider}: a connection from another provider cannot partially replace a default`, () => {
+    agent()
+    const before = defaultRow()
+    const other = provider === 'claude' ? 'codex' : 'claude'
+    expect(() =>
+      store.setModelChoice('fern', {
+        ...choice,
+        model: 'fictional-larger',
+        connectionId: `${other}:sign-in`,
+      }),
+    ).toThrow('The selected connection is unavailable')
+    expect(defaultRow()).toEqual(before)
+  })
+}
+
 function create(id: string, connectionId?: string) {
   const input: NewSessionRecord & { connectionId?: string } = {
     id,

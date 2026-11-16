@@ -1,3 +1,4 @@
+import type { UpdateProviderConnectionInput } from '../provider-connection-edit'
 import type { AgentIdentity } from '../agent-identity-contracts'
 import type {
   AgentMemoryAmended,
@@ -39,6 +40,7 @@ import type { PersonsQueueAnswer } from '../persons-published'
 import type { WorkClosedByAPerson, WorkRetitled, WorkTakenBackByAPerson } from '../piece-called'
 import type {
   ProviderLaunchChoices,
+  ProviderModelReadInput,
   ResolveProviderLaunchInput,
   ResolvedProviderLaunch,
 } from '../provider-launch'
@@ -161,7 +163,7 @@ import type { Provider, ProviderConnection, ProviderDescriptor } from '@brobot2/
  * gone; `onEvent` returns its own unsubscribe.
  */
 export interface RuntimeBridge {
-  providerLaunchChoices(input: ProviderProfileInput): Promise<ProviderLaunchChoices>
+  providerLaunchChoices(input: ProviderModelReadInput): Promise<ProviderLaunchChoices>
   resolveProviderLaunch(input: ResolveProviderLaunchInput): Promise<ResolvedProviderLaunch>
   skills(request: SkillsRequest): Promise<SkillsReply>
   /**
@@ -624,11 +626,12 @@ export interface RuntimeBridge {
   providerCatalogue(): Promise<readonly ProviderDescriptor[]>
   /** Existing connection metadata only; no credential, home preparation or provider probe. */
   providerConnections(): Promise<readonly ProviderConnection[]>
+  updateProviderConnection(input: UpdateProviderConnectionInput): Promise<ProviderConnection>
   /**
    * 🔴 **D-042 · R3 — the one list a person picks from** ({@link ModelList}): one provider's rows and
    * the person's own, the last pick, and what a new conversation starts on.
    */
-  modelList(input: { provider: Provider; profileId?: string }): Promise<ModelList>
+  modelList(input: ProviderModelReadInput): Promise<ModelList>
   /** ⚑ **D-042 · R3** — add a model to a provider's list by hand; answers the hand-added models. */
   addHandAddedModel(input: { provider: Provider; model: string }): Promise<readonly string[]>
   /** ⚑ **D-042 · R3** — take a hand-added model off the list; answers the hand-added models. */
@@ -786,6 +789,7 @@ export interface RuntimeBridge {
     provider: Provider | null
     model: string | null
     effort: string | null
+    connectionId?: string
   }): Promise<ModelChoiceSaved>
   /** The default `setAgentModelAndEffort` wrote, or `null` (677). */
   agentModelAndEffort(input: { profileId: string }): Promise<AgentModelChoice | null>
@@ -920,7 +924,9 @@ export interface RuntimeBridge {
    * machine credential hold one rotating refresh token between them, so the next refresh by either
    * side breaks the other again. {@link RuntimeBridge.signInProvider} is the one that ends it.
    */
-  reprovisionProviderAuth(input: ProviderProfileInput): Promise<ReprovisionOutcome>
+  reprovisionProviderAuth(
+    input: ProviderProfileInput & { connectionId?: string },
+  ): Promise<ReprovisionOutcome>
   /** Re-copy this install’s profile homes, preserving keys and running tasks; reopen idle sessions. */
   reprovisionProviderHomes(input: {
     provider: Provider
@@ -930,7 +936,9 @@ export interface RuntimeBridge {
    * Sign this profile into its own account. **Resolves when the browser flow settles**, which may
    * be minutes — render a Cancel beside it and call {@link RuntimeBridge.cancelProviderSignIn}.
    */
-  signInProvider(input: ProviderProfileInput): Promise<ProviderSignInResult>
+  signInProvider(
+    input: ProviderProfileInput & { connectionId?: string },
+  ): Promise<ProviderSignInResult>
   /** Withdraw an in-flight sign-in. Safe when there is none. */
   cancelProviderSignIn(input: ProviderProfileInput): Promise<void>
   onEvent(listener: (message: RuntimeEventMessage) => void): () => void

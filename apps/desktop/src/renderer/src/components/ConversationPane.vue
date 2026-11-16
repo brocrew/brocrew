@@ -1397,17 +1397,6 @@ const agentFacets = computed(() => ({
 const takenWithoutThisWindow = computed(() => turnsTakenWithoutThisWindow(props.record))
 
 /**
- * ⚑ **D-017b · the settings are statements here** — a view drawn from its ledger whose settings the
- * host would not take (`CreatedSession.settingsFixed`): a window holds it, no message continues it,
- * or its next message starts a new conversation in its place. ⚠️ A record that stopped and has not
- * been looked at again still holds the last life's `meta`, which says nothing: statements until it
- * is.
- */
-const settingsFixed = computed(
-  () => props.record.phase === 'recorded' && props.record.meta?.settingsFixed !== false,
-)
-
-/**
  * ⚑ **D-017 · R11 — this conversation's ONE state** (`stateHere`, `shared/agent-state.ts`) — what
  * it left running, when it next wakes, whose answer it waits on, who holds the work it gave out —
  * derived once, beside the facets, for the word under the plate: the rail row's word, and the one
@@ -2227,7 +2216,7 @@ onUnmounted(() => {
         :shown="transcript"
         :session-ref="control.ref"
         :status="control.status"
-        :fixed="settingsFixed"
+        :fixed="false"
         :recorded="props.record.phase === 'recorded'"
         :pick-model="props.pickModel"
         :capabilities="props.capabilities"

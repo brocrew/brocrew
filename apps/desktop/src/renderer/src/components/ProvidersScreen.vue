@@ -321,7 +321,7 @@ onMounted(() => {
   stopListening = client.onProvidersChanged((message) => {
     if (message.what === 'usage') {
       emit('usageMoved')
-    } else {
+    } else if (message.what === 'login' || message.what === 'key') {
       if (providers.value.includes(message.provider)) readAccess(message.provider)
       loginMoved.value = {
         ...loginMoved.value,

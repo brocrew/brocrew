@@ -5,7 +5,7 @@ import type { ProviderConnection } from '@brobot2/shared'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
-import { listProviderConnections } from '../src/main/connections/records'
+import { listProviderConnections, resolveProviderConnection } from '../src/main/connections/records'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand, runtimeCommandSchema } from '../src/main/runtime/ipc'
@@ -41,11 +41,7 @@ function fixture(read?: () => readonly ProviderConnection[]) {
     read ??
       (() =>
         ['claude', 'codex'].flatMap((provider) =>
-          listProviderConnections(
-            db,
-            provider as 'claude' | 'codex',
-            saved.has(provider as 'claude' | 'codex'),
-          ),
+          listProviderConnections(db, provider as 'claude' | 'codex'),
         )),
   )
   const deps = {
@@ -77,8 +73,8 @@ it('lists existing compatibility metadata for both providers without opening any
   for (const provider of ['claude', 'codex'] as const) saved.add(provider)
   const f = fixture()
   const expected = [
-    ...listProviderConnections(db, 'claude', saved.has('claude')),
-    ...listProviderConnections(db, 'codex', saved.has('codex')),
+    ...listProviderConnections(db, 'claude'),
+    ...listProviderConnections(db, 'codex'),
   ]
   expect(await read()).toEqual(expected)
   expect(expected).toHaveLength(4)
@@ -88,19 +84,26 @@ it('lists existing compatibility metadata for both providers without opening any
   expect(host.sessionIds).toEqual([])
 })
 
-it('does not invent a saved-key connection or retain one after its key is removed', async () => {
-  fixture()
-  expect(await read()).toEqual([
-    ...listProviderConnections(db, 'claude', saved.has('claude')),
-    ...listProviderConnections(db, 'codex', saved.has('codex')),
-  ])
+it('keeps four metadata routes across key save and removal while legacy routing follows the key', async () => {
+  const f = fixture()
+  const expected = [
+    ...listProviderConnections(db, 'claude'),
+    ...listProviderConnections(db, 'codex'),
+  ]
+  const legacy = () =>
+    resolveProviderConnection(db, { provider: 'claude', keySaved: saved.has('claude') }).id
+  expect(expected).toHaveLength(4)
+  expect(await read()).toEqual(expected)
+  expect(legacy()).toBe('claude:sign-in')
   saved.add('claude')
-  expect(await read()).toEqual([
-    ...listProviderConnections(db, 'claude', saved.has('claude')),
-    ...listProviderConnections(db, 'codex', saved.has('codex')),
-  ])
+  expect(await read()).toEqual(expected)
+  expect(legacy()).toBe('claude:api-key')
   saved.clear()
-  expect(await read()).toHaveLength(2)
+  expect(await read()).toEqual(expected)
+  expect(legacy()).toBe('claude:sign-in')
+  expect(f.prepare).not.toHaveBeenCalled()
+  expect(f.create).not.toHaveBeenCalled()
+  expect(host.sessionIds).toEqual([])
 })
 
 it('does not expose an extra endpoint or a changed compatibility endpoint', async () => {
@@ -119,11 +122,19 @@ it('does not expose an extra endpoint or a changed compatibility endpoint', asyn
     'https://fictional.invalid',
     'claude:sign-in',
   )
-  expect(await read()).toEqual(listProviderConnections(db, 'codex', saved.has('codex')))
+  expect(await read()).toEqual([
+    ...listProviderConnections(db, 'claude'),
+    ...listProviderConnections(db, 'codex'),
+  ])
+  expect(await read()).toMatchObject([
+    { id: 'claude:api-key' },
+    { id: 'codex:sign-in' },
+    { id: 'codex:api-key' },
+  ])
 })
 
 it('returns only declared metadata fields even if a module seam contains an extra value', async () => {
-  const row = listProviderConnections(db, 'claude', saved.has('claude'))[0]!
+  const row = listProviderConnections(db, 'claude')[0]!
   fixture(() => [{ ...row, fictionalSecret: 'never-render-this-fictional-value' }])
   expect(await read()).toEqual([row])
 })
@@ -134,3 +145,19 @@ it('refuses a metadata database read once the host is quitting', async () => {
   await expect(read()).rejects.toThrow()
   expect(f.list).not.toHaveBeenCalled()
 })
+
+it.each(['claude', 'codex'] as const)(
+  'forwards %s display metadata through the public list',
+  async (provider) => {
+    const f = fixture()
+    db.prepare('UPDATE provider_connection SET description=? WHERE id=?').run(
+      'Fictional writing and research',
+      `${provider}:sign-in`,
+    )
+    const expected = listProviderConnections(db, provider)[0]!
+    expect(await read()).toContainEqual(expected)
+    expect(expected.description).toBe('Fictional writing and research')
+    expect(f.prepare).not.toHaveBeenCalled()
+    expect(f.create).not.toHaveBeenCalled()
+  },
+)

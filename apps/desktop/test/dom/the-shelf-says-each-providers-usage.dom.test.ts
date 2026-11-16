@@ -1,9 +1,16 @@
+import { providerConnectionFixtures } from '../../look/fixtures/providers'
+import { attributedUsageFixtures, runningSignInFixtures } from './provider-launch.fixture'
 import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import { fullTime } from '../../src/renderer/src/lib/clock'
 import type { ProvidersChangedMessage, ProviderUsageReading } from '../../src/shared/runtime-ipc'
-import { railFacts, screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import {
+  railFacts,
+  screenFacts,
+  useWhoCalledWhom,
+  type RunningConversation,
+} from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { conv, forestOf } from './forest-fixture'
 import { unmountAll, type Mounted } from './harness'
 import { usageCards } from './usage-cards'
@@ -35,15 +42,27 @@ let current: Usage = { claude: [], codex: [] }
 let told: ((message: ProvidersChangedMessage) => void) | null = null
 
 /** The usage cards, opened from the title bar, reading these readings. */
-async function shelf(usage: Usage, width = 900): Promise<Mounted> {
-  current = usage
+async function shelf(
+  usage: Usage,
+  width = 900,
+  running: readonly RunningConversation[] | null = runningSignInFixtures(),
+): Promise<Mounted> {
+  railFacts().update({ runningConversations: running })
+  current = attributedUsageFixtures(usage)
+  const listeners = new Set<(message: ProvidersChangedMessage) => void>()
+  told = (message) => {
+    for (const listener of listeners) listener(message)
+  }
   ;(window as { api?: unknown }).api = {
     runtime: {
       providerCatalogue: async () => PROVIDER_DESCRIPTORS,
+      providerConnections: async () => providerConnectionFixtures(),
       providerUsage: () => Promise.resolve(current),
       onProvidersChanged: (listener: (message: ProvidersChangedMessage) => void) => {
-        told = listener
-        return () => (told = null)
+        listeners.add(listener)
+        return () => {
+          listeners.delete(listener)
+        }
       },
     },
   }
@@ -210,17 +229,18 @@ describe('the shelf says each provider’s usage', () => {
     expect(await steadyHeight(b.q('shelf-settings'))).toBeCloseTo(height, 1)
   })
 
-  it('🔴 an unread window stays unread, with no age and no title — and a read one beside it does not', async () => {
+  it('🔴 a running group without returned windows stays unknown, without age or title, beside read windows', async () => {
     const now = Date.now()
     const m = await shelf({ claude: both(now).claude, codex: [] })
-    for (const [key, label] of [['codex-week', 'Codex · week']] as const) {
+    for (const [key, label] of [['codex-unknown', 'Codex']] as const) {
       const cell = m.q(`shelf-usage-${key}`)
       expect(text(cell.querySelector('.usage-label')!)).toBe(label)
       expect(text(cell.querySelector('[data-cy="shelf-missing"]')!)).toBe('Not read yet')
       expect(cell.querySelector('[data-cy="shelf-usage-age"]')).toBeNull()
       expect(cell.hasAttribute('title')).toBe(false)
-      expect(cell.getAttribute('aria-label')).toMatch(/not read yet$/)
+      expect(cell.getAttribute('aria-label')).toBe('Codex usage: unknown')
     }
+    expect(m.all('shelf-usage-codex-week')).toHaveLength(0)
     // ⚑ The control, in the same mount: Claude's cells are read.
     expect(m.q('shelf-usage-claude-5h').querySelector('[data-cy="shelf-missing"]')).toBeNull()
     expect(m.all('shelf-missing')).toHaveLength(1)
@@ -247,20 +267,19 @@ describe('the shelf says each provider’s usage', () => {
     ).not.toContain('Not read yet')
   })
 
-  it('🔴 Codex draws no 5-hour cell before a reading; Claude, with no reading yet, still says both are not read yet', async () => {
+  it('🔴 an empty answer retains both running groups without inventing any quota window', async () => {
     const m = await shelf({ claude: [], codex: [] })
     expect(m.all('shelf-usage-codex-5h')).toHaveLength(0)
     expect(cells(m).map((cell) => cell.dataset['cy'])).toEqual([
-      'shelf-usage-claude-5h',
-      'shelf-usage-claude-week',
-      'shelf-usage-codex-week',
+      'shelf-usage-claude-unknown',
+      'shelf-usage-codex-unknown',
     ])
-    for (const key of ['claude-5h', 'claude-week', 'codex-week']) {
+    for (const key of ['claude-unknown', 'codex-unknown']) {
       expect(text(m.q(`shelf-usage-${key}`).querySelector('[data-cy="shelf-missing"]')!)).toBe(
         'Not read yet',
       )
     }
-    expect(m.all('shelf-missing')).toHaveLength(3)
+    expect(m.all('shelf-missing')).toHaveLength(2)
   })
 
   it('⚑ the control: a 5-hour reading from Codex is drawn, so a real reading is never lost', async () => {
@@ -345,10 +364,10 @@ describe('the shelf says each provider’s usage', () => {
     const now = Date.now()
     const m = await shelf({ claude: [], codex: both(now).codex.slice(0, 2) })
     const values = cells(m).map((cell) => cell.querySelector('.fact-value') as HTMLElement)
-    expect(values).toHaveLength(4)
+    expect(values).toHaveLength(3)
     // Codex's 5-hour cell is drawn here because a reading for it arrived.
-    // The mix: Claude's two cells unread, Codex's read.
-    expect(values.filter((el) => el.dataset['cy'] === 'shelf-missing')).toHaveLength(2)
+    // The mix: Claude's group unknown, Codex's two reported windows read.
+    expect(values.filter((el) => el.dataset['cy'] === 'shelf-missing')).toHaveLength(1)
     const weights = values.map((el) => getComputedStyle(el).fontWeight)
     expect(new Set(weights).size, `weights ${weights.join(', ')}`).toBe(1)
     // ⚑ The control: the reading can tell weights apart — the line that opens the cards is heavier.
@@ -358,11 +377,11 @@ describe('the shelf says each provider’s usage', () => {
   it('⚑ a usage notice reads the readings again; nothing polls', async () => {
     const now = Date.now()
     const m = await shelf({ claude: [], codex: [] })
-    expect(m.all('shelf-missing')).toHaveLength(3)
-    current = both(now)
+    expect(m.all('shelf-missing')).toHaveLength(2)
+    current = attributedUsageFixtures(both(now))
     // ⛔ The control: nothing moves without a notice.
     await new Promise((done) => setTimeout(done, 50))
-    expect(m.all('shelf-missing')).toHaveLength(3)
+    expect(m.all('shelf-missing')).toHaveLength(2)
     told!({ what: 'usage', provider: 'claude' })
     await settled()
     expect(m.all('shelf-missing')).toHaveLength(0)
@@ -381,18 +400,28 @@ describe('the agents running now, and the memory they hold', () => {
     conv('sess_d', 'sess_a', { running: 'not-running', provider: 'codex' }),
   ])
 
+  function countedAgents(codexState: RunningConversation['state']): RunningConversation[] {
+    return [
+      {
+        sessionId: 'sess_a',
+        provider: 'claude',
+        connectionId: 'claude:sign-in',
+        state: { is: 'idle' },
+      },
+      {
+        sessionId: 'sess_b',
+        provider: 'claude',
+        connectionId: 'claude:sign-in',
+        state: { is: 'active' },
+      },
+      { sessionId: 'sess_c', provider: 'codex', connectionId: 'codex:sign-in', state: codexState },
+    ]
+  }
+
   it('shows running agents and their memory before any graph has been opened', async () => {
     screenFacts().update({ forest: null })
     railFacts().update({
-      runningConversations: [
-        { sessionId: 'sess_a', provider: 'claude', state: { is: 'idle' } },
-        { sessionId: 'sess_b', provider: 'claude', state: { is: 'active' } },
-        {
-          sessionId: 'sess_c',
-          provider: 'codex',
-          state: { is: 'in-the-background', what: 'read the menu' },
-        },
-      ],
+      runningConversations: countedAgents({ is: 'in-the-background', what: 'read the menu' }),
     })
     screenFacts().update({
       processMemory: new Map([
@@ -403,7 +432,7 @@ describe('the agents running now, and the memory they hold', () => {
         ['sess_d', 900 * MB],
       ]),
     })
-    m = await shelf(both(Date.now()))
+    m = await shelf(both(Date.now()), 900, useWhoCalledWhom().runningConversations.value)
     expect(value('agents')).toBe('Claude 2 (1 working) Codex 1 (1 working)')
     expect(value('memory')).toBe('600 MB')
     expect(m.q('shelf-usage-agents').getAttribute('aria-label')).toBe(
@@ -416,15 +445,9 @@ describe('the agents running now, and the memory they hold', () => {
   it('🔴 where main could not measure memory, the block says so as the agent cards do', async () => {
     const said = 'BroBot can’t measure its agents’ memory and CPU on Windows yet.'
     screenFacts().update({ forest: FOREST })
-    railFacts().update({
-      runningConversations: [
-        { sessionId: 'sess_a', provider: 'claude', state: { is: 'idle' } },
-        { sessionId: 'sess_b', provider: 'claude', state: { is: 'active' } },
-        { sessionId: 'sess_c', provider: 'codex', state: { is: 'idle' } },
-      ],
-    })
+    railFacts().update({ runningConversations: countedAgents({ is: 'idle' }) })
     screenFacts().update({ memoryUnmeasured: said })
-    m = await shelf(both(Date.now()))
+    m = await shelf(both(Date.now()), 900, useWhoCalledWhom().runningConversations.value)
     // The count does not need the memory reading.
     expect(value('agents')).toBe('Claude 2 (1 working) Codex 1 (none working)')
     expect(value('memory')).toBe('not measured')
@@ -433,7 +456,7 @@ describe('the agents running now, and the memory they hold', () => {
   })
 
   it('⚑ the control: before the forest is read, both blocks say not read yet', async () => {
-    m = await shelf(both(Date.now()))
+    m = await shelf(both(Date.now()), 900, useWhoCalledWhom().runningConversations.value)
     for (const key of ['agents', 'memory']) {
       expect(
         text(m.q(`shelf-usage-${key}`).querySelector('[data-cy="shelf-total-missing"]')!),
@@ -447,7 +470,7 @@ describe('the agents running now, and the memory they hold', () => {
   it('⚑ none running: no agents, nothing held', async () => {
     screenFacts().update({ forest: forestOf([conv('sess_a', null)]) })
     railFacts().update({ runningConversations: [] })
-    m = await shelf(both(Date.now()))
+    m = await shelf(both(Date.now()), 900, useWhoCalledWhom().runningConversations.value)
     expect(value('agents')).toBe('0')
     expect(value('memory')).toBe('0 MB')
   })

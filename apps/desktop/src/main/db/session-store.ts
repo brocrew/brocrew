@@ -759,7 +759,7 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   refreshAdopted(sessionId: string, updatedAt: number, child?: ChildDescent): boolean
   learnDescent(sessionId: string, child?: ChildDescent): boolean
   setApprovalMode(sessionId: string, mode: 'ask' | 'auto'): void
-  setModel(sessionId: string, model: string | null): void
+  setModel(sessionId: string, model: string | null, connectionId?: string): void
   setReasoningEffort(sessionId: string, effort: string | null): void
   aPersonSetItsModelOrEffort(sessionId: string, at: number): void
   setReportedModel(sessionId: string, model: string | null, effort: string | null): void
@@ -975,6 +975,7 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
     profileSlug: string,
     provider?: Provider,
     except?: readonly string[],
+    connectionId?: string,
   ): string | null
   conversationsOf(profileSlug: string): readonly {
     readonly conversation: string
@@ -1638,8 +1639,12 @@ export function createSessionStore(
       ),
       writeProvider: db.prepare(`UPDATE agent_identity SET provider = ? WHERE id = ?`),
       writeDisplayName: db.prepare(`UPDATE agent_identity SET display_name = ? WHERE id = ?`),
-      readModelChoice: db.prepare(`SELECT model_choice FROM agent_identity WHERE slug = ?`),
-      writeModelChoice: db.prepare(`UPDATE agent_identity SET model_choice = ? WHERE id = ?`),
+      readModelChoice: db.prepare(
+        `SELECT model_choice, connection_id FROM agent_identity WHERE slug = ?`,
+      ),
+      writeModelChoice: db.prepare(
+        `UPDATE agent_identity SET model_choice = ?, connection_id = ? WHERE id = ?`,
+      ),
 
       deleteIdentity: db.prepare(`DELETE FROM agent_identity WHERE id = ?`),
       conversationsPerIdentity: db.prepare(
@@ -1865,11 +1870,26 @@ export function createSessionStore(
         { model_choice: string | null } | undefined
       const choice = held === undefined ? null : parseModelChoice(held.model_choice)
       if (choice !== null && choice.provider !== provider) {
-        spawnSql().writeModelChoice.run(null, rowId)
+        spawnSql().writeModelChoice.run(null, null, rowId)
       }
       return true
     },
   )
+
+  const setModelChoiceTx = db.transaction((slug: string, choice: AgentModelChoice | null) => {
+    const sql = spawnSql()
+    const rowId = agentIdentityRowId(slug)
+    const held = sql.readModelChoice.get(foldProfileName(slug)) as
+      { model_choice: string | null; connection_id: string | null } | undefined
+    if (held === undefined) return false
+    const before = parseModelChoice(held.model_choice)
+    const connectionId =
+      choice?.connectionId ??
+      (choice !== null && before?.provider === choice.provider ? held.connection_id : null)
+    if (choice !== null && connectionId !== null)
+      assertConnectionProvider(choice.provider, connectionId)
+    return sql.writeModelChoice.run(modelChoiceWritten(choice), connectionId, rowId).changes > 0
+  })
 
   const saveProviderIfNoneIsSavedTx = db.transaction(
     (profileSlug: string, provider: Provider): boolean => {
@@ -4341,6 +4361,7 @@ export function createSessionStore(
           WHERE parent_session_id = ? AND agent_identity_id = ?
             AND (? IS NULL OR provider = ?)
             AND id NOT IN (SELECT value FROM json_each(?))
+            AND connection_id IS COALESCE(?, connection_id)
           ORDER BY created_at DESC, id DESC
           LIMIT 1`,
       ),
@@ -5017,15 +5038,16 @@ export function createSessionStore(
 
     modelChoiceOf(profileSlug) {
       const row = spawnSql().readModelChoice.get(foldProfileName(profileSlug)) as
-        { model_choice: string | null } | undefined
-      return row === undefined ? null : parseModelChoice(row.model_choice)
+        { model_choice: string | null; connection_id: string | null } | undefined
+      if (row === undefined) return null
+      const choice = parseModelChoice(row.model_choice)
+      return choice === null || row.connection_id === null
+        ? choice
+        : { ...choice, connectionId: row.connection_id }
     },
 
     setModelChoice(profileSlug, choice) {
-      return (
-        spawnSql().writeModelChoice.run(modelChoiceWritten(choice), agentIdentityRowId(profileSlug))
-          .changes > 0
-      )
+      return setModelChoiceTx(profileSlug, choice)
     },
 
     handAddedModels(provider) {
@@ -6191,7 +6213,7 @@ export function createSessionStore(
       return piecesOfSession(owner, unread?.in(owner)).filter((piece) => TASK_IS_OPEN[piece.state])
     },
 
-    newestChildAs(parents, profileSlug, provider, except = []) {
+    newestChildAs(parents, profileSlug, provider, except = [], connectionId) {
       const identityId = agentIdentityRowId(profileSlug)
       let newest: { readonly id: string; readonly created_at: number } | undefined
       for (const parent of parents) {
@@ -6201,6 +6223,7 @@ export function createSessionStore(
           provider ?? null,
           provider ?? null,
           JSON.stringify(except),
+          connectionId ?? null,
         ) as { id: string; created_at: number } | undefined
         if (found === undefined) continue
         if (

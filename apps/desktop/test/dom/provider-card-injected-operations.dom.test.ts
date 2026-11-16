@@ -1,3 +1,4 @@
+import { providerConnectionFixtures } from '../../look/fixtures/providers'
 import { afterEach, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, provide, reactive } from 'vue'
 import { providerDescriptor } from '@brobot2/shared'
@@ -42,7 +43,10 @@ function card(models: ModelList['models'] = []) {
     providerCatalogue: async () => [descriptor],
     providerSetup: async () => ({ claude: null, codex: null }),
     providerUsage: async () => ({ claude: [], codex: [] }),
-    providerConnections: async () => [],
+    providerConnections: async () => providerConnectionFixtures(),
+    updateProviderConnection: async () => {
+      throw new Error('No metadata edit expected by this card test')
+    },
     providerVersions: async () => {
       throw new Error('No version read expected by this card')
     },
@@ -202,18 +206,11 @@ it('renders supplied installer words and preserves an older observation without 
   expect(m.q('provider-version').textContent).toContain('native-installer')
   expect(m.q('provider-version').textContent).not.toContain('Anthropic')
 })
-it('copies all profiles through the injected operation and retains its result', async () => {
+it('does not read or invoke the removed all-profile copy operation from the drawer', async () => {
   const { m, api, forbidden } = card()
   await settle()
-  expect(api.reprovisionProviderHomes).toHaveBeenCalledExactlyOnceWith({
-    provider: 'claude',
-    statusOnly: true,
-  })
-  vi.mocked(api.reprovisionProviderHomes).mockClear()
-  m.q('copy-all-sign-ins').querySelector('button')!.click()
-  await settle()
-  expect(api.reprovisionProviderHomes).toHaveBeenCalledExactlyOnceWith({ provider: 'claude' })
-  expect(m.q('copy-all-sign-ins').textContent).toContain('1 switched now, 0 will switch')
+  expect(m.all('copy-all-sign-ins')).toHaveLength(0)
+  expect(api.reprovisionProviderHomes).not.toHaveBeenCalled()
   expect(forbidden).not.toHaveBeenCalled()
 })
 

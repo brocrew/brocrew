@@ -4,14 +4,12 @@ import TitleUsage from './TitleUsage.vue'
 import { platformHere } from '../lib/this-computer'
 import HistoryArrows from './HistoryArrows.vue'
 import type { AppInfo } from '@brobot2/shared'
-import type { Provider } from '../../../shared/runtime-ipc'
 
 const props = defineProps<{
   /** What the main process says this build is, or `null` before the read lands. */
   info: AppInfo | null
   /** The startup read's own failure, on its own line — never folded into the chip. */
   error: string | null
-  providerReadiness?: Readonly<Partial<Record<Provider, boolean | null>>> | null
 }>()
 
 const platform = /mac/i.test(platformHere())
@@ -154,7 +152,7 @@ watch(
         <svg class="icon"><use href="#i-bot" /></svg>
         <strong>{{ info?.windowTitle ?? 'BroCrew' }}</strong>
       </div>
-      <TitleUsage :readiness="props.providerReadiness ?? null" />
+      <TitleUsage />
     </div>
     <div
       v-if="props.error || (props.info && showBuildDetails)"

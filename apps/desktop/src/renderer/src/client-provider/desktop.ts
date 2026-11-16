@@ -21,6 +21,7 @@ type ProviderTransport = Pick<
   | 'providerVersions'
   | 'providerResources'
   | 'providerConnections'
+  | 'updateProviderConnection'
   | 'providerLaunchChoices'
   | 'resolveProviderLaunch'
   | 'addHandAddedModel'
@@ -60,6 +61,7 @@ export function createDesktopProviderApi(
     providerVersions: () => runtime().providerVersions(),
     providerResources: () => runtime().providerResources(),
     providerConnections: () => runtime().providerConnections(),
+    updateProviderConnection: (input) => runtime().updateProviderConnection(input),
     providerLaunchChoices: (input) => runtime().providerLaunchChoices(input),
     resolveProviderLaunch: (input) => runtime().resolveProviderLaunch(input),
     addHandAddedModel: (input) => runtime().addHandAddedModel(input),

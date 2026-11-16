@@ -1,6 +1,12 @@
-import type { Provider, ProviderCapabilityMap, CapabilityStatus } from '../../../shared/runtime-ipc'
+import type { ProviderConnection } from '@brobot2/shared'
+import type {
+  Provider,
+  ProviderCapabilityMap,
+  CapabilityStatus,
+  ProviderProgram,
+} from '../../../shared/runtime-ipc'
 import type { ModelList, ReportedModel } from '../../../shared/model-choice-contracts'
-import { MODEL_CHOICE_SAID, sameModel } from '../../../shared/model-choice'
+import { MODEL_CHOICE_SAID, sameModel, theListedRow } from '../../../shared/model-choice'
 import { modelField } from './model-field'
 import {
   inTheListsSpelling,
@@ -11,6 +17,56 @@ import {
   type ModelLists,
   type PickedModel,
 } from './model-lists'
+
+export interface ModelPickerProps {
+  providers: readonly Provider[]
+  /** Fresh-conversation and default editors may choose a connection; model-only hosts do not. */
+  chooseConnection?: boolean
+  recordedConnection?: boolean
+  connectionName?: string
+  /** Stored read route, including conversations with no selected model. */
+  connectionId?: string
+  readiness?: Readonly<Partial<Record<Provider, boolean | null>>> | null
+  programs?: Readonly<Partial<Record<Provider, ProviderProgram>>> | null
+  setUp?: (provider: Provider) => void
+  profileId?: string
+  shown: PickedModel | null
+  drafted?: PickedModel | null
+  empty?: string
+  reported?: ReportedModel | null
+  takeWords: string
+  /** Commits the draft: answers the door's refusal, verbatim, or `null`. */
+  take: (pick: PickedModel) => Promise<string | null>
+  reaches?: ((pick: PickedModel, list: ModelList | null) => string | null) | undefined
+  note?: string | null
+  fixed?: boolean
+  readOnly?: boolean
+  /** Faceless hosts supply opener buttons that name this panel and receive focus back. */
+  faceless?: boolean
+  capabilities?: ProviderCapabilityMap | null
+  lists?: ModelLists
+}
+
+export const modelPickerDefaults = {
+  profileId: undefined,
+  chooseConnection: false,
+  recordedConnection: false,
+  connectionName: undefined,
+  connectionId: undefined,
+  readiness: null,
+  programs: null,
+  setUp: undefined,
+  empty: 'Nothing chosen',
+  reported: null,
+  drafted: null,
+  reaches: undefined,
+  note: null,
+  fixed: false,
+  readOnly: false,
+  faceless: false,
+  capabilities: null,
+  lists: undefined,
+}
 
 const PENDING: CapabilityStatus = {
   state: 'absent',
@@ -26,10 +82,15 @@ export function modelPickerSection(
   startsOn: PickedModel | null,
   capabilities: ProviderCapabilityMap | null,
   suppliedName: string | undefined,
+  selectedConnectionId?: string,
+  readConnectionId?: string,
 ) {
-  const held = lists.held(provider, profileId)
+  const held = lists.held(provider, profileId, readConnectionId)
   const list = held?.state === 'answered' ? held.list : null
   const name = suppliedName ?? 'This provider'
+  const connections =
+    (lists.choices(provider, profileId, readConnectionId) ?? lists.choices(provider, profileId))
+      ?.connections ?? []
   const field =
     held?.state === 'unread'
       ? {
@@ -61,7 +122,12 @@ export function modelPickerSection(
   return {
     provider,
     ready,
+    connections,
+    selectable:
+      (readConnectionId === undefined || held?.state === 'answered') &&
+      (ready === true || connections.some((row) => row.id === selectedConnectionId)),
     name,
+    readyWords: ready === false ? ' · Not set up' : ready !== true ? ' · Checking…' : ' · Ready',
     list,
     field,
     rows: thePickerRows(list, current).map((one) => ({
@@ -75,17 +141,41 @@ export function modelPickerWords(providerName: (provider: Provider) => string | 
   function face(
     world: {
       readonly shown: PickedModel | null
+      readonly chooseConnection?: boolean
+      readonly recordedConnection?: boolean
+      readonly connectionName?: string
+      readonly connectionId?: string
       readonly providers: readonly Provider[]
       readonly reported: ReportedModel | null
       readonly empty: string
     },
     listOf: (provider: Provider) => ModelList | null,
+    lists?: ModelLists,
+    profileId?: string,
   ): string {
     const shown = world.shown
     if (shown === null) return world.empty
     const name = providerName(shown.provider)
-    const who = world.providers.length > 1 && name !== undefined ? `${name} · ` : ''
-    const model = inTheListsSpelling(listOf(shown.provider), shown.model)
+    const legacy = lists?.choices(shown.provider, profileId)
+    const id =
+      world.connectionId ??
+      shown.connectionId ??
+      (world.chooseConnection && !world.recordedConnection
+        ? legacy?.defaultConnectionId
+        : undefined)
+    const choices = lists?.choices(shown.provider, profileId, id) ?? legacy
+    const connection = choices?.connections?.find((row) => row.id === id)
+    const connectionName = world.connectionName ?? connection?.name
+    const who =
+      connectionName !== undefined
+        ? `${name ?? 'Provider'} · ${connectionName} · `
+        : world.providers.length > 1 && name !== undefined
+          ? `${name} · `
+          : ''
+    const selected = inTheListsSpelling(listOf(shown.provider), shown.model)
+    const row = theListedRow(listOf(shown.provider)?.models ?? [], selected)
+    const model =
+      world.recordedConnection && row?.resolvesTo ? `${selected} → ${row.resolvesTo}` : selected
     const pair = shown.effort === null ? model : `${model} · ${shown.effort}`
     const said = reported(world.reported, shown, world.providers)
     return `${who}${pair}${said === null ? '' : ' (selected)'}`
@@ -133,5 +223,58 @@ export function modelPickerWords(providerName: (provider: Provider) => string | 
     return `· ${providerName(provider) ?? 'This provider'} reports ${reported.model}${reported.effort === undefined ? '' : ` at ${reported.effort}`}`
   }
 
-  return { face, effort, reported }
+  function connection(
+    provider: Provider | undefined,
+    id: string | undefined,
+    rows: readonly ProviderConnection[],
+    name?: string,
+  ) {
+    const row = rows.find((row) => row.provider === provider && row.id === id)
+    return `${provider === undefined ? 'Provider' : (providerName(provider) ?? provider)} · ${name ?? row?.name ?? id ?? 'Connection not recorded'}`
+  }
+
+  function unlistedConnection(
+    world: Pick<ModelPickerProps, 'recordedConnection' | 'providers' | 'connectionName'>,
+    sections: readonly Pick<ReturnType<typeof modelPickerSection>, 'connections'>[],
+    selected?: string,
+  ): string | null {
+    return !world.recordedConnection ||
+      sections.some((section) => section.connections.some((row) => row.id === selected))
+      ? null
+      : connection(world.providers[0], selected, [], world.connectionName)
+  }
+  return { face, effort, reported, connection, unlistedConnection }
+}
+
+/** The existing picker face and provider report, used by the conversation's custom opener. */
+export function conversationModelFace(
+  picker: {
+    readonly faceWords: string
+    readonly reportedSays: string | null
+    readonly panelId: string
+    readonly isOpen: boolean
+  } | null,
+  connectionId: string | undefined,
+  model: string | null | undefined,
+  canChange: boolean,
+  canOpen: boolean,
+) {
+  const text = picker && (connectionId || model === 'default') ? picker.faceWords : model
+  const title = [text ? `Model: ${text}` : 'No model named yet', picker?.reportedSays]
+    .filter(Boolean)
+    .join(' ')
+  const attributes = canOpen
+    ? {
+        type: 'button' as const,
+        popovertarget: picker?.panelId,
+        'aria-haspopup': 'dialog' as const,
+        'aria-expanded': picker?.isOpen ?? false,
+        'aria-label': text
+          ? `${canChange ? 'Change' : 'View'} model, now ${text}`
+          : canChange
+            ? 'Choose a model'
+            : 'View models',
+      }
+    : {}
+  return { text, title, attributes }
 }

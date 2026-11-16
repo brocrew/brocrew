@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { ProviderConnectionUnavailable } from '../src/main/connections/records'
 import { TOOL_SUMMARY_MAX } from '../../../packages/runtime/src/claude/normalize'
 import {
   A_CONVERSATION_CANNOT_INTERRUPT_ITSELF,
@@ -430,19 +431,25 @@ const VOCABULARIES: readonly {
   },
 ]
 
-/**
- * ⚑ **The sentences a door says INSTEAD of its table's** — `{ ...refuse…, reason: X }` —
- * `675`'s two per-caller sentences, `663`'s three wake-only ones, `690`'s two wake-door ones,
- * `698`'s third, and `703`'s held-rail sentence for a WORK call the next rail would refuse. ⛔
- * Named by the identifier the
- * code spreads in, so the scan below can prove this list is every one there is.
- */
+/** Every refusal sentence that overrides a table, keyed by its source identifier. */
 const OVERRIDES: readonly {
   readonly key: string
   readonly rail: string
   readonly spreadAs: string
   readonly sentence: string
 }[] = [
+  {
+    key: 'TOOL_REFUSALS|malformed-request/connection-unavailable',
+    rail: 'malformed-request',
+    spreadAs: 'error',
+    sentence: new ProviderConnectionUnavailable().message,
+  },
+  ...(['claude', 'codex'] as const).map((provider) => ({
+    key: `TOOL_REFUSALS|malformed-request/connection-mismatch-${provider}`,
+    rail: 'malformed-request',
+    spreadAs: 'error',
+    sentence: `This connection belongs to ${PROVIDER_NAME[provider === 'claude' ? 'codex' : 'claude']}; the request named ${PROVIDER_NAME[provider]}.`,
+  })),
   {
     key: 'WORK_SEARCH_RAILS|work-search-invalid/past-work',
     rail: 'work-search-invalid',
@@ -966,6 +973,12 @@ const ACT: Readonly<Record<string, string>> = {
  * a guessed act is worse than none (`a-priced-cost-can-name-a-remedy-that-does-not-exist`).
  */
 const NO_ACT: Readonly<Record<string, string>> = {
+  'TOOL_REFUSALS|malformed-request/connection-unavailable':
+    'The existing selection error states unavailability and names no next act.',
+  'TOOL_REFUSALS|malformed-request/connection-mismatch-claude':
+    'The requested plain mismatch sentence states the conflict and names no next act.',
+  'TOOL_REFUSALS|malformed-request/connection-mismatch-codex':
+    'The requested plain mismatch sentence states the conflict and names no next act.',
   'QUESTION_RAILS|move-offer-not-available':
     'the request cannot be offered; the sentence names no repeatable act',
   'QUESTION_RAILS|move-offer-is-held':
@@ -1151,21 +1164,11 @@ describe('675 · the vocabularies this census reads are ALL of them', () => {
     return found
   }
 
-  /**
-   * ⛔ **`what-an-agent-is-told-about-its-work.test.ts`' own derivation**: a module that names one of
-   * `RAIL_PERMANENCES` in its CODE prices rails, so it is a vocabulary — derived from what the code
-   * does rather than from a list written here (`27.1`: a census scoped by where things live today
-   * expires silently).
-   */
+  /** A code reference to rail permanence identifies a vocabulary, wherever the module lives. */
   const namesAPermanence = (source: string): boolean =>
     RAIL_PERMANENCES.some((word) => codeOnly(source).includes(`'${word}'`))
 
-  /**
-   * 🔴 **Every sentence a door says INSTEAD of its table's is read above** — found by what the code
-   * DOES, `{ ...<a refusal>, reason: <X> }`, and compared with {@link OVERRIDES} by the name it is
-   * spread as (review of `675`: the first version listed them by hand, and a sixth would have gone
-   * unmeasured).
-   */
+  /** Find reason overrides in code and compare their source identifiers with OVERRIDES. */
   const theOverridesIn = (source: string): string[] =>
     [
       ...codeOnly(source).matchAll(
@@ -1173,12 +1176,7 @@ describe('675 · the vocabularies this census reads are ALL of them', () => {
       ),
     ].map((match) => match[1] ?? '')
 
-  /**
-   * ⚠️ **A `reason` that is not a refusal's**, found by the scan and named rather than scoped away:
-   * the library's *why this row cannot be resumed*, drawn for a person, never carried in a refusal
-   * row; and the schedule planner's *why a job's time is not known* (`found`, in
-   * `shared/schedule-receipts.ts`), which no refusal carries either.
-   */
+  /** Library resume reasons and schedule time reasons are not refusal rows. */
   const NOT_A_REFUSALS_REASON = ['whyNotResumable', 'found']
 
   it('🔴 every refusal sentence a door says in place of its table’s is in the census', () => {

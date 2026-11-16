@@ -395,6 +395,7 @@ export interface RuntimeCommandResults {
   capabilities: ProviderCapabilityMap
   providerCatalogue: readonly ProviderDescriptor[]
   providerConnections: readonly ProviderConnection[]
+  updateProviderConnection: ProviderConnection
   /**
    * Every profile that exists, {@link DEFAULT_PROFILE_ID} first (167).
    *

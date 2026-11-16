@@ -9,8 +9,9 @@ import {
   type ProviderPart,
 } from '../../src/renderer/src/lib/provider-parts'
 import { providersBridge } from '../../look/fixtures/providers'
+import { attributedUsageFixtures } from './provider-launch.fixture'
 import { assertDrawn, drawnReady } from './drawn'
-import { mount, unmountAll, type Mounted } from './harness'
+import { mount, unmountAll, visible, type Mounted } from './harness'
 
 const ORIGINAL = { width: window.innerWidth, height: window.innerHeight }
 const WIDTHS = [1180, 760] as const
@@ -36,6 +37,8 @@ afterEach(async () => {
 async function screen(width: number, versions?: unknown, height = 900): Promise<Mounted> {
   await page.viewport(width, height)
   providersBridge()
+  const readUsage = window.api.runtime.providerUsage.bind(window.api.runtime)
+  window.api.runtime.providerUsage = async () => attributedUsageFixtures(await readUsage())
   if (versions !== undefined)
     (window.api.runtime as { providerVersions: unknown }).providerVersions = async () => versions
   const m = mount(
@@ -141,12 +144,20 @@ describe('the Providers rows fit and the selected drawer reuses every part', () 
 })
 
 describe('the same part-fold preferences apply in each provider drawer', () => {
-  it('the first visit keeps Version and Models folded and the other parts open', async () => {
+  it('the first visit keeps Version and Models folded and connection details visible', async () => {
     const m = await screen(WIDTHS[0])
     for (const provider of ['claude', 'codex']) {
       const card = await open(m, provider)
       for (const part of PROVIDER_PARTS) {
         const section = card.querySelector<HTMLElement>(`[data-cy="${CY[part]}"]`)!
+        if (part === 'login' || part === 'key' || part === 'usage') {
+          expect(section.querySelector('h3 button.fold')).toBeNull()
+          expect(
+            section.closest('[data-cy="provider-connection"]')?.querySelector('.meta')?.textContent,
+          ).toContain(part === 'key' ? 'API key' : 'Sign-in')
+          expect(visible(section)).toBe(true)
+          continue
+        }
         const press = section.querySelector<HTMLButtonElement>('h3 button.fold')!
         const body = document.getElementById(press.getAttribute('aria-controls') ?? '')
         expect(body).not.toBeNull()
@@ -158,23 +169,31 @@ describe('the same part-fold preferences apply in each provider drawer', () => {
     }
   })
   it('a folded part stays folded for the other provider and the next visit', async () => {
+    for (const part of ['login', 'key', 'usage'] as const)
+      localStorage.setItem(partKey(part), 'false')
     const m = await screen(WIDTHS[0])
-    ;(await partOf(m, 'claude', 'usage')).press.click()
+    ;(await partOf(m, 'claude', 'resources')).press.click()
     await nextTick()
-    const codex = await partOf(m, 'codex', 'usage')
+    const codex = await partOf(m, 'codex', 'resources')
     expect(codex.press.getAttribute('aria-expanded')).toBe('false')
     expect(shown(codex.body)).toBe(false)
     ;(await partOf(m, 'codex', 'version')).press.click()
     await nextTick()
     expect(shown((await partOf(m, 'claude', 'version')).body)).toBe(true)
+    const card = await open(m, 'claude')
+    for (const part of ['login', 'key', 'usage'] as const)
+      expect(visible(card.querySelector<HTMLElement>(`[data-cy="${CY[part]}"]`)!)).toBe(true)
     unmountAll()
     const again = await screen(WIDTHS[0])
-    expect((await partOf(again, 'claude', 'usage')).press.getAttribute('aria-expanded')).toBe(
+    expect((await partOf(again, 'claude', 'resources')).press.getAttribute('aria-expanded')).toBe(
       'false',
     )
     expect((await partOf(again, 'codex', 'version')).press.getAttribute('aria-expanded')).toBe(
       'true',
     )
+    const reopened = await open(again, 'codex')
+    for (const part of ['login', 'key', 'usage'] as const)
+      expect(visible(reopened.querySelector<HTMLElement>(`[data-cy="${CY[part]}"]`)!)).toBe(true)
   })
   it('a heading remains a keyboard-reachable button named by its word', async () => {
     const m = await screen(WIDTHS[0])

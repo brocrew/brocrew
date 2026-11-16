@@ -49,6 +49,8 @@ export interface CreatedSession {
   /** Host-owned id. Not the provider ref: Claude's ref is null until its first turn's init. */
   sessionId: string
   provider: Provider
+  /** Recorded route; absent for legacy NULL, never inferred from today's default. */
+  readonly connectionId?: string
   /** The working directory the session actually runs in (the BroBot workspace by default). */
   cwd: string
   /** The app-owned per-profile provider home this session was launched in. */
@@ -190,14 +192,6 @@ export interface CreatedSession {
    * open. ⚑ The composer draws it in place of the box.
    */
   cannotTakeAMessage?: string | null
-  /**
-   * ⚑ **D-017b · a setting changed from this view would not reach the conversation** — set only on a
-   * `recorded` hand-over: a window holds it or it is on its way somewhere (the setting is that
-   * window's), no message continues it, or its next message starts a new conversation in its place
-   * (R10). ⚑ The settings controls are then statements. ⛔ The host refuses the same rows
-   * (`RuntimeHost.aSettingForItsNextStart`), off the same predicate.
-   */
-  settingsFixed?: boolean
   /**
    * ⚑ **D-017b · this app ran it as NOBODY** — the sweep found it in a person's own provider folder
    * (`user-home`), or it was restored from a bundle another machine ran (`bundle`) — so
@@ -411,6 +405,8 @@ export interface ReleasedSession {
 
 export interface CreateSessionInput {
   provider: Provider
+  /** The saved connection explicitly chosen for this conversation. */
+  connectionId?: string
   /**
    * Where the conversation works. **Omit to take the default**, which is the durable BroBot
    * workspace.
@@ -775,7 +771,7 @@ export interface SetSessionSettingInput {
    * be unconstructible. The nesting is what lets one command carry three shapes.
    */
   body:
-    | { kind: 'model'; value?: string }
+    | { kind: 'model'; value?: string; connectionId?: string }
     | { kind: 'reasoningEffort'; value?: string }
     | { kind: 'planMode'; on: true }
 }

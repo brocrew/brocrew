@@ -130,8 +130,9 @@ export async function prepareClaudeHome(
   paths: ProviderHomePaths,
   profileId: string,
   seams: ClaudeHomeSeams,
+  connectionId?: string,
 ): Promise<string> {
-  const home = await prepareStateHome(paths, profileId, seams.provisionHome)
+  const home = await prepareStateHome(paths, profileId, seams.provisionHome, connectionId)
 
   const key = seams.key
   const health = await (seams.health ?? (() => claudeHealth(key, claudeCommandFor(seams))))()
@@ -166,8 +167,13 @@ export function claudeAuth(paths: ProviderHomePaths, seams: ClaudeAuthSeams): Ho
     )
   return {
     ...(renewal === undefined ? {} : { renewal }),
-    async probe(_profileId, signal) {
-      if (seams.keyStatus?.().set || (await seams.key?.())) {
+    async probe(_profileId, signal, connection) {
+      if (connection?.authMethod === 'api-key')
+        return { state: 'unknown', reason: 'Use Check key to check this API-key connection.' }
+      if (
+        connection?.authMethod !== 'sign-in' &&
+        (seams.keyStatus?.().set || (await seams.key?.()))
+      ) {
         return {
           state: 'unknown',
           reason: 'This check is for the Claude Code sign-in. Use Check key for the saved API key.',
@@ -180,17 +186,21 @@ export function claudeAuth(paths: ProviderHomePaths, seams: ClaudeAuthSeams): Ho
         }
       )
     },
-    credentialHome: (profileId) => paths.homeOf(profileId),
-    async check(_profileId, signal) {
+    credentialHome: (profileId, connection) =>
+      connection === undefined ? paths.homeOf(profileId) : paths.homeOf(profileId, connection.id),
+    async check(_profileId, signal, connection) {
+      if (connection?.authMethod === 'api-key')
+        return { state: 'unknown', reason: 'Use Check key to check this API-key connection.' }
       const apiKey = seams.key
       try {
-        const status = seams.keyStatus?.()
+        const status = connection?.authMethod === 'sign-in' ? undefined : seams.keyStatus?.()
         if (status?.set) {
           if (status.unreadableReason !== undefined)
             return { state: 'absent', reason: status.unreadableReason }
           return await stateOnTheKey(signal)
         }
-        const keyed = status === undefined ? await apiKey?.() : null
+        const keyed =
+          connection?.authMethod !== 'sign-in' && status === undefined ? await apiKey?.() : null
         if (keyed) return await stateOnTheKey(signal)
         const login = await defaultKeychainReaderForALaunch()
 
@@ -219,9 +229,6 @@ export function claudeAuth(paths: ProviderHomePaths, seams: ClaudeAuthSeams): Ho
     async replaceARefusedCopy() {
       return 'not-tried'
     },
-    async bringTheKeyToItsHomes() {
-      return null
-    },
   }
 }
 
@@ -238,7 +245,7 @@ export const claudeModuleFactory = {
     () =>
       claudeRuntime(seams),
   home: (paths: ProviderHomePaths, seams: ClaudeHomeSeams): ProviderHomeStrategy => ({
-    prepare: (profileId) => prepareClaudeHome(paths, profileId, seams),
+    prepare: (profileId, connectionId) => prepareClaudeHome(paths, profileId, seams, connectionId),
   }),
   auth: claudeAuth,
 }
@@ -274,13 +281,18 @@ export function createClaudeModule(
       const readLogin = seams.home.login ?? claudeKeychainTokenProviderForALaunch()
       let login: Promise<string | null> | undefined
       const selectedLogin = () => (login ??= readLogin())
-      const home = await prepareClaudeHome(paths, profileId, {
-        ...seams.home,
-        key: selectedKey,
-        health:
-          seams.home.health ??
-          (() => claudeHealth(selectedKey, claudeCommandFor(seams.home), selectedLogin)),
-      })
+      const home = await prepareClaudeHome(
+        paths,
+        profileId,
+        {
+          ...seams.home,
+          key: selectedKey,
+          health:
+            seams.home.health ??
+            (() => claudeHealth(selectedKey, claudeCommandFor(seams.home), selectedLogin)),
+        },
+        connection?.id,
+      )
       return {
         home,
         runtime: claudeRuntime({ ...seams.runtime, key: selectedKey, launchLogin: selectedLogin }),

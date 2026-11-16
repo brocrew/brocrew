@@ -11,6 +11,7 @@ export function createProviderAccess(
   provider: () => Provider,
   changed: () => void,
   bridge: () => Pick<ClientProviderApi, 'checkProviderAuth' | 'apiKeyStatus'>,
+  connectionId?: () => string,
 ) {
   const auth = shallowRef<AuthState | null>(null)
   const authBusy = ref<AuthPhase>('idle')
@@ -19,7 +20,11 @@ export function createProviderAccess(
   let checkAgain = false
   let probeAgain = false
 
-  const asked = () => ({ provider: provider(), profileId: DEFAULT_PROFILE_ID })
+  const asked = () => ({
+    provider: provider(),
+    profileId: DEFAULT_PROFILE_ID,
+    ...(connectionId === undefined ? {} : { connectionId: connectionId() }),
+  })
 
   async function withGesture(
     phase: Exclude<AuthPhase, 'idle'>,

@@ -508,8 +508,8 @@ function faintText(
  * classic's --muted on the model picker's panel-3. Any other miss under classic fails.
  */
 const KNOWN_IN_CLASSIC = [
-  // The picker's provider heading and its effort legend: --muted #5e6b82 on panel-3, 4.47:1.
-  'the model picker open: 4.47 div.inside > section.provider > h4 "Claude"',
+  // The picker's model heading and its effort legend: --muted #5e6b82 on panel-3, 4.47:1.
+  'the model picker open: 4.47 div.inside > section.provider > h4 "Model"',
   'the model picker open: 4.47 div.inside > fieldset.efforts > legend "Effort"',
 ]
 

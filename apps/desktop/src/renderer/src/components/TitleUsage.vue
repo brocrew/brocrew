@@ -1,31 +1,76 @@
 <script setup lang="ts">
-import { useId } from 'vue'
-import type { Provider } from '../../../shared/runtime-ipc'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
 import { useUsageCells } from '../composables/useUsageCells'
 import { useClientProviders } from '../client-provider/injection'
+import { useProviderConnections } from '../composables/useProviderConnections'
 import { useProviderNames } from '../composables/useProviderNames'
 import { providerNamesIn } from '../lib/front-door-words'
 import UsageCards from './UsageCards.vue'
 
-/**
- * The window's usage on one line in the title bar — each provider's windows, the agents running and
- * their memory — for every screen at once. A press opens the usage cards under it; Escape or a
- * press outside closes them. The line opts out of the title bar's drag region, so it can be pressed.
- */
-const props = withDefaults(
-  defineProps<{ readiness?: Readonly<Partial<Record<Provider, boolean | null>>> | null }>(),
-  { readiness: null },
-)
-const nameOfProvider = useProviderNames(useClientProviders())
-const { cells, line, description } = useUsageCells(
-  () => props.readiness,
+const client = useClientProviders()
+const nameOfProvider = useProviderNames(client)
+const connections = useProviderConnections()
+let open = true
+const { cells, variants, description } = useUsageCells(
   () => providerNamesIn(nameOfProvider),
+  () => connections.value,
 )
+const button = ref<HTMLButtonElement | null>(null)
+const measure = ref<HTMLElement | null>(null)
+const chosen = ref(0)
+const line = computed(() => variants.value[chosen.value] ?? variants.value[0])
+let observer: ResizeObserver | undefined
+function fit(): void {
+  const press = button.value
+  const probe = measure.value
+  const parent = press?.parentElement
+  if (!press || !probe || !parent) return
+  const style = getComputedStyle(press)
+  // Its left edge includes the preceding controls' widths, gaps and margins without measuring its own text.
+  const room =
+    parent.getBoundingClientRect().right -
+    press.getBoundingClientRect().left -
+    Number.parseFloat(getComputedStyle(parent).paddingRight) -
+    Number.parseFloat(style.paddingLeft) -
+    Number.parseFloat(style.paddingRight) -
+    Number.parseFloat(style.borderLeftWidth) -
+    Number.parseFloat(style.borderRightWidth)
+  let index = variants.value.length - 1
+  for (const [candidate, words] of variants.value.entries()) {
+    probe.textContent = words
+    if (probe.getBoundingClientRect().width <= room) {
+      index = candidate
+      break
+    }
+  }
+  chosen.value = index
+}
+watch(
+  variants,
+  () =>
+    void nextTick().then(() => {
+      if (open) fit()
+    }),
+  { flush: 'post' },
+)
+onMounted(() => {
+  observer = new ResizeObserver(fit)
+  if (button.value?.parentElement) observer.observe(button.value.parentElement)
+  fit()
+  void document.fonts.ready.then(() => {
+    if (open) fit()
+  })
+})
+onBeforeUnmount(() => {
+  open = false
+  observer?.disconnect()
+})
 const cardsId = `title-usage-${useId()}`
 </script>
 
 <template>
   <button
+    ref="button"
     type="button"
     class="title-usage"
     data-cy="app-usage"
@@ -37,6 +82,7 @@ const cardsId = `title-usage-${useId()}`
   >
     {{ line }}
   </button>
+  <span ref="measure" class="title-usage-measure" aria-hidden="true" />
   <div
     :id="cardsId"
     class="title-usage-cards"
@@ -52,6 +98,20 @@ const cardsId = `title-usage-${useId()}`
 </template>
 
 <style scoped>
+.title-usage,
+.title-usage-measure {
+  font: var(--fw-medium) var(--type-caption) / 1 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  text-rendering: inherit;
+}
+.title-usage-measure {
+  position: fixed;
+  top: -10000px;
+  left: 0;
+  visibility: hidden;
+  white-space: nowrap;
+  pointer-events: none;
+}
 .title-usage {
   overflow: hidden;
   min-width: 0;
@@ -62,8 +122,6 @@ const cardsId = `title-usage-${useId()}`
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--titlebar-ink, var(--chrome-text));
-  font: var(--fw-medium) var(--type-caption) / 1 var(--font-sans);
-  font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
   white-space: nowrap;
   -webkit-app-region: no-drag;
