@@ -13,6 +13,14 @@ interface KeptFold<T> {
 export type SnapshotFoldAnswers = Map<string, Map<string, KeptFold<unknown>>>
 type CarriedForward<T> = (sessionId: string, generation: number, after: number, held: T) => T | null
 
+/**
+ * The most conversations whose folds are kept, per fold. Reconciliation reads every conversation
+ * that ever held work, in the same order, every minute: with more conversations than this, each
+ * read drops the one the next read needs and nothing is ever kept. So it stays well above the
+ * number of conversations; a kept fold costs a few kilobytes.
+ */
+export const KEPT_FOLDS_AT_MOST = 20_000
+
 export function createLedgerFoldState(
   db: AppDatabase,
   connection: AppDatabase,
@@ -203,7 +211,6 @@ export function createLedgerFoldState(
   }
   // The event types a ledger fold reads: a write of one forgets that conversation's kept folds.
   const A_FOLD_READS_IT: ReadonlySet<string> = new Set(FOLD_EVENT_TYPES)
-  const KEPT_FOLDS_AT_MOST = 2000
   /** Forgets one conversation's kept folds: all of them, or those a row written at `ordinal` is below. */
   function forgetTheKeptFoldsOf(sessionId: string, ordinal?: number): void {
     for (const kept of keptFolds) {

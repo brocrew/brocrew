@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, expect, it, vi } from 'vitest'
 import { openDatabase } from '../src/main/db/connection'
+import { KEPT_FOLDS_AT_MOST } from '../src/main/db/ledger-fold-state'
 import { applyMigrations } from '../src/main/db/migrate'
 import { rowsUnreadOnce } from '../src/main/db/rows-unread'
 import { createSessionStore } from '../src/main/db/session-store'
@@ -86,17 +87,18 @@ it('shares that same generation with the first complete piece fold', () => {
 
 it('keeps absent generations bounded and rereads an evicted owner', () => {
   const { store, reads } = world().snapshot()
-  for (let i = 0; i < 2001; i++) {
+  const owners = KEPT_FOLDS_AT_MOST + 1
+  for (let i = 0; i < owners; i++) {
     const owner = `missing-${i}`
     expect(store.generationOf!(owner)).toBe(0)
     expect(store.generationOf!(owner)).toBe(0)
   }
   const filled = reads.generations.length
-  expect(store.generationOf!('missing-2000')).toBe(0)
+  expect(store.generationOf!(`missing-${KEPT_FOLDS_AT_MOST}`)).toBe(0)
   const retained = reads.generations.length
   expect(store.generationOf!('missing-0')).toBe(0)
   expect(reads.newest).toEqual([])
-  expect([filled, retained, reads.generations.length]).toEqual([2001, 2001, 2002])
+  expect([filled, retained, reads.generations.length]).toEqual([owners, owners, owners + 1])
 })
 
 it('keeps the pinned generation and sees promotions and newly present owners in a fresh read', () => {
