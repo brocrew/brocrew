@@ -30,7 +30,7 @@ export async function trimOldEvents(
   stopped: () => boolean,
   now: number = Date.now(),
 ): Promise<EventTrimResult> {
-  const db = new Database(file, { fileMustExist: true, timeout: 0 })
+  const db = new Database(file, { fileMustExist: true, timeout: 5000 })
   const before = now - KEEP_DAYS * 86_400_000
   let removed = 0
   let batches = 0

@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { inspectCompaction } from '../src/main/db/workspace-compaction'
+import type { EventTrimResult } from '../src/main/db/event-retention'
 import { workspaceCompaction } from '../src/main/storage/workspace-compaction'
 import { CheckpointFailed, makeCheckpoint } from '../src/main/recovery/checkpoint'
 import { checkTheCopy, verifyInAWorker, type VerifyCopy } from '../src/main/recovery/copy-check'
@@ -26,6 +27,7 @@ describe('the recovery copy is checked off the main thread', () => {
   let bundle: string
   let checkBundle: string
   let storageBundle: string
+  let trimBundle: string
   const roots: string[] = []
   const aRoot = () => {
     const root = mkdtempSync(join(folder, 'root-'))
@@ -82,6 +84,7 @@ describe('the recovery copy is checked off the main thread', () => {
     bundle = await bundleAWorker('src/main/recovery-verify.worker.ts', folder, 'verify.cjs')
     checkBundle = await bundleAWorker('src/main/recovery/copy-check.ts', folder, 'check.cjs')
     storageBundle = await bundleAWorker('src/main/storage.worker.ts', folder, 'storage.cjs')
+    trimBundle = await bundleAWorker('src/main/db/event-retention.ts', folder, 'trim.cjs')
   }, 120_000)
   afterAll(() => {
     rmSync(folder, { recursive: true, force: true })
@@ -232,6 +235,62 @@ describe('the recovery copy is checked off the main thread', () => {
       await worker.terminate()
     }
   })
+
+  it.each([false, true])(
+    'retention waits for a writer, or safely defers a persistent lock: %s',
+    async (held) => {
+      const file = join(aRoot(), 'busy-trim.sqlite')
+      const db = openDatabase(file)
+      applyMigrations(db, migrations)
+      db.prepare(`INSERT INTO provider_session
+        (id, provider, cwd, status, created_at, updated_at)
+        VALUES ('fictional', 'claude', '/', 'idle', 0, 0)`).run()
+      const insert = db.prepare(`INSERT INTO events
+        (id, session_id, ordinal, type, payload, created_at) VALUES (?, 'fictional', ?, ?, ?, 0)`)
+      db.transaction(() => {
+        for (let n = 0; n < 1002; n++) {
+          insert.run(String(n), n, 'thinking', JSON.stringify({ type: 'thinking' }))
+        }
+        for (const [n, type] of ['user_turn', 'turn'].entries()) {
+          insert.run(`protected-${n}`, 1002 + n, type, JSON.stringify({ type }))
+        }
+      })()
+      db.exec('BEGIN IMMEDIATE')
+      const worker = new Worker(
+        `const { parentPort, workerData } = require('node:worker_threads');
+        const { trimOldEvents } = require(workerData.bundle);
+        parentPort.postMessage({ starting: true });
+        trimOldEvents(workerData.file, () => false).then(
+          value => parentPort.postMessage({ value }),
+          error => { throw error; });`,
+        { eval: true, workerData: { bundle: trimBundle, file } },
+      )
+      let release: ReturnType<typeof setTimeout> | undefined
+      try {
+        const result = await new Promise<EventTrimResult>((resolve, reject) => {
+          worker.once('error', reject)
+          worker.on('message', (message: { starting?: boolean; value?: EventTrimResult }) => {
+            if (message.starting && !held) release = setTimeout(() => db.exec('COMMIT'), 500)
+            if (message.value) resolve(message.value)
+          })
+        })
+        expect(result.interrupted).toBe(held)
+        expect(result.removed).toBe(held ? 0 : 2)
+        expect(db.prepare("SELECT count(*) AS n FROM events WHERE type='thinking'").get()).toEqual({
+          n: held ? 1002 : 1000,
+        })
+        expect(
+        db.prepare("SELECT count(*) AS n FROM events WHERE type IN ('user_turn','turn')").get(),
+      ).toEqual({ n: 2 })
+      } finally {
+        clearTimeout(release)
+        if (db.inTransaction) db.exec('ROLLBACK')
+        await worker.terminate()
+        db.close()
+      }
+    },
+    15_000,
+  )
 
   describe('a checkpoint says each outcome as it did, and keeps nothing it could not check', () => {
     const aWorkspace = (): string => {
