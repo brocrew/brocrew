@@ -1097,16 +1097,16 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
 
       it('⛔ work done after the refusal went unrecorded: nothing is carried on', async () => {
         const id = await refusedWhile(() => {
-          // Failed recording must remain distinguishable from an empty ledger.
-          vi.spyOn(store, 'append').mockImplementationOnce(() => {
-            throw new Error('the disk is full')
+          const append = store.append.bind(store)
+          vi.spyOn(store, 'append').mockImplementation((...args) => {
+            if (args[2].type === 'assistant_message') throw new Error('the disk is full')
+            return append(...args)
           })
           says(codex.handles[0]!, { type: 'assistant_message', text: 'a late word' })
         })
         expect(rowsOf(id).map((row) => row.type)).not.toContain('assistant_message')
         expect(codex.carriedOn).toBe(0)
       })
-
       it('⚑ the same, with nothing done meanwhile: carried on', async () => {
         await refusedWhile(() => {})
         await vi.waitFor(() => expect(codex.carriedOn).toBe(1))

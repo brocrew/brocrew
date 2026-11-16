@@ -1115,13 +1115,15 @@ describe('RuntimeHost — approval mode (078)', () => {
     const created = await host.createSession({ provider: 'codex' }, sink)
     const before = sink.messages.filter((m) => m.event.type === 'error').length
 
-    await host.setApprovalMode(created.sessionId, 'auto', sink)
+    await expect(host.setApprovalMode(created.sessionId, 'auto', sink)).rejects.toThrow(
+      /could not save/,
+    )
 
     const notices = sink.messages.filter((m) => m.event.type === 'error')
     expect(notices.length, 'reported by the command itself, not by the next turn').toBe(before + 1)
     const notice = notices.at(-1)?.event
     expect(notice).toMatchObject({ fatal: false })
-    expect(notice && 'message' in notice ? notice.message : '').toMatch(/no longer being recorded/)
+    expect(notice && 'message' in notice ? notice.message : '').toMatch(/could not save/)
     await host.closeAll()
   })
 })

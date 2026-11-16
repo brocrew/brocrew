@@ -276,6 +276,33 @@ describe('the plan phase a provider moved, written down (150 §0)', () => {
     expect(ordinals, 'sent in ordinal order').toEqual([...ordinals].sort((a, b) => a - b))
   })
 
+  it('tries an unchanged plan again after its first record failed', async () => {
+    const id = await turnOpen(false)
+    planWritesFail = true
+    await canUseTool!('EnterPlanMode', {}, {
+      toolUseID: 'fictional-enter',
+      signal: new AbortController().signal,
+    } as never)
+    fq.emit({
+      type: 'assistant',
+      message: {
+        id: 'fictional-message',
+        role: 'assistant',
+        content: [{ type: 'text', text: 'Working.' }],
+      },
+      parent_tool_use_id: null,
+      session_id: 'sess_provider',
+    } as unknown as SDKMessage)
+    await waitFor(
+      () => sink.events().some((event) => event.type === 'error'),
+      'the failed plan write',
+    )
+    expect(row(id)?.plan_mode).toBe(0)
+    planWritesFail = false
+    fq.emit(result())
+    await waitFor(() => row(id)?.plan_mode === 1, 'the same plan to be recorded')
+  })
+
   it('⚑ 740 · THE CONTROL — a plan a PERSON asked for mid-turn, not yet taken, is not written back out by the turn’s own events', async () => {
     // ⚑ The controls ask for plan mode now; the provider takes it at its next turn, so `requested`
     // moves and `effective` does not. The row was written by the person's own door. ⛔ A compare of

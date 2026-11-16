@@ -760,31 +760,26 @@ describe('session persistence', () => {
     ])
   })
 
-  it('keeps the session alive and says so when recording breaks', async () => {
-    // A dead database must not take the live session with it — but the user has to be
-    // told, because the session is no longer coming back.
+  it('fails one unsaved send visibly and records the next operation without reopening', async () => {
+    let fail = false
+    const recorded: string[] = []
     const broken = buildHost({
       store: {
         ...NULL_SESSION_STORE,
-        append: () => {
-          throw new Error('database is locked')
+        append: (_id, _ordinal, event) => {
+          if (fail) throw new Error('disk full')
+          recorded.push(event.type)
         },
       },
     })
-
     const created = await broken.createSession({ provider: 'claude' }, sink)
-    await waitFor(
-      () => sink.messages.some((m) => m.event.type === 'error'),
-      'the recording failure to surface',
-    )
-
-    const notice = sink.messages.find((m) => m.event.type === 'error')?.event
-    expect(notice).toMatchObject({ fatal: false })
-    expect(notice && 'message' in notice ? notice.message : '').toMatch(/no longer being recorded/)
-    // Reported once, not once per event.
-    expect(sink.messages.filter((m) => m.event.type === 'error')).toHaveLength(1)
-    // …and the session kept running: the stream carried on past the failure.
-    expect(sink.messages.length).toBeGreaterThan(2)
+    fail = true
+    await expect(broken.send(created.sessionId, 'first', sink)).rejects.toThrow(/could not save/)
+    expect(sink.messages.some((m) => m.event.type === 'error')).toBe(true)
+    fail = false
+    const before = recorded.length
+    await broken.send(created.sessionId, 'second', sink)
+    expect(recorded.length).toBeGreaterThan(before)
     await broken.close(created.sessionId, sink)
   })
 })

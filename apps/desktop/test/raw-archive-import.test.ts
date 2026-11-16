@@ -1,3 +1,4 @@
+import { fixtureProviderConfig } from './lib/host-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -120,32 +121,31 @@ describe('transcript import from the provider’s own file', () => {
 
   const discoverEverything = (): Discovery => discoverEveryHomeIn(userData)
 
+  let counter = 0
+
   function buildHost(overrides: Partial<ConstructorParameters<typeof RuntimeHost>[0]> = {}) {
-    let counter = 0
+    const providerHome = (provider: string, profileId: string) =>
+      join(userData, 'provider-homes', 'default', profileId, provider)
     return new RuntimeHost({
       store,
       discoverSessions: discoverEverything,
       exportDirectory: () => join(userData, 'exports'),
       nativeTranscriptPath,
       createRuntime: (provider) => new FakeRuntime(provider),
-      prepareProviderHome: (provider, profileId) =>
-        join(userData, 'provider-homes', 'default', profileId, provider),
-      providerHomePath: (provider, profileId) =>
-        join(userData, 'provider-homes', 'default', profileId, provider),
+      prepareProviderHome: providerHome,
+      providerHomePath: providerHome,
       resolveCwd: (sessionId, requested) => requested ?? join(dir, 'scratch', sessionId),
       newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
+      readProviderConfig: (provider, home) => ({
+        ...fixtureProviderConfig(provider, home),
         model: 'programmatic',
-        authNote: null,
-        files: [],
       }),
       ...overrides,
     })
   }
 
   beforeEach(() => {
+    counter = 0
     dir = mkdtempSync(join(tmpdir(), 'brobot2-archive-'))
     userData = join(dir, 'userData')
     mkdirSync(userData, { recursive: true })

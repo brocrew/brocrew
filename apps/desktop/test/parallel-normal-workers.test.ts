@@ -297,7 +297,7 @@ describe('normal parallel workers', () => {
       "CREATE TEMP TRIGGER refuse_worker_birth BEFORE INSERT ON events WHEN NEW.type = 'worker_registered' BEGIN SELECT RAISE(ABORT, 'fictional birth fault'); END",
     )
     await expect(world.gives(host, caller, 'document-reader', { parallel: true })).rejects.toThrow(
-      'worker could not be recorded',
+      'This conversation could not save the change',
     )
     expect(world.store.workersBorn()).toEqual([])
     expect(world.sent).toHaveLength(0)

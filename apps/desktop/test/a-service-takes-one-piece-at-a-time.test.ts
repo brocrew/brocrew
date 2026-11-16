@@ -651,16 +651,16 @@ describe('a service takes one piece at a time', () => {
       expect(runs()).toBe(true)
       fails.when = (conversation, event) =>
         conversation === one.owner && event.type === 'message_queued'
-      const quiet = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const quiet = vi.spyOn(console, 'warn').mockImplementation(() => {})
       await call(host, one.owner, 'reply_to_parent', {
         piece: one.label,
         outcome: 'done',
         summary: 'Booked.',
       })
       await new Promise((settle) => setTimeout(settle, 200))
-      // Its running life is what failed to record the brief: that life records nothing more.
+      // The failed brief is reported; the session is still eligible for a later write.
       const saidNoLonger = quiet.mock.calls.some((said) =>
-        String(said[0]).includes('is no longer being recorded'),
+        String(said[0]).includes('runtime write failed:'),
       )
       quiet.mockRestore()
       expect(saidNoLonger).toBe(true)

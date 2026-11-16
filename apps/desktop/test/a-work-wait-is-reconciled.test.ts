@@ -425,19 +425,21 @@ describe('a work wait is reconciled without a window', () => {
     expect(new Set(namesRead.mock.calls[0]![0])).toEqual(new Set([given.agent, owner]))
   })
 
-  it('ordinary live appends allocate without an additional SQL read', async () => {
+  async function heldTurnForOrdinalReads() {
     keepTurnsOpen = true
     const { owner } = await create()
     await host.send(owner, 'A fictional held turn.', window)
     await waitFor(() => store.theOpenTurn(owner) !== null, 'the held turn')
     const live = host as unknown as {
-      slots: Map<
-        string,
-        { session: { id: string; ordinal: number; recordingFailure: string | null } }
-      >
+      slots: Map<string, { session: { id: string; ordinal: number } }>
       deliver(session: unknown, event: { type: 'assistant_delta'; text: string }): void
     }
     const session = live.slots.get(owner)!.session
+    return { owner, live, session }
+  }
+
+  it('ordinary live appends allocate without an additional SQL read', async () => {
+    const { owner, live, session } = await heldTurnForOrdinalReads()
     const event = { type: 'assistant_delta' as const, text: 'fictional text' }
     const baseline: string[] = []
     for (let n = 0; n < 20; n++) {
@@ -454,25 +456,14 @@ describe('a work wait is reconciled without a window', () => {
     for (let n = 0; n < 20; n++) live.deliver(session, event)
     const actual = sqlReads
     sqlReads = null
-    expect(session.recordingFailure).toBeNull()
     expect(floors).not.toHaveBeenCalled()
     expect(actual).toEqual(baseline)
     expect(actual.filter((sql) => /max\(ordinal\)/i.test(sql))).toEqual([])
+    expect(store.nextOrdinal(owner)).toBeLessThanOrEqual(session.ordinal)
   })
 
   it('a rolled-back competing write refreshes once without retaining its ordinal', async () => {
-    keepTurnsOpen = true
-    const { owner } = await create()
-    await host.send(owner, 'A fictional held turn.', window)
-    await waitFor(() => store.theOpenTurn(owner) !== null, 'the held turn')
-    const live = host as unknown as {
-      slots: Map<
-        string,
-        { session: { id: string; ordinal: number; recordingFailure: string | null } }
-      >
-      deliver(session: unknown, event: { type: 'assistant_delta'; text: string }): void
-    }
-    const session = live.slots.get(owner)!.session
+    const { owner, live, session } = await heldTurnForOrdinalReads()
     const next = store.nextOrdinal(owner)
     expect(() =>
       store.atomically(() => {
@@ -484,7 +475,7 @@ describe('a work wait is reconciled without a window', () => {
     live.deliver(session, { type: 'assistant_delta', text: 'kept after rollback' })
     live.deliver(session, { type: 'assistant_delta', text: 'next kept event' })
     expect(floors).toHaveBeenCalledTimes(1)
-    expect(session.recordingFailure).toBeNull()
+    expect(store.nextOrdinal(owner)).toBeLessThanOrEqual(session.ordinal)
     expect(
       store
         .events(owner)
@@ -506,7 +497,7 @@ describe('a work wait is reconciled without a window', () => {
     let other: RuntimeHost | undefined
     const engine = host as unknown as {
       reconcileWork(holders?: ReadonlySet<string>): void
-      slots: Map<string, { session: { ordinal: number; recordingFailure: string | null } }>
+      slots: Map<string, { session: { ordinal: number } }>
     }
     const paused = vi.spyOn(engine, 'reconcileWork').mockImplementation(() => {})
     const session = engine.slots.get(owner)!.session
@@ -537,7 +528,7 @@ describe('a work wait is reconciled without a window', () => {
         handles[0] as unknown as { machine: { completeTurn(state: 'completed'): void } }
       ).machine.completeTurn('completed')
       await settle()
-      expect(session.recordingFailure).toBeNull()
+      expect(store.nextOrdinal(owner)).toBeLessThanOrEqual(session.ordinal)
       const entries = store.events(owner)
       const reminder = entries.find((one) => one.event.type === 'work_reconciliation')!
       const terminal = entries.find(

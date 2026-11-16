@@ -1,3 +1,4 @@
+import { RecordWriteFailed } from './record-write'
 import { InstructionDecisions } from './host-split/instruction-decisions'
 import type {
   WaitOnAsked,
@@ -867,12 +868,7 @@ import {
   skipTheLedger,
 } from '../db/session-store'
 import { rowsUnreadOnce } from '../db/rows-unread'
-import {
-  committedRowOf,
-  type Committed,
-  type CommittedRow,
-  type WholeChange,
-} from '../db/committed-changes'
+import { type Committed, type CommittedRow, type WholeChange } from '../db/committed-changes'
 import type {
   KeptFileRow,
   LeftRunning,
@@ -1814,12 +1810,6 @@ function theAddressOf(url: string): string {
 /** Inside an approval's transaction: the asking conversation is starting, so it is rolled back. */
 class ItsAskerIsStarting extends Error {}
 
-/**
- * The asking conversation runs, but its record can no longer be written for the rest of that run,
- * so no ending of its request can be.
- */
-class ItsRecordIsNotWritten extends Error {}
-
 /** What an approval's one transaction came to ({@link RuntimeHost.commitAnApproval}). */
 type ApprovalCommitted =
   | { readonly is: 'gone' }
@@ -2161,10 +2151,6 @@ interface HostedSession {
   stopping: Promise<boolean> | null
   /** The single finalization every path joins; null until the first one starts (051). */
   finalizing: Promise<void> | null
-  /** Why recording stopped, once it has — the session keeps running, but is no longer durable. */
-  recordingFailure: string | null
-  /** Set once the user has been told; a broken DB must not produce one notice per event. */
-  recordingFailureReported: boolean
   /**
    * ⚠️ **Set once a fenced pump has dropped something** (293 §3) — so the fact reaches a log and a
    * stuck iterator still yielding into a finalized life does not produce one warning per event. It
@@ -7404,6 +7390,14 @@ export class RuntimeHost implements LiveHost {
     this.stateMayHaveMoved(slot.id)
   }
 
+  private async cleanUpAFailedStart(slot: SessionSlot): Promise<void> {
+    if (slot.session !== null) await this.finalize(slot.session, 'stream-failed')
+    else {
+      this.abandon(slot)
+      this.launches.finish(slot.launch)
+    }
+  }
+
   /**
    * 🔴 **Say that a population a window LISTS has moved** (534) — one of the two pushes this host
    * makes that are not about a conversation somebody is watching, and the one that carries no answer
@@ -7649,19 +7643,6 @@ export class RuntimeHost implements LiveHost {
     } catch (error) {
       console.warn(`runtime host could not follow a committed change: ${errorMessage(error)}`)
     }
-  }
-
-  /**
-   * A running conversation whose rows are no longer recorded ({@link record}) commits nothing, yet
-   * what its rows say still moves its live state: each is followed as if it had been heard.
-   */
-  private markWhatWasNotRecorded(
-    session: HostedSession,
-    ordinal: number,
-    event: TranscriptEvent,
-  ): void {
-    if (session.recordingFailure === null) return
-    this.aRowWasWritten(session.id, committedRowOf(session.id, 0, ordinal, event))
   }
 
   /**
@@ -8370,9 +8351,7 @@ export class RuntimeHost implements LiveHost {
     }
     const session = slot?.session ?? null
     if (session !== null) {
-      if (!this.recordTheGive(session, giving, messageId, pairAsked)) {
-        throw new Error(`${giving.label} could not be written for ${service}`)
-      }
+      this.recordTheGive(session, giving, messageId, pairAsked)
       return
     }
     const event: WorkGivenEvent = {
@@ -8511,16 +8490,8 @@ export class RuntimeHost implements LiveHost {
       label: head.label,
     }
     if (session !== null) {
-      session.mailbox.push(brief)
       this.publishOurs(session, row)
-      // ⛔ A brief whose row couldn't be written is never handed over: it leaves the mailbox, its
-      // piece waits, and its service takes nothing more while nothing it does is recorded.
-      if (session.recordingFailure !== null) {
-        const at = session.mailbox.indexOf(brief)
-        if (at >= 0) session.mailbox.splice(at, 1)
-        this.publishStateIfChanged(session)
-        return
-      }
+      session.mailbox.push(brief)
       // ⛔ With no pair to run it on, it ends unsent: its piece stalls and its caller is told.
       if (unread !== null) {
         if (!this.endTheServicesBriefUnsent(conversation, brief.id, unread)) {
@@ -8594,7 +8565,6 @@ export class RuntimeHost implements LiveHost {
         ...queued.authorship,
       })
       this.publishStateIfChanged(session)
-      if (session.recordingFailure !== null) return false
     } else {
       const still = this.deps.store
         .messagesWaitingIn(conversation)
@@ -8988,7 +8958,6 @@ export class RuntimeHost implements LiveHost {
     return (
       !this.startsInFlight.has(session.id) &&
       !this.stopsOnTheirWay.has(session) &&
-      session.recordingFailure === null &&
       !this.itStoppedUnder(session) &&
       session.flushing === null &&
       session.handle.status() === 'idle' &&
@@ -10634,10 +10603,7 @@ export class RuntimeHost implements LiveHost {
       // and make three of them able to answer it differently.
       return await this.startSession(slot, input, sink ?? NO_SURFACE, spawn)
     } catch (error) {
-      this.abandon(slot)
-      // Refused connection handles already handed their termination to the launch registry.
-      // Other adapters tear down before rejecting. The first finish call retains ownership.
-      this.launches.finish(slot.launch)
+      await this.cleanUpAFailedStart(slot)
       throw this.refusalTranslated(this.aRefusalAPersonReads(error, id))
     } finally {
       slot.settle()
@@ -11600,7 +11566,6 @@ export class RuntimeHost implements LiveHost {
       },
       'work-closed',
       copies.copies,
-      true,
     )
     // ⛔ After `work_closed`, never before, as a giver's close takes them back.
     this.takeBackTheHeldMessages(piece, stands.held)
@@ -12691,33 +12656,23 @@ export class RuntimeHost implements LiveHost {
     })
     let resources: readonly ResourceRow[] = []
     let passedUp: () => void = () => undefined
-    this.record(session, () => {
-      const committed = this.deps.store.atomically(() => {
-        const rows = kept.files.map((file) =>
-          this.deps.store.addResource(
-            {
-              piece: piece.piece,
-              role: 'made',
-              title: file.title,
-              summary: null,
-              name: file.name,
-              sha256: file.sha256,
-              bytes: file.bytes.length,
-              addedBy: speaking,
-            },
-            at,
-          ),
-        )
-        this.deps.store.append(session.id, ordinal, repliedWith(rows), at)
-        // ⚑ …and the questions passed up about the piece end in the same transaction.
-        return {
-          rows,
-          passedUp: this.endTheCopies(copies.copies, 'work-replied'),
-        }
-      })
-      resources = committed.rows
-      passedUp = committed.passedUp
-    })
+    this.record(
+      session,
+      () => {
+        const committed = this.deps.store.atomically(() => {
+          const rows = this.recordMadeFiles(piece.piece, kept.files, speaking, at)
+          this.deps.store.append(session.id, ordinal, repliedWith(rows), at)
+          // ⚑ …and the questions passed up about the piece end in the same transaction.
+          return {
+            rows,
+            passedUp: this.endTheCopies(copies.copies, 'work-replied'),
+          }
+        })
+        resources = committed.rows
+        passedUp = committed.passedUp
+      },
+      'events,work_resource',
+    )
     this.rememberLedgerOrdinal(session, ordinal)
     const replied = repliedWith(resources)
     this.emitOurs(session, { sessionId: session.id, ordinal, at, event: replied })
@@ -12781,6 +12736,29 @@ export class RuntimeHost implements LiveHost {
           ? { delivered, why: waits }
           : { delivered }),
     }
+  }
+
+  private recordMadeFiles(
+    piece: string,
+    files: readonly (OfferedFile & { readonly title: string })[],
+    addedBy: string,
+    at: number,
+  ): ResourceRow[] {
+    return files.map((file) =>
+      this.deps.store.addResource(
+        {
+          piece,
+          role: 'made',
+          title: file.title,
+          summary: null,
+          name: file.name,
+          sha256: file.sha256,
+          bytes: file.bytes.length,
+          addedBy,
+        },
+        at,
+      ),
+    )
   }
 
   /**
@@ -13066,12 +13044,13 @@ export class RuntimeHost implements LiveHost {
     landed?: () => void,
   ): void {
     if (!this.repairingStartup && this.startupRepairs.has(sessionId)) {
-      void this.settleBeforeUse(sessionId).then(
-        () => this.writeIntoItsLedger(sessionId, row, landed),
-        (error: unknown) => {
-          console.warn(`runtime host could not write into ${sessionId}: ${errorMessage(error)}`)
-        },
-      )
+      void this.settleBeforeUse(sessionId)
+        .then(() => this.writeIntoItsLedger(sessionId, row, landed))
+        .catch((error: unknown) => {
+          if (!(error instanceof RecordWriteFailed)) {
+            console.warn(`runtime host could not write into ${sessionId}: ${errorMessage(error)}`)
+          }
+        })
       return
     }
     const slot = this.slots.get(sessionId)
@@ -13081,17 +13060,23 @@ export class RuntimeHost implements LiveHost {
       return
     }
     if (slot !== undefined) {
-      void slot.arrived.then(() => {
-        const neverRegistered = this.slots.get(sessionId) === slot && slot.session === null
-        if (neverRegistered) {
-          this.appendIntoItsLedger(sessionId, row)
-          landed?.()
-        } else this.writeIntoItsLedger(sessionId, row, landed)
-      })
+      void slot.arrived
+        .then(() => {
+          const neverRegistered = this.slots.get(sessionId) === slot && slot.session === null
+          if (neverRegistered) {
+            if (this.appendIntoItsLedger(sessionId, row)) landed?.()
+          } else this.writeIntoItsLedger(sessionId, row, landed)
+        })
+        .catch((error: unknown) => {
+          if (!(error instanceof RecordWriteFailed)) {
+            console.warn(
+              `runtime deferred write failed: session=${sessionId} table=events error=${errorMessage(error)}`,
+            )
+          }
+        })
       return
     }
-    this.appendIntoItsLedger(sessionId, row)
-    landed?.()
+    if (this.appendIntoItsLedger(sessionId, row)) landed?.()
   }
 
   /**
@@ -13124,16 +13109,19 @@ export class RuntimeHost implements LiveHost {
     left?: WordsLeftForAService,
   ): void {
     if (this.startupRepairs.has(sessionId)) {
-      void this.settleBeforeUse(sessionId).then(
-        () => {
+      void this.settleBeforeUse(sessionId)
+        .then(() => {
           if (this.launches.closed) kept?.('nowhere')
           else this.holdUntilItStarts(sessionId, text, facts, kind, kept, id, left)
-        },
-        (error: unknown) => {
-          console.warn(`runtime host could not hold words for ${sessionId}: ${errorMessage(error)}`)
+        })
+        .catch((error: unknown) => {
+          if (!(error instanceof RecordWriteFailed)) {
+            console.warn(
+              `runtime host could not hold words for ${sessionId}: ${errorMessage(error)}`,
+            )
+          }
           kept?.('nowhere')
-        },
-      )
+        })
       return
     }
     const slot = this.slots.get(sessionId)
@@ -13228,8 +13216,8 @@ export class RuntimeHost implements LiveHost {
     // its reopen ({@link reopenForWhatWaits}), which the flush asks for.
     if (session !== null && session.finalizing === null) {
       // ⚑ Its mailbox: a turn's end sends it, and a stop that has not yet handed on what it held does.
-      session.mailbox.push(held)
       this.publishOurs(session, row)
+      session.mailbox.push(held)
       this.publishStateIfChanged(session)
       this.flushQueued(session)
       this.theWorldMoved('work')
@@ -13242,7 +13230,7 @@ export class RuntimeHost implements LiveHost {
     let down: boolean
     if (session !== null) {
       this.publishOurs(session, row)
-      down = session.recordingFailure === null
+      down = true
     } else down = this.appendIntoItsLedger(sessionId, { ...row, forItsNextStart: true })
     if (!this.launches.closed) {
       this.heldAtAStop.set(sessionId, [...(this.heldAtAStop.get(sessionId) ?? []), held])
@@ -13269,19 +13257,19 @@ export class RuntimeHost implements LiveHost {
    * nobody. ⚑ Answers whether the row is down. ⛔ It never throws.
    */
   private writeWhileNothingRunsIt(sessionId: string, row: TranscriptEvent): boolean {
-    let written: RuntimeEventMessage | null = null
     try {
-      const ordinal = this.deps.store.nextOrdinal(sessionId)
-      const at = this.now()
-      this.deps.store.append(sessionId, ordinal, row, at)
-      written = { sessionId, ordinal, at, event: row }
+      const written = this.writeRecord(sessionId, 'events', () => {
+        const ordinal = this.deps.store.nextOrdinal(sessionId)
+        const at = this.now()
+        this.deps.store.append(sessionId, ordinal, row, at)
+        return { sessionId, ordinal, at, event: row }
+      })
+      this.showTheWindowsLookingAt(sessionId, written)
+      return true
     } catch (error) {
-      console.warn(
-        `runtime host could not write ${row.type} into ${sessionId}'s record: ${errorMessage(error)}`,
-      )
+      if (!(error instanceof RecordWriteFailed)) throw error
+      return false
     }
-    if (written !== null) this.showTheWindowsLookingAt(sessionId, written)
-    return written !== null
   }
 
   /** A row of a conversation nothing runs, sent to the windows that have it open. ⛔ Never throws. */
@@ -13850,11 +13838,7 @@ export class RuntimeHost implements LiveHost {
         .some((one) => one.requestId === previous.requestId && REQUEST_IS_OPEN[one.state])
     )
       return { ok: false, refusal: refuseQuestion('move-offer-not-available') }
-    if (
-      session.moveRequestTurn === null &&
-      session.moveRequestRowPending &&
-      session.recordingFailure === null
-    ) {
+    if (session.moveRequestTurn === null && session.moveRequestRowPending) {
       return { ok: false, refusal: refuseQuestion('move-offer-is-held') }
     }
     const original = this.deps.store.atomically(() => {
@@ -14221,22 +14205,8 @@ export class RuntimeHost implements LiveHost {
     const kept = this.keptFor(speaking, input.files)
     if (!kept.ok) return { ok: false, resourceRefusal: kept.refusal }
     const at = this.now()
-    const rows = this.deps.store.atomically(() =>
-      kept.files.map((file) =>
-        this.deps.store.addResource(
-          {
-            piece: piece.piece,
-            role: 'made',
-            title: file.title,
-            summary: null,
-            name: file.name,
-            sha256: file.sha256,
-            bytes: file.bytes.length,
-            addedBy: speaking,
-          },
-          at,
-        ),
-      ),
+    const rows = this.writeRecord(speaking, 'work_resource', () =>
+      this.recordMadeFiles(piece.piece, kept.files, speaking, at),
     )
     const files: readonly ActionFile[] = rows.map((one) => ({
       resource: one.resource,
@@ -14301,50 +14271,16 @@ export class RuntimeHost implements LiveHost {
     row: WorkTakenBackEvent | WorkClosedEvent,
     ending: QuestionEndedWithItsPieceEvent['ending'],
     copies: PassedUpCopies,
-    requireDurable = false,
   ): void {
-    const slot = this.slots.get(owner)
-    if (slot !== undefined && slot.session === null) {
-      if (requireDurable)
-        throw new Error('The conversation is still starting. Try again in a moment.')
-      // ⛔ A bug guard rather than a rail: the copies were refused for a starting owner before this.
-      if (copies.length > 0) throw new Error(`${row.piece} ended while ${owner} was starting`)
-      this.writeIntoItsLedger(owner, row)
-      return
-    }
-    const session = slot?.session ?? null
-    let thenShow: () => void = () => undefined
-    const write = (): void => {
-      thenShow = this.deps.store.atomically(() => {
-        const itsRow = this.appendInTheTransaction(owner, row)
-        const theirs = this.endTheCopies(copies, ending)
-        return () => {
-          itsRow()
-          theirs()
-        }
-      })
-    }
-    if (requireDurable) {
-      write()
-      thenShow()
-      return
-    }
-    if (session === null) {
-      try {
-        write()
-      } catch (error) {
-        console.warn(
-          `runtime host could not write ${row.type} into ${owner}'s record: ${errorMessage(error)}`,
-        )
+    const show = this.writeRecord(owner, 'events', () => {
+      const itsRow = this.appendInTheTransaction(owner, row)
+      const theirs = this.endTheCopies(copies, ending)
+      return () => {
+        itsRow()
+        theirs()
       }
-    } else {
-      this.record(session, write)
-      if (session.recordingFailure !== null) {
-        this.publishOurs(session, row)
-        return
-      }
-    }
-    thenShow()
+    })
+    show()
   }
 
   /**
@@ -14850,8 +14786,7 @@ export class RuntimeHost implements LiveHost {
       this.sayWhenItsWorkMoved(holder, composed)
       for (const piece of composed) this.tellIfNobodyHasYet(piece)
     } catch (error) {
-      // ⛔ **Never out through the pump.** A database that cannot be read is already reported by
-      // {@link reportRecordingFailure} on every ordinary append.
+      // Reporting stalled work must not stop the provider stream.
       console.warn(
         `runtime host could not report undriven work in ${holder}: ${errorMessage(error)}`,
       )
@@ -16009,18 +15944,14 @@ export class RuntimeHost implements LiveHost {
     const fact: CurrentFact<ConversationProviderBlock> =
       provider === undefined
         ? { status: 'current', value: null }
-        : !active && session?.recordingFailure !== null && session?.recordingFailure !== undefined
-          ? this.providerLimitFacts.hasStoppedEpisode(conversation, life, provider)
-            ? { status: 'unavailable' }
-            : { status: 'current', value: null }
-          : this.providerLimitFacts.block(
-              conversation,
-              life,
-              provider,
-              active,
-              life !== null && session!.mailbox.some((one) => !aPersonsOwn(one)),
-              this.now(),
-            )
+        : this.providerLimitFacts.block(
+            conversation,
+            life,
+            provider,
+            active,
+            life !== null && session!.mailbox.some((one) => !aPersonsOwn(one)),
+            this.now(),
+          )
     const history =
       provider === undefined ||
       session === null ||
@@ -19145,7 +19076,7 @@ export class RuntimeHost implements LiveHost {
           by: whoDidIt(by),
         })
       } else {
-        this.decideAQuestionThisAppAsked(request.askedBy, request.requestId, 'rejected', by)
+        await this.decideAQuestionThisAppAsked(request.askedBy, request.requestId, 'rejected', by)
       }
       // ⚑ **D-017 · R1** — held in the asker's ledger in this same stretch when it is not running.
       const told =
@@ -19247,7 +19178,7 @@ export class RuntimeHost implements LiveHost {
       // 🔴 **477 · the caller, at the moment the answer is taken** — and `speaking` above is
       // already this same derivation, so the row and the entitlement cannot disagree about who
       // is answering. ⛔ Never `input`: no tool argument reaches this field.
-      this.decideAQuestionThisAppAsked(request.askedBy, request.requestId, 'answered', by)
+      await this.decideAQuestionThisAppAsked(request.askedBy, request.requestId, 'answered', by)
       const said = measured.answers.map((one) => ({ part: one.part, answer: [...one.answer] }))
       // 🔴 **591 · the answer reaches the worker as WORDS, and the ledger row above is written
       // first** (HO-082 §2). ⛔ **A resolved promise reaches a model only while that promise is
@@ -20562,57 +20493,61 @@ export class RuntimeHost implements LiveHost {
         : { firstTurnLead: instructions.firstTurnLead }),
 
       onRegistered: (registered) => {
-        this.record(registered, () => {
-          if (recorded) {
-            const launched = this.deps.store.firstLaunchOf({
+        this.record(
+          registered,
+          () => {
+            if (recorded) {
+              const launched = this.deps.store.firstLaunchOf({
+                id,
+                ...(connection === undefined ? {} : { connectionId: connection.id }),
+                model,
+                ...(reasoningEffort ? { reasoningEffort } : {}),
+                ...(planMode !== undefined ? { planMode } : {}),
+                ...(handle.launchedAs ? { launchedAs: handle.launchedAs } : {}),
+              })
+              if (!launched) throw new Error(`${id} was launched before, or is not recorded`)
+              return
+            }
+            this.deps.store.create({
               id,
+              provider: input.provider,
               ...(connection === undefined ? {} : { connectionId: connection.id }),
-              model,
+              cwd,
+              approvalMode,
+              profileId,
+              // Recorded like the mode and the profile, and for the same reason: a resumed session
+              // carries on with what it was selected to run, never with today's default.
               ...(reasoningEffort ? { reasoningEffort } : {}),
+              model,
               ...(planMode !== undefined ? { planMode } : {}),
+              // 🔴 **The parent, written in the same transaction as the row** (341, criterion 8).
+              // ⛔ **The spread is conditional and the field is genuinely ABSENT when there is no
+              // admitted start** — `a-spread-writes-past-a-declared-type` is the hazard on this line:
+              // a key the store does not read would compile here and write nothing. ⚑ **D-016 · and its
+              // absence is what gives a conversation a person started its ROOT**, in that same
+              // transaction (`NewSessionRecord.parentSessionId`).
+              ...(spawn === null ? {} : { parentSessionId: spawn.parentSessionId }),
+              ...(this.normalWorkerBirths.has(id)
+                ? {
+                    worker: (() => {
+                      const fact = this.normalWorkerBirths.get(id)!
+                      return {
+                        identity: fact.identity,
+                        identityCreatedAt: fact.identityCreatedAt,
+                        giver: fact.giver,
+                        number: fact.number,
+                      }
+                    })(),
+                  }
+                : {}),
+              // 🔴 **727 · R87 — the id this launch asked for, recorded with the row** — before this
+              // host sends anything, so before the CLI can write a transcript under it. ⛔ A kill,
+              // an error before init or a timed-out close can no longer leave one no row names.
               ...(handle.launchedAs ? { launchedAs: handle.launchedAs } : {}),
             })
-            if (!launched) throw new Error(`${id} was launched before, or is not recorded`)
-            return
-          }
-          this.deps.store.create({
-            id,
-            provider: input.provider,
-            ...(connection === undefined ? {} : { connectionId: connection.id }),
-            cwd,
-            approvalMode,
-            profileId,
-            // Recorded like the mode and the profile, and for the same reason: a resumed session
-            // carries on with what it was selected to run, never with today's default.
-            ...(reasoningEffort ? { reasoningEffort } : {}),
-            model,
-            ...(planMode !== undefined ? { planMode } : {}),
-            // 🔴 **The parent, written in the same transaction as the row** (341, criterion 8).
-            // ⛔ **The spread is conditional and the field is genuinely ABSENT when there is no
-            // admitted start** — `a-spread-writes-past-a-declared-type` is the hazard on this line:
-            // a key the store does not read would compile here and write nothing. ⚑ **D-016 · and its
-            // absence is what gives a conversation a person started its ROOT**, in that same
-            // transaction (`NewSessionRecord.parentSessionId`).
-            ...(spawn === null ? {} : { parentSessionId: spawn.parentSessionId }),
-            ...(this.normalWorkerBirths.has(id)
-              ? {
-                  worker: (() => {
-                    const fact = this.normalWorkerBirths.get(id)!
-                    return {
-                      identity: fact.identity,
-                      identityCreatedAt: fact.identityCreatedAt,
-                      giver: fact.giver,
-                      number: fact.number,
-                    }
-                  })(),
-                }
-              : {}),
-            // 🔴 **727 · R87 — the id this launch asked for, recorded with the row** — before this
-            // host sends anything, so before the CLI can write a transcript under it. ⛔ A kill,
-            // an error before init or a timed-out close can no longer leave one no row names.
-            ...(handle.launchedAs ? { launchedAs: handle.launchedAs } : {}),
-          })
-        })
+          },
+          'provider_session',
+        )
         // 🔴 **The launch row, published here and only here** (332).
         //
         // ⛔ **Inside `onRegistered`, which `register` invokes on its last synchronous line before
@@ -20722,14 +20657,7 @@ export class RuntimeHost implements LiveHost {
     }
     const session = this.require(sessionId, by)
     await session.handle.setApprovalMode(mode)
-    this.record(session, () => this.deps.store.setApprovalMode(sessionId, mode))
-    // Reported HERE, not left to the next `publishOurs`/`deliver` (034 review). Every other
-    // `record()` in this class sits inside a call that reports immediately after; this one does not,
-    // and the difference matters because of what the command is: setting yolo and then walking away
-    // is an ordinary thing to do, and it is precisely the case where no further turn or provider
-    // event would ever arrive to carry the notice. The session would then resume in the mode the
-    // user tried to leave, with nothing anywhere having said the write failed.
-    if (session.sink.alive) this.reportRecordingFailure(session)
+    this.record(session, () => this.deps.store.setApprovalMode(sessionId, mode), 'provider_session')
     // Published as well as returned: a second window watching the same session has no command
     // result to learn this from, and the two must not disagree about what it is running.
     this.publishStateIfChanged(session)
@@ -20816,25 +20744,39 @@ export class RuntimeHost implements LiveHost {
         // ⚑ A new model's effort, when the one it ran at is not one the model offers.
         if (named.effort !== undefined) {
           await session.handle.setReasoningEffort(named.effort ?? undefined)
-          this.record(session, () =>
-            this.deps.store.setReasoningEffort(sessionId, named.effort ?? null),
+          this.record(
+            session,
+            () => this.deps.store.setReasoningEffort(sessionId, named.effort ?? null),
+            'provider_session',
           )
         }
-        this.record(session, () => this.deps.store.setModel(sessionId, named.model))
+        this.record(
+          session,
+          () => this.deps.store.setModel(sessionId, named.model),
+          'provider_session',
+        )
         // 🔴 **682 · `R31c` — a PERSON set this conversation's model**, and since D-042 that keeps it
         // when a give names another (F1). ⚑ This door is reached only from a person's window
         // (`ipc.ts` `setSessionSetting`; no agent tool calls it), so the stamp's name
         // is a claim this line keeps. ⛔ After the write, and only once the provider took it.
-        this.record(session, () =>
-          this.deps.store.aPersonSetItsModelOrEffort(sessionId, this.now()),
+        this.record(
+          session,
+          () => this.deps.store.aPersonSetItsModelOrEffort(sessionId, this.now()),
+          'provider_session',
         )
         break
       case 'reasoningEffort':
         await session.handle.setReasoningEffort(named.effort ?? undefined)
-        this.record(session, () => this.deps.store.setReasoningEffort(sessionId, named.effort))
+        this.record(
+          session,
+          () => this.deps.store.setReasoningEffort(sessionId, named.effort),
+          'provider_session',
+        )
         // 🔴 **682 · `R31c`**, as the model arm above.
-        this.record(session, () =>
-          this.deps.store.aPersonSetItsModelOrEffort(sessionId, this.now()),
+        this.record(
+          session,
+          () => this.deps.store.aPersonSetItsModelOrEffort(sessionId, this.now()),
+          'provider_session',
         )
         break
       case 'planMode':
@@ -20850,7 +20792,11 @@ export class RuntimeHost implements LiveHost {
           )
         }
         await session.handle.setPlanMode(true)
-        this.record(session, () => this.deps.store.startPlanMode(sessionId, this.now()))
+        this.record(
+          session,
+          () => this.deps.store.startPlanMode(sessionId, this.now()),
+          'provider_session',
+        )
         // ⚑ 740 · what the ledger now holds — {@link recordPlanPhase} compares against it.
         session.planAsRecorded = true
         // ⚑ **D-018 · planning**: its idle countdown goes ({@link idleEnoughToStop}).
@@ -20871,10 +20817,6 @@ export class RuntimeHost implements LiveHost {
               : { model: model.requested, effort: reasoningEffort.requested ?? null },
             list,
           )
-    // Reported HERE for the reason `setApprovalMode` gives at length: changing a setting and then
-    // walking away is ordinary, and it is exactly the case where no later event would carry the
-    // notice that the write failed.
-    if (session.sink.alive) this.reportRecordingFailure(session)
     this.publishStateIfChanged(session)
     return { settings: settingsDisclosure(session), thePick }
   }
@@ -21120,12 +21062,15 @@ export class RuntimeHost implements LiveHost {
     // are the same state transition and gave them one name. What makes THIS still a distinct
     // command is the composition below — release, then say so — not a distinct transition.
     await session.handle.setPlanMode(false)
-    this.record(session, () => this.deps.store.endPlanMode(sessionId, this.now()))
+    this.record(
+      session,
+      () => this.deps.store.endPlanMode(sessionId, this.now()),
+      'provider_session',
+    )
     // ⚑ 740 · what the ledger now holds — {@link recordPlanPhase} compares against it.
     session.planAsRecorded = false
     // ⚑ **D-018 · no longer planning**: leaving with no message starts no turn, so it is counted.
     this.stateMayHaveMoved(sessionId)
-    if (session.sink.alive) this.reportRecordingFailure(session)
     // Published BEFORE the send as well as after: `send` republishes anyway, but a send that throws
     // must still leave the button gone, because the mode really has changed.
     this.publishStateIfChanged(session)
@@ -22501,9 +22446,7 @@ export class RuntimeHost implements LiveHost {
    * optimistically, so the live fold and the replayed fold are the same code over the same
    * entries — which is what makes a rehydrated transcript trustworthy rather than plausible.
    *
-   * Published even if the append failed, exactly as {@link deliver} does: when recording
-   * breaks the session keeps working and says so out loud. Hiding what you just typed would
-   * be a stranger failure than an undurable session.
+   * Published only after its write commits. A failed write is reported to the caller.
    */
   private publishOurs(
     session: HostedSession,
@@ -22652,11 +22595,7 @@ export class RuntimeHost implements LiveHost {
     if (event.type === 'launched' && session.launchGave !== null) event.given = session.launchGave
     const written = this.recordOurs(session, event, at)
     const committedTurn = written.event
-    if (
-      committedTurn.type === 'user_turn' &&
-      personalHandover === session.personalHandover &&
-      session.recordingFailure === null
-    ) {
+    if (committedTurn.type === 'user_turn' && personalHandover === session.personalHandover) {
       const parts = theMessagesOf(committedTurn)
       if (
         parts.some((part) =>
@@ -22672,7 +22611,6 @@ export class RuntimeHost implements LiveHost {
       const turn = this.deps.store.theOpenTurn(session.id)
       if (
         committedTurn.type === 'user_turn' &&
-        session.recordingFailure === null &&
         turn !== null &&
         committedTurn.parts === undefined &&
         TURN_ATTRIBUTION_KEYS.every(
@@ -22844,10 +22782,9 @@ export class RuntimeHost implements LiveHost {
     // hand one in**, and only for a row whose moment is a deadline rather than this instant.
     const at = stamped ?? this.now()
     this.record(session, () => this.deps.store.append(session.id, ordinal, event, at))
-    this.markWhatWasNotRecorded(session, ordinal, event)
     this.rememberLedgerOrdinal(session, ordinal)
-    if (session.recordingFailure === null) this.aScheduleRowWasKept(session.id, ordinal, event, at)
-    if (event.type === 'launched' && session.recordingFailure === null) {
+    this.aScheduleRowWasKept(session.id, ordinal, event, at)
+    if (event.type === 'launched') {
       this.noteItsLaunchedRow(session, ordinal)
     }
     return { sessionId: session.id, ordinal, at, event }
@@ -22863,7 +22800,6 @@ export class RuntimeHost implements LiveHost {
   private emitOurs(session: HostedSession, message: RuntimeEventMessage): void {
     if (!session.sink.alive) return
     this.emit(session, message)
-    this.reportRecordingFailure(session)
   }
 
   /** Carry the current projection without querying a ledger on streaming frames. */
@@ -22893,7 +22829,7 @@ export class RuntimeHost implements LiveHost {
    * publish from inside another event's window. `main` had **thirteen** callers of
    * {@link publishOurs} — not the twelve I first counted — and one of them WAS the defect, so twelve
    * are left here. ⚑ Enumerating them properly turned up a SECOND disorder nobody had reported:
-   * {@link reportRecordingFailure} takes its ordinal at SEND time and used to fire from inside
+   * A write-failure notice takes its ordinal at SEND time and used to fire from inside
    * `publishOurs`, so a turn-ending status on a broken database put **182, 183, 181** on the wire.
    * Both are closed. ⛔ **But that is a walk of a call graph, not a mechanism.** `runFinalize`
    * publishes a `message_unqueued` as its FIRST statement, ahead of its own first `await`, and it is
@@ -23897,6 +23833,7 @@ export class RuntimeHost implements LiveHost {
       // ⚑ **A start or a brief that fails from here gave nothing under the label it took** — which is
       // not handed out again, so the answer says it is not used ({@link AGiveThatGaveNothing}).
       const gaveNothing = (error: unknown): never => {
+        if (error instanceof RecordWriteFailed) throw error
         throw this.deps.store.workById(giving.piece) === null
           ? new AGiveThatGaveNothing(giving.label, error)
           : error
@@ -24361,8 +24298,16 @@ export class RuntimeHost implements LiveHost {
     void running.handle.setReasoningEffort(pair.effort ?? undefined).catch((error: unknown) => {
       console.warn(`give_work: ${conversation} did not take the effort: ${errorMessage(error)}`)
     })
-    this.record(running, () => this.deps.store.setModel(conversation, pair.model))
-    this.record(running, () => this.deps.store.setReasoningEffort(conversation, pair.effort))
+    this.record(
+      running,
+      () => this.deps.store.setModel(conversation, pair.model),
+      'provider_session',
+    )
+    this.record(
+      running,
+      () => this.deps.store.setReasoningEffort(conversation, pair.effort),
+      'provider_session',
+    )
   }
 
   /**
@@ -24487,7 +24432,6 @@ export class RuntimeHost implements LiveHost {
     const kept = this.keptFor(session.id, asked.inputs ?? [])
     if (!kept.ok) return { ok: false, resourceRefusal: kept.refusal }
     const queued = this.itIsAService(session.id)
-    if (session.recordingFailure !== null) throw new Error('personal work is not being recorded')
     const recorded = this.deps.store.atomically(() => {
       parent ??= this.deps.store.ensurePersonalRoot(session.id, this.now())
       const number = this.deps.store.numberUnder(parent.piece)
@@ -24599,6 +24543,7 @@ export class RuntimeHost implements LiveHost {
       }
       return await this.deliverWhenItRuns(conversation, brief, by, [], null, deliver)
     } catch (error) {
+      if (error instanceof RecordWriteFailed) throw error
       // ⚑ **A reservation that never registered is gone without a row**, and a brief queued behind
       // the one that met its failed launch meets only *unknown session* at its turn: it is the same
       // start that did not happen, and the identical give starts a new conversation.
@@ -24793,8 +24738,7 @@ export class RuntimeHost implements LiveHost {
       born[0]!.number !== normal.number ||
       born[0]!.giver !== normal.poolGiver ||
       session === undefined ||
-      session === null ||
-      session.recordingFailure !== null
+      session === null
     ) {
       throw new Error('No work was given because the worker could not be recorded.')
     }
@@ -25052,8 +24996,7 @@ export class RuntimeHost implements LiveHost {
       const session = slot?.session ?? null
       if (
         session !== null &&
-        (session.recordingFailure !== null ||
-          session.turnOpened ||
+        (session.turnOpened ||
           session.stopping !== null ||
           session.stopStillAsked !== null ||
           session.flushing !== null ||
@@ -26246,8 +26189,7 @@ export class RuntimeHost implements LiveHost {
         true,
       )
     } catch (error) {
-      this.abandon(slot)
-      this.launches.finish(slot.launch)
+      await this.cleanUpAFailedStart(slot)
       throw this.refusalTranslated(this.aRefusalAPersonReads(error, conversation))
     } finally {
       slot.settle()
@@ -26826,17 +26768,11 @@ export class RuntimeHost implements LiveHost {
    * `work_given` row, in ONE transaction** (`SessionStore.recordGive`), in the ledger of the
    * conversation the brief actually reached (R2) — or of the conversation that took the work on.
    *
-   * ⛔ **A give's two callers reach this AFTER the brief has gone** — the idle branch once the
-   * provider took it, the held branch once it sits in the mailbox that will flush it — so a failure
-   * here is REPORTED and never rethrown (650's rule, `replyToParent`'s one door over): rethrowing
-   * would turn a delivered brief into a refusal, and invite the duplicate, and they ignore the
-   * answer. ⚠️ **The price, stated**: the brief then went out naming a label no `work` row holds, and
-   * the number it took is burned. ⚑ {@link takeOnWork} sends nothing, and answers a write that did
-   * not land as a failure (D-016 · commit 6).
+   * The brief may already have been sent or held. A failed write throws, so the caller is
+   * never given a successful piece or resource id for rows that did not commit.
    *
    * ⚑ **The ordinal is this session's own** (`recordOurs`' rule), and the row is SENT only once it
-   * is down — never with an ordinal taken inside another event's window. ⚑ **Answers whether the
-   * piece is down.**
+   * is down — never with an ordinal taken inside another event's window.
    */
   private recordTheGive(
     session: HostedSession,
@@ -26844,7 +26780,7 @@ export class RuntimeHost implements LiveHost {
     messageId: string | null,
     /** The model and effort a give to a service asked for, kept for its turn. */
     pairAsked: ModelAndEffort | null = null,
-  ): boolean {
+  ): void {
     const ordinal = this.takeLedgerOrdinal(session)
     const at = this.now()
     const event: WorkGivenEvent = {
@@ -26863,38 +26799,32 @@ export class RuntimeHost implements LiveHost {
       ...(piece.givenFolder === null ? {} : { givenFolder: piece.givenFolder }),
       ...(pairAsked === null ? {} : { asked: pairAsked }),
     }
-    this.record(session, () =>
-      this.deps.store.recordGive(
-        {
-          piece: piece.piece,
-          parent: piece.parent,
-          number: piece.number,
-          owner: session.id,
-          givenBy: piece.giver,
-          title: piece.title,
-          brief: piece.brief,
-          folder: piece.folder,
-          inputs: piece.inputs,
-        },
-        ordinal,
-        event,
-        at,
-      ),
+    this.record(
+      session,
+      () =>
+        this.deps.store.recordGive(
+          {
+            piece: piece.piece,
+            parent: piece.parent,
+            number: piece.number,
+            owner: session.id,
+            givenBy: piece.giver,
+            title: piece.title,
+            brief: piece.brief,
+            folder: piece.folder,
+            inputs: piece.inputs,
+          },
+          ordinal,
+          event,
+          at,
+        ),
+      'work,work_resource,events',
     )
     this.rememberLedgerOrdinal(session, ordinal)
-    // ⚠️ **{@link record} reports a write that failed, and a session already failing is not written
-    // to at all** — so a piece is sent to a window only once it is down.
-    if (session.recordingFailure !== null) {
-      console.warn(
-        `runtime session ${session.id} holds ${piece.label}, and no piece was written: this session is not being recorded`,
-      )
-      return false
-    }
     this.emitOurs(session, { sessionId: session.id, ordinal, at, event })
     // 🔴 **638 · work was GIVEN** — it opens the giver's *waiting on a worker* as well as the
     // owner's own list. ⛔ After the write, never before.
     this.theWorldMoved('work')
-    return true
   }
 
   /**
@@ -28601,7 +28531,6 @@ export class RuntimeHost implements LiveHost {
             ...(handed.paths.length === 0 ? {} : { attachments: handed.paths }),
           }
           // The ordinary recorder may keep a live session after a write fails; a move must not send.
-          if (session.recordingFailure !== null) throw new Error(MOVE_WORDS.notRecorded)
           const entry = this.deps.store.atomically(() => {
             const ordinal = Math.max(session.ordinal, this.deps.store.nextOrdinal(session.id))
             const at = this.now()
@@ -28833,8 +28762,8 @@ export class RuntimeHost implements LiveHost {
         TOLD_ABOUT_A_SERVER_REQUEST,
         'notice',
       )
-      session.mailbox.push(held)
       this.publishOurs(session, row)
+      session.mailbox.push(held)
     }
     delete session.itsToolsMoved
     const held = session.mailbox.splice(0, session.mailbox.length)
@@ -29581,7 +29510,7 @@ export class RuntimeHost implements LiveHost {
         stillOpen: true,
       }
     }
-    this.decideAQuestionThisAppAsked(
+    await this.decideAQuestionThisAppAsked(
       askedBy,
       requestId,
       response.kind === 'answer' ? 'answered' : 'rejected',
@@ -29613,21 +29542,31 @@ export class RuntimeHost implements LiveHost {
    * whatever state the asker is in — and remembered until the row is down
    * ({@link answeredInThisRun}), so a second answer meets it however soon it comes.
    */
-  private decideAQuestionThisAppAsked(
+  private async decideAQuestionThisAppAsked(
     askedBy: string,
     requestId: string,
     outcome: 'answered' | 'rejected',
     by: Caller,
-  ): void {
+  ): Promise<void> {
     const key = aQuestionKey(askedBy, requestId)
     this.answeredInThisRun.set(key, outcome)
-    this.writeIntoItsLedger(
-      askedBy,
-      { type: 'user_decision', requestId, outcome, by: whoDidIt(by) },
-      () => {
-        if (this.answeredInThisRun.get(key) === outcome) this.answeredInThisRun.delete(key)
-      },
-    )
+    try {
+      const slot = this.slots.get(askedBy)
+      if (slot !== undefined && slot.session === null) {
+        await withDeadline(slot.arrived, this.deliveryWaitMs, 'the asking conversation starting')
+      }
+      const show = this.writeRecord(askedBy, 'events', () =>
+        this.appendInTheTransaction(askedBy, {
+          type: 'user_decision',
+          requestId,
+          outcome,
+          by: whoDidIt(by),
+        }),
+      )
+      show()
+    } finally {
+      this.answeredInThisRun.delete(key)
+    }
   }
 
   /** 🔴 **742 · the provider took a person's answer** — {@link aPermissionWasTaken}'s twin. */
@@ -29770,20 +29709,19 @@ export class RuntimeHost implements LiveHost {
    * against the ledger in that window would write the request back OUT. So a setting still pending
    * is left alone — the adapter's own settles move both halves at once, and are never pending.
    */
-  private recordPlanPhase(session: HostedSession, reportNow = true): void {
+  private recordPlanPhase(session: HostedSession): void {
     const { effective, requested } = session.handle.settings.planMode
     if (effective !== requested) return
     if (effective === session.planAsRecorded) return
-    session.planAsRecorded = effective
-    this.record(session, () =>
-      effective
-        ? this.deps.store.startPlanMode(session.id, this.now())
-        : this.deps.store.endPlanMode(session.id, this.now()),
+    this.record(
+      session,
+      () =>
+        effective
+          ? this.deps.store.startPlanMode(session.id, this.now())
+          : this.deps.store.endPlanMode(session.id, this.now()),
+      'provider_session',
     )
-    // ⛔ **`740`'s review — never from inside {@link deliver}'s window** (`320` §4.1's disorder): a
-    // report takes its ordinal when it is SENT, and `deliver` still holds its event unsent here, so it
-    // passes `false` and reports after that event goes out, as it does for its own append.
-    if (reportNow && session.sink.alive) this.reportRecordingFailure(session)
+    session.planAsRecorded = effective
     this.publishStateIfChanged(session)
   }
 
@@ -29897,14 +29835,21 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **Chained FIRST**, so an ask that is answered has cleared the field before the check below
     // reads it — which is why that check asks one question and not two.
     stopping.then(answered, answered)
-    void settledWithin(stopping, this.interruptWaitMs).then(() => {
-      if (session.stopStillAsked !== stopping || !this.isCurrentLife(session)) return
-      this.publishOurs(session, {
-        type: 'stop_unanswered',
-        waitedMs: this.interruptWaitMs,
-        ...whose,
+    void settledWithin(stopping, this.interruptWaitMs)
+      .then(() => {
+        if (session.stopStillAsked !== stopping || !this.isCurrentLife(session)) return
+        this.publishOurs(session, {
+          type: 'stop_unanswered',
+          waitedMs: this.interruptWaitMs,
+          ...whose,
+        })
       })
-    })
+      .catch((error: unknown) => {
+        if (error instanceof RecordWriteFailed) return
+        console.warn(
+          `runtime host could not report ${session.id}'s unanswered stop: ${errorMessage(error)}`,
+        )
+      })
   }
 
   /**
@@ -32235,7 +32180,11 @@ export class RuntimeHost implements LiveHost {
     // and an event arriving then would be describing a conversation that had already ended. Every
     // ending reaches here (closed, stream-ended, stream-failed), so there is no path on which a
     // queued message quietly ceases to exist.
-    this.handOnWhatItHeld(session)
+    try {
+      this.handOnWhatItHeld(session)
+    } catch (error) {
+      if (!(error instanceof RecordWriteFailed)) throw error
+    }
 
     // ⚠️ **The termination RECEIPT** (070, from 068 finding 3): whether the provider confirmed it
     // stopped, which the turn's recorded ending states.
@@ -32252,36 +32201,44 @@ export class RuntimeHost implements LiveHost {
 
     // The terminal state is the fact the next launch depends on. Through `record()` like every other
     // write, so a broken database costs durability and not the teardown.
-    this.record(session, () => {
-      const abandoned = this.deps.store.terminate(
-        session.id,
-        terminalFor(ending),
-        // ⛔ **The turn's ending is the RECEIPT's to state, not the intention's** (222 §3, from
-        // 208 H3). `stopped` is whether the provider confirmed it stopped inside the bound, or
-        // whether we gave up waiting and let go of the handle. It was hard-coded `'ended'` — *"the session ended underneath this turn"* — on
-        // both branches, so a teardown that could not confirm anything wrote the same durable
-        // ending as one that could, and the Sessions page then said it in the same word.
-        //
-        // ⚑ **H3's own remedy, in the one place 222's scope reaches:** *"timeout should produce
-        // unknown/still owned."* We know the turn produced no `turn` event; we do NOT know it
-        // stopped. `unknown` is the member 045 added for exactly "we did not observe how it went",
-        // and using it here costs nothing else — `launches.finish` still holds the id against the
-        // unbounded `session.terminated`.
-        //
-        // ⚠️ **This does not tri-state the SESSION.** The row is terminal either way: this app has
-        // let go and the conversation is over as far as anything here can act on it. What was
-        // over-claimed is how its last TURN ended, and that is the field being corrected.
-        stopped ? 'ended' : 'unknown',
-        this.now(),
+    try {
+      this.record(
+        session,
+        () => {
+          const abandoned = this.deps.store.terminate(
+            session.id,
+            terminalFor(ending),
+            // ⛔ **The turn's ending is the RECEIPT's to state, not the intention's** (222 §3, from
+            // 208 H3). `stopped` is whether the provider confirmed it stopped inside the bound, or
+            // whether we gave up waiting and let go of the handle. It was hard-coded `'ended'` — *"the session ended underneath this turn"* — on
+            // both branches, so a teardown that could not confirm anything wrote the same durable
+            // ending as one that could, and the Sessions page then said it in the same word.
+            //
+            // ⚑ **H3's own remedy, in the one place 222's scope reaches:** *"timeout should produce
+            // unknown/still owned."* We know the turn produced no `turn` event; we do NOT know it
+            // stopped. `unknown` is the member 045 added for exactly "we did not observe how it went",
+            // and using it here costs nothing else — `launches.finish` still holds the id against the
+            // unbounded `session.terminated`.
+            //
+            // ⚠️ **This does not tri-state the SESSION.** The row is terminal either way: this app has
+            // let go and the conversation is over as far as anything here can act on it. What was
+            // over-claimed is how its last TURN ended, and that is the field being corrected.
+            stopped ? 'ended' : 'unknown',
+            this.now(),
+          )
+          // Reported on EVERY ending, including a deliberate close. The first version of this line
+          // suppressed the `closed` case as ordinary, which was two mistakes: closing a chat mid-turn is
+          // worth a line, and the condition was very nearly unreachable anyway — see the note on
+          // {@link finalize} about which caller actually gets here first on that path.
+          if (abandoned) {
+            console.warn(`runtime session ${session.id}: a turn was still open (${ending})`)
+          }
+        },
+        'provider_session,turn,events',
       )
-      // Reported on EVERY ending, including a deliberate close. The first version of this line
-      // suppressed the `closed` case as ordinary, which was two mistakes: closing a chat mid-turn is
-      // worth a line, and the condition was very nearly unreachable anyway — see the note on
-      // {@link finalize} about which caller actually gets here first on that path.
-      if (abandoned) {
-        console.warn(`runtime session ${session.id}: a turn was still open (${ending})`)
-      }
-    })
+    } catch (error) {
+      if (!(error instanceof RecordWriteFailed)) throw error
+    }
 
     // 🔴 **The app-side cause, settled where the app writes it** (404, criterion 4).
     //
@@ -35340,11 +35297,6 @@ export class RuntimeHost implements LiveHost {
       }
       piece = { piece: held.piece, label: held.label }
     }
-    // The request is the row: a conversation no longer being recorded keeps none, so it is a
-    // failed call and never "put in front of the person".
-    const notKept =
-      'this conversation is no longer being recorded, so the request was not kept and nothing was asked'
-    if (session.recordingFailure !== null) throw new Error(notKept)
     const requestId = newMcpServerRequestId()
     this.publishOurs(session, {
       type: 'mcp_server_requested',
@@ -35357,7 +35309,6 @@ export class RuntimeHost implements LiveHost {
       requestedBy: foldProfileName(caller.profileId),
       ...(piece === null ? {} : piece),
     })
-    if (session.recordingFailure !== null) throw new Error(notKept)
     return { ok: true, requestId }
   }
 
@@ -35787,15 +35738,6 @@ export class RuntimeHost implements LiveHost {
       }
       return this.answerAnApproval(waiting, done, offered)
     } catch (error) {
-      // Every write above is one transaction, and nothing after a commit throws: a failed one
-      // rolled back whole.
-      if (error instanceof ItsRecordIsNotWritten) {
-        return {
-          outcome: 'refused',
-          reason: `BroCrew can no longer write the record of the conversation that asked, so nothing was decided: ${error.message}. Stop that conversation, then decide this again.`,
-          stillOpen: true,
-        }
-      }
       return {
         outcome: 'refused',
         reason: `BroCrew could not record that decision, so nothing changed: ${errorMessage(error)}. ${approve ? 'Press it again, or refuse it.' : 'Press it again.'}`,
@@ -36103,9 +36045,6 @@ export class RuntimeHost implements LiveHost {
     const slot = this.slots.get(conversation)
     const session = slot?.session ?? null
     if (slot !== undefined && session === null) return 'starting'
-    if (session !== null && session.recordingFailure !== null) {
-      throw new ItsRecordIsNotWritten(session.recordingFailure)
-    }
     const event: McpServerRequestSettledEvent = {
       type: 'mcp_server_request_settled',
       requestId,
@@ -36467,17 +36406,21 @@ export class RuntimeHost implements LiveHost {
     const key = `${model}\u0000${effort ?? ''}`
     if (session.lastReported === key) return
     const firstOfThisLife = session.lastReported === ''
+    this.record(
+      session,
+      () => {
+        const onRecord =
+          effort === null &&
+          firstOfThisLife &&
+          providerDefinitions[session.provider].transcripts.keepEarlierReportedEffort()
+            ? this.deps.store.whatItRunsOn(session.id)
+            : null
+        const kept = onRecord?.reportedModel === model ? onRecord.reportedEffort : null
+        this.deps.store.setReportedModel(session.id, model, effort ?? kept)
+      },
+      'provider_session',
+    )
     session.lastReported = key
-    this.record(session, () => {
-      const onRecord =
-        effort === null &&
-        firstOfThisLife &&
-        providerDefinitions[session.provider].transcripts.keepEarlierReportedEffort()
-          ? this.deps.store.whatItRunsOn(session.id)
-          : null
-      const kept = onRecord?.reportedModel === model ? onRecord.reportedEffort : null
-      this.deps.store.setReportedModel(session.id, model, effort ?? kept)
-    })
   }
 
   /**
@@ -38300,8 +38243,7 @@ export class RuntimeHost implements LiveHost {
         // *"who owns this"* was decided on the reservation above and is read from the slot.
         return await this.reopenSession(slot, sink ?? NO_SURFACE, because, page)
       } catch (error) {
-        this.abandon(slot)
-        this.launches.finish(slot.launch) // as in `createSession` (070)
+        await this.cleanUpAFailedStart(slot)
         // 🔴 **710 · R52, at a person's Reopen too** (review of `710`) — see
         // {@link aRefusalAPersonReads}, which since `716` also says every refusal here of a REOPEN.
         throw this.refusalTranslated(this.aRefusalAPersonReads(error, sessionId, true))
@@ -38771,12 +38713,16 @@ export class RuntimeHost implements LiveHost {
     // ⛔ **The row stops saying `ended`, because this conversation is running again** (179).
     //
     // Clear the terminal after the provider successfully starts, rather than beside `closeOpenTurn` before launch: a failed resume must keep its old state. `register` starts the pump after this synchronous line, so no new event is written against the old terminal. See `SessionStore.reopened`.
-    this.record(session, () => this.deps.store.reopened(sessionId, this.now()))
+    this.record(session, () => this.deps.store.reopened(sessionId, this.now()), 'provider_session')
     // 🔴 **741 · …and a plan that was still OPEN at the close is released here** — the reopen left
     // it (R99, corrected), so the row says so, and the next reopen reads the same pair. ⚑ After the
     // launch, as `reopened` is: a reopen that failed leaves the row as it was.
     if (leftAtTheReopen)
-      this.record(session, () => this.deps.store.endPlanMode(sessionId, this.now()))
+      this.record(
+        session,
+        () => this.deps.store.endPlanMode(sessionId, this.now()),
+        'provider_session',
+      )
     // 🔴 **673 · the host's first row of every life it reopens** (`663` F1) — the seam `653`'s
     // renderer crosses, and the fold's drive reset (D-013): a life a killed app ended wrote no
     // terminal status. ⛔ The column written one line up is not a row, so the fold could never see
@@ -38814,7 +38760,7 @@ export class RuntimeHost implements LiveHost {
     // start replays it — ⚑ written only when it moved, through the two writers a change uses. ⛔ The
     // person's stamp is not touched: nobody chose this pair here.
     if (model !== recordedModel) {
-      this.record(session, () => this.deps.store.setModel(sessionId, model))
+      this.record(session, () => this.deps.store.setModel(sessionId, model), 'provider_session')
     }
     if ((reasoningEffort ?? null) !== (recordedEffort ?? null)) {
       this.record(session, () =>
@@ -39836,8 +39782,6 @@ export class RuntimeHost implements LiveHost {
       stopping: null,
       terminated: null,
       finalizing: null,
-      recordingFailure: null,
-      recordingFailureReported: false,
       staleEventReported: false,
       // ⚑ **708 · nobody has told this life anything yet** — see {@link HostedSession.commands}.
       commands: null,
@@ -40002,7 +39946,12 @@ export class RuntimeHost implements LiveHost {
     }
     // ⚑ **D-019 · its provider is up**: from here its status and its levels speak.
     this.stateMayHaveMoved(id)
-    options.onRegistered?.(session)
+    try {
+      options.onRegistered?.(session)
+    } catch (error) {
+      void this.finalize(session, 'stream-failed')
+      throw error
+    }
     // 🔴 **534 · a conversation now EXISTS as far as every list is concerned, so say so.**
     //
     // ⛔ **Here and not at the reservation, and that is the whole placement.** `onRegistered` above
@@ -40042,21 +39991,45 @@ export class RuntimeHost implements LiveHost {
     return session
   }
 
-  /**
-   * Run one durable write. A failing database must not take the live session with it:
-   * the provider is still running and the user still needs to see it, so recording
-   * stops and the session continues — but that is a real loss of durability, so it is
-   * remembered and reported rather than swallowed.
-   */
-  private record(session: HostedSession, write: () => void): void {
-    if (session.recordingFailure !== null) return // do not hammer a broken database
+  /** A failed write ends this operation; the next operation still gets its own attempt. */
+  private record(session: HostedSession, write: () => void, table = 'events'): void {
+    this.writeRecord(session.id, table, write)
+  }
+
+  private writeRecord<T>(sessionId: string, table: string, write: () => T): T {
     try {
-      write()
+      return this.deps.store.atomically(write)
     } catch (error) {
-      session.recordingFailure = errorMessage(error)
-      console.error(`runtime session ${session.id} is no longer being recorded:`, error)
+      if (error instanceof RecordWriteFailed) throw error
+      const failed = new RecordWriteFailed(error)
+      const code = (error as { code?: string } | null)?.code ?? 'unknown'
+      const said = errorMessage(error).replace(/[\r\n]+/g, ' ')
+      console.warn(
+        `runtime write failed: session=${sessionId} table=${table} code=${code} error=${said}`,
+      )
+      const session = this.slots.get(sessionId)?.session
+      if (session != null) {
+        this.livesWithUnrecordedWrites.add(session)
+        if (this.deliveryFailures?.session === session) this.deliveryFailures.errors.push(failed)
+        else this.showWriteFailure(session, failed)
+      }
+      throw failed
     }
   }
+
+  private showWriteFailure(session: HostedSession, error: RecordWriteFailed): void {
+    if (!session.sink.alive) return
+    this.emit(session, {
+      sessionId: session.id,
+      ordinal: session.ordinal++,
+      at: this.now(),
+      event: { type: 'error', message: error.message, fatal: false },
+    })
+  }
+
+  private readonly livesWithUnrecordedWrites = new WeakSet<HostedSession>()
+
+  private deliveryFailures: { session: HostedSession; errors: RecordWriteFailed[] } | null = null
 
   private readonly observedLedgerWrites = new WeakMap<HostedSession, object>()
 
@@ -40077,26 +40050,7 @@ export class RuntimeHost implements LiveHost {
   /** A successful own append already advanced this counter; another writer still invalidates it. */
   private rememberLedgerOrdinal(session: HostedSession, ordinal: number): void {
     const stamp = this.deps.store.lastOrdinalWrite(session.id)
-    if (session.recordingFailure === null && stamp?.ordinal === ordinal)
-      this.observedLedgerWrites.set(session, stamp)
-  }
-
-  /** Tell the renderer once — silently losing durability is how you find out too late. */
-  private reportRecordingFailure(session: HostedSession): void {
-    if (session.recordingFailure === null || session.recordingFailureReported) return
-    session.recordingFailureReported = true
-    this.emit(session, {
-      sessionId: session.id,
-      ordinal: session.ordinal++,
-      // Now, because that is when we noticed — this notice is ours, and it is not in the ledger
-      // (there is nothing to write it to; that is what it is reporting).
-      at: this.now(),
-      event: {
-        type: 'error',
-        message: `this session is no longer being recorded, so it will not be resumable: ${session.recordingFailure}`,
-        fatal: false,
-      },
-    })
+    if (stamp?.ordinal === ordinal) this.observedLedgerWrites.set(session, stamp)
   }
 
   /**
@@ -40826,7 +40780,11 @@ export class RuntimeHost implements LiveHost {
           this.noteStaleEvent(session)
           break
         }
-        this.deliver(session, event)
+        try {
+          this.deliver(session, event)
+        } catch (error) {
+          if (!(error instanceof RecordWriteFailed)) throw error
+        }
       }
     } catch (error) {
       ending = 'stream-failed'
@@ -41019,8 +40977,8 @@ export class RuntimeHost implements LiveHost {
     life: HostedSession,
     onlyAGive = false,
   ): RefusedInputReference | null {
+    if (this.livesWithUnrecordedWrites.has(life)) return null
     const sessionId = life.id
-    if (life.recordingFailure !== null) return null
     try {
       const opened = this.deps.store.newestOfType?.(sessionId, 'user_turn') ?? null
       if (opened === null || opened.event.type !== 'user_turn') return null
@@ -41028,7 +40986,9 @@ export class RuntimeHost implements LiveHost {
       // presence means the complete retained input cannot be proved to be a single give.
       if (onlyAGive && 'parts' in opened.event) return null
       const first = opened.ordinal + 1
-      const expected = this.deps.store.nextOrdinal(sessionId) - first
+      const next = this.deps.store.nextOrdinal(sessionId)
+      if (life.ordinal > next) return null
+      const expected = next - first
       if (expected < 1 || expected > THE_ROWS_A_REFUSED_TURN_IS_READ_IN) return null
       const since = this.deps.store.eventsFrom(sessionId, first, THE_ROWS_A_REFUSED_TURN_IS_READ_IN)
       if (since.length !== expected || since.some((row, at) => row.ordinal !== first + at)) {
@@ -41816,7 +41776,7 @@ export class RuntimeHost implements LiveHost {
   ): RuntimeEventMessage | null {
     if (stated !== null) session.levelWritten = stated
     // ⚑ A row that could not be written is in no plan: what its provider stated stands.
-    const plan = session.recordingFailure === null ? this.planItsSchedule(session.id, at) : null
+    const plan = this.planItsSchedule(session.id, at)
     // ⛔ …nor a plan of a history read only in part with no level of its provider's in it: it
     // lists less than there may be, and the level this life holds stands.
     const partOnly =
@@ -41838,14 +41798,15 @@ export class RuntimeHost implements LiveHost {
       this.noteWhatItsNewestLevelSays(session.id, session.levelWritten, at)
       return null
     }
-    session.levelWritten = level
-    this.noteWhatItsNewestLevelSays(session.id, level, at)
-    return this.recordOurs(session, {
+    const written = this.recordOurs(session, {
       type: 'scheduled_work',
       jobs: [...level.jobs],
       ...(level.dropped > 0 ? { dropped: level.dropped } : {}),
       source: RECEIPTS_LEVEL_SOURCE,
     })
+    session.levelWritten = level
+    this.noteWhatItsNewestLevelSays(session.id, level, at)
+    return written
   }
 
   /**
@@ -41878,7 +41839,7 @@ export class RuntimeHost implements LiveHost {
       )
     }
     // ⚑ A mark not known to be written is kept as its moment, for the plan a restart rebuilds.
-    if (marked === null || session.recordingFailure !== null) {
+    if (marked === null) {
       const kept = this.itsAttempts(session.id)
       this.keepItsAttempts(session.id, { ...kept, resetUnmarkedAt: at, at })
       return []
@@ -41988,6 +41949,32 @@ export class RuntimeHost implements LiveHost {
   }
 
   private deliver(session: HostedSession, given: RuntimeEvent): void {
+    const previous = this.deliveryFailures
+    const errors: RecordWriteFailed[] = []
+    this.deliveryFailures = { session, errors }
+    try {
+      this.deliverEvent(session, given, errors)
+    } finally {
+      this.deliveryFailures = previous
+      if (previous?.session === session) previous.errors.push(...errors)
+      else for (const error of errors) this.showWriteFailure(session, error)
+    }
+  }
+
+  private deliverEvent(
+    session: HostedSession,
+    given: RuntimeEvent,
+    failures: RecordWriteFailed[],
+  ): void {
+    const keepGoing = <T>(step: () => T, fallback: T): T => {
+      try {
+        return step()
+      } catch (error) {
+        if (!(error instanceof RecordWriteFailed)) throw error
+        return fallback
+      }
+    }
+
     // ⛔ **Before `observe`, and before the ordinal is taken** (293 §3). A stale yield must not move
     // the liveness of a finalized session either, and an ordinal handed out here is an ordinal the
     // next life cannot use.
@@ -42253,10 +42240,11 @@ export class RuntimeHost implements LiveHost {
     const ordinal = this.takeLedgerOrdinal(session)
     session.workAncestry.remember({ event: wire, ordinal, at })
     if (wire.type === 'conversation_reset') session.workAncestryAfter = ordinal
-    this.record(session, () => this.deps.store.append(session.id, ordinal, wire, at))
-    this.markWhatWasNotRecorded(session, ordinal, wire)
-    this.rememberLedgerOrdinal(session, ordinal)
-    if (session.recordingFailure === null) this.aScheduleRowWasKept(session.id, ordinal, wire, at)
+    keepGoing(() => {
+      this.record(session, () => this.deps.store.append(session.id, ordinal, wire, at))
+      this.rememberLedgerOrdinal(session, ordinal)
+      this.aScheduleRowWasKept(session.id, ordinal, wire, at)
+    }, undefined)
     if (cutByALimit !== null && event.type === 'turn' && event.limit !== undefined) {
       this.keepWhatALimitCut(session, cutByALimit, event.limit)
     }
@@ -42270,7 +42258,7 @@ export class RuntimeHost implements LiveHost {
     // the other durable writes: an agent-spawned child that plans has no window, and its row must say
     // it is planning all the same (`741`: a reopen then releases it). ⛔ Reported below, after this
     // event is sent (`740`'s review).
-    this.recordPlanPhase(session, false)
+    keepGoing(() => this.recordPlanPhase(session), undefined)
 
     // ⛔ **The memory-note boundary is observed ABOVE the sink gate, with the durable writes and
     // not with the publishing** (318, found reviewing this dispatch's own diff). It reads as
@@ -42293,21 +42281,28 @@ export class RuntimeHost implements LiveHost {
     // instead of publishing it.
     const note =
       event.type === 'status' && TURN_ENDINGS.has(event.state)
-        ? this.recordMemoryNotes(session)
+        ? keepGoing(() => this.recordMemoryNotes(session), null)
         : null
     // 🔴 **What is scheduled, said as a receipt or a level changes it** ({@link sayWhatIsScheduled})
     // — recorded here, delivered below, for the note's reason.
     const listing =
       wire.type === 'scheduled_work'
-        ? this.sayWhatIsScheduled(
-            session,
-            at,
-            wire.jobs === undefined ? null : { jobs: wire.jobs, dropped: wire.dropped ?? 0 },
+        ? keepGoing(
+            () =>
+              this.sayWhatIsScheduled(
+                session,
+                at,
+                wire.jobs === undefined ? null : { jobs: wire.jobs, dropped: wire.dropped ?? 0 },
+              ),
+            null,
           )
         : null
     // 🔴 **Its provider began a new conversation under it** — marked where its scheduling
     // evidence reads it ({@link markItsProvidersReset}), recorded here and delivered below.
-    const reset = event.type === 'conversation_reset' ? this.markItsProvidersReset(session, at) : []
+    const reset =
+      event.type === 'conversation_reset'
+        ? keepGoing(() => this.markItsProvidersReset(session, at), [])
+        : []
     // ⚑ A turn that ended opened by nobody's words now ({@link HostedSession.aPersonsWordsOpenedIt}),
     // ⚑ and what had finished in the background was its to see (F076).
     if (event.type === 'status' && TURN_ENDINGS.has(event.state)) {
@@ -42328,9 +42323,9 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **Only after an event that can move a task**, which is the same two types the fold branches
     // on. Asking after every delta would be one ledger fold per token.
     if (event.type === 'turn' || event.type === 'status') {
-      this.tellWhoeverGaveTheWork(session.id)
+      keepGoing(() => this.tellWhoeverGaveTheWork(session.id), undefined)
       if (event.type === 'turn' || (event.type === 'status' && TURN_ENDINGS.has(event.state)))
-        this.reconcileWork(new Set([session.id]))
+        keepGoing(() => this.reconcileWork(new Set([session.id])), undefined)
     }
     // ⚑ **D-033 · a `working` status before the words of a turn of ours**: they compare again.
     if (event.type === 'status' && event.state === 'working' && !session.turnOpened) {
@@ -42343,7 +42338,7 @@ export class RuntimeHost implements LiveHost {
       event.type === 'background_work' ||
       (event.type === 'scheduled_work' && event.jobs !== undefined)
     ) {
-      this.sayWhetherALevelMovedItsWork(session, event)
+      keepGoing(() => this.sayWhetherALevelMovedItsWork(session, event), undefined)
     }
 
     // 🔴 **Where a request this conversation raised is sent** (394, S4).
@@ -42357,10 +42352,10 @@ export class RuntimeHost implements LiveHost {
     // ⚠️ **Handed BOTH events**, and each is doing a different job: the adapter's is the one whose
     // shape can still be classified — zod strips an undocumented key on the way to `wire` — and the
     // wire's is what says the contract accepted it at all. See {@link routeRequest}.
-    const routed = this.routeRequest(session, event, wire)
+    const routed = keepGoing(() => this.routeRequest(session, event, wire), null)
     // 🔴 **D-042 · R5 — what the provider reports it runs, kept on the row** — above the gate, so a
     // helper nobody watches is recorded too.
-    this.recordWhatItReportsRunning(session)
+    keepGoing(() => this.recordWhatItReportsRunning(session), undefined)
 
     // A dead sink is not an error: the window is gone and its sessions are being
     // closed; dropping is better than throwing into teardown.
@@ -42387,19 +42382,11 @@ export class RuntimeHost implements LiveHost {
           ? {}
           : { workAncestry: { ...ancestry, after: session.workAncestryAfter } }),
       })
-      // 🔴 **Before `reportRecordingFailure`, not after, and this is the SECOND disorder — the one
-      // no screenshot showed** (320 §4.1, found by the enumeration the dispatch asked for). That
-      // notice takes its ordinal at SEND time, and on a turn-ending status where the database has
-      // just broken it used to fire from inside `publishOurs` while `deliver` still held 181 unsent:
-      // the wire went **182, 183, 181**, a three-event disorder on the one path where the app is
-      // already telling you it has stopped recording. `recordOurs` no longer reports, so the only
-      // report is here, after both.
       // ⚑ The level a receipt or a provider's level changed, after the row that changed it; never
       // with a note, which only a turn's end writes.
       if (listing !== null) this.emit(session, listing)
       for (const row of reset) this.emit(session, row)
       if (note !== null) this.emit(session, note)
-      this.reportRecordingFailure(session)
       // The provider reports its model/effort asynchronously, and can REROUTE mid-session. Liveness
       // only publishes on a state change, so without this the panel would keep showing the model the
       // session started with (081).
@@ -42411,6 +42398,7 @@ export class RuntimeHost implements LiveHost {
       // `N+1` on the wire before `N`, which is the disorder `320` measured and closed.
       if (routed !== null) this.emit(session, routed)
     }
+    for (const error of failures.splice(0)) this.showWriteFailure(session, error)
     // A queued message goes when the turn it was waiting behind ends (077).
     //
     // ⚠️ **Keyed on the `idle` STATUS EVENT, not on every event.** `idle` is the app's own definition

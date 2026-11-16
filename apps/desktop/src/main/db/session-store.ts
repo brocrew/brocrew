@@ -1,4 +1,5 @@
 import { readInstructionAskers } from './instruction-askers-read'
+import { retryBusyWrite } from './retry-busy-write'
 import {
   createSessionCatalogueRead,
   derivedStateOf,
@@ -5336,7 +5337,7 @@ export function createSessionStore(
     },
 
     atomically(work) {
-      return db.transaction(work)()
+      return retryBusyWrite(db, () => db.transaction(work)())
     },
 
     onCommitted(listener) {

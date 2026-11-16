@@ -484,7 +484,6 @@ describe('a to-do for a person', () => {
         const { brobot, ada, asked, passedUp } = await passedUpToThePerson()
         expect(await end(ada, brobot)).toMatchObject({ outcome: 'ok' })
         await settle()
-        // The conversation that passed it up goes on being recorded after the row.
         await host.send(brobot, 'What next?', window)
         await settle()
         expect(
@@ -494,7 +493,6 @@ describe('a to-do for a person', () => {
         ).toBe(true)
         expect(stateOf(ada, asked)).toBe(ending)
         expect(stateOf(brobot, passedUp)).toBe(ending)
-        // The Events tab says how its work ended.
         const itsRow = store
           .events(brobot)
           .find((entry) => entry.event.type === 'question_ended_with_its_piece')?.event
@@ -521,7 +519,7 @@ describe('a to-do for a person', () => {
         it(`when the piece is ${how}, its row and the copy’s are one transaction: ${which} ends neither`, async () => {
           const { brobot, ada, asked, passedUp } = await passedUpToThePerson()
           failsToWrite(failing)
-          await end(ada, brobot)
+          await expect(end(ada, brobot)).rejects.toThrow(/could not save/)
           await settle()
           expect(
             store.events(ada).filter((entry) => entry.event.type === ENDS_THE_PIECE[ending]),
@@ -549,7 +547,9 @@ describe('a to-do for a person', () => {
       const { brobot, ada, asked, passedUp } = await passedUpToThePerson()
       await stopped(ada)
       failsToWrite('question_ended_with_its_piece')
-      await call(agentToolsFor(host, brobot), 'withdraw_task', { piece: 'W1.1' })
+      await expect(
+        call(agentToolsFor(host, brobot), 'withdraw_task', { piece: 'W1.1' }),
+      ).rejects.toThrow(/could not save/)
       await settle()
       expect(store.events(ada).filter((entry) => entry.event.type === 'work_taken_back')).toEqual(
         [],

@@ -421,26 +421,24 @@ describe('provider facts use existing reads and existing live carriers', () => {
   it('does not label an unrelated recording failure as a provider-limit problem', async () => {
     const a = await live()
     const boundary = host as unknown as {
-      slots: Map<string, { session: { recordingFailure: string | null } }>
       providerBlockDisclosure(id: string, provider: 'claude'): unknown
     }
-    const session = boundary.slots.get(a.id)?.session
-    if (session === undefined) throw new Error('fictional session was not registered')
-    session.recordingFailure = 'fictional recording failure'
+    const write = vi.spyOn(store, 'setApprovalMode').mockImplementation(() => {
+      throw new Error('fictional disk full')
+    })
+    await expect(host.setApprovalMode(a.id, 'auto', window)).rejects.toThrow(/could not save/)
     expect(boundary.providerBlockDisclosure(a.id, 'claude')).toMatchObject({
       providerBlockStatus: 'current',
       providerBlock: null,
     })
-    session.recordingFailure = null
+    write.mockRestore()
     clock++
     a.handle.simulateError(UNKNOWN, false)
     await eventually(() => window.events.some((row) => row.event.type === 'error'))
     await drain()
-    session.recordingFailure = 'fictional recording failure'
     expect(boundary.providerBlockDisclosure(a.id, 'claude')).toMatchObject({
       providerBlockStatus: 'unavailable',
     })
-    session.recordingFailure = null
   })
 
   it('publishes an own unknown stop after an existing poll, and never borrows it for another idle conversation', async () => {

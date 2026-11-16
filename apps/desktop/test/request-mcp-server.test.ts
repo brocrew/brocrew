@@ -764,10 +764,10 @@ describe('the person decides an agent’s MCP server request', () => {
       return append(...values)
     })
     await expect(call(args(server.url))).rejects.toThrow(
-      'this conversation is no longer being recorded, so the request was not kept and nothing was asked',
+      'This conversation could not save the change: Error: fictional disk full',
     )
     await expect(call(args(server.url, 'second-notes'))).rejects.toThrow(
-      'the request was not kept and nothing was asked',
+      'This conversation could not save the change: Error: fictional disk full',
     )
     expect(world.store.mcpServerRequestsWaiting()).toEqual([])
     expect(server.connections).toBe(0)

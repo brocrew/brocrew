@@ -450,7 +450,7 @@ describe('the commit record covers every write', () => {
       expect(told(target)).toBe(true)
     })
 
-    it('a row the store refuses still moves its live state, and no row is kept (recordOurs fallback)', async () => {
+    it('a rejected authored row is not reported as committed, and the next write is attempted', async () => {
       begin()
       const giver = await world.aPersonOpens(host, 'giver')
       await settle()
@@ -459,11 +459,15 @@ describe('the commit record covers every write', () => {
         throw new Error('fictional disk full')
       })
       effects.length = 0
-      await host.send(giver, 'Fictional words the store refuses.', world.window).catch(() => {})
+      await expect(
+        host.send(giver, 'Fictional words the store refuses.', world.window),
+      ).rejects.toThrow(/could not save/)
       await settle()
       append.mockRestore()
-      expect(effects).toContain(`stateMayHaveMoved:${giver}:user_turn`)
+      expect(effects).not.toContain(`stateMayHaveMoved:${giver}:user_turn`)
       expect(world.ledger(giver).length).toBe(rows)
+      host.noteUserCommand(giver, 'closed', world.window)
+      expect(world.ledger(giver).some((event) => event.type === 'user_command')).toBe(true)
     })
 
     it('kept files and a whole import move what they name', async () => {

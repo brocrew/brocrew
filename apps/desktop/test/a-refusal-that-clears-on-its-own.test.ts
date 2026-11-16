@@ -52,7 +52,7 @@ import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runt
  * 🔴 **Both branches of `queueMessage` numbered the task AFTER the words had left**, and a database
  * that could not write threw from there into the same catch. ⚑ **D-016 · a give takes its number
  * BEFORE the send (R4)**, so what is left to fail after the words have gone is the piece's own row,
- * and `recordTheGive` contains that failure; §6 walks the idle branch and §7 the held one, where the
+ * and a failed record now rejects the call without claiming the brief was unsent; §6 walks the idle branch and §7 the held one, where the
  * refusal was sharpest — the mailbox held the words and was going to flush them.
  *
  * ## ⚑ The controls, because every claim here is a pair
@@ -637,22 +637,19 @@ describe('650 · a refusal that clears on its own', () => {
     })
     const warned = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
 
-    const answered = payload(
-      await call('give_work', {
+    await expect(
+      call('give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'x',
         brief: 'build the thing',
       }),
-    )
-    // 🔴 **RED before `650`** (as a task's number): `agent-cannot-take-a-message` — *"the message
-    // was not queued"* — while the receiver's own ledger held the turn those words opened.
-    expect(answered).toMatchObject({ outcome: 'ok', delivery: 'sent' })
-    const worker = answered.agent as string
+    ).rejects.toThrow(/could not save/)
+    const worker = store.resumable().find((one) => one.profileId === 'worker')!.sessionId
     const turns = eventsOf(worker).filter((event) => event.type === 'user_turn')
     expect(JSON.stringify(turns)).toContain('build the thing')
     expect(labelsIn(worker)).toEqual([])
-    expect(warned.mock.calls.flat().join(' ')).toContain('no piece was written')
+    expect(warned.mock.calls.flat().join(' ')).toContain('table=work,work_resource,events')
 
     // ⚠️ **The control**: with the store answering, the same give to another agent writes its
     // piece down — under the NEXT number, because the one the failed write took is burned (R4).
@@ -715,17 +712,14 @@ describe('650 · a refusal that clears on its own', () => {
     })
     vi.spyOn(console, 'warn').mockImplementation(() => undefined)
 
-    const answered = payload(
-      await call('give_work', {
+    await expect(
+      call('give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'sibling',
         title: 'x',
         brief: 'and then this',
       }),
-    )
-    // 🔴 **RED before `650`, and the sharpest case**: the refusal said nothing was queued while
-    // the mailbox held these words and was going to deliver them — a retry would send them twice.
-    expect(answered).toMatchObject({ outcome: 'ok', delivery: 'held', agent: worker.agent })
+    ).rejects.toThrow(/could not save/)
     expect(eventsOf(worker.agent).filter((event) => event.type === 'message_queued')).toHaveLength(
       1,
     )

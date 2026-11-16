@@ -260,33 +260,32 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
             throw new Error('fictional reply transaction failure')
           }),
         )
-        const replied = await reply(worker, {
-          piece: task,
-          outcome: 'done',
-          summary: 'Delivered.',
-          resource_paths: [path],
-          ...(kind === 'explicit' ? { result_document: path } : {}),
-        })
+        await expect(
+          reply(worker, {
+            piece: task,
+            outcome: 'done',
+            summary: 'Delivered.',
+            resource_paths: [path],
+            ...(kind === 'explicit' ? { result_document: path } : {}),
+          }),
+        ).rejects.toThrow(/could not save/)
         failure.mockRestore()
-        expect(replied.outcome).toBe('ok')
-        expect(replied.resources).toEqual([])
-        expect(replied).not.toHaveProperty('result_document')
         expect(store.resourcesOf(task)).toEqual([])
         expect(ledger(worker).filter((one) => one.type === 'work_replied')).toEqual([])
         expect(taskOf(worker, task)?.state).not.toBe('answered')
         expect(taskOf(worker, task)?.resultDocument).toBeUndefined()
-        const skipped = await reply(worker, {
+        const retried = await reply(worker, {
           piece: task,
           outcome: 'done',
           summary: 'Still delivered.',
           resource_paths: [path],
           ...(kind === 'explicit' ? { result_document: path } : {}),
         })
-        expect(skipped.outcome).toBe('ok')
-        expect(skipped.resources).toEqual([])
-        expect(skipped).not.toHaveProperty('result_document')
-        expect(store.resourcesOf(task)).toEqual([])
-        expect(ledger(worker).filter((one) => one.type === 'work_replied')).toEqual([])
+        expect(retried.outcome).toBe('ok')
+        expect(retried.resources).toHaveLength(1)
+        expect(retried.result_document).toBe((retried.resources as string[])[0])
+        expect(store.resourcesOf(task)).toHaveLength(1)
+        expect(ledger(worker).filter((one) => one.type === 'work_replied')).toHaveLength(1)
       },
     )
 

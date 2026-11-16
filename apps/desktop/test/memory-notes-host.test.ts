@@ -113,10 +113,7 @@ describe('318 · the host says what appeared while the turn ran', () => {
           return NULL_SESSION_STORE.create(row)
         },
         append: (_sessionId: string, ordinal: number, event: TranscriptEvent) => {
-          // ⚑ **A database that breaks on a NAMED row** (320). `record` catches this, latches
-          // `recordingFailure` and publishes a notice that takes an ordinal at SEND time, from
-          // wherever it is called — so which row breaks decides which window the notice fires in,
-          // and a count would have been too blunt to put it in the one that matters.
+          // Fail a named row so the test exercises the publication boundary it belongs to.
           if (breakRecordingOn?.(event)) throw new Error('the disk went away')
           recorded.push({ ordinal, event })
         },
@@ -531,23 +528,25 @@ describe('318 · the host says what appeared while the turn ran', () => {
         .events()
         .filter((event) => event.type === 'permission_request')
         .at(-1)
-      await host.respondPermission(
-        created.sessionId,
-        (card as { id: string }).id,
-        { outcome: 'allow' },
-        sink,
-      )
+      await expect(
+        host.respondPermission(
+          created.sessionId,
+          (card as { id: string }).id,
+          { outcome: 'allow' },
+          sink,
+        ),
+      ).rejects.toThrow(/could not save/)
       await waitFor(
         () => sink.events().some((event) => event.type === 'error'),
         'the recording-failure notice',
       )
 
       expect(sink.outOfOrderArrival()).toBeNull()
-      // ⚑ **The positive half** (193): the decision really went out, and the notice really came
-      // after it. A run where nothing broke satisfies the negative above on its own.
+      // The failed decision is neither acknowledged nor presented as recorded.
       const kinds = sink.events().map((event) => event.type)
-      expect(kinds).toContain('user_decision')
-      expect(kinds.indexOf('error')).toBeGreaterThan(kinds.indexOf('user_decision'))
+      expect(kinds).not.toContain('user_decision')
+      expect(kinds).toContain('error')
+      expect(recorded.some((row) => row.event.type === 'user_decision')).toBe(false)
     })
 
     /**
@@ -605,7 +604,7 @@ describe('318 · the host says what appeared while the turn ran', () => {
         tail[0]!.ordinal + 2,
       ])
       expect(tail[2]!.event).toMatchObject({
-        message: expect.stringContaining('no longer being recorded'),
+        message: expect.stringContaining('could not save the change'),
       })
     })
   })
