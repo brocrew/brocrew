@@ -352,7 +352,11 @@ export async function remove(userData: string, path: string, fs: RecoveryFs): Pr
 }
 
 /** Removes a folder only when nothing is in it. */
-export async function removeIfEmpty(userData: string, folder: string, fs: RecoveryFs): Promise<void> {
+export async function removeIfEmpty(
+  userData: string,
+  folder: string,
+  fs: RecoveryFs,
+): Promise<void> {
   let entries: string[]
   try {
     entries = await fs.readdir(folder)
