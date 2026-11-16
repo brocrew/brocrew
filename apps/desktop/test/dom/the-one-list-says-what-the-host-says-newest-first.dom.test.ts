@@ -234,6 +234,7 @@ const palettesFoot = (): string => {
 
 afterEach(() => {
   unmountAll()
+  vi.useRealTimers()
   delete stubbed().api
 })
 
@@ -384,7 +385,8 @@ describe('a read of the list that fails after one that succeeded', () => {
 
     const refresh = m.vm.refreshResumable as () => Promise<void>
 
-    // The database stays locked through the bounded recovery attempts.
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
+    // The database stays locked through the quiet retry interval.
     stubbed().api = {
       runtime: {
         listResumable: () => Promise.reject(new Error('the database is locked')),
@@ -392,6 +394,7 @@ describe('a read of the list that fails after one that succeeded', () => {
       },
     }
     await refresh()
+    await vi.advanceTimersByTimeAsync(2_000)
     await nextTick()
     const error = m.q('conversations-error')
     expect(visible(error)).toBe(true)
