@@ -5,7 +5,7 @@ import type {
   ProfileCapabilities,
 } from '../../src/shared/capabilities'
 
-function grantSays(
+export function grantSays(
   field: AnyCapabilityField,
   allowed: ProfileCapabilities,
   at: ConversationAtLaunch | null,
