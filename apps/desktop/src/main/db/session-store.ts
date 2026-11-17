@@ -4657,7 +4657,7 @@ export function createSessionStore(
         let owned = replies.get(row.owner_session_id)
         if (owned === undefined) {
           let unread = false
-          const folded = foldPiecesOfSession(row.owner_session_id, () => {
+          const folded = piecesOfSession(row.owner_session_id, () => {
             unread = true
           })
           owned = unread ? null : new Map(folded.map((piece) => [piece.piece, piece]))
