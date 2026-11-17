@@ -19,10 +19,11 @@ import {
   permission,
   record,
   show,
+  windowCleanup,
   visible,
   type Mounted,
 } from './harness'
-import { resetUsageCards, usageCards } from './usage-cards'
+import { usageCards } from './usage-cards'
 import { providersBridge } from '../../look/fixtures/providers'
 import { railFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { attributedUsageFixtures, runningSignInFixtures } from './provider-launch.fixture'
@@ -32,9 +33,7 @@ import { attributedUsageFixtures, runningSignInFixtures } from './provider-launc
  * takes its column. The drawing sensor catches clipped labels that textContent cannot detect.
  */
 
-const ORIGINAL = { width: window.innerWidth, height: window.innerHeight }
-
-afterEach(() => resetUsageCards(ORIGINAL.width, ORIGINAL.height))
+afterEach(windowCleanup())
 
 async function configuredUsageCards(width: number, height: number): Promise<Mounted> {
   providersBridge()
