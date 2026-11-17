@@ -1,3 +1,8 @@
+import {
+  createLedgerHistoryRead,
+  type LedgerWindowQuery,
+  type LedgerWindow,
+} from '../database/sqlite/ledger/history'
 import { readInstructionAskers } from './instruction-askers-read'
 import { retryBusyWrite } from './retry-busy-write'
 import {
@@ -28,7 +33,7 @@ import {
 export { toPersistedEvents } from './stored-event-codec'
 import type { WorkLedgerRead, WorkRow } from './work-ledger-read'
 export type { WorkRow } from './work-ledger-read'
-import { readAncestryContext, type AncestryContext } from './work-ancestry-reader'
+import type { AncestryContext } from './work-ancestry-reader'
 import { rowsUnreadOnce, THE_WHOLE_LEDGER, type RowsUnread, type SkipNote } from './rows-unread'
 import type {
   ReconciliationReceipt,
@@ -64,7 +69,7 @@ import {
 } from './session-store-parts/model-choice-storage'
 export { parseModelChoice, modelChoiceWritten } from './session-store-parts/model-choice-storage'
 import { createHumanAnswerReader } from './human-answer-reader'
-import { createThreadLeadReader, type ThreadLeadRow } from './thread-lead-reader'
+import type { ThreadLeadRow } from './thread-lead-reader'
 export { THREAD_LEAD_EVENT_TYPES, type ThreadLeadRow } from './thread-lead-reader'
 import type {
   HumanAnswers,
@@ -410,23 +415,6 @@ interface SessionSnapshot {
   derivedThrough: number
   /** The conversation, with the ordinals and times it was exported under. */
   ledger: { ordinal: number; event: TranscriptEvent; at: number }[]
-}
-
-interface LedgerWindowQuery {
-  /** How many turns to take, counting back. At least one is always taken when one exists. */
-  turns: number
-  maxEvents: number
-  before?: number
-}
-
-/** One page of a session's ledger, and enough to ask for the page before it. */
-interface LedgerWindow {
-  entries: PersistedEvent[]
-  from: number
-  /** Whether any event exists below `from`. The cursor's "there is more", read rather than guessed. */
-  hasOlder: boolean
-  turnAligned: boolean
-  toolsInForce?: PersistedEvent
 }
 
 interface RaisedQuestionRow {
@@ -2837,51 +2825,15 @@ export function createSessionStore(
     }
     return undefined
   }
-  const selectEventWindow = db.prepare(
-    `SELECT ordinal, payload, created_at FROM events
-      WHERE session_id = ? AND generation = ? AND ordinal >= ? ORDER BY ordinal LIMIT ?`,
-  )
-  const selectNewestLaunched = db.prepare(
-    `SELECT ordinal, payload, created_at FROM events INDEXED BY events_fold_idx
-      WHERE ${FOLD_TERM} AND session_id = ? AND generation = ? AND type = 'launched'
-        AND ordinal < ?
-      ORDER BY ordinal DESC LIMIT 1`,
-  )
-  const { threadLeadRows } = createThreadLeadReader(db, activeGeneration)
-  const selectNewestOfType = db.prepare(
-    `SELECT ordinal, payload, created_at FROM events
-      WHERE session_id = ? AND generation = ? AND type = ? AND ordinal >= ? AND ordinal < ?
-      ORDER BY ordinal DESC LIMIT 1`,
-  )
-  const selectEventRange = db.prepare(
-    `SELECT ordinal, payload, created_at FROM events
-      WHERE session_id = ? AND generation = ? AND ordinal >= ? AND ordinal < ? ORDER BY ordinal`,
-  )
-  const selectTurnStarts = db.prepare(
-    `SELECT ordinal FROM events
-      WHERE session_id = ? AND generation = ? AND type = 'user_turn' AND ordinal < ?
-      ORDER BY ordinal DESC LIMIT ?`,
-  )
-  /** The `maxEvents`-th event counting back — the floor the turn boundary is not allowed below. */
-  const selectEventFloor = db.prepare(
-    `SELECT ordinal FROM events
-      WHERE session_id = ? AND generation = ? AND ordinal < ? ORDER BY ordinal DESC LIMIT 1 OFFSET ?`,
-  )
-  const selectAnyEventBelow = db.prepare(
-    `SELECT EXISTS (SELECT 1 FROM events
-                     WHERE session_id = ? AND generation = ? AND ordinal < ?) AS present`,
-  )
-  const selectToolsInForce = db.prepare(
-    `SELECT ordinal, payload, created_at FROM events INDEXED BY events_inventory_idx
-      WHERE type = 'tool_inventory' AND session_id = ? AND generation = ? AND ordinal < ?
-      ORDER BY ordinal DESC LIMIT 1`,
-  )
-  const selectAnyEvent = db.prepare(
-    `SELECT EXISTS (SELECT 1 FROM events WHERE session_id = ? AND generation = ?) AS present`,
-  )
-  const selectMaxOrdinal = db.prepare(
-    `SELECT max(ordinal) AS max_ordinal FROM events WHERE session_id = ? AND generation = ?`,
-  )
+  const {
+    newestOfType,
+    eventsFrom,
+    ancestryContext,
+    turnWindow,
+    threadLeadRows,
+    selectAnyEvent,
+    selectMaxOrdinal,
+  } = createLedgerHistoryRead(db, activeGeneration)
 
   const selectGeneration = db.prepare(
     `SELECT active, normalizer_version, derived_through, building, highest, failure
@@ -5402,96 +5354,15 @@ export function createSessionStore(
       )
     },
 
-    newestOfType(sessionId, type, before = Number.MAX_SAFE_INTEGER, from = 0) {
-      const generation = activeGeneration(sessionId)
-      for (let below = before; ;) {
-        const rows = (
-          type === 'launched'
-            ? selectNewestLaunched.all(sessionId, generation, below)
-            : type === 'tool_inventory'
-              ? selectToolsInForce.all(sessionId, generation, below)
-              : selectNewestOfType.all(sessionId, generation, type, from, below)
-        ) as EventRow[]
-        const row = rows[0]
-        if (row === undefined || row.ordinal < from) return null
-        const entry = toPersistedEvents(rows)[0]
-        if (entry !== undefined) return entry
-        below = row.ordinal
-      }
-    },
+    newestOfType,
 
     threadLeadRows,
 
-    eventsFrom(sessionId, fromOrdinal, limit) {
-      const generation = activeGeneration(sessionId)
-      for (let from = fromOrdinal; ;) {
-        const rows = selectEventWindow.all(sessionId, generation, from, limit) as EventRow[]
-        const last = rows[rows.length - 1]
-        if (last === undefined) return []
-        const entries = toPersistedEvents(rows)
-        if (entries.length > 0) return entries
-        from = last.ordinal + 1
-      }
-    },
+    eventsFrom,
 
-    ancestryContext(sessionId, page, through, budget) {
-      return readAncestryContext(
-        db,
-        sessionId,
-        activeGeneration(sessionId),
-        page,
-        through,
-        budget,
-        (row) => toPersistedEvents([row])[0],
-      )
-    },
+    ancestryContext,
 
-    turnWindow(sessionId, options) {
-      const generation = activeGeneration(sessionId)
-      const turns = Math.max(1, Math.floor(options.turns))
-      const maxEvents = Math.max(1, Math.floor(options.maxEvents))
-      const before =
-        options.before ??
-        ((selectMaxOrdinal.get(sessionId, generation) as { max_ordinal: number | null } | undefined)
-          ?.max_ordinal ?? -1) + 1
-
-      const floorRow = selectEventFloor.get(sessionId, generation, before, maxEvents - 1) as
-        { ordinal: number } | undefined
-      const eventFloor = floorRow?.ordinal ?? 0
-
-      const starts = selectTurnStarts.all(sessionId, generation, before, turns) as {
-        ordinal: number
-      }[]
-
-      let from = eventFloor
-      let cutAtTurn = false
-      if (starts.length >= turns) {
-        for (const row of starts) {
-          if (row.ordinal < eventFloor) break
-          from = row.ordinal
-          cutAtTurn = true
-        }
-      }
-
-      const hasOlder =
-        (selectAnyEventBelow.get(sessionId, generation, from) as { present: number }).present === 1
-      const inForce = hasOlder
-        ? (selectToolsInForce.get(sessionId, generation, from) as EventRow | undefined)
-        : undefined
-      const toolsInForce =
-        inForce === undefined
-          ? undefined
-          : toPersistedEvents([inForce]).find((row) => row.event.type === 'tool_inventory')
-      return {
-        entries: toPersistedEvents(
-          selectEventRange.all(sessionId, generation, from, before) as EventRow[],
-        ),
-        from,
-        hasOlder,
-        ...(toolsInForce === undefined ? {} : { toolsInForce }),
-        turnAligned: cutAtTurn || !hasOlder,
-      }
-    },
+    turnWindow,
 
     latestHumanAnswers,
     humanFinalsInWindow,
