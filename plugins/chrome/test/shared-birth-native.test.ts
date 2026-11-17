@@ -68,6 +68,38 @@ it('shows the native OS diagnostic instead of only the child exit status', () =>
   expect(ownerState({ pid: process.pid, birth: ticks })).toBe('unknown')
 })
 
+it.each(['The parameter is incorrect.', 'Access is denied.'])(
+  'captures a failed birth query after the liveness check and retains %s for self',
+  async (detail) => {
+    platform('win32')
+    const native = await vi.importActual<typeof import('node:child_process')>('node:child_process')
+    const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    const alive = vi.spyOn(process, 'kill').mockReturnValue(true)
+    const other = process.pid + 321
+    run.mockImplementation((_program, args, options) =>
+      native.execFileSync(
+        process.execPath,
+        [
+          '-e',
+          `process.stderr.write(${JSON.stringify(`OpenProcess(${args[0]}): ${detail}\n`)}); process.exit(1)`,
+        ],
+        options,
+      ),
+    )
+
+    expect(ownerState({ pid: other, birth: ticks })).toBe('unknown')
+    expect(alive).toHaveBeenCalledWith(other, 0)
+    expect(run.mock.calls[0][1]).toEqual([String(other)])
+    expect(identity).toThrow(
+      `Cannot read Windows process birth: OpenProcess(${process.pid}): ${detail}`,
+    )
+    expect(write).not.toHaveBeenCalled()
+    const failure = run.mock.results[1].value
+    expect(failure.status).toBe(1)
+    expect(failure.stderr).toBe(`OpenProcess(${process.pid}): ${detail}\n`)
+  },
+)
+
 it.each(['', 'unknown\n', '638980000000000001\n638980000000000002\n', '3155378976000000000\n'])(
   'refuses invalid native output %j before self enrollment',
   (output) => {
