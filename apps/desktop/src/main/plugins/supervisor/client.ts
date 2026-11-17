@@ -110,17 +110,15 @@ function releasedDrainStalled(
 }
 /**
  * A request's deadline. When this app stalled past it, what had already arrived is read before
- * it expires, so an answer that came in time is never lost to the app's own delay.
+ * it expires, so an answer that came in time is not lost to the app's own delay. Once the time
+ * is up, the request itself is not sent: nobody would read its answer.
  */
 function requestDeadline(expire: () => void) {
-  const deadline = {
-    passed: false,
-    timer: setTimeout(() => {
-      deadline.passed = true
-      setImmediate(expire)
-    }, OWNER_LIMITS.request),
+  const at = performance.now() + OWNER_LIMITS.request
+  return {
+    timer: setTimeout(() => setImmediate(expire), OWNER_LIMITS.request),
+    passed: () => performance.now() >= at,
   }
-  return deadline
 }
 function holdSupervisorConnection(
   storage: SupervisorStorage,
@@ -154,8 +152,7 @@ function holdSupervisorConnection(
         bytes = bytes.subarray(end + 1)
         if (!challenge) {
           challenge = z.strictObject({ challenge: Hex }).parse(JSON.parse(line)).challenge
-          // Past the deadline, a request is never sent: nothing would read its answer.
-          if (deadline.passed) throw unanswered()
+          if (deadline.passed()) throw unanswered()
           socket.write(pack({ epoch: record.epoch, nonce, challenge, command }))
           return
         }
@@ -211,7 +208,7 @@ export function supervisorRequest(
         bytes = Buffer.alloc(0)
         if (!challenge) {
           challenge = z.strictObject({ challenge: Hex }).parse(JSON.parse(line)).challenge
-          if (deadline.passed) throw new NoReply()
+          if (deadline.passed()) throw new NoReply()
           socket.write(pack({ epoch: record.epoch, nonce, challenge, command }))
           return
         }
@@ -639,13 +636,18 @@ export class PluginSupervisorAttachment {
   private recovering?: Promise<boolean>
   /** Kept by every attempt until one is admitted, so the service can hand back a lost answer. */
   private generation = randomUUID()
+  private admitting?: Promise<PluginWorkspaceLease>
+  /** Start and recovery share one admission at a time, so a registration has one lease here. */
   private attach(options: Omit<SupervisorClientOptions, 'generation'>) {
-    return PluginWorkspaceLease.attach({ ...options, generation: this.generation }).then(
-      (lease) => {
+    this.admitting ??= PluginWorkspaceLease.attach({ ...options, generation: this.generation })
+      .then((lease) => {
         this.generation = randomUUID()
         return lease
-      },
-    )
+      })
+      .finally(() => {
+        this.admitting = undefined
+      })
+    return this.admitting
   }
   /** Internal diagnostics only; raw causes are never sent through plugin IPC or logs. */
   get lastStartError(): unknown {
@@ -685,7 +687,7 @@ export class PluginSupervisorAttachment {
           await next.close()
           return false
         }
-        this.lease?.abandon()
+        if (this.lease !== next) this.lease?.abandon()
         this.lease = next
         this.pending = Promise.resolve(next)
         this.startError = undefined
