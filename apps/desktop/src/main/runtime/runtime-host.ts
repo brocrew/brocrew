@@ -20739,7 +20739,9 @@ export class RuntimeHost implements LiveHost {
         ? { named: change, list: null, provider: undefined }
         : await this.theSettingNamed(sessionId, change)
     sessionId = this.theOneInItsPlace(sessionId)
-    if (provider !== undefined && this.deps.store.recordedOne(sessionId)?.provider !== provider) {
+    const currentProvider =
+      this.slots.get(sessionId)?.session?.provider ?? this.deps.store.recordedOne(sessionId)?.provider
+    if (provider !== undefined && currentProvider !== provider) {
       throw new Error('Provider changed. Pick again.')
     }
     // ⚑ **D-017b · a conversation nothing runs takes the model or the effort on its row**, for its
