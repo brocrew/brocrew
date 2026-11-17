@@ -1,3 +1,4 @@
+import { listProcessesSmoke } from './helpers/list-processes-smoke'
 import { describe, expect, it, vi } from 'vitest'
 import {
   WINDOWS_LISTING,
@@ -15,7 +16,10 @@ import {
  * both systems.
  */
 
-const started = vi.hoisted(() => ({ commands: [] as string[] }))
+const started = vi.hoisted(() => ({
+  commands: [] as string[],
+  fake: undefined as ((args: unknown[]) => unknown) | undefined,
+}))
 
 vi.mock('node:child_process', async (original) => {
   const real = await original<typeof import('node:child_process')>()
@@ -23,6 +27,7 @@ vi.mock('node:child_process', async (original) => {
     ...real,
     execFile: (...args: unknown[]) => {
       started.commands.push(String(args[0]))
+      if (started.fake !== undefined) return started.fake(args)
       return (real.execFile as (...all: unknown[]) => unknown)(...args)
     },
   }
@@ -83,9 +88,34 @@ describe('the listing on Windows', () => {
     )
   })
 
+  it('allows the CIM smoke command sixty seconds without using the product deadline', async () => {
+    vi.useFakeTimers()
+    try {
+      started.fake = (args) => {
+        const [file, argv, options, callback] = args as [
+          string,
+          string[],
+          { timeout: number },
+          (error: Error | null, stdout: string) => void,
+        ]
+        expect(file).toBe('powershell.exe')
+        expect(argv).toEqual(['-NoProfile', '-NonInteractive', '-Command', WINDOWS_LISTING])
+        expect(options.timeout).toBe(60_000)
+        setTimeout(() => callback(null, TABLE), 30_000)
+        return {}
+      }
+      const reading = listProcessesSmoke('win32')
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(await reading).toEqual(parseWindowsListing(TABLE))
+    } finally {
+      started.fake = undefined
+      vi.useRealTimers()
+    }
+  })
+
   it('on this computer, if it is Windows, lists this very process with its parent and its memory', async (ctx) => {
     ctx.skip(process.platform !== 'win32', 'the CIM table is Windows’ own')
-    const rows = await listProcesses()
+    const rows = await listProcessesSmoke()
     const self = rows.find((row) => row.pid === process.pid)
     expect(self).toMatchObject({ pid: process.pid, ppid: process.ppid })
     expect(self?.rssKb).toBeGreaterThan(1024)

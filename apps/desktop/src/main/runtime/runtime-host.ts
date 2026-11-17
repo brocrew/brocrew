@@ -415,11 +415,7 @@ import type { ProviderSignIn } from '../providers/auth-types'
 import type { ProviderAuthOps } from '../providers/auth-operations'
 import { aLoginRunsWithoutAKey } from './api-keys'
 import type { GivenFolder, ProtectedPlaceNotice } from '../../shared/work-folders'
-import {
-  NOT_LISTED_AND_ASKED_AGAIN,
-  NOT_LISTED_JUST_NOW,
-  resourcesFromTheListing,
-} from './process-listing'
+import { NOT_LISTED_JUST_NOW, resourcesFromTheListing } from './process-listing'
 import {
   // 🔴 **610 · the derivation the rail already draws, CALLED rather than copied** (HO-092 §2.1).
   // ⛔ A second naming rule here would be the defect `449` closed on the other side: *"the identity
@@ -30612,8 +30608,7 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * ⚑ {@link providerResources}' one measurement, `at` when its listing came back. ⛔ Never throws:
-   * a listing that fails is said, and so is one this system cannot make.
+   * One measurement for {@link providerResources}; a failed listing keeps the last answer.
    */
   private async measureTheResources(): Promise<Readonly<Record<Provider, ProviderResources>>> {
     const roots: Record<Provider, number[]> = providerRecord(() => [])
@@ -30640,7 +30635,7 @@ export class RuntimeHost implements LiveHost {
       return resourcesFromTheListing(rows, roots, this.now())
     } catch (error) {
       console.warn(`runtime host could not list this computer's processes: ${errorMessage(error)}`)
-      return unmeasured(NOT_LISTED_AND_ASKED_AGAIN)
+      return this.resourcesMeasured?.answer ?? unmeasured('Reading…')
     }
   }
 

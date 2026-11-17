@@ -1,3 +1,4 @@
+import { listProcessesSmoke } from './helpers/list-processes-smoke'
 import {
   appendFileSync,
   chmodSync,
@@ -10,11 +11,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  listProcesses,
-  resourcesFromTheListing,
-  type ListedProcess,
-} from '../src/main/runtime/process-listing'
+import { resourcesFromTheListing, type ListedProcess } from '../src/main/runtime/process-listing'
 import { providerVersionsReader } from '../src/main/providers/index'
 import type { CodexProgram } from '../src/main/providers/codex/program'
 
@@ -112,7 +109,7 @@ describe('resourcesFromTheListing', () => {
 
 describe('listProcesses', () => {
   it('🔴 reads one listing of the machine, and this very process is in it, with a size and a pid parent', async () => {
-    const rows = await listProcesses()
+    const rows = await listProcessesSmoke()
     const mine = rows.find((one) => one.pid === process.pid)
     expect(mine, 'the test process is not in the listing').toBeDefined()
     expect(mine!.ppid).toBe(process.ppid)

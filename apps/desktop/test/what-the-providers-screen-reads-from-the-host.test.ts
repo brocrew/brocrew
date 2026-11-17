@@ -320,7 +320,7 @@ describe('what the Providers screen reads from the host', () => {
       }
     })
 
-    it('🔴 a listing that fails is said, with the roots still counted, and asked again at the next ask', async () => {
+    it('keeps a first failed sample quiet and asks again after five seconds', async () => {
       vi.spyOn(console, 'warn').mockImplementation(() => {})
       await withPid('claude', 4242)
       listing = async () => {
@@ -332,10 +332,10 @@ describe('what the Providers screen reads from the host', () => {
         at: clock,
         rssBytes: null,
         cpuPercent: null,
-        reason: 'This computer did not list its processes just now; it is asked again in a moment.',
+        reason: 'Reading…',
       })
       expect(JSON.stringify(failed)).not.toContain('ps timed out')
-      // The failure is the answer for the five seconds an answer holds, and then it is asked again.
+      // A failed sample still observes the existing sampling interval.
       expect(await host.providerResources()).toBe(failed)
       expect(listed).toBe(1)
       clock += 5_000
