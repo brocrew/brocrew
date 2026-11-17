@@ -10,7 +10,6 @@ import {
   mkdtempSync,
   readFileSync,
   realpathSync,
-  renameSync,
   rmSync,
   symlinkSync,
   unlinkSync,
@@ -38,6 +37,7 @@ import {
 import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
 import { bundleAWorker } from './helpers/bundle-a-worker'
 import * as Earlier from './helpers/supervisor-protocol-before-renew-retry'
+import { interpose } from './helpers/supervisor-interpose'
 
 const roots: string[] = [],
   owners: PluginSupervisor[] = [],
@@ -152,59 +152,6 @@ async function launch(root: string) {
   children.push(child)
   expect(await message(child)).toEqual({ kind: 'ready' })
   return child
-}
-async function interpose(root: string) {
-  const path = join(root, 'supervisor/owner.sock'),
-    aside = join(root, 'supervisor/owner-aside.sock')
-  renameSync(path, aside)
-  const requests: string[] = [],
-    replies: string[] = [],
-    plan = { lose: 0, hold: 0 },
-    count = { settled: 0 }
-  const server = createServer((client) => {
-    const owner = createConnection(aside)
-    let challenged = false,
-      replied = false
-    client.on('error', () => owner.destroy())
-    // The client closes only after it has acted on the reply it read.
-    client.on('close', () => {
-      owner.destroy()
-      if (replied) count.settled++
-    })
-    owner.on('error', () => client.destroy())
-    client.on('data', (chunk: Buffer) => {
-      requests.push(chunk.toString())
-      owner.write(chunk)
-    })
-    owner.on('data', (chunk: Buffer) => {
-      if (!challenged) {
-        challenged = true
-        client.write(chunk)
-        return
-      }
-      if (plan.lose > 0) {
-        plan.lose--
-        client.destroy()
-      } else if (plan.hold > 0) plan.hold--
-      else {
-        replies.push(chunk.toString())
-        replied = true
-        client.end(chunk)
-      }
-    })
-  })
-  await new Promise<void>((resolve) => server.listen(path, resolve))
-  return {
-    aside,
-    requests,
-    replies,
-    plan,
-    count,
-    async close() {
-      await new Promise<void>((resolve) => server.close(() => resolve()))
-      renameSync(aside, path)
-    },
-  }
 }
 const renewal = (packet: string) =>
   (unpack(packet.trim()) as { command: Extract<Command, { kind: 'renew' }> }).command
