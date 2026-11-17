@@ -1,5 +1,6 @@
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { createApp, nextTick, type Component } from 'vue'
+import { railFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { expect } from 'vitest'
 import { page } from 'vitest/browser'
 import type ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
@@ -115,6 +116,7 @@ export function windowCleanup(): () => Promise<void> {
   const original = { width: window.innerWidth, height: window.innerHeight }
   return async () => {
     unmountAll()
+    railFacts().update({ runningConversations: null })
     delete (window as { api?: unknown }).api
     await page.viewport(original.width, original.height)
   }

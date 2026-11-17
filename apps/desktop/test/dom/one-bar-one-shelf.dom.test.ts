@@ -13,17 +13,16 @@ import {
   paneProps,
   record,
   parseColor,
+  windowCleanup,
   visible,
   type Mounted,
 } from './harness'
-import { resetUsageCards, usageCards } from './usage-cards'
+import { usageCards } from './usage-cards'
 import { providerConnectionFixtures } from '../../look/fixtures/providers'
 import { railFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { attributedUsageFixtures, runningSignInFixtures } from './provider-launch.fixture'
 
-const ORIGINAL = { width: window.innerWidth, height: window.innerHeight }
-
-afterEach(() => resetUsageCards(ORIGINAL.width, ORIGINAL.height))
+afterEach(windowCleanup())
 
 const INFO = {
   name: 'BroBot2',
