@@ -106,20 +106,24 @@ jobs:
         # vitest splits the files, by a hash of their paths, across every project but `dom`.
         shard: [1, 2, 3, 4]
     steps:
-      - uses: actions/checkout@v7
+      - &test-checkout
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      - name: Install pnpm
+      - &test-pnpm
+        name: Install pnpm
         uses: pnpm/action-setup@v6
 
-      - name: Setup Node
+      - &test-node
+        name: Setup Node
         uses: actions/setup-node@v7
         with:
           node-version-file: '.nvmrc'
           cache: pnpm
 
-      - name: Install dependencies
+      - &test-install
+        name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Give the runner the two CLI homes
@@ -144,21 +148,10 @@ jobs:
       matrix:
         part: [1, 2, 3, 4]
     steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v6
-
-      - name: Setup Node
-        uses: actions/setup-node@v7
-        with:
-          node-version-file: '.nvmrc'
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - *test-checkout
+      - *test-pnpm
+      - *test-node
+      - *test-install
 
       # The `dom` vitest project (083) runs real components in real Chromium, and it runs on the
       # DEFAULT test path deliberately — a harness gated out of the gate is debt, not coverage.
