@@ -74,7 +74,10 @@ export function registerRootProviderCases(RuntimeScreen: Component) {
       expect(screen.all('provider-drawer')).toHaveLength(0)
       answer(PROVIDER_DESCRIPTORS)
       await expect.poll(() => screen.all('provider-row').length).toBe(2)
-      screen.all('provider-row').find((row) => row.getAttribute('data-provider') === 'codex')!.click()
+      screen
+        .all('provider-row')
+        .find((row) => row.getAttribute('data-provider') === 'codex')!
+        .click()
       await expect.poll(() => screen.all('provider-card').length).toBe(1)
       expect(screen.q('provider-card').getAttribute('data-provider')).toBe('codex')
       await expect.poll(() => screen.all('provider-inline-setup').length).toBe(1)

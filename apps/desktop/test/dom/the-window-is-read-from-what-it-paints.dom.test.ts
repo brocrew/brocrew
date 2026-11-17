@@ -185,35 +185,46 @@ describe('the window is read from what it paints', () => {
     { overlap: 1, open: true, covered: true },
     { overlap: -1, open: true, covered: false },
     { overlap: 1, open: false, covered: false },
-  ])('reads only whole exposed words beside a popup ($overlap px, open=$open)', async ({ overlap, open, covered }) => {
-    const Page = defineComponent({
-      setup: () => () =>
-        h('div', { style: 'background:#fff' }, [
-          h('span', {
-            'data-cy': 'words',
-            style: 'position:fixed;left:40px;top:40px;background:#888;color:#777;font:20px monospace',
-          }, 'Words'),
-          h('div', {
-            popover: 'manual',
-            'data-cy': 'popup',
-            style: 'position:fixed;inset:auto;margin:0;padding:0;border:0;width:50px;height:30px;background:#fff;box-shadow:none',
-          }),
-        ]),
-    })
-    const m = mount(Page, {}, { width: 400, height: 200 })
-    const words = m.q('words')
-    const popup = m.q('popup')
-    const box = words.getBoundingClientRect()
-    popup.style.left = `${box.right - overlap}px`
-    popup.style.top = `${box.top}px`
-    if (open) popup.showPopover()
-    const reading = (await paintedReadings(m.host)).find((one) => one.node === words.firstChild)!.reading
-    if (covered) expect(reading.is).toBe('covered')
-    else {
-      expect(reading.is).toBe('read')
-      if (reading.is === 'read') expect(reading.ratio).toBeLessThan(4.5)
-    }
-  })
+  ])(
+    'reads only whole exposed words beside a popup ($overlap px, open=$open)',
+    async ({ overlap, open, covered }) => {
+      const Page = defineComponent({
+        setup: () => () =>
+          h('div', { style: 'background:#fff' }, [
+            h(
+              'span',
+              {
+                'data-cy': 'words',
+                style:
+                  'position:fixed;left:40px;top:40px;background:#888;color:#777;font:20px monospace',
+              },
+              'Words',
+            ),
+            h('div', {
+              popover: 'manual',
+              'data-cy': 'popup',
+              style:
+                'position:fixed;inset:auto;margin:0;padding:0;border:0;width:50px;height:30px;background:#fff;box-shadow:none',
+            }),
+          ]),
+      })
+      const m = mount(Page, {}, { width: 400, height: 200 })
+      const words = m.q('words')
+      const popup = m.q('popup')
+      const box = words.getBoundingClientRect()
+      popup.style.left = `${box.right - overlap}px`
+      popup.style.top = `${box.top}px`
+      if (open) popup.showPopover()
+      const reading = (await paintedReadings(m.host)).find(
+        (one) => one.node === words.firstChild,
+      )!.reading
+      if (covered) expect(reading.is).toBe('covered')
+      else {
+        expect(reading.is).toBe('read')
+        if (reading.is === 'read') expect(reading.ratio).toBeLessThan(4.5)
+      }
+    },
+  )
 
   it('⛔ words in a group drawn at 1% are read at that opacity: they fail', async () => {
     const ratio = await readingOf(() =>
