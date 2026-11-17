@@ -104,6 +104,10 @@ mac:
   extendInfo:
     NSMicrophoneUsageDescription: BroCrew uses your microphone when you press Dictate to turn speech into text on this Mac.
     NSSpeechRecognitionUsageDescription: BroCrew turns your speech into text on this Mac so you can review it before sending.
+    # One-time-code AutoFill only in fields marked for it, and none are. Otherwise the first
+    # focused text field starts a macOS AutoFill helper tied to the app, and after Quit the Dock
+    # keeps the app's icon, saying "Running in Background".
+    NSAutoFillRequiresTextContentTypeForOneTimeCodeOnMac: true
   extraFiles:
     - from: resources/voice/${arch}/brocrew-voice
       to: Helpers/brocrew-voice
