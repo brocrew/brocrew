@@ -29,7 +29,9 @@ import { drawnReady, inkRects, wordRects } from './drawn'
  * dialog, and the shadow an open popover or dialog casts) is drawn over it and itself takes
  * {@link DIMMED} or more of it away (half that under a backdrop that blurs), measured against the
  * same pictures taken with every named surface hidden, so a named surface that paints nothing
- * there passes nothing over. The rest of its line is still read. Kept white space a line ends in
+ * there passes nothing over. A word whose box intersects an open popover is passed over even when
+ * partly covered; the popover's own words are still read. The rest of its line is still read.
+ * Kept white space a line ends in
  * is passed over too, proved from the text itself: a line box none of its words meets, with none
  * of them after it on its line. Any other line box with no
  * pixel read is "unread", which the window check fails: a way of drawing text the sampler can't
@@ -438,6 +440,10 @@ export async function paintedReadings(
     lift.remove()
   }
 
+  const popovers = [...document.querySelectorAll(':popover-open')].map((surface) => ({
+    surface,
+    box: surface.getBoundingClientRect(),
+  }))
   return found.map(({ node, el, rects, ink, opacity }, index) => {
     const inked = inkedIn[group[index]!]!
     const farInked = farIn[group[index]!]!
@@ -476,7 +482,8 @@ export async function paintedReadings(
             Math.abs(pixel(inked, x, y)[channel] - pixel(farInked, x, y)[channel]) / full >= SHOWS,
         ),
       )
-      // Under a named backdrop or cover, a word is passed over only where that named paint itself
+      // A word intersecting an open popover is not whole visible text. Other named surfaces pass
+      // it over only where that named paint itself
       // dims it, measured against the pictures taken with every named surface hidden: over the
       // word's pixels where the text shows without them, it shows less, on average, with them
       // drawn, by at least what {@link namedOver} asks there. Something else hiding the text, or a
@@ -484,7 +491,7 @@ export async function paintedReadings(
       // passed over when all its words are; otherwise the rest of it is read.
       const passed: DOMRect[] = []
       let words = 0
-      if (full >= MEASURABLE && bareInked && bareFar) {
+      {
         const through = (a: Picture, b: Picture, x: number, y: number): number =>
           Math.abs(pixel(a, x, y)[channel] - pixel(b, x, y)[channel]) / full
         for (const w of wordRects(node)) {
@@ -494,6 +501,20 @@ export async function paintedReadings(
           const bottom = Math.min(w.bottom, rect.bottom)
           if (right - left < 1 || bottom - top < 1) continue
           words++
+          if (
+            popovers.some(
+              ({ surface, box }) =>
+                !surface.contains(el) &&
+                left < box.right &&
+                right > box.left &&
+                top < box.bottom &&
+                bottom > box.top,
+            )
+          ) {
+            passed.push(new DOMRect(left - 2, top - 2, right - left + 4, bottom - top + 4))
+            continue
+          }
+          if (full < MEASURABLE || !bareInked || !bareFar) continue
           const need = namedOver(el, (left + right) / 2, (top + bottom) / 2)
           if (need === null) continue
           const edge = right - left > 4 && bottom - top > 4 ? 2 : 0
