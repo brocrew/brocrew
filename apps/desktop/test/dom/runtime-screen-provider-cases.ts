@@ -25,7 +25,7 @@ import {
 } from './runtime-screen-fixture'
 
 export function registerRootProviderCases(RuntimeScreen: Component) {
-  it('retains the actual root one-shot setup route until its deferred provider catalogue answers', async () => {
+  it('opens Providers from the unavailable-provider launcher and sets up Codex after its catalogue answers', async () => {
     const original = window.api
     providersBridge()
     const providerRuntime = window.api.runtime
@@ -41,17 +41,19 @@ export function registerRootProviderCases(RuntimeScreen: Component) {
         ...original.runtime,
         providerCatalogue: read,
         modelList: providerRuntime.modelList,
-        checkProviderAuth: async ({ provider }) =>
-          provider === 'codex'
-            ? { state: 'absent', why: 'no-login', reason: 'No fictional login.' }
-            : { state: 'usable', login: 'account', expiresAt: null },
+        checkProviderAuth: async () => ({
+          state: 'absent',
+          why: 'no-login',
+          reason: 'No fictional login.',
+        }),
       },
     }
-    useProfileSignIn('codex', DEFAULT_PROFILE_ID).auth = {
-      state: 'absent',
-      why: 'no-login',
-      reason: 'No fictional login.',
-    }
+    for (const provider of ['claude', 'codex'] as const)
+      useProfileSignIn(provider, DEFAULT_PROFILE_ID).auth = {
+        state: 'absent',
+        why: 'no-login',
+        reason: 'No fictional login.',
+      }
     const api = createDesktopProviderApi(
       () => window.api.runtime,
       () => undefined,
@@ -64,19 +66,19 @@ export function registerRootProviderCases(RuntimeScreen: Component) {
     })
     try {
       const screen = mount(host, {})
-      await expect.poll(() => screen.all('model-picker-face').length).toBe(1)
-      screen.q('model-picker-face').click()
-      await expect.poll(() => screen.all('model-picker-setup-codex').length).toBe(1)
-      screen.q('model-picker-setup-codex').click()
+      await expect.poll(() => screen.all('new-provider-setup').length).toBe(1)
+      screen.q('new-provider-setup').click()
       await expect.poll(() => read.mock.calls.length).toBe(1)
-      // The real openProviderSettings nextTick cleanup runs before this catalogue can resolve.
       await nextTick()
       await new Promise((resolve) => setTimeout(resolve, 0))
       expect(screen.all('provider-drawer')).toHaveLength(0)
       answer(PROVIDER_DESCRIPTORS)
+      await expect.poll(() => screen.all('provider-row').length).toBe(2)
+      screen.all('provider-row').find((row) => row.getAttribute('data-provider') === 'codex')!.click()
       await expect.poll(() => screen.all('provider-card').length).toBe(1)
       expect(screen.q('provider-card').getAttribute('data-provider')).toBe('codex')
-      expect(screen.q('provider-inline-setup')).toBeDefined()
+      screen.q('provider-set-up').click()
+      await expect.poll(() => screen.all('provider-inline-setup').length).toBe(1)
     } finally {
       unmountAll()
       window.api = original
