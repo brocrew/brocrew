@@ -36,14 +36,16 @@ describe('core-supplied error display outcomes', () => {
         expect(live.message).toBe('fictional billing diagnostic')
         expect(live.fatal).toBe(true)
         expect(event).not.toHaveProperty('presentation')
-        if (owner === undefined) {
+        if (onAKey) {
+          expect(live.presentation?.message).toBe('Key refused. Check its balance or switch connection.')
+        } else if (owner === undefined) {
           expect(live.presentation?.message).toBe(
             'The provider would not run this turn on the account this conversation runs on, because of ' +
               'that account’s billing. Add credit to it, then send this conversation a message to carry on.',
           )
         } else {
           expect(live.presentation?.message).toContain(owner === 'claude' ? 'Claude' : 'Codex')
-          expect(live.presentation?.message).toContain(onAKey ? 'API key' : 'login belongs to')
+          expect(live.presentation?.message).toContain('login belongs to')
         }
       })
     }
@@ -78,7 +80,7 @@ describe('core-supplied error display outcomes', () => {
       fatal: true,
     }
     const key = projected({ ...event, onAKey: true }, 'claude')
-    expect(key.presentation?.message).toContain('Anthropic refused the API key')
+    expect(key.presentation?.message).toBe('Key refused. Check its balance or switch connection.')
     expect(key.presentation).toMatchObject({ level: 'error', terminal: true, repeat: 'each' })
     const login = projected(event, 'claude')
     expect(login.signIn?.state).toBe('stale')
@@ -89,7 +91,7 @@ describe('core-supplied error display outcomes', () => {
     expect(unknown.message).toBe(event.message)
   })
 
-  it('keeps stale keys on this conversation and ordinary rejected keys on a new conversation', () => {
+  it('offers the same short balance or connection remedy for stale and rejected keys', () => {
     const event: ErrorEvent = {
       type: 'error',
       message: 'fictional key diagnostic',
@@ -100,19 +102,14 @@ describe('core-supplied error display outcomes', () => {
     for (const owner of ['claude', 'codex'] as const) {
       const rejected = projected(event, owner)
       const stale = projected({ ...event, cause: 'auth_stale' }, owner)
-      expect(rejected.presentation?.message).toContain('then start a new conversation')
-      expect(stale.presentation?.message).toContain(
-        'then send this conversation a message to carry on',
-      )
-      expect(stale.presentation?.message).toContain('reads the key afresh')
-      expect(stale.presentation?.message).toContain('anything that was running in the background')
+      expect(rejected.presentation?.message).toBe('Key refused. Check its balance or switch connection.')
+      expect(stale.presentation?.message).toBe(rejected.presentation?.message)
       expect(stale.message).toBe(event.message)
       expect(stale.fatal).toBe(true)
     }
     const fictional = errorForDisplay({ ...event, cause: 'auth_stale' }, 'Fern Harness')
     if (fictional.type !== 'error') throw new Error('Expected an error')
-    expect(fictional.presentation?.message).toContain('Fern Harness card')
-    expect(fictional.presentation?.message).toContain('then send this conversation a message')
+    expect(fictional.presentation?.message).toBe('Key refused. Check its balance or switch connection.')
     expect(fictional.presentation?.message).not.toMatch(/Claude|Codex|Anthropic/)
   })
 

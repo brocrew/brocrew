@@ -157,7 +157,7 @@ describe('Claude sign-in failures', () => {
     const state = transcript()
     applyEvent(state, { ...refused, onAKey: true })
     expect(notices(state.items)[0]?.signIn).toBeUndefined()
-    expect(notices(state.items)[0]?.text).toContain('API key')
+    expect(notices(state.items)[0]?.text).toBe('Key refused. Check its balance or switch connection.')
     const codex = transcript()
     codex.ref = { ...codex.ref!, provider: 'codex' }
     applyEvent(codex, retry(1))
