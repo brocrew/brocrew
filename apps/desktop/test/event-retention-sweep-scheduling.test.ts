@@ -29,7 +29,9 @@ const result = (removed: number): EventTrimResult => ({
 })
 
 class SweepWorker extends EventEmitter {
-  postMessage = vi.fn()
+  postMessage = vi.fn((message: { kind?: string }) => {
+    if (message.kind === 'stop') queueMicrotask(() => this.emit('exit', 0))
+  })
   terminate = vi.fn(async () => {
     this.emit('exit', 1)
     return 1
@@ -163,14 +165,24 @@ describe('event retention sweep timing and logging', () => {
     expect(start).not.toHaveBeenCalled()
     await vi.advanceTimersByTimeAsync(1)
     workers[0]!.emit('message', { kind: 'trim-batch', batch: {} })
-    await retention.stop()
-    expect(workers[0]!.terminate).toHaveBeenCalledOnce()
+    workers[0]!.postMessage.mockImplementationOnce(() => {})
+    let joined = false
+    const stopped = retention.stop().then(() => {
+      joined = true
+    })
+    expect(workers[0]!.postMessage).toHaveBeenLastCalledWith({ kind: 'stop' })
+    await Promise.resolve()
+    expect(joined).toBe(false)
+    workers[0]!.emit('exit', 0)
+    await stopped
+    expect(joined).toBe(true)
+    expect(workers[0]!.terminate).not.toHaveBeenCalled()
     expect(trimmed).not.toHaveBeenCalled()
     expect(warn).not.toHaveBeenCalled()
     expect(console.info).toHaveBeenCalledTimes(2)
     expect(console.info).toHaveBeenLastCalledWith(
       'BroCrew event history sweep ended:',
-      expect.objectContaining({ status: 'stopped', removed: 200, exitCode: 1 }),
+      expect.objectContaining({ status: 'stopped', removed: 200, exitCode: 0 }),
     )
     await vi.advanceTimersByTimeAsync(120 * minute)
     expect(start).toHaveBeenCalledOnce()
