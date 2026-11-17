@@ -66,6 +66,8 @@ jobs:
   check:
     name: ${{ matrix.check }}
     runs-on: ubuntu-latest
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -134,9 +136,13 @@ jobs:
   # next file failed to load. `scripts/test-dom-in-groups.mjs` runs the project as sixteen `--shard`
   # invocations in turn; each browser exits with its group. Measured: about 4 GB at most.
   dom:
-    name: dom (in groups)
+    name: dom (in groups) ${{ matrix.part }}/4
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -164,5 +170,22 @@ jobs:
       - name: Install the Chromium the DOM tests run in
         run: pnpm --filter @brobot2/desktop exec playwright install --with-deps chromium
 
-      - name: pnpm run test:dom
-        run: pnpm run test:dom
+      - name: Four of the sixteen DOM groups, each in its own browser
+        run: |
+          mkdir -p dom-results
+          failed=0
+          first=$(( (${{ matrix.part }} - 1) * 4 + 1 ))
+          for group in $(seq "$first" $(( first + 3 ))); do
+            echo "DOM group $group of 16"
+            pnpm exec vitest run --project dom --shard="$group/16" \
+              --reporter=default --reporter=json \
+              --outputFile.json="dom-results/dom-$group.json" || failed=1
+          done
+          exit "$failed"
+
+      - name: Keep native DOM results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-dom-${{ matrix.part }}
+          path: dom-results/*.json
