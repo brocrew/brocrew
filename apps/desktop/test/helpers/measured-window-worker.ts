@@ -80,7 +80,8 @@ Database.prototype.prepare = function (this: Database.Database, sql: string) {
 if (parentPort !== null) {
   const port = parentPort
   const post = port.postMessage.bind(port)
-  port.postMessage = (message) =>
+  port.postMessage = (message) => {
+    const finished = performance.now()
     post({
       ...message,
       measurement: {
@@ -90,7 +91,10 @@ if (parentPort !== null) {
         allRows,
         capability,
         folds: foldCounts(),
-        elapsedMs: performance.now() - started,
+        elapsedMs: finished - started,
+        startedAt: performance.timeOrigin + started,
+        finishedAt: performance.timeOrigin + finished,
       },
     })
+  }
 }
