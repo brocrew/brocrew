@@ -1,3 +1,4 @@
+import { grantSays } from './helpers/capability-grant'
 import { ToolWatchingResumeRuntime } from './lib/provider-double'
 import type { InjectedInstructionKind } from '../src/shared/instruction-contracts'
 import { legacyWorkspaceFiles } from './helpers/legacy-workspace-files'
@@ -54,7 +55,6 @@ import {
   MESSAGING_REACH,
   MESSAGING_REACH_ADMITS,
   capabilityField,
-  grantSays,
 } from '../src/shared/capabilities'
 import type {
   AnyCapabilityField,
