@@ -17,6 +17,7 @@ function cluster(held = false, ownerReady = false) {
   const saves = new Map<string, () => void>()
   const failures = new Set<string>()
   const silent = new Set<string>()
+  const quitting = new Set<string>()
   let remembered: readonly string[] | null = null
   let loseInstallReply = false
   let refuseInstall = false
@@ -56,6 +57,7 @@ function cluster(held = false, ownerReady = false) {
         actor.finishQuit()
       },
       install: () => journal.push(`native install ${i}`),
+      quitting: () => quitting.has(folder),
       reopen: () => journal.push(`reopen ${i}`),
       stayStopped: () => journal.push(`stays stopped ${i}`),
     })
@@ -67,6 +69,7 @@ function cluster(held = false, ownerReady = false) {
     saves,
     failures,
     silent,
+    quitting,
     remembered: () => remembered,
     refuseQuit: () => {
       refuseQuit = true
@@ -152,7 +155,7 @@ it('a workspace that does not answer stops the update before the installer stops
   expect(c.journal.filter((step) => step.startsWith('reopen'))).toEqual(['reopen 0'])
   expect(c.journal.some((step) => step.startsWith('quit') || step.includes('native'))).toBe(false)
   expect(c.first.stoppedWithoutUpdate()).toBe(false)
-  expect([...c.actors.values()].some((actor) => actor.holdsQuit())).toBe(false)
+  expect([...c.actors.values()].some((actor) => actor.holdQuit())).toBe(false)
 })
 
 it('a failure among the workspaces that can reopen leaves every ready workspace untouched', async () => {
@@ -162,6 +165,38 @@ it('a failure among the workspaces that can reopen leaves every ready workspace 
   expect(c.journal.filter((step) => step.startsWith('prepare'))).toEqual(['prepare 0'])
   expect(c.journal.filter((step) => step.startsWith('reopen'))).toEqual(['reopen 0'])
   expect(c.journal.some((step) => step.startsWith('stays stopped'))).toBe(false)
+})
+
+it('a workspace the person is already quitting is not reopened when the update stops', async () => {
+  const c = cluster()
+  c.quitting.add('/workspace-0')
+  c.failures.add('/workspace-0')
+  await expect(c.first.restart('0.2.24')).rejects.toThrow('disk full')
+  expect(c.journal.some((step) => step.startsWith('reopen'))).toBe(false)
+  expect(c.journal.some((step) => step.startsWith('stays stopped'))).toBe(false)
+  expect(c.journal).not.toContain('quit 0')
+})
+
+it('a quit the person gave up on leaves a later stopped update free to reopen the workspace', async () => {
+  const c = cluster()
+  expect(c.actors.get('/workspace-0')!.holdQuit()).toBe(false)
+  c.failures.add('/workspace-2')
+  await expect(c.first.restart('0.2.24')).rejects.toThrow('disk full')
+  expect(c.journal).toContain('reopen 0')
+})
+
+it('a quit the update held back is carried out when the update stops, instead of a reopen', async () => {
+  const c = cluster(true)
+  c.failures.add('/workspace-2')
+  const updating = c.first.restart('0.2.24')
+  for (let tick = 0; tick < 12; tick += 1) await Promise.resolve()
+  const preparing = c.actors.get('/workspace-0')!
+  expect(preparing.holdQuit()).toBe(true)
+  c.saves.get('/workspace-0')!()
+  await expect(updating).rejects.toThrow('disk full')
+  expect(c.journal).toContain('quit 0')
+  expect(c.journal).not.toContain('reopen 0')
+  expect(c.journal).not.toContain('quit 2')
 })
 
 it('when the installer itself fails to stop, the others reopen or say they stopped, and so does it', async () => {
@@ -212,7 +247,7 @@ it('a refused install keeps its caller and owner open, removes the quit hold, an
   expect(c.remembered()).toBeNull()
   expect(c.journal).not.toContain('quit 0')
   expect(c.journal).not.toContain('quit 1')
-  expect([...c.actors.values()].some((actor) => actor.holdsQuit())).toBe(false)
+  expect([...c.actors.values()].some((actor) => actor.holdQuit())).toBe(false)
   c.allowInstall()
   await c.first.restart('0.2.24')
   expect(c.journal.filter((step) => step.includes('native install'))).toHaveLength(1)
@@ -224,7 +259,7 @@ it('does not install after an undelivered peer quit, and releases ordinary quit 
   await expect(c.first.restart('0.2.24')).rejects.toThrow('quit not delivered')
   expect(c.remembered()).toBeNull()
   expect(c.journal.some((step) => step.includes('native install'))).toBe(false)
-  expect([...c.actors.values()].some((actor) => actor.holdsQuit())).toBe(false)
+  expect([...c.actors.values()].some((actor) => actor.holdQuit())).toBe(false)
   c.allowQuit()
   await c.first.restart('0.2.24')
   expect(c.journal.filter((step) => step.includes('native install'))).toHaveLength(1)

@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest'
 import { createAppLifetime, type AppLifetimeDeps } from '../src/main/app-lifetime'
+import { workspaceUpdate } from '../src/main/update-workspaces'
 
 function harness(overrides: Partial<AppLifetimeDeps> = {}) {
   const log: string[] = []
@@ -94,3 +95,55 @@ it.each(['stopArchiveWork', 'closeAllSessions', 'drainArchiveWork', 'closeDataba
     if (step !== 'closeDatabase') expect(log).not.toContain('closeDatabase')
   },
 )
+
+it('a held quit whose drafts could not be kept leaves a later update free to quit and install', async () => {
+  let draftsKept = false
+  let release!: () => void
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const { lifetime, log } = harness({
+    holdQuit: () => update.holdQuit(),
+    keepUnsentDrafts: async () => {
+      await blocked
+      if (!draftsKept) throw new Error('drafts not saved')
+    },
+  })
+  const update: ReturnType<typeof workspaceUpdate> = workspaceUpdate({
+    self: { folder: '/workspace', pid: 1, startedAt: 0, name: 'Workspace', executable: '/BroCrew' },
+    ready: () => true,
+    discover: async () => [update.details()],
+    request: async () => {
+      throw new Error('no other workspace')
+    },
+    prepare: () => lifetime.prepareForQuit(),
+    quitting: () => lifetime.shuttingDown !== null,
+    reopen: () => log.push('reopen'),
+    stayStopped: () => log.push('stays stopped'),
+    remember: () => {},
+    report: () => {},
+    // Electron's app.quit() raises before-quit at once.
+    quit: () => lifetime.beforeQuit(quitEvent().event),
+    install: () => log.push('install'),
+  })
+
+  const first = update.restart('0.2.24')
+  for (let tick = 0; tick < 12; tick += 1) await Promise.resolve()
+  expect(update.details().owner).not.toBeNull()
+  const quit = quitEvent()
+  lifetime.beforeQuit(quit.event)
+  expect(quit.prevented).toBe(1)
+  release()
+  await expect(first).rejects.toThrow('drafts not saved')
+  await lifetime.shuttingDown
+  expect(log).toContain('log:BroCrew is staying open because its unsent drafts were not saved')
+  expect(lifetime.shuttingDown).toBeNull()
+  expect(log).not.toContain('quit')
+
+  draftsKept = true
+  await update.restart('0.2.24')
+  await lifetime.shuttingDown
+  expect(log.at(-1)).toBe('quit')
+  expect(update.finishQuit()).toBe(true)
+  expect(log).toContain('install')
+})
