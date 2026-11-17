@@ -15662,8 +15662,9 @@ export class RuntimeHost implements LiveHost {
       }
       const current = sameWindowWriter(origin, before) && sameWindowWriter(origin, after)
       // A writer that moves during every read still gets the last snapshot, kept under its origin
-      // so the next read asks again.
-      if (current || (reusable && oneWriter && attempt === (joinOnly ? 0 : 1))) {
+      // so the next read asks again; a refused publication would ask again at once. Leads alone
+      // stay refused: a thread reopened from them must not miss a row, and reopens without them.
+      if (current || (query.kind !== 'leads' && oneWriter && attempt === (joinOnly ? 0 : 1))) {
         const stamp = current ? after! : origin
         if (query.kind === 'routes') this.windowRoutesKept = { stamp, result }
         if (query.kind === 'incidents') {
