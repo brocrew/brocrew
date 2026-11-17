@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import Database from 'better-sqlite3'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { isTheProvidersRecord, readProviderDatabase } from '../src/main/archive/native-file'
+import { isTheProvidersRecord } from '../src/main/archive/native-file'
+import { readProviderDatabase } from '../src/main/database/sqlite/evidence/provider-database'
 
 /**
  * # b9607dc1 · 5dbf25b2 · F093 R1 — the provider's record guard, and the database copy it reads through

@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { ownsRecord, newestStateDatabase } from './native-record'
-import { readProviderDatabase } from '../../archive/native-io'
+import { readCodexRolloutPaths } from '../../database/codex-records'
 import type { ProviderSessionOf } from '../../db/conversation-tree'
 import {
   entryAt,
@@ -14,17 +14,7 @@ import {
 function codexRolloutsOf(home: string, ids: readonly string[]): Map<string, string> {
   const state = ids.length === 0 ? null : newestStateDatabase(home)
   if (state === null) return new Map()
-  return (
-    readProviderDatabase(state, (db) => {
-      const select = db.prepare('SELECT rollout_path FROM threads WHERE id = ?')
-      const found = new Map<string, string>()
-      for (const id of ids) {
-        const row = select.get(id) as { rollout_path: unknown } | undefined
-        if (typeof row?.rollout_path === 'string') found.set(id, row.rollout_path)
-      }
-      return found
-    }) ?? new Map()
-  )
+  return readCodexRolloutPaths(state, ids) ?? new Map()
 }
 export function filesOf(home: string, sessions: readonly ProviderSessionOf[]): ProviderFile[] {
   const files = new Map<string, ProviderFile>()

@@ -1,7 +1,7 @@
 import type { SessionRef } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { providerDefinitions } from '../providers/index'
-export { readProviderDatabase, readLines, freeBytesOn, type LineChunk } from './native-io'
+export { readLines, freeBytesOn, type LineChunk } from './native-io'
 
 export function nativeTranscriptPath(
   provider: Provider,

@@ -1,16 +1,12 @@
 import { existsSync, readdirSync, realpathSync } from 'node:fs'
 import { basename, join, resolve, sep } from 'node:path'
-import { readProviderDatabase } from '../../archive/native-io'
+import { readCodexRolloutPath } from '../../database/codex-records'
 import type { SessionRef } from '@brobot2/runtime'
 
 function codexRolloutPath(providerHome: string, threadId: string): string | null {
   const state = newestStateDatabase(providerHome)
   if (state === null) return null
-  return readProviderDatabase(state, (db) => {
-    const row = db.prepare('SELECT rollout_path FROM threads WHERE id = ?').get(threadId) as
-      { rollout_path: unknown } | undefined
-    return typeof row?.rollout_path === 'string' ? row.rollout_path : null
-  })
+  return readCodexRolloutPath(state, threadId)
 }
 
 /** Select the highest schema version; older databases can name threads Codex has moved past. */

@@ -2,7 +2,7 @@ import { homedir } from 'node:os'
 import type { ProtectedPlaceKind } from '../../../shared/work-folders'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { readProviderDatabase } from '../../archive/native-io'
+import { readCodexDiscovery, type CodexThreadRow } from '../../database/codex-records'
 import { newestStateDatabase } from './native-record'
 import {
   EMPTY,
@@ -15,28 +15,7 @@ export function discoverCodexSessions(home: string, profileId: string): Discover
   const state = newestStateDatabase(home)
   if (state === null) return EMPTY
 
-  const read = readProviderDatabase(state, (db) => {
-    const present = new Set(
-      (db.pragma('table_info(threads)') as { name: string }[]).map((column) => column.name),
-    )
-    const described = DESCRIPTION_COLUMNS.filter((column) => present.has(column))
-    const rows = db
-      .prepare(
-        `SELECT id, cwd, rollout_path, archived, created_at, created_at_ms, updated_at, updated_at_ms
-                ${described.map((column) => `, ${column}`).join('')}
-           FROM threads ORDER BY updated_at DESC`,
-      )
-      .all() as CodexThreadRow[]
-    let edges: { child_thread_id: string; parent_thread_id: string }[] = []
-    try {
-      edges = db
-        .prepare('SELECT child_thread_id, parent_thread_id FROM thread_spawn_edges')
-        .all() as typeof edges
-    } catch {
-      edges = []
-    }
-    return { rows, edges }
-  })
+  const read = readCodexDiscovery(state)
   if (read === null) {
     return {
       found: [],
@@ -97,16 +76,6 @@ export function discoverCodexSessions(home: string, profileId: string): Discover
   return { found, skipped }
 }
 
-const DESCRIPTION_COLUMNS = [
-  'title',
-  'first_user_message',
-  'thread_source',
-  'source',
-  'agent_nickname',
-  'agent_role',
-  'agent_path',
-] as const
-
 /** Combine descent signals so missing or unreadable source JSON cannot hide a child. */
 export function codexDescent(
   row: CodexThreadRow,
@@ -161,24 +130,6 @@ function parseSubagentSource(source: unknown): {
 
 function record(value: unknown): Record<string, unknown> | null {
   return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null
-}
-
-interface CodexThreadRow {
-  id: string
-  cwd: string
-  rollout_path: string
-  archived: number
-  created_at: number
-  created_at_ms: number | null
-  updated_at: number
-  updated_at_ms: number | null
-  title?: unknown
-  first_user_message?: unknown
-  thread_source?: unknown
-  source?: unknown
-  agent_nickname?: unknown
-  agent_role?: unknown
-  agent_path?: unknown
 }
 
 function text(value: unknown): string {

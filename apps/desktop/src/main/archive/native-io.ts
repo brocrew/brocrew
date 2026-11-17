@@ -1,65 +1,10 @@
 import {
   closeSync,
-  copyFileSync,
-  existsSync,
-  mkdtempSync,
   openSync,
   readSync,
-  rmSync,
   statfsSync,
 } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
-import Database from 'better-sqlite3'
-
-/**
- * Read a provider's own SQLite index **through a private copy** (046 review, P1).
- *
- * ## `readonly: true` is not read-only
- *
- * Measured, not assumed: open a WAL-mode database with `new Database(path, {readonly: true})` when
- * its `-shm` is absent — after a reboot, or any time the owner is not running — and SQLite
- * **creates `<name>-shm` next to it**. That is a write into `~/.codex`, which this app has promised
- * never to do, and in the worst case a read-only opener also drives WAL recovery against someone
- * else's live database.
- *
- * better-sqlite3 has no `immutable` option to turn that off — it takes `readonly`, `fileMustExist`,
- * `timeout`, `verbose` and `nativeBinding`, and silently ignores anything else, so passing
- * `immutable: true` (the obvious fix, and the one first suggested) changes nothing. Verified: the
- * `-shm` still appeared.
- *
- * So the file is copied somewhere we own and the copy is opened. The `-wal` comes with it, or the
- * copy would be missing every transaction the owner has not checkpointed yet.
- *
- * ⚠️ A copy taken while the owner is mid-write can be torn. That is why the whole thing is inside
- * one `try`: an unreadable index yields `null`, and every caller already treats that as "this home
- * has nothing to offer" rather than as a failure — which is true, and is the safe way to be wrong.
- */
-export function readProviderDatabase<T>(
-  path: string,
-  read: (db: Database.Database) => T,
-): T | null {
-  let scratch: string | null = null
-  try {
-    scratch = mkdtempSync(join(tmpdir(), 'brobot2-provider-db-'))
-    const copy = join(scratch, 'state.sqlite')
-    copyFileSync(path, copy)
-    // Best-effort: a database with no WAL beside it simply has nothing uncheckpointed.
-    if (existsSync(`${path}-wal`)) copyFileSync(`${path}-wal`, `${copy}-wal`)
-
-    const db = new Database(copy, { readonly: true, fileMustExist: true })
-    try {
-      return read(db)
-    } finally {
-      db.close()
-    }
-  } catch {
-    return null
-  } finally {
-    if (scratch !== null) rmSync(scratch, { recursive: true, force: true })
-  }
-}
 
 /** A pull of lines from a file, and where to carry on from. */
 export interface LineChunk {
