@@ -55,8 +55,10 @@ export function eventTrimWriter(db: AppDatabase): (batch: EventTrimBatch) => Eve
   const committed = committedChangesOf(db)
   const generation = db.prepare(`SELECT coalesce(g.active,0) AS active, g.building
     FROM provider_session s LEFT JOIN derived_generation g ON g.session_id=s.id WHERE s.id=?`)
+  // The unary plus keeps the conversation check off the indexes: the delete then seeks each id by
+  // the primary key, instead of reading every row of the conversation through `session_id`.
   const remove = db.prepare(`DELETE FROM events
-    WHERE session_id = @session AND id IN (SELECT value FROM json_each(@ids))
+    WHERE +session_id = @session AND id IN (SELECT value FROM json_each(@ids))
       AND (created_at < @before OR type IN ('provider_commands','tool_inventory','launched'))`)
   const write = db.transaction((batch: EventTrimBatch) => {
     const current = generation.get(batch.session) as

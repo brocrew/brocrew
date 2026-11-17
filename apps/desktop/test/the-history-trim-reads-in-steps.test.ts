@@ -2,10 +2,10 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterAll, expect, it } from 'vitest'
+import { afterAll, expect, it, vi } from 'vitest'
 import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
-import { trimOldEvents } from '../src/main/db/event-retention'
+import { eventTrimWriter, trimOldEvents } from '../src/main/db/event-retention'
 import { conversationHeadSQL, historyStepsSQL } from '../src/main/db/event-retention-policy'
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
@@ -283,6 +283,26 @@ it('reads each step as one range of the type index, and finds a conversation by 
       'CORRELATED SCALAR SUBQUERY 1',
       'CORRELATED SCALAR SUBQUERY 2',
     ])
+  } finally {
+    db.close()
+  }
+})
+
+it('deletes a batch by seeking each id, without reading the rest of its conversation', () => {
+  const db = openDatabase(join(folder, 'delete-plan.sqlite'))
+  applyMigrations(db, migrations)
+  try {
+    const prepared = vi.spyOn(db, 'prepare')
+    eventTrimWriter(db)
+    const deletes = prepared.mock.calls
+      .map(([sql]) => sql)
+      .filter((sql) => sql.trimStart().startsWith('DELETE'))
+    expect(deletes).toHaveLength(1)
+    const batch = { session: 's', ids: '["a","b"]', before: NOW }
+    const plan = (
+      db.prepare(`EXPLAIN QUERY PLAN ${deletes[0]}`).all(batch) as { detail: string }[]
+    ).map((row) => row.detail)
+    expect(plan[0]).toBe('SEARCH events USING INDEX sqlite_autoindex_events_1 (id=?)')
   } finally {
     db.close()
   }
