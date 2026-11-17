@@ -9,14 +9,6 @@ import type {
   MethodFileState,
   MethodSettlement,
 } from '../../methods'
-export type {
-  MethodChangeIntent,
-  MethodChangeRecord,
-  MethodFileChange,
-  MethodFileImage,
-  MethodFileState,
-  MethodSettlement,
-} from '../../methods'
 
 export interface MethodChangeStore {
   hasPending(identityId: string): boolean
@@ -57,7 +49,7 @@ function object(value: unknown): Record<string, unknown> | null {
 }
 
 /** Names are copied from a fresh managed inventory, never accepted as relative paths. */
-export function methodChangeName(name: unknown): name is string {
+function methodChangeName(name: unknown): name is string {
   return (
     typeof name === 'string' &&
     !name.includes('/') &&
