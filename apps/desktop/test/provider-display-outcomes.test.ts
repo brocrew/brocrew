@@ -37,7 +37,9 @@ describe('core-supplied error display outcomes', () => {
         expect(live.fatal).toBe(true)
         expect(event).not.toHaveProperty('presentation')
         if (onAKey) {
-          expect(live.presentation?.message).toBe('Key refused. Check its balance or switch connection.')
+          expect(live.presentation?.message).toBe(
+            'Key refused. Check its balance or switch connection.',
+          )
         } else if (owner === undefined) {
           expect(live.presentation?.message).toBe(
             'The provider would not run this turn on the account this conversation runs on, because of ' +
@@ -81,7 +83,11 @@ describe('core-supplied error display outcomes', () => {
     }
     const key = projected({ ...event, onAKey: true }, 'claude')
     expect(key.presentation?.message).toBe('Key refused. Check its balance or switch connection.')
-    expect(key.presentation).toMatchObject({ level: 'error', terminal: true, repeat: 'each' })
+    expect(key.presentation).toMatchObject({
+      level: 'error',
+      terminal: true,
+      repeat: 'same-message-once',
+    })
     const login = projected(event, 'claude')
     expect(login.signIn?.state).toBe('stale')
     expect(login.signIn?.message).toContain('machine’s Claude login')
@@ -102,14 +108,18 @@ describe('core-supplied error display outcomes', () => {
     for (const owner of ['claude', 'codex'] as const) {
       const rejected = projected(event, owner)
       const stale = projected({ ...event, cause: 'auth_stale' }, owner)
-      expect(rejected.presentation?.message).toBe('Key refused. Check its balance or switch connection.')
+      expect(rejected.presentation?.message).toBe(
+        'Key refused. Check its balance or switch connection.',
+      )
       expect(stale.presentation?.message).toBe(rejected.presentation?.message)
       expect(stale.message).toBe(event.message)
       expect(stale.fatal).toBe(true)
     }
     const fictional = errorForDisplay({ ...event, cause: 'auth_stale' }, 'Fern Harness')
     if (fictional.type !== 'error') throw new Error('Expected an error')
-    expect(fictional.presentation?.message).toBe('Key refused. Check its balance or switch connection.')
+    expect(fictional.presentation?.message).toBe(
+      'Key refused. Check its balance or switch connection.',
+    )
     expect(fictional.presentation?.message).not.toMatch(/Claude|Codex|Anthropic/)
   })
 

@@ -20740,7 +20740,8 @@ export class RuntimeHost implements LiveHost {
         : await this.theSettingNamed(sessionId, change)
     sessionId = this.theOneInItsPlace(sessionId)
     const currentProvider =
-      this.slots.get(sessionId)?.session?.provider ?? this.deps.store.recordedOne(sessionId)?.provider
+      this.slots.get(sessionId)?.session?.provider ??
+      this.deps.store.recordedOne(sessionId)?.provider
     if (provider !== undefined && currentProvider !== provider) {
       throw new Error('Provider changed. Pick again.')
     }
