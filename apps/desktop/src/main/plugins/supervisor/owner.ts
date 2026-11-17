@@ -456,25 +456,31 @@ export class PluginSupervisor {
     if (command.kind === 'hello') {
       const negotiated = compatible(this.record.wire, command.wire)
       if (!negotiated) refuse('incompatible')
-      const duplicate = [...this.leases.values()].some(
+      const duplicate = [...this.leases.values()].find(
         (lease) => lease.workspace === command.workspace,
       )
-      if (duplicate || this.leases.size >= OWNER_LIMITS.leases)
+      // The same app asking again before it ever held or renewed: its answer was lost.
+      const lost =
+        duplicate?.generation === command.generation && !duplicate.held && duplicate.counter === 0
+      if (!lost && (duplicate || this.leases.size >= OWNER_LIMITS.leases))
         refuse('busy', {
           phase: 'accepting',
           stage: 'hello',
           probe: 'live',
           reason: duplicate ? 'duplicate-workspace' : 'capacity',
         })
-      const lease: WorkspaceLease = {
-        id: secret(),
-        workspace: command.workspace,
-        generation: command.generation,
-        epoch: this.record.epoch,
-        ...negotiated,
-        counter: 0,
-        renewedAt: now,
-      }
+      const lease: WorkspaceLease = lost
+        ? duplicate
+        : {
+            id: secret(),
+            workspace: command.workspace,
+            generation: command.generation,
+            epoch: this.record.epoch,
+            ...negotiated,
+            counter: 0,
+            renewedAt: now,
+          }
+      lease.renewedAt = now
       this.leases.set(lease.id, lease)
       return {
         lease: lease.id,

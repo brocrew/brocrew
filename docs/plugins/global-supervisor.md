@@ -15,7 +15,11 @@ This boundary does not isolate curated code from its own OS user.
 launcher. Wire-major mismatch or disjoint minor ranges are refused; the highest shared
 minor and feature intersection are selected. The build is carried for identification,
 not used as permission to replace an older compatible service. There are at most 64
-leases, one per workspace. Renewal runs every 15 seconds, expires after 60 seconds on
+leases, one per workspace. An app keeps one generation for its attempts until one is
+admitted. When it asks again before it ever held or renewed its registration, its answer
+was lost, and the owner hands that registration back; another generation is still refused.
+A request's deadline first reads any reply that arrived while the app was stalled past it,
+and a request is never sent once its deadline has passed. Renewal runs every 15 seconds, expires after 60 seconds on
 the owner's monotonic clock, and requires the exact lease, host generation, workspace,
 owner epoch and next counter. An expired lease cannot renew; fresh authenticated
 attachment and the later controller's projection checks are required.

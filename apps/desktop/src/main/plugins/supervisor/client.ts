@@ -108,6 +108,20 @@ function releasedDrainStalled(
     return false
   }
 }
+/**
+ * A request's deadline. When this app stalled past it, what had already arrived is read before
+ * it expires, so an answer that came in time is never lost to the app's own delay.
+ */
+function requestDeadline(expire: () => void) {
+  const deadline = {
+    passed: false,
+    timer: setTimeout(() => {
+      deadline.passed = true
+      setImmediate(expire)
+    }, OWNER_LIMITS.request),
+  }
+  return deadline
+}
 function holdSupervisorConnection(
   storage: SupervisorStorage,
   record: OwnerRecord,
@@ -122,14 +136,12 @@ function holdSupervisorConnection(
     const fail = (error: Error) => {
       if (done) return
       done = true
-      clearTimeout(deadline)
+      clearTimeout(deadline.timer)
       socket.destroy()
       reject(new PluginSupervisorError('unavailable', { cause: error }))
     }
-    const deadline = setTimeout(
-      () => fail(new Error(`no reply to hold within ${OWNER_LIMITS.request} ms`)),
-      OWNER_LIMITS.request,
-    )
+    const unanswered = () => new Error(`no reply to hold within ${OWNER_LIMITS.request} ms`)
+    const deadline = requestDeadline(() => fail(unanswered()))
     socket.on('error', fail)
     socket.once('close', () => fail(new Error('the plugin service closed hold unanswered')))
     socket.on('data', (chunk: Buffer) => {
@@ -142,6 +154,8 @@ function holdSupervisorConnection(
         bytes = bytes.subarray(end + 1)
         if (!challenge) {
           challenge = z.strictObject({ challenge: Hex }).parse(JSON.parse(line)).challenge
+          // Past the deadline, a request is never sent: nothing would read its answer.
+          if (deadline.passed) throw unanswered()
           socket.write(pack({ epoch: record.epoch, nonce, challenge, command }))
           return
         }
@@ -149,7 +163,7 @@ function holdSupervisorConnection(
         if (response.nonce !== nonce || response.epoch !== record.epoch || !response.ok)
           throw new Error('the plugin service refused the held connection')
         done = true
-        clearTimeout(deadline)
+        clearTimeout(deadline.timer)
         resolve(socket)
       } catch (error) {
         fail(error instanceof Error ? error : new Error(String(error)))
@@ -173,12 +187,12 @@ export function supervisorRequest(
     const finish = (error?: PluginSupervisorError, value?: unknown) => {
       if (done) return
       done = true
-      clearTimeout(deadline)
+      clearTimeout(deadline.timer)
       socket.destroy()
       if (error) reject(error)
       else resolve(value)
     }
-    const deadline = setTimeout(() => finish(new NoReply()), OWNER_LIMITS.request)
+    const deadline = requestDeadline(() => finish(new NoReply()))
     socket.on('error', () => finish(new NoReply()))
     socket.on('close', () => {
       if (!done) finish(new NoReply())
@@ -197,6 +211,7 @@ export function supervisorRequest(
         bytes = Buffer.alloc(0)
         if (!challenge) {
           challenge = z.strictObject({ challenge: Hex }).parse(JSON.parse(line)).challenge
+          if (deadline.passed) throw new NoReply()
           socket.write(pack({ epoch: record.epoch, nonce, challenge, command }))
           return
         }
@@ -622,6 +637,16 @@ export class PluginSupervisorAttachment {
   private startError: unknown
   private options?: Omit<SupervisorClientOptions, 'generation'>
   private recovering?: Promise<boolean>
+  /** Kept by every attempt until one is admitted, so the service can hand back a lost answer. */
+  private generation = randomUUID()
+  private attach(options: Omit<SupervisorClientOptions, 'generation'>) {
+    return PluginWorkspaceLease.attach({ ...options, generation: this.generation }).then(
+      (lease) => {
+        this.generation = randomUUID()
+        return lease
+      },
+    )
+  }
   /** Internal diagnostics only; raw causes are never sent through plugin IPC or logs. */
   get lastStartError(): unknown {
     return this.startError
@@ -631,7 +656,7 @@ export class PluginSupervisorAttachment {
     this.startError = undefined
     this.options = options
     this.where = { root: options.root, workspaceRoot: options.workspaceRoot }
-    this.pending = PluginWorkspaceLease.attach({ ...options, generation: randomUUID() })
+    this.pending = this.attach(options)
       .then(async (lease) => {
         if (this.ended) {
           await lease.close()
@@ -655,10 +680,7 @@ export class PluginSupervisorAttachment {
     this.recovering ??= (async () => {
       if (this.ended || !this.options) return false
       try {
-        const next = await PluginWorkspaceLease.attach({
-          ...this.options,
-          generation: randomUUID(),
-        })
+        const next = await this.attach(this.options)
         if (this.ended) {
           await next.close()
           return false
