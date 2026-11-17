@@ -5,6 +5,7 @@ import { join } from 'node:path'
 /**
  * A proxy in front of the plugin service's socket. Each reply can be lost (the connection is
  * closed), held back (never sent), or sent after this whole process stalled for `stall` ms.
+ * `beforeChallenge` runs before the service's challenge is passed on.
  */
 export async function interpose(root: string) {
   const path = join(root, 'supervisor/owner.sock'),
@@ -12,7 +13,11 @@ export async function interpose(root: string) {
   renameSync(path, aside)
   const requests: string[] = [],
     replies: string[] = [],
-    plan = { lose: 0, hold: 0, stall: 0 },
+    plan: { lose: number; hold: number; stall: number; beforeChallenge?: () => void } = {
+      lose: 0,
+      hold: 0,
+      stall: 0,
+    },
     count = { settled: 0 }
   const server = createServer((client) => {
     const owner = createConnection(aside)
@@ -32,6 +37,7 @@ export async function interpose(root: string) {
     owner.on('data', (chunk: Buffer) => {
       if (!challenged) {
         challenged = true
+        plan.beforeChallenge?.()
         client.write(chunk)
         return
       }

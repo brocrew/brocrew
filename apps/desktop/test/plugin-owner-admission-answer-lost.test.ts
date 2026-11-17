@@ -59,4 +59,45 @@ describe.skipIf(process.platform === 'win32')('the first answer of a new plugin 
       await proxy.close()
     }
   })
+
+  it('is asked for by start and recovery at once: one registration, released once', async () => {
+    const { root, workspaceRoot, start, attach, read } = await fixture()
+    await start()
+    const app = new PluginSupervisorAttachment()
+    app.start({ root, workspaceRoot, build: 'fictional' })
+    const recovered = app.recover()
+    expect(await app.ready()).toBe(true)
+    expect(await recovered).toBe(true)
+    expect(app.holdsLease()).toBe(true)
+    await expect(attach({ generation: randomUUID() })).rejects.toMatchObject({
+      code: 'busy',
+      diagnostic: { reason: 'duplicate-workspace' },
+    })
+    await app.quit()
+    expect(read()?.phase).toBe('stopped')
+  })
+})
+
+describe.skipIf(process.platform === 'win32')('a challenge that arrives after the time is up', () => {
+  it('is not answered, so the service registers nothing', async () => {
+    const { root, start, attach } = await fixture()
+    await start()
+    const proxy = await interpose(root)
+    const original = performance.now.bind(performance)
+    let elapsed = 0
+    const clock = vi.spyOn(performance, 'now').mockImplementation(() => original() + elapsed)
+    try {
+      proxy.plan.beforeChallenge = () => {
+        elapsed += OWNER_LIMITS.request + 500
+        proxy.plan.beforeChallenge = undefined
+      }
+      await expect(attach()).rejects.toMatchObject({ code: 'cleanup-pending' })
+      expect(proxy.requests).toHaveLength(0)
+    } finally {
+      clock.mockRestore()
+      await proxy.close()
+    }
+    // Nothing was registered, so another app is admitted at once.
+    expect((await attach({ generation: randomUUID() })).standing()).toBe(true)
+  })
 })
