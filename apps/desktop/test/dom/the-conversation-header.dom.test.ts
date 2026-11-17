@@ -19,7 +19,7 @@ import {
   permission,
   record,
   show,
-  unmountAll,
+  windowCleanup,
   visible,
   type Mounted,
 } from './harness'
@@ -30,13 +30,7 @@ import { usageCards } from './usage-cards'
  * takes its column. The drawing sensor catches clipped labels that textContent cannot detect.
  */
 
-const ORIGINAL = { width: window.innerWidth, height: window.innerHeight }
-
-afterEach(async () => {
-  unmountAll()
-  delete (window as { api?: unknown }).api
-  await page.viewport(ORIGINAL.width, ORIGINAL.height)
-})
+afterEach(windowCleanup())
 
 /** ⛔ Derived from `tokens.css`, not chosen — see the file note. */
 const APP_MIN_W = 1180

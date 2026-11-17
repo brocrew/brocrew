@@ -69,7 +69,6 @@
         "scripts/update-rehearsal-feed.mjs",
         "scripts/update-rehearsal-lane.mjs",
         "scripts/upgrade-path.mjs",
-        "scripts/window-controls-probe.mjs",
         "scripts/window-opens-check.mjs",
         "scripts/windows-packaged-check.mjs",
         "scripts/windows-update-test.mjs",

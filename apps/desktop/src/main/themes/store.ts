@@ -15,11 +15,13 @@ import type {
   ThemeSource,
 } from '../../shared/theme-library'
 import { assetPathProblem, LIMITS } from '../../shared/themes/assets'
-import { colourCss, over, parseColour } from '../../shared/themes/colour'
+import { colourCss, mixOklab, over, parseColour } from '../../shared/themes/colour'
 import type { Theme, ThemeProblem } from '../../shared/themes/theme'
 import type { AdmittedThemeAsset, ThemeAssetRegistry } from './asset-protocol'
 import { readOfferedThemeAsset, readThemeFile, THEME_ID, THEME_JSON_BYTES } from './files'
 import { CLASSIC_THEME, DEFAULT_THEME_BACKGROUND } from './defaults'
+import { CLASSIC_TITLE_BAR, type TitleBarPalette } from '../native-title-bar'
+import { DEFAULT_SEEDS } from '../../shared/themes/derive'
 import { retrying } from '../recovery/files'
 import {
   inspectThemeAsset,
@@ -255,6 +257,19 @@ export class ThemeStore implements ThemeAssetRegistry {
     return paper
       ? colourCss(over(paper, parseColour(DEFAULT_THEME_BACKGROUND)!))
       : DEFAULT_THEME_BACKGROUND
+  }
+
+  titleBar(): TitleBarPalette {
+    const theme = this.registry.get(this.active)?.loaded?.resolved
+    if (!theme || this.active === 'classic') return CLASSIC_TITLE_BAR
+    const paper = parseColour(theme.frame?.paper ?? DEFAULT_SEEDS.frame.paper)!
+    const background = parseColour(theme.titlebar?.background?.color)
+    const color = over(background ?? paper, parseColour(this.background())!)
+    const ink =
+      parseColour(theme.titlebar?.ink ?? theme.tokens?.frame?.['text-soft']) ??
+      mixOklab(parseColour(theme.frame?.ink ?? DEFAULT_SEEDS.frame.ink)!, 85, paper)
+    // Native caption buttons accept a solid colour; artwork stays in the web title bar.
+    return { color: colourCss(color), symbolColor: colourCss(over(ink, color)) }
   }
 
   refresh(): Promise<ThemeSnapshot> {

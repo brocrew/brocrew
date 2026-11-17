@@ -6,61 +6,20 @@ import ConversationPane from '../../src/renderer/src/components/ConversationPane
 import ReadingPane from '../../src/renderer/src/components/ReadingPane.vue'
 import { createWindow } from '../../src/renderer/src/lib/transcript-window'
 import { TRANSCRIPT_MIN } from '../../src/renderer/src/lib/drawer'
-import { WINDOW_CONTROLS } from '../../src/shared/window-controls'
 import type { LibraryEntry, ProviderUsageReading } from '../../src/shared/runtime-ipc'
 import {
   META,
-  contrast,
   mount,
   paneProps,
   record,
   parseColor,
-  paintedBackground,
-  unmountAll,
+  windowCleanup,
   visible,
   type Mounted,
 } from './harness'
 import { usageCards } from './usage-cards'
 
-/**
- * 🔴 **One title bar, and one shelf that is not a second one** (389 §2 and §3).
- *
- * ## ⛔ Why this file exists at all, and it is a gap `385` left open
- *
- * `385` shipped the frameless window and three working controls, and everything the repository knew
- * about the RESULT was a string. `dom/window-controls.dom.test.ts` says so on its own face — it
- * **reproduces** the bar with an inline `webkitAppRegion: 'drag'` because `.titlebar` was scoped CSS
- * inside `RuntimeScreen.vue`, and nothing mounts `RuntimeScreen`. `build-identity.test.ts` said the
- * same thing about the build chip in more words. ⚠️ So the two claims a person actually cares about
- * — *the bar is the drag region* and *the bar is 32px* — were checked only by two live rigs that
- * are not in `ci`.
- *
- * `389 §2` moved the bar into `AppTitleBar.vue` **without changing it**, and this is what the move
- * buys: the real element, the real scoped cascade, measured at the widths the app actually opens at.
- *
- * ## ⚑ The geometry every section here uses
- *
- * `main/index.ts` declares `1200 × 840` with `frame: false`, so the web contents are 840 tall and
- * the shell **below our own 32px bar** is `1200 × 808` — which is why this directory writes
- * `1200 × 808` everywhere and why §1 alone wants the whole `1200 × 840`.
- *
- * ⛔ **The viewport is shared, so this file puts it back.**
- *
- * ## ⚠️ What this does NOT cover
- *
- * The reveal-on-hover of the control glyphs is not simulated: nothing in this directory drives a
- * pointer, and a `:hover` rule read back out of the stylesheet would be a string assertion wearing a
- * measurement's clothes. §1.3 asserts the two halves that ARE readings — the glyph exists and is
- * distinct per control, and the colour it is revealed in is legible on all three fills.
- */
-
-const ORIGINAL = { width: window.innerWidth, height: window.innerHeight }
-
-afterEach(async () => {
-  unmountAll()
-  delete (window as { api?: unknown }).api
-  await page.viewport(ORIGINAL.width, ORIGINAL.height)
-})
+afterEach(windowCleanup())
 
 const INFO = {
   name: 'BroBot2',
@@ -74,144 +33,24 @@ function bar(width: number, error: string | null = null): Mounted {
   return mount(AppTitleBar, { info: INFO, error }, { width, height: 32 })
 }
 
-/** Centre of a box on the x axis, which is the only axis the title's placement is about. */
-function centreX(el: Element): number {
-  const box = el.getBoundingClientRect()
-  return box.x + box.width / 2
-}
-
-/* ------------------------------------------------------------------ §1 · the bar, actually mounted */
-
-describe('§1 · the real title bar, measured rather than matched (389 §2)', () => {
-  it('🔴 IS the drag region, and it is the token tall — the first reading of the real element', async () => {
+describe('the native title bar', () => {
+  it('is a 32px drag region with selectable diagnostics outside the drag region', async () => {
     await page.viewport(1200, 840)
-    const m = bar(1200)
+    const m = bar(1200, 'The startup read failed')
     const strip = m.q('app-titlebar')
-
-    // ⛔ This is the assertion `window-controls.dom.test.ts` could only make against a reproduction:
-    // the app's OWN `.titlebar`, with the app's own scoped rule, computed by the engine.
     expect(getComputedStyle(strip).getPropertyValue('-webkit-app-region').trim()).toBe('drag')
     expect(Math.round(strip.getBoundingClientRect().height)).toBe(32)
-    // …and the token it is keyed to is the one the arithmetic in `one-title-bar.test.ts` uses.
-    expect(getComputedStyle(document.documentElement).getPropertyValue('--titlebar-h').trim()).toBe(
-      '32px',
-    )
-    // ⚑ The control, one fact over: the build chip inside it opts back OUT, so the reading above
-    // distinguishes a region from an inherited default rather than reporting the same word twice.
     expect(getComputedStyle(m.q('app-info')).getPropertyValue('-webkit-app-region').trim()).toBe(
       'no-drag',
     )
-  })
-
-  it('⛔ the three controls are pressable where they sit, inside that region', async () => {
-    await page.viewport(1200, 840)
-    const m = bar(1200)
-    for (const control of WINDOW_CONTROLS) {
-      const button = m.q(`window-${control}`)
-      expect(getComputedStyle(button).getPropertyValue('-webkit-app-region').trim()).toBe('no-drag')
-      const box = button.getBoundingClientRect()
-      expect(
-        document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2),
-        `${control} is not the thing at its own centre`,
-      ).toBe(button)
-      expect(visible(button)).toBe(true)
+    expect(m.q('startup-error').textContent).toBe('The startup read failed')
+    expect(getComputedStyle(m.q('startup-error')).userSelect).toBe('text')
+    expect(m.host.querySelector('.window-controls')).toBeNull()
+    for (const control of ['close', 'minimize', 'zoom']) {
+      expect(m.all(`window-${control}`)).toHaveLength(0)
     }
-  })
-
-  it('⚠️ each control carries its own glyph, and the colour it is revealed in is legible on all three', async () => {
-    await page.viewport(1200, 840)
-    const m = bar(1200)
-    const buttons = WINDOW_CONTROLS.map((control) => m.q(`window-${control}`))
-
-    // 🔴 **The first mark.** `tokens.css` says the colour is the second mark and never the only one;
-    // 385 shipped three fills and no glyph, so which control a dot was could only be answered by a
-    // reader who separates the hues.
-    const glyphs = buttons.map((b) => b.textContent?.trim() ?? '')
-    expect(glyphs.every((g) => g.length > 0)).toBe(true)
-    expect(new Set(glyphs).size).toBe(3)
-
-    // ⚑ **At rest the bar is exactly what 385 shipped** — the glyph is laid out and invisible, so
-    // revealing it moves nothing and the resting window is unchanged.
-    for (const button of buttons) expect(parseColor(getComputedStyle(button).color)?.[3]).toBe(0)
-
-    // ⛔ **And when it IS revealed it can be read on every fill.** This is the reading that could
-    // have been wrong: one dark ink over red, amber and green is three different contrasts.
-    const ink = parseColor(
-      getComputedStyle(document.documentElement).getPropertyValue('--traffic-glyph').trim(),
-    )
-    expect(ink, 'the glyph token did not resolve — the stylesheet did not load').not.toBeNull()
-    for (const button of buttons) {
-      const fill = paintedBackground(button)
-      const ratio = contrast([...ink!.slice(0, 3), 1] as never, fill)
-      expect(
-        ratio,
-        `${button.dataset['cy']} reads ${ratio.toFixed(2)} against its own fill`,
-      ).toBeGreaterThan(3)
-    }
-  })
-
-  /**
-   * 🔴 **The one thing 389 §2 changed about the bar, and what it was worth** — measured at 1200 with
-   * a long `startup-error` in the right-hand cluster, as the offset of the title's centre from the
-   * bar's:
-   *
-   * | declarations | title off centre |
-   * |---|---:|
-   * | ours (`minmax(0, 1fr)` + `min-width: 0`) | **0.0px** |
-   * | track floor back only | 0.0px |
-   * | cluster floor back only | 0.0px |
-   * | **385's pair, both floors back** | **169.8px** |
-   *
-   * ⚠️ So the two declarations are redundant with each other and neither is decorative: `1fr` is
-   * `minmax(auto, 1fr)`, and a flex row refuses to shrink below its content, so BOTH floors have to
-   * be present for the third track to steal from the second. ⛔ 385 had both, and a provider error —
-   * an arbitrary string this app does not author — walked the window's own name 170px to the left.
-   */
-  it('🔴 the title stays centred on the WINDOW when the right cluster grows (389 §2)', async () => {
-    await page.viewport(1200, 840)
-
-    // The ordinary bar: a short build chip on the right.
-    const quiet = bar(1200)
-    const quietOffset = centreX(quiet.q('window-title')) - centreX(quiet.q('app-titlebar'))
-    expect(Math.abs(quietOffset)).toBeLessThan(1)
-    quiet.unmount()
-
-    // ⚠️ **A real startup error is an arbitrary provider string**, and it lands in this cluster.
-    const loud = bar(1200, 'the capabilities read failed: ' + 'ENOENT '.repeat(12))
-    const loudOffset = centreX(loud.q('window-title')) - centreX(loud.q('app-titlebar'))
-    expect(
-      Math.abs(loudOffset),
-      `a long error moved the title ${loudOffset.toFixed(1)}px off centre`,
-    ).toBeLessThan(1)
-
-    const strip = loud.q('app-titlebar')
-    const cluster = loud.q('app-info')
-    const read = (): number => centreX(loud.q('window-title')) - centreX(strip)
-    const table: Record<string, number> = { ours: read() }
-    strip.style.gridTemplateColumns = '1fr auto 1fr'
-    await nextTick()
-    table.gridOnly = read()
-    strip.style.gridTemplateColumns = ''
-    // ⚑ The cluster's floor is three declarations now: `min-width: 0`, and the `overflow: hidden` and
-    // `max-width: 100%` that keep it inside its own track beside a long title. Each alone gives it a
-    // zero minimum, so all three are taken off to restore the cluster as it was before the fix.
-    cluster.style.minWidth = 'auto'
-    cluster.style.overflow = 'visible'
-    cluster.style.maxWidth = 'none'
-    await nextTick()
-    table.clusterOnly = read()
-    strip.style.gridTemplateColumns = '1fr auto 1fr'
-    await nextTick()
-    table.both = read()
-    // ⚑ **Either declaration alone holds it, and both are present** — measured, not assumed.
-    expect(Math.abs(table.gridOnly!), 'the track floor alone moves it').toBeLessThan(1)
-    expect(Math.abs(table.clusterOnly!), 'the cluster floor alone moves it').toBeLessThan(1)
-    // ⛔ **385's exact pair of declarations, and this is the defect being fixed**: the title left
-    // the centre of the window by 170px — half the bar — the first time a provider error was long.
-    expect(
-      Math.abs(table.both!),
-      `385's declarations keep the title within ${Math.abs(table.both!).toFixed(1)}px of centre — this test measures nothing`,
-    ).toBeGreaterThan(100)
+    expect(m.host.textContent).not.toContain('Saved locally')
+    expect(m.host.querySelector('.sync-dot')).toBeNull()
   })
 })
 

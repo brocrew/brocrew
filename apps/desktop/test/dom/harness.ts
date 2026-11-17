@@ -1,6 +1,7 @@
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { createApp, nextTick, type Component } from 'vue'
 import { expect } from 'vitest'
+import { page } from 'vitest/browser'
 import type ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import type { CreatedSession } from '../../src/shared/runtime-ipc'
 import { createSessionRecord, type SessionRecord } from '../../src/renderer/src/lib/session-record'
@@ -106,6 +107,16 @@ export function unmountAll(): void {
       // into the next one, and a double unmount achieves that just as well. `host.remove()` above
       // is unconditional for the same reason: if `app.unmount()` throws, the box must still go.
     }
+  }
+}
+
+/** Capture the starting viewport and restore the mounted test window after each case. */
+export function windowCleanup(): () => Promise<void> {
+  const original = { width: window.innerWidth, height: window.innerHeight }
+  return async () => {
+    unmountAll()
+    delete (window as { api?: unknown }).api
+    await page.viewport(original.width, original.height)
   }
 }
 

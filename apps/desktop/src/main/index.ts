@@ -258,7 +258,7 @@ import { THEMES_CHANNELS } from '../shared/theme-library'
 import { installCspHeaders, rendererCsp } from '../shared/content-security-policy'
 import { RuntimeHost, type RuntimeHostDeps } from './runtime/runtime-host'
 import { appMenuTemplate } from './app-menu'
-import { registerWindowControls } from './window-controls'
+import { nativeTitleBarOptions, updateNativeTitleBar } from './native-title-bar'
 import { checkSessionCwd, resolveSessionCwd } from './runtime/scratch-cwd'
 import { captionHandedPaths, classifyDroppedPaths, classifyHandedPath } from './runtime/handed-path'
 import {
@@ -1262,7 +1262,6 @@ function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null
     }
     signals.update(signal)
   })
-  registerWindowControls(ipcMain, (event) => BrowserWindow.fromWebContents(event.sender))
   const database = db
   if (database === null) throw new Error('Database not initialised')
   const writer = createDraftWriter(database)
@@ -1393,7 +1392,7 @@ function createWindow(): void {
   const window = new BrowserWindow({
     width: 1200,
     height: 840,
-    frame: false,
+    ...nativeTitleBarOptions(process.platform, themes?.titleBar()),
     show: false,
     title: 'BroCrew',
     backgroundColor: themes?.background() ?? DEFAULT_THEME_BACKGROUND,
@@ -1404,9 +1403,7 @@ function createWindow(): void {
       sandbox: true,
     },
   })
-
   appSetupWindows.add(window.webContents)
-
   storageAppWindows.add(window.webContents)
   if (presentation.hidden) keepOutOfSight(window)
   window.webContents.once('did-finish-load', () => signalFirstWindowLoad())
@@ -2082,6 +2079,8 @@ function start(ownership: HostGateVerdict): void {
           if (window.isDestroyed() || window.webContents.isDestroyed()) continue
           try {
             window.setBackgroundColor(themes?.background() ?? DEFAULT_THEME_BACKGROUND)
+            if (appSetupWindows.has(window.webContents))
+              updateNativeTitleBar(window, process.platform, themes?.titleBar())
             window.webContents.send(THEMES_CHANNELS.changed, change)
           } catch {
             // A closed window does not stop the other windows from receiving the change.

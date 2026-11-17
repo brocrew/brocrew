@@ -41,7 +41,6 @@
     "probe:draft-restart": "node scripts/draft-survives-a-restart-probe.mjs",
     "probe:drop": "node scripts/drop-hazard-probe.mjs",
     "probe:one-app": "node scripts/one-app-probe.mjs",
-    "probe:window-controls": "node scripts/window-controls-probe.mjs",
     "probe:lane-geometry": "node scripts/lane-geometry-probe.mjs",
     "probe:file-change": "vitest run --config vitest.smoke.config.ts packages/runtime/smoke/file-change-probe.smoke.ts",
     "probe:compacting": "vitest run --config vitest.smoke.config.ts packages/runtime/smoke/compacting-probe.smoke.ts",

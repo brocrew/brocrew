@@ -77,10 +77,6 @@
   --overlay-backdrop: rgba(20, 23, 58, 0.58);
   --toast-bg: rgba(38, 52, 80, 0.97);
   --toast-shadow: 0 14px 40px rgba(0, 0, 0, 0.34);
-  --traffic-close: #ff5f57;
-  --traffic-min: #febc2e;
-  --traffic-max: #28c840;
-  --traffic-glyph: rgba(16, 20, 28, 0.66);
   --app-bg: #14173a;
   --titlebar-bg: #10132f;
   --rail-bg:
@@ -317,7 +313,6 @@
   --brand-mark-bg: #ffffff;
   --brand-mark-border: rgba(233, 234, 255, 0.2);
   --accent-border-hover: rgba(255, 138, 92, 0.7);
-  --sync-dot-glow: 0 0 0 4px rgba(101, 214, 158, 0.08);
   --surface-edge: rgba(226, 231, 241, 0.5);
 }
 [data-chat-theme='light'],

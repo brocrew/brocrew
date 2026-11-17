@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { expect, it } from 'vitest'
 
-// The approved release title bar hides diagnostics. A mounted footer alone is still no DB proof.
+// The approved release title bar hides diagnostics. A mounted title bar alone is still no DB proof.
 const source = readFileSync(new URL('../packaged-smoke.mjs', import.meta.url), 'utf8')
 const start = source.indexOf('async function thePackagedDatabaseOpened(cdp) {')
 const end = source.indexOf('\n}\n', start) + 2
@@ -14,7 +14,10 @@ function proof(count, { mounted = true, failure = null } = {}) {
   const cdp = {
     evaluate: (body) =>
       new AsyncFunction('document', 'window', body)(
-        { querySelector: () => (mounted ? { innerText: 'Saved locally' } : null) },
+        {
+          querySelector: (selector) =>
+            selector === '[data-cy=app-titlebar]' && mounted ? {} : null,
+        },
         {
           api: {
             getAppInfo: async () => {
@@ -36,7 +39,7 @@ function proof(count, { mounted = true, failure = null } = {}) {
   return { run: () => run(cdp), reads: () => reads }
 }
 
-it('accepts an actual migration count with only Saved locally visible', async () => {
+it('accepts an actual migration count with no diagnostics in the title bar', async () => {
   const state = proof(7)
   await expect(state.run()).resolves.toContain('schema 7')
   expect(state.reads()).toBe(1)
@@ -52,8 +55,8 @@ it('still requires the packaged UI to be mounted', async () => {
   await expect(state.run()).rejects.toThrow('timed out')
   expect(state.reads()).toBe(0)
 })
-it('retains a database failure with the visible footer for diagnosis', async () => {
+it('retains a database failure when no diagnostic footer is present', async () => {
   await expect(proof(7, { failure: 'Database not initialised' }).run()).rejects.toThrow(
-    'Database not initialised — the packaged app\'s footer reads "Saved locally"',
+    'Database not initialised — the packaged app\'s footer reads "null"',
   )
 })

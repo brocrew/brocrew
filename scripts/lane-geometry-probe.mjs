@@ -16,22 +16,19 @@
  * `ELECTRON_RUN_AS_NODE` and verify listener ownership before driving the app.
  */
 import { freePort } from './lib/free-port.mjs'
-import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { RendererCdp, listenersOn, waitFor } from './lib/renderer-cdp.mjs'
-import { createOwnedProcessLifecycle } from './lib/owned-process.mjs'
-import { descendantsOf, tearDownAndRemove } from './lib/owned-teardown.mjs'
+import { launchForCdp, RendererCdp, listenersOn, waitFor } from './lib/renderer-cdp.mjs'
+import { checkProbeGatePath } from './lib/smoke-run.mjs'
+import { launchedProcessLifecycle, tearDownAndRemove } from './lib/owned-teardown.mjs'
 
 const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const DESKTOP = join(REPO_ROOT, 'apps/desktop')
 const ELECTRON = join(DESKTOP, 'node_modules/.bin/electron')
 const ENTRY = join(DESKTOP, 'out/main/index.js')
 
-const SUN_PATH_MAX = 104
-const GATE_SOCKET = 'one-host.sock'
 const LAUNCH_MS = 45_000
 const SETTLE_MS = 30_000
 const OWNERSHIP_MS = 10_000
@@ -132,44 +129,24 @@ async function main() {
   if (SHOT_DIR) mkdirSync(SHOT_DIR, { recursive: true })
 
   const userDataDir = mkdtempSync(join(tmpdir(), 'b2-lane-'))
-  if (join(userDataDir, GATE_SOCKET).length > SUN_PATH_MAX) {
-    // ⛔ Remove the directory this refusal just made, or a long TMPDIR leaks one per invocation.
-    rmSync(userDataDir, { recursive: true, force: true })
-    throw new Error(`the one-host gate socket path would exceed ${String(SUN_PATH_MAX)} bytes.`)
-  }
+  checkProbeGatePath(userDataDir)
 
   const port = await freePort()
-  let output = ''
-  const child = spawn(
+  const launch = launchForCdp(
     ELECTRON,
     // ⚠️ 695-visible: this probe RESIZES the window (`Browser.setWindowBounds`) and reads the lanes
     // it lands at — and measured on 695, a never-shown window ignores the resize (`innerWidth` stayed
     // 1200 after a 1000-wide bound). Hidden, it would measure a width nobody set.
     [`--remote-debugging-port=${String(port)}`, `--user-data-dir=${userDataDir}`, '.'],
-    {
-      cwd: DESKTOP,
-      detached: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined },
-    },
+    DESKTOP,
   )
-  child.stdout.on('data', (chunk) => (output += chunk))
-  child.stderr.on('data', (chunk) => (output += chunk))
+  const { child } = launch
 
   let lifecycle
   try {
     lifecycle = await waitFor(
       'the launched process to hold still long enough to be identified',
-      () => {
-        try {
-          return createOwnedProcessLifecycle({
-            launcherPid: child.pid,
-            discoverDescendants: descendantsOf,
-          })
-        } catch {
-          return null
-        }
-      },
+      () => launchedProcessLifecycle(child.pid),
       OWNERSHIP_MS,
       POLL_MS,
     )
@@ -419,7 +396,7 @@ async function main() {
   )
 
   if (failures.length > 0) {
-    process.stderr.write(`\n${output.trim()}\n`)
+    process.stderr.write(`\n${launch.output().trim()}\n`)
     throw new Error(`\n  ⛔ ${failures.join('\n  ⛔ ')}`)
   }
   process.stdout.write(

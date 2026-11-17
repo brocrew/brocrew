@@ -40,14 +40,37 @@ it.each([true, false])('shows build diagnostics only in development (%s)', async
   const m = mount(AppTitleBar, { info, error: null }, { width: 1180, height: 32 })
   await settle()
   expect(m.all('build-line')).toHaveLength(development ? 1 : 0)
-  expect(m.q('app-info').textContent).toContain('Saved locally')
+  expect(m.all('app-info')).toHaveLength(development ? 1 : 0)
+  expect(m.host.textContent).not.toContain('Saved locally')
+  expect(m.host.querySelector('.sync-dot')).toBeNull()
   if (development) {
     expect(m.q('build-line').textContent).toContain('a1b2c3d · schema 7')
     expect(m.q('build-line').getAttribute('title')).toContain('meadow')
   } else {
-    expect(m.q('app-info').textContent).not.toMatch(/a1b2c3d|schema|meadow/)
+    expect(m.host.textContent).not.toMatch(/a1b2c3d|schema|meadow/)
   }
 })
+
+it.each([true, false])(
+  'shows startup errors independently of build diagnostics (%s)',
+  async (development) => {
+    providersBridge()
+    vi.stubEnv('DEV', development)
+    for (const read of [null, info]) {
+      const m = mount(
+        AppTitleBar,
+        { info: read, error: 'Could not read capabilities' },
+        { width: 1180, height: 32 },
+      )
+      await settle()
+      expect(m.q('startup-error').textContent).toBe('Could not read capabilities')
+      expect(m.all('build-line')).toHaveLength(development && read ? 1 : 0)
+      m.unmount()
+    }
+    const empty = mount(AppTitleBar, { info: null, error: null }, { width: 1180, height: 32 })
+    expect(empty.all('app-info')).toHaveLength(0)
+  },
+)
 
 it('explains unknown title-bar usage through its tooltip and accessible name', async () => {
   providersBridge()

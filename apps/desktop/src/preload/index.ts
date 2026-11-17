@@ -38,11 +38,6 @@ import type { LinkResolution } from '../shared/link-resolution'
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
 import { themesBridge } from './themes'
 import { themeBeforePaint } from './theme-before-paint'
-import {
-  WINDOW_CONTROL_CHANNEL,
-  type WindowControl,
-  type WindowControlEffect,
-} from '../shared/window-controls'
 import type { AppInfo, ProviderConnection } from '@brobot2/shared'
 import {
   UPDATES_CHANNELS,
@@ -1006,20 +1001,6 @@ const api = Object.freeze({
       ipcRenderer.off(APP_CLOSING_CHANNEL, forward)
     }
   },
-  /**
-   * 🔴 **Close, minimise, zoom — the window's own three controls** (385 §1).
-   *
-   * ⛔ **The window is `frame: false` now**, so these are not a convenience: they are the only
-   * pointing gesture that closes this app. See `main/window-controls.ts` for the vocabulary, for
-   * why the verbs are Electron's spelling, and for why the main side answers from the SENDER's
-   * window rather than from a captured one.
-   *
-   * ⚠️ **One argument and it is a string from a closed set** — the whole payload, built here, no
-   * field of it made by anybody else. Main refuses anything outside {@link WINDOW_CONTROLS} rather
-   * than doing the nearest thing.
-   */
-  windowControl: (control: WindowControl): Promise<WindowControlEffect> =>
-    ipcRenderer.invoke(WINDOW_CONTROL_CHANNEL, control) as Promise<WindowControlEffect>,
   attentionSignals: (signal: AttentionSignal): Promise<void> =>
     ipcRenderer.invoke(ATTENTION_SIGNALS_CHANNEL, signal),
   recoveryRetention: Object.freeze({

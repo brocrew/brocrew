@@ -105,7 +105,7 @@ describe('the title bar wears its theme', () => {
     expect(bar.backgroundColor).toBe('rgb(43, 33, 24)')
     expect(bar.backgroundImage).toBe('none')
     expect(bar.textShadow).toBe('rgb(255, 138, 92) 0px 0px 6px')
-    for (const text of ['.window-title', '.window-title strong', '.sync-state']) {
+    for (const text of ['.window-title', '.window-title strong', '[data-cy=app-usage]']) {
       expect(style(m, text).color, text).toBe('rgb(244, 236, 216)')
     }
   })

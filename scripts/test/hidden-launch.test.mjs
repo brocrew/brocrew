@@ -80,7 +80,6 @@ describe('every Electron launcher under scripts/', () => {
       'packaged-smoke.mjs',
       'windows-packaged-check.mjs',
       'macos-packaged-check.mjs',
-      'window-controls-probe.mjs',
       'one-app-probe.mjs',
     ]) {
       expect(names, `${known} was not found — the search shape is broken`).toContain(known)
@@ -125,7 +124,6 @@ describe('every Electron launcher under scripts/', () => {
       'mac-signed-upgrade-contract.mjs',
       'mac-update-now-rehearsal.mjs',
       'upgrade-path.mjs',
-      'window-controls-probe.mjs',
     ])
     expect(verdictOf(readFileSync(join(SCRIPTS, 'mac-update-test.mjs'), 'utf8'))).toBe('visible')
     expect(by('own-main')).toEqual([

@@ -148,55 +148,44 @@ describe('the usage line', () => {
     expect(cards.matches(':popover-open')).toBe(false)
   })
 
-  it('⚑ the window’s title stays centred with the line beside the controls', async () => {
+  it('places usage after the left-aligned window title', async () => {
     const m = await bar(READ)
     const title = m.q('window-title').getBoundingClientRect()
-    const strip = m.q('app-titlebar').getBoundingClientRect()
-    expect(Math.abs(title.x + title.width / 2 - (strip.x + strip.width / 2))).toBeLessThan(1)
-    expect(m.q('app-usage').getBoundingClientRect().right).toBeLessThanOrEqual(title.left)
+    const usage = m.q('app-usage').getBoundingClientRect()
+    expect(title.right).toBeLessThanOrEqual(usage.left + 0.5)
+    expect(title.left).toBeLessThan(1180 / 2)
   })
 })
 
-describe('a long window title leaves both clusters their own room', () => {
+describe('a long window title leaves usage its own room', () => {
   /** A data folder's name as long as a file system allows, as `windowTitleFor` would put it. */
   const LONG = `BroCrew — ${'bakery-menu-design-review-and-autumn-recipes-'.repeat(6).slice(0, 255)}`
 
-  it.each([760, 1180])(
-    '🔴 at %ipx the usage line ends before the title, and the saved state starts after it',
-    async (width) => {
-      ;(window as { api?: unknown }).api = {
-        runtime: {
-          providerUsage: () => Promise.resolve(READ),
-          onProvidersChanged: () => () => {},
-        },
-      }
-      await page.viewport(width, 840)
-      const info = {
-        name: 'BroCrew',
-        version: '0.0.0',
-        windowTitle: LONG,
-        build: { id: 'abc1234', commit: 'abc1234dead', dirty: false },
-        db: { migrationsApplied: 7 },
-      }
-      const m = mount(AppTitleBar, { info, error: null }, { width, height: 32 })
-      await new Promise((done) => setTimeout(done, 0))
-      await nextTick()
-      const title = m.q('window-title').getBoundingClientRect()
-      const usage = m.q('app-usage').getBoundingClientRect()
-      const saved = m.q('app-info').getBoundingClientRect()
-      expect(usage.right, 'the usage line runs under the title').toBeLessThanOrEqual(
-        title.left + 0.5,
-      )
-      expect(saved.left, 'the saved state runs under the title').toBeGreaterThanOrEqual(
-        title.right - 0.5,
-      )
-      // ⚑ "Saved locally" is one line, never wrapped to two inside the 32px bar.
-      const word = m.q('app-info').querySelector<HTMLElement>('.sync-word')!
-      expect(word.textContent).toBe('Saved locally')
-      expect(word.getClientRects()).toHaveLength(1)
-      expect(word.getBoundingClientRect().height).toBeLessThan(24)
-    },
-  )
+  it.each([760, 1180])('at %ipx the title ends before the usage line', async (width) => {
+    ;(window as { api?: unknown }).api = {
+      runtime: {
+        providerUsage: () => Promise.resolve(READ),
+        onProvidersChanged: () => () => {},
+      },
+    }
+    await page.viewport(width, 840)
+    const info = {
+      name: 'BroCrew',
+      version: '0.0.0',
+      windowTitle: LONG,
+      build: { id: 'abc1234', commit: 'abc1234dead', dirty: false },
+      db: { migrationsApplied: 7 },
+    }
+    const m = mount(AppTitleBar, { info, error: null }, { width, height: 32 })
+    await new Promise((done) => setTimeout(done, 0))
+    await nextTick()
+    const title = m.q('window-title').getBoundingClientRect()
+    const usage = m.q('app-usage').getBoundingClientRect()
+    expect(title.right, 'the title runs under usage').toBeLessThanOrEqual(usage.left + 0.5)
+    expect(usage.width).toBeGreaterThan(0)
+    expect(m.q('window-title').title).toBe(LONG)
+    expect(m.host.textContent).not.toContain('Saved locally')
+  })
 })
 
 it('places fictional raw windows by supplied period facts and excludes supplied bucket readings', async () => {

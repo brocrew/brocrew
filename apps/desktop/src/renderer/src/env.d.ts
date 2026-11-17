@@ -15,7 +15,6 @@ import type {
   RuntimeBridge,
 } from '../../shared/runtime-ipc'
 import type { PagePerformanceReport, PageReportAnswer } from '../../shared/page-performance'
-import type { WindowControl, WindowControlEffect } from '../../shared/window-controls'
 import type { SavedDrafts } from '../../shared/saved-drafts'
 import type { LocalZone } from '../../shared/local-time'
 import type {
@@ -69,10 +68,6 @@ declare global {
         cancelRestart: () => Promise<UpdatesSnapshot>
         onChanged: (listener: (snapshot: UpdatesSnapshot) => void) => () => void
       }
-      /**
-       * 🔴 **Close, minimise or zoom this window** (385 §1) — the only pointing gesture that closes
-       * a `frame: false` app. `shared/window-controls.ts` carries the vocabulary and the argument.
-       */
       attentionSignals: (signal: AttentionSignal) => Promise<void>
       /** This workspace's short name and colour on the Dock icon (`shared/dock-label.ts`). */
       recoveryRetention?: RecoveryRetentionClient
@@ -85,7 +80,6 @@ declare global {
         read: () => Promise<DockLabel>
         set: (change: DockLabelChange) => Promise<DockLabel>
       }
-      windowControl: (control: WindowControl) => Promise<WindowControlEffect>
       /** 🔴 **744 · R100** — the drafts the last run left, each for its own slot; `null`: not read. */
       savedDrafts: () => Promise<SavedDrafts | null>
       /** 🔴 **744 · R100** — keep the whole draft book in the app's own userData. */

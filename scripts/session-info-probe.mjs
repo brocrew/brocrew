@@ -18,14 +18,13 @@
  * this probe itself does not read, write or copy a credential.
  */
 import { freePort } from './lib/free-port.mjs'
-import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { RendererCdp, listenersOn } from './lib/renderer-cdp.mjs'
-import { createOwnedProcessLifecycle } from './lib/owned-process.mjs'
-import { descendantsOf, tearDownAndRemove } from './lib/owned-teardown.mjs'
+import { launchForCdp, RendererCdp, listenersOn } from './lib/renderer-cdp.mjs'
+import { checkProbeGatePath } from './lib/smoke-run.mjs'
+import { launchedProcessLifecycle, tearDownAndRemove } from './lib/owned-teardown.mjs'
 import { HIDDEN_LAUNCH_ARG } from './lib/hidden-launch.mjs'
 
 const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
@@ -36,8 +35,6 @@ const ENTRY = join(DESKTOP, 'out/main/index.js')
 const WORKSPACE_SOURCE = join(DESKTOP, 'src/main/runtime/workspace.ts')
 const CODEX_LAYOUT_SOURCE = join(DESKTOP, 'src/main/providers/codex/layout.mjs')
 
-const SUN_PATH_MAX = 104
-const GATE_SOCKET = 'one-host.sock'
 const LAUNCH_MS = 45_000
 const SETTLE_MS = 20_000
 const OWNERSHIP_MS = 10_000
@@ -386,14 +383,10 @@ async function main() {
   mkdirSync(join(userDataDir, WORKSPACE_DIRNAME), { recursive: true })
   writeFileSync(workspaceFile, `# Probe project instructions\n\nInstruction marker: ${CANARY}\n`)
 
-  if (join(userDataDir, GATE_SOCKET).length > SUN_PATH_MAX) {
-    rmSync(userDataDir, { recursive: true, force: true })
-    throw new Error(`the one-host gate socket path would exceed ${String(SUN_PATH_MAX)} bytes.`)
-  }
+  checkProbeGatePath(userDataDir)
 
   const port = await freePort()
-  let output = ''
-  const child = spawn(
+  const launch = launchForCdp(
     ELECTRON,
     // ⚑ 695 §1 · a probe's window is nobody's: never shown, titled `BroBot2 — test`.
     [
@@ -402,30 +395,15 @@ async function main() {
       HIDDEN_LAUNCH_ARG,
       '.',
     ],
-    {
-      cwd: DESKTOP,
-      detached: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined },
-    },
+    DESKTOP,
   )
-  child.stdout.on('data', (chunk) => (output += chunk))
-  child.stderr.on('data', (chunk) => (output += chunk))
+  const { child } = launch
 
   let lifecycle
   try {
     lifecycle = await waitFor(
       'the launched process to hold still long enough to be identified',
-      () => {
-        try {
-          return createOwnedProcessLifecycle({
-            launcherPid: child.pid,
-            discoverDescendants: descendantsOf,
-          })
-        } catch {
-          return null
-        }
-      },
+      () => launchedProcessLifecycle(child.pid),
       OWNERSHIP_MS,
     )
   } catch (error) {
@@ -650,7 +628,7 @@ async function main() {
   } catch (error) {
     const outcome = stop()
     throw new Error(
-      `${error.message}\n--- app output ---\n${output.slice(-4_000)}\n` +
+      `${error.message}\n--- app output ---\n${launch.output().slice(-4_000)}\n` +
         (outcome.complete ? '' : `⚠️ teardown incomplete: ${JSON.stringify(outcome)}`),
       { cause: error },
     )

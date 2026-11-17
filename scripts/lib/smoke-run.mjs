@@ -31,6 +31,14 @@ export const SUN_PATH_MAX = 104
  */
 export const GATE_SOCKET = 'one-host.sock'
 
+/** Keep the probes' existing socket bound and remove the unused directory on failure. */
+export function checkProbeGatePath(userDataDir) {
+  if (join(userDataDir, GATE_SOCKET).length > SUN_PATH_MAX) {
+    rmSync(userDataDir, { recursive: true, force: true })
+    throw new Error(`the one-host gate socket path would exceed ${String(SUN_PATH_MAX)} bytes.`)
+  }
+}
+
 /**
  * 🔴 **WHAT A LIVE SMOKE CANNOT REACH — the audit 242 §1 asked for, kept where the environment is
  * decided.**

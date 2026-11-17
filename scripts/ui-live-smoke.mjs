@@ -4039,10 +4039,8 @@ async function main() {
         minWidth: getComputedStyle(document.querySelector('.app')).minWidth,
         minWidthToken: token('--app-min-w'),
         titlebarRegion: region(titlebar),
-        // The sync state is the titlebar's only interactive block; it has to be outside the drag
-        // region or the pointer never reaches it.
-        syncRegion: region(document.querySelector('[data-cy=app-info]')),
-        info: document.querySelector('[data-cy=app-info]')?.innerText.replace(/\\s+/g, ' ').trim() ?? null,
+        usageRegion: region(document.querySelector('[data-cy=app-usage]')),
+        savedState: Boolean(titlebar?.querySelector('.sync-dot, .sync-word')),
       }
       // Not \`fonts.check\`: fonts load lazily, so this early in a run it answers "not yet" for a
       // font that is bundled and fine. \`load\` resolves with the faces it actually loaded — an
@@ -4068,12 +4066,12 @@ async function main() {
     // Without a drag region the window cannot be moved, and there is no other way to notice.
     if (frame.titlebarRegion !== 'drag')
       throw new Error(`the titlebar is not draggable: ${frame.titlebarRegion}`)
-    if (frame.syncRegion !== 'no-drag')
-      throw new Error(`the sync state is inside the drag region: ${frame.syncRegion}`)
-    if (!frame.info?.startsWith('Saved locally')) throw new Error(`no sync state: ${frame.info}`)
+    if (frame.usageRegion !== 'no-drag')
+      throw new Error(`usage is inside the drag region: ${frame.usageRegion}`)
+    if (frame.savedState) throw new Error('the titlebar still draws a saved-state indicator')
 
     await cdp.screenshot('shell')
-    return `rail ${frame.railWidth} = --rail-w, Inter loaded, "${frame.info}"`
+    return `rail ${frame.railWidth} = --rail-w, Inter loaded, usage outside drag region`
   })
 
   await step('1d the EMPTY conversation surface reads on light paper too', async () => {

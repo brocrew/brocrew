@@ -3119,7 +3119,7 @@ function takingThePagesReports(ipc: IpcHandleRegistrar, receipt: PageReceipt): I
  * says `Error: …`, which is the one prefix the renderer strips.
  *
  * ⚠️ **Scoped to this channel**, which is the one every runtime command crosses. The other
- * `ipcMain.handle` registrations (`main/index.ts`, `window-controls.ts`) throw no named class today.
+ * `ipcMain.handle` registrations in `main/index.ts` throw no named class today.
  */
 export function withoutItsClassName(error: unknown): unknown {
   if (!(error instanceof Error) || error.name === 'Error') return error

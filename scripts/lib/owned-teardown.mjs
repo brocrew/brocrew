@@ -12,6 +12,12 @@
 import { execFileSync } from 'node:child_process'
 import { lstatSync, readdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { createOwnedProcessLifecycle } from './owned-process.mjs'
+
+/** Capture a launched process with the same descendant discovery used by teardown. */
+export function launchedProcessLifecycle(launcherPid) {
+  return createOwnedProcessLifecycle({ launcherPid, discoverDescendants: descendantsOf })
+}
 
 /**
  * How many surviving entries a failed removal names. ⚠️ **A cap the sentence has to admit to**: the

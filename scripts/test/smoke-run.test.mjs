@@ -2,6 +2,7 @@ import {
   existsSync,
   lstatSync,
   mkdtempSync,
+  mkdirSync,
   readFileSync,
   readdirSync,
   rmSync,
@@ -16,6 +17,7 @@ import {
   KEPT_MARK,
   SUN_PATH_MAX,
   beginSmokeRun,
+  checkProbeGatePath,
   smokeTmpRoot,
   smokeUserDataDir,
 } from '../lib/smoke-run.mjs'
@@ -452,3 +454,26 @@ describe('provenance is kept for a while, not forever', () => {
     expect(existsSync(made[2].evidence)).toBe(false)
   })
 })
+
+it.each([104, 105])(
+  'preserves the probe socket boundary at %i characters and removes only refused trees',
+  (length) => {
+    const { evidenceRoot } = makeRoots()
+    const dir = join(
+      evidenceRoot,
+      'x'.repeat(length - evidenceRoot.length - GATE_SOCKET.length - 2),
+    )
+    mkdirSync(dir, { recursive: true })
+    expect(join(dir, GATE_SOCKET)).toHaveLength(length)
+    if (length === 104) {
+      expect(() => checkProbeGatePath(dir)).not.toThrow()
+      expect(existsSync(dir)).toBe(true)
+    } else {
+      expect(() => checkProbeGatePath(dir)).toThrow(
+        'the one-host gate socket path would exceed 104 bytes.',
+      )
+      expect(existsSync(dir)).toBe(false)
+      expect(existsSync(evidenceRoot)).toBe(true)
+    }
+  },
+)

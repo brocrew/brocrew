@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { GATE_SOCKET, SUN_PATH_MAX } from './lib/smoke-run.mjs'
 import { freePort } from './lib/free-port.mjs'
 import { spawn } from 'node:child_process'
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
@@ -14,8 +15,6 @@ const DESKTOP = join(REPO_ROOT, 'apps/desktop')
 const ELECTRON = join(DESKTOP, 'node_modules/.bin/electron')
 const ENTRY = join(DESKTOP, 'out/main/index.js')
 
-const SUN_PATH_MAX = 104
-const GATE_SOCKET = 'one-host.sock'
 const WINDOW_MS = 45_000
 const POLL_MS = 250
 const OWNERSHIP_MS = 10_000

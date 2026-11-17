@@ -181,7 +181,7 @@ async function thePackagedDatabaseOpened(cdp) {
     'the app to report a positive migration count',
     async () =>
       await cdp.evaluate(`
-        if (!document.querySelector('[data-cy=app-info]')) return null
+        if (!document.querySelector('[data-cy=app-titlebar]')) return null
         const info = await window.api.getAppInfo()
         const count = info?.db?.migrationsApplied
         return Number.isInteger(count) && count > 0 ? count : null

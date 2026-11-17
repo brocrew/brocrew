@@ -459,7 +459,7 @@ describe('working counts in the title bar', () => {
       await drawnReady()
       const rect = line.getBoundingClientRect()
       const title = m.q('window-title').getBoundingClientRect()
-      expect(rect.right).toBeLessThanOrEqual(title.left + 0.5)
+      expect(title.right).toBeLessThanOrEqual(rect.left + 0.5)
       assertDrawn(line, 'the complete usage/count/memory line', m.host)
       expect(lineCount(line)).toBe(1)
       expect(line.scrollWidth).toBeLessThanOrEqual(line.clientWidth)

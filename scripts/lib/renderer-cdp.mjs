@@ -1,5 +1,19 @@
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { writeFileSync } from 'node:fs'
+
+/** Launch a probe process and keep its combined output available for diagnostics. */
+export function launchForCdp(executable, args, cwd) {
+  const child = spawn(executable, args, {
+    cwd,
+    detached: true,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined },
+  })
+  let output = ''
+  child.stdout.on('data', (chunk) => (output += chunk))
+  child.stderr.on('data', (chunk) => (output += chunk))
+  return { child, output: () => output }
+}
 
 export async function waitFor(what, read, budgetMs, pollMs) {
   const deadline = Date.now() + budgetMs
