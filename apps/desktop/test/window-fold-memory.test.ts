@@ -84,6 +84,7 @@ it('rejects an oversized container before visiting or queuing all its members', 
       visits++
       yield entry
     }
+    return undefined
   }
   questions.set('wide', { generation: 0, newest: 1, answer: wide })
   expect(questions.has('wide')).toBe(false)
