@@ -78,26 +78,29 @@ describe.skipIf(process.platform === 'win32')('the first answer of a new plugin 
   })
 })
 
-describe.skipIf(process.platform === 'win32')('a challenge that arrives after the time is up', () => {
-  it('is not answered, so the service registers nothing', async () => {
-    const { root, start, attach } = await fixture()
-    await start()
-    const proxy = await interpose(root)
-    const original = performance.now.bind(performance)
-    let elapsed = 0
-    const clock = vi.spyOn(performance, 'now').mockImplementation(() => original() + elapsed)
-    try {
-      proxy.plan.beforeChallenge = () => {
-        elapsed += OWNER_LIMITS.request + 500
-        proxy.plan.beforeChallenge = undefined
+describe.skipIf(process.platform === 'win32')(
+  'a challenge that arrives after the time is up',
+  () => {
+    it('is not answered, so the service registers nothing', async () => {
+      const { root, start, attach } = await fixture()
+      await start()
+      const proxy = await interpose(root)
+      const original = performance.now.bind(performance)
+      let elapsed = 0
+      const clock = vi.spyOn(performance, 'now').mockImplementation(() => original() + elapsed)
+      try {
+        proxy.plan.beforeChallenge = () => {
+          elapsed += OWNER_LIMITS.request + 500
+          proxy.plan.beforeChallenge = undefined
+        }
+        await expect(attach()).rejects.toMatchObject({ code: 'cleanup-pending' })
+        expect(proxy.requests).toHaveLength(0)
+      } finally {
+        clock.mockRestore()
+        await proxy.close()
       }
-      await expect(attach()).rejects.toMatchObject({ code: 'cleanup-pending' })
-      expect(proxy.requests).toHaveLength(0)
-    } finally {
-      clock.mockRestore()
-      await proxy.close()
-    }
-    // Nothing was registered, so another app is admitted at once.
-    expect((await attach({ generation: randomUUID() })).standing()).toBe(true)
-  })
-})
+      // Nothing was registered, so another app is admitted at once.
+      expect((await attach({ generation: randomUUID() })).standing()).toBe(true)
+    })
+  },
+)
