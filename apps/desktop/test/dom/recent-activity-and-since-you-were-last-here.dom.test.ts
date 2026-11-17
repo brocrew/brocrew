@@ -414,6 +414,20 @@ describe('the last-seen record', () => {
     expect(localStorage.getItem(awaySinceKey(WS))).toBeNull()
   })
 
+  it('is a whole millisecond, though event times have a fraction, so it can be sent as `from`', () => {
+    const clock = { now: NOW }
+    const { since } = seen(clock)
+    fire('blur', window, NOW + 0.734)
+    fire('focus', window, NOW + AWAY_LONG_ENOUGH_MS + 0.25)
+    expect(since()).toBe(NOW)
+    expect(boundary()).toBe(String(NOW))
+  })
+
+  it('reads a boundary stored with a fraction as a whole millisecond', () => {
+    localStorage.setItem(lastSeenKey(WS), String(NOW - 60 * MINUTE + 0.5))
+    expect(seen({ now: NOW }).since()).toBe(NOW - 60 * MINUTE)
+  })
+
   it('a glance at another app moves it neither in this window nor in storage', () => {
     localStorage.setItem(lastSeenKey(WS), String(NOW - 60 * MINUTE))
     const clock = { now: NOW }

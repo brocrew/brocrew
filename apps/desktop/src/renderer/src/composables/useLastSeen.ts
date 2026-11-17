@@ -28,7 +28,8 @@ function readTime(storage: ToggleStorage | null, key: string): number | null {
   try {
     const raw = storage?.getItem(key) ?? null
     if (raw === null) return null
-    const at = Number(raw)
+    // Whole milliseconds: the boundary is sent to the main process as an integer time.
+    const at = Math.floor(Number(raw))
     return Number.isFinite(at) && at > 0 ? at : null
   } catch {
     return null
@@ -121,7 +122,10 @@ export function useLastSeen(
     writeTime(storage, awaySinceKey(ws), at)
   }
 
-  const wentAway = (event: Event): void => leave(eventAt(event))
+  /** An event's time in whole milliseconds; an event's own time stamp has a fraction. */
+  const timeOf = (event: Event): number => Math.floor(eventAt(event))
+
+  const wentAway = (event: Event): void => leave(timeOf(event))
 
   /**
    * The window is closing: a reload or a quit, which the next window to open here can tell. The
@@ -130,7 +134,7 @@ export function useLastSeen(
    */
   function closing(event: Event): void {
     const ws = where()
-    leave(eventAt(event))
+    leave(timeOf(event))
     if (ws !== null && ownLeaving !== null) writeTime(session, reloadedAtKey(ws), ownLeaving)
   }
 
@@ -161,7 +165,7 @@ export function useLastSeen(
     settle(at)
   }
 
-  const onFocus = (event: Event): void => cameBack(eventAt(event))
+  const onFocus = (event: Event): void => cameBack(timeOf(event))
 
   /** This window was reloaded, not reopened: its own leaving by the reload is no absence. */
   function forgetOwnReload(): void {
@@ -175,7 +179,7 @@ export function useLastSeen(
 
   const onVisibility = (event: Event): void => {
     if (visibility.visibilityState === 'hidden') wentAway(event)
-    else if (inFront()) cameBack(eventAt(event))
+    else if (inFront()) cameBack(timeOf(event))
   }
 
   // Another window of the workspace moved the boundary: this one shows the same.
