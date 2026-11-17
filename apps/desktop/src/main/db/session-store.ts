@@ -217,7 +217,6 @@ import {
   waitsOnWhoWrote,
   workGivenOut,
   TASK_IS_OPEN,
-  aWaitNeedsClassifying,
   theWaitItMarks,
 } from '../../shared/tasks'
 import { pieceCalled, pieceNumbersOf, type WorkThatNamesIt } from '../../shared/piece-called'
@@ -905,7 +904,6 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   ): number
   stalledWorkNobodyWasToldAbout(unread?: RowsUnread): LedgerWalk<PieceRow>
   stalledWorkItsGiverWasToldAbout(unread?: RowsUnread): LedgerWalk<PieceRow>
-  waitsThatNeedClassifying(unread?: RowsUnread): LedgerWalk<PieceRow>
   stalledWorkAPersonGave(unread?: RowsUnread): LedgerWalk<PieceRow>
   piecesWaitingOnWhoWrote(unread?: RowsUnread): LedgerWalk<PieceWaitingOnWhoWrote>
   piecesWaitingOnWhoWroteIn(owner: string, unread?: RowsUnread): readonly PieceWaitingOnWhoWrote[]
@@ -1265,7 +1263,6 @@ export const NULL_SESSION_STORE: SessionStore = {
     ledgers: 0,
     rowsUnread: 0,
   }),
-  waitsThatNeedClassifying: () => ({ rows: [], walk: 'no-ledger', ledgers: 0, rowsUnread: 0 }),
   stalledWorkAPersonGave: () => ({ rows: [], walk: 'no-ledger', ledgers: 0, rowsUnread: 0 }),
   piecesWaitingOnWhoWrote: () => ({ rows: [], walk: 'no-ledger', ledgers: 0, rowsUnread: 0 }),
   piecesWaitingOnWhoWroteIn: () => [],
@@ -5718,28 +5715,6 @@ export function createSessionStore(
           }
           return left.piece < right.piece ? -1 : 1
         }),
-      }
-    },
-    waitsThatNeedClassifying(counted) {
-      const holders = selectOwnersOfGivenPieces.all() as { id: string }[]
-      const found = walkLedgers(
-        'every-conversation-that-was-given-work',
-        holders,
-        (holder, noteSkip) =>
-          piecesOfSession(holder, noteSkip).filter(
-            (piece) => TASK_IS_OPEN[piece.state] && aWaitNeedsClassifying(piece.statusLine),
-          ),
-        counted ?? rowsUnreadOnce(),
-      )
-      const when = (piece: PieceRow): number => piece.statusLine?.at ?? Number.MAX_SAFE_INTEGER
-      return {
-        walk: found.walk,
-        ledgers: found.ledgers,
-        rowsUnread: found.rowsUnread,
-        ...ledgersSkippedOf(found.ledgersSkipped),
-        rows: [...found.rows].sort(
-          (left, right) => when(left) - when(right) || (left.piece < right.piece ? -1 : 1),
-        ),
       }
     },
     stalledWorkAPersonGave(counted) {

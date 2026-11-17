@@ -249,37 +249,11 @@ export type CreationReach = (typeof CREATION_REACH)[number]
  * between it and instruction drift is that the identity holding it was chosen by a person — which
  * is why it is a grant a person sets on one identity and never a default.
  *
- * ⚑ **The ladder is asked by name**, through {@link mayProposeRules} and {@link mayRelayRules},
- * rather than compared inline: one field answers two questions, and
- * `widening-a-predicate-widens-every-question-its-field-answers` is what happens when each call
- * site spells its own comparison.
  */
 export const RULE_WRITING = ['none', 'propose', 'relay'] as const
 
 /** One of {@link RULE_WRITING}. */
 export type RuleWriting = (typeof RULE_WRITING)[number]
-
-/**
- * ⛔ **May this identity put a rule in front of a person?** — `propose` or `relay`.
- *
- * ⚑ **An identity that may write directly may obviously also ask**, which is what makes this a
- * ladder; stating it as a named predicate is what stops a call site spelling `!== 'none'` and
- * meaning something narrower.
- */
-export function mayProposeRules(held: RuleWriting): boolean {
-  return held !== 'none'
-}
-
-/**
- * 🔴 **May this identity write one WITHOUT a person approving it?** — `relay` alone.
- *
- * ⛔ **The narrow question, asked narrowly.** {@link mayProposeRules} is true for two of the three
- * words and this is true for one; a door that asked the wide question and then wrote directly would
- * be `HO-009` §2.2's gate removed by a comparison.
- */
-export function mayRelayRules(held: RuleWriting): boolean {
-  return held === 'relay'
-}
 
 /** Every capability's name, DERIVED from the field list rather than written twice. */
 export type CapabilityKey = (typeof CAPABILITY_FIELDS)[number]['key']
@@ -759,59 +733,6 @@ export function capabilityField<K extends CapabilityKey>(
   // through a cast gets a sentence instead of `undefined` two frames later.
   if (found === undefined) throw new Error(`no capability called ${key}`)
   return found as Extract<AnyCapabilityField, { key: K }>
-}
-
-/**
- * 🔴 **One grant's value, said by the field that owns it** (485) — see {@link CapabilityField.says}.
- *
- * ⛔ **The one cast in this file's value path, and it is here so it is nowhere else.** A walk over
- * {@link CAPABILITY_FIELDS} hands each member as {@link AnyCapabilityField}, a union whose `says`
- * members have DIFFERENT parameter types; under `strictFunctionTypes` TypeScript will not let a
- * union of functions be called, even though `field.says` and `allowed[field.key]` are the same key
- * by construction ({@link KEYS_AGREE}). ⚠️ `capabilityField` above carries the same cast for the
- * same reason, and `a-reach-you-can-see.test.ts` records it: *"`CAPABILITY_FIELDS` is a `const`
- * tuple whose members have DIFFERENT types."*
- *
- * ⚑ **What the cast cannot hide is the pairing**, because the value is read at `field.key` rather
- * than passed in: a caller cannot hand one field another field's value, which is the property the
- * `Record<CapabilityKey, (allowed: ProfileCapabilities) => string>` this replaced did not have.
- *
- * 🔴 **`at` is WHICH QUESTION is being asked, and it is required so a caller has to answer it**
- * (544). ⛔ `null` asks *what has this identity been granted* — the grant as a sheet would put it,
- * with no conversation in the question. ⚑ A {@link ConversationAtLaunch} asks *what may this
- * conversation do*,
- * which for {@link ProfileCapabilities.maxDepth} is a different sentence and for every other field
- * today is the same one. ⚠️ **Optional would have been the wrong shape**: a caller that forgot it
- * would silently get the grant-sheet answer in an instruction bundle, which is the defect this
- * repair exists to remove, arriving through a defaulted argument.
- */
-export function grantSays(
-  field: AnyCapabilityField,
-  allowed: ProfileCapabilities,
-  at: ConversationAtLaunch | null,
-): string {
-  const says = field.says as (
-    held: ProfileCapabilities[CapabilityKey],
-    at: ConversationAtLaunch | null,
-  ) => string
-  return says(allowed[field.key], at)
-}
-
-/**
- * 🔴 **One grant as a person and a model both read it: `label: value`** (530).
- *
- * ⛔ **The pairing of a grant's label with its value, spelled once**, so no surface writes the
- * shape a second time. {@link capabilityLines} builds the model's block out of it. ⚠️ **The bullet
- * is NOT here** — `- ` is the instruction bundle's own list marker.
- *
- * ⚑ **`at` is passed straight through to {@link grantSays}** — see its note.
- */
-export function grantLine(
-  field: AnyCapabilityField,
-  allowed: ProfileCapabilities,
-  at: ConversationAtLaunch | null,
-): string {
-  return `${field.label}: ${grantSays(field, allowed, at)}`
 }
 
 /**

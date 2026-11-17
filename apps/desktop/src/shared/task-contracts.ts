@@ -71,7 +71,7 @@ export interface StatusLine {
   readonly waiting?: true
   /**
    * What the wait is on. ⚑ Absent on a line marked waiting: a wait from before a wait named its
-   * target, which needs classifying ({@link aWaitNeedsClassifying}).
+   * target, which needs classifying.
    */
   readonly on?: WaitOn
 }

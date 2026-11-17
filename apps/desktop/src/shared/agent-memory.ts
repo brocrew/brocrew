@@ -481,21 +481,3 @@ export interface AgentMemoryReading {
   readonly readAt: number
 }
 
-/**
- * ⛔ **Is this a member of the vocabulary, asked of a value that has crossed the DATABASE?**
- *
- * ⚑ `isInstructionEnding`'s shape and for its reason: a column read back by a build whose
- * vocabulary has moved reaches a reader as a word it does not know, and printing `undefined` beside
- * a person's own act would be the confident sentence criterion 18 exists to prevent.
- */
-export function isMemoryAmendment(act: unknown): act is MemoryAmendmentAct {
-  return typeof act === 'string' && (MEMORY_AMENDMENT as readonly string[]).includes(act)
-}
-
-/**
- * ⚑ **An act off a replayed row, said as itself when this build has no sentence for it** —
- * `endingMeans`' shape exactly.
- */
-export function amendmentMeans(act: string): string {
-  return isMemoryAmendment(act) ? AMENDMENT_MEANS[act] : act
-}

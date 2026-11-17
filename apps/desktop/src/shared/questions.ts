@@ -661,15 +661,8 @@ export function aboutTheWork(
   return { is: named === null ? 'nothing-recorded-it' : 'named-work-nothing-answers-to' }
 }
 
-/**
- * ⛔ **What a population that CANNOT name work carries** (474) — a permission, whose event type
- * has no piece to read at all.
- *
- * ⚑ **Derived through {@link aboutTheWork} rather than spelled**, so the call sites in the person's
- * queue have one derivation between them and a fourth member of {@link AboutWork} cannot
- * reach a surface by being forgotten here.
- */
-export const NOTHING_NAMED_THE_WORK: AboutWork = aboutTheWork(null, () => null)
+/** A population whose event type carries no piece, such as a permission. */
+export const NOTHING_NAMED_THE_WORK: AboutWork = { is: 'nothing-recorded-it' }
 
 /**
  * 🔴 **The still-open questions one conversation has raised, grouped by the PIECE each one names**

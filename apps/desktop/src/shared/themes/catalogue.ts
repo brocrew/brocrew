@@ -1,12 +1,8 @@
 import { LIMITS } from './assets'
 import {
-  EFFECT_PARAMS,
-  EFFECT_TYPES,
   MAX_EFFECTS,
-  MAX_SPRITES,
   LIVE_THEME_SCHEMA,
   overridableIn,
-  SPRITE_PARAMS,
   THEME_FORMAT,
   type EffectParam,
   type Spec,
@@ -101,12 +97,6 @@ export function themeCatalogue(): ThemeCatalogue {
     format: THEME_FORMAT,
     settings: entries(LIVE_THEME_SCHEMA),
     ...(has(LIVE_THEME_SCHEMA, 'fill') ? { background: BACKGROUND } : {}),
-    ...(has(LIVE_THEME_SCHEMA, 'effects')
-      ? {
-          effects: EFFECT_TYPES.map((type) => ({ type, params: entries(EFFECT_PARAMS[type]) })),
-          sprites: entries(SPRITE_PARAMS, `band.sprites[] (up to ${MAX_SPRITES})`),
-        }
-      : {}),
     tokens: { frame: overridableIn('frame'), content: overridableIn('content') },
     limits:
       `Pictures are PNG or JPEG, still, up to 4 MB and ${LIMITS.picturePixels} pixels a side. ` +

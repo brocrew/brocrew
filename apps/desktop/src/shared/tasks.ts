@@ -572,11 +572,6 @@ export function theWaitItMarks(event: { readonly waiting?: unknown; readonly on?
   return on === undefined ? { waiting: true } : { waiting: true, on }
 }
 
-/** Whether a status line marks a wait that names nothing it waits on. */
-export function aWaitNeedsClassifying(line: StatusLine | null): boolean {
-  return line?.waiting === true && line.on === undefined
-}
-
 /**
  * ⚑ **F074 — the usage limit a `turn` row says its turn ended on**, for {@link derivePieces}: only
  * a `failed` turn's, and ⛔ a reset at or before the row's own moment is none — the provider's
