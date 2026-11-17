@@ -2096,6 +2096,7 @@ function start(ownership: HostGateVerdict): void {
         host,
         hidden: presentation.hidden,
         prepareForQuit: () => lifetime.prepareForQuit(),
+        quitting: () => lifetime.shuttingDown !== null,
       })
       const openWorkspace = startWorkspaces({
         app,
@@ -2256,7 +2257,7 @@ function start(ownership: HostGateVerdict): void {
 }
 
 const lifetime = createAppLifetime({
-  holdQuit: () => updates?.workspaceUpdates.holdsQuit() ?? false,
+  holdQuit: () => updates?.workspaceUpdates.holdQuit() ?? false,
   recordOpenSessions: () => host?.recordOpenForQuit(),
   announceClosing: () => {
     for (const window of BrowserWindow.getAllWindows()) {

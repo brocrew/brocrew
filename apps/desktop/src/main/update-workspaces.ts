@@ -31,6 +31,8 @@ interface WorkspaceUpdateDeps {
   reopen(): void
   /** Tell the person this workspace stopped its agents for an update another workspace ended. */
   stayStopped(): void
+  /** Whether the person's own quit of this workspace is under way. */
+  quitting(): boolean
   remember(version: string, folders: readonly string[]): void
   report(error: unknown): void
   quit(): void
@@ -53,6 +55,8 @@ export function workspaceUpdate(deps: WorkspaceUpdateDeps) {
   let stopped = false
   /** Updates the person asked for here and not yet answered: each reports its own failure. */
   let asking = 0
+  /** The person asked this workspace to quit while an update held that quit back. */
+  let quitHeld = false
 
   const quit = (): void => {
     if (quitChosen) return
@@ -91,6 +95,15 @@ export function workspaceUpdate(deps: WorkspaceUpdateDeps) {
     }
     if (request.kind === 'cancel') {
       owner = null
+      // The person's own quit, held back for the update: it is carried out as theirs, so a quit
+      // they then abandon leaves nothing behind that would stop a later update from quitting.
+      if (quitHeld) {
+        quitHeld = false
+        deps.quit()
+        return
+      }
+      // The person is quitting this workspace, so it is neither reopened nor kept open.
+      if (deps.quitting()) return
       // A workspace with the update ready installs it as it exits, so it cannot reopen.
       if (stopped && !deps.ready()) deps.reopen()
       else if (stopped && asking === 0) deps.stayStopped()
@@ -166,7 +179,12 @@ export function workspaceUpdate(deps: WorkspaceUpdateDeps) {
 
   return {
     details,
-    holdsQuit: () => owner !== null && !quitChosen,
+    /** The person asked to quit: true holds it until the update ends, which then carries it out. */
+    holdQuit: (): boolean => {
+      const held = owner !== null && !quitChosen
+      if (held) quitHeld = true
+      return held
+    },
     /** Whether this workspace stopped its agents for an update that did not happen. */
     stoppedWithoutUpdate: () => stopped && owner === null && !quitChosen,
     receive,

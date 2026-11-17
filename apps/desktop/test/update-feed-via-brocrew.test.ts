@@ -281,6 +281,7 @@ async function start(
     hidden: true,
     host: { whatARestartWouldStop: () => [] } as never,
     prepareForQuit: async () => {},
+    quitting: () => false,
   })
 }
 

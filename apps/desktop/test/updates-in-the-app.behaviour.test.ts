@@ -126,6 +126,7 @@ const start = (packaged = true, hidden = true): void => {
     host: { whatARestartWouldStop: () => fake.stops } as never,
     hidden,
     prepareForQuit: async () => {},
+    quitting: () => false,
   })
 }
 

@@ -41,6 +41,7 @@ export function startUpdates(options: {
   readonly host: RuntimeHost
   readonly hidden: boolean
   readonly prepareForQuit: () => Promise<void>
+  readonly quitting: () => boolean
 }): Updates & {
   drain(): Promise<void>
   workspaceUpdates: ReturnType<typeof workspaceUpdate>
@@ -149,6 +150,7 @@ export function startUpdates(options: {
     },
     request: requestWorkspaceUpdate,
     prepare: options.prepareForQuit,
+    quitting: options.quitting,
     // A later turn, so the reply to the workspace that asked is written before this one quits.
     reopen: () =>
       setImmediate(() => {
