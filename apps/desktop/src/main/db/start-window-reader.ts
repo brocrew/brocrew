@@ -8,7 +8,7 @@ export function startWindowReader(file: string): WindowStoreReader {
       new WindowWorkerReader(
         startWorker({
           workerData: { file },
-          resourceLimits: { maxOldGenerationSizeMb: 128, maxYoungGenerationSizeMb: 16 },
+          resourceLimits: { maxOldGenerationSizeMb: 512, maxYoungGenerationSizeMb: 16 },
         }),
       ),
   )
