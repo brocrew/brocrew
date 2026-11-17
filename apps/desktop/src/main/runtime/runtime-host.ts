@@ -37060,7 +37060,7 @@ export class RuntimeHost implements LiveHost {
     return this.instructionDecisions.instructAgent(profileSlug, text, broughtBack, by, baseline)
   }
 
-  private readonly instructionDecisions = new InstructionDecisions({
+  private readonly instructionDecisions: InstructionDecisions = new InstructionDecisions({
     store: () => this.deps.store,
     rulesAuthor: (me, by) => this.rulesAuthor(me, by),
     hasUnspawnedSlot: (conversation) => {
