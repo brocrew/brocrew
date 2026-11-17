@@ -2245,9 +2245,7 @@ function start(ownership: HostGateVerdict): void {
             },
             resourceLimits: { maxOldGenerationSizeMb: 64, maxYoungGenerationSizeMb: 8 },
           }),
-        async (result) => {
-          if (result.removed > 0) console.info('BroCrew trimmed old event history:', result)
-        },
+        async () => {},
         (error) => console.warn('BroCrew could not trim old event history:', error),
       )
       if (firstListAcceptedAt !== undefined) eventRetention.firstListAccepted(firstListAcceptedAt)

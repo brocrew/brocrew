@@ -4,6 +4,7 @@ import type { AppDatabase } from '../db/connection'
 import { incrementallyCompact } from '../db/compact'
 
 const SWEEP_EVERY_MS = 60 * 60 * 1000
+const CATCH_UP_AFTER_MS = 60 * 1000
 const FIRST_SWEEP_DELAY_MS = 10 * 60 * 1000
 const FIRST_SWEEP_LATEST_MS = 20 * 60 * 1000
 
@@ -19,22 +20,55 @@ export function startEventRetention(
   let busy = false
   let ready = false
   let first: ReturnType<typeof setTimeout> | undefined
+  let timer: ReturnType<typeof setTimeout> | undefined
   let worker: Worker | null = null
   let running: Promise<void> = Promise.resolve()
   let stopping: Promise<void> | undefined
+  const schedule = (delay: number): void => {
+    if (closed) return
+    timer = setTimeout(run, delay)
+    timer.unref()
+  }
   const run = (): void => {
     if (closed || busy || !ready) return
+    const began = performance.now()
+    let result: EventTrimResult | null = null
+    let removed = 0
+    let exitCode: number | null = null
+    let failure: unknown
+    console.info('BroCrew event history sweep started.')
+    const finish = (): void => {
+      busy = false
+      const outcome = {
+        ...result,
+        removed,
+        elapsedMs: performance.now() - began,
+        exitCode,
+        status: closed ? 'stopped' : failure === undefined ? 'completed' : 'failed',
+      }
+      if (failure !== undefined && !closed) {
+        warn({
+          ...outcome,
+          error: failure instanceof Error ? failure.message : String(failure),
+        })
+      } else console.info('BroCrew event history sweep ended:', outcome)
+      schedule(
+        failure === undefined && result?.budgetReached && !result.interrupted
+          ? CATCH_UP_AFTER_MS
+          : SWEEP_EVERY_MS,
+      )
+    }
     let current: Worker
     try {
       current = start()
       worker = current
       busy = true
     } catch (error) {
-      warn(error)
+      failure = error
+      finish()
       return
     }
-    running = new Promise<EventTrimResult | null>((resolve) => {
-      let result: EventTrimResult | null = null
+    running = new Promise<void>((resolve) => {
       current.on(
         'message',
         (message: {
@@ -47,45 +81,50 @@ export function startEventRetention(
           if (closed) return
           if (message.kind === 'trim-batch') {
             try {
-              current.postMessage({ value: write(message.batch) })
+              const value = write(message.batch)
+              removed += value.changed ?? 0
+              current.postMessage({ value })
             } catch (error) {
               current.postMessage({
                 error: error instanceof Error ? error.message : String(error),
                 code: (error as { code?: string }).code,
               })
             }
-          } else if (message.ok && message.value) result = message.value
-          else warn(message.error ?? 'Event history cleanup failed.')
+          } else if (message.ok && message.value) {
+            result = message.value
+            removed = result.removed
+          } else failure = message.error ?? 'Event history cleanup failed.'
         },
       )
-      current.once('error', warn)
+      current.once('error', (error) => {
+        failure = error
+      })
       current.once('exit', (code) => {
         worker = null
-        resolve(code === 0 ? result : null)
+        exitCode = code
+        if (failure === undefined && (code !== 0 || result === null))
+          failure = `Event history worker exited with code ${code}${result === null ? ' without a result' : ''}.`
+        resolve()
       })
     })
-      .then(async (result) => {
+      .then(async () => {
+        if (closed || failure !== undefined || result === null) return
+        const compacted = result.interrupted
+          ? { steps: 0, reclaimedPages: 0, longestLockMs: 0 }
+          : await incrementallyCompact(db, () => closed)
         if (closed) return
-        if (result !== null) {
-          try {
-            const compacted = result.interrupted
-              ? { steps: 0, reclaimedPages: 0, longestLockMs: 0 }
-              : await incrementallyCompact(db, () => closed)
-            if (closed) return
-            await trimmed({
-              ...result,
-              incrementalSteps: compacted.steps,
-              reclaimedPages: compacted.reclaimedPages,
-              longestIncrementalLockMs: compacted.longestLockMs,
-            })
-          } catch (error) {
-            warn(error)
-          }
+        result = {
+          ...result,
+          incrementalSteps: compacted.steps,
+          reclaimedPages: compacted.reclaimedPages,
+          longestIncrementalLockMs: compacted.longestLockMs,
         }
+        await trimmed(result)
       })
-      .finally(() => {
-        busy = false
+      .catch((error: unknown) => {
+        failure = error
       })
+      .finally(finish)
   }
 
   const begin = (): void => {
@@ -97,8 +136,6 @@ export function startEventRetention(
   }
   const fallback = setTimeout(begin, Math.max(0, FIRST_SWEEP_LATEST_MS - performance.now()))
   fallback.unref()
-  const timer = setInterval(run, SWEEP_EVERY_MS)
-  timer.unref()
   return {
     firstListAccepted(at) {
       if (closed || ready || first !== undefined) return
@@ -108,7 +145,7 @@ export function startEventRetention(
     stop() {
       stopping ??= (async () => {
         closed = true
-        clearInterval(timer)
+        clearTimeout(timer)
         clearTimeout(first)
         clearTimeout(fallback)
         if (worker !== null) await worker.terminate()
