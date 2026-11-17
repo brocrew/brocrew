@@ -1,9 +1,4 @@
-import {
-  closeSync,
-  openSync,
-  readSync,
-  statfsSync,
-} from 'node:fs'
+import { closeSync, openSync, readSync, statfsSync } from 'node:fs'
 import { StringDecoder } from 'node:string_decoder'
 
 /** A pull of lines from a file, and where to carry on from. */
