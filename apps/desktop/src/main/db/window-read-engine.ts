@@ -225,6 +225,7 @@ export class WindowReadEngine {
           const statesSkipped = new Set<SkippedRow>()
           const states = store.piecesOwnedBy(sessionId, noted(statesSkipped))
           const newestTurn = store.theNewestTurn(sessionId)
+          const stop = store.lastAskToStop(sessionId, noted(stopSkipped))
           for (const piece of pieces)
             if (piece.giver !== null && !reported.has(piece.giver))
               reported.set(
@@ -251,7 +252,10 @@ export class WindowReadEngine {
                 newestTurn === null
                   ? { value: [] }
                   : read(() => store.reconciliationDrivenByTurn(sessionId, newestTurn)),
-              lastPerson: read(() => store.whenAPersonLastWrote(sessionId)),
+              lastPerson:
+                stop?.by === 'a-person'
+                  ? read(() => store.whenAPersonLastWrote(sessionId))
+                  : { value: null },
               legacy: pieces
                 .filter((one) => one.state === 'stalled' && one.giver !== null)
                 .map((one) => [
@@ -268,7 +272,7 @@ export class WindowReadEngine {
             work,
             routes: store.routedRequestsOf(sessionId, noted(routesSkipped)),
             messages: store.messagesWaitingIn(sessionId, noted(messagesSkipped)),
-            stop: store.lastAskToStop(sessionId, noted(stopSkipped)),
+            stop,
             piecesSkipped: [...piecesSkipped],
             routesSkipped: [...routesSkipped],
             messagesSkipped: [...messagesSkipped],
