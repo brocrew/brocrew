@@ -480,4 +480,3 @@ export interface AgentMemoryReading {
    */
   readonly readAt: number
 }
-

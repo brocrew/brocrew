@@ -51,7 +51,9 @@ function assertRequestIdentity<Row extends { request: typeof request; sentence: 
   expect(key(row)).toBe('conversation-a:request-0')
   expect(key(otherConversation)).toBe('conversation-b:request-0')
   expect(key(otherRequest)).toBe('conversation-a:request-1')
-  const held = new Map([row, otherConversation, otherRequest, renamed].map((one) => [key(one), one]))
+  const held = new Map(
+    [row, otherConversation, otherRequest, renamed].map((one) => [key(one), one]),
+  )
   expect(held.size).toBe(3)
   expect(held.get(key(row))).toBe(renamed)
   expect(held.get(key(otherConversation))).toBe(otherConversation)
@@ -149,7 +151,11 @@ describe('stable identities in the published person queue', () => {
       stalledAt: 1_000,
     })
     assertPieceIdentity(PERSONS_ROW_KEY.stopped, { ...piece, ...holder, ...giver, at: 1_000 })
-    assertPieceIdentity(PERSONS_ROW_KEY.waitingOnWhoWrote, { ...piece, ...owner, answeredAt: 1_000 })
+    assertPieceIdentity(PERSONS_ROW_KEY.waitingOnWhoWrote, {
+      ...piece,
+      ...owner,
+      answeredAt: 1_000,
+    })
     assertPieceIdentity(PERSONS_ROW_KEY.incidents, {
       ...piece,
       ...holder,

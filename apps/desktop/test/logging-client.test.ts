@@ -16,12 +16,15 @@ describe('the logging client over IPC', () => {
     expect(invoke.mock.calls).toEqual([['app:logging:get']])
   })
 
-  it.each([true, false])('passes debug=%s to the setter and returns the saved state', async (debug) => {
-    const saved: LoggingState = { ...state, debug, servicePath: '/fictional/logs/service.log' }
-    const invoke = vi.fn(async () => saved)
-    expect(await loggingClient(invoke).setLoggingDebug(debug)).toBe(saved)
-    expect(invoke.mock.calls).toEqual([['app:logging:set-debug', debug]])
-  })
+  it.each([true, false])(
+    'passes debug=%s to the setter and returns the saved state',
+    async (debug) => {
+      const saved: LoggingState = { ...state, debug, servicePath: '/fictional/logs/service.log' }
+      const invoke = vi.fn(async () => saved)
+      expect(await loggingClient(invoke).setLoggingDebug(debug)).toBe(saved)
+      expect(invoke.mock.calls).toEqual([['app:logging:set-debug', debug]])
+    },
+  )
 
   it('propagates read and write failures so the caller can report them', async () => {
     const readFailure = new Error('read failed')
@@ -30,10 +33,7 @@ describe('the logging client over IPC', () => {
     const client = loggingClient(invoke)
     await expect(client.getLogging()).rejects.toBe(readFailure)
     await expect(client.setLoggingDebug(true)).rejects.toBe(writeFailure)
-    expect(invoke.mock.calls).toEqual([
-      ['app:logging:get'],
-      ['app:logging:set-debug', true],
-    ])
+    expect(invoke.mock.calls).toEqual([['app:logging:get'], ['app:logging:set-debug', true]])
   })
 
   it('keeps each window client bound to its own transport', async () => {
