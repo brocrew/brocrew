@@ -15,7 +15,7 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import { type ListedProcess } from '../src/main/runtime/process-listing'
+import { listProcesses, type ListedProcess } from '../src/main/runtime/process-listing'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
@@ -288,6 +288,36 @@ describe('what the Providers screen reads from the host', () => {
       clock -= 600_000
       await host.providerResources()
       expect(listed).toBe(2)
+    })
+
+    it('keeps the last measurement when a slow command times out, then samples again quietly', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      await withPid('claude', 4242)
+      listing = listingOf([{ pid: 4242, ppid: 1, rssKb: 10, cpu: 1 }])
+      const last = await host.providerResources()
+      clock += 5_000
+      vi.useFakeTimers()
+      try {
+        listing = () => listProcesses('win32', () => new Promise(() => {}))
+        const pending = host.providerResources()
+        expect(host.providerResources()).toBe(pending)
+        expect(listed).toBe(2)
+        clock += 20_000
+        await vi.advanceTimersByTimeAsync(20_000)
+        expect(await pending).toBe(last)
+        expect(listed).toBe(2)
+
+        clock += 4_999
+        expect(await host.providerResources()).toBe(last)
+        expect(listed).toBe(2)
+        listing = listingOf([{ pid: 4242, ppid: 1, rssKb: 20, cpu: 2 }])
+        clock += 1
+        const next = await host.providerResources()
+        expect(next.claude).toEqual({ running: 1, at: clock, rssBytes: 20 * 1024, cpuPercent: 2 })
+        expect(listed).toBe(3)
+      } finally {
+        vi.useRealTimers()
+      }
     })
 
     it('🔴 a listing that fails is said, with the roots still counted, and asked again at the next ask', async () => {
