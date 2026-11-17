@@ -6,7 +6,7 @@ export function windowsBirthOf(pid: number): string {
     const birth = execFileSync(
       fileURLToPath(new URL('./bin/chrome-process-birth.exe', import.meta.url)),
       [String(pid)],
-      { encoding: 'utf8', windowsHide: true },
+      { encoding: 'utf8', windowsHide: true, stdio: 'pipe' },
     ).trim()
     if (!/^[1-9][0-9]{0,18}$/.test(birth) || BigInt(birth) > 3155378975999999999n)
       throw new Error('Invalid native process birth output')
