@@ -1142,6 +1142,14 @@ const platform = platformHere()
 
       <!-- Opening any row shows its full conversation, and sending a message there continues it. Group the same ordered rows into collapsible BroBot and other-agent sections, BroBot first. Omit empty sections rather than split by open or closed state. -->
       <div class="rail-section rail-conversations" data-wired="true" data-cy="rail-conversations">
+        <p
+          v-if="!looked && !listError"
+          class="rail-empty"
+          role="status"
+          data-cy="conversations-loading"
+        >
+          Loading conversations…
+        </p>
         <p v-if="listError" class="rail-empty err" data-cy="conversations-error">
           Could not read the conversations: {{ listError }}
         </p>

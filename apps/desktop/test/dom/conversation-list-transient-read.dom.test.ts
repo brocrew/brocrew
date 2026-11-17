@@ -47,6 +47,55 @@ function open(read = vi.fn(async () => rows)) {
 const count = (out: ReturnType<typeof open>) =>
   out.m.host.querySelectorAll('[data-cy^="open-session-"]').length
 const errors = (out: ReturnType<typeof open>) => out.m.all('conversations-error')
+const loading = (out: ReturnType<typeof open>) => out.m.all('conversations-loading')
+
+it('shows loading until the first list answer is accepted', async () => {
+  let answer!: (value: ResumableSessionInfo[]) => void
+  const out = open(
+    vi.fn(
+      () =>
+        new Promise<ResumableSessionInfo[]>((resolve) => {
+          answer = resolve
+        }),
+    ),
+  )
+  await flush()
+  expect(loading(out)).toHaveLength(1)
+  expect(loading(out)[0]!.textContent?.trim()).toBe('Loading conversations…')
+  answer(rows)
+  await flush()
+  expect(count(out)).toBe(1)
+  expect(loading(out)).toHaveLength(0)
+})
+
+it('does not call an accepted empty list loading', async () => {
+  const out = open(vi.fn(async () => []))
+  await flush()
+  expect(out.rail.value!.theOneList).toEqual([])
+  expect(count(out)).toBe(0)
+  expect(loading(out)).toHaveLength(0)
+})
+
+it('shows loading again while the first read of a different workspace is pending', async () => {
+  const out = open()
+  await flush()
+  expect(loading(out)).toHaveLength(0)
+  let answer!: (value: ResumableSessionInfo[]) => void
+  out.read.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        answer = resolve
+      }),
+  )
+  out.workspace.path = '/fictional/second'
+  await flush()
+  expect(count(out)).toBe(0)
+  expect(loading(out)).toHaveLength(1)
+  answer([])
+  await flush()
+  expect(out.rail.value!.theOneList).toEqual([])
+  expect(loading(out)).toHaveLength(0)
+})
 
 it('keeps the list with no error flash while one background read fails then recovers', async () => {
   const out = open()
@@ -135,6 +184,7 @@ it('initial persistent failure reports the cause after three reads without claim
   expect(out.read).toHaveBeenCalledTimes(3)
   expect(out.rail.value!.theOneList).toBeNull()
   expect(out.m.q('conversations-error').textContent).toContain(unavailable.message)
+  expect(loading(out)).toHaveLength(0)
 })
 
 it('a queued refresh follows the active read and preserves pushes received during each read', async () => {
