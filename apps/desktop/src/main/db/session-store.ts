@@ -2534,7 +2534,7 @@ export function createSessionStore(
   )
   const selectTheTurnsOpening = db.prepare(
     `SELECT type, CASE WHEN json_valid(payload) THEN payload END AS payload, ordinal FROM events
-      WHERE turn_id = ? AND type = 'user_turn'
+      WHERE turn_id = ? AND session_id = ? AND generation = ? AND type = 'user_turn'
       ORDER BY ordinal LIMIT 1`,
   )
   const selectNewestReceived = db.prepare(
@@ -2600,26 +2600,30 @@ export function createSessionStore(
       ORDER BY start DESC LIMIT ?`,
   )
   const selectLastAskToStop = db.prepare(
-    `SELECT payload, created_at, turn_id, type, ordinal
-       FROM (SELECT session_id, generation, ordinal, created_at, turn_id, type,
-                    json_valid(payload) AS readable,
-                    CASE WHEN json_valid(payload) THEN payload ELSE '{}' END AS payload
-               FROM events INDEXED BY events_fold_idx WHERE ${FOLD_TERM})
-      WHERE session_id = ? AND generation = ? AND readable
-        AND (type = 'work_interrupted'
-             OR (type = 'user_decision' AND json_extract(payload, '$.outcome') = 'cancel'))
-        AND NOT (type = 'user_decision' AND json_type(payload, '$.stopsNothing') IS 'true')
-      ORDER BY ordinal DESC LIMIT 1`,
+    `SELECT payload, created_at, turn_id, type, ordinal FROM (
+       SELECT * FROM (
+         SELECT payload, created_at, turn_id, type, ordinal FROM events
+          WHERE type = 'work_interrupted' AND session_id = @session AND generation = @generation
+            AND json_valid(payload)
+          ORDER BY ordinal DESC LIMIT 1
+       )
+       UNION ALL
+       SELECT * FROM (
+         SELECT payload, created_at, turn_id, type, ordinal FROM events
+          WHERE type = 'user_decision' AND session_id = @session AND generation = @generation
+            AND CASE WHEN json_valid(payload) THEN
+              json_extract(payload, '$.outcome') = 'cancel'
+              AND json_type(payload, '$.stopsNothing') IS NOT 'true' ELSE 0 END
+          ORDER BY ordinal DESC LIMIT 1
+       )
+     ) ORDER BY ordinal DESC LIMIT 1`,
   )
   const selectTornAsksAfter = db.prepare(
-    `SELECT ordinal
-       FROM events INDEXED BY events_fold_idx
-      WHERE ${FOLD_TERM} AND session_id = ? AND generation = ? AND ordinal > ?
+    `SELECT ordinal FROM events
+      WHERE session_id = ? AND generation = ? AND ordinal > ?
         AND type IN ('work_interrupted', 'user_decision')
         AND NOT json_valid(payload)`,
   )
-  theFoldIndexHolds(selectLastAskToStop)
-  theFoldIndexHolds(selectTornAsksAfter)
   const selectSessionsRoutingTo = db.prepare(
     `SELECT DISTINCT routed.session_id AS id,
             CASE WHEN routed.readable THEN NULL ELSE routed.ordinal END AS unreadAt
@@ -2926,7 +2930,7 @@ export function createSessionStore(
         event.type === 'user_turn' &&
         already !== undefined &&
         selectAProviderTurnsOpening.get(already.id) !== undefined &&
-        selectTheTurnsOpening.get(already.id) === undefined
+        selectTheTurnsOpening.get(already.id, sessionId, generation) === undefined
       if (
         (event.type === 'user_turn' || event.type === 'provider_turn') &&
         !joinsTheProvidersTurn
@@ -3658,22 +3662,26 @@ export function createSessionStore(
   }
 
   function whatOpenedTheLastEndedTurn(sessionId: string): ReceivedInATurn | null {
-    const closed = selectLastClosedTurn.get(sessionId, activeGeneration(sessionId)) as
+    const generation = activeGeneration(sessionId)
+    const closed = selectLastClosedTurn.get(sessionId, generation) as
       ClosedTurnRow | undefined
     if (closed === undefined) return null
-    const row = selectTheTurnsOpening.get(closed.id) as ExchangeRow | undefined
+    const row = selectTheTurnsOpening.get(closed.id, sessionId, generation) as ExchangeRow | undefined
     return row === undefined ? null : receivedOn(sessionId, row, PREVIEW_CAP)
   }
 
   function replyQuestionWithoutARequest(conversation: string): string | null {
-    const closed = selectLastClosedTurn.get(conversation, activeGeneration(conversation)) as
+    const generation = activeGeneration(conversation)
+    const closed = selectLastClosedTurn.get(conversation, generation) as
       ClosedTurnRow | undefined
     if (
       closed === undefined ||
       (selectClosedTurnReason.get(closed.id) as { end_reason: string }).end_reason !== 'completed'
     )
       return null
-    const opening = selectTheTurnsOpening.get(closed.id) as ExchangeRow | undefined
+    const opening = selectTheTurnsOpening.get(closed.id, conversation, generation) as
+      | ExchangeRow
+      | undefined
     if (opening === undefined) return null
     const received = receivedOn(conversation, opening, 0)
     if (![received, ...(received.cameWith ?? [])].some((one) => one.from.is === 'a-person'))
@@ -3807,7 +3815,7 @@ export function createSessionStore(
 
   function lastAskToStopOf(sessionId: string, noteSkip?: SkipNote): AskToStop | null {
     const generation = activeGeneration(sessionId)
-    const row = selectLastAskToStop.get(sessionId, generation) as AskRow | undefined
+    const row = selectLastAskToStop.get({ session: sessionId, generation }) as AskRow | undefined
     for (const torn of selectTornAsksAfter.all(sessionId, generation, row?.ordinal ?? -1) as {
       ordinal: number
     }[]) {
@@ -5464,11 +5472,12 @@ export function createSessionStore(
     },
 
     recordedTurnOpening(sessionId, turnId) {
+      const generation = activeGeneration(sessionId)
       const owned = db
         .prepare('SELECT 1 FROM turn WHERE id = ? AND session_id = ? AND generation = ?')
-        .get(turnId, sessionId, activeGeneration(sessionId))
+        .get(turnId, sessionId, generation)
       if (owned === undefined) return null
-      const row = selectTheTurnsOpening.get(turnId) as ExchangeRow | undefined
+      const row = selectTheTurnsOpening.get(turnId, sessionId, generation) as ExchangeRow | undefined
       if (row === undefined || row.payload === null) return null
       const event = aStoredObject(row.payload)
       if (event?.type !== 'user_turn' || typeof event.text !== 'string')
