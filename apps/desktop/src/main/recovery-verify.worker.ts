@@ -7,7 +7,12 @@ const port = parentPort
 if (port) {
   const { copy, holdMs, hashOnly, readonly } = workerData as CopyCheckRequest
   if (hashOnly) {
-    void sha256Of(copy)
+    // A hash reads the copy in steps, so a quit's stop ends it at the next one.
+    const stop = new AbortController()
+    port.on('message', (message: { kind?: string }) => {
+      if (message.kind === 'stop') stop.abort()
+    })
+    void sha256Of(copy, undefined, stop.signal)
       .then(
         (sha256) => port.postMessage({ kind: 'ok', sha256 }),
         (error: unknown) =>

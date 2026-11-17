@@ -3,6 +3,7 @@ import pluginVue from 'eslint-plugin-vue'
 import { defineConfigWithVueTs, vueTsConfigs } from '@vue/eslint-config-typescript'
 import configPrettier from 'eslint-config-prettier'
 import globals from 'globals'
+import noForcedSqliteWorkerTermination from './scripts/eslint/no-forced-sqlite-worker-termination.mjs'
 
 // Flat config for the whole monorepo: ESLint core + typescript-eslint + Vue,
 // with Prettier last to switch off stylistic rules that Prettier owns.
@@ -54,5 +55,22 @@ export default defineConfigWithVueTs(
   js.configs.recommended,
   pluginVue.configs['flat/essential'],
   vueTsConfigs.recommended,
+  {
+    name: 'brobot2/sqlite-worker-lifetime',
+    files: [
+      'apps/desktop/src/main/db/**/*.ts',
+      'apps/desktop/src/main/recovery/copy-check.ts',
+      'apps/desktop/src/main/storage/workspace-compaction.ts',
+      'apps/desktop/src/main/storage/event-retention.ts',
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: './apps/desktop/tsconfig.node.json',
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    plugins: { 'worker-lifetime': { rules: { 'stop-and-join': noForcedSqliteWorkerTermination } } },
+    rules: { 'worker-lifetime/stop-and-join': 'error' },
+  },
   configPrettier,
 )

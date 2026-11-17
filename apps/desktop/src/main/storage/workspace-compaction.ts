@@ -15,13 +15,16 @@ type CompactionRun = (
   progress: (done: number, total: number) => void,
 ) => Promise<boolean>
 
-/** Before normal database opening; only main installs a worker's completed, closed output. */
+/**
+ * Before normal database opening; only main installs a worker's completed, closed output. A quit
+ * waits for the worker to exit, never ends it: a worker ended inside a SQLite call takes the whole
+ * app down.
+ */
 export function workspaceCompaction(start: (request: Request) => Worker): {
   run: CompactionRun
   stop(): Promise<void>
 } {
   let stopped = false
-  let worker: Worker | null = null
   let exited: Promise<void> = Promise.resolve()
   let running: Promise<boolean> | null = null
   const request = <T>(data: Request): Promise<T> =>
@@ -31,7 +34,6 @@ export function workspaceCompaction(start: (request: Request) => Worker): {
         return
       }
       const current = start(data)
-      worker = current
       let answer: { ok: boolean; value: T; error?: string } | undefined
       let problem: Error | undefined
       current.once('message', (message) => {
@@ -42,7 +44,6 @@ export function workspaceCompaction(start: (request: Request) => Worker): {
       })
       exited = new Promise<void>((done) => {
         current.once('exit', (code) => {
-          worker = null
           if (stopped || code !== 0 || problem || !answer?.ok)
             reject(problem ?? new Error(answer?.error ?? 'Workspace compaction stopped.'))
           else resolve(answer.value)
@@ -116,12 +117,8 @@ export function workspaceCompaction(start: (request: Request) => Worker): {
     },
     async stop() {
       stopped = true
-      try {
-        if (worker !== null) await worker.terminate()
-      } finally {
-        await exited
-        await running?.catch(() => undefined)
-      }
+      await exited
+      await running?.catch(() => undefined)
     },
   }
 }

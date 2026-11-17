@@ -74,7 +74,11 @@ function anAnswer(value: unknown): value is CopyCheck {
   )
 }
 
-/** Checks copies in workers, and stops them all when the app quits. */
+/**
+ * Checks copies in workers. A quit asks each to stop and waits for it to exit: a hash stops at its
+ * next read, and a SQLite check runs to the end of its statement, as a worker ended inside a SQLite
+ * call takes the whole app down.
+ */
 export interface CopyVerifier {
   readonly verify: VerifyCopy
   stop(): Promise<void>
@@ -133,7 +137,7 @@ export function verifyInAWorker(
     async stop() {
       stopped = true
       const exits = [...live.values()]
-      for (const worker of live.keys()) void worker.terminate()
+      for (const worker of live.keys()) worker.postMessage({ kind: 'stop' })
       await Promise.all(exits)
     },
   }

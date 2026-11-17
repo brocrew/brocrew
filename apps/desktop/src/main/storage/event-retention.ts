@@ -8,7 +8,11 @@ const CATCH_UP_AFTER_MS = 60 * 1000
 const FIRST_SWEEP_DELAY_MS = 10 * 60 * 1000
 const FIRST_SWEEP_LATEST_MS = 20 * 60 * 1000
 
-/** One periodic history sweep; stopping joins its worker before the app closes its database. */
+/**
+ * One periodic history sweep; stopping joins its worker before the app closes its database. The
+ * worker is asked to stop, never ended: ending it inside a SQLite call takes the whole app down,
+ * and it sees the stop before its next read.
+ */
 export function startEventRetention(
   db: AppDatabase,
   start: () => Worker,
@@ -78,7 +82,11 @@ export function startEventRetention(
           value?: EventTrimResult
           error?: string
         }) => {
-          if (closed) return
+          if (closed) {
+            if (message.kind === 'trim-batch')
+              current.postMessage({ error: 'BroCrew is closing.', code: 'STOPPED' })
+            return
+          }
           if (message.kind === 'trim-batch') {
             try {
               const value = write(message.batch)
@@ -148,7 +156,7 @@ export function startEventRetention(
         clearTimeout(timer)
         clearTimeout(first)
         clearTimeout(fallback)
-        if (worker !== null) await worker.terminate()
+        worker?.postMessage({ kind: 'stop' })
         await running
       })()
       return stopping

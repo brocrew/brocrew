@@ -456,6 +456,13 @@ export function createAppLifetime(deps: AppLifetimeDeps): AppLifetime {
     )
     forcedExit = setTimeout(() => {
       deps.log(`BroCrew did not finish shutting down within ${IMPATIENT_EXIT_MS}ms; exiting now`)
+      // Exiting joins every worker first, and a worker inside a SQLite statement finishes it before
+      // it can stop, so the outside deadline bounds this exit too.
+      try {
+        deps.armLastResort(ELECTRON_EXIT_GRACE_MS)
+      } catch (error) {
+        deps.log('BroCrew could not arm its last-resort exit:', error)
+      }
       try {
         deps.exit(1)
       } catch (error) {

@@ -32,11 +32,19 @@ if (port) {
           () => stopped,
           (batch) =>
             new Promise<EventTrimWrite>((resolve, reject) => {
-              port.once('message', (reply) => {
+              const answered = (reply: {
+                kind?: string
+                value?: EventTrimWrite
+                error?: string
+                code?: string
+              }) => {
+                if (reply.kind === 'stop') return
+                port.off('message', answered)
                 if (reply.error !== undefined)
                   reject(Object.assign(new Error(reply.error), { code: reply.code }))
-                else resolve(reply.value)
-              })
+                else resolve(reply.value!)
+              }
+              port.on('message', answered)
               port.postMessage({ kind: 'trim-batch', batch })
             }),
         )

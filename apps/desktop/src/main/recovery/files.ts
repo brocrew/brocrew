@@ -312,12 +312,17 @@ export async function assertOwnedPathsAreReal(
 const CHUNK_BYTES = 1024 * 1024
 
 /** The sha256 (hex) of a whole file, read in chunks so a large database is never held in memory. */
-export async function sha256Of(path: string, fs: RecoveryFs = nodeFs): Promise<string> {
+export async function sha256Of(
+  path: string,
+  fs: RecoveryFs = nodeFs,
+  signal?: AbortSignal,
+): Promise<string> {
   const hash = createHash('sha256')
   const handle = await retrying(() => fs.open(path, 'r'))
   try {
     const buffer = new Uint8Array(CHUNK_BYTES)
     for (;;) {
+      signal?.throwIfAborted()
       const { bytesRead } = await handle.read(buffer, 0, buffer.length, null)
       if (bytesRead === 0) break
       hash.update(buffer.subarray(0, bytesRead))
