@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { performance } from 'node:perf_hooks'
 import { withDeadline } from '@brobot2/runtime'
 import { providerRecord, type Provider } from '@brobot2/shared'
 import type { ProviderResources } from '../../shared/runtime-ipc'
@@ -95,6 +96,7 @@ const WINDOWS_LISTING_DEADLINE_MS = 20_000
 
 function powerShell(command: string): Promise<string> {
   return new Promise((resolve, reject) => {
+    const started = performance.now()
     execFile(
       'powershell.exe',
       ['-NoProfile', '-NonInteractive', '-Command', command],
@@ -104,7 +106,22 @@ function powerShell(command: string): Promise<string> {
         encoding: 'utf8',
         windowsHide: true,
       },
-      (error, stdout) => (error ? reject(error) : resolve(stdout)),
+      (error, stdout, stderr) => {
+        console.info(
+          JSON.stringify({
+            processListingDiagnostic: {
+              elapsedMs: performance.now() - started,
+              code: error?.code ?? null,
+              signal: error?.signal ?? null,
+              killed: error?.killed ?? null,
+              error: error === null ? null : { name: error.name, message: error.message },
+              stdout: { bytes: Buffer.byteLength(stdout, 'utf8'), body: stdout },
+              stderr: { bytes: Buffer.byteLength(stderr, 'utf8'), body: stderr },
+            },
+          }),
+        )
+        return error ? reject(error) : resolve(stdout)
+      },
     )
   })
 }
