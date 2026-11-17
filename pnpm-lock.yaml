@@ -56,9 +56,6 @@ importers:
       '@anthropic-ai/claude-agent-sdk':
         specifier: 0.3.322
         version: 0.3.322(@anthropic-ai/sdk@0.113.0(zod@4.4.3))(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(zod@4.4.3)
-      '@brobot2/orchestration':
-        specifier: workspace:*
-        version: link:../../packages/orchestration
       '@brobot2/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -163,16 +160,6 @@ importers:
       '@openai/codex-win32-x64':
         specifier: npm:@openai/codex@0.167.1-win32-x64
         version: '@openai/codex@0.167.1-win32-x64'
-
-  packages/orchestration:
-    dependencies:
-      '@brobot2/shared':
-        specifier: workspace:*
-        version: link:../shared
-    devDependencies:
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
 
   packages/runtime:
     dependencies:

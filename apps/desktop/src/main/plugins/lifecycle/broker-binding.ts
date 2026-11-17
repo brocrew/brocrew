@@ -26,7 +26,6 @@ export async function pluginBrokerBinding(
       description: tool.description ?? tool.name,
       inputSchema: tool.inputSchema as BrokerInput,
     })),
-    adminOperations: [],
     server: createPrivatePluginPort({ url: endpoint.url, credential, diagnostic }),
   }
 }

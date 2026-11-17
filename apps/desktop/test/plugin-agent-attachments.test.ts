@@ -5,6 +5,7 @@ import { PluginLifecycleController } from '../src/main/plugins/lifecycle/control
 import { WorkspacePluginAttachments } from '../src/main/plugins/attachments'
 import { fixture, cleanupLifecycleFixtures, deferred } from './plugin-lifecycle-fixtures'
 import type { BrokerClock } from '../src/main/plugins/tool-broker'
+import { echoBinding } from './helpers/plugin-echo-binding'
 import {
   FakeRuntime,
   withManagedPluginAttachments,
@@ -699,7 +700,7 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
     expect(await client.callTool({ name: 'echo', arguments: {} })).toMatchObject({ isError: true })
     expect(f.call).toHaveBeenCalledTimes(2)
   })
-  it('lease revocation ends discovery and calls, with no person/admin authority', async () => {
+  it('lease revocation ends discovery and calls', async () => {
     const f = await live(),
       owner = lease(),
       req = request(f.local.sink.workspaceId)
@@ -790,29 +791,7 @@ it.skipIf(process.platform === 'win32')(
       }
     }
     const cold = await PluginLifecycleController.open(f.opts)
-    const binding = vi.fn(async () => ({
-      tools: [
-        {
-          name: 'echo',
-          description: 'Fictional echo',
-          inputSchema: { type: 'object' },
-        },
-      ],
-      adminOperations: [],
-      server: {
-        tool: () => ({
-          result: Promise.resolve({
-            ok: true as const,
-            value: { content: [{ type: 'text', text: 'fictional cold echo' }] },
-          }),
-          quiescent: Promise.resolve(),
-          cancel() {},
-        }),
-        admin() {
-          throw new Error('person surface stays private')
-        },
-      },
-    }))
+    const binding = vi.fn(async () => echoBinding('fictional cold echo'))
     const bridge = createLifecycleAgentBridge({
       owner: { valid: () => true },
       controller: cold,

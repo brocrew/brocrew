@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { PluginBrokerError } from '../src/main/plugins/tool-broker'
-import type {
-  BrokerAgent,
-  BrokerOptions,
-  BrokerPerson,
-  BrokerReply,
-} from '../src/main/plugins/tool-broker'
+import type { BrokerAgent, BrokerOptions, BrokerReply } from '../src/main/plugins/tool-broker'
 import { deferred, tick, setup } from './helpers/plugin-tool-broker'
 
 describe('plugin authority and all-agent reach', () => {
@@ -35,7 +30,6 @@ describe('plugin authority and all-agent reach', () => {
       installId: 'installation-fern',
       epoch: 'epoch-one',
       workspaceId: 'birch',
-      kind: 'agent',
       incarnation: 'aspen-life-one',
     })
     h.server.finish(0)
@@ -64,17 +58,11 @@ describe('plugin authority and all-agent reach', () => {
     await expect(other.call(h.agent)).rejects.toMatchObject({ code: 'unauthorized' })
     expect(h.server.calls).toHaveLength(0)
   })
-  it('agent paths cannot call admin even with a person capability or in-band identity fields', async () => {
+  it('agent calls cannot reach an unpublished name or change identity with in-band fields', async () => {
     const h = setup()
     await expect(h.broker.agent.call(h.agent, 'enable_profile', {})).rejects.toMatchObject({
       code: 'denied',
     })
-    await expect(
-      h.broker.agent.call(h.person as unknown as BrokerAgent, h.name, { profile: 'fern' }),
-    ).rejects.toMatchObject({ code: 'unauthorized' })
-    await expect(
-      h.broker.person.call(h.agent as unknown as BrokerPerson, 'enable_profile', {}),
-    ).rejects.toMatchObject({ code: 'unauthorized' })
     const p = h.call(h.agent, {
       profile: 'fern',
       identity: { kind: 'person' },
@@ -82,26 +70,15 @@ describe('plugin authority and all-agent reach', () => {
       name: 'enable_profile',
     })
     await tick()
-    expect(h.server.calls[0]!.operation).toBe('tool')
-    expect(h.server.calls[0]!.request.identity.kind).toBe('agent')
+    expect(h.server.calls[0]!.request.identity).toEqual({
+      pluginId: 'fictional-browser',
+      installId: 'installation-fern',
+      epoch: 'epoch-one',
+      workspaceId: 'willow',
+      incarnation: 'fern-life-one',
+    })
     h.server.finish(0)
     await p
-    expect(h.server.calls.some((c) => c.operation === 'admin')).toBe(false)
-  })
-  it('person mutations share the serial lock and never overlap an agent call', async () => {
-    const h = setup()
-    const first = h.call()
-    await tick()
-    const admin = h.broker.person.call(h.person, 'open_window', { profile: 'fern' })
-    await tick()
-    expect(h.server.calls).toHaveLength(1)
-    h.server.finish(0)
-    await first
-    await tick()
-    expect(h.server.calls[1]!.operation).toBe('admin')
-    expect(h.server.calls[1]!.request.identity.kind).toBe('person')
-    h.server.finish(1)
-    await admin
   })
   it('revokes stopped incarnations and does not recreate one under its old name', async () => {
     const h = setup()
@@ -127,9 +104,6 @@ describe('plugin authority and all-agent reach', () => {
       setup((o) => ({ ...o, occupiedQualifiedNames: ['PLUGIN-FICTIONAL-BROWSER__READ_PAGE'] })),
     ).toThrow(PluginBrokerError)
     expect(() => setup((o) => ({ ...o, tools: [...o.tools, o.tools[0]!] }))).toThrow(
-      PluginBrokerError,
-    )
-    expect(() => setup((o) => ({ ...o, adminOperations: ['read_page'] }))).toThrow(
       PluginBrokerError,
     )
   })
@@ -444,7 +418,7 @@ describe('secret-free failures and diagnostics', () => {
     for (const event of h.audit)
       expect(
         Object.keys(event).every((key) =>
-          ['event', 'operation', 'queued', 'code', 'reason', 'call'].includes(key),
+          ['event', 'queued', 'code', 'reason', 'call'].includes(key),
         ),
       ).toBe(true)
     for (const event of h.audit)
@@ -504,7 +478,6 @@ describe('revocation and malformed downstream boundaries', () => {
           revoke()
           return o.server.tool(request, signal)
         },
-        admin: o.server.admin,
       },
     }))
     revoke = () => h.broker.owner.revoke(h.agent)
@@ -607,7 +580,6 @@ it('attribution copies only installation identity fields from owner metadata', a
     'epoch',
     'incarnation',
     'installId',
-    'kind',
     'pluginId',
     'workspaceId',
   ])

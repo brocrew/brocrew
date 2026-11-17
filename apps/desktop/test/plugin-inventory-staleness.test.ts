@@ -157,10 +157,8 @@ it('ends connection readiness immediately when the exact host exits', async () =
 function emptyBinding() {
   return {
     tools: [],
-    adminOperations: [],
     server: {
       tool: vi.fn(),
-      admin: vi.fn(),
     },
   }
 }

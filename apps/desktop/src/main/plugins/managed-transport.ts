@@ -186,9 +186,6 @@ export function createPrivatePluginPort(options: {
       })()
       return { result, quiescent, cancel }
     },
-    admin() {
-      return { result: Promise.resolve({ ok: false }), quiescent: Promise.resolve(), cancel() {} }
-    },
   }
 }
 

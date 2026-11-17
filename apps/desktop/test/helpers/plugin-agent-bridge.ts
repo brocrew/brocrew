@@ -86,7 +86,6 @@ export async function live(
         inputSchema: { type: 'object' },
       },
     ],
-    adminOperations: [],
     server: {
       tool() {
         call()
@@ -101,9 +100,6 @@ export async function live(
           quiescent: Promise.resolve(),
           cancel() {},
         }
-      },
-      admin() {
-        throw new Error('person surface must stay private')
       },
     },
   }))

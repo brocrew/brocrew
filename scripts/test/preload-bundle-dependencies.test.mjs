@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 const root = fileURLToPath(new URL('../../', import.meta.url))
 const desktopRequire = createRequire(new URL('../../apps/desktop/package.json', import.meta.url))
 const { build } = await import(desktopRequire.resolve('vite'))
-const workspacePackages = ['@brobot2/shared', '@brobot2/runtime', '@brobot2/orchestration']
+const workspacePackages = ['@brobot2/shared', '@brobot2/runtime']
 
 describe('sandboxed preload bundles', () => {
   it.each(['index', 'recovery', 'plugin-ui'])(

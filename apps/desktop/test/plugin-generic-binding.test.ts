@@ -12,7 +12,7 @@ vi.mock('@modelcontextprotocol/sdk/client/streamableHttp.js', () => ({
   StreamableHTTPClientTransport: class {},
 }))
 vi.mock('../src/main/plugins/managed-transport', () => ({
-  createPrivatePluginPort: () => ({ tool: sdk.tool, admin: vi.fn() }),
+  createPrivatePluginPort: () => ({ tool: sdk.tool }),
 }))
 import { pluginBrokerBinding } from '../src/main/plugins/lifecycle/broker-binding'
 import { createPluginToolBroker } from '../src/main/plugins/tool-broker'

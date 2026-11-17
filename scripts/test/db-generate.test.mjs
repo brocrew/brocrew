@@ -355,9 +355,6 @@ describe('db:generate · a stamp that cannot be skipped', () => {
         desktop: JSON.parse(readFileSync(join(ROOT, 'apps/desktop/package.json'), 'utf8')),
         shared: JSON.parse(readFileSync(join(ROOT, 'packages/shared/package.json'), 'utf8')),
         runtime: JSON.parse(readFileSync(join(ROOT, 'packages/runtime/package.json'), 'utf8')),
-        orchestration: JSON.parse(
-          readFileSync(join(ROOT, 'packages/orchestration/package.json'), 'utf8'),
-        ),
       }
       const callsDrizzle = Object.entries(manifests).flatMap(([where, manifest]) =>
         Object.entries(manifest.scripts ?? {})

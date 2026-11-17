@@ -12,7 +12,6 @@ const PACKAGES_FROM = [
   APP,
   resolve(APP, '../../packages/runtime'),
   resolve(APP, '../../packages/shared'),
-  resolve(APP, '../../packages/orchestration'),
 ]
 
 /**

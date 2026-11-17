@@ -15,7 +15,6 @@ export interface BrokerBinding {
 }
 export interface BrokerIdentity extends BrokerBinding {
   readonly workspaceId: string
-  readonly kind: 'agent' | 'person'
   readonly incarnation: string
 }
 export interface BrokerTool {
@@ -58,7 +57,6 @@ export interface BrokerServer {
     signal: AbortSignal,
     onprogress?: (progress: BrokerProgress) => void,
   ): PluginExecution
-  admin(request: BrokerRequest, signal: AbortSignal): PluginExecution
 }
 export interface BrokerClock {
   now(): number
@@ -75,7 +73,6 @@ export type BrokerFailure =
   | 'downstream'
 export interface BrokerAudit {
   readonly event: 'queued' | 'started' | 'finished' | 'refused' | 'unavailable' | 'call'
-  readonly operation: 'tool' | 'admin'
   readonly queued: number
   readonly code?: BrokerFailure
   readonly reason?: PluginToolFailureReason
@@ -89,7 +86,6 @@ export interface BrokerOptions {
   readonly occupiedNamespaces: readonly string[]
   readonly occupiedQualifiedNames: readonly string[]
   readonly tools: readonly BrokerTool[]
-  readonly adminOperations: readonly string[]
   readonly server: BrokerServer
   /** Trusted owner proof for the exact retained host and its descendants, never plugin input. */
   readonly hostExited?: Promise<void>
@@ -98,15 +94,11 @@ export interface BrokerOptions {
 }
 declare const workspaceBrand: unique symbol
 declare const agentBrand: unique symbol
-declare const personBrand: unique symbol
 export interface BrokerWorkspace {
   readonly [workspaceBrand]: true
 }
 export interface BrokerAgent {
   readonly [agentBrand]: true
-}
-export interface BrokerPerson {
-  readonly [personBrand]: true
 }
 export interface PluginToolBroker {
   readonly agent: {
@@ -120,20 +112,11 @@ export interface PluginToolBroker {
       _meta?: RequestMeta,
     ): Promise<BrokerValue>
   }
-  readonly person: {
-    call(
-      capability: BrokerPerson,
-      operation: string,
-      input: BrokerInput,
-      signal?: AbortSignal,
-    ): Promise<BrokerValue>
-  }
   /** Retained by the authenticated owner; never handed to agents or a plugin. */
   readonly owner: {
     attach(workspaceId: string): BrokerWorkspace
     grantAgent(workspace: BrokerWorkspace, incarnation: string): BrokerAgent
-    grantPerson(workspace: BrokerWorkspace, incarnation: string): BrokerPerson
-    revoke(capability: BrokerAgent | BrokerPerson): void
+    revoke(capability: BrokerAgent): void
     detach(workspace: BrokerWorkspace): void
     invalidate(): void
     /** Positive completion of every dispatched call; a failed/absent proof never grants this. */

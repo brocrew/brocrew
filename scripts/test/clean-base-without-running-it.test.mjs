@@ -65,7 +65,6 @@ function productionSources() {
     'apps/desktop/src/shared',
     'packages/runtime/src',
     'packages/shared/src',
-    'packages/orchestration/src',
   ]
   const out = []
   const walk = (relative) => {

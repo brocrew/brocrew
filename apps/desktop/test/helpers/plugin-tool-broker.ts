@@ -59,7 +59,6 @@ class Clock implements BrokerClock {
 }
 class Server {
   calls: Array<{
-    operation: 'tool' | 'admin'
     request: BrokerRequest
     signal: AbortSignal
     result: ReturnType<typeof deferred<BrokerReply>>
@@ -70,15 +69,13 @@ class Server {
   cancelError: unknown
   onCancel?: () => void
   startError: unknown
-  start = (
-    operation: 'tool' | 'admin',
+  tool = (
     request: BrokerRequest,
     signal: AbortSignal,
     onprogress?: (progress: BrokerProgress) => void,
   ): PluginExecution => {
     if (this.startError) throw this.startError
     const call = {
-      operation,
       request,
       signal,
       result: deferred<BrokerReply>(),
@@ -97,12 +94,6 @@ class Server {
       },
     }
   }
-  tool = (
-    request: BrokerRequest,
-    signal: AbortSignal,
-    onprogress?: (progress: BrokerProgress) => void,
-  ) => this.start('tool', request, signal, onprogress)
-  admin = (request: BrokerRequest, signal: AbortSignal) => this.start('admin', request, signal)
   finish(index: number, value: BrokerValue = { done: true }) {
     this.calls[index]!.result.resolve({ ok: true, value })
     this.calls[index]!.quiet.resolve()
@@ -137,7 +128,6 @@ export function setup(change: (options: BrokerOptions) => BrokerOptions = (optio
         inputSchema: { type: 'object' },
       },
     ],
-    adminOperations: ['enable_profile', 'open_window'],
     clock,
     server,
     audit: (event) => audit.push(event),
@@ -145,9 +135,8 @@ export function setup(change: (options: BrokerOptions) => BrokerOptions = (optio
   const broker = createPluginToolBroker(change(options))
   const ws = broker.owner.attach('willow')
   const agent = broker.owner.grantAgent(ws, 'fern-life-one')
-  const person = broker.owner.grantPerson(ws, 'person-view-one')
   const name = broker.agent.discover(agent)[0]!.qualifiedName
   const call = (who = agent, input: BrokerInput = { profile: 'fern' }, signal?: AbortSignal) =>
     tracked(broker.agent.call(who, name, input, signal))
-  return { broker, options, clock, server, audit, ws, agent, person, name, call }
+  return { broker, options, clock, server, audit, ws, agent, name, call }
 }

@@ -152,7 +152,6 @@ export async function pluginProviderFixture(
         additionalProperties: false,
       },
     })),
-    adminOperations: [],
     server: createPrivatePluginPort({
       url,
       credential,

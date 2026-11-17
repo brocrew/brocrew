@@ -8,6 +8,7 @@ import type { LifecycleWorkspace } from '../src/main/plugins/lifecycle/types'
 import { openManagedPluginRoute } from '../src/main/plugins/managed-transport'
 import type { Command } from '../src/main/plugins/supervisor/protocol'
 import { lease } from './helpers/plugin-agent-bridge'
+import { echoBinding } from './helpers/plugin-echo-binding'
 
 const cleanup: (() => Promise<unknown>)[] = []
 afterEach(async () => {
@@ -52,29 +53,7 @@ async function aWorkspace(
   attached: Promise<void> = Promise.resolve(),
   inertRoutes = false,
 ) {
-  const binding: Binding = {
-    tools: [
-      {
-        name: 'echo',
-        description: 'Fictional echo',
-        inputSchema: { type: 'object' },
-      },
-    ],
-    adminOperations: [],
-    server: {
-      tool: () => ({
-        result: Promise.resolve({
-          ok: true as const,
-          value: { content: [{ type: 'text', text: 'fern' }] },
-        }),
-        quiescent: Promise.resolve(),
-        cancel() {},
-      }),
-      admin() {
-        throw new Error('person surface stays private')
-      },
-    },
-  }
+  const binding: Binding = echoBinding('fern')
   const state = new Map<string, PluginState>(
     ids.map((id) => [id, { is: 'pending', runId: `run-${id}-1`, switchRevision: 0 }]),
   )

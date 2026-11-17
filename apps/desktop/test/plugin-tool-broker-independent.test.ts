@@ -104,7 +104,7 @@ describe('independent transport calls', () => {
       expect(h.broker.owner.hasCompletionProof()).toBe(false)
     },
   )
-  it('counts active admin work together with uncertain and queued calls', async () => {
+  it('counts active work together with uncertain and queued calls', async () => {
     const h = setup((options) => ({
       ...options,
       server: { ...options.server, independentToolCalls: true },
@@ -117,7 +117,7 @@ describe('independent transport calls', () => {
       await expect(call).rejects.toMatchObject({ code: 'downstream' })
       await tick()
     }
-    const admin = tracked(h.broker.person.call(h.person, 'open_window', {}))
+    const running = h.call()
     await tick()
     let refused = false
     void h.call().catch((error) => {
@@ -126,7 +126,7 @@ describe('independent transport calls', () => {
     await tick()
     expect(refused).toBe(true)
     h.server.finish(63)
-    await admin
+    await running
   })
   it('retains unknown completion across later successful calls until exact host exit', async () => {
     const exited = deferred<void>()

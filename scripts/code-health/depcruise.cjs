@@ -13,7 +13,7 @@ module.exports = {
       name: 'neutral-not-to-provider-adapters',
       severity: 'error',
       from: {
-        path: '^(apps/desktop/src/|packages/(shared|orchestration)/src/)',
+        path: '^(apps/desktop/src/|packages/shared/src/)',
         pathNot:
           '^apps/desktop/src/main/providers/(index\\.ts$|workspace-layout\\.mjs$|claude/|codex/)',
       },

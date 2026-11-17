@@ -6,7 +6,7 @@ import { cspMetaTag } from './src/shared/content-security-policy'
 import { describeBuild, readBuildBranches } from './src/main/build-stamp'
 import { buildPluginSupervisor } from '../../scripts/build-plugin-supervisor.mjs'
 
-const workspacePackages = ['@brobot2/shared', '@brobot2/runtime', '@brobot2/orchestration']
+const workspacePackages = ['@brobot2/shared', '@brobot2/runtime']
 
 const RENDERER_PORT = Number(process.env.BROBOT_RENDERER_PORT ?? 5290)
 const RENDERER_HMR_PORT = Number(process.env.BROBOT_RENDERER_HMR_PORT ?? 24679)

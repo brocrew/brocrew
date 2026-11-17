@@ -158,10 +158,6 @@
         "src/providers.ts"
       ]
     },
-    "packages/orchestration": {
-      "project": ["**/*.{ts,tsx,js,jsx,mjs,cjs,vue,html}"],
-      "entry": ["src/index.ts", "test/**/*.test.{ts,mjs,js}", "smoke/**/*.smoke.ts"]
-    },
     "plugins/chrome": {
       "project": ["**/*.{ts,js,mjs,cjs,html}"],
       "entry": [

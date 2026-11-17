@@ -11,7 +11,7 @@ vi.mock('../src/main/plugins/lifecycle/broker-inventory', () => ({
   }),
 }))
 vi.mock('../src/main/plugins/managed-transport', () => ({
-  createPrivatePluginPort: () => ({ tool: downstream.tool, admin: vi.fn() }),
+  createPrivatePluginPort: () => ({ tool: downstream.tool }),
 }))
 import { pluginBrokerBinding } from '../src/main/plugins/lifecycle/broker-binding'
 
@@ -55,7 +55,6 @@ it.each(['healthy', 'tool-error'] as const)(
         installId: 'fixture',
         epoch: 'fixture',
         workspaceId: 'fixture',
-        kind: 'agent',
         incarnation: 'fixture',
       },
     }

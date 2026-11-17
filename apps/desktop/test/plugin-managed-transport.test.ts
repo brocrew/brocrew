@@ -341,7 +341,6 @@ it('records a closed connect-failure reason without arguments, credentials or ra
           installId: 'fictional',
           epoch: 'one',
           workspaceId: 'fictional',
-          kind: 'agent',
           incarnation: 'one',
         },
         name: 'echo',

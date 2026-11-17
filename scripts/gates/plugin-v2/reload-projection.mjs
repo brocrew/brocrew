@@ -80,8 +80,8 @@ export function projectReload(repo, { root, token, appData, browser, modules }) 
   )
   entry = once(
     entry,
-    '    db?.close()\n    db = null',
-    `    const reloadHeldDb=db;\n    db?.close()\n    if(!reloadHeldDb)throw new Error('${RELOAD_MARKER}');\n    reloadGateFs.writeFileSync(${JSON.stringify(path.join(root, 'reload-native-db-closed.json'))},JSON.stringify({schema:1,closed:true,token:reloadGateToken}),{flag:'wx',mode:0o600});\n    db = null`,
+    '    if (db !== null) closeDatabase(db)\n    db = null',
+    `    const reloadHeldDb=db;\n    if(reloadHeldDb===null)throw new Error('${RELOAD_MARKER}');\n    closeDatabase(reloadHeldDb);\n    reloadGateFs.writeFileSync(${JSON.stringify(path.join(root, 'reload-native-db-closed.json'))},JSON.stringify({schema:1,closed:true,token:reloadGateToken}),{flag:'wx',mode:0o600});\n    db = null`,
   )
   demand(!entry.includes('fixtureSource:'))
   const preload =
@@ -89,8 +89,8 @@ export function projectReload(repo, { root, token, appData, browser, modules }) 
     `\n// ${RELOAD_MARKER}\nif(process.isMainFrame)contextBridge.exposeInMainWorld('__pluginReloadGate',Object.freeze({\n command:(op:unknown,token:unknown)=>ipcRenderer.invoke(${JSON.stringify(RELOAD_CHANNEL)},{op,token})\n}));\n`
   let vite = once(
     originals.get(vitePath),
-    "const workspacePackages = ['@brobot2/shared', '@brobot2/runtime', '@brobot2/orchestration']",
-    `// ${RELOAD_MARKER}\nconst workspacePackages = ['@brobot2/shared', '@brobot2/runtime', '@brobot2/orchestration','@anthropic-ai/claude-agent-sdk']`,
+    "const workspacePackages = ['@brobot2/shared', '@brobot2/runtime']",
+    `// ${RELOAD_MARKER}\nconst workspacePackages = ['@brobot2/shared', '@brobot2/runtime','@anthropic-ai/claude-agent-sdk']`,
   )
   vite = once(
     vite,

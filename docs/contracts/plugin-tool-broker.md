@@ -6,9 +6,9 @@
 
 The authenticated owner supplies immutable installation identity, curated tool definitions/resource declarations, current policy, and a private server port. It retains `owner`, registers an already authenticated workspace, and mints an agent-incarnation capability. Every agent in every attached workspace receives the same discovery inventory; there is no per-agent tool allowlist. Granting the same live incarnation returns its existing handle. A revoked incarnation cannot be granted again under its old name.
 
-Capabilities are opaque object identities in private WeakMaps, bound to workspace attachment, agent incarnation, installation and epoch. Labels, serialized copies, forged objects and handles from another broker grant nothing. The later authenticated wire adapter must bind its own scoped capabilities to these local handles; this core creates no network token. It must never expose the owner or person surface through an agent endpoint. Revocation/detachment cancels queued/active work. Invalidating the broker permanently denies its epoch; late success/proof never revives it.
+Capabilities are opaque object identities in private WeakMaps, bound to workspace attachment, agent incarnation, installation and epoch. Labels, serialized copies, forged objects and handles from another broker grant nothing. The later authenticated wire adapter must bind its own scoped capabilities to these local handles; this core creates no network token. It must never expose the owner surface through an agent endpoint. Revocation/detachment cancels queued/active work. Invalidating the broker permanently denies its epoch; late success/proof never revives it.
 
-Agent methods are `discover` and `call` only, with exact published qualified tool names. Resources/prompts are unsupported and absent. Person administration has a separate capability map check, exact operation inventory and server method; agent input cannot select that path. Admin requests use the same serial queue and data lock as tool calls.
+Agent methods are `discover` and `call` only, with exact published qualified tool names. Resources/prompts are unsupported and absent.
 
 Publication reuses `externalMcpNameRefusal` and `collidingToolNames` with host-supplied reserved/occupied inventories. Namespace is `plugin-<id>`; long catalogue IDs use a bounded readable prefix plus a SHA-256 suffix, then undergo the same collision checks. Both namespaces and qualified names are checked. Neither a bare tool name nor a caller-selected endpoint is authority.
 
@@ -20,7 +20,7 @@ Before dispatch, the broker freezes copied normalized arguments/claims, checks c
 
 ## Queue and stopping
 
-One executing request per broker. Limit: 64 total, counting executing/unknown requests plus waiting ones. Round-robin selection among admitted jobs first chooses a workspace, then one of its agents/person callers. Cancelled/empty buckets are removed, and a returning busy caller cannot take a second consecutive turn while another caller is waiting.
+One executing request per broker. Limit: 64 total, counting executing/unknown requests plus waiting ones. Round-robin selection among admitted jobs first chooses a workspace, then one of its agents. Cancelled/empty buckets are removed, and a returning busy caller cannot take a second consecutive turn while another caller is waiting.
 
 Queue admission and execution each have a 120-second monotonic deadline. The default clock uses `performance.now`; tests inject a clock and do not sleep. Queued abort/expiry never reaches the server. An active abort, revocation or deadline answers the caller immediately, requests cancellation once and retains the execution slot. A successful cancellation request and a returned result are independently insufficient to release it.
 
@@ -32,11 +32,11 @@ A tool asking a person to act later must return a normal result and a genuine qu
 
 Inputs are copied strict JSON, at most 64 KiB; result data is copied/frozen strict JSON, at most 8 MiB to accommodate browser images. The later wire adapter must cap bytes before decoding too. It tags all transport/MCP errors as failed outcomes, never successful error payloads. The core is not a secret scanner for ordinary successful tool data.
 
-Errors have closed internal codes and only the approved “Plugin unavailable. Try again.” / “Plugin busy. Try again.” messages. Raw exceptions, causes, stacks, identity labels, arguments, results, server credentials and resource keys are never sent to diagnostics. Optional audit events contain only a closed event/operation/code/reason vocabulary and a queue count; audit failure cannot change the request result. The port owns any downstream credential privately; no credential field exists on the broker API.
+Errors have closed internal codes and only the approved “Plugin unavailable. Try again.” / “Plugin busy. Try again.” messages. Raw exceptions, causes, stacks, identity labels, arguments, results, server credentials and resource keys are never sent to diagnostics. Optional audit events contain only a closed event/code/reason vocabulary and a queue count; audit failure cannot change the request result. The port owns any downstream credential privately; no credential field exists on the broker API.
 
 ## Verification
 
-`pnpm exec vitest run --project desktop apps/desktop/test/plugin-tool-broker.test.ts` exercises an inert fake server and deterministic clock. No process, browser, provider, real token or filesystem state is involved. The fixtures cover reach, capability forgery/revocation/epoch boundaries, person-only admin, execution-time resource changes, immutable arguments, both fairness levels, all queue caps, abort/expiry, result-versus-proof separation, failed/late proof and secret-bearing upstream errors.
+`pnpm exec vitest run --project desktop apps/desktop/test/plugin-tool-broker.test.ts` exercises an inert fake server and deterministic clock. No process, browser, provider, real token or filesystem state is involved. The fixtures cover reach, capability forgery/revocation/epoch boundaries, execution-time resource changes, immutable arguments, both fairness levels, all queue caps, abort/expiry, result-versus-proof separation, failed/late proof and secret-bearing upstream errors.
 
 Host ownership, authentication probes, adapters, real server cancellation/exit receipts and UI/person admission remain separate integration gates under the main plugins contract.
 

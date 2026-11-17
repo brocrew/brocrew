@@ -31,7 +31,6 @@ conversations, lets agents give each other work, and keeps every conversation in
 apps/desktop            Electron main (long-lived runner) + preload + Vue 3 renderer
 packages/shared         typed zod contracts shared across processes
 packages/runtime        AgentRuntime interface + the Claude Code and Codex adapters
-packages/orchestration  state machine · queues · leases · board (a stub for now)
 docs/                   the guides (installing, API keys, Codex, the data folder)
 ```
 

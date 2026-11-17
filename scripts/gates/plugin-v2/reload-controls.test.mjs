@@ -107,6 +107,42 @@ test('real reload projection uses actual host/factory/preload and restores ordin
     assert.ok(entry.includes('createReloadGateRuntime({ownedRoot:'))
     assert.ok(!entry.includes('fixtureSource:'))
     assert.ok(entry.includes('reload-native-db-closed.json'))
+    const start = entry.indexOf('    const reloadHeldDb=db;')
+    const end = entry.indexOf('\n    db = null', start)
+    assert.ok(start >= 0 && end > start)
+    const closeProjected = new Function(
+      'db',
+      'closeDatabase',
+      'reloadGateFs',
+      'reloadGateToken',
+      entry.slice(start, end) + '\n    db = null;\nreturn db;',
+    )
+    const held = {},
+      events = []
+    const files = { writeFileSync: () => events.push('marker') }
+    const close = (actual) => {
+      assert.equal(actual, held)
+      events.push('closed')
+    }
+    assert.equal(closeProjected(held, close, files, 'a'.repeat(64)), null)
+    assert.deepEqual(events, ['closed', 'marker'])
+    events.length = 0
+    assert.throws(() => closeProjected(null, close, files, 'a'.repeat(64)))
+    assert.deepEqual(events, [])
+    const failure = new Error('fictional checked close failed')
+    assert.throws(
+      () =>
+        closeProjected(
+          held,
+          () => {
+            throw failure
+          },
+          files,
+          'a'.repeat(64),
+        ),
+      (error) => error === failure,
+    )
+    assert.deepEqual(events, [])
     projected.restore()
   } finally {
     fs.rmSync(root, { recursive: true, force: true })
