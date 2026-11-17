@@ -1,3 +1,4 @@
+import { heartbeatsDuringRead } from './helpers/heartbeats-during-read'
 import { canonicalWindowFacts } from './helpers/canonical-window-facts'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -38,6 +39,7 @@ describe('real SQLite window reads leave the caller responsive', () => {
   const ports: MessagePort[] = []
   const measurements: unknown[] = []
   let nativeStart: (() => void) | undefined
+  let readFinished: ((interval: { startedAt: number; finishedAt: number }) => void) | undefined
   let operation = 0
 
   beforeAll(async () => {
@@ -85,7 +87,10 @@ describe('real SQLite window reads leave the caller responsive', () => {
     function worker(reader: string) {
       const channel = new MessageChannel()
       ports.push(channel.port1)
-      channel.port1.on('message', () => nativeStart?.())
+      channel.port1.on('message', (message) => {
+        if (message.type === 'native-start') nativeStart?.()
+        if (message.type === 'native-read-finished') readFinished?.(message)
+      })
       return new Worker(join(directory, 'window-native.cjs'), {
         workerData: { file, reader, probe: channel.port2 },
         transferList: [channel.port2],
@@ -108,8 +113,13 @@ describe('real SQLite window reads leave the caller responsive', () => {
     if (directory !== undefined) rmSync(directory, { recursive: true, force: true })
   })
 
-  async function measure<T>(name: string, read: () => T | Promise<T>) {
+  async function measure<T>(
+    name: string,
+    read: () => T | Promise<T>,
+    nativeInterval?: Promise<{ startedAt: number; finishedAt: number }>,
+  ) {
     let beats = 0
+    const heartbeats: number[] = []
     let inputHandled = false
     let inputTimer: ReturnType<typeof setTimeout> | undefined
     nativeStart = () => {
@@ -121,6 +131,7 @@ describe('real SQLite window reads leave the caller responsive', () => {
     let longestGap = 0
     const heartbeat = setInterval(() => {
       const now = performance.now()
+      heartbeats.push(performance.timeOrigin + now)
       longestGap = Math.max(longestGap, now - last)
       last = now
       beats++
@@ -128,6 +139,14 @@ describe('real SQLite window reads leave the caller responsive', () => {
     const began = performance.now()
     try {
       const result = await read()
+      const finished = performance.now()
+      const interval =
+        nativeInterval === undefined
+          ? {
+              startedAt: performance.timeOrigin + began,
+              finishedAt: performance.timeOrigin + finished,
+            }
+          : await nativeInterval
       longestGap = Math.max(longestGap, performance.now() - last)
       const elapsed = performance.now() - began
       const evidence = {
@@ -135,6 +154,8 @@ describe('real SQLite window reads leave the caller responsive', () => {
         elapsedMs: elapsed,
         longestGapMs: longestGap,
         beats,
+        ...interval,
+        interiorBeats: heartbeatsDuringRead(heartbeats, interval),
         inputHandled,
         fixtureRows: 5004,
       }
@@ -145,6 +166,7 @@ describe('real SQLite window reads leave the caller responsive', () => {
       clearInterval(heartbeat)
       clearTimeout(inputTimer)
       nativeStart = undefined
+      readFinished = undefined
     }
   }
 
@@ -159,10 +181,15 @@ describe('real SQLite window reads leave the caller responsive', () => {
       } finally {
         restore()
       }
-      const after = await measure(`after-${kind}`, () => windowReader.read(query))
+      const interval = new Promise<{ startedAt: number; finishedAt: number }>((resolve) => {
+        readFinished = resolve
+      })
+      const after = await measure(`after-${kind}`, () => windowReader.read(query), interval)
       if (kind === 'routes')
         expect(canonicalWindowFacts(after.result)).toEqual(canonicalWindowFacts(before.result))
       else expect(after.result).toEqual(before.result)
+      expect(before.interiorBeats).toBe(0)
+      expect(after.interiorBeats).toBeGreaterThan(0)
       expect(before.longestGapMs).toBeGreaterThan(250)
       expect(before.inputHandled).toBe(false)
       expect(after.longestGapMs).toBeLessThan(250)

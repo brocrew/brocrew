@@ -7,6 +7,7 @@ import type { PersonsQueue, PersonsQueueAnswer } from '../src/shared/persons-pub
 import { PERSONS_PARTS } from '../src/shared/persons-published'
 import { serialize } from 'node:v8'
 import { expect, it, vi } from 'vitest'
+import { heartbeatsDuringRead } from './helpers/heartbeats-during-read'
 import { aServiceWorld } from './helpers/a-service-world'
 import { bundleAWorker } from './helpers/bundle-a-worker'
 import { observeLedgerFolds } from './helpers/observe-ledger-folds'
@@ -483,7 +484,7 @@ it('measures window reads with 1960 conversations and nine live agents', async (
       .map((one) => ({
         kind: one.kind,
         elapsedMs: one.elapsedMs,
-        beats: heartbeats.filter((at) => at > one.startedAt && at < one.finishedAt).length,
+        beats: heartbeatsDuringRead(heartbeats, one),
       }))
     console.info(
       JSON.stringify({
