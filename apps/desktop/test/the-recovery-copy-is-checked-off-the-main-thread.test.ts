@@ -1,5 +1,13 @@
 import Database from 'better-sqlite3'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  truncateSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
@@ -203,7 +211,7 @@ describe('the recovery copy is checked off the main thread', () => {
     expect(order).toEqual(['exited', 'answered'])
   })
 
-  it('a quit stops a check under way, and stops only once its worker has exited', async () => {
+  it('a quit lets a check under way finish unused, and stops only once its worker has exited', async () => {
     const order: string[] = []
     let started = 0
     const verifier = verifyInAWorker((request) => {
@@ -211,19 +219,37 @@ describe('the recovery copy is checked off the main thread', () => {
       const worker = new Worker(bundle, { workerData: request })
       worker.once('exit', () => order.push('exited'))
       return worker
-    }, 5_000)
+    }, 500)
     const checking = verifier.verify(aCopy())
     await new Promise((resolve) => setTimeout(resolve, 100))
-    const began = performance.now()
     await verifier.stop()
     order.push('stopped')
-    expect(performance.now() - began).toBeLessThan(2_000)
     expect(order).toEqual(['exited', 'stopped'])
     expect((await checking).kind).toBe('failed')
     // Once stopped, no check starts a worker.
     expect((await verifier.verify(aCopy())).kind).toBe('failed')
     expect(started).toBe(1)
   })
+
+  it('a quit stops a hash under way at its next read', async () => {
+    const file = join(aRoot(), 'large-copy.sqlite')
+    writeFileSync(file, '')
+    truncateSync(file, 1024 ** 3)
+    const hashing = () =>
+      verifyInAWorker(
+        (request) => new Worker(bundle, { workerData: { ...request, hashOnly: true } }),
+      )
+    const whole = performance.now()
+    expect((await hashing().verify(file)).kind).toBe('ok')
+    const wholeMs = performance.now() - whole
+    const verifier = hashing()
+    const began = performance.now()
+    const hash = verifier.verify(file)
+    await new Promise((resolve) => setTimeout(resolve, wholeMs / 4))
+    await verifier.stop()
+    expect(performance.now() - began).toBeLessThan((wholeMs * 3) / 4)
+    expect((await hash).kind).toBe('failed')
+  }, 60_000)
 
   it('a quit discards even an ok message received before the worker exits', async () => {
     let worker!: Worker
@@ -235,7 +261,7 @@ describe('the recovery copy is checked off the main thread', () => {
       worker = new Worker(
         `const { parentPort } = require('node:worker_threads');
         parentPort.postMessage({ kind: 'ok' });
-        setInterval(() => {}, 1000)`,
+        parentPort.on('message', (message) => { if (message.kind === 'stop') process.exit(0) })`,
         { eval: true },
       )
       worker.once('message', answered)
@@ -466,6 +492,50 @@ describe('the recovery copy is checked off the main thread', () => {
       db.close()
     }
   }, 15_000)
+
+  it('a quit during one long conversation with nothing to trim is seen at its next read', async () => {
+    const file = join(aRoot(), 'long-trim.sqlite')
+    const db = openDatabase(file)
+    applyMigrations(db, migrations)
+    db.prepare(
+      `INSERT INTO provider_session (id, provider, cwd, status, created_at, updated_at)
+      VALUES ('long', 'claude', '/', 'idle', 0, 0)`,
+    ).run()
+    const insert = db.prepare(
+      `INSERT INTO events (id, session_id, ordinal, type, payload, created_at)
+      VALUES (?, 'long', ?, 'activity', ?, ?)`,
+    )
+    const payload = JSON.stringify({ type: 'activity', text: 'x'.repeat(200) })
+    db.transaction(() => {
+      for (let n = 0; n < 100_000; n++) insert.run(String(n), n, payload, Date.now())
+    })()
+    const sweep = (stopAfterMs?: number) => {
+      const { result, done, failed } = trimCompletion<number>()
+      const began = performance.now()
+      const retention = startEventRetention(
+        db,
+        () => new Worker(storageBundle, { workerData: { maintenance: { kind: 'trim', file } } }),
+        async () => done(performance.now() - began),
+        failed,
+      )
+      retention.firstListAccepted(-600_000)
+      if (stopAfterMs !== undefined)
+        setTimeout(() => {
+          void retention.stop().then(() => done(performance.now() - began), failed)
+        }, stopAfterMs)
+      return { result, retention }
+    }
+    try {
+      const whole = sweep()
+      const wholeMs = await whole.result
+      await whole.retention.stop()
+      const stopped = sweep(wholeMs / 4)
+      expect(await stopped.result).toBeLessThan((wholeMs * 3) / 4)
+      expect(db.prepare('SELECT count(*) AS n FROM events').get()).toEqual({ n: 100_000 })
+    } finally {
+      db.close()
+    }
+  }, 60_000)
 
   it('a quit during incremental compaction waits for the writer after the worker exits', async () => {
     const file = join(aRoot(), 'compacting-trim.sqlite')

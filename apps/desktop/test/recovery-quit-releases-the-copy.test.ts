@@ -84,7 +84,7 @@ for (const route of [
   'last recovery window on Linux',
   'last recovery window on Windows',
 ] as const) {
-  it(`${route} terminates the held verifier and waits for unfinished cleanup before exit`, async () => {
+  it(`${route} waits for the held verifier and for unfinished cleanup before exit`, async () => {
     const folder = mkdtempSync(join(root, 'workspace-'))
     const userData = join(folder, 'data')
     mkdirSync(userData)
@@ -111,7 +111,7 @@ for (const route of [
         exited.resolve()
       })
       return worker
-    }, 10_000)
+    }, 500)
     const verify: VerifyCopy = typeof verifier === 'function' ? verifier : verifier.verify
     let checking: Promise<unknown> | undefined
     const listeners = new Map<string, ((event: { preventDefault(): void }) => void)[]>()
@@ -240,12 +240,13 @@ for (const route of [
             listener({ preventDefault() {} })
         }
       }
-      // An ordinary completion is ten seconds away. This observes a real termination, then holds
-      // the actual filesystem cleanup so worker exit alone cannot satisfy either quit route.
+      // A check under way runs to its end, as ending its worker inside SQLite aborts the app. This
+      // observes that worker's exit, then holds the actual filesystem cleanup so worker exit alone
+      // cannot satisfy either quit route.
       await Promise.race([
         exited.promise,
         new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('quit did not terminate its verifier')), 2_000),
+          setTimeout(() => reject(new Error('quit did not wait for its verifier')), 2_000),
         ),
       ])
       await cleaning.promise
