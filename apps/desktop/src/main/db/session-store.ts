@@ -2436,6 +2436,14 @@ export function createSessionStore(
   const selectSessionsThatRouted = db.prepare(
     `SELECT DISTINCT session_id AS id FROM events WHERE type = 'request_routed'`,
   )
+  const selectRoutedBy = db.prepare(
+    `SELECT 1 AS yes FROM events WHERE session_id = ? AND type = 'request_routed' LIMIT 1`,
+  )
+  /** The named conversations that routed a request, without reading every asker's rows. */
+  const routedAmong = (owners: ReadonlySet<string> | undefined): { id: string }[] =>
+    owners === undefined
+      ? (selectSessionsThatRouted.all() as { id: string }[])
+      : [...owners].filter((id) => selectRoutedBy.get(id) !== undefined).map((id) => ({ id }))
   const selectInstructionAsks = db.prepare(
     `SELECT session_id AS conversation, created_at AS at, ordinal,
             -- D-017 · R8: which rows are torn, so the reader skips them and says so.
@@ -3942,6 +3950,16 @@ export function createSessionStore(
           SELECT 1 FROM work AS w WHERE w.owner_session_id = s.id AND w.parent_id IS NULL
         )`,
   )
+  const selectServiceBorn = db.prepare(
+    `SELECT 1 AS yes FROM provider_session AS s
+      WHERE s.id = ? AND s.parent_session_id IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM work AS w WHERE w.owner_session_id = s.id AND w.parent_id IS NULL
+        )`,
+  )
+  const selectHoldsAGivenPiece = db.prepare(
+    `SELECT 1 AS yes FROM work WHERE owner_session_id = ? AND parent_id IS NOT NULL LIMIT 1`,
+  )
   const {
     workersBorn,
     workerGiverContains,
@@ -4070,10 +4088,8 @@ export function createSessionStore(
       unread?: RowsUnread,
       owners?: ReadonlySet<string>,
     ): number => {
-      const candidates = selectSessionsThatRouted.all() as { id: string }[]
       let settled = 0
-      for (const asker of candidates) {
-        if (owners !== undefined && !owners.has(asker.id)) continue
+      for (const asker of routedAmong(owners)) {
         if (running.has(asker.id)) continue
         try {
           const generation = activeGeneration(asker.id)
@@ -4209,9 +4225,22 @@ export function createSessionStore(
       owners?: ReadonlySet<string>,
     ): number => {
       let written = 0
-      const services = new Set((selectServicesBorn.all() as { id: string }[]).map(({ id }) => id))
-      for (const worker of selectOwnersOfGivenPieces.all() as { id: string }[]) {
-        if (owners !== undefined && !owners.has(worker.id)) continue
+      // Named owners are looked up one by one, so a repair sliced per owner reads no whole table.
+      const holders =
+        owners === undefined
+          ? (selectOwnersOfGivenPieces.all() as { id: string }[])
+          : [...owners]
+              .filter((id) => selectHoldsAGivenPiece.get(id) !== undefined)
+              .map((id) => ({ id }))
+      const services =
+        owners === undefined
+          ? new Set((selectServicesBorn.all() as { id: string }[]).map(({ id }) => id))
+          : new Set(
+              holders
+                .filter(({ id }) => selectServiceBorn.get(id) !== undefined)
+                .map(({ id }) => id),
+            )
+      for (const worker of holders) {
         if (running.has(worker.id)) continue
         try {
           const woken = wokenForAJob?.has(worker.id) === true
