@@ -212,6 +212,36 @@ it.each(['cancelled', 'changed'] as const)(
   },
 )
 
+it('shows a search and a task list as an earlier reading while a writer moves during every read', async () => {
+  const f = filesLibraryFixture()
+  f.example()
+  let writes = 0
+  const read = vi.fn(async (...args: Parameters<FilesLibraryReader['read']>) =>
+    f.engine.read(...args),
+  )
+  const host = aLibraryHost(f.directory, {
+    store: f.store,
+    filesLibraries: new FilesLibraryWindows(() => ({ read, close: async () => {} })),
+    filesLibraryRevision: () => String(writes++),
+  })
+  try {
+    expect(
+      await host.filesLibraryForWindow(
+        { operation: 'query', query: { ...workspaceQuery, query: 'plugin' } },
+        sink,
+      ),
+    ).toMatchObject({ type: 'files', stale: true })
+    expect(read).toHaveBeenCalledTimes(2)
+    expect(
+      await host.filesLibraryForWindow({ operation: 'tasks', query: '', parent: null }, sink),
+    ).toMatchObject({ type: 'tasks', stale: true, total: 4 })
+    expect(read).toHaveBeenCalledTimes(4)
+  } finally {
+    await host.closeAll()
+    f.close()
+  }
+})
+
 it('owns isolated window lifetimes and disposes only the closed window', async () => {
   const owned: { reader: FilesLibraryReader; close: ReturnType<typeof vi.fn> }[] = []
   const windows = new FilesLibraryWindows(() => {

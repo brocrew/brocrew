@@ -37,7 +37,7 @@ export async function filesLibraryForWindow(
     request.operation === 'query' && request.query.scope.type === 'conversationWork'
       ? read.givers(request.query.scope.id)
       : undefined
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; ; attempt++) {
     if (!libraries.isCurrent(sink.ownerId, admission)) return libraryUnavailable('cancelled')
     const before = read.revision()
     if (before === null || before === undefined) return libraryUnavailable('changed')
@@ -47,13 +47,15 @@ export async function filesLibraryForWindow(
     if (result.type === 'unavailable' && result.cause === 'cancelled') return result
     const after = read.revision()
     if (before === after) return result
-    if (request.operation !== 'query' && request.operation !== 'tasks') {
-      return result.type === 'files' || result.type === 'provenance'
+    // A query or task list overtaken by a write is read once more; after that it is shown, like a
+    // page, as an earlier reading. Writes that never pause, as while old history is trimmed,
+    // would otherwise refuse every reading.
+    if (attempt > 0 || (request.operation !== 'query' && request.operation !== 'tasks')) {
+      return result.type === 'files' || result.type === 'provenance' || result.type === 'tasks'
         ? { ...result, stale: true }
         : result
     }
   }
-  return libraryUnavailable('changed')
 }
 
 export async function teamProfileGraphForWindow(
