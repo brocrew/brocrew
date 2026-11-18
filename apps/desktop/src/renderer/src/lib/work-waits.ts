@@ -1,6 +1,6 @@
 import type { WaitOn } from '../../../shared/task-contracts'
 import type { LedgerWalk, PersonsQuestion } from '../../../shared/question-contracts'
-import { clockTime } from '../../../shared/clock'
+import { clockTime, clockTimeFrom } from '../../../shared/clock'
 import { unreadSays } from './rows-unread'
 import { localFields, localFormat, sameLocalDay } from '../../../shared/local-time'
 import { undrivenSentence } from '../../../shared/tasks'
@@ -135,8 +135,11 @@ export function incidentSays(one: WorkIncident, now: number): string {
     : `${said} ${whatToDo(one.giverName, one.giver !== null)}`
 }
 
-/** A typed wait, said where its holder read idle; an agent wait by name where the host gives one. */
-export function waitOnSays(on: WaitOn, agentName?: string): string {
+/**
+ * A typed wait, said where its holder read idle; an agent wait by name where the host gives one. A
+ * wait until a time on another day says that day, so a wait for tomorrow does not read as overdue.
+ */
+export function waitOnSays(on: WaitOn, agentName?: string, now: number = Date.now()): string {
   switch (on.kind) {
     case 'person':
       return 'waiting on you'
@@ -144,7 +147,7 @@ export function waitOnSays(on: WaitOn, agentName?: string): string {
       if (agentName !== undefined) return `waiting on ${agentName}`
       return 'label' in on ? `waiting on ${on.label}` : 'waiting on an answer'
     case 'time':
-      return `waiting until ${clockTime(on.at)}`
+      return `waiting until ${clockTimeFrom(on.at, now)}`
     case 'event':
       return 'job' in on ? 'waiting for a scheduled job' : 'waiting for a background command'
   }

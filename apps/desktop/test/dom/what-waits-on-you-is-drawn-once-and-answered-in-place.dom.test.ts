@@ -16,7 +16,7 @@ import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import WaitingOnYou from '../../src/renderer/src/components/WaitingOnYou.vue'
 import type { AttentionRequest } from '../../src/renderer/src/lib/attention'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
-import { clockTime } from '../../src/shared/clock'
+import { clockTime, clockTimeFrom } from '../../src/shared/clock'
 import {
   NOTHING_NAMED_THE_WORK,
   aPersonsSince,
@@ -633,7 +633,7 @@ describe('a typed wait says what it waits on where its holder read idle', () => 
     [{ kind: 'person', request: 'req_1' }, 'waiting on you'],
     [{ kind: 'agent', piece: 'work_12', label: 'W1.2' }, 'waiting on W1.2'],
     [{ kind: 'agent', request: 'req_2' }, 'waiting on an answer'],
-    [{ kind: 'time', at: NINE }, `waiting until ${clockTime(NINE)}`],
+    [{ kind: 'time', at: NINE }, `waiting until ${clockTimeFrom(NINE, Date.now())}`],
     [{ kind: 'event', job: 'job_1' }, 'waiting for a scheduled job'],
     [{ kind: 'event', background: 'bg_1' }, 'waiting for a background command'],
   ] as const)('%o', async (on, words) => {

@@ -5,7 +5,7 @@ import { nextTick } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import { railFacts, screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { conversationList } from '../../src/renderer/src/lib/conversation-list'
-import { clockTime } from '../../src/shared/clock'
+import { clockTimeFrom } from '../../src/shared/clock'
 import type { ResumableSessionInfo } from '../../src/shared/runtime-ipc'
 
 import type { WorkEdge } from '../../src/shared/who-called-whom'
@@ -101,7 +101,11 @@ const WAITS: readonly {
   readonly agentName?: string
   readonly says: string
 }[] = [
-  { kind: 'time', on: { kind: 'time', at: AT }, says: `waiting until ${clockTime(AT)}` },
+  {
+    kind: 'time',
+    on: { kind: 'time', at: AT },
+    says: `waiting until ${clockTimeFrom(AT, Date.now())}`,
+  },
   {
     kind: 'agent',
     on: { kind: 'agent', piece: 'work_902', label: 'W90.2' },
