@@ -53,7 +53,11 @@ async function stop(id: string): Promise<void> {
 }
 async function open(run: PanelRun): Promise<void> {
   historyOpen.value = false
-  if (run.target && props.onOpenRun && (await props.onOpenRun(run.target))) return
+  const conversation = props.conversation
+  if (run.target && props.onOpenRun) {
+    const opened = await props.onOpenRun(run.target)
+    if (conversation !== props.conversation || opened) return
+  }
   if (!props.onOpenRun && run.itemId) emit('navigate', run.itemId)
   else unavailable.value = true
 }
