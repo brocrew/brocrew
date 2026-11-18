@@ -1740,7 +1740,11 @@ watch(
   },
 )
 
-async function openWorkflowOutput(taskId: string, workflow: string, shortMiss = false): Promise<boolean> {
+async function openWorkflowOutput(
+  taskId: string,
+  workflow: string,
+  shortMiss = false,
+): Promise<boolean> {
   const read = props.onReadWorkflowOutput
   if (!read) return false
   // Keep the result with the conversation that requested it.
@@ -1761,7 +1765,11 @@ async function openResource(resourceId: string): Promise<void> {
   await documentOverlay.value?.open(resourceId, row)
 }
 
-async function openChildWork(what: ChildWorkInput, label: string, shortMiss = false): Promise<boolean> {
+async function openChildWork(
+  what: ChildWorkInput,
+  label: string,
+  shortMiss = false,
+): Promise<boolean> {
   const read = props.onReadChildWork
   if (!read) return false
   // Captured before the await, exactly as above.
