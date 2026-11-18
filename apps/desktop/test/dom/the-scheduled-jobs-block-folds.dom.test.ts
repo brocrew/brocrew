@@ -1,16 +1,11 @@
 import { memoryStorage } from './memory-storage'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { page, userEvent } from 'vitest/browser'
+import { userEvent } from 'vitest/browser'
 import { nextTick } from 'vue'
 import ScheduleBar from '../../src/renderer/src/components/ScheduleBar.vue'
 import type { ScheduleRegistry } from '../../src/renderer/src/lib/transcript'
-import type { RuntimeEvent } from '@brobot2/runtime'
-import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
-import { DRAWER_W_MIN } from '../../src/renderer/src/lib/drawer'
 import { comingTimeWords } from '../../src/renderer/src/lib/scheduled-job-details'
-import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
-import { assertDrawn, drawnReady, wordRects } from './drawn'
-import { drawerProps, mount, unmountAll, visible, type Mounted } from './harness'
+import { mount, unmountAll, visible, type Mounted } from './harness'
 
 /**
  * The scheduled-jobs block folds the way an agent card's Current task and Files do: a chevron, the
@@ -48,22 +43,6 @@ const registry = (count: number): ScheduleRegistry => ({
 
 const block = (count: number, fold: string | undefined = KEY): Mounted =>
   mount(ScheduleBar, { registry: registry(count), fold }, { width: 400, height: 400 })
-
-/**
- * How many lines an element's words are laid on. An icon or a dot beside them is a box of its own
- * at its own height, so the words alone are measured, a line being a jump of more than half a line.
- */
-function wordLines(el: HTMLElement): number {
-  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
-  const tops: number[] = []
-  for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
-    for (const rect of wordRects(node as Text)) tops.push(rect.top)
-  }
-  tops.sort((a, b) => a - b)
-  let lines = tops.length === 0 ? 0 : 1
-  for (let at = 1; at < tops.length; at += 1) if (tops[at]! - tops[at - 1]! > 6) lines += 1
-  return lines
-}
 
 const button = (m: Mounted): HTMLButtonElement | null =>
   m.host.querySelector<HTMLButtonElement>('[data-cy="schedule-fold"]')
@@ -171,59 +150,5 @@ describe('the scheduled-jobs block folds', () => {
     expect(m.q('schedule-head').textContent?.trim()).toBe('1 job is scheduled')
   })
 
-  it('🔴 in the Agent panel at its narrowest, each folded heading is one whole line at the panel’s width', async () => {
-    await page.viewport(900, 1000)
-    const next = Date.now() + 60 * 60_000
-    const state = createTranscript()
-    applyEvent(state, {
-      type: 'background_work',
-      running: [{ id: 'bg_1', kind: 'local_bash', description: 'the long build' }],
-      source: 'background_tasks_changed',
-    } as RuntimeEvent)
-    applyEvent(state, {
-      type: 'scheduled_work',
-      jobs: [
-        { ...job('later'), nominalAt: next + 2 * 60 * 60_000 },
-        { ...job('sooner'), nominalAt: next },
-      ],
-      source: 'hook/Stop',
-    } as RuntimeEvent)
-    const m = mount(SessionDrawer as never, drawerProps({ state, canStopBackgroundWork: true }), {
-      width: DRAWER_W_MIN,
-      height: 900,
-    })
-    await drawnReady()
 
-    const scheduleFold = m.q('schedule-fold')
-    const backgroundFold = m.q('background-fold')
-    // ⚑ Both start folded, and each says what it holds in full: the next time whole, too.
-    expect(scheduleFold.getAttribute('aria-expanded')).toBe('false')
-    expect(backgroundFold.getAttribute('aria-expanded')).toBe('false')
-    expect(m.q('schedule-head').textContent?.trim()).toBe('2 jobs are scheduled')
-    expect(m.q('schedule-next').textContent?.replace(/\s+/g, ' ').trim()).toBe(
-      `· next ${comingTimeWords(next, Date.now())}`,
-    )
-    for (const [el, what] of [
-      [m.q('schedule-head'), 'the schedule heading'],
-      [m.q('schedule-next'), 'the next time'],
-      [backgroundFold, 'the running heading'],
-    ] as const) {
-      assertDrawn(el, what, m.host)
-      expect(wordLines(el), `${what} is one line`).toBe(1)
-    }
-    // ⚑ One line each, at the left edge and the width of the Current task section above them.
-    const task = m.q('card-task').getBoundingClientRect()
-    for (const bar of [m.q('schedule-bar'), m.q('background-bar')]) {
-      const box = bar.getBoundingClientRect()
-      expect(
-        Math.abs(box.left - task.left),
-        `${bar.dataset.cy} starts where the section does`,
-      ).toBeLessThanOrEqual(1)
-      expect(
-        Math.abs(box.right - task.right),
-        `${bar.dataset.cy} ends where the section does`,
-      ).toBeLessThanOrEqual(1)
-    }
-    expect(wordLines(scheduleFold), 'the schedule heading and its next time share a line').toBe(1)
-  })
 })

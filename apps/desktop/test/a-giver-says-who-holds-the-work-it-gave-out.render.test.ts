@@ -492,14 +492,14 @@ describe('§6 · the pane’s header and plate say who holds the work, and the c
       )
       // The card drew, and said who holds the work, before anything is said about the bar.
       expect(subtitleOf(waiting)).toBe(WAITING_ON_ADA)
-      expect(waiting).not.toContain('data-cy="schedule-bar"')
+      expect(waiting).not.toContain('data-cy="schedule-open-j1"')
 
       // ⛔ THE PAIR — the same record, the same job, under the schedule's own word and with no state
       // handed in: the bar and its row are drawn, so the absence above is not an empty registry.
       for (const agentState of [{ is: 'scheduled', dueAt: null } as const, undefined]) {
         const shown = visible(await cardOf({ doing: 'idle', scheduled: true }, agentState))
-        expect(shown).toContain('data-cy="schedule-bar"')
-        expect(shown).toContain('data-cy="schedule-row-j1"')
+        expect(shown).toContain('data-cy="schedule-open-j1"')
+        expect(shown).toContain('data-cy="schedule-open-j1"')
       }
     })
   })

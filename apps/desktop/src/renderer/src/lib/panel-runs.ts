@@ -39,10 +39,24 @@ export function panelRuns(state: TranscriptState): PanelRuns {
     if (background) claimed.add(background.id)
     const active = card.running || background !== undefined
     rows.push({
-      key, label: card.title || card.kind || 'Sub-agent', detail: card.lastTool ?? '',
-      group: 'Agents', status: active ? 'Running' : card.outcome === 'completed' ? 'Done' : card.outcome === 'failed' ? 'Failed' : card.outcome === 'interrupted' ? 'Stopped' : 'Ended',
-      active, failed: !active && card.outcome === 'failed', icon: '#i-bot',
-      order: items.get(itemId)?.order ?? 0, itemId,
+      key,
+      label: card.title || card.kind || 'Sub-agent',
+      detail: card.lastTool ?? '',
+      group: 'Agents',
+      status: active
+        ? 'Running'
+        : card.outcome === 'completed'
+          ? 'Done'
+          : card.outcome === 'failed'
+            ? 'Failed'
+            : card.outcome === 'interrupted'
+              ? 'Stopped'
+              : 'Ended',
+      active,
+      failed: !active && card.outcome === 'failed',
+      icon: '#i-bot',
+      order: items.get(itemId)?.order ?? 0,
+      itemId,
       ...(background ? { stopId: background.id } : {}),
       target: { kind: 'agent', id: card.agentId, label: card.title || card.kind || 'Sub-agent' },
     })
@@ -54,17 +68,44 @@ export function panelRuns(state: TranscriptState): PanelRuns {
       const background = live.find((row) => row.id === run.taskId || row.toolCallId === item.callId)
       if (background) claimed.add(background.id)
       const active = run.running || background !== undefined
-      rows.push({ key: `workflow:${run.taskId}`, label: run.name || 'Workflow', detail: run.description ?? '',
-        group: 'Workflows', status: active ? 'Running' : run.outcome === 'completed' ? 'Done' : run.outcome === 'failed' ? 'Failed' : 'Ended',
-        active, failed: !active && run.outcome === 'failed', icon: '#i-bot', order, itemId, workflow: run,
-        ...(background ? { stopId: background.id } : {}), target: { kind: 'workflow', id: run.taskId, label: run.name || 'Workflow' },
+      rows.push({
+        key: `workflow:${run.taskId}`,
+        label: run.name || 'Workflow',
+        detail: run.description ?? '',
+        group: 'Workflows',
+        status: active
+          ? 'Running'
+          : run.outcome === 'completed'
+            ? 'Done'
+            : run.outcome === 'failed'
+              ? 'Failed'
+              : 'Ended',
+        active,
+        failed: !active && run.outcome === 'failed',
+        icon: '#i-bot',
+        order,
+        itemId,
+        workflow: run,
+        ...(background ? { stopId: background.id } : {}),
+        target: { kind: 'workflow', id: run.taskId, label: run.name || 'Workflow' },
       })
-    } else if (item.background && (item.background.outcome !== undefined || item.background.unfinished)) {
+    } else if (
+      item.background &&
+      (item.background.outcome !== undefined || item.background.unfinished)
+    ) {
       const work = item.background
       if (live.some((row) => row.id === work.id || row.toolCallId === item.callId)) continue
-      rows.push({ key: `background:${item.callId}`, label: item.summary || item.name, detail: work.summary ?? '',
-        group: 'Commands', status: BACKGROUND_WORD[backgroundState(work)], active: false,
-        failed: work.outcome === 'failed', icon: '#i-terminal', order, itemId,
+      rows.push({
+        key: `background:${item.callId}`,
+        label: item.summary || item.name,
+        detail: work.summary ?? '',
+        group: 'Commands',
+        status: BACKGROUND_WORD[backgroundState(work)],
+        active: false,
+        failed: work.outcome === 'failed',
+        icon: '#i-terminal',
+        order,
+        itemId,
       })
     }
   }
@@ -72,9 +113,17 @@ export function panelRuns(state: TranscriptState): PanelRuns {
     if (claimed.has(work.id)) continue
     const monitor = work.kind === 'monitor'
     const job = work.kind === 'job'
-    rows.push({ key: `background:${work.id}`, label: work.command?.text || work.description || work.id,
-      detail: work.command?.name || work.kind || 'Background', group: monitor || job ? 'Jobs & monitors' : 'Commands',
-      status: 'Running', active: true, failed: false, icon: '#i-terminal', order: rows.length, stopId: work.id,
+    rows.push({
+      key: `background:${work.id}`,
+      label: work.command?.text || work.description || work.id,
+      detail: work.command?.name || work.kind || 'Background',
+      group: monitor || job ? 'Jobs & monitors' : 'Commands',
+      status: 'Running',
+      active: true,
+      failed: false,
+      icon: '#i-terminal',
+      order: rows.length,
+      stopId: work.id,
     })
   }
   return {
