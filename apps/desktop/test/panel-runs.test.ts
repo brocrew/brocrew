@@ -1,3 +1,4 @@
+import { startMapReader } from './panel-run.fixture'
 import { expect, it } from 'vitest'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import { panelRuns } from '../src/renderer/src/lib/panel-runs'
@@ -54,14 +55,7 @@ it('keeps an unreported background kind generic', () => {
 
 it('joins an ended native child with its anchored background ending', () => {
   const state = createTranscript()
-  applyEvent(state, { type: 'tool_call', id: 'dispatch', name: 'Agent', summary: 'Read the map' })
-  applyEvent(state, {
-    type: 'sub_agent',
-    agentId: 'map-reader',
-    phase: 'started',
-    parentToolCallId: 'dispatch',
-    title: 'Read the map',
-  })
+  startMapReader(state)
   applyEvent(state, {
     type: 'sub_agent',
     agentId: 'map-reader',
