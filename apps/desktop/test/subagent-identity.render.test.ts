@@ -34,16 +34,21 @@ const render = async (c: SubAgentCard): Promise<string> =>
   )
 
 describe('the compact child card preserves its identity and reported state', () => {
-  it.each(['task', 'thread'] as const)('keeps a %s identity bound to the transcript action', async (idKind) => {
-    const html = await render(card({ idKind }))
-    expect(html).toContain('data-agent-id="ad63a0d89dcd9eed4"')
-    expect(html).toContain('subagent-open-transcript')
-    expect(html).not.toContain('aria-expanded')
-  })
+  it.each(['task', 'thread'] as const)(
+    'keeps a %s identity bound to the transcript action',
+    async (idKind) => {
+      const html = await render(card({ idKind }))
+      expect(html).toContain('data-agent-id="ad63a0d89dcd9eed4"')
+      expect(html).toContain('subagent-open-transcript')
+      expect(html).not.toContain('aria-expanded')
+    },
+  )
 
   it('does not turn an unreported ending into completion', async () => {
     expect(await render(card())).toMatch(/data-cy="subagent-status"[^>]*>ended</)
-    expect(await render(card({ outcome: 'completed' }))).toMatch(/data-cy="subagent-status"[^>]*>completed</)
+    expect(await render(card({ outcome: 'completed' }))).toMatch(
+      /data-cy="subagent-status"[^>]*>completed</,
+    )
   })
 
   it('retains the observed-child name without inventing a parent or model', async () => {
