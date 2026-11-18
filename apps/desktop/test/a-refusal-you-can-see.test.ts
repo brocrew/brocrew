@@ -1,3 +1,8 @@
+import {
+  openAgentTestConversation,
+  makeAgentTestIdentity,
+  grantAgentTestCapabilities,
+} from './lib/agent-test-operations'
 import { callAgentTool } from './lib/call-agent-tool'
 import type { ToolRefusedEvent, TranscriptEvent } from '../src/shared/conversation-events'
 import { navigationReply } from './helpers/navigation-reply'
@@ -132,26 +137,17 @@ describe('405 · a refusal you can see', () => {
     rmSync(work, { recursive: true, force: true })
   })
 
-  const personOpens = async (
+  const personOpens = (
     profileId: string,
     approvalMode: 'ask' | 'auto' = 'ask',
-  ): Promise<string> => {
-    const { sessionId } = await host.createSession(
-      { provider: 'claude', profileId, cwd: work, approvalMode },
-      window,
-    )
-    return sessionId
-  }
+  ): Promise<string> => openAgentTestConversation(host, window, work, profileId, approvalMode)
 
   /** An identity exists only once a person has run a conversation as it — 341 criterion 12. */
-  const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
-    const id = await personOpens(profileId)
-    await host.close(id, window)
-  }
+  const bringIdentityIntoBeing = (profileId: string): Promise<void> =>
+    makeAgentTestIdentity(personOpens, (id) => host.close(id, window), profileId)
 
-  const grant = (profileId: string, edit: Parameters<SessionStore['setCapabilities']>[1]): void => {
-    expect(store.setCapabilities(profileId, edit)).toBe(true)
-  }
+  const grant = (profileId: string, edit: Parameters<SessionStore['setCapabilities']>[1]): void =>
+    grantAgentTestCapabilities(store, profileId, edit)
 
   /** The toolset one session is offered, called the way a provider would call it. */
   const toolsOf = (sessionId: string) => {
