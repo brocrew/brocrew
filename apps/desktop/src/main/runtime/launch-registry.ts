@@ -80,6 +80,11 @@ export interface LaunchRegistry {
    */
   refuse(subject: string): string | null
   /**
+   * Settles when no launch holds `subject` any more, or null when none holds it now. Never rejects.
+   * Lets a reopen wait out a provider whose stop is not yet confirmed instead of being refused.
+   */
+  released(subject: string): Promise<void> | null
+  /**
    * Give a launch back. `terminated`, when given, is what the registry waits for before letting the
    * launch go — so a bounded caller may stop waiting while ownership does not.
    *
@@ -166,6 +171,12 @@ export function createLaunchRegistry(): LaunchRegistry {
     },
 
     refuse,
+
+    released(subject) {
+      const held = [...entries].filter((entry) => entry.launch.subject === subject)
+      if (held.length === 0) return null
+      return Promise.all(held.map((entry) => entry.launch.settled)).then(() => undefined)
+    },
 
     finish(launch, terminated) {
       for (const entry of entries) {

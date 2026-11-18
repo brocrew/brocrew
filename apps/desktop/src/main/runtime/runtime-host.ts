@@ -23173,6 +23173,15 @@ export class RuntimeHost implements LiveHost {
       if (error instanceof TurnInProgress && session.personalHandover === personalHandover)
         session.personalWorkTurn = personalWorkTurnBefore
       if (session.moveRequestHandoff === moveHandoff) session.moveRequestRowPending = false
+      if (
+        !(error instanceof TurnInProgress) &&
+        !(error instanceof StoppedBeforeSend) &&
+        this.itStoppedUnder(session)
+      ) {
+        // The provider retired before taking the words (a settings apply that timed out): they go
+        // to its next start, as a plain send's do.
+        return this.send(session.id, text, by, attachments)
+      }
       // 🔴 **670 · a replacement that loses the race is HELD** (`657` F-b) — see {@link send}.
       // ⚑ **The latch keeps most senders out of this window**: `queueAs` reads a latched
       // conversation as busy, so a reply or a `message_agent` waits behind the replacement. ⚠️ What
@@ -31963,8 +31972,9 @@ export class RuntimeHost implements LiveHost {
    * map lookup and two null checks.
    */
   private async settleTeardown(sessionId: string): Promise<void> {
+    const giveUpAt = Date.now() + this.closeDrainTimeoutMs * 2
     const slot = this.slots.get(sessionId)
-    if (slot === undefined) return
+    if (slot === undefined) return this.settleTheLastLaunch(sessionId, giveUpAt)
     // Closed before its provider ever arrived: the teardown is the arrival, and `awaitArrival`
     // already bounds and reports exactly that case. `phase` is the only thing that can say so —
     // there is no session yet to hold a promise.
@@ -31984,10 +31994,31 @@ export class RuntimeHost implements LiveHost {
     // `slots.delete`. Both null means nothing is being torn down and there is nothing to wait for.
     const teardown = slot.session.closing ?? slot.session.finalizing
     if (teardown === null) return
-    if (await settledWithin(teardown, this.closeDrainTimeoutMs * 2)) return
+    if (await settledWithin(teardown, this.closeDrainTimeoutMs * 2)) {
+      if (!this.slots.has(sessionId)) await this.settleTheLastLaunch(sessionId, giveUpAt)
+      return
+    }
     console.warn(
       `runtime session ${sessionId}: still closing after ${this.closeDrainTimeoutMs * 2}ms — ` +
         'refusing the reopen rather than starting a second provider onto the same transcript',
+    )
+  }
+
+  /**
+   * A finalized session lets go of its slot when its teardown stops waiting, and of its launch only
+   * when its provider is confirmed gone: a provider that ends a few seconds later (on Windows the
+   * Claude SDK kills a wedged CLI 7 s after the close) left a reopen in between refused. Waits for
+   * that confirmation until `giveUpAt`; past it, `reserve` still refuses.
+   */
+  private async settleTheLastLaunch(sessionId: string, giveUpAt: number): Promise<void> {
+    const released = this.launches.released(sessionId)
+    if (released === null) return
+    const left = Math.max(0, giveUpAt - Date.now())
+    if (await settledWithin(released, left)) return
+    console.warn(
+      `runtime session ${sessionId}: its provider has not confirmed it stopped after ` +
+        `${this.closeDrainTimeoutMs * 2}ms — refusing the reopen rather than starting a second ` +
+        'provider onto the same transcript',
     )
   }
 
