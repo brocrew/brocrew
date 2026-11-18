@@ -7592,13 +7592,8 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  /**
-   * Each commit the store records, once, after it commits ({@link SessionStore.onCommitted}): what
-   * each row moves ({@link aRowWasWritten}), the files kept on each piece ({@link filesWereKept}),
-   * and what a ledger changed as a whole moves ({@link aWholeLedgerChanged}). A rebuild's staged
-   * batches move nothing a window reads. ⛔ A resync — another connection committed — forgets every
-   * reading kept from the ledgers ({@link everyKeptReadingIsStale}). It never throws.
-   */
+  /** Follows committed rows, resources and whole-ledger changes; staged rebuilds move no window facts.
+   * Resync forgets all kept ledger readings. Listener failures never escape. */
   private heardACommit(change: Committed): void {
     try {
       if (change.resync) {
