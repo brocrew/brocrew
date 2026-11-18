@@ -34,6 +34,7 @@ import type {
 import type { SessionStatus } from '@brobot2/shared'
 import {
   type ClaudeChildWitness,
+  finishClaudeChild,
   spawnClaudeChild,
   type SpawnChild,
   watchClaudeChild,
@@ -1293,7 +1294,7 @@ export class ClaudeSessionHandle implements SessionHandle {
   }
 
   awaitProcessExit(): Promise<void> {
-    return this.child.exited
+    return this.child.quiesced
   }
 
   begin(opening: 'started' | 'resumed'): void {
@@ -1616,12 +1617,7 @@ export class ClaudeSessionHandle implements SessionHandle {
   private async detachQueryAwaitingExit(): Promise<void> {
     const query = this.query
     this.detachQuery()
-    if (!query?.return) return
-    try {
-      await withTimeout(Promise.resolve(query.return()), CLOSE_EXIT_RECEIPT_TIMEOUT_MS)
-    } catch {
-      // A synchronous return failure leaves teardown with nothing further to do.
-    }
+    await finishClaudeChild(query, this.child, CLOSE_EXIT_RECEIPT_TIMEOUT_MS)
   }
 
   private settleRequests(permissionAnswer?: PermissionDecision): void {
@@ -2650,8 +2646,8 @@ export class ClaudeRuntime implements AgentRuntime {
     }
   }
 
-  private spawnWitness(): ClaudeChildWitness {
-    return watchClaudeChild(this.spawnChild)
+  private spawnWitness(sessionId?: string): ClaudeChildWitness {
+    return watchClaudeChild(this.spawnChild, sessionId)
   }
 
   async start(opts: StartOptions): Promise<SessionHandle> {
@@ -2711,10 +2707,10 @@ export class ClaudeRuntime implements AgentRuntime {
       handle.askedForUltracode()
     }
 
-    const child = this.spawnWitness()
+    const launchedAs = randomUUID()
+    const child = this.spawnWitness(launchedAs)
     options.spawnClaudeCodeProcess = child.spawn
 
-    const launchedAs = randomUUID()
     options.sessionId = launchedAs
     handle.holdLaunchRef(launchedAs, async () =>
       launchTranscriptCwd(launchedAs, opts.cwd, opts.providerHome),
@@ -2737,6 +2733,7 @@ export class ClaudeRuntime implements AgentRuntime {
       }
       input.close()
 
+      await child.close()
       const spawnFailure = await child.spawnFailure()
       if (spawnFailure === null) throw error
       throw spawnFailure
@@ -2754,16 +2751,15 @@ export class ClaudeRuntime implements AgentRuntime {
     const kept = await keptRulesForALaunch(context.providerHome, null, context.signal)
     const options = this.listOptionsFor(context.providerHome, kept, auth)
 
-    options.spawnClaudeCodeProcess = this.spawnWitness().spawn
+    const child = this.spawnWitness()
+    options.spawnClaudeCodeProcess = child.spawn
     const probe = this.queryOrWhyNot({ prompt: neverSends(), options })
 
     let closing: Promise<void> | null = null
     const closeProbe = (): Promise<void> => {
       if (closing === null) {
         probe.close()
-        closing = probe.return
-          ? withTimeout(Promise.resolve(probe.return()), CLOSE_EXIT_RECEIPT_TIMEOUT_MS)
-          : Promise.resolve()
+        closing = finishClaudeChild(probe, child, CLOSE_EXIT_RECEIPT_TIMEOUT_MS)
       }
       return closing
     }
@@ -2897,7 +2893,7 @@ export class ClaudeRuntime implements AgentRuntime {
       handle.noteBuiltInSkills(options.builtInSkills)
       handle.noteSharedSkills(options.sharedSkillsRoot)
 
-      child = this.spawnWitness()
+      child = this.spawnWitness(ref.sessionId)
       const resumeOptions: Options = {
         ...built,
         resume: ref.sessionId,
@@ -2922,6 +2918,7 @@ export class ClaudeRuntime implements AgentRuntime {
         }
       }
       input?.close()
+      await child?.close()
 
       if (
         error instanceof ResumeError ||

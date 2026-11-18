@@ -103,6 +103,43 @@ describe('app lifetime (051)', () => {
   describe('quitting', () => {
     registerQuitOpenListCases(harness, quitEvent)
 
+    it.each([false, true])(
+      'reaps commands after confirmed database close (close fails: %s)',
+      async (fails) => {
+        const held = deferred()
+        const stopCommands = vi.fn(() => held.promise)
+        const { lifetime, log } = harness({
+          closeDatabase: () => {
+            log.push('closeDatabase')
+            if (fails) throw new Error('fictional database close failure')
+          },
+          stopCommands,
+        })
+        lifetime.beforeQuit(quitEvent().event)
+        try {
+          await new Promise<void>((resolve) => setImmediate(resolve))
+          expect(log).toContain('closeDatabase')
+          expect(stopCommands).toHaveBeenCalledTimes(fails ? 0 : 1)
+          if (!fails) expect(log).not.toContain('quit')
+        } finally {
+          held.resolve()
+          await lifetime.shuttingDown
+        }
+        expect(log.at(-1)).toBe('quit')
+      },
+    )
+
+    it('keeps an update prepared when orphan cleanup fails after database close', async () => {
+      const { lifetime, log } = harness({
+        stopCommands: async () => {
+          throw new Error('fictional lsof failure')
+        },
+      })
+      await expect(lifetime.prepareForQuit()).resolves.toBeUndefined()
+      expect(log).toContain('closeDatabase')
+      expect(log.some((line) => line.includes('failed to end its commands'))).toBe(true)
+    })
+
     it('defers the quit, drains in order, and only then lets it through', async () => {
       const { lifetime, log } = harness()
       const first = quitEvent()

@@ -1,0 +1,19 @@
+{
+  "reviewedBy": null,
+  "admission": null,
+  "hostedJobId": null,
+  "hostedJobUrl": null,
+  "source": "/absolute/clean/final/source",
+  "sourceSha": null,
+  "sourceTree": null,
+  "app": "/absolute/built/BroCrew.app",
+  "claude": "/absolute/pinned/native/claude",
+  "claudeSha256": null,
+  "asarSha256": null,
+  "executableSha256": null,
+  "plistSha256": null,
+  "nodeVersion": null,
+  "model": null,
+  "modelPort": null,
+  "evidence": "/absolute/new/evidence-folder"
+}
