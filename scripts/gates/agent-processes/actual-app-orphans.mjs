@@ -270,9 +270,45 @@ function nativeRecord(r, previous) {
     let exitedInfo
     if (!sameRecord && previous.asn) {
       exitedInfo = appInfo('info', previous.specifier)
+      const nullRecord =
+        exitedInfo.replace(/\s+/g, ' ').trim() ===
+        '[ NULL ] [ NULL ] bundleID=[ NULL ] bundle path=[ NULL ] executable path=[ NULL ] pid = !cgsConnection !signalled type=[ NULL ] flavor=[ NULL ] Version=[ NULL ] Arch=!!none'
+      if (nullRecord) {
+        const pids = new Set(
+          [
+            r.main,
+            ...r.appIdentities,
+            ...r.cliIdentities,
+            ...r.commandAncestors,
+            ...[r.target, r.peerTurn, r.sharedTarget, r.sharedPeer].flatMap((t) =>
+              t ? [t.cli, t.tail] : [],
+            ),
+          ].map((p) => p.pid),
+        )
+        const processes = command('/bin/ps', ['-axo', 'pid=,ppid='])
+        for (const row of processes.split('\n')) {
+          const match = /^\s*(\d+)\s+(\d+)\s*$/.exec(row)
+          must(match, 'Cannot parse native tombstone child-process snapshot')
+          must(!pids.has(Number(match[2])), 'Native tombstone still has a child process')
+        }
+        r.tombstoneProcesses = []
+        for (const pid of pids) {
+          must(identity(pid) === null, `Native tombstone pid ${pid} still exists`)
+          let absent = false
+          try {
+            process.kill(pid, 0)
+          } catch (error) {
+            must(error.code === 'ESRCH', `Native tombstone pid ${pid} absence is unknown`)
+            absent = true
+          }
+          must(absent, `Native tombstone pid ${pid} is still reachable`)
+          r.tombstoneProcesses.push({ pid, ps: null, kill0: 'ESRCH' })
+        }
+      }
       must(
         exitedInfo === '' ||
           exitedInfo === 'NULL' ||
+          nullRecord ||
           (/\bexited\b/i.test(exitedInfo) && !/exited-with-subordinates/i.test(exitedInfo)),
         'Retained native record is not conclusively exited',
       )
