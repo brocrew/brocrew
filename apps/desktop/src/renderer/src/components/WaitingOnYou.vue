@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { agentName, type AgentIdentities } from '../../../shared/runtime-ipc'
 import { aProviderNotChosenSays } from '../lib/front-door-words'
 import { providersNotChosenIn } from '../lib/agent-store'
+import { owedHere } from '../lib/owed-here'
 import { homeAttention, permissionsIntro, theStatBesideTheLines } from '../lib/home-attention'
 import { usePersonsQueue } from '../lib/persons-queue'
 import { usageSays, usageTitle } from '../lib/usage-limit'
@@ -136,16 +137,7 @@ const incidents = computed(() => persons.workWaits.value.incidents)
 const recoveries = computed(() => persons.workWaits.value.recoveries)
 
 /** ⛔ **Everything a person owes here that is not one of this window's cards** — the three groups. */
-const onlyYou = computed(
-  () =>
-    personsRows.value +
-    asks.value.length +
-    serverRequests.value.length +
-    replies.value.length +
-    todos.value.rows.length +
-    incidents.value.rows.length +
-    notChosen.value.length,
-)
+const onlyYou = computed(() => owedHere(persons, props.agents))
 
 /**
  * 🔴 **533 · what the queue says about the PROVIDERS** — ⚑ **UI-009 (F052) · drawn at the top of
