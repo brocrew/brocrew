@@ -47,7 +47,6 @@ import { paintedReadings, pictures } from './what-is-painted-under'
  * drawing named in CLASSIC_LIFTED. Every other theme is read with all it draws.
  */
 
-
 const WHITE = { waiting: '#ffffff', success: '#ffffff', danger: '#ffffff', auto: '#ffffff' }
 
 /** Themes the check accepts, each near its limits on the surfaces this piece measures. */
