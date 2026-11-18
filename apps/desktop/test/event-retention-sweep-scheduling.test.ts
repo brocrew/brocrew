@@ -1,9 +1,13 @@
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { EventEmitter } from 'node:events'
 import type { Worker } from 'node:worker_threads'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppDatabase } from '../src/main/db/connection'
 import { incrementallyCompact } from '../src/main/db/compact'
 import type { EventTrimResult } from '../src/main/db/event-retention'
+import * as logging from '../src/main/logging/log'
 import { startEventRetention } from '../src/main/storage/event-retention'
 
 vi.mock('../src/main/db/event-retention', () => ({
@@ -43,6 +47,8 @@ class SweepWorker extends EventEmitter {
 }
 
 describe('event retention sweep timing and logging', () => {
+  let logDirectory: string
+  let logFile: string
   let retention: ReturnType<typeof startEventRetention>
   let workers: SweepWorker[]
   let start: ReturnType<typeof vi.fn<() => Worker>>
@@ -50,6 +56,10 @@ describe('event retention sweep timing and logging', () => {
   let warn: ReturnType<typeof vi.fn<(error: unknown) => void>>
 
   beforeEach(() => {
+    logDirectory = mkdtempSync(join(tmpdir(), 'retention-log-'))
+    logFile = join(logDirectory, 'brocrew.log')
+    logging.openLog(logFile, { console: false, sync: true })
+    vi.spyOn(logging, 'logInfo')
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
     vi.spyOn(console, 'info').mockImplementation(() => {})
     vi.mocked(incrementallyCompact).mockResolvedValue({
@@ -70,6 +80,19 @@ describe('event retention sweep timing and logging', () => {
 
   afterEach(async () => {
     await retention.stop()
+    const records = logging.logInfo as ReturnType<typeof vi.spyOn>
+    const lines = existsSync(logFile)
+      ? readFileSync(logFile, 'utf8').trim().split('\n').filter(Boolean)
+      : []
+    expect(lines).toHaveLength(records.mock.calls.length)
+    for (const [index, call] of records.mock.calls.entries()) {
+      const outcome = call[2] as { removed: number; elapsedMs: number; status: string }
+      expect(lines[index]).toContain('[info]')
+      expect(lines[index]).toContain(`removed: ${outcome.removed}`)
+      expect(lines[index]).toContain(`elapsedMs: ${outcome.elapsedMs}`)
+      expect(lines[index]).toContain(outcome.status)
+    }
+    rmSync(logDirectory, { recursive: true, force: true })
     vi.useRealTimers()
     vi.restoreAllMocks()
   })
@@ -84,11 +107,12 @@ describe('event retention sweep timing and logging', () => {
     await vi.advanceTimersByTimeAsync(17_000)
     workers[0]!.complete(0)
     await vi.advanceTimersByTimeAsync(0)
-    expect(console.info).toHaveBeenCalledTimes(2)
+    expect(console.info).toHaveBeenCalledOnce()
+    expect(logging.logInfo).toHaveBeenCalledOnce()
     expect(console.info).toHaveBeenNthCalledWith(1, 'BroCrew event history sweep started.')
-    expect(console.info).toHaveBeenNthCalledWith(
-      2,
-      'BroCrew event history sweep ended:',
+    expect(logging.logInfo).toHaveBeenCalledWith(
+      'retention',
+      'Event history sweep ended',
       expect.objectContaining({ removed: 0, elapsedMs: 17_000, exitCode: 0, status: 'completed' }),
     )
     expect(trimmed).toHaveBeenCalledOnce()
@@ -179,9 +203,11 @@ describe('event retention sweep timing and logging', () => {
     expect(workers[0]!.terminate).not.toHaveBeenCalled()
     expect(trimmed).not.toHaveBeenCalled()
     expect(warn).not.toHaveBeenCalled()
-    expect(console.info).toHaveBeenCalledTimes(2)
-    expect(console.info).toHaveBeenLastCalledWith(
-      'BroCrew event history sweep ended:',
+    expect(console.info).toHaveBeenCalledOnce()
+    expect(logging.logInfo).toHaveBeenCalledOnce()
+    expect(logging.logInfo).toHaveBeenLastCalledWith(
+      'retention',
+      'Event history sweep ended',
       expect.objectContaining({ status: 'stopped', removed: 200, exitCode: 0 }),
     )
     await vi.advanceTimersByTimeAsync(120 * minute)

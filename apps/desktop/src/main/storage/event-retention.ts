@@ -1,4 +1,5 @@
 import type { Worker } from 'node:worker_threads'
+import { logInfo } from '../logging/log'
 import { eventTrimWriter, type EventTrimBatch, type EventTrimResult } from '../db/event-retention'
 import type { AppDatabase } from '../db/connection'
 import { incrementallyCompact } from '../db/compact'
@@ -55,7 +56,7 @@ export function startEventRetention(
           ...outcome,
           error: failure instanceof Error ? failure.message : String(failure),
         })
-      } else console.info('BroCrew event history sweep ended:', outcome)
+      } else logInfo('retention', 'Event history sweep ended', outcome)
       schedule(
         failure === undefined && result?.budgetReached && !result.interrupted
           ? CATCH_UP_AFTER_MS
