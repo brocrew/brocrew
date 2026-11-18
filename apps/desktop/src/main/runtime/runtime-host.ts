@@ -7603,7 +7603,7 @@ export class RuntimeHost implements LiveHost {
         this.everyKeptReadingIsStale()
         return
       }
-      if (change.historyOnly) {
+      if (change.whole.size === 1 && change.whole.values().next().value === 'stream-trimmed') {
         // Historical pages changed, while the listing, routing and current states did not.
         this.deps.announce?.({ what: 'conversations' })
         return
