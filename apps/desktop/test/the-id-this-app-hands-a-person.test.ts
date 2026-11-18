@@ -21,8 +21,9 @@ import { type ResourceReading } from '../src/shared/runtime-ipc'
 import {
   fixtureProviderConfig,
   RecordingSink,
-  syntheticProviderHome,
   neutralHostDeps,
+  closeHostFixture,
+  fixtureHostPaths,
 } from './lib/host-fixture'
 
 /**
@@ -101,12 +102,8 @@ describe('510 · the id this app hands a person', () => {
     sessions = new FakeProviderSessions()
     host = new RuntimeHost({
       store,
-      ...neutralHostDeps(() => userData),
-      resourcesRoot: () => resourcesRoot(userData),
+      ...fixtureHostPaths(() => userData),
       createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions }),
-      prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       readProviderConfig: fixtureProviderConfig,
@@ -114,11 +111,7 @@ describe('510 · the id this app hands a person', () => {
     window = new RecordingSink('webContents:1')
   })
 
-  afterEach(async () => {
-    await host.closeAll()
-    db.close()
-    for (const dir of [userData, work, outside]) rmSync(dir, { recursive: true, force: true })
-  })
+  afterEach(() => closeHostFixture(host, db, userData, work, outside))
 
   const personOpens = async (cwd = work): Promise<string> => {
     const { sessionId } = await host.createSession(

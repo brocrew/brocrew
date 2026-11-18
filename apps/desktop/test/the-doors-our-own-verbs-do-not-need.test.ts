@@ -2,10 +2,9 @@ import {
   openAgentTestConversation,
   makeAgentTestIdentity,
   grantAgentTestCapabilities,
-  closeAgentTestResources,
 } from './lib/agent-test-operations'
 import { structuredAgentToolsFor } from './lib/call-agent-tool'
-import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import { fixtureProviderConfig, closeHostFixture, fixtureHostPaths } from './lib/host-fixture'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -18,7 +17,6 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentCallerId, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import {
   MESSAGE_RAILS,
@@ -170,12 +168,8 @@ describe('486 · the doors our own verbs do not need', () => {
     sessions = new FakeProviderSessions()
     host = new RuntimeHost({
       store,
-      ...neutralHostDeps(() => userData),
-      resourcesRoot: () => join(userData, 'resources'),
+      ...fixtureHostPaths(() => userData),
       createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions }),
-      prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       readProviderConfig: fixtureProviderConfig,
@@ -183,7 +177,7 @@ describe('486 · the doors our own verbs do not need', () => {
     window = new RecordingSink('webContents:1')
   })
 
-  afterEach(() => closeAgentTestResources(host, db, [userData, work]))
+  afterEach(() => closeHostFixture(host, db, userData, work))
 
   const personOpens = (profileId: string): Promise<string> =>
     openAgentTestConversation(host, window, work, profileId, 'ask')

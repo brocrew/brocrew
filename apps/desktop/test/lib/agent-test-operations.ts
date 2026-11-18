@@ -1,5 +1,3 @@
-import { rmSync } from 'node:fs'
-import type { AppDatabase } from '../../src/main/db/connection'
 import { expect } from 'vitest'
 import type { RuntimeHost, RuntimeEventSink } from '../../src/main/runtime/runtime-host'
 import type { SessionStore } from '../../src/main/db/session-store'
@@ -33,14 +31,4 @@ export function grantAgentTestCapabilities(
   edit: Parameters<SessionStore['setCapabilities']>[1],
 ): void {
   expect(store.setCapabilities(profileId, edit)).toBe(true)
-}
-
-export async function closeAgentTestResources(
-  host: Pick<RuntimeHost, 'closeAll'>,
-  db: Pick<AppDatabase, 'close'>,
-  directories: readonly string[],
-): Promise<void> {
-  await host.closeAll()
-  db.close()
-  for (const dir of directories) rmSync(dir, { recursive: true, force: true })
 }

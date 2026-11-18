@@ -1,9 +1,5 @@
-import {
-  makeAgentTestIdentity,
-  grantAgentTestCapabilities,
-  closeAgentTestResources,
-} from './lib/agent-test-operations'
-import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import { makeAgentTestIdentity, grantAgentTestCapabilities } from './lib/agent-test-operations'
+import { fixtureProviderConfig, neutralHostDeps, closeHostFixture } from './lib/host-fixture'
 import type { ToolRefusedEvent, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -290,7 +286,7 @@ describe('425 · a refusal carries its remedy', () => {
     window = new RecordingSink('webContents:1')
   })
 
-  afterEach(() => closeAgentTestResources(host, db, [userData, work]))
+  afterEach(() => closeHostFixture(host, db, userData, work))
 
   const personOpens = async (
     profileId = 'pm',

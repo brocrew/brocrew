@@ -17,8 +17,6 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { giverStallNotices, RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
-import { resourcesRoot } from '../src/main/resources/resources'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { PIECE_TITLE_CHARS } from '../src/shared/piece-called'
 import {
   TASK_IS_OPEN,
@@ -28,9 +26,9 @@ import {
 } from '../src/shared/tasks'
 import {
   RecordingSink,
-  syntheticProviderHome,
-  neutralHostDeps,
   fixtureProviderConfig,
+  closeHostFixture,
+  fixtureHostPaths,
 } from './lib/host-fixture'
 
 /**
@@ -344,12 +342,8 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
     issued = new FakeProviderSessions()
     host = new RuntimeHost({
       store,
-      ...neutralHostDeps(() => userData),
-      resourcesRoot: () => resourcesRoot(userData),
+      ...fixtureHostPaths(() => userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued),
-      prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       readProviderConfig: fixtureProviderConfig,
@@ -357,11 +351,7 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
     window = new RecordingSink('webContents:1')
   })
 
-  afterEach(async () => {
-    await host.closeAll()
-    db.close()
-    for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
-  })
+  afterEach(() => closeHostFixture(host, db, userData, root))
 
   const events = (sessionId: string): TranscriptEvent[] =>
     store.events(sessionId).map((entry) => entry.event)
