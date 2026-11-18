@@ -4830,6 +4830,9 @@ export class RuntimeHost implements LiveHost {
    */
   private readonly startingForADeliveryWithNoWindow = new Set<string>()
 
+  /** The conversations {@link startForADelivery} is reopening: their reopen waits out {@link settleTheLastLaunch}. */
+  private readonly startingForADelivery = new Set<string>()
+
   /**
    * ⚑ **D-017 · R5 — a replacement {@link replaceWhatCanNeverBeReopened} is reserving with no
    * window**, read by {@link reserve} into {@link SessionSlot.aDeliveryStartedItWithNoWindow}: the
@@ -25803,7 +25806,6 @@ export class RuntimeHost implements LiveHost {
       })
       let ran: string
       try {
-        await this.settleTheLastLaunch(to)
         ran = await this.ensureRunning(to, theSurfaceAsking(by))
       } catch (error) {
         throw waker === null ? error : new AStartThatDidNotHappen(error)
@@ -26117,6 +26119,8 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **R5** — a life this delivery starts with no window is one a person's window may take.
     const headless = window === null && !this.startingForADeliveryWithNoWindow.has(sessionId)
     if (headless) this.startingForADeliveryWithNoWindow.add(sessionId)
+    const marked = !this.startingForADelivery.has(sessionId)
+    if (marked) this.startingForADelivery.add(sessionId)
     try {
       if (this.aServiceThatNeverStarted(sessionId)) {
         await this.startTheRecordedService(sessionId, window)
@@ -26139,6 +26143,7 @@ export class RuntimeHost implements LiveHost {
       throw error
     } finally {
       if (headless) this.startingForADeliveryWithNoWindow.delete(sessionId)
+      if (marked) this.startingForADelivery.delete(sessionId)
     }
   }
 
@@ -38132,6 +38137,7 @@ export class RuntimeHost implements LiveHost {
     try {
       if (this.startupRepairs.has(sessionId)) await this.settleBeforeUse(sessionId)
       await this.settleTeardown(sessionId)
+      if (this.startingForADelivery.has(sessionId)) await this.settleTheLastLaunch(sessionId)
       // ⛔ **The generation fence.** Between the line above and this one the window may have been
       // reloaded, crashed or destroyed, and `closeSessionsForOwner` will have closed the slots that
       // existed without ever seeing this reopen. Asked BEFORE {@link attachHeldSession}, so a

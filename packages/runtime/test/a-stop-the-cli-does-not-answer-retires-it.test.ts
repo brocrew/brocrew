@@ -1,7 +1,4 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { ClaudeRuntime, type ClaudeQuery } from '../src/claude/claude-runtime'
 import { AsyncQueue } from '../src/internal/async-queue'
@@ -18,8 +15,17 @@ afterEach(async () => {
   for (const close of cleanup.splice(0)) await close()
 })
 
+/** What the CLI says as it starts: the session the test's turn runs in. */
+const STARTED = {
+  type: 'system',
+  subtype: 'init',
+  session_id: 'fictional-unanswered-stop',
+  cwd: '/tmp/x',
+  tools: [],
+  mcp_servers: [],
+} as unknown as SDKMessage
+
 async function aTurnRunning(answersTheStop: boolean) {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'fictional-unanswered-stop-')))
   const frames = new AsyncQueue<SDKMessage>()
   let closes = 0
   const query: ClaudeQuery = {
@@ -31,23 +37,13 @@ async function aTurnRunning(answersTheStop: boolean) {
     return: async () => frames.close(),
     [Symbol.asyncIterator]: () => frames[Symbol.asyncIterator](),
   }
-  const runtime = new ClaudeRuntime(
+  const claude = new ClaudeRuntime(
     () => query,
     async () => true,
   )
-  const handle = await runtime.start({ cwd: root, providerHome: root })
-  cleanup.push(async () => {
-    await handle.close()
-    rmSync(root, { recursive: true, force: true })
-  })
-  frames.push({
-    type: 'system',
-    subtype: 'init',
-    session_id: 'fictional-claude',
-    cwd: root,
-    tools: [],
-    mcp_servers: [],
-  } as unknown as SDKMessage)
+  const handle = await claude.start({ cwd: '/tmp/x', providerHome: '/tmp/x/home' })
+  cleanup.push(() => handle.close())
+  frames.push(STARTED)
   await vi.waitFor(() => expect(handle.ref).not.toBeNull())
   await handle.send('run the fictional command that never returns')
   expect(handle.status()).toBe('working')
