@@ -17,7 +17,6 @@ import { ACTIVITY_NOW, ACTIVITY_WINDOW, EVERY_CARD } from '../../look/fixtures/r
 import DEFINED_FILE from '../../resources/themes/defined/theme.json'
 import {
   openAChildsWork,
-  openEverySubAgent,
   pointAtTheWorkflow,
   press,
   stackingWindow,
@@ -162,8 +161,7 @@ const STATES: readonly [string, () => Promise<Element>][] = [
     'docked, a workflow under the pointer',
     async () => {
       const m = await stackingWindow()
-      await openEverySubAgent(m)
-      await pointAtTheWorkflow(m)
+        await pointAtTheWorkflow(m)
       return m.host
     },
   ],
@@ -171,8 +169,7 @@ const STATES: readonly [string, () => Promise<Element>][] = [
     'sub-agents nested three deep',
     async () => {
       const m = await stackingWindow()
-      await openEverySubAgent(m)
-      const cards = m.host.querySelectorAll<HTMLElement>('.subagent')
+        const cards = m.host.querySelectorAll<HTMLElement>('.subagent')
       cards[cards.length - 1]?.scrollIntoView({ block: 'center' })
       await pause()
       return m.host

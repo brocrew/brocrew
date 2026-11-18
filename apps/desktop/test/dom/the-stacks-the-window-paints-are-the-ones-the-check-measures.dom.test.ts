@@ -6,7 +6,6 @@ import { validateTheme } from '../../src/shared/themes/validate'
 import DEFINED_FILE from '../../resources/themes/defined/theme.json'
 import {
   openAChildsWork,
-  openEverySubAgent,
   pointAtTheWorkflow,
   stackingWindow,
 } from './a-window-with-a-workflow-and-nested-agents'
@@ -80,7 +79,6 @@ describe('the stacks the window paints', () => {
     const read = wear({ shared: FLAT, tokens: { content: { 'accent-2-text': '#6b6b6b' } } })
     expect(read.ok, 'the check accepts it').toBe(true)
     const m = await stackingWindow()
-    await openEverySubAgent(m)
     const cards = [...m.host.querySelectorAll<HTMLElement>('.subagent')]
     expect(cards.length, 'three nested cards').toBeGreaterThanOrEqual(3)
     const outer = cards[0]!

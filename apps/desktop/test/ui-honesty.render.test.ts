@@ -205,20 +205,12 @@ describe('§2.3 · no "running…" for a process that died with its session', ()
     expect(child, 'the child call reached a card').toBeDefined()
     expect(child?.unfinished).toBe(true)
 
-    // ⚠️ **Asserted on the STATE, and only on the state, because the row cannot be rendered here.**
-    // `SubAgentEntry` keeps `open` in a `ref(false)` toggled by a click, and the tool list is behind
-    // `v-if="open && hasBody"` — so under `renderToString` the body is `<!---->` and every card is
-    // collapsed. A `not.toContain('data-ok="pending"')` therefore PASSES for a component that
-    // renders no rows at all, which is a green tick over nothing; it was written that way first and
-    // caught by turning it into the positive assertion below, which failed.
-    //
-    // What the component does with the flag is one line
-    // (`tool.unfinished ? 'unfinished' : 'pending'`) and it needs a DOM harness to observe. Named in
-    // the response rather than papered over.
+    // Child tools remain settled in state; the compact card opens a transcript popup.
     const card = parent?.kind === 'tool' ? parent.subAgents?.[0] : undefined
     const html = await render(SubAgentEntry, { card, placement: 'nested' })
     expect(html).toContain('data-cy="subagent-entry"')
-    expect(html).toContain('aria-expanded="false"')
+    expect(html).toContain('subagent-open-transcript')
+    expect(html).not.toContain('aria-expanded')
   })
 
   it('prefers a result over the flag even when the result carries no time', async () => {

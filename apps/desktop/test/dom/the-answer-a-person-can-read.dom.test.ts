@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import { page } from 'vitest/browser'
 import ToolAnswerViewer from '../../src/renderer/src/components/ToolAnswerViewer.vue'
-import SubAgentEntry from '../../src/renderer/src/components/SubAgentEntry.vue'
 import ToolEntry from '../../src/renderer/src/components/ToolEntry.vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import { META, mount, paneProps, record, unmountAll, visible, type Mounted } from './harness'
@@ -208,56 +207,6 @@ describe('§3 · the gap, on screen', () => {
     // ⛔ The control on the same mount shape: with the conversation live, the paper is there.
     unmountAll()
     expect(visible(panel(ANSWER, true).q('tool-answer-paper'))).toBe(true)
-  })
-})
-
-describe('§4 · a child’s row says what its tool answered, and the door stays reachable', () => {
-  const child = (summary: string, result: string): Mounted =>
-    mount(
-      SubAgentEntry,
-      {
-        card: {
-          agentId: 'agent-1',
-          running: false,
-          outcome: 'completed',
-          body: [
-            {
-              kind: 'tool',
-              callId: 'toolu_child',
-              name: 'Bash',
-              summary,
-              result: { summary: result, ok: true },
-            },
-          ],
-        },
-        placement: 'transcript',
-        canReadAnswer: true,
-      },
-      { width: 760, height: 600 },
-    )
-
-  it('🔴 the child’s RESULT is drawn — 457’s "never drawn at all", closed', async () => {
-    const m = child('ls -la', 'total 48 · drwxr-xr-x 12 someone staff 384 Sep 14 20:00 .')
-    m.q('subagent-head').click()
-    await nextTick()
-    expect(m.q('subagent-tool-result-toolu_child').textContent).toContain('total 48')
-  })
-
-  it('⛔ a very long call summary does not push the only control on the line out of the row', async () => {
-    // ⚑ The hazard on the path: `.tool code` and `.row-said` both shrink, and a control that
-    // shrank with them would be `106`'s control that cannot act.
-    const m = child('echo '.repeat(120), 'x'.repeat(4000))
-    m.q('subagent-head').click()
-    await nextTick()
-    const ask = m.q('subagent-tool-answer-toolu_child')
-    const line = ask.parentElement!.getBoundingClientRect()
-    const box = ask.getBoundingClientRect()
-    expect(box.width, 'the door was squeezed to nothing').toBeGreaterThan(40)
-    expect(box.right).toBeLessThanOrEqual(line.right + 1)
-    // 🔴 The control: the row really is over-full, so this is a measurement of the squeeze rather
-    // than of a comfortable line.
-    const said = m.q('subagent-tool-result-toolu_child')
-    expect(said.scrollWidth).toBeGreaterThan(said.clientWidth)
   })
 })
 

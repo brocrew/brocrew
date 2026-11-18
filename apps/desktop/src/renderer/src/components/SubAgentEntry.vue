@@ -18,7 +18,9 @@ const emit = defineEmits<{
 }>()
 const anonymous = computed(() => (props.card.origin === 'observed' ? 'nested agent' : 'agent'))
 const openLabel = computed(() => props.card.title || props.card.kind || anonymous.value)
-const status = computed(() => (props.card.running ? 'running' : (props.card.outcome ?? 'unreported')))
+const status = computed(() =>
+  props.card.running ? 'running' : (props.card.outcome ?? 'unreported'),
+)
 const statusLabel = computed(() => (status.value === 'unreported' ? 'ended' : status.value))
 const facets = computed(() => subAgentFacets(props.card))
 

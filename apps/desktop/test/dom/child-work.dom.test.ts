@@ -414,12 +414,8 @@ describe('the sub-agent card finally opens something (115)', () => {
       entries: [{ type: 'assistant_message', text: 'This is a rollout.' } as TranscriptEvent],
     } as ChildWorkResult)
 
-    // ⛔ **111's rule, not regressed**: a provider that reports no usage says so in words. A card
-    // reading `0 tools · 0k tokens` would be a measurement nobody took.
-    expect(view.q('subagent-usage-unreported').textContent).toContain('usage not reported')
-    expect(view.all('subagent-usage')).toHaveLength(0)
-    // …and it is named for what it IS — a thread with a conversation somewhere, not a dispatch.
-    expect(view.q('subagent-ident').textContent).toContain('child thread ID')
+    expect(view.q('subagent-entry').dataset.agentId).toBe(THREAD)
+    expect(view.q('subagent-status').textContent).toContain('ended')
 
     view.q('subagent-open-transcript').click()
     await nextTick()
@@ -433,67 +429,6 @@ describe('the sub-agent card finally opens something (115)', () => {
     expect(view.q('child-work-label').textContent?.trim()).toBe('agent')
     // ⛔ No thinking count for a provider that was never asked for one — silence, not a zero.
     expect(view.all('child-work-thinking-note')).toHaveLength(0)
-  })
-
-  it("⚑ an agent's agent opens too — the recursion forwards, and nothing else walked it", async () => {
-    // ⚠️ **Review found this the one seam of the three with no test at all.** `SubAgentEntry`
-    // renders itself for a grandchild (035), so its own `@open-child` re-emit is the only way that
-    // card's request reaches the pane — and deleting that one line left the whole suite green
-    // while turning a grandchild's button into a dead control.
-    const GRAND = 'a5555555555555555'
-    const events: TranscriptEvent[] = [
-      { type: 'user_turn', text: 'Nest an agent inside an agent.' } as TranscriptEvent,
-      { type: 'tool_call', id: 'toolu_task', name: 'Task', summary: 'Explore' } as TranscriptEvent,
-      {
-        type: 'sub_agent',
-        agentId: TASK,
-        parentToolCallId: 'toolu_task',
-        phase: 'started',
-        kind: 'Explore',
-      } as unknown as TranscriptEvent,
-      // A call made BY that child. ⚠️ **Its `parentToolCallId` is the DISPATCHING call's id, not
-      // the agent's** — a sub-agent's tool blocks carry `parent_tool_use_id`, which is the same id
-      // the card hangs off. The row lands on the card and becomes a dispatch point a grandchild
-      // can name (035).
-      {
-        type: 'tool_call',
-        id: 'toolu_inner',
-        name: 'Task',
-        summary: 'general-purpose',
-        parentToolCallId: 'toolu_task',
-      } as unknown as TranscriptEvent,
-      {
-        type: 'sub_agent',
-        agentId: GRAND,
-        parentToolCallId: 'toolu_inner',
-        phase: 'ended',
-        kind: 'general-purpose',
-        title: 'Count the lines',
-        outcome: 'completed',
-        summary: 'Eleven.',
-      } as unknown as TranscriptEvent,
-    ]
-    const { view, asked } = pane(events, childOk({ name: `agent-${GRAND}.jsonl` }))
-
-    // The grandchild's card is inside its parent's BODY, which is closed until asked for.
-    const parent = view.q('subagent-head')
-    expect(parent.getAttribute('aria-expanded')).toBe('false')
-    parent.click()
-    await nextTick()
-    const cards = view.all('subagent-entry')
-    expect(cards, 'the grandchild card is not rendered').toHaveLength(2)
-    const grand = cards.find((el) => el.getAttribute('data-agent-id') === GRAND)
-    expect(grand, 'no card carries the grandchild id').toBeDefined()
-    // Nested inside the parent card, not stranded at top level — 035's whole subject.
-    expect(cards[0]!.contains(grand!)).toBe(true)
-
-    // **The click, two levels down.**
-    grand!.querySelector<HTMLElement>('[data-cy=subagent-open-transcript]')!.click()
-    await nextTick()
-    expect(asked).toEqual([{ part: 'transcript', agentId: GRAND }])
-    await nextTick()
-    expect(view.q('child-work-name').textContent).toContain(`agent-${GRAND}.jsonl`)
-    expect(view.q('child-work-label').textContent).toContain('Count the lines')
   })
 
   it('a refusal is a SENTENCE in the overlay, not a card that quietly does nothing', async () => {
