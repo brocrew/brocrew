@@ -1,0 +1,70 @@
+name: Finite Windows ticket matrix1625
+on:
+  push:
+    branches: ['diag/windows-ticket1625-matrix-once']
+permissions:
+  contents: read
+jobs:
+  matrix:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.22.0'
+      - name: Bind source, prerequisite and long fictional temp
+        run: |
+          New-Item -ItemType Directory -Force diagnostic-result | Out-Null
+          $temp = Join-Path $env:USERPROFILE 'AppData\Local\Temp'
+          if ($temp.Contains('~') -or -not (Test-Path -LiteralPath $temp -PathType Container)) { throw 'Missing long temp path' }
+          "TEMP=$temp" >> $env:GITHUB_ENV
+          "TMP=$temp" >> $env:GITHUB_ENV
+          git rev-parse HEAD 'HEAD^{tree}' | Tee-Object diagnostic-result/source.txt
+          Copy-Item .operator-diagnostics/w4-1625/part1-landed.txt diagnostic-result/part1-landed.txt
+          $binding = Get-Content .operator-diagnostics/w4-1625/part1-landed.txt
+          if ($binding.Length -ne 2) { throw 'Expected exact landed SHA and tree' }
+          $part1 = $binding[0]
+          $expectedTree = $binding[1]
+          $actualTree = git rev-parse "$part1`^{tree}"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($actualTree -ne $expectedTree) { throw 'Different part-one landed tree' }
+          git merge-base --is-ancestor $part1 HEAD
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item .operator-diagnostics/w4-1625/windows-ticket-matrix.py diagnostic-result/windows-ticket-matrix.py
+          $actual = (Get-FileHash diagnostic-result/windows-ticket-matrix.py -Algorithm SHA256).Hash.ToLowerInvariant()
+          $actual | Tee-Object diagnostic-result/script-sha256.txt
+          if ($actual -ne '27057dcb08b4cff4185e102648888a5b28ce0bac2e61b7cd4900b2d4fc73cbb1') { throw 'Different frozen script' }
+          node -p 'JSON.stringify({node:process.version,uv:process.versions.uv,os:process.platform,arch:process.arch})' | Tee-Object diagnostic-result/node-runtime.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python --version 2>&1 | Tee-Object diagnostic-result/python-runtime.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Compile Python and embedded JavaScript without executing module
+        run: |
+          python -m py_compile diagnostic-result/windows-ticket-matrix.py 2>&1 | Tee-Object diagnostic-result/python-compile.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -c "import ast; from pathlib import Path; t=ast.parse(Path('diagnostic-result/windows-ticket-matrix.py').read_text()); s=next(ast.literal_eval(n.value) for n in t.body if isinstance(n,ast.Assign) and any(isinstance(v,ast.Name) and v.id=='js' for v in n.targets)); Path('diagnostic-result/ticket-matrix-probe.cjs').write_text(s)" 2>&1 | Tee-Object diagnostic-result/extract.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check diagnostic-result/ticket-matrix-probe.cjs 2>&1 | Tee-Object diagnostic-result/node-syntax.txt
+          exit $LASTEXITCODE
+      - name: Execute seven-case diagnostic once
+        run: |
+          $node = (Get-Command node).Source
+          python diagnostic-result/windows-ticket-matrix.py $node 2>&1 | Tee-Object diagnostic-result/matrix-output.txt
+          $result = $LASTEXITCODE
+          $result | Set-Content diagnostic-result/matrix-exit.txt
+          exit $result
+      - name: Keep exact recipe and original output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-ticket-matrix1625
+          path: diagnostic-result/
+          retention-days: 14
+          if-no-files-found: error
