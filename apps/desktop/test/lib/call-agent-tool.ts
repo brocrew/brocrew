@@ -1,3 +1,4 @@
+import { agentToolsFor, type AgentToolHost } from '../../src/main/runtime/agent-tools'
 import type { AgentToolset } from '@brobot2/runtime'
 import type { ToolName } from '../../src/main/runtime/tool-families/catalog'
 
@@ -14,4 +15,16 @@ export async function callAgentTool(
 ): Promise<Record<string, unknown>> {
   const answered = await namedAgentTool(set, name).call(args)
   return answered.structured as Record<string, unknown>
+}
+
+export function structuredAgentToolsFor(host: AgentToolHost, sessionId: string) {
+  const set = agentToolsFor(host, sessionId)
+  const call = async (
+    name: ToolName,
+    args: Record<string, unknown> = {},
+  ): Promise<Record<string, unknown>> => {
+    const answered = await namedAgentTool(set, name).call(args)
+    return (answered.structured ?? {}) as Record<string, unknown>
+  }
+  return { set, call }
 }
