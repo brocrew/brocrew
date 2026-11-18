@@ -133,6 +133,7 @@ import {
 } from '../../../shared/runtime-ipc'
 import { useAgentStore } from '../composables/useAgentStore'
 import { providersNotChosenIn } from '../lib/agent-store'
+import { owedHere } from '../lib/owed-here'
 import { NO_LAUNCH_CHOICES, type LaunchChoices } from '../lib/launch-choices'
 import { pickInAConversation, type PickedModel } from '../lib/model-lists'
 import { useModelLists } from '../composables/useModelLists'
@@ -2123,14 +2124,7 @@ const homeNeedsYou = computed(() =>
     // work whose agent answered a person, read the same way.
     requests: waitingHere.value,
     // ⚑ …and the agents a person has to choose a provider for, as that page counts them.
-    onlyYou:
-      (persons.view.value?.count ?? 0) +
-      (persons.asks.value?.rows.length ?? 0) +
-      (persons.serverRequests.value?.rows.length ?? 0) +
-      (persons.waitingOnWhoWrote.value?.rows.length ?? 0) +
-      persons.workWaits.value.todos.rows.length +
-      persons.workWaits.value.incidents.rows.length +
-      providersNotChosenIn(agentStore.identities.value).length,
+    onlyYou: owedHere(persons, agentStore.identities.value),
     // 🔴 **453 · `mayBeShort`, and it is a FIX rather than a rename.** ⛔ This call site passed
     // `partial` alone while another passed `partial || stale` — `434` widened one of the two — so
     // the rail's summary could say the workspace was quiet over a list that stopped answering. ⚑ The disjunction is derived on the view now, so the two cannot diverge again.
