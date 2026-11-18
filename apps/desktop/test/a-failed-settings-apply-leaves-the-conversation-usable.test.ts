@@ -1,17 +1,18 @@
-import { RecordingSink, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import {
+  RecordingSink,
+  closeHostFixture,
+  fixtureDatabase,
+  fixtureFolder,
+  fixtureHostPaths,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type { AgentRuntime, SessionHandle } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import type { AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { SessionUnavailable } from '../src/main/runtime/session-unavailable'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 
@@ -23,9 +24,6 @@ import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
  * finished putting away its last session". Here the first launch fails its send the same way and
  * its process exit arrives after the drain bound.
  */
-
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 
 const DRAIN_MS = 200
 /** The host's wait for a Stop to settle. */
@@ -56,7 +54,7 @@ describe('a failed settings apply leaves the conversation usable', () => {
   ): RuntimeHost =>
     new RuntimeHost({
       store,
-      ...neutralHostDeps(() => userData),
+      ...fixtureHostPaths(() => userData),
       createRuntime: (provider: Provider) => {
         const inner = new FakeRuntime(provider, { sessions })
         const thisLaunch = ++launches
@@ -114,13 +112,6 @@ describe('a failed settings apply leaves the conversation usable', () => {
           },
         }) as AgentRuntime
       },
-      prepareProviderHome: async (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: () => clock++,
       readProviderConfig: fixtureProviderConfig,
@@ -129,10 +120,9 @@ describe('a failed settings apply leaves the conversation usable', () => {
     })
 
   beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-settings-apply-'))
-    work = mkdtempSync(join(tmpdir(), 'brobot2-settings-apply-work-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    userData = fixtureFolder('brobot2-settings-apply-')
+    work = fixtureFolder('brobot2-settings-apply-work-')
+    db = fixtureDatabase(userData)
     clock = 9_000_000
     store = createSessionStore(db, () => clock++)
     counter = 0
@@ -140,12 +130,7 @@ describe('a failed settings apply leaves the conversation usable', () => {
     sessions = new FakeProviderSessions()
   })
 
-  afterEach(async () => {
-    await host.closeAll()
-    db.close()
-    rmSync(userData, { recursive: true, force: true })
-    rmSync(work, { recursive: true, force: true })
-  })
+  afterEach(() => closeHostFixture(host, db, userData, work))
 
   const turnTexts = (sessionId: string): string[] =>
     store

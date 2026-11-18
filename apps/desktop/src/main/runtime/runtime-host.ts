@@ -25803,6 +25803,7 @@ export class RuntimeHost implements LiveHost {
       })
       let ran: string
       try {
+        await this.settleTheLastLaunch(to)
         ran = await this.ensureRunning(to, theSurfaceAsking(by))
       } catch (error) {
         throw waker === null ? error : new AStartThatDidNotHappen(error)
@@ -31976,17 +31977,12 @@ export class RuntimeHost implements LiveHost {
    * case: a wedged provider must not turn a refused reopen into a hung one. Past the bound the slot
    * is still there and `reserve` refuses — now saying *"still closing"*, which is true.
    *
-   * `forAReopen`: a caller about to {@link reserve} also waits, with a bound of its own, for the
-   * launch a finalized session still holds ({@link settleTheLastLaunch}).
-   *
-   * A slot with nothing being torn down is left completely alone.
+   * A slot with nothing being torn down is left completely alone, so an ordinary reopen pays one
+   * map lookup and two null checks.
    */
-  private async settleTeardown(sessionId: string, forAReopen = false): Promise<void> {
+  private async settleTeardown(sessionId: string): Promise<void> {
     const slot = this.slots.get(sessionId)
-    if (slot === undefined) {
-      if (forAReopen) await this.settleTheLastLaunch(sessionId)
-      return
-    }
+    if (slot === undefined) return
     // Closed before its provider ever arrived: the teardown is the arrival, and `awaitArrival`
     // already bounds and reports exactly that case. `phase` is the only thing that can say so —
     // there is no session yet to hold a promise.
@@ -32006,10 +32002,7 @@ export class RuntimeHost implements LiveHost {
     // `slots.delete`. Both null means nothing is being torn down and there is nothing to wait for.
     const teardown = slot.session.closing ?? slot.session.finalizing
     if (teardown === null) return
-    if (await settledWithin(teardown, this.closeDrainTimeoutMs * 2)) {
-      if (forAReopen && !this.slots.has(sessionId)) await this.settleTheLastLaunch(sessionId)
-      return
-    }
+    if (await settledWithin(teardown, this.closeDrainTimeoutMs * 2)) return
     console.warn(
       `runtime session ${sessionId}: still closing after ${this.closeDrainTimeoutMs * 2}ms — ` +
         'refusing the reopen rather than starting a second provider onto the same transcript',
@@ -32019,11 +32012,14 @@ export class RuntimeHost implements LiveHost {
   /**
    * A finalized session lets go of its slot when its teardown stops waiting, and of its launch only
    * when its provider is confirmed gone: a provider that ends a few seconds later (on Windows the
-   * Claude SDK kills a wedged CLI 7 s after the close) left a reopen in between refused. Waits for
-   * that confirmation for twice the drain bound; past it, or during a quit, `reserve` refuses.
+   * Claude SDK kills a wedged CLI 7 s after the close) left a message delivered in between refused.
+   * A delivery about to start the conversation waits for that confirmation for twice the drain
+   * bound; past it, or during a quit, `reserve` refuses. A direct reopen still refuses at once.
    */
   private async settleTheLastLaunch(sessionId: string): Promise<void> {
     if (this.launches.closed) return
+    const slot = this.slots.get(sessionId)
+    if (slot !== undefined && !onItsWayOut(slot)) return
     const released = this.launches.released(sessionId)
     if (released === null) return
     if (await settledWithin(released, this.closeDrainTimeoutMs * 2)) return
@@ -38135,7 +38131,7 @@ export class RuntimeHost implements LiveHost {
     const waiting = sink === null ? null : this.beginOwnedWait(sink.ownerId)
     try {
       if (this.startupRepairs.has(sessionId)) await this.settleBeforeUse(sessionId)
-      await this.settleTeardown(sessionId, true)
+      await this.settleTeardown(sessionId)
       // ⛔ **The generation fence.** Between the line above and this one the window may have been
       // reloaded, crashed or destroyed, and `closeSessionsForOwner` will have closed the slots that
       // existed without ever seeing this reopen. Asked BEFORE {@link attachHeldSession}, so a
