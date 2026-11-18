@@ -7,7 +7,7 @@ import { WindowReadEngine } from '../src/main/db/window-read-engine'
 import type { WindowReadQuery } from '../src/main/db/window-read-protocol'
 import { windowWriterSampler } from '../src/main/db/window-writer-stamp'
 import { sameWindowWriter } from '../src/main/db/window-routing-reads'
-import { eventTrimWriter } from '../src/main/db/event-retention'
+import { eventTrimWriter, trimOldEvents } from '../src/main/db/event-retention'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 
 function fixture() {
@@ -71,7 +71,7 @@ it.each<TranscriptEvent>([
       const reads = f.read.mock.calls.length
       f.announce.mockClear()
       f.statesMoved.mockClear()
-      expect(f.remove(old).changed).toBe(1)
+      expect(f.remove(old)).toMatchObject({ changed: 1, removedByType: { [event.type]: 1 } })
       await f.settle()
       const after = await f.listing()
       expect(after.resumable).toEqual(before.resumable)
@@ -151,7 +151,10 @@ it('does not hide an unsafe deletion in the same native batch', async () => {
     await f.settle()
     await f.listing()
     const reads = f.read.mock.calls.length
-    expect(f.remove(old, context).changed).toBe(2)
+    expect(f.remove(old, context)).toMatchObject({
+      changed: 2,
+      removedByType: { assistant_delta: 1, context_reading: 1 },
+    })
     await f.settle()
     await f.listing()
     expect(f.read.mock.calls.length).toBeGreaterThan(reads)
@@ -239,6 +242,31 @@ it('a rolled-back trim publishes nothing and leaves the warm answer usable', asy
     expect(sameWindowWriter(stamp, f.sample({ kind: 'listing' }))).toBe(true)
     expect(f.read.mock.calls.length).toBe(reads)
     expect(f.announce).not.toHaveBeenCalled()
+  } finally {
+    await f.close()
+  }
+})
+
+it('aggregates actual deleted kinds through the existing writer and sweep result', async () => {
+  const f = fixture()
+  try {
+    f.world.db.transaction(() => {
+      for (let n = 0; n < 1004; n++) {
+        f.add({ type: 'thinking', phase: 'delta', text: 'Fictional history' })
+        f.add({ type: 'assistant_delta', text: 'Fictional history' })
+      }
+    })()
+    const write = eventTrimWriter(f.world.db)
+    const result = await trimOldEvents(
+      join(f.world.folder, 'brobot2.sqlite'),
+      () => false,
+      async (batch) => write(batch),
+      10 * 86_400_000,
+    )
+    expect(result.removed).toBe(8)
+    expect(result.removedByType).toEqual({ thinking: 4, assistant_delta: 4 })
+    expect(result.unattributedRemoved).toBe(0)
+    expect(result.budgetReached).toBe(false)
   } finally {
     await f.close()
   }

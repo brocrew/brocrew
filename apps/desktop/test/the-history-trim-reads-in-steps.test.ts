@@ -244,6 +244,8 @@ it('reads each conversation in steps and selects exactly the rows the one query 
       'anchors-0-7',
     ])
     expect(result.removed).toBe(expected.length)
+    expect(result.removedByType).toEqual({})
+    expect(result.unattributedRemoved).toBe(expected.length)
     expect(result.deferredConversations).toBe(1)
     const byType = new Map<string, number>()
     for (const id of expected) byType.set(typeOf(id), (byType.get(typeOf(id)) ?? 0) + 1)
