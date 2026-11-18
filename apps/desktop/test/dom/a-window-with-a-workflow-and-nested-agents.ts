@@ -155,18 +155,6 @@ export async function stackingWindow(
   return m
 }
 
-/** Every sub-agent card opened, three deep. */
-export async function openEverySubAgent(m: Mounted): Promise<void> {
-  for (let depth = 0; depth < 3; depth++) {
-    for (const head of [
-      ...m.host.querySelectorAll<HTMLElement>('[data-cy="subagent-head"][aria-expanded="false"]'),
-    ]) {
-      head.click()
-      await settle()
-    }
-  }
-}
-
 /** The workflow's head, scrolled into view and under the pointer. */
 export async function pointAtTheWorkflow(m: Mounted): Promise<HTMLElement> {
   const head = m.host.querySelector<HTMLElement>('[data-cy="workflow-head"]')!

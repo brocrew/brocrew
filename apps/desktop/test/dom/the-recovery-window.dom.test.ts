@@ -324,12 +324,9 @@ describe('recorded rows whose controls need what this window lacks', () => {
     const transcript = view.q('recovery-transcript')
     await disclose(view)
 
-    // Both sub-agent cards and the workflow tree opened: the local disclosures still work.
-    expect(view.all('subagent-entry')).toHaveLength(2)
-    expect(view.all('subagent-summary').map((el) => el.textContent?.trim())).toEqual([
-      'Twelve pages.',
-      'The notes cover three topics.',
-    ])
+    // Recovery keeps the compact parent card; inline child output is retired.
+    expect(view.all('subagent-entry')).toHaveLength(1)
+    expect(view.all('subagent-summary')).toHaveLength(0)
     expect(view.all('workflow-agent')).toHaveLength(3)
 
     for (const cy of ACTIONS) expect(view.all(cy), cy).toHaveLength(0)
@@ -341,11 +338,7 @@ describe('recorded rows whose controls need what this window lacks', () => {
     expect(view.q('image-file-name').textContent).toBe('lighthouse-sketch.png')
     expect(view.q('image-caption').textContent).toContain('pencil sketch of a lighthouse')
 
-    // Each card keeps its id, each agent its label, and the run its output file's name.
-    expect(view.all('subagent-agent-id').map((el) => el.textContent)).toEqual([
-      'agent-outer',
-      'agent-inner',
-    ])
+    expect(view.q('subagent-entry').dataset.agentId).toBe('agent-outer')
     expect(view.all('workflow-agent-label-plain').map((el) => el.textContent)).toEqual([
       'reader:one',
       'reader:two',
