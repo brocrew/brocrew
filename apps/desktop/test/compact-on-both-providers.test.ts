@@ -721,14 +721,18 @@ describe('713 §2 · R59 at every door, on a double that compacts on request', (
       await callOn(agentToolsFor(app.host, parent), 'compact_agent', { agent: target }),
     ).toMatchObject({ outcome: 'busy' })
     expect(userTurns(app.ledger(target))).toHaveLength(turnsBefore)
-    expect(app.ledger(target).filter((event) => event.type === 'message_queued')).toHaveLength(queuedBefore)
+    expect(app.ledger(target).filter((event) => event.type === 'message_queued')).toHaveLength(
+      queuedBefore,
+    )
     expect(turnsEnded(app.ledger(target), 'interrupted')).toBe(0)
     expect(handle.compactions).toBe(0)
     await app.host.respondPermission(target, aPendingCard(target), { outcome: 'allow' }, app.window)
     await waitFor(() => handle.status() === 'idle', 'original turn settled')
     expect(handle.compactions).toBe(0)
     expect(userTurns(app.ledger(target))).toHaveLength(turnsBefore)
-    expect(app.ledger(target).filter((event) => event.type === 'message_queued')).toHaveLength(queuedBefore)
+    expect(app.ledger(target).filter((event) => event.type === 'message_queued')).toHaveLength(
+      queuedBefore,
+    )
   })
 
   it('status reports only the context the provider reported, including zero and a known window', async () => {
