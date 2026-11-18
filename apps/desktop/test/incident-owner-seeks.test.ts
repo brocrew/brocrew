@@ -111,7 +111,12 @@ it('seeks both Stop kinds without walking other fold rows and retains torn-after
   w.append('person', { type: 'work_interrupted', by: 'an-agent', agent: 'agent' }, 20)
   w.append(
     'person',
-    { type: 'user_decision', requestId: 'fictional-cancel', outcome: 'cancel', by: { who: 'a-person' } },
+    {
+      type: 'user_decision',
+      requestId: 'fictional-cancel',
+      outcome: 'cancel',
+      by: { who: 'a-person' },
+    },
     30,
   )
   const torn = w.store.nextOrdinal('person')
