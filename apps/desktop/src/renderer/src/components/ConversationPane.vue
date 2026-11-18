@@ -1746,14 +1746,14 @@ watch(
   },
 )
 
-async function openWorkflowOutput(taskId: string, workflow: string): Promise<void> {
+async function openWorkflowOutput(taskId: string, workflow: string, shortMiss = false): Promise<boolean> {
   const read = props.onReadWorkflowOutput
-  if (!read) return
-  // Captured BEFORE the await: the reader can switch conversation while the file is being read, and
-  // stamping the id afterwards would attribute this document to whatever is on screen when it
-  // lands. The `outputFor` guard then hides it, which is the same two-part answer 067 uses.
+  if (!read) return false
+  // Keep the result with the conversation that requested it.
   const sessionId = props.record.sessionId
-  readingOutput.value = { sessionId, workflow, result: await read(taskId) }
+  const result = await read(taskId)
+  if (!shortMiss || result.ok) readingOutput.value = { sessionId, workflow, result }
+  return result.ok
 }
 
 /**
@@ -1771,23 +1771,23 @@ async function openResource(resourceId: string): Promise<void> {
   await documentOverlay.value?.open(resourceId, row)
 }
 
-async function openChildWork(what: ChildWorkInput, label: string): Promise<void> {
+async function openChildWork(what: ChildWorkInput, label: string, shortMiss = false): Promise<boolean> {
   const read = props.onReadChildWork
-  if (!read) return
+  if (!read) return false
   // Captured before the await, exactly as above.
   const sessionId = props.record.sessionId
   const agentId = what.part === 'transcript' ? what.agentId : null
-  readingChild.value = { sessionId, label, agentId, result: await read(what) }
+  const result = await read(what)
+  if (!shortMiss || result.ok) readingChild.value = { sessionId, label, agentId, result }
+  return result.ok
 }
 
 async function openPanelRun(run: RunTarget): Promise<boolean> {
   if (run.kind === 'agent' && props.onReadChildWork) {
-    await openChildWork({ part: 'transcript', agentId: run.id }, run.label)
-    return true
+    return openChildWork({ part: 'transcript', agentId: run.id }, run.label, true)
   }
   if (run.kind === 'workflow' && props.onReadWorkflowOutput) {
-    await openWorkflowOutput(run.id, run.label)
-    return true
+    return openWorkflowOutput(run.id, run.label, true)
   }
   return false
 }
