@@ -7608,6 +7608,11 @@ export class RuntimeHost implements LiveHost {
         this.everyKeptReadingIsStale()
         return
       }
+      if (change.historyOnly) {
+        // Historical pages changed, while the listing, routing and current states did not.
+        this.deps.announce?.({ what: 'conversations' })
+        return
+      }
       // A rebuild's batches change nothing a reader of the active ledger sees.
       if (
         change.rows.length > 0 ||

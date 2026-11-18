@@ -10,6 +10,7 @@ import {
 } from './event-retention-policy'
 import type { AppDatabase } from './connection'
 import { committedChangesOf } from './committed-changes'
+import { runtimeEventSchema } from '@brobot2/runtime'
 
 const KEEP_DAYS = 3
 const BATCH_ROWS = 200
@@ -57,15 +58,31 @@ export function eventTrimWriter(db: AppDatabase): (batch: EventTrimBatch) => Eve
     FROM provider_session s LEFT JOIN derived_generation g ON g.session_id=s.id WHERE s.id=?`)
   // The unary plus keeps the conversation check off the indexes: the delete then seeks each id by
   // the primary key, instead of reading every row of the conversation through `session_id`.
-  const remove = db.prepare(`DELETE FROM events
+  const candidates = `FROM events
     WHERE +session_id = @session AND id IN (SELECT value FROM json_each(@ids))
-      AND (created_at < @before OR type IN ('provider_commands','tool_inventory','launched'))`)
+      AND (created_at < @before OR type IN ('provider_commands','tool_inventory','launched'))`
+  const selected = db.prepare(`SELECT type, payload ${candidates}`)
+  const remove = db.prepare(`DELETE ${candidates}`)
   const write = db.transaction((batch: EventTrimBatch) => {
     const current = generation.get(batch.session) as
       { active: number; building: number | null } | undefined
     if (!current || current.active !== batch.active || current.building !== null) return null
-    const changed = remove.run({ ...batch, ids: JSON.stringify(batch.ids) }).changes
-    if (changed > 0) committed.whole(batch.session, 'trimmed')
+    const parameters = { ...batch, ids: JSON.stringify(batch.ids) }
+    const rows = selected.all(parameters) as { type: string; payload: string }[]
+    const historyOnly = rows.every((row) => {
+      if (row.type !== 'thinking' && row.type !== 'assistant_delta') return false
+      try {
+        const parsed = runtimeEventSchema.safeParse(JSON.parse(row.payload))
+        return parsed.success && parsed.data.type === row.type
+      } catch {
+        return false
+      }
+    })
+    const changed = remove.run(parameters).changes
+    if (changed > 0) {
+      committed.whole(batch.session, 'trimmed')
+      if (historyOnly && changed === rows.length) committed.historyTrimmed(changed)
+    }
     return changed
   })
   return (batch) => {
@@ -73,7 +90,7 @@ export function eventTrimWriter(db: AppDatabase): (batch: EventTrimBatch) => Eve
     const changed = write.immediate(batch)
     const durationMs = performance.now() - began
     const checkpointBegan = performance.now()
-    if (changed !== null) db.pragma('wal_checkpoint(PASSIVE)')
+    if (changed !== null && !db.inTransaction) db.pragma('wal_checkpoint(PASSIVE)')
     return { changed, durationMs, checkpointMs: performance.now() - checkpointBegan }
   }
 }
