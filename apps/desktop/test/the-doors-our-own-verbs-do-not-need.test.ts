@@ -1,10 +1,11 @@
+import { personOpener } from './helpers/person-opens-session'
 import {
-  openAgentTestConversation,
+  createAgentTestHost,
   makeAgentTestIdentity,
   grantAgentTestCapabilities,
 } from './lib/agent-test-operations'
 import { structuredAgentToolsFor } from './lib/call-agent-tool'
-import { fixtureProviderConfig, closeHostFixture, fixtureHostPaths } from './lib/host-fixture'
+import { closeHostFixture } from './lib/host-fixture'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -16,7 +17,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import type { RuntimeHost, RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentCallerId, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import {
   MESSAGE_RAILS,
@@ -166,21 +167,19 @@ describe('486 · the doors our own verbs do not need', () => {
     store = createSessionStore(db, tick)
     counter = 0
     sessions = new FakeProviderSessions()
-    host = new RuntimeHost({
+    host = createAgentTestHost(
       store,
-      ...fixtureHostPaths(() => userData),
-      createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions }),
-      newSessionId: () => `sess_${++counter}`,
-      now: tick,
-      readProviderConfig: fixtureProviderConfig,
-    })
+      () => userData,
+      (provider: Provider) => new FakeRuntime(provider, { sessions }),
+      () => `sess_${++counter}`,
+      tick,
+    )
     window = new RecordingSink('webContents:1')
   })
 
   afterEach(() => closeHostFixture(host, db, userData, work))
 
-  const personOpens = (profileId: string): Promise<string> =>
-    openAgentTestConversation(host, window, work, profileId, 'ask')
+  const personOpens = personOpener(() => ({ host, root: work, window }), 'ask')
 
   /** The toolset one session is offered, called the way a provider would call it. */
   const toolsOf = (sessionId: string) => structuredAgentToolsFor(host, sessionId)

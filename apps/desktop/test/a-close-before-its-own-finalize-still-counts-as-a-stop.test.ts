@@ -1,5 +1,10 @@
-import { RecordingSink, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  RecordingSink,
+  neutralHostDeps,
+  fixtureProviderConfig,
+  closeHostFixture,
+} from './lib/host-fixture'
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -159,12 +164,7 @@ describe('M55 · a Close counts as a stop before its own finalize', () => {
     window = new RecordingSink('webContents:1')
   })
 
-  afterEach(async () => {
-    await host.closeAll()
-    db.close()
-    rmSync(userData, { recursive: true, force: true })
-    rmSync(work, { recursive: true, force: true })
-  })
+  afterEach(() => closeHostFixture(host, db, userData, work))
 
   const until = async (check: () => boolean | Promise<boolean>, what: string): Promise<void> => {
     for (let n = 0; n < 400; n += 1) {

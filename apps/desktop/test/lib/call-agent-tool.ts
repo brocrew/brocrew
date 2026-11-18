@@ -2,7 +2,7 @@ import { agentToolsFor, type AgentToolHost } from '../../src/main/runtime/agent-
 import type { AgentToolset } from '@brobot2/runtime'
 import type { ToolName } from '../../src/main/runtime/tool-families/catalog'
 
-export function namedAgentTool(set: AgentToolset, name: ToolName): AgentToolset['tools'][number] {
+export function namedAgentTool(set: AgentToolset, name: string): AgentToolset['tools'][number] {
   const tool = set.tools.find((one) => one.name === name)
   if (tool === undefined) throw new Error(`no such tool: ${name}`)
   return tool
@@ -10,7 +10,7 @@ export function namedAgentTool(set: AgentToolset, name: ToolName): AgentToolset[
 
 export async function callAgentTool(
   set: AgentToolset,
-  name: ToolName,
+  name: string,
   args: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const answered = await namedAgentTool(set, name).call(args)

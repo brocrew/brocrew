@@ -1,6 +1,11 @@
 import { callOn } from './helpers/call-agent-tool'
-import { fixtureProviderConfig, neutralHostDeps, syntheticProviderHome } from './lib/host-fixture'
-import { mkdtempSync, rmSync } from 'node:fs'
+import {
+  fixtureProviderConfig,
+  neutralHostDeps,
+  syntheticProviderHome,
+  closeHostFixture,
+} from './lib/host-fixture'
+import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -88,11 +93,7 @@ describe('M77 · a second answer to an already-answered question', () => {
     window = new RecordingSink('webContents:1')
   })
 
-  afterEach(async () => {
-    await host.closeAll()
-    db.close()
-    for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
-  })
+  afterEach(() => closeHostFixture(host, db, userData, root))
 
   const lastToolset = (): AgentToolset => {
     const last = handed.at(-1)

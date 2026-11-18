@@ -59,7 +59,7 @@ import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
 import { howYouWork } from './lib/the-core'
-import { fixtureProviderConfig } from './lib/host-fixture'
+import { fixtureProviderConfig, waitFor } from './lib/host-fixture'
 
 /**
  * # what an agent was given — recorded with each launch and each turn, read in one go
@@ -201,14 +201,6 @@ describe('what an agent was given', () => {
 
   const ledger = (sessionId: string): TranscriptEvent[] =>
     store.events(sessionId).map((entry) => entry.event)
-
-  const waitFor = async (predicate: () => boolean, what: string): Promise<void> => {
-    for (let attempt = 0; attempt < 400; attempt++) {
-      if (predicate()) return
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
-    throw new Error(`timed out waiting for ${what}`)
-  }
 
   const turnsOf = (sessionId: string): UserTurnEvent[] =>
     ledger(sessionId).filter((event): event is UserTurnEvent => event.type === 'user_turn')

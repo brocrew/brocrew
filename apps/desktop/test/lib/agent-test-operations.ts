@@ -1,5 +1,10 @@
+import { fixtureHostPaths, fixtureProviderConfig } from './host-fixture'
 import { expect } from 'vitest'
-import type { RuntimeHost, RuntimeEventSink } from '../../src/main/runtime/runtime-host'
+import {
+  RuntimeHost,
+  type RuntimeEventSink,
+  type RuntimeHostDeps,
+} from '../../src/main/runtime/runtime-host'
 import type { SessionStore } from '../../src/main/db/session-store'
 
 export async function openAgentTestConversation(
@@ -31,4 +36,21 @@ export function grantAgentTestCapabilities(
   edit: Parameters<SessionStore['setCapabilities']>[1],
 ): void {
   expect(store.setCapabilities(profileId, edit)).toBe(true)
+}
+
+export function createAgentTestHost(
+  store: RuntimeHostDeps['store'],
+  root: () => string,
+  createRuntime: RuntimeHostDeps['createRuntime'],
+  newSessionId: RuntimeHostDeps['newSessionId'],
+  now: () => number,
+): RuntimeHost {
+  return new RuntimeHost({
+    store,
+    ...fixtureHostPaths(root),
+    createRuntime,
+    newSessionId,
+    now,
+    readProviderConfig: fixtureProviderConfig,
+  })
 }

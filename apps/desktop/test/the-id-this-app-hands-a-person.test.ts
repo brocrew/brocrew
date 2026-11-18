@@ -1,3 +1,4 @@
+import { createAgentTestHost } from './lib/agent-test-operations'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -23,7 +24,6 @@ import {
   RecordingSink,
   neutralHostDeps,
   closeHostFixture,
-  fixtureHostPaths,
 } from './lib/host-fixture'
 
 /**
@@ -100,14 +100,13 @@ describe('510 · the id this app hands a person', () => {
     store = createSessionStore(db, tick)
     counter = 0
     sessions = new FakeProviderSessions()
-    host = new RuntimeHost({
+    host = createAgentTestHost(
       store,
-      ...fixtureHostPaths(() => userData),
-      createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions }),
-      newSessionId: () => `sess_${++counter}`,
-      now: tick,
-      readProviderConfig: fixtureProviderConfig,
-    })
+      () => userData,
+      (provider: Provider) => new FakeRuntime(provider, { sessions }),
+      () => `sess_${++counter}`,
+      tick,
+    )
     window = new RecordingSink('webContents:1')
   })
 

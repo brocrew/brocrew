@@ -1,3 +1,4 @@
+import { callAgentTool } from './lib/call-agent-tool'
 import { openAgentTestConversation } from './lib/agent-test-operations'
 import { ToolWatchingRuntime } from './lib/provider-double'
 import type { SessionInstructions } from '../src/shared/instruction-contracts'
@@ -8,8 +9,7 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, type AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import type { AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
@@ -23,7 +23,12 @@ import {
   type RuntimeEventMessage,
 } from '../src/shared/runtime-ipc'
 import { HUMAN_NAMES, aNameForANewAgent, aNameKey } from '../src/shared/human-names'
-import { neutralHostDeps, fixtureProviderConfig, closeHostFixture } from './lib/host-fixture'
+import {
+  neutralHostDeps,
+  fixtureProviderConfig,
+  closeHostFixture,
+  fixtureDatabase,
+} from './lib/host-fixture'
 
 /**
  * # 🔴 584 · seed one identity, and generate the names
@@ -115,8 +120,7 @@ describe('584 · seed one identity, and generate the names', () => {
   beforeEach(() => {
     userData = mkdtempSync(join(tmpdir(), 'brobot2-584-'))
     work = mkdtempSync(join(tmpdir(), 'brobot2-584-work-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    db = fixtureDatabase(userData)
     clock = 5_000_000
     store = createSessionStore(db, tick)
     counter = 0
@@ -131,15 +135,7 @@ describe('584 · seed one identity, and generate the names', () => {
   const personOpens = (profileId: string): Promise<string> =>
     openAgentTestConversation(host, window, work, profileId, 'ask')
 
-  const callOn = async (
-    toolset: AgentToolset,
-    name: string,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
+  const callOn = callAgentTool
 
   const toolsOfLastLaunch = (): AgentToolset => {
     const one = handed.at(-1)

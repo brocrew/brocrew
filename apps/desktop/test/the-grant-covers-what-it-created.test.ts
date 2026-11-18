@@ -1,5 +1,6 @@
+import { openAgentTestConversation } from './lib/agent-test-operations'
 import type { SessionInstructions } from '../src/shared/instruction-contracts'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -22,7 +23,12 @@ import {
   type IdentityCreator,
   type RuntimeEventMessage,
 } from '../src/shared/runtime-ipc'
-import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import {
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+  closeHostFixture,
+} from './lib/host-fixture'
 import { ToolWatchingRuntime } from './lib/provider-double'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -133,20 +139,10 @@ describe('598 · the grant covers what it created', () => {
     })
   })
 
-  afterEach(async () => {
-    await host.closeAll()
-    db.close()
-    rmSync(userData, { recursive: true, force: true })
-    rmSync(work, { recursive: true, force: true })
-  })
+  afterEach(() => closeHostFixture(host, db, userData, work))
 
-  const personOpens = async (profileId: string): Promise<string> => {
-    const { sessionId } = await host.createSession(
-      { provider: 'claude', profileId, cwd: work, approvalMode: 'ask' },
-      window,
-    )
-    return sessionId
-  }
+  const personOpens = (profileId: string): Promise<string> =>
+    openAgentTestConversation(host, window, work, profileId, 'ask')
 
   const openAndClose = async (profileId: string): Promise<void> => {
     await host.close(await personOpens(profileId), window)

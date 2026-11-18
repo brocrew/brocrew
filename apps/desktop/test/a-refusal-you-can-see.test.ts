@@ -1,3 +1,4 @@
+import { RecordingSink } from './lib/f093-host'
 import {
   openAgentTestConversation,
   makeAgentTestIdentity,
@@ -16,7 +17,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { permanenceOf, retryableOf, refuse } from '../src/main/runtime/spawn-rails'
 import type { AgentToolHost } from '../src/main/runtime/agent-tools'
@@ -39,7 +40,6 @@ import {
 import { applyEvent, createTranscript, type NoticeItem } from '../src/renderer/src/lib/transcript'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { isVisibleIn } from '../src/renderer/src/lib/transcript-mode'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { permanenceInWords } from '../src/main/runtime/agent-tool-answer-words'
 import {
   syntheticProviderHome,
@@ -84,17 +84,6 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
  * `unknown-profile` is the give's `no-such-profile` (R3). Every rail below is re-aimed at it.
  */
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = false
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 describe('405 · a refusal you can see', () => {
   let userData: string
   let work: string
@@ -117,7 +106,7 @@ describe('405 · a refusal you can see', () => {
     counter = 0
     sessions = new FakeProviderSessions()
     host = aHostOn(store)
-    window = new RecordingSink('webContents:1')
+    window = new RecordingSink('webContents:1', false)
   })
 
   /** A host on one store, as the app builds it at a launch. */
@@ -734,7 +723,7 @@ describe('405 · a refusal you can see', () => {
       host = aHostOn(store)
       expect(theRefusalIn(pm).told).toEqual({ text: sentence, dropped: 0 })
       // ⚑ …and it is in the page a window is handed when it opens the conversation.
-      const opened = await host.look(pm, new RecordingSink('webContents:2'), false)
+      const opened = await host.look(pm, new RecordingSink('webContents:2', false), false)
       const drawn = opened.history.entries
         .map((one) => one.event)
         .filter((one): one is ToolRefusedEvent => one.type === 'tool_refused')
