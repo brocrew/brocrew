@@ -178,7 +178,9 @@ describe('250 · the header pill', () => {
     // over 251's diff). The tool card prints the same command in the same pane, so a loose
     // `toContain('node -e')` held even when the row showed the description — an assertion about the
     // row that could not fail for the row.
-    const row = html.replace(/<!--[\s\S]*?-->/g, '').split('data-cy="panel-run-background:b6uoyo82k"')[1]
+    const row = html
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .split('data-cy="panel-run-background:b6uoyo82k"')[1]
     expect(row, 'the background run row is present').toBeDefined()
     const label = row?.match(/data-cy="panel-run-label"[^>]*>([\s\S]*?)<\/strong>/)?.[1]
     expect(label).toBe('node -e &quot;…&quot;')
@@ -408,7 +410,7 @@ describe('258 · the header pill and the bar it points at', () => {
     expect(html).toContain('data-cy="schedule-open-e3826cc5"')
     expect(html).toContain('data-cy="schedule-open-e3826cc5"')
     const stripped = html.replace(/<!--[\s\S]*?-->/g, '')
-    expect(stripped).toContain('1 job is scheduled')
+    expect(stripped).toContain('Coming up')
     expect(stripped).toContain('*/2 * * * *')
     // ⛔ **And `248`'s bar is NOT drawn**, which is what makes this a fact about the schedule rather
     // than about a registry that happened to be full.

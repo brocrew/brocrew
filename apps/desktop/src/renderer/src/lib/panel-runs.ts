@@ -1,8 +1,9 @@
 import { cardHomes, type TranscriptState, type WorkflowRunCard } from './transcript'
 import { backgroundState, BACKGROUND_WORD } from './background-work'
+import { durationWords, toolTook } from './tool-outcome'
 import type { ScheduledRow } from '../../../shared/agent-state-contracts'
 
-export type RunGroup = 'Agents' | 'Commands' | 'Workflows' | 'Jobs & monitors'
+export type RunGroup = 'Agents' | 'Commands' | 'Workflows' | 'Jobs & monitors' | 'Background'
 export type RunTarget = { kind: 'agent' | 'workflow'; id: string; label: string }
 export type OpenPanelRun = (target: RunTarget) => Promise<boolean>
 export interface PanelRun {
@@ -15,6 +16,7 @@ export interface PanelRun {
   failed: boolean
   icon: string
   order: number
+  time?: string
   itemId?: string
   stopId?: string
   target?: RunTarget
@@ -55,6 +57,7 @@ export function panelRuns(state: TranscriptState): PanelRuns {
       active,
       failed: !active && card.outcome === 'failed',
       icon: '#i-bot',
+      time: card.usage?.ms === undefined ? undefined : durationWords(card.usage.ms),
       order: items.get(itemId)?.order ?? 0,
       itemId,
       ...(background ? { stopId: background.id } : {}),
@@ -86,6 +89,7 @@ export function panelRuns(state: TranscriptState): PanelRuns {
         order,
         itemId,
         workflow: run,
+        time: run.usage?.ms === undefined ? undefined : durationWords(run.usage.ms),
         ...(background ? { stopId: background.id } : {}),
         target: { kind: 'workflow', id: run.taskId, label: run.name || 'Workflow' },
       })
@@ -103,6 +107,7 @@ export function panelRuns(state: TranscriptState): PanelRuns {
         status: BACKGROUND_WORD[backgroundState(work)],
         active: false,
         failed: work.outcome === 'failed',
+        time: toolTook(item, item.at) ?? undefined,
         icon: '#i-terminal',
         order,
         itemId,
@@ -111,13 +116,12 @@ export function panelRuns(state: TranscriptState): PanelRuns {
   }
   for (const work of live) {
     if (claimed.has(work.id)) continue
-    const monitor = work.kind === 'monitor'
-    const job = work.kind === 'job'
+    const group: RunGroup = work.kind === 'monitor' || work.kind === 'job' ? 'Jobs & monitors' : work.kind === 'local_bash' || work.kind === 'shell' ? 'Commands' : work.kind === 'local_agent' || work.kind === 'remote_agent' || work.kind === 'subagent' ? 'Agents' : work.kind === 'workflow' ? 'Workflows' : 'Background'
     rows.push({
       key: `background:${work.id}`,
       label: work.command?.text || work.description || work.id,
-      detail: work.command?.name || work.kind || 'Background',
-      group: monitor || job ? 'Jobs & monitors' : 'Commands',
+      detail: work.command?.name || group,
+      group,
       status: 'Running',
       active: true,
       failed: false,
