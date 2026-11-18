@@ -62,8 +62,11 @@ describe('every test project runs in a fictional home', () => {
 
     const desktop = codeOf(read('apps/desktop/vitest.config.ts'))
     expect(desktop).toContain("name: 'desktop'")
-    expect(desktop).toContain('env: theTestsEnv(),')
-    expect(desktop).toContain('setupFiles: [THE_GUARD],')
+    for (const path of ['apps/desktop/vitest.config.ts', 'vitest.agent-processes.config.ts']) {
+      const config = codeOf(read(path))
+      expect(config, path).toContain('env: theTestsEnv(),')
+      expect(config, path).toContain('setupFiles: [THE_GUARD],')
+    }
 
     // ⚑ The root config's other projects: the desktop one above, and the one that runs in a browser,
     // which reads no file.
@@ -89,6 +92,7 @@ describe('every test project runs in a fictional home', () => {
     // The test above reads each of these.
     const sealed = [
       'apps/desktop/vitest.config.ts',
+      'vitest.agent-processes.config.ts',
       'vitest.config.ts',
       'vitest.gate-only.config.ts',
     ]
