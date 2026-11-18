@@ -149,6 +149,4 @@ describe('the scheduled-jobs block folds', () => {
     expect(visible(m.q('schedule-row-job0'))).toBe(true)
     expect(m.q('schedule-head').textContent?.trim()).toBe('1 job is scheduled')
   })
-
-
 })
