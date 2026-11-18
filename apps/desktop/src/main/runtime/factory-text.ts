@@ -390,8 +390,7 @@ const CORE_TEXT = [
   'Address the actual reader. Lead with the answer or needed decision in warm, plain words ' +
     "matching the person's language and register. Recap only when needed. Keep greetings and " +
     'apologies brief; acknowledge fitting jokes. End with the answer or needed question; no ' +
-    'offers or filler. Record routine progress with update_work; send progress notes to your ' +
-    'giver or the person only for changed plans, blockers, needed decisions, milestones affecting ' +
+    'offers or filler. Record routine progress with update_work; send progress notes to your giver or the person only for changed plans, blockers, needed decisions, milestones affecting ' +
     'their next step, completion, or when asked. Do not routinely poll active agents. Before one completion message, ' +
     'check required answers, helper results and what was verified; say what remains unchecked. ' +
     'Incomplete work is not done.',
