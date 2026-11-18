@@ -516,6 +516,19 @@ function walkLedgers<Row, Candidate extends { id: string }>(
   }
 }
 
+function stalledInOrder(found: LedgerWalk<PieceRow>): LedgerWalk<PieceRow> {
+  const when = (piece: PieceRow): number => piece.stalledAt ?? Number.MAX_SAFE_INTEGER
+  return {
+    walk: found.walk,
+    ledgers: found.ledgers,
+    rowsUnread: found.rowsUnread,
+    ...ledgersSkippedOf(found.ledgersSkipped),
+    rows: [...found.rows].sort(
+      (left, right) => when(left) - when(right) || (left.piece < right.piece ? -1 : 1),
+    ),
+  }
+}
+
 interface GivenWorkRow {
   readonly id: string
   readonly identity: string | null
@@ -5574,16 +5587,7 @@ export function createSessionStore(
           ).filter((piece) => piece.state === 'stalled' && piece.stalledAt !== null),
         unread,
       )
-      const when = (piece: PieceRow): number => piece.stalledAt ?? Number.MAX_SAFE_INTEGER
-      return {
-        walk: found.walk,
-        ledgers: found.ledgers,
-        rowsUnread: found.rowsUnread,
-        ...ledgersSkippedOf(found.ledgersSkipped),
-        rows: [...found.rows].sort(
-          (left, right) => when(left) - when(right) || (left.piece < right.piece ? -1 : 1),
-        ),
-      }
+      return stalledInOrder(found)
     },
     stalledWorkItsGiverWasToldAbout(counted, noOpenPieces) {
       const holders = selectOwnersOfPiecesAConversationGave.all() as { id: string }[]
@@ -5609,16 +5613,7 @@ export function createSessionStore(
               ),
         unread,
       )
-      const when = (piece: PieceRow): number => piece.stalledAt ?? Number.MAX_SAFE_INTEGER
-      return {
-        walk: found.walk,
-        ledgers: found.ledgers,
-        rowsUnread: found.rowsUnread,
-        ...ledgersSkippedOf(found.ledgersSkipped),
-        rows: [...found.rows].sort(
-          (left, right) => when(left) - when(right) || (left.piece < right.piece ? -1 : 1),
-        ),
-      }
+      return stalledInOrder(found)
     },
     piecesWaitingOnWhoWrote(counted) {
       const holders = selectOwnersOfPiecesAConversationGave.all() as { id: string }[]
