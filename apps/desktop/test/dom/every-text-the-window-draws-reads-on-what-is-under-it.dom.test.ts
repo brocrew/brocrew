@@ -161,7 +161,7 @@ const STATES: readonly [string, () => Promise<Element>][] = [
     'docked, a workflow under the pointer',
     async () => {
       const m = await stackingWindow()
-        await pointAtTheWorkflow(m)
+      await pointAtTheWorkflow(m)
       return m.host
     },
   ],
@@ -169,7 +169,7 @@ const STATES: readonly [string, () => Promise<Element>][] = [
     'sub-agents nested three deep',
     async () => {
       const m = await stackingWindow()
-        const cards = m.host.querySelectorAll<HTMLElement>('.subagent')
+      const cards = m.host.querySelectorAll<HTMLElement>('.subagent')
       cards[cards.length - 1]?.scrollIntoView({ block: 'center' })
       await pause()
       return m.host
