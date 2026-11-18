@@ -1,3 +1,4 @@
+import { makeAgentTestIdentity, grantAgentTestCapabilities } from './lib/agent-test-operations'
 import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
@@ -147,24 +148,6 @@ describe('341 · the rails, before anything can reach them', () => {
   }
 
   /**
-   * ⛔ **Bring an identity into existence the only way anything can** — by a person running a
-   * conversation as it — and then close that conversation so the identity is free.
-   *
-   * ⚑ This IS criterion 12 from the inside. `setCapabilities` refuses to create a row, and a give
-   * refuses a name with no row — ⚑ unless it asks for a new agent (D-016 · R3), which is
-   * `create_agent`'s door one call over — so **an agent is only ever given work as an identity that
-   * a person, or an entitled agent, has deliberately brought into being.**
-   */
-  const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
-    const id = await personOpens(profileId)
-    await host.close(id, window)
-  }
-
-  const grant = (profileId: string, edit: Parameters<SessionStore['setCapabilities']>[1]): void => {
-    expect(store.setCapabilities(profileId, edit)).toBe(true)
-  }
-
-  /**
    * ⚑ **D-016 · the door is `giveWork`, asked AS the giving conversation** — `spawnSession` and its
    * `parentSessionId` went with `spawn_agent`: the giver is whoever the caller speaks as, and a
    * conversation it starts is its child.
@@ -278,7 +261,7 @@ describe('341 · the rails, before anything can reach them', () => {
     /** The world in which a give of `worker` from `pm` is allowed. Every test below breaks ONE fact. */
     const ready = async (): Promise<string> => {
       const parent = await personOpens('pm')
-      await bringIdentityIntoBeing('worker')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'worker')
       return parent
     }
     /** The person's window, as a caller — the one that may change a conversation's mode. */
@@ -370,7 +353,7 @@ describe('341 · the rails, before anything can reach them', () => {
 
       // ⛔ Thrown while both conversations are running — that is what "mid-session" means.
       store.setSpawningEnabled(false)
-      await bringIdentityIntoBeing('second')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'second')
       expect(await refusalOf(await give(aPiece('second'), as(parent)))).toBe('spawning-disabled')
       // ⚑ **…and the child that was already running is still running.** The switch refuses; it does
       // not kill.
@@ -406,8 +389,8 @@ describe('341 · the rails, before anything can reach them', () => {
       // ⚑ **D-016 · a give takes no parent**: the giver is the conversation the caller speaks AS, so
       // a caller that commands a conversation (340) and one that was given nothing are one answer —
       // neither holds a piece to give from, and D-016c's ruling (b) says exactly that.
-      await bringIdentityIntoBeing('worker')
-      await bringIdentityIntoBeing('pm')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'worker')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'pm')
       const { sessionId: parent } = await host.createSession(
         { provider: 'claude', profileId: 'pm', cwd: work },
         null,
@@ -427,13 +410,13 @@ describe('341 · the rails, before anything can reach them', () => {
       expect(store.capabilitiesOf('ghost')).toBeNull()
       expect(store.setCapabilities('ghost', { maxDepth: 9 })).toBe(false)
       // The paired positive: the same call against a name a PERSON has used.
-      await bringIdentityIntoBeing('ghost')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'ghost')
       expect((await give(aPiece('ghost'), as(parent))).ok).toBe(true)
     })
 
     it('⚑ an identity, not a spelling — `worker` exists, so a give to `Worker` is admitted', async () => {
       const parent = await personOpens('pm')
-      await bringIdentityIntoBeing('worker')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'worker')
       // ⛔ **The identity is what the existence rail is about** (187/238): `Worker` and `worker` are
       // one agent over one home, so refusing this would be telling an agent it may not be itself.
       const allowed = admitted(await give(aPiece('Worker'), as(parent)))
@@ -447,7 +430,8 @@ describe('341 · the rails, before anything can reach them', () => {
      * Returns the conversation at each depth, index 0 being the person's own.
      */
     const chainTo = async (deepest: number): Promise<string[]> => {
-      for (let depth = 1; depth <= deepest + 1; depth++) await bringIdentityIntoBeing(`w${depth}`)
+      for (let depth = 1; depth <= deepest + 1; depth++)
+        await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), `w${depth}`)
       const chain = [await personOpens('pm')]
       for (let depth = 1; depth <= deepest; depth++) {
         const next = await give(
@@ -483,7 +467,7 @@ describe('341 · the rails, before anything can reach them', () => {
       const chain = await chainTo(6)
       // ⛔ **The GIVER's row decides**, and the giver here is `w6` — the same call that was refused
       // in the test above now passes, and the only thing that changed is one row.
-      grant('w6', { maxDepth: 7 })
+      grantAgentTestCapabilities(store, 'w6', { maxDepth: 7 })
       expect((await give(aPiece('w7'), as(chain[6] as string))).ok).toBe(true)
     })
 
@@ -495,7 +479,7 @@ describe('341 · the rails, before anything can reach them', () => {
       // mode takes off its own provider's `ask`. Claude `auto` keeps nothing there and Codex `auto`
       // keeps nothing, so a lax Claude giver's Codex agent reaches no further than its giver: it was
       // refused here for the sandbox Codex's `auto` takes off, and ⛔ it is GIVEN now, and runs.
-      await bringIdentityIntoBeing('worker')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'worker')
       expect(store.setAgentProvider('worker', 'codex')).toBe(true)
       const lax = await personOpens('pm', { approvalMode: 'auto' })
       const given = admitted(await give(aPiece('worker'), as(lax)))
@@ -546,7 +530,7 @@ describe('341 · the rails, before anything can reach them', () => {
     })
 
     it('🔴 THE DIVERGENCE · an `auto` giver hands `auto` down, which is the half HO-036 restored', async () => {
-      await bringIdentityIntoBeing('worker')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'worker')
       // Use the `auto` giver’s give call, where mode inheritance is observable. An `ask`
       // giver cannot exercise the distinction.
       const lax = await personOpens('pm', { approvalMode: 'auto' })
@@ -561,8 +545,8 @@ describe('341 · the rails, before anything can reach them', () => {
       // restored `effectiveApprovalOf`. ⛔ A giver that has asked to start prompting again is one
       // whose laxness is being GIVEN UP; spending it on a child would hand a permanent `auto`
       // conversation to a giver that will be prompting by the time the child says anything.
-      await bringIdentityIntoBeing('worker')
-      await bringIdentityIntoBeing('reviewer')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'worker')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'reviewer')
       expect(store.setAgentProvider('reviewer', 'codex')).toBe(true)
       const lax = await personOpens('pm', { approvalMode: 'auto' })
       // ⚠️ **Requested, not adopted.** No turn has been sent, so `effective` is still `auto`.
@@ -592,14 +576,14 @@ describe('341 · the rails, before anything can reach them', () => {
       // after these two can no longer be performed here. ⏸ What stays performed is that these two
       // answer before the identity's provider is read, and that the give they stood in front of
       // now goes through.
-      await bringIdentityIntoBeing('worker')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'worker')
       expect(store.setAgentProvider('worker', 'codex')).toBe(true)
-      await bringIdentityIntoBeing('plain')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'plain')
       const lax = await personOpens('pm', { approvalMode: 'auto' })
       // ⚑ A second lax giver whose own row admits no depth at all — so the controls below land on
       // DIFFERENT rails rather than one twice.
       const shallow = await personOpens('shallow', { approvalMode: 'auto' })
-      grant('shallow', { maxDepth: 0 })
+      grantAgentTestCapabilities(store, 'shallow', { maxDepth: 0 })
       const cases: { name: string; by: CallerIdentity; otherwise: string }[] = [
         {
           name: 'a giver that is not running',
@@ -625,7 +609,7 @@ describe('341 · the rails, before anything can reach them', () => {
     })
 
     it('⛔ the kill switch still answers first, because that is the more important sentence', async () => {
-      await bringIdentityIntoBeing('worker')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'worker')
       expect(store.setAgentProvider('worker', 'codex')).toBe(true)
       const lax = await personOpens('pm', { approvalMode: 'auto' })
       store.setSpawningEnabled(false)
@@ -645,7 +629,7 @@ describe('341 · the rails, before anything can reach them', () => {
       // for the conversation it finds (`profile-already-live` went), it REACHES it; ⚑ and
       // its outcome names the piece that stalled there. ⚠️ An `auto` giver, so the child's brief
       // turn ends at once — with its piece still open.
-      await bringIdentityIntoBeing('worker')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'worker')
       const parent = await personOpens('pm', { approvalMode: 'auto' })
       const first = admitted(await give(aPiece('worker'), as(parent)))
       const live = first.owner
@@ -691,7 +675,7 @@ describe('341 · the rails, before anything can reach them', () => {
       expect(store.parentOf(again.owner)).toBe(parent)
       // ⚑ **The paired positive, one fact over** — another identity, same giver, same call: a new
       // conversation, because this giver has none with that one.
-      await bringIdentityIntoBeing('reviewer')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'reviewer')
       expect((await give(aPiece('reviewer'), as(parent))).ok).toBe(true)
     })
 
@@ -726,7 +710,7 @@ describe('341 · the rails, before anything can reach them', () => {
 
     it('⛔ …and the lookup folds case, because `Developer` and `developer` are one identity', async () => {
       const parent = await personOpens('pm')
-      await bringIdentityIntoBeing('worker')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'worker')
       // ⚑ **The conversation is this giver's own child, started under the OTHER spelling** (`428`).
       const first = admitted(await give(aPiece('Worker'), as(parent)))
       const second = admitted(await give(aPiece('worker'), as(parent)))
@@ -764,7 +748,7 @@ describe('341 · the rails, before anything can reach them', () => {
       // stays). The giver keeps running in a folder that no longer exists, and the next give that
       // would start a conversation from it is refused for the folder rather than launched into
       // nothing.
-      await bringIdentityIntoBeing('second')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'second')
       rmSync(work, { recursive: true, force: true })
       expect(await refusalOf(await give(aPiece('second'), as(parent)))).toBe('folder-unusable')
     })
@@ -883,9 +867,9 @@ describe('341 · the rails, before anything can reach them', () => {
   describe('§3 · who started it, and why, outlives the process', () => {
     it('🔴 criterion 8 · who created this and why is still there after a second host over one ledger', async () => {
       const parent = await personOpens('pm')
-      await bringIdentityIntoBeing('worker')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'worker')
       // ⚑ A value that is NOT the ruled default, so the row surviving is what the read below measures.
-      grant('pm', { maxDepth: 3 })
+      grantAgentTestCapabilities(store, 'pm', { maxDepth: 3 })
       const given = admitted(
         await give(
           {
@@ -930,7 +914,7 @@ describe('341 · the rails, before anything can reach them', () => {
 
   describe('§4 · the capability schema', () => {
     it('⛔ an unconfigured profile reads the ruled defaults, and none of them is stored', async () => {
-      await bringIdentityIntoBeing('pm')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'pm')
       expect(store.capabilitiesOf('pm')).toEqual(DEFAULT_CAPABILITIES)
       // ⚑ **Nothing was backfilled** — the columns are still null, so changing the default in code
       // changes every profile that has not chosen. 0016's argument, asserted.
@@ -947,8 +931,8 @@ describe('341 · the rails, before anything can reach them', () => {
     })
 
     it('⛔ an edit leaves every field it did not name alone, nulls included', async () => {
-      await bringIdentityIntoBeing('pm')
-      grant('pm', { canMessage: 'none' })
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'pm')
+      grantAgentTestCapabilities(store, 'pm', { canMessage: 'none' })
       const row = db
         .prepare(`SELECT ${CAPABILITY_COLUMNS.join(', ')} FROM agent_identity WHERE slug = ?`)
         .get('pm') as Record<string, unknown>
@@ -965,7 +949,7 @@ describe('341 · the rails, before anything can reach them', () => {
     })
 
     it('🔴 a word that is not the right SHAPE never reaches the column — its CHECK refuses it (R6)', async () => {
-      await bringIdentityIntoBeing('pm')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'pm')
       const write = (column: string, value: unknown): void => {
         db.prepare(`UPDATE agent_identity SET ${column} = ? WHERE slug = 'pm'`).run(value)
       }

@@ -2,10 +2,11 @@ import {
   openAgentTestConversation,
   makeAgentTestIdentity,
   grantAgentTestCapabilities,
+  closeAgentTestResources,
 } from './lib/agent-test-operations'
-import { namedAgentTool } from './lib/call-agent-tool'
+import { namedAgentTool, structuredAgentToolsFor } from './lib/call-agent-tool'
 import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -114,31 +115,13 @@ describe('488 · who exists, and what they were told', () => {
     window = new RecordingSink('webContents:1')
   })
 
-  afterEach(async () => {
-    await host.closeAll()
-    db.close()
-    for (const dir of [userData, work]) rmSync(dir, { recursive: true, force: true })
-  })
+  afterEach(() => closeAgentTestResources(host, db, [userData, work]))
 
   const personOpens = (profileId: string): Promise<string> =>
     openAgentTestConversation(host, window, work, profileId, 'ask')
 
-  /** An identity exists once a conversation has run as it — 341 criterion 12. */
-  const bringIdentityIntoBeing = (profileId: string): Promise<void> =>
-    makeAgentTestIdentity(personOpens, (id) => host.close(id, window), profileId)
-
-  const grant = (profileId: string, edit: Parameters<SessionStore['setCapabilities']>[1]): void =>
-    grantAgentTestCapabilities(store, profileId, edit)
-
   const toolsOf = (sessionId: string) => {
-    const set = agentToolsFor(host, sessionId)
-    const call = async (
-      name: ToolName,
-      args: Record<string, unknown> = {},
-    ): Promise<Record<string, unknown>> => {
-      const answered = await namedAgentTool(set, name).call(args)
-      return (answered.structured ?? {}) as Record<string, unknown>
-    }
+    const { set, call } = structuredAgentToolsFor(host, sessionId)
     /** The TEXT half, which is the only part a person ever sees. */
     const say = async (name: ToolName, args: Record<string, unknown> = {}): Promise<string> => {
       const answered = await namedAgentTool(set, name).call(args)
@@ -154,7 +137,7 @@ describe('488 · who exists, and what they were told', () => {
    * `give_work` starts the conversation the parent does not have yet; its brief is its first turn.
    */
   const anAgentRunning = async (profileId: string): Promise<string> => {
-    await bringIdentityIntoBeing(profileId)
+    await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), profileId)
     const parent = await personOpens('pm')
     const given = await toolsOf(parent).call('give_work', {
       definition_of_done: 'The requested result and its checks are recorded.',
@@ -206,9 +189,9 @@ describe('488 · who exists, and what they were told', () => {
       // ⛔ **The control plants TWO more**, standing rule 12: identities this app holds that the
       // caller has never touched. ⚑ **D-014 · they are LISTED** — any agent may start any identity
       // that exists — so the listing is the roster and not a fold of it.
-      await bringIdentityIntoBeing('builder')
-      await bringIdentityIntoBeing('auditor')
-      await bringIdentityIntoBeing('treasurer')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'builder')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'auditor')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'treasurer')
       const me = await anAgentRunning('lead')
 
       const said = await toolsOf(me).call('list_profiles')
@@ -232,7 +215,7 @@ describe('488 · who exists, and what they were told', () => {
       // ⛔ **The only claim worth making about this tool, asked against the real door.** ⚑ Two
       // names, one of each kind, so the biconditional is measured where the two readings DIVERGE
       // and not only where they agree.
-      await bringIdentityIntoBeing('builder')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'builder')
       const me = await anAgentRunning('lead')
 
       const tools = toolsOf(me)
@@ -267,7 +250,7 @@ describe('488 · who exists, and what they were told', () => {
 
   describe('§3 · 448’s register, on the identity axis', () => {
     it('⚑ a caller is told the count is of every agent this app holds', async () => {
-      await bringIdentityIntoBeing('builder')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'builder')
       const me = await anAgentRunning('lead')
       const text = await toolsOf(me).say('list_profiles')
       const said = await toolsOf(me).call('list_profiles')
@@ -301,9 +284,9 @@ describe('488 · who exists, and what they were told', () => {
       // ⛔ **The entitlement ruling, asserted on the PAYLOAD and not on the type** — *a payload
       // census must read call sites, not types*: the object is built field by field at the door, so
       // this is the only place that can see what actually crossed.
-      await bringIdentityIntoBeing('builder')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'builder')
       expect(store.setAgentProvider('builder', 'codex')).toBe(true)
-      grant('builder', { maxDepth: 9, canMessage: 'any' })
+      grantAgentTestCapabilities(store, 'builder', { maxDepth: 9, canMessage: 'any' })
       const me = await anAgentRunning('lead')
 
       const said = await toolsOf(me).call('list_profiles')
@@ -347,8 +330,8 @@ describe('488 · who exists, and what they were told', () => {
       // so a host that over-filled its reading would be invisible at the tool — and would become a
       // leak the day anybody widened the door. ⚑ **Measured here it is a defect now**, which is the
       // difference between a bound and a coincidence.
-      await bringIdentityIntoBeing('builder')
-      grant('builder', { maxDepth: 9, canMessage: 'any' })
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'builder')
+      grantAgentTestCapabilities(store, 'builder', { maxDepth: 9, canMessage: 'any' })
       await anAgentRunning('lead')
 
       // ⚑ **D-014 · the reading takes no caller** — every agent sees every identity.
@@ -382,7 +365,7 @@ describe('488 · who exists, and what they were told', () => {
       // 🔴 **`agentsVisibleTo` folds conversations through a DIFFERENT grant**, so carrying one here
       // would let a caller read past the fold that door applies — *widening a predicate widens every
       // question its field answers*.
-      await bringIdentityIntoBeing('builder')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'builder')
       const running = await personOpens('builder')
       const me = await anAgentRunning('lead')
 
@@ -415,8 +398,8 @@ describe('488 · who exists, and what they were told', () => {
     it('🔴 an argument a caller invents changes nothing', async () => {
       // Called with the arguments a model would most plausibly invent, the answer is byte-identical
       // to the empty call.
-      await bringIdentityIntoBeing('builder')
-      await bringIdentityIntoBeing('auditor')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'builder')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'auditor')
       const me = await anAgentRunning('lead')
 
       const tools = toolsOf(me)
@@ -455,7 +438,7 @@ describe('488 · who exists, and what they were told', () => {
     it('🔴 it names the worker, the manager and the one name this app ships — nobody is held back', async () => {
       // ⛔ **Planted through the product's own doors**, never by hand-writing rows: BroBot exists
       // because a conversation ran as it, and the two others are created at the person's door.
-      await bringIdentityIntoBeing(DEFAULT_PROFILE_ID)
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), DEFAULT_PROFILE_ID)
       host.createAgent({
         slug: 'freeze-clock-worker',
         displayName: 'Freeze Clock Worker',
