@@ -31,7 +31,7 @@ export function createCompactAgentTool(
           if (!(error instanceof TurnInProgress)) throw error
           return answer(
             { outcome: 'busy', agent },
-            'That conversation is busy; nothing was compacted.',
+            'It’s working; try again when it’s idle.',
           )
         }
         if (outcome === 'no-such-agent') return refusalAnswer(refuseTool(outcome, { agent }))
