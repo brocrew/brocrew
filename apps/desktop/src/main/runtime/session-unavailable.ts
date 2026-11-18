@@ -512,12 +512,13 @@ export function unavailableOf(error: unknown): Unavailable | null {
  * is gone, read down the cause chain, or any other failure with the reason its caller words.
  */
 export function cannotRunOf(error: unknown, couldNotStart: string): CannotRun {
-  let seen: unknown = error
-  for (let depth = 0; depth < 8 && seen instanceof Error; depth += 1) {
-    if (unavailableOf(seen) === 'its-session-is-gone') {
+  const seen = new Set<Error>()
+  while (error instanceof Error && !seen.has(error)) {
+    if (unavailableOf(error) === 'its-session-is-gone') {
       return { code: 'provider-file-missing', reason: 'its provider session file is missing' }
     }
-    seen = (seen as { cause?: unknown }).cause
+    seen.add(error)
+    error = error.cause
   }
   return { code: 'could-not-start', reason: couldNotStart }
 }

@@ -2010,7 +2010,7 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
     expect(newestLevel(f)).not.toHaveProperty('jobs.0.notStarted')
   })
 
-  it('a wake-up never replaces a conversation that can never be reopened: its told words end with it, and a message still replaces it', async () => {
+  it('a missing provider session ends the held wake notice and refuses a later message without replacing the conversation', async () => {
     const [a] = await aFirstLife(async ([first]) => makes(first!, ONE_SHOT_A), 'agent-a')
     if (a === undefined) throw new Error('a conversation was opened')
     // The provider no longer has any session: a resume says so.
@@ -2027,7 +2027,9 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
     const ended = ledger(a).find((event) => event.type === 'message_unqueued')
     if (ended?.type !== 'message_unqueued') throw new Error('no message was unqueued')
     expect(ended.reason).toBe('abandoned')
-    expect(ended.detail).toContain('went with its history')
+    expect(ended.detail).toBe(
+      'This conversation could not wake: its provider session file is missing. Nothing ran.',
+    )
     expect(ended.text).toBe(theHeldNotice(DUE))
     await settle()
 
@@ -2038,15 +2040,13 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
     expect(stateOf(host, a)).toEqual({ is: 'idle' })
     expect(handles.length).toBe(handlesBefore)
 
-    // A person's message still replaces it, and the words are not handed on.
-    await host.startAndSend(a, 'are you there', window)
-    const replacement = store.replacements()
-    expect(replacement).toHaveLength(1)
-    expect(replacement[0]?.replaced).toBe(a)
-    const by = replacement[0]?.by
-    if (by === undefined) throw new Error('no replacement was recorded')
-    expect(noticesIn(by)).toEqual([])
-    expect(wordsIn(by).some((one) => one.text.includes('are you there'))).toBe(true)
+    expect(await host.startAndSend(a, 'are you there', window)).toMatchObject({
+      notSent: { refusedBy: 'the-start', running: null },
+    })
+    expect(store.replacements()).toEqual([])
+    expect(store.recorded().map((row) => row.sessionId)).toEqual(idsBefore)
+    expect(wordsIn(a).some((one) => one.text.includes('are you there'))).toBe(false)
+    expect(handles.length).toBe(handlesBefore)
   })
 
   it('a message that starts a stopped conversation plans its jobs again first, so a one-shot that passed since the wake-up was armed is told', async () => {

@@ -731,25 +731,38 @@ describe('735, D-017b · a person’s message continues a conversation in one ac
       expect(turnsOf(id)).not.toContain('are you there')
     })
 
-    it('⚑ a provider that no longer has it — D-017 · R10: replaced, and the words go to the one in its place', async () => {
+    it('a missing provider session refuses the start without replacing the conversation', async () => {
       const id = await aConversationTheQuitStopped()
       const ref = store.find(id)?.ref
       if (ref === undefined) throw new Error('no ref')
+      const rootTask = store.rootOf(id)
+      if (rootTask === null) throw new Error('no task address')
+      const address = rootTask.label
+      const before = counter
       LaunchCountingRuntime.nextResumeThrows = new ResumeError(ref, 'no such conversation', {
         noSuchSession: true,
       })
+      const said = `This conversation can't run: its provider session file is missing. Its record above stays readable. To continue the job, start a new conversation and point it at ${address}.`
 
-      const answer = await host.startAndSend(id, 'are you there', window)
-
-      // ⚑ **R10 — a conversation that can never be reopened is replaced**, owned by the writing
-      // window, and the first message is the new one's first turn — never refused, never lost.
-      if (!('sent' in answer)) throw new Error(`not sent: ${JSON.stringify(answer)}`)
-      const next = answer.sent.sessionId
-      expect(next).not.toBe(id)
-      expect(ledger(id)).toContainEqual({ type: 'replaced_by', sessionId: next })
-      expect(ledger(next)).toContainEqual({ type: 'replaces', sessionId: id })
+      expect(notSentOf(await host.startAndSend(id, 'are you there', window))).toEqual({
+        refusedBy: 'the-start',
+        said,
+        launch: 'launch',
+        running: null,
+      })
+      expect(counter).toBe(before)
+      expect(ledger(id).map(({ type }) => type)).not.toContain('replaced_by')
+      expect(listed(id)).toEqual(NOTHING_RUNS_IT)
       expect(turnsOf(id)).not.toContain('are you there')
-      await waitFor(() => turnsOf(next).includes('are you there'), 'the words in its place')
+
+      LaunchCountingRuntime.nextResumeThrows = new ResumeError(ref, 'no such conversation', {
+        noSuchSession: true,
+      })
+      await expect(host.reopenForAPerson(id, window, null)).rejects.toMatchObject({
+        message: said,
+        cause: { unavailable: 'its-session-is-gone', context: { address } },
+      })
+      expect(counter).toBe(before)
     })
   })
 

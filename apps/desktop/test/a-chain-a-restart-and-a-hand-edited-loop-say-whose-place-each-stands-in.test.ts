@@ -1,6 +1,7 @@
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { forestOf } from './lib/forest-of-host'
+import { seedHistoricalSuccessor } from './lib/historical-replacement'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -170,34 +171,20 @@ describe('D-034 — a chain, a restart and a hand-edited loop', () => {
     return { pm, worker, label: given.label as string }
   }
 
-  /** ⚑ The worker replaced, its stand-in stopped and forgotten, and that stand-in replaced too. */
+  const recordSuccessor = (previous: string): string =>
+    seedHistoricalSuccessor(store, previous, `sess_${++counter}`, tick())
+
   const aChainOfTwo = async (): Promise<{
     pm: string
     worker: string
     worker2: string
     worker3: string
   }> => {
-    const { pm, worker, label } = await aWorkerOver()
-    issued.forgetAll()
-    const first = await callOn(host, pm, 'message_agent', {
-      agent: worker,
-      text: 'carry on',
-      kind: 'follow-up',
-      piece: label,
-    })
-    expect(first.outcome, JSON.stringify(first)).toBe('ok')
-    const worker2 = first.went_to as string
-    await waitFor(() => turnsIn(worker2) > 0, 'the first stand-in turn')
-    await host.close(worker2, THE_APP_ITSELF)
-    await stopped(host, worker2)
-    issued.forgetAll()
-    const second = await callOn(host, pm, 'message_agent', {
-      agent: worker,
-      text: 'and again',
-      kind: 'note',
-    })
-    expect(second.outcome, JSON.stringify(second)).toBe('ok')
-    const worker3 = second.went_to as string
+    const { pm, worker } = await aWorkerOver()
+    await host.closeAll()
+    const worker2 = recordSuccessor(worker)
+    const worker3 = recordSuccessor(worker2)
+    host = buildHost()
     expect(new Set([worker, worker2, worker3]).size).toBe(3)
     // ⚑ The premise: two replacements, one in each old ledger.
     expect(ledger(worker)).toContainEqual({ type: 'replaced_by', sessionId: worker2 })
@@ -245,16 +232,10 @@ describe('D-034 — a chain, a restart and a hand-edited loop', () => {
   })
 
   it('E · a restart: a second host on the same database reads the same places off the ledgers', async () => {
-    const { pm, worker, label } = await aWorkerOver()
-    issued.forgetAll()
-    const sent = await callOn(host, pm, 'message_agent', {
-      agent: worker,
-      text: 'carry on',
-      kind: 'follow-up',
-      piece: label,
-    })
-    expect(sent.outcome, JSON.stringify(sent)).toBe('ok')
-    const next = sent.went_to as string
+    const { pm, worker } = await aWorkerOver()
+    await host.closeAll()
+    const next = recordSuccessor(worker)
+    host = buildHost()
     const beforeTheRestart = await places(host)
     expect(placeIn(beforeTheRestart, worker).inItsPlace).toEqual(drawnOne(next))
 

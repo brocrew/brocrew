@@ -14,6 +14,7 @@ import { RuntimeHost as ProductRuntimeHost } from '../src/main/runtime/runtime-h
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
+import { seedHistoricalSuccessor } from './lib/historical-replacement'
 import {
   fixtureProviderConfig,
   RecordingSink,
@@ -22,9 +23,8 @@ import {
 } from './lib/host-fixture'
 
 /**
- * A conversation its provider no longer has is replaced by a new conversation of the same agent,
- * folder and parent. The explicit-follow-up cases use a host that declines automatic holder
- * reminders, so the follow-up alone reopens the forgotten session.
+ * Losing a provider session does not move the recorded work. Replacement records from earlier
+ * versions still describe the original holder and route later messages to its successor.
  */
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -145,7 +145,17 @@ describe('what a replacement carries, and what it leaves behind', () => {
       piece: label,
     })
 
-  it('a successful automatic holder reminder precedes a lost-thread replacement that preserves its facts', async () => {
+  const seedSuccessorAfterQuit = async (worker: string): Promise<string> => {
+    await host.closeAll()
+    const next = seedHistoricalSuccessor(store, worker, `sess_${++counter}`, tick(), {
+      sessions: issued,
+      home: syntheticProviderHome(() => userData)('claude', 'worker'),
+    })
+    host = buildHost()
+    return next
+  }
+
+  it('a lost session leaves the work and its successful automatic holder reminder recorded', async () => {
     await host.closeAll()
     host = buildHost(ProductRuntimeHost)
     await host.close(await personOpens('worker'), window)
@@ -177,36 +187,35 @@ describe('what a replacement carries, and what it leaves behind', () => {
       ]),
     )
     expect(receipts.some((one) => one.step === 'holder' && one.outcome === 'failed')).toBe(false)
-    const cwd = store.find(worker)?.cwd
     await host.close(worker, THE_APP_ITSELF)
+    const all = store.recorded().map(({ sessionId }) => sessionId)
+    const recorded = store.piecesOwnedBy(worker)[0]
     issued.forgetAll()
-    const sent = await wake(pm, worker, label)
-    expect(sent.outcome, JSON.stringify(sent)).toBe('ok')
-    const next = sent.went_to as string
-    expect(next).not.toBe(worker)
-    expect(store.parentOf(next)).toBe(pm)
-    expect(store.identityOf(next)?.profileSlug).toBe('worker')
-    expect(store.find(next)?.cwd).toBe(cwd)
-    expect(store.piecesOwnedBy(next)).toEqual([])
-    expect(store.piecesOwnedBy(worker)[0]?.stalledBecause).toBe('could_not_be_reopened')
-    expect(ledger(worker).filter((one) => one.type === 'replaced_by')).toHaveLength(1)
+    await expect(wake(pm, worker, label)).rejects.toMatchObject({
+      cause: { unavailable: 'its-session-is-gone', context: { address: label } },
+    })
+    expect(store.recorded().map(({ sessionId }) => sessionId)).toEqual(all)
+    expect(store.replacements()).toEqual([])
+    expect(store.piecesOwnedBy(worker)[0]).toEqual(recorded)
+    expect(store.reconciliationReceipts(worker, before.piece)).toEqual(
+      expect.arrayContaining(receipts),
+    )
   })
 
-  it('an open piece the replaced conversation held stalls could_not_be_reopened, and the new conversation starts holding none of it', async () => {
-    const { pm, worker, label } = await aWorkerOver()
+  it('a historical replacement leaves the stalled piece with its original holder', async () => {
+    const { pm, worker } = await aWorkerOver()
     const before = store.piecesOwnedBy(worker)[0]
     if (before === undefined) throw new Error('the premise: aWorkerOver left one open piece')
     // Close already stalled it; the could_not_be_reopened cause is written only at the replace.
     expect(TASK_IS_OPEN[before.state], `pre-replace state: ${before.state}`).toBe(true)
     expect(before.stalledBecause).not.toBe('could_not_be_reopened')
 
-    issued.forgetAll()
-    const sent = await wake(pm, worker, label)
-
-    expect(sent.outcome, JSON.stringify(sent)).toBe('ok')
-    const next = sent.went_to as string
-    expect(typeof next, JSON.stringify(sent)).toBe('string')
+    const cwd = store.find(worker)?.cwd
+    const next = await seedSuccessorAfterQuit(worker)
     expect(next).not.toBe(worker)
+    expect(store.parentOf(next)).toBe(pm)
+    expect(store.identityOf(next)?.profileSlug).toBe('worker')
+    expect(store.find(next)?.cwd).toBe(cwd)
     const after = store.piecesOwnedBy(worker)[0]
     expect(after?.state).toBe('stalled')
     expect(after?.stalledBecause).toBe('could_not_be_reopened')
@@ -216,17 +225,17 @@ describe('what a replacement carries, and what it leaves behind', () => {
 
   it('a second message to an id already replaced reaches the ONE conversation that took its place, never a second replacement', async () => {
     const { pm, worker, label } = await aWorkerOver()
-    issued.forgetAll()
+    const next = await seedSuccessorAfterQuit(worker)
+    await host.resumeSession(pm, window)
 
     const sent1 = await wake(pm, worker, label)
     expect(sent1.outcome, JSON.stringify(sent1)).toBe('ok')
-    const next1 = sent1.went_to as string
-    expect(next1).not.toBe(worker)
+    expect(sent1.went_to).toBe(next)
 
     const sent2 = await wake(pm, worker, label)
 
     expect(sent2.outcome, JSON.stringify(sent2)).toBe('ok')
-    expect(sent2.went_to).toBe(next1)
+    expect(sent2.went_to).toBe(next)
     expect(ledger(worker).filter((event) => event.type === 'replaced_by')).toHaveLength(1)
   })
 })

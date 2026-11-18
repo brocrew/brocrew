@@ -1,6 +1,7 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { forestOf, storeForestOf } from './lib/forest-of-host'
+import { recordHistoricalReplacement, seedHistoricalSuccessor } from './lib/historical-replacement'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -33,8 +34,8 @@ import {
 /**
  * # D-034 — the forest says, for each conversation, whose place it stands in
  *
- * ⚑ **A conversation that could never be reopened is replaced** by a new conversation of the same
- * agent (D-017 · R10, `replaceWhatCanNeverBeReopened`). Until D-034 the forest drew both as two
+ * When an earlier version recorded a replacement, both identities stay in the ledger.
+ * Until D-034 the forest drew both as two
  * unrelated nodes, so a parent's new work to its child hung off a conversation the Graph did not
  * draw over that child. `RuntimeHost.forestReading` now names, on each conversation,
  * `standsInFor` (the ones whose chain of replacements ends at it) and `inItsPlace` (the end of its
@@ -45,7 +46,6 @@ import {
  *
  * ⚑ **Real host, real SQLite ledger, real migrations, a plain `FakeRuntime` over
  * `FakeProviderSessions`**: the harness of `what-a-replacement-carries-and-what-it-leaves-behind.test.ts`.
- * `issued.forgetAll()` is what makes a stopped conversation one its provider no longer has.
  */
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -206,7 +206,13 @@ describe('D-034 — the forest says, for each conversation, whose place it stand
     return { pm, worker, label: given.label as string }
   }
 
-  /** ⚑ The worker's provider forgets it, and its parent's follow-up replaces it. */
+  const recordWorkerSuccessor = async (worker: string): Promise<string> => {
+    await host.closeAll()
+    const next = seedHistoricalSuccessor(store, worker, `sess_${++counter}`, tick())
+    host = buildHost()
+    return next
+  }
+
   const replaceTheWorker = async (): Promise<{
     pm: string
     worker: string
@@ -214,17 +220,7 @@ describe('D-034 — the forest says, for each conversation, whose place it stand
     next: string
   }> => {
     const { pm, worker, label } = await aWorkerOver()
-    issued.forgetAll()
-    const sent = await callOn(pm, 'message_agent', {
-      agent: worker,
-      text: 'carry on',
-      kind: 'follow-up',
-      piece: label,
-    })
-    expect(sent.outcome, JSON.stringify(sent)).toBe('ok')
-    const next = sent.went_to as string
-    expect(typeof next).toBe('string')
-    expect(next).not.toBe(worker)
+    const next = await recordWorkerSuccessor(worker)
     return { pm, worker, label, next }
   }
 
@@ -235,15 +231,7 @@ describe('D-034 — the forest says, for each conversation, whose place it stand
     expect(placeOf(before, worker)).toEqual(NOWHERE)
     expect(placeOf(before, pm)).toEqual(NOWHERE)
 
-    issued.forgetAll()
-    const sent = await callOn(pm, 'message_agent', {
-      agent: worker,
-      text: 'carry on',
-      kind: 'follow-up',
-      piece: label,
-    })
-    expect(sent.outcome, JSON.stringify(sent)).toBe('ok')
-    const next = sent.went_to as string
+    const next = await recordWorkerSuccessor(worker)
     expect(next).not.toBe(worker)
     expect(host.tookItsPlace(worker)).toBe(next)
 
@@ -270,8 +258,6 @@ describe('D-034 — the forest says, for each conversation, whose place it stand
   })
 
   it('B · a PARENT that could never be reopened: its stand-in names it, and the work the stand-in gives hangs off the stand-in while the child still hangs under the old one', async () => {
-    // ⚑ Unlike `aWorkerOver`, the worker stays up: were it stopped too, the provider forgetting
-    // every conversation would put a stand-in in ITS place as well, and the give below would go there.
     await host.close(await personOpens('worker'), window)
     const pm = await personOpens('pm')
     const first = await callOn(pm, 'give_work', {
@@ -284,18 +270,18 @@ describe('D-034 — the forest says, for each conversation, whose place it stand
     const worker = first.agent as string
     const label = first.label as string
     await waitFor(() => turnsIn(worker) > 0, 'the turn the brief opened to end')
-    await host.close(pm, THE_APP_ITSELF)
-    await stopped(pm)
-    issued.forgetAll()
-    // ⚑ The worker's note to its stopped parent starts it, and its provider no longer has it.
+    const pmNext = await personOpens('pm')
+    await host.closeAll()
+    recordHistoricalReplacement(store, pm, pmNext, tick())
+    host = buildHost()
+    await host.resumeSession(worker, window)
     const noted = await callOn(worker, 'message_agent', {
       agent: pm,
       text: 'a question for you',
       kind: 'note',
     })
     expect(noted.outcome, JSON.stringify(noted)).toBe('ok')
-    const pmNext = host.tookItsPlace(pm)
-    if (pmNext === null) throw new Error('the premise: the parent was replaced')
+    expect(host.tookItsPlace(pm)).toBe(pmNext)
     expect(noted.went_to).toBe(pmNext)
     await waitFor(() => turnsIn(pmNext) > 0, 'the stand-in to take its first turn')
 

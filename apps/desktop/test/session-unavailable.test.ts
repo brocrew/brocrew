@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   SessionUnavailable,
   UNAVAILABLE_REASONS,
+  cannotRunOf,
   describeUnavailable,
   unavailableContextOf,
   unavailableOf,
@@ -204,9 +205,29 @@ describe('the sentence a refused open shows a person (100)', () => {
       // (*did not continue*, *could not continue*, *cannot continue yet*), the shape
       // `cannot-be-reopened` was admitted on.
       expect(sentence, reason).toMatch(
-        /Try again|Start it again|start it again|Open it again|opens by itself|Switch to|shutting down|did not open|answer it there|Take it over|can continue here|a message sent to it waits|A message sent to it waits|Send it a message|send it your message again|did not continue|could not continue|cannot continue yet/,
+        /Try again|Start it again|start it again|Open it again|opens by itself|Switch to|shutting down|did not open|answer it there|Take it over|can continue here|a message sent to it waits|A message sent to it waits|Send it a message|send it your message again|did not continue|could not continue|cannot continue yet|start a new conversation and point it at/,
       )
     }
+  })
+
+  it('finds the missing-session fact through wrapped start errors', () => {
+    let error: Error = new SessionUnavailable('its-session-is-gone', 'native diagnostic')
+    for (let depth = 0; depth < 10; depth++) {
+      error = new Error('wrapper', { cause: error })
+    }
+    expect(cannotRunOf(error, 'the caller’s explanation')).toEqual({
+      code: 'provider-file-missing',
+      reason: 'its provider session file is missing',
+    })
+  })
+
+  it('keeps the caller’s reason when the cause chain has no missing-session fact', () => {
+    const failure = new Error('its provider session file is missing')
+    failure.cause = failure
+    expect(cannotRunOf(failure, 'its provider did not answer')).toEqual({
+      code: 'could-not-start',
+      reason: 'its provider did not answer',
+    })
   })
 
   it('states the idle interval separately from total opening time and requests cancellation', () => {

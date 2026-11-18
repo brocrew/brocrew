@@ -412,12 +412,6 @@ describe('D-017b · a message from a conversation’s view goes where the host r
     return came
   }
 
-  /** What the message came to, when it was sent. */
-  const sentOf = (came: FirstMessageCameTo | null): Extract<FirstMessageCameTo, { sent: true }> => {
-    if (came === null || !came.sent) throw new Error(`it was not sent: ${JSON.stringify(came)}`)
-    return came
-  }
-
   // ───────────────────────────────────────────────────────────────────────────────────────────
   // the host: what a refused message leaves behind, and who is asked
   // ───────────────────────────────────────────────────────────────────────────────────────────
@@ -785,33 +779,33 @@ describe('D-017b · a message from a conversation’s view goes where the host r
     })
   })
 
-  describe('the store · the conversation that took its place', () => {
-    it('a conversation that could never be reopened is continued in the one that took its place', async () => {
+  describe('the store · a recorded conversation', () => {
+    it('a missing provider session refuses the message and leaves the record readable', async () => {
       const { id } = await leftOpenByTheQuit()
       const ref = ledger.find(id)?.ref
       if (ref === undefined) throw new Error('the conversation has no provider ref')
+      const task = ledger.rootOf(id)
+      if (task === null) throw new Error('the conversation has no task address')
+      const before = ledger.recorded().map(({ sessionId }) => sessionId)
       const store = openWindow()
       expect(await store.look(id)).toBe(id)
       LaunchCountingRuntime.nextResumeThrows = new ResumeError(ref, 'no such conversation', {
         noSuchSession: true,
       })
 
-      const came = sentOf(await store.startAndSend(id, 'are you there', []))
-
-      // The store names the conversation that runs, which is not the one it was asked about.
-      const next = came.tookItsPlace
-      if (next === undefined) throw new Error(`nothing took its place: ${JSON.stringify(came)}`)
-      expect(next).not.toBe(id)
-      expect(came.openHere).toBe(true)
-      // And it is adopted under its own id: fed here, while the old record stays a recorded view.
-      expect(store.isLive(next)).toBe(true)
+      const came = refusedOf(await store.startAndSend(id, 'are you there', []))
+      expect(came.refusal).toEqual({
+        refusedBy: 'the-start',
+        said: `This conversation can't run: its provider session file is missing. Its record above stays readable. To continue the job, start a new conversation and point it at ${task.label}.`,
+        launch: 'launch',
+        running: null,
+      })
+      expect(came.openHere).toBe(false)
+      expect(store.get(id)?.phase).toBe('recorded')
       expect(store.isLive(id)).toBe(false)
-      expect(events(id)).toContainEqual({ type: 'replaced_by', sessionId: next })
-      await waitFor(() => turnsOf(next).includes('are you there'), 'the words in its place')
-      expect(turnsOf(id), 'the words went to the old conversation').toEqual([
-        'said before the quit',
-      ])
-      expect(listed(next)).toEqual(A_WINDOW_RUNS_IT)
+      expect(ledger.recorded().map(({ sessionId }) => sessionId)).toEqual(before)
+      expect(ledger.replacements()).toEqual([])
+      expect(turnsOf(id)).toEqual(['said before the quit'])
     })
 
     it('…and when it can be reopened, the same message is adopted in place, naming no other conversation', async () => {

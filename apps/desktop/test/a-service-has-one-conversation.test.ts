@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SessionStore } from '../src/main/db/session-store'
 import { readProfileExecution, writeProfileExecution } from '../src/main/profile-execution-file'
 import { THE_APP_ITSELF, type RuntimeHost } from '../src/main/runtime/runtime-host'
-import { SessionUnavailable } from '../src/main/runtime/session-unavailable'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
 /**
@@ -176,22 +175,16 @@ describe('a service’s one conversation', () => {
       const { service } = await theFirstGive(host, 'browser-driver', true)
       const before = world.conversationsRecorded()
 
-      const refused = await host.reopenForAPerson(service, world.window, null).then(
-        () => null,
-        (error: unknown) => error,
-      )
-      expect(refused).toBeInstanceOf(SessionUnavailable)
-      expect((refused as SessionUnavailable).unavailable).toBe('cannot-be-reopened')
-      expect((refused as SessionUnavailable).context.refusal).toBe(
-        'it is a service’s one conversation, so no other is started in its place',
-      )
+      expect(world.store.recordedOne(service)?.neverStarted).toBe(true)
+      await expect(host.reopenForAPerson(service, world.window, null)).rejects.toMatchObject({
+        cause: { unavailable: 'never-started' },
+      })
       expect(world.conversationsRecorded()).toBe(before)
       expect(world.ledger(service).some((row) => row.type === 'replaced_by')).toBe(false)
       // Its own first launch, which failed, and nothing in its place.
       expect(world.startedAs).toEqual(['caller', 'browser-driver'])
       warned.mockRestore()
 
-      // The control: a person's conversation its provider never named is replaced.
       world.store.create({
         id: 'sess_persons_row',
         provider: 'claude',
@@ -199,22 +192,28 @@ describe('a service’s one conversation', () => {
         approvalMode: 'ask',
         profileId: 'caller',
       })
-      const replaced = await host.reopenForAPerson('sess_persons_row', world.window, null)
-      expect(replaced.sessionId).not.toBe('sess_persons_row')
+      await expect(
+        host.reopenForAPerson('sess_persons_row', world.window, null),
+      ).rejects.toMatchObject({ cause: { unavailable: 'never-started' } })
+      expect(world.conversationsRecorded()).toBe(before + 1)
+      expect(world.store.replacements()).toEqual([])
     })
 
     it('is refused even where which agents are services can’t be read', async () => {
       world.anAgent('browser-driver')
       world.anAgent('caller', 'nothing kept')
       const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
-      const { service } = await theFirstGive(world.aHost(), 'browser-driver', true)
+      const first = world.aHost()
+      const { service } = await theFirstGive(first, 'browser-driver', true)
+      await first.closeAll()
       world.loseTheKept()
       const host = world.aHost()
       const before = world.conversationsRecorded()
-      await expect(host.reopenForAPerson(service, world.window, null)).rejects.toBeInstanceOf(
-        SessionUnavailable,
-      )
+      await expect(host.reopenForAPerson(service, world.window, null)).rejects.toMatchObject({
+        cause: { unavailable: 'never-started' },
+      })
       expect(world.conversationsRecorded()).toBe(before)
+      expect(world.store.replacements()).toEqual([])
       warned.mockRestore()
     })
 
@@ -238,11 +237,11 @@ describe('a service’s one conversation', () => {
       await expect(host.setApprovalMode(service, 'auto', world.window)).rejects.toThrow(
         'no message continues this conversation, so a setting changed here would not reach it',
       )
-      // The control: a person's is continued by a message, which starts one in its place.
       const persons = await host.look('sess_persons_row', world.window, false)
-      expect(persons.cannotTakeAMessage).toBeNull()
+      expect(persons.cannotTakeAMessage).not.toBeNull()
+      expect(persons.settingsFixed).toBe(true)
       await expect(host.setApprovalMode('sess_persons_row', 'auto', world.window)).rejects.toThrow(
-        'its next message starts a new conversation in its place',
+        'no message continues this conversation, so a setting changed here would not reach it',
       )
     })
   })

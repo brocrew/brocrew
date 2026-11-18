@@ -3728,7 +3728,6 @@ const WAKE_RETRY_MAX_MS = 30 * 60_000
 const ITS_JOBS_WENT_WITH_ITS_HISTORY =
   'this conversation could never be reopened, and the jobs these words were about went with its history'
 
-/** Why a scheduled wake ended unsent when its provider session is gone. ⛔ A durable row names no conversation. */
 const IT_COULD_NOT_WAKE =
   'This conversation could not wake: its provider session file is missing. Nothing ran.'
 
@@ -9963,9 +9962,8 @@ export class RuntimeHost implements LiveHost {
    * 🔴 **D-029 · a wake-up's start failed** — R1's *started in time* still holds, so the word and the
    * timer stay together:
    *
-   *  - ⛔ **it can never be reopened** — a start with no message never replaces it (R10 is a
-   *    message's: {@link startForADelivery}), so the wake-up goes, and so do the words it held
-   *    ({@link letGoOfItsMissedJobs}); its next message replaces it;
+   *  - **it can never be reopened** — the wake-up goes, and so do the words it held
+   *    ({@link letGoOfItsMissedJobs});
    *  - ⚑ **nothing scheduled is left** — the wake-up goes: what it was told waits in its ledger for
    *    its next start;
    *  - ⛔ **its provider's saved key could not be read** — it waits for that key to change, with no
@@ -10581,6 +10579,14 @@ export class RuntimeHost implements LiveHost {
    * classify exactly what they did.
    */
   private aRefusalAPersonReads(failed: unknown, id: string, reopening = false): unknown {
+    if (reopening && theProviderLostIt(failed)) {
+      return new SessionUnavailable(
+        'its-session-is-gone',
+        `${id}'s provider no longer has its session`,
+        { address: this.addressOf(id), reopening: true },
+        { cause: failed },
+      )
+    }
     // ⚑ **D-039 · R2 — a start its provider refused or that failed otherwise**, first: neither
     // carries an errno, so no reader below takes them, and theirs never take one.
     const error = this.aFailedStartAsARefusal(failed, id, reopening)
@@ -10601,7 +10607,7 @@ export class RuntimeHost implements LiveHost {
    * failed: {…}"* on a reopen — because a provider's refusal is not a {@link SessionUnavailable} and
    * {@link refusalTranslated} passed it through. ⚑ By its TYPE (`startRefusalOf`, anywhere on the
    * chain: a reopen's `ResumeError` carries it as its cause), with its words as the context. ⛔ A
-   * thread its provider no longer has carries none, and is replaced (D-017 R10). ⚑ **The refusal is
+   * thread its provider no longer has is reported separately. ⚑ **The refusal is
    * the `cause`**, for {@link aShortageAsARefusal}'s reason: `give_work` and the wake read it by type.
    *
    * 🔴 **D-039 · R2 — and a start that failed otherwise** (`StartFailed`: its provider's process ended
@@ -19937,9 +19943,7 @@ export class RuntimeHost implements LiveHost {
           ? { shown: [], more: 0 }
           : this.otherConversationsOf(
               profileSlug,
-              conversation !== null
-                ? this.theIdsItStandsFor(conversation)
-                : [],
+              conversation !== null ? this.theIdsItStandsFor(conversation) : [],
             ),
     }
   }
@@ -25845,8 +25849,8 @@ export class RuntimeHost implements LiveHost {
       return Promise.reject(error)
     }
     if (heldBack) return Promise.reject(new ServicesAreOff())
-    // ⚑ **D-029 · a delivery that joins a wake-up's start makes it a delivery's**: it carries words
-    // now, so one that can never be reopened is replaced ({@link startForADelivery}).
+    // A delivery that joins a wake-up's start carries words, so the scheduled plan is no longer
+    // the only reason to start.
     if (inFlight !== undefined) {
       this.wakingForItsJobs.delete(sessionId)
       this.wakingForStoppedWork.delete(sessionId)
@@ -25910,7 +25914,7 @@ export class RuntimeHost implements LiveHost {
       const raced = this.slots.get(sessionId)
       if (raced !== undefined && raced.session === null && !onItsWayOut(raced)) await raced.arrived
       if (this.runsNow(sessionId)) return sessionId
-      throw this.saidAsGoneIfItIs(error, sessionId)
+      throw error
     } finally {
       if (headless) this.startingForADeliveryWithNoWindow.delete(sessionId)
       if (marked) this.startingForADelivery.delete(sessionId)
@@ -25978,20 +25982,6 @@ export class RuntimeHost implements LiveHost {
     } finally {
       slot.settle()
     }
-  }
-
-  /**
-   * `its-session-is-gone` for a start whose provider no longer has the conversation's session,
-   * with its address for the person's sentence; any other failure as it came.
-   */
-  private saidAsGoneIfItIs(error: unknown, sessionId: string): unknown {
-    if (!theProviderLostIt(error)) return error
-    return new SessionUnavailable(
-      'its-session-is-gone',
-      `${sessionId}'s provider no longer has its session`,
-      { address: this.nameByItsWork(sessionId) },
-      { cause: error },
-    )
   }
 
   /**
@@ -37260,7 +37250,6 @@ export class RuntimeHost implements LiveHost {
             })
           }
         }
-        // ⚑ **R10 — the start may have replaced it**: the words go to the conversation it started.
         return this.sendTheFirstMessage(
           resumed.sessionId,
           text,
@@ -37337,9 +37326,7 @@ export class RuntimeHost implements LiveHost {
    * otherwise this start is the one every delivery joins. ⚑ The window's Reopen and its first
    * message ({@link startAndSend}) both start through here.
    *
-   * ⚑ **R10 — a conversation that could never be reopened is the one in its place**, and one this
-   * start finds can never be reopened is replaced for this window ({@link aPersonsStart}) — so the
-   * answer names the conversation that runs, which may not be the id the window asked for.
+   * If the record already names a conversation in its place, reopen that conversation.
    */
   async reopenForAPerson(
     sessionId: string,
@@ -37356,7 +37343,7 @@ export class RuntimeHost implements LiveHost {
         this.aPersonsWindowTakesIt(ran, sink) ?? (await this.resumeSession(ran, sink, launchKey))
       )
     }
-    const start = this.aPersonsStart(at, sink, launchKey)
+    const start = this.resumeSession(at, sink, launchKey)
     const joined = start.then((resumed) => resumed.sessionId)
     this.startsInFlight.set(at, joined)
     // ⚑ **D-019** — {@link ensureRunning}'s marks, for a person's start.
@@ -37368,19 +37355,6 @@ export class RuntimeHost implements LiveHost {
     }
     void joined.then(done, done)
     return start
-  }
-
-  /** A person's start: a reopen, with a provider session that is gone said as such. */
-  private async aPersonsStart(
-    sessionId: string,
-    sink: RuntimeEventSink,
-    launchKey: string | null,
-  ): Promise<ResumedSession> {
-    try {
-      return await this.resumeSession(sessionId, sink, launchKey)
-    } catch (error) {
-      throw this.saidAsGoneIfItIs(error, sessionId)
-    }
   }
 
   /**
@@ -38707,9 +38681,7 @@ export class RuntimeHost implements LiveHost {
                 refusal: row.unresumableReason ?? undefined,
               }),
       settingsFixed:
-        slot !== undefined ||
-        whyNoSettingForItsNextStart(row, this.replacedBy) !==
-          null,
+        slot !== undefined || whyNoSettingForItsNextStart(row, this.replacedBy) !== null,
     }
   }
 

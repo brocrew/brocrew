@@ -359,19 +359,15 @@ describe('what a person must fix, said once', () => {
       },
     )
 
-    it('⚑ control — a provider that lost the conversation is not refused: a new one takes its place', async () => {
+    it('a lost session is distinguished from a missing program or unwritable folder', async () => {
       const pm = await aPmThatMaySpawn()
       const { worker, label } = await aWorkerThatStopped(pm)
       vi.spyOn(console, 'warn').mockImplementation(() => {})
       issued.forgetAll()
-      // ⚑ **D-017 · R10** — it kept `that-conversation-could-not-be-resumed` and its reason; a
-      // conversation its provider no longer has is REPLACED now, by a new conversation of the same
-      // agent, which takes the message. ⛔ So the two arms above are the only ones a person must fix.
-      const sent = await wakeByMessage(pm, worker, label)
-      expect(sent, JSON.stringify(sent)).toMatchObject({ outcome: 'ok', agent: worker })
-      expect(typeof sent.went_to).toBe('string')
-      expect(sent.went_to).not.toBe(worker)
-      expect(JSON.stringify(sent)).not.toContain(COULD_NOT_BE_RESUMED)
+      await expect(wakeByMessage(pm, worker, label)).rejects.toMatchObject({
+        cause: { unavailable: 'its-session-is-gone', context: { address: label } },
+      })
+      expect(store.replacements()).toEqual([])
     })
   })
 

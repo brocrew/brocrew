@@ -318,19 +318,17 @@ describe('705 · R39 — a shortage that clears by itself', () => {
       remedy: null,
     }
 
-    /**
-     * ⚑ **D-017 · R10 — a thread the provider no longer has is not a *never* any more**: the
-     * message starts a new conversation of the same agent in its place, and the receipt names it.
-     * ⛔ It answered the permanent word while the wake was `resume_agent`'s.
-     */
-    it('⚑ a thread the provider no longer has — the message starts one in its place, and is not refused', async () => {
+    it('a missing provider session is not a shortage or a successful replacement', async () => {
       const { pm, worker, piece } = await aWorkerOver()
       issued.forgetAll()
-      const sent = await wake(pm, worker, piece)
-      expect(theRefusal(sent).outcome, JSON.stringify(sent)).toBe('ok')
-      expect(sent.agent).toBe(worker)
-      expect(typeof sent.went_to).toBe('string')
-      expect(sent.went_to).not.toBe(worker)
+      const address = store.workById(piece)?.label
+      expect(address).toMatch(/^W/)
+      const before = store.recorded().map(({ sessionId }) => sessionId)
+      await expect(wake(pm, worker, piece)).rejects.toMatchObject({
+        cause: { unavailable: 'its-session-is-gone', context: { address } },
+      })
+      expect(store.recorded().map(({ sessionId }) => sessionId)).toEqual(before)
+      expect(store.replacements()).toEqual([])
     })
 
     it('⚑ a spawn a PERSON has to fix — the binary not there — on each provider', async () => {
@@ -399,8 +397,6 @@ describe('705 · R39 — a shortage that clears by itself', () => {
     })
 
     it('⚑ control: the permanent word’s row still says somebody has to change it', async () => {
-      // ⚑ **D-017 · R10** — a thread the provider no longer has is REPLACED now (§2), so the
-      // permanent word is reached by a program that is not there, as §2b reaches it.
       const produced = await claudeResumeOver(
         () => aSpawnRefusedAfterItsPipes('ENOENT', '/x/claude').child,
       )
