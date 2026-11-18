@@ -10,9 +10,9 @@ jobs:
     defaults:
       run:
         shell: bash
-    env:
-      EVIDENCE: ${{ runner.temp }}/process-native
     steps:
+      - name: Set native evidence directory
+        run: echo "EVIDENCE=$RUNNER_TEMP/process-native" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
         with:
           ref: 24efa85d3c9b696029bce637a88499d87db5f0b5
