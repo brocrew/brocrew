@@ -1,6 +1,27 @@
 import { spawn } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
 import type { SpawnedProcess, SpawnOptions } from '@anthropic-ai/claude-agent-sdk'
+import { withTimeout } from '../internal/bounded'
+import {
+  claudeProcessGroups,
+  ownClaudeProcessGroup,
+  type ClaudeProcessGroup,
+} from './process-group'
+
+/** Await the SDK's bounded receipt, then reap the child even if that receipt throws. */
+export async function finishClaudeChild(
+  query: { return?: () => unknown } | null,
+  child: ClaudeChildWitness | undefined,
+  withinMs: number,
+): Promise<void> {
+  try {
+    if (query?.return) await withTimeout(Promise.resolve(query.return()), withinMs)
+  } catch {
+    // A broken SDK receipt must not skip process cleanup.
+  } finally {
+    await child?.close()
+  }
+}
 
 /**
  * **The Claude CLI child, owned by this app rather than borrowed from the SDK** (233, from 229 H1).
@@ -61,7 +82,8 @@ import type { SpawnedProcess, SpawnOptions } from '@anthropic-ai/claude-agent-sd
  * `ClaudeRuntime.childEnvAdditions` on `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`, where a permission-mode
  * override arrived exactly that way.
  *
- * Everything else is deliberate parity with `spawnLocalProcess`: the same stdio, the same
+ * The CLI leads a private POSIX process group, reaped on exit and explicit close. Other spawn
+ * options retain parity with `spawnLocalProcess`: the same stdio, the same
  * `windowsHide`, and the SDK's **forwarded** `signal` passed straight through — per `SpawnOptions`'
  * own doc it fires only after the stdin-EOF + ~2 s grace, so honouring it preserves the graceful
  * path rather than racing ahead of it. The SDK registers our child in its own `process.on('exit')`
@@ -110,6 +132,10 @@ export interface ClaudeChildWitness {
    * delivers `'exit'` for that child, and that is what this waits for.
    */
   readonly exited: Promise<void>
+  /** The CLI and its private process group have both stopped. */
+  readonly quiesced: Promise<void>
+  /** End the private process group after asking the SDK to close the CLI. */
+  close(): Promise<void>
   /** The last {@link STDERR_TAIL_BYTES} of the child's stderr, for a diagnostic that needs it. */
   readonly stderrTail: string
   /**
@@ -147,13 +173,16 @@ export type SpawnChild = (options: SpawnOptions) => ChildProcess
 /** The default: `child_process.spawn` with `spawnLocalProcess`'s own arguments. */
 export function spawnClaudeChild(options: SpawnOptions): ChildProcess {
   const { command, args, cwd, env, signal } = options
-  return spawn(command, args, {
+  const child = spawn(command, args, {
     cwd,
     env,
     signal,
     stdio: ['pipe', 'pipe', 'pipe'],
     windowsHide: true,
+    detached: process.platform !== 'win32',
   })
+  if (process.platform !== 'win32') ownClaudeProcessGroup(child)
+  return child
 }
 
 /**
@@ -178,7 +207,10 @@ export function spawnClaudeChild(options: SpawnOptions): ChildProcess {
  * waiting on a session that was never going to start. The witness cannot make a failing spawn
  * succeed and does not pretend to — it only refrains from adding a second way to fail.
  */
-export function watchClaudeChild(spawnChild: SpawnChild = spawnClaudeChild): ClaudeChildWitness {
+export function watchClaudeChild(
+  spawnChild: SpawnChild = spawnClaudeChild,
+  sessionId?: string,
+): ClaudeChildWitness {
   let child: ChildProcess | null = null
   let dead = false
   let settled = false
@@ -202,11 +234,14 @@ export function watchClaudeChild(spawnChild: SpawnChild = spawnClaudeChild): Cla
   let stderrTail = ''
   /** ⚑ 705 · the errno of a spawn that produced no process — see {@link ClaudeChildWitness.spawnFailure}. */
   let spawnFailure: Error | null = null
+  let group: ClaudeProcessGroup | undefined
 
   return {
     spawn(options: SpawnOptions): SpawnedProcess {
       const spawned = spawnChild(options)
       child = spawned
+      group = claudeProcessGroups.get(spawned)
+      group?.identify(sessionId)
       // 🔴 **The drain, and it is load bearing** — see the note on {@link ClaudeChildWitness}. The
       // SDK cannot read a custom child's stderr, so if this listener is not attached the child
       // stops the first time it writes more than a pipe buffer's worth.
@@ -271,6 +306,12 @@ export function watchClaudeChild(spawnChild: SpawnChild = spawnClaudeChild): Cla
     },
     get stderrTail(): string {
       return stderrTail
+    },
+    get quiesced(): Promise<void> {
+      return group?.quiesced ?? (child === null ? nothingRunning : childExited)
+    },
+    close: async (): Promise<void> => {
+      await group?.close()
     },
     spawnFailure: async (): Promise<Error | null> => {
       if (child === null) return null

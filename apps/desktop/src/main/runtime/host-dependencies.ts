@@ -310,6 +310,8 @@ export interface RuntimeHostDeps {
   resourcesRoot?(): string
   /** Makes an exclusive piece directory under the app-owned output root, after admission. */
   makeWorkerPieceFolder?(piece: string): string
+  /** Reap commands in a worker's own output folder after its provider has stopped. */
+  stopWorkerCommands?(cwd: string, occupied: () => readonly string[]): Promise<void>
   /**
    * ⚑ **F006 — which build of this app is running** ({@link TheBuildRunning}), told to each
    * conversation as it launches. ⛔ Optional: a host wired without it tells nobody, and a read that

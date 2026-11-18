@@ -32130,37 +32130,13 @@ export class RuntimeHost implements LiveHost {
     })
   }
   /**
-   * **The one place a session stops being owned** (051, from 048 §1 finding 3).
+   * Stop the provider and its orphaned commands before recording the terminal state,
+   * archiving, stopping liveness and unregistering. Retain the launch until termination is proven.
+   * Every ending shares this single-flight finalizer; the first ending wins.
    *
-   * Every ending arrives here — {@link SessionEnding} names all four — and the order below is the
-   * whole point of the task:
-   *
-   *  1. **Stop the provider, while we still hold the handle.** Three of the four paths did not, and
-   *     unregistering first meant `closeAll()` could no longer reach the session: the renderer said
-   *     it was dead, the app owned nothing, and a Codex child spawned into its own process group
-   *     went on running with nobody left to reap it.
-   *  2. **Record that it is over, durably.** A fatal `error` is terminal to liveness and to the
-   *     renderer and means nothing to the store's reducer, so a failed stream left `working` with an
-   *     open turn — a session that resumes claiming to be mid-turn forever. One transaction
-   *     (`store.terminate`) writes the status and the turn's ending together.
-   *  3. Archive, 4. stop the liveness timer, 5. and only then unregister.
-   *
-   * **Single-flight, first ending wins.** A stream that failed and was then closed is a session that
-   * FAILED; the close was the consequence. The store applies the same rule to the status column.
-   *
-   * ⚠️ **Which caller arrives first is not the one you would guess.** On an explicit close against a
-   * cooperative adapter it is the PUMP: closing the handle ends the stream, the pump's `finally`
-   * runs on the resulting microtask, and `tearDown` is still awaiting the drain. So a user pressing
-   * Close normally records `stream-ended`, and `closed` is reached only when an adapter closes
-   * without promptly ending its stream. `close-timeout` is the mirror image — `tearDown` always wins
-   * there, because winning is what the timeout means. Harmless either way ({@link terminalFor} maps
-   * three of the four to `ended`), but worth knowing before writing anything that branches on
-   * `closed`: such a branch would look correct and almost never run.
-   *
-   * **Never rejects, and never half-finishes.** It is called from the pump's `finally` with nobody
-   * to catch it, so a throw would be unhandled — and worse, it would abandon the remaining steps and
-   * leave exactly the half-owned session this exists to prevent. Every step is individually
-   * guarded, so the last two (stop the timer, unregister) run whatever happened to the first three.
+   * A cooperative close normally ends the stream first, so its pump finalizes as `stream-ended`
+   * while teardown still awaits the drain. A close timeout instead reaches `close-timeout` first.
+   * Each cleanup step must finish independently so one failure cannot skip unregistering.
    */
   private finalize(session: HostedSession, ending: SessionEnding): Promise<void> {
     // ⚑ **D-019 · on its way out** — the mark a stream that ended by itself, or failed, gets
@@ -32193,6 +32169,16 @@ export class RuntimeHost implements LiveHost {
       console.warn(
         `runtime session ${session.id}: stopping the provider threw: ${errorMessage(error)}`,
       )
+    }
+
+    try {
+      const occupied = () =>
+        [...this.slots.values()].flatMap((slot) =>
+          slot.session !== null && slot.session !== session ? [slot.session.cwd] : [],
+        )
+      await this.deps.stopWorkerCommands?.(session.cwd, occupied)
+    } catch (error) {
+      console.warn(`runtime session ${session.id}: command cleanup failed:`, error)
     }
 
     // The terminal state is the fact the next launch depends on. Through `record()` like every other
