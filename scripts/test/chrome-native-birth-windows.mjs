@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import { theVariablesFor } from '../lib/tests-run-in-a-fictional-home.mjs'
 
 assert.equal(process.platform, 'win32', 'This proof must execute on native Windows')
@@ -15,6 +16,7 @@ assert.deepEqual(manifest.platforms, [{ os: 'win32', cpu: 'x64' }])
 assert.equal(manifest.sourceCommit, process.env.GITHUB_SHA)
 assert(manifest.files.some((file) => file.path === 'bin/chrome-process-birth.exe'))
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'fictional-native-birth-'))
+const observer = path.join(home, 'windows-process-birth-observer.exe')
 const record = {
   sourceCommit: manifest.sourceCommit,
   platform: process.platform,
@@ -45,12 +47,7 @@ function execute(label, program, args) {
   return result
 }
 function compareBirth(label, pid) {
-  const facts = execute(`${label}:Windows-facts`, 'powershell.exe', [
-    '-NoProfile',
-    '-NonInteractive',
-    '-Command',
-    `$ErrorActionPreference='Stop'; $p=Get-Process -Id ${pid}; [Console]::Out.Write($p.StartTime.ToUniversalTime().Ticks.ToString([Globalization.CultureInfo]::InvariantCulture))`,
-  ])
+  const facts = execute(`${label}:Windows-facts`, observer, [String(pid)])
   assert.equal(facts.status, 0, label)
   assert.equal(facts.stderr, '', label)
   assert.match(facts.stdout, /^[1-9][0-9]{0,18}$/)
@@ -76,6 +73,20 @@ let child
 let closed
 let failure
 try {
+  const compiler = path.join(
+    process.env.SystemRoot,
+    'Microsoft.NET',
+    'Framework64',
+    'v4.0.30319',
+    'csc.exe',
+  )
+  const compiled = execute('compile-Windows-facts-observer', compiler, [
+    '/nologo',
+    '/target:exe',
+    `/out:${observer}`,
+    fileURLToPath(new URL('./windows-process-birth-observer.cs', import.meta.url)),
+  ])
+  assert.equal(compiled.status, 0, 'compile-Windows-facts-observer')
   compareBirth('self', process.pid)
   child = spawn(
     process.execPath,
