@@ -101,7 +101,11 @@ export function panelRuns(state: TranscriptState): PanelRuns {
       (item.background.outcome !== undefined || item.background.unfinished)
     ) {
       const work = item.background
-      if ((work.id !== undefined && claimed.has(work.id)) || live.some((row) => row.id === work.id || row.toolCallId === item.callId)) continue
+      if (
+        (work.id !== undefined && claimed.has(work.id)) ||
+        live.some((row) => row.id === work.id || row.toolCallId === item.callId)
+      )
+        continue
       rows.push({
         key: `background:${item.callId}`,
         label: item.summary || item.name,
@@ -119,7 +123,16 @@ export function panelRuns(state: TranscriptState): PanelRuns {
   }
   for (const work of live) {
     if (claimed.has(work.id)) continue
-    const group: RunGroup = work.kind === 'monitor' || work.kind === 'job' ? 'Jobs & monitors' : work.kind === 'local_bash' || work.kind === 'shell' ? 'Commands' : work.kind === 'local_agent' || work.kind === 'remote_agent' || work.kind === 'subagent' ? 'Agents' : work.kind === 'workflow' ? 'Workflows' : 'Background'
+    const group: RunGroup =
+      work.kind === 'monitor' || work.kind === 'job'
+        ? 'Jobs & monitors'
+        : work.kind === 'local_bash' || work.kind === 'shell'
+          ? 'Commands'
+          : work.kind === 'local_agent' || work.kind === 'remote_agent' || work.kind === 'subagent'
+            ? 'Agents'
+            : work.kind === 'workflow'
+              ? 'Workflows'
+              : 'Background'
     rows.push({
       key: `background:${work.id}`,
       label: work.command?.text || work.description || work.id,

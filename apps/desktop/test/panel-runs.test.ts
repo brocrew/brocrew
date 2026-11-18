@@ -5,11 +5,25 @@ import { panelRuns } from '../src/renderer/src/lib/panel-runs'
 it('keeps ordinary tools out and joins a workflow with its background identity', () => {
   const state = createTranscript()
   applyEvent(state, { type: 'tool_call', id: 'plain', name: 'Read', summary: 'Read a file' })
-  applyEvent(state, { type: 'tool_call', id: 'workflow-call', name: 'Workflow', summary: 'Review the map' })
+  applyEvent(state, {
+    type: 'tool_call',
+    id: 'workflow-call',
+    name: 'Workflow',
+    summary: 'Review the map',
+  })
   const tool = state.items.find((item) => item.kind === 'tool' && item.callId === 'workflow-call')
   if (tool?.kind !== 'tool') throw new Error('workflow fixture missing')
-  tool.workflow = { taskId: 'review', name: 'Review the map', running: true, phases: [], agents: [] }
-  state.background.running = [{ id: 'review', toolCallId: 'workflow-call', description: 'Review the map', kind: 'workflow' }, { id: 'monitor', description: 'Watch paths', kind: 'monitor' }]
+  tool.workflow = {
+    taskId: 'review',
+    name: 'Review the map',
+    running: true,
+    phases: [],
+    agents: [],
+  }
+  state.background.running = [
+    { id: 'review', toolCallId: 'workflow-call', description: 'Review the map', kind: 'workflow' },
+    { id: 'monitor', description: 'Watch paths', kind: 'monitor' },
+  ]
   const runs = panelRuns(state)
   expect(runs.active).toHaveLength(2)
   expect(runs.active.map((row) => row.group)).toEqual(['Workflows', 'Jobs & monitors'])
@@ -25,9 +39,12 @@ it('lists only known background endings and keeps reported failure wording', () 
   const runs = panelRuns(state)
   expect(runs.active).toHaveLength(0)
   expect(runs.past).toHaveLength(1)
-  expect(runs.past[0]).toMatchObject({ label: 'Check paths', failed: true, detail: 'One path missing' })
+  expect(runs.past[0]).toMatchObject({
+    label: 'Check paths',
+    failed: true,
+    detail: 'One path missing',
+  })
 })
-
 
 it('keeps an unreported background kind generic', () => {
   const state = createTranscript()
@@ -35,12 +52,22 @@ it('keeps an unreported background kind generic', () => {
   expect(panelRuns(state).active[0]?.group).toBe('Background')
 })
 
-
 it('joins an ended native child with its anchored background ending', () => {
   const state = createTranscript()
   applyEvent(state, { type: 'tool_call', id: 'dispatch', name: 'Agent', summary: 'Read the map' })
-  applyEvent(state, { type: 'sub_agent', agentId: 'map-reader', phase: 'started', parentToolCallId: 'dispatch', title: 'Read the map' })
-  applyEvent(state, { type: 'sub_agent', agentId: 'map-reader', phase: 'ended', outcome: 'completed' })
+  applyEvent(state, {
+    type: 'sub_agent',
+    agentId: 'map-reader',
+    phase: 'started',
+    parentToolCallId: 'dispatch',
+    title: 'Read the map',
+  })
+  applyEvent(state, {
+    type: 'sub_agent',
+    agentId: 'map-reader',
+    phase: 'ended',
+    outcome: 'completed',
+  })
   const tool = state.items.find((item) => item.kind === 'tool' && item.callId === 'dispatch')
   if (tool?.kind !== 'tool') throw new Error('dispatch fixture missing')
   tool.background = { id: 'map-reader', outcome: 'completed' }
