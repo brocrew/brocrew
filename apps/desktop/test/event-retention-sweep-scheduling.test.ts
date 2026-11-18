@@ -80,7 +80,7 @@ describe('event retention sweep timing and logging', () => {
 
   afterEach(async () => {
     await retention.stop()
-    const records = logging.logInfo as ReturnType<typeof vi.spyOn>
+    const records = vi.mocked(logging.logInfo)
     const lines = existsSync(logFile)
       ? readFileSync(logFile, 'utf8').trim().split('\n').filter(Boolean)
       : []
