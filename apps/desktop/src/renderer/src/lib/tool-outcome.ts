@@ -161,7 +161,8 @@ export const TOOL_OUTCOME_WORD: Readonly<Record<ToolOutcome, string>> = {
 export function toolTook(item: ToolItem, at: number | undefined): string | null {
   if (item.background === undefined) {
     const reported = item.result?.durationMs
-    if (reported !== undefined && Number.isFinite(reported) && reported >= 0) return durationWords(reported)
+    if (reported !== undefined && Number.isFinite(reported) && reported >= 0)
+      return durationWords(reported)
   }
   const to = item.background ? item.background.endedAt : item.result?.at
   if (at === undefined || to === undefined) return null

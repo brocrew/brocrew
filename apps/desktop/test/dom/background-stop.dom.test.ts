@@ -206,9 +206,7 @@ describe('287 finding 4 · the stop latch is retired with its row', () => {
     return r
   }
 
-  it('🔴 row X → an ACCEPTED stop → the row leaves → X comes back, and its Stop is live again', async () => {
-    // ⚠️ `reactive`, because this test is about what happens when the registry CHANGES — which is
-    // what the store does to a record in the app, and a plain object would render once and lie.
+  async function acceptStop(): Promise<{ r: SessionRecord; m: ReturnType<typeof mount> }> {
     const r = reactive(stoppable())
     const m = mount(
       ConversationPane,
@@ -217,6 +215,13 @@ describe('287 finding 4 · the stop latch is retired with its row', () => {
     )
     m.q('panel-stop-b6uoyo82k').click()
     await settled()
+    return { r, m }
+  }
+
+  it('🔴 row X → an ACCEPTED stop → the row leaves → X comes back, and its Stop is live again', async () => {
+    // ⚠️ `reactive`, because this test is about what happens when the registry CHANGES — which is
+    // what the store does to a record in the app, and a plain object would render once and lie.
+    const { r, m } = await acceptStop()
     // The paired positive: the latch really is on, which is the behaviour 248 wanted.
     expect(m.q('panel-stop-b6uoyo82k').hasAttribute('disabled')).toBe(true)
 
@@ -237,14 +242,7 @@ describe('287 finding 4 · the stop latch is retired with its row', () => {
   it('⚠️ …while a row that is STILL listed keeps its latch — the stop really is in flight', async () => {
     // The other side of the same rule, and the reason this is a watcher on the row set rather than
     // a blanket clear: Codex reports the work until it actually stops, up to one poll away.
-    const r = reactive(stoppable())
-    const m = mount(
-      ConversationPane,
-      openPane({ record: r, onStopBackgroundWork: () => Promise.resolve(true) }),
-      { width: 1200 },
-    )
-    m.q('panel-stop-b6uoyo82k').click()
-    await settled()
+    const { r, m } = await acceptStop()
     applyEvent(r.transcript, level(['b6uoyo82k', 'other']))
     await settled()
     expect(m.q('panel-stop-b6uoyo82k').hasAttribute('disabled')).toBe(true)

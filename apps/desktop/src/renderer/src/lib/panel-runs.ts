@@ -37,6 +37,7 @@ export function panelRuns(state: TranscriptState): PanelRuns {
   for (const { card, itemId } of cardHomes(state)) {
     const key = `agent:${card.agentId}`
     if (rows.some((row) => row.key === key)) continue
+    claimed.add(card.agentId)
     const background = live.find((row) => row.id === card.agentId)
     if (background) claimed.add(background.id)
     const active = card.running || background !== undefined
@@ -68,6 +69,8 @@ export function panelRuns(state: TranscriptState): PanelRuns {
     if (item.kind !== 'tool') continue
     if (item.workflow) {
       const run = item.workflow
+      if (rows.some((row) => row.key === `workflow:${run.taskId}`)) continue
+      claimed.add(run.taskId)
       const background = live.find((row) => row.id === run.taskId || row.toolCallId === item.callId)
       if (background) claimed.add(background.id)
       const active = run.running || background !== undefined
@@ -98,12 +101,12 @@ export function panelRuns(state: TranscriptState): PanelRuns {
       (item.background.outcome !== undefined || item.background.unfinished)
     ) {
       const work = item.background
-      if (live.some((row) => row.id === work.id || row.toolCallId === item.callId)) continue
+      if (claimed.has(work.id) || live.some((row) => row.id === work.id || row.toolCallId === item.callId)) continue
       rows.push({
         key: `background:${item.callId}`,
         label: item.summary || item.name,
         detail: work.summary ?? '',
-        group: 'Commands',
+        group: item.name === 'Bash' ? 'Commands' : 'Background',
         status: BACKGROUND_WORD[backgroundState(work)],
         active: false,
         failed: work.outcome === 'failed',
@@ -120,7 +123,7 @@ export function panelRuns(state: TranscriptState): PanelRuns {
     rows.push({
       key: `background:${work.id}`,
       label: work.command?.text || work.description || work.id,
-      detail: work.command?.name || group,
+      detail: work.command?.name || '',
       group,
       status: 'Running',
       active: true,
