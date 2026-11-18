@@ -88,6 +88,8 @@ export interface AppLifetimeDeps {
   drainArchiveWork: () => Promise<void>
   /** Close the SQLite connection — after the sessions are down and the imports have drained. */
   closeDatabase: () => void
+  /** End escaped command children only after database work and its workers have closed. */
+  stopCommands?: () => Promise<void>
   /** Ask Electron to quit again, now that the deferral is over. */
   quit: () => void
   /** Finish quitting once every shutdown step has returned. Defaults to the ordinary quit. */
@@ -496,6 +498,7 @@ export function createAppLifetime(deps: AppLifetimeDeps): AppLifetime {
      * the cheapest instrument that makes the next occurrence a sentence instead of an investigation.
      */
     const spent: string[] = []
+    let databaseClosed = false
     // EVERY step is guarded, including the ones that look like they cannot fail. This function is
     // the only thing standing between a quit and the app's own state, and a throw anywhere in it
     // skips every step after it: an unguarded `stopArchiveWork()` would take the session teardown
@@ -513,13 +516,18 @@ export function createAppLifetime(deps: AppLifetimeDeps): AppLifetime {
         : ([['keep its unsent drafts', keepUnsentDrafts]] as const)),
       ['drain its archive work', deps.drainArchiveWork],
       ['close its database', deps.closeDatabase],
+      ...(deps.stopCommands === undefined
+        ? []
+        : ([['end its commands', deps.stopCommands]] as const)),
     ] as const) {
+      if (run === deps.stopCommands && !databaseClosed) continue
       const began = deps.now()
       try {
         await run()
+        if (run === deps.closeDatabase) databaseClosed = true
       } catch (error) {
         deps.log(`BroCrew failed to ${what}:`, error)
-        if (stopOnFailure || run === keepUnsentDrafts) throw error
+        if ((stopOnFailure && run !== deps.stopCommands) || run === keepUnsentDrafts) throw error
       }
       // ⚠️ Stamped in the `finally` sense — outside the `catch`, so a step that THREW still reports
       // what it spent. A failure that took forty seconds is the most interesting row there is, and

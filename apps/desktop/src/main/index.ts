@@ -51,6 +51,7 @@ import { AttentionSignals } from './attention-signals'
 import { attentionOverlay } from './attention-overlay'
 import { installAppNavigation } from './app-navigation'
 import { makeWorkerPieceFolder, WORKER_OUTPUT_DIRNAME } from './worker-piece-folder'
+import { stopOrphanedCommands, stopWorkerCommands } from './command-cleanup'
 import { keptShippedSkills, prepareBuiltInSkills } from './skills/prepare-built-in-skills'
 import { factoryTextOf, readTextPack } from './skills/text-pack'
 import {
@@ -894,16 +895,13 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
         mainThreadWork,
         'window provider broadcast',
       ),
-    openExternal: async (url) => {
-      await shell.openExternal(url)
-    },
-    revealPath: (path) => {
-      shell.showItemInFolder(path)
-    },
+    openExternal: (url) => shell.openExternal(url),
+    revealPath: (path) => shell.showItemInFolder(path),
     openPath: (path) => shell.openPath(path),
     providerHomesRoot: () => providerHomesRoot(userData),
     resourcesRoot: () => resourcesRoot(userData),
     makeWorkerPieceFolder: (piece) => makeWorkerPieceFolder(userData, piece),
+    stopWorkerCommands: (cwd, occupied) => stopWorkerCommands(userData, cwd, occupied),
     whichBuild: () => ({ ...buildIdentity(), schema: migrationsAppliedOrNull() }),
     providerSnapshot: (provider, model) => snapshotFor(provider, model),
     resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
@@ -2308,6 +2306,7 @@ const lifetime = createAppLifetime({
     if (db !== null) closeDatabase(db)
     db = null
   },
+  stopCommands: () => stopOrphanedCommands(app.getPath('userData')),
   quit: () => app.quit(),
   quitAfterShutdown: () => {
     if (!theDataOpened || startFailed) {

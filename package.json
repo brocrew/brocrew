@@ -138,7 +138,9 @@
     "probe:claude-provider-burst": "vitest run --config vitest.smoke.config.ts packages/runtime/smoke/claude-provider-burst-probe.smoke.ts",
     "probe:claude-usage-windows": "vitest run --config vitest.smoke.config.ts packages/runtime/smoke/claude-usage-windows-probe.smoke.ts",
     "probe:claude-work-folders": "vitest run --config vitest.smoke.config.ts packages/runtime/smoke/claude-work-folders-probe.smoke.ts",
-    "probe:codex-work-folders": "vitest run --config vitest.smoke.config.ts packages/runtime/smoke/codex-work-folders-probe.smoke.ts"
+    "probe:codex-work-folders": "vitest run --config vitest.smoke.config.ts packages/runtime/smoke/codex-work-folders-probe.smoke.ts",
+    "agent-processes:check": "node scripts/gates/agent-processes/actual-app-orphans.mjs",
+    "test:agent-processes": "vitest run --config vitest.agent-processes.config.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
