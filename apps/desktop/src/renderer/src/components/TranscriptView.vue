@@ -979,11 +979,8 @@ defineExpose({ focusItem })
           v-else-if="row.item.kind === 'subAgent'"
           :card="row.item.card"
           placement="transcript"
-          :can-read-answer="props.canReadToolAnswers"
           :can-open-transcript="props.canOpenChildWork"
-          :paths="props.paths"
           @open-child="(what, label) => $emit('openChildWork', what, label)"
-          @open-answer="(callId, name) => $emit('openToolAnswer', callId, name)"
         />
         <NoticeEntry
           v-else-if="row.item.kind === 'notice'"
