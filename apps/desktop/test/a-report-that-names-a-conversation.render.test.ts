@@ -146,7 +146,7 @@ describe('506 · the row takes a person to the conversation it names', () => {
     expect(html).toContain('>Open the conversation<')
   })
 
-  it('⛔ the panel band says *Sub-agents*, and its handle is unchanged', async () => {
+  it('⛔ the running-work card keeps its handle', async () => {
     // Use a panel with a running sub-agent so the band itself is drawn and read; the
     // empty-section sentence is absent.
     const state = createTranscript()
@@ -164,7 +164,7 @@ describe('506 · the row takes a person to the conversation it names', () => {
       applyEvent(state, event)
     const html = await renderToString(createSSRApp({ render: () => h(SessionPanel, { state }) }))
     const band = html.slice(html.indexOf('data-cy="panel-agents"'))
-    expect(band.slice(0, band.indexOf('</section>'))).toMatch(/>Sub-agents</)
+    expect(band.slice(0, band.indexOf('</section>'))).toMatch(/>Running now</)
     // ⛔ The word this negative is about is unchanged.
     expect(html).not.toContain('Running agents')
   })

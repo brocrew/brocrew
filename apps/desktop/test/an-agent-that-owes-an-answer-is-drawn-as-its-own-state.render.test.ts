@@ -268,11 +268,11 @@ describe('§6 · the agent card names the asker, and a schedule still shows unde
   it('the card’s word names the asker, and the schedule bar is drawn: `owes` ranks above the schedule', async () => {
     const owing = visible(await cardOf({ doing: 'idle', owes: [ADA], scheduled: true }, OWES_ONE))
     expect(subtitleOf(owing)).toBe(OWES_ADA)
-    expect(owing).toContain('data-cy="schedule-bar"')
-    expect(owing).toContain('data-cy="schedule-row-j1"')
+    expect(owing).toContain('data-cy="schedule-open-j1"')
+    expect(owing).toContain('data-cy="schedule-open-j1"')
 
     const idle = visible(await cardOf({ doing: 'idle', scheduled: true }, { is: 'idle' }))
-    expect(idle).not.toContain('data-cy="schedule-bar"')
+    expect(idle).not.toContain('data-cy="schedule-open-j1"')
     expect(subtitleOf(idle) ?? '').not.toContain('owes')
   })
 })

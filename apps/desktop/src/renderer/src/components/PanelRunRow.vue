@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import type { PanelRun } from '../lib/panel-runs'
-defineProps<{ run: PanelRun; canStop?: boolean; stopping?: boolean }>()
+defineProps<{ run: PanelRun; canStop?: boolean; stopping?: boolean; disabled?: boolean; title?: string }>()
 defineEmits<{ open: []; stop: [] }>()
 </script>
 <template>
-  <div class="run-row" :data-run-key="run.key">
-    <button class="run-open" type="button" data-cy="panel-row" :data-item="run.itemId" @click="$emit('open')">
+  <div class="run-row" :data-run-key="run.key" :data-cy="`panel-run-${run.key}`">
+    <button class="run-open" type="button" data-cy="panel-row" :data-item="run.itemId" :disabled="disabled" :title="title" @click="$emit('open')">
       <svg class="icon" aria-hidden="true"><use :href="run.icon" /></svg>
       <span class="copy">
-        <strong class="label">{{ run.label }}</strong>
+        <strong class="label" data-cy="panel-run-label">{{ run.label }}</strong>
         <span class="detail">{{ run.group }}<template v-if="run.detail"> · {{ run.detail }}</template></span>
         <span class="status" :class="{ failed: run.failed }">{{ run.status }}</span>
       </span>

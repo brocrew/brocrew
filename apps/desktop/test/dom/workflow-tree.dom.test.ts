@@ -579,7 +579,7 @@ describe("the drawer's workflow row (108)", () => {
     // dispatches no click, so the one thing the row exists for could not be done — and nothing
     // failed, because no test had ever clicked one.
     const view = mount(SessionPanel, { state: withWorkflow() }, { width: 360 })
-    const section = view.q('panel-workflows')
+    const section = view.q('running-now-rows')
     const rows = [...section.querySelectorAll<HTMLButtonElement>('[data-cy=panel-row]')]
     // One row, not twenty-two — the same restraint, asserted where the drawer actually draws it.
     expect(rows).toHaveLength(1)
@@ -600,7 +600,7 @@ describe("the drawer's workflow row (108)", () => {
       },
       { width: 360 },
     )
-    view.q('panel-workflows').querySelector<HTMLButtonElement>('[data-cy=panel-row]')!.click()
+    view.q('running-now-rows').querySelector<HTMLButtonElement>('[data-cy=panel-row]')!.click()
     expect(navigated).toHaveLength(1)
     // It points at the `Workflow` tool row, which is where the tree is.
     expect(navigated[0]).toMatch(/^tool_/)
@@ -611,7 +611,7 @@ describe("the drawer's workflow row (108)", () => {
     const view = mount(SessionPanel, { state: withWorkflow() }, { width: 360 })
     expect(view.q('session-panel').getAttribute('data-waiting')).toBe('0')
     // …and the paired positive: the panel is not simply empty — it is saying something.
-    expect(view.all('panel-workflows')).toHaveLength(1)
+    expect(view.all('running-now-rows')).toHaveLength(1)
   })
 })
 
