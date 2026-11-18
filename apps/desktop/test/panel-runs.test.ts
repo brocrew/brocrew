@@ -27,3 +27,10 @@ it('lists only known background endings and keeps reported failure wording', () 
   expect(runs.past).toHaveLength(1)
   expect(runs.past[0]).toMatchObject({ label: 'Check paths', failed: true, detail: 'One path missing' })
 })
+
+
+it('keeps an unreported background kind generic', () => {
+  const state = createTranscript()
+  state.background.running = [{ id: 'work', description: 'Check paths' }]
+  expect(panelRuns(state).active[0]?.group).toBe('Background')
+})

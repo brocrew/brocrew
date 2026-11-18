@@ -161,15 +161,15 @@ export const TOOL_OUTCOME_WORD: Readonly<Record<ToolOutcome, string>> = {
 export function toolTook(item: ToolItem, at: number | undefined): string | null {
   if (item.background === undefined) {
     const reported = item.result?.durationMs
-    if (reported !== undefined && Number.isFinite(reported) && reported >= 0) return said(reported)
+    if (reported !== undefined && Number.isFinite(reported) && reported >= 0) return durationWords(reported)
   }
   const to = item.background ? item.background.endedAt : item.result?.at
   if (at === undefined || to === undefined) return null
   const ms = to - at
   if (!Number.isFinite(ms) || ms < 0) return null
-  return said(ms)
+  return durationWords(ms)
 }
 
-function said(ms: number): string {
+export function durationWords(ms: number): string {
   return ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`
 }
