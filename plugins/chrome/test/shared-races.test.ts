@@ -74,9 +74,13 @@ function fixture() {
     })
     const done = new Promise<number | null>((resolve, reject) => {
       child.on('error', reject)
-      child.on('exit', resolve)
+      child.on('close', resolve)
     })
-    return { child, done, text: () => output, errors: () => errors }
+    let ended = false
+    child.on('close', () => {
+      ended = true
+    })
+    return { child, done, ended: () => ended, text: () => output, errors: () => errors }
   }
   return {
     root,
@@ -88,9 +92,17 @@ function fixture() {
     release: () => fs.writeFileSync(path.join(root, 'barrier.release'), ''),
   }
 }
-async function until(check: () => boolean) {
+async function until(
+  check: () => boolean,
+  ...workers: ReturnType<ReturnType<typeof fixture>['start']>[]
+) {
   const end = Date.now() + 8000
   while (!check()) {
+    for (const worker of workers)
+      if (worker.ended())
+        throw new Error(
+          `Shared worker ${worker.child.pid} exited with code ${worker.child.exitCode}, signal ${worker.child.signalCode}: ${worker.errors()}`,
+        )
     if (Date.now() > end) throw new Error('child deadline')
     await new Promise((r) => setTimeout(r, 10))
   }
@@ -105,9 +117,11 @@ it('two separate processes cannot acquire one lease; after owner exit exactly on
     () =>
       fs.existsSync(path.join(f.root, 'barrier.beta.ready')) &&
       fs.existsSync(path.join(f.root, 'barrier.test.ready')),
+    b,
+    c,
   )
   f.go()
-  await until(() => [b, c].every((one) => one.text().length > 0))
+  await Promise.all([b, c].map((one) => until(() => one.text().length > 0, one)))
   expect([b, c].filter((one) => one.text().startsWith('acquired'))).toHaveLength(1)
   expect([b, c].filter((one) => one.text().startsWith('refused'))).toHaveLength(1)
   const winner = [b, c].find((one) => one.text().startsWith('acquired'))!
@@ -128,6 +142,8 @@ it('separate workspace flag writers preserve both scoped intents', async () => {
     () =>
       fs.existsSync(path.join(f.root, 'barrier.beta.ready')) &&
       fs.existsSync(path.join(f.root, 'barrier.test.ready')),
+    b,
+    c,
   )
   f.go()
   expect(await b.done).toBe(0)
@@ -148,6 +164,8 @@ it('two deleters remove the data exactly once without admitting a replacement', 
     () =>
       fs.existsSync(path.join(f.root, 'barrier.beta.ready')) &&
       fs.existsSync(path.join(f.root, 'barrier.test.ready')),
+    b,
+    c,
   )
   f.go()
   await Promise.all([b.done, c.done])
@@ -165,6 +183,8 @@ it('two migration processes reserve one destination and retain the original inod
     () =>
       fs.existsSync(path.join(f.root, `barrier.same.${b.child.pid}.ready`)) &&
       fs.existsSync(path.join(f.root, `barrier.same.${c.child.pid}.ready`)),
+    b,
+    c,
   )
   f.go()
   await Promise.all([b.done, c.done])
@@ -179,6 +199,7 @@ it('a crash before the lock ticket is written has attributable ownership and is 
   const a = f.open()
   const c = f.start('lock-crash', 'crash')
   expect(await c.done).toBe(42)
+  await expect(until(() => false, c)).rejects.toThrow(/exited with code 42.*fictional lock crash/)
   a.create('fern', 'panel')
   expect(a.get('fern')).toBeDefined()
 })
@@ -216,7 +237,7 @@ it('a separate process cannot launch while Preferences mutation holds the shared
   const a = f.open()
   a.create('fern', 'panel')
   const b = f.start('lease', 'beta')
-  await until(() => fs.existsSync(path.join(f.root, 'barrier.beta.ready')))
+  await until(() => fs.existsSync(path.join(f.root, 'barrier.beta.ready')), b)
   a.shared.withDiskAccess('fern', true, () => {
     f.go()
     const result = path.join(f.root, 'barrier.beta.result')

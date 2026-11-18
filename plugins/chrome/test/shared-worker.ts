@@ -15,6 +15,7 @@ if (command === 'lock-crash') {
       `${owner.pid}.${Buffer.from(owner.birth).toString('base64url')}.11111111-1111-4111-8111-111111111111`,
     ),
   )
+  process.stderr.write('fictional lock crash\n')
   process.exit(42)
 }
 fs.mkdirSync(home, { recursive: true })
