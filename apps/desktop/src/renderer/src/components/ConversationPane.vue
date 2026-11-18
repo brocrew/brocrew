@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { RunTarget } from '../lib/panel-runs'
 import type { HandedPath } from '../../../shared/attachment-contracts'
 import type { WhatAPickBecame } from '../../../shared/model-choice-contracts'
 import type { AgentState, StoppedPiece } from '../../../shared/agent-state-contracts'
@@ -1653,13 +1654,7 @@ const inputsOpen = computed(() =>
   inputsFor.value === props.record.sessionId ? props.record.meta : null,
 )
 
-/**
- * The workflow output being read (108), scoped to the conversation that asked for it.
- *
- * ⚠️ **Same shape as `viewing` above, and the `sessionId` guard is the same fix.** Switching
- * conversation while an overlay is open must not leave one conversation's document floating over
- * another's — 067 found that and this inherits the answer rather than re-deriving it.
- */
+// Keep workflow output bound to the conversation that opened it.
 const readingOutput = ref<{
   sessionId: string
   workflow: string
@@ -1785,14 +1780,18 @@ async function openChildWork(what: ChildWorkInput, label: string): Promise<void>
   readingChild.value = { sessionId, label, agentId, result: await read(what) }
 }
 
-/**
- * Re-read the open child's record (296) — the follow, driven by the viewer's own timer.
- *
- * ⛔ **It re-checks the session AND the child before assigning**, which is the same two-part answer
- * `openChildWork` uses one function up and matters more here: a refresh is in flight every two
- * seconds, so the window in which the reader can switch conversation is not a corner case, it is
- * most of the time. Assigning a stale read would put one child's transcript under another's heading.
- */
+async function openPanelRun(run: RunTarget): Promise<boolean> {
+  if (run.kind === 'agent' && props.onReadChildWork) {
+    await openChildWork({ part: 'transcript', agentId: run.id }, run.label)
+    return true
+  }
+  if (run.kind === 'workflow' && props.onReadWorkflowOutput) {
+    await openWorkflowOutput(run.id, run.label)
+    return true
+  }
+  return false
+}
+
 async function refreshChildWork(): Promise<void> {
   const read = props.onReadChildWork
   const open = readingChild.value
@@ -2250,6 +2249,7 @@ onUnmounted(() => {
         :on-read-config-file="props.onReadConfigFile"
         :can-stop-background-work="canStopBackgroundWork"
         :on-stop-background-work="props.onStopBackgroundWork"
+        :on-open-run="openPanelRun"
         @refresh-config="emit('refreshConfig')"
         @open-instructions="instructionsFor = props.record.sessionId"
         @open-inputs="inputsFor = props.record.sessionId"
