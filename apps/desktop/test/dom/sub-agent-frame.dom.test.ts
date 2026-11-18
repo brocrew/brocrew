@@ -32,7 +32,7 @@ it('frames the running sub-agent with the same padding as a task card and preser
   const reference = mount(CardSection, { icon: '#i-bot' })
   await nextTick()
   const agents = m.q('panel-agents')
-  expect(agents.textContent).toContain('Sub-agents')
+  expect(agents.textContent).toContain('Running now')
   expect(agents.textContent).toContain('Read the map')
   const actual = getComputedStyle(agents)
   const expected = getComputedStyle(reference.host.querySelector('section')!)

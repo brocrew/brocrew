@@ -191,7 +191,6 @@ const scheduleShown = computed(
     props.state.schedule.jobs.some((job) => job.notStarted !== undefined) ||
     (props.agentState?.is !== 'idle' && props.agentState?.is !== 'waiting-on-a-worker'),
 )
-/** ⚑ The bar's own answer where nothing can stop: *it did not go out* (`BackgroundBar`'s contract). */
 const root = computed(() => props.root ?? null)
 /** The work given to it, its piece with a typed wait saying that wait where it read "waiting on purpose". */
 const tasks = computed(() =>
@@ -310,6 +309,7 @@ const reachable = computed(() => {
   const within = props.shown ?? props.state
   for (const section of SECTIONS)
     for (const entry of view[section.key] as PanelEntry[]) wanted.add(entry.itemId)
+  for (const entry of [...view.agents, ...view.workflows]) wanted.add(entry.itemId)
   if (view.todo) wanted.add(view.todo.itemId)
   if (latest.value) wanted.add(latest.value.itemId)
 
@@ -697,9 +697,6 @@ const fileManager = fileManagerHere()
               <span v-if="entry.detail" class="row-detail">{{ entry.detail }}</span>
             </span>
           </button>
-          <!-- ⚑ **Stop, beside the row and never inside it** — a button in a button is invalid, and the
-               row is the way IN; this is the one act. See {@link stopIdOf}. -->
-
         </div>
       </component>
 
@@ -709,6 +706,7 @@ const fileManager = fileManagerHere()
         :can-stop="props.canStopBackgroundWork"
         :on-stop="props.onStopBackgroundWork"
         :on-open-run="props.onOpenRun"
+        :can-navigate="canReach"
         :show-schedule="scheduleShown"
         @navigate="emit('navigate', $event)"
       />
@@ -1441,18 +1439,6 @@ button.run-effort[aria-expanded='true'] {
   cursor: pointer;
   font-size: var(--type-caption);
   font-weight: var(--fw-normal);
-}
-
-/* ⚑ The running and scheduled bars, at the panel's margins. */
-.card-bars {
-  display: flex;
-  flex-direction: column;
-  padding: 0 var(--space-5);
-  gap: var(--space-3);
-}
-
-.card-bars:empty {
-  display: none;
 }
 
 /* ⚑ The work given to this agent — at the panel's margins, above its plate. The heading and the gap
