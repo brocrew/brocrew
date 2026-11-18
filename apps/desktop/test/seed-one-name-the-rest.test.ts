@@ -4,8 +4,7 @@ import { ToolWatchingRuntime } from './lib/provider-double'
 import type { SessionInstructions } from '../src/shared/instruction-contracts'
 import { mkdirSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, type AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
@@ -49,10 +48,6 @@ import {
  *     BroBot's own list and the widest of the other names in ink.
  *  2. **The default set every identity holds.** `one-set-for-every-agent.test.ts` owns it.
  */
-
-const here = dirname(fileURLToPath(import.meta.url))
-const SRC = join(here, '../src')
-const migrationsFolder = join(SRC, 'main/db/migrations')
 
 /** ⛔ This file is about a ROSTER and a NAME, never about what a launch is told. */
 const NOTHING_INJECTED: SessionInstructions = {
