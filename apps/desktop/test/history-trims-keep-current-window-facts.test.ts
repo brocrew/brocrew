@@ -107,19 +107,21 @@ it('a real metadata change in the outer commit is not hidden by a nested history
     await f.listing()
     expect(sameWindowWriter(stamp, f.sample({ kind: 'listing' }))).toBe(false)
     expect(f.read.mock.calls.length).toBeGreaterThan(reads)
-    expect(f.world.store.find('alpha')?.cwd).toBe(join(f.world.folder, 'changed'))
+    expect(f.world.db.prepare("SELECT cwd FROM provider_session WHERE id='alpha'").get()).toEqual({
+      cwd: join(f.world.folder, 'changed'),
+    })
   } finally {
     await f.close()
   }
 })
 
-it.each(['launched', 'context_reading', 'unknown', 'torn-thinking'])(
+it.each(['launched', 'context_reading', 'unknown', 'torn-thinking', 'invalid-thinking'])(
   'retains broad invalidation for %s',
   async (kind) => {
     const f = fixture()
     try {
       const ordinal = f.world.store.nextOrdinal('alpha')
-      const type = kind === 'torn-thinking' ? 'thinking' : kind
+      const type = kind.endsWith('thinking') ? 'thinking' : kind
       f.world.db
         .prepare(
           `INSERT INTO events(id,session_id,generation,ordinal,type,payload,created_at)
@@ -138,6 +140,48 @@ it.each(['launched', 'context_reading', 'unknown', 'torn-thinking'])(
     }
   },
 )
+
+it('does not hide an unsafe deletion in the same native batch', async () => {
+  const f = fixture()
+  try {
+    const old = f.add({ type: 'assistant_delta', text: 'Fictional history' })
+    const context = f.add({
+      type: 'context_reading',
+      reading: { kind: 'tokens', used: 1 },
+      source: 'fictional',
+    })
+    await f.settle()
+    await f.listing()
+    const reads = f.read.mock.calls.length
+    expect(f.remove(old, context).changed).toBe(2)
+    await f.settle()
+    await f.listing()
+    expect(f.read.mock.calls.length).toBeGreaterThan(reads)
+  } finally {
+    await f.close()
+  }
+})
+
+it('keeps a real work change visible when its outer commit also trims history', async () => {
+  const f = fixture()
+  try {
+    const old = f.add({ type: 'assistant_delta', text: 'Fictional history' })
+    const piece = f.world.store.rootOf('alpha')!.piece
+    await f.settle()
+    await f.listing()
+    const reads = f.read.mock.calls.length
+    f.world.db.transaction(() => {
+      f.remove(old)
+      f.add({ type: 'work_retitled', piece, title: 'Changed fictional work', by: null })
+    })()
+    await f.settle()
+    const answer = await f.listing()
+    expect(answer.unresumable[0]?.named?.title).toBe('Changed fictional work')
+    expect(f.read.mock.calls.length).toBeGreaterThan(reads)
+  } finally {
+    await f.close()
+  }
+})
 
 it('a rolled-back trim publishes nothing and leaves the warm answer usable', async () => {
   const f = fixture()
