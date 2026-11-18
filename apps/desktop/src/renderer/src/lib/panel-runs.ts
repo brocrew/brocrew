@@ -101,7 +101,7 @@ export function panelRuns(state: TranscriptState): PanelRuns {
       (item.background.outcome !== undefined || item.background.unfinished)
     ) {
       const work = item.background
-      if (claimed.has(work.id) || live.some((row) => row.id === work.id || row.toolCallId === item.callId)) continue
+      if ((work.id !== undefined && claimed.has(work.id)) || live.some((row) => row.id === work.id || row.toolCallId === item.callId)) continue
       rows.push({
         key: `background:${item.callId}`,
         label: item.summary || item.name,

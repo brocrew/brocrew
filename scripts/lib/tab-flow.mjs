@@ -36,6 +36,10 @@ export const TAB_OF_HOOK = {
   'panel-permissions': 'open',
   'panel-questions': 'open',
   'panel-agents': 'open',
+  'running-now-title': 'open',
+  'running-now-rows': 'open',
+  'past-runs-open': 'open',
+  'panel-run-label': 'open',
   // …and the bot at the top of it (090). `SessionBot` is rendered by `SessionPanel` and by nothing
   // else, so it really is Open's.
   //
@@ -275,6 +279,8 @@ export const TAB_OF_HOOK_PREFIX = {
   // ⚑ W4.183 · v3's sub-agent cards: their telemetry row.
   'cast-tile-telemetry-': 'open',
   // ⚑ The two bars' per-row families — see their exact hooks in `TAB_OF_HOOK`.
+  'panel-run-': 'open',
+  'panel-stop-': 'open',
   'background-row-': 'open',
   'background-stop-': 'open',
   'background-what-': 'open',
