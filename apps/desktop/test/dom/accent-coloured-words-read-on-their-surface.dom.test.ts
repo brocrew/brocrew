@@ -8,7 +8,7 @@ import { applyTheme } from '../../src/renderer/src/lib/apply-theme'
 import { contrastRatio, mixSrgb, over, type Rgba } from '../../src/shared/themes/colour'
 import { resolveTheme } from '../../src/shared/themes/theme'
 import { validateTheme } from '../../src/shared/themes/validate'
-import DEFINED_FILE from '../../resources/themes/defined/theme.json'
+import { definedTheme as BASE } from './defined-theme.fixture'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import DocumentBody from '../../src/renderer/src/components/DocumentBody.vue'
 import { theList } from '../../src/shared/model-choice'
@@ -16,15 +16,7 @@ import { META, mount, paneProps, record, unmountAll, type Mounted } from './harn
 import { givenAnswer } from './what-this-agent-was-given.fixture'
 import { readsAt } from './what-is-painted-under'
 
-const BASE = (() => {
-  const read = validateTheme(DEFINED_FILE, {
-    assets: new Map(),
-    builtIns: new Map(),
-    builtIn: true,
-  })
-  if (!read.ok) throw new Error(JSON.stringify(read.problems))
-  return read.theme
-})()
+
 
 const canvas = document.createElement('canvas')
 canvas.width = 1
