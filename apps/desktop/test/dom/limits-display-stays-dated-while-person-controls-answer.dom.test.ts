@@ -130,7 +130,8 @@ describe('dated limits on the real Waiting on you surface', () => {
     }
     await nextTick()
     expect(page.q('limits-display-reading').textContent).toContain('Limits unavailable')
-    expect(page.q('persons-queue-wall-says-claude').textContent).toBe(original)
+    // Once the read has failed, the old reading's limit line is not drawn beside "unavailable".
+    expect(page.all('persons-queue-wall-claude')).toHaveLength(0)
   })
 
   it('a sign-in notice drops historical warnings without asserting that the new account is clear', async () => {

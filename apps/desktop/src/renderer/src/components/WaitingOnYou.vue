@@ -316,7 +316,13 @@ const showConversations = computed(() => attention.value.live > 0 || onlyYou.val
            is plain (*"Claude is near its weekly limit; it resets on 7 October."*), and the
            provider's own lines and the exact reset are on its title. ⚠️ No control on it: a limit
            ends when the provider says so. -->
-      <ul v-if="walls.length > 0" class="usage" data-cy="persons-queue-walls">
+      <!-- Not drawn while limits are unavailable: an old reading beside "Limits unavailable" would
+           contradict it. -->
+      <ul
+        v-if="walls.length > 0 && limitsDisplay?.status !== 'unavailable'"
+        class="usage"
+        data-cy="persons-queue-walls"
+      >
         <li
           v-for="wall in walls"
           :key="wall.key"
