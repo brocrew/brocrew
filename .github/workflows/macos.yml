@@ -1,375 +1,92 @@
-name: macOS build
-
+name: macOS
 on:
-  push:
-    branches: [develop, main]
-    tags: ['mac-beta-*', 'beta-*']
   workflow_dispatch:
-    inputs:
-      guided_update_rehearsal:
-        description: Rehearse the guided update privately instead of the ordinary Mac build
-        type: boolean
-        default: false
-      package_version:
-        description: Version stamped into the artifact-only Mac build
-        type: string
-        default: '0.1.8'
-      signed_release_validation:
-        description: Validate Developer ID signing privately on a reserved validation tag
-        type: boolean
-        default: false
-      accepted_source_sha:
-        description: Reviewed full source SHA required by signed release validation
-        type: string
-
 permissions:
   contents: read
-
-env:
-  ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
-  electron_config_cache: ${{ github.workspace }}/.cache/electron
-  ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
-
 jobs:
-  flags:
-    if: >-
-      !startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-')
-    name: Does this push ask for a Mac build?
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      mac: ${{ steps.flags.outputs.mac }}
-      signing_version: ${{ steps.signing.outputs.version }}
-      signing_source: ${{ steps.signing.outputs.source }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 1
-          persist-credentials: false
-      - id: flags
-        shell: bash
-        run: |
-          msg="$(git log -1 --pretty=%B)"
-          if printf '%s' "$msg" | grep -qE '(^|[[:space:]])\+ci(:mac)?([[:space:]]|$)'; then
-            mac=true
-          else
-            mac=false
-          fi
-          echo "mac=$mac" >> "$GITHUB_OUTPUT"
-          echo "The head commit asks for a Mac build (+ci / +ci:mac): $mac"
-      - id: signing
-        name: Validate the accepted signed-release tag and source
-        if: github.event_name == 'workflow_dispatch' && inputs.signed_release_validation == true
-        shell: bash
-        env:
-          PACKAGE_VERSION: ${{ inputs.package_version }}
-          ACCEPTED_SOURCE_SHA: ${{ inputs.accepted_source_sha }}
-          GUIDED_UPDATE_REHEARSAL: ${{ inputs.guided_update_rehearsal }}
-        run: |
-          node <<'NODE'
-          const { execFileSync } = require('node:child_process')
-          const { appendFileSync } = require('node:fs')
-          const env = process.env
-          const match = /^refs\/tags\/v(\d+\.\d+\.\d+)-mac-signing-check\.([1-9]\d*)$/.exec(env.GITHUB_REF || '')
-          if (env.GITHUB_REPOSITORY !== 'brocrew/brocrew' || env.GITHUB_EVENT_NAME !== 'workflow_dispatch' ||
-              env.GITHUB_REF_TYPE !== 'tag' || !match || env.PACKAGE_VERSION !== match[1] ||
-              env.GUIDED_UPDATE_REHEARSAL === 'true' || !/^[a-f0-9]{40}$/.test(env.ACCEPTED_SOURCE_SHA || '') ||
-              env.ACCEPTED_SOURCE_SHA !== env.GITHUB_SHA ||
-              execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim() !== env.ACCEPTED_SOURCE_SHA)
-            throw new Error('Signed validation requires its reviewed source, matching version and reserved tag')
-          appendFileSync(env.GITHUB_OUTPUT, `version=${match[1]}\nsource=${env.ACCEPTED_SOURCE_SHA}\n`)
-          NODE
-
-  signed-release-validation:
-    name: Validate the Mac release signature (no publication)
-    needs: flags
-    if: >-
-      github.event_name == 'workflow_dispatch' &&
-      github.ref_type == 'tag' && inputs.signed_release_validation == true &&
-      needs.flags.outputs.signing_version != '' && needs.flags.outputs.signing_source != ''
-    runs-on: ${{ vars.MAC_RUNNER || 'macos-15' }}
-    environment: mac-signing
-    timeout-minutes: 100
-    permissions:
-      contents: read
-    concurrency:
-      group: mac-signing-check-${{ github.ref }}
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - name: Confirm the accepted checkout before signing
-        shell: bash
-        env:
-          ACCEPTED_SOURCE_SHA: ${{ needs.flags.outputs.signing_source }}
-        run: test "$(git rev-parse HEAD)" = "$ACCEPTED_SOURCE_SHA"
-      - uses: ./.github/actions/signed-mac
-        with:
-          version: ${{ needs.flags.outputs.signing_version }}
-          owner: brocrew
-          repo: brocrew
-          artifact_name: mac-signing-validation-${{ github.run_id }}-${{ github.run_attempt }}
-        env:
-          MAC_CERT_P12_BASE64: ${{ secrets.MAC_CERT_P12_BASE64 }}
-          MAC_CERT_P12_PASSWORD: ${{ secrets.MAC_CERT_P12_PASSWORD }}
-          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-
-  macos:
-    name: Build the Mac app (dmg, Apple silicon, signed ad hoc)
-    needs: flags
-    if: >-
-      inputs.signed_release_validation != true &&
-      !startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-') &&
-      (
-        (github.event_name == 'workflow_dispatch' && inputs.guided_update_rehearsal != true) ||
-        startsWith(github.ref, 'refs/tags/mac-beta-') ||
-        startsWith(github.ref, 'refs/tags/beta-') ||
-        needs.flags.outputs.mac == 'true'
-      )
-    runs-on: ${{ vars.MAC_RUNNER || 'macos-15' }}
+  process-native:
+    runs-on: macos-15
     timeout-minutes: 45
-    permissions:
-      contents: write
-    concurrency:
-      group: mac-build-${{ github.ref }}
-      cancel-in-progress: true
+    defaults:
+      run:
+        shell: bash
     steps:
+      - name: Set native evidence directory
+        run: echo "EVIDENCE=$RUNNER_TEMP/process-native" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
         with:
+          ref: 2f2b020eacc40e1e8146e5d60dc1eed72f7f178b
           persist-credentials: false
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v6
-
-      - name: Setup Node
-        uses: actions/setup-node@v7
-        with:
-          node-version-file: '.nvmrc'
-          cache: pnpm
-
-      - name: Cache Electron downloads
-        uses: actions/cache@v4
-        with:
-          path: .cache
-          key: ${{ runner.os }}-electron-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: ${{ runner.os }}-electron-
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Recovery tests
-        shell: bash
-        run: |
-          set -euo pipefail
-          report="$RUNNER_TEMP/recovery-tests.json"
-          pnpm exec vitest run --project desktop test/recovery/ --reporter=default --reporter=json --outputFile.json="$report"
-          node -e "const r = require(process.argv[1]); if (!(r.numTotalTests > 0 && r.numPassedTests > 0)) { console.error('The recovery tests collected no test.'); process.exit(1) } console.log(r.numPassedTests + ' recovery tests passed.')" "$report"
-
-      - name: Build and package (dmg, arm64, signed ad hoc)
-        env:
-          PACKAGE_VERSION: ${{ inputs.package_version || '0.1.8' }}
-        run: pnpm --filter @brobot2/desktop package:mac-beta "-c.extraMetadata.version=$PACKAGE_VERSION" --publish never
-
-      - name: Find the disk image
-        id: dmg
-        shell: bash
-        run: |
-          set -euo pipefail
-          built=$(ls apps/desktop/dist/*.dmg | head -n 1)
-          echo "path=$built" >> "$GITHUB_OUTPUT"
-          echo "Disk image: $built ($(du -h "$built" | cut -f1))"
-
-      - name: Install Claude Code (the newest tested version) outside the app
-        id: claude
-        shell: bash
-        run: node scripts/install-tested-claude.mjs
-
-      - name: Check the build (name and id, no Claude Code inside, the ad hoc signature, Codex and Claude Code run, the database module, the disk image, the app's start and its data folder)
-        env:
-          BROBOT_CHECK_CLAUDE: ${{ steps.claude.outputs.program }}
-        run: node scripts/macos-packaged-check.mjs apps/desktop/dist/mac-arm64/BroCrew.app "${{ steps.dmg.outputs.path }}"
-
-      - name: Name the disk image by its commit
-        id: image
-        shell: bash
-        env:
-          BUILT: ${{ steps.dmg.outputs.path }}
-        run: |
-          set -euo pipefail
-          if [ "$GITHUB_REF_TYPE" = tag ]; then label="$GITHUB_REF_NAME"; else label=$(git rev-parse --short=7 HEAD); fi
-          named="apps/desktop/dist/$(basename "$BUILT" .dmg)-${label}.dmg"
-          mv "$BUILT" "$named"
-          echo "path=$named" >> "$GITHUB_OUTPUT"
-          echo "Disk image: $named ($(du -h "$named" | cut -f1))"
-
-      - name: Keep the disk image with this run
-        continue-on-error: true # a full artifact quota must not fail a good build
-        uses: actions/upload-artifact@v4
-        with:
-          name: brobot-macos
-          path: ${{ steps.image.outputs.path }}
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Publish a prerelease on the pushed tag
-        if: >-
-          github.event_name == 'push' &&
-          (startsWith(github.ref, 'refs/tags/mac-beta-') ||
-          startsWith(github.ref, 'refs/tags/beta-'))
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          IMAGE: ${{ steps.image.outputs.path }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          title="$(node scripts/beta-release.mjs title "$GITHUB_REF_NAME")"
-          notes="$(node scripts/beta-release.mjs notes "$GITHUB_REF_NAME" "${GITHUB_SHA::7}")"
-          [ -n "$title" ] && [ -n "$notes" ] || { echo "No title or notes for $GITHUB_REF_NAME"; exit 1; }
-          if ! gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
-            --prerelease --title "$title" --notes "$notes"; then
-            gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null
-            echo "The release is already there (the other platform's build made it)."
-          fi
-          gh release upload "$GITHUB_REF_NAME" "$IMAGE" --repo "$GITHUB_REPOSITORY" --clobber
-
-  guided-update-rehearsal:
-    name: Opt-in guided update rehearsal
-    if: >-
-      inputs.signed_release_validation != true &&
-      !startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-') &&
-      (
-        github.event_name == 'workflow_dispatch' && inputs.guided_update_rehearsal == true
-      )
-    uses: ./.github/workflows/mac-update-test.yml
-    secrets:
-      MAC_CERT_P12_BASE64: ${{ secrets.MAC_CERT_P12_BASE64 }}
-      MAC_CERT_P12_PASSWORD: ${{ secrets.MAC_CERT_P12_PASSWORD }}
-      APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
-      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-    permissions:
-      contents: read
-
-  recovery-real-entry:
-    name: Recovery real-entry check (macOS)
-    needs: flags
-    if: >-
-      inputs.signed_release_validation != true &&
-      !startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-') &&
-      (
-        github.event_name == 'workflow_dispatch' ||
-        startsWith(github.ref, 'refs/tags/mac-beta-') ||
-        startsWith(github.ref, 'refs/tags/beta-') ||
-        needs.flags.outputs.mac == 'true'
-      )
-    uses: ./.github/workflows/recovery-real-entry.yml
-    with:
-      runner: ${{ vars.MAC_RUNNER || 'macos-15' }}
-      evidence: recovery-evidence-macos
-
-  plugin-v2-review:
-    name: Plugin v2 Review (${{ matrix.app_version || 'off' }})
-    if: github.repository == 'brocrew/brocrew' && github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-')
-    runs-on: ${{ vars.MAC_RUNNER || 'macos-15' }}
-    timeout-minutes: ${{ (startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-sdk-') || startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-sdk-')) && 50 || 45 }}
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        app_version: ['0.1.7', '0.1.8']
-    concurrency:
-      group: plugin-v2-${{ github.ref }}-${{ matrix.app_version }}
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: pnpm/action-setup@v4
-        id: gate-pnpm
-        with:
-          version: 10.11.0
+      - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
-      - name: Plugin qualification source controls
-        timeout-minutes: 2
-        run: node --test --test-reporter=tap --test-concurrency=1 scripts/gates/plugin-v2/controls.test.mjs scripts/gates/plugin-v2/native-dependency.test.mjs scripts/gates/plugin-v2/reload-controls.test.mjs scripts/gates/plugin-v2/source-binding.test.mjs
-      - name: Stage the tested source SHA
-        if: ${{ !startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-sdk-') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-sdk-') }}
-        id: stage
-        shell: bash
+          cache: pnpm
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Darwin command cleanup control
         run: |
-          test "$RUNNER_ENVIRONMENT" = github-hosted
-          control=$(node scripts/gates/plugin-v2/owner.mjs stage "${{ matrix.app_version }}")
-          echo "control=$control" >> "$GITHUB_OUTPUT"
-      - name: Install the selected app dependencies in scratch
-        if: ${{ !startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-sdk-') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-sdk-') }}
-        shell: bash
+          mkdir -p "$EVIDENCE"
+          git rev-parse HEAD 'HEAD^{tree}' | tee "$EVIDENCE/source.txt"
+          pnpm exec vitest run --project desktop apps/desktop/test/command-cleanup.test.ts --reporter=verbose --reporter=json --outputFile.json="$EVIDENCE/darwin.json"
+      - name: Build packaged app from the selected source
+        run: pnpm --filter @brobot2/desktop package:mac-beta --publish never
+      - name: Install pinned real Claude CLI and existing managed fixture route
+        run: |
+          set -euo pipefail
+          version=$(node scripts/lib/scripted-claude.mjs version)
+          test "$version" = 2.1.287
+          curl -fsSL https://claude.ai/install.sh | bash -s "$version"
+          test ! -e '/Library/Application Support/ClaudeCode/managed-settings.json'
+          sudo mkdir -p '/Library/Application Support/ClaudeCode'
+          node scripts/lib/scripted-claude.mjs managed-settings 47261 | sudo tee '/Library/Application Support/ClaudeCode/managed-settings.json'
+          "$HOME/.local/bin/claude" --version | tee "$EVIDENCE/cli-version.txt"
+      - name: Bind the actual packaged artifact and reviewed native recipe
+        run: |
+          node --input-type=module <<'MANIFEST'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          import crypto from 'node:crypto';
+          import cp from 'node:child_process';
+          const root=process.cwd(), out=process.env.EVIDENCE;
+          const apps=fs.readdirSync('apps/desktop/dist',{recursive:true}).filter(x=>x.endsWith('.app') && !x.includes('.app/'));
+          if(apps.length!==1)throw Error('Expected exactly one packaged app: '+apps);
+          const app=fs.realpathSync(path.join(root,'apps/desktop/dist',apps[0]));
+          const plist=path.join(app,'Contents/Info.plist');
+          const exe=cp.execFileSync('/usr/libexec/PlistBuddy',['-c','Print :CFBundleExecutable',plist],{encoding:'utf8'}).trim();
+          const cli=fs.realpathSync(path.join(process.env.HOME,'.local/bin/claude'));
+          const sha=f=>crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
+          const git=(...a)=>cp.execFileSync('git',a,{encoding:'utf8'}).trim();
+          const m={reviewedBy:'Teo W4.1620.4; source09fea recipe600s',admission:'W4.1509 process-cleanup030 ONE native run',hostedJobId:null,hostedJobUrl:`https://github.com/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,source:root,sourceSha:git('rev-parse','HEAD'),sourceTree:git('rev-parse','HEAD^{tree}'),app,claude:cli,claudeSha256:sha(cli),asarSha256:sha(path.join(app,'Contents/Resources/app.asar')),executableSha256:sha(path.join(app,'Contents/MacOS',exe)),plistSha256:sha(plist),nodeVersion:process.version,model:'existing loopback scripted Claude SSE, fictional key',modelPort:47261,evidence:path.join(out,'actual')};
+          if(m.sourceSha!=='2f2b020eacc40e1e8146e5d60dc1eed72f7f178b'||m.sourceTree!=='3393c61cc16245828347261071e3f84702a1481c'||git('status','--porcelain'))throw Error('Source binding/cleanliness mismatch');
+          fs.writeFileSync(path.join(out,'manifest.json'),JSON.stringify(m,null,2)+'\n');
+          MANIFEST
+      - name: ONE actual app worker end and normal native Quit (600s outer)
         env:
-          REVIEW_CONTROL: ${{ steps.stage.outputs.control }}
-          PLUGIN_GATE_PNPM_ENTRY: ${{ steps.gate-pnpm.outputs.dest }}/node_modules/pnpm/bin/pnpm.cjs
-        run: node scripts/gates/plugin-v2/owner.mjs install "$REVIEW_CONTROL"
-      - name: Product HTTPS then projected package Review journey
-        if: ${{ !startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-sdk-') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-sdk-') }}
-        shell: bash
-        env:
-          REVIEW_CONTROL: ${{ steps.stage.outputs.control }}
-        run: node scripts/gates/plugin-v2/owner.mjs run "$REVIEW_CONTROL"
-      - name: Keep the product check summary
-        if: ${{ (always() && steps.stage.outputs.control != '') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-sdk-') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-sdk-') }}
+          TMPDIR: ${{ runner.temp }}/pt
+        run: |
+          mkdir -p "$TMPDIR"
+          python3 - <<'RUN'
+          import os,subprocess,json
+          from pathlib import Path
+          p=Path(os.environ['EVIDENCE']);code=124
+          try:
+            with (p/'native-console.log').open('wb') as f:
+              r=subprocess.run(['node','scripts/gates/agent-processes/actual-app-orphans.mjs','--execute',str(p/'manifest.json')],stdout=f,stderr=subprocess.STDOUT,timeout=600)
+              code=r.returncode
+          except subprocess.TimeoutExpired:
+            (p/'outer-timeout.txt').write_text('600s outer expired; incomplete cleanup remains unverified\n')
+          (p/'native-exit.json').write_text(json.dumps({'exit':code,'outerSeconds':600})+'\n')
+          print((p/'native-console.log').read_text(errors='replace'))
+          raise SystemExit(code)
+          RUN
+      - name: Retain actual native evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: plugin-v2-macos-${{ matrix.app_version }}
-          path: ${{ steps.stage.outputs.control }}/summary.json
+          name: process-native-actual-app
+          path: |
+            ${{ env.EVIDENCE }}/
+            ${{ runner.temp }}/pt/
           if-no-files-found: error
-          retention-days: 7
-      - name: Assert installed SDK role scope
-        id: sdk-scope
-        if: ${{ (startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-sdk-') || startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-sdk-')) }}
-        timeout-minutes: 1
-        shell: bash
-        run: node scripts/gates/plugin-v2/owner.mjs sdk-scope "${{ matrix.app_version }}"
-      - name: Stage owned installed SDK reload source
-        id: sdk-stage
-        if: ${{ matrix.app_version == '0.1.8' && (startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-sdk-') || startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-sdk-')) }}
-        timeout-minutes: 4
-        shell: bash
-        env:
-          PLUGIN_SDK_APP_VERSION: ${{ matrix.app_version }}
-        run: |
-          control=$(node scripts/gates/plugin-v2/owner.mjs sdk-stage)
-          echo "control=$control" >> "$GITHUB_OUTPUT"
-      - name: Install pinned installed SDK probe dependencies
-        id: sdk-install
-        if: ${{ matrix.app_version == '0.1.8' && (startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-sdk-') || startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-sdk-')) }}
-        timeout-minutes: 21
-        shell: bash
-        env:
-          PLUGIN_SDK_APP_VERSION: ${{ matrix.app_version }}
-          SDK_CONTROL: ${{ steps.sdk-stage.outputs.control }}
-          PLUGIN_GATE_PNPM_ENTRY: ${{ steps.gate-pnpm.outputs.dest }}/node_modules/pnpm/bin/pnpm.cjs
-        run: node scripts/gates/plugin-v2/owner.mjs sdk-install "$SDK_CONTROL"
-      - name: Installed SDK start and reload probe
-        id: sdk-probe
-        if: ${{ matrix.app_version == '0.1.8' && (startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-sdk-') || startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-sdk-')) }}
-        timeout-minutes: 16
-        shell: bash
-        env:
-          PLUGIN_SDK_APP_VERSION: ${{ matrix.app_version }}
-          SDK_CONTROL: ${{ steps.sdk-stage.outputs.control }}
-        run: node scripts/gates/plugin-v2/owner.mjs sdk-run "$SDK_CONTROL"
-      - name: Keep closed installed SDK reload evidence
-        id: sdk-evidence
-        if: ${{ always() && matrix.app_version == '0.1.8' && (startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-sdk-') || startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-sdk-')) && steps.sdk-stage.outputs.control != '' }}
-        timeout-minutes: 2
-        uses: actions/upload-artifact@v4
-        with:
-          name: sdk-reload-macos-0.1.8
-          path: ${{ steps.sdk-stage.outputs.control }}/sdk-summary.json
-          if-no-files-found: error
-          retention-days: 7
+          retention-days: 14
