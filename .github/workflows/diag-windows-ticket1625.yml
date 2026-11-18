@@ -1,0 +1,61 @@
+name: Finite Windows ticket diagnostic1625
+on:
+  push:
+    branches: ['diag/windows-ticket1625-once']
+permissions:
+  contents: read
+jobs:
+  ticket:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      GOTOOLCHAIN: local
+      GOFLAGS: -mod=readonly
+      CGO_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.22.0'
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.27.2'
+          cache: false
+      - name: Record source and prepare existing helper
+        run: |
+          New-Item -ItemType Directory -Force diagnostic-result | Out-Null
+          git rev-parse HEAD 'HEAD^{tree}' | Tee-Object diagnostic-result/source.txt
+          node --version
+          python --version
+          npm ci --prefix plugins/chrome --ignore-scripts --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $bin = Join-Path $env:GITHUB_WORKSPACE 'plugins/chrome/src/profiles/bin'
+          New-Item -ItemType Directory -Force $bin | Out-Null
+          go -C plugins/chrome/native/process-birth build -o (Join-Path $bin 'chrome-process-birth.exe') .
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node .operator-diagnostics/w4-1625/stage-windows-lock-module.mjs diagnostic-result/staged
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Reviewed OS-only probe once
+        run: |
+          $node = (Get-Command node).Source
+          python .operator-diagnostics/w4-1625/windows-delete-pending.py $node 2>&1 | Tee-Object diagnostic-result/os-probe.txt
+          exit $LASTEXITCODE
+      - name: Reviewed unchanged production-lock probe once
+        if: success()
+        run: |
+          $node = (Get-Command node).Source
+          python .operator-diagnostics/w4-1625/windows-production-lock-repro.py $node diagnostic-result/staged/lock.mjs EPERM 2>&1 | Tee-Object diagnostic-result/production-probe.txt
+          exit $LASTEXITCODE
+      - name: Retain exact original diagnostic output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-ticket-diagnostic1625
+          path: diagnostic-result/
+          retention-days: 14
+          if-no-files-found: error
