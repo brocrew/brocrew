@@ -52,6 +52,9 @@ import {
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentName, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
+import { createCompactAgentTool } from '../src/main/runtime/tool-families/compaction'
+import { TurnInProgress } from '@brobot2/runtime'
+import { agentCallerId } from '../src/main/runtime/agent-tools'
 
 /**
  * 🔴 **713 · compact, on both providers** — `R59` and `R60`'s runtime half.
@@ -481,6 +484,88 @@ describe('713 §1 · R59 — the host, over the REAL Codex adapter', () => {
     expect(heard).not.toBe('/compact')
   })
 
+  it.each([1, 2])(
+    'compacts a Codex descendant at depth %i through the native action',
+    async (depth) => {
+      app.store.createAgentIdentity(
+        { slug: 'compact-worker', displayName: null, provider: 'codex' },
+        { by: 'a-person' },
+      )
+      app.store.createAgentIdentity(
+        { slug: 'compact-grandchild', displayName: null, provider: 'codex' },
+        { by: 'a-person' },
+      )
+      const { sessionId: parent } = await app.host.createSession(
+        { provider: 'claude', profileId: 'compact-parent', approvalMode: 'ask', cwd: app.root },
+        app.window,
+      )
+      let giver = parent
+      let target = parent
+      for (let level = 0; level < depth; level++) {
+        const given = await callOn(agentToolsFor(app.host, giver), 'give_work', {
+          profile: level === 0 ? 'compact-worker' : 'compact-grandchild',
+          title: `Worker ${level}`,
+          brief: 'work',
+          definition_of_done: 'Done.',
+        })
+        expect(given.outcome, JSON.stringify(given)).toBe('ok')
+        target = given.agent as string
+        await waitFor(
+          () =>
+            app
+              .ledger(target)
+              .reverse()
+              .find((event) => event.type === 'status')?.state === 'idle',
+          'worker idle',
+        )
+        if (level === depth - 1) {
+          expect(
+            (
+              await callOn(agentToolsFor(app.host, target), 'reply_to_parent', {
+                piece: given.label,
+                outcome: 'done',
+                summary: 'Done.',
+              })
+            ).outcome,
+          ).toBe('ok')
+        }
+        giver = target
+      }
+      const codex = transports.at(-1)!
+      await waitFor(
+        () =>
+          app
+            .ledger(target)
+            .reverse()
+            .find((event) => event.type === 'status')?.state === 'idle',
+        'worker idle after reply',
+      )
+      const turnsBefore = codex.turnTexts().length
+      const result = await callOn(agentToolsFor(app.host, parent), 'compact_agent', {
+        agent: target,
+      })
+      expect(result.outcome).toBe('ok')
+      await waitFor(() => codex.asked('thread/compact/start') === 1, 'native compaction')
+      expect(codex.turnTexts()).toHaveLength(turnsBefore)
+      const request = app
+        .ledger(target)
+        .reverse()
+        .find((event) => event.type === 'user_turn')
+      expect(request).toMatchObject({
+        type: 'user_turn',
+        text: '/compact',
+        attribution: 'app_authored',
+        relayedFrom: parent,
+      })
+      const stranger = await aPersonOpensCodex()
+      const refused = await callOn(agentToolsFor(app.host, parent), 'compact_agent', {
+        agent: stranger.id,
+      })
+      expect(refused).toMatchObject({ outcome: 'refused', rail: 'not-below-you' })
+      expect(stranger.codex.asked('thread/compact/start')).toBe(0)
+    },
+  )
+
   it('⛔ `/compact <instructions>` is refused at the door, in words — nothing is sent and nothing is dropped', async () => {
     const { id, codex } = await aPersonOpensCodex()
     const before = codex.requests.length
@@ -510,6 +595,98 @@ describe('713 §2 · R59 at every door, on a double that compacts on request', (
 
   afterEach(async () => {
     for (const step of cleanup.splice(0).reverse()) await step()
+  })
+
+  it('sends the explicit Claude compaction raw while preserving its agent author', async () => {
+    app.store.createAgentIdentity(
+      { slug: 'compact-claude', displayName: null, provider: 'claude' },
+      { by: 'a-person' },
+    )
+    const { sessionId: parent } = await app.host.createSession(
+      { provider: 'claude', profileId: 'compact-parent', approvalMode: 'auto', cwd: app.root },
+      app.window,
+    )
+    const given = await callOn(agentToolsFor(app.host, parent), 'give_work', {
+      profile: 'compact-claude',
+      title: 'Worker',
+      brief: 'work',
+      definition_of_done: 'Done.',
+    })
+    expect(given.outcome).toBe('ok')
+    const target = given.agent as string
+    await waitFor(
+      () =>
+        app
+          .ledger(target)
+          .reverse()
+          .find((event) => event.type === 'status')?.state === 'idle',
+      'worker idle',
+    )
+    expect(
+      (
+        await callOn(agentToolsFor(app.host, target), 'reply_to_parent', {
+          piece: given.label,
+          outcome: 'done',
+          summary: 'Done.',
+        })
+      ).outcome,
+    ).toBe('ok')
+    const result = await callOn(agentToolsFor(app.host, parent), 'compact_agent', { agent: target })
+    expect(result.outcome).toBe('ok')
+    await waitFor(() => heardAsWords(target).at(-1) === '/compact', 'raw compact command')
+    expect(heardAsWords(target).at(-1)).toBe('/compact')
+    expect(
+      app
+        .ledger(target)
+        .reverse()
+        .find((event) => event.type === 'user_turn'),
+    ).toMatchObject({
+      text: '/compact',
+      attribution: 'app_authored',
+      relayedFrom: parent,
+    })
+  })
+
+  it('reports a lost idle race without queueing or compacting later', async () => {
+    const tool = createCompactAgentTool(
+      {
+        compactAgent: async () => {
+          throw new TurnInProgress()
+        },
+        theConversationAddressed: (id) => id,
+        nameByItsWork: (id) => id,
+      },
+      { ownerId: agentCallerId('parent') },
+      'parent',
+      (run) => run(),
+    )
+    expect(await tool.call({ agent: 'child' })).toMatchObject({
+      structured: { outcome: 'busy', agent: 'child' },
+      text: 'That conversation is busy; nothing was compacted.',
+    })
+  })
+
+  it('status reports only the context the provider reported, including zero and a known window', async () => {
+    const { sessionId: target } = await app.host.createSession(
+      { provider: 'codex', approvalMode: 'ask', cwd: app.root },
+      app.window,
+    )
+    const tools = agentToolsFor(app.host, target)
+    expect(await callOn(tools, 'get_agent_status', { agent: target })).not.toHaveProperty('context')
+    const handle = handles.at(-1)!
+    for (const reading of [
+      { kind: 'tokens', used: 0 },
+      { kind: 'proportional', used: 12000, window: 128000 },
+    ] as const) {
+      handle.simulateContextReading(reading, 'provider-test')
+      await waitFor(
+        () => app.host.contextReportedFor(target)?.kind === reading.kind,
+        'context report',
+      )
+      expect(await callOn(tools, 'get_agent_status', { agent: target })).toMatchObject({
+        context: reading,
+      })
+    }
   })
 
   /** What the provider heard as WORDS — the double's echo. */

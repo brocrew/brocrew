@@ -80,6 +80,7 @@ const THE_SPLIT: Readonly<Record<ToolName, BeyondItsRails>> = {
   set_theme: 'nothing-its-rails-do-not-cover',
   list_agents: 'nothing-its-rails-do-not-cover',
   get_agent_status: 'nothing-its-rails-do-not-cover',
+  compact_agent: 'nothing-its-rails-do-not-cover',
   list_tasks: 'nothing-its-rails-do-not-cover',
   list_questions: 'nothing-its-rails-do-not-cover',
   // ⚑ **D-016** — `list_projects` and `create_project` are gone with projects; both read

@@ -193,6 +193,8 @@ describe('405 · a refusal you can see', () => {
     // seam is for.
     agentRecord: (...args) => host.agentRecord(...args),
     agentCard: (...args) => host.agentCard(...args),
+    contextReportedFor: (...args) => host.contextReportedFor(...args),
+    compactAgent: (...args) => host.compactAgent(...args),
     servicePieceForStatus: (...args) => host.servicePieceForStatus(...args),
     whatOpenedItsLastTurn: (...args) => host.whatOpenedItsLastTurn(...args),
     // ⚑ **D-017's two readers** (R12's reach answer, R10's replacement), delegated like every other
