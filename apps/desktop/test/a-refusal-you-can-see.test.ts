@@ -137,10 +137,8 @@ describe('405 · a refusal you can see', () => {
     rmSync(work, { recursive: true, force: true })
   })
 
-  const personOpens = (
-    profileId: string,
-    approvalMode: 'ask' | 'auto' = 'ask',
-  ): Promise<string> => openAgentTestConversation(host, window, work, profileId, approvalMode)
+  const personOpens = (profileId: string, approvalMode: 'ask' | 'auto' = 'ask'): Promise<string> =>
+    openAgentTestConversation(host, window, work, profileId, approvalMode)
 
   /** An identity exists only once a person has run a conversation as it — 341 criterion 12. */
   const bringIdentityIntoBeing = (profileId: string): Promise<void> =>
