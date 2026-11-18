@@ -1,7 +1,7 @@
 import { rmSync } from 'node:fs'
 import type { TestContext } from 'vitest'
 
-export function cleanupFailureTrace(context: TestContext) {
+function cleanupFailureTrace(context: TestContext) {
   const started = performance.now()
   const stages: { stage: string; index?: number; elapsedMs: number }[] = []
   context.onTestFailed(({ task }) => {
