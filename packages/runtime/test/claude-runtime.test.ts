@@ -4327,7 +4327,9 @@ describe('a stalled turn is visible and recoverable (074 — the live incident)'
     await handle.interrupt() // bounded — must return, not hang
 
     await vi.waitFor(has(events, (e) => e.type === 'turn' && e.state === 'interrupted'))
-    expect(handle.status()).toBe('idle')
+    // The wedged CLI is retired, so the next message starts a fresh one.
+    expect(fq.closeCount).toBe(1)
+    await vi.waitFor(() => expect(handle.status()).toBe('ended'))
     fq.end()
     await handle.close()
     await consumer

@@ -49,7 +49,10 @@ describe('a failed settings apply leaves the conversation usable', () => {
    * `exitAfterMs` null: the retired provider never confirms its exit. `'stop'`: the first launch
    * reads as working and retires when asked to stop, after `stopAfterMs`, instead of on a send.
    */
-  const buildHost = (exitAfterMs: number | null, retiresOn: 'send' | 'stop' = 'send'): RuntimeHost =>
+  const buildHost = (
+    exitAfterMs: number | null,
+    retiresOn: 'send' | 'stop' = 'send',
+  ): RuntimeHost =>
     new RuntimeHost({
       store,
       ...neutralHostDeps(() => userData),
