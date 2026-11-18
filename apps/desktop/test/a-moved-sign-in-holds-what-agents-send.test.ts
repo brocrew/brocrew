@@ -245,7 +245,6 @@ describe.each(['claude', 'codex'] as const)(
         clearTimeout(report)
       }
       expect([...host.workInFlight()]).toEqual([])
-      expect(host.providerProcessesInFlight()).toBe(false)
       expect(handles.every((handle) => handle.status() === 'ended')).toBe(true)
       db.close()
       rmSync(userData, { recursive: true, force: true })

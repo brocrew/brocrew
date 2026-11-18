@@ -40,7 +40,8 @@ describe('sign-in reopens share a yielding queue', () => {
   let messages: RuntimeEventMessage[]
   let fail: Set<string>
   let exits: Map<string, ReturnType<typeof deferred>>
-  let launchGates: ReturnType<typeof deferred>[]
+  let holdPreparation: (() => Promise<void>) | undefined
+  let releasePreparation: (() => void) | undefined
   let states: RuntimeStatesMessage[]
   /** A read of the sign-in held until resolved, by provider session, once its handle was closed. */
   let readsHeld: Map<string, ReturnType<typeof deferred>>
@@ -60,7 +61,8 @@ describe('sign-in reopens share a yielding queue', () => {
     messages = []
     fail = new Set()
     exits = new Map()
-    launchGates = []
+    holdPreparation = undefined
+    releasePreparation = undefined
     states = []
     readsHeld = new Map()
     workClock = 0
@@ -120,7 +122,10 @@ describe('sign-in reopens share a yielding queue', () => {
       store: createSessionStore(db),
       ...neutralHostDeps(() => folder),
       createRuntime: (provider) => new Runtime(provider, { sessions }),
-      prepareProviderHome: (provider) => join(folder, 'homes', provider),
+      prepareProviderHome: (provider) => {
+        const home = join(folder, 'homes', provider)
+        return holdPreparation?.().then(() => home) ?? home
+      },
       providerHomePath: (provider) => join(folder, 'homes', provider),
       resolveCwd: () => folder,
       newSessionId: () => `session_${++ordinal}`,
@@ -145,7 +150,7 @@ describe('sign-in reopens share a yielding queue', () => {
 
   afterEach(async () => {
     for (const receipt of exits.values()) receipt.resolve()
-    for (const gate of launchGates) gate.resolve()
+    releasePreparation?.()
     const ending = host.closeAll()
     if (vi.isFakeTimers()) await vi.advanceTimersByTimeAsync(20_000)
     await ending
@@ -494,33 +499,27 @@ describe('sign-in reopens share a yielding queue', () => {
     ])
   })
 
-  function holdNextLaunch() {
-    const gate = deferred()
-    launchGates.push(gate)
-    let entered = false
-    const deps = (host as unknown as { deps: { beforeProviderLaunch?: () => Promise<void> } }).deps
-    deps.beforeProviderLaunch = async () => {
-      if (entered) return
-      entered = true
-      await gate.promise
-    }
-    return { resolve: gate.resolve, entered: () => entered }
-  }
-
-  it('the next close waits for the full admitted launch cycle, including its launch gate', async () => {
+  it('the next close waits for the full admitted launch cycle, including home preparation', async () => {
     const sender = await open()
     const first = await open()
     const later = await open()
-    const launch = holdNextLaunch()
+    const preparation = deferred()
+    releasePreparation = preparation.resolve
+    let entered = false
+    holdPreparation = async () => {
+      holdPreparation = undefined
+      entered = true
+      await preparation.promise
+    }
     clock()
     moved = true
     await note(sender.id, first.id, 'first')
     await note(sender.id, later.id, 'later')
     await vi.advanceTimersByTimeAsync(100)
-    expect(launch.entered()).toBe(true)
+    expect(entered).toBe(true)
     expect(resumes).toEqual([])
     expect(closed).toEqual([first.handle.ref.sessionId])
-    launch.resolve()
+    preparation.resolve()
     await vi.advanceTimersByTimeAsync(100)
     expect(resumes).toEqual([first.handle.ref.sessionId])
     expect(closed).toEqual([first.handle.ref.sessionId])

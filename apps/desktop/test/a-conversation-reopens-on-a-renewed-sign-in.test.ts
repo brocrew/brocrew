@@ -153,7 +153,6 @@ describe('D-004 · R101 — a login renewed elsewhere reopens the conversation i
   let keySaved: boolean
   let authOps: ProviderAuthOps | undefined
   let authChanges: unknown[]
-  let launchBarrier: (() => Promise<void>) | undefined
 
   function buildHost(): RuntimeHost {
     const renewForThisHost = renewal
@@ -217,7 +216,6 @@ describe('D-004 · R101 — a login renewed elsewhere reopens the conversation i
                     }
                 : undefined,
           }),
-      ...(launchBarrier === undefined ? {} : { beforeProviderLaunch: launchBarrier }),
       ...(keySaved
         ? {
             apiKeys: {
@@ -258,7 +256,6 @@ describe('D-004 · R101 — a login renewed elsewhere reopens the conversation i
     renewAfterRejection = false
     nextId = 0
     keySaved = false
-    launchBarrier = undefined
     authOps = undefined
     authChanges = []
   })
@@ -1186,6 +1183,7 @@ describe('D-004 · R101 — a login renewed elsewhere reopens the conversation i
   it('deleting a stopped conversation cannot release its still-running recovery renewal', async () => {
     let release!: () => void
     let entered!: () => void
+    let renewalFinished = false
     const held = new Promise<void>((resolve) => {
       release = resolve
     })
@@ -1196,11 +1194,13 @@ describe('D-004 · R101 — a login renewed elsewhere reopens the conversation i
       if (machineLogin !== null) return 'not-needed'
       entered()
       await held
+      renewalFinished = true
       return 'not-renewed'
     }
     const { host, sessionId } = await killedMidTurn(() => {
       machineLogin = null
     })
+    let shutdown: Promise<void> | undefined
     try {
       await began
       expect(await host.deleteConversation(sessionId, ['records'])).toMatchObject({
@@ -1208,61 +1208,19 @@ describe('D-004 · R101 — a login renewed elsewhere reopens the conversation i
         removed: ['records'],
       })
       expect(ledger.recordedOne(sessionId)).toBeNull()
-      expect(host.providerProcessesInFlight()).toBe(true)
+      let shutdownFinished = false
+      shutdown = host.closeAll().finally(() => {
+        shutdownFinished = true
+      })
+      await new Promise<void>((resolve) => setImmediate(resolve))
+      expect(shutdownFinished).toBe(false)
+      expect(renewalFinished).toBe(false)
     } finally {
       release()
-      await new Promise<void>((resolve) => setImmediate(resolve))
+      await shutdown
     }
-    await waitFor(
-      () => !host.providerProcessesInFlight(),
-      'the independent renewal lease to settle',
-    )
+    expect(renewalFinished).toBe(true)
     expect(launches).toHaveLength(1)
-  })
-
-  it('a queued recovery waits at the clearing barrier before its renewal can start', async () => {
-    let releaseBarrier!: () => void
-    let barrierEntered!: () => void
-    let nativeEntered!: () => void
-    const held = new Promise<void>((resolve) => {
-      releaseBarrier = resolve
-    })
-    const atBarrier = new Promise<void>((resolve) => {
-      barrierEntered = resolve
-    })
-    const atNative = new Promise<void>((resolve) => {
-      nativeEntered = resolve
-    })
-    let nativeCalls = 0
-    let gateCalls = 0
-    launchBarrier = async () => {
-      if (machineLogin !== null) return
-      gateCalls++
-      barrierEntered()
-      await held
-    }
-    renewal = async () => {
-      if (machineLogin !== null) return 'not-needed'
-      nativeCalls++
-      nativeEntered()
-      return 'not-renewed'
-    }
-    const { host } = await killedMidTurn(() => {
-      machineLogin = null
-    })
-    try {
-      await Promise.race([atBarrier, atNative])
-      expect(gateCalls).toBe(1)
-      expect(nativeCalls).toBe(0)
-      expect(host.providerProcessesInFlight()).toBe(true)
-      releaseBarrier()
-      await atNative
-    } finally {
-      releaseBarrier()
-      await new Promise<void>((resolve) => setImmediate(resolve))
-    }
-    await waitFor(() => !host.providerProcessesInFlight(), 'the gated renewal to settle')
-    expect(nativeCalls).toBe(1)
   })
 
   it('🔴 a start on an expired login has it renewed first, and its first row says so', async () => {

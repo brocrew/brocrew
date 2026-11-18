@@ -96,8 +96,6 @@ export interface RuntimeHostDeps {
    * would have turned dozens of honest stubs into compile errors for nothing.
    */
   prepareProviderHome(provider: Provider, profileId: string): string | Promise<string>
-  /** Wait for transcript clearing before a provider process can start. */
-  beforeProviderLaunch?: () => Promise<void>
   readSelectedSkills?: (profileId: string | null) => SkillLaunchSelection
   prepareBuiltInSkills?: (input: {
     provider: Provider
