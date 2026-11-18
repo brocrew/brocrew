@@ -24,6 +24,8 @@ const ROWS_PER_READ = 250
 
 export interface EventTrimResult {
   readonly removed: number
+  readonly removedByType?: Readonly<Record<string, number>>
+  readonly unattributedRemoved?: number
   readonly batches: number
   readonly longestBatchMs: number
   readonly longestSelectionMs: number
@@ -47,6 +49,7 @@ export interface EventTrimBatch {
 
 export interface EventTrimWrite {
   readonly changed: number | null
+  readonly removedByType?: Readonly<Record<string, number>>
   readonly durationMs: number
   readonly checkpointMs: number
 }
@@ -86,15 +89,22 @@ export function eventTrimWriter(db: AppDatabase): (batch: EventTrimBatch) => Eve
         standalone && historyOnly && changed === rows.length ? 'stream-trimmed' : 'trimmed',
       )
     }
-    return changed
+    const kinds = new Map<string, number>()
+    if (changed === rows.length)
+      for (const row of rows) kinds.set(row.type, (kinds.get(row.type) ?? 0) + 1)
+    return {
+      changed,
+      ...(changed === rows.length ? { removedByType: Object.fromEntries(kinds) } : {}),
+    }
   })
   return (batch) => {
     const began = performance.now()
-    const changed = write.immediate(batch, !db.inTransaction)
+    const applied = write.immediate(batch, !db.inTransaction)
+    const changed = applied?.changed ?? null
     const durationMs = performance.now() - began
     const checkpointBegan = performance.now()
     if (changed !== null && !db.inTransaction) db.pragma('wal_checkpoint(PASSIVE)')
-    return { changed, durationMs, checkpointMs: performance.now() - checkpointBegan }
+    return { ...applied, changed, durationMs, checkpointMs: performance.now() - checkpointBegan }
   }
 }
 
@@ -128,6 +138,8 @@ export async function trimOldEvents(
   const db = new Database(file, { readonly: true, fileMustExist: true, timeout: 5000 })
   const before = now - KEEP_DAYS * 86_400_000
   let removed = 0
+  const removedByType = new Map<string, number>()
+  let unattributedRemoved = 0
   let batches = 0
   let longestBatchMs = 0
   let longestSelectionMs = 0
@@ -137,6 +149,8 @@ export async function trimOldEvents(
   let deferredConversations = 0
   const result = (interrupted: boolean): EventTrimResult => ({
     removed,
+    removedByType: Object.fromEntries(removedByType),
+    unattributedRemoved,
     batches,
     longestBatchMs,
     longestSelectionMs,
@@ -189,6 +203,10 @@ export async function trimOldEvents(
             return false
           }
           removed += applied.changed
+          if (applied.removedByType === undefined) unattributedRemoved += applied.changed
+          else
+            for (const [type, count] of Object.entries(applied.removedByType))
+              removedByType.set(type, (removedByType.get(type) ?? 0) + count)
         } catch (error) {
           if ((error as { code?: string }).code === 'SQLITE_BUSY' || stopped()) return 'stop'
           throw error
