@@ -60,7 +60,7 @@ it.each([false, true])(
           yield* iterate(...args)
         })
       }
-      if (sql === 'SELECT id FROM turn WHERE session_id = ? AND generation = ? ORDER BY ordinal DESC LIMIT 1') {
+      if (sql === 'SELECT id FROM turn WHERE session_id = ? ORDER BY generation DESC, ordinal DESC LIMIT 1') {
         const get = statement.get.bind(statement)
         vi.spyOn(statement, 'get').mockImplementation((...args) => {
           readsBeforeNewestTurn ??= pieceReads
