@@ -1,3 +1,4 @@
+import { startMapReader } from '../panel-run.fixture'
 import { afterEach, expect, it } from 'vitest'
 import { nextTick, reactive } from 'vue'
 import RunningNowCard from '../../src/renderer/src/components/RunningNowCard.vue'
@@ -21,14 +22,7 @@ it('keeps the empty card and history door visible', () => {
 
 it('deduplicates a native child and background identity and excludes wake-ups from the live count', () => {
   const state = createTranscript()
-  applyEvent(state, { type: 'tool_call', id: 'dispatch', name: 'Agent', summary: 'Read the map' })
-  applyEvent(state, {
-    type: 'sub_agent',
-    agentId: 'map-reader',
-    phase: 'started',
-    parentToolCallId: 'dispatch',
-    title: 'Read the map',
-  })
+  startMapReader(state)
   state.background.running = [
     { id: 'map-reader', description: 'Read the map' },
     { id: 'command', description: 'Check paths', kind: 'shell' },
