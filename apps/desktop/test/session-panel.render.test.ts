@@ -279,7 +279,7 @@ describe('the panel renders as a way in, and says so when there is nothing (037)
     expect(rowFor('panel-questions')).not.toContain('#i-lock')
 
     // A running sub-agent is drawn from its own card: live, and on a tool if it has one.
-    expect(rowFor('panel-agents')).toContain('data-being="live"')
+    expect(rowFor('panel-agents')).toContain('Running')
 
     // The checklist is not an agent, so it gets no mark at all — not an empty column where one
     // would go. Its row is outside the section loop and carries no `data-mark`, which is the
