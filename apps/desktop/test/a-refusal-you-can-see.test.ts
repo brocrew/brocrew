@@ -164,14 +164,7 @@ describe('405 · a refusal you can see', () => {
     return { set, call }
   }
 
-  /**
-   * ⛔ **The host seam `agentToolsFor` is actually given**, with one or two members replaced.
-   *
-   * ⚠️ **Every member is delegated to the real host** rather than stubbed, so a test that overrides
-   * one is measuring the real thing everywhere else. ⚑ It is written out in full deliberately: the
-   * list is `AgentToolHost`'s, and a member added to that interface makes this fail to compile —
-   * which is how `a-task-you-can-see.test.ts`'s census of the same surface behaves one file over.
-   */
+  /** Delegate the host seam so missing methods fail to compile. */
   const seam = (over: Partial<AgentToolHost>): AgentToolHost => ({
     // ⚑ **D-016 · the give and its readers**, delegated like every other member.
     giveWork: (...args) => host.giveWork(...args),
