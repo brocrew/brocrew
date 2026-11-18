@@ -49,7 +49,7 @@ function retainedBytes(value: unknown, limit: number): number {
 }
 
 /** One shared retained-byte budget; dropping an answer leaves its canonical fold available. */
-export function windowFoldCache(limit = 48 * 1024 * 1024): SnapshotFoldAnswers {
+export function windowFoldCache(limit = 128 * 1024 * 1024): SnapshotFoldAnswers {
   type Answer = KeptFold<unknown>
   type Slot = { owner: string; fold: Answers; bytes: number }
   const oldest = new Map<Slot, true>()
