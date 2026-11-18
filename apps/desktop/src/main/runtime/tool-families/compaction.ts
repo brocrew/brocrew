@@ -29,10 +29,7 @@ export function createCompactAgentTool(
           outcome = await host.compactAgent(agent, by)
         } catch (error) {
           if (!(error instanceof TurnInProgress)) throw error
-          return answer(
-            { outcome: 'busy', agent },
-            'It’s working; try again when it’s idle.',
-          )
+          return answer({ outcome: 'busy', agent }, 'It’s working; try again when it’s idle.')
         }
         if (outcome === 'no-such-agent') return refusalAnswer(refuseTool(outcome, { agent }))
         if (outcome === 'not-below-you') {
