@@ -10285,14 +10285,6 @@ export class RuntimeHost implements LiveHost {
     opening: { readonly provider: Provider; readonly kind: 'fresh' | 'resume' },
     launch: (startPhases: StartPhaseSink) => Promise<SessionHandle>,
   ): Promise<SessionHandle> {
-    if (this.deps.beforeProviderLaunch) {
-      await this.deps.beforeProviderLaunch()
-      if (slot.launch.signal.aborted || this.slots.get(slot.id) !== slot || onItsWayOut(slot))
-        throw new SessionUnavailable(
-          'cancelled',
-          'The launch was cancelled while cleanup finished.',
-        )
-    }
     const timeoutMs = this.launchTimeouts[opening.provider][opening.kind]
     const timing = this.timeTheLaunch(slot.id, opening, timeoutMs)
     // These are stages of this launch, not activity elsewhere in the provider. Replayed stages
@@ -18047,16 +18039,6 @@ export class RuntimeHost implements LiveHost {
         return bytes === undefined ? [] : [{ conversation, bytes }]
       }),
     }
-  }
-
-  /** All homes stay untouched until every provider process and pending launch has settled. */
-  providerProcessesInFlight(): boolean {
-    return (
-      this.slots.size > 0 ||
-      this.startsInFlight.size > 0 ||
-      this.launches.size > 0 ||
-      this.aReopenIsBeingDecidedFor.size > 0
-    )
   }
 
   /** A window activity read never falls back to a main-thread ledger scan. */
@@ -30502,13 +30484,7 @@ export class RuntimeHost implements LiveHost {
     let launch: Launch | null = null
     try {
       launch = this.launches.open('provider version probe')
-      const owned = launch
-      const work = this.deps.beforeProviderLaunch
-        ? this.deps.beforeProviderLaunch().then(() => {
-            owned.signal.throwIfAborted()
-            return ask()
-          })
-        : ask()
+      const work = ask()
       this.launches.finish(launch, work)
       const versions = await work
       for (const provider of Object.keys(versions) as Provider[]) {
@@ -31014,7 +30990,6 @@ export class RuntimeHost implements LiveHost {
   private async withProviderLaunch<T>(what: string, run: () => T | Promise<T>): Promise<T> {
     const launch = this.launches.open(what)
     const work = (async () => {
-      if (this.deps.beforeProviderLaunch) await this.deps.beforeProviderLaunch()
       launch.signal.throwIfAborted()
       return await run()
     })()
@@ -31102,19 +31077,6 @@ export class RuntimeHost implements LiveHost {
     // bounded stdin→SIGTERM→SIGKILL of the group — so this promise settling IS the child being down,
     // whereas the ten-second deadline below settles only the waiter. Registering the un-deadlined
     // promise is what makes `closeAll`'s drain wait for the process rather than for our patience.
-    if (this.deps.beforeProviderLaunch) {
-      try {
-        await this.deps.beforeProviderLaunch()
-        launch.signal.throwIfAborted()
-      } catch (error) {
-        this.launches.finish(launch)
-        return {
-          state: 'unknown',
-          reason: signInNotChecked(didNotAnswerInTime(error)),
-          ...this.logAuthDiagnostic('check', provider, error),
-        }
-      }
-    }
     const rejected = this.rejectedMachineLogins.get(provider)
     const work = Promise.resolve().then(() => {
       if (launch.signal.aborted)
@@ -31684,10 +31646,6 @@ export class RuntimeHost implements LiveHost {
 
     let signIn: ProviderSignIn
     try {
-      if (this.deps.beforeProviderLaunch) {
-        await this.deps.beforeProviderLaunch()
-        launch.signal.throwIfAborted()
-      }
       signIn = await ops.signIn(provider, profileId, launch.signal)
     } catch (error) {
       this.signIns.delete(key) // the reservation must not outlive a start that never happened
@@ -37384,7 +37342,6 @@ export class RuntimeHost implements LiveHost {
       connection = connectionForLaunch(this.deps, provider)
       const preparation = this.launches.open(`${provider} model home preparation`)
       try {
-        if (this.deps.beforeProviderLaunch) await this.deps.beforeProviderLaunch()
         preparation.signal.throwIfAborted()
         if (this.deps.prepareProviderLaunch !== undefined) {
           const prepared = await this.deps.prepareProviderLaunch(provider, profileId, connection)
@@ -37414,10 +37371,6 @@ export class RuntimeHost implements LiveHost {
         await copying
       launch = this.launches.open(`${provider} model probe`)
       this.rememberHomeLaunch(provider, profileId, launch)
-      if (this.deps.beforeProviderLaunch) {
-        await this.deps.beforeProviderLaunch()
-        launch.signal.throwIfAborted()
-      }
       const runtime = preparedRuntime ?? this.deps.createRuntime(provider)
       const listing = runtime.listModels({ providerHome, signal: launch.signal })
       // Owned until the probe's own promise settles — both adapters close their child in a

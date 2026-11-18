@@ -10,6 +10,7 @@ import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
 import { resolveProviderConnection } from '../src/main/connections/records'
+import { DEFAULT_PROFILE_ID } from '../src/main/connections/homes'
 import { createCodexModule } from '../src/main/providers/codex/index'
 import { ApiKeys } from '../src/main/runtime/api-keys'
 import {
@@ -48,7 +49,6 @@ function fixture() {
   const state: {
     revision: number
     revisionOf?: (provider: Provider) => number
-    beforeLaunch?: () => Promise<void>
   } = { revision: 0 }
   const rawRuntimes: FakeRuntime[] = []
   let number = 0
@@ -74,7 +74,6 @@ function fixture() {
     store,
     ...neutralHostDeps(() => dir),
     createRuntime: create,
-    beforeProviderLaunch: async () => state.beforeLaunch?.(),
     prepareProviderHome: prepare,
     providerHomePath: (provider: Provider, profile: string) => join(dir, profile, provider),
     resolveCwd: () => dir,
@@ -164,7 +163,7 @@ it('Codex home preparation uses the once-selected method instead of a newly save
 
 for (const provider of ['claude', 'codex'] as const) {
   for (const opening of ['fresh', 'bound resume', 'legacy resume', 'models'] as const) {
-    it(`${provider}: a changed-back generation during the final ${opening} wait does not replace the chosen route`, async () => {
+    it(`${provider}: a changed-back generation during ${opening} preparation does not replace the chosen route`, async () => {
       const f = fixture()
       let sessionId: string | undefined
       if (opening !== 'fresh') {
@@ -185,15 +184,14 @@ for (const provider of ['claude', 'codex'] as const) {
       }
       f.connectionFor.mockClear()
       f.revision.mockClear()
+      f.prepared.mockClear()
       const entered = deferred()
       const released = deferred()
-      let calls = 0
-      f.state.beforeLaunch = async () => {
-        calls++
-        if (opening === 'models' && calls === 1) return
+      f.prepared.mockImplementation(async (which, profile) => {
         entered.resolve()
         await released.promise
-      }
+        return { home: await f.prepare(which, profile), runtime: f.create(which) }
+      })
       const pending =
         opening === 'models'
           ? host.providerModels('fern', provider)
@@ -208,14 +206,23 @@ for (const provider of ['claude', 'codex'] as const) {
                 sink,
               )
             : host.resumeSession(sessionId, sink)
-      await entered.promise
-      f.state.revision += 2
-      released.resolve()
+      try {
+        await entered.promise
+        f.state.revision += 2
+      } finally {
+        released.resolve()
+      }
       if (opening === 'models') {
         expect(await pending).toMatchObject({ ok: true })
       } else {
         await expect(pending).resolves.toHaveProperty('sessionId')
       }
+      expect(f.connectionFor).toHaveBeenCalledTimes(1)
+      expect(f.prepared).toHaveBeenCalledExactlyOnceWith(
+        provider,
+        opening === 'models' ? DEFAULT_PROFILE_ID : 'fern',
+        expect.objectContaining({ id: `${provider}:sign-in` }),
+      )
       expect(f.revision).not.toHaveBeenCalled()
       expect(
         f.rawRuntimes.some(
