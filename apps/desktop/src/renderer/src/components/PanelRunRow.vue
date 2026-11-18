@@ -10,7 +10,7 @@ defineEmits<{ open: []; stop: [] }>()
       <span class="copy">
         <strong class="label" data-cy="panel-run-label">{{ run.label }}</strong>
         <span class="detail">{{ run.group }}<template v-if="run.detail"> · {{ run.detail }}</template></span>
-        <span class="status" :class="{ failed: run.failed }">{{ run.status }}</span>
+        <span class="status" :class="{ failed: run.failed }">{{ run.status }}<span v-if="run.time" class="time">{{ run.time }}</span></span>
       </span>
       <svg class="icon arrow" aria-hidden="true"><use href="#i-chevron" /></svg>
     </button>
@@ -26,7 +26,8 @@ defineEmits<{ open: []; stop: [] }>()
 .label, .detail, .status { display: block; }
 .label { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--type-small); font-weight: var(--fw-semibold); }
 .detail { color: var(--muted); font-size: var(--type-caption); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; margin-top: var(--space-1); }
-.status { color: var(--accent-text); font-size: var(--type-caption); margin-top: var(--space-1); }
+.status { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); color: var(--accent-text); font-size: var(--type-caption); margin-top: var(--space-1); }
+.time { color: var(--muted); font-variant-numeric: tabular-nums; }
 .failed { color: var(--danger); }
 .icon { color: var(--muted); flex: none; margin-top: var(--space-1); }
 .arrow { width: 12px; height: 12px; }
