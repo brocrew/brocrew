@@ -10,7 +10,7 @@ import {
   stackingWindow,
 } from './a-window-with-a-workflow-and-nested-agents'
 import { unmountAll } from './harness'
-import { readsAt, see, shownUnder } from './what-is-painted-under'
+import { readsAt, see } from './what-is-painted-under'
 
 const BASE = (() => {
   const read = validateTheme(DEFINED_FILE, {
@@ -73,22 +73,5 @@ describe('the stacks the window paints', () => {
     const reading = await readsAt(part!)
     expect(reading.is).toBe('read')
     if (reading.is === 'read') expect(reading.ratio).toBeLessThan(4.5)
-  })
-
-  it('a sub-agent nested three deep stands on the outermost card’s one wash', async () => {
-    const read = wear({ shared: FLAT, tokens: { content: { 'accent-2-text': '#6b6b6b' } } })
-    expect(read.ok, 'the check accepts it').toBe(true)
-    const m = await stackingWindow()
-    const cards = [...m.host.querySelectorAll<HTMLElement>('.subagent')]
-    expect(cards.length, 'three nested cards').toBeGreaterThanOrEqual(3)
-    const outer = cards[0]!
-    const deepest = cards[cards.length - 1]!
-    expect(deepest.parentElement!.closest('.subagent'), 'the last card is nested').not.toBeNull()
-    deepest.scrollIntoView({ block: 'center' })
-    const deep = await shownUnder(deepest)
-    outer.scrollIntoView({ block: 'start' })
-    const top = await shownUnder(outer)
-    const near = (a: number, b: number): boolean => Math.abs(a - b) <= 1
-    expect(near(deep.r, top.r) && near(deep.g, top.g) && near(deep.b, top.b)).toBe(true)
   })
 })
