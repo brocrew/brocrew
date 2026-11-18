@@ -73,6 +73,7 @@
         "scripts/windows-packaged-check.mjs",
         "scripts/windows-update-test.mjs",
         "*.config.{ts,js,mjs,cjs}",
+        "!vitest.agent-processes.config.ts",
         "!vitest.gate-only.config.ts",
         "!vitest.smoke.config.ts",
         "eslint.config.*",
