@@ -21,7 +21,7 @@ const CLAUSES = {
   warmth: 'in warm, plain words',
   courtesyKeptBrief: 'Keep greetings and apologies brief',
   noFiller: 'End with the answer or needed question; no offers or filler',
-  recapOnlyToHelp: 'Keep recaps useful',
+  recapOnlyToHelp: 'Recap only when needed',
   brief: 'Keep finished files on the piece so agents can find them',
 } as const
 const THE_PARENTS_PIECE = { label: 'W1', title: 'Bakery website' } as const

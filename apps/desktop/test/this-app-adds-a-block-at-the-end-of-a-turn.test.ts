@@ -55,7 +55,7 @@ const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/m
 
 /**
  * Every turn this app hands an agent ends with a block of the app's own words: the time; on a turn
- * the app started, when the person last wrote and that they have read nothing since; and, where
+ * the app started, when the person last wrote; and, where
  * the store already holds them, the agent's open questions to the person and who waits on it.
  *
  * A real host, a real SQLite ledger and the real rails; the only double is the provider. In `ask`
@@ -296,8 +296,6 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
     'This app adds what follows. It is not part of the person’s message above, and that message comes first.'
   const HEADER_OF_THE_APPS =
     'This app adds what follows. It is not part of the message above, and that message comes first.'
-  const READ_NOTHING =
-    'When you next write to the person, assume they have read nothing since then, and tell them briefly what they need to know.'
 
   /** The words each turn handed its provider, as the double says them back. */
   const handedOver = (id: string): string[] =>
@@ -1349,7 +1347,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       expect(block).not.toContain('last wrote')
     })
 
-    it('⚑ a turn this app started also says when the person last wrote, by its day when that was not today, and to assume they read nothing since', () => {
+    it('⚑ a turn this app started also says when the person last wrote, by its day when that was not today', () => {
       const today = whatThisAppAddsToATurn({
         now: NOW,
         aPersonStartedIt: false,
@@ -1360,9 +1358,9 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       expect(today).toHaveLength(3)
       expect(today[1]).toBe(HEADER_OF_THE_APPS)
       expect(today[2]).toMatch(
-        /^It is .*2026.*\. The person last wrote in this conversation at [^.]*09[^.]*15[^.]*\. When you next write/,
+        /^It is .*2026.*\. The person last wrote in this conversation at [^.]*09[^.]*15[^.]*\.$/,
       )
-      expect(today[2]?.endsWith(READ_NOTHING)).toBe(true)
+      expect(today[2]).not.toContain('assume they have read nothing')
       const yesterday = whatThisAppAddsToATurn({
         now: NOW,
         aPersonStartedIt: false,
@@ -1371,7 +1369,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         waiting: null,
       })
       expect(yesterday).toMatch(
-        /The person last wrote in this conversation at [^.]*8[^.]*42[^.]*\. When/,
+        /The person last wrote in this conversation at [^.]*8[^.]*42[^.]*\.$/,
       )
       const unknown = whatThisAppAddsToATurn({
         now: NOW,
@@ -1380,9 +1378,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         questions: null,
         waiting: null,
       })
-      expect(unknown).toContain(
-        `The person has not written in this conversation recently. ${READ_NOTHING}`,
-      )
+      expect(unknown).toContain('The last time the person wrote here is unknown.')
     })
 
     it('⚑ its open questions: one line each with its id, its age and its first line, the oldest five and a count of the rest', () => {
@@ -1512,21 +1508,17 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       expect(withoutWhatThisAppAdds(kept?.sent ?? '').endsWith('what are you doing?')).toBe(true)
     })
 
-    it('🔴 a turn this app started says when the person last wrote, and that they have read nothing since; before they ever wrote, that they have not written recently', async () => {
+    it('🔴 a turn this app started says when the person last wrote; before they ever wrote, that the time is unknown', async () => {
       const { worker, surface } = await aWorkerBetweenTurns()
       await itsTurnEnds(worker, surface)
       const first = await theBlockOfATurn(worker, 'the app speaking', THE_APP_ITSELF, surface)
       expect(first.split('\n')[1]).toBe(HEADER_OF_THE_APPS)
-      expect(first).toContain(
-        `The person has not written in this conversation recently. ${READ_NOTHING}`,
-      )
+      expect(first).toContain('The last time the person wrote here is unknown.')
 
       await theBlockOfATurn(worker, 'a person writes', surface, surface)
       const second = await theBlockOfATurn(worker, 'the app again', THE_APP_ITSELF, surface)
-      expect(second).toMatch(
-        /The person last wrote in this conversation at [^.]+\. When you next write/,
-      )
-      expect(second).not.toContain('has not written')
+      expect(second).toMatch(/The person last wrote in this conversation at [^.]+\.(?:\n|$)/)
+      expect(second).not.toContain('last time the person wrote here is unknown')
     })
 
     it('⚑ after a restart, when the person last wrote is read off its ledger — among its newest 200 turns, and no further', async () => {
@@ -1547,7 +1539,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         'its first words after the start',
       )
       expect(whatThisAppAdded(handedOver(worker).at(-1) ?? '')).toMatch(
-        /The person last wrote in this conversation at [^.]+\. When you next write/,
+        /The person last wrote in this conversation at [^.]+\.(?:\n|$)/,
       )
       await host.closeAll()
 
