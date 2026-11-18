@@ -166,7 +166,7 @@ const STATES: readonly [string, () => Promise<Element>][] = [
     },
   ],
   [
-    'sub-agents nested three deep',
+    'a compact sub-agent card',
     async () => {
       const m = await stackingWindow()
       const cards = m.host.querySelectorAll<HTMLElement>('.subagent')
@@ -368,7 +368,7 @@ const PROOF: Record<string, Proof> = {
   'docked, a workflow under the pointer': {
     read: ['[data-cy="workflow-head"]:hover', '.rail-item.active [data-place]'],
   },
-  'sub-agents nested three deep': { read: ['.subagent .subagent .subagent'] },
+  'a compact sub-agent card': { read: ['.subagent [data-cy="subagent-head"]'] },
   'the right-hand panel floating': { read: ['.session-drawer.fit-overlay'] },
   'turns before the last compaction, scrolled into view': { read: ['.summarised-out'] },
   'a dialog open': { read: ['.overlay-host .list-dialog'] },
