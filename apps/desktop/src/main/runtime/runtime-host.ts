@@ -23043,7 +23043,7 @@ export class RuntimeHost implements LiveHost {
         console.warn(`runtime session ${session.id} failed to interrupt: ${errorMessage(error)}`)
       })
       await settledWithin(asked, this.interruptWaitMs)
-      // A retired handle cannot become idle; carry only the replacement words after its exit.
+      // A retired handle takes no words; carry them to its next start, after its exit.
       if (this.itStoppedUnder(session)) return this.send(session.id, text, by, attachments)
       // ⚠️ **704 · on Codex this is the only bound on the TURN.** Claude's `interrupt()` bounds its
       // own ack and forces the terminal (074); Codex's forces nothing while a turn is open, so a

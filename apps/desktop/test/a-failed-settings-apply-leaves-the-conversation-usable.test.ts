@@ -28,8 +28,9 @@ const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
 const DRAIN_MS = 200
-/** Longer than the host's wait for a Stop, so the host has gone on to wait for idle. */
+/** The host's wait for a Stop to settle. */
 const STOP_WAIT_MS = 100
+/** Longer than that wait, so the host has gone on to wait for idle when the provider retires. */
 const STOP_AFTER_MS = 300
 const RELOAD_FAILURE =
   'could not apply the queued settings: reloadPlugins did not answer within 60000ms'

@@ -1918,7 +1918,7 @@ export class ClaudeSessionHandle implements SessionHandle {
 
     if (!this.machine.isTerminal) this.machine.forceEnd()
     // A CLI that does not answer a Stop is blocked (on Windows, by a command it cannot end): retire
-    // it, as a settings apply that timed out does, so the next message starts a fresh one.
+    // it, as a plugin reload that timed out does, so the next message starts a fresh one.
     if (unanswered) void this.close().catch(() => {})
   }
 
