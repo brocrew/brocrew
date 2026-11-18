@@ -16,8 +16,6 @@ import { META, mount, paneProps, record, unmountAll, type Mounted } from './harn
 import { givenAnswer } from './what-this-agent-was-given.fixture'
 import { readsAt } from './what-is-painted-under'
 
-
-
 const canvas = document.createElement('canvas')
 canvas.width = 1
 canvas.height = 1

@@ -7,20 +7,11 @@ import { applyTheme } from '../../src/renderer/src/lib/apply-theme'
 import { contrastRatio, mixOklab, parseColour, type Rgba } from '../../src/shared/themes/colour'
 import { resolveTheme } from '../../src/shared/themes/theme'
 import { validateTheme } from '../../src/shared/themes/validate'
-import DEFINED_FILE from '../../resources/themes/defined/theme.json'
+import { definedTheme as BASE } from './defined-theme.fixture'
 import type { AgentIdentities, RuntimeBridge } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll } from './harness'
 
 const SOLID_HOVER_ACCENT = 88
-const BASE = (() => {
-  const read = validateTheme(DEFINED_FILE, {
-    assets: new Map(),
-    builtIns: new Map(),
-    builtIn: true,
-  })
-  if (!read.ok) throw new Error(JSON.stringify(read.problems))
-  return read.theme
-})()
 
 const SOLID = (() => {
   const read = validateTheme(
