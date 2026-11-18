@@ -108,6 +108,7 @@ it('opens the native transcript through the existing pane reader', async () => {
     }),
     { width: 1400, height: 900 },
   )
+  expect(asked).toEqual([])
   m.q('panel-agents').querySelector<HTMLButtonElement>('[data-cy="panel-row"]')!.click()
   await tick()
   expect(asked.length).toBeGreaterThan(0)
@@ -118,4 +119,25 @@ it('opens the native transcript through the existing pane reader', async () => {
     ),
   ).toBe(true)
   expect(m.q('child-work-viewer').textContent).toContain('Three paths found.')
+})
+
+
+it('opens the selected workflow through the existing output reader only after a click', async () => {
+  const asked: string[] = []
+  const m = mount(ConversationPane, paneProps({
+    drawerOpen: true,
+    record: record([
+      { type: 'tool_call', id: 'workflow-call', name: 'Workflow', summary: 'Review the map' },
+      { type: 'workflow_run', taskId: 'map-review', toolUseId: 'workflow-call', name: 'Review the map', phases: [], agents: [], source: 'task_progress' },
+    ]),
+    onReadWorkflowOutput: async (id: string) => {
+      asked.push(id)
+      return { ok: true, name: 'map-review.output', text: 'Three paths checked.', truncated: false, bytes: 20 }
+    },
+  }), { width: 1400, height: 900 })
+  expect(asked).toEqual([])
+  m.q('panel-run-workflow:map-review').querySelector<HTMLButtonElement>('[data-cy="panel-row"]')!.click()
+  await tick()
+  expect(asked).toEqual(['map-review'])
+  expect(m.q('workflow-output-viewer').textContent).toContain('Three paths checked.')
 })
