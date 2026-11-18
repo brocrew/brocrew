@@ -2,10 +2,14 @@ import {
   openAgentTestConversation,
   makeAgentTestIdentity,
   grantAgentTestCapabilities,
-  closeAgentTestResources,
 } from './lib/agent-test-operations'
 import { namedAgentTool, structuredAgentToolsFor } from './lib/call-agent-tool'
-import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import {
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+  closeHostFixture,
+} from './lib/host-fixture'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -115,7 +119,7 @@ describe('488 · who exists, and what they were told', () => {
     window = new RecordingSink('webContents:1')
   })
 
-  afterEach(() => closeAgentTestResources(host, db, [userData, work]))
+  afterEach(() => closeHostFixture(host, db, userData, work))
 
   const personOpens = (profileId: string): Promise<string> =>
     openAgentTestConversation(host, window, work, profileId, 'ask')

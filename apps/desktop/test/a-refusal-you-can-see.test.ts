@@ -2,7 +2,6 @@ import {
   openAgentTestConversation,
   makeAgentTestIdentity,
   grantAgentTestCapabilities,
-  closeAgentTestResources,
 } from './lib/agent-test-operations'
 import { callAgentTool } from './lib/call-agent-tool'
 import type { ToolRefusedEvent, TranscriptEvent } from '../src/shared/conversation-events'
@@ -42,7 +41,12 @@ import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { isVisibleIn } from '../src/renderer/src/lib/transcript-mode'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { permanenceInWords } from '../src/main/runtime/agent-tool-answer-words'
-import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import {
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+  closeHostFixture,
+} from './lib/host-fixture'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -131,7 +135,7 @@ describe('405 · a refusal you can see', () => {
       readProviderConfig: fixtureProviderConfig,
     })
 
-  afterEach(() => closeAgentTestResources(host, db, [userData, work]))
+  afterEach(() => closeHostFixture(host, db, userData, work))
 
   const personOpens = (profileId: string, approvalMode: 'ask' | 'auto' = 'ask'): Promise<string> =>
     openAgentTestConversation(host, window, work, profileId, approvalMode)
@@ -142,6 +146,20 @@ describe('405 · a refusal you can see', () => {
     const call = (name: ToolName, args: Record<string, unknown> = {}) =>
       callAgentTool(set, name, args)
     return { set, call }
+  }
+
+  const aGiveRefusedByDepth = async () => {
+    await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'worker')
+    const pm = await personOpens('pm')
+    grantAgentTestCapabilities(store, 'pm', { maxDepth: 0 })
+    const { call } = toolsOf(pm)
+    await call('give_work', {
+      definition_of_done: 'The requested result and its checks are recorded.',
+      profile: 'worker',
+      title: 'x',
+      brief: 'x',
+    })
+    return pm
   }
 
   /** Delegate the host seam so missing methods fail to compile. */
@@ -1026,16 +1044,7 @@ describe('405 · a refusal you can see', () => {
 
   describe('§5 · a person reading a transcript can see it', () => {
     it('🔴 the refused call draws a notice naming the tool and the rule; the admitted one draws nothing', async () => {
-      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'worker')
-      const pm = await personOpens('pm')
-      grantAgentTestCapabilities(store, 'pm', { maxDepth: 0 })
-      const { call } = toolsOf(pm)
-      await call('give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'x',
-        brief: 'x',
-      })
+      const pm = await aGiveRefusedByDepth()
 
       const said = theNoticeFor(theRefusalIn(pm)).text
       expect(said).toContain('give_work')
@@ -1142,16 +1151,7 @@ describe('405 · a refusal you can see', () => {
 
   describe('§6 · written by the host that owns the ledger', () => {
     it("🔴 the row takes the host's own ordinal, and everything after it still lands", async () => {
-      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'worker')
-      const pm = await personOpens('pm')
-      grantAgentTestCapabilities(store, 'pm', { maxDepth: 0 })
-      const { call } = toolsOf(pm)
-      await call('give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'x',
-        brief: 'x',
-      })
+      const pm = await aGiveRefusedByDepth()
       // ⛔ **A durable event AFTER the refusal.** `398` §6 measured that a store-side append into a
       // running ledger collides with `HostedSession.ordinal`, after which `record()` logs the first
       // collision and returns — **every later durable event dropped silently**. So the assertion is

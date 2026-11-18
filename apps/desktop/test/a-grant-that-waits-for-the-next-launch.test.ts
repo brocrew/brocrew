@@ -1,6 +1,6 @@
 import { openAgentTestConversation } from './lib/agent-test-operations'
-import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { fixtureProviderConfig, neutralHostDeps, closeHostFixture } from './lib/host-fixture'
+import { mkdirSync, mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -188,12 +188,7 @@ describe('470 · a grant that waits for the next launch', () => {
     window = new RecordingSink('webContents:1')
   })
 
-  afterEach(async () => {
-    await host.closeAll()
-    db.close()
-    rmSync(userData, { recursive: true, force: true })
-    rmSync(work, { recursive: true, force: true })
-  })
+  afterEach(() => closeHostFixture(host, db, userData, work))
 
   const personOpens = (profileId: string): Promise<string> =>
     openAgentTestConversation(host, window, work, profileId, 'ask')

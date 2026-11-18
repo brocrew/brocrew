@@ -1,6 +1,7 @@
+import { openAgentTestConversation } from './lib/agent-test-operations'
 import { ToolWatchingRuntime } from './lib/provider-double'
 import type { SessionInstructions } from '../src/shared/instruction-contracts'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -22,7 +23,7 @@ import {
   type RuntimeEventMessage,
 } from '../src/shared/runtime-ipc'
 import { HUMAN_NAMES, aNameForANewAgent, aNameKey } from '../src/shared/human-names'
-import { neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import { neutralHostDeps, fixtureProviderConfig, closeHostFixture } from './lib/host-fixture'
 
 /**
  * # 🔴 584 · seed one identity, and generate the names
@@ -125,20 +126,10 @@ describe('584 · seed one identity, and generate the names', () => {
     window = new Sink('webContents:1')
   })
 
-  afterEach(async () => {
-    await host.closeAll()
-    db.close()
-    rmSync(userData, { recursive: true, force: true })
-    rmSync(work, { recursive: true, force: true })
-  })
+  afterEach(() => closeHostFixture(host, db, userData, work))
 
-  const personOpens = async (profileId: string): Promise<string> => {
-    const { sessionId } = await host.createSession(
-      { provider: 'claude', profileId, cwd: work, approvalMode: 'ask' },
-      window,
-    )
-    return sessionId
-  }
+  const personOpens = (profileId: string): Promise<string> =>
+    openAgentTestConversation(host, window, work, profileId, 'ask')
 
   const callOn = async (
     toolset: AgentToolset,
