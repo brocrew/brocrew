@@ -1138,7 +1138,7 @@ describe('347 · the five tools', () => {
       // or everywhere.
       // ⚑ `request_mcp_server` asks the person to register an outside MCP server.
       // ⚑ `request_action` asks the person to do something, as a to-do.
-      expect(offered).toHaveLength(33)
+      expect(offered).toHaveLength(34)
     })
 
     it('⚠️ no published tool queues work for an agent to pick up later', async () => {
@@ -1186,6 +1186,7 @@ describe('347 · the five tools', () => {
         set_theme: 'a theme',
         list_agents: 'nothing at all',
         get_agent_status: 'the agent',
+        compact_agent: 'the agent',
         // 🔴 **D-016 · it hands work over, and it NAMES who** — by profile, which is why it is not a
         // dispatch tool under the rule above. ⚠️ `new: true` brings that named agent into existence in
         // the same call; the name is still the caller's to give.

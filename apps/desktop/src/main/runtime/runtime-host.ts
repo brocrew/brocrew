@@ -1305,19 +1305,9 @@ import {
   ScheduleEvidence,
 } from './schedule-evidence'
 
-/**
- * 🔴 **713 · `708` H-4 — what a gate decided about a person's command, carried to the next door.**
- *
- * ⚑ `R42`'s answer ({@link aPersonsCommand}): the command these words are, or `null` for words that
- * are not one — they go with their frame, or, for a person's `/compact` on a handle that compacts on
- * request, to that request (`R59`, which the handover asks before it reads this). ⛔ **Returned by
- * every gate, and CARRIED on one path**: interrupt-and-send, whose first gate answers before the
- * running turn is stopped and whose second gate and handover come after it. See
- * {@link RuntimeHost.runSendInterrupting}. ⚠️ **Not onto its lost-race HOLD**: `queueAs` asks the
- * queue's gates again against the conversation as it then is (670), so on that arm a moved list can
- * still refuse after the stop — as that arm's one-work-message rule already could. Reported in 713.
- */
+/** The command or explicit compaction request carried from the turn gate to handover. */
 interface WhatTheGateDecided {
+  readonly compact?: true
   readonly command: ReturnType<typeof aPersonsCommand>
 }
 
@@ -1325,23 +1315,9 @@ interface WhatTheGateDecided {
 interface WhatTheGateIsAsked {
   text: string
   attached: number
-  /**
-   * 🔴 **708 · who these words are from** — the same `from` {@link handToProvider} will be
-   * handed, so the command this gate refuses is the command that door would have sent bare.
-   * ⛔ **Required**, for {@link handToProvider}'s own reason: a caller that could omit it would
-   * be a door whose person's commands the gate never looks at.
-   */
   from: TurnOrigin | null
-  /**
-   * 🔴 **713 · `708` H-4 — what an EARLIER gate decided about these same words**, when there
-   * was one. ⚑ Present on ONE call: interrupt-and-send's second gate, which comes after the
-   * running turn was stopped — so a list that moved while the interrupt waited cannot make it
-   * refuse, after the stop, a command its first gate let through (`R42`'s refusal comes before
-   * the stop or not at all). ⚠️ **Absent everywhere else, and that is not a default a path
-   * forgets**: every other door decides here — the lost-race hold included, which asks the
-   * queue's gates again by design (670; {@link WhatTheGateDecided}).
-   */
   decided?: WhatTheGateDecided
+  compact?: true
 }
 
 /**
@@ -10842,6 +10818,33 @@ export class RuntimeHost implements LiveHost {
       took: this.deps.store.whatOpenedTheLastEndedTurn(target),
       readAt: this.now(),
     }
+  }
+
+  contextReportedFor(id: string): ContextReading | null {
+    const target = this.theOneInItsPlace(id)
+    const live = this.slots.get(target)?.session
+    const reading = live ? live.latestContext : this.lastContextOf(target)?.reading
+    return reading == null || reading.kind === 'unknown' ? null : reading
+  }
+
+  async compactAgent(id: string, by: Caller): Promise<'sent' | 'no-such-agent' | 'not-below-you'> {
+    const target = this.theOneInItsPlace(id)
+    if (!this.slots.has(target) && this.deps.store.recordedOne(target) === null)
+      return 'no-such-agent'
+    const caller = sessionSpeakingAs(by)
+    if (
+      caller === null ||
+      !this.ancestorsAsItWillRun(target).includes(this.theOneInItsPlace(caller))
+    ) {
+      return 'not-below-you'
+    }
+    await this.sendAs(target, '/compact', by, [], {
+      facts: {},
+      says: null,
+      ifItLosesTheRace: 'pass-it-on',
+      compact: true,
+    })
+    return 'sent'
   }
 
   agentCard(id: string, by: Caller, me: string | null): AgentCard | null {
@@ -21283,13 +21286,7 @@ export class RuntimeHost implements LiveHost {
       UserTurnEvent,
       'attribution' | 'work' | 'relayedFrom' | 'appNotice' | 'movedFrom'
     >,
-    /**
-     * 🔴 **713 · `708` H-4 — the FIRST gate's answer, on the one path that has two** — see
-     * {@link WhatTheGateDecided}. ⚑ Interrupt-and-send hands it over, so the command a person's
-     * words ARE is decided before the running turn is stopped and not again after it.
-     * ⚠️ **Absent on the other two paths**, whose gate and handover sit on either side of one path
-     * re-check with nothing destroyed between them — they decide here, from what this life holds.
-     */
+    /** The command already classified by the turn gate, when supplied. */
     decided?: WhatTheGateDecided,
     /** Set when somebody asked for this conversation's running turn to be stopped to read these words now. */
     interrupting?: AStopAskedFor,
@@ -21312,15 +21309,11 @@ export class RuntimeHost implements LiveHost {
     session.wordsJustHandedOver = null
     session.wordsItWasHandedFor = [text]
     session.leadJustHandedOver = null
-    // 🔴 **713 · `R59` — a person's `/compact`, on a conversation whose adapter compacts on
-    // request, goes to that request and never to the model as words** — see
-    // `a-command-goes-as-typed.ts`. ⚑ **Here, at the door every message that might be a command
-    // passes**, so the composer, a held message's flush (which sends one alone, D-027) and
-    // interrupt-and-send all reach it. ⛔ **Its attachments and instructions were refused
-    // at the gate every one of those paths passes first** ({@link assertCanTakeTurn}) — the request
-    // carries neither, so nothing is left here to drop. ⚠️ **Returned, not awaited**, for `662`'s
-    // ordering reason below: the person's `/compact` row lands before the compaction does.
-    if (session.handle.compact !== undefined && aPersonsCompaction(text, from) !== null) {
+    // Native compaction and raw CLI commands share the same handover as the Compact button.
+    if (
+      session.handle.compact !== undefined &&
+      (decided?.compact || aPersonsCompaction(text, from) !== null)
+    ) {
       this.aTurnIsHandedOver(session, whose, askedForTheStop)
       return session.handle.compact()
     }
@@ -22097,6 +22090,7 @@ export class RuntimeHost implements LiveHost {
        * the answer. ⛔ Absent inside that chain, which a second entry would wait on for ever.
        */
       readonly onAStop?: 'start-it-again'
+      readonly compact?: true
     },
   ): Promise<void> {
     const { facts } = how
@@ -22116,7 +22110,9 @@ export class RuntimeHost implements LiveHost {
     // — it refuses the command {@link handToProvider} would send bare, so both ask about one sender.
     // ⚠️ Spelled at both call sites rather than hoisted, because `the-origin-a-model-is-told.test.ts`
     // §6 reads the HANDOVER's origin off its call; the gate's is spelled the same for symmetry.
-    const session = this.requireToMessage(sessionId, by)
+    const session = how.compact
+      ? this.sessionFor(sessionId, () => {})
+      : this.requireToMessage(sessionId, by)
     // ⚑ **D-016 · a give's brief meets no `can_message` wall** — see {@link queueAs}, which asked
     // the gate for it already.
     if (how.ifItLosesTheRace !== 'pass-it-on' || how.says !== null) {
@@ -22125,11 +22121,13 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **D-017 · R1** — a stop that lands in the gate's awaits is waited out and the words go after
     // the start ({@link aDeliveryAStopCaught}), never refused *still closing*.
     let handed: Awaited<ReturnType<typeof recheckHandedPaths>>
+    let decided: WhatTheGateDecided
     try {
-      await this.assertCanTakeTurn(session, 'send', {
+      decided = await this.assertCanTakeTurn(session, 'send', {
         text,
         attached: attachments.length,
         from: this.originOf(by),
+        compact: how.compact,
       })
       handed = await recheckHandedPaths(attachments, session.cwd)
     } catch (error) {
@@ -22228,6 +22226,7 @@ export class RuntimeHost implements LiveHost {
         about,
         this.originOf(by),
         turn,
+        decided,
       )
     } catch (error) {
       if (error instanceof TurnInProgress && session.personalHandover === personalHandover)
@@ -27300,12 +27299,8 @@ export class RuntimeHost implements LiveHost {
     session: HostedSession,
     content: WhatTheGateIsAsked,
   ): Promise<WhatTheGateDecided> {
-    // 🔴 **713 · `R59` — a person's `/compact`, on a conversation whose adapter compacts on
-    // request** (Codex's `thread/compact/start`; see `a-command-goes-as-typed.ts`). ⚑ Asked of the
-    // HANDLE, never of the provider's name: Claude's has no `compact`, and its `/compact` is
-    // `R42`'s, below. ⛔ **Refused here, before any interrupt and before any hold**, for the two
-    // things that request cannot carry: attachments (`R42`'s fourth clause, one command over) and
-    // instructions (`R59`'s last). ⚠️ No list is asked — the word is BroBot's own, not the provider's.
+    if (content.compact) return { command: { word: '/compact', listed: true }, compact: true }
+    // Native compaction accepts neither attachments nor instructions.
     if (session.handle.compact !== undefined) {
       const compaction = aPersonsCompaction(content.text, content.from)
       if (compaction !== null) {
@@ -27316,7 +27311,6 @@ export class RuntimeHost implements LiveHost {
         return { command: null }
       }
     }
-    // 🔴 **713 · `708` H-4 — an earlier gate's answer stands** (see `decided` above).
     if (content.decided !== undefined) return content.decided
     // 🔴 **708 · `R42` — a person's command, asked about here because every turn passes here.**
     // ⚑ **Last**, after the gates about the SESSION: a conversation already closing or superseded

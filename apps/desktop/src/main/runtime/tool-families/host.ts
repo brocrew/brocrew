@@ -1,3 +1,4 @@
+import type { ContextReading } from '@brobot2/runtime'
 import type {
   AProfileNames,
   AnswerWithItsStop,
@@ -106,6 +107,8 @@ export interface AgentToolHost {
   restoreAsAnAgent(address: string, by: Caller, me: string): RestoredByAnAgent
   archivedVisibleTo(by: Caller, me: string | null): ArchivedListed
   whenItWasArchived(id: string): number | null
+  contextReportedFor(id: string): ContextReading | null
+  compactAgent(id: string, by: Caller): Promise<'sent' | 'no-such-agent' | 'not-below-you'>
   agentCard(id: string, by: Caller, me: string | null): AgentCard | null
   servicePieceForStatus(owner: string): string | null | undefined
   whatOpenedItsLastTurn(id: string): {
