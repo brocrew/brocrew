@@ -244,12 +244,16 @@ async function json(port, path) {
   must(r.ok, `CDP HTTP ${r.status}`)
   return r.json()
 }
+function appInfo(...args) {
+  const out = command('/usr/bin/lsappinfo', args)
+  must(
+    !/(?:Un-?recognized (?:option|command)|\busage:)/i.test(out),
+    'Native query rejected its arguments',
+  )
+  return out
+}
 function nativeRecord(r, previous) {
-  const raw = command('/usr/bin/lsappinfo', [
-    'find',
-    '--includeExitedApplications',
-    `pid=${r.launchPid}`,
-  ])
+  const raw = appInfo('find', `pid=${r.launchPid}`)
   const asns = (text) =>
     (text.match(/ASN:0x[0-9a-f]+[-:]0x[0-9a-f]+:?/gi) ?? []).map((asn) =>
       asn
@@ -258,16 +262,18 @@ function nativeRecord(r, previous) {
         .replace(/(0x[0-9a-f]+):(?=0x)/, '$1-'),
     )
   if (previous) {
-    const active = command('/usr/bin/lsappinfo', ['find', `pid=${r.launchPid}`])
-    const list = command('/usr/bin/lsappinfo', ['list'])
+    const active = raw
+    const list = appInfo('list')
     must(raw === '' || asns(raw).length > 0, 'Unknown native PID lookup result')
     must(active === '' || asns(active).length > 0, 'Unknown active native PID lookup result')
     const sameRecord = previous.asn && [...asns(active), ...asns(list)].includes(previous.asn)
     let exitedInfo
-    if (!sameRecord && previous.asn && asns(raw).includes(previous.asn)) {
-      exitedInfo = command('/usr/bin/lsappinfo', ['info', previous.specifier])
+    if (!sameRecord && previous.asn) {
+      exitedInfo = appInfo('info', previous.specifier)
       must(
-        /\bexited\b/i.test(exitedInfo) && !/exited-with-subordinates/i.test(exitedInfo),
+        exitedInfo === '' ||
+          exitedInfo === 'NULL' ||
+          (/\bexited\b/i.test(exitedInfo) && !/exited-with-subordinates/i.test(exitedInfo)),
         'Retained native record is not conclusively exited',
       )
     }
@@ -277,12 +283,7 @@ function nativeRecord(r, previous) {
   const found = asns(raw)
   must(found.length === 1, 'No unique native app record for the owned PID')
   const specifier = raw.match(/ASN:0x[0-9a-f]+[-:]0x[0-9a-f]+:?/i)[0]
-  const details = command('/usr/bin/lsappinfo', [
-    'info',
-    '-only',
-    'pid,bundleid,bundlepath,executablepath',
-    specifier,
-  ])
+  const details = appInfo('info', specifier)
   must(
     new RegExp(`\\b${r.launchPid}\\b`).test(details) &&
       details.includes(r.bundleId) &&
