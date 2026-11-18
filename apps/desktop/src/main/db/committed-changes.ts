@@ -66,6 +66,8 @@ interface CommittedChange {
   readonly tables: ReadonlySet<string>
   /** Those of {@link tables} written outside a staged scope, which a reader of what is shown sees. */
   readonly visibleTables: ReadonlySet<string>
+  /** Only validated stream history was removed; current state inputs did not move. */
+  readonly historyOnly?: true
   readonly write?: CommittedWrite
 }
 
@@ -85,6 +87,8 @@ export interface CommittedChanges {
   /** The rows a store door appends, recorded into the change of the commit that holds them. */
   appended(row: CommittedRow): void
   whole(session: string, why: WholeChange): void
+  /** Actual stream-history deletions, counted inside the transaction that removed them. */
+  historyTrimmed(rows: number): void
   staged(session: string): void
   /** A staged write removed rows of `session` that a read over every generation sees. */
   stagedRemovedSeen(session: string): void
@@ -106,6 +110,7 @@ interface Frame {
   visibleTables: Set<string>
   poisoned: boolean
   affectedRows: number
+  historyRows: number
   component: string
   started: number
 }
@@ -120,6 +125,7 @@ const frame = (): Frame => ({
   visibleTables: new Set(),
   poisoned: false,
   affectedRows: 0,
+  historyRows: 0,
   component: 'database.direct',
   started: 0,
 })
@@ -162,6 +168,7 @@ export function committedChangesOf(db: AppDatabase): CommittedChanges {
       withWriter: (_component, write) => write(),
       appended: () => undefined,
       whole: () => undefined,
+      historyTrimmed: () => undefined,
       staged: () => undefined,
       stagedRemovedSeen: () => undefined,
       kept: () => undefined,
@@ -229,6 +236,16 @@ export function committedChangesOf(db: AppDatabase): CommittedChanges {
         kept: done.kept,
         tables: done.tables,
         visibleTables: done.visibleTables,
+        ...(done.historyRows > 0 &&
+        done.historyRows === done.affectedRows &&
+        done.rows.length === 0 &&
+        done.kept.length === 0 &&
+        done.staged.size === 0 &&
+        done.stagedRemovedSeen.size === 0 &&
+        [...done.whole.values()].every((why) => why === 'trimmed') &&
+        [...done.visibleTables].every((table) => table === 'events')
+          ? { historyOnly: true as const }
+          : {}),
         write: {
           component: done.component,
           rows: done.affectedRows,
@@ -250,6 +267,7 @@ export function committedChangesOf(db: AppDatabase): CommittedChanges {
     for (const table of done.visibleTables) into.visibleTables.add(table)
     into.poisoned ||= done.poisoned
     into.affectedRows += done.affectedRows
+    into.historyRows += done.historyRows
   }
 
   /** Runs one transaction call inside its frame. */
@@ -380,6 +398,10 @@ export function committedChangesOf(db: AppDatabase): CommittedChanges {
     whole(session, why) {
       const current = frames.at(-1)
       if (current !== undefined && !current.whole.has(session)) current.whole.set(session, why)
+    },
+    historyTrimmed(rows) {
+      const current = frames.at(-1)
+      if (current !== undefined) current.historyRows += rows
     },
     staged(session) {
       frames.at(-1)?.staged.add(session)
