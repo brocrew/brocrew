@@ -7,6 +7,7 @@ import { recentActivity } from '../runtime/recent-activity'
 import { createSessionStore, type ThreadLeadRow } from './session-store'
 import { rowsUnreadOnce, type RowsUnread } from './rows-unread'
 import { readTheForestFirst } from './forest-first-read'
+import { TASK_IS_OPEN } from '../../shared/tasks'
 import {
   WINDOW_READ_BOUNDS,
   windowReadQuery,
@@ -211,7 +212,10 @@ export class WindowReadEngine {
               },
             }
           }
-          const pieces = store.openPiecesOf(sessionId, noted(piecesSkipped))
+          const statesSkipped = new Set<SkippedRow>()
+          const states = store.piecesOwnedBy(sessionId, noted(statesSkipped))
+          for (const ordinal of statesSkipped) piecesSkipped.add(ordinal)
+          const pieces = states.filter((one) => TASK_IS_OPEN[one.state])
           // The canonical work reader shares the open-piece fold already read for this owner.
           const foldedStore: typeof store = {
             ...store,
@@ -222,8 +226,6 @@ export class WindowReadEngine {
             },
           }
           const work = foldedStore.reconciliationWork(new Set([sessionId]), noted(piecesSkipped))
-          const statesSkipped = new Set<SkippedRow>()
-          const states = store.piecesOwnedBy(sessionId, noted(statesSkipped))
           const newestTurn = store.theNewestTurn(sessionId)
           const stop = store.lastAskToStop(sessionId, noted(stopSkipped))
           for (const piece of pieces)
