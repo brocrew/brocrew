@@ -329,6 +329,7 @@ export function runBrowser(directory) {
     { mode: 0o600 },
   )
   let input = ''
+  let pending = Promise.resolve()
   new Socket({ fd: 3, readable: true, writable: false })
     .on('data', (bytes) => {
       input += bytes.toString()
@@ -337,7 +338,7 @@ export function runBrowser(directory) {
       while ((end = input.indexOf('\0')) !== -1) {
         const frame = input.slice(0, end)
         input = input.slice(end + 1)
-        void browser.message(JSON.parse(frame))
+        pending = pending.then(() => browser.message(JSON.parse(frame)))
       }
     })
     .on('end', () => process.exit(0))
