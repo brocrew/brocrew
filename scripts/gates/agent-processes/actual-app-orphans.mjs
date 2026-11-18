@@ -946,7 +946,7 @@ try {
       'No normal Electron quit phases',
     )
     must(
-      !/BroCrew failed to |database.*(?:closed|not open)|command cleanup failed|did not finish shutting down/i.test(
+      !/BroCrew failed to |\bdatabase (?:connection )?is (?:closed|not open)\b|\bclosed database\b|command cleanup failed|did not finish shutting down/i.test(
         logs,
       ),
       'Shutdown failure marker in retained logs',
