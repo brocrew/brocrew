@@ -1,4 +1,5 @@
 import { callOn } from './helpers/call-agent-tool'
+import { cleanupFailureTrace } from './helpers/cleanup-failure-trace'
 import { waitFor } from './lib/f093-host'
 import { REQUEST_STATES } from '../src/shared/question-contracts'
 import { TASK_OUTCOMES, TASK_STATES } from '../src/shared/task-contracts'
@@ -168,10 +169,26 @@ describe('393 · a reply, and its absence', () => {
     pairs = 0
   })
 
-  afterEach(async () => {
-    for (const built of hosts) await built.closeAll()
+  afterEach(async (context) => {
+    const trace = cleanupFailureTrace(context)
+    trace('hook-entry')
+    for (const [index, built] of hosts.entries()) {
+      trace('host-close-entry', index)
+      try {
+        await built.closeAll()
+      } finally {
+        trace('host-close-settled', index)
+      }
+    }
+    trace('db-close-entry')
     db.close()
-    for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
+    trace('db-close-return')
+    for (const [index, dir] of [userData, root].entries()) {
+      trace('rm-entry', index)
+      rmSync(dir, { recursive: true, force: true })
+      trace('rm-return', index)
+    }
+    trace('hook-return')
   })
 
   const personOpens = async (profileId: string, projectSlug?: string): Promise<string> => {
