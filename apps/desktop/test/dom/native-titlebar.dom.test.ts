@@ -116,33 +116,34 @@ it('keeps long title and diagnostics inside the window grid', async () => {
     runtime: {
       providerCatalogue: async () => PROVIDER_DESCRIPTORS,
       providerConnections: async () => providerConnectionFixtures(),
-      providerUsage: async () => attributedUsageFixtures({
-        claude: [
-          {
-            window: 'five_hour',
-            usedPercent: 28,
-            resetsAt: now + 3 * hour,
-            at: now,
-            period: { word: '5-hour', durationMs: 5 * hour, bucket: false, bucketName: null },
-          },
-          {
-            window: 'seven_day',
-            usedPercent: 61,
-            resetsAt: now + 48 * hour,
-            at: now,
-            period: { word: 'weekly', durationMs: 168 * hour, bucket: false, bucketName: null },
-          },
-        ],
-        codex: [
-          {
-            window: 'a 7-day window',
-            usedPercent: 35,
-            resetsAt: now + 96 * hour,
-            at: now,
-            period: { word: 'weekly', durationMs: 168 * hour, bucket: false, bucketName: null },
-          },
-        ],
-      }),
+      providerUsage: async () =>
+        attributedUsageFixtures({
+          claude: [
+            {
+              window: 'five_hour',
+              usedPercent: 28,
+              resetsAt: now + 3 * hour,
+              at: now,
+              period: { word: '5-hour', durationMs: 5 * hour, bucket: false, bucketName: null },
+            },
+            {
+              window: 'seven_day',
+              usedPercent: 61,
+              resetsAt: now + 48 * hour,
+              at: now,
+              period: { word: 'weekly', durationMs: 168 * hour, bucket: false, bucketName: null },
+            },
+          ],
+          codex: [
+            {
+              window: 'a 7-day window',
+              usedPercent: 35,
+              resetsAt: now + 96 * hour,
+              at: now,
+              period: { word: 'weekly', durationMs: 168 * hour, bucket: false, bucketName: null },
+            },
+          ],
+        }),
       onProvidersChanged: () => () => {},
     },
   } as never
