@@ -9,7 +9,7 @@ import { openLog } from '../../src/main/logging/log'
 export async function captureLog() {
   const folder = await mkdtemp(join(tmpdir(), 'brocrew-captured-log-'))
   const file = join(folder, 'brocrew.log')
-  openLog(file, { debug: true, console: false })
+  openLog(file, { debug: true, console: false, sync: true })
   const text = () => readFile(file, 'utf8').catch(() => '')
   return {
     file,
