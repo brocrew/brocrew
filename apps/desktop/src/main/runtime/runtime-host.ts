@@ -22226,7 +22226,7 @@ export class RuntimeHost implements LiveHost {
         about,
         this.originOf(by),
         turn,
-        decided,
+        how.compact ? decided : undefined,
       )
     } catch (error) {
       if (error instanceof TurnInProgress && session.personalHandover === personalHandover)
