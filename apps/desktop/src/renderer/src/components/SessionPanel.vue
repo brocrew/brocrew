@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { OpenPanelRun } from '../lib/panel-runs'
 import type { AgentState as OneState } from '../../../shared/agent-state-contracts'
 import type { WhatAPickBecame } from '../../../shared/model-choice-contracts'
 
@@ -163,6 +164,7 @@ const props = defineProps<{
   canStopBackgroundWork?: boolean
   /** ⚑ Stop one piece of background work by the provider's own id; `false` is *it did not go out*. */
   onStopBackgroundWork?: (id: string) => Promise<boolean>
+  onOpenRun?: OpenPanelRun
   /** ⚑ **UI-002 · the files the card's agent added** — absent is *not read*. */
   files?: readonly KeptFile[]
   /** ⚑ The newest read of {@link files} did not answer — they are the last that did. */
@@ -339,6 +341,7 @@ const panel = computed(() => sessionPanel(props.state))
       :conversation="props.conversation"
       :can-stop-background-work="props.canStopBackgroundWork"
       :on-stop-background-work="props.onStopBackgroundWork"
+      :on-open-run="props.onOpenRun"
       :files-stale="props.filesStale"
       :can-open-document="props.canOpenDocument"
       :can-open-inputs="props.canOpenInputs"
