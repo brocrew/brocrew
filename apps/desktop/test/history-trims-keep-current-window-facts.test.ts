@@ -70,9 +70,9 @@ it.each<TranscriptEvent>([
     const after = await f.listing()
     expect(after.unresumable).toEqual(before.unresumable)
     expect(sameWindowWriter(stamp, f.sample({ kind: 'listing' }))).toBe(true)
+    expect(f.read.mock.calls.length).toBe(reads)
     expect(f.announce).toHaveBeenCalledWith({ what: 'conversations' })
     expect(f.statesMoved).not.toHaveBeenCalled()
-    expect(f.read.mock.calls.length).toBe(reads)
     expect(f.world.db.prepare('SELECT id FROM events WHERE id=?').get(old)).toBeUndefined()
   } finally { await f.close() }
 })
