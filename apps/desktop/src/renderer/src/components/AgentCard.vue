@@ -741,10 +741,6 @@ const fileManager = fileManagerHere()
             "
             @click="emit('navigate', entry.itemId)"
           >
-            <!-- The agent this row is about (082). A permission and a question look different at a
-                 glance now instead of only reading differently, and a running sub-agent shows what it
-                 is on. The facets are decided by the projection with the item in hand — this template
-                 never infers a state from which section it is rendering. -->
             <AgentState
               v-if="entry.facets"
               size="compact"
