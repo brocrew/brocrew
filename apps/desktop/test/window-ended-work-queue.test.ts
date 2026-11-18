@@ -66,7 +66,7 @@ it('reads late ended-piece edits and delivery markers before proving there is no
   expect(w.store.piecesOwnedBy('holder-00')[0]).toMatchObject({
     title: 'Revised title',
     brief: 'Revised brief',
-    statusLine: 'Revised status',
+    statusLine: { text: 'Revised status' },
     state: 'answered',
     answerReachedNobody: true,
   })
@@ -117,15 +117,26 @@ it('does not shortcut rootful owners even when their child pieces ended', () => 
 it('falls back for absent naming instead of treating it as ended', () => {
   const w = world()
   w.seed('closed')
+  const proofChecks: boolean[] = []
   const { reused } = w.compare((store) => {
     const naming = store.workThatNamesAndItsWait.bind(store)
     vi.spyOn(store, 'workThatNamesAndItsWait').mockImplementation((owner, unread) =>
       owner === 'holder-00' ? { named: null, waitingOnPurpose: null } : naming(owner, unread),
     )
+    for (const key of [
+      'stalledWorkNobodyWasToldAbout',
+      'stalledWorkItsGiverWasToldAbout',
+    ] as const) {
+      const walk = store[key].bind(store)
+      vi.spyOn(store, key).mockImplementation((unread, proof) => {
+        if (proof) proofChecks.push(proof('holder-00'))
+        return walk(unread, proof)
+      })
+    }
     return store
   })
   expect(reused.reads.stalls).toEqual(['holder-00'])
-  expect(reused.reads.stops).toEqual(['holder-00'])
+  expect(proofChecks).toEqual([false, false])
 })
 
 it('replays unread rows independently for both stalled facts and retains full holder coverage', () => {
@@ -201,17 +212,17 @@ it('still refuses cancellation after consuming ended-work proof, then permits a 
   const native = (engine as unknown as { db: AppDatabase }).db
   const prepare = native.prepare.bind(native)
   let done = false
+  let walks = 0
   const observation = vi.spyOn(native, 'prepare').mockImplementation((sql) => {
     const statement = prepare(sql)
     if (
-      sql.includes(
-        'SELECT DISTINCT owner_session_id AS id FROM work WHERE given_by_session_id IS NOT NULL',
-      )
+      sql ===
+      'SELECT DISTINCT owner_session_id AS id FROM work WHERE given_by_session_id IS NOT NULL'
     ) {
-      const all = statement.all.bind(statement)
-      vi.spyOn(statement, 'all').mockImplementation((...args) => {
-        done = true
-        return all(...args)
+      const iterate = statement.iterate.bind(statement)
+      vi.spyOn(statement, 'iterate').mockImplementation(function* (...args) {
+        yield* iterate(...args)
+        if (++walks === 3) done = true
       })
     }
     return statement
@@ -225,4 +236,16 @@ it('still refuses cancellation after consuming ended-work proof, then permits a 
   } finally {
     engine.close()
   }
+})
+
+it('retains whole-ledger error accounting rather than accepting a failed ended proof', () => {
+  const w = world()
+  w.seed('closed')
+  const { reused } = w.compare(undefined, 'holder-00')
+  for (const fact of [reused.answer.queue!.stalls, reused.answer.queue!.stops]) {
+    expect(fact.skipped).toEqual([['holder-00', ['the-whole-ledger']]])
+    expect(fact.value).toMatchObject({ ledgers: 16, ledgersSkipped: 1, rowsUnread: 0, rows: [] })
+  }
+  expect(reused.reads.stalls).toContain('holder-00')
+  expect(reused.reads.stops).toContain('holder-00')
 })

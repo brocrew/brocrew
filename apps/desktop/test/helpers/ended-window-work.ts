@@ -58,7 +58,11 @@ export function endedWindowWork() {
       )
     }
   }
-  function read(useProof: boolean, alter?: (store: SessionStore) => SessionStore) {
+  function read(
+    useProof: boolean,
+    alter?: (store: SessionStore) => SessionStore,
+    brokenLedger?: string,
+  ) {
     const cache = windowFoldCache(32 * 1024)
     const pieces = cache.get('pieces')!
     const set = pieces.set.bind(pieces)
@@ -77,6 +81,7 @@ export function endedWindowWork() {
         const iterate = statement.iterate.bind(statement)
         vi.spyOn(statement, 'iterate').mockImplementation(function* (...args) {
           if (phase !== undefined) reads[phase].push(String(args[0]))
+          if (args[0] === brokenLedger) throw new Error('Fictional ledger read failure')
           yield* iterate(...args)
         })
       }
@@ -121,9 +126,9 @@ export function endedWindowWork() {
       observation.mockRestore()
     }
   }
-  function compare(alter?: (store: SessionStore) => SessionStore) {
-    const canonical = read(false, alter)
-    const reused = read(true, alter)
+  function compare(alter?: (store: SessionStore) => SessionStore, brokenLedger?: string) {
+    const canonical = read(false, alter, brokenLedger)
+    const reused = read(true, alter, brokenLedger)
     expect(reused.answer).toEqual(canonical.answer)
     return { canonical, reused }
   }
