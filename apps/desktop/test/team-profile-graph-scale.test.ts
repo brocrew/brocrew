@@ -87,11 +87,11 @@ for (const [identities, conversations, events] of [[1000, 10000, 100000]] as con
       fixture?.close()
     }, 60000)
 
-    // This measures a fresh reader process after fixture/build setup and imports, not app startup
-    // or a long-lived app heap. It does not establish what caused the historical timing failures.
+    // Each fresh child reports cold startup separately, within its existing 19-second deadline.
+    // The 100 ms caller and heartbeat budgets measure warm snapshots, pages and close.
     const delays: number[] = []
     for (let sample = 1; sample <= 3; sample++)
-      it(`reads fictional scale ${identities}/${conversations}/${events} without blocking its caller (sample ${sample}/3)`, async () => {
+      it(`reads fictional scale ${identities}/${conversations}/${events} with a responsive warm caller (sample ${sample}/3)`, async () => {
         const f = fixture
         if (!f) throw new Error('No scale fixture')
         const result = await runGraphScaleChild(callerBundle, {
@@ -106,6 +106,11 @@ for (const [identities, conversations, events] of [[1000, 10000, 100000]] as con
             '\n',
         )
         expect(result.sample).toBe(sample)
+        expect(result.cold.nodes).toBe(identities)
+        expect(result.cold.edges).toBe(identities)
+        expect(result.cold.metrics.rows).toBeLessThanOrEqual(250000)
+        expect(result.cold.metrics.cacheBytes).toBeLessThanOrEqual(32 * 1024 * 1024)
+        expect(result.cold.heartbeatTicks).toBeGreaterThan(0)
         expect(result.nodes).toBe(identities)
         expect(result.edges).toBe(identities)
         expect(result.metrics.rows).toBeLessThanOrEqual(250000)

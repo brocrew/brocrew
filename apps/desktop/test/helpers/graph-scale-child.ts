@@ -21,8 +21,28 @@ async function readSample(input: GraphScaleInput) {
     worker.once('exit', () => (exitAt = performance.now()))
     return caller.worker(worker)
   })
+  const coldHeartbeat = new GraphHeartbeatProbe(caller)
   const heartbeat = new GraphHeartbeatProbe(caller)
   try {
+    await coldHeartbeat.start()
+    const coldStart = performance.now()
+    const coldHeader = await caller.call('snapshot-call', () =>
+      reader.read({ operation: 'snapshot' }, input.context),
+    )
+    const coldSnapshotMs = performance.now() - coldStart
+    if (coldHeader.type !== 'snapshot') throw new Error(JSON.stringify(coldHeader))
+    const cold = {
+      snapshotMs: coldSnapshotMs,
+      nodes: coldHeader.nodeCount,
+      edges: coldHeader.edgeCount,
+      metrics: coldHeader.metrics,
+      callerPhases: { ...caller.phases },
+      callerMaxMs: caller.maxMs,
+      ...coldHeartbeat.report(),
+    }
+    await coldHeartbeat.close()
+    // Native worker startup has its own completion budget; warm reads keep the caller budget.
+    caller.reset()
     await heartbeat.start()
     const start = performance.now()
     const header = await caller.call('snapshot-call', () =>
@@ -53,6 +73,7 @@ async function readSample(input: GraphScaleInput) {
     await new Promise((resolve) => setTimeout(resolve, 10))
     return {
       sample: input.sample,
+      cold,
       metrics: header.metrics,
       nodes,
       edges,
@@ -68,6 +89,7 @@ async function readSample(input: GraphScaleInput) {
     try {
       await reader.close()
     } finally {
+      await coldHeartbeat.close()
       await heartbeat.close()
     }
   }

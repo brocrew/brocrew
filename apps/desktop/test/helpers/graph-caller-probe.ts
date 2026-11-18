@@ -40,6 +40,12 @@ export class GraphCallerProbe {
     }
   }
 
+  reset() {
+    for (const phase of Object.keys(this.phases)) delete this.phases[phase]
+    this.spans.length = 0
+    this.windowWallMs = this.windowCpuMs = 0
+  }
+
   takeWindow() {
     const work = { wallMs: this.windowWallMs, cpuMs: this.windowCpuMs }
     this.windowWallMs = this.windowCpuMs = 0
