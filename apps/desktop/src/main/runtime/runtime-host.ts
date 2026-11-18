@@ -23048,7 +23048,9 @@ export class RuntimeHost implements LiveHost {
       // ⚠️ **704 · on Codex this is the only bound on the TURN.** Claude's `interrupt()` bounds its
       // own ack and forces the terminal (074); Codex's forces nothing while a turn is open, so a
       // Codex turn still running at the end of these five seconds refuses the send.
-      await this.waitForIdle(session.handle)
+      await this.waitForIdle(session.handle, undefined, () => this.itStoppedUnder(session))
+      // A provider that did not answer the Stop retires: the words go to its next start.
+      if (this.itStoppedUnder(session)) return this.send(session.id, text, by, attachments)
     }
     // 🔴 **D-027 · R2 — after the stop, these words go in with everything that waits, oldest
     // first** ({@link itJoinsWhatWaits}): held last, then sent together by the flush this press lets
@@ -29003,11 +29005,17 @@ export class RuntimeHost implements LiveHost {
   }
 
   /** Wait for the handle to leave the busy states, bounded so a wedged session still reports. */
-  private async waitForIdle(handle: SessionHandle, timeoutMs = 5000): Promise<void> {
+  private async waitForIdle(
+    handle: SessionHandle,
+    timeoutMs = 5000,
+    /** Stops the wait without a refusal: the caller has its own answer for this. */
+    orUntil: () => boolean = () => false,
+  ): Promise<void> {
     const deadline = Date.now() + timeoutMs
-    while (handle.status() !== 'idle' && Date.now() < deadline) {
+    while (handle.status() !== 'idle' && !orUntil() && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 25))
     }
+    if (orUntil()) return
     if (handle.status() !== 'idle') {
       throw new Error(
         `cannot send: the session is still ${handle.status()} after interrupting the running turn`,

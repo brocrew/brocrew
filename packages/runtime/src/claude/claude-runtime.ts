@@ -1904,13 +1904,22 @@ export class ClaudeSessionHandle implements SessionHandle {
     }
 
     this.settleRequests(STOPPED_INSTEAD_OF_ANSWERING)
+    let unanswered = false
     try {
-      await withTimeout(Promise.resolve(this.query.interrupt()), INTERRUPT_ACK_TIMEOUT_MS)
-    } catch {
+      await withDeadline(
+        Promise.resolve(this.query.interrupt()),
+        INTERRUPT_ACK_TIMEOUT_MS,
+        'claude interrupt',
+      )
+    } catch (error) {
       // A refused interrupt must not block recovery.
+      unanswered = didNotAnswerInTime(error)
     }
 
     if (!this.machine.isTerminal) this.machine.forceEnd()
+    // A CLI that does not answer a Stop is blocked (on Windows, by a command it cannot end): retire
+    // it, as a settings apply that timed out does, so the next message starts a fresh one.
+    if (unanswered) void this.close().catch(() => {})
   }
 
   async backgroundWork(toolCallId?: string): Promise<boolean> {
