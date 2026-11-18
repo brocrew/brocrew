@@ -35,6 +35,22 @@ function world() {
   return { db, file, store, append }
 }
 
+function observeGets(db: AppDatabase, matches: (sql: string) => boolean) {
+  const queries: { sql: string; args: unknown[] }[] = []
+  const prepare = db.prepare.bind(db)
+  vi.spyOn(db, 'prepare').mockImplementation((sql) => {
+    const statement = prepare(sql)
+    if (!matches(sql)) return statement
+    const get = statement.get.bind(statement)
+    vi.spyOn(statement, 'get').mockImplementation((...args) => {
+      queries.push({ sql, args })
+      return get(...args)
+    })
+    return statement
+  })
+  return { queries, prepare, observed: createSessionStore(db) }
+}
+
 it('reads person history only for a person Stop and still includes ended owners and recovery facts', () => {
   const w = world()
   for (const owner of ['person', 'agent', 'ended'])
@@ -81,20 +97,10 @@ it('seeks the owned active-generation opening through its existing composite ind
   const event = { type: 'user_turn', text: 'Exact\r\nopening.', humanInitiated: true } as const
   w.append('person', event, 10)
   const turn = w.store.theNewestTurn('person')!
-  const queries: { sql: string; args: unknown[] }[] = []
-  const prepare = w.db.prepare.bind(w.db)
-  vi.spyOn(w.db, 'prepare').mockImplementation((sql) => {
-    const statement = prepare(sql)
-    if (!sql.includes("type = 'user_turn'") || !sql.includes('ORDER BY ordinal LIMIT 1'))
-      return statement
-    const get = statement.get.bind(statement)
-    vi.spyOn(statement, 'get').mockImplementation((...args) => {
-      queries.push({ sql, args })
-      return get(...args)
-    })
-    return statement
-  })
-  const observed = createSessionStore(w.db)
+  const { queries, prepare, observed } = observeGets(
+    w.db,
+    (sql) => sql.includes("type = 'user_turn'") && sql.includes('ORDER BY ordinal LIMIT 1'),
+  )
   expect(observed.recordedTurnOpening('person', turn)).toEqual(event)
   expect(observed.recordedTurnOpening('agent', turn)).toBeNull()
   expect(queries).toHaveLength(1)
@@ -125,19 +131,7 @@ it('seeks both Stop kinds without walking other fold rows and retains torn-after
       'INSERT INTO events(id,session_id,ordinal,type,payload,created_at,generation) VALUES(?,?,?,?,?,?,0)',
     )
     .run('fictional-torn-stop', 'person', torn, 'work_interrupted', '{', 40)
-  const queries: { sql: string; args: unknown[] }[] = []
-  const prepare = w.db.prepare.bind(w.db)
-  vi.spyOn(w.db, 'prepare').mockImplementation((sql) => {
-    const statement = prepare(sql)
-    if (!sql.includes('$.stopsNothing')) return statement
-    const get = statement.get.bind(statement)
-    vi.spyOn(statement, 'get').mockImplementation((...args) => {
-      queries.push({ sql, args })
-      return get(...args)
-    })
-    return statement
-  })
-  const observed = createSessionStore(w.db)
+  const { queries, prepare, observed } = observeGets(w.db, (sql) => sql.includes('$.stopsNothing'))
   const unread = rowsUnreadOnce()
   expect(observed.lastAskToStop('person', unread)).toMatchObject({ by: 'a-person', at: 30 })
   expect(unread.count).toBe(1)
