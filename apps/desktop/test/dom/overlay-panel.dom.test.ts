@@ -294,7 +294,10 @@ const RICH: TranscriptEvent[] = [
   { type: 'user_turn', text: 'Return a fixture that breaks a one-line row.' },
   { type: 'tool_call', id: 'toolu_1', name: 'StructuredOutput', summary: '[fixture-overflow]' },
   { type: 'tool_result', id: 'toolu_1', ok: true, summary: '{"prefix":"[fixture-overflow]"}' },
-  { type: 'assistant_message', text: 'Done — the fixture is in the structured output.' },
+  {
+    type: 'assistant_message',
+    text: 'Done — the fixture is in the structured output.\n\n### Map notes\n\nThe north path reaches the library.\n\n> Keep to the marked route.\n\n- Follow the north path.\n- Return by the south path.',
+  },
   { type: 'thinking', phase: 'complete', text: 'Weighing two shapes for the fixture.' },
   {
     type: 'plan_update',
@@ -517,16 +520,13 @@ describe('ink on paper: a document you can actually read (126)', () => {
 
     const broken = inkUnder(paper)
     const bad = failing(broken, READABLE)
-    // ⛔ Not "at least one" — the difference between a scope and a per-class override. The bar is
-    // under the measurement so a fixture that grows stays honest.
-    //
-    // ⚑ **Re-measured at `587`: 20 of 33, where it was 25 of 34.** ⚠️ **The fixture did not shrink
-    // — the tool rows changed shape.** Each settled call was a bordered card carrying a `strong`
-    // tool name, a monospace `code` argument and a status dot; it is now one quiet line, and the
-    // walk finds `span.chevron` + `span.label[tool-run-head]` (+ one `span.amiss`) in their place.
-    // 🔴 **Five of those elements clear the bar unscoped where the card's ink did not**, which is a
-    // fact about the new ink and not about this ticket — the ticket's own number is asserted below
-    // and did not move.
+    // Keep the whole-scope defect control broad after retiring inline metadata.
+    // The fixture now includes ordinary Markdown headings, quotes and lists.
+    for (const words of ['Map notes', 'Keep to the marked route.', 'Follow the north path.']) {
+      const reading = broken.find((i) => i.says === words)
+      expect(reading, `${words} is covered by the scope walk`).toBeDefined()
+      expect(reading!.ratio).toBeLessThan(READABLE)
+    }
     expect(bad.length, 'removing the scope changed almost nothing').toBeGreaterThan(18)
     // …and the specific number the ticket is: the sub-agent's own message text.
     const msg = broken.find((i) => i.says.startsWith('Done — the fixture'))

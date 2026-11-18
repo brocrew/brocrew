@@ -3,7 +3,7 @@ import { page } from 'vitest/browser'
 import { applyTheme } from '../../src/renderer/src/lib/apply-theme'
 import { resolveTheme } from '../../src/shared/themes/theme'
 import { validateTheme } from '../../src/shared/themes/validate'
-import DEFINED_FILE from '../../resources/themes/defined/theme.json'
+import { definedTheme as BASE } from './defined-theme.fixture'
 import {
   openAChildsWork,
   pointAtTheWorkflow,
@@ -12,15 +12,7 @@ import {
 import { unmountAll } from './harness'
 import { readsAt, see } from './what-is-painted-under'
 
-const BASE = (() => {
-  const read = validateTheme(DEFINED_FILE, {
-    assets: new Map(),
-    builtIns: new Map(),
-    builtIn: true,
-  })
-  if (!read.ok) throw new Error(JSON.stringify(read.problems))
-  return read.theme
-})()
+
 
 const ORIGINAL = { width: window.innerWidth, height: window.innerHeight }
 afterEach(async () => {

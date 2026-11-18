@@ -566,18 +566,3 @@ export async function readsAt(el: Element): Promise<Reading> {
   const all = await paintedReadings(el)
   return all.find((one) => one.node === node)?.reading ?? { is: 'not-drawn' }
 }
-
-/** The colour shown just inside `el`'s top-left corner, read from the window with text hidden. */
-export async function shownUnder(el: Element): Promise<Rgba> {
-  const hide = document.createElement('style')
-  hide.textContent = HIDE_INK
-  document.head.append(hide)
-  let pic: Picture
-  try {
-    pic = await shot()
-  } finally {
-    hide.remove()
-  }
-  const box = el.getBoundingClientRect()
-  return pixel(pic, box.left + 4, box.top + 4)
-}
