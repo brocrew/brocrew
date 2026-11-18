@@ -139,7 +139,7 @@ describe('a failed settings apply leaves the conversation usable', () => {
   }
 
   it('a message after the failed turn waits for the old provider to exit, then goes to a fresh start', async () => {
-    const { sessionId, window } = await start(DRAIN_MS * 1.5)
+    const { sessionId, window } = await start(DRAIN_MS * 2)
 
     await expect(host.send(sessionId, 'first words', window)).resolves.toBeUndefined()
 
@@ -148,7 +148,7 @@ describe('a failed settings apply leaves the conversation usable', () => {
   })
 
   it('Stop and send whose turn failed on the settings apply delivers its words to a fresh start', async () => {
-    const { sessionId, window } = await start(DRAIN_MS * 1.5)
+    const { sessionId, window } = await start(DRAIN_MS * 2)
 
     await expect(
       host.sendInterrupting(sessionId, 'words sent with a stop', window),

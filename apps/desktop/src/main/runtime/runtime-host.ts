@@ -31968,13 +31968,17 @@ export class RuntimeHost implements LiveHost {
    * case: a wedged provider must not turn a refused reopen into a hung one. Past the bound the slot
    * is still there and `reserve` refuses — now saying *"still closing"*, which is true.
    *
-   * A slot with nothing being torn down is left completely alone, so an ordinary reopen pays one
-   * map lookup and two null checks.
+   * `forAReopen`: a caller about to {@link reserve} also waits, with a bound of its own, for the
+   * launch a finalized session still holds ({@link settleTheLastLaunch}).
+   *
+   * A slot with nothing being torn down is left completely alone.
    */
-  private async settleTeardown(sessionId: string): Promise<void> {
-    const giveUpAt = Date.now() + this.closeDrainTimeoutMs * 2
+  private async settleTeardown(sessionId: string, forAReopen = false): Promise<void> {
     const slot = this.slots.get(sessionId)
-    if (slot === undefined) return this.settleTheLastLaunch(sessionId, giveUpAt)
+    if (slot === undefined) {
+      if (forAReopen) await this.settleTheLastLaunch(sessionId)
+      return
+    }
     // Closed before its provider ever arrived: the teardown is the arrival, and `awaitArrival`
     // already bounds and reports exactly that case. `phase` is the only thing that can say so —
     // there is no session yet to hold a promise.
@@ -31995,7 +31999,7 @@ export class RuntimeHost implements LiveHost {
     const teardown = slot.session.closing ?? slot.session.finalizing
     if (teardown === null) return
     if (await settledWithin(teardown, this.closeDrainTimeoutMs * 2)) {
-      if (!this.slots.has(sessionId)) await this.settleTheLastLaunch(sessionId, giveUpAt)
+      if (forAReopen && !this.slots.has(sessionId)) await this.settleTheLastLaunch(sessionId)
       return
     }
     console.warn(
@@ -32008,13 +32012,13 @@ export class RuntimeHost implements LiveHost {
    * A finalized session lets go of its slot when its teardown stops waiting, and of its launch only
    * when its provider is confirmed gone: a provider that ends a few seconds later (on Windows the
    * Claude SDK kills a wedged CLI 7 s after the close) left a reopen in between refused. Waits for
-   * that confirmation until `giveUpAt`; past it, `reserve` still refuses.
+   * that confirmation for twice the drain bound; past it, or during a quit, `reserve` refuses.
    */
-  private async settleTheLastLaunch(sessionId: string, giveUpAt: number): Promise<void> {
+  private async settleTheLastLaunch(sessionId: string): Promise<void> {
+    if (this.launches.closed) return
     const released = this.launches.released(sessionId)
     if (released === null) return
-    const left = Math.max(0, giveUpAt - Date.now())
-    if (await settledWithin(released, left)) return
+    if (await settledWithin(released, this.closeDrainTimeoutMs * 2)) return
     console.warn(
       `runtime session ${sessionId}: its provider has not confirmed it stopped after ` +
         `${this.closeDrainTimeoutMs * 2}ms — refusing the reopen rather than starting a second ` +
@@ -38123,7 +38127,7 @@ export class RuntimeHost implements LiveHost {
     const waiting = sink === null ? null : this.beginOwnedWait(sink.ownerId)
     try {
       if (this.startupRepairs.has(sessionId)) await this.settleBeforeUse(sessionId)
-      await this.settleTeardown(sessionId)
+      await this.settleTeardown(sessionId, true)
       // ⛔ **The generation fence.** Between the line above and this one the window may have been
       // reloaded, crashed or destroyed, and `closeSessionsForOwner` will have closed the slots that
       // existed without ever seeing this reopen. Asked BEFORE {@link attachHeldSession}, so a
