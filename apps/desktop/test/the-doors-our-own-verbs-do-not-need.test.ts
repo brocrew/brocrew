@@ -1,3 +1,9 @@
+import {
+  openAgentTestConversation,
+  makeAgentTestIdentity,
+  grantAgentTestCapabilities,
+} from './lib/agent-test-operations'
+import { namedAgentTool } from './lib/call-agent-tool'
 import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -182,23 +188,15 @@ describe('486 · the doors our own verbs do not need', () => {
     for (const dir of [userData, work]) rmSync(dir, { recursive: true, force: true })
   })
 
-  const personOpens = async (profileId: string): Promise<string> => {
-    const { sessionId } = await host.createSession(
-      { provider: 'claude', profileId, cwd: work, approvalMode: 'ask' },
-      window,
-    )
-    return sessionId
-  }
+  const personOpens = (profileId: string): Promise<string> =>
+    openAgentTestConversation(host, window, work, profileId, 'ask')
 
   /** An identity exists only once a person has run a conversation as it — 341 criterion 12. */
-  const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
-    const id = await personOpens(profileId)
-    await host.close(id, window)
-  }
+  const bringIdentityIntoBeing = (profileId: string): Promise<void> =>
+    makeAgentTestIdentity(personOpens, (id) => host.close(id, window), profileId)
 
-  const grant = (profileId: string, edit: Parameters<SessionStore['setCapabilities']>[1]): void => {
-    expect(store.setCapabilities(profileId, edit)).toBe(true)
-  }
+  const grant = (profileId: string, edit: Parameters<SessionStore['setCapabilities']>[1]): void =>
+    grantAgentTestCapabilities(store, profileId, edit)
 
   /** The toolset one session is offered, called the way a provider would call it. */
   const toolsOf = (sessionId: string) => {
@@ -207,9 +205,7 @@ describe('486 · the doors our own verbs do not need', () => {
       name: ToolName,
       args: Record<string, unknown> = {},
     ): Promise<Record<string, unknown>> => {
-      const tool = set.tools.find((one) => one.name === name)
-      if (tool === undefined) throw new Error(`no such tool: ${name}`)
-      const answered = await tool.call(args)
+      const answered = await namedAgentTool(set, name).call(args)
       return (answered.structured ?? {}) as Record<string, unknown>
     }
     return { set, call }
