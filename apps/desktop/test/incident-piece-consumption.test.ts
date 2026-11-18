@@ -30,11 +30,16 @@ it.each([false, true])(
     applyMigrations(db, join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations'))
     const store = createSessionStore(db)
     adoptOwnerWithChild(store, 'alpha', directory, 'Fictional open work')
-    store.append('alpha', store.nextOrdinal('alpha'), {
-      type: 'user_turn',
-      text: 'Fictional words',
-      humanInitiated: true,
-    }, 2)
+    store.append(
+      'alpha',
+      store.nextOrdinal('alpha'),
+      {
+        type: 'user_turn',
+        text: 'Fictional words',
+        humanInitiated: true,
+      },
+      2,
+    )
     const skipped = store.nextOrdinal('alpha')
     if (torn)
       db.prepare(
@@ -45,7 +50,7 @@ it.each([false, true])(
     const expectedOpen = store.openPiecesOf('alpha', rowsUnreadOnce())
     const engine = new WindowReadEngine(file)
     cleanup.push(() => engine.close())
-    // A rejected entry must not be a prerequisite for avoiding the duplicate consumption.
+    // Exercise the canonical read when the existing cache cannot retain an entry.
     Object.assign(engine, { answers: windowFoldCache(0) })
     const native = (engine as unknown as { db: AppDatabase }).db
     const prepare = native.prepare.bind(native)
@@ -60,7 +65,10 @@ it.each([false, true])(
           yield* iterate(...args)
         })
       }
-      if (sql === 'SELECT id FROM turn WHERE session_id = ? ORDER BY generation DESC, ordinal DESC LIMIT 1') {
+      if (
+        sql ===
+        'SELECT id FROM turn WHERE session_id = ? ORDER BY generation DESC, ordinal DESC LIMIT 1'
+      ) {
         const get = statement.get.bind(statement)
         vi.spyOn(statement, 'get').mockImplementation((...args) => {
           readsBeforeNewestTurn ??= pieceReads
