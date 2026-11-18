@@ -1669,13 +1669,7 @@ const outputFor = computed(() =>
 const readingChild = ref<{
   sessionId: string
   label: string
-  /**
-   * Which child this is (296) — kept so the viewer can go back and ask again.
-   *
-   * ⚠️ **Null for a journal or a script**, which are addressed by task id and belong to nobody: the
-   * union `ChildWorkInput` makes is preserved here rather than flattened, so a run's document cannot
-   * end up with a composer pointed at a child that does not exist.
-   */
+  /** The child to refresh; null for task-owned journals or scripts. */
   agentId: string | null
   result: ChildWorkResult
 } | null>(null)
@@ -1756,11 +1750,7 @@ async function openWorkflowOutput(taskId: string, workflow: string, shortMiss = 
   return result.ok
 }
 
-/**
- * ⚑ **510 · open the resource a work report names.** ⛔ **One hop since `640`**: the door check,
- * the capture before the await, the stamp and the panel all belong to
- * {@link CanonicalDocumentOverlay}, and this pane keeps only the handler its transcript emits to.
- */
+/** Open the named resource through the existing document overlay. */
 async function openResource(resourceId: string): Promise<void> {
   // ⚑ **UI-002 · with the row it was pressed from**, where the tree or the card read one — so the
   // viewer's header can say its title, who, for which piece and when (`07` §3).
