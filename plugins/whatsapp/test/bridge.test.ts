@@ -25,9 +25,11 @@ process.stdin.on('data', (chunk) => {
   started = true
   const cfg = JSON.parse(line.slice(0, line.indexOf('\\n')))
   dataDir = cfg.dataDir
-  fs.writeFileSync(path.join(cfg.dataDir, 'fake-run.json'), JSON.stringify({
+  const runFile = path.join(cfg.dataDir, 'fake-run.json')
+  fs.writeFileSync(runFile + '.tmp', JSON.stringify({
     pid: process.pid, cwd: process.cwd(), env: Object.keys(process.env).sort(), config: cfg,
   }))
+  fs.renameSync(runFile + '.tmp', runFile)
   fs.writeFileSync(path.join(cfg.dataDir, 'session.db'), 'fictional session')
   const server = http.createServer((req, res) => {
     if (req.headers.authorization !== 'Bearer ' + cfg.token) { res.writeHead(401); res.end('{}'); return }
