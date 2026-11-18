@@ -13,6 +13,7 @@ describe('automatic initial service recovery', () => {
     const f = await setup()
     const lease = {
       close: vi.fn(async () => true),
+      lifecycleReady: vi.fn(async () => {}),
       standing: () => false,
       features: [],
       agentRoutes: vi.fn(async () => ({ format: 1, value: [] })),

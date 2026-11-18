@@ -126,5 +126,6 @@ export async function createSupervisorLifecycle(options: {
     await bridge.close().catch(() => undefined)
     throw new PluginSupervisorError('unavailable')
   }
+  options.owner.markLifecycleReady()
   return { controller, path: bridge.path, close }
 }

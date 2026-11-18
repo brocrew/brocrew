@@ -1,5 +1,5 @@
 import { captureLog } from './lib/log-file'
-import { setup, seams, settingsCall } from './plugin-production-fixtures'
+import { setup, seams, settingsCall, readyLease } from './plugin-production-fixtures'
 import { PluginSupervisorLaunchFailure } from '../src/main/plugins/startup-failure'
 import { randomUUID } from 'node:crypto'
 import { fixture } from './plugin-lifecycle-fixtures'
@@ -1119,13 +1119,7 @@ describe.skipIf(process.platform === 'win32')(
         const epochs = [randomUUID(), randomUUID()]
         const owner = (epoch: string, phase: OwnerRecord['phase']) =>
           writeOwner(f.options, epoch, phase)
-        const leases = epochs.map((epoch) => ({
-          epoch,
-          standing: vi.fn(() => true),
-          features: [LOST_CHANNEL_ENDS],
-          abandon: vi.fn(),
-          close: vi.fn(async () => true),
-        }))
+        const leases = epochs.map((epoch) => readyLease(epoch))
         const attach = vi
           .spyOn(PluginWorkspaceLease, 'attach')
           .mockResolvedValueOnce(leases[0] as never)
@@ -1213,13 +1207,7 @@ describe.skipIf(process.platform === 'win32')(
       const f = await setup()
       const epoch = randomUUID()
       const owner = (phase: OwnerRecord['phase']) => writeOwner(f.options, epoch, phase)
-      const leases = [epoch, randomUUID()].map((one) => ({
-        epoch: one,
-        standing: vi.fn(() => one !== epoch),
-        features: [LOST_CHANNEL_ENDS],
-        abandon: vi.fn(),
-        close: vi.fn(async () => true),
-      }))
+      const leases = [epoch, randomUUID()].map((one) => readyLease(one, () => one !== epoch))
       const attach = vi
         .spyOn(PluginWorkspaceLease, 'attach')
         .mockResolvedValueOnce(leases[0] as never)
@@ -1249,13 +1237,7 @@ describe.skipIf(process.platform === 'win32')(
       const f = await setup()
       const epoch = randomUUID()
       writeOwner(f.options, epoch, 'accepting')
-      const lease = {
-        epoch,
-        standing: vi.fn(() => true),
-        features: [LOST_CHANNEL_ENDS],
-        abandon: vi.fn(),
-        close: vi.fn(async () => true),
-      }
+      const lease = readyLease(epoch)
       const attach = vi.spyOn(PluginWorkspaceLease, 'attach').mockResolvedValue(lease as never)
       const supervisor = new PluginSupervisorAttachment()
       try {

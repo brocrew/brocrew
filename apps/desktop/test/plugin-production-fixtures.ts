@@ -9,6 +9,7 @@ import { cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
 import { packageFixture } from './plugin-package-fixtures'
 import { repoListFor } from './plugin-repo-list-fixtures'
 import { PLUGIN_LIST_URL } from '../src/main/plugins/catalogue/download'
+import { LOST_CHANNEL_ENDS } from '../src/main/plugins/supervisor/protocol'
 vi.mock('../src/main/plugins/ui/host', () => ({ openPluginConfigurationView: vi.fn() }))
 const seams = vi.hoisted(() => ({
   connect: vi.fn(),
@@ -24,6 +25,16 @@ vi.mock('../src/main/plugins/supervisor/launcher', () => ({
   createPluginSupervisorLauncher: seams.launch,
 }))
 export { seams }
+export function readyLease(epoch: string, standing = () => true) {
+  return {
+    epoch,
+    standing: vi.fn(standing),
+    features: [LOST_CHANNEL_ENDS],
+    abandon: vi.fn(),
+    close: vi.fn(async () => true),
+    lifecycleReady: vi.fn(async () => {}),
+  }
+}
 import { productionPluginController } from '../src/main/plugins/production'
 import { registerPluginSettings } from '../src/main/plugins/settings'
 const roots: string[] = []
@@ -70,6 +81,7 @@ export async function setup(pkg = packageFixture()) {
   const supervisor = {
     start: vi.fn(),
     ready: vi.fn(async () => true),
+    lifecycleReady: vi.fn(async () => {}),
     stoppedCleanly: vi.fn(() => false),
     holdsLease: vi.fn(() => false),
   }

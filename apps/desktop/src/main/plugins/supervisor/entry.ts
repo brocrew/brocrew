@@ -29,6 +29,7 @@ export async function runPluginSupervisor(configPath: string, expectedDigest: st
   const owner = await PluginSupervisor.start({
     root: config.root,
     workspaceRoots: config.workspaceRoots,
+    lifecycle: Boolean(config.lifecycle),
     recoverPrevious: async (previous) => {
       if (await previousRunsProvenStopped(config.root, { previous })) return true
       throw new PluginSupervisorError('cleanup-pending', {

@@ -3,6 +3,7 @@ import { pluginStartupTrace } from '../startup-failure'
 import { createHash, randomUUID } from 'node:crypto'
 import { lstatSync, realpathSync } from 'node:fs'
 import { createConnection, type Socket } from 'node:net'
+import { setTimeout as delay } from 'node:timers/promises'
 import { isAbsolute, join } from 'node:path'
 import { z } from 'zod'
 import { SupervisorStorage } from './storage'
@@ -266,6 +267,7 @@ export class PluginWorkspaceLease {
     private readonly options: SupervisorClientOptions,
     private readonly workspace: string,
     hello: z.infer<typeof Hello>,
+    private readonly startupUntil: number,
   ) {
     this.lease = hello.lease
     this.minor = hello.minor
@@ -301,6 +303,7 @@ export class PluginWorkspaceLease {
   }
   static async attach(options: SupervisorClientOptions): Promise<PluginWorkspaceLease> {
     const admission = pluginStartupTrace.begin('owner-admission')
+    let startupUntil = performance.now() + OWNER_LAUNCH_MS
     let storage: SupervisorStorage | undefined
     let phase: OwnerDiagnostic['phase'] = 'unreadable'
     let stage: OwnerDiagnostic['stage'] = 'attach-record'
@@ -360,6 +363,7 @@ export class PluginWorkspaceLease {
         if (!options.launch) refuse()
         let timer: ReturnType<typeof setTimeout> | undefined
         const until = performance.now() + OWNER_LAUNCH_MS
+        startupUntil = until
         const root = realpathSync.native(storage!.root)
         const identity = `${process.platform === 'win32' ? root.toLowerCase() : root}\0${storage!.identity}`
         try {
@@ -466,7 +470,14 @@ export class PluginWorkspaceLease {
         answer = await supervisorRequest(storage, record, helloCommand)
       }
       const hello = Hello.parse(answer)
-      const lease = new PluginWorkspaceLease(storage, record, options, workspaceId, hello)
+      const lease = new PluginWorkspaceLease(
+        storage,
+        record,
+        options,
+        workspaceId,
+        hello,
+        startupUntil,
+      )
       if (lease.features.includes(APP_HELD_CONNECTION)) {
         try {
           await lease.hold()
@@ -580,6 +591,28 @@ export class PluginWorkspaceLease {
   /** False once the lease has ended here, for whatever reason. */
   standing(): boolean {
     return !this.ended
+  }
+  /** Owner registration must precede bootstrap; its launch budget also covers lifecycle readiness. */
+  async lifecycleReady(signal?: AbortSignal): Promise<void> {
+    for (;;) {
+      signal?.throwIfAborted()
+      if (this.ended) refuse()
+      let record: OwnerRecord | null
+      try {
+        record = this.storage.read()
+      } catch {
+        // The owner's atomic rename can land inside one read; it has completed by now.
+        record = this.storage.read()
+      }
+      if (record?.epoch !== this.epoch || record.phase !== 'accepting') refuse()
+      if (record.lifecycleReady !== false) return
+      const remaining = this.startupUntil - performance.now()
+      if (remaining <= 0)
+        throw new PluginSupervisorError('unavailable', {
+          cause: new Error('Plugin lifecycle did not become ready within the owner launch budget'),
+        })
+      await delay(Math.min(10, remaining), undefined, { signal })
+    }
   }
   /** For an owner that has stopped: there is nobody left to send a release to. */
   abandon(): void {
@@ -716,6 +749,11 @@ export class PluginSupervisorAttachment {
   }
   async ready(): Promise<boolean> {
     return Boolean((await this.pending) && !this.ended)
+  }
+  async lifecycleReady(signal?: AbortSignal): Promise<void> {
+    const lease = await this.pending
+    if (!lease || this.ended) refuse()
+    await lease.lifecycleReady(signal)
   }
   stoppedCleanly(): boolean {
     const lease = this.lease

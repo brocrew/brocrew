@@ -66,6 +66,7 @@ describe.skipIf(process.platform === 'win32')(
         supervisor: {
           start() {},
           ready: async () => true,
+          lifecycleReady: async () => {},
           holdsLease: () => false,
           stoppedCleanly: () => false,
           supports: () => modern,

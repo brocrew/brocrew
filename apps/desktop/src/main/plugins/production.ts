@@ -680,6 +680,8 @@ export function productionPluginController() {
             else if (!ended) initialRetries ??= 0
             return false
           }
+          await options.supervisor.lifecycleReady(lifetime.signal)
+          if (ended) return false
           phase = 'catalogue'
           if (
             !options.fixtureSource &&
@@ -769,6 +771,7 @@ export function productionPluginController() {
           timer.unref()
           return true
         } catch (error) {
+          if (ended) return false
           failed(phase, error)
           if (
             !ended &&

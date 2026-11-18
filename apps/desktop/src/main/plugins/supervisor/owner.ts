@@ -52,6 +52,8 @@ export interface OwnerOptions {
   root: string
   workspaceRoots: readonly string[]
   wire?: WireVersion
+  /** Standalone lifecycle bootstrap publishes readiness after its person server is adopted. */
+  lifecycle?: boolean
   /** Must be monotonic, as performance.now is. */
   now?: () => number
   /** Revokes broker/UI authority before waiting for child exit. */
@@ -201,6 +203,7 @@ export class PluginSupervisor {
       epoch: randomUUID(),
       phase: 'accepting',
       wire: options.wire ?? OWNER_WIRE,
+      ...(options.lifecycle ? { lifecycleReady: false } : {}),
     })
     try {
       let existingLock = false
@@ -563,6 +566,11 @@ export class PluginSupervisor {
   acceptsStarts(): boolean {
     this.expire()
     return this.record.phase === 'accepting' && this.leases.size > 0
+  }
+  markLifecycleReady(): void {
+    if (!this.acceptsStarts()) refuse()
+    this.record.lifecycleReady = true
+    this.storage.write(this.record)
   }
   async startChild(start: () => Promise<OwnedPluginChild>): Promise<OwnedPluginChild> {
     this.expire()

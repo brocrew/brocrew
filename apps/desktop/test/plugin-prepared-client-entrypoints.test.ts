@@ -125,6 +125,7 @@ async function production(installed: boolean) {
   const supervisor = {
     start: vi.fn(),
     ready: vi.fn(async () => true),
+    lifecycleReady: vi.fn(async () => {}),
     holdsLease: () => false,
     stoppedCleanly: () => false,
     supports: () => true,

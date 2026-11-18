@@ -58,6 +58,7 @@ export const OwnerRecord = z.object({
   epoch: Uuid,
   phase: z.enum(['accepting', 'draining', 'blocked', 'stopped']),
   wire: Wire,
+  lifecycleReady: z.boolean().optional(),
 })
 export type OwnerRecord = z.infer<typeof OwnerRecord>
 export const StopReason = z.enum(['lease-expired', 'released', 'shutdown', 'drain'])
