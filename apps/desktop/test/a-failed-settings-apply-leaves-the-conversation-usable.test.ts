@@ -28,6 +28,9 @@ const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
 const DRAIN_MS = 200
+/** Longer than the host's wait for a Stop, so the host has gone on to wait for idle. */
+const STOP_WAIT_MS = 100
+const STOP_AFTER_MS = 300
 const RELOAD_FAILURE =
   'could not apply the queued settings: reloadPlugins did not answer within 60000ms'
 
@@ -42,8 +45,11 @@ describe('a failed settings apply leaves the conversation usable', () => {
   let counter: number
   let sessions: FakeProviderSessions
 
-  /** `exitAfterMs` null: the retired provider never confirms its exit. */
-  const buildHost = (exitAfterMs: number | null): RuntimeHost =>
+  /**
+   * `exitAfterMs` null: the retired provider never confirms its exit. `'stop'`: the first launch
+   * reads as working and retires when asked to stop, after `stopAfterMs`, instead of on a send.
+   */
+  const buildHost = (exitAfterMs: number | null, retiresOn: 'send' | 'stop' = 'send'): RuntimeHost =>
     new RuntimeHost({
       store,
       ...neutralHostDeps(() => userData),
@@ -60,17 +66,32 @@ describe('a failed settings apply leaves the conversation usable', () => {
           const exit = new Promise<void>((resolve) => {
             exited = resolve
           })
+          const retire = (h: H): void => {
+            retired = true
+            void (h as unknown as SessionHandle).close().then(() => {
+              if (exitAfterMs !== null) setTimeout(exited, exitAfterMs)
+            })
+          }
           return new Proxy(handle, {
             get(h, p) {
               if (p === 'isRetiring') return () => retired
               if (p === 'awaitProcessExit') return () => exit
+              if (retiresOn === 'stop') {
+                if (p === 'status') return () => (retired ? 'idle' : 'working')
+                if (p === 'interrupt')
+                  return () =>
+                    new Promise<void>((resolve) =>
+                      setTimeout(() => {
+                        retire(h)
+                        resolve()
+                      }, STOP_AFTER_MS),
+                    )
+                return bind(h, p)
+              }
               if (p === 'send')
                 return () => {
                   if (retired) return Promise.reject(new Error('the provider is retiring'))
-                  retired = true
-                  void (h as unknown as SessionHandle).close().then(() => {
-                    if (exitAfterMs !== null) setTimeout(exited, exitAfterMs)
-                  })
+                  retire(h)
                   return Promise.reject(new Error(RELOAD_FAILURE))
                 }
               return bind(h, p)
@@ -100,6 +121,7 @@ describe('a failed settings apply leaves the conversation usable', () => {
       now: () => clock++,
       readProviderConfig: fixtureProviderConfig,
       closeDrainTimeoutMs: DRAIN_MS,
+      interruptWaitMs: STOP_WAIT_MS,
     })
 
   beforeEach(() => {
@@ -128,8 +150,8 @@ describe('a failed settings apply leaves the conversation usable', () => {
       .filter((event) => event.type === 'user_turn')
       .map((event) => String(event.text))
 
-  const start = async (exitAfterMs: number | null) => {
-    host = buildHost(exitAfterMs)
+  const start = async (exitAfterMs: number | null, retiresOn: 'send' | 'stop' = 'send') => {
+    host = buildHost(exitAfterMs, retiresOn)
     const window = new RecordingSink('webContents:1')
     const { sessionId } = await host.createSession(
       { provider: 'claude', profileId: DEFAULT_PROFILE_ID, approvalMode: 'auto', cwd: work },
@@ -156,6 +178,17 @@ describe('a failed settings apply leaves the conversation usable', () => {
 
     expect(launches).toBe(2)
     expect(turnTexts(sessionId)).toEqual(['words sent with a stop'])
+  })
+
+  it('Stop and send to a provider that retires instead of answering the Stop delivers its words to a fresh start', async () => {
+    const { sessionId, window } = await start(DRAIN_MS * 2, 'stop')
+
+    await expect(
+      host.sendInterrupting(sessionId, 'words after an unanswered stop', window),
+    ).resolves.toBeUndefined()
+
+    expect(launches).toBe(2)
+    expect(turnTexts(sessionId)).toEqual(['words after an unanswered stop'])
   })
 
   it('control: a provider that never confirms its exit is still refused, after the bounded wait', async () => {
