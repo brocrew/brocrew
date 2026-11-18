@@ -183,6 +183,41 @@ it('keeps a real work change visible when its outer commit also trims history', 
   }
 })
 
+it.each(['exec', 'all', 'iterate'])(
+  'does not hide outer metadata SQL written through %s',
+  async (method) => {
+    const f = fixture()
+    try {
+      const old = f.add({ type: 'assistant_delta', text: 'Fictional history' })
+      await f.settle()
+      await f.listing()
+      const reads = f.read.mock.calls.length
+      f.announce.mockClear()
+      f.world.db.transaction(() => {
+        f.remove(old)
+        const sql = "UPDATE agent_identity SET display_name='Changed fictional identity'"
+        if (method === 'exec') f.world.db.exec(sql)
+        else {
+          const statement = f.world.db.prepare(sql + ' RETURNING id')
+          if (method === 'all') statement.all()
+          else for (const _row of statement.iterate()) void _row
+        }
+      })()
+      await f.settle()
+      await f.listing()
+      expect(f.read.mock.calls.length).toBeGreaterThan(reads)
+      expect(f.announce.mock.calls.some(([notice]) => notice.what === 'persons')).toBe(true)
+      expect(
+        f.world.store
+          .agentIdentities()
+          .every((one) => one.displayName === 'Changed fictional identity'),
+      ).toBe(true)
+    } finally {
+      await f.close()
+    }
+  },
+)
+
 it('a rolled-back trim publishes nothing and leaves the warm answer usable', async () => {
   const f = fixture()
   try {
