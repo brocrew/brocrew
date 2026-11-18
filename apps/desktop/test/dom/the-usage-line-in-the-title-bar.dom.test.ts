@@ -20,6 +20,7 @@ import {
   attributedUsageFixtures,
   provideIdlePlaceNavigator,
   runningSignInFixtures,
+  reserveTitleUsageRoom,
 } from './provider-launch.fixture'
 
 /**
@@ -137,6 +138,7 @@ describe('the usage line', () => {
       ]),
     })
     const m = await bar(READ, useWhoCalledWhom().runningConversations.value)
+    await reserveTitleUsageRoom(m, 'Claude 5h 28% · week 61% · +1')
     const line = m.q('app-usage')
     const said = (line.textContent ?? '').trim()
     expect(said).toBe('Claude 5h 28% · week 61% · +1')

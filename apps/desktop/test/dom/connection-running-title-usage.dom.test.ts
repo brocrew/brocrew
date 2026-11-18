@@ -11,7 +11,7 @@ import { railFacts, screenFacts } from '../../src/renderer/src/composables/useWh
 import { providersBridge, providerConnectionFixtures } from '../../look/fixtures/providers'
 import { mount, unmountAll, visible } from './harness'
 import { drawnReady } from './drawn'
-import { provideIdlePlaceNavigator } from './provider-launch.fixture'
+import { provideIdlePlaceNavigator, reserveTitleUsageRoom } from './provider-launch.fixture'
 
 const HOUR = 3_600_000
 const original = { width: window.innerWidth, height: window.innerHeight }
@@ -275,6 +275,7 @@ it('fits tightest connection then tightest window at 1180 and 760 while retainin
   expect(fullVisual).not.toContain('+2')
   await page.viewport(1180, 840)
   m.host.style.width = '1180px'
+  await reserveTitleUsageRoom(m, 'Claude · subscription 5h 28% · week 92% · +2')
   await settle()
   expect(line.textContent).toContain('Claude · subscription')
   expect(line.textContent).toContain('5h 28%')
@@ -283,6 +284,7 @@ it('fits tightest connection then tightest window at 1180 and 760 while retainin
   expect(line.scrollWidth).toBeLessThanOrEqual(line.clientWidth + 1)
   await page.viewport(760, 840)
   m.host.style.width = '760px'
+  await reserveTitleUsageRoom(m, 'Claude · subscription week 92% · +2')
   await settle()
   expect(line.textContent).toContain('Claude · subscription')
   expect(line.textContent).toContain('week 92%')

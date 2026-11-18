@@ -3,7 +3,7 @@ import { computed, nextTick } from 'vue'
 import { compatibilityConnectionId, providerRecord, type Provider } from '@brobot2/shared'
 import type { RunningConversation } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { providerConnectionFixtures, providersBridge } from '../../look/fixtures/providers'
-import { unmountAll } from './harness'
+import { unmountAll, type Mounted } from './harness'
 import { createModelLists } from '../lib/provider-launch-fixture'
 import type { ProviderUsageReading } from '../../src/shared/runtime-ipc'
 import { providePlaceNavigator } from '../../src/renderer/src/composables/usePlaceNavigator'
@@ -69,4 +69,28 @@ export function attributedUsageFixtures(
       connectionId: compatibilityConnectionId(provider, 'sign-in'),
     })),
   )
+}
+
+/** Constrain the title fixture to these words using its real font and preceding controls. */
+export async function reserveTitleUsageRoom(m: Mounted, words: string): Promise<void> {
+  const line = m.q('app-usage')
+  const parent = line.parentElement!
+  const probe = line.cloneNode(false) as HTMLElement
+  probe.removeAttribute('data-cy')
+  probe.textContent = words
+  Object.assign(probe.style, {
+    position: 'fixed',
+    top: '-10000px',
+    visibility: 'hidden',
+    width: 'max-content',
+    maxWidth: 'none',
+  })
+  m.host.append(probe)
+  const prefix = line.getBoundingClientRect().left - parent.getBoundingClientRect().left
+  const room = probe.getBoundingClientRect().width
+  probe.remove()
+  parent.style.flex = '0 0 auto'
+  parent.style.width = `${prefix + room + 2}px`
+  await new Promise<void>((done) => requestAnimationFrame(() => done()))
+  await nextTick()
 }

@@ -20,7 +20,7 @@ import type {
 import { conv, forestOf } from './forest-fixture'
 import { assertDrawn, drawnReady, inkRects, lineCount } from './drawn'
 import { mount, unmountAll, type Mounted } from './harness'
-import { provideIdlePlaceNavigator } from './provider-launch.fixture'
+import { provideIdlePlaceNavigator, reserveTitleUsageRoom } from './provider-launch.fixture'
 import { providerConnectionFixtures } from '../../look/fixtures/providers'
 
 const original = { width: window.innerWidth, height: window.innerHeight }
@@ -461,6 +461,7 @@ describe('working counts in the title bar', () => {
           },
         ],
       })
+      await reserveTitleUsageRoom(m, 'Claude 5h 28% · week 61% · +1')
       const line = m.q('app-usage')
       const whole = `Claude 5h 28% · week 61% · Codex week 35% · 8 agents · ${working ? '3 working' : '0 working'} · 800 MB`
       expect(text(m)).toBe('Claude 5h 28% · week 61% · +1')
