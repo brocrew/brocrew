@@ -429,21 +429,13 @@ describe('§5 · the words beside the Stop are untouched (scope)', () => {
     // ⚑ The pair's title and the foot are real sentences, so the negatives below are about them.
     const [title] = titlesOf(html, 'interrupt-send-prompt')
     expect(title?.length ?? 0).toBeGreaterThan(20)
-    expect(
-      footOf(html).startsWith(`${SEND_KEY} to send after Codex finishes · ${INTERRUPT_KEY} `),
-    ).toBe(true)
+    expect(footOf(html)).toBe('Not sent yet · Queue sends it when Codex finishes')
     // ⚑ …and none of them is the busy Stop's own sentence, which this draw did not move.
     expect(title).not.toBe(BUSY_TITLE)
     expect(footOf(html)).not.toBe(BUSY_FOOT)
-    // ⚑ **D-027 moved the waiting foot's first half**: what waits no longer goes first — this goes
-    // WITH it, in one turn, oldest first, a command alone. It said *"…after Codex finishes and
-    // takes what is already waiting"*.
+    // With something already waiting, the foot is the same line.
     const queued = await composer({ state: 'busy', draft: 'no, do this instead', hasQueued: true })
-    expect(
-      footOf(queued).startsWith(
-        `${SEND_KEY} to send when Codex finishes, with what is already waiting — a command goes alone · ${INTERRUPT_KEY} `,
-      ),
-    ).toBe(true)
+    expect(footOf(queued)).toBe('Not sent yet · Queue sends it when Codex finishes')
     expect(footOf(queued)).not.toBe(BUSY_FOOT)
   })
 
@@ -463,7 +455,7 @@ describe('§5 · the words beside the Stop are untouched (scope)', () => {
 // §5b · interrupt-and-send — the neighbour `739` moved (`737` F-7), no longer left alone
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-describe('§5b · interrupt-and-send, which `739` moved: its title and foot are Stop and send’s', () => {
+describe('§5b · interrupt-and-send, which `739` moved: its title is Stop and send’s', () => {
   /**
    * 🔴 **`739` Draw 5, seen from this file** (`739` review #21: it stood under *"untouched"* as a
    * control, and it is RED on `main` 5f406f2f by assertion — `main` draws *"Stop Codex and send
@@ -471,20 +463,18 @@ describe('§5b · interrupt-and-send, which `739` moved: its title and foot are 
    * by `stop-and-send-says-it-asks.render.test.ts`; this keeps the neighbour's own reading here, in
    * the clause this file owns (`THE_TURN_IS_ASKED_TO_STOP`).
    */
-  it('🔴 `busy` with a draft: the pair’s title and the foot say Stop and send in R43’s words, with the host’s limit', async () => {
+  it('🔴 `busy` with a draft: the pair’s title says Stop and send in R43’s words, with the host’s limit', async () => {
     const html = await composer({ state: 'busy', draft: 'no, do this instead' })
     const STOP_THEN_SENT = `${THE_TURN_IS_ASKED_TO_STOP}; this is sent once it has ended, or comes back to you if it has not within seconds`
     expect(titlesOf(html, 'interrupt-send-prompt')).toEqual([
       `Stop and send — ${STOP_THEN_SENT} (${INTERRUPT_KEY})`,
     ])
-    expect(footOf(html)).toBe(
-      `${SEND_KEY} to send after Codex finishes · ${INTERRUPT_KEY} is Stop and send: ${STOP_THEN_SENT}`,
-    )
-    // ⚑ **D-027** — with something waiting, this goes WITH it, in one turn (see §5's control).
+    // The foot no longer explains the keys; it says the words are not sent yet.
+    expect(footOf(html)).toBe('Not sent yet · Queue sends it when Codex finishes')
     const queued = await composer({ state: 'busy', draft: 'no, do this instead', hasQueued: true })
-    expect(footOf(queued)).toBe(
-      `${SEND_KEY} to send when Codex finishes, with what is already waiting — a command goes alone · ${INTERRUPT_KEY} is Stop and send: ${STOP_THEN_SENT}`,
-    )
+    expect(titlesOf(queued, 'interrupt-send-prompt')).toEqual([
+      `Stop and send — ${STOP_THEN_SENT} (${INTERRUPT_KEY})`,
+    ])
   })
 })
 

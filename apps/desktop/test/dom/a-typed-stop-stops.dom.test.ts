@@ -129,7 +129,7 @@ describe('which words are only a stop', () => {
 })
 
 describe('words in the box while an agent works', () => {
-  it('shows the queue choice and Stop and send, with its shortcut, side by side', async () => {
+  it('shows the queue choice and Stop and send side by side, the shortcut in Stop and send’s title', async () => {
     const { m, pressed } = await pane(
       conversation([started, asked, working]),
       'look at the tests first',
@@ -138,7 +138,8 @@ describe('words in the box while an agent works', () => {
     expect(text(m.q('queue-prompt'))).toBe(`Queue ${SEND_KEY}`)
     const stopAndSend = m.q('interrupt-send-prompt')
     expect(visible(stopAndSend)).toBe(true)
-    expect(text(stopAndSend)).toBe(`Stop and send ${INTERRUPT_KEY}`)
+    expect(text(stopAndSend)).toBe('Stop and send')
+    expect(stopAndSend.getAttribute('title')).toContain(`(${INTERRUPT_KEY})`)
     expect(m.all('stop-now')).toEqual([])
 
     await press(stopAndSend)

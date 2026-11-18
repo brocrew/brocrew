@@ -357,7 +357,7 @@ describe('§3 · `PromptComposer` says, while `busy`, that Stop joins the ask th
     const without = await composer({ state: 'busy', draft: 'no, do this instead' })
     expect(count(html, 'interrupt-session')).toBe(0)
     expect(count(html, 'interrupt-send-prompt')).toBe(1)
-    expect(footOf(html)).toContain('to send after Codex finishes')
+    expect(footOf(html)).toBe('Not sent yet · Queue sends it when Codex finishes')
     // ⚑ The same two outcomes, in the same words, as without R83's sentence — on either tree.
     expect(footOf(html)).toBe(footOf(without))
     expect(titlesOf(html, 'interrupt-send-prompt')).toEqual(
@@ -367,15 +367,15 @@ describe('§3 · `PromptComposer` says, while `busy`, that Stop joins the ask th
     expect(footOf(html)).not.toContain('has not answered')
   })
 
-  it('🔴 739 · `busy` with a DRAFT, WITH it: the foot says the press’s OWN ask, in R43’s words with the host’s limit — never R83’s', async () => {
+  it('🔴 739 · `busy` with a DRAFT, WITH it: Stop and send’s title says the press’s OWN ask, in R43’s words with the host’s limit — never R83’s', async () => {
     const html = await composer({
       state: 'busy',
       draft: 'no, do this instead',
       stopUnanswered: CODEX_STOP_JOINS,
     })
     // ⛔ `main` 5f406f2f: *"… · ⇧⌘↵ to interrupt and send now"*.
-    expect(footOf(html)).toContain(
-      `is Stop and send: the turn is ${ASKED_TO_STOP}; this is sent once it has ended, or comes back to you if it has not within seconds`,
+    expect(titlesOf(html, 'interrupt-send-prompt')[0]).toContain(
+      `Stop and send — the turn is ${ASKED_TO_STOP}; this is sent once it has ended, or comes back to you if it has not within seconds`,
     )
     expect(footOf(html)).not.toContain('has not answered')
   })

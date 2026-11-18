@@ -3,10 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick, reactive } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
-import {
-  interruptKeyLabel,
-  sendKeyLabel,
-} from '../../src/renderer/src/components/PromptComposer.vue'
+import { interruptKeyLabel } from '../../src/renderer/src/components/PromptComposer.vue'
 import {
   acceptEvent,
   createSessionRecord,
@@ -82,18 +79,16 @@ const PANE_W = 972
 const PANE_H = 900
 
 /** ⚑ The keys the composer draws, from its own labels over this engine's platform. */
-const SEND_KEY = sendKeyLabel(navigator.platform)
 const INTERRUPT_KEY = interruptKeyLabel(navigator.platform)
 
 /**
  * ⚑ R43's clause, the draw's, and its sentences — verbatim ONCE; each subject composes them too.
- * ⚠️ `739` review round 1: the host's limit is in the clause, so the title and every foot carry it.
+ * ⚠️ `739` review round 1: the host's limit is in the clause, so the title carries it.
  */
 const THE_LIMIT = 'or comes back to you if it has not within seconds'
 const STOP_THEN_SENT =
   'the turn is asked to stop; this is sent once it has ended, or comes back to you if it has not within seconds'
 const TITLE = `Stop and send — the turn is asked to stop; this is sent once it has ended, or comes back to you if it has not within seconds (${INTERRUPT_KEY})`
-const FOOT_TAIL = `finishes · ${INTERRUPT_KEY} is Stop and send: the turn is asked to stop; this is sent once it has ended, or comes back to you if it has not within seconds`
 const PLAIN_STOP_TITLE = 'Stop — the turn is asked to stop (Esc)'
 
 /** ⚑ A Codex conversation — the host's echo of its provider on `meta`, as `737`'s suite builds it. */
@@ -106,13 +101,8 @@ const CODEX_META: CreatedSession = {
 
 /** ⚑ Who the pane says is working — `agentName` over the meta's profile, as the pane asks it. */
 const WHO = agentName(CODEX_META.profileId, null)
-/**
- * ⚑ **D-010** — one foot while something waits, whoever wrote it. ⚑ **D-027 moved its first half**:
- * what waits no longer goes first, one turn each — this goes WITH it, in one turn, oldest first, and
- * only a command goes alone; it said *"…after <who> finishes and takes what is already waiting"*.
- * ⚠️ 15 characters longer, so §3 still asks that it is drawn whole beside the drawer.
- */
-const FOOT_WAITING = `${SEND_KEY} to send when ${WHO} finishes, with what is already waiting — a command goes alone · ${INTERRUPT_KEY} is Stop and send: the turn is asked to stop; this is sent once it has ended, or comes back to you if it has not within seconds`
+/** The foot while words wait in the box during a turn — the same line whether or not something already waits. */
+const NOT_SENT = `Not sent yet · Queue sends it when ${WHO} finishes`
 
 const DRAFT = 'no, look at the migration first'
 
@@ -186,7 +176,7 @@ const keyHints = (foot: HTMLElement): string[] => [...foot.querySelectorAll('str
 /* ------------------------------------------------------------------ §1 */
 
 describe('§1 · a running Codex conversation with a draft: Stop and send says the turn is asked to stop', () => {
-  it('🔴 the button’s title and the foot say it in R43’s words, the host’s limit in each — the foot drawn whole at the composer’s width', async () => {
+  it('🔴 the button’s title says it in R43’s words with the host’s limit, and the foot says not sent yet, drawn whole at the composer’s width', async () => {
     const m = await pane(conversation([started, asked, working]))
     // ⚑ The premise, off the record the pane draws: running, a draft, so the pair is up.
     expect(visible(m.q('interrupt-send-prompt'))).toBe(true)
@@ -196,12 +186,11 @@ describe('§1 · a running Codex conversation with a draft: Stop and send says t
 
     expect(stopAndSendTitle(m)).toBe(TITLE)
     const foot = m.q('composer-hint')
-    expect(text(foot)).toBe(`${SEND_KEY} to send after ${WHO} ${FOOT_TAIL}`)
-    // ⚑ `739` #2: the always-visible foot carries the limit, not only the hover.
-    expect(text(foot)).toContain(THE_LIMIT)
-    expect(keyHints(foot)).toEqual([SEND_KEY, INTERRUPT_KEY])
+    expect(text(foot)).toBe(NOT_SENT)
+    expect(stopAndSendTitle(m)).toContain(THE_LIMIT)
+    expect(keyHints(foot)).toEqual([])
     expect(visible(foot)).toBe(true)
-    assertDrawn(foot, 'the busy foot with a draft, in R43’s words', m.host)
+    assertDrawn(foot, 'the busy foot with a draft', m.host)
 
     // ⚑ rule 5 — composed from the module's clause, and that from `737`'s and `ASKED_TO_STOP`.
     const { asks, sent } = await theClauses()
@@ -209,9 +198,6 @@ describe('§1 · a running Codex conversation with a draft: Stop and send says t
     expect(sent).toBe(`${asks}; this is sent once it has ended, ${THE_LIMIT}`)
     expect(sent).toBe(STOP_THEN_SENT)
     expect(stopAndSendTitle(m)).toBe(`Stop and send — ${sent} (${INTERRUPT_KEY})`)
-    expect(text(foot)).toBe(
-      `${SEND_KEY} to send after ${WHO} finishes · ${INTERRUPT_KEY} is Stop and send: ${sent}`,
-    )
   })
 
   it('⚑ THE CONTROL — the same conversation with NO draft: the plain Stop, titled as `737` left it, and no pair', async () => {
@@ -225,7 +211,7 @@ describe('§1 · a running Codex conversation with a draft: Stop and send says t
 
 /* ------------------------------------------------------------------ §2 */
 
-describe('§2 · with a message already waiting, the foot queues behind it and still says ⇧⌘↵ asks', () => {
+describe('§2 · with a message already waiting, the foot and Stop and send are the same', () => {
   /**
    * ⚑ **D-010** — the person's own waiting message drew *"Cancel it … before queueing another"* and
    * one they did not write *"Wait for it to go …"* (688 R22), because a second was refused. Several
@@ -233,21 +219,20 @@ describe('§2 · with a message already waiting, the foot queues behind it and s
    * what is held goes out together, in one turn, oldest first, a command alone: the foot says
    * *"with what is already waiting — a command goes alone"*.
    */
-  it('🔴 whoever wrote what waits: queue behind it, then Stop and send, limit and all — drawn whole', async () => {
+  it('🔴 whoever wrote what waits: not sent yet, drawn whole, and Stop and send titled with the limit', async () => {
     for (const notYours of [false, true]) {
       const m = await pane(holding(notYours))
       // ⚑ The premise: a message IS waiting — the transcript draws it.
       expect(m.all('queued-entry')).toHaveLength(1)
       const foot = m.q('composer-hint')
-      expect(text(foot)).toBe(FOOT_WAITING)
-      expect(text(foot)).toContain(THE_LIMIT)
+      expect(text(foot)).toBe(NOT_SENT)
       expect(text(foot)).not.toContain('Cancel it')
-      expect(keyHints(foot)).toEqual([SEND_KEY, INTERRUPT_KEY])
+      expect(keyHints(foot)).toEqual([])
       assertDrawn(foot, `the foot with a message waiting (not yours: ${String(notYours)})`, m.host)
       // ⚑ …and the button is the same Stop and send.
       expect(stopAndSendTitle(m)).toBe(TITLE)
       const { sent } = await theClauses()
-      expect(text(foot).endsWith(`is Stop and send: ${sent}`)).toBe(true)
+      expect(stopAndSendTitle(m)).toBe(`Stop and send — ${sent} (${INTERRUPT_KEY})`)
       unmountAll()
     }
   })
@@ -256,20 +241,20 @@ describe('§2 · with a message already waiting, the foot queues behind it and s
 /* ------------------------------------------------------------------ §3 */
 
 describe('§3 · beside the drawer — the narrowest the composer is drawn at', () => {
-  it('🔴 the foot with a draft — the limit in it — is still drawn whole', async () => {
+  it('🔴 the foot with a draft is still drawn whole', async () => {
     const m = await pane(conversation([started, asked, working]), { drawerOpen: true })
     expect(visible(m.q('session-drawer'))).toBe(true)
     const foot = m.q('composer-hint')
-    expect(text(foot)).toBe(`${SEND_KEY} to send after ${WHO} ${FOOT_TAIL}`)
+    expect(text(foot)).toBe(NOT_SENT)
     expect(visible(foot)).toBe(true)
     assertDrawn(foot, 'the busy foot with a draft, beside the drawer', m.host)
   })
 
-  it('🔴 the longer of the two feet — a message already waiting, the limit in it — is still drawn whole', async () => {
+  it('🔴 the foot with a message already waiting is still drawn whole', async () => {
     const m = await pane(holding(true), { drawerOpen: true })
     expect(visible(m.q('session-drawer'))).toBe(true)
     const foot = m.q('composer-hint')
-    expect(text(foot)).toBe(FOOT_WAITING)
+    expect(text(foot)).toBe(NOT_SENT)
     expect(visible(foot)).toBe(true)
     assertDrawn(foot, 'the waiting foot beside the drawer', m.host)
   })

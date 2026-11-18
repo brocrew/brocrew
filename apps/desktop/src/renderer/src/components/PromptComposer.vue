@@ -1467,7 +1467,7 @@ defineExpose({
             data-cy="interrupt-send-prompt"
             @click="send(true)"
           >
-            Stop and send <kbd>{{ interruptKey }}</kbd>
+            Stop and send
           </button>
         </template>
         <!-- ⚠️ `canInterrupt`, not `state === 'busy'` (094). A turn frozen on a card is the one a
@@ -1569,22 +1569,11 @@ defineExpose({
             >, but <strong>Esc</strong> is Stop: {{ A_STOP_ASKS_THE_TURN }}</template
           >.
         </template>
-        <!-- The two outcomes, spelled out at the moment they become available (077). Only shown once
-           there is something to send — which since 234 §2 means words OR a staged file, asked
-           through the one predicate rather than restated here. -->
-        <!-- 🔴 **D-010 · several may wait** — and since D-027 they go together, in one turn, oldest
-             first: this one goes after what already waits, whoever wrote it, in the same turn. ⛔
-             Except a command, which the host sends alone (`R42`), so the foot says so, and so does
-             the Queue button's title. -->
-        <template v-else-if="busyChoices && props.hasQueued">
-          <strong>{{ sendKey }}</strong> to send when {{ who }} finishes, with what is already
-          waiting — a command goes alone · <strong>{{ interruptKey }}</strong> is Stop and send:
-          {{ A_STOP_THEN_THIS_IS_SENT }}
-        </template>
-        <template v-else-if="busyChoices">
-          <strong>{{ sendKey }}</strong> to send after {{ who }} finishes ·
-          <strong>{{ interruptKey }}</strong> is Stop and send: {{ A_STOP_THEN_THIS_IS_SENT }}
-        </template>
+        <!-- Words typed during a turn stay in the box until Queue or Stop and send; the keys and
+             what each press does are in the buttons' titles. -->
+        <template v-else-if="busyChoices"
+          >Not sent yet · Queue sends it when {{ who }} finishes</template
+        >
         <!-- ⚠️ **Both halves of this sentence are about a TURN** — Escape is bound by
              `ConversationPane` and nowhere else, and there has to be a turn to queue behind. 102
              found it lit on the launcher and gated it on a descriptor; `starting` is now a state of
@@ -1972,13 +1961,11 @@ defineExpose({
 
 /* The shortcut keeps the button's full ink, for contrast; the bolder action word leads it. */
 .queue-button,
-.interrupt-send-button,
 .stop-now-button {
   font-weight: var(--fw-semibold);
 }
 
-.queue-button kbd,
-.interrupt-send-button kbd {
+.queue-button kbd {
   font-family: inherit;
   font-size: var(--type-caption);
   font-weight: var(--fw-normal);
@@ -2013,14 +2000,20 @@ defineExpose({
   color: var(--faint);
 }
 
+/* Beside Queue, Stop and send is the quiet choice: a link, not a second button. */
 .interrupt-send-button {
-  border: var(--border-width) solid var(--danger-border);
-  background: var(--danger-bg);
-  color: var(--danger-text-pale);
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-weight: var(--fw-normal);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
 }
 
 .interrupt-send-button:hover {
-  background: var(--danger-fill-hover);
+  color: var(--text);
 }
 
 .send-button {

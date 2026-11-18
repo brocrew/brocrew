@@ -337,13 +337,10 @@ describe('the composer renders as a multi-line field', () => {
     // The stop button steps aside: with text in the box, "interrupt and send" is the interrupting
     // gesture, and two controls that both stop the turn would be the duplication 076 forbade.
     expect(html).not.toContain('data-cy="interrupt-session"')
-    // The hint names both, and which chord is which.
-    expect(html).toContain('to send after Codex finishes')
-    // ⚑ **Re-aimed at `739`** (rule 26): it pinned *"to interrupt and send now"*; `739` Draw 5 says
-    // the interrupting chord as an ask — `737` F-7: *"Interrupt-and-send still claims a stop"* — and
-    // `739`'s review round 1 put the host's limit in the same clause (`739` #2, #25).
+    // The foot says the words are not sent yet; Stop and send's title says what it does.
+    expect(html).toContain('Not sent yet · Queue sends it when Codex finishes')
     expect(html).toContain(
-      'is Stop and send: the turn is asked to stop; this is sent once it has ended, or comes back to you if it has not within seconds',
+      'Stop and send — the turn is asked to stop; this is sent once it has ended, or comes back to you if it has not within seconds',
     )
   })
 
@@ -367,7 +364,7 @@ describe('the composer renders as a multi-line field', () => {
     // …and the stop steps aside exactly as it does for text, because the message is a message.
     expect(html).not.toContain('data-cy="interrupt-session"')
     // The hint agrees with the buttons — 223's tooltip defect was a second reading of one rule.
-    expect(html).toContain('to send after Codex finishes')
+    expect(html).toContain('Not sent yet · Queue sends it when Codex finishes')
   })
 
   /**

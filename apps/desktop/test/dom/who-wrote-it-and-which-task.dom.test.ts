@@ -249,16 +249,14 @@ describe('688 §3 · R22 — the composer does not point at a Cancel the row doe
    * because a second was refused; ⛔ the second is held behind now, so no foot names a Cancel at all
    * — whoever wrote what waits, alone, beside the person's own, or the person's own only.
    * ⚑ **D-027 moved the words**: what is held goes out together, in one turn, oldest first, and
-   * only a command goes alone — so the foot and the Queue title say *"with what is already waiting
-   * — a command goes alone"*, where they said *"…and take(s) what is already waiting"*.
+   * only a command goes alone — so the Queue title says *"with what is already waiting — a command
+   * goes alone"*. The foot says only that the words in the box are not sent yet.
    */
-  it('🔴 whoever wrote what waits: the foot queues behind it, points at no Cancel, and the Queue button offers the same', async () => {
+  it('🔴 whoever wrote what waits: the foot says not sent yet, points at no Cancel, and the Queue button goes behind it', async () => {
     for (const queued of [[GO], [MINE, ROUTED], [MINE]]) {
       const m = await composerOver(queued)
       const foot = m.q('composer-hint')
-      expect(words(foot)).toMatch(
-        /^.+ to send when .+ finishes, with what is already waiting — a command goes alone · .+ is Stop and send: the turn is asked to stop; this is sent once it has ended, or comes back to you if it has not within seconds$/,
-      )
+      expect(words(foot)).toMatch(/^Not sent yet · Queue sends it when .+ finishes$/)
       expect(words(foot)).not.toContain('Cancel it')
       expect(words(foot)).not.toContain('Wait for it to go')
       assertDrawn(foot, 'the composer’s foot')

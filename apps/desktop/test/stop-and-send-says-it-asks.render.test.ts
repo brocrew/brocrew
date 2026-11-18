@@ -23,13 +23,9 @@ const INTERRUPT_KEY = interruptKeyLabel(PLATFORM)
 
 /** The sentences, verbatim. */
 const TITLE = `Stop and send — the turn is asked to stop; this is sent once it has ended, or comes back to you if it has not within seconds (${INTERRUPT_KEY})`
-const FOOT = `${SEND_KEY} to send after Codex finishes · ${INTERRUPT_KEY} is Stop and send: the turn is asked to stop; this is sent once it has ended, or comes back to you if it has not within seconds`
-/**
- * ⚑ **D-010** — one foot while something waits, whoever wrote it. ⚑ **D-027 moved its first half**:
- * what waits no longer goes first, one turn each — this goes WITH it, in one turn, oldest first, and
- * only a command goes alone; it said *"…after Codex finishes and takes what is already waiting"*.
- */
-const FOOT_WAITING = `${SEND_KEY} to send when Codex finishes, with what is already waiting — a command goes alone · ${INTERRUPT_KEY} is Stop and send: the turn is asked to stop; this is sent once it has ended, or comes back to you if it has not within seconds`
+/** The foot while words wait in the box during a turn; the same line whether or not something already waits. */
+const FOOT = 'Not sent yet · Queue sends it when Codex finishes'
+const FOOT_WAITING = FOOT
 
 /** ⚑ The neighbours this draw leaves alone — verbatim, as `main` draws them too. */
 const PLAIN_STOP_TITLE = 'Stop — the turn is asked to stop (Esc)'
@@ -106,21 +102,19 @@ describe('§1 · `busy` with a draft: *Stop and send* says the turn is ASKED to 
     expect(titlesOf(html, 'interrupt-send-prompt')).toEqual([TITLE])
   })
 
-  it('🔴 the foot says ⇧⌘↵ is Stop and send, in the same clause, limit and all — and the queue half is unchanged', async () => {
+  it('the foot says the words are not sent yet, and leaves the keys to the buttons', async () => {
     const html = await busyWithADraft()
     expect(footOf(html)).toBe(FOOT)
-    // The key hint is the foot's own `<strong>`.
-    expect(footMarkupOf(html)).toContain(`<strong>${INTERRUPT_KEY}</strong> is Stop and send: `)
-    expect(footMarkupOf(html)).toContain(
-      `<strong>${SEND_KEY}</strong> to send after Codex finishes`,
-    )
+    expect(footMarkupOf(html)).not.toContain('<strong>')
+    expect(titlesOf(html, 'interrupt-send-prompt')).toEqual([TITLE])
+    expect(titlesOf(html, 'queue-prompt')).toEqual([QUEUE_TITLE])
   })
 
   it('🔴 a double with every optional prop omitted — `who`, `interruptible`, `hasQueued`, `stopUnanswered` at their defaults — draws the same words, *The agent* only in the queue half', async () => {
     const html = await render(PromptComposer, { state: 'busy', draft: DRAFT })
     // ⚑ The title names no one, so a default `who` cannot make it read *Stop The agent …*.
     expect(titlesOf(html, 'interrupt-send-prompt')).toEqual([TITLE])
-    expect(footOf(html)).toBe(FOOT.replace('after Codex finishes', 'after The agent finishes'))
+    expect(footOf(html)).toBe(FOOT.replace('when Codex finishes', 'when The agent finishes'))
   })
 
   it('🔴 with R83’s standing ask the words are the same — Stop and send asks ANEW (`723` F-5), it does not join', async () => {
@@ -138,7 +132,7 @@ describe('§1 · `busy` with a draft: *Stop and send* says the turn is ASKED to 
 // §2 · a message already waiting — one foot since D-010, whoever wrote it
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-describe('§2 · with a message already waiting, the foot queues behind it and still says ⇧⌘↵ asks', () => {
+describe('§2 · with a message already waiting, the foot and Stop and send are the same', () => {
   /**
    * ⚑ **D-010** — until then the foot said *"Cancel it … before queueing another"* (the person's
    * own) or *"Wait for it to go …"* (one they did not write, 688 R22), because the host refused a
@@ -146,11 +140,10 @@ describe('§2 · with a message already waiting, the foot queues behind it and s
    * ⚑ **D-027** — and what is held goes out together, in one turn, oldest first, a command alone:
    * the foot and the Queue title say *"with what is already waiting — a command goes alone"*.
    */
-  it('🔴 whoever wrote what waits: queue behind it, then Stop and send in R43’s words, limit and all', async () => {
+  it('🔴 whoever wrote what waits: the same not-sent-yet foot, and Stop and send titled in R43’s words', async () => {
     const html = await busyWithADraft({ hasQueued: true })
     expect(footOf(html)).toBe(FOOT_WAITING)
     expect(footOf(html)).not.toContain('Cancel it')
-    expect(footMarkupOf(html)).toContain(`<strong>${INTERRUPT_KEY}</strong> is Stop and send:`)
     // The title does not depend on the queue — the same Stop and send.
     expect(titlesOf(html, 'interrupt-send-prompt')).toEqual([TITLE])
   })
