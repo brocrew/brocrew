@@ -464,17 +464,15 @@ const droppedNote = computed(() =>
     <!-- The agents this call dispatched (029), NESTED rather than shown beside it. They sit outside
          the fold on purpose: a sub-agent running for minutes is the most important thing on screen
          while it runs, and burying it under the parent row's collapsed output would hide exactly
-         the thing 029 exists to surface. The cards collapse themselves. -->
+         the thing 029 exists to surface. Each card opens its transcript in the existing popup. -->
     <div v-if="item.subAgents?.length" class="subagents" data-cy="tool-subagents">
       <SubAgentEntry
         v-for="card in item.subAgents"
         :key="card.agentId"
         :card="card"
         placement="nested"
-        :can-read-answer="props.canReadAnswer"
         :can-open-transcript="props.canOpenChild"
         @open-child="(what, label) => emit('openChild', what, label)"
-        @open-answer="(callId, name) => emit('openAnswer', callId, name)"
       />
     </div>
     <!-- The workflow this call launched (108), nested for exactly the reason the cards above are:
