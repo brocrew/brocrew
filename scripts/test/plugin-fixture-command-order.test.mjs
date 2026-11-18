@@ -70,9 +70,10 @@ async function pipeFixture(url = 'http://127.0.0.1:1234/fern') {
 
 function expectEarlierResponse(fixture, eventAt) {
   const order = fixture.frames.map((frame) =>
-    frame.id === undefined ? `${frame.method}@${frame.params?.timestamp ?? ''}` : `reply:${frame.id}`,
+    frame.id === undefined
+      ? `${frame.method}@${frame.params?.timestamp ?? ''}`
+      : `reply:${frame.id}`,
   )
-  console.log('FIXTURE_WIRE_ORDER=' + JSON.stringify(order))
   const responseAt = fixture.frames.findIndex((frame) => frame.id === 2)
   expect(responseAt).toBeGreaterThanOrEqual(0)
   expect(eventAt).toBeGreaterThanOrEqual(0)
@@ -96,7 +97,9 @@ describe.skipIf(process.platform === 'win32')('fixture pipe command order', () =
   it('keeps a later data callback behind an asynchronous navigation response', async () => {
     let reply
     let arrived
-    const requested = new Promise((resolve) => { arrived = resolve })
+    const requested = new Promise((resolve) => {
+      arrived = resolve
+    })
     const server = createServer((_, response) => {
       reply = () => response.end(fixtureHtml)
       arrived()
