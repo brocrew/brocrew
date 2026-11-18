@@ -70,7 +70,13 @@ function shownUnder(el: Element): Rgba {
   return shown
 }
 
-function expectOn(what: string, words: Element | null, fill: Element, css: string, ink = 'var(--accent-2-text)'): number {
+function expectOn(
+  what: string,
+  words: Element | null,
+  fill: Element,
+  css: string,
+  ink = 'var(--accent-2-text)',
+): number {
   expect(words, `${what} is drawn`).not.toBeNull()
   expect(see(getComputedStyle(words!).color), `${what} in the text form`).toEqual(
     token(words!, ink),
@@ -265,7 +271,13 @@ describe('words in the second accent, on their fills', () => {
     )
     await settle()
     const ask = m.host.querySelector('[data-cy="subagent-open-transcript"]')
-    expectOn('Open transcript', ask, m.host.querySelector('.subagent')!, 'var(--panel)', 'var(--accent-text)')
+    expectOn(
+      'Open transcript',
+      ask,
+      m.host.querySelector('.subagent')!,
+      'var(--panel)',
+      'var(--accent-text)',
+    )
   })
 
   it('the child-work viewer: its part, on its panel in the overlay, over the overlay’s wash', async () => {
