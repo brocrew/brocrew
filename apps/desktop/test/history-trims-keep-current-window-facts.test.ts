@@ -43,7 +43,9 @@ function fixture() {
   const listing = async () => {
     const result = await host.listConversations()
     if ('refused' in result) throw new Error(result.refused)
-    expect(result.unresumable.map((one) => one.sessionId)).toEqual(['alpha'])
+    expect([...result.resumable, ...result.unresumable].map((one) => one.sessionId)).toEqual([
+      'alpha',
+    ])
     return result
   }
   const close = async () => {
@@ -72,6 +74,7 @@ it.each<TranscriptEvent>([
       expect(f.remove(old).changed).toBe(1)
       await f.settle()
       const after = await f.listing()
+      expect(after.resumable).toEqual(before.resumable)
       expect(after.unresumable).toEqual(before.unresumable)
       expect(sameWindowWriter(stamp, f.sample({ kind: 'listing' }))).toBe(true)
       expect(f.read.mock.calls.length).toBe(reads)
@@ -171,7 +174,9 @@ it('keeps a real work change visible when its outer commit also trims history', 
     })()
     await f.settle()
     const answer = await f.listing()
-    expect(answer.unresumable[0]?.named?.title).toBe('Changed fictional work')
+    expect([...answer.resumable, ...answer.unresumable][0]?.named?.title).toBe(
+      'Changed fictional work',
+    )
     expect(f.read.mock.calls.length).toBeGreaterThan(reads)
   } finally {
     await f.close()
