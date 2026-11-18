@@ -111,6 +111,11 @@ it('opens the native transcript through the existing pane reader', async () => {
   m.q('panel-agents').querySelector<HTMLButtonElement>('[data-cy="panel-row"]')!.click()
   await tick()
   expect(asked.length).toBeGreaterThan(0)
-  expect(asked.every((what) => JSON.stringify(what) === JSON.stringify({ part: 'transcript', agentId: 'map-reader' }))).toBe(true)
+  expect(
+    asked.every(
+      (what) =>
+        JSON.stringify(what) === JSON.stringify({ part: 'transcript', agentId: 'map-reader' }),
+    ),
+  ).toBe(true)
   expect(m.q('child-work-viewer').textContent).toContain('Three paths found.')
 })

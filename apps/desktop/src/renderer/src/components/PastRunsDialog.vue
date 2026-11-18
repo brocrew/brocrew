@@ -14,6 +14,7 @@ const groups: (RunGroup | 'All kinds')[] = [
   'Commands',
   'Workflows',
   'Jobs & monitors',
+  'Background',
 ]
 const count = (group: RunGroup | 'All kinds'): number =>
   props.runs.filter((row) => group === 'All kinds' || row.group === group).length
