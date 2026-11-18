@@ -303,6 +303,7 @@ it('fits tightest connection then tightest window at 1180 and 760 while retainin
   expectUsageLabelsFit(cards)
   await page.viewport(2400, 840)
   m.host.style.width = '2400px'
+  Object.assign(line.parentElement!.style, { flex: '', width: '' })
   await settle()
   expect(line.textContent).toBe(fullVisual)
   expect(line.title).toBe(full)
