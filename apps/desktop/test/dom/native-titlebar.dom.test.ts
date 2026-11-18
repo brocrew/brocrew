@@ -6,12 +6,16 @@ import IconSprite from '../../src/renderer/src/components/IconSprite.vue'
 import AppTitleBar from '../../src/renderer/src/components/AppTitleBar.vue'
 import { providePlaceNavigator } from '../../src/renderer/src/composables/usePlaceNavigator'
 import { mount, unmountAll } from './harness'
+import { railFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import { providerConnectionFixtures } from '../../look/fixtures/providers'
+import { attributedUsageFixtures, runningSignInFixtures } from './provider-launch.fixture'
 
 const ORIGINAL = { width: window.innerWidth, height: window.innerHeight }
 
 afterEach(async () => {
   unmountAll()
   vi.restoreAllMocks()
+  railFacts().update({ runningConversations: null })
   delete (window as { api?: unknown }).api
   await page.viewport(ORIGINAL.width, ORIGINAL.height)
 })
@@ -107,10 +111,12 @@ it('keeps long title and diagnostics inside the window grid', async () => {
   await page.viewport(1180, 840)
   const now = Date.now()
   const hour = 3_600_000
+  railFacts().update({ runningConversations: runningSignInFixtures() })
   window.api = {
     runtime: {
       providerCatalogue: async () => PROVIDER_DESCRIPTORS,
-      providerUsage: async () => ({
+      providerConnections: async () => providerConnectionFixtures(),
+      providerUsage: async () => attributedUsageFixtures({
         claude: [
           {
             window: 'five_hour',
