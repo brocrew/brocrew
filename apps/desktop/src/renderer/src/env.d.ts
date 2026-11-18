@@ -3,7 +3,6 @@ import type { HandedPath } from '../../shared/attachment-contracts'
 import type { ProviderSetupBridge } from '../../shared/provider-setup'
 import type { RecoveryRetentionClient } from '../../shared/recovery-retention'
 import type { PluginsClient } from '../../shared/plugin-settings'
-import type { TranscriptRetention } from '../../shared/transcript-retention'
 import type { AttentionSignal } from '../../shared/attention-signals'
 import type { DockLabel, DockLabelChange } from '../../shared/dock-label'
 /// <reference types="vite/client" />
@@ -72,10 +71,6 @@ declare global {
       /** This workspace's short name and colour on the Dock icon (`shared/dock-label.ts`). */
       recoveryRetention?: RecoveryRetentionClient
       logging?: LoggingClient
-      transcriptRetention?: {
-        read: () => Promise<TranscriptRetention>
-        set: (period: TranscriptRetention) => Promise<TranscriptRetention>
-      }
       dockLabel?: {
         read: () => Promise<DockLabel>
         set: (change: DockLabelChange) => Promise<DockLabel>

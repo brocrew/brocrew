@@ -8,7 +8,6 @@ import type { Provider } from '@brobot2/shared'
 /** Values owned by the consuming host, rather than its provider implementation. */
 export interface ProviderHostValues {
   readonly event: { readonly type: string }
-  readonly retentionCandidate: object
   readonly session: object
   readonly file: object
   readonly memoryNote: object
@@ -57,18 +56,6 @@ export interface TurnReading<H extends ProviderHostValues> {
   answer(): H['turnAnswer']
 }
 
-export interface RetentionScan<H extends ProviderHostValues> {
-  readonly home: string
-  scanChildren(path: string): AsyncGenerator<string>
-  plainDirectory(path: string): Promise<boolean>
-  considered(path: string): boolean
-  add(
-    file: string,
-    session: string,
-    directory: string | null,
-  ): Promise<H['retentionCandidate'] | null>
-}
-
 export interface ProviderChildWorkRequest<H extends ProviderHostValues> {
   readonly ref: SessionRef
   readonly updatedAt: number
@@ -91,10 +78,6 @@ export interface TranscriptPolicy<H extends ProviderHostValues> {
     home: () => string | null,
     resolveAsset: (candidate: string) => string | null,
   ): ResolveImagePath
-  scanRetention(input: RetentionScan<H>): AsyncGenerator<{
-    path: string
-    candidate: H['retentionCandidate'] | null
-  }>
   filesOf(home: string, sessions: readonly H['session'][]): H['file'][]
   memoryNotesOf(home: string, sessions: readonly H['session'][]): H['memoryNote'][]
   readChild(request: ProviderChildWorkRequest<H>): H['childResult']

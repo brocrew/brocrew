@@ -27,7 +27,6 @@ it('resolves the injected storage supplier only when the component captures it',
     undefined,
     undefined,
     undefined,
-    undefined,
     storage,
   )
   expect(storage).not.toHaveBeenCalled()

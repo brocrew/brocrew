@@ -1,12 +1,7 @@
 <script setup lang="ts">
 import { tabDestination } from '../lib/tab-destination'
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
-import { useTranscriptRetention } from '../composables/useTranscriptRetention'
 import { useClientApi } from '../client-provider/injection'
-import {
-  TRANSCRIPT_RETENTION_CHOICES,
-  isTranscriptRetention,
-} from '../../../shared/transcript-retention'
 import type { Provider, ProviderCapabilityMap } from '../../../shared/runtime-ipc'
 import type { ProviderLimitsView } from '../lib/persons-queue'
 import type { ModelLists } from '../lib/model-lists'
@@ -102,13 +97,6 @@ async function saveApprovalDefault(event: Event): Promise<void> {
   }
 }
 
-const transcripts = useTranscriptRetention()
-async function keepTranscripts(event: Event): Promise<void> {
-  const select = event.target as HTMLSelectElement
-  const next = select.value === 'forever' ? 'forever' : Number(select.value)
-  if (isTranscriptRetention(next)) await transcripts.save(next)
-  select.value = String(transcripts.period.value ?? 90)
-}
 // The Dock label is the Mac's for now: no other desktop shows it.
 const dockLabelHere = /mac/i.test(platformHere())
 const dockLabel = useDockLabel()
@@ -284,34 +272,6 @@ async function tabKey(event: KeyboardEvent, current: SettingsTab): Promise<void>
         /><span>Auto</span>
       </section>
       <RecoveryCopiesSection />
-      <section class="setting-card" data-cy="transcript-retention">
-        <span class="setting-icon" aria-hidden="true"
-          ><svg class="icon"><use href="#i-clock" /></svg
-        ></span>
-        <div class="setting-copy">
-          <h2 id="settings-transcript-retention-label">Keep agents' transcripts</h2>
-          <p>
-            A conversation unused for this long has its transcript deleted to save space. It stays
-            here, but its agent can't pick it up again.
-          </p>
-          <p v-if="transcripts.status.value" role="status">{{ transcripts.status.value }}</p>
-        </div>
-        <select
-          aria-labelledby="settings-transcript-retention-label"
-          data-cy="transcript-retention-period"
-          :value="String(transcripts.period.value ?? 90)"
-          :disabled="transcripts.period.value === null || transcripts.saving.value"
-          @change="keepTranscripts"
-        >
-          <option
-            v-for="choice in TRANSCRIPT_RETENTION_CHOICES"
-            :key="choice.value"
-            :value="String(choice.value)"
-          >
-            {{ choice.label }}
-          </option>
-        </select>
-      </section>
       <section class="setting-card" data-cy="attention-signals">
         <span class="setting-icon" aria-hidden="true"
           ><svg class="icon"><use href="#i-bang" /></svg

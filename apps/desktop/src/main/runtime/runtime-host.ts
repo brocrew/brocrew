@@ -18072,25 +18072,18 @@ export class RuntimeHost implements LiveHost {
       lines: result.lines,
       capped: result.capped,
     }
-    const [cleared, imports] = await Promise.allSettled([
-      this.deps.transcriptsCleared?.(input.from, input.to) ?? Promise.resolve([]),
+    const [imports] = await Promise.allSettled([
       this.deps.skillImports?.(input.from, input.to) ?? Promise.resolve([]),
     ])
     if (this.launches.closed) throw new WindowReadUnavailable()
     return {
       ...answer,
-      ...(cleared.status === 'fulfilled' && cleared.value.length
-        ? { transcriptsCleared: cleared.value }
-        : {}),
       ...(imports.status === 'fulfilled' && imports.value.length
         ? { skillImports: imports.value }
         : {}),
       read: {
         ...answer.read,
-        rowsUnread:
-          answer.read.rowsUnread +
-          Number(cleared.status === 'rejected') +
-          Number(imports.status === 'rejected'),
+        rowsUnread: answer.read.rowsUnread + Number(imports.status === 'rejected'),
       },
     }
   }

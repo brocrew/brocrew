@@ -36,9 +36,6 @@ export const EVERY_CARD: RecentActivityReading = {
       imported: 'release-notes-2',
     },
   ],
-  transcriptsCleared: [
-    { at: ACTIVITY_NOW - 90 * 60_000, days: 30, conversations: 12, bytes: 48_500_000 },
-  ],
   lines: [
     line('1', 'finished', 3, 'Ada', 'Check the release notes'),
     line('2', 'failed', 14, 'Felix', 'Build the Sunday menu page'),

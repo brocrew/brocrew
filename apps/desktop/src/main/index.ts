@@ -32,7 +32,6 @@ import { backupsDir, databaseFile, recoveryDir, SIDECARS } from './recovery/layo
 import { profileSkillAccess, SharedSkillDiscovery } from './skills/shared-discovery'
 import { convertSharedSkills } from './skills/shared-conversion'
 import { SharedSkillLibrary } from './skills/shared-library'
-import { providerProcessesAreInFlight } from './runtime/live-hosts'
 import { RECOVERY_RETENTION_CHANNELS } from '../shared/recovery-retention'
 import type { ListingAnswer } from '../shared/listing-published'
 import {
@@ -41,11 +40,7 @@ import {
   retainedCopyInfo,
   deleteRetainedCopy,
 } from './recovery/checkpoint'
-import { TranscriptRetentionHost, transcriptStartupWasInterrupted } from './transcript-retention'
-import {
-  TRANSCRIPT_RETENTION_CHANNELS,
-  isTranscriptRetention,
-} from '../shared/transcript-retention'
+import { keepTranscriptsForever } from './transcript-retention'
 import { ATTENTION_SIGNALS_CHANNEL, isAttentionSignal } from '../shared/attention-signals'
 import { AttentionSignals } from './attention-signals'
 import { attentionOverlay } from './attention-overlay'
@@ -435,7 +430,6 @@ let thisBuildsMigrations: readonly BuildMigration[] | null = null
 let host: RuntimeHost | null = null
 const pluginSupervisor = new PluginSupervisorAttachment()
 let updates: ReturnType<typeof startUpdates> | null = null
-let transcriptRetention: TranscriptRetentionHost | undefined
 let eventRetention: ReturnType<typeof startEventRetention> | undefined
 let firstListAcceptedAt: number | undefined
 let recoveryMaintenance: Promise<unknown> = Promise.resolve()
@@ -687,13 +681,9 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
   const stopProviderServices = new AbortController()
   app.once('will-quit', () => stopProviderServices.abort())
   recordedConversation = (sessionId) => db === null || store.recordedOne(sessionId) !== null
-  const retention = (transcriptRetention ??= new TranscriptRetentionHost(
-    userData,
-    providerProcessesAreInFlight,
-    Date.now,
-    transcriptStartupWasInterrupted(store),
-  ))
-  setImmediate(() => retention.start())
+  void keepTranscriptsForever(userData).catch((error: unknown) =>
+    console.warn('Transcripts could not be marked as kept for good.', error),
+  )
   let knowledgeChanged: (slug: string) => void = () => {}
   const methodKnowledge = await createSavedMethodService({
     homesRoot: providerHomesRoot(userData),
@@ -766,7 +756,6 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     memoryKnowledge,
     afterFirstWindowLoad: firstWindowLoad,
     deferStartupUntilListPaint: true,
-    transcriptsCleared: (from, to) => transcriptRetention?.recent(from, to) ?? Promise.resolve([]),
     workSearchReader: startWorkSearch(database.name),
     pastWorkSearchReader: startPastWorkSearch(),
     windowReader: startWindowReader(database.name),
@@ -827,7 +816,6 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     },
     createRuntime: (provider) => providerModules[provider].createRuntime(),
     prepareProviderLaunch: (provider, profileId, connection) => {
-      transcriptRetention?.beforeLaunch()
       return providerModules[provider].prepareLaunch(profileId, connection)
     },
     connectionFor: (provider, connectionId) => {
@@ -837,11 +825,7 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     },
     listConnections: () =>
       Object.values(providerModules).flatMap((module) => module.connections?.list() ?? []),
-    beforeProviderLaunch: async () => {
-      transcriptRetention?.beforeLaunch()
-    },
     prepareProviderHome: async (provider, profileId) => {
-      transcriptRetention?.beforeLaunch()
       return providerModules[provider].home.prepare(profileId)
     },
     prepareBuiltInSkills: ({ pack, ...input }) =>
@@ -1217,11 +1201,6 @@ function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null
         throw new Error('The recovery copy could not be deleted.')
     }),
   )
-  ipcMain.handle(TRANSCRIPT_RETENTION_CHANNELS.read, () => transcriptRetention!.read())
-  ipcMain.handle(TRANSCRIPT_RETENTION_CHANNELS.set, (_event, period: unknown) => {
-    if (!isTranscriptRetention(period)) throw new Error('Invalid transcript retention.')
-    return transcriptRetention!.set(period)
-  })
   ipcMain.handle('app:info', () => readAppInfo())
   const attentionWindows = new WeakMap<BrowserWindow, AttentionSignals>()
   ipcMain.handle(ATTENTION_SIGNALS_CHANNEL, (event, signal: unknown) => {
@@ -1694,7 +1673,6 @@ async function whatAFailedStartEndsOn(
 function stopWhatTheStartStarted(): Promise<void> {
   stoppingTheStart ??= (async () => {
     await stopProviderSetup?.()
-    await transcriptRetention?.stop()
     stopThemeIpc?.()
     stopThemeIpc = undefined
     stopStorageIpc?.()
@@ -2282,7 +2260,6 @@ const lifetime = createAppLifetime({
     void stopRecoveryWork()
     void stopProviderSetup?.()
     updates?.stop()
-    void transcriptRetention?.stop()
     host?.stopSweeping()
     stopThemeIpc?.()
     stopThemeIpc = undefined
@@ -2298,7 +2275,6 @@ const lifetime = createAppLifetime({
     await stopRecoveryWork()
     await stopProviderSetup?.()
     await updates?.drain()
-    await transcriptRetention?.stop()
     await (stoppingTheStart ?? host?.drainArchiveWork() ?? Promise.resolve())
     await themes?.close()
   },

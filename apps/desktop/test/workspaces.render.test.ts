@@ -27,7 +27,6 @@ it('constructs lazily and resolves only the workspace capability during setup', 
     unused,
     unused,
     unused,
-    unused,
     workspaces,
   )
   expect(workspaces).not.toHaveBeenCalled()

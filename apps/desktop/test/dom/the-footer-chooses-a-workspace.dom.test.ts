@@ -156,7 +156,6 @@ async function section(rows?: WorkspaceRow[], available = true) {
     undefined,
     undefined,
     undefined,
-    undefined,
     () => storage,
     () => current,
   )

@@ -597,18 +597,19 @@ test('the package an app archive carries is read as @electron/asar writes it', a
   }
 })
 
-test('accepts cleanup progress but refuses a changed retention choice or a missing file', () => {
+test('accepts the retention file set to forever but refuses one left deleting or gone', () => {
   const name = 'transcript-retention.json'
   const bytes = (value) => Buffer.from(JSON.stringify(value))
   const before = { period: 90, checkedAt: 10, cleared: [] }
-  const after = { ...before, checkedAt: 20, scanAfter: '2026/entry' }
+  const after = { ...before, period: 'forever', scanAfter: '' }
   const was = { [name]: bytes(before) }
   assert.doesNotThrow(() => statePreserved(was, { [name]: bytes(after) }))
-  for (const damaged of [
-    { ...after, period: 365 },
-    { ...after, checkedAt: -1 },
-    { ...after, cleared: [{}] },
-  ]) {
+  assert.doesNotThrow(() => statePreserved({}, { [name]: bytes({ period: 'forever' }) }))
+  assert.throws(
+    () => statePreserved({}, { [name]: bytes({ period: 90 }) }),
+    /State presence changed/,
+  )
+  for (const damaged of [{ ...after, period: 365 }, { period: 'forever' }]) {
     assert.throws(() => statePreserved(was, { [name]: bytes(damaged) }), /State bytes changed/)
   }
   assert.throws(() => statePreserved(was, {}), /State presence changed/)

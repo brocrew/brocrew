@@ -202,6 +202,19 @@ describe('deleting a conversation', () => {
     expect(readFileSync(files.other, 'utf8')).toContain('someone-else')
   })
 
+  it('keeps its provider transcript when the person deletes only the records', async () => {
+    const root = await world.open(host, 'claude', 'pm')
+    await host.archiveConversation(root)
+    const files = itsFiles(world.store.recordedOne(root)?.providerSessionId ?? '')
+    const before = readFileSync(files.transcript)
+    expect(await host.deleteConversation(root, ['records'])).toMatchObject({
+      done: true,
+      removed: ['records'],
+    })
+    expect(world.store.recordedOne(root)).toBeNull()
+    expect(readFileSync(files.transcript).equals(before)).toBe(true)
+  })
+
   it('refuses a helper on its own, and a tree another conversation used', async () => {
     const root = await world.open(host, 'claude', 'pm')
     const helper = aHelperOf(root, 'helper_1')

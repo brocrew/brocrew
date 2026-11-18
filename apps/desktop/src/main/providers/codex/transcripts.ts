@@ -2,7 +2,6 @@ import type { TranscriptEvent } from '../../../shared/conversation-events'
 import { splitQualified } from '@brobot2/runtime'
 import { CODEX_TOOL_NAMING } from '@brobot2/runtime/codex'
 import { imageResolver } from './images'
-import { scanRetention } from './retention'
 import { filesOf, memoryNotesOf } from './conversation-files'
 import { readChild } from './child-work'
 import { readingCodex } from './turn-reading'
@@ -50,7 +49,6 @@ export const transcripts: TranscriptPolicy = {
     words.trim() === '/compact'
       ? 'This was a command for Codex’s own compaction. No words reached the model.'
       : null,
-  scanRetention,
   filesOf,
   memoryNotesOf,
   readChild,

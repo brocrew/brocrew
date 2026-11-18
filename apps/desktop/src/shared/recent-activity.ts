@@ -1,4 +1,3 @@
-import type { TranscriptsCleared } from './transcript-retention'
 import type { DigestRead } from './digest'
 
 export const RECENT_ACTIVITY_LINES = 200
@@ -26,7 +25,6 @@ export interface ActivityLine {
 }
 
 export interface RecentActivityReading {
-  readonly transcriptsCleared?: readonly TranscriptsCleared[]
   readonly skillImports?: readonly SkillImportNotice[]
   readonly window: { readonly from: number; readonly to: number }
   readonly read: DigestRead

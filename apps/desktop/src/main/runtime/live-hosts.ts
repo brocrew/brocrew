@@ -83,8 +83,6 @@ export interface LiveHost {
    * caller is told the import succeeded.
    */
   workInFlight(): Iterable<string>
-  /** Provider sessions, probes, sign-ins, and launches still owned by this host. */
-  providerProcessesInFlight?(): boolean
 }
 
 /**
@@ -125,12 +123,4 @@ export function workRunningElsewhere(self: LiveHost): ReadonlySet<string> {
     for (const id of host.workInFlight()) elsewhere.add(id)
   }
   return elsewhere
-}
-
-/** Cleanup admission spans every home and ledger in this app process. */
-export function providerProcessesAreInFlight(): boolean {
-  for (const host of directory) {
-    if (host.providerProcessesInFlight?.()) return true
-  }
-  return false
 }

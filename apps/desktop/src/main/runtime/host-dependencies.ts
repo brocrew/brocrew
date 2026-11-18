@@ -4,7 +4,6 @@ import type { TeamProfileGraphWindows } from '../db/team-profile-graph-windows'
 import type { PluginInstructionSource } from '../plugins/instructions'
 import type { SkillsWindow } from '../../shared/skills-window'
 import type { PastWorkSearchReader } from '../db/past-work-search-reader'
-import type { TranscriptsCleared } from '../../shared/transcript-retention'
 import type { SkillImportNotice } from '../../shared/recent-activity'
 import type { StartAttemptLine } from '../start-attempt-line'
 import type { ThemeStore } from '../themes/store'
@@ -65,7 +64,6 @@ export interface RuntimeHostDeps {
   closeSharedSkills?: () => void
   skillsForAPerson?: SkillsWindow
   savedMethods?: SavedMethodService
-  transcriptsCleared?: (from: number, to: number) => Promise<readonly TranscriptsCleared[]>
   skillImports?: (from: number, to: number) => Promise<readonly SkillImportNotice[]>
 
   readonly themes?: Pick<ThemeStore, 'refresh' | 'snapshot' | 'raw' | 'save' | 'set'>

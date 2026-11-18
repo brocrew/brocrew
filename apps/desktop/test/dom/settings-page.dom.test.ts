@@ -1,7 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, provide, ref } from 'vue'
 import type { ClientApi } from '../../src/shared/client-api'
-import type { TranscriptRetentionClient } from '../../src/shared/transcript-retention'
 import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
 import { createDesktopProviderApi } from '../../src/renderer/src/client-provider/desktop'
 import { visibleProviderDescriptors } from '@brobot2/shared'
@@ -47,7 +46,6 @@ afterEach(() => {
 
 async function settings(
   start: SettingsTab = 'providers',
-  retention?: NonNullable<Window['api']['transcriptRetention']>,
   logging?: NonNullable<Window['api']['logging']>,
   client?: ClientApi,
 ) {
@@ -100,7 +98,6 @@ async function settings(
       }),
     },
   }
-  if (retention) window.api = { ...window.api, transcriptRetention: retention }
   themesBridge('brocrew')
   const store = createAgentStore({ agentIdentities: async () => identities } as RuntimeBridge)
   await store.load()
@@ -200,7 +197,7 @@ it('shows the saved choice and the full log path, and saves a change', async () 
     undefined,
     () => logging,
   )
-  const { m } = await settings('general', undefined, raw, client)
+  const { m } = await settings('general', raw, client)
   const toggle = m.q('debug-mode-switch') as HTMLInputElement
   await vi.waitFor(() => expect(toggle.checked).toBe(true))
   expect(m.q('log-path').textContent).toContain(path)
@@ -217,7 +214,7 @@ it('keeps the switch disabled until the read arrives', async () => {
   const answer = new Promise<{ debug: boolean; path: string; servicePath: null }>((done) => {
     resolve = done
   })
-  const { m } = await settings('general', undefined, {
+  const { m } = await settings('general', {
     getLogging: () => answer,
     setLoggingDebug: vi.fn(),
   })
@@ -236,7 +233,7 @@ it('retries a failed read and restores the checkbox after a failed save', async 
     .mockRejectedValueOnce(new Error('read failed'))
     .mockResolvedValue(state)
   const setLoggingDebug = vi.fn().mockRejectedValue(new Error('write failed'))
-  const { m } = await settings('general', undefined, { getLogging, setLoggingDebug })
+  const { m } = await settings('general', { getLogging, setLoggingDebug })
   await vi.waitFor(() => expect(m.all('log-error')).toHaveLength(1))
   const toggle = m.q('debug-mode-switch') as HTMLInputElement
   expect(toggle.disabled).toBe(true)
@@ -338,131 +335,10 @@ it('moves tab focus with arrows, Home and End while keeping just one tab selecte
   expect(m.host.querySelectorAll('[role="tab"][aria-selected="true"]')).toHaveLength(1)
 })
 
-function clientWithRetention(bridge?: TranscriptRetentionClient) {
-  return createDesktopProviderApi(
-    () => window.api.runtime,
-    () => undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    () => bridge,
-  )
-}
-
-it('keeps agents transcripts for the saved period, with 90 days as the default', async () => {
-  let kept: 30 | 90 | 365 | 'forever' = 90
-  const bridge = {
-    read: vi.fn(async () => kept),
-    set: vi.fn(async (value: typeof kept) => (kept = value)),
-  }
-  const raw = {
-    read: vi.fn<TranscriptRetentionClient['read']>(async () => 'forever'),
-    set: vi.fn<TranscriptRetentionClient['set']>(async () => 'forever'),
-  }
-  const client = clientWithRetention(bridge)
-  const { m } = await settings('general', raw, undefined, client)
-  const select = m.q('transcript-retention-period') as HTMLSelectElement
-  await vi.waitFor(() => expect(select.disabled).toBe(false))
-  expect(m.q('transcript-retention').textContent).toContain("Keep agents' transcripts")
-  expect(m.q('transcript-retention').textContent?.replace(/\s+/g, ' ')).toContain(
-    "A conversation unused for this long has its transcript deleted to save space. It stays here, but its agent can't pick it up again.",
-  )
-  expect([...select.options].map((option) => option.textContent)).toEqual([
-    '30 days',
-    '90 days',
-    '1 year',
-    'Forever',
-  ])
-  expect(select.value).toBe('90')
-  for (const value of ['30', '365', 'forever']) {
-    select.value = value
-    select.dispatchEvent(new Event('change', { bubbles: true }))
-    await vi.waitFor(() => {
-      expect(select.disabled).toBe(false)
-      expect(select.value).toBe(value)
-    })
-    expect(String(kept)).toBe(value)
-  }
-  m.unmount()
-  const again = await settings('general', raw, undefined, client)
-  await vi.waitFor(() =>
-    expect((again.m.q('transcript-retention-period') as HTMLSelectElement).value).toBe('forever'),
-  )
-  expect(raw.read).not.toHaveBeenCalled()
-  expect(raw.set).not.toHaveBeenCalled()
-})
-it('a failed transcript retention save restores what was actually kept', async () => {
-  const bridge: TranscriptRetentionClient = {
-    read: async () => 90,
-    set: async () => {
-      throw new Error('fictional disk refusal')
-    },
-  }
-  const { m } = await settings('general', undefined, undefined, clientWithRetention(bridge))
-  const select = m.q('transcript-retention-period') as HTMLSelectElement
-  await vi.waitFor(() => expect(select.disabled).toBe(false))
-  select.value = '30'
-  select.dispatchEvent(new Event('change', { bubbles: true }))
-  await vi.waitFor(() =>
-    expect(m.q('transcript-retention').textContent).toContain("That didn't work. Try again."),
-  )
-  expect(select.value).toBe('90')
-})
-
-it('keeps transcript retention unavailable when the injected client has no capability', async () => {
-  const raw = {
-    read: vi.fn<TranscriptRetentionClient['read']>(async () => 90),
-    set: vi.fn<TranscriptRetentionClient['set']>(async () => 30),
-  }
-  const { m } = await settings('general', raw, undefined, clientWithRetention())
-  await nextTick()
-  expect((m.q('transcript-retention-period') as HTMLSelectElement).disabled).toBe(true)
-  expect(raw.read).not.toHaveBeenCalled()
-  expect(raw.set).not.toHaveBeenCalled()
-})
-
-it('waits for a transcript-retention save and shows a failed read', async () => {
-  let finish!: (value: 30) => void
-  const answer = new Promise<30>((resolve) => (finish = resolve))
-  const set = vi.fn(() => answer)
-  const { m } = await settings(
-    'general',
-    undefined,
-    undefined,
-    clientWithRetention({ read: async () => 90, set }),
-  )
-  const select = m.q('transcript-retention-period') as HTMLSelectElement
-  await vi.waitFor(() => expect(select.disabled).toBe(false))
-  select.value = '30'
-  select.dispatchEvent(new Event('change', { bubbles: true }))
-  await vi.waitFor(() => expect(select.disabled).toBe(true))
-  select.dispatchEvent(new Event('change', { bubbles: true }))
-  expect(set).toHaveBeenCalledTimes(1)
-  finish(30)
-  await vi.waitFor(() => expect(select.disabled).toBe(false))
-  expect(select.value).toBe('30')
-  m.unmount()
-  const failed = await settings(
-    'general',
-    undefined,
-    undefined,
-    clientWithRetention({
-      read: async () => {
-        throw new Error('fictional read refusal')
-      },
-      set,
-    }),
-  )
-  await vi.waitFor(() =>
-    expect(failed.m.q('transcript-retention').textContent).toContain(
-      "That didn't work. Try again.",
-    ),
-  )
-  expect((failed.m.q('transcript-retention-period') as HTMLSelectElement).disabled).toBe(true)
+it('offers no transcript deletion period: BroCrew keeps every provider transcript', async () => {
+  const { m } = await settings('general')
+  expect(m.all('transcript-retention')).toHaveLength(0)
+  expect(m.host.textContent).not.toMatch(/transcript/i)
 })
 
 it('saves the new-conversation default and preserves the confirmed value on refusal', async () => {

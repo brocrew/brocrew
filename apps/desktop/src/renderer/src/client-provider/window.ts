@@ -10,7 +10,6 @@ export const desktopProviderApi = createDesktopProviderApi(
   () => globalThis.window?.api?.logging,
   () => globalThis.window?.api?.dockLabel,
   () => window.api.runtime,
-  () => globalThis.window?.api?.transcriptRetention,
   () => globalThis.window?.api?.storage,
   () => globalThis.window?.api?.workspaces,
   () => globalThis.window?.api?.themes,

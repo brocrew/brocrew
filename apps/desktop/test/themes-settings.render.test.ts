@@ -28,7 +28,6 @@ it('keeps theme construction and server setup lazy', async () => {
     unused,
     unused,
     unused,
-    unused,
     themes,
   )
   expect(themes).not.toHaveBeenCalled()

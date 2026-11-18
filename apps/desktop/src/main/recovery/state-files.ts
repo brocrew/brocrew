@@ -43,7 +43,7 @@ export const APP_STATE_FILES: readonly AppStateFile[] = [
   {
     name: 'transcript-retention.json',
     restore: 'kept-current',
-    why: 'The retention choice and record of files already cleared, which a database restore must not rewind.',
+    why: 'Tells an earlier version to keep every transcript, which a database restore must not rewind.',
   },
   {
     name: 'active-theme.json',

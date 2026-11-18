@@ -20,7 +20,7 @@ registry ordering, and actual failures.
 interfaces or weaken their method types. Its fields are:
 
 - `event`: host transcript event extension, alongside the concrete canonical `RuntimeEvent`.
-- `retentionCandidate`, `session`, `file`, `memoryNote`: the host's retained files and session rows.
+- `session`, `file`, `memoryNote`: the host's retained files and session rows.
 - `childPart`, `childResult`, `turnAsked`, `turnAnswer`: the host's child-work and turn-read protocol.
 - `discovery`, `protectedPlaceKind`: adoption results and the host's folder vocabulary.
 - `instructionInputs`, `launchRead`, `instruction`, `origin`: launch composition

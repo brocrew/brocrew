@@ -13,7 +13,6 @@ import type { RuntimeEvent } from '../src/events'
 
 interface FernValues extends ProviderHostValues {
   readonly event: { type: 'fern-note'; text: string }
-  readonly retentionCandidate: { file: string }
   readonly session: { id: string }
   readonly file: { path: string }
   readonly memoryNote: { note: string }
@@ -75,10 +74,6 @@ function fernModule(): ProviderModule<FernValues> {
       eventForDisplay: (event) => event,
       keepEarlierReportedEffort: () => true,
       whatDeletionLeaves: () => [],
-      async *scanRetention(input) {
-        const candidate = await input.add('/fictional/record', 'fern-session', null)
-        yield { path: '/fictional/record', candidate }
-      },
       filesOf: (_home, sessions) => sessions.map(({ id }) => ({ path: `/fictional/${id}` })),
       memoryNotesOf: () => [],
       readChild: (request) => ({ text: request.part }),

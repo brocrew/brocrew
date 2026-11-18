@@ -517,7 +517,6 @@
   "types|apps/desktop/src/main/recovery/coordinator.ts|FaultPoint",
   "types|apps/desktop/src/main/recovery/files.ts|Step",
   "types|apps/desktop/src/main/runtime/agent-tools.ts|tools.PublishedRefusal",
-  "types|apps/desktop/src/main/transcript-retention-files.ts|TranscriptToClear",
   "types|apps/desktop/src/renderer/src/composables/useSurface.ts|ReservedPlace",
   "types|apps/desktop/src/renderer/src/composables/useSurface.ts|SurfaceName",
   "types|apps/desktop/src/renderer/src/composables/useSurface.ts|View",

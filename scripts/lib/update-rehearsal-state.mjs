@@ -1,11 +1,20 @@
 import { STATE_RULES } from './upgrade-path.mjs'
 
-/** Keep state bytes exact, except for the cleanup progress allowed by the upgrade check. */
+const RETENTION = 'transcript-retention.json'
+
+/** Keep state bytes exact, except the retention file the new version sets to keep every transcript. */
 export function rehearsalStateKept(name, before, after) {
+  if (before == null && name === RETENTION && Buffer.isBuffer(after)) {
+    try {
+      return after.length <= 65536 && JSON.parse(after.toString('utf8')).period === 'forever'
+    } catch {
+      return false
+    }
+  }
   if (before == null || after == null) return before == null && after == null
   if (!Buffer.isBuffer(before) || !Buffer.isBuffer(after)) return false
   if (before.equals(after)) return true
-  if (name !== 'transcript-retention.json') return false
+  if (name !== RETENTION) return false
   try {
     return (
       STATE_RULES[name](

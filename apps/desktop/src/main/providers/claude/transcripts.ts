@@ -5,7 +5,6 @@ import {
   refusalForDisplay,
   toolInventoryForDisplay,
 } from '@brobot2/runtime/claude'
-import { scanRetention } from './retention'
 import { signInObservation } from './sign-in-observation'
 import { filesOf, memoryNotesOf } from './conversation-files'
 import { readChild } from './child-work'
@@ -59,7 +58,6 @@ export const transcripts: TranscriptPolicy = {
     'Claude Code’s prompt history in an agent’s folder, which every conversation of that agent ' +
       'shares, isn’t changed.',
   ],
-  scanRetention,
   filesOf,
   memoryNotesOf,
   readChild,

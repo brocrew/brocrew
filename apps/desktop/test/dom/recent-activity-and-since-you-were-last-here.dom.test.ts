@@ -693,29 +693,3 @@ describe('the last-seen record', () => {
     expect(seen({ now: NOW }).since()).toBe(NOW - 90 * MINUTE)
   })
 })
-
-it('Recent activity reports a transcript cleanup without claiming that nothing happened', () => {
-  const value = {
-    ...reading([]),
-    transcriptsCleared: [{ at: NOW - 1000, days: 90, conversations: 3, bytes: 1288490189 }],
-  }
-  const { m } = page(value)
-  expect(m.q('activity-transcripts-cleared').textContent).toContain(
-    'Cleared the transcripts of 3 conversations unused for 90 days, freeing 1.2 GB.',
-  )
-  expect(m.all('activity-empty')).toHaveLength(0)
-})
-
-it('Recent activity names an early stop even when no transcript was cleared', () => {
-  const value = {
-    ...reading([]),
-    transcriptsCleared: [
-      { at: NOW - 1000, days: 90, conversations: 0, bytes: 0, stoppedEarly: true as const },
-    ],
-  }
-  const { m } = page(value)
-  expect(m.q('activity-transcripts-cleared').textContent).toContain(
-    'Transcript clearing stopped after 15 seconds. No transcripts were cleared. The rest will be checked next time BroCrew starts.',
-  )
-  expect(m.all('activity-empty')).toHaveLength(0)
-})

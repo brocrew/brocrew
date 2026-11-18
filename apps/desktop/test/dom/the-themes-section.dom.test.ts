@@ -191,7 +191,6 @@ function injectedThemes(initial?: ThemesBridge, explicit?: ThemesBridge) {
     undefined,
     undefined,
     undefined,
-    undefined,
     supplier,
   )
   expect(supplier).not.toHaveBeenCalled()
