@@ -1,52 +1,69 @@
-import { execFile } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { stripVTControlCharacters } from 'node:util'
-import { fileURLToPath } from 'node:url'
-import { expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import type { TestContext } from 'vitest'
+import { cleanupAndReportFailures } from './helpers/cleanup-failure-trace'
 
-it('prints the failed cleanup stage for rejection and the framework timeout, not passing cleanup', async () => {
-  const root = fileURLToPath(new URL('../../../', import.meta.url))
-  const config = fileURLToPath(
-    new URL('./fixtures/cleanup-failure/vitest.config.ts', import.meta.url),
-  )
-  const directory = mkdtempSync(join(tmpdir(), 'cleanup-report-'))
-  const report = join(directory, 'result.json')
-  try {
-    const output = await new Promise<string>((resolve, reject) => {
-      execFile(
-        process.execPath,
-        [
-          join(root, 'node_modules/vitest/vitest.mjs'),
-          'run',
-          '--config',
-          config,
-          '--reporter=verbose',
-          '--reporter=json',
-          '--outputFile.json=' + report,
-        ],
-        { cwd: root, encoding: 'utf8', maxBuffer: 1024 * 1024 },
-        (error, stdout, stderr) => {
-          if (error?.code !== 1) reject(error ?? new Error('Expected the cleanup controls to fail'))
-          else resolve(stripVTControlCharacters(stdout + stderr))
-        },
-      )
+describe('cleanup failure reporting', { sequential: true, shuffle: false }, () => {
+  const output: string[] = []
+  const failures: { test: string; errors: string[] }[] = []
+  const rememberFailure = (context: TestContext) => {
+    context.onTestFailed(({ task }) => {
+      failures.push({
+        test: task.name,
+        errors: task.result?.errors?.map((error) => String(error.message)) ?? [],
+      })
     })
-    const native = JSON.parse(readFileSync(report, 'utf8')) as {
-      numPassedTests: number
-      numFailedTests: number
-      testResults: { assertionResults: { title: string; status: string }[] }[]
-    }
-    expect([native.numPassedTests, native.numFailedTests]).toEqual([1, 3])
-    expect(output).toContain('original cleanup rejection')
-    expect(output).toContain('Hook timed out in 10000ms')
+  }
+
+  beforeAll(() => {
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      output.push(String(chunk))
+      return true
+    })
+  })
+  afterAll(() => vi.restoreAllMocks())
+
+  describe('controlled outcomes', () => {
+    afterEach(async (context) => {
+      await cleanupAndReportFailures(
+        context,
+        [
+          { closeAll: async () => {} },
+          {
+            closeAll: async () => {
+              if (context.task.name === 'cleanup rejects')
+                throw new Error('original cleanup rejection')
+              if (context.task.name === 'cleanup never returns') await new Promise(() => {})
+            },
+          },
+        ],
+        { close: () => {} },
+        [],
+      )
+    }, 10000)
+
+    it('passes quietly', () => {})
+    it.fails('body fails but cleanup succeeds quietly', (context) => {
+      rememberFailure(context)
+      expect('body').toBe('failure')
+    })
+    it.fails('cleanup rejects', (context) => rememberFailure(context))
+    it.fails('cleanup never returns', (context) => rememberFailure(context))
+  })
+
+  it('retains original errors and reports only the two failed cleanup stages', () => {
+    expect(failures.map((failure) => failure.test)).toEqual([
+      'body fails but cleanup succeeds quietly',
+      'cleanup rejects',
+      'cleanup never returns',
+    ])
+    expect(failures[0]!.errors.join('\n')).toContain('body')
+    expect(failures[1]!.errors).toContain('original cleanup rejection')
+    expect(failures[2]!.errors.join('\n')).toContain('Hook timed out in 10000ms')
     const records = output
-      .split('\n')
-      .filter((line) => line.includes('CLEANUP_FAILED '))
+      .filter((line) => line.startsWith('CLEANUP_FAILED '))
       .map(
         (line) =>
-          JSON.parse(line.split('CLEANUP_FAILED ')[1]!) as {
+          JSON.parse(line.slice('CLEANUP_FAILED '.length)) as {
             test: string
             stages: { stage: string; index: number }[]
           },
@@ -57,7 +74,5 @@ it('prints the failed cleanup stage for rejection and the framework timeout, not
     ])
     expect(records[0]!.stages.at(-1)).toMatchObject({ stage: 'host-close-settled', index: 1 })
     expect(records[1]!.stages.at(-1)).toMatchObject({ stage: 'host-close-entry', index: 1 })
-  } finally {
-    rmSync(directory, { recursive: true, force: true })
-  }
-}, 30000)
+  })
+})
