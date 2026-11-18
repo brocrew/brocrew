@@ -1,3 +1,4 @@
+import { openAgentTestConversation } from './lib/agent-test-operations'
 import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -194,13 +195,8 @@ describe('470 · a grant that waits for the next launch', () => {
     rmSync(work, { recursive: true, force: true })
   })
 
-  const personOpens = async (profileId: string): Promise<string> => {
-    const { sessionId } = await host.createSession(
-      { provider: 'claude', profileId, cwd: work, approvalMode: 'ask' },
-      window,
-    )
-    return sessionId
-  }
+  const personOpens = (profileId: string): Promise<string> =>
+    openAgentTestConversation(host, window, work, profileId, 'ask')
 
   /** An identity exists only once a person has run a conversation as it — 341 criterion 12. */
   const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {

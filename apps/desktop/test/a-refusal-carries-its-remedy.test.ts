@@ -1,6 +1,11 @@
+import {
+  makeAgentTestIdentity,
+  grantAgentTestCapabilities,
+  closeAgentTestResources,
+} from './lib/agent-test-operations'
 import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import type { ToolRefusedEvent, TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -285,11 +290,7 @@ describe('425 · a refusal carries its remedy', () => {
     window = new RecordingSink('webContents:1')
   })
 
-  afterEach(async () => {
-    await host.closeAll()
-    db.close()
-    for (const dir of [userData, work]) rmSync(dir, { recursive: true, force: true })
-  })
+  afterEach(() => closeAgentTestResources(host, db, [userData, work]))
 
   const personOpens = async (
     profileId = 'pm',
@@ -309,16 +310,6 @@ describe('425 · a refusal carries its remedy', () => {
       await new Promise((resolve) => setTimeout(resolve, 5))
     }
     throw new Error(`timed out waiting for ${what}`)
-  }
-
-  /** An identity exists only once a person has run a conversation as it — 341 criterion 12. */
-  const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
-    const id = await personOpens(profileId)
-    await host.close(id, window)
-  }
-
-  const grant = (profileId: string, edit: Parameters<SessionStore['setCapabilities']>[1]): void => {
-    expect(store.setCapabilities(profileId, edit)).toBe(true)
   }
 
   const callerOf = (of: AgentToolHost, sessionId: string) => {
@@ -381,7 +372,7 @@ describe('425 · a refusal carries its remedy', () => {
    * by replying with them. ⛔ Nothing here writes a `work_resource` row by hand.
    */
   const aPieceToReplyTo = async (): Promise<{ owner: string; label: string }> => {
-    await bringIdentityIntoBeing('worker')
+    await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'worker')
     const giver = await personOpens()
     const given = await host.giveWork(
       {
@@ -1051,11 +1042,11 @@ describe('425 · a refusal carries its remedy', () => {
     })
 
     it('🔴 nothing a caller wrote reaches the row, and the remedy did not re-open that door', async () => {
-      await bringIdentityIntoBeing('worker')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'worker')
       const pm = await personOpens('pm')
       // ⚑ **D-014 · refused by the depth a person set**, since any agent may give to any agent: a
       // `max_depth` of 0 leaves this conversation no room for a piece below its own.
-      grant('pm', { maxDepth: 0 })
+      grantAgentTestCapabilities(store, 'pm', { maxDepth: 0 })
       const call = callerOf(host, pm)
       const secret = 'Northwind: do not write this into a ledger'
       await call('give_work', {
@@ -1145,7 +1136,7 @@ describe('425 · a refusal carries its remedy', () => {
 
   describe('§4 · the whole way from the rail to the person', () => {
     it('🔴 a refusal with an act reaches the ledger and the transcript says what the act is', async () => {
-      await bringIdentityIntoBeing('worker')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'worker')
       // ⚑ **An `auto` PM**, so the worker its give starts runs its brief to the end, then answers it
       // with a summary over the limit: a refusal whose act is to shorten it, built for real rather
       // than injected at the host seam. ⚠️ This was once a give refused over a stall, and that
@@ -1196,7 +1187,7 @@ describe('425 · a refusal carries its remedy', () => {
     })
 
     it('⚑ the same call with nothing held is admitted, writes no row, and carries no remedy', async () => {
-      await bringIdentityIntoBeing('worker')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'worker')
       const pm = await personOpens('pm', 'auto')
       const call = callerOf(host, pm)
       // ⛔ **Standing rule 3 over the SAME reader** — a call admitted writes no row and carries no

@@ -2,11 +2,12 @@ import {
   openAgentTestConversation,
   makeAgentTestIdentity,
   grantAgentTestCapabilities,
+  closeAgentTestResources,
 } from './lib/agent-test-operations'
 import { callAgentTool } from './lib/call-agent-tool'
 import type { ToolRefusedEvent, TranscriptEvent } from '../src/shared/conversation-events'
 import { navigationReply } from './helpers/navigation-reply'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -130,22 +131,10 @@ describe('405 · a refusal you can see', () => {
       readProviderConfig: fixtureProviderConfig,
     })
 
-  afterEach(async () => {
-    await host.closeAll()
-    db.close()
-    rmSync(userData, { recursive: true, force: true })
-    rmSync(work, { recursive: true, force: true })
-  })
+  afterEach(() => closeAgentTestResources(host, db, [userData, work]))
 
   const personOpens = (profileId: string, approvalMode: 'ask' | 'auto' = 'ask'): Promise<string> =>
     openAgentTestConversation(host, window, work, profileId, approvalMode)
-
-  /** An identity exists only once a person has run a conversation as it — 341 criterion 12. */
-  const bringIdentityIntoBeing = (profileId: string): Promise<void> =>
-    makeAgentTestIdentity(personOpens, (id) => host.close(id, window), profileId)
-
-  const grant = (profileId: string, edit: Parameters<SessionStore['setCapabilities']>[1]): void =>
-    grantAgentTestCapabilities(store, profileId, edit)
 
   /** The toolset one session is offered, called the way a provider would call it. */
   const toolsOf = (sessionId: string) => {
@@ -316,7 +305,7 @@ describe('405 · a refusal you can see', () => {
     it('⚑ the paired positive — one identity over, the identical call is admitted and writes NO row', async () => {
       // ⛔ **The ONE fact that differs from the test above**: `worker` exists. Same tool, same
       // arguments, same caller — standing rule 3's *"the same call one fact over allowed"*.
-      await bringIdentityIntoBeing('worker')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'worker')
       const pm = await personOpens('pm')
       const { call } = toolsOf(pm)
 
@@ -336,11 +325,11 @@ describe('405 · a refusal you can see', () => {
     })
 
     it('🔴 `too-deep` — the second rail `402` produced live, and it reads DIFFERENTLY from the first', async () => {
-      await bringIdentityIntoBeing('worker')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'worker')
       const pm = await personOpens('pm')
       // ⛔ **The identity exists AND the depth is refused**, so the rail that fires is the depth one
       // and not the existence one — `admitGive` asks depth first (R2).
-      grant('pm', { maxDepth: 0 })
+      grantAgentTestCapabilities(store, 'pm', { maxDepth: 0 })
       const { call } = toolsOf(pm)
 
       const refused = await call('give_work', {
@@ -368,10 +357,10 @@ describe('405 · a refusal you can see', () => {
     })
 
     it('⚑ the paired positive for depth — `maxDepth` back at its default admits the identical call', async () => {
-      await bringIdentityIntoBeing('worker')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'worker')
       const pm = await personOpens('pm')
       // ⚑ `null` is *use the default*, which is the one fact that differs from the test above.
-      grant('pm', { maxDepth: null })
+      grantAgentTestCapabilities(store, 'pm', { maxDepth: null })
       const { call } = toolsOf(pm)
       const admitted = await call('give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
@@ -391,7 +380,7 @@ describe('405 · a refusal you can see', () => {
 
   describe('§2 · each named refusal call leaves its own row', () => {
     it('🔴 a spawn rail, a tool refusal, a reply rail and a question rail each land with their own word', async () => {
-      await bringIdentityIntoBeing('worker')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'worker')
       // ⚑ **D-016 · an `auto` PM**, so the worker its give starts runs its brief to the END with the
       // piece still open, and can ask about it — the question the fifth door below answers.
       const pm = await personOpens('pm', 'auto')
@@ -399,7 +388,7 @@ describe('405 · a refusal you can see', () => {
 
       // 1 · `SPAWN_RAILS` — the door `341` built, refused by the depth a person set: the one
       // start rail that waits on a person now that any agent may give to any agent (D-014).
-      grant('pm', { maxDepth: 0 })
+      grantAgentTestCapabilities(store, 'pm', { maxDepth: 0 })
       await call('give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
@@ -423,7 +412,7 @@ describe('405 · a refusal you can see', () => {
       // false"*, which a hardcoded field satisfies. ⚑ **An answer over the bound is the real
       // transient one** (a give is no longer refused over a stall): the same call with shorter words
       // lands, and nobody else has to decide anything.
-      grant('pm', { maxDepth: null })
+      grantAgentTestCapabilities(store, 'pm', { maxDepth: null })
       const given = await call('give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
@@ -476,7 +465,7 @@ describe('405 · a refusal you can see', () => {
     })
 
     it("⛔ the row lands in the CALLER's ledger and in nobody else's", async () => {
-      await bringIdentityIntoBeing('worker')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'worker')
       const pm = await personOpens('pm')
       const { call } = toolsOf(pm)
       const spawned = await call('give_work', {
@@ -512,7 +501,7 @@ describe('405 · a refusal you can see', () => {
 
   describe('§3 · the refusal, not the request', () => {
     it('keeps a supplied resource path in actionable prose and out of the stored quotation', async () => {
-      await bringIdentityIntoBeing('worker')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'worker')
       const pm = await personOpens('pm')
       const file = join(work, 'PRIVATE_CALLER_PATH.md')
       writeFileSync(file, Buffer.alloc(MAX_TEXT_RESOURCE_BYTES + 1, 'x'))
@@ -540,10 +529,10 @@ describe('405 · a refusal you can see', () => {
     })
 
     it('🔴 nothing a caller wrote reaches the ledger — not the arguments and not the detail; the sentence the app composed does', async () => {
-      await bringIdentityIntoBeing('worker')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'worker')
       const pm = await personOpens('pm')
       // ⚑ **Refused by the depth a person set** — the give's one start rail that waits on a person.
-      grant('pm', { maxDepth: 0 })
+      grantAgentTestCapabilities(store, 'pm', { maxDepth: 0 })
       const { call } = toolsOf(pm)
       // ⛔ **Words a person could have written**, in the fields `give_work` carries them in: the
       // `title` and `brief` are the work itself and `folder` is a path on this machine.
@@ -736,9 +725,9 @@ describe('405 · a refusal you can see', () => {
     })
 
     it('⛔ the work a caller wrote is in no kept sentence — a brief, a title, a message, a summary, an answer — at four doors', async () => {
-      await bringIdentityIntoBeing('worker')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'worker')
       const pm = await personOpens('pm')
-      grant('pm', { maxDepth: 0 })
+      grantAgentTestCapabilities(store, 'pm', { maxDepth: 0 })
       const { call } = toolsOf(pm)
       // ⚑ One word, written into every field that carries a caller's own work.
       const WORK = 'Northwind'
@@ -816,9 +805,9 @@ describe('405 · a refusal you can see', () => {
     })
 
     it('🔴 the kept app sentence is a prefix of the receipt, in its order, at every door sampled', async () => {
-      await bringIdentityIntoBeing('worker')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'worker')
       const pm = await personOpens('pm')
-      grant('pm', { maxDepth: 0 })
+      grantAgentTestCapabilities(store, 'pm', { maxDepth: 0 })
       const { set } = toolsOf(pm)
       const texts: string[] = []
       const said = async (name: ToolName, args: Record<string, unknown>): Promise<void> => {
@@ -1037,9 +1026,9 @@ describe('405 · a refusal you can see', () => {
 
   describe('§5 · a person reading a transcript can see it', () => {
     it('🔴 the refused call draws a notice naming the tool and the rule; the admitted one draws nothing', async () => {
-      await bringIdentityIntoBeing('worker')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'worker')
       const pm = await personOpens('pm')
-      grant('pm', { maxDepth: 0 })
+      grantAgentTestCapabilities(store, 'pm', { maxDepth: 0 })
       const { call } = toolsOf(pm)
       await call('give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
@@ -1153,9 +1142,9 @@ describe('405 · a refusal you can see', () => {
 
   describe('§6 · written by the host that owns the ledger', () => {
     it("🔴 the row takes the host's own ordinal, and everything after it still lands", async () => {
-      await bringIdentityIntoBeing('worker')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'worker')
       const pm = await personOpens('pm')
-      grant('pm', { maxDepth: 0 })
+      grantAgentTestCapabilities(store, 'pm', { maxDepth: 0 })
       const { call } = toolsOf(pm)
       await call('give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',

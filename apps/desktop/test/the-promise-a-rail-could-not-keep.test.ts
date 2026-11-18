@@ -1,3 +1,4 @@
+import { openAgentTestConversation } from './lib/agent-test-operations'
 import {
   RecordingSink,
   syntheticProviderHome,
@@ -126,13 +127,8 @@ describe('424 §B · what `agent-cannot-take-a-message` still answers for', () =
     for (const dir of [userData, work]) rmSync(dir, { recursive: true, force: true })
   })
 
-  const personOpens = async (profileId: string): Promise<string> => {
-    const { sessionId } = await host.createSession(
-      { provider: 'claude', profileId, cwd: work, approvalMode: 'ask' },
-      window,
-    )
-    return sessionId
-  }
+  const personOpens = (profileId: string): Promise<string> =>
+    openAgentTestConversation(host, window, work, profileId, 'ask')
 
   /** An identity exists only once a person has run a conversation as it — 341 criterion 12. */
   const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {

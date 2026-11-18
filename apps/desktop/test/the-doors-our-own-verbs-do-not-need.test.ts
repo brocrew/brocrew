@@ -2,10 +2,11 @@ import {
   openAgentTestConversation,
   makeAgentTestIdentity,
   grantAgentTestCapabilities,
+  closeAgentTestResources,
 } from './lib/agent-test-operations'
-import { namedAgentTool } from './lib/call-agent-tool'
+import { structuredAgentToolsFor } from './lib/call-agent-tool'
 import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -182,34 +183,13 @@ describe('486 · the doors our own verbs do not need', () => {
     window = new RecordingSink('webContents:1')
   })
 
-  afterEach(async () => {
-    await host.closeAll()
-    db.close()
-    for (const dir of [userData, work]) rmSync(dir, { recursive: true, force: true })
-  })
+  afterEach(() => closeAgentTestResources(host, db, [userData, work]))
 
   const personOpens = (profileId: string): Promise<string> =>
     openAgentTestConversation(host, window, work, profileId, 'ask')
 
-  /** An identity exists only once a person has run a conversation as it — 341 criterion 12. */
-  const bringIdentityIntoBeing = (profileId: string): Promise<void> =>
-    makeAgentTestIdentity(personOpens, (id) => host.close(id, window), profileId)
-
-  const grant = (profileId: string, edit: Parameters<SessionStore['setCapabilities']>[1]): void =>
-    grantAgentTestCapabilities(store, profileId, edit)
-
   /** The toolset one session is offered, called the way a provider would call it. */
-  const toolsOf = (sessionId: string) => {
-    const set = agentToolsFor(host, sessionId)
-    const call = async (
-      name: ToolName,
-      args: Record<string, unknown> = {},
-    ): Promise<Record<string, unknown>> => {
-      const answered = await namedAgentTool(set, name).call(args)
-      return (answered.structured ?? {}) as Record<string, unknown>
-    }
-    return { set, call }
-  }
+  const toolsOf = (sessionId: string) => structuredAgentToolsFor(host, sessionId)
 
   /**
    * ⛔ **An agent's own conversation, started by a parent's give** — so `sessionSpeakingAs` decodes
@@ -219,7 +199,7 @@ describe('486 · the doors our own verbs do not need', () => {
    * turn.
    */
   const anAgentRunning = async (profileId: string): Promise<string> => {
-    await bringIdentityIntoBeing(profileId)
+    await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), profileId)
     const parent = await personOpens('pm')
     const given = await toolsOf(parent).call('give_work', {
       definition_of_done: 'The requested result and its checks are recorded.',
@@ -279,7 +259,7 @@ describe('486 · the doors our own verbs do not need', () => {
       const worker = await anAgentRunning('worker')
       // ⚠️ **D-014 · the ruled default is `any`**, so *a caller with no grant* is one a person set to
       // `none` — the wall is kept for exactly that caller.
-      grant('worker', { canCreateAgents: 'none' })
+      grantAgentTestCapabilities(store, 'worker', { canCreateAgents: 'none' })
       const refused = await toolsOf(worker).call('create_agent', {
         profile_slug: 'helper',
         provider: 'DEV-75297',
@@ -291,7 +271,7 @@ describe('486 · the doors our own verbs do not need', () => {
 
       // ⚑ **The paired positive, one fact over** (standing rule 3): the SAME malformed call from a
       // caller a person HAS granted still meets the shape check, so the wall did not eat it.
-      grant('worker', { canCreateAgents: 'any' })
+      grantAgentTestCapabilities(store, 'worker', { canCreateAgents: 'any' })
       const shaped = await toolsOf(worker).call('create_agent', {
         profile_slug: 'helper',
         provider: 'DEV-75297',
@@ -303,12 +283,12 @@ describe('486 · the doors our own verbs do not need', () => {
     // ⚑ **D-016** — `list_projects`, the second door on the same reach, is gone with projects.
     it('⛔ message_agent · the same order, on the reach a person granted', async () => {
       const worker = await anAgentRunning('worker')
-      grant('worker', { canMessage: 'none' })
+      grantAgentTestCapabilities(store, 'worker', { canMessage: 'none' })
       const tools = toolsOf(worker)
       expect((await tools.call('message_agent', { kind: 'follow-up' }))['rail']).toBe(
         'may-not-message',
       )
-      grant('worker', { canMessage: 'any' })
+      grantAgentTestCapabilities(store, 'worker', { canMessage: 'any' })
       const widened = toolsOf(worker)
       expect((await widened.call('message_agent', { kind: 'follow-up' }))['rail']).toBe(
         'malformed-request',
@@ -322,10 +302,10 @@ describe('486 · the doors our own verbs do not need', () => {
       // unentitled caller must not learn which identities exist from the shape of its refusal —
       // and moving the grant IN FRONT of the argument check is exactly the change that could have
       // turned the refusal into an oracle.
-      await bringIdentityIntoBeing('taken')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'taken')
       const worker = await anAgentRunning('worker')
       // ⚠️ **D-014 · the default is `any`**, so the unentitled caller is one a person set to `none`.
-      grant('worker', { canCreateAgents: 'none' })
+      grantAgentTestCapabilities(store, 'worker', { canCreateAgents: 'none' })
       const tools = toolsOf(worker)
       const existing = await tools.call('create_agent', { profile_slug: 'taken' })
       const absent = await tools.call('create_agent', { profile_slug: 'nobody-has-this-name' })
@@ -339,7 +319,7 @@ describe('486 · the doors our own verbs do not need', () => {
       // 🔴 **The control, and without it every line above passes over an app that answers nothing.**
       // ⚠️ An ENTITLED caller can tell the two names apart — so the fold above is a fold and not an
       // absence of information.
-      grant('worker', { canCreateAgents: 'any' })
+      grantAgentTestCapabilities(store, 'worker', { canCreateAgents: 'any' })
       const entitled = toolsOf(worker)
       expect((await entitled.call('create_agent', { profile_slug: 'taken' }))['rail']).toBe(
         'agent-name-taken',
@@ -359,10 +339,10 @@ describe('486 · the doors our own verbs do not need', () => {
       // ⚑ **Why the host door has to hold it on its own**: it is the only thing in this app that
       // writes an identity, and a caller that reaches it without going through the tool — a future
       // verb, a window path, a second tool — would meet whatever order is written there.
-      await bringIdentityIntoBeing('taken')
+      await makeAgentTestIdentity(personOpens, (id) => host.close(id, window), 'taken')
       const worker = await anAgentRunning('worker')
       // ⚠️ **D-014 · the default is `any`**, so the unentitled caller is one a person set to `none`.
-      grant('worker', { canCreateAgents: 'none' })
+      grantAgentTestCapabilities(store, 'worker', { canCreateAgents: 'none' })
       const by = { ownerId: agentCallerId(worker) }
       const said = (slug: string) => ({
         slug,
@@ -380,7 +360,7 @@ describe('486 · the doors our own verbs do not need', () => {
       expect(store.agentIdentities().map((one) => one.slug)).not.toContain('nobody-has-this-name')
 
       // 🔴 **The control**: entitled, the same door tells the two names apart.
-      grant('worker', { canCreateAgents: 'any' })
+      grantAgentTestCapabilities(store, 'worker', { canCreateAgents: 'any' })
       expect(host.createAgentFor(worker, said('taken'), by, null, null)).toMatchObject({
         ok: false,
         rail: 'agent-name-taken',
@@ -392,7 +372,7 @@ describe('486 · the doors our own verbs do not need', () => {
 
     it('⛔ …and the wall names only the CALLER, never the thing it asked about', async () => {
       const worker = await anAgentRunning('worker')
-      grant('worker', { canCreateAgents: 'none' })
+      grantAgentTestCapabilities(store, 'worker', { canCreateAgents: 'none' })
       const refused = await toolsOf(worker).call('create_agent', { profile_slug: 'somebody' })
       const detail = JSON.stringify(refused['detail'])
       expect(detail).not.toContain('somebody')
