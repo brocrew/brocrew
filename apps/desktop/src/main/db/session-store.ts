@@ -3663,25 +3663,23 @@ export function createSessionStore(
 
   function whatOpenedTheLastEndedTurn(sessionId: string): ReceivedInATurn | null {
     const generation = activeGeneration(sessionId)
-    const closed = selectLastClosedTurn.get(sessionId, generation) as
-      ClosedTurnRow | undefined
+    const closed = selectLastClosedTurn.get(sessionId, generation) as ClosedTurnRow | undefined
     if (closed === undefined) return null
-    const row = selectTheTurnsOpening.get(closed.id, sessionId, generation) as ExchangeRow | undefined
+    const row = selectTheTurnsOpening.get(closed.id, sessionId, generation) as
+      ExchangeRow | undefined
     return row === undefined ? null : receivedOn(sessionId, row, PREVIEW_CAP)
   }
 
   function replyQuestionWithoutARequest(conversation: string): string | null {
     const generation = activeGeneration(conversation)
-    const closed = selectLastClosedTurn.get(conversation, generation) as
-      ClosedTurnRow | undefined
+    const closed = selectLastClosedTurn.get(conversation, generation) as ClosedTurnRow | undefined
     if (
       closed === undefined ||
       (selectClosedTurnReason.get(closed.id) as { end_reason: string }).end_reason !== 'completed'
     )
       return null
     const opening = selectTheTurnsOpening.get(closed.id, conversation, generation) as
-      | ExchangeRow
-      | undefined
+      ExchangeRow | undefined
     if (opening === undefined) return null
     const received = receivedOn(conversation, opening, 0)
     if (![received, ...(received.cameWith ?? [])].some((one) => one.from.is === 'a-person'))
@@ -5477,7 +5475,8 @@ export function createSessionStore(
         .prepare('SELECT 1 FROM turn WHERE id = ? AND session_id = ? AND generation = ?')
         .get(turnId, sessionId, generation)
       if (owned === undefined) return null
-      const row = selectTheTurnsOpening.get(turnId, sessionId, generation) as ExchangeRow | undefined
+      const row = selectTheTurnsOpening.get(turnId, sessionId, generation) as
+        ExchangeRow | undefined
       if (row === undefined || row.payload === null) return null
       const event = aStoredObject(row.payload)
       if (event?.type !== 'user_turn' || typeof event.text !== 'string')
