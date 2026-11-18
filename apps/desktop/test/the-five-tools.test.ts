@@ -1,3 +1,4 @@
+import { callAgentTool } from './lib/call-agent-tool'
 import { agentToolCode } from './helpers/agent-tool-source'
 import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -270,12 +271,7 @@ describe('347 · the five tools', () => {
   /** The toolset one session is offered, called the way a provider would call it. */
   const toolsOf = (sessionId: string) => {
     const set = agentToolsFor(host, sessionId)
-    const call = async (name: ToolName, args: Record<string, unknown>) => {
-      const tool = set.tools.find((one) => one.name === name)
-      if (tool === undefined) throw new Error(`no such tool: ${name}`)
-      const answered = await tool.call(args)
-      return answered.structured as Record<string, unknown>
-    }
+    const call = (name: ToolName, args: Record<string, unknown>) => callAgentTool(set, name, args)
     return { set, call }
   }
 
