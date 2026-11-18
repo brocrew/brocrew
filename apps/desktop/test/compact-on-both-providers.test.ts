@@ -435,7 +435,7 @@ describe('713 §1 · R59 — the host, over the REAL Codex adapter', () => {
     ).toBe(true)
   })
 
-  it('⛔ the control: an AGENT’s `/compact` to a Codex worker is framed words — an agent compacts nobody', async () => {
+  it('the control: an ordinary agent `/compact` message to Codex remains framed words', async () => {
     const workerProfile = 'worker-713'
     // ⚑ An identity whose OWN provider is Codex — what a spawn launches it on.
     app.store.createAgentIdentity(
@@ -540,6 +540,11 @@ describe('713 §1 · R59 — the host, over the REAL Codex adapter', () => {
             .find((event) => event.type === 'status')?.state === 'idle',
         'worker idle after reply',
       )
+      expect(app.store.setCapabilities('compact-parent', { canMessage: 'none' })).toBe(true)
+      const message = await callOn(agentToolsFor(app.host, parent), 'message_agent', {
+        agent: target, text: 'A separate ordinary message.', kind: 'note',
+      })
+      expect(message.outcome).toBe('refused')
       const turnsBefore = codex.turnTexts().length
       const result = await callOn(agentToolsFor(app.host, parent), 'compact_agent', {
         agent: target,
@@ -563,6 +568,11 @@ describe('713 §1 · R59 — the host, over the REAL Codex adapter', () => {
       })
       expect(refused).toMatchObject({ outcome: 'refused', rail: 'not-below-you' })
       expect(stranger.codex.asked('thread/compact/start')).toBe(0)
+      for (const [caller, addressed] of [[parent, parent], [target, parent]]) {
+        expect(await callOn(agentToolsFor(app.host, caller), 'compact_agent', { agent: addressed })).toMatchObject({
+          outcome: 'refused', rail: 'not-below-you',
+        })
+      }
     },
   )
 
@@ -647,7 +657,7 @@ describe('713 §2 · R59 at every door, on a double that compacts on request', (
     })
   })
 
-  it('reports a lost idle race without queueing or compacting later', async () => {
+  it('translates an adapter idle race into a short busy answer', async () => {
     const tool = createCompactAgentTool(
       {
         compactAgent: async () => {
@@ -662,8 +672,38 @@ describe('713 §2 · R59 at every door, on a double that compacts on request', (
     )
     expect(await tool.call({ agent: 'child' })).toMatchObject({
       structured: { outcome: 'busy', agent: 'child' },
-      text: 'That conversation is busy; nothing was compacted.',
+      text: 'It’s working; try again when it’s idle.',
     })
+  })
+
+  it('leaves a busy descendant running, with no queued or delayed compaction', async () => {
+    app.store.createAgentIdentity({ slug: 'busy-compact-worker', displayName: null, provider: 'codex' }, { by: 'a-person' })
+    const { sessionId: parent } = await app.host.createSession(
+      { provider: 'codex', profileId: 'busy-compact-parent', approvalMode: 'auto', cwd: app.root }, app.window,
+    )
+    const given = await callOn(agentToolsFor(app.host, parent), 'give_work', {
+      profile: 'busy-compact-worker', title: 'Worker', brief: 'work', definition_of_done: 'Done.',
+    })
+    expect(given.outcome).toBe('ok')
+    const target = given.agent as string
+    const handle = handles.at(-1)!
+    await waitFor(() => handle.status() === 'idle', 'worker idle')
+    await callOn(agentToolsFor(app.host, target), 'reply_to_parent', { piece: given.label, outcome: 'done', summary: 'Done.' })
+    app.host.claimSession(target, app.window)
+    await app.host.setApprovalMode(target, 'ask', app.window)
+    await app.host.send(target, 'Keep this turn busy.', app.window)
+    await waitFor(() => app.ledger(target).some((event) => event.type === 'permission_request'), 'busy permission')
+    const turnsBefore = userTurns(app.ledger(target)).length
+    expect(await callOn(agentToolsFor(app.host, parent), 'compact_agent', { agent: target })).toMatchObject({ outcome: 'busy' })
+    expect(userTurns(app.ledger(target))).toHaveLength(turnsBefore)
+    expect(app.ledger(target).filter((event) => event.type === 'message_queued')).toHaveLength(0)
+    expect(turnsEnded(app.ledger(target), 'interrupted')).toBe(0)
+    expect(handle.compactions).toBe(0)
+    await app.host.respondPermission(target, aPendingCard(target), { outcome: 'allow' }, app.window)
+    await waitFor(() => handle.status() === 'idle', 'original turn settled')
+    expect(handle.compactions).toBe(0)
+    expect(userTurns(app.ledger(target))).toHaveLength(turnsBefore)
+    expect(app.ledger(target).filter((event) => event.type === 'message_queued')).toHaveLength(0)
   })
 
   it('status reports only the context the provider reported, including zero and a known window', async () => {
