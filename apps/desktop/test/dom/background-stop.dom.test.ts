@@ -92,8 +92,8 @@ describe('248 §4 · the per-task stop', () => {
   it('⛔ asks for the PROVIDER’s own id, and stops inviting a second press', () => {
     const { m, asked } = paneWith(true)
     // Positive first: the registry really rendered, so the press below is a real gesture.
-    expect(m.q('background-bar').textContent).toContain('still running')
-    const button = m.q('background-stop-b6uoyo82k')
+    expect(m.q('running-now-rows').textContent).toContain('Running')
+    const button = m.q('panel-stop-b6uoyo82k')
     expect(button.hasAttribute('disabled')).toBe(false)
     button.click()
     // ⛔ `b6uoyo82k` is Claude's `task_id`. `247` refused a neutral surrogate for the reason its type
@@ -106,10 +106,10 @@ describe('248 §4 · the per-task stop', () => {
     // `task_notification` with status `stopped` will be emitted. The receipt is that event arriving,
     // so until it does the honest word is "Stopping…".
     const { m } = paneWith(true)
-    expect(m.q('background-stop-b6uoyo82k').textContent).toContain('Stop')
-    m.q('background-stop-b6uoyo82k').click()
+    expect(m.q('panel-stop-b6uoyo82k').textContent).toContain('Stop')
+    m.q('panel-stop-b6uoyo82k').click()
     await settled()
-    const button = m.q('background-stop-b6uoyo82k')
+    const button = m.q('panel-stop-b6uoyo82k')
     expect(button.textContent).toContain('Stopping…')
     expect(button.hasAttribute('disabled')).toBe(true)
   })
@@ -120,9 +120,9 @@ describe('248 §4 · the per-task stop', () => {
     // "Stopping…" for ever — `106`'s control that cannot act, manufactured by the app. Found by the
     // adversarial pass over this diff, by four readers independently.
     const { m, asked } = paneWith(true, false)
-    m.q('background-stop-b6uoyo82k').click()
+    m.q('panel-stop-b6uoyo82k').click()
     await settled()
-    const button = m.q('background-stop-b6uoyo82k')
+    const button = m.q('panel-stop-b6uoyo82k')
     // The paired positive: the request really was made, so this is about the ANSWER.
     expect(asked()).toEqual(['b6uoyo82k'])
     expect(button.textContent).toContain('Stop')
@@ -134,8 +134,8 @@ describe('248 §4 · the per-task stop', () => {
     const { m } = paneWith(false)
     // The ROW is still there: the registry's job is to say what is running whether or not anything
     // can be done about it. That is the paired positive for the absence below.
-    expect(m.q('background-row-b6uoyo82k')).toBeTruthy()
-    expect(document.querySelector('[data-cy="background-stop-b6uoyo82k"]')).toBeNull()
+    expect(m.q('panel-run-background:b6uoyo82k')).toBeTruthy()
+    expect(document.querySelector('[data-cy="panel-stop-b6uoyo82k"]')).toBeNull()
   })
 
   it('⚠️ the conversation is NOT interrupted by stopping one piece of work', async () => {
@@ -161,7 +161,7 @@ describe('248 §4 · the per-task stop', () => {
     // The paired positive: pressing the interrupt affordance DOES reach the handler here.
     m.q('interrupt-session').click()
     expect(interrupts).toEqual(['i'])
-    m.q('background-stop-b6uoyo82k').click()
+    m.q('panel-stop-b6uoyo82k').click()
     await settled()
     // …and pressing Stop adds nothing to it.
     expect(interrupts).toEqual(['i'])
@@ -215,20 +215,20 @@ describe('287 finding 4 · the stop latch is retired with its row', () => {
       openPane({ record: r, onStopBackgroundWork: () => Promise.resolve(true) }),
       { width: 1200 },
     )
-    m.q('background-stop-b6uoyo82k').click()
+    m.q('panel-stop-b6uoyo82k').click()
     await settled()
     // The paired positive: the latch really is on, which is the behaviour 248 wanted.
-    expect(m.q('background-stop-b6uoyo82k').hasAttribute('disabled')).toBe(true)
+    expect(m.q('panel-stop-b6uoyo82k').hasAttribute('disabled')).toBe(true)
 
     // The provider reports the work gone…
     applyEvent(r.transcript, level([]))
     await settled()
-    expect(document.querySelector('[data-cy="background-bar"]')).toBeNull()
+    expect(document.querySelector('[data-cy="panel-run-background:b6uoyo82k"]')).toBeNull()
 
     // …and later hands the same number to new work. ⛔ This button used to be born disabled.
     applyEvent(r.transcript, level(['b6uoyo82k']))
     await settled()
-    const button = m.q('background-stop-b6uoyo82k')
+    const button = m.q('panel-stop-b6uoyo82k')
     expect(button.textContent).toContain('Stop')
     expect(button.textContent).not.toContain('Stopping…')
     expect(button.hasAttribute('disabled')).toBe(false)
@@ -243,12 +243,12 @@ describe('287 finding 4 · the stop latch is retired with its row', () => {
       openPane({ record: r, onStopBackgroundWork: () => Promise.resolve(true) }),
       { width: 1200 },
     )
-    m.q('background-stop-b6uoyo82k').click()
+    m.q('panel-stop-b6uoyo82k').click()
     await settled()
     applyEvent(r.transcript, level(['b6uoyo82k', 'other']))
     await settled()
-    expect(m.q('background-stop-b6uoyo82k').hasAttribute('disabled')).toBe(true)
-    expect(m.q('background-stop-other').hasAttribute('disabled')).toBe(false)
+    expect(m.q('panel-stop-b6uoyo82k').hasAttribute('disabled')).toBe(true)
+    expect(m.q('panel-stop-other').hasAttribute('disabled')).toBe(false)
   })
 
   it('🔴 …and switching conversation does not carry the latch to a row that shares the id', async () => {
@@ -272,14 +272,14 @@ describe('287 finding 4 · the stop latch is retired with its row', () => {
     })
     const m = mount(Swap, {}, { width: 1200 })
 
-    m.q('background-stop-b6uoyo82k').click()
+    m.q('panel-stop-b6uoyo82k').click()
     await settled()
     expect(asked).toEqual(['b6uoyo82k'])
-    expect(m.q('background-stop-b6uoyo82k').hasAttribute('disabled')).toBe(true)
+    expect(m.q('panel-stop-b6uoyo82k').hasAttribute('disabled')).toBe(true)
 
     shown.value = b
     await settled()
-    const button = m.q('background-stop-b6uoyo82k')
+    const button = m.q('panel-stop-b6uoyo82k')
     expect(button.textContent, 'the other conversation’s work was never asked to stop').toContain(
       'Stop',
     )
@@ -316,13 +316,13 @@ describe('287 finding 5 · no Stop while the conversation is closing', () => {
     // ⚠️ The registry's job is unchanged: it says what is running whether or not anything can be
     // done about it. That is the paired positive for the absence below — and it is why this is not
     // simply hiding the bar.
-    expect(m.q('background-row-b6uoyo82k')).toBeTruthy()
-    expect(document.querySelector('[data-cy="background-stop-b6uoyo82k"]')).toBeNull()
+    expect(m.q('panel-run-background:b6uoyo82k')).toBeTruthy()
+    expect(document.querySelector('[data-cy="panel-stop-b6uoyo82k"]')).toBeNull()
   })
 
   it('⚠️ …and it is there a moment earlier, on the same fixture with `phase: open`', () => {
     const m = paneInPhase('open')
-    expect(m.q('background-stop-b6uoyo82k').hasAttribute('disabled')).toBe(false)
+    expect(m.q('panel-stop-b6uoyo82k').hasAttribute('disabled')).toBe(false)
   })
 })
 

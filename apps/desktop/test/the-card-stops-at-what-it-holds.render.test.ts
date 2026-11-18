@@ -205,13 +205,13 @@ describe('the card stops at what it holds (bb5ab496)', () => {
       // The pill still knows the work is running — the bar's absence is about the drawer, not
       // about the work having ended.
       expect(tag(closed, 'session-status')).toContain('data-standing="background"')
-      expect(closed).not.toContain('data-cy="background-bar"')
+      expect(closed).not.toContain('data-cy="running-now-rows"')
 
       // The paired positive: the same record, drawer open on the Open tab — where `idle-truth`'s
       // own tests already pin the bar as present.
       const open = await pane(true)
       expect(tag(open, 'session-status')).toContain('data-standing="background"')
-      expect(open).toContain('data-cy="background-bar"')
+      expect(open).toContain('data-cy="running-now-rows"')
     })
   })
 })

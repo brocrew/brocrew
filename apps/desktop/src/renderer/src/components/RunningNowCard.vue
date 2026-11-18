@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { panelRuns, type PanelRun, type OpenPanelRun } from '../lib/panel-runs'
 import type { TranscriptState } from '../lib/transcript'
 import { useMinuteClock } from '../composables/useMinuteClock'
-import { scheduledTimeWords, scheduledPromptPreview } from '../lib/scheduled-job-details'
+import { scheduledTimeWords, scheduledPromptPreview, scheduledNotStartedWords } from '../lib/scheduled-job-details'
 import { droppedNote } from '../lib/background-work'
 import { droppedScheduleNote } from '../lib/scheduled-work'
 import CardSection from './CardSection.vue'
@@ -19,6 +19,7 @@ const props = withDefaults(defineProps<{
   canStop?: boolean
   onStop?: (id: string) => Promise<boolean>
   onOpenRun?: OpenPanelRun
+  canNavigate?: (itemId: string) => boolean
   showSchedule?: boolean
 }>(), { showSchedule: true })
 const emit = defineEmits<{ navigate: [itemId: string] }>()
@@ -60,14 +61,15 @@ async function open(run: PanelRun): Promise<void> {
   <CardSection icon="#i-bot" :count="runs.active.length" data-cy="panel-agents">
     <template #title><span data-cy="running-now-title">Running now</span></template>
     <div data-cy="running-now-rows">
-      <PanelRunRow v-for="run in runs.active" :key="run.key" :run="run" :can-stop="canStop && !!onStop" :stopping="!!run.stopId && asked.has(run.stopId)" @open="void open(run)" @stop="void stop(run.stopId!)" />
-      <CardEmpty v-if="!runs.active.length">Nothing running.</CardEmpty>
+      <PanelRunRow v-for="run in runs.active" :key="run.key" :run="run" :disabled="!onOpenRun && !!run.itemId && canNavigate?.(run.itemId) === false" :title="onOpenRun ? (run.target?.kind === 'agent' ? 'Open transcript' : 'Open output') : 'Show this in the conversation'" :can-stop="canStop && !!onStop" :stopping="!!run.stopId && asked.has(run.stopId)" @open="void open(run)" @stop="void stop(run.stopId!)" />
+      <CardEmpty v-if="!runs.active.length" icon="#i-check" says="Nothing running." />
     </div>
     <p v-if="state.background.dropped" class="note">{{ droppedNote(state.background.dropped) }}</p>
     <template v-if="showSchedule && (runs.coming.length || state.schedule.dropped)">
       <p class="subheading">Coming up</p>
       <button v-for="job in runs.coming" :key="job.id" class="scheduled" type="button" :data-cy="`schedule-open-${job.id}`" @click="scheduledId = job.id">
         <span>{{ scheduledTimeWords(job, now) || job.schedule || 'Scheduled job' }}</span>
+        <span v-if="scheduledNotStartedWords(job)" class="note">{{ scheduledNotStartedWords(job)?.short }}</span>
         <span class="note">{{ scheduledPromptPreview(job.prompt) }}</span>
       </button>
       <p v-if="state.schedule.dropped" class="note">{{ droppedScheduleNote(state.schedule.dropped) }}</p>
