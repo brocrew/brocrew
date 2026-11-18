@@ -166,8 +166,9 @@ describe('a failed settings apply leaves the conversation usable', () => {
       (error: unknown) => error,
     )
 
-    expect(refused).toBeInstanceOf(SessionUnavailable)
-    expect((refused as SessionUnavailable).unavailable).toBe('not-confirmed-stopped')
+    const cause = (refused as Error).cause
+    expect(cause).toBeInstanceOf(SessionUnavailable)
+    expect((cause as SessionUnavailable).unavailable).toBe('not-confirmed-stopped')
     expect(launches).toBe(1)
     expect(turnTexts(sessionId)).toEqual([])
   })
