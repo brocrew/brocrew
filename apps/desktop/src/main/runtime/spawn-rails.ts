@@ -939,42 +939,6 @@ export type GiveOutcome =
     }
 
 /**
- * ⚑ **D-017 · R10 — a conversation a parent started that can never be reopened, as its ledger
- * recorded it** — what {@link admitAReplacement} carries on in a new conversation.
- */
-export interface ReplacedConversation {
-  readonly parentSessionId: string
-  readonly profileId: string
-  /** ⚠️ **The provider as the identity names it NOW** (R10), else the one it ran on. */
-  readonly provider: Provider
-  readonly cwd: string
-  readonly approvalMode: ApprovalMode
-  /** The parent's own caller, which commands the new conversation as it commanded the old. */
-  readonly commandedBy: CallerIdentity
-}
-
-/**
- * ⚑ **D-017 · R10 — the plan a REPLACEMENT carries into `RuntimeHost.createSession`** (`05` rule
- * 3): the conversation its parent already started, carried on in a new one because its own record
- * can never be reopened.
- *
- * ⛔ **No rail is asked, and that is the ruling rather than a gap**: nothing new is decided — the
- * parent, the identity and the folder are the ones the give that started it admitted — and a
- * delivery's start asks no launch rail (R1). The existing parent and commanding caller are kept.
- */
-export function admitAReplacement(replaced: ReplacedConversation): AdmittedSpawn {
-  const admitted: AdmittedSpawn = {
-    parentSessionId: replaced.parentSessionId,
-    profileId: replaced.profileId,
-    provider: replaced.provider,
-    cwd: replaced.cwd,
-    approvalMode: replaced.approvalMode,
-    commandedBy: replaced.commandedBy,
-  }
-  return admitted
-}
-
-/**
  * Resolve the provider before both conversation lookup and a new start. An explicit provider wins,
  * then a model held by exactly one provider's list, then the identity's default and the giver's.
  * A legacy identity whose conversations differ and has no default still needs a choice.

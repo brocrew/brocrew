@@ -1,6 +1,7 @@
 import { dirname } from 'node:path'
 import type { Provider } from '@brobot2/shared'
 import { A_PROVIDER_FOLDER, PROVIDER_NAME } from '../../shared/runtime-ipc'
+import type { CannotRun } from '../../shared/tool-outcome'
 
 /**
  * Why a conversation could not be opened — the DISCRIMINANT, held apart from the diagnostic.
@@ -222,6 +223,11 @@ export const UNAVAILABLE_REASONS = [
    * ({@link UnavailableContext.refusal}), so a person's Reopen explains it as the list does.
    */
   'never-started',
+  /**
+   * Its provider no longer has its session (the adapter's `ResumeError` with `noSuchSession`): the
+   * file is gone. The caller is told and decides; nothing is started in its place.
+   */
+  'its-session-is-gone',
   /**
    * 🔴 **This host is not running that conversation, so there was nothing to take over** (336).
    *
@@ -455,6 +461,8 @@ export interface UnavailableContext {
    * doors by {@link saidOfAReopen}.
    */
   reopening?: true
+  /** For `its-session-is-gone`: the conversation's address, for the person to point a new one at. */
+  address?: string
   /**
    * 🔴 **D-039 · R2 — what its provider said when it refused the start**, for
    * `its-provider-refused-it`: the first line of its own words, bounded and without the protocol's
@@ -497,6 +505,21 @@ export function saidOfAReopen(error: unknown): unknown {
 /** Narrow a caught value to just its discriminant, or null if it is some other failure. */
 export function unavailableOf(error: unknown): Unavailable | null {
   return error instanceof SessionUnavailable ? error.unavailable : null
+}
+
+/**
+ * A start that failed for a delivery, as the one shared fact a send reports: a provider session that
+ * is gone, read down the cause chain, or any other failure with the reason its caller words.
+ */
+export function cannotRunOf(error: unknown, couldNotStart: string): CannotRun {
+  let seen: unknown = error
+  for (let depth = 0; depth < 8 && seen instanceof Error; depth += 1) {
+    if (unavailableOf(seen) === 'its-session-is-gone') {
+      return { code: 'provider-file-missing', reason: 'its provider session file is missing' }
+    }
+    seen = (seen as { cause?: unknown }).cause
+  }
+  return { code: 'could-not-start', reason: couldNotStart }
 }
 
 /** The measurements a caught refusal carries, or none for anything else. */
@@ -780,6 +803,8 @@ export function describeUnavailable(reason: Unavailable, context: UnavailableCon
       // start an agent nothing would have been holding. A window that IS there reads it after a
       // reload it triggered itself, and "open it again" is the whole of what it needs.
       return 'The window that asked for this conversation went away before it opened, so no agent was started. Open it again.'
+    case 'its-session-is-gone':
+      return `This conversation can't run: its provider session file is missing. Its record above stays readable. To continue the job, start a new conversation and point it at ${context.address ?? 'this one'}.`
     case 'not-recorded':
       // ⛔ **504 · true now, because it is only reached when `recordedOne` found nothing.** The
       // population it used to cover as well — a row this app holds that resume has no address for —

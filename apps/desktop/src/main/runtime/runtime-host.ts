@@ -464,7 +464,6 @@ import {
 } from './session-unavailable'
 import { filesystemSpelling, folderIsGone } from './scratch-cwd'
 import {
-  admitAReplacement,
   admitGive,
   giveRequestSchema,
   labelsSaid,
@@ -3086,13 +3085,6 @@ interface SessionSlot {
    */
   readonly aDeliveryStartedItWithNoWindow: boolean
   /**
-   * ⚑ **D-024 · R1 — the conversation this life is started in the place of**
-   * ({@link RuntimeHost.replaceWhatCanNeverBeReopened}), or `null`. ⛔ Its first launch composes
-   * before {@link RuntimeHost.replacedBy} records the replacement, so this is how that launch knows
-   * it already stands for the one it replaces. ⚠️ Fixed at reservation, like the one above it.
-   */
-  readonly replaces: string | null
-  /**
    * ⚑ **W4.175 — on a first launch from a give, the piece its starter starts it from**: the
    * giver's own piece the given one sits under ({@link Giving.parent}), or `null`. ⛔ That launch
    * composes before the give is written down (`recordTheGive`, after the brief), so this is how it
@@ -3385,6 +3377,7 @@ type WhereHeldWordsWait = 'its-mailbox' | 'its-ledger' | 'nowhere'
  * ({@link RuntimeHost.startForADelivery}) — so *it opens by itself* would be false.
  */
 const REFUSALS_IN_THIS_APPS_OWN_WORDS: ReadonlySet<Unavailable> = new Set<Unavailable>([
+  'its-session-is-gone',
   'shutting-down',
   'cancelled',
   'lost-its-place',
@@ -3493,39 +3486,33 @@ interface Startable {
 }
 
 /**
- * ⚑ **D-017 · R10 — did a reopen fail because the conversation can NEVER be reopened?** — its
- * provider no longer has it (a `ResumeError` its adapter marked `noSuchSession`: D-015 measured this
- * the only one that can be trusted as gone for good), or its provider never named it
- * (`never-started`). ⚠️ Read down the cause chain, because the reopen's refusal wraps what it met.
+ * Did a reopen fail because its provider no longer has the session? A `ResumeError` its adapter
+ * marked `noSuchSession`, read down the cause chain because the reopen's refusal wraps what it met.
  * ⛔ Nothing else: a deleted folder, a damaged transcript and a provider that could not start are
  * failures of this attempt, and a later one can succeed.
  */
-function itCanNeverBeReopened(error: unknown): boolean {
+function theProviderLostIt(error: unknown): boolean {
   let seen: unknown = error
   for (let depth = 0; depth < 8 && seen instanceof Error; depth += 1) {
     if (seen instanceof ResumeError && seen.noSuchSession) return true
-    if (unavailableOf(seen) === 'never-started') return true
     seen = (seen as { cause?: unknown }).cause
   }
   return false
 }
 
 /**
- * ⚑ **D-017b · a person's message from a conversation's view continues it** — its row can be
- * reopened, or it never started and its next message starts a new conversation in its place (R10,
- * `RuntimeHost.aPersonsStart`'s rule). ⛔ One predicate for the composer a recorded view offers and
- * the start that message makes, so a box is never offered for words that would come back.
+ * ⚑ **D-017 · R10 — can the conversation never be reopened?** — its provider no longer has it
+ * ({@link theProviderLostIt}), or never named it (`never-started`).
  */
-function aMessageContinuesIt(row: RecordedSession, isAService: boolean): boolean {
-  return (
-    row.unresumableReason === null ||
-    (row.neverStarted && aRowADeliveryCanStart(row) && !isAService)
-  )
+function itCanNeverBeReopened(error: unknown): boolean {
+  if (theProviderLostIt(error)) return true
+  let seen: unknown = error
+  for (let depth = 0; depth < 8 && seen instanceof Error; depth += 1) {
+    if (unavailableOf(seen) === 'never-started') return true
+    seen = (seen as { cause?: unknown }).cause
+  }
+  return false
 }
-
-/** Why a service's conversation that cannot be reopened is not replaced. */
-const A_SERVICE_IS_NEVER_REPLACED =
-  'it is a service’s one conversation, so no other is started in its place'
 
 /** Why the file of which agents are services is not changed: another app may be running on it. */
 const NOT_THE_ONLY_APP = 'Not changed: the app may be open twice.'
@@ -3581,20 +3568,16 @@ const NOT_REMOVED_NOT_SAVED = 'Not removed: services list not saved.'
 
 /**
  * ⚑ **D-017b · why a setting changed on a conversation nothing runs would not reach it**, or `null`
- * when its next start takes it: one that is or will be replaced has a new conversation in its place
- * (R10), and one no message continues has no next start. ⛔ Read by the recorded view
+ * when its next start takes it: one an earlier version replaced has a conversation in its place,
+ * and one no message continues has no next start. ⛔ Read by the recorded view
  * (`settingsFixed`) and by the door that writes a setting, so the controls a view offers are the
  * ones the host takes.
  */
 function whyNoSettingForItsNextStart(
   row: RecordedSession,
   replacedBy: ReadonlyMap<string, string>,
-  isAService: boolean,
 ): string | null {
-  if (
-    replacedBy.has(row.sessionId) ||
-    (row.neverStarted && aRowADeliveryCanStart(row) && !isAService)
-  ) {
+  if (replacedBy.has(row.sessionId)) {
     return 'its next message starts a new conversation in its place, so a setting changed here would not reach it'
   }
   if (row.unresumableReason !== null) {
@@ -3744,6 +3727,10 @@ const WAKE_RETRY_MAX_MS = 30 * 60_000
  */
 const ITS_JOBS_WENT_WITH_ITS_HISTORY =
   'this conversation could never be reopened, and the jobs these words were about went with its history'
+
+/** Why a scheduled wake ended unsent when its provider session is gone. ⛔ A durable row names no conversation. */
+const IT_COULD_NOT_WAKE =
+  'This conversation could not wake: its provider session file is missing. Nothing ran.'
 
 /**
  * ⚑ **D-029 · why the words about a conversation's own jobs are ended at a launch** — that launch
@@ -4316,9 +4303,8 @@ export class RuntimeHost implements LiveHost {
 
   /**
    * ⚑ **D-017 · R10 — the conversations that can never be reopened, each with the one that took its
-   * place** — read from the old ledgers' `replaced_by` rows at launch, one scan, and kept as they are
-   * replaced ({@link replaceWhatCanNeverBeReopened}). ⛔ No index and no migration: the ledger is the
-   * record, and this is its reading.
+   * place** — read from the old ledgers' `replaced_by` rows at launch, one scan. ⛔ No index and no
+   * migration: the ledger is the record, and this is its reading.
    */
   private readonly replacedBy = new Map<string, string>()
 
@@ -4800,23 +4786,8 @@ export class RuntimeHost implements LiveHost {
    */
   private readonly startingForADeliveryWithNoWindow = new Set<string>()
 
-  /** The conversations {@link startForADelivery} is reopening: their reopen waits out {@link settleTheLastLaunch}. */
+  /** Delivery reopens wait out the previous provider launch. */
   private readonly startingForADelivery = new Set<string>()
-
-  /**
-   * ⚑ **D-017 · R5 — a replacement {@link replaceWhatCanNeverBeReopened} is reserving with no
-   * window**, read by {@link reserve} into {@link SessionSlot.aDeliveryStartedItWithNoWindow}: the
-   * new conversation's id is minted inside the create, so the flag is up for the create's first,
-   * synchronous stretch and lowered straight after.
-   */
-  private reservingAReplacementWithNoWindow = false
-
-  /**
-   * ⚑ **D-024 · R1 — the conversation {@link replaceWhatCanNeverBeReopened} is reserving a
-   * replacement for**, read by {@link reserve} into {@link SessionSlot.replaces} — up and lowered
-   * with the flag above, for the same reason.
-   */
-  private reservingAReplacementFor: string | null = null
 
   /**
    * ⚑ **W4.175 — the piece {@link giveWork} starts a new conversation from**, read by {@link reserve}
@@ -7319,10 +7290,7 @@ export class RuntimeHost implements LiveHost {
       bornWithoutASurface: ownerId === null || anAgentAskedForIt,
       // ⚑ **D-017 · R5** — see {@link SessionSlot.aDeliveryStartedItWithNoWindow}.
       aDeliveryStartedItWithNoWindow:
-        ownerId === null &&
-        (this.startingForADeliveryWithNoWindow.has(id) || this.reservingAReplacementWithNoWindow),
-      // ⚑ **D-024 · R1** — see {@link SessionSlot.replaces}.
-      replaces: this.reservingAReplacementFor,
+        ownerId === null && this.startingForADeliveryWithNoWindow.has(id),
       // ⚑ **W4.175** — see {@link SessionSlot.startedFrom}.
       startedFrom: this.reservingAStartFrom,
       // ⛔ Straight from the argument and never assigned again — see {@link SessionSlot.commandedBy}.
@@ -10021,7 +9989,10 @@ export class RuntimeHost implements LiveHost {
           `scheduled jobs: ${errorMessage(error)}`,
       )
       this.forgetItsWakeUp(conversation)
-      this.letGoOfItsMissedJobs(conversation, ITS_JOBS_WENT_WITH_ITS_HISTORY)
+      this.letGoOfItsMissedJobs(
+        conversation,
+        theProviderLostIt(error) ? IT_COULD_NOT_WAKE : ITS_JOBS_WENT_WITH_ITS_HISTORY,
+      )
       this.wordsHeld.delete(conversation)
       this.stallWhatItsJobWouldHaveDriven(conversation)
       this.stateMayHaveMoved(conversation)
@@ -11124,11 +11095,9 @@ export class RuntimeHost implements LiveHost {
    * down after the brief; on every other launch it is read off the conversation's first words. ⚑
    * Started with no piece — by a message — a root owner by its root, else its name alone.
    *
-   * ⚠️ **Two first launches can say less than every later one**, and only of a starter that owns no
-   * root: a replacement's ({@link replaceWhatCanNeverBeReopened}), whose first words a delivery
-   * brings after it composes — named alone, where later launches read the brief; and a conversation
-   * a second give reaches while it is still starting, whose first words may be that give's — named
-   * by the first give's piece. Both read right from the next launch on.
+   * ⚠️ **A first launch can say less than every later one**, and only of a starter that owns no
+   * root: a conversation a second give reaches while it is still starting, whose first words may be
+   * that give's — named by the first give's piece. It reads right from the next launch on.
    */
   private theStarterCalled(
     starter: string,
@@ -19884,13 +19853,6 @@ export class RuntimeHost implements LiveHost {
      */
     conversation: string | null,
     /**
-     * ⚑ **D-024 · R1 — on a replacement's FIRST launch, the conversation it takes the place of**
-     * ({@link SessionSlot.replaces}), which it already stands for. ⚠️ Absent on every other launch:
-     * a reopen and a look read what a conversation stands for off {@link replacedBy}, by
-     * `conversation`.
-     */
-    replaces: string | null = null,
-    /**
      * ⚑ **W4.175 — on a first launch from a give, the piece its starter starts it from**
      * ({@link SessionSlot.startedFrom}). ⚠️ Absent on every other launch, which reads it off the
      * conversation's own first words ({@link theStarterCalled}).
@@ -19977,9 +19939,7 @@ export class RuntimeHost implements LiveHost {
               profileSlug,
               conversation !== null
                 ? this.theIdsItStandsFor(conversation)
-                : replaces === null
-                  ? []
-                  : this.theIdsItStandsFor(replaces),
+                : [],
             ),
     }
   }
@@ -19989,7 +19949,7 @@ export class RuntimeHost implements LiveHost {
     profileSlug: string,
     /**
      * ⚑ **What the launching conversation stands for** — itself and the ones it took the place of
-     * ({@link theIdsItStandsFor}); none on a first launch that replaces nothing.
+     * ({@link theIdsItStandsFor}); none on a first launch.
      */
     itself: readonly string[],
   ): OtherConversations {
@@ -20216,7 +20176,6 @@ export class RuntimeHost implements LiveHost {
         cwd,
         spawn?.parentSessionId ?? null,
         null,
-        slot.replaces,
         slot.startedFrom,
       ),
       pack,
@@ -20318,7 +20277,6 @@ export class RuntimeHost implements LiveHost {
           cwd,
           spawn?.parentSessionId ?? null,
           null,
-          slot.replaces,
           slot.startedFrom,
         ),
       handle.launchSettings,
@@ -20845,11 +20803,7 @@ export class RuntimeHost implements LiveHost {
     if (!aPersonIsAsking(by)) {
       throw new Error('only a person changes how another conversation will start')
     }
-    const refused = whyNoSettingForItsNextStart(
-      row,
-      this.replacedBy,
-      this.theServiceOf(sessionId) !== null,
-    )
+    const refused = whyNoSettingForItsNextStart(row, this.replacedBy)
     if (refused !== null) throw new Error(refused)
     return row
   }
@@ -24830,15 +24784,6 @@ export class RuntimeHost implements LiveHost {
         const cut = this.cutsKept.cuts[id]
         if (cut !== undefined && !isFinal(cut.state)) return false
       }
-      if (
-        [...this.slots.values()].some(
-          (one) =>
-            one.replaces !== null &&
-            lineage.includes(one.replaces) &&
-            (one.session === null || onItsWayOut(one)),
-        )
-      )
-        return false
       const slot = this.slots.get(conversation)
       if (slot !== undefined && (slot.session === null || onItsWayOut(slot))) return false
       const session = slot?.session ?? null
@@ -25925,18 +25870,20 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * ⚑ **D-017 · R1** — {@link ensureRunning}'s one start: wait out what is there, then reopen —
-   * ⚑ **R10: and a conversation that can never be reopened is replaced**, owned by the person's
-   * window that asked for this start, else by none ({@link replaceWhatCanNeverBeReopened}) —
-   * whichever caller's start it is, so every delivery that joins it meets the same outcome. ⚑ An id
-   * already replaced starts the one in its place.
+   * ⚑ **D-017 · R1** — {@link ensureRunning}'s one start: wait out what is there, then reopen,
+   * whichever caller's start it is, so every delivery that joins it meets the same outcome. A
+   * conversation whose provider session is gone is refused as `its-session-is-gone`, and the caller
+   * decides. ⚑ An id an earlier version replaced starts the one in its place.
    */
   private async startForADelivery(
     sessionId: string,
     window: RuntimeEventSink | null,
   ): Promise<string> {
     if (this.replacedBy.has(sessionId)) {
-      return this.replaceWhatCanNeverBeReopened(sessionId, window)
+      const ran = await this.ensureRunning(this.theOneInItsPlace(sessionId), window)
+      const running = this.slots.get(ran)?.session ?? null
+      if (running !== null) this.handWhatItHeldTo(sessionId, running)
+      return ran
     }
     let slot = this.slots.get(sessionId)
     while (slot !== undefined && !this.runsNow(sessionId)) {
@@ -25963,16 +25910,7 @@ export class RuntimeHost implements LiveHost {
       const raced = this.slots.get(sessionId)
       if (raced !== undefined && raced.session === null && !onItsWayOut(raced)) await raced.arrived
       if (this.runsNow(sessionId)) return sessionId
-      // ⛔ **D-029 · never for a wake-up's start**: it carries nothing to deliver, so it creates no
-      // conversation in its place ({@link itsStartFailed}); a message still does, joined or not.
-      if (
-        itCanNeverBeReopened(error) &&
-        !this.wakingForItsJobs.has(sessionId) &&
-        !this.wakingForStoppedWork.has(sessionId)
-      ) {
-        return await this.replaceWhatCanNeverBeReopened(sessionId, window)
-      }
-      throw error
+      throw this.saidAsGoneIfItIs(error, sessionId)
     } finally {
       if (headless) this.startingForADeliveryWithNoWindow.delete(sessionId)
       if (marked) this.startingForADelivery.delete(sessionId)
@@ -26043,120 +25981,21 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * ⚑ **D-017 · R10 — a conversation that can never be reopened, replaced by a new conversation of
-   * the same agent** (`05` rule 3) — its provider no longer has it (`noSuchSession`), or never named
-   * it (`never-started`). ⚑ **The same agent**: the identity (on the provider it names now), the
-   * folder and the parent that started it — the one in that parent's place, when it
-   * too was replaced — so the agent's memory is there, and the old history is not. ⚑ **Owned by
-   * the person's window whose start found it** (R10: *owner = the writing window*), else by none,
-   * claimable (R5), as the delivery that found it would have started the old one.
-   *
-   * ⚑ **Recorded at both ends** — `replaced_by` in the old ledger, `replaces` in the new — and kept
-   * in {@link replacedBy}, so every later message to the old id goes on to the new one. ⚑ The old
-   * one's open work stalls `could_not_be_reopened` (its fold reads `replaced_by`), and its givers are
-   * told; what was held for it goes to the new one, in order, with its authorship
-   * ({@link handWhatItHeldTo}).
-   *
-   * ⛔ **One replacement per conversation**: a second delivery that finds the same thing joins the
-   * start already in flight ({@link ensureRunning}), and one after it finds the map — and starts the
-   * one in its place, which takes anything still held for the old id.
+   * `its-session-is-gone` for a start whose provider no longer has the conversation's session,
+   * with its address for the person's sentence; any other failure as it came.
    */
-  private async replaceWhatCanNeverBeReopened(
-    old: string,
-    window: RuntimeEventSink | null,
-  ): Promise<string> {
-    if (this.replacedBy.has(old)) {
-      const ran = await this.ensureRunning(this.theOneInItsPlace(old), window)
-      const running = this.slots.get(ran)?.session ?? null
-      if (running !== null) this.handWhatItHeldTo(old, running)
-      return ran
-    }
-    // ⛔ A service has one conversation: one that can never be reopened is refused, never replaced.
-    if (this.theServiceOf(old) !== null) {
-      throw new SessionUnavailable(
-        'cannot-be-reopened',
-        `service conversation ${old} can never be reopened, and none is started in its place`,
-        { refusal: A_SERVICE_IS_NEVER_REPLACED },
-      )
-    }
-    const row = this.deps.store.recordedOne(old)
-    if (row === null) throw new Error(`unknown session: ${old}`)
-    const identity = this.deps.store.identityOf(old)
-    const profileId = identity?.profileSlug ?? row.profileId ?? DEFAULT_PROFILE_ID
-    // ⚑ **The provider its agent runs on NOW** (R10), else the one it ran on.
-    const provider = this.itsProvider(profileId).provider ?? row.provider
-    const approvalMode = this.deps.store.find(old)?.approvalMode ?? 'ask'
-    // ⚑ **The parent in its place**: a parent that was itself replaced is the one that took its
-    // place, so the new child is started — and commanded — by a conversation that runs.
-    const recorded = this.deps.store.parentOf(old)
-    const parent = recorded === null ? null : this.theOneInItsPlace(recorded)
-    const spawn =
-      parent === null
-        ? null
-        : admitAReplacement({
-            parentSessionId: parent,
-            profileId,
-            provider,
-            cwd: row.cwd,
-            approvalMode,
-            commandedBy: { ownerId: agentCallerId(parent) },
-          })
-    // 🔴 **D-042 · R1 — the same conversation, so its own pair** — the model and effort it was
-    // selected to run, whoever chose them, when it runs on the same provider; ⚑ else R1's order, at
-    // the launch. ⚑ And a person's choice of it holds across the replacement (F1).
-    const itRan = this.deps.store.whatItRunsOn(old)
-    const named = provider === row.provider && itRan?.model != null ? itRan : null
-    // ⚑ **R5 — started with no window, it is a life a person's window may take**, as the one it
-    // replaces would have been: {@link reserve} reads this in the synchronous stretch before the
-    // create's first await, and it is lowered straight after.
-    this.reservingAReplacementWithNoWindow = window === null
-    this.reservingAReplacementFor = old
-    const creating = this.createSession(
-      {
-        provider,
-        cwd: row.cwd,
-        approvalMode,
-        profileId,
-        ...(named?.model == null ? {} : { model: named.model }),
-        ...(named?.reasoningEffort == null ? {} : { reasoningEffort: named.reasoningEffort }),
-      },
-      window,
-      null,
-      spawn,
+  private saidAsGoneIfItIs(error: unknown, sessionId: string): unknown {
+    if (!theProviderLostIt(error)) return error
+    return new SessionUnavailable(
+      'its-session-is-gone',
+      `${sessionId}'s provider no longer has its session`,
+      { address: this.nameByItsWork(sessionId) },
+      { cause: error },
     )
-    this.reservingAReplacementWithNoWindow = false
-    this.reservingAReplacementFor = null
-    const { sessionId } = await creating
-    if (named?.aPersonChoseItAt != null) {
-      this.deps.store.aPersonSetItsModelOrEffort(sessionId, named.aPersonChoseItAt)
-    }
-    this.replacedBy.set(old, sessionId)
-    // ⚑ **D-029** — its jobs lived in the history that could not be reopened; nothing starts it again.
-    this.forgetItsWakeUp(old)
-    this.appendIntoItsLedger(old, { type: 'replaced_by', sessionId })
-    this.refreshWorkerReadings(true)
-    const next = this.slots.get(sessionId)?.session ?? null
-    if (next !== null) {
-      this.publishOurs(next, { type: 'replaces', sessionId: old })
-      // ⚑ The loop guard follows a reopen for what waited into the one that took its place
-      // ({@link HostedSession.reopenedForWhatWaited}).
-      if (this.reopeningForWhatWaited.delete(old)) {
-        next.reopenedForWhatWaited = { at: this.now(), stopped: false }
-      }
-      this.handWhatItHeldTo(old, next)
-    }
-    console.info(
-      `runtime host: ${old} could never be reopened, so ${sessionId} took its place (${profileId})`,
-    )
-    this.theWorldMoved('conversations')
-    this.theWorldMoved('agents')
-    this.announceTheWorkItHolds(old)
-    this.tellWhoeverGaveTheWork(old)
-    return sessionId
   }
 
   /**
-   * ⚑ **D-017 · R10 — what was held for a conversation that can never be reopened goes to the one
+   * ⚑ **D-017 · R10 — what was held for a conversation an earlier version replaced goes to the one
    * that took its place**, in order, with its authorship: each message ends in the old ledger —
    * `abandoned`, with the sentence that says where it went — and is held in the new one, which
    * sends it with whatever else it holds. ⛔ Never dropped: the old conversation will never run to
@@ -37531,12 +37370,7 @@ export class RuntimeHost implements LiveHost {
     return start
   }
 
-  /**
-   * ⚑ **D-017 · R10 — a person's start of a conversation that can never be reopened replaces it**,
-   * owned by that person's window (*owner = the writing window*), and hands the window the new one —
-   * as a delivery's start would ({@link startForADelivery}), so whoever joins this start meets the
-   * same outcome.
-   */
+  /** A person's start: a reopen, with a provider session that is gone said as such. */
   private async aPersonsStart(
     sessionId: string,
     sink: RuntimeEventSink,
@@ -37545,16 +37379,7 @@ export class RuntimeHost implements LiveHost {
     try {
       return await this.resumeSession(sessionId, sink, launchKey)
     } catch (error) {
-      if (!itCanNeverBeReopened(error)) throw error
-      // ⛔ **Only a conversation this app runs as an agent** — the row rule a delivery's start is
-      // asked by ({@link aRowADeliveryCanStart}): a bundle, an adopted conversation or one found in a
-      // person's own home has no agent to start a new conversation of, and keeps the reopen's words.
-      const row = this.deps.store.recordedOne(sessionId)
-      if (row === null || !aRowADeliveryCanStart(row)) throw error
-      const took = await this.replaceWhatCanNeverBeReopened(sessionId, sink)
-      return (
-        this.aPersonsWindowTakesIt(took, sink) ?? (await this.resumeSession(took, sink, launchKey))
-      )
+      throw this.saidAsGoneIfItIs(error, sessionId)
     }
   }
 
@@ -37904,7 +37729,7 @@ export class RuntimeHost implements LiveHost {
       // ⛔ `unresumableReason` is null only when `canReopen` is true, which cannot hold for a row
       // `find` declined; the `??` is the type's shape and not a case this can reach.
       // ⚑ **D-017 · R10 — a row its provider never named, that a delivery can start, says so in its
-      // own code**: a delivery replaces it ({@link replaceWhatCanNeverBeReopened}).
+      // own code**, and the caller decides.
       throw new SessionUnavailable(
         recorded.neverStarted && aRowADeliveryCanStart(recorded)
           ? 'never-started'
@@ -38795,7 +38620,7 @@ export class RuntimeHost implements LiveHost {
    * runs, whose page is the present.
    *
    * ⚑ **`cannotTakeAMessage`** — another window has it open ({@link HELD_ELSEWHERE}), or no
-   * message from here would continue it ({@link aMessageContinuesIt}), said as the reopen says it.
+   * message from here would continue it (its row can be reopened), said as the reopen says it.
    * ⚑ **`settingsFixed`** — a setting changed here would not reach it: the rows
    * {@link aSettingForItsNextStart} refuses, off the same predicate.
    *
@@ -38876,14 +38701,14 @@ export class RuntimeHost implements LiveHost {
       cannotTakeAMessage:
         heldElsewhere && !sink.aPersonIsBehindIt
           ? HELD_ELSEWHERE
-          : aMessageContinuesIt(row, this.theServiceOf(sessionId) !== null)
+          : row.unresumableReason === null
             ? null
             : describeUnavailable('cannot-be-reopened', {
                 refusal: row.unresumableReason ?? undefined,
               }),
       settingsFixed:
         slot !== undefined ||
-        whyNoSettingForItsNextStart(row, this.replacedBy, this.theServiceOf(sessionId) !== null) !==
+        whyNoSettingForItsNextStart(row, this.replacedBy) !==
           null,
     }
   }
