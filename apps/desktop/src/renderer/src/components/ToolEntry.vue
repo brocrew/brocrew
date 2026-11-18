@@ -461,10 +461,7 @@ const droppedNote = computed(() =>
         {{ ANSWER_NOT_HELD }}
       </p>
     </div>
-    <!-- The agents this call dispatched (029), NESTED rather than shown beside it. They sit outside
-         the fold on purpose: a sub-agent running for minutes is the most important thing on screen
-         while it runs, and burying it under the parent row's collapsed output would hide exactly
-         the thing 029 exists to surface. Each card opens its transcript in the existing popup. -->
+    <!-- Keep child cards outside the tool output fold so running work stays visible. -->
     <div v-if="item.subAgents?.length" class="subagents" data-cy="tool-subagents">
       <SubAgentEntry
         v-for="card in item.subAgents"
