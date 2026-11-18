@@ -15,7 +15,7 @@ import type { ScheduleRegistry } from '../lib/transcript'
 import OverlayHost from './OverlayHost.vue'
 import ScheduledJobDialog from './ScheduledJobDialog.vue'
 
-const props = defineProps<{ registry: ScheduleRegistry; fold?: string }>()
+const props = defineProps<{ registry: ScheduleRegistry; fold?: string; embedded?: boolean }>()
 // Folded until a person opens it: one line says how many jobs and when the next one fires.
 const folded = usePersistentToggle(
   props.fold ?? '',
@@ -69,10 +69,11 @@ function cellTitle(caveat: string, shown: { full: string }): string {
   <aside
     v-if="held"
     class="sch-bar"
+    :class="{ embedded }"
     data-cy="schedule-bar"
     :data-folded="props.fold ? folded : undefined"
   >
-    <p v-if="props.fold" class="sch-head">
+    <p v-if="props.fold && !embedded" class="sch-head">
       <button
         type="button"
         class="sch-fold"
@@ -88,7 +89,7 @@ function cellTitle(caveat: string, shown: { full: string }): string {
         <span v-if="nextSays" class="sch-next" data-cy="schedule-next">· next {{ nextSays }}</span>
       </button>
     </p>
-    <p v-else class="sch-head">
+    <p v-else-if="!embedded" class="sch-head">
       <svg class="sch-icon" aria-hidden="true"><use href="#i-clock" /></svg>
       <strong data-cy="schedule-head">{{ scheduleHead(props.registry) }}</strong>
     </p>
@@ -172,6 +173,11 @@ function cellTitle(caveat: string, shown: { full: string }): string {
   border: var(--border-width) solid var(--drawer-card-line, var(--line));
   border-radius: var(--radius-lg);
   background: var(--drawer-card-bg, var(--panel));
+}
+.embedded {
+  padding: 0;
+  border: 0;
+  background: none;
 }
 .sch-next {
   overflow: hidden;

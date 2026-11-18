@@ -2,19 +2,12 @@
 import { computed, ref, watch } from 'vue'
 import { panelRuns, type PanelRun, type OpenPanelRun } from '../lib/panel-runs'
 import type { TranscriptState } from '../lib/transcript'
-import { useMinuteClock } from '../composables/useMinuteClock'
-import {
-  scheduledTimeWords,
-  scheduledPromptPreview,
-  scheduledNotStartedWords,
-} from '../lib/scheduled-job-details'
 import { droppedNote } from '../lib/background-work'
-import { droppedScheduleNote } from '../lib/scheduled-work'
 import CardSection from './CardSection.vue'
 import CardEmpty from './CardEmpty.vue'
 import PanelRunRow from './PanelRunRow.vue'
 import PastRunsDialog from './PastRunsDialog.vue'
-import ScheduledJobDialog from './ScheduledJobDialog.vue'
+import ScheduleBar from './ScheduleBar.vue'
 import OverlayHost from './OverlayHost.vue'
 
 const props = withDefaults(
@@ -32,23 +25,14 @@ const props = withDefaults(
 const emit = defineEmits<{ navigate: [itemId: string] }>()
 const runs = computed(() => panelRuns(props.state))
 const recent = computed(() => runs.value.past.find((row) => row.failed))
-const now = useMinuteClock()
 const historyOpen = ref(false)
 const unavailable = ref(false)
-const scheduledId = ref<string | null>(null)
-const scheduled = computed(
-  () => runs.value.coming.find((job) => job.id === scheduledId.value) ?? null,
-)
-watch(scheduled, (job) => {
-  if (!job) scheduledId.value = null
-})
 const asked = ref(new Set<string>())
 watch(
   () => props.conversation,
   () => {
     historyOpen.value = false
     unavailable.value = false
-    scheduledId.value = null
     asked.value = new Set()
   },
 )
@@ -100,23 +84,7 @@ async function open(run: PanelRun): Promise<void> {
     <p v-if="state.background.dropped" class="note">{{ droppedNote(state.background.dropped) }}</p>
     <template v-if="showSchedule && (runs.coming.length || state.schedule.dropped)">
       <p class="subheading">Coming up</p>
-      <button
-        v-for="job in runs.coming"
-        :key="job.id"
-        class="scheduled"
-        type="button"
-        :data-cy="`schedule-open-${job.id}`"
-        @click="scheduledId = job.id"
-      >
-        <span>{{ scheduledTimeWords(job, now) || job.schedule || 'Scheduled job' }}</span>
-        <span v-if="scheduledNotStartedWords(job)" class="note">{{
-          scheduledNotStartedWords(job)?.short
-        }}</span>
-        <span class="note">{{ scheduledPromptPreview(job.prompt) }}</span>
-      </button>
-      <p v-if="state.schedule.dropped" class="note">
-        {{ droppedScheduleNote(state.schedule.dropped) }}
-      </p>
+      <ScheduleBar :registry="state.schedule" embedded />
     </template>
     <template v-if="recent">
       <p class="subheading">Recently ended</p>
@@ -130,9 +98,6 @@ async function open(run: PanelRun): Promise<void> {
   </CardSection>
   <OverlayHost v-if="historyOpen" label="Past runs" @close="historyOpen = false"
     ><PastRunsDialog :runs="runs.past" @close="historyOpen = false" @open="void open($event)"
-  /></OverlayHost>
-  <OverlayHost v-if="scheduled" label="Scheduled job" @close="scheduledId = null"
-    ><ScheduledJobDialog :job="scheduled" :now="now" @close="scheduledId = null"
   /></OverlayHost>
   <OverlayHost v-if="unavailable" label="Run output" @close="unavailable = false"
     ><section class="missing">
@@ -148,17 +113,6 @@ async function open(run: PanelRun): Promise<void> {
   margin: var(--space-4) 0 0;
   color: var(--muted);
   font-size: var(--type-caption);
-}
-.scheduled {
-  display: grid;
-  gap: var(--space-1);
-  width: 100%;
-  padding: var(--space-5) 0;
-  border: 0;
-  background: none;
-  color: var(--text);
-  text-align: left;
-  font-size: var(--type-small);
 }
 .note {
   color: var(--muted);
