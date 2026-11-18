@@ -167,27 +167,53 @@ export function readWindowWork(
       }),
     ),
   })
-  const queue = listingOnly
-    ? undefined
-    : {
-        stalls: counted((unread) => stalled(store.stalledWorkNobodyWasToldAbout(unread))),
-        stops: counted((unread) => stalled(store.stalledWorkItsGiverWasToldAbout(unread))),
-        replies: counted((unread) => {
-          const walk = store.piecesWaitingOnWhoWrote(unread)
-          return {
-            ...walk,
-            rows: walk.rows.map(({ piece, label, title, owner, answeredAPersonAt }) => ({
-              piece,
-              label,
-              title,
-              owner,
-              answeredAPersonAt,
-            })),
-          }
-        }),
-        instructions: counted((unread) => store.instructionAsksWaiting(unread)),
-        servers: counted((unread) => store.mcpServerRequestsWaiting(unread)),
-      }
+  const endedOwners = new Set(
+    db.inTransaction
+      ? owners
+          .filter(({ openWork, naming }) => {
+            const ended = naming.value.named?.ended
+            return (
+              (ended === 'answered' || ended === 'withdrawn' || ended === 'closed') &&
+              naming.skipped.length === 0 &&
+              openWork.skipped.length === 0 &&
+              openWork.value.length === 0
+            )
+          })
+          .map(({ id }) => id)
+      : [],
+  )
+  const noOpenPieces = (id: string): boolean => endedOwners.has(id)
+  let queue: WindowWorkReading['queue']
+  try {
+    queue = listingOnly
+      ? undefined
+      : {
+          stalls: counted((unread) =>
+            stalled(store.stalledWorkNobodyWasToldAbout(unread, noOpenPieces)),
+          ),
+          stops: counted((unread) =>
+            stalled(store.stalledWorkItsGiverWasToldAbout(unread, noOpenPieces)),
+          ),
+          replies: counted((unread) => {
+            const walk = store.piecesWaitingOnWhoWrote(unread)
+            return {
+              ...walk,
+              rows: walk.rows.map(({ piece, label, title, owner, answeredAPersonAt }) => ({
+                piece,
+                label,
+                title,
+                owner,
+                answeredAPersonAt,
+              })),
+            }
+          }),
+          instructions: counted((unread) => store.instructionAsksWaiting(unread)),
+          servers: counted((unread) => store.mcpServerRequestsWaiting(unread)),
+        }
+  } finally {
+    // The proof belongs only to these two walks in this immutable snapshot.
+    endedOwners.clear()
+  }
   const instructionAskers =
     queue === undefined
       ? counted((unread) =>

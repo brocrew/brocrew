@@ -891,8 +891,14 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
     unread?: RowsUnread,
     owners?: ReadonlySet<string>,
   ): number
-  stalledWorkNobodyWasToldAbout(unread?: RowsUnread): LedgerWalk<PieceRow>
-  stalledWorkItsGiverWasToldAbout(unread?: RowsUnread): LedgerWalk<PieceRow>
+  stalledWorkNobodyWasToldAbout(
+    unread?: RowsUnread,
+    noOpenPieces?: (owner: string) => boolean,
+  ): LedgerWalk<PieceRow>
+  stalledWorkItsGiverWasToldAbout(
+    unread?: RowsUnread,
+    noOpenPieces?: (owner: string) => boolean,
+  ): LedgerWalk<PieceRow>
   stalledWorkAPersonGave(unread?: RowsUnread): LedgerWalk<PieceRow>
   piecesWaitingOnWhoWrote(unread?: RowsUnread): LedgerWalk<PieceWaitingOnWhoWrote>
   piecesWaitingOnWhoWroteIn(owner: string, unread?: RowsUnread): readonly PieceWaitingOnWhoWrote[]
@@ -5515,7 +5521,7 @@ export function createSessionStore(
       return settleStrandedRequestsTx(at, running, unread, owners)
     },
 
-    stalledWorkNobodyWasToldAbout(counted) {
+    stalledWorkNobodyWasToldAbout(counted, noOpenPieces) {
       const holders = selectOwnersOfPiecesAConversationGave.all() as { id: string }[]
       const unread = counted ?? rowsUnreadOnce()
       const told = new Map<string, ReadonlySet<string>>()
@@ -5531,9 +5537,12 @@ export function createSessionStore(
         'every-conversation-that-was-given-work',
         holders,
         (sessionId, noteSkip) =>
-          composeWhatEachPieceIsWaitingOn(piecesOfSession(sessionId, noteSkip), waiting).filter(
-            (piece) => aStallItsGiverCanBeToldOf(piece) && !toldAbout(piece.giver).has(piece.piece),
-          ),
+          oneSnapshot && db.inTransaction && noOpenPieces?.(sessionId)
+            ? []
+            : composeWhatEachPieceIsWaitingOn(piecesOfSession(sessionId, noteSkip), waiting).filter(
+                (piece) =>
+                  aStallItsGiverCanBeToldOf(piece) && !toldAbout(piece.giver).has(piece.piece),
+              ),
         unread,
       )
       return {
@@ -5576,7 +5585,7 @@ export function createSessionStore(
         ),
       }
     },
-    stalledWorkItsGiverWasToldAbout(counted) {
+    stalledWorkItsGiverWasToldAbout(counted, noOpenPieces) {
       const holders = selectOwnersOfPiecesAConversationGave.all() as { id: string }[]
       const unread = counted ?? rowsUnreadOnce()
       const told = new Map<string, ReadonlySet<string>>()
@@ -5593,9 +5602,11 @@ export function createSessionStore(
         'every-conversation-that-was-given-work',
         holders,
         (holder, noteSkip) =>
-          composeWhatEachPieceIsWaitingOn(piecesOfSession(holder, noteSkip), waits).filter(
-            (piece) => aStallItsGiverCanBeToldOf(piece) && wasToldOf(piece.giver, piece.piece),
-          ),
+          oneSnapshot && db.inTransaction && noOpenPieces?.(holder)
+            ? []
+            : composeWhatEachPieceIsWaitingOn(piecesOfSession(holder, noteSkip), waits).filter(
+                (piece) => aStallItsGiverCanBeToldOf(piece) && wasToldOf(piece.giver, piece.piece),
+              ),
         unread,
       )
       const when = (piece: PieceRow): number => piece.stalledAt ?? Number.MAX_SAFE_INTEGER
