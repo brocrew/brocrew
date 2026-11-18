@@ -573,7 +573,7 @@ describe('713 §1 · R59 — the host, over the REAL Codex adapter', () => {
       for (const [caller, addressed] of [
         [parent, parent],
         [target, parent],
-      ]) {
+      ] as const) {
         expect(
           await callOn(agentToolsFor(app.host, caller), 'compact_agent', { agent: addressed }),
         ).toMatchObject({
