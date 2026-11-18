@@ -1,4 +1,4 @@
-import { startMapReader } from '../panel-run.fixture'
+import { mapWorkflowEvents, startMapReader } from '../panel-run.fixture'
 import { afterEach, expect, it } from 'vitest'
 import { nextTick, reactive } from 'vue'
 import RunningNowCard from '../../src/renderer/src/components/RunningNowCard.vue'
@@ -124,18 +124,7 @@ it('opens the selected workflow through the existing output reader only after a 
     ConversationPane,
     paneProps({
       drawerOpen: true,
-      record: record([
-        { type: 'tool_call', id: 'workflow-call', name: 'Workflow', summary: 'Review the map' },
-        {
-          type: 'workflow_run',
-          taskId: 'map-review',
-          toolUseId: 'workflow-call',
-          name: 'Review the map',
-          phases: [],
-          agents: [],
-          source: 'task_progress',
-        },
-      ]),
+      record: record(mapWorkflowEvents()),
       onReadWorkflowOutput: async (id: string) => {
         asked.push(id)
         return {
