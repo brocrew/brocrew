@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { mkdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
 import type { ModelChoice } from '@brobot2/runtime'
 import type { Provider, ProviderConnection } from '@brobot2/shared'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
@@ -50,7 +50,7 @@ function fixture(provider: Provider, connectionId: string | null) {
   })
   const models = vi.fn(
     async (_p: Provider, context: { readonly providerHome: string }): Promise<ModelChoice[]> => {
-      const a = context.providerHome.includes('/endpoint-a/')
+      const a = context.providerHome.split(sep).includes('endpoint-a')
       return [
         {
           id: a ? 'model-a' : 'model-legacy',
