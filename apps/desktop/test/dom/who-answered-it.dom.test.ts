@@ -168,27 +168,32 @@ describe('§2 · the question card — where the actor genuinely varies', () => 
 })
 
 describe('§3 · the line still fits when the sentence is the long one', () => {
-  it('⛔ the settled line does not push its own card sideways at a narrow width', () => {
-    // 🔴 **The absent arm is 45 characters and `white-space: nowrap`**, which is the one thing on
-    // this line that could have made a settled card scroll horizontally. ⚠️ **Measured, not
-    // reasoned about**: `.what` is the cell that gives way, and whether it gives way ENOUGH is a
-    // question only a laid-out box can answer.
-    const item = permissionCard(undefined)
-    item.request = {
-      ...item.request,
-      detail: `git log --oneline --graph --decorate --all ${'x'.repeat(400)}`,
-    }
-    const m = mount(PermissionCard, { item }, { width: 420 })
-    const line = m.q('permission-answered')
-    const said = m.q('permission-answered-by')
-    expect(line.scrollWidth, 'the settled line overflows the card').toBeLessThanOrEqual(
-      line.clientWidth,
-    )
-    // ⚑ …and the clause itself is whole rather than clipped, which is why it is the cell that does
-    // NOT give way: an actor truncated to `by a pe…` is a fact half-stated.
-    expect(said.scrollWidth).toBeLessThanOrEqual(said.clientWidth)
-    // ⛔ **The control**: the thing that DID give way is the one the card says gives way.
-    const what = m.q('permission-what')
-    expect(what.scrollWidth).toBeGreaterThan(what.clientWidth)
-  })
+  // 360 as well as 420: at 420 whether the clause fits on one line depends on the fonts a machine
+  // has, so 360 is where it cannot fit anywhere and the line must still keep the card's width.
+  it.each([420, 360])(
+    '⛔ the settled line does not push its own card sideways at %ipx',
+    (width) => {
+      // 🔴 **The absent arm is 45 characters**, the longest thing on this line and the one that could
+      // make a settled card scroll horizontally; it wraps rather than widening the line. ⚠️
+      // **Measured, not reasoned about**: `.what` is the cell that gives way, and whether it gives
+      // way ENOUGH is a question only a laid-out box can answer.
+      const item = permissionCard(undefined)
+      item.request = {
+        ...item.request,
+        detail: `git log --oneline --graph --decorate --all ${'x'.repeat(400)}`,
+      }
+      const m = mount(PermissionCard, { item }, { width })
+      const line = m.q('permission-answered')
+      const said = m.q('permission-answered-by')
+      expect(line.scrollWidth, 'the settled line overflows the card').toBeLessThanOrEqual(
+        line.clientWidth,
+      )
+      // ⚑ …and the clause itself is whole rather than clipped, which is why it is the cell that does
+      // NOT give way: an actor truncated to `by a pe…` is a fact half-stated.
+      expect(said.scrollWidth).toBeLessThanOrEqual(said.clientWidth)
+      // ⛔ **The control**: the thing that DID give way is the one the card says gives way.
+      const what = m.q('permission-what')
+      expect(what.scrollWidth).toBeGreaterThan(what.clientWidth)
+    },
+  )
 })

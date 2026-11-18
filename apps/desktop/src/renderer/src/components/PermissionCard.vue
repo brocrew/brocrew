@@ -1005,10 +1005,10 @@ function decide(outcome: PermissionOutcome): void {
 }
 
 .settled-line .who {
-  flex: 0 0 auto;
+  min-width: 0;
+  flex: 0 1 auto;
   color: var(--muted);
   font-size: var(--type-caption);
-  white-space: nowrap;
 }
 
 .settled-line .time {
