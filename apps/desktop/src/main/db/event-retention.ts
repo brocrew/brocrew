@@ -63,7 +63,7 @@ export function eventTrimWriter(db: AppDatabase): (batch: EventTrimBatch) => Eve
       AND (created_at < @before OR type IN ('provider_commands','tool_inventory','launched'))`
   const selected = db.prepare(`SELECT type, payload ${candidates}`)
   const remove = db.prepare(`DELETE ${candidates}`)
-  const write = db.transaction((batch: EventTrimBatch) => {
+  const write = db.transaction((batch: EventTrimBatch, standalone: boolean) => {
     const current = generation.get(batch.session) as
       { active: number; building: number | null } | undefined
     if (!current || current.active !== batch.active || current.building !== null) return null
@@ -80,14 +80,17 @@ export function eventTrimWriter(db: AppDatabase): (batch: EventTrimBatch) => Eve
     })
     const changed = remove.run(parameters).changes
     if (changed > 0) {
-      committed.whole(batch.session, 'trimmed')
-      if (historyOnly && changed === rows.length) committed.historyTrimmed(changed)
+      // An outer transaction can also write through exec or RETURNING, outside the commit recorder.
+      committed.whole(
+        batch.session,
+        standalone && historyOnly && changed === rows.length ? 'stream-trimmed' : 'trimmed',
+      )
     }
     return changed
   })
   return (batch) => {
     const began = performance.now()
-    const changed = write.immediate(batch)
+    const changed = write.immediate(batch, !db.inTransaction)
     const durationMs = performance.now() - began
     const checkpointBegan = performance.now()
     if (changed !== null && !db.inTransaction) db.pragma('wal_checkpoint(PASSIVE)')
