@@ -32,6 +32,17 @@ describe('F071 · the ledger folds read through their own index', () => {
 
   const isOwnerSchedule = (sql: string): boolean =>
     sql.includes('AS first_listed') && sql.includes('AND session_id = ?')
+  const stopSeeks = (): string[] => {
+    const newest = prepared.filter((sql) => sql.includes('$.stopsNothing'))
+    const torn = prepared.filter(
+      (sql) =>
+        sql.includes("type IN ('work_interrupted', 'user_decision')") &&
+        sql.includes('NOT json_valid(payload)'),
+    )
+    expect(newest).toHaveLength(1)
+    expect(torn).toHaveLength(1)
+    return [...newest, ...torn]
+  }
   const throughTheIndex = (): string[] => {
     const reads = prepared.filter(
       (sql) =>
@@ -39,7 +50,8 @@ describe('F071 · the ledger folds read through their own index', () => {
         (sql.includes('events_kind_owner_idx') && sql.includes(FOLD_TERM)),
     )
     expect(reads.filter(isOwnerSchedule)).toHaveLength(1)
-    expect(reads.filter((sql) => !isOwnerSchedule(sql))).toHaveLength(23)
+    // Two Stop reads now seek their own kinds instead of the complete fold range.
+    expect([...reads.filter((sql) => !isOwnerSchedule(sql)), ...stopSeeks()]).toHaveLength(23)
     return reads
   }
 
@@ -109,7 +121,8 @@ describe('F071 · the ledger folds read through their own index', () => {
   describe('§2 · SQLite reads each of them through it', () => {
     it('each indexed read uses its declared event range', () => {
       const reads = throughTheIndex()
-      for (const sql of reads) {
+      const stops = stopSeeks()
+      for (const sql of [...reads, ...stops]) {
         const named = [...new Set([...sql.matchAll(/@([A-Za-z_]\w*)/g)].map((one) => one[1]))]
         const args: unknown[] = []
         if (named.length > 0) args.push(Object.fromEntries(named.map((name) => [name, null])))
@@ -118,8 +131,14 @@ describe('F071 · the ledger folds read through their own index', () => {
           .map((one) => one.detail)
           .filter((detail) => /^(SEARCH|SCAN) (events|e)(?: |$)/.test(detail))
         expect(plan.length, sql.slice(0, 120)).toBeGreaterThan(0)
+        if (stops.includes(sql))
+          expect(plan, sql.slice(0, 120)).toHaveLength(sql.includes('UNION ALL') ? 2 : 1)
         for (const detail of plan) {
-          if (sql.includes('AS first_listed') && detail.startsWith('SEARCH e ')) {
+          if (stops.includes(sql)) {
+            expect(detail, sql.slice(0, 120)).toMatch(
+              /^SEARCH events USING (?:COVERING )?INDEX events_kind_owner_idx \(type=\? AND session_id=\? AND generation=\?(?: AND ordinal>\?)?\)$/,
+            )
+          } else if (sql.includes('AS first_listed') && detail.startsWith('SEARCH e ')) {
             // The schedule levels' compaction time reads its conversation's own index.
             expect(detail, sql.slice(0, 120)).toMatch(/^SEARCH e USING INDEX events_session_idx /)
           } else if (sql.includes('events_kind_owner_idx')) {
