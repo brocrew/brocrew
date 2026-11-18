@@ -713,13 +713,16 @@ const fileManager = fileManagerHere()
         </p>
       </CardSection>
 
-      <section
+      <component
+        :is="section.key === 'agents' ? CardSection : 'section'"
         v-for="section in sections"
         :key="section.key"
-        class="panel-section"
+        :class="section.key === 'agents' ? undefined : 'panel-section'"
         :data-cy="section.cy"
+        v-bind="section.key === 'agents' ? { icon: '#i-bot', count: section.entries.length } : {}"
       >
-        <div class="section-head">
+        <template v-if="section.key === 'agents'" #title>{{ section.label }}</template>
+        <div v-if="section.key !== 'agents'" class="section-head">
           <span>{{ section.label }}</span>
           <span class="tally">{{ section.entries.length }}</span>
         </div>
@@ -770,7 +773,7 @@ const fileManager = fileManagerHere()
             {{ asked.has(stopIdOf(section.key, entry)!) ? 'Stopping…' : 'Stop' }}
           </button>
         </div>
-      </section>
+      </component>
 
       <!-- Show background work and the schedule on the agent card, using the same `control` projection and the pane's Stop gate. Template comments enter SSR markup, so keep them free of quoted runtime messages. -->
       <div class="card-bars">
