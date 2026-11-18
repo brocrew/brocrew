@@ -1,4 +1,4 @@
-import { neutralHostDeps } from './lib/host-fixture'
+import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -145,13 +145,7 @@ describe('the host and the renderer cannot disagree about what is running (100)'
       providerHomePath: (provider) => join(dir, 'homes', provider),
       resolveCwd: (sessionId, requested) => requested ?? join(dir, 'scratch', sessionId),
       newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'programmatic',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
   })
 
