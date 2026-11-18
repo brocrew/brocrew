@@ -256,9 +256,8 @@ function whoWaitsOnIt(waiting: WhoWaitsOnIt, now: number): string[] {
 
 /**
  * 🔴 **The block, whole.** ⚑ The time on every turn. ⚑ On a turn this app started
- * (`aPersonStartedIt` false), when the person last wrote — `null` is *not that this app knows of* —
- * and that they have read nothing since. ⚑ Its open questions, and who waits on it, as the host
- * hands them in.
+ * (`aPersonStartedIt` false), when the person last wrote — `null` means that time is unknown.
+ * Its open questions, and who waits on it, as the host hands them in.
  *
  * An unknown list makes no absence claim. The host can separately supply a confirmed-empty
  * person queue, helper changes and the current work.
@@ -275,17 +274,14 @@ export function whatThisAppAddsToATurn(turn: {
   const itIs = `It is ${nowFormat(now)}.`
   const lastWrote =
     turn.thePersonLastWroteAt === null
-      ? 'The person has not written in this conversation recently.'
+      ? 'The last time the person wrote here is unknown.'
       : `The person last wrote in this conversation at ${clockTimeFrom(turn.thePersonLastWroteAt, now)}.`
   return [
     THE_BLOCK_BEGINS,
     turn.aPersonStartedIt
       ? 'This app adds what follows. It is not part of the person’s message above, and that message comes first.'
       : 'This app adds what follows. It is not part of the message above, and that message comes first.',
-    turn.aPersonStartedIt
-      ? itIs
-      : `${itIs} ${lastWrote} When you next write to the person, assume they have read nothing ` +
-        'since then, and tell them briefly what they need to know.',
+    turn.aPersonStartedIt ? itIs : `${itIs} ${lastWrote}`,
     ...(turn.questions === null ? [] : itsOpenQuestions(turn.questions, now)),
     ...(turn.waiting === null ? [] : whoWaitsOnIt(turn.waiting, now)),
     ...extraLines(turn.extra ?? {}, now),
