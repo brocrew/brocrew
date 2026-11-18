@@ -11,14 +11,24 @@ it('frames the running sub-agent with the same padding as a task card and preser
   const state = createTranscript()
   applyEvent(state, { type: 'tool_call', id: 'agent-tool', name: 'Agent', summary: 'Read the map' })
   applyEvent(state, {
-    type: 'sub_agent', agentId: 'map-reader', phase: 'started',
-    parentToolCallId: 'agent-tool', title: 'Read the map',
+    type: 'sub_agent',
+    agentId: 'map-reader',
+    phase: 'started',
+    parentToolCallId: 'agent-tool',
+    title: 'Read the map',
   })
   const navigated: string[] = []
-  const m = mount(SessionPanel, {
-    state, facets: { doing: 'idle', being: 'live' }, who: 'BroBot', profile: 'brobot',
-    onNavigate: (id: string) => navigated.push(id),
-  }, { width: 380, height: 700 })
+  const m = mount(
+    SessionPanel,
+    {
+      state,
+      facets: { doing: 'idle', being: 'live' },
+      who: 'BroBot',
+      profile: 'brobot',
+      onNavigate: (id: string) => navigated.push(id),
+    },
+    { width: 380, height: 700 },
+  )
   const reference = mount(CardSection, { icon: '#i-bot' })
   await nextTick()
   const agents = m.q('panel-agents')
@@ -27,7 +37,14 @@ it('frames the running sub-agent with the same padding as a task card and preser
   const actual = getComputedStyle(agents)
   const expected = getComputedStyle(reference.host.querySelector('section')!)
   expect(parseFloat(actual.paddingLeft)).toBeGreaterThan(0)
-  for (const property of ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderRadius'] as const)
+  for (const property of [
+    'paddingTop',
+    'paddingRight',
+    'paddingBottom',
+    'paddingLeft',
+    'borderTopWidth',
+    'borderRadius',
+  ] as const)
     expect(actual[property]).toBe(expected[property])
   const row = agents.querySelector<HTMLButtonElement>('[data-cy="panel-row"]')!
   expect(row.disabled).toBe(false)
