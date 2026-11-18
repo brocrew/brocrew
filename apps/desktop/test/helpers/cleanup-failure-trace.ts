@@ -1,3 +1,4 @@
+import { rmSync } from 'node:fs'
 import type { TestContext } from 'vitest'
 
 export function cleanupFailureTrace(context: TestContext) {
@@ -14,4 +15,31 @@ export function cleanupFailureTrace(context: TestContext) {
   })
   return (stage: string, index?: number) =>
     stages.push({ stage, index, elapsedMs: performance.now() - started })
+}
+
+export async function cleanupAndReportFailures(
+  context: TestContext,
+  hosts: readonly { closeAll(): Promise<void> }[],
+  db: { close(): void },
+  directories: readonly string[],
+): Promise<void> {
+  const trace = cleanupFailureTrace(context)
+  trace('hook-entry')
+  for (const [index, built] of hosts.entries()) {
+    trace('host-close-entry', index)
+    try {
+      await built.closeAll()
+    } finally {
+      trace('host-close-settled', index)
+    }
+  }
+  trace('db-close-entry')
+  db.close()
+  trace('db-close-return')
+  for (const [index, dir] of directories.entries()) {
+    trace('rm-entry', index)
+    rmSync(dir, { recursive: true, force: true })
+    trace('rm-return', index)
+  }
+  trace('hook-return')
 }

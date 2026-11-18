@@ -8,7 +8,9 @@ import { expect, it } from 'vitest'
 
 it('prints the failed cleanup stage for rejection and the framework timeout, not passing cleanup', async () => {
   const root = fileURLToPath(new URL('../../../', import.meta.url))
-  const config = fileURLToPath(new URL('./fixtures/cleanup-failure/vitest.config.ts', import.meta.url))
+  const config = fileURLToPath(
+    new URL('./fixtures/cleanup-failure/vitest.config.ts', import.meta.url),
+  )
   const directory = mkdtempSync(join(tmpdir(), 'cleanup-report-'))
   const report = join(directory, 'result.json')
   try {
@@ -49,9 +51,12 @@ it('prints the failed cleanup stage for rejection and the framework timeout, not
             stages: { stage: string; index: number }[]
           },
       )
-    expect(records.map((record) => record.test)).toEqual(['cleanup rejects', 'cleanup never returns'])
-    for (const record of records)
-      expect(record.stages.at(-1)).toMatchObject({ stage: 'host-close-entry', index: 1 })
+    expect(records.map((record) => record.test)).toEqual([
+      'cleanup rejects',
+      'cleanup never returns',
+    ])
+    expect(records[0]!.stages.at(-1)).toMatchObject({ stage: 'host-close-settled', index: 1 })
+    expect(records[1]!.stages.at(-1)).toMatchObject({ stage: 'host-close-entry', index: 1 })
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }
