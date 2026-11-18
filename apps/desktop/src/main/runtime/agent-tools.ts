@@ -1,3 +1,4 @@
+import { createCompactAgentTool } from './tool-families/compaction'
 import { createListTasksTool } from './tool-families/work-board'
 import { createReplyToParentTool, replyFields } from './tool-families/work-reply'
 import {
@@ -244,6 +245,7 @@ export function agentToolsFor(
       createWriteAgentRulesTool(host, by, me, guarded),
       createReadOwnNotesTool(host, by, me, guarded),
       createWriteOwnNotesTool(host, by, me, guarded),
+      createCompactAgentTool(host, by, me, guarded),
     ]
       .filter((one) => one.name !== 'write_agent_rules' || offersDirectRulesWrite)
       .map(recordsWhatItRefused),

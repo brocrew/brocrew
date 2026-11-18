@@ -547,6 +547,7 @@ export function createGetAgentStatusTool(
   host: Pick<
     AgentToolHost,
     | 'agentCard'
+    | 'contextReportedFor'
     | 'nameByItsWorkUnder'
     | 'theConversationAddressed'
     | 'whatOpenedItsLastTurn'
@@ -571,7 +572,7 @@ export function createGetAgentStatusTool(
     // `list_agents`' it was not describing a payload that had stopped matching it. The first
     // clause gains the fact the card gained; nothing else here moved.
     description:
-      "Who one agent is, what it is doing right now — active, needs you, waiting on another conversation's answer, owing another conversation an answer, running in the background, scheduled, waiting on the agents holding work it gave out, or idle — the work it holds, by label, and where it came from. It answers for any conversation this app can run or restart, including every one list_agents names, by the piece it owns (W1.2) or by its id. It says the provider, model and effort its conversation runs on, and what its provider last reported when that differs.",
+      "Who one agent is, what it is doing right now — active, needs you, waiting on another conversation's answer, owing another conversation an answer, running in the background, scheduled, waiting on the agents holding work it gave out, or idle — the work it holds, by label, and where it came from. It answers for any conversation this app can run or restart, including every one list_agents names, by the piece it owns (W1.2) or by its id. It says the provider, model and effort its conversation runs on, and what its provider last reported when that differs. It includes the provider’s last reported context size when known.",
     /**
      * **486 · the rails are the whole gate** (HO-031 §2.4).
      *
@@ -614,11 +615,17 @@ export function createGetAgentStatusTool(
                     ? named({ conversation: asker, profile: null })
                     : null,
               })
+        const context = host.contextReportedFor(card.agent)
+        const contextSaid =
+          context === null || context.kind === 'unknown'
+            ? ''
+            : `Context: ${context.used} tokens${context.kind === 'proportional' ? ` / ${context.window}` : ''}.`
         const archivedAt = host.whenItWasArchived(card.agent)
         return answer(
           {
             outcome: 'ok',
             agent: cardPayload(card),
+            ...(contextSaid === '' ? {} : { context }),
             ...(archivedAt === null
               ? {}
               : {
@@ -629,6 +636,7 @@ export function createGetAgentStatusTool(
           },
           [
             cardText(card) + (archivedAt === null ? '' : archivedSaid(archivedAt, last.readAt)),
+            ...(contextSaid === '' ? [] : [contextSaid]),
             ...theLastTurnSaid(card.lastEndedTurn, last, named, askedBy, card.lastAskToStop),
           ].join('\n\n'),
         )
