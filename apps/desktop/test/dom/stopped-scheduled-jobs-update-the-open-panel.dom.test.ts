@@ -129,8 +129,6 @@ describe('a stopped conversation receives its current scheduled level in the ope
       jobs.map((job) => ({ ...job, listedSince: SCHEDULE_NOW + 1 })),
     )
     expect(visible(m.q('schedule-bar'))).toBe(true)
-    const fold = m.q('schedule-fold')
-    if (fold.getAttribute('aria-expanded') === 'false') fold.click()
     await settle()
     for (const [id, words] of [
       ['listed-recipes', 'Not started automatically: time unknown'],
