@@ -118,8 +118,6 @@ describe('scheduled jobs open their full available prompt', () => {
         { width, height: 1000 },
       )
       await settled()
-      const fold = m.q('schedule-fold')
-      if (fold.getAttribute('aria-expanded') === 'false') fold.click()
       await drawnReady()
       for (const [id, prefix] of [
         ['listed-recipes', 'Read the fictional recipe'],
