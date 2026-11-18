@@ -469,7 +469,7 @@ function steer(event: KeyboardEvent, at: number): DrawerTab | null {
         :can-open-conversation="cast.goTo.value !== null"
         :can-stop-background-work="props.canStopBackgroundWork ?? false"
         :on-stop-background-work="props.onStopBackgroundWork"
-      :on-open-run="props.onOpenRun"
+        :on-open-run="props.onOpenRun"
         @navigate="(itemId) => emit('navigate', itemId)"
         @open-asset="(asset) => emit('openAsset', asset)"
         :files="cardFilesRead?.files"

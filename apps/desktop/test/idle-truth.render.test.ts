@@ -168,7 +168,7 @@ describe('250 · the header pill', () => {
     expect(html).toContain('Still running')
     // ⚑ **The pairing**: `248`'s bar is on the SAME render, holding the row the pill describes. Two
     // readings of one object is the property 099 spent a dispatch buying.
-    expect(html).toContain('data-cy="background-bar"')
+    expect(html).toContain('data-cy="panel-run-background:b6uoyo82k"')
     // ⛔ **The COMMAND, since 251 §2** — this line asserted the DESCRIPTION when 250 wrote it, which
     // is exactly the defect 251 was dispatched for: *"the registry row says what the model called the
     // work, never what it is running."* The fixture's row carries `toolCallId: 'toolu_1'`, so the
@@ -178,11 +178,11 @@ describe('250 · the header pill', () => {
     // over 251's diff). The tool card prints the same command in the same pane, so a loose
     // `toContain('node -e')` held even when the row showed the description — an assertion about the
     // row that could not fail for the row.
-    expect(tag(html, 'background-what-b6uoyo82k')).toContain('data-from="command"')
-    const cell = html
-      .replace(/<!--[\s\S]*?-->/g, '')
-      .match(/data-cy="background-what-b6uoyo82k"[^>]*>([\s\S]*?)<\/span>/)?.[1]
-    expect(cell?.replace(/<[^>]+>/g, '')).toBe('Bash node -e &quot;…&quot;')
+    const row = html.replace(/<!--[\s\S]*?-->/g, '').split('data-cy="panel-run-background:b6uoyo82k"')[1]
+    expect(row, 'the background run row is present').toBeDefined()
+    const label = row?.match(/data-cy="panel-run-label"[^>]*>([\s\S]*?)<\/strong>/)?.[1]
+    expect(label).toBe('node -e &quot;…&quot;')
+    expect(row).toContain('Commands · Bash')
     // …and the description it replaced is gone, so this is a change of answer rather than a row that
     // grew a second one.
     expect(html).not.toContain('waiting for person.txt to appear on Desktop')
@@ -194,7 +194,7 @@ describe('250 · the header pill', () => {
     expect(html).toContain('Idle')
     // The paired negative, meaningful because the positives above rendered from the same component:
     // the bar is gone too, so the pill and the bar went quiet together.
-    expect(html).not.toContain('data-cy="background-bar"')
+    expect(html).not.toContain('data-cy="panel-run-background:b6uoyo82k"')
   })
 
   it('🔴 …and it reads the CONTROL projection, so paging back does not silence it (064)', async () => {
@@ -405,14 +405,14 @@ describe('258 · the header pill and the bar it points at', () => {
     expect(html).toContain('Scheduled')
     // ⚑ **The pairing**: the bar is on the SAME render, holding the job the pill describes — two
     // readings of one object rather than two opinions.
-    expect(html).toContain('data-cy="schedule-bar"')
-    expect(html).toContain('data-cy="schedule-row-e3826cc5"')
+    expect(html).toContain('data-cy="schedule-open-e3826cc5"')
+    expect(html).toContain('data-cy="schedule-open-e3826cc5"')
     const stripped = html.replace(/<!--[\s\S]*?-->/g, '')
     expect(stripped).toContain('1 job is scheduled')
     expect(stripped).toContain('*/2 * * * *')
     // ⛔ **And `248`'s bar is NOT drawn**, which is what makes this a fact about the schedule rather
     // than about a registry that happened to be full.
-    expect(html).not.toContain('data-cy="background-bar"')
+    expect(html).not.toContain('data-cy="panel-run-background:b6uoyo82k"')
   })
 
   it('…and says "Idle" once the provider says nothing is scheduled', async () => {
@@ -424,7 +424,7 @@ describe('258 · the header pill and the bar it points at', () => {
     expect(html).toContain('Idle')
     // The paired negative, meaningful because the positives above rendered from the same component:
     // the bar is gone too, so the pill and the bar went quiet together.
-    expect(html).not.toContain('data-cy="schedule-bar"')
+    expect(html).not.toContain('data-cy="schedule-open-e3826cc5"')
   })
 
   it('⚠️ the `data-status` three live smokes read is UNTOUCHED — it is still the host’s word', async () => {
@@ -461,7 +461,7 @@ describe('258 · the header pill and the bar it points at', () => {
       }),
     )
     expect(tag(html, 'session-status')).toContain('data-standing="scheduled"')
-    expect(html).toContain('data-cy="schedule-row-e3826cc5"')
+    expect(html).toContain('data-cy="schedule-open-e3826cc5"')
   })
 })
 

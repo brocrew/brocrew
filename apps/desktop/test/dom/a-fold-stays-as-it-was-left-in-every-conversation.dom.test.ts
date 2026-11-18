@@ -1,6 +1,5 @@
 import { memoryStorage } from './memory-storage'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { userEvent } from 'vitest/browser'
 import { defineComponent, h, nextTick, ref } from 'vue'
 import type { RuntimeEvent } from '@brobot2/runtime'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
@@ -113,78 +112,28 @@ const FOLDS = [
     button: (m: Mounted) => m.q('card-files').querySelector<HTMLElement>('.head > button')!,
     key: 'brobot2.cardFilesFolded',
   },
-  {
-    name: 'still running',
-    button: (m: Mounted) => m.q('background-fold'),
-    key: 'brobot2.cardBackgroundFolded',
-  },
-  {
-    name: 'scheduled jobs',
-    button: (m: Mounted) => m.q('schedule-fold'),
-    key: 'brobot2.cardScheduleFolded',
-  },
 ] as const
 
 const open = (m: Mounted): boolean[] =>
   FOLDS.map((fold) => fold.button(m).getAttribute('aria-expanded') === 'true')
 
-describe('the still-running block folds', () => {
-  it('🔴 the heading is the button, with a chevron and the count; it starts folded, and opening shows the rows and Stop', async () => {
-    const { m } = panel()
-    await nextTick()
-    const fold = m.q('background-fold')
-    expect(fold.tagName).toBe('BUTTON')
-    expect(fold.querySelector('use')!.getAttribute('href')).toBe('#i-chevron')
-    expect(m.q('background-count').textContent?.trim()).toBe('1')
-    expect(fold.textContent?.replace(/\s+/g, ' ').trim()).toBe('1 thing is still running')
-    const row = m.q(`background-row-bg_${META.sessionId}`)
-    const stop = m.q(`background-stop-bg_${META.sessionId}`)
-    expect(document.getElementById(fold.getAttribute('aria-controls')!)!.contains(row)).toBe(true)
-    // Folded until a person opens it: the heading and its count alone.
-    expect(fold.getAttribute('aria-expanded')).toBe('false')
-    expect(visible(row)).toBe(false)
-    expect(visible(stop)).toBe(false)
-    expect(visible(m.q('background-count'))).toBe(true)
-
-    fold.click()
-    await nextTick()
-    expect(fold.getAttribute('aria-expanded')).toBe('true')
-    expect(visible(row)).toBe(true)
-    expect(visible(stop)).toBe(true)
-  })
-
-  it('⚑ the keyboard folds and unfolds it', async () => {
-    const { m } = panel()
-    await nextTick()
-    const fold = m.q('background-fold')
-    const row = m.q(`background-row-bg_${META.sessionId}`)
-    fold.focus()
-    await userEvent.keyboard('{Enter}')
-    await nextTick()
-    expect(visible(row)).toBe(true)
-    await userEvent.keyboard(' ')
-    await nextTick()
-    expect(visible(row)).toBe(false)
-  })
-})
-
 describe('a fold stays as it was left, in every conversation', () => {
-  it('🔴 each of the four, turned in one conversation, stays turned in another', async () => {
+  it('🔴 each card fold, turned in one conversation, stays turned in another', async () => {
     const { m, show } = panel()
     await nextTick()
     // The two sections start open, and the two blocks start folded.
-    expect(open(m)).toEqual([true, true, false, false])
+    expect(open(m)).toEqual([true, true])
     for (const fold of FOLDS) fold.button(m).click()
     await nextTick()
-    expect(open(m)).toEqual([false, false, true, true])
+    expect(open(m)).toEqual([false, false])
 
     await show(OTHER)
     // The panel really is on the other conversation: its rows are that one's.
-    expect(m.all(`background-row-bg_${OTHER}`)).toHaveLength(1)
-    expect(m.all(`schedule-row-job_${OTHER}`)).toHaveLength(1)
-    expect(open(m)).toEqual([false, false, true, true])
-    expect(visible(m.q(`background-row-bg_${OTHER}`))).toBe(true)
-    expect(visible(m.q(`schedule-row-job_${OTHER}`))).toBe(true)
+    expect(m.all(`panel-run-background:bg_${OTHER}`)).toHaveLength(1)
+    expect(m.all(`schedule-open-job_${OTHER}`)).toHaveLength(1)
+    expect(open(m)).toEqual([false, false])
+    expect(visible(m.q(`panel-run-background:bg_${OTHER}`))).toBe(true)
+    expect(visible(m.q(`schedule-open-job_${OTHER}`))).toBe(true)
   })
 
   it('🔴 …and after the panel is drawn again, each is as it was left', async () => {
@@ -192,19 +141,16 @@ describe('a fold stays as it was left, in every conversation', () => {
     await nextTick()
     // A section folded and a block opened, the other two left as they start.
     FOLDS[0].button(first.m).click()
-    FOLDS[2].button(first.m).click()
     await nextTick()
     expect(storage.getItem(FOLDS[0].key)).toBe('true')
     expect(storage.getItem(FOLDS[1].key)).toBeNull()
-    expect(storage.getItem(FOLDS[2].key)).toBe('false')
-    expect(storage.getItem(FOLDS[3].key)).toBeNull()
     unmountAll()
 
     const again = panel()
     await nextTick()
-    expect(open(again.m)).toEqual([false, true, true, false])
+    expect(open(again.m)).toEqual([false, true])
     await again.show(OTHER)
-    expect(open(again.m)).toEqual([false, true, true, false])
+    expect(open(again.m)).toEqual([false, true])
   })
 
   it('⚑ one key for each fold, shared by every conversation', () => {
