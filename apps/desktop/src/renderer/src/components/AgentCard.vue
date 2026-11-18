@@ -40,10 +40,10 @@ import ModelPicker from './ModelPicker.vue'
 import AgentBookButton from './AgentBookButton.vue'
 import CardApproval from './CardApproval.vue'
 import AgentState from './AgentState.vue'
-import BackgroundBar from './BackgroundBar.vue'
+import RunningNowCard from './RunningNowCard.vue'
+import type { OpenPanelRun } from '../lib/panel-runs'
 import CardEmpty from './CardEmpty.vue'
 import CardSection from './CardSection.vue'
-import ScheduleBar from './ScheduleBar.vue'
 import SessionBot from './SessionBot.vue'
 import TaskList from './TaskList.vue'
 import CardCompactDoor from './CardCompactDoor.vue'
@@ -103,6 +103,7 @@ const props = defineProps<{
   canStopBackgroundWork?: boolean
   /** ⚑ Stop one piece of background work by the provider's own id; `false` is *it did not go out*. */
   onStopBackgroundWork?: (id: string) => Promise<boolean>
+  onOpenRun?: OpenPanelRun
   /** ⚑ The card that fills the panel: parts 1–2 stay, part 3 and the slot scroll. */
   scrolls?: boolean
   /**
@@ -191,7 +192,6 @@ const scheduleShown = computed(
     (props.agentState?.is !== 'idle' && props.agentState?.is !== 'waiting-on-a-worker'),
 )
 /** ⚑ The bar's own answer where nothing can stop: *it did not go out* (`BackgroundBar`'s contract). */
-const refuseStop = (): Promise<boolean> => Promise.resolve(false)
 const root = computed(() => props.root ?? null)
 /** The work given to it, its piece with a typed wait saying that wait where it read "waiting on purpose". */
 const tasks = computed(() =>
@@ -289,26 +289,6 @@ const context = computed(() => {
 const SECTIONS = [
   { key: 'permissions', label: 'Permissions', cy: 'panel-permissions' },
   { key: 'questions', label: 'Questions', cy: 'panel-questions' },
-  /**
-   * 🔴 **506 · `Sub-agents`, and the rename is the same defect the empty paragraph carried.**
-   *
-   * Label this section Sub-agents: its rows come from this conversation's `sub_agent` events, using Claude's `task_id` or Codex's `agentThreadId`. The left rail's Agents section lists app identities, a different population. Match the rows' `sub-agent` fallback wording.
-   *
-   * ⛔ **The hook is unchanged.** `panel-agents` is what the render tests, the live smoke and
-   * `tab-flow.mjs` address this band by; renaming a handle would move three instruments to say
-   * one word better.
-   */
-  { key: 'agents', label: 'Sub-agents', cy: 'panel-agents' },
-  /**
-   * 108. **One row per running workflow, never its agents.** A 22-agent fan-out is one happening,
-   * and the list this sits in is read at a glance — see `session-panel.ts` on why the children stay
-   * in the tree.
-   *
-   * ⚠️ Last on purpose. The order above is a priority: a permission freezes the composer, a question
-   * holds the turn, an agent is working. A workflow is working too and wants nothing from you, so it
-   * sits below everything that might.
-   */
-  { key: 'workflows', label: 'Workflows', cy: 'panel-workflows' },
 ] as const
 
 /**
@@ -348,39 +328,6 @@ const canReach = (itemId: string): boolean => reachable.value.has(itemId)
 
 /** ⚑ The tiles whose picture would not load — they draw the image mark instead of a broken one. */
 const unloaded = ref(new Set<string>())
-
-/**
- * Show Stop beside a running provider sub-agent. The bar above the composer keeps its own stop control.
- *
- * ⚑ **Only where the provider lists it as running work it can stop**: a sub-agent row is keyed
- * `agent:<id>` (`session-panel.ts`), and `<id>` is Claude's `task_id` — the same id the background
- * registry names and stops by. ⛔ One gate, `canStopBackgroundWork`, exactly as the bar reads it.
- */
-const AGENT_KEY = 'agent:'
-const stopIdOf = (section: string, entry: PanelEntry): string | null => {
-  if (section !== 'agents' || !props.canStopBackgroundWork || !props.onStopBackgroundWork)
-    return null
-  if (!entry.key.startsWith(AGENT_KEY)) return null
-  const id = entry.key.slice(AGENT_KEY.length)
-  return props.state.background.running.some((row) => row.id === id) ? id : null
-}
-
-/** ⚑ Asked, and not yet ended — the bar's own in-flight rule; forgotten when the stop did not go out. */
-const asked = ref(new Set<string>())
-watch(
-  () => props.conversation,
-  () => {
-    asked.value = new Set()
-  },
-)
-async function stop(id: string): Promise<void> {
-  asked.value = new Set(asked.value).add(id)
-  if (!(await props.onStopBackgroundWork!(id))) {
-    const next = new Set(asked.value)
-    next.delete(id)
-    asked.value = next
-  }
-}
 
 const sections = computed(() => {
   const view = props.panel
@@ -714,15 +661,13 @@ const fileManager = fileManagerHere()
       </CardSection>
 
       <component
-        :is="section.key === 'agents' ? CardSection : 'section'"
+        :is="'section'"
         v-for="section in sections"
         :key="section.key"
-        :class="section.key === 'agents' ? undefined : 'panel-section'"
+        class="panel-section"
         :data-cy="section.cy"
-        v-bind="section.key === 'agents' ? { icon: '#i-bot', count: section.entries.length } : {}"
       >
-        <template v-if="section.key === 'agents'" #title>{{ section.label }}</template>
-        <div v-if="section.key !== 'agents'" class="section-head">
+        <div class="section-head">
           <span>{{ section.label }}</span>
           <span class="tally">{{ section.entries.length }}</span>
         </div>
@@ -754,36 +699,19 @@ const fileManager = fileManagerHere()
           </button>
           <!-- ⚑ **Stop, beside the row and never inside it** — a button in a button is invalid, and the
                row is the way IN; this is the one act. See {@link stopIdOf}. -->
-          <button
-            v-if="stopIdOf(section.key, entry)"
-            class="row-stop"
-            type="button"
-            :disabled="asked.has(stopIdOf(section.key, entry)!)"
-            :title="
-              asked.has(stopIdOf(section.key, entry)!)
-                ? 'Asked to stop. The provider reports the ending on its own.'
-                : 'Stop this one. The conversation keeps running.'
-            "
-            @click="void stop(stopIdOf(section.key, entry)!)"
-          >
-            {{ asked.has(stopIdOf(section.key, entry)!) ? 'Stopping…' : 'Stop' }}
-          </button>
+
         </div>
       </component>
 
-      <!-- Show background work and the schedule on the agent card, using the same `control` projection and the pane's Stop gate. Template comments enter SSR markup, so keep them free of quoted runtime messages. -->
-      <div class="card-bars">
-        <BackgroundBar
-          :registry="props.state.background"
-          :conversation="props.conversation ?? ''"
-          :can-stop="props.canStopBackgroundWork ?? false"
-          :on-stop="props.onStopBackgroundWork ?? refuseStop"
-          fold="brobot2.cardBackgroundFolded"
-        />
-        <template v-if="scheduleShown">
-          <ScheduleBar :registry="props.state.schedule" fold="brobot2.cardScheduleFolded" />
-        </template>
-      </div>
+      <RunningNowCard
+        :state="props.state"
+        :conversation="props.conversation"
+        :can-stop="props.canStopBackgroundWork"
+        :on-stop="props.onStopBackgroundWork"
+        :on-open-run="props.onOpenRun"
+        :show-schedule="scheduleShown"
+        @navigate="emit('navigate', $event)"
+      />
 
       <!-- The checklist, while it still has a step left. It renders as a summary rather than as a
            second copy of `PlanEntry`: the entry in the conversation is the plan, and this is a

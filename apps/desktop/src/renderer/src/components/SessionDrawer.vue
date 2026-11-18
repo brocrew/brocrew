@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { OpenPanelRun } from '../lib/panel-runs'
 import { tabDestination } from '../lib/tab-destination'
 import type { WhatAPickBecame } from '../../../shared/model-choice-contracts'
 import type { AgentState } from '../../../shared/agent-state-contracts'
@@ -105,6 +106,7 @@ const props = defineProps<{
    */
   canStopBackgroundWork?: boolean
   onStopBackgroundWork?: (id: string) => Promise<boolean>
+  onOpenRun?: OpenPanelRun
   /**
    * 🔴 **The work this conversation gave out** (508) — the Work tab's whole input.
    *
@@ -467,6 +469,7 @@ function steer(event: KeyboardEvent, at: number): DrawerTab | null {
         :can-open-conversation="cast.goTo.value !== null"
         :can-stop-background-work="props.canStopBackgroundWork ?? false"
         :on-stop-background-work="props.onStopBackgroundWork"
+      :on-open-run="props.onOpenRun"
         @navigate="(itemId) => emit('navigate', itemId)"
         @open-asset="(asset) => emit('openAsset', asset)"
         :files="cardFilesRead?.files"
