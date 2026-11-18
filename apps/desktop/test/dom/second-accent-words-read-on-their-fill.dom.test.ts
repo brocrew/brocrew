@@ -240,7 +240,7 @@ describe('words in the second accent, on their fills', () => {
     expect(pointedAt).toBeLessThan(4.5)
   })
 
-  it('a sub-agent: the whole answer, on its wash', async () => {
+  it('a sub-agent: the transcript action, on its panel', async () => {
     applyTheme(resolveTheme(THEME as never, BASE))
     const m = mount(
       inPage(SubAgentEntry, {
@@ -259,16 +259,13 @@ describe('words in the second accent, on their fills', () => {
           ],
         },
         placement: 'transcript',
-        canReadAnswer: true,
       }),
       {},
       { width: 760, height: 600 },
     )
     await settle()
-    m.host.querySelector<HTMLElement>('[data-cy="subagent-head"]')!.click()
-    await settle()
-    const ask = m.host.querySelector('[data-cy="subagent-tool-answer-toolu_child"]')
-    expectOn('the whole answer', ask, m.host.querySelector('.subagent')!, 'var(--wash-2)')
+    const ask = m.host.querySelector('[data-cy="subagent-open-transcript"]')
+    expectOn('Open transcript', ask, m.host.querySelector('.subagent')!, 'var(--panel)')
   })
 
   it('the child-work viewer: its part, on its panel in the overlay, over the overlay’s wash', async () => {

@@ -83,7 +83,8 @@ describe('an answered permission collapses', () => {
     expect(html).not.toContain('data-cy="permission-under-disclosed"')
     expect(html).not.toContain('data-cy="permission-action"')
     // Still a disclosure, so the fold is reachable and announced as one.
-    expect(html).toContain('aria-expanded="false"')
+    expect(html).toContain('subagent-open-transcript')
+    expect(html).not.toContain('aria-expanded')
     // …but NOT with an `aria-controls` naming an element that is not in the document (034 review).
     // The body really is absent when collapsed — that is the whole point, and why it is `v-if` and
     // not `v-show` — so the half of the ARIA pair that names it has to go absent with it.
@@ -155,7 +156,7 @@ describe('the sub-agent card is a card in both places it appears', () => {
     expect(await render(SubAgentEntry, { card: agent })).toContain('data-placement="transcript"')
   })
 
-  it("an agent's own agent stays BEHIND the fold, like the rest of the body (035)", async () => {
+  it("an agent's own agent stays in the transcript popup", async () => {
     // 029 closed the card by default so a running sub-agent could not shove the conversation around
     // as it worked. A nested grandchild is the strongest test of that rule — it is a whole second
     // card — and it must be no more visible than the tool rows it sits among until asked for.
@@ -182,16 +183,18 @@ describe('the sub-agent card is a card in both places it appears', () => {
     expect(html.match(/data-cy="subagent-entry"/g), 'one card until opened').toHaveLength(1)
     expect(html).not.toContain('data-agent-id="agent-2"')
     // …but it IS a disclosure, so the grandchild is reachable rather than lost.
-    expect(html).toContain('aria-expanded="false"')
+    expect(html).toContain('subagent-open-transcript')
+    expect(html).not.toContain('aria-expanded')
   })
 
-  it('a CLOSED card names no body, because there is no body to name (034 review)', async () => {
+  it('a compact card has no disclosure or inline body', async () => {
     // The same dangling reference the permission card had, here since 029 and found by the same
     // review. A card with a body is closed to begin with, so this was every sub-agent card on
     // arrival: a button announcing that it controls an element the document does not have.
     const withBody: SubAgentCard = { ...agent, summary: 'read four files' }
     const closed = await render(SubAgentEntry, { card: withBody, placement: 'transcript' })
-    expect(closed, 'still announced as a disclosure').toContain('aria-expanded="false"')
+    expect(closed).toContain('subagent-open-transcript')
+    expect(closed).not.toContain('aria-expanded')
     expect(closed).not.toContain('aria-controls')
 
     // A card with nothing behind it is not a disclosure at all — neither half of the pair, and not
