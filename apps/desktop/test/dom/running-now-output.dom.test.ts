@@ -1,3 +1,4 @@
+import { mapWorkflowEvents } from '../panel-run.fixture'
 import { afterEach, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, ref } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
@@ -20,18 +21,7 @@ it.each(['agent', 'workflow'] as const)(
         ? record([
             { type: 'sub_agent', agentId: 'map-reader', phase: 'started', title: 'Read the map' },
           ])
-        : record([
-            { type: 'tool_call', id: 'workflow-call', name: 'Workflow', summary: 'Review the map' },
-            {
-              type: 'workflow_run',
-              taskId: 'map-review',
-              toolUseId: 'workflow-call',
-              name: 'Review the map',
-              phases: [],
-              agents: [],
-              source: 'task_progress',
-            },
-          ])
+        : record(mapWorkflowEvents())
     const m = mount(
       ConversationPane,
       paneProps({
