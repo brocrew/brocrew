@@ -34,3 +34,16 @@ it('keeps an unreported background kind generic', () => {
   state.background.running = [{ id: 'work', description: 'Check paths' }]
   expect(panelRuns(state).active[0]?.group).toBe('Background')
 })
+
+
+it('joins an ended native child with its anchored background ending', () => {
+  const state = createTranscript()
+  applyEvent(state, { type: 'tool_call', id: 'dispatch', name: 'Agent', summary: 'Read the map' })
+  applyEvent(state, { type: 'sub_agent', agentId: 'map-reader', phase: 'started', parentToolCallId: 'dispatch', title: 'Read the map' })
+  applyEvent(state, { type: 'sub_agent', agentId: 'map-reader', phase: 'ended', outcome: 'completed' })
+  const tool = state.items.find((item) => item.kind === 'tool' && item.callId === 'dispatch')
+  if (tool?.kind !== 'tool') throw new Error('dispatch fixture missing')
+  tool.background = { id: 'map-reader', outcome: 'completed' }
+  expect(panelRuns(state).past).toHaveLength(1)
+  expect(panelRuns(state).past[0]?.key).toBe('agent:map-reader')
+})
