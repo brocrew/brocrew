@@ -14,7 +14,7 @@ import { validateTheme } from '../../src/shared/themes/validate'
 import { settle } from '../../look/fixtures/window'
 import { wearTheme } from '../../look/fixtures/themes'
 import { ACTIVITY_NOW, ACTIVITY_WINDOW, EVERY_CARD } from '../../look/fixtures/recent-activity'
-import DEFINED_FILE from '../../resources/themes/defined/theme.json'
+import { definedTheme as BASE } from './defined-theme.fixture'
 import {
   openAChildsWork,
   pointAtTheWorkflow,
@@ -47,15 +47,6 @@ import { paintedReadings, pictures } from './what-is-painted-under'
  * drawing named in CLASSIC_LIFTED. Every other theme is read with all it draws.
  */
 
-const BASE = (() => {
-  const read = validateTheme(DEFINED_FILE, {
-    assets: new Map(),
-    builtIns: new Map(),
-    builtIn: true,
-  })
-  if (!read.ok) throw new Error(JSON.stringify(read.problems))
-  return read.theme
-})()
 
 const WHITE = { waiting: '#ffffff', success: '#ffffff', danger: '#ffffff', auto: '#ffffff' }
 

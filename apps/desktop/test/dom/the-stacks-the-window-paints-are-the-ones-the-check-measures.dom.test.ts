@@ -12,8 +12,6 @@ import {
 import { unmountAll } from './harness'
 import { readsAt, see } from './what-is-painted-under'
 
-
-
 const ORIGINAL = { width: window.innerWidth, height: window.innerHeight }
 afterEach(async () => {
   applyTheme(null)
