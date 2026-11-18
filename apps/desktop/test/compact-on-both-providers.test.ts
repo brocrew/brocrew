@@ -716,7 +716,9 @@ describe('713 §2 · R59 at every door, on a double that compacts on request', (
       'busy permission',
     )
     const turnsBefore = userTurns(app.ledger(target)).length
-    const queuedBefore = app.ledger(target).filter((event) => event.type === 'message_queued').length
+    const queuedBefore = app
+      .ledger(target)
+      .filter((event) => event.type === 'message_queued').length
     expect(
       await callOn(agentToolsFor(app.host, parent), 'compact_agent', { agent: target }),
     ).toMatchObject({ outcome: 'busy' })
