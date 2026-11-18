@@ -6,7 +6,6 @@ import type { PluginsClient } from './plugin-settings'
 import type { LoggingClient } from './logging'
 import type { DockLabelClient } from './dock-label'
 import type { ClientAgentApi } from './client-agent-api'
-import type { TranscriptRetentionClient } from './transcript-retention'
 import type { StorageBridge } from './storage'
 import type { WorkspacesClient } from './workspaces'
 import type { ThemesBridge } from './theme-library'
@@ -20,7 +19,6 @@ export interface ClientApi extends ClientProviderApi {
   readonly logging?: LoggingClient
   readonly dockLabel?: DockLabelClient
   readonly agents?: ClientAgentApi
-  readonly transcriptRetention?: TranscriptRetentionClient
   readonly storage?: StorageBridge
   readonly workspaces?: WorkspacesClient
   readonly themes?: ThemesBridge

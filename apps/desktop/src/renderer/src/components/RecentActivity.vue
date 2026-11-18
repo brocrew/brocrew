@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { transcriptsClearedWords } from '../../../shared/transcript-retention'
 import { computed } from 'vue'
 import { clockTime } from '../../../shared/clock'
 import {
@@ -109,24 +108,6 @@ const someClaimed = computed(() => props.reading?.lines.some((line) => line.regi
             </span>
             <span class="words bb-entry-words">
               <span class="who import-words">{{ skillImportWords(line) }}</span>
-            </span>
-          </p>
-        </article>
-        <article v-if="props.reading?.transcriptsCleared?.length" class="activity-card bb-card">
-          <p
-            v-for="line in props.reading.transcriptsCleared"
-            :key="line.at"
-            class="line notice bb-entry"
-            data-cy="activity-transcripts-cleared"
-          >
-            <time class="at bb-entry-time" :datetime="new Date(line.at).toISOString()">{{
-              clockTime(line.at)
-            }}</time>
-            <span class="mark bb-icon-box bb-icon-box--quiet" aria-hidden="true">
-              <svg class="icon"><use href="#i-archive" /></svg>
-            </span>
-            <span class="words bb-entry-words">
-              <span class="who">{{ transcriptsClearedWords(line) }}</span>
             </span>
           </p>
         </article>

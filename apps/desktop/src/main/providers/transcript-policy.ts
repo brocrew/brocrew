@@ -4,14 +4,12 @@ import type {
   TranscriptPolicy as PortableTranscript,
   DiscoveryPolicy as PortableDiscovery,
   ProviderChildWorkRequest as PortableChildRequest,
-  RetentionScan as PortableRetention,
 } from '@brobot2/runtime/provider-module'
 import type { DesktopProviderValues } from './desktop-values'
 
 export type TranscriptPolicy = PortableTranscript<DesktopProviderValues>
 type DiscoveryPolicy = PortableDiscovery<DesktopProviderValues>
 export type ProviderChildWorkRequest = PortableChildRequest<DesktopProviderValues>
-export type RetentionScan = PortableRetention<DesktopProviderValues>
 
 export interface ProviderDefinition {
   usageWindow(window: string): UsageWindowDetails

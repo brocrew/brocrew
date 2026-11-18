@@ -21,6 +21,7 @@ import { recentActivity } from '../src/main/runtime/recent-activity'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RECENT_ACTIVITY_LINES } from '../src/shared/recent-activity'
 import { MAX_DIGEST_SPAN_MS } from '../src/shared/digest'
+import { heldOperation } from './helpers/held-operation'
 
 const here = dirname(fileURLToPath(import.meta.url))
 let directory: string
@@ -322,6 +323,28 @@ it('the IPC host uses only the worker answer, and never falls back on failure', 
   await expect(executeRuntimeCommand(host, sink, command)).rejects.toThrow(WindowReadUnavailable)
   expect(scan).not.toHaveBeenCalled()
   expect(oldScan).not.toHaveBeenCalled()
+})
+
+it('a closed host cannot publish a skill-import reading that arrived after it closed', async () => {
+  const live = Object.create(RuntimeHost.prototype) as RuntimeHost
+  const reading = heldOperation()
+  const life = { closed: false }
+  const answer = read()
+  Object.assign(live, {
+    launches: life,
+    deps: {
+      windowReader: { read: async () => answer },
+      skillImports: async () => {
+        await reading.hold()
+        return []
+      },
+    },
+  })
+  const asked = live.recentActivity(answer.window)
+  await reading.arrived
+  life.closed = true
+  reading.release()
+  await expect(asked).rejects.toThrow(WindowReadUnavailable)
 })
 
 it('the preload forwards exactly the requested window to the dedicated IPC verb', () => {

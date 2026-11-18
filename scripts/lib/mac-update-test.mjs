@@ -308,6 +308,7 @@ export function recoveryOrder(log, { checkpoint }) {
 
 export function statePreserved(before, after) {
   for (const name of STATE_FILES) {
+    if (before[name] === undefined && rehearsalStateKept(name, undefined, after[name])) continue
     requireEvidence(
       (before[name] !== undefined) === (after[name] !== undefined),
       `State presence changed: ${name}`,

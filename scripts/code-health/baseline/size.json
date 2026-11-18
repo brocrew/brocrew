@@ -131,7 +131,6 @@
   "apps/desktop/test/themes/host-store.test.ts": 1068,
   "apps/desktop/test/this-app-adds-a-block-at-the-end-of-a-turn.test.ts": 1907,
   "apps/desktop/test/tool-inventory.test.ts": 1170,
-  "apps/desktop/test/transcript-retention.test.ts": 1065,
   "apps/desktop/test/transcript.test.ts": 2764,
   "apps/desktop/test/turn-as-sent.test.ts": 1162,
   "apps/desktop/test/updates.test.ts": 1056,

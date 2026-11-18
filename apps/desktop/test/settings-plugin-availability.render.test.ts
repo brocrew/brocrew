@@ -7,9 +7,6 @@ import { createDesktopProviderApi } from '../src/renderer/src/client-provider/de
 
 // These separate Settings features still use browser defaults on this exact base.
 vi.mock('../src/renderer/src/composables/useDockLabel', () => ({ useDockLabel: () => ({}) }))
-vi.mock('../src/renderer/src/composables/useTranscriptRetention', () => ({
-  useTranscriptRetention: () => ({}),
-}))
 vi.mock('../src/renderer/src/components/ToolsRegister.vue', () => ({
   default: { render: () => null },
 }))

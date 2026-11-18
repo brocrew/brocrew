@@ -182,7 +182,6 @@ for (const route of [
       stoppingTheStart: null,
       themes: null,
       updates: null,
-      transcriptRetention: undefined,
       eventRetention: undefined,
       stopProviderSetup: undefined,
       stopThemeIpc: undefined,

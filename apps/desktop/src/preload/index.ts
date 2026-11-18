@@ -22,10 +22,6 @@ import { pluginsBridge } from './plugins'
 import { storageBridge } from './storage'
 import { voiceBridge } from './voice'
 import type { SkillsRequest, SkillsReply } from '../shared/skills-window'
-import {
-  TRANSCRIPT_RETENTION_CHANNELS,
-  type TranscriptRetention,
-} from '../shared/transcript-retention'
 import { ATTENTION_SIGNALS_CHANNEL, type AttentionSignal } from '../shared/attention-signals'
 import { DOCK_LABEL_CHANNELS, type DockLabel, type DockLabelChange } from '../shared/dock-label'
 import {
@@ -1010,12 +1006,6 @@ const api = Object.freeze({
       ipcRenderer.invoke(RECOVERY_RETENTION_CHANNELS.delete, id),
   } satisfies RecoveryRetentionClient),
   logging: loggingClient((channel, ...args) => ipcRenderer.invoke(channel, ...args)),
-  transcriptRetention: Object.freeze({
-    read: (): Promise<TranscriptRetention> =>
-      ipcRenderer.invoke(TRANSCRIPT_RETENTION_CHANNELS.read) as Promise<TranscriptRetention>,
-    set: (period: TranscriptRetention): Promise<TranscriptRetention> =>
-      ipcRenderer.invoke(TRANSCRIPT_RETENTION_CHANNELS.set, period) as Promise<TranscriptRetention>,
-  }),
   dockLabel: Object.freeze({
     read: (): Promise<DockLabel> =>
       ipcRenderer.invoke(DOCK_LABEL_CHANNELS.read) as Promise<DockLabel>,

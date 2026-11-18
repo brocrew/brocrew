@@ -74,7 +74,6 @@ function setup(over: Partial<StorageBridge> = {}, available = true, injected = t
     undefined,
     undefined,
     undefined,
-    undefined,
     () => (available ? bridge : undefined),
   )
   const owner = defineComponent({

@@ -125,7 +125,6 @@ describe('the source census — a new durable write under userData must not slip
       'SKILLS_CONVERSION_FILE',
       // A hidden launch's theme library is reset with its workspace.
       'THEME_LIBRARY_FOLDER',
-      'TRANSCRIPT_RETENTION_FILE',
       'TURNS_THE_APP_CUT_FILE',
       'WORKER_OUTPUT_DIRNAME',
       'WORKSPACE_DIRNAME',

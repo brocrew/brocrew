@@ -1,5 +1,4 @@
 import type { TranscriptEvent } from '../../shared/conversation-events'
-import type { TranscriptToClear } from '../transcript-retention-types'
 import type { ProviderSessionOf } from '../db/conversation-tree'
 import type { ProviderFile, MemoryNote } from '../conversation-file-io'
 import type { ChildWorkPart } from '../child-work-file'
@@ -25,7 +24,6 @@ import type { ProviderSnapshotFile } from '../../shared/provider-snapshots'
 /** Desktop value shapes supplied to the portable provider operations. */
 export interface DesktopProviderValues {
   readonly event: TranscriptEvent
-  readonly retentionCandidate: TranscriptToClear
   readonly session: ProviderSessionOf
   readonly file: ProviderFile
   readonly memoryNote: MemoryNote

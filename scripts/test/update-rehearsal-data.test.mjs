@@ -565,15 +565,10 @@ describe('what a start said about its recovery copy', () => {
   })
 })
 
-describe('the rehearsal keeps the retention choice while cleanup progresses', () => {
+describe('the rehearsal accepts the retention file set to keep every transcript', () => {
   const name = 'transcript-retention.json'
   const before = { period: 90, checkedAt: 10, cleared: [] }
-  const after = {
-    ...before,
-    checkedAt: 20,
-    scanAfter: '2026/entry',
-    cleared: [{ at: 20, days: 90, conversations: 1, bytes: 12 }],
-  }
+  const after = { ...before, period: 'forever', scanAfter: '' }
   const snapshot = (value) => ({
     tables: {},
     transcripts: {},
@@ -581,29 +576,34 @@ describe('the rehearsal keeps the retention choice while cleanup progresses', ()
     state: { [name]: value === null ? null : Buffer.from(JSON.stringify(value)) },
   })
 
-  it('accepts forward checkedAt and valid cleanup progress at every live-data comparison', () => {
+  it('accepts an earlier period becoming forever, and only in that direction', () => {
     expect(compareData(snapshot(before), snapshot(after)).problems).toEqual([])
-    expect(sameData(snapshot(before), snapshot(after))).toEqual([])
+    expect(sameData(snapshot(after), snapshot(after))).toEqual([])
+    expect(sameData(snapshot(before), snapshot(after))).toEqual([
+      `the other way round: ${name} changed`,
+    ])
     expect(
       compareData(snapshot(before), snapshot(after), { goneOn: ['fictional'] }).problems,
     ).toEqual([])
   })
 
-  it('refuses a changed retention period and a missing file', () => {
+  it('accepts the file appearing only when it says forever', () => {
+    expect(compareData(snapshot(null), snapshot({ period: 'forever' })).problems).toEqual([])
+    expect(compareData(snapshot(null), snapshot({ period: 90 })).problems).toEqual([
+      `${name} appeared`,
+    ])
+  })
+
+  it('refuses a file left deleting, emptied or gone', () => {
+    expect(compareData(snapshot(before), snapshot(before)).problems).toEqual([])
     expect(compareData(snapshot(before), snapshot({ ...after, period: 365 })).problems).toEqual([
+      `${name} changed`,
+    ])
+    expect(compareData(snapshot(before), snapshot({ period: 'forever' })).problems).toEqual([
       `${name} changed`,
     ])
     expect(compareData(snapshot(before), snapshot(null)).problems).toEqual([`${name} is gone`])
     expect(sameData(snapshot(before), snapshot(null))).toContain(`${name} is gone`)
-  })
-
-  it('validates progress instead of ignoring the retention file', () => {
-    for (const damaged of [
-      { ...after, checkedAt: -1 },
-      { ...after, cleared: [{}] },
-    ]) {
-      expect(compareData(snapshot(before), snapshot(damaged)).problems).toEqual([`${name} changed`])
-    }
     const malformed = snapshot(after)
     malformed.state[name] = Buffer.from('{')
     expect(compareData(snapshot(before), malformed).problems).toEqual([`${name} changed`])

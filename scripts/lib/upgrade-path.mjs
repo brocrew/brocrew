@@ -568,37 +568,17 @@ export function draftsKept(before, after) {
   return problems
 }
 
+/** The new version sets every earlier choice to `forever` once and keeps the rest of the file. */
 function transcriptRetentionKept(before, after, bytes) {
-  const periods = [30, 90, 365, 'forever']
   const problems = []
-  if (!periods.includes(before?.period) || after?.period !== before.period)
-    problems.push('its transcript retention choice changed')
-  const number = (value) => Number.isSafeInteger(value) && value >= 0
-  const cursor = after?.scanAfter === undefined ? '' : after.scanAfter
-  if (
-    bytes > 65536 ||
-    !number(after?.checkedAt) ||
-    typeof cursor !== 'string' ||
-    cursor.length > 4096 ||
-    cursor.startsWith('/') ||
-    cursor.includes('\\') ||
-    cursor.split('/').some((part) => part === '..' || part === '.')
-  )
-    problems.push('its transcript cleanup progress is invalid')
-  if (
-    !Array.isArray(after?.cleared) ||
-    after.cleared.length > 100 ||
-    after.cleared.some(
-      (line) =>
-        line === null ||
-        typeof line !== 'object' ||
-        Array.isArray(line) ||
-        ![line.at, line.days, line.conversations, line.bytes].every(number) ||
-        (line.stoppedEarly !== undefined && line.stoppedEarly !== true) ||
-        (line.conversations === 0 && line.stoppedEarly !== true),
-    )
-  )
-    problems.push('its transcript cleanup history is invalid')
+  if (![30, 90, 365, 'forever'].includes(before?.period))
+    problems.push('it held no transcript retention choice')
+  if (bytes > 65536 || after?.period !== 'forever')
+    problems.push('it no longer keeps every transcript')
+  const kept = { ...before }
+  delete kept.period
+  delete kept.scanAfter
+  if (!contains(after, kept)) problems.push('it no longer says what the beta wrote')
   return problems
 }
 

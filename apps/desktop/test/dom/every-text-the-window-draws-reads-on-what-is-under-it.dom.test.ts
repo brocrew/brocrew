@@ -383,7 +383,6 @@ const PROOF: Record<string, Proof> = {
   'the Recent activity page, every kind of card, a line under the pointer': {
     read: [
       '[data-cy="activity-skill-import"]',
-      '[data-cy="activity-transcripts-cleared"]',
       '[data-cy="activity-line"]:hover',
       '[data-cy="activity-claimed-note"]',
     ],
