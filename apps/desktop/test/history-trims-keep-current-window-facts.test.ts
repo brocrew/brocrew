@@ -2,6 +2,7 @@ import { join } from 'node:path'
 import { expect, it, vi } from 'vitest'
 import { aServiceWorld } from './helpers/a-service-world'
 import { aLibraryHost } from './helpers/files-library-fixture'
+import { adoptOwnerWithChild } from './helpers/adopt-owner-with-child'
 import { WindowReadEngine } from '../src/main/db/window-read-engine'
 import type { WindowReadQuery } from '../src/main/db/window-read-protocol'
 import { windowWriterSampler } from '../src/main/db/window-writer-stamp'
@@ -11,13 +12,7 @@ import type { TranscriptEvent } from '../src/shared/conversation-events'
 
 function fixture() {
   const world = aServiceWorld()
-  world.store.create({
-    id: 'alpha',
-    provider: 'codex',
-    profileId: 'brobot',
-    cwd: world.folder,
-    approvalMode: 'ask',
-  })
+  adoptOwnerWithChild(world.store, 'alpha', world.folder, 'Fictional open work')
   const engine = new WindowReadEngine(join(world.folder, 'brobot2.sqlite'))
   const read = vi.fn(async (query: WindowReadQuery) => engine.read(query))
   const announce = vi.fn()
