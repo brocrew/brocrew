@@ -19,7 +19,7 @@ import { mkdirSync, rmSync, mkdtempSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Provider } from '@brobot2/shared'
 import { NO_DISCOVERY } from '../../src/main/adopt/discover-sessions'
-import type { RuntimeEventSink, RuntimeHostDeps } from '../../src/main/runtime/runtime-host'
+import type { RuntimeEventSink, RuntimeHost, RuntimeHostDeps } from '../../src/main/runtime/runtime-host'
 import type { ProviderConfigInfo, RuntimeEventMessage } from '../../src/shared/runtime-ipc'
 
 export class RecordingSink implements RuntimeEventSink {
@@ -98,15 +98,36 @@ export function latestToolset(handed: readonly AgentToolset[]): AgentToolset {
   return last
 }
 
-/** Close the fixture host before its database and owned directories. */
+type FixtureHost = Pick<RuntimeHost, 'closeAll'>
+
+/** Close the fixture hosts before their database and owned directories. */
 export async function closeHostFixture(
-  host: Pick<import('../../src/main/runtime/runtime-host').RuntimeHost, 'closeAll'>,
+  host: FixtureHost | readonly FixtureHost[],
   db: Pick<import('../../src/main/db/connection').AppDatabase, 'close'>,
   ...folders: string[]
 ): Promise<void> {
-  await host.closeAll()
-  db.close()
-  for (const folder of folders) rmSync(folder, { recursive: true, force: true })
+  const failures: unknown[] = []
+  for (const fixture of 'closeAll' in host ? [host] : host) {
+    try {
+      await fixture.closeAll()
+    } catch (error) {
+      failures.push(error)
+    }
+  }
+  try {
+    db.close()
+  } catch (error) {
+    failures.push(error)
+  }
+  for (const folder of folders) {
+    try {
+      rmSync(folder, { recursive: true, force: true })
+    } catch (error) {
+      failures.push(error)
+    }
+  }
+  if (failures.length === 1) throw failures[0]
+  if (failures.length > 1) throw new AggregateError(failures, 'Fixture teardown failed')
 }
 
 /** ⚑ A reopen the test can hold at the provider: `hold` is awaited by every `resume`. */

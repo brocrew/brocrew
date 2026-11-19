@@ -125,9 +125,8 @@ describe('giving work to conversations from saved worker pools', () => {
     ).toBeUndefined()
   })
   it('a historical worker replacement keeps its original number and birth identity in the readings', async () => {
-    const { host, caller, b } = await two()
-    await host.closeAll()
-    const current = world.seedHistoricalSuccessor(b.owner, 'sess_historical_worker')
+    const { caller, b } = await two()
+    const current = world.seedHistoricalSuccessor(b, 'sess_historical_worker')
     const next = world.aHost()
     await next.reopenForAPerson(caller, world.window, null)
     const sent = await next.messageAgentNow(
@@ -143,7 +142,7 @@ describe('giving work to conversations from saved worker pools', () => {
         text: expect.stringContaining('Check the fictional revision.'),
       }),
     )
-    expect(world.store.workerInItsPlace(b.owner)).toBe(current)
+    expect(world.store.workerInItsPlace(b)).toBe(current)
     expect(next.agentCard(current, { ownerId: agentCallerId(caller) }, caller)?.worker).toEqual({
       identity,
       giver: caller,

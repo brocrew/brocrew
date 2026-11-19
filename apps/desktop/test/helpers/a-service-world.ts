@@ -475,7 +475,7 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
       const providerHome = join(folder, 'provider-homes', profile, 'claude')
       const provider = new FakeRuntime('claude', { sessions: issued })
       const handle = await provider.start({ providerHome, cwd: folder, approvalMode: 'auto' })
-      const id = `sess_${String(tick())}`
+      const id = `sess_${String(world.clock++)}`
       world.store.create({
         id,
         provider: 'claude',
@@ -485,7 +485,7 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
         parentSessionId: giver,
         worker: { identity: identity.id, identityCreatedAt: identity.createdAt, giver, number },
       })
-      world.store.append(id, 1, { type: 'session', ref: handle.ref }, tick())
+      world.store.append(id, 1, { type: 'session', state: 'started', ref: handle.ref }, world.clock++)
       await handle.close()
       const pools = entry.workerPools ?? []
       const pool = pools.find((one) => one.giver === giver)

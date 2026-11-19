@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_CAPABILITIES } from '../src/main/db/session-store'
 import { admitGive, type GiveFacts } from '../src/main/runtime/spawn-rails'
 
 const facts: GiveFacts = {
@@ -13,9 +12,7 @@ const facts: GiveFacts = {
   held: () => [{ piece: 'root', label: 'W1', root: true, giver: null, received: true }],
   drivenByTheTurn: () => null,
   isAHelper: () => false,
-  mayGiveWork: () => null,
-  depthOf: () => 0,
-  capabilitiesOf: (profile) => (profile === 'reader' ? DEFAULT_CAPABILITIES : null),
+  agentExists: (profile) => profile === 'reader',
   conversationAt: (address) =>
     address === 'W1.4'
       ? { conversation: 'sess_reader', profileId: 'reader', provider: 'claude' }
@@ -151,11 +148,11 @@ describe('give_work names where the work goes', () => {
     })
   })
 
-  it('refuses the removed parallel and new fields by name', () => {
-    for (const removed of [{ parallel: true }, { new: true }, { piece: 'W1' }]) {
-      expect(give({ to: 'W1.4', ...removed })).toMatchObject({
+  it('names each removed give field in its refusal', () => {
+    for (const [field, value] of Object.entries({ parallel: true, new: true, piece: 'W1' })) {
+      expect(give({ to: 'W1.4', [field]: value })).toMatchObject({
         ok: false,
-        refusal: { rail: 'malformed-request' },
+        refusal: { rail: 'malformed-request', detail: { unknownFields: [field] } },
       })
     }
   })
