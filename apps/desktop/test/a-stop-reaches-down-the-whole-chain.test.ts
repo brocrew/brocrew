@@ -397,25 +397,28 @@ describe('629 · a stop reaches down the whole chain', () => {
       expect(allowed.outcome, JSON.stringify(allowed)).toBe('ok')
     })
     it('a conversation and a colleague can both ask its running turn to stop', async () => {
-      const { ali, aliHandle, adaTools } = await aChainOfThree()
-      await makeItWork(aliHandle)
-      expect(chainAbove(store, ali)).not.toContain(ali)
-
-      const itself = await callOn(agentToolsFor(host, ali), 'interrupt_agent', {
-        agent: ali,
+      const selfTool = await aChainOfThree()
+      await makeItWork(selfTool.aliHandle)
+      expect(chainAbove(store, selfTool.ali)).not.toContain(selfTool.ali)
+      const itself = await callOn(agentToolsFor(host, selfTool.ali), 'interrupt_agent', {
+        agent: selfTool.ali,
         reason: 'stop',
       })
-      expect(itself).toMatchObject({ outcome: 'ok', agent: ali, asked: true })
-      await makeItWork(aliHandle)
-      expect(await host.interruptAgent(ali, asAgent(ali))).toMatchObject({
+      expect(itself).toMatchObject({ outcome: 'ok', agent: selfTool.ali, asked: true })
+
+      const direct = await aChainOfThree()
+      await makeItWork(direct.aliHandle)
+      expect(await host.interruptAgent(direct.ali, asAgent(direct.ali))).toMatchObject({
         ok: true,
-        agent: ali,
+        agent: direct.ali,
         asked: true,
       })
 
-      await makeItWork(aliHandle)
-      const allowed = await callOn(adaTools, 'interrupt_agent', { agent: ali, reason: 'stop' })
-      expect(allowed.outcome, JSON.stringify(allowed)).toBe('ok')
+      const peer = await aChainOfThree()
+      await makeItWork(peer.aliHandle)
+      expect(
+        await callOn(peer.adaTools, 'interrupt_agent', { agent: peer.ali, reason: 'stop' }),
+      ).toMatchObject({ outcome: 'ok', agent: peer.ali, asked: true })
     })
     it('⛔ REFUSED · the chain grants no SPAWN — a grandparent may not start a child under its grandchild', async () => {
       const { brobot, ali, aliLabel, siblingProfile } = await aChainOfThree()
@@ -528,25 +531,32 @@ describe('629 · a stop reaches down the whole chain', () => {
 
   describe('§6 · a conversation that names itself', () => {
     it('its id, its held piece and its own root name the conversation to stop', async () => {
-      const { brobot, ali, aliLabel, aliHandle, brobotTools, adaTools } = await aChainOfThree()
-      const itsRoot = store.rootOf(brobot)?.label
-      if (itsRoot === undefined) throw new Error('a conversation a person opened owns a root')
-      const aliTools = agentToolsFor(host, ali)
-      for (const address of [ali, aliLabel]) {
+      for (const naming of ['id', 'held piece'] as const) {
+        const { ali, aliLabel, aliHandle } = await aChainOfThree()
+        const address = naming === 'id' ? ali : aliLabel
         await makeItWork(aliHandle)
         expect(
-          await callOn(aliTools, 'interrupt_agent', { agent: address, reason: 'stop' }),
-          address,
+          await callOn(agentToolsFor(host, ali), 'interrupt_agent', {
+            agent: address,
+            reason: 'stop',
+          }),
+          naming,
         ).toMatchObject({ outcome: 'ok', agent: ali, asked: true })
+        expect(ledger(ali).filter((event) => event.type === 'work_interrupted')).toHaveLength(1)
       }
-      expect(ledger(ali).filter((event) => event.type === 'work_interrupted')).toHaveLength(2)
+      const { brobot, ali, aliHandle, brobotTools, adaTools } = await aChainOfThree()
+      const itsRoot = store.rootOf(brobot)?.label
+      if (itsRoot === undefined) throw new Error('a conversation a person opened owns a root')
       expect(
         await callOn(brobotTools, 'interrupt_agent', { agent: itsRoot, reason: 'stop' }),
       ).toMatchObject({ outcome: 'ok', agent: brobot, asked: false })
       const other = await aChainOfThree()
       await makeItWork(other.aliHandle)
       expect(
-        await callOn(aliTools, 'interrupt_agent', { agent: other.ali, reason: 'stop' }),
+        await callOn(agentToolsFor(host, ali), 'interrupt_agent', {
+          agent: other.ali,
+          reason: 'stop',
+        }),
       ).toMatchObject({ outcome: 'ok', agent: other.ali, asked: true })
       await makeItWork(aliHandle)
       expect(
