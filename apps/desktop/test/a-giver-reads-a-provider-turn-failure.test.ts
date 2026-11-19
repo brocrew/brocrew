@@ -3,6 +3,7 @@ import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 import { answerOn } from './helpers/call-tool'
+import { recordFailedQuestionTurn } from './lib/question-wake'
 
 let world: AServiceWorld | undefined
 afterEach(async () => {
@@ -122,33 +123,14 @@ it('reads a taskless failure for the question’s successor and stops saying it 
     w.store.append(conversation, ordinal, event, w.clock++)
     return ordinal
   }
-  const requestId = 'req_read_failure'
-  const prompt = 'Which chapter should we keep?'
-  append(asker, {
-    type: 'question_asked',
-    requestId,
-    prompt,
-    questions: [{ id: 'answer', prompt, options: [] }],
-  })
-  append(asker, { type: 'request_routed', requestId, to: 'an-agent', parent: holder })
-  append(holder, {
-    type: 'message_queued',
-    messageId: requestId,
-    kind: 'question',
-    text: prompt,
-    relayedFrom: asker,
-    asks: { asker, requestId },
-  })
-  append(holder, { type: 'message_unqueued', messageId: requestId, reason: 'sent', text: prompt })
-  append(holder, { type: 'user_turn', text: prompt, relayedFrom: asker })
   const message = 'The recorded provider rejected the request.'
-  const terminal: TranscriptEvent = {
-    type: 'turn',
-    state: 'failed',
-    wordOf: 'this-app',
-    providerFailure: { message },
-  }
-  const turnOrdinal = append(holder, terminal)
+  const { terminal, turnOrdinal } = recordFailedQuestionTurn(append, {
+    asker,
+    holder,
+    requestId: 'req_read_failure',
+    prompt: 'Which chapter should we keep?',
+    message,
+  })
   const successor = w.seedHistoricalSuccessor(asker, 'sess_successor_asker')
   host = w.aHost()
 

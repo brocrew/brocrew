@@ -1,4 +1,5 @@
 import { recordedMessageWakeFailure } from './lib/recorded-message-wake'
+import { recordFailedQuestionTurn } from './lib/question-wake'
 import { giveToSeededWorker } from './lib/give-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -175,30 +176,13 @@ describe('what a replacement carries, and what it leaves behind', () => {
       return ordinal
     }
     const requestId = 'req_failed_peer'
-    const prompt = 'Which clock face should be kept?'
-    append(asker, {
-      type: 'question_asked',
-      requestId,
-      prompt,
-      questions: [{ id: 'answer', prompt, options: [] }],
-    })
-    append(asker, { type: 'request_routed', requestId, to: 'an-agent', parent: holder })
-    append(holder, {
-      type: 'message_queued',
-      messageId: requestId,
-      kind: 'question',
-      text: prompt,
-      relayedFrom: asker,
-      asks: { asker, requestId },
-    })
-    append(holder, { type: 'message_unqueued', messageId: requestId, reason: 'sent', text: prompt })
-    append(holder, { type: 'user_turn', text: prompt, relayedFrom: asker })
     const message = 'The provider could not run the selected model.'
-    const terminalOrdinal = append(holder, {
-      type: 'turn',
-      state: 'failed',
-      wordOf: 'this-app',
-      providerFailure: { message },
+    const { turnOrdinal: terminalOrdinal } = recordFailedQuestionTurn(append, {
+      asker,
+      holder,
+      requestId,
+      prompt: 'Which clock face should be kept?',
+      message,
     })
     const messageId = 'retained-failure-notice'
     append(holder, {
