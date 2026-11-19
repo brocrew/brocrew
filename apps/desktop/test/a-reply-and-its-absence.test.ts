@@ -9,7 +9,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeProviderSessions, FakeRuntime, ResumeError } from '@brobot2/runtime'
 import type { AgentToolset, ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
@@ -481,48 +481,14 @@ describe('393 · a reply, and its absence', () => {
       ).toBe('ok')
     })
 
-    it('🔴 a summary one unit over the bound is refused; one unit under it lands', async () => {
-      // ⛔ **The literals, not `REPLY_SUMMARY_LIMIT ± 1`** — `380`'s lesson on `MAX_DOCUMENT_BYTES`:
-      // a bound written as the constant moves with it and pins nothing.
-      expect(REPLY_SUMMARY_LIMIT).toBe(1280)
-      const over = await workWasGiven('long')
-      const refused = await reply(over.worker, {
-        piece: over.task,
-        outcome: 'done',
-        summary: 'x'.repeat(1281),
-      })
-      expect(refused.rail).toBe('summary-too-long')
-      expect(refused.permanence).toBe('while-this-holds')
-      expect(refused.retryable).toBe(true)
-      expect(refused.detail).toMatchObject({ limit: 1280, was: 1281 })
-      expect(refused.reason).toContain(
-        'the summary is 1,281 characters; the most is 1,280, so cut at least 1.',
-      )
-      // ⚑ **Nothing was shortened and nothing was recorded** — HO-007 S2's *"no silent truncation
-      // or erasure anywhere on this path"*, asserted as the task still being open.
-      expect(taskOf(over.worker, over.task)?.state).toBe('working')
-      expect(ledger(over.worker).some((event) => event.type === 'work_replied')).toBe(false)
-      // ⚠️ **And the sentence sends the caller to the remedy that exists**, rather than describing
-      // how the app stores things.
-      expect(refused.reason).toContain('resource_path')
-      expect(refused.reason).toContain('Nothing was shortened for you')
-      // 🔴 **425 · and now the same remedy as a WORD, so the ledger can carry it** (HO-023 §2.2).
-      // ⚑ **This is the cleanest rail in the whole dispatch**: the refusal is about the caller's own
-      // words, the caller can change them, and the act needs nothing from anybody else. ⛔ The word
-      // requires an ARTIFACT and never a provider verb — `422` §3 — which is why it says *a file*
-      // and the sentence one line up says `resource_path`.
-      expect(refused.remedy).toBe('shorten-the-summary-and-attach-the-long-form')
-
-      // ⛔ **One unit under, and it is the SAME call otherwise.**
-      const under = await reply(over.worker, {
-        piece: over.task,
-        outcome: 'done',
-        summary: 'x'.repeat(1280),
-      })
-      expect(under.outcome, JSON.stringify(under)).toBe('ok')
-      expect(taskOf(over.worker, over.task)?.state).toBe('answered')
-      // ⚑ **425 · the admitted call carries no remedy at all**, because there is nothing left to do.
-      expect(under).not.toHaveProperty('remedy')
+    it('keeps a 1,281-character summary inline and ends the task', async () => {
+      const { worker, task } = await workWasGiven('long')
+      const summary = 'x'.repeat(1_281)
+      const done = await reply(worker, { piece: task, outcome: 'done', summary })
+      expect(done).toMatchObject({ outcome: 'ok', resources: [] })
+      expect(done).not.toHaveProperty('remedy')
+      expect(taskOf(worker, task)).toMatchObject({ state: 'answered', summary })
+      expect(ledger(worker).filter((event) => event.type === 'work_replied')).toHaveLength(1)
     })
 
     it('🔴 every spelling of a destination is REFUSED, never overridden — and the same call without it lands', async () => {
@@ -1164,7 +1130,7 @@ describe('393 · a reply, and its absence', () => {
         summary: 'a',
       })
       expect(receiptBeforeReminder(sent)).toMatch(
-        new RegExp(`^${idleLabel} answered · it went to .+ straight away\\.$`),
+        new RegExp(`^${idleLabel} answered · it went to conversation \\S+ · .+ straight away\\.$`),
       )
 
       // held — a parent whose turn is stopped on a person's card: it waits for that answer.
@@ -1179,7 +1145,7 @@ describe('393 · a reply, and its absence', () => {
       })
       expect(receiptBeforeReminder(held)).toMatch(
         new RegExp(
-          `^${busyLabel} answered · it is held for .+\\. Its turn is stopped until a person answers `,
+          `^${busyLabel} answered · it is held for conversation \\S+ · .+\\. Its turn is stopped until a person answers `,
         ),
       )
 
@@ -1200,10 +1166,75 @@ describe('393 · a reply, and its absence', () => {
       })
       expect(receiptBeforeReminder(kept)).toMatch(
         new RegExp(
-          `^${goneLabel} answered · kept on ${goneLabel}; .+ gets it when it next starts, or later if its provider’s usage limit holds then\\.$`,
+          `^${goneLabel} answered · kept on ${goneLabel}; conversation \\S+ · .+ gets it when it next starts, or later if its provider’s usage limit holds then\\.$`,
         ),
       )
       expect(kept).not.toContain('could not be told')
+    })
+
+    it('settles one held reply even if its wait detail and receipt cannot be read', async () => {
+      const { pm, worker, task } = await workWasGiven()
+      await host.send(pm, 'the parent is thinking', window)
+      await cardOn(pm)
+      const giver = host.whatToCallTheConversation(pm)
+      const tool = toolsOf(worker).tools.find((one) => one.name === 'reply_to_parent')
+      if (tool === undefined) throw new Error('no reply_to_parent')
+      let stateAtWait: string | undefined
+      let stateAtReceipt: string | undefined
+      const wait = vi.spyOn(host, 'whyWhatIsHeldWaits').mockImplementationOnce(() => {
+        stateAtWait = taskOf(worker, task)?.state
+        throw new Error('could not read the held wait')
+      })
+      const receipt = vi.spyOn(host, 'receiptForSend').mockImplementationOnce(() => {
+        stateAtReceipt = taskOf(worker, task)?.state
+        throw new Error('could not read the reply receipt')
+      })
+      try {
+        const replied = await tool.call({ piece: task, outcome: 'done', summary: 'completed' })
+        expect(replied.structured).toMatchObject({ outcome: 'ok', piece: task, delivered: 'held' })
+        expect(replied.structured).not.toHaveProperty('receipt')
+        expect(replied.text).toContain(`it is held until ${giver} is free`)
+        expect(wait).toHaveBeenCalledWith(pm)
+        expect(receipt).toHaveBeenCalledTimes(1)
+        expect([stateAtWait, stateAtReceipt]).toEqual(['answered', 'answered'])
+        expect(ledger(worker).filter((event) => event.type === 'work_replied')).toHaveLength(1)
+      } finally {
+        wait.mockRestore()
+        receipt.mockRestore()
+      }
+    })
+
+    it('does not claim a cancelled queued reply started a turn', async () => {
+      const { pm, worker, task } = await workWasGiven()
+      await host.send(pm, 'the parent is thinking', window)
+      await cardOn(pm)
+      const queueMessage = host.queueMessage.bind(host)
+      let cancelled: string | undefined
+      const queued = vi.spyOn(host, 'queueMessage').mockImplementationOnce(async (...args) => {
+        const outcome = await queueMessage(...args)
+        if (outcome.outcome === 'queued') {
+          cancelled = outcome.messageId
+          await host.cancelQueuedMessage(pm, cancelled, window)
+        }
+        return outcome
+      })
+      try {
+        const replied = await reply(worker, { piece: task, outcome: 'done', summary: 'completed' })
+        expect(replied).toMatchObject({ outcome: 'ok', piece: task })
+        expect(replied).not.toHaveProperty('receipt')
+        expect(queued).toHaveBeenCalledTimes(1)
+        expect(cancelled).toEqual(expect.any(String))
+        expect(ledger(pm)).toContainEqual(
+          expect.objectContaining({
+            type: 'message_unqueued',
+            messageId: cancelled,
+            reason: 'cancelled',
+          }),
+        )
+        expect(ledger(worker).filter((event) => event.type === 'work_replied')).toHaveLength(1)
+      } finally {
+        queued.mockRestore()
+      }
     })
 
     it('⚑ the delivered words name the piece, the outcome and the resource — and no path', async () => {

@@ -1,3 +1,4 @@
+import { recordForwardedQuestion } from './lib/forwarded-question-fixture'
 import { giveNotesToAWorkerOnItsCard } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -140,21 +141,6 @@ describe('an answer an agent passes down says when a person decided it', () => {
     return asked.question as string
   }
 
-  const passUp = async (
-    pmTools: AgentToolset,
-    id: string,
-    worker: string,
-    whoAnswers: 'the-parent' | 'a-person',
-  ): Promise<string> => {
-    const passed = await callOn(pmTools, 'pass_question_up', {
-      question: id,
-      asked_by: worker,
-      who_answers: whoAnswers,
-    })
-    expect(passed.outcome, JSON.stringify(passed)).toBe('ok')
-    return passed.question as string
-  }
-
   const aPersonAnswers = async (asker: string, up: string, answer: string): Promise<void> => {
     const taken = await host.respondUserInput(
       asker,
@@ -187,7 +173,12 @@ describe('an answer an agent passes down says when a person decided it', () => {
     it('the asker reads that it was passed up and a person answered it there, and that the words are the agent’s own', async () => {
       const { pm, worker, workerTools, piece } = await aPmWithAWorkerOnATask()
       const id = await ask(workerTools, 'the-parent', piece, 'which city?')
-      const up = await passUp(pm.tools, id, worker, 'a-person')
+      const up = recordForwardedQuestion(store, tick, {
+        asker: worker,
+        original: id,
+        forwarder: pm.id,
+        to: 'a-person',
+      })
       await aPersonAnswers(pm.id, up, 'Lisbon')
       await answerDown(pm.tools, id, worker, 'Lisbon')
 
@@ -202,7 +193,12 @@ describe('an answer an agent passes down says when a person decided it', () => {
     it('passed up, and nobody has answered it there yet: the agent’s answer is its own, and says nothing of a person', async () => {
       const { pm, worker, workerTools, piece } = await aPmWithAWorkerOnATask()
       const id = await ask(workerTools, 'the-parent', piece, 'which city?')
-      const up = await passUp(pm.tools, id, worker, 'a-person')
+      const up = recordForwardedQuestion(store, tick, {
+        asker: worker,
+        original: id,
+        forwarder: pm.id,
+        to: 'a-person',
+      })
       expect(store.theDecisionOn(pm.id, up)).toBeNull()
       await answerDown(pm.tools, id, worker, 'Rabat')
 
@@ -216,7 +212,12 @@ describe('an answer an agent passes down says when a person decided it', () => {
     it('passed up, and the person DECLINED it there: no sentence says a person answered', async () => {
       const { pm, worker, workerTools, piece } = await aPmWithAWorkerOnATask()
       const id = await ask(workerTools, 'the-parent', piece, 'which city?')
-      const up = await passUp(pm.tools, id, worker, 'a-person')
+      const up = recordForwardedQuestion(store, tick, {
+        asker: worker,
+        original: id,
+        forwarder: pm.id,
+        to: 'a-person',
+      })
       const taken = await host.respondUserInput(pm.id, up, { kind: 'reject' }, window)
       expect(taken.outcome, JSON.stringify(taken)).toBe('taken')
       await waitFor(
@@ -237,7 +238,12 @@ describe('an answer an agent passes down says when a person decided it', () => {
     it('the agent DECLINES the asker after a person answered upstream: a decline carries neither sentence', async () => {
       const { pm, worker, workerTools, piece } = await aPmWithAWorkerOnATask()
       const id = await ask(workerTools, 'the-parent', piece, 'which city?')
-      const up = await passUp(pm.tools, id, worker, 'a-person')
+      const up = recordForwardedQuestion(store, tick, {
+        asker: worker,
+        original: id,
+        forwarder: pm.id,
+        to: 'a-person',
+      })
       await aPersonAnswers(pm.id, up, 'Lisbon')
       const declined = await callOn(pm.tools, 'answer_question', {
         question: id,
@@ -285,7 +291,13 @@ describe('an answer an agent passes down says when a person decided it', () => {
       const piece = toWorker.label as string
 
       const id = await ask(workerTools, 'the-parent', piece, 'which city?')
-      const up = await passUp(leadTools, id, worker, 'the-parent')
+      const up = recordForwardedQuestion(store, tick, {
+        asker: worker,
+        original: id,
+        forwarder: lead,
+        to: 'the-parent',
+        parent: top.id,
+      })
       const upstream = await callOn(top.tools, 'answer_question', {
         question: up,
         asked_by: lead,
@@ -346,7 +358,12 @@ describe('an answer an agent passes down says when a person decided it', () => {
     it('asked of a person, passed up to a person and answered there: the person’s answer is said, never “instead of that person”', async () => {
       const { pm, worker, workerTools, piece } = await aPmWithAWorkerOnATask()
       const id = await ask(workerTools, 'a-person', piece, 'which colour?')
-      const up = await passUp(pm.tools, id, worker, 'a-person')
+      const up = recordForwardedQuestion(store, tick, {
+        asker: worker,
+        original: id,
+        forwarder: pm.id,
+        to: 'a-person',
+      })
       await aPersonAnswers(pm.id, up, 'blue')
       await answerDown(pm.tools, id, worker, 'blue')
 

@@ -21,7 +21,7 @@ export type SendFacts = DeliveryFacts &
         readonly context?: ContextReading | null
       }
     | {
-        readonly recorded: Recorded & { readonly kind: 'message' | 'question' }
+        readonly recorded: Recorded & { readonly kind: 'message' | 'question' | 'reply' }
         readonly waitsFor?: string | null
         readonly heldBehindTurn?: boolean
       }
@@ -85,7 +85,11 @@ function outboundReceiptSaid(
 ): string {
   const { recorded, state, waitsFor, heldBehindTurn } = facts
   const isQuestion = recorded.kind === 'question'
-  const subject = isQuestion ? `Question ${recorded.id}` : 'Your message'
+  const subject = isQuestion
+    ? `Question ${recorded.id}`
+    : recorded.kind === 'reply'
+      ? 'Your reply'
+      : 'Your message'
   if (state.kind === 'cannot-run') {
     if (state.cause.code === 'provider-file-missing') {
       const recovery = isQuestion

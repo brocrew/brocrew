@@ -54,7 +54,7 @@ import type {
   AgentRulesReceipt,
   AgentRulesWrite,
 } from '../../../shared/agent-rules'
-import type { AskOutcome, PassUpOutcome, WithdrawQuestionOutcome } from '../question-rails'
+import type { AskOutcome, WithdrawQuestionOutcome } from '../question-rails'
 import type { Caller } from '../conversation-caller'
 import type { DocumentContent, DocumentForm } from '../../../shared/documents'
 import type { Exchange, ReceivedInATurn, TranscriptTurn } from '../../../shared/last-exchange'
@@ -198,7 +198,6 @@ export interface AgentToolHost {
     input: ConversationRenameInput,
     author: ConversationTitleAuthor,
   ): Promise<ConversationRenameResult>
-  addressOfUnder(conversation: string, piece: string | null): string
   takeBackPiece(input: { readonly piece: string }, by: Caller): Promise<TakeBackOutcome>
   takeBackWhatItsQuestionMadeFalse(
     input: { readonly agent: string; readonly piece: string },
@@ -210,6 +209,7 @@ export interface AgentToolHost {
       answers: readonly { part: string; answer: readonly string[] }[]
       askedBy?: string | null
       cannot?: string | null
+      resources?: readonly string[]
       interrupt?: boolean
     },
     by: Caller,
@@ -259,15 +259,6 @@ export interface AgentToolHost {
     },
     by: Caller,
   ): Promise<AskOutcome>
-  passQuestionUp(
-    input: {
-      requestId: string
-      who: Exclude<QuestionRecipient, 'an-agent'>
-      context: string | null
-      askedBy?: string | null
-    },
-    by: Caller,
-  ): Promise<PassUpOutcome>
   withdrawQuestion(input: { requestId: string }, by: Caller): WithdrawQuestionOutcome
   readTranscript(
     target: string,

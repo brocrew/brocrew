@@ -198,7 +198,7 @@ describe('D-025 · §2 · admitReply, over a literal piece', () => {
     piece: PieceRow,
     whatToCall: (conversation: string) => string,
   ): ReplyRefusal => {
-    const refusal = admitReply('W1.1', piece, false, 'a summary', whatToCall)
+    const refusal = admitReply('W1.1', piece, false, whatToCall)
     if (refusal === null) throw new Error(`a ${piece.state} piece was admitted`)
     return refusal
   }
@@ -324,7 +324,7 @@ describe('D-025 · §2 · admitReply, over a literal piece', () => {
     const admitted: string[] = []
     const whatToCall = whatToCallThem()
     for (const state of TASK_STATES) {
-      const outcome = admitReply('W1.1', pieceIn(state), false, 'a summary', whatToCall)
+      const outcome = admitReply('W1.1', pieceIn(state), false, whatToCall)
       ;(outcome === null ? admitted : refused).push(state)
       if (outcome !== null) expect(outcome.rail).toBe('piece-already-ended')
     }
@@ -337,11 +337,11 @@ describe('D-025 · §2 · admitReply, over a literal piece', () => {
     expect(whatToCall).not.toHaveBeenCalled()
 
     // No piece by that name: the detail is the caller's own echo and nothing more.
-    const unknown = admitReply('W9.9', undefined, false, 'a summary', whatToCall)
+    const unknown = admitReply('W9.9', undefined, false, whatToCall)
     expect(unknown?.rail).toBe('no-piece-by-that-name')
     expect(unknown?.detail).toEqual({ piece: 'W9.9' })
     // And its own root, which never ends, is a different word with the same bare detail.
-    const itsRoot = admitReply('W1', undefined, true, 'a summary', whatToCall)
+    const itsRoot = admitReply('W1', undefined, true, whatToCall)
     expect(itsRoot?.rail).toBe('a-person-gave-that-piece')
     expect(itsRoot?.detail).toEqual({ piece: 'W1' })
     expect(whatToCall).not.toHaveBeenCalled()

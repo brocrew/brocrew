@@ -1,4 +1,6 @@
 import type { SendReceipt } from '../../shared/tool-outcome'
+import type { ReadableSendOverflow } from './send-overflow'
+import { ANSWER_QUESTION_INSTRUCTION, questionPartWords } from './outbound-question-words'
 import type { ResourceRefusal } from '../resources/resources'
 import type {
   QuestionRecipient,
@@ -819,6 +821,10 @@ export type AnswerOutcome =
        * (`answer-too-long`). Always present, so an empty list is a measurement.
        */
       readonly notAsked: readonly string[]
+      readonly overflow?: ReadableSendOverflow
+      readonly files?: SendReceipt['attachments']
+      readonly receipt?: SendReceipt
+      readonly deliveredTo?: string
       /**
        * ⚑ **D-017 · R1 — the asker could not be started now**: the answer is kept in its ledger and
        * goes to it first when it next starts; the sentence says so, and why the start did not
@@ -826,7 +832,7 @@ export type AnswerOutcome =
        */
       readonly kept?: string
     }
-  | { readonly ok: false; readonly refusal: QuestionRefusal }
+  | { readonly ok: false; readonly refusal: QuestionRefusal | ResourceRefusal }
 
 /**
  * 🔴 **The whole ask door, as a pure function of what the caller HOLDS** (437, criterion 29) —
@@ -913,30 +919,6 @@ export type AskOutcome =
   | { readonly ok: false; readonly refusal: ResourceRefusal; readonly resourceFailure: true }
 
 /**
- * 🔴 **679 · what a pass-up states: the new question, AND the one it carried, by its asker.**
- *
- * ⛔ **The carried question stays open and stays the passer's** — it answers it with
- * `answer_question` when the answer comes back — and a provider's id is session-local, so a sibling
- * asked later can share it (`675` F-b). ⚑ Naming the asker here is what lets the passer quote the
- * pair then, rather than meet `more-than-one-question-has-that-id` with nothing recorded to choose by.
- */
-export type PassUpOutcome =
-  | {
-      readonly ok: true
-      readonly question: string
-      readonly carried: {
-        readonly question: string
-        readonly askedBy: string
-        /**
-         * ⚑ **F033 · the piece the carried question was asked under** (`RaisedQuestion.piece`), or
-         * `null` — so the receipt quotes its asker by the label the question's own words gave it.
-         */
-        readonly piece: string | null
-      }
-    }
-  | { readonly ok: false; readonly refusal: QuestionRefusal }
-
-/**
  * 🔴 **The words a parent actually receives when a child asks it something.**
  *
  * ## ⛔ It says what it is, because it arrives as an ordinary turn
@@ -974,6 +956,7 @@ export function questionText(
     id: string
     prompt: string
     questions: readonly UserInputQuestion[]
+    raisedBy?: 'this-app' | 'the-provider'
     /**
      * 🔴 **611 · what a PASSER added, beside the original words rather than instead of them**
      * (HO-088 §3.1) — absent on a question the asker raised itself.
@@ -1001,17 +984,10 @@ export function questionText(
   if (request.context !== undefined && request.context !== null && request.context !== '') {
     lines.push(`Context added by the conversation that passed it on: ${request.context}`)
   }
-  for (const question of request.questions) {
-    const options =
-      question.options.length === 0
-        ? '    (answer in your own words)'
-        : question.options.map((option) => `    - ${option.label}`).join('\n')
-    lines.push(
-      `  part ${question.id}${question.header === undefined ? '' : ` · ${question.header}`}: ${question.prompt}\n${options}` +
-        (question.allowOther === true ? '\n    (or an answer of your own)' : '') +
-        (question.multiSelect === true ? '\n    (this part takes more than one)' : ''),
-    )
-  }
+  lines.push(
+    ...questionPartWords(request.questions, request.raisedBy === 'this-app'),
+    ANSWER_QUESTION_INSTRUCTION,
+  )
   return lines.join('\n\n')
 }
 

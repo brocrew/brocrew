@@ -278,11 +278,12 @@ describe('685 §2.1 · the act a refusal carries, on its notice', () => {
     }
   })
 
-  it.each(['create_agent', 'give_work'] as const)(
+  it.each(['create_agent', 'give_work', 'answer_question'] as const)(
     'matches a clipped %s refusal by the recorded text and leaves ambiguous receipts unclaimed',
     async (tool) => {
       const { kept } = await aRefusedAnswer()
-      const quote = 'Not sent: ' + 'The supplied argument cannot be used. '.repeat(6) + 'Try again.'
+      const opening = tool === 'answer_question' ? 'Not answered: ' : 'Not sent: '
+      const quote = opening + 'The supplied argument cannot be used. '.repeat(6) + 'Try again.'
       const row = { ...kept, tool, told: { text: quote, dropped: 0 } }
       const wrongQuote = {
         ...row,
@@ -309,7 +310,7 @@ describe('685 §2.1 · the act a refusal carries, on its notice', () => {
         ])
           applyEvent(state, event)
         expect(state.refusalsAwaitingReceipt.map((one) => one.told)).toEqual(pending)
-        if (tool === 'create_agent' && stored[0] === row && stored[1] === wrongQuote)
+        if (tool !== 'give_work' && stored[0] === row && stored[1] === wrongQuote)
           expect(notices(state)[0]?.told).toBe(quote)
       }
     },

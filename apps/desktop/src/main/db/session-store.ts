@@ -885,7 +885,6 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
     life: { readonly generation: number; readonly launched: number },
   ): boolean
   howATurnEnded(sessionId: string, turnId: string): TurnAsItEnded | null
-  whereItWasRouted(sessionId: string, requestId: string): number | null
   piecesOwnedBefore(owner: string, ordinal: number, unread?: RowsUnread): readonly PieceRow[]
   whatBecameOfAMessage(
     sessionId: string,
@@ -1284,7 +1283,6 @@ export const NULL_SESSION_STORE: SessionStore = {
   theActiveGeneration: () => 0,
   aLifeOpenedTheTurn: () => false,
   howATurnEnded: () => null,
-  whereItWasRouted: () => null,
   piecesOwnedBefore: () => [],
   whatBecameOfAMessage: () => 'absent',
   startupRepairOwners: () => [],
@@ -4317,7 +4315,6 @@ export function createSessionStore(
     theNewestTurn,
     aLifeOpenedTheTurn,
     howATurnEnded,
-    whereItWasRouted,
     whatBecameOfAMessage,
   } = createTurnEvidenceRead(db, activeGeneration)
 
@@ -5626,8 +5623,6 @@ export function createSessionStore(
     aLifeOpenedTheTurn,
 
     howATurnEnded,
-
-    whereItWasRouted,
 
     whatBecameOfAMessage,
 

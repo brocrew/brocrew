@@ -1,14 +1,16 @@
+import type { Provider } from '@brobot2/shared'
 import type { RuntimeHost, RuntimeEventSink } from '../../src/main/runtime/runtime-host'
 import { executeRuntimeCommand } from '../../src/main/runtime/ipc'
 
 export function personOpener(
   read: () => { host: RuntimeHost; root: string; window: RuntimeEventSink },
   defaultMode: 'ask' | 'auto',
+  provider: Provider = 'claude',
 ) {
   return async (profileId: string, approvalMode: 'ask' | 'auto' = defaultMode): Promise<string> => {
     const { host, root, window } = read()
     const { sessionId } = await host.createSession(
-      { provider: 'claude', profileId, approvalMode, cwd: root },
+      { provider, profileId, approvalMode, cwd: root },
       window,
     )
     return sessionId

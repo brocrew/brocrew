@@ -4,7 +4,6 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { CHANNEL_REFUSAL_SENTENCES, type AgentToolAnswer } from '@brobot2/runtime'
 import {
-  A_PERSON,
   CREATED_UNDER_ITS_PROFILE_NAME,
   DONE,
   FIX_IT_AND_CALL_AGAIN,
@@ -12,7 +11,6 @@ import {
   ITS_RULES_ARE_SAVED,
   RULES_PUT_BEFORE_A_PERSON,
   RULES_WRITTEN,
-  THE_CONVERSATION_THAT_GAVE_YOU_THIS_WORK,
   THE_PROVIDER_PROGRAM_IS_UNAVAILABLE,
   answerInWords,
   appOnlyRefusalQuote,
@@ -260,6 +258,13 @@ describe('the ledger quote adds only the reviewed app clauses', () => {
     expect(() => appOnlyRefusalQuote(after.structured, 'Not sent: something else.')).toThrow(
       'must prefix',
     )
+  })
+  it('quotes the direct answer refusal without a second prefix', () => {
+    const reason =
+      'Not answered: only the person can answer this request. If you asked it and no longer need it, withdraw it.'
+    const facts = { outcome: 'refused', rail: 'a-person-answers-this-one', reason }
+    expect(appOnlyRefusalQuote(facts, reason)).toBe(reason)
+    expect(() => appOnlyRefusalQuote(facts, 'Not answered: something else.')).toThrow('must prefix')
   })
 })
 
@@ -801,10 +806,6 @@ describe('the approved success words, spelled once', () => {
     expect(
       windowsReported('Claude', [{ window: 'five-hour', first: '09:12', last: '14:40' }]),
     ).toBe('Windows Claude has reported: five-hour (first 09:12, last 14:40).')
-    expect(THE_CONVERSATION_THAT_GAVE_YOU_THIS_WORK).toBe(
-      'the conversation that gave you this work',
-    )
-    expect(A_PERSON).toBe('a person')
     expect(filesHoldingThoseWords('on your tree')).toBe(
       'Files on your tree holding those words, newest first:',
     )

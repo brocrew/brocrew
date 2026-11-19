@@ -116,10 +116,6 @@ export function windowsReported(provider: string, windows: readonly AWindowRepor
 
 // Routing and search.
 
-export const THE_CONVERSATION_THAT_GAVE_YOU_THIS_WORK = 'the conversation that gave you this work'
-
-export const A_PERSON = 'a person'
-
 export function filesHoldingThoseWords(scope: string): string {
   return `Files ${scope} holding those words, newest first:`
 }

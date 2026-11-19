@@ -1,3 +1,6 @@
+import { raiseRegionQuestion } from './lib/routed-region-question'
+import { personOpener } from './helpers/person-opens-session'
+import { recordForwardedQuestion } from './lib/forwarded-question-fixture'
 import { fixtureProviderConfig, neutralHostDeps, RecordingSink } from './lib/host-fixture'
 import { waitFor } from './lib/f093-host'
 import type { RoutedRequest } from '../src/shared/question-contracts'
@@ -196,48 +199,11 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
     clock += ms
   }
 
-  /**
-   * 🔴 **612 · `lookForEscalations` stood here and is GONE with the deadline** (HO-088 §3.1).
-   *
-   * ⛔ **It drove `store.escalationsDue` and wrote what it named through the host's own door.**
-   * ⚑ **There is no sweep**, so every test that used it performs the ACT instead: a parent that
-   * will not answer calls `pass_question_up` (`611`, HO-088 §3.2) and the question reaches the
-   * person carrying the ORIGINAL words.
-   *
-   * ⚠️ **It answers the PASSER's new request id**, because that is the row a person's queue holds.
-   */
-  const thePmPassesItUp = async (pm: string, questionId: string): Promise<string> => {
-    const passed = await callOn(agentToolsFor(host, pm), 'pass_question_up', {
-      question: questionId,
-      who_answers: 'a-person',
-    })
-    expect(passed.outcome, JSON.stringify(passed)).toBe('ok')
-    return passed.question as string
-  }
+  const aHistoricalForward = (forwarder: string, asker: string, original: string): string =>
+    recordForwardedQuestion(store, tick, { asker, original, forwarder, to: 'a-person' })
 
-  // ⛔ **612 · `liveIn` and `writeThrough` stood here and are GONE** (HO-088 §3.1).
-  //
-  // ⚑ **They were a pair and they went as one.** `liveIn` answered *which sessions may a store-side
-  // decision be written into* — the `consider` predicate `escalationsDue` took — and `writeThrough`
-  // reached through `publishOurs` so the row carried the ordinal the host would have used: *"a test
-  // that appended straight to the store would pass while shipping the collision."*
-  //
-  // ⚠️ **That split existed because ORDINALS HAVE AN OWNER and a deadline did not.** The store
-  // decided and the host wrote. 🔴 **Since `612` there is no decision to write**: every row about a
-  // question is appended by the tool call that raised or passed it, through the host's own door,
-  // with the ordinal it already owns — so nothing in this file needs to forge one.
-
-  const personOpens = async (
-    profileId: string,
-    on: RuntimeHost = host,
-    provider: Provider = 'claude',
-  ): Promise<string> => {
-    const { sessionId } = await on.createSession(
-      { provider, profileId, approvalMode: 'ask', cwd: root },
-      window,
-    )
-    return sessionId
-  }
+  const personOpens = (profileId: string, on: RuntimeHost, provider: Provider) =>
+    personOpener(() => ({ host: on, root, window }), 'ask', provider)(profileId)
 
   // ⚑ On the provider its conversations will run on: an agent keeps the one it first ran on.
   const bringIdentityIntoBeing = async (
@@ -332,14 +298,7 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
       // ask it about. ⚑ Shipping a launch sweep anyway would be an option with no acceptance case,
       // and the one record it could ever write would name a person who could not have answered.
       const { worker, workerHandle } = await aPmAndItsWorker()
-      const raised = workerHandle.simulateUserInput('which region?', ['eu', 'us'], false)
-      await waitFor(
-        () =>
-          events(worker).some(
-            (event) => event.type === 'request_routed' && event.requestId === raised.id,
-          ),
-        'the routing',
-      )
+      const raised = await raiseRegionQuestion(workerHandle, () => events(worker))
       expect(store.routedRequestsOf(worker).find((one) => one.requestId === raised.id)?.state).toBe(
         'open',
       )
@@ -373,18 +332,11 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
       it(`⛔ ${provider}: a question its parent will not answer reaches a person`, async () => {
         const { pm, worker, workerHandle } = await aPmAndItsWorker(provider)
         expect(store.recordedOne(worker)?.provider).toBe(provider)
-        const raised = workerHandle.simulateUserInput('which region?', ['eu', 'us'], false)
-        await waitFor(
-          () =>
-            events(worker).some(
-              (event) => event.type === 'request_routed' && event.requestId === raised.id,
-            ),
-          'the routing',
-        )
+        const raised = await raiseRegionQuestion(workerHandle, () => events(worker))
         // ⚑ **612 · the PM passes it up** (HO-088 §3.2), because no window does it any more. ⛔ The
         // row in the person's queue is the PM's own, carrying the worker's words — which is what
         // makes *the original words travelled* a property of the ledger rather than a promise.
-        const passed = await thePmPassesItUp(pm, raised.id)
+        const passed = aHistoricalForward(pm, worker, raised.id)
         expect(host.questionsForAPerson().rows.map((one) => one.request.requestId)).toEqual([
           passed,
         ])
@@ -402,14 +354,7 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
     it('⛔ the paired negative: the PARENT answers it, and nobody else is ever told', async () => {
       const { pm, worker, workerHandle } = await aPmAndItsWorker()
       const pmTools = agentToolsFor(host, pm)
-      const raised = workerHandle.simulateUserInput('which region?', ['eu', 'us'], false)
-      await waitFor(
-        () =>
-          events(worker).some(
-            (event) => event.type === 'request_routed' && event.requestId === raised.id,
-          ),
-        'the routing',
-      )
+      const raised = await raiseRegionQuestion(workerHandle, () => events(worker))
       const askedAt =
         store.routedRequestsOf(worker).find((one) => one.requestId === raised.id)?.at ?? 0
 
@@ -446,14 +391,7 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
      */
     it('🔴 no amount of elapsed time stamps anything, and nothing is armed to try', async () => {
       const { worker, workerHandle } = await aPmAndItsWorker()
-      const raised = workerHandle.simulateUserInput('which region?', ['eu', 'us'], false)
-      await waitFor(
-        () =>
-          events(worker).some(
-            (event) => event.type === 'request_routed' && event.requestId === raised.id,
-          ),
-        'the routing',
-      )
+      const raised = await raiseRegionQuestion(workerHandle, () => events(worker))
       const askedAt =
         store.routedRequestsOf(worker).find((one) => one.requestId === raised.id)?.at ?? 0
       expect(askedAt).toBeGreaterThan(0)
@@ -474,7 +412,7 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
       // 🔴 **The POSITIVE CONTROL, and it is the whole of `612`'s §6.2**: the question is still
       // reachable — a parent that will not answer says so, and the person gets it at once.
       // ⚑ D-016 · the parent is read off the store's one parent column.
-      const passed = await thePmPassesItUp(store.parentOf(worker) ?? '', raised.id)
+      const passed = aHistoricalForward(store.parentOf(worker) ?? '', worker, raised.id)
       expect(host.questionsForAPerson().rows.map((one) => one.request.requestId)).toEqual([passed])
       // ⛔ **And it arrived with no stamp**, because nothing escalated: it was addressed there.
       const persons = host.questionsForAPerson().rows[0]
@@ -485,16 +423,9 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
     it('🔴 passing it up does not un-ask it: the parent can still answer, and does', async () => {
       const { pm, worker, workerHandle } = await aPmAndItsWorker()
       const pmTools = agentToolsFor(host, pm)
-      const raised = workerHandle.simulateUserInput('which region?', ['eu', 'us'], false)
-      await waitFor(
-        () =>
-          events(worker).some(
-            (event) => event.type === 'request_routed' && event.requestId === raised.id,
-          ),
-        'the routing',
-      )
+      const raised = await raiseRegionQuestion(workerHandle, () => events(worker))
       // ⚑ **612 · the PM passes it up rather than a window passing** (HO-088 §3.1).
-      const passed = await thePmPassesItUp(pm, raised.id)
+      const passed = aHistoricalForward(pm, worker, raised.id)
       expect(store.routedRequestsOf(worker).find((one) => one.requestId === raised.id)?.state).toBe(
         'open',
       )
@@ -518,14 +449,7 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
     it('🔴 two answers to one question: the FIRST wins and the second is refused BY NAME', async () => {
       const { pm, worker, workerHandle } = await aPmAndItsWorker()
       const pmTools = agentToolsFor(host, pm)
-      const raised = workerHandle.simulateUserInput('which region?', ['eu', 'us'], false)
-      await waitFor(
-        () =>
-          events(worker).some(
-            (event) => event.type === 'request_routed' && event.requestId === raised.id,
-          ),
-        'the routing',
-      )
+      const raised = await raiseRegionQuestion(workerHandle, () => events(worker))
       // ⚑ **612 · no clock puts it in front of anybody**; this test is about the two DOORS, and
       // both are reachable the moment the question is routed.
 
@@ -653,18 +577,11 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
 
     it('🔴 the live chain, off a real ledger, names the conversations a person sees', async () => {
       const { pm, worker, workerHandle } = await aPmAndItsWorker()
-      const raised = workerHandle.simulateUserInput('which region?', ['eu', 'us'], false)
-      await waitFor(
-        () =>
-          events(worker).some(
-            (event) => event.type === 'request_routed' && event.requestId === raised.id,
-          ),
-        'the routing',
-      )
+      const raised = await raiseRegionQuestion(workerHandle, () => events(worker))
       // ⚑ **612 · the PM passes it up** (HO-088 §3.2) — and the chain below is the PASSER's,
       // which is one hop shorter than the escalated chain this test used to read and is the shape
       // `HO-088` §6 describes: the hop that could not answer is the one that acted.
-      const passed = await thePmPassesItUp(pm, raised.id)
+      const passed = aHistoricalForward(pm, worker, raised.id)
 
       const waiting = host.questionsForAPerson().rows
       expect(waiting).toHaveLength(1)
@@ -689,15 +606,8 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
 
     it('⛔ the wire carries it: the command answers a person and takes nothing', async () => {
       const { pm, worker, workerHandle } = await aPmAndItsWorker()
-      const raised = workerHandle.simulateUserInput('which region?', ['eu', 'us'], false)
-      await waitFor(
-        () =>
-          events(worker).some(
-            (event) => event.type === 'request_routed' && event.requestId === raised.id,
-          ),
-        'the routing',
-      )
-      const passed = await thePmPassesItUp(pm, raised.id)
+      const raised = await raiseRegionQuestion(workerHandle, () => events(worker))
+      const passed = aHistoricalForward(pm, worker, raised.id)
 
       const { executeRuntimeCommand } = await import('../src/main/runtime/ipc')
       const answered = (await executeRuntimeCommand(host, window, {
@@ -742,17 +652,10 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
      * shape is kept here so the wait is real time rather than logical time — a `setTimeout`
      * somebody left armed is exactly what this is looking for.
      */
-    it('🔴 an unanswered question escalates NEVER, and the pass-up is the control', async () => {
+    it('🔴 an unanswered question never escalates, and a recorded forward is still in the queue', async () => {
       const on = buildHost(store)
       const { pm, worker, workerHandle } = await aPmAndItsWorker('claude', on)
-      const raised = workerHandle.simulateUserInput('which region?', ['eu', 'us'], false)
-      await waitFor(
-        () =>
-          events(worker).some(
-            (event) => event.type === 'request_routed' && event.requestId === raised.id,
-          ),
-        'the routing',
-      )
+      const raised = await raiseRegionQuestion(workerHandle, () => events(worker))
       // ⛔ **Real time, bounded** (rule 13): 150 ms is nearly four times the 40 ms window every
       // fixture in this repo used, and 150 000 times the 1 ms this test used to arm.
       await new Promise((resolve) => setTimeout(resolve, 150))
@@ -762,16 +665,8 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
       ).toBeNull()
       expect(on.questionsForAPerson().rows).toEqual([])
 
-      // ⚑ **THE CONTROL, and it is `612`'s whole acceptance case**: the same question, the same
-      // host, reaching a person because the PM said so.
-      const passed = await callOn(agentToolsFor(on, pm), 'pass_question_up', {
-        question: raised.id,
-        who_answers: 'a-person',
-      })
-      expect(passed.outcome, JSON.stringify(passed)).toBe('ok')
-      expect(on.questionsForAPerson().rows.map((one) => one.request.requestId)).toEqual([
-        passed.question,
-      ])
+      const forwarded = aHistoricalForward(pm, worker, raised.id)
+      expect(on.questionsForAPerson().rows.map((one) => one.request.requestId)).toEqual([forwarded])
     })
   })
 

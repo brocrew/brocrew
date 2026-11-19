@@ -1,3 +1,4 @@
+import { recordForwardedQuestion } from './lib/forwarded-question-fixture'
 import { newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { PersonsQuestion } from '../src/shared/question-contracts'
@@ -351,7 +352,7 @@ describe('D-046 · the person’s list carries each question as it was asked', (
   }
 
   describe('§2 · what the verbs write is what the list carries', () => {
-    it('🔴 a worker asks a person with choices; its PM passes another up with words of its own', async () => {
+    it('🔴 the list preserves choices and context on direct and historically forwarded questions', async () => {
       const bring = await personOpens('worker')
       await host.close(bring, window)
       const pm = await personOpens('pm')
@@ -384,12 +385,16 @@ describe('D-046 · the person’s list carries each question as it was asked', (
         options: ['yes', 'no'],
       })
       expect(toPm.outcome, JSON.stringify(toPm)).toBe('ok')
-      const passed = await callOn(pmTools, 'pass_question_up', {
-        question: toPm.question,
-        who_answers: 'a-person',
+      if (typeof toPm.question !== 'string')
+        throw new Error('the original question was not recorded')
+      const forwarded = recordForwardedQuestion(store, tick, {
+        asker: worker,
+        original: toPm.question,
+        forwarder: pm,
+        to: 'a-person',
         context: 'It holds last year’s invoices.',
       })
-      expect(passed.outcome, JSON.stringify(passed)).toBe('ok')
+      expect(forwarded).not.toBe(toPm.question)
 
       const rows = host.questionsForAPerson().rows
       const fromWorker = rows.find((one) => one.request.askedBy === worker)
@@ -401,7 +406,8 @@ describe('D-046 · the person’s list carries each question as it was asked', (
         ['red', 'blue'],
       ])
 
-      const fromPm = rows.find((one) => one.request.askedBy === pm)
+      const fromPm = rows.find((one) => one.request.requestId === forwarded)
+      expect(fromPm?.request.askedBy).toBe(pm)
       expect(fromPm?.asked?.passedUp).toBe(true)
       expect(fromPm?.asked?.context).toBe('It holds last year’s invoices.')
       expect(fromPm?.asked?.prompt).toContain('May I drop the old table?')

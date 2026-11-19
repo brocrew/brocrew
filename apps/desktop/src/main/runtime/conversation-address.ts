@@ -64,7 +64,11 @@ export function describeConversation(
 ): { readonly address: string; readonly title: string; readonly line: string } {
   const address = canonicalAddressOf(reads, conversation, service)
   const title = conversationDisplayTitle(reads, conversation, service, savedTitle)
-  return { address, title, line: `conversation ${address} · ${title}` }
+  return { address, title, line: conversationLine(address, title) }
+}
+
+export function conversationLine(address: string, title: string): string {
+  return `conversation ${address} · ${title}`
 }
 
 interface RecordedServiceReads {

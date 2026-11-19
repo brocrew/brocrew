@@ -390,8 +390,8 @@ const CORE_TEXT = [
     'their next step, completion, or when asked. Do not routinely poll active agents. Before one completion message, ' +
     'check required answers, helper results and what was verified; say what remains unchecked. ' +
     'Incomplete work is not done. Write to other agents in plain, full sentences, as you would to the person: ' +
-    'no compressed codes or words run together. Long detail can go in messages or questions too: text over ' +
-    '2,000 characters arrives as a file the reader is pointed to.',
+    'no compressed codes or words run together. Long detail can go in messages or questions too. ' +
+    'Anything over 2,000 characters arrives as a file the reader is pointed to.',
   "Follow the person's scope and stops, and tell your giver. Only the person approves; use " +
     'wishes attributed by your giver or BroBot unless contradicted. ' +
     'Follow current permissions, tool contracts and refusals. Use the assigned folder; create ' +

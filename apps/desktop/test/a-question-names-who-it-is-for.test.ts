@@ -1,9 +1,9 @@
+import { recordForwardedQuestion } from './lib/forwarded-question-fixture'
 import { expectNoQuestionWake } from './lib/question-wake'
 import { giveOpenWorkerTask } from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { callOn } from './helpers/call-agent-tool'
 import { waitFor } from './lib/f093-host'
-import { PASS_UP_RECIPIENTS } from '../src/shared/question-contracts'
 import type {
   RequestRoutedEvent,
   RoutedRequest,
@@ -347,12 +347,6 @@ describe('611 · a question names who it is for', () => {
       for (const member of QUESTION_RECIPIENTS) {
         expect(asking.sentences[member]).toBe(RECIPIENT_MEANS[member])
       }
-      const passing = TOOL_INPUT_ENUMS['pass_question_up:who_answers']
-      expect(passing.members).toEqual([...PASS_UP_RECIPIENTS])
-      expect(passing.members).not.toContain('an-agent')
-      for (const member of PASS_UP_RECIPIENTS) {
-        expect(passing.sentences[member]).toBe(RECIPIENT_MEANS[member])
-      }
       expect(tool.description).toContain('who_answers: the-parent')
     })
   })
@@ -459,7 +453,7 @@ describe('611 · a question names who it is for', () => {
    */
   describe('§3 · one question, two entrances', () => {
     it('⛔ a question a parent PASSED UP and one its ASKER addressed are one population', async () => {
-      const { pmTools, worker, workerTools, piece } = await aWorkerHoldingWork()
+      const { pm, worker, workerTools, piece } = await aWorkerHoldingWork()
       const escalating = await callOn(workerTools, 'ask_question', {
         piece,
         question: 'which schema?',
@@ -477,20 +471,15 @@ describe('611 · a question names who it is for', () => {
       const now = () => host.questionsForAPerson().rows.map((one) => one.request.requestId)
       expect(now()).toEqual([addressed.question])
 
-      // ⚠️ **612 · the second entrance was a DEADLINE and it is gone** (HO-088 §3.1, standing
-      // rule 26). ⛔ This waited for the sweep to make the parent-routed question a person's;
-      // `611`'s own §4 said that was one of two entrances, and the other one is now the only one
-      // — a parent that will not answer PASSES IT UP. ⚑ **The property is unchanged and the
-      // proof is stronger**: two rows that arrived by two different acts are one population, one
-      // shape and one reader.
-      const passed = await callOn(pmTools, 'pass_question_up', {
-        question: escalating.question,
-        who_answers: 'a-person',
+      const forwarded = recordForwardedQuestion(store, tick, {
+        asker: worker,
+        original: String(escalating.question),
+        forwarder: pm,
+        to: 'a-person',
       })
-      expect(passed.outcome, JSON.stringify(passed)).toBe('ok')
       const both = host.questionsForAPerson().rows
       expect(both.map((one) => one.request.requestId).sort()).toEqual(
-        [passed.question as string, addressed.question as string].sort(),
+        [forwarded, addressed.question as string].sort(),
       )
       // 🔴 **ONE row shape and not two that look alike** — every key the queue reads is on both.
       const keys = both.map((one) => Object.keys(one).sort())
@@ -503,7 +492,7 @@ describe('611 · a question names who it is for', () => {
       // is these two.
       const decisions = host.decisionsForAPerson().rows.map((one) => one.request.requestId)
       expect(decisions.length).toBeGreaterThan(0)
-      for (const mine of [passed.question, addressed.question]) {
+      for (const mine of [forwarded, addressed.question]) {
         expect(decisions, String(mine)).not.toContain(mine)
       }
       // ⚑ **And both questions are still visible to the parent**, which is `394` §2.
@@ -624,7 +613,7 @@ describe('611 · a question names who it is for', () => {
    */
   describe('§4 · a question passed up carries the original words', () => {
     it('🔴 the words are the ASKER’s, verbatim, and the passer’s context is BESIDE them', async () => {
-      const { pm, worker, pmTools, workerTools, piece } = await aWorkerHoldingWork()
+      const { pm, worker, workerTools, piece } = await aWorkerHoldingWork()
       const asked = await callOn(workerTools, 'ask_question', {
         piece,
         question: 'Which cities does he want on the trip?',
@@ -638,14 +627,15 @@ describe('611 · a question names who it is for', () => {
       await waitFor(() => pendingApproval() !== undefined, 'the Ask turn to park on approval')
       const card = pendingApproval()
       if (card?.type !== 'permission_request') throw new Error('the Ask turn has no approval')
-      const passed = await callOn(pmTools, 'pass_question_up', {
-        question: asked.question,
-        who_answers: 'a-person',
+      const forwarded = recordForwardedQuestion(store, tick, {
+        asker: worker,
+        original: String(asked.question),
+        forwarder: pm,
+        to: 'a-person',
         context: 'I have no way to know this; it is his own preference.',
       })
-      expect(passed.outcome, JSON.stringify(passed)).toBe('ok')
 
-      const raised = store.questionsRaisedIn(pm).get(passed.question as string)
+      const raised = store.questionsRaisedIn(pm).get(forwarded)
       if (raised === undefined) throw new Error('the passed-up question was not recorded')
       expect(raised.prompt).toBe('Which cities does he want on the trip?')
       expect(raised.context).toBe('I have no way to know this; it is his own preference.')
@@ -657,9 +647,10 @@ describe('611 · a question names who it is for', () => {
       expect(raised.piece).toBeNull()
       const child = store.routedRequestsOf(worker).find((one) => one.requestId === asked.question)
       expect(REQUEST_IS_OPEN[child?.state ?? 'answered']).toBe(true)
-      expect(
-        store.routedRequestsOf(pm).find((one) => one.requestId === passed.question),
-      ).toMatchObject({ went: { is: 'the-person-the-asker-named' }, state: 'open' })
+      expect(store.routedRequestsOf(pm).find((one) => one.requestId === forwarded)).toMatchObject({
+        went: { is: 'the-person-the-asker-named' },
+        state: 'open',
+      })
 
       const beforeDecision = ledger(pm).length
       await host.respondPermission(pm, card.id, { outcome: 'allow' }, window)
@@ -679,56 +670,40 @@ describe('611 · a question names who it is for', () => {
       expectNoQuestionWake(ledger(worker))
     })
 
-    it('⛔ there is no field to reword the question in, and that is the whole ruling', async () => {
+    it('keeps the public forwarding tool out of the offered toolset', async () => {
       const { pmTools } = await aWorkerHoldingWork()
-      const tool = pmTools.tools.find((one) => one.name === 'pass_question_up')
-      if (tool === undefined) throw new Error('no pass_question_up')
-      // ⚑ **`question` is an ID and not words** — the description says so, and the shape carries
-      // exactly these keys. ⚑ **679 · `asked_by` joined them**: it names which child ASKED, when two
-      // children's session-local ids are one string — a selector of the question carried, never
-      // words and never where it goes (`who_answers` is still the only end).
-      expect(Object.keys(tool.input).sort()).toEqual([
-        'asked_by',
-        'context',
-        'question',
-        'who_answers',
-      ])
-      // ⛔ **Nothing named for the words themselves.** A model that could send `prompt`, `text` or
-      // `summary` could reword a question at a hop, which is the act `HO-088` §3.1 forbids.
-      for (const reword of ['prompt', 'text', 'summary', 'question_text', 'words']) {
-        expect(Object.keys(tool.input), reword).not.toContain(reword)
-      }
-      expect(tool.description).toContain('exactly as it was asked')
-      expect(tool.description).toContain('you cannot reword them')
+      expect(pmTools.tools.map((tool) => tool.name)).not.toContain('pass_question_up')
     })
 
     it('⚑ the next hop READS the original words, with the context in its own paragraph', async () => {
-      const { pm, pmTools, workerTools, piece } = await aWorkerHoldingWork()
+      const { pm, worker, pmTools, workerTools, piece } = await aWorkerHoldingWork()
       const asked = await callOn(workerTools, 'ask_question', {
         piece,
         question: 'Which cities does he want on the trip?',
         who_answers: 'the-parent',
       })
-      const passed = await callOn(pmTools, 'pass_question_up', {
-        question: asked.question,
-        who_answers: 'a-person',
+      expect(asked.outcome, JSON.stringify(asked)).toBe('ok')
+      const forwarded = recordForwardedQuestion(store, tick, {
+        asker: worker,
+        original: String(asked.question),
+        forwarder: pm,
+        to: 'a-person',
         context: 'he has not said, and I cannot guess it',
       })
-      expect(passed.outcome, JSON.stringify(passed)).toBe('ok')
       // ⛔ **The passed-up question is the PASSER's own**, so it is in the person's queue under
       // that conversation — and the words there are the ORIGINAL asker's.
       const personsRow = host
         .questionsForAPerson()
-        .rows.find((one) => one.request.requestId === passed.question)
+        .rows.find((one) => one.request.requestId === forwarded)
       expect(personsRow?.request.askedBy).toBe(pm)
 
       // ⚑ **And the CONTEXT is rendered beside them, in its own paragraph**, by the same function
       // that composes the message a live next hop receives — so the two readings cannot drift.
-      const raised = store.questionsRaisedIn(pm).get(passed.question as string)
+      const raised = store.questionsRaisedIn(pm).get(forwarded)
       // ⚑ D-016 · commit 7 · R3 — the asker as the host hands it: named by its work, and the
       // address `asked_by` quotes.
       const asker = { called: host.nameByItsWork(pm), address: host.addressOf(pm) }
-      const rendered = questionText(asker, { ...raised!, id: passed.question as string })
+      const rendered = questionText(asker, { ...raised!, id: forwarded })
       expect(rendered).toContain('Which cities does he want on the trip?')
       expect(rendered).toContain('Context added by the conversation that passed it on')
       expect(rendered).toContain('he has not said, and I cannot guess it')
@@ -740,7 +715,7 @@ describe('611 · a question names who it is for', () => {
       )
       // ⚠️ **The CONTROL, one fact over**: the same renderer over a question nobody added to draws
       // no context paragraph at all.
-      const plain = store.questionsRaisedIn(pm).get(passed.question as string)
+      const plain = store.questionsRaisedIn(pm).get(forwarded)
       expect(questionText(asker, { ...plain!, id: 'x', context: null })).not.toContain(
         'Context added by',
       )
@@ -750,46 +725,37 @@ describe('611 · a question names who it is for', () => {
       expect(listed).toContain(asked.question as string)
     })
 
-    it('⛔ a conversation nothing spawned cannot pass UP, and is told the other end exists', async () => {
-      // 🔴 **This is `HO-088` §6's last hop** — BroBot itself, which nothing spawned.
-      const { pm, pmTools, workerTools, piece } = await aWorkerHoldingWork()
+    it('reads a historical question addressed to the person by a conversation with no parent', async () => {
+      const { pm, worker, workerTools, piece } = await aWorkerHoldingWork()
       const asked = await callOn(workerTools, 'ask_question', {
         piece,
         question: 'which cities?',
         who_answers: 'the-parent',
       })
+      expect(asked.outcome, JSON.stringify(asked)).toBe('ok')
       expect(store.parentOf(pm)).toBeNull()
-      const refused = await callOn(pmTools, 'pass_question_up', {
-        question: asked.question,
-        who_answers: 'the-parent',
+      const copy = recordForwardedQuestion(store, tick, {
+        asker: worker,
+        original: String(asked.question),
+        forwarder: pm,
+        to: 'a-person',
       })
-      expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
-      expect(refused.rail).toBe('nobody-to-pass-it-up-to')
-      // ⛔ **PERMANENT and with NO remedy code** — `425` §3.1's biconditional: nothing re-parents a
-      // conversation, so the identical call never lands. ⚑ The other end is in the SENTENCE.
-      expect(refused.permanence).toBe('permanent')
-      expect(refused.retryable).toBe(false)
-      expect(refused.remedy).toBeNull()
-      expect(String(refused.reason)).toContain('a person')
-
-      // ⚑ **The PAIRED call, one fact over, ALLOWED** (standing rule 3): the same question, the
-      // same caller, the other member of the vocabulary.
-      const passed = await callOn(pmTools, 'pass_question_up', {
-        question: asked.question,
-        who_answers: 'a-person',
+      expect(routedIn(pm, 'the-person-the-asker-named')).toMatchObject({
+        requestId: copy,
+        parent: null,
+        state: 'open',
       })
-      expect(passed.outcome, JSON.stringify(passed)).toBe('ok')
-      // ⛔ **And the row names NO parent**, because there is none — rather than naming a
-      // conversation this app never asked.
-      const row = routingsIn(pm).find((one) => one.requestId === passed.question)
-      expect(row?.parent).toBeUndefined()
-      expect(routedIn(pm, 'the-person-the-asker-named').parent).toBeNull()
+      const raw = routingsIn(pm).find((row) => row.requestId === copy)
+      expect(raw).toMatchObject({ to: 'a-person' })
+      expect(raw?.parent).toBeUndefined()
+      const personRow = host
+        .questionsForAPerson()
+        .rows.find((row) => row.request.requestId === copy)
+      expect(personRow?.request).toMatchObject({ askedBy: pm, parent: null })
     })
 
-    it('⚠️ a PERMISSION cannot be passed up, and nor can one that has ended', async () => {
+    it('keeps native approval with the person and rejects an ended question', async () => {
       const { pm, worker, pmTools, workerTools, piece } = await aWorkerHoldingWork()
-      // ⛔ **The permission arm.** A request the channel refused is a person's already, so there
-      // is nothing to pass — and it is refused by the rail that says so BY NAME.
       const card = ledger(worker)
         .filter(
           (event): event is TranscriptEvent & { type: 'permission_request'; id: string } =>
@@ -797,17 +763,20 @@ describe('611 · a question names who it is for', () => {
         )
         .at(-1)
       if (card === undefined) throw new Error('the worker is not parked on anything')
-      const permission = await callOn(pmTools, 'pass_question_up', {
+      const permission = await callOn(pmTools, 'answer_question', {
         question: card.id,
-        who_answers: 'a-person',
+        cannot_answer: 'The person decides.',
       })
       expect(permission.outcome, JSON.stringify(permission)).toBe('refused')
       expect(permission.rail).toBe('a-person-answers-this-one')
+      expect(routedIn(worker, 'the-person-the-channel-left-it-with')).toMatchObject({
+        requestId: card.id,
+        state: 'open',
+      })
 
-      // ⚑ **An id nothing routed to this caller** — the lookup IS the entitlement.
-      const invented = await callOn(pmTools, 'pass_question_up', {
+      const invented = await callOn(pmTools, 'answer_question', {
         question: 'req_00000000-0000-0000-0000-000000000000',
-        who_answers: 'a-person',
+        cannot_answer: 'No answer.',
       })
       expect(invented.rail).toBe('no-question-by-that-name')
 
@@ -817,16 +786,20 @@ describe('611 · a question names who it is for', () => {
         question: 'which schema?',
         who_answers: 'the-parent',
       })
-      await callOn(pmTools, 'withdraw_task', { piece })
-      const ended = await callOn(pmTools, 'pass_question_up', {
-        question: asked.question,
-        who_answers: 'a-person',
+      expect(asked.outcome, JSON.stringify(asked)).toBe('ok')
+      const question = String(asked.question)
+      const stateOfQuestion = () =>
+        store.routedRequestsOf(worker).find((row) => row.requestId === question)?.state
+      expect(stateOfQuestion()).toBe('open')
+      const withdrawn = await callOn(pmTools, 'withdraw_task', { piece })
+      expect(withdrawn.outcome, JSON.stringify(withdrawn)).toBe('ok')
+      expect(stateOfQuestion()).toBe('work-withdrawn')
+      const ended = await callOn(pmTools, 'answer_question', {
+        question,
+        cannot_answer: 'The work has ended.',
       })
-      expect(ended.rail).toBe('question-has-already-ended')
-      // ⛔ **Nothing was passed up by any of the three refusals.** ⚑ **D-016** — the one routing on
-      // the PM's ledger may be the permission card its own turn parks on (the delivered question
-      // opened it, and `withdraw_task` now awaits telling the worker, so that row can land first);
-      // it is a person's, and no pass-up of anybody's.
+      expect(ended).toMatchObject({ outcome: 'refused', rail: 'question-has-already-ended' })
+      expect(stateOfQuestion()).toBe('work-withdrawn')
       expect(
         store
           .routedRequestsOf(pm)

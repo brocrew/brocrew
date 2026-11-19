@@ -125,6 +125,8 @@ import { sendReceipt, type SendFacts } from './send-receipt'
 import { outboundQuestionText } from './outbound-question-words'
 import {
   INLINE_TEXT_LIMIT,
+  answerPreview,
+  answerTextForFile,
   keepPlainSendFile,
   keepSendOverflow,
   keepTasklessSendFiles,
@@ -135,9 +137,10 @@ import {
   textWithOverflowResource,
   type PreparedSendFiles,
   type PreparedSendText,
+  type ReadableSendOverflow,
   type SendOverflow,
 } from './send-overflow'
-import type { SendRecipientState } from '../../shared/tool-outcome'
+import type { SendReceipt, SendRecipientState } from '../../shared/tool-outcome'
 import type { NewSessionRecord } from '../db/session-store'
 import type {
   ItsLedger,
@@ -336,6 +339,7 @@ import {
   answerRefusalOf,
   askedOfTheChannel,
   // ⚑ **676 · F4 — the adapter's own test for an OFFERED label**, so a chosen option is never cut.
+  answerToForward,
   isOfferedLabel,
   type UserInputQuestion,
   capabilitiesFor,
@@ -1200,7 +1204,6 @@ import {
   type AnAnswersOrigin,
   type WithdrawQuestionOutcome,
   type AskOutcome,
-  type PassUpOutcome,
   type QuestionRefusal,
 } from './question-rails'
 import { admitInterrupt } from './interrupt-rails'
@@ -3360,13 +3363,25 @@ class ServicesAreOff extends Error {
  */
 type WhatAGiverHolds = Pick<HostedSession, 'mailbox' | 'handingOver'>
 
+type AnswerDelivery = { readonly to: string; readonly taskLabel: string | null } & (
+  | { readonly kind: 'sent' }
+  | { readonly kind: 'held'; readonly queueId: string }
+  | Extract<SendRecipientState, { kind: 'cannot-run' }>
+)
+
 /**
  * ⚑ **D-030 — what became of a reply's words**: one that landed in a turn or a mailbox has nothing
  * to explain; one kept for its giver's next start, or that reached nobody, says why.
  */
-type WhereAReplyWent =
-  | { readonly delivered: 'sent' | 'held'; readonly why: null }
-  | { readonly delivered: 'kept' | 'not-delivered'; readonly why: string }
+type WhereAReplyWent = { readonly to: string } & (
+  | { readonly delivered: 'sent'; readonly why: null }
+  | { readonly delivered: 'held'; readonly why: null; readonly queueId?: string }
+  | {
+      readonly delivered: 'kept' | 'not-delivered'
+      readonly why: string
+      readonly state: Extract<SendRecipientState, { kind: 'cannot-run' }>
+    }
+)
 
 /**
  * ⚑ **D-030 — where words held for a conversation wait** ({@link RuntimeHost.holdUntilItStarts}):
@@ -7096,30 +7111,6 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * ⛔ **612 · `watchForEscalation` and `writeWhatIsDue` stood here and are GONE** (HO-088 §3.1).
-   *
-   * ## 🔴 What they were, and why the pair went together
-   *
-   * ⚑ **`watchForEscalation` asked the store what was overdue; `writeWhatIsDue` appended the rows
-   * it named**, stamped at the moment the deadline FELL DUE rather than at the moment anybody
-   * looked — *"so the row a live look writes and the row a launch writes about one silence are
-   * byte-identical, which is what makes looking more often free."*
-   *
-   * ⛔ **`writeWhatIsDue` had exactly one caller.** Its shape was built for a family of deadlines
-   * and `398`'s second member — the silence window over a working child — was withdrawn by
-   * `HO-018` §2.2 before it ever used it. ⚠️ **So removing the last deadline left a writer for
-   * nothing**, and keeping it would be a mechanism with no decision behind it.
-   *
-   * ## ⚠️ What takes their place, and it is not a longer timer
-   *
-   * ⛔ **Nothing in this app now looks at an absence and writes a row about it.** ⚑ A parent that
-   * will not answer calls `pass_question_up` (`611`, HO-088 §3.2) and the question reaches the
-   * person as an ACT, in the ORIGINAL words. 🔴 **A turn that ends with a question neither
-   * answered nor passed up is a STALLED TASK** — `557`'s machinery, `609`'s `waiting-on-*` family
-   * — which is `HO-088` §3.3's answer to the risk this removal creates, and it was already built.
-   */
-
-  /**
    * Every session id this host is running or rebuilding right now — the directory's one question.
    * See {@link LiveHost.workInFlight}.
    *
@@ -8742,8 +8733,10 @@ export class RuntimeHost implements LiveHost {
     kind: MailboxKind,
     facts: FactsAQueueCarries,
     says: AgentMessageKind,
+    onRecipient?: (recipient: string) => void,
   ): Promise<QueueOutcome> {
     const to = this.theOneInItsPlace(sessionId)
+    onRecipient?.(to)
     await this.refuseBeforeAStart(to, text, by, attachments, facts.messageAct)
     const from = this.originOf(by)
     const toProfile = from?.who === 'a-caller-with-an-id' ? this.profileOf(to) : null
@@ -12428,12 +12421,8 @@ export class RuntimeHost implements LiveHost {
       : undefined
     // ⚑ **D-025 · who ended it, by name** — as the notice of that ending names it: asked only when
     // the piece has ended, off the fold already in hand, so naming it adds no ledger read.
-    const refusal = admitReply(
-      input.piece,
-      piece,
-      itsOwn && row.parent === null,
-      input.summary,
-      (conversation) => this.whatToCallTheConversation(conversation),
+    const refusal = admitReply(input.piece, piece, itsOwn && row.parent === null, (conversation) =>
+      this.whatToCallTheConversation(conversation),
     )
     if (refusal !== null) return { ok: false, refusal }
     // ⛔ **`admitReply` returning null is what proves `piece` is defined**, and TypeScript cannot see
@@ -12498,6 +12487,11 @@ export class RuntimeHost implements LiveHost {
       if (documents.length === 1) resultIndex = documents[0]!
     }
 
+    const summary = keepSendOverflow(this.deps.resourcesRoot?.(), 'summary', input.summary)
+    if (!summary.ok) return { ok: false, refusal: summary.refusal }
+    const overflow = summary.overflow
+    const overflowIndex = kept.files.length
+
     // ⚠️ **`THE_APP_ITSELF`, because nobody is asking**: the caller is this very session, and a
     // session does not command itself. A throw here means the conversation that is executing a tool
     // call is not live, which is a defect rather than a refusal path.
@@ -12520,7 +12514,7 @@ export class RuntimeHost implements LiveHost {
       type: 'work_replied',
       piece: piece.piece,
       outcome: input.outcome,
-      summary: input.summary,
+      summary: textWithOverflowResource(summary.inline, rows[overflowIndex]?.resource),
       ...(input.savedMethod === undefined ? {} : { savedMethod: input.savedMethod }),
       resources: rows.map((one) => one.resource),
       ...(rows[resultIndex] === undefined ? {} : { resultDocument: rows[resultIndex]!.resource }),
@@ -12534,6 +12528,8 @@ export class RuntimeHost implements LiveHost {
       () => {
         const committed = this.deps.store.atomically(() => {
           const rows = this.recordMadeFiles(piece.piece, kept.files, speaking, at)
+          if (overflow !== null)
+            rows.push(this.recordMadeOverflow(piece.piece, overflow, speaking, at))
           this.deps.store.append(session.id, ordinal, repliedWith(rows), at)
           // ⚑ …and the questions passed up about the piece end in the same transaction.
           return {
@@ -12548,6 +12544,16 @@ export class RuntimeHost implements LiveHost {
     )
     this.rememberLedgerOrdinal(session, ordinal)
     const replied = repliedWith(resources)
+    const overflowResource = resources[overflowIndex]
+    const hasOverflow =
+      overflow === null || overflowResource === undefined
+        ? {}
+        : {
+            overflow: {
+              ...overflow,
+              file: { ...overflow.file, resource: overflowResource.resource },
+            },
+          }
     this.emitOurs(session, { sessionId: session.id, ordinal, at, event: replied })
     passedUp()
     // 🔴 **638 · work was ANSWERED** — one of the transitions that take a row out of
@@ -12564,13 +12570,14 @@ export class RuntimeHost implements LiveHost {
         piece: piece.piece,
         label: piece.label,
         resources: resources.map((one) => one.resource),
+        ...hasOverflow,
         ...(replied.resultDocument === undefined ? {} : { resultDocument: replied.resultDocument }),
         delivered: null,
       }
     }
-    const { delivered, why } = await this.deliverReply(
+    const delivery = await this.deliverReply(
       piece,
-      input,
+      { ...input, summary: replied.summary },
       resources,
       session,
       aNewBriefWaited,
@@ -12578,11 +12585,11 @@ export class RuntimeHost implements LiveHost {
     // 🔴 **703 · the answer makes the notices the giver still holds about this work false** (`698`
     // F-A) — see {@link takeBackWhatALaterFactMadeFalse}. ⚠️ **Only when the answer LANDED**, so it
     // is what the giver reads in their place.
+    const { to, delivered, why } = delivery
     if (REPLY_LANDED[delivered]) this.takeBackWhatALaterFactMadeFalse(piece, 'answered')
     // ⚑ **D-030 · where it went, by the name every surface says** — its giver, or the one in its
     // place (D-017 · R10). ⚠️ Read under the delivery's own rule: the reply is recorded, so a name
     // that cannot be read is said as one, never raised as the tool's error.
-    const to = this.theOneInItsPlace(piece.giver)
     let giver: string
     try {
       giver = this.whatToCallTheConversation(to)
@@ -12592,17 +12599,57 @@ export class RuntimeHost implements LiveHost {
       )
       giver = AN_AGENT_THIS_APP_CANNOT_NAME
     }
-    // ⚑ **Held for a reopen on the current sign-in, a person's answer or a usage limit, the answer
-    // says why** ({@link whyWhatIsHeldWaits}).
-    const waits = why === null && delivered === 'held' ? this.whyWhatIsHeldWaits(to) : null
+    let receipt: SendReceipt | undefined
+    let waits: string | null = null
+    try {
+      if (delivered === 'held') waits = this.whyWhatIsHeldWaits(to)
+    } catch (error) {
+      console.warn(
+        `runtime host could not read the reply wait for ${piece.label}: ${errorMessage(error)}`,
+      )
+    }
+    try {
+      let state: SendRecipientState | undefined
+      if (delivered === 'sent') {
+        state = { kind: 'started' }
+      } else if (delivered === 'held') {
+        const queueId = delivery.queueId
+        if (queueId !== undefined) {
+          const behind = this.deps.store
+            .messagesWaitingIn(to)
+            .findIndex((one) => one.messageId === queueId)
+          if (behind >= 0) state = { kind: 'queued', behind }
+        }
+      } else {
+        state = delivery.state
+      }
+      if (state !== undefined) {
+        receipt = this.receiptForSend({
+          recorded: { kind: 'reply', id: piece.piece, taskLabel: piece.label },
+          to,
+          state,
+          attachments: resources.map(({ resource, name }) => ({
+            resource,
+            name,
+            ...(resource === overflowResource?.resource ? { overflowField: 'summary' } : {}),
+          })),
+        }).receipt
+      }
+    } catch (error) {
+      console.warn(
+        `runtime host could not read the reply receipt for ${piece.label}: ${errorMessage(error)}`,
+      )
+    }
     return {
       ok: true,
       piece: piece.piece,
       label: piece.label,
       resources: resources.map((one) => one.resource),
+      ...hasOverflow,
       ...(replied.resultDocument === undefined ? {} : { resultDocument: replied.resultDocument }),
       giver,
       tookItsPlace: to !== piece.giver,
+      ...(receipt === undefined ? {} : { receipt }),
       ...(why !== null
         ? { delivered, why }
         : delivered === 'held' && waits !== null
@@ -12829,6 +12876,7 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **D-030 · the words, once composed** — composed inside the `try`, so a read that fails is
     // reported as any failed delivery is, and kept for the catch, which holds them.
     let words: { readonly text: string; readonly facts: FactsAQueueCarries } | null = null
+    let to = piece.giver
     try {
       words = {
         // ⚑ **D-016 · commit 7 · R3 — the holder by its name**: the piece names the conversation.
@@ -12862,8 +12910,14 @@ export class RuntimeHost implements LiveHost {
         [],
         'work',
         words.facts,
+        undefined,
+        (recipient) => {
+          to = recipient
+        },
       )
-      return { delivered: outcome.outcome === 'sent' ? 'sent' : 'held', why: null }
+      return outcome.outcome === 'sent'
+        ? { to, delivered: 'sent', why: null }
+        : { to, delivered: 'held', why: null, queueId: outcome.messageId }
     } catch (error) {
       // ⚠️ **Everything else is reported and never rethrown.** The piece is already closed; letting
       // a delivery failure escape would turn a recorded reply into a tool error, and the agent
@@ -12872,18 +12926,23 @@ export class RuntimeHost implements LiveHost {
       console.warn(
         `runtime host could not deliver the reply to ${piece.label}: ${errorMessage(error)}`,
       )
-      if (words === null) return { delivered: 'not-delivered', why: whyItWasNotDelivered(error) }
+      const state = this.sendFailedAfterRecording(error)
+      const why = whyItWasNotDelivered(error)
+      if (words === null) return { to, delivered: 'not-delivered', why, state }
       // ⛔ **D-030 · never dropped while its giver can still hear it** — held for the conversation
       // that stands in its place now (D-017 · R10): in its mailbox while it takes turns, else for its
       // next start, whatever starts it. ⚑ No retry: a start that keeps failing is never looped on.
-      const where = await this.keptForItsNextStart(
-        this.theOneInItsPlace(piece.giver),
-        words.text,
-        words.facts,
-      )
-      if (where === 'its-mailbox') return { delivered: 'held', why: null }
-      if (where === 'its-ledger') return { delivered: 'kept', why: whyItWasNotDelivered(error) }
-      return { delivered: 'not-delivered', why: ITS_RECORD_WOULD_NOT_TAKE_IT }
+      to = this.theOneInItsPlace(piece.giver)
+      const kept = await this.keptForItsNextStart(to, words.text, words.facts)
+      if (kept.where === 'its-mailbox')
+        return {
+          to,
+          delivered: 'held',
+          why: null,
+          ...(kept.queueId === undefined ? {} : { queueId: kept.queueId }),
+        }
+      if (kept.where === 'its-ledger') return { to, delivered: 'kept', why, state }
+      return { to, delivered: 'not-delivered', why: ITS_RECORD_WOULD_NOT_TAKE_IT, state }
     }
   }
 
@@ -12897,13 +12956,15 @@ export class RuntimeHost implements LiveHost {
     giver: string,
     text: string,
     facts: FactsAQueueCarries,
-  ): Promise<WhereHeldWordsWait> {
+  ): Promise<{ readonly where: WhereHeldWordsWait; readonly queueId?: string }> {
     return new Promise((resolve) => {
       try {
-        this.holdUntilItStarts(giver, text, facts, 'work', resolve)
+        this.holdUntilItStarts(giver, text, facts, 'work', (where, queueId) =>
+          resolve({ where, ...(queueId === undefined ? {} : { queueId }) }),
+        )
       } catch (error) {
         console.warn(`runtime host could not hold the reply for ${giver}: ${errorMessage(error)}`)
-        resolve('nowhere')
+        resolve({ where: 'nowhere' })
       }
     })
   }
@@ -13790,11 +13851,13 @@ export class RuntimeHost implements LiveHost {
      * stop so the answer is read now, when they may stop the asker.
      */
     stopAs: Caller | null = null,
+    files: SendReceipt['attachments'] = [],
   ): Promise<{
     readonly kept: string | null
     readonly stop: TheStopItsWordsAsked | null
     /** Held behind the asker's running turn, to go as that turn ends. */
     readonly held: boolean
+    readonly delivery?: AnswerDelivery
   }> {
     const nothingToStop = stopAs === null ? null : ({ stop: 'not-needed', askedOf: null } as const)
     // ⚑ **D-016 · said by its label**, the name the asker knows the piece by.
@@ -13807,7 +13870,7 @@ export class RuntimeHost implements LiveHost {
       held.action === undefined || answers === null
         ? null
         : aToDoAnsweredText(answerer, { id: requestId, prompt: held.prompt, label }, answers)
-    const text =
+    const body =
       aToDo ??
       answerText(
         answerer,
@@ -13819,6 +13882,7 @@ export class RuntimeHost implements LiveHost {
           ? null
           : this.whereAnAnswerCameFromSaid(held.asked, requestId, answeredBy),
       )
+    const text = body + sendFilesSaid(files)
     // 🔴 **624 · the two arms carry DIFFERENT subjects, because the words are different
     // people's** (`HO-095` §6.1). ⛔ **An agent's answer is that agent's words, carried** —
     // {@link UserTurnEvent.relayedFrom}, the heading the roster names, `413`'s shape
@@ -13853,28 +13917,50 @@ export class RuntimeHost implements LiveHost {
     const asker = this.theOneInItsPlace(held.asked)
     // ⚑ **D-017 · R1 — the asker is running: the answer goes straight in**, as any message to a
     // running conversation does — and one that stops under it is started again ({@link queueAs}).
-    if (this.takesADeliveryNow(asker)) {
+    if (
+      this.takesADeliveryNow(asker) ||
+      (window === null && this.servicesHoldItBack(asker, THE_APP_ITSELF))
+    ) {
+      let to = asker
       let delivery: QueueOutcome
       // ⚑ **F020 — on its way** while the delivery decides, so a withdraw meanwhile is told it is.
       const onItsWay = questionKey(asker, requestId)
       this.answersOnTheirWay.add(onItsWay)
       try {
         this.aPersonsWindowTakesIt(asker, window)
-        delivery = await this.queueMessage(asker, text, THE_APP_ITSELF, [], 'notice', facts)
+        delivery = await this.queueMessage(
+          asker,
+          text,
+          THE_APP_ITSELF,
+          [],
+          'notice',
+          facts,
+          undefined,
+          (recipient) => {
+            to = recipient
+          },
+        )
       } catch (error) {
         console.warn(
           `runtime host could not deliver the answer to ${requestId} into ${asker}: ${errorMessage(error)}`,
         )
         // ⛔ **Never lost**: it waits for the asker's next start — in its mailbox if it still runs.
         // ⚑ The notice lane is the hold's default; what it reports is the id it held them under.
+        to = this.theOneInItsPlace(to)
         const heldAs: { id?: string } = {}
-        this.holdUntilItStarts(asker, text, facts, undefined, (_where, id) => {
+        this.holdUntilItStarts(to, text, facts, undefined, (_where, id) => {
           heldAs.id = id
         })
+        const running = this.runsNow(to)
         return {
-          kept: this.runsNow(asker) ? null : this.anAnswerKept(asker, error, held.piece),
+          kept: running ? null : this.anAnswerKept(to, error, held.piece),
+          ...(running
+            ? heldAs.id === undefined
+              ? {}
+              : { delivery: { to, taskLabel: label, kind: 'held', queueId: heldAs.id } }
+            : { delivery: { to, taskLabel: label, ...this.sendFailedAfterRecording(error) } }),
           ...(await this.withWhatItsStopLeft(
-            this.theStopForAHeldAnswer(asker, heldAs.id ?? null, stopAs),
+            this.theStopForAHeldAnswer(to, heldAs.id ?? null, stopAs),
           )),
         }
       } finally {
@@ -13884,12 +13970,18 @@ export class RuntimeHost implements LiveHost {
       if (delivery.outcome === 'queued') {
         return {
           kept: null,
+          delivery: { to, taskLabel: label, kind: 'held', queueId: delivery.messageId },
           ...(await this.withWhatItsStopLeft(
-            this.theStopForAHeldAnswer(asker, delivery.messageId, stopAs),
+            this.theStopForAHeldAnswer(to, delivery.messageId, stopAs),
           )),
         }
       }
-      return { kept: null, stop: nothingToStop, held: false }
+      return {
+        kept: null,
+        stop: nothingToStop,
+        held: false,
+        delivery: { to, taskLabel: label, kind: 'sent' },
+      }
     }
     // ⚑ **D-017 · R1 — not running: the answer is held in its LEDGER first**, beside the decision the
     // caller wrote, so a start that fails loses nothing — and then it is started, owned by the
@@ -13904,6 +13996,9 @@ export class RuntimeHost implements LiveHost {
       // a start already under way — where it waits as it would behind any running turn.
       return {
         kept: null,
+        ...(heldAs.id === undefined
+          ? {}
+          : { delivery: { to: asker, taskLabel: label, kind: 'held', queueId: heldAs.id } }),
         ...(await this.withWhatItsStopLeft(
           this.theStopForAHeldAnswer(asker, heldAs.id ?? null, stopAs),
         )),
@@ -13914,6 +14009,7 @@ export class RuntimeHost implements LiveHost {
       )
       return {
         kept: this.anAnswerKept(asker, error, held.piece),
+        delivery: { to: asker, taskLabel: label, ...this.sendFailedAfterRecording(error) },
         stop: nothingToStop,
         held: false,
       }
@@ -14651,187 +14747,6 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * 🔴 **Carry a child's question one hop further, in the child's own words** (611, HO-088 §3.2).
-   *
-   * ## ⛔ Why this is a verb and not a timer
-   *
-   * ⚠️ **`HO-088` §3.1 removed the clock that decided a parent had failed**, and put an ACT in its
-   * place: *"A parent answers the question, or passes it up. Both are deliberate. Neither is a
-   * timeout."* ⛔ So there is nothing here that fires on its own, and this method is reached only
-   * from a tool call a model made.
-   *
-   * ## 🔴 The words are READ, never taken — and that is what makes §3.1 checkable
-   *
-   * ⛔ **The PO: *"Not the parent's summary — a question reworded at every hop arrives as something
-   * nobody asked. The parent MAY add context; it may NOT replace the question."*** ⚑ **The verb
-   * advertises no question text at all.** The prompt and the parts come out of the ORIGINAL asker's
-   * own ledger — `questionsRaisedIn`, the same read `list_questions` renders from — so *the
-   * original words travelled* is a property of there being no field to put different words in,
-   * exactly as `REPLY_ADDRESSING_KEYS` makes *a child cannot aim a reply* a property rather than a
-   * check.
-   *
-   * ⚠️ **The passer's own context is CARRIED BESIDE them**, in the one place a reader can tell the
-   * two apart — see {@link questionText} and {@link passedUpText}. ⛔ Not interpolated into the
-   * prompt: a sentence that merged them would be the reworded question with extra steps.
-   *
-   * ## ⚠️ It does not end the question it carries, and that is the whole design
-   *
-   * ⛔ **The child's row stays `open`.** ⚑ Passing up is the passer raising ITS OWN question, and
-   * the answer comes back to the passer — who then answers the child through `answer_question`,
-   * which is the act `HO-088` §3.1 says is deliberate. 🔴 **A cascade would be this app deciding
-   * that one answer settles two questions**, which is the inference `HO-090` §5.2 rules against one
-   * subject over: *"the task row already says… nothing needs concluding."*
-   *
-   * ⚠️ **So a chain of three is three rows and three answers**, and every hop is somebody's act.
-   *
-   * ## ⛔ Its refusals, and each has a cause a caller can act on
-   *
-   * ⚠️ **679 · this heading counted them — *four* — and a fifth made the count false**, so it names
-   * none (`a-number-can-survive-the-death-of-its-derivation`).
-   *
-   * ⚑ **679 · before anything, the lookup's own two** — {@link theQuestionNamed}, the answer door's
-   * too: `more-than-one-question-has-that-id` for an id two of the caller's children share (the same
-   * call with `asked_by` carries the one it names), and `that-conversation-did-not-ask-that` for an
-   * `asked_by` that raised nothing by the id when another child did.
-   *
-   * ⚑ Then {@link admitAnswer}, unchanged — *is this yours, does it exist, has it
-   * ended, is it a permission* are one door's questions whichever verb asks them, and a permission
-   * cannot be passed up because it is a person's already. ⚠️ Then
-   * `nobody-to-pass-it-up-to` for a top-level conversation asked for its parent, and
-   * `this-app-does-not-hold-those-words` when the read that carries the words comes up empty.
-   */
-  async passQuestionUp(
-    input: {
-      requestId: string
-      /** ⚑ **D-009 · the parent or a person** — a question is never passed to an agent by name. */
-      who: Exclude<QuestionRecipient, 'an-agent'>
-      context: string | null
-      /** 🔴 **679 · which conversation asked it**, when the caller said — see {@link theQuestionNamed}. */
-      askedBy?: string | null
-    },
-    by: Caller,
-  ): Promise<PassUpOutcome> {
-    const speaking = sessionSpeakingAs(by)
-    if (speaking === null) {
-      return { ok: false, refusal: refuseQuestion('no-question-by-that-name') }
-    }
-    // ⛔ **The lookup IS the entitlement**, exactly as `answerQuestion`'s is: the rows are the ones
-    // routed to THIS caller, so *"that request is not yours"* and *"there is no such request"*
-    // arrive as the same absence — `refuse-on-entitlement-before-refusing-on-existence` made
-    // structural rather than ordered.
-    //
-    // ⚠️ **661 · the LAST row for the id, as the answer door takes it.** One ledger can hold an id
-    // twice — a question re-routed by a reopen is the second — and the first row is always the
-    // closed one: taking it would refuse a live question by quoting the ending before it.
-    //
-    // 🔴 **679 · and the id is the ASKER's** — {@link theQuestionNamed}, the answer door's own
-    // lookup. ⛔ It took the last row for the id ACROSS askers, so a child sharing a session-local
-    // id with its sibling had its sibling's words carried up under its own id.
-    if (this.startupRepairs.size > 0) {
-      for (const one of this.questionsRoutedToWhatItStandsFor(speaking)) {
-        if (one.requestId === input.requestId) await this.settleBeforeUse(one.askedBy)
-      }
-    }
-    const named = this.theQuestionNamed(speaking, input.requestId, input.askedBy ?? null)
-    if (named.is === 'refused') return { ok: false, refusal: named.refusal }
-    const request = named.request
-    const refusal = admitAnswer(request)
-    if (refusal !== null) return { ok: false, refusal }
-    // ⛔ **`admitAnswer` returning null is what proves `request` is non-null**, and TypeScript
-    // cannot see it through the function boundary — `raiseAQuestion`'s own bug guard, same shape.
-    if (request === undefined) throw new Error('a pass-up was admitted against no request (611)')
-    // 🔴 **D-009 · F012 — ruling 2: only a question to your parent can be passed further up.** ⚑ One
-    // asked of you by name is yours: you answer it, or say you cannot.
-    if (request.went.is === 'the-agent-the-asker-named') {
-      return {
-        ok: false,
-        refusal: refuseQuestion('a-question-asked-of-you-by-name-is-yours', {
-          question: request.requestId,
-        }),
-      }
-    }
-    const session = this.slots.get(speaking)?.session ?? null
-    // ⚠️ **A caller with no live session cannot be mid-tool-call**, so this is unreachable from the
-    // tool and is a bug guard for a caller inside this process.
-    if (session === null) {
-      return { ok: false, refusal: refuseQuestion('no-question-by-that-name') }
-    }
-    // ⛔ **The DURABLE parent**, `parentOf` — `routeRequest`'s own read, and the one that survives
-    // a restart. ⚑ Null is a top-level conversation, which is what BroBot is.
-    // ⚑ **D-017 · R10** — a parent that could never be reopened is the one in its place.
-    const parent = this.whoItsQuestionsGoTo(speaking, request)
-    if (input.who === 'the-parent' && parent === null) {
-      return {
-        ok: false,
-        refusal: refuseQuestion('nobody-to-pass-it-up-to', { question: input.requestId }),
-      }
-    }
-    // 🔴 **The original words, out of the ORIGINAL asker's ledger** (HO-088 §3.1) — never out of
-    // this call. ⚑ The same read `questionsWaitingOn` renders `list_questions` from, so what a
-    // passer saw and what it passes on are one row.
-    const raised = this.deps.store.questionsRaisedIn(request.askedBy).get(request.requestId) ?? null
-    if (raised === null) {
-      return {
-        ok: false,
-        refusal: refuseQuestion('this-app-does-not-hold-those-words', {
-          question: input.requestId,
-        }),
-      }
-    }
-    const requestId = newAskedQuestionId()
-    // ⛔ **The parts are the ORIGINAL's**, so the answer this question takes is the answer the
-    // original asked for — and `answer_question`'s per-part completeness rail then means the same
-    // thing at both ends of the hop.
-    this.publishOurs(session, {
-      type: 'question_asked',
-      requestId,
-      // ⚑ **No `piece`** — see {@link QuestionAskedEvent.piece}: the work is the original asker's,
-      // in the original asker's ledger, and a piece from another conversation written here would be
-      // a reference nothing in this one can resolve.
-      passedUpFrom: request.requestId,
-      prompt: raised.prompt,
-      // ⛔ **BESIDE the words and never merged into them** (HO-088 §3.1) — see
-      // {@link QuestionAskedEvent.context}. ⚑ Omitted when the caller added nothing, so *"it said
-      // nothing"* and *"it said the empty string"* are one absence rather than two.
-      ...(input.context === null || input.context === '' ? {} : { context: input.context }),
-      questions: raised.questions,
-    })
-    session.askedSinceItsLastTurnEnded.add(requestId)
-    this.publishOurs(session, {
-      type: 'request_routed',
-      requestId,
-      to: input.who,
-      // ⚑ **611 · omitted when there is none** — see {@link RequestRoutedEvent.parent}. A
-      // top-level conversation passing a question to a person has no parent to name, and naming
-      // one would hand somebody else's question to a conversation this app never asked.
-      ...(parent === null ? {} : { parent }),
-    })
-    if (input.who === 'the-parent' && parent !== null) {
-      // ⚑ **The SAME renderer `list_questions` reads through** — {@link questionText}, which puts
-      // the context in its own labelled paragraph. ⛔ A second composition here would be two
-      // spellings of one hop, free to disagree about which half was the asker's.
-      void this.deliverQuestion(speaking, parent, {
-        id: requestId,
-        prompt: raised.prompt,
-        questions: raised.questions,
-        context: input.context,
-      })
-      // ⛔ **612 · no look is armed** (HO-088 §3.1). ⚑ A hop that will not answer passes it on
-      // again, which is this very verb, and the chain is made of acts the whole way up.
-    }
-    // 🔴 **638 · the work moved** — `passQuestionUp` moves BOTH halves — the question leaves the parent and becomes a person's.
-    // ⛔ **The `childrenOpen` half is not the only one that composes a piece's state**: `answers`
-    // and `aPerson` do too, and a surface reading a row cannot tell which half moved it.
-    this.theWorldMoved('work')
-    // ⚑ **679 · the carried question by its asker** — see {@link PassUpOutcome}.
-    return {
-      ok: true,
-      question: requestId,
-      carried: { question: request.requestId, askedBy: request.askedBy, piece: raised.piece },
-    }
-  }
-
-  /**
    * 🔴 **Tell whoever gave this work that nothing is driving it** (400, HO-018 §2.1 ·
    * criterion 4).
    *
@@ -15492,20 +15407,6 @@ export class RuntimeHost implements LiveHost {
     if (piece === undefined || !givenByAConversation(piece) || !TASK_IS_OPEN[piece.state]) return
     this.takeBackWhatALaterFactMadeFalse(piece, 'asked-about-it')
   }
-
-  /**
-   * ⛔ **612 · `armEscalationLook` stood here and is GONE** (HO-088 §3.1).
-   *
-   * ⚑ **One unref'd `setTimeout` per routed question**, which its own note called *"an
-   * optimisation and never the mechanism"*: it decided when to LOOK and the store decided whether
-   * anything was overdue. ⚠️ **With nothing overdue to find, the optimisation had nothing to
-   * optimise** — so it went with the decision rather than being left arming a look that could only
-   * ever write nothing.
-   *
-   * 🔴 **Three call sites went with it** — `routeRequest`, `raiseAQuestion` and `passQuestionUp`,
-   * each of which armed one when it recorded a question. ⛔ **None of them gained a replacement**,
-   * which is `HO-088` §3's ruling and not an omission.
-   */
 
   /**
    * One answer of the person's queue, composed once per {@link personsVersion} and shared by every
@@ -18724,15 +18625,7 @@ export class RuntimeHost implements LiveHost {
     return this.calledUnder(conversation, piece).called
   }
 
-  /** ⚑ **F033 · {@link addressOf}, for a sentence about one piece** — see {@link nameByItsWorkUnder}. */
-  addressOfUnder(conversation: string, piece: string | null): string {
-    return this.calledUnder(conversation, piece).address
-  }
-
-  /**
-   * ⚑ **F033 · {@link nameByItsWorkUnder} and {@link addressOfUnder}, from one reading** — for a
-   * sentence that names a conversation and hands back the label to quote it by.
-   */
+  /** Read the name and address together for a sentence about one piece. */
   private calledUnder(
     conversation: string,
     piece: string | null,
@@ -19088,6 +18981,7 @@ export class RuntimeHost implements LiveHost {
        * or says it can't"*). ⚑ The fold's `rejected`, and the asker is told the reason.
        */
       cannot?: string | null
+      resources?: readonly string[]
       /**
        * The asker's running turn is to be asked to stop, so the answer is read without waiting —
        * what `answer_question` asks unless its caller says not to.
@@ -19174,18 +19068,67 @@ export class RuntimeHost implements LiveHost {
     // `rejected` and its asker is sent the reason; a provider's own request is declined to the
     // provider, which is what a person's reject does at the card.
     const cannot = input.cannot ?? null
-    if (cannot !== null && cannot.length > REPLY_SUMMARY_LIMIT) {
-      return {
-        ok: false,
-        refusal: refuseQuestion('answer-too-long', {
-          question: request.requestId,
-          argument: 'cannot_answer',
-          limit: REPLY_SUMMARY_LIMIT,
-          was: cannot.length,
-        }),
+    // ⛔ **Every part a question this app holds asked about must be answered** (437, found by this
+    // dispatch's own review). ⚑ `answerToForward` does this for a provider-raised question inside the
+    // adapter; an app-raised one never reaches an adapter, so without this a caller could settle a
+    // worker's question with an empty list and be told it had answered. ⚠️ The rail is the one
+    // that already carries this meaning, and its remedy — *answer every part the request asks
+    // for* — is true of this refusal as written. ⚑ Asked before the length, so a caller told to
+    // shorten its answer is not refused next for a part it left out.
+    if (cannot === null && words !== undefined) {
+      const given = new Set(input.answers.map((one) => one.part))
+      const missing = words.parts.filter((part) => !given.has(part))
+      if (missing.length > 0) {
+        return {
+          ok: false,
+          refusal: refuseQuestion('that-answer-cannot-be-sent', {
+            question: request.requestId,
+            said: `no answer was given for ${missing.join(', ')}`,
+          }),
+        }
+      }
+    }
+    const questions =
+      cannot === null
+        ? this.deps.store.questionsRaisedIn(request.askedBy).get(request.requestId)?.questions
+        : undefined
+    const measured = oneAgentsAnswer(input.answers, () => questions)
+    if (words === undefined && questions !== undefined && measured.units > INLINE_TEXT_LIMIT) {
+      const originals: Record<string, string[]> = Object.create(null)
+      for (const one of measured.answers) originals[one.part] = [...one.answer]
+      const native = answerToForward(questions, originals)
+      if (!native.forwardable) {
+        return {
+          ok: false,
+          refusal: refuseQuestion('that-answer-cannot-be-sent', {
+            question: request.requestId,
+            said: native.why,
+          }),
+        }
+      }
+    }
+    const files = this.prepareFilesForSend(speaking, input.resources ?? [])
+    if (!files.ok) return files
+    const hasFiles = files.files.length === 0 ? {} : { files: files.files }
+    const tellNativeAskerAboutFiles = (reason?: string): void => {
+      if (files.files.length === 0 && reason === undefined) return
+      const words =
+        reason === undefined
+          ? `Files from the answer to question ${request.requestId}.`
+          : `Reason for declining question ${request.requestId}: ${reason}`
+      try {
+        this.holdUntilItStarts(request.askedBy, words + sendFilesSaid(files.files), {
+          carriedFor: speaking,
+        })
+      } catch (error) {
+        console.warn(
+          `runtime host could not hold files for question ${request.requestId}: ${errorMessage(error)}`,
+        )
       }
     }
     if (cannot !== null) {
+      const prepared = this.prepareTextForSend(speaking, 'cannot_answer', cannot)
+      if (!prepared.ok) return prepared
       if (words === undefined) {
         // ⛔ A bug guard: a provider's request with no asker running was refused above.
         if (session === null)
@@ -19193,7 +19136,7 @@ export class RuntimeHost implements LiveHost {
         try {
           await session.handle.respondUserInput(request.requestId, {
             kind: 'reject',
-            reason: cannot,
+            reason: prepared.text,
           })
         } catch (error) {
           const said = error instanceof Error ? error.message : String(error)
@@ -19221,64 +19164,55 @@ export class RuntimeHost implements LiveHost {
           outcome: 'rejected',
           by: whoDidIt(by),
         })
+        tellNativeAskerAboutFiles(session?.provider === 'codex' ? prepared.text : undefined)
       } else {
         await this.decideAQuestionThisAppAsked(request.askedBy, request.requestId, 'rejected', by)
       }
       // ⚑ **D-017 · R1** — held in the asker's ledger in this same stretch when it is not running.
       const told =
         words === undefined
-          ? Promise.resolve({ kept: null, stop: null, held: false })
-          : this.deliverAnswer(words, request.requestId, speaking, null, cannot, null, stopAs)
+          ? Promise.resolve({ kept: null, stop: null, held: false, delivery: undefined })
+          : this.deliverAnswer(
+              words,
+              request.requestId,
+              speaking,
+              null,
+              prepared.text,
+              null,
+              stopAs,
+              files.files,
+            )
       this.theWorldMoved('work')
-      const { kept, stop, held } = await told
+      const { kept, stop, held, delivery } = await told
       return {
         ok: true,
         question: request.requestId,
         asked: request.askedBy,
         piece: words?.piece ?? null,
         notAsked: [],
+        ...this.answerReceipt(request.requestId, delivery, files.files, prepared.overflow),
+        ...(delivery === undefined ? {} : { deliveredTo: delivery.to }),
+        ...hasFiles,
+        ...(prepared.overflow === undefined ? {} : { overflow: prepared.overflow }),
         ...(kept === null ? {} : { kept }),
         ...(stop === null ? {} : { stop }),
         ...(held ? { held } : {}),
       }
     }
-    // ⛔ **Every part a question this app holds asked about must be answered** (437, found by this
-    // dispatch's own review). ⚑ `answerToForward` does this for a provider-raised question inside the
-    // adapter; an app-raised one never reaches an adapter, so without this a caller could settle a
-    // worker's question with an empty list and be told it had answered. ⚠️ The rail is the one
-    // that already carries this meaning, and its remedy — *answer every part the request asks
-    // for* — is true of this refusal as written. ⚑ Asked before the length, so a caller told to
-    // shorten its answer is not refused next for a part it left out.
-    if (words !== undefined) {
-      const given = new Set(input.answers.map((one) => one.part))
-      const missing = words.parts.filter((part) => !given.has(part))
-      if (missing.length > 0) {
-        return {
-          ok: false,
-          refusal: refuseQuestion('that-answer-cannot-be-sent', {
-            question: request.requestId,
-            said: `no answer was given for ${missing.join(', ')}`,
-          }),
-        }
-      }
-    }
-    const measured = oneAgentsAnswer(
-      input.answers,
-      () => this.deps.store.questionsRaisedIn(request.askedBy).get(request.requestId)?.questions,
-    )
-    if (measured.units > REPLY_SUMMARY_LIMIT) {
-      return {
-        ok: false,
-        refusal: refuseQuestion('answer-too-long', {
-          question: request.requestId,
-          argument: 'answers',
-          limit: REPLY_SUMMARY_LIMIT,
-          was: measured.units,
-        }),
-      }
-    }
+    const prepared =
+      measured.units <= INLINE_TEXT_LIMIT
+        ? null
+        : this.prepareTextForSend(speaking, 'answer', answerTextForFile(measured.answers))
+    if (prepared?.ok === false) return prepared
+    const overflow = prepared?.overflow
+    const parts =
+      overflow === undefined || (words === undefined && questions === undefined)
+        ? measured.answers
+        : answerPreview(measured.answers, questions, overflow)
+    const hasOverflow =
+      overflow === undefined ? {} : { overflow: { ...overflow, characters: measured.units } }
     const answers: Record<string, string[]> = Object.create(null)
-    for (const one of measured.answers) answers[one.part] = [...one.answer]
+    for (const one of parts) answers[one.part] = [...one.answer]
     // 🔴 **A question THIS APP is holding is resolved here and never forwarded** (437).
     //
     // ⛔ **The provider has no such request and `respondUserInput` would refuse it.** A worker's
@@ -19325,7 +19259,7 @@ export class RuntimeHost implements LiveHost {
       // already this same derivation, so the row and the entitlement cannot disagree about who
       // is answering. ⛔ Never `input`: no tool argument reaches this field.
       await this.decideAQuestionThisAppAsked(request.askedBy, request.requestId, 'answered', by)
-      const said = measured.answers.map((one) => ({ part: one.part, answer: [...one.answer] }))
+      const said = parts.map((one) => ({ part: one.part, answer: [...one.answer] }))
       // 🔴 **591 · the answer reaches the worker as WORDS, and the ledger row above is written
       // first** (HO-082 §2). ⛔ **A resolved promise reaches a model only while that promise is
       // still awaited**, so a worker whose turn moved on would have been told nothing at all —
@@ -19339,19 +19273,32 @@ export class RuntimeHost implements LiveHost {
       // `591`'s delivery half is what this dispatch rests on rather than something it relaxed.
       // ⚑ **D-017 · R1** — held in the asker's ledger in this same stretch when it is not running,
       // then the asker started; `kept` says so when that start did not happen.
-      const told = this.deliverAnswer(held, request.requestId, speaking, said, null, null, stopAs)
+      const told = this.deliverAnswer(
+        held,
+        request.requestId,
+        speaking,
+        said,
+        null,
+        null,
+        stopAs,
+        files.files,
+      )
       // 🔴 **638 · the work moved** — `answerQuestion` closes the `answers` half on its second ending.
       // ⛔ **The `childrenOpen` half is not the only one that composes a piece's state**: `answers`
       // and `aPerson` do too, and a surface reading a row cannot tell which half moved it.
       this.theWorldMoved('work')
       // ⚠️ `held` above is the question's words; this one is whether the answer waits behind a turn.
-      const { kept, stop, held: behindItsTurn } = await told
+      const { kept, stop, held: behindItsTurn, delivery } = await told
       return {
         ok: true,
         question: request.requestId,
         asked: request.askedBy,
         piece: held.piece,
         notAsked: measured.notAsked,
+        ...this.answerReceipt(request.requestId, delivery, files.files, overflow),
+        ...(delivery === undefined ? {} : { deliveredTo: delivery.to }),
+        ...hasFiles,
+        ...hasOverflow,
         ...(kept === null ? {} : { kept }),
         ...(stop === null ? {} : { stop }),
         ...(behindItsTurn ? { held: behindItsTurn } : {}),
@@ -19399,6 +19346,7 @@ export class RuntimeHost implements LiveHost {
       // beside it gives: one row, and now it says which of the two doors wrote it.
       by: whoDidIt(by),
     })
+    tellNativeAskerAboutFiles()
     // 🔴 **638 · the work moved** — `answerQuestion` closes the `answers` half — the row leaves `waiting-on-an-answer`.
     // ⛔ **The `childrenOpen` half is not the only one that composes a piece's state**: `answers`
     // and `aPerson` do too, and a surface reading a row cannot tell which half moved it.
@@ -19410,6 +19358,47 @@ export class RuntimeHost implements LiveHost {
       // ⚑ A provider's own question names no piece (`RaisedQuestion.piece`).
       piece: null,
       notAsked: measured.notAsked,
+      ...hasFiles,
+      ...hasOverflow,
+    }
+  }
+
+  private answerReceipt(
+    question: string,
+    delivery: AnswerDelivery | undefined,
+    files: SendReceipt['attachments'],
+    overflow: ReadableSendOverflow | undefined,
+  ): { readonly receipt?: SendReceipt } {
+    if (delivery === undefined) return {}
+    try {
+      const { to, taskLabel } = delivery
+      let state: SendRecipientState
+      if (delivery.kind === 'sent') {
+        state = { kind: 'started' }
+      } else if (delivery.kind === 'held') {
+        const behind = this.deps.store
+          .messagesWaitingIn(to)
+          .findIndex((one) => one.messageId === delivery.queueId)
+        if (behind < 0) return {}
+        state = { kind: 'queued', behind }
+      } else {
+        const { cause, needsPerson } = delivery
+        state = { kind: 'cannot-run', cause, ...(needsPerson === true ? { needsPerson } : {}) }
+      }
+      const attachments =
+        overflow === undefined ? files : [...files, sendOverflowAttachment(overflow)]
+      const receipt = this.receiptForSend({
+        recorded: { kind: 'reply', id: question, taskLabel },
+        to,
+        state,
+        attachments,
+      }).receipt
+      return { receipt }
+    } catch (error) {
+      console.warn(
+        `runtime host could not read the receipt for question ${question}: ${errorMessage(error)}`,
+      )
+      return {}
     }
   }
 
@@ -23397,6 +23386,7 @@ export class RuntimeHost implements LiveHost {
      * caller or a window passes here is inert.
      */
     says: AgentMessageKind = WHAT_A_MESSAGE_NOBODY_DECLARED_SAYS,
+    onRecipient?: (recipient: string) => void,
   ): Promise<QueueOutcome> {
     // ⚠️ **Not `async`, and that is a timing fact rather than style** (657). An `async` method that
     // returns another's promise resolves several microtasks later than that promise does, and a
@@ -23416,11 +23406,22 @@ export class RuntimeHost implements LiveHost {
     } catch (error) {
       return Promise.reject(error)
     }
-    const deliver = (to: string): Promise<QueueOutcome> =>
-      this.queueAs(to, text, by, attachments, kind, facts, says, 'as-it-finds-it')
+    const deliver = (to: string): Promise<QueueOutcome> => {
+      onRecipient?.(to)
+      return this.queueAs(to, text, by, attachments, kind, facts, says, 'as-it-finds-it')
+    }
     // ⛔ While services are off, an agent's words start no service: they wait for its next start.
     if (heldForServices) {
-      return this.leaveForTheNextStart(sessionId, text, by, attachments, kind, facts, says)
+      return this.leaveForTheNextStart(
+        sessionId,
+        text,
+        by,
+        attachments,
+        kind,
+        facts,
+        says,
+        onRecipient,
+      )
     }
     if (now) {
       // ⚑ **D-017 · R1** — straight in; a stop under it is waited out and it is started again.
@@ -25166,72 +25167,11 @@ export class RuntimeHost implements LiveHost {
     return parent === null ? null : this.theOneInItsPlace(parent)
   }
 
-  /**
-   * Who a question `sessionId` raises goes to as its parent: {@link theParentInItsPlace} — or, for a
-   * service, the one that gave the piece it is on as the question is raised, which its routing row
-   * keeps, so a later piece's caller never inherits it. ⛔ A question it carries up (`carrying`) goes
-   * there only while it was asked under that very piece. `null` otherwise: a person answers.
-   */
-  private whoItsQuestionsGoTo(
-    sessionId: string,
-    carrying?: { readonly askedBy: string; readonly requestId: string },
-  ): string | null {
+  private whoItsQuestionsGoTo(sessionId: string): string | null {
     if (!this.itIsAService(sessionId)) return this.theParentInItsPlace(sessionId)
     const on = this.thePieceItIsOn(sessionId)
     if (on === null || on.giver === null) return null
-    if (carrying !== undefined && this.thePieceItWasAskedUnder(sessionId, carrying) !== on.piece) {
-      return null
-    }
     return this.theOneInItsPlace(on.giver)
-  }
-
-  /**
-   * The piece of `service`'s that the question `carrying` was asked under, off its askers' own rows:
-   * the piece its first asker named, followed up its chain to the service's own, through each
-   * conversation that passed it up; or, for a provider's card, which names none, the pieces its
-   * asker held when it was routed, in the order its ledger recorded. ⛔ `null` where they name
-   * none, or more than one.
-   */
-  private thePieceItWasAskedUnder(
-    service: string,
-    carrying: { readonly askedBy: string; readonly requestId: string },
-  ): string | null {
-    const { store } = this.deps
-    const seen = new Set<string>()
-    let asked = carrying
-    while (!seen.has(`${asked.askedBy}:${asked.requestId}`)) {
-      seen.add(`${asked.askedBy}:${asked.requestId}`)
-      const raised = store.questionsRaisedIn(asked.askedBy).get(asked.requestId)
-      if (raised !== undefined && raised.piece !== null) {
-        return store.pieceOfItsChainHeldBy(raised.piece, service)
-      }
-      if (raised === undefined || raised.passedUpFrom === null) {
-        // ⚑ A card names no piece: the pieces its asker held when it was routed, folded from its
-        // ledger as it stood just before that routing — the order this app recorded, never the
-        // clock — and the fold's own word for which were open. ⛔ A row unfound or unread: no piece.
-        const asker = asked.askedBy
-        const routed = store.whereItWasRouted(asker, asked.requestId)
-        if (routed === null) return null
-        const unread = rowsUnreadOnce()
-        const heldThen = store
-          .piecesOwnedBefore(asker, routed, unread)
-          .filter((one) => TASK_IS_OPEN[one.state])
-        if (unread.count > 0) return null
-        const under = new Set(
-          heldThen.flatMap((one) => store.pieceOfItsChainHeldBy(one.piece, service) ?? []),
-        )
-        return under.size === 1 ? ([...under][0] ?? null) : null
-      }
-      // ⚑ Passed up: the question it carries, as that reached the one that passed it.
-      const from = raised.passedUpFrom
-      const reached = this.questionsRoutedToWhatItStandsFor(asked.askedBy).filter(
-        (one) => one.requestId === from,
-      )
-      const next = reached.at(-1)
-      if (next === undefined || reached.some((one) => one.askedBy !== next.askedBy)) return null
-      asked = next
-    }
-    return null
   }
 
   /**

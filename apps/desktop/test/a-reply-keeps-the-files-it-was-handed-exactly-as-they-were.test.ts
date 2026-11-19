@@ -196,7 +196,7 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
 
   describe('the recorded files have separate work memberships', () => {
     it('selects the listed main document by a resolved relative spelling', async () => {
-      const { worker, task } = await workWasGiven()
+      const { pm, worker, task } = await workWasGiven()
       const paths = [wrote('notes.md', '# Notes'), wrote('result.md', '# Result')]
       const folder = store.recordedOne(worker)?.cwd
       if (folder == null) throw new Error('the worker has no recorded folder')
@@ -214,6 +214,14 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
       expect(ids).toHaveLength(2)
       expect(landed.result_document).toBe(ids[1])
       expect(taskOf(worker, task)?.resultDocument).toBe(ids[1])
+      expect(landed.receipt).toMatchObject({
+        recorded: { kind: 'reply', id: task, taskLabel: taskOf(worker, task)?.label },
+        recipient: { id: pm, title: expect.any(String) },
+        attachments: [
+          { resource: ids[0], name: 'notes.md' },
+          { resource: ids[1], name: 'result.md' },
+        ],
+      })
       expect(keptHashes()).toEqual(paths.map((path) => shaOf(readFileSync(path))).sort())
     })
 
