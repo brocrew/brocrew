@@ -453,11 +453,13 @@ it('falls back after a synchronous confirmation failure and ignores a pending re
   const gib = 1024 ** 3
   const warnings: string[] = []
   let rss = 2 * gib
+  let confirmations = 0
   let tick: () => void = () => {}
   let finish: (result: { bytes: number; detail: string }) => void = () => {}
   const watch = startMemoryWatch({
     sample: () => rss,
     confirm: () => {
+      confirmations++
       if (rss === 2 * gib) throw new Error('could not start footprint')
       return new Promise((resolve) => {
         finish = resolve
@@ -475,6 +477,7 @@ it('falls back after a synchronous confirmation failure and ignores a pending re
   expect(warnings[0]).toContain('2.00 GB of resident memory')
   rss = 3 * gib
   tick()
+  expect(confirmations).toBe(2)
   watch.stop()
   finish({ bytes: 3 * gib, detail: '[late footprint]' })
   await new Promise<void>((resolve) => setImmediate(resolve))
