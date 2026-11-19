@@ -17160,11 +17160,7 @@ export class RuntimeHost implements LiveHost {
     const pieces = [...recipient.pieces.values()].join(', ')
     const questions = [...recipient.questions].join(', ')
     const text =
-      providerFailureDiagnosis(
-        `Conversation ${address} · ${title}`,
-        episode.cause.message,
-        recipient.pieces.size > 0,
-      ) +
+      providerFailureDiagnosis(`Conversation ${address} · ${title}`, episode.cause.message) +
       (pieces === '' ? '' : `\n\nAffected tasks: ${pieces}.`) +
       (questions === '' ? '' : `\n\nUnanswered questions: ${questions}.`)
     const prepared = this.prepareTextForSend(holder, 'provider failure notice', text)

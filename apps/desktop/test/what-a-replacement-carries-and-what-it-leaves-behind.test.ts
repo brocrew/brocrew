@@ -261,7 +261,10 @@ describe('what a replacement carries, and what it leaves behind', () => {
       expect.stringContaining(`Unanswered questions: ${requestId}.`),
     )
     expect(notices[1]).toHaveProperty('text', expect.stringContaining(message))
-    expect(notices[1]).toHaveProperty('text', expect.not.stringContaining('Check its status'))
+    expect(notices[1]).toHaveProperty(
+      'text',
+      expect.stringContaining('Check its status and settings before choosing how to continue.'),
+    )
     expect(store.reconciliationReceiptsForOwner(holder).map(({ outcome }) => outcome)).toEqual([
       'planned',
       'planned',
