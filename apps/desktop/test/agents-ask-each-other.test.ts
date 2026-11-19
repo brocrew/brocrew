@@ -272,7 +272,7 @@ describe('D-009 · agents ask each other, and the answer comes back', () => {
       )
       // ⚑ **D-016 · commit 7 · R3 — Bo named by the piece it owns**, where the words printed its id.
       expect(toldIn(ada.id).find((text) => text.includes('the one in schema.sql'))).toContain(
-        `${host.nameByItsWork(bo.id)} answered the question you asked, quoting ${id}.`,
+        `Ada (the owner of W2) answered the question you asked, quoting ${id}.`,
       )
       expect(questionOf(ada.id, id)?.state).toBe('answered')
       // ⚑ **D-017 · R19 — no longer waiting on an ANSWER; what she waits on now is a person.** The
@@ -302,7 +302,7 @@ describe('D-009 · agents ask each other, and the answer comes back', () => {
       )
       const told = toldIn(ada.id).find((text) => text.includes('I have never seen that schema'))
       expect(told).toContain(
-        `${host.nameByItsWork(bo.id)} declined to answer the question you asked, quoting ${id}.`,
+        `Ada (the owner of W2) declined to answer the question you asked, quoting ${id}.`,
       )
       expect(told).toContain('It said: I have never seen that schema')
       expect(questionOf(ada.id, id)?.state).toBe('rejected')

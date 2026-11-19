@@ -387,7 +387,7 @@ describe('608 · the turn that no longer waits', () => {
    */
   describe('§2 · the answer reaches a worker whose turn has ENDED, as a turn', () => {
     it('⛔ the parent answers, and the worker takes a NEW turn carrying the words', async () => {
-      const { pm, worker, pmTools, workerTools, piece } = await aWorkerHoldingWork()
+      const { worker, pmTools, workerTools, piece } = await aWorkerHoldingWork()
       const said = await callOn(workerTools, 'ask_question', {
         who_answers: 'the-parent',
         piece,
@@ -428,7 +428,7 @@ describe('608 · the turn that no longer waits', () => {
       expect(arrived?.text).toContain('which schema?')
       // ⚑ **And it names who answered** — by the piece that conversation owns (D-016 · commit 7 ·
       // R3), where it used to print the id.
-      expect(arrived?.text).toContain(`${host.nameByItsWork(pm)} answered the question you asked`)
+      expect(arrived?.text).toContain('Ali (the owner of W2) answered the question you asked')
 
       // 🔴 **The worker ACTED on it** — the provider took the turn and produced a message of its
       // own, which is *reaches the agent* rather than *was written into a ledger*.

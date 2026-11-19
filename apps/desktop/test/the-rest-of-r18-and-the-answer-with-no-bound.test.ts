@@ -281,7 +281,7 @@ describe('676 · the rest of R18, and the answer with no bound', () => {
       expect(answered.structured.not_asked).toEqual([])
       // ⚑ **D-016 · commit 7 · R3** — the asker named by the piece it owns, where it printed its id.
       // ⚑ Held behind a turn parked on a person's card, which an answer's stop never cuts.
-      const asker = host.nameByItsWork(worker)
+      const asker = `Ada (the owner of ${task.label} · build it)`
       // ⚑ W4.134 — in full once, then by its name alone.
       const again = host.whatToCallTheConversation(worker)
       // ⚑ What it waits for is said once: the person's answer its turn is stopped on, then why the
