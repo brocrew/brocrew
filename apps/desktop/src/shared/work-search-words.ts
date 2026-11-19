@@ -1,23 +1,21 @@
 import { refusalReason } from './refusals'
-import { WORK_STATE_WORD } from './work-state-words'
-import { WORK_FILE_GROUP_WORDS } from './work-file-groups'
 import type { WorkSearchPage, WorkSearchResult } from './work-search'
 
 export const WORK_SEARCH_WORDS = {
   action: 'Search work',
-  input: 'Search title, done condition or result',
+  input: 'Search titles, briefs, done conditions and status lines',
   mine: 'My profile',
   conversation: 'This conversation',
   all: 'All work',
   states: 'All states',
   search: 'Search',
   more: 'Load more',
-  empty: 'No matches in the work searched.',
+  empty: 'No conversations match.',
   unread: 'Some work could not be read.',
   older: 'Older work has not been searched yet.',
   changing: 'Results may change when work is edited.',
   description:
-    "Find work by title, done condition or result summary. mine covers your profile's conversations; this-conversation covers work you own or gave here; all covers this app's work. This reads only. list_tasks reads the brief and files of work you or your profile hold or gave. For other work, ask its owner.",
+    "Find conversations by label, title, profile, keywords and date. It searches conversation titles, task titles, briefs, definitions of done and status lines, ended work included. Each row is one conversation: conversation <address> · <title>, its profile, when it was last active, its latest status line, and the tasks that matched. It only reads. To see one conversation's tasks, use list_tasks with conversation; to read its turns, read_transcript. Read before you ask: asking wakes a conversation and reloads its context.",
 } as const
 
 export const WORK_SEARCH_RAILS = [
@@ -34,7 +32,7 @@ const RAIL_OF_REASON = {
 } as const
 
 export const WORK_SEARCH_REFUSAL_WORDS = {
-  invalid: 'Use a listed scope and state, at most 20 words, and a limit from 1 to 50.',
+  invalid: 'Use at most 20 words, a known profile, valid dates and a limit from 1 to 50.',
   'cursor-invalid': 'That search cursor does not match this query. Start the search again.',
   unavailable: 'Work search failed to read the work. Try again.',
   busy: 'Work search is busy with other searches. Try again in a moment.',
@@ -58,29 +56,16 @@ export function workSearchRefusal(reason: Extract<WorkSearchResult, { ok: false 
 
 export function workSearchInWords(page: WorkSearchPage): string {
   const lines = page.hits.map((hit) => {
-    const state =
-      hit.state === null
-        ? `conversation: ${hit.conversation_state ?? 'unknown'}`
-        : WORK_STATE_WORD[hit.state]
-    const who = hit.owner.name ?? hit.owner.profile ?? 'an agent this app cannot name'
-    const words = [
-      `${hit.label}${hit.title === null ? '' : ` · ${hit.title}${hit.clipped.title ? ' (clipped)' : ''}`} · ${state} · ${who}`,
-    ]
-    if (hit.definition_of_done !== undefined)
-      words.push(`Done when: ${hit.definition_of_done ?? 'Not recorded'}`)
-    if (hit.status !== null)
-      words.push(`Status: ${hit.status}${hit.clipped.status ? ' (clipped)' : ''}`)
-    if (hit.result !== null)
+    const when = new Date(hit.last_active_at).toISOString()
+    const words = [`${hit.line} · ${hit.profile ?? 'profile not recorded'} · last active ${when}`]
+    if (hit.status !== null) words.push('Status: ' + hit.status)
+    for (const match of hit.matched_tasks)
+      words.push('Task ' + match.label + (match.title === null ? '' : ' · ' + match.title))
+    if (hit.tasks_omitted > 0)
       words.push(
-        `Result: ${hit.result.outcome}${hit.result.summary === null ? '' : ` · ${hit.result.summary}`}${hit.clipped.result ? ' (clipped)' : ''}`,
+        String(hit.tasks_omitted) +
+          ' more matched tasks. list_tasks lists the conversation’s tasks.',
       )
-    for (const [group, ids] of Object.entries(hit.resource_ids))
-      if (ids.length > 0)
-        words.push(
-          `${WORK_FILE_GROUP_WORDS[group as keyof typeof WORK_FILE_GROUP_WORDS]}: ${ids.join(', ')}`,
-        )
-    if (hit.resources_omitted > 0)
-      words.push(`${hit.resources_omitted} more file references omitted.`)
     return words.join('\n')
   })
   if (lines.length === 0) lines.push(WORK_SEARCH_WORDS.empty)

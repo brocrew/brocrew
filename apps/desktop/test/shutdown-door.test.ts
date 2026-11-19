@@ -236,6 +236,11 @@ const SAMPLES: Record<RuntimeCommandKind, RuntimeCommand> = {
   // store — `createAgent`'s rule: a sample that got past the quit door would still be refused
   // `no-piece-by-that-name` rather than writing a title anywhere.
   retitleWork: { kind: 'retitleWork', piece: 'W0', title: 'Build the pages' },
+  renameConversation: {
+    kind: 'renameConversation',
+    conversation: 'W0',
+    title: 'The fictional job',
+  },
   takeBackWork: { kind: 'takeBackWork', piece: 'W0.1' },
   closeWork: { kind: 'closeWork', piece: 'W0.1' },
   setAgentModelAndEffort: {

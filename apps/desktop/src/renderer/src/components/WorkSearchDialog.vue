@@ -5,13 +5,13 @@ import type { TaskState } from '../../../shared/task-contracts'
 import { onBeforeUnmount, ref, watch } from 'vue'
 
 import { WORK_STATE_WORD } from '../../../shared/work-state-words'
-import type {
-  WorkSearchHit,
-  WorkSearchPage,
-  WorkSearchQuery,
-  WorkSearchResult,
-} from '../../../shared/work-search'
-import { WORK_SEARCH_REFUSAL_WORDS, WORK_SEARCH_WORDS } from '../../../shared/work-search-words'
+import type { WorkSearchHit, WorkSearchQuery, WorkSearchResult } from '../../../shared/work-search'
+import {
+  WORK_SEARCH_PALETTE_REFUSAL_WORDS as WORK_SEARCH_REFUSAL_WORDS,
+  WORK_SEARCH_PALETTE_WORDS as WORK_SEARCH_WORDS,
+  workSearchPalettePage,
+  type WorkSearchPalettePage,
+} from '../lib/work-search-palette'
 import OverlayHost from './OverlayHost.vue'
 
 const props = defineProps<{
@@ -23,7 +23,7 @@ const emit = defineEmits<{ close: []; openWork: [hit: WorkSearchHit] }>()
 const scope = ref<'mine' | 'this-conversation' | 'all'>('this-conversation')
 const state = ref<TaskState | ''>('')
 const words = ref('')
-const result = ref<WorkSearchPage | null>(null)
+const result = ref<WorkSearchPalettePage | null>(null)
 const failure = ref<string | null>(null)
 const busy = ref(false)
 let request = 0
@@ -59,23 +59,7 @@ async function runSearch(more = false): Promise<void> {
         WORK_SEARCH_REFUSAL_WORDS[answer.reason] ?? WORK_SEARCH_REFUSAL_WORDS.unavailable
       return
     }
-    const previous = more ? result.value : null
-    result.value =
-      previous === null
-        ? answer.page
-        : {
-            ...answer.page,
-            hits: [
-              ...new Map(
-                [...previous.hits, ...answer.page.hits].map((hit) => [hit.piece, hit]),
-              ).values(),
-            ],
-            searched: previous.searched + answer.page.searched,
-            rows_unread: previous.rows_unread + answer.page.rows_unread,
-            ledgers_skipped: previous.ledgers_skipped + answer.page.ledgers_skipped,
-            complete:
-              previous.rows_unread === 0 && previous.ledgers_skipped === 0 && answer.page.complete,
-          }
+    result.value = workSearchPalettePage(answer.page, more ? result.value : null)
   } catch {
     if (mine === request) failure.value = WORK_SEARCH_REFUSAL_WORDS.unavailable
   } finally {

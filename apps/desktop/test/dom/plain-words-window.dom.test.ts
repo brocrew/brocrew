@@ -27,6 +27,7 @@ it.each([undefined, null, '', 'The menu is ready.'])(
       piece: 'fictional-piece',
       label: 'W9.1',
       title: 'Plan a menu',
+      given_at: 1,
       definition_of_done: condition,
       state: 'working',
       owner: { conversation: 'fictional-owner', name: 'Baker', profile: 'baker' },
@@ -38,7 +39,19 @@ it.each([undefined, null, '', 'The menu is ready.'])(
       resources_omitted: 0,
     }
     const page: WorkSearchPage = {
-      hits: [hit],
+      hits: [
+        {
+          conversation: 'fictional-owner',
+          title: 'Fictional job',
+          line: 'conversation W9.1 · Fictional job',
+          address: 'W9.1',
+          profile: 'baker',
+          last_active_at: 1,
+          status: null,
+          matched_tasks: [hit],
+          tasks_omitted: 0,
+        },
+      ],
       searched: 1,
       rows_unread: 0,
       ledgers_skipped: 0,

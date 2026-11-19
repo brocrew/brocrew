@@ -1,28 +1,47 @@
 import { describe, expect, it } from 'vitest'
-import type { WorkSearchHit, WorkSearchPage } from '../src/shared/work-search'
+import type {
+  ConversationSearchHit,
+  WorkSearchHit,
+  WorkSearchPage,
+} from '../src/shared/work-search'
 import { WORK_SEARCH_WORDS, workSearchInWords } from '../src/shared/work-search-words'
+import { workSearchPalettePage } from '../src/renderer/src/lib/work-search-palette'
 
-const NONE = { brief: [], result: [], attachments: [], working: [] }
-
-function aHit(over: Partial<WorkSearchHit> = {}): WorkSearchHit {
+function aTask(over: Partial<WorkSearchHit> = {}): WorkSearchHit {
   return {
     kind: 'piece',
     piece: 'fictional-piece',
     label: 'W9.1',
     title: 'Fictional work',
+    given_at: 1,
     state: 'working',
     owner: { conversation: 'fictional-owner', name: 'Fictional Owner', profile: 'fictional' },
     giver: null,
     result: null,
     status: null,
-    resource_ids: NONE,
+    resource_ids: { brief: [], result: [], attachments: [], working: [] },
     clipped: { title: false, result: false, status: false },
     resources_omitted: 0,
     ...over,
   }
 }
 
-function aPage(hits: WorkSearchHit[], over: Partial<WorkSearchPage> = {}): WorkSearchPage {
+function aRow(over: Partial<ConversationSearchHit> = {}): ConversationSearchHit {
+  return {
+    conversation: 'fictional-owner',
+    address: 'W9.1',
+    title: 'Fictional job',
+    line: 'conversation W9.1 · Fictional job',
+    profile: 'fictional',
+    last_active_at: 1,
+    status: 'Current status',
+    matched_tasks: [aTask()],
+    tasks_omitted: 0,
+    ...over,
+  }
+}
+
+function aPage(hits: ConversationSearchHit[], over: Partial<WorkSearchPage> = {}): WorkSearchPage {
   return {
     hits,
     searched: hits.length,
@@ -34,81 +53,57 @@ function aPage(hits: WorkSearchHit[], over: Partial<WorkSearchPage> = {}): WorkS
   }
 }
 
-/** The first block of the words: the hit itself, before the page's footer. */
-const firstBlock = (page: WorkSearchPage): string => workSearchInWords(page).split('\n\n')[0]!
-
-describe('a work search says each hit in words', () => {
-  it('says a hit with its label, title, state and owner on one line', () => {
-    expect(firstBlock(aPage([aHit()]))).toBe(
-      'W9.1 · Fictional work · being worked on · Fictional Owner',
-    )
-  })
-
-  it('leaves out a title the hit does not have, and marks a clipped one', () => {
-    expect(firstBlock(aPage([aHit({ title: null })]))).toBe(
-      'W9.1 · being worked on · Fictional Owner',
-    )
-    expect(
-      firstBlock(aPage([aHit({ clipped: { title: true, result: false, status: false } })])),
-    ).toBe('W9.1 · Fictional work (clipped) · being worked on · Fictional Owner')
-  })
-
-  it('says a conversation’s own state for a root with no work state, or unknown', () => {
-    expect(
-      firstBlock(aPage([aHit({ kind: 'root', state: null, conversation_state: 'idle' })])),
-    ).toBe('W9.1 · Fictional work · conversation: idle · Fictional Owner')
-    expect(firstBlock(aPage([aHit({ kind: 'root', state: null })]))).toBe(
-      'W9.1 · Fictional work · conversation: unknown · Fictional Owner',
-    )
-  })
-
-  it('names the owner by profile when it has no name, and says so when it has neither', () => {
-    const owner = { conversation: 'fictional-owner', name: null, profile: 'fictional-profile' }
-    expect(firstBlock(aPage([aHit({ owner })]))).toBe(
-      'W9.1 · Fictional work · being worked on · fictional-profile',
-    )
-    expect(firstBlock(aPage([aHit({ owner: { ...owner, profile: null } })]))).toBe(
-      'W9.1 · Fictional work · being worked on · an agent this app cannot name',
-    )
-  })
-
-  it('says a done condition that was never recorded as not recorded', () => {
-    expect(firstBlock(aPage([aHit({ definition_of_done: null })])).split('\n')[1]).toBe(
-      'Done when: Not recorded',
-    )
-  })
-
-  it('marks a clipped status and a clipped result, and leaves out a result with no summary', () => {
-    const lines = firstBlock(
-      aPage([
-        aHit({
-          status: 'Fictional status',
-          result: { outcome: 'done', summary: null },
-          clipped: { title: false, result: true, status: true },
-        }),
-      ]),
-    ).split('\n')
-    expect(lines.slice(1)).toEqual(['Status: Fictional status (clipped)', 'Result: done (clipped)'])
-    expect(
-      firstBlock(
-        aPage([aHit({ status: 'Fictional status', result: { outcome: 'done', summary: 'Ok.' } })]),
-      )
-        .split('\n')
-        .slice(1),
-    ).toEqual(['Status: Fictional status', 'Result: done · Ok.'])
-  })
-
-  it('says no matches, then how much was searched and what was left unread', () => {
-    expect(
-      workSearchInWords(
-        aPage([], { searched: 7, rows_unread: 1, complete: false, next_cursor: 'c1' }),
-      ).split('\n\n'),
-    ).toEqual([
-      WORK_SEARCH_WORDS.empty,
-      'Searched: 7; rows_unread: 1; ledgers_skipped: 0; complete: false.',
-      WORK_SEARCH_WORDS.unread,
-      `${WORK_SEARCH_WORDS.older} next_cursor: c1`,
-      WORK_SEARCH_WORDS.changing,
+describe('one work search result serves the conversation tool and task palette', () => {
+  it('names a conversation once and lists its matched tasks', () => {
+    const page = aPage([
+      aRow({
+        matched_tasks: [
+          aTask({ state: 'answered', result: { outcome: 'done', summary: 'Completed task' } }),
+          aTask({ piece: 'fictional-newer', label: 'W9.2', title: 'Newer work', given_at: 2 }),
+        ],
+      }),
     ])
+    expect(workSearchInWords(page).split('\n\n')[0]?.split('\n')).toEqual([
+      'conversation W9.1 · Fictional job · fictional · last active 1970-01-01T00:00:00.001Z',
+      'Status: Current status',
+      'Task W9.1 · Fictional work',
+      'Task W9.2 · Newer work',
+    ])
+    const palette = workSearchPalettePage(page)
+    expect(palette.hits.map((task) => task.label)).toEqual(['W9.2', 'W9.1'])
+    expect(palette.hits[1]).toMatchObject({
+      state: 'answered',
+      result: { outcome: 'done', summary: 'Completed task' },
+    })
+  })
+
+  it('keeps the conversation on the tool’s page when its title matched on its own', () => {
+    const page = aPage([aRow({ matched_tasks: [] })])
+    expect(workSearchInWords(page)).toContain('conversation W9.1 · Fictional job')
+    expect(workSearchPalettePage(page).hits).toEqual([])
+  })
+
+  it('carries search continuation and unread facts through the palette unchanged', () => {
+    const page = aPage([], { searched: 7, rows_unread: 1, complete: false, next_cursor: 'c1' })
+    expect(workSearchInWords(page)).toContain(WORK_SEARCH_WORDS.empty)
+    expect(workSearchInWords(page)).toContain('rows_unread: 1')
+    expect(workSearchInWords(page)).toContain('next_cursor: c1')
+    expect(workSearchPalettePage(page)).toEqual(page)
+  })
+
+  it('keeps accumulated task hits in given order when a later conversation page has newer tasks', () => {
+    const older = aTask({ given_at: 2 })
+    const oldest = aTask({ piece: 'fictional-oldest', given_at: 1 })
+    const newer = aTask({ piece: 'fictional-newer', given_at: 3 })
+    const first = workSearchPalettePage(
+      aPage([aRow({ last_active_at: 30, matched_tasks: [oldest, older] })], {
+        complete: false,
+        next_cursor: 'another-page',
+      }),
+    )
+    const next = aPage([
+      aRow({ conversation: 'fictional-next', last_active_at: 5, matched_tasks: [newer] }),
+    ])
+    expect(workSearchPalettePage(next, first).hits).toEqual([newer, older, oldest])
   })
 })

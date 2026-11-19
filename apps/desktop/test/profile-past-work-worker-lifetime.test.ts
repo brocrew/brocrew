@@ -16,7 +16,7 @@ it('answers a worker crash with an error and restarts for the next search', asyn
         : `const { parentPort } = require('node:worker_threads');
            parentPort.on('message', (message) => {
              if (message.type === 'close') { parentPort.close(); return; }
-             parentPort.postMessage({ id: message.id, result: { ok: true, hits: [] } });
+             parentPort.postMessage({ id: message.id, result: { ok: true, hits: [], complete: true, next_cursor: null } });
            });`,
       { eval: true },
     )
@@ -31,6 +31,7 @@ it('answers a worker crash with an error and restarts for the next search', asyn
     profile: 'fictional-profile',
     externalVersion: 0,
     versions: [['fictional-conversation', 1]],
+    next: null,
   }
   try {
     await expect(reader.read(source, 'fictional-conversation', 'fictional')).resolves.toEqual({
@@ -41,6 +42,8 @@ it('answers a worker crash with an error and restarts for the next search', asyn
     await expect(reader.read(source, 'fictional-conversation', 'fictional')).resolves.toEqual({
       ok: true,
       hits: [],
+      complete: true,
+      next_cursor: null,
     })
     expect(starts).toBe(2)
   } finally {

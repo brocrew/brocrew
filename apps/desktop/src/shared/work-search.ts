@@ -4,7 +4,7 @@ import { z } from 'zod'
 
 import type { WorkFileGroup } from './work-file-groups'
 
-export const WORK_SEARCH_SCOPES = ['mine', 'this-conversation', 'all'] as const
+const WORK_SEARCH_SCOPES = ['mine', 'this-conversation', 'all'] as const
 export const WORK_SEARCH_BOUNDS = {
   candidates: 1000,
   responseUnits: 32768,
@@ -21,10 +21,11 @@ export const WORK_SEARCH_BOUNDS = {
   waiting: 8,
 } as const
 
-export const workSearchQuery = z
+export const conversationSearchQuery = z
   .object({
-    scope: z.enum(WORK_SEARCH_SCOPES),
-    state: z.enum(TASK_STATES).optional(),
+    profile: z.string().min(1).max(200).optional(),
+    from: z.iso.date().optional(),
+    to: z.iso.date().optional(),
     words: z
       .string()
       .max(200)
@@ -34,6 +35,10 @@ export const workSearchQuery = z
     cursor: z.string().max(2048).optional(),
   })
   .strict()
+export const workSearchQuery = conversationSearchQuery.extend({
+  scope: z.enum(WORK_SEARCH_SCOPES).optional(),
+  state: z.enum(TASK_STATES).optional(),
+})
 export type WorkSearchQuery = z.input<typeof workSearchQuery>
 
 export interface WorkSearchHit {
@@ -41,6 +46,7 @@ export interface WorkSearchHit {
   readonly piece: string
   readonly label: string
   readonly title: string | null
+  readonly given_at: number
   readonly definition_of_done?: string | null
   readonly state: TaskState | null
   readonly conversation_state?: string
@@ -61,8 +67,20 @@ export interface WorkSearchHit {
   readonly resources_omitted: number
 }
 
+export interface ConversationSearchHit {
+  readonly conversation: string
+  readonly address: string
+  readonly title: string
+  readonly line: string
+  readonly profile: string | null
+  readonly last_active_at: number
+  readonly status: string | null
+  readonly matched_tasks: readonly WorkSearchHit[]
+  readonly tasks_omitted: number
+}
+
 export interface WorkSearchPage {
-  readonly hits: readonly WorkSearchHit[]
+  readonly hits: readonly ConversationSearchHit[]
   readonly searched: number
   readonly rows_unread: number
   readonly ledgers_skipped: number
@@ -83,6 +101,52 @@ const who = z
   })
   .strict()
 const ids = z.array(z.string().max(200)).max(WORK_SEARCH_BOUNDS.resourceIds)
+const taskHit = z
+  .object({
+    kind: z.enum(['root', 'piece']),
+    piece: z.string().max(200),
+    label: z.string(),
+    title: z.string().max(WORK_SEARCH_BOUNDS.titleUnits).nullable(),
+    given_at: z.number().finite(),
+    definition_of_done: z.string().max(512).nullable().optional(),
+    state: z.enum(TASK_STATES).nullable(),
+    conversation_state: z.string().max(200).optional(),
+    owner: who,
+    giver: who.nullable(),
+    result: z
+      .object({
+        outcome: z.enum(['done', 'blocked', 'failed']),
+        summary: z.string().max(WORK_SEARCH_BOUNDS.resultUnits).nullable(),
+      })
+      .strict()
+      .nullable(),
+    status: z.string().max(WORK_SEARCH_BOUNDS.statusUnits).nullable(),
+    resource_ids: z
+      .object({ brief: ids, result: ids, attachments: ids, working: ids })
+      .strict()
+      .refine(
+        (groups) =>
+          Object.values(groups).reduce((total, refs) => total + refs.length, 0) <=
+          WORK_SEARCH_BOUNDS.resourceIds,
+      ),
+    clipped: z.object({ title: z.boolean(), result: z.boolean(), status: z.boolean() }).strict(),
+    resources_omitted: count,
+  })
+  .strict()
+const conversationHit = z
+  .object({
+    conversation: z.string().max(200),
+    address: z.string(),
+    title: z.string().max(WORK_SEARCH_BOUNDS.titleUnits),
+    line: z.string(),
+    profile: z.string().max(200).nullable(),
+    last_active_at: z.number().finite(),
+    status: z.string().max(WORK_SEARCH_BOUNDS.statusUnits).nullable(),
+    matched_tasks: z.array(taskHit).max(50),
+    tasks_omitted: count,
+  })
+  .strict()
+
 export const workSearchResult = z
   .discriminatedUnion('ok', [
     z
@@ -96,43 +160,7 @@ export const workSearchResult = z
         ok: z.literal(true),
         page: z
           .object({
-            hits: z
-              .array(
-                z
-                  .object({
-                    kind: z.enum(['root', 'piece']),
-                    piece: z.string().max(200),
-                    label: z.string().max(200),
-                    title: z.string().max(WORK_SEARCH_BOUNDS.titleUnits).nullable(),
-                    definition_of_done: z.string().max(512).nullable().optional(),
-                    state: z.enum(TASK_STATES).nullable(),
-                    conversation_state: z.string().max(200).optional(),
-                    owner: who,
-                    giver: who.nullable(),
-                    result: z
-                      .object({
-                        outcome: z.enum(['done', 'blocked', 'failed']),
-                        summary: z.string().max(WORK_SEARCH_BOUNDS.resultUnits).nullable(),
-                      })
-                      .strict()
-                      .nullable(),
-                    status: z.string().max(WORK_SEARCH_BOUNDS.statusUnits).nullable(),
-                    resource_ids: z
-                      .object({ brief: ids, result: ids, attachments: ids, working: ids })
-                      .strict()
-                      .refine(
-                        (groups) =>
-                          Object.values(groups).reduce((total, refs) => total + refs.length, 0) <=
-                          WORK_SEARCH_BOUNDS.resourceIds,
-                      ),
-                    clipped: z
-                      .object({ title: z.boolean(), result: z.boolean(), status: z.boolean() })
-                      .strict(),
-                    resources_omitted: count,
-                  })
-                  .strict(),
-              )
-              .max(50),
+            hits: z.array(conversationHit).max(50),
             searched: count.max(WORK_SEARCH_BOUNDS.candidates),
             rows_unread: count,
             ledgers_skipped: count,

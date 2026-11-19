@@ -44,7 +44,7 @@ import { refuseTool } from './refusals'
  * **D-012 · who sent a message, as `read_transcript` hands it over** — the kind, and the agent id
  * where there is one (the value `message_agent` and `ask_question` take).
  */
-function senderPayload(from: WhoSentIt): Record<string, unknown> {
+export function senderPayload(from: WhoSentIt): Record<string, unknown> {
   switch (from.is) {
     case 'an-agent':
       return { kind: 'an-agent', agent: from.conversation }
@@ -126,11 +126,12 @@ export function transcriptText(
   turns: readonly TranscriptTurn[],
   older: boolean,
   named: (who: AConversation) => string,
+  lastExchangeWords = wordsBlock,
 ): string {
   const lines: string[] = []
   // **D-027 · each message a turn of several delivered, under its own sender.**
   const eachFrom = (came: readonly Received[]): string[] =>
-    came.map((one) => `From ${fromClause(one.from, named)}:\n${wordsBlock(one.words)}`)
+    came.map((one) => `From ${fromClause(one.from, named)}:\n${lastExchangeWords(one.words)}`)
   if (last.received === null) {
     lines.push(`${name} has received no message this app can show.`)
   } else {
@@ -139,7 +140,7 @@ export function transcriptText(
       lines.push(
         `The last message ${name} received came from ${fromClause(last.received.from, named)}:`,
       )
-      lines.push(wordsBlock(last.received.words))
+      lines.push(lastExchangeWords(last.received.words))
     } else {
       lines.push(
         `The last ${String(came.length)} messages ${name} received came together in one turn, oldest first:`,
@@ -155,8 +156,8 @@ export function transcriptText(
       last.answer === null
         ? `${name} has said nothing back to it yet.`
         : last.sinceThenItsProviderStartedATurn === true
-          ? `${name}'s latest words:\n${wordsBlock(last.answer)}`
-          : `${name}'s latest words back:\n${wordsBlock(last.answer)}`,
+          ? `${name}'s latest words:\n${lastExchangeWords(last.answer)}`
+          : `${name}'s latest words back:\n${lastExchangeWords(last.answer)}`,
     )
   }
   if (turns.length === 0) return lines.join('\n\n')
@@ -309,7 +310,10 @@ export function createReadDocumentTool(
 }
 
 export function createReadTranscriptTool(
-  host: Pick<AgentToolHost, 'nameByItsWorkUnder' | 'readTranscript' | 'theConversationAddressed'>,
+  host: Pick<
+    AgentToolHost,
+    'nameByItsWork' | 'nameByItsWorkUnder' | 'readTranscript' | 'theConversationAddressed'
+  >,
   by: Caller,
   me: string,
   readerInputs: ReturnType<typeof readerFields>['readerInputs'],
@@ -321,7 +325,7 @@ export function createReadTranscriptTool(
     name: 'read_transcript',
     handlerOwnsMissingInput: true,
     description:
-      'Read any conversation: the last message it received (and who sent it) with its latest words back, then its last turns, or the turns whose words contain a search. Name it by a piece it owns (W1.2) or by its id.',
+      'Read any conversation, by any of its labels or its id: the last message it received (and who sent it) with its latest words back, then its last turns, or the turns whose words contain a search. The answer names the conversation by its address and title. Reading leaves an archived conversation archived.',
     beyondItsRails: 'nothing-its-rails-do-not-cover',
     input: Object.fromEntries(
       Object.entries(readerInputs.read_transcript).map(([field, schema]) => [
@@ -389,7 +393,10 @@ export function createReadTranscriptTool(
             })),
             older: read.older,
           },
-          transcriptText(read.name, read.lastExchange, read.turns, read.older, named),
+          [
+            host.nameByItsWork(addressed),
+            transcriptText(read.name, read.lastExchange, read.turns, read.older, named),
+          ].join('\n\n'),
         )
       }),
   }
@@ -554,7 +561,12 @@ export function createSearchPastWorkTool(
       guarded(async () => {
         const input = pastWorkSearchQuery.safeParse(args)
         const found = input.success
-          ? ((await host.searchPastWork?.(me, input.data.words)) ?? {
+          ? ((await host.searchPastWork?.(
+              me,
+              input.data.words,
+              input.data.profile,
+              input.data.cursor,
+            )) ?? {
               ok: false as const,
               reason: 'unavailable' as const,
             })
@@ -563,7 +575,15 @@ export function createSearchPastWorkTool(
           const refused = pastWorkSearchRefusal(found.reason)
           return answer(refused, `refused (${refused.rail}): ${refused.reason}`)
         }
-        return answer({ outcome: 'ok', hits: found.hits }, pastWorkSearchInWords(found.hits))
+        return answer(
+          {
+            outcome: 'ok',
+            hits: found.hits,
+            complete: found.complete,
+            next_cursor: found.next_cursor,
+          },
+          pastWorkSearchInWords(found, input.success && input.data.cursor !== undefined),
+        )
       }),
   }
 }

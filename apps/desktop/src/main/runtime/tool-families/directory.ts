@@ -10,7 +10,7 @@ import {
   toolArgumentsAtHandler,
 } from '@brobot2/runtime'
 import { type AgentToolHost } from './host'
-import { CONVERSATIONS_LISTED } from '../agent-directory'
+import { readDirectoryCursor } from '../agent-directory'
 import { type Caller } from '../conversation-caller'
 import { EVERY_AGENT_THIS_APP_HOLDS } from '../../../shared/capabilities'
 import {
@@ -77,16 +77,17 @@ const ARCHIVED_BY = 'a person'
 const archivedSaid = (archivedAt: number, readAt: number): string =>
   ` · archived ${clockTimeFrom(archivedAt, readAt)} by ${ARCHIVED_BY}`
 
-const cardText = (card: AgentCard): string =>
-  // **D-016 · commit 7 · R3 — a conversation is named by the piece it owns**
-  // (`the owner of W1.2 · Build the pages`), and its agent's name follows; its id only when it
-  // holds no piece — the one address it then has. The payload carries the ids.
+const cardText = (card: AgentCard, called: string): string =>
   // **D-017 · R11 — the state in the one derivation's words** (`agentStateWords`), the words the
   // window draws: never whether a process runs.
-  `${card.named === null ? card.agent : theOwnerOf(card.named)} · ${whoseText(card.whose)} · ${card.provider === null ? 'provider not recorded' : PROVIDER_NAME[card.provider]} · ${agentStateWords(card.state)}` +
+  `${called} · ${whoseText(card.whose)} · ${card.provider === null ? 'provider not recorded' : PROVIDER_NAME[card.provider]} · ${agentStateWords(card.state)}` +
   theStopOnAPerson(card.stoppedOnAPerson) +
   // **D-042 · R6 — what it runs on**, so a giver can check what its helper runs.
   runsOnText(card) +
+  (card.context == null
+    ? ''
+    : ` · context ${String(card.context.percentUsed)}% of ${String(card.context.window)} tokens used`) +
+  (card.lastActiveAt == null ? '' : ` · last active ${new Date(card.lastActiveAt).toISOString()}`) +
   // **W4.209 · who started it, by the piece it started it from** — the record's and the launch
   // line's words (`AgentCard.parentCalled`), never by the starter's work now.
   `${card.parentCalled === null ? '' : ` · started by ${card.parentCalled}`}` +
@@ -458,7 +459,7 @@ function agentRecordPayload(record: AgentRecord): Readonly<Record<string, unknow
 }
 
 export function createListAgentsTool(
-  host: Pick<AgentToolHost, 'agentsVisibleTo' | 'archivedVisibleTo'>,
+  host: Pick<AgentToolHost, 'agentsVisibleTo' | 'archivedVisibleTo' | 'nameByItsWork'>,
   by: Caller,
   me: string,
   readerInputs: ReturnType<typeof readerFields>['readerInputs'],
@@ -472,9 +473,8 @@ export function createListAgentsTool(
     // **D-016 · *"starting one opens a new conversation"* came out**: a give reaches the one
     // conversation a giver has with an agent, and starts one only the first time. And each card
     // names the work it holds — its root and its open pieces, by label (spec D17).
-    // **D-016 · commit 7 · R1 · R3 — each is NAMED by the piece it owns**, and that label is
-    // what every door that takes an agent takes; the id stays in the payload.
-    description: `List the conversations this app can run or restart, including your own, whatever they are doing. Up to ${String(CONVERSATIONS_LISTED)}, the most recently active first; the answer says how many more there are, and get_agent_status takes any of them by the label of a piece it owns (W1.2) or by its id. Each one's state says what it is doing: active, needs you (a person's answer or approval is waiting in it, or it answered a person who wrote to it and waits for their next words), waiting on another conversation's answer, owes another conversation an answer (and whom), running in the background (and what), scheduled (and when it next wakes), waiting on the agents holding work it gave out (and who), or idle. The agents themselves outlive their conversations — list_profiles names every agent this app holds. Being listed is not a promise that every message to it is admitted — message_agent answers that separately. Each says the provider, model and effort its conversation runs on, and what its provider last reported when that differs. An archived conversation is put away and left out: archived: true lists those instead, each with when it was archived and by whom. Its label still reaches it; restore_agent brings it back without sending it anything, and whatever is sent to it brings it and the helpers archived with it back too. Each is named by the piece of work it owns (the owner of W1.2 · its title), or by its id when it holds none, then who it is — the name a person gave that agent, and the profile slug give_work takes — its state, the conversation that started it, named the same way, and the work it holds: its own root, when a person gave it one, and its open pieces, by label. A conversation this app cannot attribute is still listed, and says so rather than being given a name.`,
+    description:
+      "List conversations, the most recently active first, a page at a time. Filter by profile and by last-active date. Each row: conversation <address> · <title>; its agent (the name a person gave it, and the profile slug give_work takes); its state — working, waiting on the person, waiting on another conversation's answer, owing an answer (and to whom), running in the background (and what), scheduled (and when it next wakes), waiting on work it gave, or idle; its provider, model, effort and context size; and the tasks it holds. archived: true lists archived conversations instead, each with when it was archived and by whom. An archived conversation can still be read and asked, and stays archived; new work given to it brings it back into the person's lists. list_profiles names every agent. Being listed doesn't promise that a message will be taken: message_agent's answer says what happened.",
     /**
      * **486 · the rails are the whole gate** (HO-031 §2.4).
      *
@@ -497,12 +497,40 @@ export function createListAgentsTool(
         }
         const fieldRefusal = readerFieldRefusal('list_agents', args)
         if (fieldRefusal !== null) return fieldRefusal
-        if (args.archived === true) {
-          const { archived, notListed, readAt } = host.archivedVisibleTo(by, me)
-          const more =
-            notListed === 0
-              ? ''
-              : `\n…and ${String(notListed)} more archived conversations, not listed here.`
+        const parsed = z.object(readerInputs.list_agents).safeParse(args)
+        if (!parsed.success) {
+          return readerFieldRefusal('list_agents', args, [
+            'use a profile slug, calendar dates in YYYY-MM-DD, and a cursor from list_agents',
+          ])!
+        }
+        const filters = parsed.data
+        const archivedOnly = filters.archived === true
+        if (filters.from !== undefined && filters.to !== undefined && filters.from > filters.to) {
+          return readerFieldRefusal('list_agents', args, ['from must be on or before to'])!
+        }
+        const after =
+          filters.cursor === undefined
+            ? undefined
+            : readDirectoryCursor(filters.cursor, filters, archivedOnly)
+        if (after === null) {
+          return readerFieldRefusal('list_agents', args, [
+            'Use the next value returned by list_agents as cursor, with the same filters.',
+          ])!
+        }
+        const input = { ...filters, after }
+        const empty =
+          'No more matching conversations. list_profiles names every agent this app holds.'
+        const more = (notListed: number | null, next: string | undefined): string => {
+          if (next === undefined) return ''
+          const count = notListed === null ? 'See ' : `${String(notListed)} `
+          return `\n${count}more conversations: list_agents with the same filters and cursor ${next}.`
+        }
+        if (archivedOnly) {
+          const { archived, notListed, readAt, next } = host.archivedVisibleTo(by, me, input)
+          const lines = archived.map(
+            ({ card, archivedAt }) =>
+              cardText(card, host.nameByItsWork(card.agent)) + archivedSaid(archivedAt, readAt),
+          )
           return answer(
             {
               outcome: 'ok',
@@ -513,28 +541,26 @@ export function createListAgentsTool(
               })),
               count: archived.length,
               notListed,
+              ...(next === undefined ? {} : { next }),
             },
-            (archived.length === 0
-              ? 'no archived conversations'
-              : archived
-                  .map(({ card, archivedAt }) => cardText(card) + archivedSaid(archivedAt, readAt))
-                  .join('\n')) + more,
+            (lines.join('\n') ||
+              (next === undefined ? empty : 'No matching conversations on this page.')) +
+              more(notListed, next),
           )
         }
-        const { agents, notListed } = host.agentsVisibleTo(by, me)
-        const listed =
-          agents.length === 0
-            ? // **644 · the empty answer names a door** — see this tool's own note.
-              'no agents you can see — list_profiles names every agent this app holds'
-            : agents.map(cardText).join('\n')
-        // **D-017 · R12 — the cut, said** — so a list of fifty never reads as *that is all*.
-        const more =
-          notListed === 0
-            ? ''
-            : `\n…and ${String(notListed)} more, not listed here; get_agent_status takes the label of a piece one owns (W1.2), or its id.`
+        const { agents, notListed, next } = host.agentsVisibleTo(by, me, input)
+        const lines = agents.map((card) => cardText(card, host.nameByItsWork(card.agent)))
         return answer(
-          { outcome: 'ok', agents: agents.map(cardPayload), count: agents.length, notListed },
-          listed + more,
+          {
+            outcome: 'ok',
+            agents: agents.map(cardPayload),
+            count: agents.length,
+            notListed,
+            ...(next === undefined ? {} : { next }),
+          },
+          (lines.join('\n') ||
+            (next === undefined ? empty : 'No matching conversations on this page.')) +
+            more(notListed, next),
         )
       }),
   }
@@ -544,6 +570,7 @@ export function createGetAgentStatusTool(
   host: Pick<
     AgentToolHost,
     | 'agentCard'
+    | 'nameByItsWork'
     | 'nameByItsWorkUnder'
     | 'theConversationAddressed'
     | 'whatOpenedItsLastTurn'
@@ -568,7 +595,7 @@ export function createGetAgentStatusTool(
     // `list_agents`' it was not describing a payload that had stopped matching it. The first
     // clause gains the fact the card gained; nothing else here moved.
     description:
-      "Who one agent is, what it is doing right now — active, needs you, waiting on another conversation's answer, owing another conversation an answer, running in the background, scheduled, waiting on the agents holding work it gave out, or idle — the work it holds, by label, and where it came from. It answers for any conversation this app can run or restart, including every one list_agents names, by the piece it owns (W1.2) or by its id. It says the provider, model and effort its conversation runs on, and what its provider last reported when that differs.",
+      "One conversation's status, by any of its labels or its id: conversation <address> · <title>, its profile, whether it is working or idle (and what it is waiting on: the person, another conversation's answer, work it gave, a schedule, or something running in the background), whether it owes an answer, its provider, model and effort (and what the provider last reported, when that differs), its context size, the tasks it holds, and when it was last active.",
     /**
      * **486 · the rails are the whole gate** (HO-031 §2.4).
      *
@@ -625,7 +652,8 @@ export function createGetAgentStatusTool(
             ...(last.took === null ? {} : { last_turn_took: receivedPayload(last.took) }),
           },
           [
-            cardText(card) + (archivedAt === null ? '' : archivedSaid(archivedAt, last.readAt)),
+            cardText(card, host.nameByItsWork(card.agent)) +
+              (archivedAt === null ? '' : archivedSaid(archivedAt, last.readAt)),
             ...theLastTurnSaid(card.lastEndedTurn, last, named, askedBy, card.lastAskToStop),
           ].join('\n\n'),
         )
@@ -643,7 +671,7 @@ export function createListProfilesTool(
     name: 'list_profiles',
 
     description:
-      'Every agent this app holds — any of them can be named to give_work: what each is called, which provider its conversations run on, and its default model and effort, when it has one; and each provider’s latest usage reading per window — how much is used, when it resets and when it was read, and whether that was before this app last started, when it may be another sign-in’s — so you can keep to a cap before you give work; and which windows each provider has reported since this app began noting them, with when each was first and last reported. These are identities, not conversations — list_agents answers which conversations you can see. Being listed here is not a promise that a give will succeed. The answer says in words what the count covers — read that before summarising it. Name one agent with profile, before choosing whom to give work to, to read what it has done instead: how its standing rules begin, its conversations — who started each and when, which could not be reopened and which are archived — the newest pieces of work they hold and how each stands or ended, and the files it made.',
+      'Every agent this app holds — any of them can be named to give_work: what each is called, which provider its conversations run on, and its default model and effort, when it has one; and each provider’s latest usage reading per window — how much is used, when it resets and when it was read, and whether that was before this app last started, when it may be another sign-in’s — so you can keep to a cap before you give work; and which windows each provider has reported since this app began noting them, with when each was first and last reported. These are identities, not conversations — list_agents lists conversations. A service is marked as one: it has one conversation, which any agent reaches by naming the profile. Being listed here is not a promise that a give will succeed. The answer says in words what the count covers — read that before summarising it. Name one agent with profile, before choosing whom to give work to, to read what it has done instead: how its standing rules begin, its conversations — who started each and when, which could not be reopened and which are archived — the newest pieces of work they hold and how each stands or ended, and the files it made.',
     /**
      * **486 · the rails are the whole gate** (HO-031 §2.4).
      *

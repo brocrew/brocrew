@@ -2,7 +2,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
 import WorkSearchDialog from '../../src/renderer/src/components/WorkSearchDialog.vue'
-import type { WorkSearchResult } from '../../src/shared/work-search'
+import type {
+  ConversationSearchHit,
+  WorkSearchHit,
+  WorkSearchPage,
+  WorkSearchResult,
+} from '../../src/shared/work-search'
 import { drawnReady } from './drawn'
 import { META, mount, unmountAll } from './harness'
 
@@ -14,6 +19,36 @@ afterEach(async () => {
 
 const read = (el: Element): string => (el.textContent ?? '').replace(/\s+/g, ' ').trim()
 
+function conversationMatch(hit: WorkSearchHit): ConversationSearchHit {
+  const title = hit.title ?? ''
+  return {
+    conversation: hit.owner.conversation,
+    address: hit.label,
+    title,
+    line: `conversation ${hit.label} · ${title}`,
+    profile: hit.owner.profile,
+    last_active_at: hit.given_at,
+    status: hit.status,
+    matched_tasks: [hit],
+    tasks_omitted: 0,
+  }
+}
+
+function searchPage(hits: readonly ConversationSearchHit[], facts: Partial<WorkSearchPage> = {}) {
+  return {
+    ok: true,
+    page: {
+      hits,
+      searched: 1,
+      rows_unread: 0,
+      ledgers_skipped: 0,
+      complete: true,
+      next_cursor: null,
+      ...facts,
+    },
+  } satisfies WorkSearchResult
+}
+
 describe('legacy kept-file list helpers and work search', () => {
   it('search reads only on a gesture, keeps partial reads visible and opens the existing work', async () => {
     const hit = {
@@ -22,6 +57,7 @@ describe('legacy kept-file list helpers and work search', () => {
       label: 'W1.1',
       title: 'Review',
       state: 'answered' as const,
+      given_at: 1,
       owner: { conversation: 'sess_worker', name: 'Ada', profile: 'ada' },
       giver: null,
       result: { outcome: 'done' as const, summary: 'Reviewed.' },
@@ -30,17 +66,14 @@ describe('legacy kept-file list helpers and work search', () => {
       clipped: { title: false, result: false, status: false },
       resources_omitted: 0,
     }
-    const search = vi.fn().mockResolvedValue({
-      ok: true,
-      page: {
-        hits: [hit],
+    const search = vi.fn().mockResolvedValue(
+      searchPage([conversationMatch(hit)], {
         searched: 2,
         rows_unread: 1,
-        ledgers_skipped: 0,
         complete: false,
         next_cursor: 'next',
-      },
-    })
+      }),
+    )
     const opened = vi.fn()
     const m = mount(
       WorkSearchDialog,
@@ -69,6 +102,7 @@ describe('legacy kept-file list helpers and work search', () => {
       label: 'W1.2',
       title: 'Read-only hit',
       state: 'answered' as const,
+      given_at: 1,
       owner: { conversation: 'sess_worker', name: 'Ada', profile: 'ada' },
       giver: null,
       result: null,
@@ -77,17 +111,7 @@ describe('legacy kept-file list helpers and work search', () => {
       clipped: { title: false, result: false, status: false },
       resources_omitted: 0,
     }
-    const search = vi.fn().mockResolvedValue({
-      ok: true,
-      page: {
-        hits: [hit],
-        searched: 1,
-        rows_unread: 0,
-        ledgers_skipped: 0,
-        complete: true,
-        next_cursor: null,
-      },
-    })
+    const search = vi.fn().mockResolvedValue(searchPage([conversationMatch(hit)]))
     const opened = vi.fn()
     const m = mount(
       WorkSearchDialog,
@@ -123,17 +147,7 @@ describe('legacy kept-file list helpers and work search', () => {
     input.value = 'new words'
     input.dispatchEvent(new Event('input', { bubbles: true }))
     await nextTick()
-    answer!({
-      ok: true,
-      page: {
-        hits: [],
-        searched: 1,
-        rows_unread: 0,
-        ledgers_skipped: 0,
-        complete: true,
-        next_cursor: null,
-      },
-    })
+    answer!(searchPage([]))
     await nextTick()
     expect(m.all('work-search-empty')).toHaveLength(0)
     expect(m.all('work-search-hits')).toHaveLength(0)
@@ -144,6 +158,7 @@ describe('legacy kept-file list helpers and work search', () => {
       piece: 'work_fresh',
       label: 'W1.3',
       title: 'Fresh result',
+      given_at: 1,
       state: 'answered' as const,
       owner: { conversation: 'sess_worker', name: 'Ada', profile: 'ada' },
       giver: null,
@@ -153,17 +168,7 @@ describe('legacy kept-file list helpers and work search', () => {
       clipped: { title: false, result: false, status: false },
       resources_omitted: 0,
     }
-    answer!({
-      ok: true,
-      page: {
-        hits: [fresh],
-        searched: 1,
-        rows_unread: 0,
-        ledgers_skipped: 0,
-        complete: true,
-        next_cursor: null,
-      },
-    })
+    answer!(searchPage([conversationMatch(fresh)]))
     await vi.waitFor(() => expect(m.all('work-search-hit')).toHaveLength(1))
     expect(m.q('work-search-hit').textContent).toContain('Fresh result')
   })

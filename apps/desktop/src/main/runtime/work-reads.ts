@@ -1,8 +1,6 @@
-import { theConversationCalled, theWorkAlone } from '../../shared/piece-called'
 import { WORK_STATE_WORD } from '../../shared/work-state-words'
 import { errorMessage } from './session-disclosures'
 import { questionKey } from './question-rails'
-import { agentCallerId, type Caller } from './conversation-caller'
 import {
   TURN_BLOCK_WORDS,
   type AHelperInTheTurn,
@@ -10,11 +8,7 @@ import {
   type CurrentWorkInTheTurn,
   type WhoWaitsOnIt,
 } from './what-this-app-adds-to-a-turn'
-import {
-  TURN_HELPER_OWNERS,
-  TURN_HELPER_PIECES,
-  type TurnBlockSnapshot,
-} from './turn-block-changes'
+import { TURN_HELPER_OWNERS, TURN_HELPER_PIECES } from './turn-block-changes'
 import { ledgersSkippedOf, readOrSkip } from '../db/session-store'
 import { rowsUnreadOnce } from '../db/rows-unread'
 import type { SessionStore, WorkRow } from '../db/session-store'
@@ -32,13 +26,15 @@ import type {
 } from '../../shared/task-contracts'
 import { openQuestionsByWork, REQUEST_IS_OPEN, aPersonOwesAnAnswerIn } from '../../shared/questions'
 import type { LedgerWalk, RoutedRequest } from '../../shared/question-contracts'
-import type { Exchange } from '../../shared/last-exchange'
+import type { Exchange, TaskRecordExchange } from '../../shared/last-exchange'
 import type { RunningState } from '../../shared/runtime-ipc'
 import type { LastReported, SpawnEdge, WhoCalledWhom, WorkEdge } from '../../shared/who-called-whom'
 import type {
   PieceBoard,
   PieceRecord,
   RootOnTheBoard,
+  TaskRecordPages,
+  TaskRecordSelection,
   ItsLedger,
   StateLedger,
   WorkOutOf,
@@ -58,8 +54,8 @@ interface WorkReadSources {
     | 'replyQuestionWithoutARequest'
     | 'piecesAtHand'
     | 'questionsRoutedToAtHand'
-    | 'workOnItsChainThatNames'
     | 'piecesGivenBy'
+    | 'workById'
   >
   readonly idsForTurnRead: (id: string) => readonly string[]
   readonly waitForTurnRead: (
@@ -74,8 +70,7 @@ interface WorkReadSources {
       readonly waits: (id: string) => WhatAConversationIsWaitingOn
     },
   ) => PieceRow
-  readonly withinMessagingReach: (id: string, by: Caller, me: string | null) => boolean
-  readonly theOneInItsPlace: (id: string) => string
+  readonly conversationLine: (id: string) => string
   readonly whatToCallTheConversation: (id: string) => string
   readonly store: Pick<
     SessionStore,
@@ -84,7 +79,10 @@ interface WorkReadSources {
     | 'piecesGivenBy'
     | 'rootLines'
     | 'rootDoneCondition'
+    | 'childrenOf'
+    | 'countChildrenAfter'
     | 'resourcesOf'
+    | 'countResourcesAfter'
     | 'routedRequestsOf'
     | 'questionsRaisedIn'
     | 'workGivenOutBy'
@@ -100,12 +98,8 @@ interface WorkReadSources {
   readonly withItsPlaceInTheQueue: (row: PieceRow) => PieceRow
   readonly pieceNamed: (spelled: string) => WorkRow | null
   readonly ofOneIdentity: (one: string, other: string) => boolean
-  readonly childrenOnTheRecord: (
-    piece: string,
-    waiting: (id: string) => WhatAConversationIsWaitingOn,
-    unread: RowsUnread,
-  ) => readonly PieceRow[]
   readonly theExchangeShownWith: (piece: PieceRow) => Exchange
+  readonly taskRecordExchange: (piece: PieceRow) => TaskRecordExchange
   readonly spawnEdge: (conversation: string) => SpawnEdge
   readonly runningStateOf: (sessionId: string) => RunningState
   readonly markedForAPerson: (edges: LedgerWalk<WorkEdge>) => LedgerWalk<WorkEdge>
@@ -186,18 +180,59 @@ export class WorkReads {
    * its brief, the last exchange with the conversation holding it in full (D-012), the open
    * questions that conversation asked about it, its children and its resources.**
    */
-  pieceRecord(_sessionId: string, spelled: string): PieceRecord {
+  pieceRecord(_sessionId: string, spelled: string, selection?: TaskRecordSelection): PieceRecord {
     const row = this.sources.pieceNamed(spelled)
     if (row === null) return { is: 'no-piece-by-that-name' }
     const unread = rowsUnreadOnce()
     const waiting = this.sources.oneWaitReadPerAnswer(unread)
-    const children = this.sources.childrenOnTheRecord(row.piece, waiting, unread)
+    const { store } = this.sources
+    const childRows =
+      selection === undefined
+        ? store.childrenOf(row.piece)
+        : selection.children === undefined
+          ? []
+          : store.childrenOf(row.piece, selection.children, selection.limit)
+    const children = this.foldChildren(childRows, waiting, unread)
+    const resources =
+      selection === undefined
+        ? store.resourcesOf(row.piece)
+        : selection.files === undefined
+          ? []
+          : store.resourcesOf(row.piece, selection.files, selection.limit)
+    const lastResource = resources.at(-1)
+    const pages: TaskRecordPages | undefined =
+      selection === undefined
+        ? undefined
+        : {
+            ...(selection.children === undefined
+              ? {}
+              : {
+                  children: {
+                    remaining:
+                      store.countChildrenAfter(row.piece, selection.children) - childRows.length,
+                    through: childRows.at(-1)?.number ?? null,
+                  },
+                }),
+            ...(selection.files === undefined
+              ? {}
+              : {
+                  files: {
+                    remaining:
+                      store.countResourcesAfter(row.piece, selection.files) - resources.length,
+                    through:
+                      lastResource === undefined
+                        ? null
+                        : { createdAt: lastResource.createdAt, resource: lastResource.resource },
+                  },
+                }),
+          }
     if (row.parent === null) {
       return {
         is: 'a-root',
         root: this.rootOnTheBoard(row),
         children,
-        resources: this.sources.store.resourcesOf(row.piece),
+        resources,
+        ...(pages === undefined ? {} : { pages }),
         rowsUnread: unread.count,
         ...ledgersSkippedOf(unread.ledgersSkipped),
       }
@@ -216,13 +251,46 @@ export class WorkReads {
     return {
       is: 'a-piece',
       piece: folded,
-      lastExchange: this.sources.theExchangeShownWith(folded),
+      lastExchange:
+        selection === undefined
+          ? this.sources.theExchangeShownWith(folded)
+          : { received: null, answer: null },
+      ...(selection?.exchange ? { pagedExchange: this.sources.taskRecordExchange(folded) } : {}),
       openQuestions: (byWork.get(row.piece) ?? []).map((one) => one.requestId),
       children,
-      resources: this.sources.store.resourcesOf(row.piece),
+      resources,
+      ...(pages === undefined ? {} : { pages }),
       rowsUnread: unread.count,
       ...ledgersSkippedOf(unread.ledgersSkipped),
     }
+  }
+
+  childrenOnTheRecord(
+    piece: string,
+    waiting: (id: string) => WhatAConversationIsWaitingOn,
+    unread: RowsUnread,
+  ): readonly PieceRow[] {
+    return this.foldChildren(this.sources.store.childrenOf(piece), waiting, unread)
+  }
+
+  private foldChildren(
+    children: readonly WorkRow[],
+    waiting: (id: string) => WhatAConversationIsWaitingOn,
+    unread: RowsUnread,
+  ): readonly PieceRow[] {
+    const owned = new Map<string, readonly PieceRow[]>()
+    return children.flatMap((child) => {
+      let folded = owned.get(child.owner)
+      if (folded === undefined) {
+        folded = composeWhatEachPieceIsWaitingOn(
+          this.sources.store.piecesOwnedBy(child.owner, unread),
+          waiting,
+        )
+        owned.set(child.owner, folded)
+      }
+      const one = folded.find((row) => row.piece === child.piece)
+      return one === undefined ? [] : [one]
+    })
   }
 
   /**
@@ -346,9 +414,9 @@ export class WorkReads {
   factsForTheTurnBlock(
     conversation: string,
     currentPiece: string | null,
-    snapshot: () => TurnBlockSnapshot,
   ): {
-    readonly helpers: readonly AHelperInTheTurn[] | null
+    readonly helpers: readonly AHelperInTheTurn[]
+    readonly helpersIncomplete: boolean
     readonly questions: readonly AQuestionItHasOpen[] | null
     readonly personWait: string | null
     readonly nobodyWaiting: boolean
@@ -359,7 +427,9 @@ export class WorkReads {
     const owners = new Set<string>([conversation])
     const held = new Map<string, readonly PieceRow[]>()
     const ledgers = new Map<string, ItsLedger>()
+    const unreadOwners = new Set<string>()
     let candidatesRead = 0
+    let helpersIncomplete = false
     const admit = (id: string): void => {
       if (!owners.has(id) && owners.size > TURN_HELPER_OWNERS)
         throw new Error('turn helper owner bound')
@@ -369,7 +439,9 @@ export class WorkReads {
       admit(id)
       let rows = held.get(id)
       if (rows === undefined) {
+        const before = unread.count + unread.ledgersSkipped
         rows = this.sources.currentStore().turnBlockPiecesOwnedBy(id, unread)
+        if (unread.count + unread.ledgersSkipped > before) unreadOwners.add(id)
         held.set(id, rows)
       }
       return rows
@@ -387,6 +459,21 @@ export class WorkReads {
       return read
     }
     const given = new Map<string, readonly PieceRow[]>()
+    const helperRows = new Map<string, AHelperInTheTurn>()
+    const unknownHelper = (candidate: { piece: string; owner: string }): void => {
+      const row = this.sources.currentStore().workById(candidate.piece)
+      helperRows.set(candidate.piece, {
+        piece: candidate.piece,
+        label: row?.label ?? candidate.piece,
+        owner: candidate.owner,
+        conversation: '',
+        name: '',
+        state: null,
+        givenAt: row?.createdAt ?? 0,
+        changedAt: null,
+        urgent: false,
+      })
+    }
     const workOut = (id: string): readonly PieceRow[] => {
       const before = given.get(id)
       if (before !== undefined) return before
@@ -402,19 +489,25 @@ export class WorkReads {
           if (candidates === null) throw new Error('turn has no ledger')
           const page = candidates.slice(0, TURN_HELPER_PIECES)
           for (const candidate of page) {
-            const row = pieces(candidate.owner).find(
-              (one) => one.piece === candidate.piece && one.giver === giver,
-            )
-            if (row === undefined) throw new Error('turn candidate was not read')
-            // Ended history consumes no helper slot; unshown endings remain eligible.
-            if (
-              !TASK_IS_OPEN[row.state] &&
-              snapshot()?.awaitingEnd.has(row.piece) !== true &&
-              !(snapshot()?.at != null && row.givenAt > snapshot().at!)
-            )
-              continue
+            let row: PieceRow | undefined
+            try {
+              row = pieces(candidate.owner).find(
+                (one) => one.piece === candidate.piece && one.giver === giver,
+              )
+            } catch {
+              unreadOwners.add(candidate.owner)
+            }
+            if (row !== undefined && !TASK_IS_OPEN[row.state]) continue
             candidatesRead += 1
-            if (candidatesRead > TURN_HELPER_PIECES) throw new Error('turn helper piece bound')
+            if (candidatesRead > TURN_HELPER_PIECES) {
+              helpersIncomplete = true
+              given.set(id, rows)
+              return rows
+            }
+            if (row === undefined || unreadOwners.has(candidate.owner)) {
+              if (id === conversation) unknownHelper(candidate)
+              continue
+            }
             rows.push(row)
           }
           if (candidates.length <= TURN_HELPER_PIECES) break
@@ -447,7 +540,10 @@ export class WorkReads {
           }
       }
       const mine = pieces(conversation)
-      if (root === null) {
+      if (
+        root === null ||
+        mine.some((row) => row.piece === currentPiece && TASK_IS_OPEN[row.state])
+      ) {
         const open = mine.filter((row) => TASK_IS_OPEN[row.state])
         const selected =
           open.find((row) => row.piece === currentPiece) ??
@@ -477,12 +573,26 @@ export class WorkReads {
       const personRequests = ownLedger.routings.filter(
         (row) => row.went.to === 'a-person' && REQUEST_IS_OPEN[row.state],
       )
-      questions = personRequests.flatMap((row) => {
-        const raised = ownLedger.raised.get(row.requestId)
-        return raised?.raisedBy === 'this-app'
-          ? [{ id: row.requestId, askedAt: row.at, prompt: raised.prompt }]
-          : []
-      })
+      questions = ownLedger.routings
+        .filter((row) => REQUEST_IS_OPEN[row.state])
+        .flatMap((row) => {
+          const raised = ownLedger.raised.get(row.requestId)
+          return raised?.raisedBy === 'this-app'
+            ? [
+                {
+                  id: row.requestId,
+                  askedAt: row.at,
+                  prompt: raised.prompt,
+                  recipient:
+                    row.went.to === 'a-person'
+                      ? 'the person'
+                      : row.parent === null
+                        ? 'the recipient'
+                        : this.sources.conversationLine(row.parent),
+                },
+              ]
+            : []
+        })
       const waits = this.sources.waitForTurnRead(unread, ledger, (id) =>
         workOut(id).filter((row) => TASK_IS_OPEN[row.state]),
       )
@@ -491,6 +601,33 @@ export class WorkReads {
       const helpers = composeWhatEachPieceIsWaitingOn(raw, waits).map((row) =>
         this.sources.queueForTurnRead(row, { pieces: pieces(row.owner), waits }),
       )
+      for (const row of helpers) {
+        let name = helperNames.get(row.owner)
+        if (name === undefined) {
+          name = this.sources.whatToCallTheConversation(row.owner)
+          helperNames.set(row.owner, name)
+        }
+        helperRows.set(row.piece, {
+          piece: row.piece,
+          label: row.label,
+          owner: row.owner,
+          conversation: this.sources.conversationLine(row.owner),
+          name,
+          state:
+            row.state === 'waiting-on-the-person-who-wrote'
+              ? TURN_BLOCK_WORDS.waitingOnThePerson
+              : (WORK_STATE_WORD[row.state] ?? null),
+          givenAt: row.givenAt,
+          changedAt:
+            row.state === rawStates.get(row.piece) ? (row.lastRecordedChangeAt ?? null) : null,
+          urgent:
+            row.state === 'stalled' ||
+            row.state === 'waiting-on-a-person' ||
+            row.state === 'waiting-on-the-person-who-wrote' ||
+            row.needsUserAction === true ||
+            row.queueStalledAt != null,
+        })
+      }
       const personPieces = [...composeWhatEachPieceIsWaitingOn(mine, waits), ...helpers].filter(
         (row) =>
           TASK_IS_OPEN[row.state] &&
@@ -499,7 +636,13 @@ export class WorkReads {
             row.needsUserAction === true),
       )
       // Wait composition can read additional ledgers; check its result before claiming absence.
-      if (unread.count > 0 || unread.ledgersSkipped > 0)
+      if (
+        unread.count > 0 ||
+        unread.ledgersSkipped > 0 ||
+        unreadOwners.size > 0 ||
+        helpersIncomplete ||
+        [...helperRows.values()].some((row) => row.state === null)
+      )
         throw new Error('turn wait facts incomplete')
       const helperRules: string[] = []
       for (const owner of new Set(
@@ -527,64 +670,8 @@ export class WorkReads {
         }
       }
       return {
-        helpers: helpers
-          .filter(
-            (row) =>
-              TASK_IS_OPEN[row.state] ||
-              snapshot()?.awaitingEnd.has(row.piece) === true ||
-              (snapshot()?.at != null && row.givenAt > snapshot().at!),
-          )
-          .map((row) => {
-            const open = TASK_IS_OPEN[row.state]
-            let name = helperNames.get(row.owner)
-            if (name === undefined) {
-              if (
-                !this.sources.withinMessagingReach(
-                  this.sources.theOneInItsPlace(row.owner),
-                  { ownerId: agentCallerId(conversation) },
-                  conversation,
-                )
-              )
-                throw new Error('helper name is outside card reach')
-              name = this.sources.whatToCallTheConversation(row.owner)
-              helperNames.set(row.owner, name)
-            }
-            if (!Object.hasOwn(WORK_STATE_WORD, row.state)) throw new Error('unknown helper state')
-            const state =
-              row.outcome != null
-                ? TURN_BLOCK_WORDS.ended(row.outcome)
-                : row.state === 'waiting-on-the-person-who-wrote'
-                  ? TURN_BLOCK_WORDS.waitingOnThePerson
-                  : WORK_STATE_WORD[row.state]
-            return {
-              piece: row.piece,
-              label: row.label,
-              name,
-              state,
-              givenAt: row.givenAt,
-              changedAt:
-                row.state === rawStates.get(row.piece) ? (row.lastRecordedChangeAt ?? null) : null,
-              open,
-              urgent:
-                open &&
-                (row.state === 'stalled' ||
-                  row.state === 'waiting-on-a-person' ||
-                  row.state === 'waiting-on-the-person-who-wrote' ||
-                  row.needsUserAction === true ||
-                  row.queueStalledAt != null),
-              revision: JSON.stringify([
-                row.owner,
-                name,
-                row.state,
-                row.outcome,
-                row.queuedBehind,
-                row.queueStalledAt,
-                row.statusLine,
-                row.lastRecordedChangeAt,
-                row.needsUserAction,
-              ]),
-            }
-          }),
+        helpers: [...helperRows.values()],
+        helpersIncomplete,
         questions,
         personWait,
         nobodyWaiting,
@@ -594,7 +681,8 @@ export class WorkReads {
     } catch (error) {
       console.warn(`turn block facts unavailable for ${conversation}: ${errorMessage(error)}`)
       return {
-        helpers: null,
+        helpers: [...helperRows.values()],
+        helpersIncomplete: true,
         questions,
         personWait,
         nobodyWaiting,
@@ -624,8 +712,8 @@ export class WorkReads {
           TASK_IS_OPEN[piece.state] && piece.giver !== null
             ? [
                 {
-                  who: this.calledByItsChain(piece.giver, piece.piece),
-                  work: `${piece.label} · ${piece.title}`,
+                  who: this.sources.conversationLine(piece.giver),
+                  work: piece.label,
                 },
               ]
             : [],
@@ -634,7 +722,7 @@ export class WorkReads {
           REQUEST_IS_OPEN[request.state] && request.went.to !== 'a-person'
             ? [
                 {
-                  who: this.sources.whatToCallTheConversation(request.askedBy),
+                  who: this.sources.conversationLine(request.askedBy),
                   id: request.requestId,
                   askedAt: request.at,
                 },
@@ -648,14 +736,6 @@ export class WorkReads {
       )
       return null
     }
-  }
-
-  /** Name by existing chain metadata without folding another ledger. */
-  private calledByItsChain(conversation: string, piece: string): string {
-    return theConversationCalled(
-      this.sources.whatToCallTheConversation(conversation),
-      theWorkAlone(this.sources.currentStore().workOnItsChainThatNames(conversation, piece)),
-    )
   }
 
   /** Memoize waits per answer; defaults have already been evaluated at the Root door. */

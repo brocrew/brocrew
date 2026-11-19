@@ -44,8 +44,21 @@ import { answer, refusalAnswer } from './answers'
 import { refuseTool } from './refusals'
 import { clockTime } from '../../../shared/clock'
 import { type readerFields } from './reader-inputs'
-import { receivedPayload, transcriptText, wordsPayload } from './documents'
+import {
+  fromClause,
+  receivedPayload,
+  senderPayload,
+  transcriptText,
+  wordsPayload,
+} from './documents'
 import { theStopOnAPerson, whoseText } from './directory'
+import {
+  TASK_RECORD_SECTIONS,
+  taskRecordExchangePage,
+  taskRecordNext,
+  taskRecordPosition,
+  taskRecordSelection,
+} from '../task-record-pages'
 
 const piecePayload = (
   piece: PieceRow,
@@ -259,7 +272,7 @@ const endedPiecePayload = (piece: PieceRow): Readonly<Record<string, unknown>> =
 })
 
 const HOW_TO_LIST_MORE_PIECES =
-  'list_tasks takes state — open, ended or all — and limit, which is how many ended pieces it lists, newest first; naming a piece reads its whole record.'
+  'list_tasks takes state — open, ended or all — and limit, which is how many ended pieces it lists, newest first; naming a piece reads its record.'
 
 export function createListTasksTool(
   host: Pick<
@@ -267,9 +280,12 @@ export function createListTasksTool(
     | 'agentCard'
     | 'answersHeldFor'
     | 'madeByItsProfile'
+    | 'nameByItsWork'
     | 'nameByItsWorkUnder'
     | 'pieceBoard'
     | 'pieceRecord'
+    | 'pieceIdForAddress'
+    | 'listConversationTasks'
     | 'servicePieceForStatus'
     | 'whatToCallTheConversation'
     | 'whenItWasArchived'
@@ -285,7 +301,7 @@ export function createListTasksTool(
     name: 'list_tasks',
     handlerOwnsMissingInput: true,
     description:
-      'Your pieces of work: named, one piece’s record — its state, current status line, the last exchange with the agent holding it, its open questions, its children and its resources — the inputs it was given and what was made for it; unnamed, your board — the open pieces you hold (your own root among them) and gave: waiting, working or stalled, and any you gave whose answer has not reached you. An open piece an archived conversation holds is named in one line and not listed. The ones that ended are counted and not listed: state: "all" lists them too and "ended" only them, a line each, newest first and as many as limit says; name one to read its record. Any piece can be named to read its record. Labels (W1.2) and ids both name a piece. made: true lists instead the files your profile’s conversations made.',
+      "Your work, one conversation's tasks, or one task's record. Unnamed: your board — the open tasks you hold, your own conversation's work among them, and the open work you gave, each with its conversation's address and title, and whether it is waiting, working or stalled. conversation: the tasks of one conversation, named by any of its labels, newest first. piece: one task's record — its state, current status line, brief, definition of done, last exchange with its holder, open questions, children and files. A label names a task for piece and that task's conversation for conversation. Any task can be named. Ended work is counted, not listed: state \"all\" lists it too, \"ended\" only it, a line each, newest first, as many as limit says. made: true lists the files your profile's conversations made. A record shows the brief, definition of done and status in full, then a few children and files with \"and N more\", and the first part of the last exchange; page through the rest with more and after. Older exchanges: read_transcript.",
     /**
      * **486 · the rails are the whole gate** (HO-031 §2.4).
      *
@@ -303,9 +319,25 @@ export function createListTasksTool(
       guarded(async () => {
         args = toolArgumentsAtHandler(args)
         const named = args.piece
+        const conversation = args.conversation
+        if (conversation !== undefined && named !== undefined)
+          return readerFieldRefusal('list_tasks', args, [
+            'conversation and piece cannot be given together',
+          ])!
+        if (conversation === undefined && args.cursor !== undefined)
+          return readerFieldRefusal('list_tasks', args, ['cursor needs conversation'])!
         if (named !== undefined && (typeof named !== 'string' || named.length === 0)) {
           return readerFieldRefusal('list_tasks', args, [
             'piece, when given, must be a label or an id',
+          ])!
+        }
+        if (named === undefined && (args.more !== undefined || args.after !== undefined)) {
+          return readerFieldRefusal('list_tasks', args, ['more and after need piece.'])!
+        }
+        const section = TASK_RECORD_SECTIONS.find((one) => one === args.more)
+        if (args.more !== undefined && section === undefined) {
+          return readerFieldRefusal('list_tasks', args, [
+            'more must be children, files or exchanges',
           ])!
         }
         const made = args.made
@@ -319,6 +351,10 @@ export function createListTasksTool(
             'made and piece cannot be given together',
           ])!
         }
+        if (made === true && conversation !== undefined)
+          return readerFieldRefusal('list_tasks', args, [
+            'made and conversation cannot be given together',
+          ])!
         const asked = theListingAsked(args.state, args.limit)
         if ('problems' in asked) {
           return readerFieldRefusal('list_tasks', args, asked.problems)!
@@ -333,6 +369,47 @@ export function createListTasksTool(
         }
         const fieldRefusal = readerFieldRefusal('list_tasks', args)
         if (fieldRefusal !== null) return fieldRefusal
+        if (typeof conversation === 'string') {
+          const listed = host.listConversationTasks({
+            conversation,
+            listing: asked.listing,
+            limit: asked.limit,
+            ...(typeof args.cursor === 'string' ? { cursor: args.cursor } : {}),
+          })
+          if (!listed.ok) {
+            if (listed.reason === 'invalid-cursor')
+              return readerFieldRefusal('list_tasks', args, [
+                'cursor must be the next value from this conversation and state',
+              ])!
+            return refusalAnswer(refuseTool('no-such-agent', { agent: conversation }))
+          }
+          const { tasks, next, ended, rowsUnread, ledgersSkipped } = listed
+          return answer(
+            {
+              outcome: 'ok',
+              conversation: listed.conversation,
+              tasks,
+              next,
+              ended,
+              rows_unread: rowsUnread,
+            },
+            [
+              listed.line,
+              ...tasks.map(
+                (task) =>
+                  `- task ${pieceLine(task.label, task.title)}${task.state === null ? '' : ` · ${task.state}`}`,
+              ),
+              ...(asked.listing === 'open' && ended > 0
+                ? [`${String(ended)} ended: list_tasks with conversation and state: ended.`]
+                : []),
+              ...(next === null
+                ? []
+                : [`Next page: list_tasks with conversation, the same state, and cursor: ${next}`]),
+              ...(rowsUnread === 0 ? [] : [unreadRowsSentence(rowsUnread)]),
+              ...(ledgersSkipped === 0 ? [] : [skippedRecordsSentence(ledgersSkipped)]),
+            ].join('\n'),
+          )
+        }
         if (made === true) {
           // **D-024 · R3 — what this conversation's profile made**, newest first, each with the
           // piece it was kept on and when; the rest counted. Named by its id, which
@@ -464,7 +541,7 @@ export function createListTasksTool(
           if (row.owner === me) return null
           const known = holders.get(row.owner)
           if (known !== undefined) return known
-          const name = host.whatToCallTheConversation(row.owner)
+          const name = host.nameByItsWork(row.owner)
           holders.set(row.owner, name)
           return name
         }
@@ -602,10 +679,21 @@ export function createListTasksTool(
             ].join('\n\n'),
           )
         }
-        const record = host.pieceRecord(me, named)
+        const continuedPiece = args.after === undefined ? null : host.pieceIdForAddress(named)
+        const position =
+          continuedPiece !== null && section !== undefined && typeof args.after === 'string'
+            ? taskRecordPosition(continuedPiece, section, args.after)
+            : null
+        if (args.after !== undefined && position === null) {
+          return readerFieldRefusal('list_tasks', args, [
+            'after needs the next value from the last page for this piece and list',
+          ])!
+        }
+        const record = host.pieceRecord(me, named, taskRecordSelection(section, position))
         if (record.is === 'no-piece-by-that-name') {
           return refusalAnswer(refuseTool('no-piece-by-that-name', { piece: named }))
         }
+        const task = record.is === 'a-root' ? record.root : record.piece
         const childPayload = (row: PieceRow): Readonly<Record<string, unknown>> => ({
           ...ownerFacts(row),
           piece: row.piece,
@@ -657,6 +745,90 @@ export function createListTasksTool(
             ].join(' '),
           ]
         }
+        const nameOf = (who: AConversation): string => called(who.conversation, who.about ?? null)
+        const exchangePage =
+          record.is === 'a-piece' && record.pagedExchange !== undefined
+            ? taskRecordExchangePage(record.pagedExchange, section === undefined, position)
+            : null
+        const childPage = record.pages?.children
+        const filePage = record.pages?.files
+        const pages = {
+          children: {
+            remaining: childPage?.remaining ?? 0,
+            next:
+              childPage?.through != null && childPage.remaining > 0
+                ? taskRecordNext(task.piece, { section: 'children', after: childPage.through })
+                : null,
+          },
+          files: {
+            remaining: filePage?.remaining ?? 0,
+            next:
+              filePage?.through != null && filePage.remaining > 0
+                ? taskRecordNext(task.piece, { section: 'files', after: filePage.through })
+                : null,
+          },
+          exchanges: {
+            remaining: exchangePage?.remaining ?? 0,
+            next:
+              exchangePage !== null && exchangePage.remaining > 0
+                ? taskRecordNext(task.piece, { section: 'exchanges', after: exchangePage.through })
+                : null,
+          },
+        }
+        const moreLines = TASK_RECORD_SECTIONS.flatMap((kind) => {
+          const { remaining, next } = pages[kind]
+          const rows = kind === 'exchanges' ? 'parts of the last exchange' : kind
+          return next === null
+            ? []
+            : [
+                `and ${String(remaining)} more ${rows}: list_tasks with piece, more: ${kind}, after: ${next}`,
+              ]
+        })
+        if (section !== undefined) {
+          const exchangeParts = exchangePage?.rows ?? []
+          const pageRows = {
+            children: record.children.map(childPayload),
+            files: resources,
+            exchanges: exchangeParts.map((part) => ({
+              kind: part.kind,
+              body: part.body,
+              part: part.part,
+              ...(part.from === undefined ? {} : { from: senderPayload(part.from) }),
+              ...wordsPayload(part.words),
+            })),
+          }
+          const pageText = {
+            children,
+            files: resourcesByRole(record.is === 'a-root' ? [] : record.piece.resources),
+            exchanges: exchangeParts.map((part) => {
+              const from =
+                part.from === undefined ? 'Answer' : `From ${fromClause(part.from, nameOf)}`
+              const words = 'text' in part.words ? part.words.text : '(words could not be read)'
+              return `${from} · part ${String(part.part)}:\n${words}`
+            }),
+          }
+          return answer(
+            {
+              outcome: 'ok',
+              piece: task.piece,
+              label: task.label,
+              [section]: pageRows[section],
+              ...pages[section],
+              ...(exchangePage?.restarted === true ? { restarted: true } : {}),
+              rows_unread: record.rowsUnread,
+            },
+            [
+              ...(exchangePage?.restarted === true
+                ? [
+                    'The last exchange has changed since your last page, so this starts again from its beginning.',
+                  ]
+                : []),
+              ...pageText[section],
+              ...moreLines,
+              ...unreadLines(record.rowsUnread, record.ledgersSkipped),
+            ].join('\n\n'),
+          )
+        }
         if (record.is === 'a-root') {
           // **R1 — a root is its title, its status line, its children and its resources**: its
           // state is its conversation's, which `get_agent_status` says.
@@ -667,41 +839,37 @@ export function createListTasksTool(
               owner: record.root.owner,
               children: record.children.map(childPayload),
               resources,
+              pages,
               rows_unread: record.rowsUnread,
             },
             [
               rootText(record.root, me).trimStart(),
               ...(children.length === 0 ? [] : [children.join('\n')]),
               ...resourcesByRole([]),
+              ...moreLines,
               ...unreadLines(record.rowsUnread, record.ledgersSkipped),
             ].join('\n\n'),
           )
         }
         const piece = record.piece
-        const nameOf = (who: AConversation): string => called(who.conversation, who.about ?? null)
+        const lastExchange = exchangePage?.preview ?? record.lastExchange
         return answer(
           {
             outcome: 'ok',
             ...payload(piece),
             brief: piece.brief,
-            // **D-012 · the last exchange with the conversation holding it, whole** — the
-            // `read_transcript` shape.
             last_exchange: {
               received:
-                record.lastExchange.received === null
-                  ? null
-                  : receivedPayload(record.lastExchange.received),
-              answer:
-                record.lastExchange.answer === null
-                  ? null
-                  : wordsPayload(record.lastExchange.answer),
-              ...(record.lastExchange.sinceThenItsProviderStartedATurn === true
+                lastExchange.received === null ? null : receivedPayload(lastExchange.received),
+              answer: lastExchange.answer === null ? null : wordsPayload(lastExchange.answer),
+              ...(lastExchange.sinceThenItsProviderStartedATurn === true
                 ? { since_then_its_provider_started_a_turn: true }
                 : {}),
             },
             open_questions: record.openQuestions,
             children: record.children.map(childPayload),
             resources,
+            pages,
             rows_unread: record.rowsUnread,
           },
           [
@@ -710,11 +878,13 @@ export function createListTasksTool(
             // **D-016 · commit 7 · R3 — its holder by its NAME**: the piece names the conversation.
             transcriptText(
               host.whatToCallTheConversation(piece.owner),
-              record.lastExchange,
+              lastExchange,
               [],
               false,
               nameOf,
+              (words) => ('text' in words ? words.text : '(words could not be read)'),
             ),
+            ...(lastExchange.received === null ? [] : ['Older exchanges: read_transcript.']),
             ...(record.openQuestions.length === 0
               ? []
               : [
@@ -722,6 +892,7 @@ export function createListTasksTool(
                 ]),
             ...(children.length === 0 ? [] : [children.join('\n')]),
             ...resourcesByRole(piece.resources),
+            ...moreLines,
             ...unreadLines(record.rowsUnread, record.ledgersSkipped),
           ].join('\n\n'),
         )

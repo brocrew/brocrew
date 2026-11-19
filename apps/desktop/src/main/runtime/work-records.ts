@@ -1,8 +1,25 @@
 import type { RaisedQuestion, RoutedRequest } from '../../shared/question-contracts'
 import type { HowAPieceEnded } from '../../shared/piece-called'
 import type { PieceRow, StatusLine } from '../../shared/task-contracts'
-import type { Exchange } from '../../shared/last-exchange'
-import type { ResourceRow } from '../db/session-store'
+import type { Exchange, TaskRecordExchange } from '../../shared/last-exchange'
+import type { ResourcePosition, ResourceRow } from '../db/session-store'
+
+export interface TaskRecordSelection {
+  readonly children?: number
+  readonly files?: ResourcePosition | null
+  readonly exchange: boolean
+  readonly limit: number
+}
+
+interface RecordPage<Position> {
+  readonly remaining: number
+  readonly through: Position | null
+}
+
+export interface TaskRecordPages {
+  readonly children?: RecordPage<number>
+  readonly files?: RecordPage<ResourcePosition>
+}
 
 /**
  * 🔴 **F089 · a piece `withdraw_task` named that the caller HOLDS** — the facts its refusal says it by:
@@ -74,6 +91,7 @@ export type PieceRecord =
       readonly children: readonly PieceRow[]
       /** ⚑ **D-023 · R1** — what its conversation kept for it, listed as a piece's are. */
       readonly resources: readonly ResourceRow[]
+      readonly pages?: TaskRecordPages
       readonly rowsUnread: number
       readonly ledgersSkipped?: number
     }
@@ -83,10 +101,12 @@ export type PieceRecord =
       readonly piece: PieceRow
       /** The last exchange with the conversation holding it, whole (D-012). */
       readonly lastExchange: Exchange
+      readonly pagedExchange?: TaskRecordExchange
       /** The questions its owner asked about it that are still open, by request id. */
       readonly openQuestions: readonly string[]
       readonly children: readonly PieceRow[]
       readonly resources: readonly ResourceRow[]
+      readonly pages?: TaskRecordPages
       readonly rowsUnread: number
       readonly ledgersSkipped?: number
     }

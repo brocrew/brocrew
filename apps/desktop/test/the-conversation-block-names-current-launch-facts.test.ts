@@ -48,8 +48,11 @@ describe('the conversation block at this launch', () => {
     const text = said({
       others: {
         shown: [
-          { label: 'W1', title: 'Before midnight', lastActiveAt: Date.UTC(2026, 9, 10, 22, 59) },
-          { label: 'W2', title: 'After midnight', lastActiveAt: Date.UTC(2026, 9, 10, 23, 1) },
+          {
+            line: 'conversation W1 · Before midnight',
+            lastActiveAt: Date.UTC(2026, 9, 10, 22, 59),
+          },
+          { line: 'conversation W2 · After midnight', lastActiveAt: Date.UTC(2026, 9, 10, 23, 1) },
         ],
         more: 0,
       },
@@ -62,9 +65,12 @@ describe('the conversation block at this launch', () => {
   it('never turns an absent or invalid activity into a time-only claim', () => {
     for (const lastActiveAt of [null, NaN, Infinity, 9e15]) {
       const text = said({
-        others: { shown: [{ label: 'sess_unknown', title: '', lastActiveAt }], more: 0 },
+        others: {
+          shown: [{ line: 'conversation sess_unknown · untitled', lastActiveAt }],
+          more: 0,
+        },
       })
-      expect(text).toContain('sess_unknown · Untitled conversation — last activity unknown.')
+      expect(text).toContain('sess_unknown · untitled — last activity unknown.')
       expect(text).not.toContain('last active ')
     }
   })
@@ -78,8 +84,8 @@ describe('the conversation block at this launch', () => {
     const text = said({
       others: {
         shown: [
-          { label: 'W1', title: 'Earlier', lastActiveAt: Date.UTC(2026, 2, 8, 6, 59) },
-          { label: 'W2', title: 'Later', lastActiveAt: Date.UTC(2026, 2, 8, 7, 1) },
+          { line: 'conversation W1 · Earlier', lastActiveAt: Date.UTC(2026, 2, 8, 6, 59) },
+          { line: 'conversation W2 · Later', lastActiveAt: Date.UTC(2026, 2, 8, 7, 1) },
         ],
         more: 0,
       },

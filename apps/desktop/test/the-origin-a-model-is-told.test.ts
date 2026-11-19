@@ -465,9 +465,7 @@ describe('414 · the origin a model is told', () => {
       // name and a piece: ⚑ W4.175, the piece it started this one from, which for a root owner
       // giving from its root is that root (⚠️ the launch's own call, asked of the host: this host
       // is handed no instruction reader, so no launch text reaches the double) …
-      expect(hostSource()).toContain(
-        'this.theStarterCalled(parentSessionId, conversation, startedFrom)',
-      )
+      expect(hostSource()).toContain('conversationLine(this.deps.store, parentSessionId)')
       const launchSays = (
         host as unknown as {
           theStarterCalled(starter: string, conversation: string | null, from: null): string
@@ -476,7 +474,7 @@ describe('414 · the origin a model is told', () => {
       expect(launchSays).toBe(
         `${agentName(made.pmProfile, store.agentIdentities())} (${theOwnerOf(named)})`,
       )
-      expect(host.nameByItsWork(made.pm)).toBe(launchSays)
+      expect(host.nameByItsWork(made.pm)).toContain(`conversation ${named.label} ·`)
       // … and the frame addresses the sender by the same piece, and no longer by its id.
       await waitFor(() => providerHeard(made.worker).length > 0, 'the provider to answer')
       const framed = providerHeard(made.worker)[0] ?? ''
@@ -1129,7 +1127,9 @@ describe('414 · the origin a model is told', () => {
       // ⚑ `questionText` leads with the asking conversation — ⚑ D-016 · commit 7 · R3: by its name
       // and the piece it owns, and that piece's label is the address it quotes, where it was the id
       // twice — so the origin is IN the words.
-      expect(question).toContain(`${host.nameByItsWork(made.worker)} is waiting on an answer`)
+      expect(question).toContain(
+        `${host.nameByItsWorkUnder(made.worker, null)} is waiting on an answer`,
+      )
       expect(question).toContain(`with asked_by ${host.addressOf(made.worker)}.`)
       expect(question).not.toContain('Sent by `')
     })

@@ -22,3 +22,14 @@ export async function callOn(
   if (tool === undefined) throw new Error(`no such tool: ${name}`)
   return (await tool.call(args)).structured as Record<string, unknown>
 }
+
+export function lastToolset(toolsets: readonly AgentToolset[]): AgentToolset {
+  const found = toolsets.at(-1)
+  if (found === undefined) throw new Error('no toolset was handed to that launch')
+  return found
+}
+
+export async function listedAgentIds(toolset: AgentToolset): Promise<string[]> {
+  const listed = (await callOn(toolset, 'list_agents')) as { agents: { agent: string }[] }
+  return listed.agents.map(({ agent }) => agent)
+}

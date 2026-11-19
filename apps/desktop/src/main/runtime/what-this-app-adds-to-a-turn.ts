@@ -22,43 +22,47 @@ export const OPEN_QUESTIONS_NAMED = 5
 /** How much of a question's first line the block quotes. */
 const FIRST_WORDS = 80
 
-/** How long a list this app's own turns already carried stays unsaid while it does not change. */
+/** How long to wait before repeating a confirmed person queue. */
 export const WHAT_IS_OPEN_IS_SAID_AGAIN_AFTER_MS = 2 * 60 * 60_000
-export const TURN_LABEL_POINTS = 128
+const TURN_LABEL_POINTS = 128
 
 export const TURN_BLOCK_WORDS = {
   nobody: 'Nothing of yours is waiting on the person.',
-  helpersUnavailable: "Helpers' status is not fully available. list_tasks shows the work you gave.",
   replyQuestion:
     'Your last reply asked the person something, but nothing is under Waiting on you. Ask it with ask_question if it still matters.',
   currentNone: 'Your current work: none.',
-  currentAmbiguous: (labels: string, more: number): string =>
-    `You hold several pieces: ${labels}${more > 0 ? ` and ${String(more)} more` : ''}. list_tasks shows them.`,
-  helpersHeading: 'Work you gave:',
+  currentAmbiguous: (labels: readonly string[], more: number): string =>
+    `You hold ${String(labels.length + more)} tasks: ${labels.join(', ')}${more > 0 ? ` and ${String(more)} more` : ''}. list_tasks shows them.`,
+  helpersHeading: 'Work you gave, still open:',
   waitingOnThePerson: 'waiting on the person',
   currentUnavailable: 'Your current work is not available. list_tasks shows what you hold.',
   untitled: 'untitled',
   noStatus: 'none',
-  helper: (label: string, name: string, state: string, age: string | null): string =>
-    `${label} · ${name} · ${state}${age === null ? '' : ` · ${age}`}`,
-  ended: (outcome: string): string => `ended: ${outcome}`,
-  unchanged: (count: number): string =>
-    `Work you gave: ${String(count)} ${count === 1 ? 'piece' : 'pieces'} out, no change.`,
+  helperUnknown: (label: string): string => `${label} · status unknown: list_tasks reads it`,
+  helper: (
+    conversation: string,
+    label: string,
+    name: string,
+    state: string,
+    age: string | null,
+    context: number | null,
+  ): string =>
+    `${conversation} · task ${label} · ${name} · ${state}${age === null ? '' : ` · ${age}`}${context === null ? '' : ` · context ${String(context)}%`}`,
   more: (count: number): string => `and ${String(count)} more: list_tasks`,
-  current: (label: string, title: string, status: string): string =>
-    `Your current work: ${label} · ${title} · status: ${status}. If either no longer fits, update it with update_work.`,
+  current: (label: string, title: string, status: string, conversation: string): string =>
+    `Your current work: task ${label} · ${title} · status: ${status}, in ${conversation}. If the task's title or status is out of date, update it with update_work; rename the conversation with rename_conversation.`,
 } as const
 
 export interface AHelperInTheTurn {
   readonly piece: string
   readonly label: string
+  readonly owner: string
+  readonly conversation: string
   readonly name: string
-  readonly state: string
+  readonly state: string | null
   readonly givenAt: number
   readonly changedAt: number | null
-  readonly open: boolean
   readonly urgent: boolean
-  readonly revision: string
 }
 
 export type CurrentWorkInTheTurn =
@@ -75,8 +79,11 @@ export interface ExtraTurnFacts {
   readonly helpers?: {
     readonly rows: readonly AHelperInTheTurn[]
     readonly more: number
-    readonly unchanged: number
-  } | null
+    readonly incomplete?: boolean
+  }
+  readonly conversation?: string
+  readonly currentContext?: number | null
+  readonly contextOf?: (conversation: string) => number | null
   readonly nobodyWaiting?: boolean
   readonly replyQuestion?: boolean
   readonly currentWork?: CurrentWorkInTheTurn
@@ -97,29 +104,27 @@ function oneLine(text: string, limit: number): string {
 
 function extraLines(facts: ExtraTurnFacts, now: number): string[] {
   const lines: string[] = []
-  if (
-    facts.helpers === null ||
-    facts.helpers?.rows.some((row) => [...row.label].length > TURN_LABEL_POINTS)
-  )
-    lines.push(TURN_BLOCK_WORDS.helpersUnavailable)
-  else if (facts.helpers !== undefined) {
-    const { rows, more, unchanged } = facts.helpers
+  if (facts.helpers !== undefined) {
+    const { rows, more } = facts.helpers
     if (rows.length > 0) lines.push(TURN_BLOCK_WORDS.helpersHeading)
     lines.push(
-      ...rows
-        .slice(0, 5)
-        .map((row) =>
-          TURN_BLOCK_WORDS.helper(
-            row.label,
-            oneLine(row.name, 64),
-            oneLine(row.state, 100),
-            row.changedAt === null ? null : howLongAgo(row.changedAt, now),
-          ),
-        ),
+      ...rows.slice(0, 5).map((row) => {
+        const label = [...row.label].length <= TURN_LABEL_POINTS ? row.label : row.piece
+        return row.state === null || label !== row.label
+          ? TURN_BLOCK_WORDS.helperUnknown(label)
+          : `- ${TURN_BLOCK_WORDS.helper(
+              row.conversation,
+              label,
+              oneLine(row.name, 64),
+              oneLine(row.state, 100),
+              row.changedAt === null ? null : howLongAgo(row.changedAt, now),
+              facts.contextOf?.(row.owner) ?? null,
+            )}`
+      }),
     )
     const overflow = more + Math.max(0, rows.length - 5)
     if (overflow > 0) lines.push(TURN_BLOCK_WORDS.more(overflow))
-    else if (rows.length === 0 && unchanged > 0) lines.push(TURN_BLOCK_WORDS.unchanged(unchanged))
+    else if (facts.helpers.incomplete === true) lines.push('list_tasks shows the work you gave.')
   }
   if (facts.nobodyWaiting === true) lines.push(TURN_BLOCK_WORDS.nobody)
   if (facts.replyQuestion === true) lines.push(TURN_BLOCK_WORDS.replyQuestion)
@@ -137,6 +142,7 @@ function extraLines(facts: ExtraTurnFacts, now: number): string[] {
           current.label,
           oneLine(current.title ?? TURN_BLOCK_WORDS.untitled, 200),
           oneLine(current.status ?? TURN_BLOCK_WORDS.noStatus, 200),
+          facts.conversation ?? 'this conversation',
         ),
       )
     else
@@ -145,20 +151,23 @@ function extraLines(facts: ExtraTurnFacts, now: number): string[] {
           ? TURN_BLOCK_WORDS.currentNone
           : current.kind === 'ambiguous'
             ? TURN_BLOCK_WORDS.currentAmbiguous(
-                current.labels.slice(0, 5).join(', '),
+                current.labels.slice(0, 5),
                 current.more + Math.max(0, current.labels.length - 5),
               )
             : TURN_BLOCK_WORDS.currentUnavailable,
       )
   }
+  const context = facts.currentContext ?? null
+  if (context !== null) lines.push(`Your context: ${String(context)}% used.`)
   return lines
 }
 
-/** A question the conversation asked a person, still open. */
+/** A question the conversation asked, still open. */
 export interface AQuestionItHasOpen {
   readonly id: string
   readonly askedAt: number
   readonly prompt: string
+  readonly recipient?: string
 }
 
 /** Someone who gave the conversation a piece it still holds open. */
@@ -180,21 +189,6 @@ interface AnAskerWaitingOnIt {
 export interface WhoWaitsOnIt {
   readonly givers: readonly AGiverWaitingOnIt[]
   readonly askers: readonly AnAskerWaitingOnIt[]
-}
-
-/**
- * ⚑ **A list as one string to compare** — the same string for the same questions, or the same
- * givers and askers, whatever their ages, so *did it change since it was last said* is one
- * comparison.
- */
-export function itsQuestionsInOneWord(questions: readonly AQuestionItHasOpen[]): string {
-  return JSON.stringify(questions.map((one) => one.id))
-}
-export function whoWaitsInOneWord(waiting: WhoWaitsOnIt): string {
-  return JSON.stringify([
-    waiting.givers.map((one) => [one.who, one.work]),
-    waiting.askers.map((one) => one.id),
-  ])
 }
 
 const nowFormat = localFormat({
@@ -227,30 +221,34 @@ function itsOpenQuestions(questions: readonly AQuestionItHasOpen[], now: number)
   if (questions.length === 0) return []
   const named = questions.slice(0, OPEN_QUESTIONS_NAMED).map((one) => {
     const asked = itsFirstWords(one.prompt)
-    const when = `asked ${howLongAgo(one.askedAt, now)}`
-    return asked === '' ? `- ${one.id}, ${when}` : `- ${one.id}, ${when}: “${asked}”`
+    const lead = `- ${one.id} to ${one.recipient ?? 'the person'}, asked ${howLongAgo(one.askedAt, now)}`
+    return asked === '' ? lead : `${lead}: “${asked}”`
   })
   const more = questions.length - named.length
   return [
-    questions.length === 1
-      ? 'You have 1 question open with the person:'
-      : `You have ${String(questions.length)} questions open with the person:`,
+    "Questions you're waiting on:",
     ...named,
-    ...(more > 0 ? [`and ${String(more)} more. list_questions shows them all.`] : []),
-    'If one is answered or no longer needed, take it back with withdraw_question.',
+    ...(more > 0 ? [`and ${String(more)} more: list_questions`] : []),
+    "Withdraw one you don't need with withdraw_question; withdraw your questions about a task when it ends.",
   ]
 }
 
 function whoWaitsOnIt(waiting: WhoWaitsOnIt, now: number): string[] {
   if (waiting.givers.length + waiting.askers.length === 0) return []
+  const givers = waiting.givers.slice(0, OPEN_QUESTIONS_NAMED)
+  const askers = waiting.askers.slice(0, OPEN_QUESTIONS_NAMED - givers.length)
+  const moreWork = waiting.givers.length - givers.length
+  const moreAskers = waiting.askers.length - askers.length
   return [
     'Waiting on you:',
-    ...waiting.givers.map((one) => `- ${one.who} gave you ${one.work}, and is waiting for it.`),
-    ...waiting.askers.map(
+    ...givers.map((one) => `- ${one.who} gave you task ${one.work} and is waiting for it.`),
+    ...askers.map(
       (one) =>
         `- ${one.who} asked you ${one.id} ${howLongAgo(one.askedAt, now)}. ` +
         'Answer it with answer_question.',
     ),
+    ...(moreWork > 0 ? [TURN_BLOCK_WORDS.more(moreWork)] : []),
+    ...(moreAskers > 0 ? [`and ${String(moreAskers)} more: list_questions`] : []),
   ]
 }
 

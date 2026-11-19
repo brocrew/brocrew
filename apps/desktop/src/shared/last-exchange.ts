@@ -72,6 +72,11 @@ export interface Exchange {
   readonly sinceThenItsProviderStartedATurn?: true
 }
 
+export interface TaskRecordExchange {
+  readonly exchange: Exchange
+  readonly revision: string
+}
+
 /**
  * ⚑ **One turn of a transcript, as `read_transcript` reads it** — the message received and every
  * main-thread word said back to it, in order, joined. ⚠️ Tool calls and sub-agents' words are not

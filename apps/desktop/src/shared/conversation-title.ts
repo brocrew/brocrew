@@ -27,6 +27,27 @@ export interface ConversationTitle {
   readonly at: number
 }
 
+export interface ConversationRenameInput {
+  readonly conversation: string
+  readonly title: string
+}
+
+export type ConversationRenameResult =
+  | {
+      readonly ok: true
+      readonly conversation: string
+      readonly address: string
+      readonly title: string
+      readonly author: ConversationTitleAuthor
+      readonly previousTitle: string
+      readonly previousAuthor: ConversationTitleAuthor | null
+    }
+  | {
+      readonly ok: false
+      readonly code: 'bad-title' | 'unknown-conversation'
+      readonly reason: string
+    }
+
 /** The title trimmed, or `null` unless it is one line of 1 to {@link CONVERSATION_TITLE_CHARS} characters. */
 export function aConversationTitle(text: unknown): string | null {
   if (typeof text !== 'string') return null
