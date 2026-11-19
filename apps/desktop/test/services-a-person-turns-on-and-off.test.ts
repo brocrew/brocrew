@@ -620,10 +620,10 @@ describe('services a person turns on and off', () => {
   })
 
   describe('what is shown of a service', () => {
-    it('names it by its agent and what it is, never by a piece it holds', async () => {
+    it('names it by its conversation id and agent name while it holds callers’ tasks', async () => {
       const { host, service, one, two, releaseTheTurn } = await aServiceWithWorkQueued()
       const named = host.nameByItsWork(service)
-      expect(named).toBe(`${host.whatToCallTheConversation(service)} (a service)`)
+      expect(named).toBe(`conversation ${service} · ${host.whatToCallTheConversation(service)}`)
       expect(named).not.toContain(one.label)
       expect(named).not.toContain(two.label)
       expect(host.addressOf(service)).toBe(service)

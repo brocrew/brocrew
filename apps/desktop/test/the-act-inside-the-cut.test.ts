@@ -690,7 +690,7 @@ const ACT: Readonly<Record<string, string>> = {
   'WORK_SEARCH_RAILS|work-search-invalid/past-work': 'Use one to 20 search words',
   'WORK_SEARCH_RAILS|work-search-unavailable/past-work': 'Try again',
   'WORK_SEARCH_RAILS|work-search-invalid':
-    'Use a listed scope and state, at most 20 words, and a limit from 1 to 50',
+    'Use at most 20 words, a known profile, valid dates and a limit from 1 to 50',
   'WORK_SEARCH_RAILS|work-search-cursor-invalid': 'Start the search again',
   'WORK_SEARCH_RAILS|work-search-unavailable': 'Try again',
   'WORK_SEARCH_RAILS|work-search-busy': 'Try again in a moment',
