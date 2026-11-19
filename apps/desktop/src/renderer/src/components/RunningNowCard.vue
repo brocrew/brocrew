@@ -63,7 +63,13 @@ async function open(run: PanelRun): Promise<void> {
 }
 </script>
 <template>
-  <CardSection icon="#i-bot" :count="runs.active.length" data-cy="panel-agents">
+  <CardSection
+    class="running-now"
+    icon="#i-bot"
+    :count="runs.active.length"
+    fold="brobot2.cardRunningNowFolded"
+    data-cy="panel-agents"
+  >
     <template #title><span data-cy="running-now-title">Running now</span></template>
     <div data-cy="running-now-rows">
       <PanelRunRow
@@ -111,6 +117,9 @@ async function open(run: PanelRun): Promise<void> {
   >
 </template>
 <style scoped>
+.running-now {
+  margin: 0 var(--space-5) var(--space-5);
+}
 .subheading {
   padding-top: var(--space-5);
   border-top: var(--border-width) solid var(--line);
