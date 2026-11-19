@@ -22,48 +22,11 @@ import {
   RecordingSink,
   syntheticProviderHome,
   neutralHostDeps,
+  waitFor,
 } from './lib/host-fixture'
-
-/**
- * # F086 · F087 · F088 · a message names a piece however it ended, and is refused truly
- *
- * `7bd23f9e` (F086) and `db6e90a3` (F087, F088) pinned their own cases in
- * `a-take-back-tells-its-owner-and-a-note-names-what-it-is-about.test.ts`: a held piece ANSWERED (by
- * note and by follow-up), a follow-up's two new sentences, and the receiver's *"This message is
- * about …"* line for an open piece and an answered one — straight, held, after a restart, at a
- * replacement and in a batch. This file pins what those leave open:
- *
- *  - **§1 · F086 · F087 · a held piece TAKEN BACK or CLOSED** — its holder's note naming it is
- *    admitted and its giver is told *"(taken back)"* / *"(closed)"*; its holder's follow-up naming
- *    the holder sends about it, and its giver can send about it too.
- *  - **§2 · F086 · a piece the RECEIVER holds is not the sender's to name** — a note naming it is
- *    refused `no-piece-by-that-name`, open or ended, beside the giver's note naming it, admitted.
- *  - **§3 · F087 · a piece given another agent, once ended, and once that agent was replaced** — the
- *    refusal's words, and the call they name goes.
- *  - **§4 · F088 · every ending mark on every path a held message takes** — answered, taken back and
- *    closed; held behind a turn, rebuilt after a quit, handed to the conversation that took its
- *    receiver's place — each beside a note that names no piece, which carries no such sentence.
- *  - **§5 · F088 · which piece, by the title it stands under now** — the sender's own root by its
- *    title (no mark), one of two pieces its owner holds (never the other), and a retitled piece by
- *    its new title.
- *  - **§6 · F088 · only an agent's words carry it** — a held app notice about a piece keeps no
- *    `about` on its row; a held note beside it does.
- *
- * Real host, real SQLite ledger, real migrations, over `FakeRuntime` — the harness of the devs' own
- * file, plus {@link driveUntilHeard}, which answers whatever cards stand between a held message and
- * its turn (bounded).
- */
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-const waitFor = async (ready: () => boolean, what: string, tries = 300): Promise<void> => {
-  for (let attempt = 0; attempt < tries; attempt += 1) {
-    if (ready()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
 
 /** `FakeRuntime` with the toolset each launch was handed captured, so a test can act as that agent. */
 type WordsInARow = TranscriptEvent & { type: 'user_turn' | 'message_queued'; text: string }
@@ -526,7 +489,7 @@ describe('F086 · F087 · F088 · a message names a piece however it ended', () 
   const readAsEnded = async (receiver: string, label: string, ending: Ending): Promise<void> => {
     const named = await driveUntilHeard(receiver, NAMED)
     const plain = await driveUntilHeard(receiver, PLAIN)
-    const about = `${ABOUT} ${label} · first piece (${MARK[ending]}).`
+    const about = `${ABOUT} ${label} · first piece (${MARK[ending]}), in your conversation `
     const namedSection = theSectionOf(named, NAMED, [PLAIN])
     expect(namedSection, namedSection).toContain(about)
     expect(namedSection.split(ABOUT), namedSection).toHaveLength(2)
@@ -603,8 +566,8 @@ describe('F086 · F087 · F088 · a message names a piece however it ended', () 
     expect(note, JSON.stringify(note)).toMatchObject({ outcome: 'ok', label: rootPiece.label })
     const turn = await driveUntilHeard(worker, 'the launch is what this is all for')
     const section = theSectionOf(turn, 'the launch is what this is all for', [])
-    // ⛔ A root never ends: its title, then the full stop — never a bare label, never a mark.
-    expect(section, section).toContain(`${ABOUT} ${rootPiece.label} · Plan the launch.`)
+    // A root has no ending mark between its title and the receiver name.
+    expect(section, section).toContain(`${ABOUT} ${rootPiece.label} · Plan the launch, in your conversation `)
     expect(section, section).not.toContain(`${ABOUT} ${rootPiece.label}.`)
   })
 

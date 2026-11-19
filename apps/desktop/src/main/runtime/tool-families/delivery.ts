@@ -10,7 +10,6 @@ import { type TakeBackRefused } from '../host-split/host-command-contracts'
 import { ASKED_TO_STOP, type WhereAnAskLanded } from '../../../shared/how-work-stopped'
 import { AStartThatDidNotHappen, SessionStillStarting, unavailableOf } from '../session-unavailable'
 import { type AgentToolAnswer } from '@brobot2/runtime'
-import { type AgentToolHost } from './host'
 import { PROVIDER_DESCRIPTORS, type Provider, providerDescriptor } from '@brobot2/shared'
 import { type ReplyOutcome, theStoppedWork } from '../reply-rails'
 import { TOOL_SENTENCES, refuseTool } from './refusals'
@@ -256,24 +255,8 @@ export function theQuestionsItEnded(endedQuestions: number): string {
  * would be false whenever one is held — and so would *until its turn ends*, one turn early. So
  * the sentences that use this say *until it is free*.
  */
-export const WITH_WHATEVER_ELSE_IS_HELD =
+const WITH_WHATEVER_ELSE_IS_HELD =
   'with whatever else is held for it, oldest first (a person\u2019s command goes on its own)'
-
-/**
- * **A held delivery's answer when what is held waits for a reopen on the current Claude
- * sign-in, for a person to answer what its turn is stopped on, or (F074) for its provider's usage
- * limit to reset** — `held`, then why ({@link AgentToolHost.whyWhatIsHeldWaits}) — or `null`, and
- * the caller says *until it is free*. It REPLACES that clause rather than following it: a free
- * conversation that waits for its reopen or for a reset does not take the words *at once*.
- */
-export function heldAndWhy(
-  host: Pick<AgentToolHost, 'whyWhatIsHeldWaits'>,
-  conversation: string,
-  held: string,
-): string | null {
-  const waits = host.whyWhatIsHeldWaits(conversation)
-  return waits === null ? null : `${held} ${waits}`
-}
 
 /**
  * **D-022 · R3 — what reached the holder of a piece**, in the words `withdraw_task` and
@@ -294,7 +277,7 @@ export function whatReachedItsHolder(
   what: 'a-stop' | 'a-stop-asked' | 'a-new-brief' | 'its-inputs',
   /**
    * Why what is held waits for more than the holder's turn, when it does — said IN PLACE of
-   * *until it is free* ({@link heldAndWhy}'s rule).
+   * *until it is free*.
    */
   waits: string | null,
 ): string {
@@ -345,7 +328,7 @@ export function whereTheReplyWent(
       return `it went to ${giver} straight away.${inItsPlace}`
     case 'held':
       // Held for the giver's reopen on the current sign-in, it says why in place of *until it is
-      // free* ({@link heldAndWhy}'s rule).
+      // free*.
       return replied.why === undefined
         ? `it is held until ${giver} is free, then goes out ${WITH_WHATEVER_ELSE_IS_HELD}.${inItsPlace}`
         : `it is held for ${giver}. ${replied.why}${inItsPlace}`
@@ -368,30 +351,6 @@ export const AS_A_DELIVERY: Readonly<Record<NewBriefDelivery, TellDelivery>> = {
   'not-delivered': 'not-delivered',
   'with-its-give': 'held',
   'after-it-ended': 'not-delivered',
-}
-
-/**
- * **D-017 · R10 — what a receipt says about a conversation that could never be reopened** (`05`
- * rule 3): once, to the sender whose message found it, what happened — and after that, where each
- * message went. `''` when nothing replaced it.
- *
- * **D-016 · commit 7 · R3 — named by the work each holds, and never by an id**: the one that
- * could not be reopened by the piece it owns, and the one in its place by its address — the label of
- * the piece that names it, or its id when it holds none — which every door that takes an agent takes.
- */
-export function whereItWent(
-  agent: string,
-  before: string | null,
-  wentTo: string | null,
-  host: Pick<AgentToolHost, 'nameByItsWork' | 'whatToCallTheConversation' | 'addressOf'>,
-): string {
-  if (wentTo === null) return ''
-  const who = host.whatToCallTheConversation(wentTo)
-  const was = host.nameByItsWork(agent)
-  const now = host.addressOf(wentTo)
-  return before === null
-    ? `The history of ${was} could not be reopened, so a new conversation of ${who}, ${now}, took your message. It has ${who}'s memory but not that history. `
-    : `${was} could not be reopened, and a new conversation of ${who}, ${now}, took its place: `
 }
 
 /**

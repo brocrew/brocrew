@@ -122,6 +122,7 @@ import {
 } from './conversation-address'
 import { renameConversation } from './rename-conversation'
 import { sendReceipt, type SendFacts } from './send-receipt'
+import { outboundQuestionText } from './outbound-question-words'
 import {
   INLINE_TEXT_LIMIT,
   keepPlainSendFile,
@@ -12655,13 +12656,9 @@ export class RuntimeHost implements LiveHost {
     | { readonly ok: true; readonly files: readonly (OfferedFile & { readonly title: string })[] }
     | { readonly ok: false; readonly refusal: ResourceRefusal | T } {
     if (spelled.length === 0) return { ok: true, files: [] }
-    const root = this.deps.resourcesRoot?.()
-    if (root === undefined) {
-      return { ok: false, refusal: refuseResource('resource-store-unavailable') }
-    }
-    const folder = this.deps.store.recordedOne(conversation)?.cwd ?? null
-    const offered = this.readFilesOfferedIn(folder, spelled)
+    const offered = this.filesForKeeping(conversation, spelled)
     if (!offered.ok) return offered
+    const { root } = offered
     const files = offered.files.map((file) => ({ ...file, sha256: sha256Hex(file.bytes) }))
     const refused = admitFiles?.(files)
     if (refused != null) return { ok: false, refusal: refused }
@@ -12678,6 +12675,16 @@ export class RuntimeHost implements LiveHost {
       }
     }
     return { ok: true, files: files.map((file) => ({ ...file, title: resourceTitle(file) })) }
+  }
+
+  private filesForKeeping(conversation: string, spelled: readonly string[]) {
+    const root = this.deps.resourcesRoot?.()
+    if (root === undefined) {
+      return { ok: false, refusal: refuseResource('resource-store-unavailable') } as const
+    }
+    const folder = this.deps.store.recordedOne(conversation)?.cwd ?? null
+    const offered = this.readFilesOfferedIn(folder, spelled)
+    return offered.ok ? { ...offered, root } : offered
   }
 
   private readFilesOfferedIn(
@@ -12705,13 +12712,9 @@ export class RuntimeHost implements LiveHost {
     | { readonly ok: true; readonly files: readonly (OfferedFile & { readonly title: string })[] }
     | { readonly ok: false; readonly refusal: ResourceRefusal } {
     if (spelled.length === 0) return { ok: true, files: [] }
-    const root = this.deps.resourcesRoot?.()
-    if (root === undefined) {
-      return { ok: false, refusal: refuseResource('resource-store-unavailable') }
-    }
-    const folder = this.deps.store.recordedOne(conversation)?.cwd ?? null
-    const offered = this.readFilesOfferedIn(folder, spelled)
+    const offered = this.filesForKeeping(conversation, spelled)
     if (!offered.ok) return offered
+    const { root } = offered
     const files: (OfferedFile & { readonly title: string })[] = []
     for (const file of offered.files) {
       const kept = keepPlainSendFile(root, file.name, file.bytes)
@@ -13300,7 +13303,7 @@ export class RuntimeHost implements LiveHost {
   ): string {
     const { address, line } = this.questionConversation(asker)
     const task = request.piece == null ? null : this.onePieceAsItStandsNow(request.piece)
-    return questionText(
+    return outboundQuestionText(
       { called: this.whatToCallTheConversation(asker), address, line },
       { ...request, label: request.label ?? task?.label, taskTitle: task?.title },
       this.questionConversation(receiver).line,
@@ -13410,6 +13413,22 @@ export class RuntimeHost implements LiveHost {
     return 'missing'
   }
 
+  private questionCanBeReminded(
+    asker: string,
+    id: string,
+    answererIds: readonly string[],
+    ledgerOf: (conversation: string) => StateLedger = this.oneLedgerReadPerAnswer(),
+  ): boolean {
+    const original = ledgerOf(asker).raised.get(id)
+    return (
+      original?.raisedBy === 'this-app' &&
+      original.passedUpFrom === null &&
+      !answererIds.some((answerer) =>
+        [...ledgerOf(answerer).raised.values()].some((raised) => raised.passedUpFrom === id),
+      )
+    )
+  }
+
   private stalledQuestionRecipient(request: RoutedRequest) {
     if (
       request.parent === null ||
@@ -13420,8 +13439,10 @@ export class RuntimeHost implements LiveHost {
       return undefined
     }
     const answerer = this.theOneInItsPlace(request.parent)
+    const answererIds = this.theIdsItStandsFor(answerer)
+    if (!this.questionCanBeReminded(request.askedBy, request.requestId, answererIds)) return undefined
     const { reminder } = this.questionWakeIds(request.askedBy, request.requestId)
-    if (this.questionReminderProgress(this.theIdsItStandsFor(answerer), reminder) !== 'turn-ended') {
+    if (this.questionReminderProgress(answererIds, reminder) !== 'turn-ended') {
       return undefined
     }
     const { address, title } = this.questionConversation(answerer)
@@ -13439,7 +13460,8 @@ export class RuntimeHost implements LiveHost {
   }
 
   private queueOwedQuestionReminders(session: HostedSession): void {
-    const owed = this.oneOwedReadPerAnswer(this.oneLedgerReadPerAnswer())(session.id)
+    const ledgerOf = this.oneLedgerReadPerAnswer()
+    const owed = this.oneOwedReadPerAnswer(ledgerOf)(session.id)
     if (owed.length === 0) return
     const last = this.deps.store.lastEndedTurn(session.id)
     if (last?.how !== 'it-finished' || last.who !== null) return
@@ -13452,6 +13474,7 @@ export class RuntimeHost implements LiveHost {
     const answererIds = this.theIdsItStandsFor(session.id)
     for (const { askedBy, requestId } of owed) {
       if (waiting.has(questionKey(askedBy, requestId))) continue
+      if (!this.questionCanBeReminded(askedBy, requestId, answererIds, ledgerOf)) continue
       const { reminder, notice } = this.questionWakeIds(askedBy, requestId)
       const progress = this.questionReminderProgress(answererIds, reminder)
       if (progress === 'turn-ended') {
@@ -13490,6 +13513,7 @@ export class RuntimeHost implements LiveHost {
   ): Promise<void> {
     await this.afterWhatArrivedFirst(this.theOneInItsPlace(asker), async () => {
       if (this.howItsQuestionEnded(asker, question) !== null) return
+      if (!this.questionCanBeReminded(asker, question, this.theIdsItStandsFor(answerer))) return
       const to = this.theOneInItsPlace(asker)
       const notice = 'a-question-stayed-unanswered'
       const kept = this.theIdsItStandsFor(to).some(

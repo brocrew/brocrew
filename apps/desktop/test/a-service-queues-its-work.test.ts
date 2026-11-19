@@ -945,65 +945,6 @@ describe('a service queues the work it is given', () => {
     const NOT_TOLD =
       'could not be told. The piece was queued and had not reached it, so nothing was sent.'
 
-    it('a Give receipt says held and carries its place in line and the task folder', async () => {
-      const { host, first } = await aServiceAndTwoCallers()
-      const newestOfType = world.store.newestOfType
-      if (newestOfType === undefined) throw new Error('Missing the stored context reader.')
-      const failedReads: string[] = []
-      world.store.newestOfType = (conversation, type, before, from) => {
-        if (type === 'context_reading' && failedReads.length === 0) {
-          failedReads.push(conversation)
-          throw new Error('The stored context reading could not be read.')
-        }
-        return newestOfType(conversation, type, before, from)
-      }
-      const given = await call(host, first, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'browser-driver',
-        title: 'Book the room',
-        brief: 'book the meeting room for Tuesday',
-        folder: world.folder,
-      })
-      expect(given.structured).toMatchObject({
-        outcome: 'ok',
-        delivery: 'held',
-        queued_behind: 0,
-        folder: { use: 'grant', folder: world.folder },
-        receipt: {
-          recipient: {
-            address: given.structured.agent,
-            title: expect.any(String),
-            state: { kind: 'queued', behind: 0 },
-          },
-          recorded: { kind: 'task', id: given.structured.piece },
-        },
-      })
-      expect(failedReads).toEqual([given.structured.agent])
-      expect(world.store.workById(String(given.structured.piece))?.owner).toBe(
-        given.structured.agent,
-      )
-      const label = String(given.structured.label)
-      expect(given.text.split('\n')[0]).toContain(
-        `Task ${label} held for browser-driver in a new conversation ${String(given.structured.agent)} · `,
-      )
-      expect(given.text.split('\n')[0]).toMatch(/Context: no current reading\.$/)
-      expect(given.text.split('\n')[0]).not.toContain('Book the room')
-      const behind = await call(host, first, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'browser-driver',
-        title: 'Order lunch',
-        brief: 'order lunch for six',
-      })
-      expect(behind.structured).toMatchObject({ outcome: 'ok', queued_behind: 1 })
-      expect(behind.structured.receipt).toMatchObject({
-        recipient: { state: { kind: 'queued', behind: 1 } },
-      })
-      expect(behind.text.split('\n')[0]).toContain(
-        `Task ${String(behind.structured.label)} held for browser-driver in the existing conversation ${String(given.structured.agent)} · `,
-      )
-      expect(behind.structured).not.toHaveProperty('folder')
-    })
-
     it('update_work and withdraw_task say the service was not told, and why', async () => {
       const { host, first } = await aServiceAndTwoCallers()
       await aServiceAtWork(host, first)

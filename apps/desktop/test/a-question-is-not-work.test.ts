@@ -838,37 +838,26 @@ describe('415 · a question is not work', () => {
    * halves of one reading (`tasksVisibleTo`; `pieceBoard` since D-016).
    */
   describe('§6 · a child speaking UP about work it holds', () => {
-    it('🔴 `message_agent` naming a task the caller HOLDS is refused, and named as the mistake', async () => {
-      // ⚑ **Through the real door**: BroBot gives the PM a piece of work, so the PM holds a piece —
-      // ⚑ **D-016** — the give that started it.
+    it('a child can send a note about the open task it holds', async () => {
       const { brobot, pm, pmTools } = await aChainOfThree()
       const held = store.piecesOwnedBy(pm)[0]
-      expect(held, 'the PM holds no piece, so nothing below is being measured').toBeDefined()
-
-      // ⛔ **The exact call `HO-095` §3 measured**: the manager, naming the task it HOLDS,
-      // addressed to the conversation that gave it.
-      const refused = await callOn(pmTools, 'message_agent', {
+      if (held === undefined) throw new Error('The PM holds no piece.')
+      const text = 'Here is my plan.'
+      const sent = await callOn(pmTools, 'message_agent', {
         agent: brobot,
-        text: 'here is my plan, may I proceed?',
-        kind: 'follow-up',
-        piece: held?.piece,
+        text,
+        piece: held.piece,
       })
-
-      expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
-      // 🔴 **The new word, and it names the MISTAKE rather than the state** — `that-agent-is-you`'s
-      // own shape (`424`), one object over.
-      expect(refused.rail).toBe('that-is-work-you-hold')
-      const reason = String(refused.reason)
-      expect(reason).toContain('HOLDING')
-      expect(reason).toContain('ask_question')
-      expect(reason).toContain('stays yours and stays open')
-      expect(reason).toContain('reply_to_parent')
-      // ⚑ **Nothing was sent**, which every sentence in this table says and a caller must never
-      // have to guess.
-      expect(saidToProvider(brobot)).toEqual([])
+      expect(sent).toMatchObject({ outcome: 'ok', kind: 'note', piece: held.piece, label: held.label })
+      await waitFor(
+        () => saidToProvider(brobot).some((words) => words.includes(text)),
+        'the note to reach the giver',
+      )
+      expect(store.workById(held.piece)?.owner).toBe(pm)
+      expect(TASK_IS_OPEN[store.workById(held.piece)?.state ?? 'answered']).toBe(true)
     })
 
-    it('⛔ …and the remedy it names WORKS, which is what makes it a remedy', async () => {
+    it('asks the giver a question while the task remains open', async () => {
       // 🔴 **The brief's criterion 4: performable BY THE REFUSED CALLER**, not merely present in a
       // string. ⚠️ `a-priced-cost-can-name-a-remedy-that-does-not-exist` is what this is measured
       // against — so the same caller, the same task, makes the call the sentence named.
@@ -894,10 +883,7 @@ describe('415 · a question is not work', () => {
       expect(host.questionsWaitingOn(brobot).length).toBeGreaterThan(0)
     })
 
-    it('⚠️ an id that is NOBODY’s still meets the old refusal — the repair is a split', async () => {
-      // ⛔ **The new rail takes ONE case and not the family**, which is what keeps
-      // `not-a-piece-you-gave` (D-016's name for `no-task-you-gave-that-agent`) truthful where it
-      // is the truth.
+    it('refuses a Message that names an unknown task', async () => {
       const { brobot, pmTools } = await aChainOfThree()
       const refused = await callOn(pmTools, 'message_agent', {
         agent: brobot,
@@ -905,8 +891,7 @@ describe('415 · a question is not work', () => {
         kind: 'follow-up',
         piece: 'work_00000000-0000-4000-8000-000000000000',
       })
-      expect(refused.rail).toBe('not-a-piece-you-gave')
-      expect(String(refused.reason)).toContain('not a piece you gave')
+      expect(refused).toMatchObject({ outcome: 'refused', rail: 'no-piece-by-that-name' })
     })
   })
 })

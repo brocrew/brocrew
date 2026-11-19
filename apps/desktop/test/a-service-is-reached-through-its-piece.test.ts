@@ -125,6 +125,21 @@ describe('a service is reached through the piece it is on', () => {
     return { held, release }
   }
 
+  const holdFollowUpAtSignIn = async (
+    host: RuntimeHost, caller: string, one: Given, releaseTheTurn: () => void,
+  ) => {
+    const followed = await queueServiceFollowUp(host, caller, one, 'the room on the third floor')
+    expect(followed.outcome).toBe('queued')
+    const signIn = aGate()
+    world.signInWait = signIn.held
+    const checked = world.signInChecks
+    releaseTheTurn()
+    await vi.waitFor(() => {
+      expect(world.signInChecks).toBeGreaterThan(checked)
+    })
+    return signIn
+  }
+
   const aServiceOnTheFirstPiece = async (
     opts: {
       turnHeld?: boolean
@@ -438,8 +453,7 @@ describe('a service is reached through the piece it is on', () => {
         releaseTheTurn()
         expect(waiting()).toMatchObject(recorded)
 
-        const after = world.aHost()
-        await after.resumeSession(service, world.window)
+        world.aHost()
         await vi.waitFor(() => {
           const delivered = world.sent.filter(
             (send) => send.as === 'browser-driver' && send.words.includes(text),
@@ -812,15 +826,7 @@ describe('a service is reached through the piece it is on', () => {
           turnHeld: true,
           signInsChecked: true,
         })
-        const followed = await queueServiceFollowUp(host, caller, one, 'the room on the third floor')
-        expect(followed.outcome).toBe('queued')
-        const signIn = aGate()
-        world.signInWait = signIn.held
-        const checked = world.signInChecks
-        releaseTheTurn()
-        await vi.waitFor(() => {
-          expect(world.signInChecks).toBeGreaterThan(checked)
-        })
+        const signIn = await holdFollowUpAtSignIn(host, caller, one, releaseTheTurn)
         expect(rows(service, 'user_turn')).toHaveLength(1)
         const quiet = vi.spyOn(console, 'warn').mockImplementation(() => {})
         let answering: Promise<unknown> = Promise.resolve()
@@ -923,15 +929,7 @@ describe('a service is reached through the piece it is on', () => {
       })
       world.anAgent('helper', 'nothing kept')
       await giveAndReportAFreeRoom(host, service)
-      const followed = await queueServiceFollowUp(host, caller, one, 'the room on the third floor')
-      expect(followed.outcome).toBe('queued')
-      const signIn = aGate()
-      world.signInWait = signIn.held
-      const checked = world.signInChecks
-      releaseTheTurn()
-      await vi.waitFor(() => {
-        expect(world.signInChecks).toBeGreaterThan(checked)
-      })
+      const signIn = await holdFollowUpAtSignIn(host, caller, one, releaseTheTurn)
       const quiet = vi.spyOn(console, 'warn').mockImplementation(() => {})
       const ordinal = world.store.nextOrdinal(service) + 1_000
       world.store.append(

@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type { AgentToolset, FakeSessionHandle, StartOptions } from '@brobot2/runtime'
+import type { AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
@@ -27,21 +27,6 @@ import {
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
-class ProviderDouble extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handles: FakeSessionHandle[],
-    sessions: FakeProviderSessions,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): Promise<FakeSessionHandle> {
-    const handle = await super.start(options)
-    this.handles.push(handle)
-    return handle
-  }
-}
-
 interface Answer {
   readonly structured: Record<string, unknown>
   readonly text: string
@@ -53,7 +38,6 @@ describe('a profile name reaches its one conversation', () => {
   let db: AppDatabase
   let store: SessionStore
   let host: RuntimeHost
-  let handles: FakeSessionHandle[]
   let issued: FakeProviderSessions
   let counter: number
   let clock: number
@@ -68,13 +52,12 @@ describe('a profile name reaches its one conversation', () => {
     clock = 9_000_000
     store = createSessionStore(db, tick)
     counter = 0
-    handles = []
     issued = new FakeProviderSessions()
     host = new RuntimeHost({
       store,
       ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
-      createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued),
+      createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions: issued }),
       prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),

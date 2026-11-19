@@ -437,7 +437,7 @@ describe('629 · a stop reaches down the whole chain', () => {
         text: 'build the settings page too',
       })
       expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
-      expect(refused.rail).toBe('not-a-piece-you-gave')
+      expect(refused.rail).toBe('no-piece-by-that-name')
 
       // ⚑ **THE PAIR one fact over** — the same work from the conversation that started Ali.
       const given = await callOn(adaTools, 'message_agent', {

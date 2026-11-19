@@ -731,7 +731,7 @@ describe('a label names the conversation that owns the piece, and no more', () =
       piece: 'W1.1',
       text: 'hello',
     })
-    expect(message.text).toContain(ADA_CONVERSATION)
+    expect(message.text).toMatch(/^(Delivered to|Held for) conversation W1\.1 · Build the pages[.:]/)
     await waitFor(
       () => ledger(ada).filter((event) => event.type === 'turn').length >= 3,
       'Ada to answer the follow-up',
@@ -908,7 +908,7 @@ describe('a label names the conversation that owns the piece, and no more', () =
           expect(asked).not.toHaveBeenCalled()
           expect(stopped).not.toHaveBeenCalled()
           const told = `${said.structured.reason} This exact call can never succeed.`
-          expect(said.text).toBe(`refused (that-agent-is-you): ${told}`)
+          expect(said.text).toBe(tool === 'ask_question' ? told : `refused (that-agent-is-you): ${told}`)
           expect(refusalWritten).toHaveBeenCalledTimes(1)
           expect(refusalWritten).toHaveBeenCalledWith(brobot, tool, {
             rail: 'that-agent-is-you',
@@ -1001,10 +1001,10 @@ describe('a label names the conversation that owns the piece, and no more', () =
           brief: 'Write the notes here.',
         }),
       ).toMatchObject({ outcome: 'ok' })
-      const said = await fullCall(tools, 'message_agent', {
+      const said = await fullCall(tools, 'ask_question', {
         agent: 'W1',
-        kind: 'note',
-        text: 'Read this.',
+        who_answers: 'an-agent',
+        question: 'Which helper owns this?',
       })
       expect(said.text).toContain('W1 is your own piece, with no helpers recorded under it.')
       expect(said.text).not.toContain('Its helpers:')
@@ -1037,10 +1037,10 @@ describe('a label names the conversation that owns the piece, and no more', () =
           : card
       })
       try {
-        const said = await fullCall(brobotTools, 'message_agent', {
+        const said = await fullCall(brobotTools, 'ask_question', {
           agent: 'W1',
-          kind: 'note',
-          text: 'Read this.',
+          who_answers: 'an-agent',
+          question: 'Which helper owns this?',
         })
         expect(said.text).toContain('Its helpers: W1.1 (working).')
         expect(said.text).not.toContain('None of its helpers')
@@ -1064,10 +1064,10 @@ describe('a label names the conversation that owns the piece, and no more', () =
         .spyOn(host, 'agentCard')
         .mockImplementation((id, by, me) => (id === ada ? null : read(id, by, me)))
       try {
-        const said = await fullCall(brobotTools, 'message_agent', {
+        const said = await fullCall(brobotTools, 'ask_question', {
           agent: 'W1',
-          kind: 'note',
-          text: 'Read this.',
+          who_answers: 'an-agent',
+          question: 'Which helper owns this?',
         })
         expect(said.text).toContain('None of its helpers is in your messaging reach.')
         expect(said.text).not.toContain('Ada')

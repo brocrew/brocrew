@@ -509,7 +509,7 @@ describe('a successful answer says in words what its payload held', () => {
       })
       expect(sent.text).not.toMatch(/as (note|follow-up)/)
       expect(sent.text).not.toContain('Also count the images.')
-      expect(sent.text).toMatch(/straight away|held for/)
+      expect(sent.text).toMatch(/^(Delivered to|Held for) conversation /)
     })
 
     it('update_work answers Done, with the label only when the call did not spell it', async () => {
@@ -559,7 +559,7 @@ describe('a successful answer says in words what its payload held', () => {
         question: 'May the survey skip the archive?',
       })
       const id = asked.structured?.['question'] as string
-      expect(asked.text).toContain(`as ${id}.`)
+      expect(asked.text).toMatch(new RegExp(`^Question ${id} (sent to|queued for) conversation `))
       expect(asked.text).not.toMatch(/the-parent|a-person/)
       expect(asked.text).not.toContain('May the survey skip the archive?')
 
