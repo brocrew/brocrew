@@ -1,7 +1,6 @@
 import type { SendRecipientState } from '../../../shared/tool-outcome'
 import type { PreparedSendFiles, PreparedSendText } from '../send-overflow'
 import type {
-  AProfileNames,
   AnswerWithItsStop,
   FactsAQueueCarries,
   InterruptOutcome,
@@ -156,12 +155,6 @@ export interface AgentToolHost {
     me: string | null,
     reach: TheDoorsReach,
   ): string
-  theConversationAProfileNames(
-    address: string,
-    by: Caller,
-    me: string | null,
-    forAMessage?: boolean,
-  ): AProfileNames
   tookItsPlace(sessionId: string): string | null
   whyWhatIsHeldWaits(sessionId: string, itsStopIsSaid?: boolean): string | null
   profilesVisibleTo(): ProfileReading

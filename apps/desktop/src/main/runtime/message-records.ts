@@ -375,12 +375,6 @@ export type OutOfReach =
  */
 export type TheDoorsReach = 'messaging' | 'interrupting' | 'reading' | 'answering'
 
-/** What an agent's profile name names: see {@link RuntimeHost.theConversationAProfileNames}. */
-export type AProfileNames =
-  | { readonly is: 'one'; readonly conversation: string }
-  | { readonly is: 'several'; readonly profile: string; readonly labels: readonly string[] }
-  | null
-
 /**
  * 🔴 **D-022 · R3 — what became of words about a piece, told to the conversation holding it** —
  * `reply_to_parent`'s three words, for a take-back, a close, a new brief and new inputs.

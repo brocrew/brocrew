@@ -180,6 +180,10 @@ describe('405 · a refusal you can see', () => {
     mayCreateAgents: (...args) => host.mayCreateAgents(...args),
     readResource: (...args) => host.readResource(...args),
     queueMessage: (...args) => host.queueMessage(...args),
+    holdAgentMessageForStart: (...args) => host.holdAgentMessageForStart(...args),
+    stateOfARecordedMessage: (...args) => host.stateOfARecordedMessage(...args),
+    prepareTextForSend: (...args) => host.prepareTextForSend(...args),
+    prepareFilesForSend: (...args) => host.prepareFilesForSend(...args),
     messageAgentNow: (...args) => host.messageAgentNow(...args),
     agentsVisibleTo: (...args) => host.agentsVisibleTo(...args),
     archivedVisibleTo: (...args) => host.archivedVisibleTo(...args),
@@ -198,7 +202,6 @@ describe('405 · a refusal you can see', () => {
     // ⚑ **D-016 · commit 7 · R1 — the one reading of an agent address**, delegated like every other
     // member — see this helper's own note.
     theConversationAddressed: (...args) => host.theConversationAddressed(...args),
-    theConversationAProfileNames: (...args) => host.theConversationAProfileNames(...args),
     tookItsPlace: (...args) => host.tookItsPlace(...args),
     // ⚑ Added because the interface gained it, which is what this seam is for.
     whyWhatIsHeldWaits: (...args) => host.whyWhatIsHeldWaits(...args),

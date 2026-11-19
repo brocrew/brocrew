@@ -88,7 +88,6 @@ import type {
   RecordedAgentMessage,
   OutOfReach,
   TheDoorsReach,
-  AProfileNames,
   NewBriefDelivery,
   Told,
 } from './message-records'
@@ -100,7 +99,6 @@ export type {
   MessageNowOutcome,
   OutOfReach,
   TheDoorsReach,
-  AProfileNames,
   NewBriefDelivery,
   Told,
 } from './message-records'
@@ -10856,39 +10854,6 @@ export class RuntimeHost implements LiveHost {
     return admitted ? owner : address
   }
 
-  /**
-   * The conversation an agent's profile name names at `message_agent` and `ask_question`: its one
-   * reachable conversation, or the label of each when there are several. Archived conversations
-   * and the caller's own conversation count when they are reachable. A message also reaches the
-   * service working on the caller's piece, as a message to its id does.
-   *
-   * `null` when the address is a conversation's id, or names no agent with a conversation in this
-   * caller's reach: the door then reads it as the id it was spelled as, so a name out of reach is
-   * refused as an unknown one is.
-   */
-  theConversationAProfileNames(
-    address: string,
-    by: Caller,
-    me: string | null,
-    forAMessage = false,
-  ): AProfileNames {
-    if (this.slots.has(address) || this.deps.store.recordedOne(address) !== null) return null
-    const named = [
-      ...new Set(
-        this.deps.store
-          .conversationsOf(address)
-          .map((one) => this.theOneInItsPlace(one.conversation)),
-      ),
-    ].filter((one) => this.whyItIsOutOfReach(one, by, me, forAMessage) === null)
-    if (named.length === 0) return null
-    if (named.length === 1) return { is: 'one', conversation: named[0]! }
-    return {
-      is: 'several',
-      profile: foldProfileName(address),
-      labels: named.map((one) => this.addressOf(one)),
-    }
-  }
-
   /** The recorded profile of an already named conversation, without opening it. */
   navigationProfileForConversation(conversation: string): string | null {
     return this.deps.store.identityOf(conversation)?.profileSlug ?? null
@@ -13355,15 +13320,15 @@ export class RuntimeHost implements LiveHost {
         return deliveryState(outcome)
       }
       if (verdict.outbound === true && !this.takesADeliveryNow(to)) {
-        const state = await this.afterWhatArrivedFirst<SendRecipientState>(to, async () => {
+        const state = await this.afterWhatArrivedFirst<SendRecipientState | null>(to, async () => {
           to = this.theOneInItsPlace(to)
-          if (this.takesADeliveryNow(to)) return deliverNow()
+          if (this.takesADeliveryNow(to)) return null
           const kept = await this.keptUntilItStarts(to, text, facts, 'question')
           await this.ensureRunning(to, null)
           await this.slots.get(to)?.session?.flushing
           return deliveryState(kept)
         })
-        return { to, state }
+        if (state !== null) return { to, state }
       }
       const state = await deliverNow()
       return { to, state }
