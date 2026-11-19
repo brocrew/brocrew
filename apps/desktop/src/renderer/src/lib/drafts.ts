@@ -214,8 +214,14 @@ export function createAttachmentBook(): AttachmentBook {
         return read(key).filter((path) => !submitted.includes(path))
       },
       stage: (next) => {
-        const submitted = hidden.get(key) ?? []
-        write(key, [...submitted, ...next.filter((path) => !submitted.some((old) => old.path === path.path))])
+        const submitted = hidden.get(key)
+        if (submitted === undefined) {
+          write(key, next)
+          return
+        }
+        const staged = stageVerdicts(submitted, next.map((handed) => ({ handed })))
+        write(key, staged.next)
+        if (staged.refusal !== null) refuse(key, staged.refusal)
       },
       get refusal() {
         return refusals.get(key) ?? null
