@@ -522,7 +522,10 @@ const list = computed(() => (held.value?.state === 'answered' ? held.value.list 
 
 const listSays = computed(() => {
   const now = held.value
-  if (modelsRefreshing.value || now === null || now.state === 'asking') {
+  if (now?.state === 'answered' && (modelsRefreshing.value || now.refreshing)) {
+    return { message: 'Updating models…', tone: 'note' as const, remedy: null }
+  }
+  if (now === null || now.state === 'asking') {
     return { message: `Reading ${name.value}’s models…`, tone: 'note' as const, remedy: null }
   }
   const catalogue =
@@ -725,7 +728,10 @@ const setupReady = computed(
     }) === true,
 )
 watch(setupReady, (ready) => {
-  if (ready) setupCheckFailure.value = null
+  if (ready) {
+    setupCheckFailure.value = null
+    settingUp.value = false
+  }
 })
 const setupBusy = computed(
   () => setupChecking.value || keyBusy.value || authBusy.value !== 'idle' || nativeSetup.busy.value,

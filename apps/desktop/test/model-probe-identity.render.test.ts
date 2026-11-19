@@ -163,6 +163,7 @@ describe('a login refresh retains the last model answer while disowning older re
     await lists.read('claude', 'work')
     read = () => old.promise
     const obsolete = lists.reread()
+    await Promise.resolve()
     lists.forget('work', { retainAnswered: true })
     expect(shownIn(lists)).toEqual(ACCOUNT_A)
     expect(lists.readiness('claude', 'work')).toEqual({ state: 'pending' })

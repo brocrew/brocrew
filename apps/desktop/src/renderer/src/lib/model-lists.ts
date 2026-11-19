@@ -60,12 +60,16 @@ export interface PickedModel {
  */
 type HeldList =
   | { readonly state: 'asking' }
-  | { readonly state: 'answered'; readonly list: ModelList }
+  | { readonly state: 'answered'; readonly list: ModelList; readonly refreshing?: boolean }
   | { readonly state: 'unread'; readonly why: string }
 
 type HeldContext =
   | Exclude<HeldList, { readonly state: 'answered' }>
-  | { readonly state: 'answered'; readonly list: Omit<ModelList, 'models'> }
+  | {
+      readonly state: 'answered'
+      readonly list: Omit<ModelList, 'models'>
+      readonly refreshing?: boolean
+    }
 
 export interface ModelLists {
   /** What is held for one provider's list in one profile — `null`: nobody asked yet. */
@@ -86,10 +90,10 @@ export interface ModelLists {
    */
   reread(): Promise<void>
   /**
-   * A credential gesture settled: discard this profile's facts and retire outstanding catalogue
-   * reads across all profiles. The next reads use the provider's current account.
+   * Retire outstanding catalogue reads after a credential gesture. A forced reread can retain
+   * successful rows for display while launch readiness waits for the current account's answer.
    */
-  forget(profileId: string): void
+  forget(profileId: string, options?: { readonly retainAnswered?: boolean }): void
   /** ⚑ Add a model to a provider's list by hand — `null`, or the door's words. */
   add(provider: Provider, model: string): Promise<string | null>
   /** ⚑ Take a hand-added model off a provider's list — `null`, or the door's words. */
@@ -145,7 +149,7 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
       list.notAsked = context.list.notAsked
       list.models = list.models.filter((row) => row.addedBy === 'a-person')
     }
-    return { state: 'answered', list }
+    return { state: 'answered', list, refreshing: context.refreshing }
   }
 
   function ask(provider: Provider, profileId: string | undefined): Promise<void> {
@@ -155,8 +159,10 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
     const ticket = tickets.get(provider) ?? 0
     const ours = (): boolean => (tickets.get(provider) ?? 0) === ticket
     asked.set(key, profileId === undefined ? { provider } : { provider, profileId })
-    // ⚑ An answer stays on screen while it is asked again; only nothing, or a failure, says *asking*.
-    if (lists.value[key]?.state !== 'answered') put(key, { state: 'asking' })
+    // Keep the last answer visible while its replacement is pending.
+    const previous = lists.value[key]
+    if (previous?.state !== 'answered') put(key, { state: 'asking' })
+    else lists.value = { ...lists.value, [key]: { ...previous, refreshing: true } }
     const read = async (): Promise<void> => {
       try {
         const resolved = await bridge().providerLaunchChoices({
@@ -169,9 +175,13 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
           put(key, { state: 'answered', list })
         }
       } catch (error) {
-        // ⛔ A failed re-read keeps the answer it had (`refreshProfiles`' rule).
-        if (ours() && lists.value[key]?.state !== 'answered') {
-          put(key, { state: 'unread', why: readableError(error) })
+        // A failed refresh retains rows without retaining launch readiness.
+        if (ours()) {
+          const held = lists.value[key]
+          if (held?.state === 'answered') {
+            choices.delete(key)
+            lists.value = { ...lists.value, [key]: { ...held, refreshing: false } }
+          } else put(key, { state: 'unread', why: readableError(error) })
         }
       }
     }
@@ -204,9 +214,15 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
     readiness(provider, profileId) {
       const key = keyOf(provider, profileId)
       const held = lists.value[key]
-      if (held === undefined || held.state === 'asking') return { state: 'pending' }
+      if (
+        held === undefined ||
+        held.state === 'asking' ||
+        (held.state === 'answered' && held.refreshing)
+      )
+        return { state: 'pending' }
       if (held.state === 'unread') return { state: 'settled', ready: null, reason: held.why }
-      const supplied = choices.get(key)!
+      const supplied = choices.get(key)
+      if (supplied === undefined) return { state: 'settled', ready: null, reason: null }
       return { state: 'settled', ready: supplied.ready, reason: supplied.reason ?? null }
     },
     resolve(input) {
@@ -216,7 +232,7 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
       const key = keyOf(provider, profileId)
       const held = heldFor(provider, profileId)
       const facts = choices.get(key)
-      return held?.state === 'answered' && facts !== undefined
+      return held?.state === 'answered' && !held.refreshing && facts !== undefined
         ? { ...facts, list: held.list }
         : null
     },
@@ -239,7 +255,7 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
           .map(({ provider, profileId }) => askAfresh(provider, profileId)),
       )
     },
-    forget(profileId) {
+    forget(profileId, options) {
       for (const provider of new Set([...asked.values()].map((parts) => parts.provider))) {
         tickets.set(provider, (tickets.get(provider) ?? 0) + 1)
       }
@@ -247,6 +263,11 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
       const next = { ...lists.value }
       for (const [key, parts] of asked) {
         if (profileOf(parts.profileId) !== profileId && next[key]?.state !== 'asking') continue
+        const held = next[key]
+        if (options?.retainAnswered && held?.state === 'answered' && held.list.notAsked === null) {
+          next[key] = { ...held, refreshing: true }
+          continue
+        }
         delete next[key]
         choices.delete(key)
         inFlight.delete(key)
