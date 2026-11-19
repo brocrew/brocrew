@@ -605,12 +605,13 @@ async function jumpToLatestForActive(): Promise<void> {
 const reading = ref<{ entry: LibraryEntry; history: WindowState } | null>(null)
 
 /**
- * ⚑ **D-017b · a library entry, pressed** — one this app records opens in its full view
- * ({@link openConversation}); one it holds no ledger for is read, and its view says why.
+ * An archived Library row uses the same read-only history route as conversation search.
+ * Other recorded rows open in their full view. Provider-only rows keep the Library reader.
  */
 function readFromTheLibrary(entry: LibraryEntry): void {
   if (entry.recordId) {
-    void openConversation(entry.recordId)
+    if (entry.archivedAt === undefined) void openConversation(entry.recordId)
+    else void openFoundConversation(entry.recordId)
     return
   }
   reading.value = { entry, history: createWindow() }

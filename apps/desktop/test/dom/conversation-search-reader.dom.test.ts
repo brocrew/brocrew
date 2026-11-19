@@ -224,6 +224,78 @@ it('ignores a delayed page after the query changes without affecting command key
   )
 })
 
+it('reads an archived Library row by the recorded ID without looking or resuming', async () => {
+  const libraryKey = 'codex::provider-archive'
+  window.api.runtime.listLibrary = vi.fn<RuntimeBridge['listLibrary']>(async () => ({
+    entries: [
+      {
+        id: libraryKey,
+        recordId: archive,
+        providerSessionId: 'provider-archive',
+        provider: 'codex',
+        title: 'Archived planning notes',
+        cwd: '/work/planning',
+        preview: '',
+        createdAt: 1_700_000_000_000,
+        updatedAt: 1_700_000_000_010,
+        archivedAt: 1_700_000_000_040,
+        bytes: null,
+        origin: 'ours',
+        onDisk: false,
+        readable: true,
+        child: null,
+        derived: null,
+        lastEnding: 'completed',
+        unresumableReason: null,
+      },
+    ],
+    matched: 1,
+    counts: {
+      total: 1,
+      ours: 1,
+      userHome: 0,
+      restored: 0,
+      imported: 0,
+      notImported: 0,
+      onlyHere: 1,
+      providers: [{ provider: 'codex', total: 1 }],
+    },
+    skipped: [],
+    skippedTotal: 0,
+  }))
+  runtime.resolveLink.mockResolvedValue({
+    state: 'archived',
+    kind: 'conversation',
+    title: 'Archived planning notes',
+    status: null,
+    opens: { sessionId: archive },
+  })
+  runtime.latestHistory.mockResolvedValue({
+    entries: [
+      {
+        ordinal: 0,
+        at: 1_700_000_000_000,
+        event: { type: 'assistant_message', text: 'These notes are still available to read.' },
+      },
+    ],
+    from: 0,
+    hasOlder: false,
+    turnAligned: true,
+  })
+  const m = mount(RuntimeScreen, {})
+  m.q('rail-sessions').click()
+  await expect.poll(() => m.all(`library-read-${libraryKey}`).length).toBe(1)
+  m.q(`library-read-${libraryKey}`).click()
+
+  await expect.poll(() => m.all('linked-history').length).toBe(1)
+  expect(runtime.resolveLink).toHaveBeenCalledWith(`brocrew://conversation/${archive}`)
+  expect(runtime.latestHistory).toHaveBeenCalledWith({ sessionId: archive })
+  expect(m.q('linked-history').textContent).toContain('These notes are still available to read.')
+  expect(runtime.look).not.toHaveBeenCalled()
+  expect(runtime.resume).not.toHaveBeenCalled()
+  expect(runtime.startAndSend).not.toHaveBeenCalled()
+})
+
 it('does not dispatch a queued conversation search after quitting starts', async () => {
   const search = vi.fn<RuntimeBridge['searchWork']>(async () => result([], null))
   window.api.runtime.searchWork = search
