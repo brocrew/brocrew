@@ -35,12 +35,7 @@ import {
 import { clockTime, clockTimeFrom } from '../src/shared/clock'
 import type { RuntimeEventMessage, RuntimeStatesMessage } from '../src/shared/runtime-ipc'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
-import {
-  RecordingSink,
-  syntheticProviderHome,
-  neutralHostDeps,
-  fixtureProviderConfig,
-} from './lib/host-fixture'
+import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * Scheduled conversations use one wake-up per newest ledger level at launch and stop.
@@ -531,7 +526,13 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       interruptWaitMs: 40,
-      readProviderConfig: fixtureProviderConfig,
+      readProviderConfig: (provider, home) => ({
+        home,
+        homeEnv: 'CLAUDE_CONFIG_DIR',
+        model: 'm',
+        authNote: null,
+        files: [],
+      }),
       ...(listening
         ? {
             statesMoved: (message: RuntimeStatesMessage): void => {
@@ -2027,7 +2028,6 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
     const detail =
       'This conversation could not wake: its provider session file is missing. Nothing ran.'
     restartsAt(local(9, 28, hadNotice ? 15 : 14, hadNotice ? 0 : 40))
-
     if (hadNotice) {
       await waitFor(
         () => ledger(conversation).some((event) => event.type === 'message_unqueued'),
