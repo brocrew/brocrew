@@ -397,3 +397,183 @@ it('bounds only the copied provider reason on the turn and reads old or malforme
     message: bounded,
   })
 })
+
+const providerCause = { message: 'The provider could not run that model.', code: 'modelNotFound' }
+const refusedTurn = {
+  type: 'turn',
+  state: 'failed',
+  wordOf: 'this-app',
+  providerFailure: providerCause,
+} as const
+
+it('reads an ordinary holder failure through wakes, stopped completions and reopen', () => {
+  const { store, file } = world()
+  const append = (event: TranscriptEvent) => {
+    const ordinal = store.nextOrdinal('alpha')
+    store.append('alpha', ordinal, event, ordinal + 1)
+    return ordinal
+  }
+  expect(store.providerFailureEpisode('alpha')).toBe('none')
+  append({ type: 'user_turn', text: 'Run the first task' })
+  const failedAt = append(refusedTurn)
+  const episode = store.providerFailureEpisode('alpha')
+  expect(episode).toEqual({
+    generation: 0,
+    terminalOrdinal: failedAt,
+    turnId: store.turns('alpha')[0]?.id,
+    cause: providerCause,
+    asks: [],
+  })
+  expect(store.piecesOwnedBy('alpha')[0]?.providerTurnFailure).toEqual({
+    turnOrdinal: failedAt,
+    ...providerCause,
+  })
+
+  append({ type: 'provider_turn' })
+  append({ type: 'turn', state: 'completed', startedBy: 'the-provider' })
+  append({ type: 'user_turn', text: 'Try again' })
+  append({ type: 'work_interrupted', by: 'a-person' })
+  append({ type: 'turn', state: 'completed' })
+  append({ type: 'user_turn', text: 'Try with a permission' })
+  append({
+    type: 'user_decision',
+    requestId: 'req_permission',
+    outcome: 'cancel',
+    by: { who: 'a-person' },
+  })
+  append({ type: 'turn', state: 'completed' })
+  append({ type: 'user_turn', text: 'Try again without a usable result' })
+  append({ type: 'turn', state: 'failed' })
+  append({ type: 'user_turn', text: 'Open but unfinished' })
+  expect(store.providerFailureEpisode('alpha')).toEqual(episode)
+  append({ type: 'reopened' })
+  const reopened = openDatabase(file)
+  cleanup.push(() => {
+    reopened.close()
+  })
+  expect(createSessionStore(reopened).providerFailureEpisode('alpha')).toEqual(episode)
+
+  append({ type: 'user_turn', text: 'Retry the same model' })
+  const failedAgain = append(refusedTurn)
+  expect(store.providerFailureEpisode('alpha')).toMatchObject({ terminalOrdinal: failedAgain })
+  append({ type: 'user_turn', text: 'Continue silently' })
+  append({ type: 'turn', state: 'completed' })
+  expect(store.providerFailureEpisode('alpha')).toBe('none')
+  expect(store.piecesOwnedBy('alpha')[0]?.providerTurnFailure).toBeUndefined()
+})
+
+it('joins taskless Asks from the failed batch, keeping late and mid-turn input outside it', () => {
+  const { store, folder, db } = world()
+  const owner = 'peer-answerer'
+  store.adopt({
+    id: owner,
+    provider: 'codex',
+    sessionId: 'fictional-peer',
+    cwd: folder,
+    profileId: 'fictional',
+    createdAt: 1,
+    updatedAt: 1,
+  })
+  const append = (event: TranscriptEvent) => {
+    const ordinal = store.nextOrdinal(owner)
+    store.append(owner, ordinal, event, ordinal + 1)
+    return ordinal
+  }
+  const ask = (asker: string, requestId: string) => {
+    append({
+      type: 'message_queued',
+      messageId: requestId,
+      kind: 'question',
+      text: 'A question',
+      relayedFrom: asker,
+      asks: { asker, requestId },
+    })
+  }
+  append({ type: 'user_turn', text: 'Earlier work' })
+  append({ type: 'turn', state: 'completed' })
+  ask('alpha', 'req_alpha')
+  ask('beta', 'req_beta')
+  for (const messageId of ['req_alpha', 'req_beta'])
+    append({ type: 'message_unqueued', messageId, reason: 'sent', text: 'A question' })
+  const opening = append({
+    type: 'user_turn',
+    text: 'A question\n\nA question',
+    parts: [
+      { text: 'A question', relayedFrom: 'alpha' },
+      { text: 'A question', relayedFrom: 'beta' },
+    ],
+  })
+  ask('alpha', 'req_mid_turn')
+  append({
+    type: 'message_unqueued',
+    messageId: 'req_mid_turn',
+    reason: 'handover',
+    text: 'A question',
+  })
+  const terminalOrdinal = append(refusedTurn)
+  ask('beta', 'req_late')
+  expect(store.piecesOwnedBy(owner)).toEqual([])
+  expect(store.providerFailureEpisode(owner)).toMatchObject({
+    terminalOrdinal,
+    asks: [
+      { asker: 'alpha', requestId: 'req_alpha' },
+      { asker: 'beta', requestId: 'req_beta' },
+    ],
+  })
+  expect(store.providerFailureEpisode('alpha')).toBe('none')
+
+  const relay = db.prepare(
+    "UPDATE events SET payload = json_set(payload, '$.parts[0].relayedFrom', ?) WHERE session_id = ? AND ordinal = ?",
+  )
+  relay.run('another-peer', owner, opening)
+  expect(store.providerFailureEpisode(owner)).toBe('unknown')
+  relay.run('alpha', owner, opening)
+  expect(store.providerFailureEpisode(owner)).toMatchObject({ terminalOrdinal })
+  db.prepare(
+    "DELETE FROM events WHERE session_id = ? AND type = 'message_queued' AND json_extract(payload, '$.messageId') = ?",
+  ).run(owner, 'req_alpha')
+  expect(store.providerFailureEpisode(owner)).toBe('unknown')
+})
+
+it('keeps the episode unknown for unread terminals or an exhausted closed-turn bound', () => {
+  const { store, db } = world()
+  store.append('alpha', 1, { type: 'user_turn', text: 'Run' }, 2)
+  store.append('alpha', 2, refusedTurn, 3)
+  for (let n = 0; n < 8; n++) {
+    const ordinal = 3 + n * 2
+    store.append('alpha', ordinal, { type: 'provider_turn' }, ordinal + 1)
+    store.append(
+      'alpha',
+      ordinal + 1,
+      { type: 'turn', state: 'completed', startedBy: 'the-provider' },
+      ordinal + 2,
+    )
+  }
+  expect(store.providerFailureEpisode('alpha')).toBe('unknown')
+
+  store.append('alpha', 19, { type: 'user_turn', text: 'Try once more' }, 20)
+  store.append('alpha', 20, { type: 'turn', state: 'completed' }, 21)
+  db.prepare('UPDATE events SET payload = ? WHERE session_id = ? AND ordinal = ?').run(
+    '{"type":"turn","state":"unread-terminal"}',
+    'alpha',
+    20,
+  )
+  expect(store.providerFailureEpisode('alpha')).toBe('unknown')
+})
+
+it('does not reuse a failure ordinal after the active generation is replaced', () => {
+  const { store } = world()
+  store.append('alpha', 1, { type: 'user_turn', text: 'Run' }, 2)
+  store.append('alpha', 2, refusedTurn, 3)
+  expect(store.providerFailureEpisode('alpha')).toMatchObject({ generation: 0, terminalOrdinal: 2 })
+
+  const generation = store.beginGeneration('alpha')
+  store.appendGeneration('alpha', generation, [
+    { ordinal: 1, event: { type: 'user_turn', text: 'Run in the next generation' }, at: 4 },
+    { ordinal: 2, event: { type: 'turn', state: 'completed' }, at: 5 },
+  ])
+  expect(
+    store.promoteGeneration('alpha', generation, { normalizerVersion: 1, derivedThrough: 5 }),
+  ).toBe(true)
+  expect(store.providerFailureEpisode('alpha')).toBe('none')
+})

@@ -153,7 +153,13 @@ import type {
   NewAgent,
   LedgerStatus,
 } from '../../shared/runtime-ipc'
-import { DEFAULT_PROFILE_ID, seededProviderFor, theMessagesOf } from '../../shared/runtime-ipc'
+import { failureAtTurnEnd } from '../../shared/piece-fold'
+import {
+  DEFAULT_PROFILE_ID,
+  MAX_TURN_PARTS,
+  seededProviderFor,
+  theMessagesOf,
+} from '../../shared/runtime-ipc'
 import { aNameForANewAgent } from '../../shared/human-names'
 import { NORMALIZER_VERSION, PRE_CONTRACT_NORMALIZER_VERSION } from '../archive/normalizer'
 import {
@@ -1127,6 +1133,7 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   whenAPersonLastWrote(sessionId: string): number | null
   requestsItsLastEndedTurnInterrupted(sessionId: string): readonly string[]
   lastEndedTurn(sessionId: string, unread?: RowsUnread): LastEndedTurn | null
+  providerFailureEpisode(sessionId: string, unread?: RowsUnread): ProviderFailureEpisode
   lastExchange(sessionId: string): Exchange
   lastExchangeForTaskRecord(sessionId: string): TaskRecordExchange
   whatOpenedTheLastEndedTurn(sessionId: string): ReceivedInATurn | null
@@ -1395,6 +1402,7 @@ export const NULL_SESSION_STORE: SessionStore = {
   whoRoutedToWhom: () => [],
   conversationsHoldingACopyOf: () => [],
   fillQuestionCopies: () => ({ state: 'done', visited: 0, matched: 0 }),
+  providerFailureEpisode: () => 'unknown',
   lastEndedTurn: () => null,
   routedRequestsAtHand: () => null,
   questionsRaisedAtHand: () => null,
@@ -1467,6 +1475,19 @@ interface ExchangeRow {
   readonly payload: string | null
   readonly ordinal: number
 }
+
+export type ProviderFailureEpisode =
+  | 'none'
+  | 'unknown'
+  | {
+      readonly generation: number
+      readonly terminalOrdinal: number
+      readonly turnId: string
+      readonly cause: Omit<NonNullable<PieceRow['providerTurnFailure']>, 'turnOrdinal'>
+      readonly asks: readonly TheQuestionItAsks[]
+    }
+
+const CLOSED_TURNS_FOR_PROVIDER_FAILURE = 8
 
 interface ClosedTurnRow {
   id: string
@@ -1972,6 +1993,11 @@ export function createSessionStore(
   const selectLastClosedTurn = db.prepare(
     `SELECT id, opened_at, closed_at FROM turn WHERE session_id = ? AND generation = ? AND closed_at IS NOT NULL
       ORDER BY ordinal DESC LIMIT 1`,
+  )
+  const selectClosedTurnsForProviderFailure = db.prepare(
+    `SELECT id FROM turn
+       WHERE session_id = ? AND generation = ? AND closed_at IS NOT NULL
+       ORDER BY ordinal DESC LIMIT ?`,
   )
   const selectStatus = db.prepare(`SELECT status FROM provider_session WHERE id = ?`)
   const selectProviderOf = db.prepare(`SELECT provider FROM provider_session WHERE id = ?`)
@@ -2524,6 +2550,35 @@ export function createSessionStore(
                         WHERE session_id = ? AND generation = ? AND closed_at IS NOT NULL
                         ORDER BY ordinal DESC LIMIT 1)
       ORDER BY ordinal`,
+  )
+  const selectProviderFailureTurnEnd = db.prepare(
+    `SELECT type, ordinal, payload, created_at FROM events INDEXED BY events_turn_idx
+       WHERE session_id = ? AND generation = ? AND turn_id = ?
+         AND (type IN ('turn', 'work_interrupted')
+           OR (type = 'user_decision' AND CASE WHEN json_valid(payload)
+             THEN json_extract(payload, '$.outcome') = 'cancel' ELSE 1 END))
+       ORDER BY ordinal LIMIT ?`,
+  )
+  const selectOpeningBeforeFailureTurn = db.prepare(
+    `SELECT ordinal FROM events
+       WHERE session_id = ? AND generation = ? AND ordinal < ? AND turn_id IS NOT ?
+         AND type IN ('user_turn', 'provider_turn')
+       ORDER BY ordinal DESC LIMIT 1`,
+  )
+  const selectSentBeforeFailureOpening = db.prepare(
+    `SELECT ordinal, payload FROM events INDEXED BY events_fold_idx
+       WHERE ${FOLD_TERM} AND session_id = ? AND generation = ? AND type = 'message_unqueued'
+         AND ordinal > ? AND ordinal < ?
+         AND CASE WHEN json_valid(payload) THEN json_extract(payload, '$.reason') = 'sent'
+                  ELSE 1 END
+       ORDER BY ordinal LIMIT ?`,
+  )
+  theFoldIndexHolds(selectSentBeforeFailureOpening)
+  const selectQueueRowForFailure = db.prepare(
+    `SELECT payload FROM events INDEXED BY events_kind_owner_idx
+       WHERE type = 'message_queued' AND session_id = ? AND generation = ? AND ordinal < ?
+         AND CASE WHEN json_valid(payload) THEN json_extract(payload, '$.messageId') = ? END
+       ORDER BY ordinal DESC LIMIT 1`,
   )
   const selectRequestsTheLastClosedTurnInterrupted = db.prepare(
     `SELECT CASE WHEN json_valid(payload) THEN json_extract(payload, '$.requestId') END AS request
@@ -3746,6 +3801,122 @@ export function createSessionStore(
       since,
       ...(byItsProvider ? { startedByItsProvider: true as const } : {}),
     }
+  }
+
+  function questionsInFailedTurn(
+    sessionId: string,
+    generation: number,
+    turnId: string,
+    opening: ExchangeRow,
+    turn: UserTurnEvent,
+  ): readonly TheQuestionItAsks[] {
+    const before = selectOpeningBeforeFailureTurn.get(
+      sessionId,
+      generation,
+      opening.ordinal,
+      turnId,
+    ) as { ordinal: number } | undefined
+    const sent = selectSentBeforeFailureOpening.all(
+      sessionId,
+      generation,
+      before?.ordinal ?? -1,
+      opening.ordinal,
+      MAX_TURN_PARTS + 1,
+    ) as { ordinal: number; payload: string }[]
+    const parts = theMessagesOf(turn)
+    if (parts.length === 0 || (turn.parts !== undefined && turn.parts.length !== parts.length))
+      throw new Error('the failed turn parts could not be read')
+    if (sent.length === 0) return []
+
+    // A flush records sent rows and then the opening parts in the same order.
+    if (sent.length !== parts.length)
+      throw new Error('the failed turn could not be matched to its queued input')
+
+    const asks: TheQuestionItAsks[] = []
+    for (const [index, row] of sent.entries()) {
+      const ending = aStoredObject(row.payload)
+      const messageId = ending?.['messageId']
+      if (ending?.['type'] !== 'message_unqueued' || !isAStoredId(messageId))
+        throw new Error('a sent message from the failed turn could not be read')
+      const found = selectQueueRowForFailure.get(sessionId, generation, row.ordinal, messageId) as
+        { payload: string } | undefined
+      const queued = aStoredObject(found?.payload ?? null)
+      if (queued?.['type'] !== 'message_queued')
+        throw new Error('the queued message for the failed turn could not be read')
+      if (queued['kind'] !== 'question') continue
+      const ask = theQuestionItAsks(queued['asks'])?.asks
+      if (ask === undefined || ask.asker !== parts[index]?.relayedFrom)
+        throw new Error('the question could not be matched to the failed turn')
+      asks.push(ask)
+    }
+    return asks
+  }
+
+  function providerFailureEpisodeOf(
+    sessionId: string,
+    unread?: RowsUnread,
+  ): ProviderFailureEpisode {
+    const noteSkip = unread?.in(sessionId) ?? (() => {})
+    return readOrSkip<ProviderFailureEpisode>(sessionId, noteSkip, 'unknown', () => {
+      const generation = activeGeneration(sessionId)
+      const turns = selectClosedTurnsForProviderFailure.all(
+        sessionId,
+        generation,
+        CLOSED_TURNS_FOR_PROVIDER_FAILURE,
+      ) as { id: string }[]
+      for (const { id } of turns) {
+        const opening = selectTheTurnsOpening.get(id, sessionId, generation) as
+          ExchangeRow | undefined
+        if (opening === undefined) continue
+        const turn = aStoredObject(opening.payload)
+        if (turn?.['type'] !== 'user_turn' || typeof turn['text'] !== 'string')
+          throw new Error('the failed turn opening could not be read')
+
+        const rows = selectProviderFailureTurnEnd.all(
+          sessionId,
+          generation,
+          id,
+          MAX_TURN_PARTS + 1,
+        ) as (EventRow & { type: TranscriptEvent['type'] })[]
+        if (rows.length > MAX_TURN_PARTS) return 'unknown'
+        const entries = toPersistedEvents(rows, noteSkip)
+        if (
+          entries.length !== rows.length ||
+          entries.some((entry, index) => entry.event.type !== rows[index]?.type)
+        )
+          return 'unknown'
+        const terminalAt = entries.findIndex(({ event }) => event.type === 'turn')
+        const terminal = entries[terminalAt]
+        if (terminal?.event.type !== 'turn') continue
+        const raw = aStoredObject(rows[terminalAt]?.payload ?? null)
+        const state = raw?.['state']
+        if (
+          (state !== 'failed' && state !== 'completed' && state !== 'interrupted') ||
+          entries.slice(terminalAt + 1).some(({ event }) => event.type === 'turn') ||
+          (state === 'failed' &&
+            raw?.['providerFailure'] !== undefined &&
+            terminal.event.providerFailure === undefined)
+        )
+          throw new Error('the recorded terminal could not be read')
+
+        const failure = failureAtTurnEnd(terminal.event, terminal.ordinal)
+        if (failure === undefined) continue
+        if (failure === null) {
+          if (howWorkStopped(entries).who === null) return 'none'
+          continue
+        }
+        const { turnOrdinal: terminalOrdinal, ...cause } = failure
+        const asks = questionsInFailedTurn(
+          sessionId,
+          generation,
+          id,
+          opening,
+          turn as unknown as UserTurnEvent,
+        )
+        return { generation, terminalOrdinal, turnId: id, cause, asks }
+      }
+      return turns.length === CLOSED_TURNS_FOR_PROVIDER_FAILURE ? 'unknown' : 'none'
+    })
   }
 
   function whatOpenedTheLastEndedTurn(sessionId: string): ReceivedInATurn | null {
@@ -6516,6 +6687,7 @@ export function createSessionStore(
     lastEndedTurn(sessionId, unread) {
       return lastEndedTurnOf(sessionId, unread?.in(sessionId))
     },
+    providerFailureEpisode: providerFailureEpisodeOf,
     routedRequestsAtHand(sessionId) {
       return routedRequestsAtHand(sessionId)
     },
