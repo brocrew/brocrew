@@ -1069,6 +1069,11 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
     piece: z.string().min(1).max(200),
     title: z.string().max(PIECE_TITLE_CHARS),
   }),
+  z.object({
+    kind: z.literal('renameConversation'),
+    conversation: z.string(),
+    title: z.string(),
+  }),
   // ⚑ A person takes back the piece a service is on, by its label or its id: `retitleWork`'s bound.
   z.object({
     kind: z.literal('takeBackWork'),
@@ -1548,6 +1553,7 @@ const DURING_A_QUIT: Record<RuntimeCommandKind, QuitRuling> = {
   // D-016 · commit 7 · R4. ⛔ **Refused, with `setAgentDisplayName` as the precedent**: a person
   // naming work, while the surfaces that would draw the new title are going away with the process.
   retitleWork: 'refused',
+  renameConversation: 'refused',
   // ⛔ Refused, with `retitleWork` as the precedent: a person acting on work, while the service that
   // would go on to its next piece is closing with the process.
   takeBackWork: 'refused',
@@ -2660,6 +2666,11 @@ export async function executeRuntimeCommand(
         command.title,
         sink,
       ) satisfies Answer<'retitleWork'>
+    case 'renameConversation':
+      requireAPerson(sink, command.kind)
+      return (await host.renameConversation(command, {
+        kind: 'person',
+      })) satisfies Answer<'renameConversation'>
     case 'takeBackWork':
       return (await host.takeBackForAPerson(command.piece, sink)) satisfies Answer<'takeBackWork'>
     case 'closeWork':

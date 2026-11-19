@@ -200,6 +200,143 @@ describe('D-012 · a giver looks closer', () => {
     ).run(`evt_plant_${sessionId}_${String(next + 1)}`, sessionId, next + 1, type, payload, 1)
   }
 
+  it('pages a task record with 70 children and 200 files in stored list order', async () => {
+    const caller = await personOpens('pm')
+    const owner = await personOpens('worker')
+    const parent = store.rootOf(caller.id)!
+    const expectedChildren: string[] = []
+    for (let i = 0; i < 70; i++) {
+      const piece = `work_paging_child_${String(i)}`
+      const number = store.numberUnder(parent.piece)
+      const event = {
+        type: 'work_given' as const,
+        piece,
+        label: `${parent.label}.${String(number)}`,
+        parent: parent.piece,
+        givenBy: caller.id,
+        title: `Child ${String(i)}`,
+        brief: 'A child whose record is read separately',
+      }
+      store.recordGive(
+        { ...event, number, owner: owner.id, folder: null, inputs: [] },
+        store.nextOrdinal(owner.id),
+        event,
+        1000,
+      )
+      expectedChildren.push(piece)
+    }
+    for (let i = 0; i < 200; i++) {
+      store.addResource(
+        {
+          piece: parent.piece,
+          role: 'made',
+          title: `File ${String(i)}`,
+          name: `file-${String(i)}.md`,
+          summary: null,
+          sha256: 'a'.repeat(64),
+          bytes: 1,
+          addedBy: caller.id,
+        },
+        1000,
+      )
+    }
+    const expectedFiles = store.resourcesOf(parent.piece).map((row) => row.resource)
+    const args = { piece: parent.label }
+    const first = await callOn(caller.tools, 'list_tasks', args)
+    expect(first).toMatchObject({
+      pages: { children: { remaining: 65 }, files: { remaining: 195 } },
+    })
+    const pages = first.pages as Record<string, { next: string }>
+    for (const [section, initial, id, expected] of [
+      ['children', 'children', 'piece', expectedChildren],
+      ['files', 'resources', 'resource', expectedFiles],
+    ] as const) {
+      const initialRows = first[initial] as Record<string, string>[]
+      expect(initialRows).toHaveLength(5)
+      const seen = initialRows.map((row) => row[id])
+      let next: string | null = pages[section]!.next
+      for (let page = 0; next !== null && page < 40; page++) {
+        const result = await callOn(caller.tools, 'list_tasks', {
+          piece: page % 2 === 0 ? parent.piece : parent.label,
+          more: section,
+          after: next,
+        })
+        const rows = result[section] as Record<string, string>[]
+        expect(rows.length).toBeLessThanOrEqual(5)
+        seen.push(...rows.map((row) => row[id]))
+        next = result.next as string | null
+      }
+      expect(next).toBeNull()
+      expect(seen).toEqual(expected)
+    }
+    expect(await callOn(caller.tools, 'list_tasks', { more: 'files' })).toMatchObject({
+      outcome: 'refused',
+    })
+    const firstChild = store.childrenOf(parent.piece)[0]!
+    const taskPage = await callOn(caller.tools, 'list_tasks', {
+      conversation: firstChild.label,
+      state: 'all',
+      limit: 2,
+    })
+    expect(taskPage.conversation).toBe(owner.id)
+    expect(taskPage.tasks).toHaveLength(2)
+    const taskNext = await callOn(caller.tools, 'list_tasks', {
+      conversation: owner.id,
+      state: 'all',
+      limit: 2,
+      cursor: taskPage.next,
+    })
+    expect(taskNext.tasks).toHaveLength(2)
+    const ids = [taskPage.tasks, taskNext.tasks].flatMap((tasks) =>
+      (tasks as { piece: string }[]).map((task) => task.piece),
+    )
+    expect(new Set(ids).size).toBe(4)
+  })
+
+  it('keeps a preview bounded and pages both bodies of the last exchange without loss', async () => {
+    const { pm, worker, label } = await aPmItsWorkerAndAPeer()
+    await waitFor(() => echoes(worker) > 0, 'the worker to answer')
+    const received = `${'a'.repeat(799)}😀${'b'.repeat(21_000)}`
+    const sent = `Answer starts\n${'c'.repeat(30_000)}`
+    plant(worker, 'user_turn', JSON.stringify({ type: 'user_turn', text: received }))
+    plant(worker, 'assistant_message', JSON.stringify({ type: 'assistant_message', text: sent }))
+
+    const args = { piece: label }
+    const first = await callOn(pm.tools, 'list_tasks', args)
+    expect(JSON.stringify(first).length).toBeLessThan(8192)
+    const exchange = first.last_exchange as { received: { text: string }; answer: { text: string } }
+    expect(exchange.received.text).toBe('a'.repeat(799))
+    expect(exchange.answer.text).toMatch(/^Answer starts/)
+    const firstNext = (first.pages as { exchanges: { next: string } }).exchanges.next
+    let next: string | null = firstNext
+    const full = { received: exchange.received.text, answer: exchange.answer.text }
+    for (let page = 0; next !== null && page < 20; page++) {
+      const result = await callOn(pm.tools, 'list_tasks', {
+        ...args,
+        more: 'exchanges',
+        after: next,
+      })
+      const parts = result.exchanges as { kind: keyof typeof full; text: string }[]
+      expect(parts.length).toBeLessThanOrEqual(5)
+      for (const part of parts) full[part.kind] += part.text
+      next = result.next as string | null
+    }
+    expect(next).toBeNull()
+    expect(full).toEqual({ received, answer: sent })
+
+    plant(worker, 'user_turn', JSON.stringify({ type: 'user_turn', text: 'new exchange' }))
+    const restarted = await callOn(pm.tools, 'list_tasks', {
+      ...args,
+      more: 'exchanges',
+      after: firstNext,
+    })
+    expect(restarted).toMatchObject({
+      restarted: true,
+      exchanges: [{ kind: 'received', part: 1, text: 'new exchange' }],
+      next: null,
+    })
+  })
+
   // ─────────────────────────────────────────────────────────────────────────────────────────────
   // §1 · the last exchange
   // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -632,7 +769,7 @@ describe('D-012 · a giver looks closer', () => {
       // ⛔ …and said in the WORDS a model reads, not only in the structure: a parent that cannot
       // open its child's ledger has no other way to know there was more.
       const text = await textOf(pm.tools, 'read_transcript', { agent: worker })
-      expect(text.split('\n\n')[1]).toBe(
+      expect(text.split('\n\n')[2]).toBe(
         `${'x'.repeat(WORDS_CAP)}\n(cut at ${String(WORDS_CAP)} units — there was more)`,
       )
     })
@@ -655,7 +792,7 @@ describe('D-012 · a giver looks closer', () => {
       expect(received.text).toBe('x'.repeat(WORDS_CAP))
       expect(received).not.toHaveProperty('clipped')
       const text = await textOf(pm.tools, 'read_transcript', { agent: worker })
-      expect(text.split('\n\n')[1]).toBe('x'.repeat(WORDS_CAP))
+      expect(text.split('\n\n')[2]).toBe('x'.repeat(WORDS_CAP))
     })
   })
 })

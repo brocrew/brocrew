@@ -54,7 +54,7 @@ export const theSameLevel = (one: ScheduleLevel, other: ScheduleLevel): boolean 
 
 export const MOVES_ITS_NAME: ReadonlySet<TranscriptEvent['type']> = new Set<
   TranscriptEvent['type']
->([...PIECE_EVENT_TYPES, 'replaced_by'])
+>([...PIECE_EVENT_TYPES, 'replaced_by', 'titled'])
 
 export const MOVES_WHAT_A_PERSON_IS_ASKED: ReadonlySet<TranscriptEvent['type']> = new Set<
   TranscriptEvent['type']

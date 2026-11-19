@@ -215,6 +215,8 @@ describe('405 · a refusal you can see', () => {
     pieceBoard: (...args) => host.pieceBoard(...args),
     answersHeldFor: (...args) => host.answersHeldFor(...args),
     pieceRecord: (...args) => host.pieceRecord(...args),
+    pieceIdForAddress: (...args) => host.pieceIdForAddress(...args),
+    listConversationTasks: (...args) => host.listConversationTasks(...args),
     // ⚑ **D-024 · R3 · `list_tasks` with `made`** — added because the interface gained it, which is
     // what this seam is for.
     madeByItsProfile: (...args) => host.madeByItsProfile(...args),
@@ -230,6 +232,7 @@ describe('405 · a refusal you can see', () => {
     // them, which is what this seam is for.
     nameByItsWorkUnder: (...args) => host.nameByItsWorkUnder(...args),
     addressOf: (...args) => host.addressOf(...args),
+    renameConversation: (...args) => host.renameConversation(...args),
     addressOfUnder: (...args) => host.addressOfUnder(...args),
     // ⚑ **429's verb** — added because the interface gained it, which is what this seam is for.
     takeBackPiece: (...args) => host.takeBackPiece(...args),

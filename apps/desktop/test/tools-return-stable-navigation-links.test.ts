@@ -84,18 +84,31 @@ describe('tool results carry stable navigation targets', () => {
           page: {
             hits: [
               {
-                kind: 'piece',
-                piece,
-                label,
+                conversation: worker,
+                address: label,
                 title,
-                state: 'working',
-                owner: { conversation: worker, name: 'Ada ] Newton)', profile: 'helper' },
-                giver: null,
-                result: null,
+                line: `conversation ${label} · ${title}`,
+                profile: 'helper',
+                last_active_at: 1,
                 status: null,
-                resource_ids: { brief: [], result: [], attachments: [], working: [] },
-                clipped: { title: false, result: false, status: false },
-                resources_omitted: 0,
+                tasks_omitted: 0,
+                matched_tasks: [
+                  {
+                    kind: 'piece',
+                    piece,
+                    label,
+                    title,
+                    state: 'working',
+                    owner: { conversation: worker, name: 'Ada ] Newton)', profile: 'helper' },
+                    giver: null,
+                    result: null,
+                    status: null,
+                    resource_ids: { brief: [], result: [], attachments: [], working: [] },
+                    clipped: { title: false, result: false, status: false },
+                    resources_omitted: 0,
+                    given_at: 1,
+                  },
+                ],
               },
             ],
             searched: 1,
@@ -105,7 +118,7 @@ describe('tool results carry stable navigation targets', () => {
             next_cursor: null,
           },
         })
-        result = await call(name, { scope: 'all' })
+        result = await call(name, {})
       } else if (name === 'find_files') {
         const path = join(world.folder, 'notes.md')
         writeFileSync(path, '# Notes\nFictional evidence.')
@@ -113,8 +126,8 @@ describe('tool results carry stable navigation targets', () => {
         result = await call(name)
       } else if (name === 'give_work') {
         result = await call(name, {
-          profile: 'helper',
           to: label,
+          profile: 'helper',
           title,
           brief: 'Read the notes.',
           definition_of_done: 'Notes are read.',

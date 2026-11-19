@@ -869,6 +869,11 @@ function fakeBridge() {
     setDefaultApprovalMode: async () => ({ defaultApprovalMode: 'ask' as const }),
     // D-016 · R4 · ⛔ **`no-piece-by-that-name`, the refusal arm, as `setAgentDisplayName` answers
     // its own**: this double holds no work, so there is no piece to rename — in the door's own words.
+    renameConversation: async () => ({
+      ok: false as const,
+      code: 'unknown-conversation' as const,
+      reason: 'No matching conversation.',
+    }),
     retitleWork: async () => ({
       ok: false as const,
       rail: 'no-piece-by-that-name' as const,

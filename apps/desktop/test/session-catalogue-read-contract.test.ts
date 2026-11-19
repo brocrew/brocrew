@@ -73,7 +73,7 @@ function row(overrides: Partial<Row> = {}): Row {
 }
 
 type Call = {
-  statement: 'all-rows' | 'one-row'
+  statement: 'all-rows' | 'one-row' | 'page'
   method: 'all' | 'get'
   receiver: unknown
   args: unknown[]
@@ -99,9 +99,11 @@ function suppliedStatements() {
   })
   const all = statement('all-rows')
   const one = statement('one-row')
+  const page = statement('page')
   const read = createSessionCatalogueRead(
     all as unknown as AppStatement,
     one as unknown as AppStatement,
+    page as unknown as AppStatement,
   )
   return {
     read,

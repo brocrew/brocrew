@@ -97,6 +97,7 @@ const THE_SPLIT: Readonly<Record<ToolName, BeyondItsRails>> = {
   give_work: 'it-starts-something-outside-this-app',
   // ⚑ **D-016** — it names a piece or sets its status line in the owner's ledger; nothing outside.
   update_work: 'nothing-its-rails-do-not-cover',
+  rename_conversation: 'nothing-its-rails-do-not-cover',
   // ⚑ **D-016 · commit 6** — it writes a piece into the caller's own ledger, under its own root;
   // nothing is sent, nobody is woken and nothing starts, so the rails are the whole gate.
   take_on_work: 'nothing-its-rails-do-not-cover',

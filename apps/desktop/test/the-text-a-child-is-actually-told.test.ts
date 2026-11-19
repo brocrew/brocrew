@@ -104,10 +104,10 @@ const thisConversationText = (launch: InstructionContext): string =>
 
 const OTHERS_IN_EVERY_FORM: InstructionContext['others'] = {
   shown: [
-    { label: 'W1.2', title: 'Compare the flights', lastActiveAt: Date.UTC(2026, 8, 30, 2, 31) },
-    { label: 'W2.1', title: 'Book the train', lastActiveAt: null },
-    { label: 'W3', title: 'Bakery website', lastActiveAt: 0 },
-    { label: 'sess_untitled', title: '', lastActiveAt: null },
+    { line: 'conversation W1.2 · Compare the flights', lastActiveAt: Date.UTC(2026, 8, 30, 2, 31) },
+    { line: 'conversation W2.1 · Book the train', lastActiveAt: null },
+    { line: 'conversation W3 · Bakery website', lastActiveAt: 0 },
+    { line: 'conversation sess_untitled · untitled', lastActiveAt: null },
   ],
   more: 2,
 }
@@ -116,7 +116,7 @@ const everyBundle = (): string[] =>
   [
     context({ profileSlug: null, root: 'not-yet-numbered', others: OTHERS_IN_EVERY_FORM }),
     context({
-      startedBy: theConversationCalled('Ada', { label: 'W2', title: 'Plan the trip' }),
+      startedBy: 'Ada, conversation W2 · Plan the trip',
       others: OTHERS_IN_EVERY_FORM,
     }),
   ].map((launch) => `${composeProfileBundle(launch)}\n\n${thisConversationText(launch)}`)
@@ -159,13 +159,13 @@ describe('§1 · one instruction set', () => {
       expect(bundles).toHaveLength(2)
       const read = bundles.join('\n')
       for (const line of [
-        '- This conversation was started by Ada (the owner of W2 · Plan the trip).',
+        '- This conversation was started by Ada, conversation W2 · Plan the trip.',
         "- Your conversation has its own work. Use list_tasks for its label. If untitled, name it with update_work after the person's request.",
-        '- Other conversations of this profile, as of this launch. Point the person to the right conversation:',
-        '  - W1.2 · Compare the flights — last active ',
-        '  - W2.1 · Book the train — last activity unknown.',
-        '  - W3 · Bakery website — last active ',
-        '  - sess_untitled · Untitled conversation — last activity unknown.',
+        '- Other conversations of this profile, most recent first (list_agents shows more):',
+        '  - conversation W1.2 · Compare the flights — last active ',
+        '  - conversation W2.1 · Book the train — last activity unknown.',
+        '  - conversation W3 · Bakery website — last active ',
+        '  - conversation sess_untitled · untitled — last activity unknown.',
         '  - and 2 more.',
       ]) {
         expect(read, `${line} is not in the texts the censuses read`).toContain(line)
@@ -465,13 +465,12 @@ describe('§3 · the dynamic layer moves when the data moves', () => {
     }
   })
 
-  it('🔴 the parent is named by the piece it owns, rendered as provenance and not as delegation', () => {
-    const parent = theConversationCalled('Ada', { label: 'W1', title: 'Bakery website' })
+  it('names the starter in the launch context by conversation address and title', () => {
+    const parent = 'Ada, conversation W1 · Bakery website'
     const said = thisConversationText(context({ startedBy: parent }))
     expect(said).toContain(`- This conversation was started by ${parent}.`)
     expect(said).not.toMatch(/It gave you this task/)
     expect(said).not.toMatch(/who you report to/)
-    expect(said).toMatch(/can still do so after this app has been restarted/)
     expect(said).not.toMatch(/no agent currently commands/i)
   })
 
@@ -917,9 +916,9 @@ describe('§8 · what the host tells the reader, at a launch and at a reopen', (
     const child = given.agent as string
     const pmIsCalled = host.nameByItsWork(pm)
     const theRootItGaveFrom = (given.label as string).split('.').slice(0, -1).join('.')
-    expect(pmIsCalled).toContain(`the owner of ${theRootItGaveFrom}`)
+    expect(pmIsCalled).toContain(`conversation ${theRootItGaveFrom} ·`)
     const atLaunch = seen.at(-1) as InstructionContext
-    expect(atLaunch.startedBy).toBe(pmIsCalled)
+    expect(atLaunch.startedBy).toBe(`${host.whatToCallTheConversation(pm)}, ${pmIsCalled}`)
     expect(atLaunch.startedBy).not.toContain(pm)
 
     for (const built of hosts) await built.closeAll()
@@ -927,13 +926,15 @@ describe('§8 · what the host tells the reader, at a launch and at a reopen', (
     seen = []
     await host.resumeSession(child, new Sink('webContents:2'))
     const atResume = seen.at(-1) as InstructionContext
-    expect(atResume.startedBy, 'the resumed child forgot its parent').toBe(pmIsCalled)
+    expect(atResume.startedBy, 'the resumed child forgot its parent').toBe(
+      `${host.whatToCallTheConversation(pm)}, ${host.nameByItsWork(pm)}`,
+    )
     expect(thisConversationText(atResume)).toContain(
-      `This conversation was started by ${pmIsCalled}.`,
+      `This conversation was started by ${atResume.startedBy}.`,
     )
     expect(atResume.profileSlug).toBe(atLaunch.profileSlug)
   })
-  it('🔴 W4.175 · a giver is named by its own piece it started the child from — never by its work now, and with no mark', async () => {
+  it('names the starter by its fixed address and current conversation title across a resume', async () => {
     await host.close(await personOpens('worker'), window)
     await host.close(await personOpens('helper'), window)
     await host.close(await personOpens(DEFAULT_PROFILE_ID), window)
@@ -958,7 +959,9 @@ describe('§8 · what the host tells the reader, at a launch and at a reopen', (
       label: first.label as string,
       title: 'Build the pages',
     })
-    expect((seen.at(-1) as InstructionContext).startedBy).toBe(byThePieceItGaveFrom)
+    expect((seen.at(-1) as InstructionContext).startedBy).toBe(
+      `${host.whatToCallTheConversation(worker)}, ${host.nameByItsWork(worker)}`,
+    )
 
     const third = await callOn(pmTools, 'give_work', {
       to: first.label,
@@ -968,7 +971,18 @@ describe('§8 · what the host tells the reader, at a launch and at a reopen', (
       brief: 'write the copy',
     })
     expect(third.outcome, JSON.stringify(third)).toBe('ok')
-    expect(host.nameByItsWork(worker)).toContain('(and 1 more)')
+    expect(host.nameByItsWork(worker)).toContain(
+      `conversation ${first.label as string} · Build the pages`,
+    )
+
+    const changed = await callOn(pmTools, 'rename_conversation', {
+      conversation: first.label,
+      title: 'Write the copy',
+    })
+    expect(changed.outcome, JSON.stringify(changed)).toBe('ok')
+    expect(host.nameByItsWork(worker)).toContain(
+      `conversation ${first.label as string} · Write the copy`,
+    )
     expect(host.nameByItsWork(worker)).not.toBe(byThePieceItGaveFrom)
 
     for (const built of hosts) await built.closeAll()
@@ -976,9 +990,11 @@ describe('§8 · what the host tells the reader, at a launch and at a reopen', (
     seen = []
     await host.resumeSession(helper, new Sink('webContents:2'))
     const atResume = seen.at(-1) as InstructionContext
-    expect(atResume.startedBy).toBe(byThePieceItGaveFrom)
+    expect(atResume.startedBy).toBe(
+      `${host.whatToCallTheConversation(worker)}, ${host.nameByItsWork(worker)}`,
+    )
     expect(thisConversationText(atResume)).toContain(
-      `This conversation was started by ${byThePieceItGaveFrom}.`,
+      `This conversation was started by ${atResume.startedBy}.`,
     )
 
     const calledFor = (starter: string): string =>
@@ -988,7 +1004,7 @@ describe('§8 · what the host tells the reader, at a launch and at a reopen', (
         }
       ).theStarterCalled(starter, null, null)
     expect(calledFor(worker)).toBe(host.whatToCallTheConversation(worker))
-    expect(calledFor(pm)).toBe(host.nameByItsWork(pm))
+    expect(calledFor(pm)).toContain(host.whatToCallTheConversation(pm))
     expect(calledFor(pm)).toContain(`the owner of ${store.rootOf(pm)?.label ?? '?'}`)
   })
 

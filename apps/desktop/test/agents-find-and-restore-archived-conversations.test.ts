@@ -345,7 +345,7 @@ describe('an agent restoring an archived conversation', () => {
       'To only read an archived conversation, do not restore it',
     )
     const list = tools.find((one) => one.name === 'list_agents')
-    expect(list?.description).toContain('archived: true lists those instead')
-    expect(list?.description).toContain('restore_agent brings it back')
+    expect(list?.description).toContain('archived: true lists archived conversations instead')
+    expect(list?.description).toContain('new work given to it brings it back')
   })
 })

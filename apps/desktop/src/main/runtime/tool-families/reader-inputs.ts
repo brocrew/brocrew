@@ -6,6 +6,7 @@ import { TURNS_BACK_DEFAULT, TURNS_BACK_MAX } from '../../../shared/last-exchang
 import { refusalAnswer } from './answers'
 import { refuseTool } from './refusals'
 import { workRequestRefused } from '../spawn-rails'
+import { TASK_RECORD_SECTIONS } from '../task-record-pages'
 import { z } from 'zod'
 
 // Reader schemas are created once per toolset, as are their handler diagnostics.
@@ -20,13 +21,30 @@ export function readerFields() {
         .boolean()
         .optional()
         .describe(
-          'true lists the archived conversations instead, the most recently archived first, each with when it was archived and by whom. Leave it out for the conversations that are not archived.',
+          'true lists archived conversations instead, each with when it was archived and by whom.',
         ),
+      profile: z
+        .string()
+        .trim()
+        .min(1)
+        .max(64)
+        .optional()
+        .describe('List only conversations of this profile slug.'),
+      from: z.iso
+        .date()
+        .optional()
+        .describe('Last active on or after this date (YYYY-MM-DD, UTC).'),
+      to: z.iso.date().optional().describe('Last active on or before this date (YYYY-MM-DD, UTC).'),
+      cursor: z
+        .string()
+        .max(2048)
+        .optional()
+        .describe('The next value returned by list_agents; keep the same filters.'),
     },
     get_agent_status: {
       agent: z
         .string()
-        .describe('The agent, by the piece it owns (W1.2) or by its id from list_agents.'),
+        .describe('The conversation, by any of its task labels (W1.2) or its id from list_agents.'),
     },
     read_document: {
       resource: z
@@ -36,12 +54,36 @@ export function readerFields() {
         ),
     },
     list_tasks: {
+      conversation: z
+        .string()
+        .optional()
+        .describe(
+          'A conversation, by any of its labels (W1.2) or its id: lists its tasks, newest first.',
+        ),
+      cursor: z
+        .string()
+        .max(2048)
+        .optional()
+        .describe(
+          'Continue the task list for the same conversation and state with the next value.',
+        ),
       piece: z
         .string()
         .optional()
         .describe(
-          'A piece’s label (W1.2) or id to read its record. Leave it out for your own board.',
+          'One task, by its label (W1.2) or id: reads that task’s record, not its conversation’s.',
         ),
+      more: z
+        .enum(TASK_RECORD_SECTIONS)
+        .optional()
+        .describe(
+          'Which list in a record to page: children, files, or the rest of the last exchange.',
+        ),
+      after: z
+        .string()
+        .max(2048)
+        .optional()
+        .describe('Where to continue that list: the next value the last page gave.'),
       made: z
         .boolean()
         .optional()
@@ -77,7 +119,7 @@ export function readerFields() {
     read_transcript: {
       agent: z
         .string()
-        .describe('The agent, by the piece it owns (W1.2) or by its id from list_agents.'),
+        .describe('The conversation, by any of its task labels (W1.2) or its id from list_agents.'),
       turns_back: z
         .number()
         .optional()

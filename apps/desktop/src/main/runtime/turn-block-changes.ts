@@ -1,6 +1,5 @@
 import {
   WHAT_IS_OPEN_IS_SAID_AGAIN_AFTER_MS,
-  TURN_LABEL_POINTS,
   type AHelperInTheTurn,
   type CurrentWorkInTheTurn,
   type ExtraTurnFacts,
@@ -11,30 +10,23 @@ export const TURN_HELPER_PIECES = 256
 const TURN_HELPER_LINES = 5
 
 export interface TurnBlockSnapshot {
-  readonly helpers: ReadonlyMap<string, string>
   readonly rotation: number
-  readonly current: string | null
   readonly personWait: { readonly signature: string; readonly at: number } | null
   readonly hintedTurn: string | null
-  readonly awaitingEnd: ReadonlySet<string>
-  readonly at: number | null
 }
 
 export const EMPTY_TURN_BLOCK: TurnBlockSnapshot = {
-  helpers: new Map(),
   rotation: 0,
-  current: null,
   personWait: null,
   hintedTurn: null,
-  awaitingEnd: new Set(),
-  at: null,
 }
 
 export function turnBlockChanges(
   input: {
     readonly now: number
     readonly person: boolean
-    readonly helpers: readonly AHelperInTheTurn[] | null
+    readonly helpers: readonly AHelperInTheTurn[]
+    readonly helpersIncomplete?: boolean
     readonly personWait: string | null
     readonly nobodyWaiting: boolean
     readonly replyQuestionTurn: string | null
@@ -46,53 +38,24 @@ export function turnBlockChanges(
     helpers?: ExtraTurnFacts['helpers']
     nobodyWaiting?: boolean
     replyQuestion?: boolean
-    currentWork?: CurrentWorkInTheTurn
-  } = {}
-  const seen = new Map(before.helpers)
-  const awaitingEnd = new Set(before.awaitingEnd)
-  let rotation = before.rotation
-  const helpersReadable =
-    input.helpers !== null &&
-    input.helpers.every((row) => [...row.label].length <= TURN_LABEL_POINTS)
-  if (!helpersReadable || input.helpers === null) {
-    extra.helpers = null
-    // These rows were read, but none was shown. Keep their endings eligible without acknowledgement.
-    for (const row of input.helpers ?? [])
-      if (row.open || (before.at !== null && row.givenAt > before.at)) awaitingEnd.add(row.piece)
-  } else {
-    const present = new Set(input.helpers.map((row) => row.piece))
-    for (const id of seen.keys()) if (!present.has(id)) seen.delete(id)
-    for (const id of awaitingEnd) if (!present.has(id)) awaitingEnd.delete(id)
-    for (const row of input.helpers)
-      if (row.open || (before.at !== null && row.givenAt > before.at)) awaitingEnd.add(row.piece)
-    const order = (left: AHelperInTheTurn, right: AHelperInTheTurn): number =>
-      left.givenAt - right.givenAt || left.label.localeCompare(right.label)
-    const urgent = input.helpers.filter((row) => row.open && row.urgent).sort(order)
-    const rotated = urgent
-      .slice(rotation % Math.max(1, urgent.length))
-      .concat(urgent.slice(0, rotation % Math.max(1, urgent.length)))
-    const changed = input.helpers
-      .filter(
-        (row) =>
-          !row.urgent &&
-          (row.open
-            ? seen.get(row.piece) !== row.revision
-            : awaitingEnd.has(row.piece) && seen.get(row.piece) !== row.revision),
-      )
-      .sort(order)
-    const eligible = [...rotated, ...changed]
-    const rows = eligible.slice(0, TURN_HELPER_LINES)
-    for (const row of rows) {
-      seen.set(row.piece, row.revision)
-      if (!row.open) awaitingEnd.delete(row.piece)
-    }
-    if (urgent.length > TURN_HELPER_LINES)
-      rotation = (rotation + rows.filter((row) => row.urgent).length) % urgent.length
-    extra.helpers = {
-      rows,
-      more: eligible.length - rows.length,
-      unchanged: input.helpers.filter((row) => row.open).length,
-    }
+    currentWork: CurrentWorkInTheTurn
+  } = { currentWork: input.current }
+  const order = (left: AHelperInTheTurn, right: AHelperInTheTurn): number =>
+    left.givenAt - right.givenAt || left.label.localeCompare(right.label)
+  const eligible = [...input.helpers].sort(order)
+  const urgent = eligible.filter((row) => row.urgent)
+  const allUrgentFit = urgent.length <= TURN_HELPER_LINES
+  const fixed = allUrgentFit ? urgent : []
+  const rotatable = allUrgentFit ? eligible.filter((row) => !row.urgent) : urgent
+  const slots = TURN_HELPER_LINES - fixed.length
+  const offset = before.rotation % Math.max(1, rotatable.length)
+  const rotating = rotatable.slice(offset).concat(rotatable.slice(0, offset)).slice(0, slots)
+  const rows = [...fixed, ...rotating]
+  const rotation = rotatable.length > slots ? (offset + rotating.length) % rotatable.length : 0
+  extra.helpers = {
+    rows,
+    more: eligible.length - rows.length,
+    ...(input.helpersIncomplete ? { incomplete: true } : {}),
   }
   const due =
     input.person ||
@@ -106,16 +69,10 @@ export function turnBlockChanges(
     input.replyQuestionTurn !== null &&
     input.replyQuestionTurn !== before.hintedTurn
   if (hint) extra.replyQuestion = true
-  const current = JSON.stringify(input.current)
-  if (input.person || current !== before.current) extra.currentWork = input.current
   return {
     extra,
     next: {
-      helpers: seen,
       rotation,
-      current,
-      awaitingEnd,
-      at: helpersReadable ? input.now : before.at,
       personWait:
         input.personWait === null
           ? before.personWait

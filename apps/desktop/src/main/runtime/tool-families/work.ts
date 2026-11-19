@@ -26,7 +26,7 @@ import {
 import { HELD_FORMS_WITH_EXTENSIONS_SAID, MAX_RESOURCES_PER_REPLY } from '../../../shared/documents'
 import { PIECE_TITLE_CHARS } from '../../../shared/piece-called'
 import { REPLY_SUMMARY_LIMIT } from '../reply-rails'
-import { TOOL_INPUT_ENUMS, type ToolName, documentedToolEnum } from './catalog'
+import type { ToolName } from './catalog'
 import {
   WORK_SEARCH_WORDS,
   workSearchInWords,
@@ -38,7 +38,7 @@ import {
 } from '../../../shared/questions'
 import { answer, refusalAnswer } from './answers'
 import { refuseTool } from './refusals'
-import { workSearchQuery } from '../../../shared/work-search'
+import { conversationSearchQuery } from '../../../shared/work-search'
 import { z } from 'zod'
 
 interface WithdrawTaskArguments {
@@ -705,17 +705,15 @@ export function createSearchWorkTool(
     description: WORK_SEARCH_WORDS.description,
     beyondItsRails: 'nothing-its-rails-do-not-cover',
     input: {
-      ...workSearchQuery.shape,
-      scope: documentedToolEnum(TOOL_INPUT_ENUMS['search_work:scope'], 'The scope to search.'),
-      state: documentedToolEnum(
-        TOOL_INPUT_ENUMS['search_work:state'],
-        'Only work in this state.',
-        'Omit it for every state.',
-      ).optional(),
+      ...conversationSearchQuery.shape,
+      words: conversationSearchQuery.shape.words.describe(WORK_SEARCH_WORDS.input),
+      profile: conversationSearchQuery.shape.profile.describe('Only this profile’s conversations'),
+      from: conversationSearchQuery.shape.from.describe('Last active from'),
+      to: conversationSearchQuery.shape.to.describe('Last active until'),
     },
     call: (args) =>
       guarded(async () => {
-        const input = workSearchQuery.safeParse(args)
+        const input = conversationSearchQuery.safeParse(args)
         if (!input.success) {
           const refused = workSearchRefusal('invalid')
           return answer(refused, `refused (${refused.rail}): ${refused.reason}`)

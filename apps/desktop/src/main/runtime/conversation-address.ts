@@ -35,10 +35,10 @@ interface DisplayTitleReads {
   ): { readonly slug: string; readonly displayName: string | null } | null
 }
 
-function conversationDisplayTitle(
+export function conversationDisplayTitle(
   reads: DisplayTitleReads,
   conversation: string,
-  service: boolean,
+  service = false,
 ): string {
   const title = reads.conversationTitle(conversation)?.title
   if (title !== undefined) return title
@@ -60,4 +60,11 @@ export function describeConversation(
   const address = service ? conversation : canonicalAddressOf(reads, conversation)
   const title = conversationDisplayTitle(reads, conversation, service)
   return { address, title, line: `conversation ${address} · ${title}` }
+}
+
+export function conversationLine(
+  reads: AddressReads & DisplayTitleReads,
+  conversation: string,
+): string {
+  return describeConversation(reads, conversation, false).line
 }

@@ -1,4 +1,3 @@
-import type { PieceRow } from '../../shared/task-contracts'
 import Database from 'better-sqlite3'
 import { z } from 'zod'
 import {
@@ -6,15 +5,23 @@ import {
   searchWords,
   WORK_SEARCH_BOUNDS,
   workSearchQuery,
+  type ConversationSearchHit,
   type WorkSearchHit,
   type WorkSearchPage,
   type WorkSearchQuery,
   type WorkSearchResult,
 } from '../../shared/work-search'
+import type { PieceRow, StatusLine } from '../../shared/task-contracts'
 import { formOfName } from '../../shared/documents'
 import { workFileGroup } from '../../shared/work-file-groups'
+import {
+  canonicalAddressOf,
+  conversationDisplayTitle,
+  conversationLine,
+} from '../runtime/conversation-address'
 import { createSessionStore, type SessionStore } from './session-store'
-import { rowsUnreadOnce } from './rows-unread'
+import { agentIdentityRowId } from './identity'
+import { rowsUnreadOnce, type RowsUnread } from './rows-unread'
 import {
   WorkSearchPageBudget,
   workSearchMaterialization,
@@ -24,22 +31,43 @@ import {
 const point = z.object({ at: z.number().finite(), id: z.string().min(1).max(200) }).strict()
 const cursorSchema = z
   .object({
-    version: z.literal(1),
+    version: z.literal(2),
     query: z.string().min(1).max(1024),
     high: point,
     after: point.nullable(),
+    within: point
+      .extend({ offset: z.number().int().positive().max(WORK_SEARCH_BOUNDS.ledgerRows) })
+      .optional(),
   })
   .strict()
 type Point = z.infer<typeof point>
-type Candidate = {
+type Cursor = z.infer<typeof cursorSchema>
+type Search = z.output<typeof workSearchQuery>
+type Candidate = Point & { profile: string | null }
+type MatchedTask = {
   id: string
-  owner_session_id: string
-  parent_id: string | null
-  created_at: number
+  label: string
+  title: string | null
+  brief: string | null
+  giver: string | null
+  givenAt: number
+  status: StatusLine | null
+  done: string | null
+  piece: PieceRow | null
+}
+
+const CANDIDATES =
+  'FROM provider_session s LEFT JOIN agent_identity a ON a.id = s.agent_identity_id'
+const DATE_SCOPE =
+  '(@profile IS NULL OR a.slug = @profile) AND s.updated_at >= @from AND s.updated_at <= @to'
+const matches = (words: readonly string[], fields: readonly (string | null)[]): boolean => {
+  const text = fields.join('\n').toLocaleLowerCase('en')
+  return words.every((word) => text.includes(word))
 }
 
 export class WorkSearchEngine {
   private readonly db: Database.Database
+
   constructor(
     file: string,
     private readonly now: () => number = Date.now,
@@ -62,9 +90,26 @@ export class WorkSearchEngine {
     const parsed = workSearchQuery.safeParse(input)
     if (!parsed.success) return { ok: false, reason: 'invalid' }
     const query = parsed.data
+    if (query.from !== undefined && query.to !== undefined && query.from > query.to)
+      return { ok: false, reason: 'invalid' }
     const words = searchWords(query.words)
-    const queryKey = JSON.stringify([caller, query.scope, query.state ?? null, words, query.limit])
-    let cursor: z.infer<typeof cursorSchema> | null = null
+    const profile = query.profile?.toLocaleLowerCase('en') ?? null
+    if (
+      profile !== null &&
+      this.db.prepare('SELECT 1 FROM agent_identity WHERE slug = ?').get(profile) === undefined
+    )
+      return { ok: false, reason: 'invalid' }
+    const queryKey = JSON.stringify([
+      caller,
+      query.scope,
+      query.state,
+      profile,
+      query.from,
+      query.to,
+      words,
+      query.limit,
+    ])
+    let cursor: Cursor | null = null
     if (query.cursor !== undefined) {
       try {
         cursor = cursorSchema.parse(
@@ -72,18 +117,20 @@ export class WorkSearchEngine {
         )
         if (
           cursor.query !== queryKey ||
+          (cursor.within !== undefined && query.scope === undefined) ||
           (cursor.after !== null &&
             (cursor.after.at > cursor.high.at ||
               (cursor.after.at === cursor.high.at && cursor.after.id > cursor.high.id)))
         )
-          throw new Error('cursor')
+          return { ok: false, reason: 'cursor-invalid' }
       } catch {
         return { ok: false, reason: 'cursor-invalid' }
       }
     }
+
     this.db.exec('BEGIN')
     try {
-      const page = this.page(caller, query, words, queryKey, cursor, checkpoint)
+      const page = this.page(caller, query, words, profile, queryKey, cursor, checkpoint)
       this.db.exec('COMMIT')
       return { ok: true, page }
     } catch {
@@ -94,290 +141,314 @@ export class WorkSearchEngine {
 
   private page(
     caller: string,
-    query: z.output<typeof workSearchQuery>,
+    query: Search,
     words: readonly string[],
+    profile: string | null,
     queryKey: string,
-    cursor: z.infer<typeof cursorSchema> | null,
+    cursor: Cursor | null,
     checkpoint?: (result: WorkSearchResult) => void,
   ): WorkSearchPage {
     const started = this.now()
     const identity = this.db
-      .prepare('SELECT agent_identity_id FROM provider_session WHERE id = ?')
-      .get(caller) as { agent_identity_id: string | null } | undefined
+      .prepare('SELECT agent_identity_id AS id FROM provider_session WHERE id = ?')
+      .get(caller) as { id: string | null } | undefined
     if (identity === undefined) throw new Error('no caller')
-    const scope =
-      query.scope === 'all'
-        ? '1'
-        : query.scope === 'this-conversation'
-          ? '(w.owner_session_id = @caller OR w.given_by_session_id = @caller)'
-          : `EXISTS (SELECT 1 FROM provider_session s WHERE s.id IN (w.owner_session_id, w.given_by_session_id) AND s.agent_identity_id = @profile)`
-    const parameters = { caller, profile: identity.agent_identity_id }
-    const head =
+    const params = {
+      profile,
+      from: query.from === undefined ? Number.MIN_SAFE_INTEGER : Date.parse(query.from),
+      to: query.to === undefined ? Number.MAX_SAFE_INTEGER : Date.parse(query.to) + 86_399_999,
+    }
+    const high =
       cursor?.high ??
       (this.db
         .prepare(
-          `SELECT created_at AS at, id FROM work w WHERE ${scope} ORDER BY created_at DESC, id DESC LIMIT 1`,
+          'SELECT s.id, s.updated_at AS at ' +
+            CANDIDATES +
+            ' WHERE ' +
+            DATE_SCOPE +
+            ' ORDER BY s.updated_at DESC, s.id DESC LIMIT 1',
         )
-        .get(parameters) as Point | undefined)
-    if (head === undefined)
-      return {
-        hits: [],
-        searched: 0,
-        rows_unread: 0,
-        ledgers_skipped: 0,
-        complete: true,
-        next_cursor: null,
-      }
-    const after = cursor?.after ?? null
-    const continuation = (through: Point | null) =>
-      Buffer.from(
-        JSON.stringify({ version: 1, query: queryKey, high: head, after: through }),
-      ).toString('base64url')
-    checkpoint?.({
-      ok: true,
-      page: {
-        hits: [],
-        searched: 0,
-        rows_unread: 0,
-        ledgers_skipped: 0,
-        complete: false,
-        next_cursor: continuation(after),
-      },
+        .get(params) as Point | undefined)
+    let through = cursor?.after ?? null
+    let within = cursor?.within
+    const unread = rowsUnreadOnce()
+    const hits: ConversationSearchHit[] = []
+    let searched = 0
+    let matchedTasks = 0
+    const result = (finished: boolean): WorkSearchPage => ({
+      hits: [...hits],
+      searched,
+      rows_unread: unread.count,
+      ledgers_skipped: unread.ledgersSkipped,
+      complete: finished && unread.count === 0 && unread.ledgersSkipped === 0,
+      next_cursor: finished
+        ? null
+        : Buffer.from(
+            JSON.stringify({
+              version: 2,
+              query: queryKey,
+              high,
+              after: through,
+              ...(within === undefined ? {} : { within }),
+            }),
+          ).toString('base64url'),
     })
+    if (high === undefined) return result(true)
+    checkpoint?.({ ok: true, page: result(false) })
+
     const candidates = this.db
       .prepare(
-        `SELECT id, owner_session_id, parent_id, created_at FROM work w
-      WHERE ${scope} AND (created_at < @highAt OR (created_at = @highAt AND id <= @highId))
-      AND (@afterId IS NULL OR created_at < @afterAt OR (created_at = @afterAt AND id < @afterId))
-      ORDER BY created_at DESC, id DESC LIMIT @cap`,
+        'SELECT s.id, s.updated_at AS at, a.slug AS profile ' +
+          CANDIDATES +
+          ' WHERE ' +
+          DATE_SCOPE +
+          ' AND (s.updated_at, s.id) <= (@highAt, @highId)' +
+          ' AND (@afterId IS NULL OR (s.updated_at, s.id) < (@afterAt, @afterId))' +
+          ' ORDER BY s.updated_at DESC, s.id DESC LIMIT @cap',
       )
       .all({
-        ...parameters,
-        highAt: head.at,
-        highId: head.id,
-        afterAt: after?.at ?? null,
-        afterId: after?.id ?? null,
+        ...params,
+        highAt: high.at,
+        highId: high.id,
+        afterAt: through?.at ?? null,
+        afterId: through?.id ?? null,
         cap: WORK_SEARCH_BOUNDS.candidates + 1,
       }) as Candidate[]
-    const unread = rowsUnreadOnce()
-    const owners = new Map<
-      string,
-      {
-        store: SessionStore
-        pieces: ReadonlyMap<string, PieceRow>
-        measure: ReturnType<typeof workSearchMaterialization>
-        readable: boolean
-      }
-    >()
-    // The page clock stops between pieces; a fold already running gets most of the worker bound.
     const pageBudget = new WorkSearchPageBudget(
       () => this.now() - started >= WORK_SEARCH_BOUNDS.workerMs - WORK_SEARCH_BOUNDS.pageMs,
     )
-    const hits: WorkSearchHit[] = []
-    let searched = 0
-    let through = after
-    let index = 0
-    // Publish only completed candidates; an interrupted fold is retried by the next page.
-    const publish = () =>
-      checkpoint?.({
-        ok: true,
-        page: {
-          hits: [...hits],
-          searched,
-          rows_unread: unread.count,
-          ledgers_skipped: unread.ledgersSkipped,
-          complete: false,
-          next_cursor: continuation(through),
-        },
-      })
-    for (; index < Math.min(candidates.length, WORK_SEARCH_BOUNDS.candidates); index++) {
+    for (const candidate of candidates.slice(0, WORK_SEARCH_BOUNDS.candidates)) {
       if (
-        hits.length === query.limit ||
+        (query.scope === undefined ? hits.length : matchedTasks) >= query.limit ||
         (searched > 0 &&
           (this.now() - started >= WORK_SEARCH_BOUNDS.pageMs ||
             pageBudget.returnedRows >= WORK_SEARCH_BOUNDS.pageRows))
       )
         break
-      const candidate = candidates[index]!
-      if (query.state !== undefined && candidate.parent_id === null) {
-        searched++
-        through = { at: candidate.created_at, id: candidate.id }
-        publish()
-        continue
+      const measure = workSearchMaterialization(pageBudget)
+      const localUnread = workSearchUnread(unread)
+      let hit: ConversationSearchHit | null
+      const offset = within?.id === candidate.id && within.at === candidate.at ? within.offset : 0
+      const taskLimit = query.scope === undefined ? 50 : query.limit - matchedTasks
+      try {
+        const db = measure.database(this.db)
+        const store = createSessionStore(db, this.now)
+        hit = this.conversationHit(
+          candidate,
+          caller,
+          identity.id,
+          query,
+          words,
+          store,
+          db,
+          localUnread,
+          offset,
+          taskLimit,
+        )
+        measure.assert()
+        if (localUnread.count > 0 || localUnread.ledgersSkipped > 0) hit = null
+      } catch {
+        if (pageBudget.overflowed) break
+        unread.in(candidate.id)('the-whole-ledger')
+        hit = null
       }
-      let owned = owners.get(candidate.owner_session_id)
-      if (owned === undefined) {
-        try {
-          const measure = workSearchMaterialization(pageBudget)
-          const store = createSessionStore(measure.database(this.db), this.now)
-          const localUnread = workSearchUnread(unread)
-          const folded = store.piecesWithTheirWaits(candidate.owner_session_id, localUnread)
-          if (pageBudget.overflowed) break
-          let readable = localUnread.count === 0 && localUnread.ledgersSkipped === 0
-          try {
-            measure.assert()
-          } catch {
-            readable = false
-            unread.in(candidate.owner_session_id)('the-whole-ledger')
-          }
-          owned = {
-            store,
-            pieces: new Map(folded.map((piece) => [piece.piece, piece])),
-            measure,
-            readable,
-          }
-          owners.set(candidate.owner_session_id, owned)
-        } catch {
-          if (pageBudget.overflowed) break
-          unread.in(candidate.owner_session_id)('the-whole-ledger')
-          searched++
-          through = { at: candidate.created_at, id: candidate.id }
-          publish()
-          continue
-        }
-      }
-      let hit: WorkSearchHit | null = null
-      if (owned.readable) {
-        try {
-          const row = owned.store.workById(candidate.id)
-          const piece = owned.pieces.get(candidate.id)
-          const root =
-            candidate.parent_id === null ? owned.store.turnBlockRootLines(candidate.id) : null
-          if (row === null || (candidate.parent_id === null ? root === null : piece === undefined))
-            throw new Error('unread work')
-          if (
-            [row.piece, row.label, row.owner, row.givenBy].some(
-              (value) => value !== null && value.length > 200,
-            )
-          )
-            throw new Error('unread work identity')
-          const title = candidate.parent_id === null ? root!.title : piece!.title
-          const summary = piece?.summary ?? null
-          const definitionOfDone =
-            candidate.parent_id === null
-              ? owned.store.rootDoneCondition(candidate.id)
-              : (piece?.definitionOfDone ?? null)
-          if (definitionOfDone !== null && typeof definitionOfDone !== 'string')
-            throw new Error('unread done condition')
-          if (
-            (query.state === undefined || piece?.state === query.state) &&
-            words.every((word) =>
-              `${title ?? ''}\n${definitionOfDone ?? ''}\n${summary ?? ''}`
-                .toLocaleLowerCase('en')
-                .includes(word),
-            )
-          ) {
-            const titleText = clippedWorkText(title, WORK_SEARCH_BOUNDS.titleUnits)
-            const resultText = clippedWorkText(summary, WORK_SEARCH_BOUNDS.resultUnits)
-            const statusText = clippedWorkText(
-              candidate.parent_id === null
-                ? (root!.statusLine?.text ?? null)
-                : (piece!.statusLine?.text ?? null),
-              WORK_SEARCH_BOUNDS.statusUnits,
-            )
-            const name = (id: string) => {
-              const named = owned!.measure
-                .database(this.db)
-                .prepare(
-                  'SELECT a.display_name, a.slug FROM provider_session s LEFT JOIN agent_identity a ON a.id = s.agent_identity_id WHERE s.id = ?',
-                )
-                .get(id) as { display_name: string | null; slug: string | null } | undefined
-              if ((named?.display_name?.length ?? 0) > 200 || (named?.slug?.length ?? 0) > 200)
-                throw new Error('unread identity')
-              return {
-                conversation: id,
-                name: named?.display_name ?? null,
-                profile: named?.slug ?? null,
-              }
-            }
-            const bounded = owned.measure.database(this.db)
-            const resources = bounded
-              .prepare(
-                'SELECT id, role, name FROM work_resource WHERE work_id = ? ORDER BY created_at, id LIMIT ?',
-              )
-              .all(candidate.id, WORK_SEARCH_BOUNDS.resourceIds) as {
-              id: string
-              role: 'input' | 'made'
-              name: string
-            }[]
-            const totalResources = (
-              bounded
-                .prepare('SELECT count(*) AS count FROM work_resource WHERE work_id = ?')
-                .get(candidate.id) as { count: number }
-            ).count
-            const resource_ids = {
-              brief: [] as string[],
-              result: [] as string[],
-              attachments: [] as string[],
-              working: [] as string[],
-            }
-            const returned = new Set(piece?.resources ?? [])
-            for (const resource of resources) {
-              const group = workFileGroup(
-                { role: resource.role, form: formOfName(resource.name) },
-                returned.has(resource.id),
-              )
-              if (group !== null) resource_ids[group].push(resource.id)
-            }
-            hit = {
-              definition_of_done: clippedWorkText(definitionOfDone, 512).text,
-              kind: candidate.parent_id === null ? 'root' : 'piece',
-              piece: row.piece,
-              label: row.label,
-              title: titleText.text,
-              state: piece?.state ?? null,
-              ...(candidate.parent_id === null
-                ? { conversation_state: owned.store.recordedOne(row.owner)?.status ?? 'unknown' }
-                : {}),
-              owner: name(row.owner),
-              giver: row.givenBy === null ? null : name(row.givenBy),
-              result:
-                piece?.outcome == null
-                  ? null
-                  : { outcome: piece.outcome, summary: resultText.text },
-              status: statusText.text,
-              resource_ids,
-              clipped: {
-                title: titleText.clipped,
-                result: resultText.clipped,
-                status: statusText.clipped,
-              },
-              resources_omitted: Math.max(0, totalResources - WORK_SEARCH_BOUNDS.resourceIds),
-            }
-          }
-          owned.measure.assert()
-        } catch {
-          if (pageBudget.overflowed) break
-          unread.in(candidate.owner_session_id)('the-whole-ledger')
-          owned.readable = false
-          hit = null
-        }
-      }
-      if (pageBudget.overflowed) break
       if (
         hit !== null &&
-        JSON.stringify({
-          hits: [...hits, hit],
-          searched,
-          rows_unread: unread.count,
-          ledgers_skipped: unread.ledgersSkipped,
-          next_cursor: 'x'.repeat(2048),
-        }).length > WORK_SEARCH_BOUNDS.responseUnits
+        JSON.stringify([...hits, hit]).length > WORK_SEARCH_BOUNDS.responseUnits - 2200
       )
         break
-      if (hit !== null) hits.push(hit)
+      if (hit !== null) {
+        hits.push(hit)
+        matchedTasks += hit.matched_tasks.length
+      }
       searched++
-      through = { at: candidate.created_at, id: candidate.id }
-      publish()
+      if (
+        query.scope !== undefined &&
+        hit !== null &&
+        hit.tasks_omitted > 0 &&
+        hit.matched_tasks.length > 0
+      ) {
+        within = { at: candidate.at, id: candidate.id, offset: offset + hit.matched_tasks.length }
+        checkpoint?.({ ok: true, page: result(false) })
+        return result(false)
+      }
+      within = undefined
+      through = { at: candidate.at, id: candidate.id }
+      checkpoint?.({ ok: true, page: result(false) })
     }
-    const exhausted = index >= candidates.length
+    return result(searched === candidates.length)
+  }
+
+  private conversationHit(
+    candidate: Candidate,
+    caller: string,
+    identity: string | null,
+    query: Search,
+    words: readonly string[],
+    store: SessionStore,
+    db: Database.Database,
+    unread: RowsUnread,
+    offset: number,
+    taskLimit: number,
+  ): ConversationSearchHit | null {
+    const { id } = candidate
+    const address = canonicalAddressOf(store, id)
+    const title = conversationDisplayTitle(store, id)
+    const root = store.rootOf(id)
+    const rootLines = root === null ? null : store.turnBlockRootLines(root.piece)
+    if (root !== null && rootLines === null) throw new Error('unread conversation task')
+    const tasks: MatchedTask[] = store.piecesWithTheirWaits(id, unread).map((piece) => ({
+      id: piece.piece,
+      label: piece.label,
+      title: piece.title,
+      brief: piece.brief,
+      giver: piece.giver,
+      givenAt: piece.givenAt,
+      status: piece.statusLine,
+      done: piece.definitionOfDone ?? null,
+      piece,
+    }))
+    if (root !== null && rootLines !== null) {
+      tasks.push({
+        id: root.piece,
+        label: root.label,
+        title: rootLines.title,
+        brief: root.brief,
+        giver: root.givenBy,
+        givenAt: root.createdAt,
+        status: rootLines.statusLine,
+        done: store.rootDoneCondition(root.piece),
+        piece: null,
+      })
+    }
+    let latest: StatusLine | null = null
+    for (const task of tasks)
+      if (task.status !== null && (latest === null || task.status.at > latest.at))
+        latest = task.status
+
+    const identityOf = db.prepare(
+      'SELECT agent_identity_id AS id FROM provider_session WHERE id = ?',
+    )
+    const identityFor = (conversation: string) =>
+      (identityOf.get(conversation) as { id: string | null } | undefined)?.id ?? null
+    const eligible = (task: MatchedTask): boolean => {
+      if (query.state !== undefined && task.piece?.state !== query.state) return false
+      if (query.scope === 'this-conversation') return id === caller || task.giver === caller
+      if (query.scope === 'mine')
+        return (
+          identity !== null &&
+          (identityFor(id) === identity ||
+            (task.giver !== null && identityFor(task.giver) === identity))
+        )
+      return true
+    }
+    const matched = tasks
+      .filter(
+        (task) =>
+          eligible(task) &&
+          matches(
+            words,
+            query.scope === undefined
+              ? [
+                  task.label,
+                  task.title,
+                  task.brief,
+                  task.done,
+                  task.status?.text ?? null,
+                  task.piece?.summary ?? null,
+                ]
+              : [task.title, task.done, task.piece?.summary ?? null],
+          ),
+      )
+      .sort((left, right) => right.givenAt - left.givenAt || right.id.localeCompare(left.id))
+      .slice(offset)
+    const matchesConversation =
+      query.scope === undefined &&
+      query.state === undefined &&
+      matches(words, [address, title, candidate.profile, latest?.text ?? null])
+    if (!matchesConversation && matched.length === 0) return null
+
+    const matched_tasks: WorkSearchHit[] = []
+    let units = 0
+    for (const task of matched.slice(0, taskLimit)) {
+      const one = this.taskHit(task, id, store, db)
+      units += JSON.stringify(one).length
+      if (units > (WORK_SEARCH_BOUNDS.responseUnits - 2200) / 2) break
+      matched_tasks.push(one)
+    }
     return {
-      hits,
-      searched,
-      rows_unread: unread.count,
-      ledgers_skipped: unread.ledgersSkipped,
-      complete: exhausted && unread.count === 0 && unread.ledgersSkipped === 0,
-      next_cursor: exhausted ? null : continuation(through),
+      conversation: id,
+      address,
+      title: clippedWorkText(title, WORK_SEARCH_BOUNDS.titleUnits).text ?? '',
+      line: conversationLine(store, id),
+      profile: candidate.profile,
+      last_active_at: candidate.at,
+      status: clippedWorkText(latest?.text ?? null, WORK_SEARCH_BOUNDS.statusUnits).text,
+      matched_tasks,
+      tasks_omitted: matched.length - matched_tasks.length,
+    }
+  }
+
+  private taskHit(
+    task: MatchedTask,
+    owner: string,
+    store: SessionStore,
+    db: Database.Database,
+  ): WorkSearchHit {
+    const name = (conversation: string) => {
+      const identity = store.conversationBinding(conversation)?.identity
+      const profile =
+        identity == null ? null : store.agentIdentityNameById(agentIdentityRowId(identity))
+      return { conversation, name: profile?.displayName ?? null, profile: profile?.slug ?? null }
+    }
+    const resources = db
+      .prepare(
+        'SELECT id, role, name FROM work_resource WHERE work_id = ? ORDER BY created_at, id LIMIT ?',
+      )
+      .all(task.id, WORK_SEARCH_BOUNDS.resourceIds) as {
+      id: string
+      role: 'input' | 'made'
+      name: string
+    }[]
+    const { count } = db
+      .prepare('SELECT count(*) AS count FROM work_resource WHERE work_id = ?')
+      .get(task.id) as { count: number }
+    const resource_ids = {
+      brief: [] as string[],
+      result: [] as string[],
+      attachments: [] as string[],
+      working: [] as string[],
+    }
+    const returned = new Set(task.piece?.resources ?? [])
+    for (const resource of resources) {
+      const group = workFileGroup(
+        { role: resource.role, form: formOfName(resource.name) },
+        returned.has(resource.id),
+      )
+      if (group !== null) resource_ids[group].push(resource.id)
+    }
+    const title = clippedWorkText(task.title, WORK_SEARCH_BOUNDS.titleUnits)
+    const status = clippedWorkText(task.status?.text ?? null, WORK_SEARCH_BOUNDS.statusUnits)
+    const summary = clippedWorkText(task.piece?.summary ?? null, WORK_SEARCH_BOUNDS.resultUnits)
+    const outcome = task.piece?.outcome ?? null
+    return {
+      kind: task.piece === null ? 'root' : 'piece',
+      piece: task.id,
+      label: task.label,
+      title: title.text,
+      given_at: task.givenAt,
+      definition_of_done: clippedWorkText(task.done, 512).text,
+      state: task.piece?.state ?? null,
+      ...(task.piece === null
+        ? { conversation_state: store.recordedOne(owner)?.status ?? 'unknown' }
+        : {}),
+      owner: name(owner),
+      giver: task.giver === null ? null : name(task.giver),
+      result: outcome === null ? null : { outcome, summary: summary.text },
+      status: status.text,
+      resource_ids,
+      clipped: { title: title.clipped, result: summary.clipped, status: status.clipped },
+      resources_omitted: Math.max(0, count - WORK_SEARCH_BOUNDS.resourceIds),
     }
   }
 

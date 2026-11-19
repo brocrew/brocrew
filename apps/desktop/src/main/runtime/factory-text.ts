@@ -542,9 +542,8 @@ export interface TheBuildRunning {
  */
 export const OTHER_CONVERSATIONS_SHOWN = 5
 
-export interface OtherConversation {
-  readonly label: string
-  readonly title: string
+interface OtherConversation {
+  readonly line: string
   readonly lastActiveAt: number | null
 }
 
@@ -554,7 +553,7 @@ export interface OtherConversations {
 }
 
 function anotherConversationLine(other: OtherConversation): string {
-  const named = `  - ${other.label} · ${other.title || 'Untitled conversation'}`
+  const named = `  - ${other.line}`
   const at = other.lastActiveAt
   if (at === null || !Number.isFinite(at) || Math.abs(at) > MAX_INSTANT) {
     return `${named} — last activity unknown.`
@@ -592,25 +591,7 @@ function dynamicLayer(context: InstructionContext): string[] {
     '- Ask when something is destructive or ambiguous.',
   ]
   if (context.startedBy !== null) {
-    // 🔴 **PROVENANCE, never delegation** (`370` §3.1, HO-015 §3) — *"which is durable and true,
-    // rather than delegation, which is neither."*
-    //
-    // ⛔ **And the second sentence is `373`, which made `370`'s own cold-resume wording stale.**
-    // `370` recommended *"No agent command delegation is restored on this resume; no agent
-    // currently commands this session"*, and HO-015 §4 refused to ship it — *"I do not want to ship
-    // it, because it describes a defect as though it were the design."* `373` then fixed the defect:
-    // `resumeSession` re-derives `commandedBy` from the provenance row, so the parent commands its
-    // child across a restart. ⚠️ **There is therefore no cold-resume variant of this paragraph at
-    // all** — the sentence is the same on both paths because the fact now is.
-    //
-    // ⚑ **D-016 · commit 7 · R3 — named by the piece it owns**, never by its id: the label is the
-    // address every door that takes an agent takes. ⚠️ Fixed at this launch — the direction line
-    // names a sender by the piece it owns when it writes, which can be a newer one
-    // (`turn-origin.ts`).
-    lines.push(
-      `- This conversation was started by ${context.startedBy}. That conversation can send you ` +
-        'messages, and can still do so after this app has been restarted.',
-    )
+    lines.push(`- This conversation was started by ${context.startedBy}.`)
   }
   // 🔴 **D-016 · the one conditional fact about the root** (plan §3.10): a conversation a person
   // started owns a root, and it is the conversation that names it — after what the person asked for.
@@ -626,7 +607,7 @@ function dynamicLayer(context: InstructionContext): string[] {
   // Omit the list when this profile has no other conversation to point to.
   if (context.others.shown.length > 0) {
     lines.push(
-      '- Other conversations of this profile, as of this launch. Point the person to the right conversation:',
+      '- Other conversations of this profile, most recent first (list_agents shows more):',
       ...context.others.shown.map(anotherConversationLine),
     )
     if (context.others.more > 0) {
