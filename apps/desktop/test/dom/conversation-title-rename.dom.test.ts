@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
+import { fullTime } from '../../src/renderer/src/lib/clock'
 import type {
   ConversationIdentity,
   ConversationTitleHistory,
@@ -246,14 +247,11 @@ it('reads saved titles only on demand, follows the cursor and restarts after a r
     .mockResolvedValueOnce(savedTitles('Title carried across rebuild', 2))
     .mockResolvedValueOnce(savedTitles('Title from the other window', 3))
   window.api.runtime.readConversationTitleHistory = read
-  window.api.runtime.readConversationIdentity = vi.fn(async () => ({
-    conversation: sessionId,
-    address,
-    title: 'Current reader title',
-    author: null,
-  }))
+  window.api.runtime.readConversationIdentity = vi.fn(async () => null)
   const m = await mountWith([row(sessionId, task)])
   await expect.poll(() => m.all('conversation-linked-task').length).toBe(1)
+  const fallbackTitle = m.q('conversation-title').textContent?.trim()
+  expect(fallbackTitle).toContain(task.title)
   m.q('conversation-linked-task').click()
   await expect.poll(() => m.all('conversation-title-history').length).toBe(1)
   expect(read).not.toHaveBeenCalled()
@@ -264,7 +262,7 @@ it('reads saved titles only on demand, follows the cursor and restarts after a r
   expect(read).toHaveBeenCalledExactlyOnceWith({ sessionId })
   expect(history.textContent).toContain('Current saved title')
   expect(history.textContent).toContain('Named by you')
-  expect(history.querySelector('time')?.textContent).toContain('2026')
+  expect(history.querySelector('time')?.textContent).toBe(fullTime(savedAt))
 
   m.q('conversation-title-history-more').click()
   await expect.poll(() => m.all('conversation-saved-title').length).toBe(2)
@@ -279,12 +277,13 @@ it('reads saved titles only on demand, follows the cursor and restarts after a r
   expect(read).toHaveBeenNthCalledWith(3, { sessionId, before: beforeRebuild })
   expect(read).toHaveBeenNthCalledWith(4, { sessionId })
   expect(history.textContent).not.toContain('Earlier saved title')
-  expect(m.q('conversation-title').textContent?.trim()).toBe('Current reader title')
+  expect(m.q('conversation-title').textContent?.trim()).toBe(fallbackTitle)
 
   changed({ what: 'work' })
   await expect.poll(() => history.textContent).toContain('Title from the other window')
   expect(read).toHaveBeenNthCalledWith(5, { sessionId })
   expect(history.textContent).not.toContain('Title carried across rebuild')
+  expect(m.q('conversation-title').textContent?.trim()).toBe(fallbackTitle)
 })
 
 it('keeps a delayed saved-title reply out of the next conversation', async () => {
