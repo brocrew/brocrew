@@ -220,8 +220,10 @@ export function createAttachmentBook(): AttachmentBook {
           return
         }
         const staged = stageVerdicts(
-          submitted,
-          next.map((handed) => ({ handed })),
+          submitted.filter((old) => !next.some((path) => path.path === old.path)),
+          next.map((handed) => ({
+            handed: submitted.some((old) => old.path === handed.path) ? { ...handed } : handed,
+          })),
         )
         write(key, staged.next)
         if (staged.refusal !== null) refuse(key, staged.refusal)
@@ -241,7 +243,21 @@ export function createAttachmentBook(): AttachmentBook {
           // left to stage into — and writing anyway would resurrect a slot `keepOnly` had just
           // decided was gone. ⚑ Silent on purpose: there is no surface left to say it on either.
           if (!open.has(key)) return
-          const { next, refusal } = stageVerdicts(read(key), verdicts)
+          const submitted = hidden.get(key) ?? []
+          const reattached = new Map<string, HandedPath>()
+          for (const verdict of verdicts) {
+            if ('handed' in verdict && submitted.some((old) => old.path === verdict.handed.path)) {
+              // Selecting a submitted file again gives it to the newer draft.
+              reattached.set(verdict.handed.path, { ...verdict.handed })
+            }
+          }
+          const base = read(key).map((path) =>
+            submitted.includes(path) ? (reattached.get(path.path) ?? path) : path,
+          )
+          const remaining = verdicts.filter(
+            (verdict) => !('handed' in verdict && reattached.has(verdict.handed.path)),
+          )
+          const { next, refusal } = stageVerdicts(base, remaining)
           write(key, next)
           refuse(key, refusal)
         })()
