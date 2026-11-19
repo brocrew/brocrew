@@ -6,8 +6,8 @@
       "name": "delegate",
       "description": "Before assigning work or choosing helpers, reuse the best-fitting profile or service, name one result owner, and choose a supported model for each handoff.",
       "reminder": "delegate — Before handoff: one fitting owner, reusable profile or service, and supported model.",
-      "sha256": "ee8a3a0e76d146e25cb9018d806a550c48e58740031604669edd64b5ce644c02",
-      "bytes": 4128
+      "sha256": "055355b69be38163cd445c1055285b67b8307efe823a5da39b27207d98937226",
+      "bytes": 4118
     },
     {
       "name": "hand-back",
@@ -20,8 +20,8 @@
       "name": "split-work",
       "description": "Before dividing an outcome, choose bounded pieces by project kind, outputs and dependencies; keep one owner responsible for integration.",
       "reminder": "split-work — Before dividing: bounded pieces, dependencies and integration.",
-      "sha256": "9973342315cf3e9e2253466dd31b8463dbdfe50cf0206aa4f7f75a8255fe4a0c",
-      "bytes": 3008
+      "sha256": "c9b20fafde41d35f7a382f9cdadab3f72a0e43ffec9ceac8184c201f6cb87e77",
+      "bytes": 3022
     },
     {
       "name": "ask-and-wait",

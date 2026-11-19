@@ -436,7 +436,8 @@ describe('553 · anyone may ask; work needs a relationship', () => {
       expect(tool.description).not.toContain('granted you more')
       const give = bossTools.tools.find((one) => one.name === 'give_work')
       if (give === undefined) throw new Error('give_work is not published')
-      expect(give.description).toContain('to field says where it goes')
+      expect(give.description).toContain('to: "new" starts a new conversation for a new job')
+      expect(give.description).toContain("A conversation's task label adds a new task there")
     })
   })
 
