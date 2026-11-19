@@ -187,6 +187,11 @@ it('uses the declared default model if no selected pair exists', () => {
 })
 
 it('opens only the requested provider setup inside Settings', async () => {
+  const check = window.api.runtime.checkProviderAuth
+  window.api.runtime.checkProviderAuth = async (input) =>
+    input.provider === 'codex'
+      ? { state: 'absent', reason: 'Fictional setup needs sign-in.' }
+      : check(input)
   const m = mount(
     SettingsScreen,
     {

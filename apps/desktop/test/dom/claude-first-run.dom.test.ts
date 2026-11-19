@@ -359,7 +359,7 @@ it('uses CLI-owned browser sign-in and automatically retries a warming model cat
     completedSignInMessage: 'The supplied native sign-in completed.',
   })
   await settle()
-  expect(m.q('provider-models-said').textContent).toContain('Reading')
+  expect(m.q('provider-models-said').textContent?.trim()).toBe('Updating models…')
   expect(m.q('provider-models-said').textContent).not.toContain('Try again')
   await vi.waitFor(() => expect(m.all('provider-model-row')).toHaveLength(1))
   expect(modelList).toHaveBeenCalledTimes(3)
@@ -378,7 +378,7 @@ it('shows a persistent catalogue failure only after the bounded post-Check retri
   const before = modelList.mock.calls.length
   check.click()
   await settle()
-  expect(m.q('provider-models-said').textContent).toContain('Reading')
+  expect(m.q('provider-models-said').textContent?.trim()).toBe('Updating models…')
   expect(m.q('provider-models-said').textContent).not.toContain('Try again')
   await vi.waitFor(() => expect(m.q('provider-models-said').textContent).toContain('Try again'))
   expect(modelList).toHaveBeenCalledTimes(before + 3)
