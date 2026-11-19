@@ -1,10 +1,12 @@
-import { readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 import type { SessionMachine } from '@brobot2/runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { SendReceipt } from '../src/shared/tool-outcome'
+import { theMessagesOf } from '../src/shared/runtime-ipc'
+import { resourcesRoot } from '../src/main/resources/resources'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 import { waitFor } from './lib/f093-host'
 
@@ -36,12 +38,21 @@ describe('explicit outbound sends', () => {
 
   it('delivers a taskless message and keeps the full words in its sender’s folder', async () => {
     expect(world.store.piecesOwnedBy(sender)).toHaveLength(0)
+    const attachment = join(world.folder, 'appendix.txt')
+    writeFileSync(attachment, 'The appendix.')
+    const tree = resourcesRoot(world.folder)
+    const kept = () => existsSync(tree) ? readdirSync(tree).sort() : []
+    const before = kept()
     const text = 'Details '.repeat(300) + 'last line'
-    const sent = await send('message_agent', { agent: target, text })
+    const sent = await send('message_agent', { agent: target, text, resources: [attachment] })
     const receipt = sent.structured?.receipt as SendReceipt
     expect(receipt.recorded).toMatchObject({ kind: 'message', taskLabel: null })
     expect(receipt.recipient).toMatchObject({ id: target, state: { kind: 'started' } })
-    const [file] = receipt.attachments
+    const [copy, file] = receipt.attachments
+    if (copy === undefined || !('path' in copy)) throw new Error('The attachment was not copied.')
+    expect(copy.path).not.toBe(attachment)
+    expect(readFileSync(copy.path, 'utf8')).toBe('The appendix.')
+    expect(kept()).toEqual(before)
     if (file === undefined || !('path' in file)) throw new Error('The complete text was not saved.')
     expect(isAbsolute(file.path)).toBe(true)
     expect(readFileSync(file.path, 'utf8')).toBe(text)
@@ -76,6 +87,13 @@ describe('explicit outbound sends', () => {
     }
     expect(bodies[0]).toContain('A fictional test file.')
     expect(bodies[1]).toContain(text.trimEnd())
+
+    await send('message_agent', { agent: target, piece: task.label, text, resources: [attachment] })
+    for (const name of ['reference.md', 'text.txt']) {
+      const copies = world.store.resourcesOf(task.piece).filter((file) => file.name === name)
+      expect(copies).toHaveLength(2)
+      expect(new Set(copies.map((file) => file.sha256)).size).toBe(2)
+    }
   })
 
   it('records a busy Message and an Ask in order before either is delivered', async () => {
@@ -515,10 +533,11 @@ describe('explicit outbound sends', () => {
             }),
           ]),
         )
-        expect(world.ledger(sender)).not.toEqual(
-          expect.arrayContaining([
-            expect.objectContaining({ type: 'user_turn', appNotice: 'a-question-stayed-unanswered' }),
-          ]),
+        const delivered = world.ledger(sender).flatMap(
+          (event) => event.type === 'user_turn' ? theMessagesOf(event) : [],
+        )
+        expect(delivered.some((part) => part.appNotice === 'a-question-stayed-unanswered')).toBe(
+          false,
         )
       } finally {
         keepBusy.pop()?.()

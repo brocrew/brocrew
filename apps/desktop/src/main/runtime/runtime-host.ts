@@ -111,6 +111,7 @@ import { canonicalAddressOf, describeConversation, resolveConversationAddress } 
 import { sendReceipt, type SendFacts } from './send-receipt'
 import {
   INLINE_TEXT_LIMIT,
+  keepPlainSendFile,
   keepSendOverflow,
   keepTasklessSendFiles,
   keepTasklessSendText,
@@ -508,11 +509,13 @@ import {
 } from '../../shared/documents'
 import {
   keepResource,
-  readOfferedResource,
+  readOfferedFile,
+  sha256Hex,
   refuseResource,
   resolveResource,
   resourceTitle,
   type OfferedFile,
+  type OfferedFileBytes,
   type ResourceRefusal,
 } from '../resources/resources'
 
@@ -4969,7 +4972,7 @@ export class RuntimeHost implements LiveHost {
       thePairItRunsOn: (conversation) => this.thePairItRunsOn(conversation),
       switchedFor: (conversation, choice) => this.switchedFor(conversation, choice),
       switchedBack: (conversation, wrote, was) => this.switchedBack(conversation, wrote, was),
-      keptFor: (conversation, spelled) => this.keptFor<never>(conversation, spelled),
+      keptFor: (conversation, spelled) => this.keepFilesForSend(conversation, spelled),
       aProtectedPlaceFor: (folder) => this.aProtectedPlaceFor(folder),
       theBriefTo: (conversation, giving, by, onRecorded, deliver) =>
         this.theBriefTo(conversation, giving, by, onRecorded, deliver),
@@ -12664,17 +12667,9 @@ export class RuntimeHost implements LiveHost {
       return { ok: false, refusal: refuseResource('resource-store-unavailable') }
     }
     const folder = this.deps.store.recordedOne(conversation)?.cwd ?? null
-    const files: OfferedFile[] = []
-    for (const path of spelled) {
-      if (folder === null) {
-        return { ok: false, refusal: refuseResource('resource-unreadable', { path }) }
-      }
-      const placed = resolveResource(folder, path)
-      if (!placed.ok) return placed
-      const read = readOfferedResource(placed.realPath, path)
-      if (!read.ok) return read
-      files.push(read)
-    }
+    const offered = this.readFilesOfferedIn(folder, spelled)
+    if (!offered.ok) return offered
+    const files = offered.files.map((file) => ({ ...file, sha256: sha256Hex(file.bytes) }))
     const refused = admitFiles?.(files)
     if (refused != null) return { ok: false, refusal: refused }
     for (const [index, file] of files.entries()) {
@@ -12690,6 +12685,47 @@ export class RuntimeHost implements LiveHost {
       }
     }
     return { ok: true, files: files.map((file) => ({ ...file, title: resourceTitle(file) })) }
+  }
+
+  private readFilesOfferedIn(
+    folder: string | null,
+    spelled: readonly string[],
+  ):
+    | { readonly ok: true; readonly files: readonly OfferedFileBytes[] }
+    | { readonly ok: false; readonly refusal: ResourceRefusal } {
+    const files: OfferedFileBytes[] = []
+    for (const path of spelled) {
+      if (folder === null) return { ok: false, refusal: refuseResource('resource-unreadable', { path }) }
+      const placed = resolveResource(folder, path)
+      if (!placed.ok) return placed
+      const read = readOfferedFile(placed.realPath, path)
+      if (!read.ok) return read
+      files.push(read)
+    }
+    return { ok: true, files }
+  }
+
+  private keepFilesForSend(
+    conversation: string,
+    spelled: readonly string[],
+  ):
+    | { readonly ok: true; readonly files: readonly (OfferedFile & { readonly title: string })[] }
+    | { readonly ok: false; readonly refusal: ResourceRefusal } {
+    if (spelled.length === 0) return { ok: true, files: [] }
+    const root = this.deps.resourcesRoot?.()
+    if (root === undefined) {
+      return { ok: false, refusal: refuseResource('resource-store-unavailable') }
+    }
+    const folder = this.deps.store.recordedOne(conversation)?.cwd ?? null
+    const offered = this.readFilesOfferedIn(folder, spelled)
+    if (!offered.ok) return offered
+    const files: (OfferedFile & { readonly title: string })[] = []
+    for (const file of offered.files) {
+      const kept = keepPlainSendFile(root, file.name, file.bytes)
+      if (!kept.ok) return kept
+      files.push({ ...file, sha256: kept.key, title: resourceTitle(file) })
+    }
+    return { ok: true, files }
   }
 
   titleTheOlderFiles(): Promise<{ titled: number; retitled: number }> {
@@ -14237,7 +14273,7 @@ export class RuntimeHost implements LiveHost {
     if (refusal !== null || piece === null) {
       return { ok: false, refusal: refusal ?? noPieceToAskAbout(input.piece ?? '', []) }
     }
-    const kept = this.keptFor(speaking, input.files)
+    const kept = this.keepFilesForSend(speaking, input.files)
     if (!kept.ok) return { ok: false, refusal: kept.refusal, resourceFailure: true }
     const at = this.now()
     const rows = this.writeRecord(speaking, 'work_resource', () =>
@@ -23723,15 +23759,17 @@ export class RuntimeHost implements LiveHost {
 
   prepareFilesForSend(sender: string, paths: readonly string[], piece?: string): PreparedSendFiles {
     if (paths.length === 0) return { ok: true, files: [] }
-    const kept = this.keptFor(sender, paths)
-    if (!kept.ok) return kept
     const task = this.taskForSendAttachment(sender, piece)
     if (task === undefined) {
       const cwd = this.deps.store.recordedOne(sender)?.cwd
-      return cwd === undefined
-        ? { ok: false, refusal: refuseResource('resource-store-unavailable') }
-        : keepTasklessSendFiles(cwd, kept.files)
+      if (cwd === undefined) {
+        return { ok: false, refusal: refuseResource('resource-unreadable', { path: paths[0] }) }
+      }
+      const offered = this.readFilesOfferedIn(cwd, paths)
+      return offered.ok ? keepTasklessSendFiles(cwd, offered.files) : offered
     }
+    const kept = this.keepFilesForSend(sender, paths)
+    if (!kept.ok) return kept
     const made = this.writeRecord(sender, 'work_resource', () =>
       this.recordMadeFiles(task, kept.files, sender, this.now()),
     )
@@ -25365,6 +25403,9 @@ export class RuntimeHost implements LiveHost {
         ...(held.drives === undefined ? {} : { drives: held.drives }),
         // ⚑ **F088 · and the piece they name**, so a start after a quit still says which.
         ...(held.about === undefined ? {} : { about: held.about }),
+        ...(held.unansweredQuestion === undefined
+          ? {}
+          : { unansweredQuestion: held.unansweredQuestion }),
       })
       moved += 1
     }
