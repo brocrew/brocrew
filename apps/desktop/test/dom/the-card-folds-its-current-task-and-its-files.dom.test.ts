@@ -10,10 +10,10 @@ import type { KeptFile } from '../../src/shared/runtime-ipc'
 import { META, drawerProps, mount, unmountAll, visible, type Mounted } from './harness'
 
 /**
- * The agent card's Current task and Files sections fold: a chevron where the section's icon was,
+ * The agent card's Current task, Files and Running now sections fold: a chevron where the section's icon was,
  * the heading a button that says whether the content is shown, the All tasks / View all action
  * beside it and separate. Folding hides the content alone. Each section remembers its fold on this
- * computer. No other section folds.
+ * computer. Sections without a fold keep their icon.
  */
 
 /** This file's own storage: the dom project runs files side by side on one origin. */
@@ -62,11 +62,13 @@ function card(): Mounted {
 const foldOf = (section: HTMLElement): HTMLButtonElement | null =>
   section.querySelector<HTMLButtonElement>('.head > button[aria-expanded]')
 
-describe('Current task and Files fold; nothing else does', () => {
-  it('🔴 a chevron and a heading button on the two sections, and none on a section that does not fold', async () => {
+const FOLDING_SECTIONS = ['card-task', 'card-files', 'panel-agents']
+
+describe('Current task, Files and Running now use the shared fold', () => {
+  it('a chevron and heading button on folding sections, and none on a section that does not fold', async () => {
     const m = card()
     await nextTick()
-    for (const cy of ['card-task', 'card-files']) {
+    for (const cy of FOLDING_SECTIONS) {
       const section = m.q(cy)
       const fold = foldOf(section)
       expect(fold, `${cy} has no fold`).not.toBeNull()
@@ -90,7 +92,7 @@ describe('Current task and Files fold; nothing else does', () => {
     expect(section.querySelector('.head use')!.getAttribute('href')).toBe('#i-image')
     // …and in the card, every other section is the same.
     const others = [...m.host.querySelectorAll<HTMLElement>('.card-section')].filter(
-      (one) => !['card-task', 'card-files'].includes(one.dataset['cy'] ?? ''),
+      (one) => !FOLDING_SECTIONS.includes(one.dataset['cy'] ?? ''),
     )
     for (const one of others) expect(foldOf(one)).toBeNull()
   })
