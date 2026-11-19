@@ -1,3 +1,15 @@
+import { callOn as callAgentTool } from './helpers/call-agent-tool'
+import { format } from 'node:util'
+import {
+  expectRecordedCannotRun,
+  expectTaskKept,
+  recordedSendNotices,
+} from './lib/recorded-send'
+import {
+  newConversationGive,
+  giveWorkBeforeProviderStart,
+  openPmWithSeededWorker,
+} from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -19,7 +31,6 @@ import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { CodexUnavailableError } from '../src/main/providers/codex/program'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
-import { applyEvent, createTranscript, type NoticeItem } from '../src/renderer/src/lib/transcript'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
 import {
   aSpawnRefusedAfterItsPipes,
@@ -68,7 +79,6 @@ const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
 /** ⚑ The new word — spelled here as a string, so `main` (which has no such word) can run this file. */
-const SHORTAGE = 'agent-could-not-start-just-now'
 
 describe('707 · R39, extended — a spawn that ran short', () => {
   let userData: string
@@ -139,40 +149,32 @@ describe('707 · R39, extended — a spawn that ran short', () => {
 
   const personOpens = personOpener(() => ({ host, root, window }), 'auto')
 
-  const callOn = async (
+  const callOn = (
     caller: string,
     name: ToolName,
     args: Record<string, unknown> = {},
-  ): Promise<Record<string, unknown>> => {
-    const tool = agentToolsFor(host, caller).tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
+  ): Promise<Record<string, unknown>> =>
+    callAgentTool(agentToolsFor(host, caller), name, args)
 
   /** ⚑ A PM a person opened, which may start `worker` — an identity a person opened once, so it exists. */
-  const aPmThatMaySpawn = async (): Promise<string> => {
-    await host.close(await personOpens('worker'), window)
-    return personOpens('pm')
-  }
+  const aPmThatMaySpawn = () =>
+    openPmWithSeededWorker(personOpens, (id) => host.close(id, window))
 
   /** ⚑ **D-016 · `give_work` is the door that starts a conversation now** — `worker` has none with the PM. */
   const spawnWorker = (pm: string): Promise<Record<string, unknown>> =>
-    callOn(pm, 'give_work', {
-      to: 'new',
-      conversation_title: 'The work',
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'The work',
-      brief: 'the work',
-    })
+    giveWorkBeforeProviderStart((name, args) => callOn(pm, name, args))
 
-  const theRefusal = (payload: Record<string, unknown>): Record<string, unknown> => ({
-    outcome: payload.outcome,
-    rail: payload.rail,
-    permanence: payload.permanence,
-    retryable: payload.retryable,
-    remedy: payload.remedy,
-  })
+  const aKeptGive = (result: Record<string, unknown>, reason: string, needsPerson = false) => {
+    const receipt = expectRecordedCannotRun(result, 'task', reason, needsPerson)
+    expectTaskKept(store, receipt)
+    return receipt
+  }
+
+  const sendToTheKeptAddress = (pm: string, address: string) =>
+    callOn(pm, 'message_agent', { agent: address, text: 'carry on', kind: 'note' })
+
+  const shortageWords = (code: string): string =>
+    code === 'EMFILE' ? 'BroCrew had too many files open' : 'ran short of open files'
 
   // ───────────────────────────────────────────────────────────────────────────────
   // the adapters' own errors
@@ -262,35 +264,36 @@ describe('707 · R39, extended — a spawn that ran short', () => {
   // ───────────────────────────────────────────────────────────────────────────────
 
   describe.each(SHORTAGES)('§1 · $name', ({ code, make }) => {
-    it('🔴 give_work answers the retryable word — while this holds, retryable, the same call again', async () => {
+    it('keeps the task, names the shortage, and retains the adapter failure in the log', async () => {
       const produced = await make()
       const pm = await aPmThatMaySpawn()
-      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const logged = vi.spyOn(console, 'warn').mockImplementation(() => {})
       gate.startFails = () => produced
-      const refused = await spawnWorker(pm)
-      expect(theRefusal(refused)).toEqual({
-        outcome: 'refused',
-        rail: SHORTAGE,
-        permanence: 'while-this-holds',
-        retryable: true,
-        remedy: 'make-the-same-call-when-this-settles',
-      })
-      // ⚑ the closed reason is the errno's own code — by TYPE, never by the provider's text
-      expect(refused.detail).toEqual({ profile: 'worker', because: code })
-      // ⛔ …and it never says a person must fix something — the word `agent-did-not-start` carries
-      expect(String(refused.reason)).not.toContain('a person must fix')
-      expect(String(refused.reason)).toContain('Make the same call again in a moment')
+      const result = await spawnWorker(pm)
+      const kept = aKeptGive(result, shortageWords(code))
+      expect(host.sessionIds).not.toContain(kept.recipient.id)
+      expect(logged.mock.calls.map((args) => format(...args)).join(' ')).toContain(code)
     })
 
-    it('⚑ standing rule 3 — the same call, once the shortage has cleared, starts it', async () => {
+    it('starts the same conversation when the shortage clears', async () => {
       const produced = await make()
       const pm = await aPmThatMaySpawn()
       vi.spyOn(console, 'warn').mockImplementation(() => {})
       gate.startFails = () => produced
-      expect((await spawnWorker(pm)).rail).toBe(SHORTAGE)
+      const kept = aKeptGive(await spawnWorker(pm), shortageWords(code))
       gate.startFails = undefined
-      const started = await spawnWorker(pm)
-      expect(started.outcome, JSON.stringify(started)).toBe('ok')
+      const started = await sendToTheKeptAddress(pm, kept.recipient.id)
+      expect(started).toMatchObject({
+        outcome: 'ok',
+        agent: kept.recipient.id,
+      })
+      await waitFor(
+        () => host.sessionIds.includes(kept.recipient.id),
+        'the same recipient to start',
+      )
+      const given = events(kept.recipient.id).filter((event) => event.type === 'work_given')
+      expect(given).toHaveLength(1)
+      expect(given[0]).toMatchObject({ piece: kept.recorded.id })
     })
   })
 
@@ -299,25 +302,11 @@ describe('707 · R39, extended — a spawn that ran short', () => {
   // ───────────────────────────────────────────────────────────────────────────────
 
   describe('§2 · a real never keeps its permanent word', () => {
-    const PERMANENT = {
-      outcome: 'refused',
-      rail: 'agent-did-not-start',
-      permanence: 'until-a-person-changes-it',
-      retryable: false,
-      remedy: null,
-    }
-
     it('⚑ a sign-in the machine does not have', async () => {
       const pm = await aPmThatMaySpawn()
       vi.spyOn(console, 'warn').mockImplementation(() => {})
       gate.startFails = () => new AuthUnavailableError('claude', 'signed out')
-      const refused = await spawnWorker(pm)
-      expect(theRefusal(refused)).toEqual(PERMANENT)
-      expect(refused.detail).toEqual({
-        profile: 'worker',
-        because: 'its-sign-in-is-unusable',
-        provider: 'claude',
-      })
+      aKeptGive(await spawnWorker(pm), 'Claude sign-in could not be used', true)
     })
 
     // 🔴 **716 · R67 — one word for a missing program**: it was `agent-did-not-start` until `716`, and
@@ -328,11 +317,16 @@ describe('707 · R39, extended — a spawn that ran short', () => {
       const pm = await aPmThatMaySpawn()
       vi.spyOn(console, 'warn').mockImplementation(() => {})
       gate.startFails = () => new CodexUnavailableError('Codex isn’t available in this build.')
-      const refused = await spawnWorker(pm)
-      expect(theRefusal(refused)).toEqual({ ...PERMANENT, rail: 'agent-could-not-be-started' })
-      expect(refused.detail).toEqual({ profile: 'worker', because: 'provider-binary-unavailable' })
+      aKeptGive(await spawnWorker(pm), 'could not run its provider’s program', true)
     })
   })
+
+  const expectKeptTaskAfterProgramFailure = async (produced: Error) => {
+    const pm = await aPmThatMaySpawn()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    gate.startFails = () => produced
+    aKeptGive(await spawnWorker(pm), 'could not run its provider’s program', true)
+  }
 
   /**
    * 🔴 **710 · R51 — these two were §2's controls, and they are RED on `main` now**: a code a person
@@ -342,8 +336,6 @@ describe('707 · R39, extended — a spawn that ran short', () => {
    * pass on `main`.
    */
   describe('§2c · 710 · R51 — a spawn errno a person must fix has its permanent word', () => {
-    const CANNOT_RUN = 'agent-could-not-be-started'
-
     it('🔴 a spawn errno a PERSON has to fix is never the shortage word — it is R51’s permanent one', async () => {
       const produced = await claudeStartOver(() => {
         throw Object.assign(new Error('spawn /x/claude ENOTDIR'), {
@@ -351,24 +343,14 @@ describe('707 · R39, extended — a spawn that ran short', () => {
           syscall: 'spawn /x/claude',
         })
       })
-      const pm = await aPmThatMaySpawn()
-      vi.spyOn(console, 'warn').mockImplementation(() => {})
-      gate.startFails = () => produced
-      const refused = await spawnWorker(pm)
-      expect(refused.rail).toBe(CANNOT_RUN)
-      expect(refused.retryable).toBe(false)
+      await expectKeptTaskAfterProgramFailure(produced)
     })
 
     it('🔴 …on Codex too, where the binary is not there after its pipes', async () => {
       const produced = await codexStartOver(
         () => aSpawnRefusedAfterItsPipes('ENOENT', '/x/codex').child,
       )
-      const pm = await aPmThatMaySpawn()
-      vi.spyOn(console, 'warn').mockImplementation(() => {})
-      gate.startFails = () => produced
-      const refused = await spawnWorker(pm)
-      expect(refused.rail).toBe(CANNOT_RUN)
-      expect(refused.retryable).toBe(false)
+      await expectKeptTaskAfterProgramFailure(produced)
     })
   })
 
@@ -384,12 +366,7 @@ describe('707 · R39, extended — a spawn that ran short', () => {
       const produced = await claudeStartOver(
         () => aSpawnRefusedAfterItsPipes('ENOENT', '/x/claude').child,
       )
-      const pm = await aPmThatMaySpawn()
-      vi.spyOn(console, 'warn').mockImplementation(() => {})
-      gate.startFails = () => produced
-      const refused = await spawnWorker(pm)
-      expect(refused.outcome).toBe('refused')
-      expect(refused.rail).toBe('agent-could-not-be-started')
+      await expectKeptTaskAfterProgramFailure(produced)
     })
   })
 
@@ -398,35 +375,51 @@ describe('707 · R39, extended — a spawn that ran short', () => {
   // ───────────────────────────────────────────────────────────────────────────────
 
   describe('§3 · what a person reads in the transcript', () => {
-    const noticesOf = (sessionId: string): string[] => {
-      const state = createTranscript()
-      for (const event of events(sessionId)) applyEvent(state, event)
-      return state.items
-        .filter((item): item is NoticeItem => item.kind === 'notice')
-        .map((item) => item.text)
+    const noticesOf = (sessionId: string) => recordedSendNotices(events(sessionId))
+
+    const receiptFor = async (pm: string) => {
+      const tool = agentToolsFor(host, pm).tools.find((one) => one.name === 'give_work')
+      if (tool === undefined) throw new Error('no give_work')
+      return tool.call(newConversationGive('worker', 'The work', 'the work'))
     }
 
-    it('🔴 the refusal row says it lasts only while the reason does, and that the same call may work', async () => {
+    it('records the work for the giver and tells them how to retry its address', async () => {
       const produced = await SHORTAGES[3].make()
       const pm = await aPmThatMaySpawn()
       vi.spyOn(console, 'warn').mockImplementation(() => {})
       gate.startFails = () => produced
-      await spawnWorker(pm)
-      const row = noticesOf(pm).find((text) => text.startsWith('refused: give_work'))
-      expect(row).toBe(
-        `refused: give_work · ${SHORTAGE} · only while the reason lasts · retrying may work · there is nothing to change — the same call again, once that has settled`,
+      const answer = await receiptFor(pm)
+      const kept = aKeptGive(
+        answer.structured as Record<string, unknown>,
+        shortageWords(SHORTAGES[3].code),
       )
+      expect(events(pm)).toContainEqual(
+        expect.objectContaining({
+          type: 'work_sent',
+          piece: kept.recorded.id,
+          to: kept.recipient.id,
+        }),
+      )
+      expect(noticesOf(pm).some((text) => text.startsWith('refused: give_work'))).toBe(false)
+      expect(answer.text).toContain(
+        `Task ${kept.recorded.taskLabel} is recorded in conversation ${kept.recipient.address} · The work, but it could not start:`,
+      )
+      expect(answer.text).toContain('send a message to this address to try starting it again.')
+      expect(answer.text).not.toContain('Ask the person to fix it')
     })
 
-    it('⚑ control: the permanent word’s row still says somebody has to change it', async () => {
+    it('asks for a person when that person can fix the leading cause', async () => {
       const pm = await aPmThatMaySpawn()
       vi.spyOn(console, 'warn').mockImplementation(() => {})
       gate.startFails = () => new AuthUnavailableError('claude', 'signed out')
-      await spawnWorker(pm)
-      const row = noticesOf(pm).find((text) => text.startsWith('refused: give_work'))
-      expect(row).toBe(
-        'refused: give_work · agent-did-not-start · until somebody changes it · retrying will not help',
+      const answer = await receiptFor(pm)
+      aKeptGive(
+        answer.structured as Record<string, unknown>,
+        'Claude sign-in could not be used',
+        true,
       )
+      expect(noticesOf(pm).some((text) => text.startsWith('refused: give_work'))).toBe(false)
+      expect(answer.text).toContain('Ask the person to fix it, with request_action.')
     })
   })
 
@@ -454,17 +447,12 @@ describe('707 · R39, extended — a spawn that ran short', () => {
       const pm = await aPmThatMaySpawn()
       vi.spyOn(console, 'warn').mockImplementation(() => {})
       homeFails = shortOfDescriptors
-      const refused = await spawnWorker(pm)
-      expect(theRefusal(refused)).toEqual({
-        outcome: 'refused',
-        rail: SHORTAGE,
-        permanence: 'while-this-holds',
-        retryable: true,
-        remedy: 'make-the-same-call-when-this-settles',
-      })
-      expect(refused.detail).toEqual({ profile: 'worker', because: 'EMFILE' })
+      const kept = aKeptGive(await spawnWorker(pm), shortageWords('EMFILE'))
       homeFails = undefined
-      expect((await spawnWorker(pm)).outcome).toBe('ok')
+      expect(await sendToTheKeptAddress(pm, kept.recipient.id)).toMatchObject({
+        outcome: 'ok',
+        receipt: { recipient: { id: kept.recipient.id } },
+      })
     })
 
     /**
@@ -492,7 +480,7 @@ describe('707 · R39, extended — a spawn that ran short', () => {
       homeFails = shortOfDescriptors
       const wake = { agent: worker, text: 'carry on', kind: 'follow-up', piece: spawned.label }
       const refused = await callOn(pm, 'message_agent', wake)
-      expect(theRefusal(refused)).toEqual({
+      expect(refused).toMatchObject({
         outcome: 'refused',
         rail: 'that-conversation-could-not-be-woken-just-now',
         permanence: 'while-this-holds',

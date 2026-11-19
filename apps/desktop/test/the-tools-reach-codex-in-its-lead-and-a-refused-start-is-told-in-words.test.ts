@@ -1,3 +1,4 @@
+import { logKeepsFailure } from './lib/recorded-send'
 import { waitFor } from './lib/f093-host'
 import type { SessionInstructions } from '../src/shared/instruction-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -1038,7 +1039,6 @@ describe('§5 · Codex’s own launch failures, as the app reads them', () => {
 // §6 to §8 · every door, over a provider that fails the way a provider says so
 // ─────────────────────────────────────────────────────────────────────────────
 
-const CANNOT_BE_STARTED = 'agent-could-not-be-started'
 const COULD_NOT_BE_RESUMED = 'that-conversation-could-not-be-resumed'
 const THREAD_ID = '01a0d52b-4ac7-7060-9f71-9ad6fd1088dc'
 
@@ -1169,94 +1169,108 @@ describe('§6 to §8 · what a failed start says at each door', () => {
   describe('§6 · a giver’s give', () => {
     const SAID = 'dynamic tool namespace description must be at most 1024 characters'
 
-    it('give_work answers a provider’s refusal with the permanent word, its own sentence and the provider’s reason in the detail', async () => {
+    it('reports a recorded task and a closed reason when its provider refuses to start', async () => {
       const pm = await aPmThatMaySpawn()
-      vi.spyOn(console, 'warn').mockImplementation(() => {})
-      gate.startFails = () => refusedStart(SAID)
-      const refused = await giveWork(pm)
-      expect(refused).toMatchObject({
-        outcome: 'refused',
-        rail: CANNOT_BE_STARTED,
-        permanence: 'until-a-person-changes-it',
-        retryable: false,
-        remedy: null,
-        detail: { profile: 'worker', because: 'its-provider-refused-it', providerSaid: SAID },
+      const logged = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const failure = refusedStart(SAID)
+      gate.startFails = () => failure
+      const given = await giveWork(pm)
+      expect(given).toMatchObject({
+        outcome: 'ok',
+        started: false,
+        receipt: {
+          recorded: { kind: 'task', id: given.piece },
+          recipient: {
+            id: given.agent,
+            state: {
+              kind: 'cannot-run',
+              cause: {
+                code: 'could-not-start',
+                reason: 'This conversation did not start: its provider refused to start it.',
+              },
+            },
+          },
+        },
       })
-      expect(refused.reason).toBe(tools.A_PROVIDER_REFUSED_THE_START)
-      // ⛔ The word's own sentence names a program, which is false of this refusal …
-      expect(tools.refuseTool(CANNOT_BE_STARTED as never).reason).toContain('program')
-      expect(String(refused.reason)).not.toContain('program')
-      // … and the provider's words are in the detail, never in a sentence a model reads, and never
-      // the protocol's envelope — which the refusal's own cause does carry.
-      expect((refusedStart(SAID).cause as Error).message).toContain('-32600')
-      expect(String(refused.reason)).not.toContain(SAID)
-      expect(JSON.stringify(refused)).not.toContain('-32600')
+      expect(JSON.stringify(given)).not.toContain(SAID)
+      expect(JSON.stringify(given)).not.toContain('-32600')
+      expect(logKeepsFailure(logged.mock.calls, failure)).toBe(true)
+      expect(String((failure.cause as Error).message)).toContain('-32600')
 
-      // The control: a provider that gave no reason is the same word and sentence, with no key for it.
       gate.startFails = () => refusedStart(null)
       const silent = await giveWork(pm, { title: 'Another piece' })
-      expect(silent).toMatchObject({ rail: CANNOT_BE_STARTED, retryable: false })
-      expect(silent.reason).toBe(tools.A_PROVIDER_REFUSED_THE_START)
-      expect(silent.detail).toEqual({ profile: 'worker', because: 'its-provider-refused-it' })
-      // …and with the failure cleared the same give is made.
+      expect(silent).toMatchObject({ outcome: 'ok', started: false })
+      expect(silent.receipt).toMatchObject({
+        recipient: {
+          state: {
+            kind: 'cannot-run',
+            cause: {
+              code: 'could-not-start',
+              reason: 'This conversation did not start: its provider refused to start it.',
+            },
+          },
+        },
+      })
       gate.startFails = undefined
-      const given = await giveWork(pm, { title: 'A third piece' })
-      expect(given.outcome, JSON.stringify(given)).toBe('ok')
+      const retry = await giveWork(pm, { to: silent.label, title: 'Continue the work' })
+      expect(retry).toMatchObject({ outcome: 'ok', agent: silent.agent })
+      expect(host.sessionIds).toContain(silent.agent)
     })
 
-    it('a failed new conversation does not undo a separately created profile or record a task', async () => {
+    it('a failed startup keeps the separately created identity and its first task', async () => {
       const pm = await aPmThatMaySpawn()
       vi.spyOn(console, 'warn').mockImplementation(() => {})
-      gate.startFails = () => refusedStart(SAID)
-
-      const plain = await giveWork(pm)
-      expect(plain.reason).toBe(tools.A_PROVIDER_REFUSED_THE_START)
-      expect(String(plain.reason)).not.toContain(tools.THE_NEW_AGENT_WAS_MADE)
-
-      const asked = {
-        profile: 'archivist',
-        title: 'Index the ledger',
-        brief: 'index it',
-      }
+      const asked = { profile: 'archivist', title: 'Index the ledger', brief: 'index it' }
       expect(await callOn(pm, 'create_agent', { profile_slug: asked.profile })).toMatchObject({
         outcome: 'ok',
       })
-      const refused = await giveWork(pm, asked)
-      expect(refused).toMatchObject({ rail: CANNOT_BE_STARTED, retryable: false })
-      expect(refused.reason).toBe(tools.A_PROVIDER_REFUSED_THE_START)
+      gate.startFails = () => refusedStart(SAID)
+      const failed = await giveWork(pm, asked)
+      expect(failed).toMatchObject({ outcome: 'ok', started: false })
       expect(store.agentIdentities().some((one) => one.slug === 'archivist')).toBe(true)
-      const again = await giveWork(pm, asked)
-      expect(again).toMatchObject({ outcome: 'refused', rail: CANNOT_BE_STARTED })
+      expect(store.piecesGivenBy(pm)).toMatchObject([
+        { piece: failed.piece, owner: failed.agent, title: asked.title },
+      ])
 
       await callOn(pm, 'create_agent', { profile_slug: 'scribe' })
       gate.startFails = () => new AuthUnavailableError('claude', 'signed out')
       const signedOut = await giveWork(pm, { ...asked, profile: 'scribe' })
-      expect(signedOut.rail).toBe('agent-did-not-start')
-      expect(String(signedOut.reason)).not.toContain(tools.THE_NEW_AGENT_WAS_MADE)
+      expect(signedOut.receipt).toMatchObject({
+        recorded: { kind: 'task', id: signedOut.piece },
+        recipient: { state: { kind: 'cannot-run', needsPerson: true } },
+      })
       expect(store.agentIdentities().some((one) => one.slug === 'scribe')).toBe(true)
-      expect(store.piecesGivenBy(pm)).toEqual([])
+      expect(store.piecesGivenBy(pm).map((one) => one.piece)).toEqual(
+        expect.arrayContaining([failed.piece, signedOut.piece]),
+      )
+      expect(store.piecesGivenBy(pm)).toHaveLength(2)
     })
 
-    it('a start that failed otherwise is agent-did-not-start with a closed reason, and the diagnostic reaches only the log', async () => {
+    it('keeps a provider diagnostic in the log after recording a task', async () => {
       const pm = await aPmThatMaySpawn()
       const logged = vi.spyOn(console, 'warn').mockImplementation(() => {})
-      gate.startFails = () =>
-        new StartFailed('codex app-server exited (stderr tail: /Users/x/.codex boom)')
-      const refused = await giveWork(pm)
-      expect(refused).toMatchObject({ outcome: 'refused', rail: 'agent-did-not-start' })
-      expect(refused.detail).toEqual({
-        profile: 'worker',
-        because: 'its-provider-could-not-be-started',
+      const diagnostic = new StartFailed(
+        'codex app-server exited (stderr tail: /Users/x/.codex boom)',
+      )
+      gate.startFails = () => diagnostic
+      const given = await giveWork(pm)
+      expect(given.receipt).toMatchObject({
+        recorded: { id: given.piece, kind: 'task' },
+        recipient: { state: { kind: 'cannot-run', cause: { code: 'could-not-start' } } },
       })
-      // ⛔ A model reads the payload: neither the child's output nor a path is in it …
-      expect(JSON.stringify(refused)).not.toContain('stderr tail')
-      expect(JSON.stringify(refused)).not.toContain('/Users/x')
-      // ⚑ … and the log has the whole of it.
-      expect(logged.mock.calls.some((call) => String(call[0]).includes('stderr tail'))).toBe(true)
+      expect(JSON.stringify(given)).not.toContain('stderr tail')
+      expect(JSON.stringify(given)).not.toContain('/Users/x')
+      expect(logKeepsFailure(logged.mock.calls, diagnostic)).toBe(true)
 
-      // The control: an error that is none of the typed failures is still a broken tool.
-      gate.startFails = () => new Error('a plain failure')
-      await expect(giveWork(pm, { title: 'Another piece' })).rejects.toThrow('a plain failure')
+      const plain = new Error('a plain failure')
+      gate.startFails = () => plain
+      const another = await giveWork(pm, { title: 'Another piece' })
+      expect(another.receipt).toMatchObject({
+        recorded: { id: another.piece, kind: 'task' },
+        recipient: { state: { kind: 'cannot-run', cause: { code: 'could-not-start' } } },
+      })
+      expect(JSON.stringify(another)).not.toContain(plain.message)
+      expect(logKeepsFailure(logged.mock.calls, plain)).toBe(true)
     })
   })
 

@@ -330,10 +330,13 @@ describe('347 · the five tools', () => {
         title: 'The recorded title',
         brief: 'The recorded title.',
       })
-      // ⚑ **Written once the brief arrived** (R4) — after the conversation's own row.
-      expect(store.workById(given.piece as string)!.createdAt).toBeGreaterThan(
-        store.find(child)!.createdAt,
+      const events = store.events(child).map(({ event }) => event)
+      const task = events.findIndex(
+        (event) => event.type === 'work_given' && event.piece === given.piece,
       )
+      const launch = events.findIndex((event) => event.type === 'launched')
+      expect(task).toBeGreaterThanOrEqual(0)
+      expect(launch).toBeGreaterThan(task)
     })
 
     it('list_agents shows the caller, its child and an unrelated conversation to every reader', async () => {
@@ -595,15 +598,20 @@ describe('347 · the five tools', () => {
 
   describe('§3 · two gives in one tick', () => {
     /** ⚑ Every brief a conversation was handed — sent as a turn, or held behind one — by its piece. */
-    const briefsIn = (sessionId: string): string[] =>
-      store
-        .events(sessionId)
-        .flatMap((row) =>
-          (row.event.type === 'user_turn' || row.event.type === 'message_queued') &&
-          typeof row.event.piece === 'string'
-            ? [row.event.piece]
-            : [],
-        )
+    const briefsIn = (sessionId: string): string[] => {
+      const events = store.events(sessionId).map(({ event }) => event)
+      const queued = events.flatMap((event) =>
+        event.type === 'message_queued' && typeof event.piece === 'string' ? [event.piece] : [],
+      )
+      const sentDirectly = events.flatMap((event) =>
+        event.type === 'user_turn' &&
+        typeof event.piece === 'string' &&
+        !queued.includes(event.piece)
+          ? [event.piece]
+          : [],
+      )
+      return [...queued, ...sentDirectly]
+    }
 
     it('two gives to the same address in one tick both reach that conversation', async () => {
       await bringIdentityIntoBeing('worker')
@@ -919,8 +927,12 @@ describe('347 · the five tools', () => {
         try {
           await until(() => (gate?.held ?? 0) > 0)
           await letItSettle()
-          // Neither child has a committed ledger row while its provider launch is held.
-          expect(recordedSessions()).toBe(before)
+          expect(recordedSessions()).toBe(before + 2)
+          const recorded = [...new Set([a, b])]
+            .flatMap((giver) => store.piecesGivenBy(giver))
+            .filter((piece) => piece.title === 'First' || piece.title === 'Second')
+          expect(recorded.map((piece) => piece.title).sort()).toEqual(['First', 'Second'])
+          expect(new Set(recorded.map((piece) => piece.owner)).size).toBe(2)
           // ⛔ **Neither answered**: a give answers once its brief has gone.
           expect(secondAnswer).toBeNull()
           expect(gate?.held).toBe(2)
@@ -1594,7 +1606,9 @@ describe('347 · the five tools', () => {
         store
           .events(child)
           .flatMap((row) =>
-            row.event.type === 'message_queued' && row.event.messageId !== undefined
+            row.event.type === 'message_queued' &&
+            ['and then this', 'and a third'].includes(row.event.text) &&
+            row.event.messageId !== undefined
               ? [row.event.messageId]
               : [],
           )

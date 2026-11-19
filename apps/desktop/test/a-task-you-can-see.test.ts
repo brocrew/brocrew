@@ -414,6 +414,8 @@ describe('379 · a task you can see', () => {
       const { worker, pmTools, workerTools, first: straightOut } = await aPmAndItsWorker('first')
       expect(straightOut.delivery).toBe('sent')
       expect(straightOut.message).toBeUndefined()
+      const firstMessageId = lastQueuedMessageId(worker)
+      expect(firstMessageId).toMatch(/^msg_/)
 
       await cardOn(worker)
       await theWorkIsFinished(worker, workerTools)
@@ -432,34 +434,31 @@ describe('379 · a task you can see', () => {
 
       const pieces = store.piecesOwnedBy(worker)
       expect(pieces).toHaveLength(2)
-      // ⛔ **Two pieces, and the difference between them is `messageId` and the state it implies** —
-      // never whether one exists.
-      expect(pieces.map((piece) => piece.messageId)).toEqual([null, heldMessageId])
+      expect(firstMessageId).not.toBe(heldMessageId)
+      expect(pieces.map((piece) => piece.messageId)).toEqual([firstMessageId, heldMessageId])
+      expect(new Set(pieces.map((piece) => piece.piece)).size).toBe(2)
       expect(pieces.map((piece) => piece.state)).toEqual(['answered', 'waiting'])
       expect(pieces.map((piece) => piece.label.split('.').at(-1))).toEqual(['1', '2'])
     })
 
-    it('⛔ …and it is recorded AFTER the message it names, on both branches', async () => {
-      // 🔴 **The order is the durability argument, and it is not cosmetic.** They are two appends: a
-      // crash between them leaves a brief with no piece, which reads as nothing at all. ⚠️ The
-      // reverse would leave a piece naming work that was never handed over — a row on somebody's
-      // board for a message that does not exist. `publishOurs`'s own rule is *"only after the
-      // provider has accepted it, never before"*.
+    it('records each task with its queued brief before the brief reaches the provider', async () => {
       const { worker, pmTools, workerTools } = await aPmAndItsWorker('first')
       const straightOut = typesIn(worker)
-      // ⚠️ **AFTER, not adjacent.** `send` awaits the provider before it publishes the turn, so the
-      // provider's own first frames can land between the two rows — an adjacency assertion would be
-      // pinning the double's scheduling rather than this dispatch's ordering rule.
       expect(straightOut.filter((type) => type === 'user_turn')).toHaveLength(1)
       expect(straightOut.filter((type) => type === 'work_given')).toHaveLength(1)
-      expect(straightOut.indexOf('work_given')).toBeGreaterThan(straightOut.indexOf('user_turn'))
+      const recorded = straightOut.indexOf('work_given')
+      const queued = straightOut.indexOf('message_queued')
+      expect(queued).toBeGreaterThan(-1)
+      expect(queued).toBeLessThan(recorded)
+      expect(recorded).toBeLessThan(straightOut.indexOf('user_turn'))
 
       await cardOn(worker)
       await theWorkIsFinished(worker, workerTools)
       await give(pmTools, 'second', worker)
       const held = typesIn(worker)
-      expect(held.indexOf('message_queued')).toBeGreaterThan(0)
-      expect(held.lastIndexOf('work_given')).toBeGreaterThan(held.indexOf('message_queued'))
+      expect(held.lastIndexOf('message_queued')).toBeGreaterThan(straightOut.length - 1)
+      expect(held.lastIndexOf('work_given')).toBeGreaterThan(held.lastIndexOf('message_queued'))
+      expect(held.filter((type) => type === 'user_turn')).toHaveLength(1)
     })
 
     it('⚑ durability is the LEDGER: the row is one event and the slot holds nothing', async () => {
@@ -511,7 +510,7 @@ describe('379 · a task you can see', () => {
       expect(stateOf(worker, first)).toBe('answered')
       expect(
         ledger(worker)
-          .filter((event) => event.type === 'message_unqueued')
+          .filter((event) => event.type === 'message_unqueued' && event.messageId === heldMessageId)
           .map((event) => (event.type === 'message_unqueued' ? event.reason : '')),
       ).toEqual(['sent'])
       expect(store.piecesOwnedBy(worker)[1]?.messageId).toBe(heldMessageId)
@@ -759,7 +758,9 @@ describe('379 · a task you can see', () => {
       expect(first?.endedAt).not.toBeNull()
       expect(second?.endedAt).not.toBeNull()
       // ⚑ The stamp is the ENDING's own recorded time, not the moment the fold ran.
-      const ending = ledger(worker).findIndex((event) => event.type === 'message_unqueued')
+      const ending = ledger(worker).findIndex(
+        (event) => event.type === 'message_unqueued' && event.messageId === heldMessageId,
+      )
       expect(second?.endedAt).toBe(store.events(worker)[ending]?.at)
     })
   })
@@ -919,8 +920,15 @@ describe('379 · a task you can see', () => {
       const bytes = db
         .prepare('SELECT payload FROM events WHERE session_id = ? ORDER BY ordinal')
         .all(worker)
-      expect(JSON.stringify(bytes)).toContain('message_queued')
-      expect(JSON.stringify(bytes)).not.toContain('message_unqueued')
+      const message = lastQueuedMessageId(worker)
+      expect(message).toMatch(/^msg_/)
+      const record = (bytes as { payload: string }[])
+        .map(({ payload }) => JSON.parse(payload))
+        .filter((row) => row.messageId === message)
+      expect(record).toEqual([
+        expect.objectContaining({ type: 'message_queued', text: 'the held one' }),
+        expect.objectContaining({ type: 'work_given', brief: 'the held one' }),
+      ])
       // ⚑ The fold says `waiting`, truthfully, in BOTH worlds — and that is the correct answer for
       // exactly as long as nobody has told it which world it is in.
       expect(store.piecesOwnedBy(worker)[1]?.state).toBe('waiting')
@@ -928,6 +936,7 @@ describe('379 · a task you can see', () => {
 
     it('⛔ the NEXT LAUNCH writes the message’s ending, and the TASK stays open', async () => {
       const { worker, piece } = await aPieceLeftWaiting()
+      const waitingId = lastQueuedMessageId(worker)
 
       // 🔴 **Over a SECOND store object, and that is what makes the repair see this session.**
       // `live-hosts.ts` identifies a ledger by OBJECT — *"two `SessionStore`s opened over ONE
@@ -936,7 +945,9 @@ describe('379 · a task you can see', () => {
       // exclusion, not a crash: after a real one nothing is alive.
       const next = buildHost(createSessionStore(db, tick))
       try {
-        const ending = ledger(worker).filter((event) => event.type === 'message_unqueued')
+        const ending = ledger(worker).filter(
+          (event) => event.type === 'message_unqueued' && event.messageId === waitingId,
+        )
         expect(ending).toHaveLength(1)
         expect(ending[0]).toMatchObject({
           reason: 'abandoned',
@@ -967,9 +978,14 @@ describe('379 · a task you can see', () => {
       // running; a second host over the SAME store finds the session held elsewhere and must not
       // write an ending for a message that is about to be sent.
       const { worker, piece } = await aPieceLeftWaiting()
+      const waitingId = lastQueuedMessageId(worker)
       const alongside = buildHost()
       try {
-        expect(ledger(worker).filter((event) => event.type === 'message_unqueued')).toEqual([])
+        expect(
+          ledger(worker).filter(
+            (event) => event.type === 'message_unqueued' && event.messageId === waitingId,
+          ),
+        ).toEqual([])
         expect(stateOf(worker, piece)).toBe('waiting')
       } finally {
         await alongside.closeAll()
@@ -980,11 +996,12 @@ describe('379 · a task you can see', () => {
       // ⛔ **`354`'s rule, in the repair.** A `message_queued` with no `messageId` cannot be paired
       // with an ending, and writing one would join two messages that are not the same message.
       const { worker } = await aPmAndItsWorker('the work')
+      const prior = ledger(worker).filter((event) => event.type === 'message_unqueued')
       const ordinal = store.nextOrdinal(worker)
       store.append(worker, ordinal, { type: 'message_queued', text: 'from an older build' }, tick())
       const next = buildHost(createSessionStore(db, tick))
       try {
-        expect(ledger(worker).filter((event) => event.type === 'message_unqueued')).toEqual([])
+        expect(ledger(worker).filter((event) => event.type === 'message_unqueued')).toEqual(prior)
       } finally {
         await next.closeAll()
       }
@@ -1127,6 +1144,7 @@ describe('379 · a task you can see', () => {
       const { worker } = await aPmAndItsWorker('the work')
       const before = store.piecesOwnedBy(worker)
       expect(before[0]?.state).toBe('working')
+      expect(before[0]?.messageId).toMatch(/^msg_/)
 
       await host.closeAll()
       // ⚑ **Every durable field is unchanged** — the row is the same row, and only the derived state
@@ -1139,7 +1157,7 @@ describe('379 · a task you can see', () => {
         giver: before[0]?.giver,
         title: before[0]?.title,
         brief: before[0]?.brief,
-        messageId: null,
+        messageId: before[0]?.messageId,
         state: 'stalled',
         // ⚑ **D-016c · the TURN's cause**: the piece was RUNNING when the app quit, so the turn
         // `closeAll` force-ended stalled it `turn_interrupted`, and the stop itself is never a cause.

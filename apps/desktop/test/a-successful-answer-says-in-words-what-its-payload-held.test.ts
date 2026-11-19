@@ -239,7 +239,7 @@ describe('a successful answer says in words what its payload held', () => {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         to: 'new',
-        conversation_title: 'Survey the kept files',
+        conversation_title: 'Inventory project',
         title: 'Survey the kept files',
         brief: 'Survey the kept files and report.',
         ...(options.inputs === undefined ? {} : { inputs: options.inputs }),
@@ -462,10 +462,10 @@ describe('a successful answer says in words what its payload held', () => {
   describe('a write says what happened, and none of what it was sent', () => {
     it('give_work keeps its generated label, the profile and how the brief went', async () => {
       const { given, label } = await aPmAndItsWorker()
-      expect(given.text).toMatch(
-        new RegExp(
-          `^${label.replace(/\./g, '\\.')} given to .+ \\(worker\\); it (went to .+ straight away|is held)`,
-        ),
+      const action = given.structured?.delivery === 'sent' ? 'sent to' : 'held for'
+      expect(given.structured?.delivery).toMatch(/^(sent|held)$/)
+      expect(given.text.split('\n')[0]).toBe(
+        `Task ${label} ${action} worker at conversation ${label} · Inventory project.`,
       )
       expect(given.text.split('\n')[0]).not.toContain('Survey the kept files')
       expect(given.text).toContain(

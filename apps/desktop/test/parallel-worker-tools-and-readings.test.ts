@@ -3,7 +3,7 @@ import { agentCallerId, agentToolsFor } from '../src/main/runtime/agent-tools'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 
-describe('giving work to conversations from saved worker pools', () => {
+describe('parallel worker tools and conversation readings', () => {
   let world: AServiceWorld
   let identity: string
   beforeEach(() => {

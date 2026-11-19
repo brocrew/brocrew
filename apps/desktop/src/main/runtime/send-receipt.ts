@@ -36,6 +36,6 @@ export function sendReceipt(
   const person = state.needsPerson === true ? ' Ask the person to fix it, with request_action.' : ''
   return {
     receipt,
-    said: `${task} is recorded in ${conversation}, but it could not start: ${cause}. The work is kept.${person}`,
+    said: `${task} is recorded in ${conversation}, but it could not start: ${cause}. The work is kept. Once the cause is fixed, send a message to this address to try starting it again.${person}`,
   }
 }
