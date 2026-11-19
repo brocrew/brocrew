@@ -376,12 +376,19 @@ describe('419 · creating an agent, and the provider it runs on', () => {
     )
 
     it('creates an agent when the retired spawning column still holds off', async () => {
-      const tools = await anAgentThatMayCreate()
+      await host.closeAll()
       db.prepare("UPDATE app_policy SET spawning_enabled = 0 WHERE id = 'policy'").run()
+      const savedPolicy = db.prepare("SELECT spawning_enabled FROM app_policy WHERE id = 'policy'")
+      expect(savedPolicy.get()).toEqual({ spawning_enabled: 0 })
+      store = createSessionStore(db, tick)
+      host = buildHost()
+
+      const tools = await anAgentThatMayCreate()
       expect((await callOn(tools, 'create_agent', { profile_slug: 'archivist' }))['outcome']).toBe(
         'ok',
       )
       expect(identityRow('archivist')).toBeDefined()
+      expect(savedPolicy.get()).toEqual({ spawning_enabled: 0 })
     })
 
     it('⚑ a toolset that outlives its conversation creates as the profile that conversation’s record names', async () => {
