@@ -720,7 +720,9 @@ describe('a successful answer says in words what its payload held', () => {
 
       // The emitted line, as a model reads it: led by the id, the one address it has.
       const listed = await ok(pmTools, 'list_agents', {})
-      const line = listed.text.split('\n').find((one) => one.startsWith('conversation below_1 · Ada'))
+      const line = listed.text
+        .split('\n')
+        .find((one) => one.startsWith('conversation below_1 · Ada'))
       expect(line, listed.text).toBeDefined()
       expect(line).toContain(' · started by ')
       expect(line?.split(' · started by ')[0]).not.toContain('the owner of')
