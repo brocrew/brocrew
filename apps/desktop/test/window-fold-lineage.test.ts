@@ -475,6 +475,7 @@ it('keeps a provider failure notice holder on the queued notice across a cold re
       text: 'A piece needs attention.',
       appNotice: 'a-work-wait-needs-attention',
       attribution: 'app_authored',
+      providerFailureHolder: 'alpha',
     },
     21,
   )
@@ -493,6 +494,15 @@ it('keeps a provider failure notice holder on the queued notice across a cold re
   expect(pending[0]?.authorship).not.toHaveProperty('relayedFrom')
   expect(pending[1]?.messageId).toBe('legacy-notice')
   expect(pending[1]).not.toHaveProperty('providerFailureHolder')
+  const queued = read.events('beta').map((entry) => entry.event)
+  expect(
+    queued.find(
+      (event) => event.type === 'message_queued' && event.messageId === 'provider-failure-notice',
+    ),
+  ).toHaveProperty('providerFailureHolder', 'alpha')
+  expect(
+    queued.find((event) => event.type === 'message_queued' && event.messageId === 'legacy-notice'),
+  ).not.toHaveProperty('providerFailureHolder')
 })
 
 it('reads an ordinary holder failure through wakes, stopped completions and reopen', () => {

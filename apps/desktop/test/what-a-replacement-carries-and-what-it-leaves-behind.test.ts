@@ -230,6 +230,60 @@ describe('what a replacement carries, and what it leaves behind', () => {
     expect(ledger(worker)).toContainEqual({ type: 'replaced_by', sessionId: next })
   })
 
+  it('moves a held provider failure notice under its original ID before rechecking it', async () => {
+    const { pm, worker } = await aWorkerOver()
+    const messageId = 'held-provider-failure-notice'
+    const text = 'The provider could not run the selected model.'
+    store.append(
+      worker,
+      store.nextOrdinal(worker),
+      {
+        type: 'message_queued',
+        messageId,
+        kind: 'notice',
+        text,
+        appNotice: 'a-provider-turn-failed',
+        attribution: 'app_authored',
+        providerFailureHolder: pm,
+      },
+      tick(),
+    )
+    const next = await seedSuccessorAfterQuit(worker)
+
+    // The public send now resolves historical addresses first. Exercise the retained start path
+    // directly, where it still moves queued rows from a historical address.
+    const start = host as unknown as {
+      ensureRunning(id: string, sink: RecordingSink): Promise<string>
+    }
+    expect(await start.ensureRunning(worker, window)).toBe(next)
+    expect(ledger(worker)).toContainEqual(
+      expect.objectContaining({
+        type: 'message_unqueued',
+        messageId,
+        reason: 'abandoned',
+      }),
+    )
+    expect(ledger(next)).toContainEqual(
+      expect.objectContaining({
+        type: 'message_queued',
+        messageId,
+        text,
+        appNotice: 'a-provider-turn-failed',
+        providerFailureHolder: pm,
+      }),
+    )
+    await waitFor(
+      () =>
+        ledger(next).some(
+          (event) =>
+            event.type === 'message_unqueued' &&
+            event.messageId === messageId &&
+            event.reason === 'retracted',
+        ),
+      'the notice without a current failure to be retracted',
+    )
+  })
+
   it('a second message to an id already replaced reaches the ONE conversation that took its place, never a second replacement', async () => {
     const { pm, worker, label } = await aWorkerOver()
     const next = await seedSuccessorAfterQuit(worker)
