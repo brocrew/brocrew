@@ -627,14 +627,10 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
      */
     recordId: sessionId.optional(),
     /**
-     * The structured narrowing (121) — nine optional predicates, ANDed with `query` main-side.
+     * The structured narrowing (121), ANDed with `query` main-side.
      *
-     * ⚠️ **Every value is a CLOSED set, and that is the point of validating it here.** A provider
-     * comes from the shared enum, `origin`, `kind` and `archived` from the shared VALUE arrays, and the five
-     * state fields are booleans. Nothing in here reaches a filesystem, a query or a template — the
-     * worst a malformed one can do is narrow a list — but a shape the host does not expect is still
-     * a shape the host should not have to defend against, and this is where the app decided such
-     * things are settled.
+     * Provider and facet values use their shared enums, the state fields are booleans,
+     * and the profile ID is compared to the recorded identity.
      *
      * ⚠️ **`LIBRARY_ORIGINS` / `LIBRARY_KINDS` / `LIBRARY_ARCHIVED`, not inline copies** (review). An inline
      * `z.enum(['ours', 'user-home'])` infers a NARROWER type than the shared union, so widening the
@@ -645,6 +641,7 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
     filters: z
       .object({
         provider: providerSchema.optional(),
+        profileId: z.string().optional(),
         origin: z.enum(LIBRARY_ORIGINS).optional(),
         kind: z.enum(LIBRARY_KINDS).optional(),
         notImported: z.boolean().optional(),
