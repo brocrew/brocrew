@@ -639,10 +639,12 @@ describe('F009 · what an agent has done, read on demand', () => {
       const w121 = await gives(adaTools, 'Check the routes', { to: ali, under: 'W1.2' })
       expect(w121).toEqual({ label: 'W1.2.1', holder: ali })
       await answer(adaTools, 'W1.2')
-      // ⚑ The premise: what names Ada now is W1.2, answered — what the record named her by before.
-      expect(host.nameByItsWork(ada)).toBe(
-        'Ada (the owner of W1.2 · Live check: the clock page (answered))',
-      )
+      expect(store.workThatNames(ada)).toEqual({
+        label: 'W1.2',
+        title: 'Live check: the clock page',
+        ended: 'answered',
+      })
+      expect(host.nameByItsWork(ada)).toBe('conversation W1.1 · Build the clock page')
       return { brobot, tools, ada, adaTools, ali }
     }
 
