@@ -18430,7 +18430,9 @@ export class RuntimeHost implements LiveHost {
     return { conversation, address, title, author: savedTitle?.author ?? null }
   }
 
-  readConversationIdentities(input: ConversationIdentityBatchInput): readonly ConversationIdentity[] {
+  readConversationIdentities(
+    input: ConversationIdentityBatchInput,
+  ): readonly ConversationIdentity[] {
     return [...new Set(input.sessionIds)].flatMap((id) => {
       const identity = this.readConversationIdentity(id)
       return identity === null ? [] : [identity]

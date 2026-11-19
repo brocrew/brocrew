@@ -779,7 +779,9 @@ export interface RuntimeBridge {
    */
   retitleWork(input: { piece: string; title: string }): Promise<WorkRetitled>
   readConversationIdentity(input: { sessionId: string }): Promise<ConversationIdentity | null>
-  readConversationIdentities(input: ConversationIdentityBatchInput): Promise<readonly ConversationIdentity[]>
+  readConversationIdentities(
+    input: ConversationIdentityBatchInput,
+  ): Promise<readonly ConversationIdentity[]>
   readConversationTasks(input: ConversationTaskPageInput): Promise<ConversationTaskPageResult>
   readConversationTitleHistory(
     input: ConversationTitleHistoryInput,

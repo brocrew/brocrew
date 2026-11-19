@@ -1,6 +1,9 @@
 import type { MemoryAmendmentAsked, MemoryCheckAsked, MemoryUndoAsked } from '../agent-memory'
 import type { RulesBaseline } from '../agent-rules'
-import type { ConversationIdentityBatchInput, ConversationTitleHistoryInput } from '../conversation-title'
+import type {
+  ConversationIdentityBatchInput,
+  ConversationTitleHistoryInput,
+} from '../conversation-title'
 import type { ConversationTaskPageInput } from '../conversation-task-page'
 import type { ExternalMcpServerReach } from '../external-mcp'
 import type { DecideMoveRequestInput } from '../move-contracts'

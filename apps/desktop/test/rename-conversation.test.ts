@@ -17,6 +17,7 @@ describe('renaming a conversation', () => {
     world = aServiceWorld()
     world.anAgent('caller', 'normal')
     world.anAgent('worker', 'normal')
+    world.anAgent('rail-service')
     expect(world.store.setAgentDisplayName('worker', profileName)).toBe(true)
     changed = []
     host = world.aHost({ announce: (notice) => changed.push(notice.what) })
@@ -40,7 +41,6 @@ describe('renaming a conversation', () => {
 
   it('projects only the requested distinct rail rows with the same canonical identity as selection', async () => {
     const empty = 'sess_rail_empty'
-    world.anAgent('rail-service')
     expect(world.store.setAgentDisplayName('rail-service', 'Rail Service')).toBe(true)
     world.store.create({
       id: empty,
