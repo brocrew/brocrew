@@ -309,11 +309,16 @@ watch(
 async function save(): Promise<void> {
   if (saving.value) return
   saving.value = true
-  saveRefusal.value = await store.saveExternalMcpServers(props.profileSlug, grantedServers.value)
+  const submitted = grantedServers.value
+  saveRefusal.value = await store.saveExternalMcpServers(props.profileSlug, submitted)
   saving.value = false
   // ⛔ **Closes only on success**: a sheet that closed over a refusal would take the sentence away
   // with it, and the sentence is the only place the reason is named.
   if (saveRefusal.value !== null) return
+  const current = grantedServers.value
+  // Keep any unsaved selection visible for the next save.
+  if (current.length !== submitted.length || current.some((id, index) => id !== submitted[index]))
+    return
   emit('close')
 }
 
