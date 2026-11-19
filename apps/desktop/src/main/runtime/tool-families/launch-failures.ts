@@ -278,17 +278,6 @@ export const A_PROVIDER_REFUSED_THE_START =
 export const A_WAKE_ITS_PROVIDER_REFUSED =
   'that conversation could not be started again, so nothing was sent. Sending again will not help until a person has looked: its provider refused to start it, and the detail gives its reason when it gave one. Meanwhile, reach another agent or do it yourself.'
 
-/**
- * **F091 · `interrupt_agent` naming the conversation that calls it** — by its id, a piece it
- * holds, or a conversation it took the place of — said as `message_agent` says it (`that-agent-is-you`).
- * The chain's word, `not-below-you`, was true to the letter and pointed at `message_agent`, which
- * refuses a message to oneself. Its acts, as `message_agent`'s are: its own work is its own to
- * stop — not *"end this turn"*: a background agent of its own calls from no turn — and another
- * agent is named instead.
- */
-export const A_CONVERSATION_CANNOT_INTERRUPT_ITSELF =
-  'that is this conversation: a conversation cannot interrupt itself, so nothing was interrupted. Stop your own work yourself, or name another agent to interrupt.'
-
 export const A_CONVERSATION_CANNOT_ASK_ITSELF =
   'That is this conversation; it cannot ask itself, so nothing was asked.'
 

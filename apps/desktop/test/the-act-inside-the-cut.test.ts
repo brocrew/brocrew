@@ -4,7 +4,6 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { TOOL_SUMMARY_MAX } from '../../../packages/runtime/src/claude/normalize'
 import {
-  A_CONVERSATION_CANNOT_INTERRUPT_ITSELF,
   A_CONVERSATION_CANNOT_ASK_ITSELF,
   A_FOLDER_COULD_NOT_BE_MADE,
   A_PROVIDER_REFUSED_THE_START,
@@ -615,14 +614,6 @@ const OVERRIDES: readonly {
     spreadAs: 'aPieceNotEndedItsQuestionsUnread',
     sentence: aPieceNotEndedItsQuestionsUnread('W3.4.1.2.1.1', 'work-withdrawn'),
   },
-  // ⚑ **F091 · `interrupt_agent` naming the conversation that calls it** — `that-agent-is-you`, with
-  // an interrupt's acts in place of a message's.
-  {
-    key: 'TOOL_REFUSALS|that-agent-is-you/an-interrupt',
-    rail: 'that-agent-is-you',
-    spreadAs: 'A_CONVERSATION_CANNOT_INTERRUPT_ITSELF',
-    sentence: A_CONVERSATION_CANNOT_INTERRUPT_ITSELF,
-  },
   {
     key: 'TOOL_REFUSALS|that-agent-is-you/an-ask',
     rail: 'that-agent-is-you',
@@ -719,9 +710,6 @@ const ACT: Readonly<Record<string, string>> = {
   'TOOL_REFUSALS|that-agent-is-you': 'do it yourself — or send it to another agent',
   'TOOL_REFUSALS|that-agent-is-you/with-helper-guidance':
     'do it yourself — or send it to another agent',
-  // ⚑ **F091** — its own work is its own to stop, and another agent is named instead.
-  'TOOL_REFUSALS|that-agent-is-you/an-interrupt':
-    'Stop your own work yourself, or name another agent to interrupt',
   // ⚑ **D-016 · commit 3** — `agent-already-has-work-open` went with the one-open-task rail; the
   // stall rule (`SPAWN_RAILS|its-work-has-stalled`) replaced it until a give came to
   // name a stall instead of refusing.

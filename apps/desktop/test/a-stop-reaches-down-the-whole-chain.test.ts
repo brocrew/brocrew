@@ -18,15 +18,9 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from './helpers/giver-notice-host'
-import {
-  A_CONVERSATION_CANNOT_INTERRUPT_ITSELF,
-  agentToolsFor,
-  refuseTool,
-  type ToolName,
-} from '../src/main/runtime/agent-tools'
+import { agentToolsFor, refuseTool } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { permanenceInWords } from '../src/main/runtime/agent-tool-answer-words'
 import {
   syntheticProviderHome,
   neutralHostDeps,
@@ -64,7 +58,7 @@ import {
  * §0 **what was already built**, asserted rather than claimed (standing rule 38) ·
  * §1 **the ruling, on the real path** · §2 **the four refusals and their pairs** ·
  * §3 went with projects (D-016: no project, so no floor to cross) · §4 **the manager sees it** ·
- * §5 **`mayCommand` did not widen** · §6 **F091 · a conversation that names itself is told so**.
+ * §5 **`mayCommand` did not widen** · §6 **F091 · the addresses a conversation can use to stop its own turn**.
  */
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -402,7 +396,7 @@ describe('629 · a stop reaches down the whole chain', () => {
       })
       expect(allowed.outcome, JSON.stringify(allowed)).toBe('ok')
     })
-    it('a conversation cannot interrupt itself, and a colleague can', async () => {
+    it('a conversation and a colleague can both ask its running turn to stop', async () => {
       const { ali, aliHandle, adaTools } = await aChainOfThree()
       await makeItWork(aliHandle)
       expect(chainAbove(store, ali)).not.toContain(ali)
@@ -411,14 +405,15 @@ describe('629 · a stop reaches down the whole chain', () => {
         agent: ali,
         reason: 'stop',
       })
-      expect(itself.outcome, JSON.stringify(itself)).toBe('refused')
-      expect(itself.rail).toBe('that-agent-is-you')
+      expect(itself).toMatchObject({ outcome: 'ok', agent: ali, asked: true })
+      await makeItWork(aliHandle)
       expect(await host.interruptAgent(ali, asAgent(ali))).toMatchObject({
-        ok: false,
-        refusal: 'that-agent-is-you',
+        ok: true,
+        agent: ali,
+        asked: true,
       })
-      expect(aliHandle.status()).toBe('working')
 
+      await makeItWork(aliHandle)
       const allowed = await callOn(adaTools, 'interrupt_agent', { agent: ali, reason: 'stop' })
       expect(allowed.outcome, JSON.stringify(allowed)).toBe('ok')
     })
@@ -532,88 +527,31 @@ describe('629 · a stop reaches down the whole chain', () => {
   // ─────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§6 · a conversation that names itself', () => {
-    /** ⚑ The words a model reads, beside the payload. */
-    const callWithText = async (
-      toolset: AgentToolset,
-      name: ToolName,
-      args: Record<string, unknown>,
-    ): Promise<{ structured: Record<string, unknown>; text: string }> => {
-      const tool = toolset.tools.find((one) => one.name === name)
-      if (tool === undefined) throw new Error(`no such tool: ${name}`)
-      const result = await tool.call(args)
-      return { structured: result.structured as Record<string, unknown>, text: result.text }
-    }
-
-    it('🔴 F091 · its id, a piece it holds and its own root name this conversation: nothing is interrupted, and the acts are its own', async () => {
-      const { brobot, ada, ali, aliLabel, aliHandle, brobotTools, adaTools, pmProfile } =
-        await aChainOfThree()
-      await makeItWork(aliHandle)
-      const adaLabel = store.piecesOwnedBy(ada)[0]?.label
-      expect(typeof adaLabel).toBe('string')
+    it('its id, its held piece and its own root name the conversation to stop', async () => {
+      const { brobot, ali, aliLabel, aliHandle, brobotTools, adaTools } = await aChainOfThree()
+      const itsRoot = store.rootOf(brobot)?.label
+      if (itsRoot === undefined) throw new Error('a conversation a person opened owns a root')
       const aliTools = agentToolsFor(host, ali)
-      const brobotsRoot = store.rootOf(brobot)?.label
-      if (brobotsRoot === undefined) throw new Error('a conversation a person opened owns a root')
-      const readPiece = host.pieceRecord.bind(host)
-      vi.spyOn(host, 'pieceRecord').mockImplementation((caller, named) => {
-        const record = readPiece(caller, named)
-        const ownRoot = caller === brobot && named === brobotsRoot
-        if (!ownRoot || record.is === 'no-piece-by-that-name') return record
-        return {
-          ...record,
-          children: record.children.map((child) => {
-            if (child.owner !== ada) return child
-            return { ...child, state: 'working' as const }
-          }),
-        }
-      })
-      const premise = host.pieceRecord(brobot, brobotsRoot)
-      expect(premise.is).not.toBe('no-piece-by-that-name')
-      if (premise.is === 'no-piece-by-that-name') throw new Error('the caller owns this root')
-      expect(premise.children.find((child) => child.owner === ada)?.state).toBe('working')
-      for (const [tools, named, itself] of [
-        [aliTools, ali, ali],
-        [aliTools, aliLabel, ali],
-        [brobotTools, brobotsRoot, brobot],
-      ] as const) {
-        const said = await callWithText(tools, 'interrupt_agent', { agent: named, reason: 'stop' })
-        const guide =
-          named === aliLabel
-            ? ` ${aliLabel} is your own piece, with no helpers recorded under it. list_agents names conversations; message_agent answers whether one can take your message.`
-            : named === brobotsRoot
-              ? ` ${brobotsRoot} is your own piece. Its helpers: Ada (${pmProfile}) on ${adaLabel} (working). Reach a helper by its piece's label, even after it ended: message_agent with kind: note, or ask_question. For new work, give_work with its profile. To stop a known conversation, interrupt_agent with its label.`
-              : ''
-        expect(said.structured, named).toMatchObject({
-          outcome: 'refused',
-          rail: 'that-agent-is-you',
-          permanence: 'permanent',
-          retryable: false,
-          remedy: null,
-          reason: A_CONVERSATION_CANNOT_INTERRUPT_ITSELF + guide,
-          detail: { agent: itself },
-        })
-        expect(said.text, named).toBe(
-          `refused (that-agent-is-you): ${A_CONVERSATION_CANNOT_INTERRUPT_ITSELF}${guide} ${permanenceInWords('that-agent-is-you', 'permanent')}`,
-        )
-        // ⛔ …never the door the chain's word pointed at.
+      for (const address of [ali, aliLabel]) {
+        await makeItWork(aliHandle)
         expect(
-          said.text.slice(
-            0,
-            `refused (that-agent-is-you): ${A_CONVERSATION_CANNOT_INTERRUPT_ITSELF}`.length,
-          ),
-          named,
-        ).not.toContain('message_agent')
+          await callOn(aliTools, 'interrupt_agent', { agent: address, reason: 'stop' }),
+          address,
+        ).toMatchObject({ outcome: 'ok', agent: ali, asked: true })
       }
-      // ⛔ Nothing was interrupted.
-      expect(aliHandle.status()).toBe('working')
-      expect(ledger(ali).some((event) => event.type === 'work_interrupted')).toBe(false)
+      expect(ledger(ali).filter((event) => event.type === 'work_interrupted')).toHaveLength(2)
+      expect(
+        await callOn(brobotTools, 'interrupt_agent', { agent: itsRoot, reason: 'stop' }),
+      ).toMatchObject({ outcome: 'ok', agent: brobot, asked: false })
       const other = await aChainOfThree()
       await makeItWork(other.aliHandle)
       expect(
         await callOn(aliTools, 'interrupt_agent', { agent: other.ali, reason: 'stop' }),
-      ).toMatchObject({ outcome: 'ok', asked: true })
+      ).toMatchObject({ outcome: 'ok', agent: other.ali, asked: true })
+      await makeItWork(aliHandle)
       expect(
-        (await callOn(adaTools, 'interrupt_agent', { agent: ali, reason: 'stop' })).outcome,
-      ).toBe('ok')
+        await callOn(adaTools, 'interrupt_agent', { agent: ali, reason: 'stop' }),
+      ).toMatchObject({ outcome: 'ok', agent: ali, asked: true })
     })
 
     it('🔴 F091 · a conversation in another’s place: that one’s id and its piece name this conversation too — at interrupt_agent and at message_agent', async () => {
@@ -642,11 +580,7 @@ describe('629 · a stop reaches down the whole chain', () => {
         expect(
           await callOn(nextTools, 'interrupt_agent', { agent: named, reason: 'stop' }),
           named,
-        ).toMatchObject({
-          outcome: 'refused',
-          rail: 'that-agent-is-you',
-          reason: A_CONVERSATION_CANNOT_INTERRUPT_ITSELF + guide,
-        })
+        ).toMatchObject({ outcome: 'ok', agent: next })
         // ⚑ …and `message_agent`'s own word, where the host's gate answered a conversation that could
         // take no message, and sent a person to look at it.
         expect(

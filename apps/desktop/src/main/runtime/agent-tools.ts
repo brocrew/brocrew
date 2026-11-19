@@ -84,7 +84,6 @@ export { A_WAKE_WHOSE_PROGRAM_COULD_NOT_RUN } from './tool-families/launch-failu
 export { A_WAKE_WHOSE_FOLDER_IS_GONE } from './tool-families/launch-failures'
 export { A_PROVIDER_REFUSED_THE_START } from './tool-families/launch-failures'
 export { A_WAKE_ITS_PROVIDER_REFUSED } from './tool-families/launch-failures'
-export { A_CONVERSATION_CANNOT_INTERRUPT_ITSELF } from './tool-families/launch-failures'
 export { A_CONVERSATION_CANNOT_ASK_ITSELF } from './tool-families/launch-failures'
 export { A_WAKE_WHOSE_FOLDER_COULD_NOT_BE_MADE } from './tool-families/launch-failures'
 export { A_REFUSED_ROW_SHOWS } from './tool-families/launch-failures'
