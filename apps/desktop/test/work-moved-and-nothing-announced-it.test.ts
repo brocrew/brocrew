@@ -300,8 +300,8 @@ describe('638 · a change to a conversation’s work announces itself', () => {
       // ⛔ **An identity act** — it announces `agents` and must not claim the work population.
       // ⚠️ This is the negative that makes §2's positives mean something: the channel is live in
       // this harness and still says nothing about work.
-      host.setSpawningEnabled(false)
-      host.setSpawningEnabled(true)
+      host.setAgentDisplayName(DEFAULT_PROFILE_ID, 'A display name')
+      expect(said()).toContain('agents')
       expect(saidWork(), 'an identity act announced work').toBe(0)
     })
   })
