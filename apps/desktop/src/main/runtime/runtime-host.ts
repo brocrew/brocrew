@@ -8190,8 +8190,8 @@ export class RuntimeHost implements LiveHost {
   private theServiceAtAGive(giver: string, profile: string): ServiceAtAGive {
     const agent = this.theServiceAgent(profile)
     if (agent.is !== 'service') return agent
-    if (!this.servicesAreOn() || this.deps.profileExecution?.owned !== true) {
-      return { is: 'off' }
+    if (this.deps.profileExecution?.owned !== true) {
+      return { is: 'queue-not-owned' }
     }
     const { conversation } = agent
     const givers = this.theIdsItStandsFor(giver)
@@ -8255,7 +8255,6 @@ export class RuntimeHost implements LiveHost {
     if (agent.is !== 'service' || agent.conversation !== null) {
       throw new Error(`${foldProfileName(profile)} is not a service without a conversation`)
     }
-    if (!this.servicesAreOn()) throw new ServicesAreOff()
     const read = this.profileExecution
     const entry = read.readable ? read.kept.profiles[agent.identity] : undefined
     if (entry === undefined) throw new Error(`${foldProfileName(profile)} is not a service`)
