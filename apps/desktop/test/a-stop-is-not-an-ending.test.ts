@@ -11,11 +11,12 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { fixtureProviderConfig, RecordingSink, neutralHostDeps } from './lib/host-fixture'
+import { fixtureToolCaller } from './lib/conversation-fixture'
 
 /**
  * 🔴 **D-017 · a stop is not an ending — two lives the landed suite does not yet pin.**
@@ -88,15 +89,7 @@ describe('D-017 · a stop is not an ending', () => {
       for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
     })
 
-    const callOn = async (
-      sessionId: string,
-      name: ToolName,
-      args: Record<string, unknown>,
-    ): Promise<Record<string, unknown>> => {
-      const tool = agentToolsFor(host, sessionId).tools.find((one) => one.name === name)
-      if (tool === undefined) throw new Error(`no such tool: ${name}`)
-      return (await tool.call(args)).structured as Record<string, unknown>
-    }
+    const callOn = fixtureToolCaller((sessionId) => agentToolsFor(host, sessionId))
 
     const personOpens = async (profileId: string): Promise<string> => {
       const { sessionId } = await host.createSession(
@@ -232,15 +225,7 @@ describe('D-017 · a stop is not an ending', () => {
       for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
     })
 
-    const callOn = async (
-      sessionId: string,
-      name: ToolName,
-      args: Record<string, unknown>,
-    ): Promise<Record<string, unknown>> => {
-      const tool = agentToolsFor(host, sessionId).tools.find((one) => one.name === name)
-      if (tool === undefined) throw new Error(`no such tool: ${name}`)
-      return (await tool.call(args)).structured as Record<string, unknown>
-    }
+    const callOn = fixtureToolCaller((sessionId) => agentToolsFor(host, sessionId))
 
     const eventsOf = (sessionId: string): TranscriptEvent[] =>
       store.events(sessionId).map((row) => row.event)

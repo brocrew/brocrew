@@ -1,3 +1,4 @@
+import { waitForMessageFixture as waitFor } from './lib/conversation-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { callOn } from './helpers/call-agent-tool'
 import type { QuestionAskedEvent, RequestRoutedEvent } from '../src/shared/question-contracts'
@@ -69,14 +70,6 @@ import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/hos
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-const waitFor = async (ready: () => boolean, what: string, tries = 300): Promise<void> => {
-  for (let attempt = 0; attempt < tries; attempt += 1) {
-    if (ready()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
 
 /** `FakeRuntime` with the toolset each launch was handed captured, so a test can act as that agent. */
 type WordsInARow = TranscriptEvent & { type: 'user_turn' | 'message_queued'; text: string }

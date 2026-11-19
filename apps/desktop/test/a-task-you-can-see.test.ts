@@ -31,6 +31,7 @@ import {
   neutralHostDeps,
   fixtureProviderConfig,
 } from './lib/host-fixture'
+import { profileSeeder } from './lib/conversation-fixture'
 
 /**
  * 🔴 **379 · a task you can see** — Slice 4 S1, HO-006 §4.1, HO-007 S1 + criterion 2.
@@ -185,10 +186,7 @@ describe('379 · a task you can see', () => {
     return sessionId
   }
 
-  const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
-    const id = await personOpens(profileId)
-    await host.close(id, window)
-  }
+  const bringIdentityIntoBeing = profileSeeder(personOpens, (id) => host.close(id, window))
 
   const theToolsetJustHandedOut = (): AgentToolset => {
     const last = handed.at(-1)

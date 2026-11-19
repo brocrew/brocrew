@@ -2,6 +2,7 @@ import { navigationReply } from './helpers/navigation-reply'
 import { z } from 'zod'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentCallerId, agentToolsFor } from '../src/main/runtime/agent-tools'
+import { reviewLeadSession } from './lib/conversation-fixture'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 
@@ -17,12 +18,10 @@ describe('parallel worker tools and conversation readings', () => {
   })
   async function setup() {
     const host = world.aHost()
-    const caller = (
-      await host.createSession(
-        { provider: 'claude', profileId: 'review-lead', cwd: world.folder, approvalMode: 'auto' },
-        world.window,
-      )
-    ).sessionId
+    const { sessionId: caller } = await host.createSession(
+      reviewLeadSession(world.folder),
+      world.window,
+    )
     return { host, caller }
   }
   const giveTool = (host: RuntimeHost, caller: string) => {

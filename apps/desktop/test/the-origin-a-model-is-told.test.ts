@@ -30,6 +30,7 @@ import { agentName } from '../src/shared/runtime-ipc'
 import type { WhereTheSenderStands } from '../src/main/runtime/turn-origin'
 import { theOwnerOf } from '../src/shared/piece-called'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
+import { profileSeeder } from './lib/conversation-fixture'
 
 /**
  * ⚑ D-011 · a PM called Pam that gave the receiver W1.3 — for the pure composer's tests. ⚑ D-016:
@@ -182,10 +183,7 @@ describe('414 · the origin a model is told', () => {
     return sessionId
   }
 
-  const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
-    const id = await personOpens(profileId)
-    await host.close(id, window)
-  }
+  const bringIdentityIntoBeing = profileSeeder(personOpens, (id) => host.close(id, window))
 
   const callOn = async (
     toolset: AgentToolset,

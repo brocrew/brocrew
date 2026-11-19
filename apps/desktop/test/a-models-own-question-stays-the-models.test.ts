@@ -23,9 +23,10 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
+import { fixtureToolCaller } from './lib/conversation-fixture'
 
 /**
  * 🔴 **D-009 · a model's OWN question stays the model's.**
@@ -149,15 +150,7 @@ describe('D-009 · a model’s own question stays the model’s', () => {
   })
 
   /** ⚑ Through the CURRENT host, so a call after a relaunch is the next launch's own door. */
-  const callOn = async (
-    sessionId: string,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = agentToolsFor(host, sessionId).tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
+  const callOn = fixtureToolCaller((sessionId) => agentToolsFor(host, sessionId))
 
   const personOpens = async (
     profileId: string,

@@ -32,6 +32,7 @@ import {
   neutralHostDeps,
   fixtureProviderConfig,
 } from './lib/host-fixture'
+import { profileSeeder } from './lib/conversation-fixture'
 
 /**
  * D-025 · a reply refused for an ended piece says who ended it and when.
@@ -406,10 +407,7 @@ describe('D-025 · §3-§6 · a refused reply through the real host', () => {
 
   const personOpens = personOpener(() => ({ host, root, window }), 'ask')
 
-  const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
-    const id = await personOpens(profileId)
-    await host.close(id, window)
-  }
+  const bringIdentityIntoBeing = profileSeeder(personOpens, (id) => host.close(id, window))
 
   /** The toolset a session's calls are driven through, built the way the launch builds it. */
   const toolsOf = (sessionId: string): AgentToolset => agentToolsFor(host, sessionId)

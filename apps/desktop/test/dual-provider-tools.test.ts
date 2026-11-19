@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentCallerId, agentToolsFor } from '../src/main/runtime/agent-tools'
+import { reviewLeadSession } from './lib/conversation-fixture'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
 describe('provider choices in the public tools', () => {
@@ -13,12 +14,10 @@ describe('provider choices in the public tools', () => {
 
   async function setup() {
     const host = world.aHost()
-    const giver = (
-      await host.createSession(
-        { provider: 'claude', profileId: 'review-lead', cwd: world.folder, approvalMode: 'auto' },
-        world.window,
-      )
-    ).sessionId
+    const { sessionId: giver } = await host.createSession(
+      reviewLeadSession(world.folder),
+      world.window,
+    )
     const tools = agentToolsFor(host, giver).tools
     const tool = (name: string) => {
       const found = tools.find((one) => one.name === name)

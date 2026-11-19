@@ -46,6 +46,7 @@ import {
   neutralHostDeps,
   fixtureProviderConfig,
 } from './lib/host-fixture'
+import { profileSeeder } from './lib/conversation-fixture'
 
 /**
  * 🔴 **394 · a question finds a person, and a permission never travels** — Slice 4 S4, HO-007
@@ -180,10 +181,7 @@ describe('394 · a question finds a person, and a permission never travels', () 
 
   const personOpens = personOpener(() => ({ host, root, window }), 'ask')
 
-  const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
-    const id = await personOpens(profileId)
-    await host.close(id, window)
-  }
+  const bringIdentityIntoBeing = profileSeeder(personOpens, (id) => host.close(id, window))
 
   /** ⛔ Built the way a launch builds it, against the CURRENT host — `393`'s rule, and §5 needs it. */
   const toolsOf = (sessionId: string): AgentToolset => agentToolsFor(host, sessionId)
