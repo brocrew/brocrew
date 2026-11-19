@@ -392,10 +392,10 @@ it('pages Other tasks, then rereads Current task when its saved cursor no longer
   openTaskDrawer()
   const m = await mountWith([row(sessionId, task)])
   const currentText = () => m.all('cast-taken')[0]?.textContent
-  const otherTitles = () =>
-    [...m.q('cast-other').querySelectorAll('[data-cy="cast-work-said"]')].map(
-      (element) => element.textContent?.trim(),
-    )
+  function otherTitles() {
+    const titles = m.q('cast-other').querySelectorAll('[data-cy="cast-work-said"]')
+    return Array.from(titles, (element) => element.textContent?.trim())
+  }
   await expect.poll(currentText).toContain('Newest open invoice task')
   expect(read).toHaveBeenCalledExactlyOnceWith({ sessionId })
   expect(currentText()).toContain('Reconcile the final amounts.')
