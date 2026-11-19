@@ -274,7 +274,7 @@ describe('650 · a refusal that clears on its own', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   it('§1 a launch in flight is not refused: the message waits for it and is delivered once it lands', async () => {
-    const { call, sibling } = await aParentWithASibling()
+    const { parent, call, sibling } = await aParentWithASibling()
     const { id, spawning } = await aSpawnInFlight(call)
     // ⚑ **D-016 · a note** — work is a give's now, and the one in flight is the subject's own.
     const words = { agent: id, text: 'please start on this', kind: 'note' }
@@ -300,7 +300,10 @@ describe('650 · a refusal that clears on its own', () => {
     hold = null
     expect(payload(await spawning)).toMatchObject({ outcome: 'ok', agent: id })
     const delivered = payload(await waiting)
-    const recorded = eventsOf(id).find((event) => event.type === 'message_queued')
+    expect(delivered.messageAct).toEqual(expect.any(String))
+    const recorded = eventsOf(id).find(
+      (event) => event.type === 'message_queued' && event.messageAct === delivered.messageAct,
+    )
     expect(recorded).toMatchObject({ text: words.text, messageId: expect.any(String) })
     expect(delivered).toMatchObject({
       outcome: 'ok',
@@ -311,11 +314,18 @@ describe('650 · a refusal that clears on its own', () => {
       () =>
         eventsOf(id).some(
           (event) =>
-            event.type === 'user_turn' &&
-            theMessagesOf(event).some((part) => part.text === words.text),
+            event.type === 'message_unqueued' &&
+            event.messageId === recorded?.messageId &&
+            event.reason === 'sent',
         ),
-      'the waiting message to reach the same conversation',
+      'the exact queued message to be sent',
     )
+    const deliveredParts = store
+      .events(id)
+      .flatMap(({ event }) => (event.type === 'user_turn' ? theMessagesOf(event) : []))
+    expect(deliveredParts.filter((part) => part.text === words.text)).toEqual([
+      expect.objectContaining({ relayedFrom: parent, says: 'note' }),
+    ])
     // ⚑ **The wait burned no number** (D-016 · R4): the control's give took the first number under
     // the parent's root and the give in flight the second; the waiting note took none.
     expect([...labelsIn(sibling), ...labelsIn(id)]).toEqual(['W3.1', 'W3.2'])
@@ -385,17 +395,19 @@ describe('650 · a refusal that clears on its own', () => {
     expect(host.sessionIds).toContain(id)
     await until(
       () =>
-        eventsOf(id).some(
-          (event) =>
-            event.type === 'user_turn' &&
-            theMessagesOf(event).some((part) => part.text === words.text),
-        ),
+        store
+          .events(id)
+          .some(
+            ({ event }) =>
+              event.type === 'user_turn' &&
+              theMessagesOf(event).some((part) => part.text === words.text),
+          ),
       'the waiting note to reach the recorded conversation',
     )
     expect(labelsIn(id)).toEqual(['W3.2'])
-    const deliveredParts = eventsOf(id).flatMap((event) =>
-      event.type === 'user_turn' ? theMessagesOf(event) : [],
-    )
+    const deliveredParts = store
+      .events(id)
+      .flatMap(({ event }) => (event.type === 'user_turn' ? theMessagesOf(event) : []))
     expect(deliveredParts.filter((part) => part.text === words.text)).toHaveLength(1)
     // ⚠️ **The control**: the same caller's same words to a conversation that did come up.
     expect(payload(await call('message_agent', { ...words, agent: sibling }))).toMatchObject({

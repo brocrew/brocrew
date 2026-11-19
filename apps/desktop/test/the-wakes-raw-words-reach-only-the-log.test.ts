@@ -195,9 +195,13 @@ describe('663 M50 · a wake refused logs the host’s own words and keeps them o
       // line — the template literal runs — but throws the result away unread, so the spy would see
       // nothing at all.
       expect(spy).toHaveBeenCalled()
-      const logged = warned.join('\n')
-      expect(logged).toContain('message_agent: the start did not happen')
-      expect(logged).toContain(theHostsOwnWords)
+      expect(
+        warned.filter(
+          (line) =>
+            line.includes('message_agent: the start did not happen') &&
+            line.includes(theHostsOwnWords),
+        ),
+      ).toHaveLength(1)
     } finally {
       spy.mockRestore()
     }

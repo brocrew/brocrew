@@ -466,13 +466,20 @@ describe('F097 · a person owes the agent that answered them', () => {
                 part.text.includes(String(asked.question)),
             ),
         )?.ordinal
-    await waitFor(() => {
+    const nextBoundary = () => {
       const ordinal = noticeAt()
-      return (
-        ordinal !== undefined &&
-        store.events(ada).some((entry) => entry.ordinal > ordinal && entry.event.type === 'turn')
-      )
-    }, 'the unanswered-question notice to open and finish a separate turn')
+      return ordinal === undefined
+        ? undefined
+        : store
+            .events(ada)
+            .find(
+              (entry) =>
+                entry.ordinal > ordinal &&
+                (entry.event.type === 'turn' || entry.event.type === 'user_turn'),
+            )?.event
+    }
+    await waitFor(() => nextBoundary() !== undefined, 'the notice turn to reach its next boundary')
+    expect(nextBoundary()).toMatchObject({ type: 'turn', state: 'completed' })
     await settle()
 
     // The informational notice preserves the task wait while the open question takes precedence.

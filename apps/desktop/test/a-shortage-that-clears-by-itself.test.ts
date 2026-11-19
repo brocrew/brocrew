@@ -1,4 +1,5 @@
 import { recordedMessageWakeFailure } from './lib/recorded-message-wake'
+import { theMessagesOf } from '../src/shared/runtime-ipc'
 import { giveToSeededWorker } from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { waitFor } from './lib/f093-host'
@@ -185,8 +186,12 @@ describe('705 · R39 — a shortage that clears by itself', () => {
    * is gone). A follow-up, since the worker holds the parent's work — ⚑ **D-016 · naming that
    * piece**, which a follow-up must.
    */
-  const wake = (pm: string, worker: string, piece: string): Promise<Record<string, unknown>> =>
-    callOn(pm, 'message_agent', { agent: worker, text: 'carry on', kind: 'follow-up', piece })
+  const wake = (
+    pm: string,
+    worker: string,
+    piece: string,
+    text = 'carry on',
+  ): Promise<Record<string, unknown>> => callOn(pm, 'message_agent', { agent: worker, text, piece })
 
   // ───────────────────────────────────────────────────────────────────────────────
   // the adapters' own errors
@@ -288,11 +293,24 @@ describe('705 · R39 — a shortage that clears by itself', () => {
         shortageReason(code),
       )
       gate.resumeFails = undefined
-      expect(await wake(pm, worker, piece)).toMatchObject({ outcome: 'ok', agent: worker })
+      expect(await wake(pm, worker, piece, 'try continuing now')).toMatchObject({
+        outcome: 'ok',
+        agent: worker,
+      })
       await waitFor(
-        () => !store.messagesWaitingIn(worker).some((one) => one.messageId === id),
-        'the original recorded message to leave the queue',
+        () =>
+          events(worker).some(
+            (event) =>
+              event.type === 'message_unqueued' &&
+              event.messageId === id &&
+              event.reason === 'sent',
+          ),
+        'the original recorded message to be sent',
       )
+      const parts = events(worker).flatMap((event) =>
+        event.type === 'user_turn' ? theMessagesOf(event) : [],
+      )
+      expect(parts.filter((part) => part.text === 'carry on')).toHaveLength(1)
     })
   })
 

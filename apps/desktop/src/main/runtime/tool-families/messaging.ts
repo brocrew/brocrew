@@ -203,60 +203,60 @@ export function createMessageAgentTool(
           about = { piece: it.piece, label: it.label }
         }
         const says = about !== null && it.is === 'given-to-it' ? 'follow-up' : 'note'
-        try {
-          const kept = host.prepareFilesForSend(me, resources.data ?? [], about?.piece)
-          if (!kept.ok) return answer({ ...kept.refusal }, `Not sent: ${kept.refusal.reason}`)
-          const prepared = host.prepareTextForSend(me, 'text', text, about?.piece)
-          if (!prepared.ok) {
-            return answer({ ...prepared.refusal }, `Not sent: ${prepared.refusal.reason}`)
+        const kept = host.prepareFilesForSend(me, resources.data ?? [], about?.piece)
+        if (!kept.ok) return answer({ ...kept.refusal }, `Not sent: ${kept.refusal.reason}`)
+        const prepared = host.prepareTextForSend(me, 'text', text, about?.piece)
+        if (!prepared.ok) {
+          return answer({ ...prepared.refusal }, `Not sent: ${prepared.refusal.reason}`)
+        }
+        const attachment =
+          prepared.overflow === undefined ? '' : outboundOverflowSaid(prepared.overflow)
+        const attachments =
+          prepared.overflow === undefined
+            ? kept.files
+            : [...kept.files, sendOverflowAttachment(prepared.overflow)]
+        const outgoingText = prepared.text + sendFilesSaid(kept.files)
+        const messageAct = `message_act_${randomUUID()}`
+        const facts = {
+          ...(about === null ? {} : { aboutPiece: about }),
+          addressedAs: spelled,
+          messageAct,
+        }
+        const holdingBeforeStart = host.holdAgentMessageForStart(
+          agent,
+          outgoingText,
+          by,
+          facts,
+          says,
+        )
+        const heldBeforeStart = holdingBeforeStart === null ? null : await holdingBeforeStart
+        if (heldBeforeStart !== null) {
+          const { id, to, state } = heldBeforeStart
+          if (state.kind === 'started' && says === 'follow-up' && about !== null) {
+            host.takeBackWhatItsQuestionMadeFalse({ agent: to, piece: about.piece }, by)
           }
-          const attachment =
-            prepared.overflow === undefined ? '' : outboundOverflowSaid(prepared.overflow)
-          const attachments =
-            prepared.overflow === undefined
-              ? kept.files
-              : [...kept.files, sendOverflowAttachment(prepared.overflow)]
-          const outgoingText = prepared.text + sendFilesSaid(kept.files)
-          const messageAct = `message_act_${randomUUID()}`
-          const facts = {
-            ...(about === null ? {} : { aboutPiece: about }),
-            addressedAs: spelled,
-            messageAct,
-          }
-          const holdingBeforeStart = host.holdAgentMessageForStart(
-            agent,
-            outgoingText,
-            by,
-            facts,
-            says,
+          const { receipt, said } = host.receiptForSend({
+            recorded: { kind: 'message', id, taskLabel: about?.label ?? null },
+            to,
+            state,
+            attachments,
+            ...(state.kind === 'queued' ? { waitsFor: host.whyWhatIsHeldWaits(to) } : {}),
+          })
+          return answer(
+            {
+              outcome: 'ok',
+              delivery: state.kind === 'started' ? 'sent' : 'queued',
+              messageAct,
+              agent,
+              kind: says,
+              ...(about === null ? {} : { piece: about.piece, label: about.label }),
+              ...(to === agent ? {} : { went_to: to }),
+              receipt,
+            },
+            said + attachment,
           )
-          const heldBeforeStart = holdingBeforeStart === null ? null : await holdingBeforeStart
-          if (heldBeforeStart !== null) {
-            const { id, to, state } = heldBeforeStart
-            if (state.kind === 'started' && says === 'follow-up' && about !== null) {
-              host.takeBackWhatItsQuestionMadeFalse({ agent: to, piece: about.piece }, by)
-            }
-            const { receipt, said } = host.receiptForSend({
-              recorded: { kind: 'message', id, taskLabel: about?.label ?? null },
-              to,
-              state,
-              attachments,
-              ...(state.kind === 'queued' ? { waitsFor: host.whyWhatIsHeldWaits(to) } : {}),
-            })
-            return answer(
-              {
-                outcome: 'ok',
-                delivery: state.kind === 'started' ? 'sent' : 'queued',
-                messageAct,
-                agent,
-                kind: says,
-                ...(about === null ? {} : { piece: about.piece, label: about.label }),
-                ...(to === agent ? {} : { went_to: to }),
-                receipt,
-              },
-              said + attachment,
-            )
-          }
+        }
+        try {
           // Hold the message before asking its running turn to stop.
           const now =
             interruptAsked === true
