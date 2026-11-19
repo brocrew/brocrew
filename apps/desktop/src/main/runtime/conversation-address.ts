@@ -22,8 +22,12 @@ interface AddressReads {
   firstTaskOf(conversation: string): { readonly label: string } | null
 }
 
-export function canonicalAddressOf(reads: AddressReads, conversation: string): string {
-  return reads.firstTaskOf(conversation)?.label ?? conversation
+export function canonicalAddressOf(
+  reads: AddressReads,
+  conversation: string,
+  service = false,
+): string {
+  return service ? conversation : (reads.firstTaskOf(conversation)?.label ?? conversation)
 }
 
 interface DisplayTitleReads {
@@ -39,9 +43,9 @@ function conversationDisplayTitle(
   reads: DisplayTitleReads,
   conversation: string,
   service: boolean,
+  savedTitle = reads.conversationTitle(conversation),
 ): string {
-  const title = reads.conversationTitle(conversation)?.title
-  if (title !== undefined) return title
+  if (savedTitle !== null) return savedTitle.title
   if (!service) {
     const taskTitle = aConversationTitle(reads.latestTaskTitle(conversation))
     if (taskTitle !== null) return taskTitle
@@ -56,9 +60,10 @@ export function describeConversation(
   reads: AddressReads & DisplayTitleReads,
   conversation: string,
   service: boolean,
+  savedTitle?: ConversationTitle | null,
 ): { readonly address: string; readonly title: string; readonly line: string } {
-  const address = service ? conversation : canonicalAddressOf(reads, conversation)
-  const title = conversationDisplayTitle(reads, conversation, service)
+  const address = canonicalAddressOf(reads, conversation, service)
+  const title = conversationDisplayTitle(reads, conversation, service, savedTitle)
   return { address, title, line: `conversation ${address} · ${title}` }
 }
 
@@ -71,11 +76,13 @@ interface RecordedServiceReads {
 export function isRecordedServiceConversation(
   reads: RecordedServiceReads,
   conversation: string,
+  root?: object | null,
 ): boolean {
   return (
+    root == null &&
     reads.recordedOne(conversation) !== null &&
     reads.parentOf(conversation) === null &&
-    reads.rootOf(conversation) === null
+    (root === null || reads.rootOf(conversation) === null)
   )
 }
 
@@ -83,6 +90,7 @@ export function describeConversationForRead(
   reads: AddressReads & DisplayTitleReads & RecordedServiceReads,
   conversation: string,
   itIsAService = isRecordedServiceConversation(reads, conversation),
+  savedTitle?: ConversationTitle | null,
 ) {
-  return describeConversation(reads, conversation, itIsAService)
+  return describeConversation(reads, conversation, itIsAService, savedTitle)
 }

@@ -48,12 +48,13 @@ export async function renameConversation(
   await beforeWriting(conversation)
   if (store.conversationBinding(conversation) === null) return unknown()
 
+  const previous = store.conversationTitle(conversation)
   const { address, title: previousTitle } = describeConversationForRead(
     store,
     conversation,
     itIsAService(conversation),
+    previous,
   )
-  const previous = store.conversationTitle(conversation)
   record(conversation, { type: 'titled', title, author })
   return {
     ok: true,
