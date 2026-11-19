@@ -1,5 +1,5 @@
 import type { SessionStatus } from '@brobot2/shared'
-import type { RuntimeEvent, TurnLimit } from '../events'
+import type { ProviderTurnFailure, RuntimeEvent, TurnLimit } from '../events'
 import type { SessionRef } from '../session-ref'
 import { TURN_REFUSED, TurnInProgress } from '../turn-in-progress'
 
@@ -568,6 +568,7 @@ export class SessionMachine {
      * would not bill the account the turn ran on (`billingRefused`).
      */
     refused?: RefusedLoginSaid,
+    providerFailure?: ProviderTurnFailure,
   ): void {
     if (this.isTerminal) return
     if (whose === 'the-open-turn' && this.turn) this.turn.absorbsForeignTerminal = false
@@ -590,6 +591,7 @@ export class SessionMachine {
         limit,
         { startedBy: 'the-provider' },
         refused,
+        providerFailure,
       )
       this.sync()
       return
@@ -609,7 +611,14 @@ export class SessionMachine {
       return
     }
     const ended = this.takeTurn()
-    this.sayTheEnding(providerOutcome, errorMessage, limit, endingMarksOf(ended), refused)
+    this.sayTheEnding(
+      providerOutcome,
+      errorMessage,
+      limit,
+      endingMarksOf(ended),
+      refused,
+      providerFailure,
+    )
     this.sync()
   }
 
@@ -621,12 +630,14 @@ export class SessionMachine {
     marks: ReturnType<typeof endingMarksOf>,
     /** ⚑ **F076** — on a `failed` row only, as {@link terminalizeErrored} says it. */
     refused: RefusedLoginSaid = {},
+    providerFailure?: ProviderTurnFailure,
   ): void {
     if (outcome === 'failed') {
       this.say({ type: 'error', message: errorMessage ?? 'turn failed', fatal: false })
       this.say({
         type: 'turn',
         state: 'failed',
+        ...(providerFailure === undefined ? {} : { providerFailure }),
         ...(limit === undefined ? {} : { limit }),
         ...(refused.loginRefused === true ? { loginRefused: true } : {}),
         ...(refused.billingRefused === true ? { billingRefused: true } : {}),
@@ -663,7 +674,7 @@ export class SessionMachine {
      * a burst it was to join runs on. ⚠️ Only the caller knows: Codex's `turn/start` is answered
      * after the host has recorded the message as sent.
      */
-    said: { readonly neverSent?: true } = {},
+    said: { readonly neverSent?: true; readonly providerFailure?: ProviderTurnFailure } = {},
   ): void {
     if (this.isTerminal || !this.turn) return
     const interrupted = this.turn.interruptRequested
@@ -682,7 +693,13 @@ export class SessionMachine {
       this.say({ type: 'turn', state: 'interrupted', wordOf: 'this-app', ...endingMarksOf(ended) })
     } else {
       this.say({ type: 'error', message, fatal: false })
-      this.say({ type: 'turn', state: 'failed', wordOf: 'this-app', ...endingMarksOf(ended) })
+      this.say({
+        type: 'turn',
+        state: 'failed',
+        wordOf: 'this-app',
+        ...(said.providerFailure === undefined ? {} : { providerFailure: said.providerFailure }),
+        ...endingMarksOf(ended),
+      })
     }
     this.sync()
   }
