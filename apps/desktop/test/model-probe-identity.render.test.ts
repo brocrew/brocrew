@@ -212,3 +212,31 @@ it('settles a failed forced refresh without promoting retained choices to curren
   expect(lists.readiness('claude', 'work')).toMatchObject({ state: 'settled', ready: null })
   expect(lists.choices('claude', 'work')).toBeNull()
 })
+
+
+it('settles another profile when ordinary forget disowns its pending catalogue request', async () => {
+  const pending = deferred()
+  let calls = 0
+  let read = () => Promise.resolve(ACCOUNT_A)
+  const lists = holderOver(() => {
+    calls++
+    return read()
+  })
+  await lists.read('claude', 'alpha')
+  await lists.read('claude', 'beta')
+  read = () => pending.promise
+  const obsolete = lists.reread()
+  await Promise.resolve()
+  expect(calls).toBe(4)
+  expect(lists.held('claude', 'beta')).toMatchObject({ refreshing: true })
+  lists.forget('alpha')
+  await lists.read('claude', 'beta')
+  expect(lists.held('claude', 'alpha')).toBeNull()
+  expect(lists.held('claude', 'beta')).not.toMatchObject({ refreshing: true })
+  expect(lists.readiness('claude', 'beta').state).toBe('settled')
+  expect(calls).toBe(4)
+  pending.resolve(ACCOUNT_B)
+  await obsolete
+  expect(lists.held('claude', 'beta')).toMatchObject({ state: 'answered', list: ACCOUNT_A })
+  expect(lists.readiness('claude', 'beta').state).toBe('settled')
+})
