@@ -6,34 +6,21 @@ import {
   type ConversationRenameInput,
   type ConversationRenameResult,
 } from '../../../shared/conversation-title'
-import { theWorkThatNamesItSaid, type WorkThatNamesIt } from '../../../shared/piece-called'
 import type { CreatedSession } from '../../../shared/runtime-ipc'
-import { basenameOf } from '../lib/paths'
 import { readableError } from '../lib/session-record'
 
 const props = defineProps<{
   session: Pick<CreatedSession, 'sessionId' | 'cwd'> | null
-  named: WorkThatNamesIt | null
-  identity?: ConversationIdentity | null
+  title: string
+  task: string | null
+  taskTitle: string | null
+  identity: ConversationIdentity | null
   openTask?: () => void
   rename?: (input: ConversationRenameInput) => Promise<ConversationRenameResult>
 }>()
 
 const conversation = computed(() => props.session?.sessionId)
 const renamable = computed(() => (props.rename === undefined ? undefined : conversation.value))
-const identity = computed(() =>
-  props.identity?.conversation === conversation.value ? (props.identity ?? null) : null,
-)
-const task = computed(() => (props.named === null ? null : theWorkThatNamesItSaid(props.named)))
-const title = computed(() => {
-  if (!props.session) return 'New conversation'
-  return (
-    identity.value?.title ??
-    task.value ??
-    (basenameOf(props.session.cwd) || props.session.sessionId)
-  )
-})
-
 const renaming = ref(false)
 const draft = ref('')
 const saving = ref(false)
@@ -42,7 +29,7 @@ const titleInput = ref<HTMLInputElement | null>(null)
 let edit = 0
 
 function startRenaming(): void {
-  draft.value = identity.value?.title ?? props.named?.title ?? title.value
+  draft.value = props.identity?.title ?? props.taskTitle ?? props.title
   refused.value = null
   renaming.value = true
   void nextTick(() => {

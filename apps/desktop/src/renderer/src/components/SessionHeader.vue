@@ -12,7 +12,7 @@ import type {
   ConversationRenameInput,
   ConversationRenameResult,
 } from '../../../shared/conversation-title'
-import type { WorkThatNamesIt } from '../../../shared/piece-called'
+import { theWorkThatNamesItSaid, type WorkThatNamesIt } from '../../../shared/piece-called'
 import { clockTime } from '../../../shared/clock'
 import {
   activityWords,
@@ -24,6 +24,7 @@ import {
 } from '../lib/agent-state'
 import { fullTime } from '../lib/clock'
 import { handBackOffer } from '../lib/handing-it-back'
+import { basenameOf } from '../lib/paths'
 import { inventoryAsOf, inventorySummary, readInventory } from '../lib/tool-inventory'
 import { stillThinkingSays } from '../lib/still-thinking'
 import type { ToolRegistry } from '../lib/transcript'
@@ -55,7 +56,7 @@ import ConversationTitleEditor from './ConversationTitleEditor.vue'
  * three bordered, filled, 24px pills sitting in a row with three bordered, filled, 30px buttons,
  * and the PO read the row as a toolbar because it looks like one. ⚠️ **The title is neither**: it
  * is the conversation's identity, not a state and not one of the acts, and since D-016 · commit 7
- * (R4) pressing it edits it in place — so it stays drawn as the title ({@link renamable}).
+ * (R4) pressing it edits it in place — so it stays drawn as the title.
  *
  * 🔴 **`§1.4` is the one thing that may not give.** *"Whether an agent is working, waiting or done
  * is the most consequential fact on this screen and it currently has the least emphasis on it."*
@@ -244,6 +245,19 @@ const toolsTitle = computed(() => {
   const asOf = inventoryAsOf(read)
   const head = `The tools this conversation has — ${inventorySummary(read)}`
   return asOf === null ? head : `${head} · ${asOf}`
+})
+
+const identity = computed(() =>
+  props.identity?.conversation === props.session?.sessionId ? (props.identity ?? null) : null,
+)
+const task = computed(() => (props.named === null ? null : theWorkThatNamesItSaid(props.named)))
+const title = computed(() => {
+  if (!props.session) return 'New conversation'
+  return (
+    identity.value?.title ??
+    task.value ??
+    (basenameOf(props.session.cwd) || props.session.sessionId)
+  )
 })
 
 /** An archive in flight, and main's words when it refused one. */
@@ -455,8 +469,10 @@ const panelToggleName = computed(() =>
   <header class="session-header" data-cy="session-header">
     <ConversationTitleEditor
       :session="props.session"
-      :identity="props.identity"
-      :named="props.named"
+      :title="title"
+      :identity="identity"
+      :task="task"
+      :task-title="props.named?.title ?? null"
       :open-task="props.openTask"
       :rename="props.rename"
     />
