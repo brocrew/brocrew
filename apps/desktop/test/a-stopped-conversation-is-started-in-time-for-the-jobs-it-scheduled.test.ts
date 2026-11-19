@@ -22,6 +22,8 @@ import {
   type NoticeAboutAJob,
 } from '../src/main/runtime/runtime-host'
 import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { resourcesRoot } from '../src/main/resources/resources'
+import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
   importScheduleAttemptsFile,
   MAX_ATTEMPT_CONVERSATIONS,
@@ -33,12 +35,7 @@ import {
 import { clockTime, clockTimeFrom } from '../src/shared/clock'
 import type { RuntimeEventMessage, RuntimeStatesMessage } from '../src/shared/runtime-ipc'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
-import {
-  RecordingSink,
-  fixtureDatabase,
-  fixtureHostPaths,
-  fixtureProviderConfig,
-} from './lib/host-fixture'
+import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * Scheduled conversations use one wake-up per newest ledger level at launch and stop.
@@ -180,7 +177,8 @@ describe('D-029 · what the ledger says a conversation scheduled', () => {
 
   beforeEach(() => {
     userData = mkdtempSync(join(tmpdir(), 'brobot2-wakeup-ledger-'))
-    db = fixtureDatabase(userData)
+    db = openDatabase(join(userData, 'brobot2.sqlite'))
+    applyMigrations(db, migrationsFolder)
     clock = 1_000
     store = createSessionStore(db, tick)
     ordinals.clear()
@@ -519,12 +517,22 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
   const buildHost = (idleStopAfterMs: number, listening = true): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      ...fixtureHostPaths(() => userData),
-      createRuntime: (provider) => new ProviderDouble(provider, handles, control, issued),
+      ...neutralHostDeps(() => userData),
+      resourcesRoot: () => resourcesRoot(userData),
+      createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, control, issued),
+      prepareProviderHome: syntheticProviderHome(() => userData),
+      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
+      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       interruptWaitMs: 40,
-      readProviderConfig: fixtureProviderConfig,
+      readProviderConfig: (provider, home) => ({
+        home,
+        homeEnv: 'CLAUDE_CONFIG_DIR',
+        model: 'm',
+        authNote: null,
+        files: [],
+      }),
       ...(listening
         ? {
             statesMoved: (message: RuntimeStatesMessage): void => {
@@ -550,7 +558,8 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
   beforeEach(() => {
     userData = mkdtempSync(join(tmpdir(), 'brobot2-wakeup-host-'))
     root = mkdtempSync(join(tmpdir(), 'brobot2-wakeup-host-root-'))
-    db = fixtureDatabase(userData)
+    db = openDatabase(join(userData, 'brobot2.sqlite'))
+    applyMigrations(db, migrationsFolder)
     clock = LISTED
     store = createSessionStore(db, tick)
     counter = 0
@@ -2002,15 +2011,6 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
   })
 
   it.each([
-    ['with a notice already held', true],
-    ['with no notice held', false],
-  ] as const)('records a missing provider file on scheduled wake %s', async (_, hadNotice) => {
-    const [conversation] = await aFirstLife(async ([first]) => makes(first!, ONE_SHOT_A), 'agent-a')
-    if (conversation === undefined) throw new Error('no conversation was opened')
-    issued.forgetAll()
-    const ids = () => store.recorded().map((row) => row.sessionId)
-    const idsBefore = ids()
-    const handlesBefore = handles.length
     const onlyTheOriginal = () => {
       expect(wakeUpsOf(host).has(conversation)).toBe(false)
       expect(ids()).toEqual(idsBefore)
@@ -2047,6 +2047,15 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
       )
       expect(ledger(conversation)).toContainEqual({ type: 'error', message: detail, fatal: false })
     }
+    ['with a notice already held', true],
+    ['with no notice held', false],
+  ] as const)('records a missing provider file on scheduled wake %s', async (_, hadNotice) => {
+    const [conversation] = await aFirstLife(async ([first]) => makes(first!, ONE_SHOT_A), 'agent-a')
+    if (conversation === undefined) throw new Error('no conversation was opened')
+    issued.forgetAll()
+    const ids = () => store.recorded().map((row) => row.sessionId)
+    const idsBefore = ids()
+    const handlesBefore = handles.length
 
     onlyTheOriginal()
   })

@@ -3,11 +3,13 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { forestOf, storeForestOf } from './lib/forest-of-host'
 import { recordHistoricalReplacement, seedHistoricalSuccessor } from './lib/historical-replacement'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import type { AppDatabase } from '../src/main/db/connection'
+import { type AppDatabase, openDatabase } from '../src/main/db/connection'
+import { applyMigrations } from '../src/main/db/migrate'
 import {
   createSessionStore,
   type ForestedConversation,
@@ -15,6 +17,7 @@ import {
 } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import {
   type ForestConversation,
@@ -24,15 +27,15 @@ import {
 import {
   fixtureProviderConfig,
   RecordingSink,
-  fixtureHostPaths,
-  fixtureDatabase,
+  syntheticProviderHome,
+  neutralHostDeps,
 } from './lib/host-fixture'
 
 /**
  * # D-034 — the forest says, for each conversation, whose place it stands in
  *
- * When an earlier version recorded a replacement, both identities stay in the ledger.
- * Until D-034 the forest drew both as two
+ * ⚑ **A conversation that could never be reopened is replaced** by a new conversation of the same
+ * agent (D-017 · R10, `replaceWhatCanNeverBeReopened`). Until D-034 the forest drew both as two
  * unrelated nodes, so a parent's new work to its child hung off a conversation the Graph did not
  * draw over that child. `RuntimeHost.forestReading` now names, on each conversation,
  * `standsInFor` (the ones whose chain of replacements ends at it) and `inItsPlace` (the end of its
@@ -43,7 +46,11 @@ import {
  *
  * ⚑ **Real host, real SQLite ledger, real migrations, a plain `FakeRuntime` over
  * `FakeProviderSessions`**: the harness of `what-a-replacement-carries-and-what-it-leaves-behind.test.ts`.
+ * `issued.forgetAll()` is what makes a stopped conversation one its provider no longer has.
  */
+
+const here = dirname(fileURLToPath(import.meta.url))
+const migrationsFolder = join(here, '../src/main/db/migrations')
 
 /** ⚑ The forest as a window reads it: each conversation by id, and every piece. */
 interface Reading {
@@ -79,8 +86,11 @@ describe('D-034 — the forest says, for each conversation, whose place it stand
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      ...fixtureHostPaths(() => userData),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions: issued }),
+      prepareProviderHome: syntheticProviderHome(() => userData),
+      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
+      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       readProviderConfig: fixtureProviderConfig,
@@ -92,7 +102,8 @@ describe('D-034 — the forest says, for each conversation, whose place it stand
   beforeEach(() => {
     userData = mkdtempSync(join(tmpdir(), 'brobot2-d034-'))
     root = mkdtempSync(join(tmpdir(), 'brobot2-d034-root-'))
-    db = fixtureDatabase(userData)
+    db = openDatabase(join(userData, 'brobot2.sqlite'))
+    applyMigrations(db, migrationsFolder)
     clock = 7_100_000
     store = createSessionStore(db, tick)
     counter = 0

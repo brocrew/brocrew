@@ -5,12 +5,14 @@ import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { recordHistoricallyMovedNote, seedHistoricalSuccessor } from './lib/historical-replacement'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions } from '@brobot2/runtime'
 import { type AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import type { AppDatabase } from '../src/main/db/connection'
+import { type AppDatabase, openDatabase } from '../src/main/db/connection'
+import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
 import {
@@ -23,17 +25,12 @@ import {
   refuseTool,
   type ToolName,
 } from '../src/main/runtime/agent-tools'
+import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { agentName } from '../src/shared/runtime-ipc'
 import { permanenceInWords } from '../src/main/runtime/agent-tool-answer-words'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
-import {
-  fixtureDatabase,
-  fixtureProviderConfig,
-  RecordingSink,
-  syntheticProviderHome,
-  fixtureHostPaths,
-} from './lib/host-fixture'
+import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * # D-016 · a take-back tells its owner, and a note names what it is about
@@ -71,6 +68,9 @@ import {
  * read beside the same call one fact over, admitted.
  */
 
+const here = dirname(fileURLToPath(import.meta.url))
+const migrationsFolder = join(here, '../src/main/db/migrations')
+
 const waitFor = async (ready: () => boolean, what: string, tries = 300): Promise<void> => {
   for (let attempt = 0; attempt < tries; attempt += 1) {
     if (ready()) return
@@ -100,11 +100,20 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      ...fixtureHostPaths(() => userData),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, handed, issued),
+      prepareProviderHome: syntheticProviderHome(() => userData),
+      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
+      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: fixtureProviderConfig,
+      readProviderConfig: (_provider, home) => ({
+        home,
+        homeEnv: 'CLAUDE_CONFIG_DIR',
+        model: 'm',
+        authNote: null,
+        files: [],
+      }),
     })
     hosts.push(built)
     return built
@@ -113,7 +122,8 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
   beforeEach(() => {
     userData = mkdtempSync(join(tmpdir(), 'brobot2-takeback-notes-'))
     root = mkdtempSync(join(tmpdir(), 'brobot2-takeback-notes-root-'))
-    db = fixtureDatabase(userData)
+    db = openDatabase(join(userData, 'brobot2.sqlite'))
+    applyMigrations(db, migrationsFolder)
     clock = 7_200_000
     store = createSessionStore(db, tick)
     counter = 0
@@ -310,16 +320,6 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
       event.type === 'assistant_message' && event.text.startsWith('echo: ')
         ? [event.text.slice('echo: '.length)]
         : [],
-    )
-
-  /** ⚑ The turn that carried these words, as its provider was handed it. */
-  const theTurnCarrying = async (sessionId: string, words: string): Promise<string> => {
-    await waitFor(() => heardBy(sessionId).some((one) => one.includes(words)), `"${words}"`)
-    return heardBy(sessionId).find((one) => one.includes(words)) ?? ''
-  }
-
-  const nameOf = (profile: string): string => agentName(profile, store.agentIdentities())
-
   const restartWithHistoricalWorker = async (
     worker: string,
     pm: string,
@@ -353,6 +353,16 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     )
     return { next, tools }
   }
+
+    )
+
+  /** ⚑ The turn that carried these words, as its provider was handed it. */
+  const theTurnCarrying = async (sessionId: string, words: string): Promise<string> => {
+    await waitFor(() => heardBy(sessionId).some((one) => one.includes(words)), `"${words}"`)
+    return heardBy(sessionId).find((one) => one.includes(words)) ?? ''
+  }
+
+  const nameOf = (profile: string): string => agentName(profile, store.agentIdentities())
 
   it('a piece taken back from a conversation that was replaced is not told to the one that took its place', async () => {
     const { pm, worker, pmTools, label } = await aPmAndItsWorker('the piece')
@@ -862,6 +872,11 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
       `Sent by ${nameOf('worker')} (worker), another agent; it gave you no work. ` +
         `This message is about ${label} · the piece (answered).`,
     )
+  }
+
+  it('🔴 a held note still says which piece it is about when a restart sends it', async () => {
+    const { pmTools, worker, piece, label } = await aPmAndItsWorker('the piece')
+    await holdANote(pmTools, worker, label)
   })
 
   const holdANote = async (tools: AgentToolset, worker: string, label: string): Promise<void> => {
@@ -872,11 +887,6 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
       piece: label,
     })
     expect(held.delivery, JSON.stringify(held)).toBe('queued')
-  }
-
-  it('🔴 a held note still says which piece it is about when a restart sends it', async () => {
-    const { pmTools, worker, piece, label } = await aPmAndItsWorker('the piece')
-    await holdANote(pmTools, worker, label)
     // ⚑ Its row keeps the piece it names, and a start reads it back.
     expect(
       store.messagesWaitingIn(worker).find((one) => one.text === 'noted for later'),
@@ -899,16 +909,6 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
         messageId: 'msg_by_hand',
         kind: 'work',
         text: 'x',
-        about: 7,
-      } as never,
-      tick(),
-    )
-    expect(
-      store.messagesWaitingIn(worker).find((one) => one.messageId === 'msg_by_hand'),
-    ).not.toHaveProperty('about')
-  })
-
-  it('🔴 a held note handed to the conversation that took its receiver’s place keeps the piece it names, on its row too', async () => {
     const { pm, pmTools, worker, piece, label } = await aPmAndItsWorker('the piece')
     await holdANote(pmTools, worker, label)
     const { next } = await restartWithHistoricalWorker(worker, pm, 'noted for later')
@@ -921,6 +921,16 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
   })
 
   it('a missing session leaves a held note recorded and says why its wake ran nothing', async () => {
+        about: 7,
+      } as never,
+      tick(),
+    )
+    expect(
+      store.messagesWaitingIn(worker).find((one) => one.messageId === 'msg_by_hand'),
+    ).not.toHaveProperty('about')
+  })
+
+  it('🔴 a held note handed to the conversation that took its receiver’s place keeps the piece it names, on its row too', async () => {
     const { pmTools, worker, piece, label } = await aPmAndItsWorker('the piece')
     await holdANote(pmTools, worker, label)
     const before = store
@@ -934,6 +944,7 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
       fatal: false,
     }
     issued.forgetAll()
+    expect(store.replacements()).toEqual([])
     await stop(worker)
     await waitFor(
       () =>
@@ -944,7 +955,6 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     expect(store.messagesWaitingIn(worker)).toContainEqual(
       expect.objectContaining({ text: 'noted for later', about: piece }),
     )
-    expect(store.replacements()).toEqual([])
     expect(
       store
         .recorded()

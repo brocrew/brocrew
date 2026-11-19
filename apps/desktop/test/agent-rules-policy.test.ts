@@ -1,14 +1,16 @@
-import { neutralHostDeps, ObservedProviderLaunches } from './lib/host-fixture'
+import { neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  FakeRuntime,
   FakeProviderSessions,
   type AgentToolset,
   type StartOptions,
   type ResumeOptions,
+  type SessionRef,
 } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
@@ -77,6 +79,32 @@ class Window implements RuntimeEventSink {
   sendLiveness(): void {}
 }
 
+class ToolRuntime extends FakeRuntime {
+  constructor(
+    provider: Provider,
+    private readonly handed: AgentToolset[],
+    private readonly launches: (StartOptions | ResumeOptions)[],
+    sessions: FakeProviderSessions,
+  ) {
+    super(provider, { sessions })
+  }
+  override async start(options: StartOptions): ReturnType<FakeRuntime['start']> {
+    const handle = await super.start(options)
+    this.launches.push(options)
+    if (options.agentTools !== undefined) this.handed.push(options.agentTools)
+    return handle
+  }
+  override async resume(
+    ref: SessionRef,
+    options: ResumeOptions,
+  ): ReturnType<FakeRuntime['resume']> {
+    const handle = await super.resume(ref, options)
+    this.launches.push(options)
+    if (options.agentTools !== undefined) this.handed.push(options.agentTools)
+    return handle
+  }
+}
+
 describe('standing-rule authority belongs to the host and changes remain attributable', () => {
   let root: string
   let work: string
@@ -117,11 +145,7 @@ describe('standing-rule authority belongs to the host and changes remain attribu
     host = new RuntimeHost({
       store,
       ...neutralHostDeps(() => root),
-      createRuntime: (provider) =>
-        new ObservedProviderLaunches(provider, providerSessions, (_kind, options) => {
-          launches.push(options)
-          if (options.agentTools !== undefined) handed.push(options.agentTools)
-        }),
+      createRuntime: (provider) => new ToolRuntime(provider, handed, launches, providerSessions),
       prepareProviderHome: (provider, profile) => {
         const path = home(provider, profile)
         mkdirSync(path, { recursive: true })

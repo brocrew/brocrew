@@ -17,6 +17,7 @@ import {
   aFollowUpOnAPieceYouHold,
   type ToolName,
 } from '../src/main/runtime/agent-tools'
+import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentName } from '../src/shared/runtime-ipc'
 import { permanenceInWords } from '../src/main/runtime/agent-tool-answer-words'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
@@ -24,7 +25,7 @@ import {
   fixtureProviderConfig,
   RecordingSink,
   syntheticProviderHome,
-  fixtureHostPaths,
+  neutralHostDeps,
 } from './lib/host-fixture'
 
 /**
@@ -100,8 +101,11 @@ describe('F086 · F087 · F088 · a message names a piece however it ended', () 
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      ...fixtureHostPaths(() => userData),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, handed, issued),
+      prepareProviderHome: syntheticProviderHome(() => userData),
+      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
+      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       readProviderConfig: fixtureProviderConfig,
@@ -624,13 +628,13 @@ describe('F086 · F087 · F088 · a message names a piece however it ended', () 
       const made = await aPmAWorkerAndAHelper()
       await twoHeldNotes(made)
       await endIt(ending, made)
+      expect(store.messagesWaitingIn(made.helper)).toEqual([])
+      await host.resumeSession(next, window)
+      claimed.add(next)
       const next = await restartWithHistoricalHelper(made.helper, [NAMED, PLAIN])
       const moved = store.messagesWaitingIn(next)
       expect(moved.find((one) => one.text === NAMED)).toMatchObject({ about: made.piece })
       expect(moved.find((one) => one.text === PLAIN)).not.toHaveProperty('about')
-      expect(store.messagesWaitingIn(made.helper)).toEqual([])
-      await host.resumeSession(next, window)
-      claimed.add(next)
       await readAsEnded(next, made.label, ending)
     })
   }
