@@ -119,7 +119,7 @@ function extraLines(facts: ExtraTurnFacts, now: number): string[] {
         if (row.providerTurnFailure !== undefined) {
           const conversation = row.conversation.replace(/^conversation /, 'Conversation ')
           const cause = oneLine(row.providerTurnFailure.message, WORK_BRIEF_CHARS)
-          return `- ${providerFailureDiagnosis(conversation, cause)} · task ${label}`
+          return `- ${providerFailureDiagnosis(conversation, cause)} · task ${label} · recorded failed turn ${String(row.providerTurnFailure.turnOrdinal)}`
         }
         return `- ${TURN_BLOCK_WORDS.helper(
           row.conversation,

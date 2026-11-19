@@ -636,10 +636,11 @@ export function createGetAgentStatusTool(
           if (newest === undefined || one.failure.turnOrdinal > newest.failure.turnOrdinal)
             newest = one
         }
+        const failureToSay = newest?.failure ?? questionFailure
         const diagnosis =
-          newest === undefined
+          failureToSay === null
             ? undefined
-            : providerFailureDiagnosis(diagnosisConversation, newest.failure.message)
+            : `${providerFailureDiagnosis(diagnosisConversation, failureToSay.message, false)} Recorded failed turn ${String(failureToSay.turnOrdinal)}.`
         // **When its last turn ran, and what opened it** — so a giver reading *nothing has
         // started since* can tell whether its own held words were what that turn took.
         const last = host.whatOpenedItsLastTurn(card.agent)
@@ -677,9 +678,7 @@ export function createGetAgentStatusTool(
               pieceOnTheCardText(piece, piece.piece === newest?.piece ? diagnosis : undefined),
             ) +
               (archivedAt === null ? '' : archivedSaid(archivedAt, last.readAt)),
-            ...(questionFailure === null
-              ? []
-              : [providerFailureDiagnosis(diagnosisConversation, questionFailure.message, false)]),
+            ...(questionFailure !== null && diagnosis !== undefined ? [diagnosis] : []),
             ...theLastTurnSaid(card.lastEndedTurn, last, named, askedBy, card.lastAskToStop),
           ].join('\n\n'),
         )

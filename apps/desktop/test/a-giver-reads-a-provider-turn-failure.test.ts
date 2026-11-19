@@ -80,6 +80,7 @@ it('reads each giver’s recorded error and the current provider and model, live
         provider_turn_failures: [mine],
       })
       expect(answer.text).toContain(mine.failure.message)
+      expect(answer.text).toContain(`Recorded failed turn ${String(mine.failure.turnOrdinal)}.`)
       expect(answer.text).not.toContain(elsewhere.failure.message)
     }
     const listed = await answerOn(agentToolsFor(host, giver), 'list_agents', { archived: false })

@@ -79,7 +79,7 @@ describe('turn block changes', () => {
     const first = turnBlockChanges({ ...input, helpers }, EMPTY_TURN_BLOCK)
     const second = turnBlockChanges({ ...input, helpers, now: 120_000 }, first.next)
     const diagnosis =
-      "Conversation W1.1 · Fictional job couldn't run: Current provider error. Check its status and settings before choosing how to continue. · task W1.2"
+      "Conversation W1.1 · Fictional job couldn't run: Current provider error. Check its status and settings before choosing how to continue. · task W1.2 · recorded failed turn 9"
     for (const answer of [first, second]) {
       expect(answer.extra.helpers?.rows.map((row) => row.label)).toEqual([
         'W1.4',
