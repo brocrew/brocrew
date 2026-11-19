@@ -159,7 +159,9 @@ describe('five more tools answer field failures through Claude MCP', () => {
   }
   function ownRefusal(tool: ToolName, packet: Packet, field: string): string {
     const text = words(packet)
-    expect(text.startsWith(tool === 'give_work' ? 'Not sent: ' : 'refused (malformed-request): ')).toBe(true)
+    expect(
+      text.startsWith(tool === 'give_work' ? 'Not sent: ' : 'refused (malformed-request): '),
+    ).toBe(true)
     expect(text).toContain(field)
     expect(text).not.toContain('PRIVATE_VALUE')
     expect(text).not.toContain('MCP error')
@@ -316,7 +318,11 @@ describe('five more tools answer field failures through Claude MCP', () => {
     it(`${name}: unknown keys remain refused even when all declared fields are valid`, async () => {
       const wire = await server(name)
       const before = effects()
-      ownRefusal(name, await wire.call({ ...valid(name), PRIVATE_TYPO: 'PRIVATE_VALUE' }), 'PRIVATE_TYPO')
+      ownRefusal(
+        name,
+        await wire.call({ ...valid(name), PRIVATE_TYPO: 'PRIVATE_VALUE' }),
+        'PRIVATE_TYPO',
+      )
       expect(effects()).toEqual(before)
       expect(JSON.stringify(kept())).not.toContain('PRIVATE_TYPO')
     })
@@ -356,7 +362,11 @@ describe('five more tools answer field failures through Claude MCP', () => {
     it(`message_agent: ${patch.kind} piece failures include typo guidance without sending`, async () => {
       const wire = await server('message_agent')
       const before = effects()
-      const text = ownRefusal('message_agent', await wire.call({ ...valid('message_agent'), ...patch }), 'piece:')
+      const text = ownRefusal(
+        'message_agent',
+        await wire.call({ ...valid('message_agent'), ...patch }),
+        'piece:',
+      )
       expect(text).toContain('peice: not a field of message_agent; use ')
       expect(text).not.toContain('PRIVATE_MISSPELLED_PIECE')
       expect(kept()[0]?.told?.text).toBe(calls.at(-1)?.structured?.reason)

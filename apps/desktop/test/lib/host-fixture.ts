@@ -19,7 +19,11 @@ import { mkdirSync, rmSync, mkdtempSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Provider } from '@brobot2/shared'
 import { NO_DISCOVERY } from '../../src/main/adopt/discover-sessions'
-import type { RuntimeEventSink, RuntimeHost, RuntimeHostDeps } from '../../src/main/runtime/runtime-host'
+import type {
+  RuntimeEventSink,
+  RuntimeHost,
+  RuntimeHostDeps,
+} from '../../src/main/runtime/runtime-host'
 import type { ProviderConfigInfo, RuntimeEventMessage } from '../../src/shared/runtime-ipc'
 
 export class RecordingSink implements RuntimeEventSink {

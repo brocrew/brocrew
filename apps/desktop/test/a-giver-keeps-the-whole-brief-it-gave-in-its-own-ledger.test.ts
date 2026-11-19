@@ -361,7 +361,10 @@ describe('D-047 · the giver keeps the whole brief it gave, in its own ledger', 
       const label = given.structured.label as string
       // ⚑ The path: a conversation this give started.
       expect(before).not.toContain(owner)
-      expect(given.structured).toMatchObject({ started: true, receipt: { recipient: { id: owner } } })
+      expect(given.structured).toMatchObject({
+        started: true,
+        receipt: { recipient: { id: owner } },
+      })
       expect(store.recordedOne(owner)?.provider).toBe('claude')
       // ⚑ Down before the call answered.
       expect(given.sentWhenItAnswered).toBe(1)

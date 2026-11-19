@@ -559,9 +559,7 @@ describe('405 · a refusal you can see', () => {
       expect(JSON.stringify(rows)).not.toContain(file)
       expect(JSON.stringify(rows)).not.toContain('PRIVATE_CALLER_PATH')
       expect(rows[0]?.rail).toBe('resource-too-large')
-      expect(
-        answered.text.startsWith(String(rows[0]?.told?.text)),
-      ).toBe(true)
+      expect(answered.text.startsWith(String(rows[0]?.told?.text))).toBe(true)
     })
 
     it('🔴 nothing a caller wrote reaches the ledger — not the arguments and not the detail; the sentence the app composed does', async () => {
@@ -644,9 +642,15 @@ describe('405 · a refusal you can see', () => {
         if (one === undefined) throw new Error(`no such tool: ${name}`)
         return one.call(args)
       }
-      await expect(invoke('give_work', { to: 'new', conversation_title: 'x', profile: 'w', title: 'x', brief: 'x' })).rejects.toThrow(
-        'the door blew up',
-      )
+      await expect(
+        invoke('give_work', {
+          to: 'new',
+          conversation_title: 'x',
+          profile: 'w',
+          title: 'x',
+          brief: 'x',
+        }),
+      ).rejects.toThrow('the door blew up')
       expect(noted).toEqual([])
       expect(refusalsIn(pm)).toEqual([])
 
@@ -741,11 +745,13 @@ describe('405 · a refusal you can see', () => {
         title: 'count the rows',
         brief: 'count the rows',
       }
-      expect(await call('give_work', {
-        ...task,
-        to: 'new',
-        conversation_title: `Fictional counts: ${'x'.repeat(170)}`,
-      })).toMatchObject({ outcome: 'ok' })
+      expect(
+        await call('give_work', {
+          ...task,
+          to: 'new',
+          conversation_title: `Fictional counts: ${'x'.repeat(170)}`,
+        }),
+      ).toMatchObject({ outcome: 'ok' })
       const refused = await call('give_work', task)
       expect(refused).toMatchObject({
         outcome: 'refused',
@@ -848,7 +854,10 @@ describe('405 · a refusal you can see', () => {
       // ⛔ A field the caller named is told to it, and its name never reaches the record.
       expect(withAKeyOfItsOwn).toContain('PRIVATE_CALLER_KEY')
       expect(takenWithAKey.text).toContain('PRIVATE_TAKE_KEY')
-      expect(rows[1]?.told).toEqual({ text: `Not sent: ${refuse('malformed-request').reason}`, dropped: 0 })
+      expect(rows[1]?.told).toEqual({
+        text: `Not sent: ${refuse('malformed-request').reason}`,
+        dropped: 0,
+      })
       expect(rows[2]?.told).toEqual({ text: takenWithAKey.structured?.['reason'], dropped: 0 })
       for (const own of ['PRIVATE_CALLER_KEY', 'PRIVATE_TAKE_KEY', 'A list where text belongs'])
         expect(JSON.stringify(rows)).not.toContain(own)
@@ -908,7 +917,10 @@ describe('405 · a refusal you can see', () => {
         const permanence = permanenceInWords(row.rail, row.permanence)
         expect(said.endsWith(` ${permanence}`), said).toBe(true)
         if (row.rail === 'malformed-request') {
-          expect(row.told).toEqual({ text: `Not sent: ${refuse('malformed-request').reason}`, dropped: 0 })
+          expect(row.told).toEqual({
+            text: `Not sent: ${refuse('malformed-request').reason}`,
+            dropped: 0,
+          })
           expect(said).toContain('unasked')
           expect(JSON.stringify(row)).not.toContain('unasked')
         } else {

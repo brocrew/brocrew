@@ -1,10 +1,6 @@
 import { callOn as callAgentTool } from './helpers/call-agent-tool'
 import { format } from 'node:util'
-import {
-  expectRecordedCannotRun,
-  expectTaskKept,
-  recordedSendNotices,
-} from './lib/recorded-send'
+import { expectRecordedCannotRun, expectTaskKept, recordedSendNotices } from './lib/recorded-send'
 import {
   newConversationGive,
   giveWorkBeforeProviderStart,
@@ -153,12 +149,10 @@ describe('707 · R39, extended — a spawn that ran short', () => {
     caller: string,
     name: ToolName,
     args: Record<string, unknown> = {},
-  ): Promise<Record<string, unknown>> =>
-    callAgentTool(agentToolsFor(host, caller), name, args)
+  ): Promise<Record<string, unknown>> => callAgentTool(agentToolsFor(host, caller), name, args)
 
   /** ⚑ A PM a person opened, which may start `worker` — an identity a person opened once, so it exists. */
-  const aPmThatMaySpawn = () =>
-    openPmWithSeededWorker(personOpens, (id) => host.close(id, window))
+  const aPmThatMaySpawn = () => openPmWithSeededWorker(personOpens, (id) => host.close(id, window))
 
   /** ⚑ **D-016 · `give_work` is the door that starts a conversation now** — `worker` has none with the PM. */
   const spawnWorker = (pm: string): Promise<Record<string, unknown>> =>

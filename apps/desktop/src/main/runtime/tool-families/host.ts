@@ -64,7 +64,9 @@ import type { ThemeStore } from '../../themes/store'
 
 export interface AgentToolHost {
   readonly themes?: Pick<ThemeStore, 'refresh' | 'snapshot' | 'raw' | 'save' | 'set'>
-  receiptForSend(facts: import('../send-receipt').SendFacts): ReturnType<typeof import('../send-receipt').sendReceipt>
+  receiptForSend(
+    facts: import('../send-receipt').SendFacts,
+  ): ReturnType<typeof import('../send-receipt').sendReceipt>
   giveWork(input: unknown, by: Caller): Promise<GiveOutcome>
   takeOnWork(input: unknown, by: Caller): Promise<TakeOnWorkOutcome>
   updateWork(

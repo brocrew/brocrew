@@ -193,7 +193,11 @@ describe('give_work goes to the conversation the giver names', () => {
             ),
         `the provider to receive ${words}`,
       )
-    const said = await message.call({ agent: first.owner, kind: 'note', text: 'Check whether the hotel is open' })
+    const said = await message.call({
+      agent: first.owner,
+      kind: 'note',
+      text: 'Check whether the hotel is open',
+    })
     expect(said.structured).toMatchObject({ outcome: 'ok' })
     await waitForEcho('Check whether the hotel is open')
     expect(host.whenItWasArchived(to)).toBe(archivedAt)
@@ -326,7 +330,10 @@ describe('give_work goes to the conversation the giver names', () => {
       receipt: { recipient: { id: named.agent, address: named.label, title: 'Lisbon trip' } },
     })
     expect(store.workById(piece)?.owner).toBe(named.agent)
-    expect(store.findLive(named.agent)).toMatchObject({ model: 'fake-claude-a', reasoningEffort: 'high' })
+    expect(store.findLive(named.agent)).toMatchObject({
+      model: 'fake-claude-a',
+      reasoningEffort: 'high',
+    })
     expect(store.whatItRunsOn(newer.agent)).toEqual(otherBefore)
     expect(delivery === 'sent' || delivery === 'held').toBe(true)
     const action = delivery === 'sent' ? 'sent to' : 'held for'
@@ -571,9 +578,11 @@ describe('give_work goes to the conversation the giver names', () => {
           }),
         )
         expect(
-          world.ledger(owner).filter(
-            (event) => event.type === 'message_unqueued' && event.messageId === held.messageId,
-          ),
+          world
+            .ledger(owner)
+            .filter(
+              (event) => event.type === 'message_unqueued' && event.messageId === held.messageId,
+            ),
         ).toEqual([])
       }
       const inputs = () =>

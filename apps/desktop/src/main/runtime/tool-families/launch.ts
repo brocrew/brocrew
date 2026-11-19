@@ -325,7 +325,9 @@ export function createGiveWorkTool(
         })
         const folder = given.givenFolder
         const folderProblem =
-          given.folderNotGranted === null ? '' : ` Folder could not be granted: ${given.folderNotGranted}.`
+          given.folderNotGranted === null
+            ? ''
+            : ` Folder could not be granted: ${given.folderNotGranted}.`
         const notice =
           folder?.notice === undefined ? '' : ` ${protectedPlaceSaid(folder.folder, folder.notice)}`
         const stalled = given.stalled ?? []

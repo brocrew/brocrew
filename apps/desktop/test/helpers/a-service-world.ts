@@ -485,7 +485,12 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
         parentSessionId: giver,
         worker: { identity: identity.id, identityCreatedAt: identity.createdAt, giver, number },
       })
-      world.store.append(id, 1, { type: 'session', state: 'started', ref: handle.ref }, world.clock++)
+      world.store.append(
+        id,
+        1,
+        { type: 'session', state: 'started', ref: handle.ref },
+        world.clock++,
+      )
       await handle.close()
       const pools = entry.workerPools ?? []
       const pool = pools.find((one) => one.giver === giver)

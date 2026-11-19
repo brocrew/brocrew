@@ -204,7 +204,11 @@ describe('3 · an addressed conversation is not a start', () => {
       { ...A_GIVE, to: 'W1.2', conversation_title: undefined },
       asThe(giver),
       factsWith(giver, 'claude', {
-        conversationAt: () => ({ conversation: 'sess_found', profileId: 'worker', provider: 'claude' }),
+        conversationAt: () => ({
+          conversation: 'sess_found',
+          profileId: 'worker',
+          provider: 'claude',
+        }),
       }),
     )
     expect(found.ok).toBe(true)
