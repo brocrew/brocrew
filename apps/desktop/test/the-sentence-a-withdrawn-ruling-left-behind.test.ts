@@ -276,14 +276,38 @@ describe('§0 · the prose reader, and a census is only as good as it', () => {
     }
   })
 
-  it('⚑ …and it reads EVERY committed source file without going quiet on any of them', () => {
-    const files = everySource()
-    expect(files.length, 'the roster collapsed').toBeGreaterThan(1000)
-    let withProse = 0
-    for (const path of files) {
-      if (proseSpans(path, read(path)).length > 0) withProse += 1
-    }
-    expect(withProse / files.length).toBeGreaterThan(0.8)
+  it.each([
+    {
+      file: 'fixture.ts',
+      source: [
+        "const literal = '/* only a string */'",
+        '/** A real docblock. */',
+        'export const value = 12',
+        '// A real line note.',
+      ].join('\n'),
+      expected: ['A real docblock.', 'A real line note.'],
+    },
+    {
+      file: 'fixture.vue',
+      source: [
+        '<template>',
+        '  <p>Rendered text is not a comment.</p>',
+        '  <!-- A real template note. -->',
+        '</template>',
+        '<script setup lang="ts">',
+        'const literal = "// only a string"',
+        '// A real script note.',
+        '</script>',
+      ].join('\n'),
+      expected: ['A real script note.', 'A real template note.'],
+    },
+    {
+      file: 'no-comments.ts',
+      source: "export const value = '<!-- only a string -->'\nexport const size = 12",
+      expected: [],
+    },
+  ])('finds the known prose in $file and skips its non-prose', ({ file, source, expected }) => {
+    expect(proseSpans(file, source).map((span) => proseText(span))).toEqual(expected)
   })
 })
 
