@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { h, nextTick, ref } from 'vue'
 import type {
+  ConversationIdentity,
   ConversationRenameInput,
   ConversationTitleAuthor,
   ConversationRenameResult,
@@ -76,14 +77,28 @@ function header(
   named: WorkThatNamesIt | null,
   rename?: (input: ConversationRenameInput) => Promise<ConversationRenameResult>,
 ) {
-  return mount(SessionHeader, {
-    session: CLAIMED,
-    status: 'idle',
-
-    facets: { doing: 'idle' as const, being: 'live' as const },
-    named,
-    rename,
-  })
+  const identity = ref<ConversationIdentity | null>(null)
+  const renameAndProject = rename
+    ? async (input: ConversationRenameInput): Promise<ConversationRenameResult> => {
+        const result = await rename(input)
+        if (result.ok) identity.value = result
+        return result
+      }
+    : undefined
+  return mount(
+    {
+      setup: () => () =>
+        h(SessionHeader, {
+          session: CLAIMED,
+          status: 'idle',
+          facets: { doing: 'idle', being: 'live' },
+          named,
+          identity: identity.value,
+          rename: renameAndProject,
+        }),
+    },
+    {},
+  )
 }
 
 const text = (element: Element | null): string =>

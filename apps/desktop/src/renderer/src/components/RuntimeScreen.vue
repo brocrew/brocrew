@@ -215,7 +215,10 @@ import { ROSTER_EVERY_MS } from '../lib/team-roster'
 import { refusedToOpen } from '../lib/taking-over'
 import { THE_COMPACT_COMMAND } from '../lib/compaction-offer'
 import { type WorkGivenOutReading } from '../lib/work-given-out'
-import type { ConversationRenameInput } from '../../../shared/conversation-title'
+import type {
+  ConversationIdentity,
+  ConversationRenameInput,
+} from '../../../shared/conversation-title'
 import { filesReadFor } from '../lib/files-kept'
 import { createFilesLibrary, provideFilesLibrary } from '../composables/useFilesLibrary'
 import { createTeamProfileGraph, provideTeamProfileGraph } from '../composables/useTeamProfileGraph'
@@ -3018,17 +3021,51 @@ const waitsBeganOfActive = computed(() =>
       },
 )
 
-/**
- * 🔴 **D-016 · commit 7 · R2 — the work that names the conversation on screen**, off its row in the
- * one list, as {@link listedStateOfActive} is: the header titles it with that work. ⚑ `null` while
- * the list names none.
- */
 const listedNamedOfActive = computed(() =>
   active.value === null ? null : (rail.value?.listedOf(active.value.sessionId)?.named ?? null),
 )
 
-function renameConversation(input: ConversationRenameInput) {
-  return window.api.runtime.renameConversation(input)
+const selectedForIdentity = computed(() =>
+  surface.value === 'conversation' && active.value?.meta ? active.value : null,
+)
+const conversationIdentity = ref<ConversationIdentity | null>(null)
+let identityRead = 0
+let identitySelection = 0
+
+async function readSelectedIdentity(): Promise<void> {
+  const selected = selectedForIdentity.value
+  const reading = ++identityRead
+  if (selected === null || appClosing.value) return
+  const sessionId = selected.sessionId
+  try {
+    const identity = await window.api.runtime.readConversationIdentity({ sessionId })
+    if (reading !== identityRead || selected !== selectedForIdentity.value) return
+    if (identity === null || identity.conversation === sessionId)
+      conversationIdentity.value = identity
+  } catch {
+    // Keep the last reading for this selection when the host cannot answer.
+  }
+}
+
+watch(
+  selectedForIdentity,
+  () => {
+    identitySelection += 1
+    conversationIdentity.value = null
+    void readSelectedIdentity()
+  },
+  { immediate: true, flush: 'sync' },
+)
+
+async function renameConversation(input: ConversationRenameInput) {
+  const selection = identitySelection
+  const renamed = await window.api.runtime.renameConversation(input)
+  if (renamed.ok && selectedForIdentity.value?.sessionId === renamed.conversation) {
+    if (selection === identitySelection) conversationIdentity.value = renamed
+    // Re-read after the reply so a concurrent work notice cannot leave an older title visible.
+    void readSelectedIdentity()
+  }
+  return renamed
 }
 
 // Arriving at Recent activity or Waiting on you reads again at once, so neither shows a reading up
@@ -3119,6 +3156,7 @@ onMounted(() => {
     // conversations' ledgers, so the reader asks the question it already asks and gets the whole
     // answer — which is this channel's contract rather than an economy.
     work: () => {
+      void readSelectedIdentity()
       teamProfileGraph.markStale()
       filesLibrary.markStale()
       void readTheCast()
@@ -3146,6 +3184,7 @@ onMounted(() => {
     // and this one are the same function rather than two readers of one store.
     // ⚑ **UI-012 · and the model lists** — a last pick, a default or a hand-added model moved.
     agents: () => {
+      void readSelectedIdentity()
       teamProfileGraph.markStale()
       filesLibrary.markStale()
       refreshAgents()
@@ -3914,6 +3953,7 @@ onUnmounted(() => {
             :listed-state="listedStateOfActive"
             :provider-block="active ? store.providerBlocks.get(active.sessionId) : null"
             :named="listedNamedOfActive"
+            :identity="conversationIdentity"
             :rename="renameConversation"
             :archive="archiveOfActive"
             :identities="agentStore.identities.value?.identities ?? null"

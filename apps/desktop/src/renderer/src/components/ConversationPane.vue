@@ -56,6 +56,7 @@ import {
 } from '../lib/agent-state'
 
 import type {
+  ConversationIdentity,
   ConversationRenameInput,
   ConversationRenameResult,
 } from '../../../shared/conversation-title'
@@ -236,6 +237,7 @@ const props = defineProps<{
    * through.
    */
   named?: WorkThatNamesIt | null
+  identity?: ConversationIdentity | null
   /** Rename this conversation through the host. */
   rename?: (input: ConversationRenameInput) => Promise<ConversationRenameResult>
   /** Archive this conversation: the header's press. Handed through; the screen owns the bridge. */
@@ -1903,6 +1905,7 @@ onUnmounted(() => {
       :capabilities="props.capabilities"
       :tools="control.tools"
       :named="props.named ?? null"
+      :identity="props.identity"
       :rename="props.rename"
       :archive="props.archive"
       :activity="activity"

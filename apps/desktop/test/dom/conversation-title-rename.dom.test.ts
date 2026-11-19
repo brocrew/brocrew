@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import type { RuntimeBridge } from '../../src/shared/runtime-ipc'
+import { nextTick } from 'vue'
+import type { ConversationIdentity } from '../../src/shared/conversation-title'
+import type { ResumableSessionInfo, RuntimeBridge } from '../../src/shared/runtime-ipc'
 import { META, mount } from './harness'
 import {
+  changed,
   disposeRuntimeScreenFixture,
   installRuntimeScreenFixture,
   runtime,
@@ -14,64 +17,85 @@ const { default: RuntimeScreen } =
 beforeEach(installRuntimeScreenFixture)
 afterEach(disposeRuntimeScreenFixture)
 
-it('renames the open conversation through the conversation command without retitling work', async () => {
-  const sessionId = 'fictional-conversation'
-  const address = 'W1.1'
-  const task = { label: 'W1.4', title: 'Review the launch list', more: 2 }
-  window.api.runtime.listResumable = async () => [
-    {
-      sessionId,
+const sessionId = 'fictional-conversation'
+const serviceId = 'fictional-service'
+const address = 'W1.1'
+const task = { label: 'W1.4', title: 'Review the launch list', more: 2 }
+
+function row(id: string, named: ResumableSessionInfo['named']): ResumableSessionInfo {
+  return {
+    sessionId: id,
+    provider: 'claude',
+    ref: {
       provider: 'claude',
-      ref: {
-        provider: 'claude',
-        sessionId: 'fictional-provider-record',
-        cwd: META.cwd,
-        rotation: 0,
-      },
+      sessionId: `provider-record-${id}`,
       cwd: META.cwd,
-      status: 'idle',
-      running: 'unwatched',
-      state: { is: 'idle' },
-      named: task,
-      approvalMode: 'ask',
-      profileId: META.profileId,
-      reasoningEffort: null,
-      model: null,
-      planMode: null,
-      adoptedAt: null,
-      hasTranscript: true,
-      lastEnding: null,
-      child: null,
-      resumeRefusal: null,
-      updatedAt: 1,
+      rotation: 0,
     },
-  ]
-  runtime.attachOpen.mockResolvedValueOnce([
-    {
+    cwd: META.cwd,
+    status: 'idle',
+    running: 'unwatched',
+    state: { is: 'idle' },
+    named,
+    approvalMode: 'ask',
+    profileId: META.profileId,
+    reasoningEffort: null,
+    model: null,
+    planMode: null,
+    adoptedAt: null,
+    hasTranscript: true,
+    lastEnding: null,
+    child: null,
+    resumeRefusal: null,
+    updatedAt: 1,
+  }
+}
+
+async function mountWith(sessionsToOpen: ResumableSessionInfo[]) {
+  window.api.runtime.listResumable = async () => sessionsToOpen
+  runtime.attachOpen.mockResolvedValueOnce(
+    sessionsToOpen.map(({ sessionId }) => ({
       ...META,
       sessionId,
       handover: 'attached',
       history: { entries: [], from: 0, hasOlder: false, turnAligned: true },
-    },
-  ])
-  const rename = vi.fn<RuntimeBridge['renameConversation']>(async (input) => ({
-    ok: true,
-    conversation: input.conversation,
+    })),
+  )
+  await sessions.attachOpen()
+  return mount(RuntimeScreen, {})
+}
+
+it('renames the open conversation through the conversation command without retitling work', async () => {
+  let readback: ConversationIdentity = {
+    conversation: sessionId,
     address,
-    title: input.title.trim(),
-    author: { kind: 'person' },
-    previousTitle: task.title,
-    previousAuthor: null,
-  }))
+    title: 'Resolved conversation name',
+    author: null,
+  }
+  window.api.runtime.readConversationIdentity = vi.fn(async () => readback)
+  const rename = vi.fn<RuntimeBridge['renameConversation']>(async (input) => {
+    readback = {
+      conversation: input.conversation,
+      address,
+      title: input.title.trim(),
+      author: { kind: 'person' },
+    }
+    return {
+      ...readback,
+      ok: true,
+      author: { kind: 'person' },
+      previousTitle: 'Resolved conversation name',
+      previousAuthor: null,
+    }
+  })
   const retitle = vi.fn<RuntimeBridge['retitleWork']>()
   window.api.runtime.renameConversation = rename
   window.api.runtime.retitleWork = retitle
-  await sessions.attachOpen()
-
-  const m = mount(RuntimeScreen, {})
+  const m = await mountWith([row(sessionId, task)])
   await expect
     .poll(() => m.all('conversation-title-rename')[0]?.textContent?.trim())
-    .toBe('W1.4 · Review the launch list (and 2 more)')
+    .toBe('Resolved conversation name')
+  expect(m.q('conversation-title').parentElement?.textContent).not.toContain('Named by you')
   m.q('conversation-title-rename').click()
   await expect.poll(() => m.all('conversation-title-input').length).toBe(1)
   const input = m.q('conversation-title-input') as HTMLInputElement
@@ -89,4 +113,69 @@ it('renames the open conversation through the conversation command without retit
   expect(m.q('conversation-linked-task').textContent?.trim()).toBe(
     'Task W1.4 · Review the launch list (and 2 more)',
   )
+})
+
+it('reads canonical identity on selection, refreshes on work, and rereads on reopen', async () => {
+  const initial: ConversationIdentity = {
+    conversation: sessionId,
+    address: sessionId,
+    title: 'Initial profile name',
+    author: null,
+  }
+  const service: ConversationIdentity = {
+    conversation: serviceId,
+    address: serviceId,
+    title: 'Editorial service',
+    author: { kind: 'agent', conversation: 'fictional-author' },
+  }
+  let primary = initial
+  let serviceReading = service
+  const read = vi.fn<RuntimeBridge['readConversationIdentity']>(async ({ sessionId: id }) =>
+    id === sessionId ? primary : serviceReading,
+  )
+  window.api.runtime.readConversationIdentity = read
+  const m = await mountWith([row(serviceId, null), row(sessionId, null)])
+  const title = () => m.all('conversation-title-rename')[0]?.textContent?.trim()
+  const shownAddress = () => m.all('conversation-address')[0]?.textContent?.trim()
+
+  await expect.poll(title).toBe('Initial profile name')
+  expect(read).toHaveBeenCalledWith({ sessionId })
+  expect(shownAddress()).toBe('Conversation fictional-conversation')
+  expect(m.q('conversation-title').parentElement?.textContent).not.toContain('Named by you')
+
+  primary = { ...primary, address, title: 'First task title' }
+  changed({ what: 'work' })
+  await expect.poll(title).toBe('First task title')
+  expect(shownAddress()).toBe('Conversation W1.1')
+  expect(m.q('conversation-title').parentElement?.textContent).not.toContain('Named by you')
+
+  primary = { ...primary, title: 'Title from another window', author: { kind: 'person' } }
+  changed({ what: 'work' })
+  await expect.poll(title).toBe('Title from another window')
+  expect(m.q('conversation-title').parentElement?.textContent).toContain('Named by you')
+
+  let settle!: (identity: ConversationIdentity | null) => void
+  const stale = new Promise<ConversationIdentity | null>((resolve) => {
+    settle = resolve
+  })
+  read.mockReturnValueOnce(stale)
+  changed({ what: 'work' })
+  expect(read).toHaveBeenLastCalledWith({ sessionId })
+  m.q(`open-session-${serviceId}`).click()
+  await expect.poll(title).toBe('Editorial service')
+  expect(read).toHaveBeenLastCalledWith({ sessionId: serviceId })
+  expect(shownAddress()).toBe('Conversation fictional-service')
+  settle({ ...primary, title: 'Obsolete first conversation reply' })
+  await stale
+  await nextTick()
+  expect(title()).toBe('Editorial service')
+  expect(m.q('conversation-title').parentElement?.textContent).not.toContain('Named by you')
+
+  m.q('rail-away').click()
+  await expect.poll(() => m.all('conversation-title-rename').length).toBe(0)
+  serviceReading = { ...service, title: 'Service after reopening' }
+  m.q(`open-session-${serviceId}`).click()
+  await expect.poll(title).toBe('Service after reopening')
+  expect(read).toHaveBeenLastCalledWith({ sessionId: serviceId })
+  expect(shownAddress()).toBe('Conversation fictional-service')
 })

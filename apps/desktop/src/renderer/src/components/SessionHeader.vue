@@ -9,6 +9,7 @@ import {
 } from '../../../shared/runtime-ipc'
 import {
   CONVERSATION_TITLE_CHARS,
+  type ConversationIdentity,
   type ConversationRenameInput,
   type ConversationRenameResult,
 } from '../../../shared/conversation-title'
@@ -140,6 +141,7 @@ const props = withDefaults(
     tools?: ToolRegistry
     /** Linked task details and marks from the conversation list. */
     named?: WorkThatNamesIt | null
+    identity?: ConversationIdentity | null
     /** Write the conversation's title through the host. */
     rename?: (input: ConversationRenameInput) => Promise<ConversationRenameResult>
     /**
@@ -247,9 +249,8 @@ const toolsTitle = computed(() => {
 
 const conversation = computed(() => props.session?.sessionId)
 const renamable = computed(() => (props.rename === undefined ? undefined : conversation.value))
-const savedTitle = ref<Extract<ConversationRenameResult, { ok: true }> | null>(null)
 const identity = computed(() =>
-  savedTitle.value?.conversation === conversation.value ? savedTitle.value : null,
+  props.identity?.conversation === conversation.value ? (props.identity ?? null) : null,
 )
 const task = computed(() => (props.named === null ? null : theWorkThatNamesItSaid(props.named)))
 const title = computed(() => {
@@ -298,12 +299,8 @@ async function save(): Promise<void> {
   try {
     const result = await props.rename({ conversation: id, title: draft.value })
     if (currentEdit !== edit) return
-    if (result.ok) {
-      savedTitle.value = result
-      stopRenaming()
-    } else {
-      refused.value = result.reason
-    }
+    if (result.ok) stopRenaming()
+    else refused.value = result.reason
   } catch (cause) {
     if (currentEdit === edit) refused.value = readableError(cause)
   } finally {
@@ -557,7 +554,7 @@ const panelToggleName = computed(() =>
       </small>
       <small v-if="identity || (renaming && task)" class="title-detail">
         <template v-if="identity">
-          <template v-if="identity.author.kind === 'person'">Named by you · </template>
+          <template v-if="identity.author?.kind === 'person'">Named by you · </template>
           <span data-cy="conversation-address">Conversation {{ identity.address }}</span>
         </template>
         <template v-if="task">
