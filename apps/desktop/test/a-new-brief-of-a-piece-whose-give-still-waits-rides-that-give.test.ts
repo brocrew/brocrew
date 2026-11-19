@@ -1,4 +1,9 @@
-import { giveToConversation, readGivenTask, giveWorkerAndClaimItsBrief, ownedFixturePiece } from './lib/give-fixture'
+import {
+  giveToConversation,
+  readGivenTask,
+  giveWorkerAndClaimItsBrief,
+  ownedFixturePiece,
+} from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'

@@ -121,7 +121,11 @@ describe('a listed row says which piece its conversation waits on on purpose', (
   ): Promise<{ ada: string; piece: string; label: string }> => {
     const tools = agentToolsFor(host, brobot)
     if (to === 'new') await callOn(tools, 'create_agent', { profile_slug: 'worker' })
-    const given = await callOn(tools, 'give_work', giveToConversation(to, 'worker', title, title.toLowerCase()))
+    const given = await callOn(
+      tools,
+      'give_work',
+      giveToConversation(to, 'worker', title, title.toLowerCase()),
+    )
     const ada = given.agent as string
     const piece = given.piece as string
     await waitFor(() => pieceOf(ada, piece)?.state === 'stalled', `the brief of ${title} to end`)

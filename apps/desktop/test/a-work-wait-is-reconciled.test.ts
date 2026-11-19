@@ -1081,7 +1081,9 @@ describe('a work wait is reconciled without a window', () => {
     const engine = host as unknown as LegacyReconciliation
     const paused = vi.spyOn(engine, 'reconcileWork').mockImplementation(() => {})
     try {
-      const handle = handles[1] as unknown as { machine: { completeTurn(state: 'completed'): void } }
+      const handle = handles[1] as unknown as {
+        machine: { completeTurn(state: 'completed'): void }
+      }
       handle.machine.completeTurn('completed')
       await waitFor(() => store.theOpenTurn(holder) === null, 'the old ordinary ending')
       await recordLegacyFacts(engine)

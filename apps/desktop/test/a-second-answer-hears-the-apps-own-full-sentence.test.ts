@@ -119,7 +119,11 @@ describe('M77 · a second answer to an already-answered question', () => {
 
     // ⚑ **D-016 · one give is the old start and its work together**: the brief is the child's
     // first turn, and the piece it opens is the one the question is about.
-    const given = await callOn(leadTools, 'give_work', newConversationGive('mock-dev', 'answer a question', 'pick one of the two'))
+    const given = await callOn(
+      leadTools,
+      'give_work',
+      newConversationGive('mock-dev', 'answer a question', 'pick one of the two'),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const asker = given.agent as string
     const askerTools = lastToolset()
@@ -172,7 +176,11 @@ describe('M77 · a second answer to an already-answered question', () => {
     )
     const leadTools = lastToolset()
 
-    const given = await callOn(leadTools, 'give_work', newConversationGive('mock-dev', 'answer a question', 'pick one of the two'))
+    const given = await callOn(
+      leadTools,
+      'give_work',
+      newConversationGive('mock-dev', 'answer a question', 'pick one of the two'),
+    )
     expect(given.outcome).toBe('ok')
     const asker = given.agent as string
     const askerTools = lastToolset()

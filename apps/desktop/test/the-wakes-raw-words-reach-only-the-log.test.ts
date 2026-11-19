@@ -118,7 +118,11 @@ describe('663 M50 · a wake refused logs the host’s own words and keeps them o
   const aPmAndItsIdleWorker = async (): Promise<{ pm: string; worker: string; label: string }> => {
     await host.close(await personOpens('worker'), window)
     const pm = await personOpens('pm')
-    const given = await callOn(pm, 'give_work', newConversationGive('worker', 'The schema', 'migrate the schema'))
+    const given = await callOn(
+      pm,
+      'give_work',
+      newConversationGive('worker', 'The schema', 'migrate the schema'),
+    )
     expect(given.structured.outcome, JSON.stringify(given.structured)).toBe('ok')
     const worker = given.structured.agent as string
     await waitFor(() => turnsIn(worker) > 0, 'the turn the brief opened to end')

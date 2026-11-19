@@ -178,7 +178,11 @@ describe('D-009 · a model’s own question stays the model’s', () => {
   const aPmAndAChild = async (): Promise<{ pm: string; child: Child }> => {
     await host.close(await personOpens('worker'), window)
     const pm = await personOpens(DEFAULT_PROFILE_ID)
-    const spawned = await callOn(pm, 'give_work', newConversationGive('worker', 'the notes', 'the notes'))
+    const spawned = await callOn(
+      pm,
+      'give_work',
+      newConversationGive('worker', 'the notes', 'the notes'),
+    )
     expect(spawned.outcome, JSON.stringify(spawned)).toBe('ok')
     const handle = handles.at(-1)
     if (handle === undefined) throw new Error('no provider handle was issued to the child')
@@ -285,7 +289,11 @@ describe('D-009 · a model’s own question stays the model’s', () => {
     })
     expect(spawnedPm.outcome, JSON.stringify(spawnedPm)).toBe('ok')
     const pm = spawnedPm.agent as string
-    const spawned = await callOn(pm, 'give_work', newConversationGive('worker', 'the notes', 'the notes'))
+    const spawned = await callOn(
+      pm,
+      'give_work',
+      newConversationGive('worker', 'the notes', 'the notes'),
+    )
     expect(spawned.outcome, JSON.stringify(spawned)).toBe('ok')
     const handle = handles.at(-1)
     if (handle === undefined) throw new Error('no provider handle was issued to the child')

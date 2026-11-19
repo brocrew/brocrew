@@ -473,7 +473,11 @@ describe('what a close does that a reopen never undoes', () => {
       const handle = handles.at(-1)
       if (handle === undefined) throw new Error('no provider handle was issued')
       await waitFor(() => cardsOn(worker) > 0, 'the worker to be busy')
-      const given = await callOn(agentToolsFor(host, pm), 'give_work', addressedGive(worker, 'worker', 'The held one', 'the held one'))
+      const given = await callOn(
+        agentToolsFor(host, pm),
+        'give_work',
+        addressedGive(worker, 'worker', 'The held one', 'the held one'),
+      )
       expect(given).toMatchObject({ outcome: 'ok', agent: worker, delivery: 'held' })
       const label = given.label as string
 
@@ -500,7 +504,11 @@ describe('what a close does that a reopen never undoes', () => {
       const handle = handles.at(-1)
       if (handle === undefined) throw new Error('no provider handle was issued')
       await waitFor(() => cardsOn(worker) > 0, 'the worker to be busy')
-      const given = await callOn(agentToolsFor(host, pm), 'give_work', addressedGive(worker, 'worker', 'The held one', 'the held one'))
+      const given = await callOn(
+        agentToolsFor(host, pm),
+        'give_work',
+        addressedGive(worker, 'worker', 'The held one', 'the held one'),
+      )
       expect(given).toMatchObject({ outcome: 'ok', agent: worker, delivery: 'held' })
       const label = given.label as string
 

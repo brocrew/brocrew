@@ -1,4 +1,4 @@
-import { newConversationGive } from './lib/give-fixture'
+import { callNewConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { TASK_OUTCOMES, TASK_STALL_CAUSES } from '../src/shared/task-contracts'
@@ -10,7 +10,6 @@ import {
   CHANNEL_REFUSALS,
   FakeProviderSessions,
   FakeRuntime,
-  type AgentToolset,
   type FakeSessionHandle,
   type ResumeOptions,
   type SessionRef,
@@ -23,7 +22,7 @@ import { renderToString } from 'vue/server-renderer'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { distil } from '../src/main/runtime/digest'
 import { RuntimeHost } from './helpers/giver-notice-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
@@ -321,16 +320,6 @@ describe("463 · a night's backlog, rehearsed", () => {
     })
   }
 
-  const callOn = async (
-    tools: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = tools.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
-
   const renderQueue = (): Promise<string> =>
     renderToString(createSSRApp({ render: () => h(PersonsQueue as never, { floating: true }) }))
 
@@ -417,8 +406,12 @@ describe("463 · a night's backlog, rehearsed", () => {
       },
       window,
     )
-    // ⚑ D-016 · the give starts the worker, and its brief is its first turn.
-    const given = await callOn(agentToolsFor(host, opened.sessionId), 'give_work', newConversationGive('rumour-worker', 'raise the question', 'raise the question whose answer provenance is under test'))
+    const given = await callNewConversationGive(
+      agentToolsFor(host, opened.sessionId),
+      'rumour-worker',
+      'raise the question',
+      'raise the question whose answer provenance is under test',
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     const workerHandle = handles.at(-1)

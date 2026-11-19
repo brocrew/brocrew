@@ -1491,7 +1491,12 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
         codex.turnModes.push('held-open')
         const next = await host.giveWork(
           {
-            ...addressedGive(helper, 'farah', 'The next brief', 'Read the fictional release notes.'),
+            ...addressedGive(
+              helper,
+              'farah',
+              'The next brief',
+              'Read the fictional release notes.',
+            ),
             definition_of_done: 'The result is recorded.',
           },
           { ownerId: agentCallerId(giver) },
@@ -1761,10 +1766,9 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
             (asked += 1) === held
               ? new Promise((resolve) => (briefsCheck = () => resolve(false)))
               : Promise.resolve(false)
-          second = host.giveWork(
-            addressedGive(target, 'farah', 'The release notes', SECOND),
-            { ownerId: agentCallerId(giver) },
-          )
+          second = host.giveWork(addressedGive(target, 'farah', 'The release notes', SECOND), {
+            ownerId: agentCallerId(giver),
+          })
           await vi.waitFor(() => expect(briefsCheck).not.toBeNull())
           codex.checksItsSignIn = async () => false
           return false

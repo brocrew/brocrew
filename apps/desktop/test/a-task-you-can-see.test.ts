@@ -222,7 +222,7 @@ describe('379 · a task you can see', () => {
   const ledger = (sessionId: string): TranscriptEvent[] =>
     store.events(sessionId).map((entry) => entry.event)
 
-  const typesIn = (sessionId: string): string[] => ledger(sessionId).map((event) => event.type)
+  const typesIn = (sessionId: string) => ledger(sessionId).map((event) => event.type)
 
   const lastQueuedMessageId = (sessionId: string) => newestNamedHold(ledger(sessionId))
 

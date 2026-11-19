@@ -201,7 +201,11 @@ describe('608 · the turn that no longer waits', () => {
     await host.close(seeded, window)
     const pm = await personOpens('pm')
     const pmTools = theToolsetJustHandedOut()
-    const given = await callOn(pmTools, 'give_work', newConversationGive('worker', 'The schema', 'migrate the schema'))
+    const given = await callOn(
+      pmTools,
+      'give_work',
+      newConversationGive('worker', 'The schema', 'migrate the schema'),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     const workerTools = theToolsetJustHandedOut()

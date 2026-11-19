@@ -515,12 +515,20 @@ describe('413 · words the person did not say', () => {
       // ⛔ **Step 3 of the lifecycle** — *"BroBot gives the project manager the project, as a
       // numbered task."* This is the turn that was unattributed on BOTH providers. ⚑ **D-016** —
       // the give starts the PM, and the project is its first turn.
-      const given = await callOn(bossTools, 'give_work', newConversationGive(pmProfile, 'The project', 'deliver the project'))
+      const given = await callOn(
+        bossTools,
+        'give_work',
+        newConversationGive(pmProfile, 'The project', 'deliver the project'),
+      )
       expect(given.outcome, JSON.stringify(given)).toBe('ok')
       const pm = given.agent as string
 
       const pmTools = agentToolsFor(host, pm)
-      const task = await callOn(pmTools, 'give_work', newConversationGive(workerProfile, 'Task 001', 'task 001'))
+      const task = await callOn(
+        pmTools,
+        'give_work',
+        newConversationGive(workerProfile, 'Task 001', 'task 001'),
+      )
       expect(task.outcome, JSON.stringify(task)).toBe('ok')
       const worker = task.agent as string
 
@@ -753,7 +761,11 @@ describe('413 · words the person did not say', () => {
       // for a second one: `give_work`'s own description is *"held until that agent is free"*.
       // ⚑ **D-016** — a second give from the same giver reaches the SAME conversation, and the
       // one-open-task rail that made `415` finish the first piece here first is gone.
-      const second = await callOn(pmTools, 'give_work', addressedGive(worker, profile, 'Task two', 'task two'))
+      const second = await callOn(
+        pmTools,
+        'give_work',
+        addressedGive(worker, profile, 'Task two', 'task two'),
+      )
       expect(second.agent).toBe(worker)
       // ⚑ **D-022 · R3** — `give_work` says `held` where it said `queued`: one word with the verbs
       // that tell a piece's holder.
@@ -793,7 +805,11 @@ describe('413 · words the person did not say', () => {
     it('⛔ the app going away holding a task keeps the held row OPEN, and it still knows whose it was', async () => {
       const { pmTools, worker, profile } = await workWasGiven('the first task')
       // ⚑ **D-016** — the second give is held behind the first brief's turn, as above.
-      const second = await callOn(pmTools, 'give_work', addressedGive(worker, profile, 'Task two', 'task two'))
+      const second = await callOn(
+        pmTools,
+        'give_work',
+        addressedGive(worker, profile, 'Task two', 'task two'),
+      )
       expect(second.delivery, JSON.stringify(second)).toBe('held')
       const held = ledger(worker)
         .filter((event) => event.type === 'message_queued')

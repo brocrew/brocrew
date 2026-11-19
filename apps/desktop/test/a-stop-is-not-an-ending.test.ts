@@ -111,7 +111,11 @@ describe('D-017 · a stop is not an ending', () => {
     const aPmAndAChild = async (): Promise<{ pm: string; child: string }> => {
       await host.close(await personOpens('worker'), window)
       const pm = await personOpens(DEFAULT_PROFILE_ID)
-      const spawned = await callOn(pm, 'give_work', newConversationGive('worker', 'The notes', 'the notes'))
+      const spawned = await callOn(
+        pm,
+        'give_work',
+        newConversationGive('worker', 'The notes', 'the notes'),
+      )
       expect(spawned.outcome, JSON.stringify(spawned)).toBe('ok')
       return { pm, child: spawned.agent as string }
     }

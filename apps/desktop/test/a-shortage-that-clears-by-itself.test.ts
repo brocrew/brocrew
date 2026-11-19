@@ -155,7 +155,11 @@ describe('705 · R39 — a shortage that clears by itself', () => {
   const aWorkerOver = async (): Promise<{ pm: string; worker: string; piece: string }> => {
     await host.close(await personOpens('worker'), window)
     const pm = await personOpens('pm')
-    const given = await callOn(pm, 'give_work', newConversationGive('worker', 'the work', 'migrate the schema'))
+    const given = await callOn(
+      pm,
+      'give_work',
+      newConversationGive('worker', 'the work', 'migrate the schema'),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     const piece = given.piece as string

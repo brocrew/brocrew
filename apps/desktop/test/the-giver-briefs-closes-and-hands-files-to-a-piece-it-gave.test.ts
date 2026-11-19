@@ -1,4 +1,9 @@
-import { giveToConversation, readGivenTask, giveWorkerAndClaimItsBrief, ownedFixturePiece } from './lib/give-fixture'
+import {
+  giveToConversation,
+  readGivenTask,
+  giveWorkerAndClaimItsBrief,
+  ownedFixturePiece,
+} from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import { REQUEST_STATES } from '../src/shared/question-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -250,9 +255,17 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
   const pieceOf = (owner: string, piece: string) => ownedFixturePiece(store, owner, piece)
 
   /** A give, answered `ok`. `under` names the giver's own piece. */
-  const aGive = (giver: string, profile: string, title: string, brief: string, to: string,
-    extra: Record<string, unknown> = {}) =>
-    readGivenTask(() => callOn(giver, 'give_work', { ...giveToConversation(to, profile, title, brief), ...extra }))
+  const aGive = (
+    giver: string,
+    profile: string,
+    title: string,
+    brief: string,
+    to: string,
+    extra: Record<string, unknown> = {},
+  ) =>
+    readGivenTask(() =>
+      callOn(giver, 'give_work', { ...giveToConversation(to, profile, title, brief), ...extra }),
+    )
 
   /** A PM a person opened and a worker parked on the card its first brief raised. */
   const aPmAndItsWorker = (suffix = '', title = 'the first piece') =>

@@ -456,7 +456,11 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
   }> => {
     await bringIdentityIntoBeing(workerProfile)
     const { id: pm, tools: pmTools } = await aPerson(pmProfile)
-    const given = await callOn(pmTools, 'give_work', newConversationGive(workerProfile, brief, brief))
+    const given = await callOn(
+      pmTools,
+      'give_work',
+      newConversationGive(workerProfile, brief, brief),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     return {

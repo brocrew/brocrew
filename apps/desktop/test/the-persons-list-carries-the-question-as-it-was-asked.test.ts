@@ -357,7 +357,11 @@ describe('D-046 · the person’s list carries each question as it was asked', (
       const pm = await personOpens('pm')
       const pmTools = agentToolsFor(host, pm)
       decorateNextHandle = holdingAWorkingTurn
-      const given = await callOn(pmTools, 'give_work', newConversationGive('worker', 'the work', 'the work'))
+      const given = await callOn(
+        pmTools,
+        'give_work',
+        newConversationGive('worker', 'the work', 'the work'),
+      )
       decorateNextHandle = null
       expect(given.outcome, JSON.stringify(given)).toBe('ok')
       const worker = given.agent as string

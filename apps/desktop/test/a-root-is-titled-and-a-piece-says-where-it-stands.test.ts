@@ -164,7 +164,11 @@ describe('D-016 · a root is titled, and a piece says where it stands', () => {
   }> => {
     await host.close(await personOpens('worker'), window)
     const pm = await personOpens('pm')
-    const given = await callOn(pm, 'give_work', newConversationGive('worker', 'the work', 'migrate'))
+    const given = await callOn(
+      pm,
+      'give_work',
+      newConversationGive('worker', 'the work', 'migrate'),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     host.claimSession(worker, window)

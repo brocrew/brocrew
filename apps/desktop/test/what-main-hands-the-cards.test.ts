@@ -175,7 +175,11 @@ describe('671 · what main hands the cards', () => {
     await host.close(seeded, window)
     const pm = await personOpens('pm')
     const pmTools = theToolsetJustHandedOut()
-    const given = await call(pmTools, 'give_work', newConversationGive('worker', 'The work this dispatch is about', 'build it'))
+    const given = await call(
+      pmTools,
+      'give_work',
+      newConversationGive('worker', 'The work this dispatch is about', 'build it'),
+    )
     expect(given.structured.outcome, JSON.stringify(given.structured)).toBe('ok')
     return {
       pm,

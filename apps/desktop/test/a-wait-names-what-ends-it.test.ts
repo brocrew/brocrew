@@ -135,7 +135,11 @@ describe('a wait names what will end it', () => {
   ): Promise<{ ada: string; piece: string; label: string }> => {
     const tools = agentToolsFor(host, brobot)
     if (to === 'new') await ok(tools, 'create_agent', { profile_slug: 'worker' })
-    const given = await ok(tools, 'give_work', giveToConversation(to, 'worker', title, title.toLowerCase()))
+    const given = await ok(
+      tools,
+      'give_work',
+      giveToConversation(to, 'worker', title, title.toLowerCase()),
+    )
     const ada = given.agent as string
     const piece = given.piece as string
     await waitFor(() => pieceOf(ada, piece)?.state === 'stalled', `the brief of ${title} to end`)

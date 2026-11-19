@@ -207,7 +207,11 @@ describe('496 · the card a third party was holding', () => {
     await bringIdentityIntoBeing(workerProfile)
     const pm = await personOpens(pmProfile)
     const pmTools = agentToolsFor(host, pm)
-    const given = await callOn(pmTools, 'give_work', newConversationGive(workerProfile, 'the work this dispatch is about', 'a long piece of work'))
+    const given = await callOn(
+      pmTools,
+      'give_work',
+      newConversationGive(workerProfile, 'the work this dispatch is about', 'a long piece of work'),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     return {
       pm,

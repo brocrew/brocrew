@@ -246,7 +246,11 @@ describe('689 · four small things main owes the window', () => {
     await host.close(seeded, window)
     const pm = await personOpens('pm')
     const pmTools = theToolsetJustHandedOut()
-    const given = await call(pmTools, 'give_work', newConversationGive('worker', 'The work this dispatch is about', 'build the thing'))
+    const given = await call(
+      pmTools,
+      'give_work',
+      newConversationGive('worker', 'The work this dispatch is about', 'build the thing'),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     const workerHandle = handles.at(-1)

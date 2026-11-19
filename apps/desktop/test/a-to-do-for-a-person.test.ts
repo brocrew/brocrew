@@ -158,7 +158,11 @@ describe('a to-do for a person', () => {
   ): Promise<{ ada: string; piece: string; label: string }> => {
     if (to === 'new')
       await ok(agentToolsFor(host, brobot), 'create_agent', { profile_slug: 'worker' })
-    const given = await ok(agentToolsFor(host, brobot), 'give_work', giveToConversation(to, 'worker', title, title.toLowerCase()))
+    const given = await ok(
+      agentToolsFor(host, brobot),
+      'give_work',
+      giveToConversation(to, 'worker', title, title.toLowerCase()),
+    )
     const ada = given.agent as string
     const piece = given.piece as string
     await waitFor(() => pieceOf(ada, piece)?.state === 'stalled', `the brief of ${title} to end`)
@@ -370,7 +374,11 @@ describe('a to-do for a person', () => {
   it('the listed row names the agent a wait its giver set on its own question is on', async () => {
     const { brobot, ada } = await aHelperWithAPiece()
     await ok(agentToolsFor(host, brobot), 'create_agent', { profile_slug: 'writer' })
-    const gave = await ok(agentToolsFor(host, brobot), 'give_work', newConversationGive('writer', 'Write the copy', 'write the copy'))
+    const gave = await ok(
+      agentToolsFor(host, brobot),
+      'give_work',
+      newConversationGive('writer', 'Write the copy', 'write the copy'),
+    )
     const bea = gave.agent as string
     await waitFor(
       () => store.piecesOwnedBy(bea).some((one) => one.state === 'stalled'),
@@ -562,7 +570,11 @@ describe('a to-do for a person', () => {
     }> => {
       const { brobot, ada } = await aHelperWithAPiece()
       await ok(agentToolsFor(host, ada), 'create_agent', { profile_slug: 'writer' })
-      const gave = await ok(agentToolsFor(host, ada), 'give_work', newConversationGive('writer', 'Write the copy', 'write the copy'))
+      const gave = await ok(
+        agentToolsFor(host, ada),
+        'give_work',
+        newConversationGive('writer', 'Write the copy', 'write the copy'),
+      )
       const bea = gave.agent as string
       const label = gave.label as string
       await waitFor(
@@ -881,7 +893,11 @@ describe('a to-do for a person', () => {
     it('a question addressed to a person whose routing lost who gave the work still ends with every copy of it', async () => {
       const { brobot, ada } = await aHelperWithAPiece()
       await ok(agentToolsFor(host, ada), 'create_agent', { profile_slug: 'writer' })
-      const gave = await ok(agentToolsFor(host, ada), 'give_work', newConversationGive('writer', 'Write the copy', 'write the copy'))
+      const gave = await ok(
+        agentToolsFor(host, ada),
+        'give_work',
+        newConversationGive('writer', 'Write the copy', 'write the copy'),
+      )
       const bea = gave.agent as string
       const label = gave.label as string
       await waitFor(

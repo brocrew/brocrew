@@ -231,7 +231,11 @@ describe('F097 · a person owes the agent that answered them — more cases', ()
     await settle()
     const brobotTools = agentToolsFor(host, brobot)
     await callOn(brobotTools, 'create_agent', { profile_slug: 'worker' })
-    const given = await callOn(brobotTools, 'give_work', newConversationGive('worker', 'Build the pages', 'build the pages'))
+    const given = await callOn(
+      brobotTools,
+      'give_work',
+      newConversationGive('worker', 'Build the pages', 'build the pages'),
+    )
     expect(given, JSON.stringify(given)).toMatchObject({ outcome: 'ok', label: 'W1.1' })
     const ada = given.agent as string
     await waitFor(() => stallNoticesIn(brobot).length === 1, 'the giver to be told of the stall')

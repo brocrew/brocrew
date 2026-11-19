@@ -147,7 +147,11 @@ describe('D-012 · a giver looks closer', () => {
   const aPmItsWorkerAndAPeer = async (brief = 'build it') => {
     await host.close((await personOpens('worker')).id, window)
     const pm = await personOpens('pm')
-    const given = await callOn(pm.tools, 'give_work', newConversationGive('worker', 'the index', brief))
+    const given = await callOn(
+      pm.tools,
+      'give_work',
+      newConversationGive('worker', 'the index', brief),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     const label = given.label as string
