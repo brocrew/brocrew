@@ -2155,6 +2155,7 @@ function start(ownership: HostGateVerdict): void {
       startTitlingTheOlderFiles(host)
       startRecordingWhatTheOlderOnesRan(host)
       let itself = whatTheAppItselfHolds([])
+      let appMetrics: ReturnType<typeof app.getAppMetrics> = []
       const intoTheMemoryLog = (message: string): void => logWarn('memory', message)
       const unrefdInterval = (fn: () => void, ms: number): unknown => {
         const timer = setInterval(fn, ms)
@@ -2166,9 +2167,56 @@ function start(ownership: HostGateVerdict): void {
       startMemoryWatch({
         sample: () => {
           spawnedReader.refresh()
-          itself = whatTheAppItselfHolds(app.getAppMetrics())
+          appMetrics = app.getAppMetrics()
+          itself = whatTheAppItselfHolds(appMetrics)
           return itself.bytes
         },
+        ...(process.platform === 'darwin'
+          ? {
+              confirm: async () => {
+                const captured = appMetrics
+                if (captured.length === 0) return null
+                const output = await new Promise<string>((resolve, reject) => {
+                  execFile(
+                    '/usr/bin/footprint',
+                    [
+                      '--noCategories',
+                      '--format',
+                      'bytes',
+                      ...captured.flatMap(({ pid }) => ['--pid', String(pid)]),
+                    ],
+                    { timeout: 5_000, encoding: 'utf8' },
+                    (error, stdout) => (error ? reject(error) : resolve(stdout)),
+                  )
+                })
+                const current = new Map(
+                  app.getAppMetrics().map(({ pid, creationTime }) => [pid, creationTime]),
+                )
+                if (
+                  current.size !== captured.length ||
+                  captured.some(({ pid, creationTime }) => current.get(pid) !== creationTime)
+                )
+                  return null
+                const blocks = output.split(/^.+? \[(\d+)\]: \d+-bit\s+Footprint:/m)
+                if (blocks.length !== 1 + captured.length * 2) return null
+                const footprints = new Map<number, number>()
+                for (let i = 1; i < blocks.length; i += 2) {
+                  const pid = Number(blocks[i])
+                  const matches = [
+                    ...(blocks[i + 1] ?? '').matchAll(/^[ \t]*phys_footprint: (\d+) B[ \t]*$/gm),
+                  ]
+                  const bytes = Number(matches[0]?.[1])
+                  if (matches.length !== 1 || !Number.isSafeInteger(bytes) || footprints.has(pid))
+                    return null
+                  footprints.set(pid, bytes)
+                }
+                const bytesByIndex = captured.map(({ pid }) => footprints.get(pid))
+                if (bytesByIndex.some((bytes) => bytes === undefined)) return null
+                const total = whatTheAppItselfHolds(captured, (_entry, index) => bytesByIndex[index]!)
+                return { bytes: total.bytes, detail: `[${total.said}]` }
+              },
+            }
+          : {}),
         detail: () =>
           `[${itself.said}] ${whatItsAgentsHoldApart(
             !spawnedReader.everRead()

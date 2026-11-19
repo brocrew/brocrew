@@ -368,3 +368,57 @@ describe("§4 · the app's own line counts the app itself, and says its agents a
     expect(detail.indexOf("'unreadable'")).toBeGreaterThan(failed)
   })
 })
+
+it('confirms only new resident steps and uses the footprint step for the warning', async () => {
+  const gib = 1024 ** 3
+  const warnings: string[] = []
+  let rss = 2 * gib
+  let calls = 0
+  let tick: () => void = () => {}
+  let finish: (sample: { bytes: number; detail: string } | null) => void = () => {}
+  const flush = async () => {
+    await new Promise<void>((resolve) => setImmediate(resolve))
+  }
+  startMemoryWatch({
+    sample: () => rss,
+    confirm: () => {
+      calls++
+      return new Promise((resolve) => {
+        finish = resolve
+      })
+    },
+    detail: () => '[resident breakdown]',
+    log: (line) => warnings.push(line),
+    setInterval: (fn) => {
+      tick = fn
+    },
+    clearInterval: () => {},
+  })
+  tick()
+  rss = 3 * gib
+  tick()
+  expect(calls).toBe(1)
+  finish({ bytes: 2 * gib - 1, detail: '[below floor]' })
+  await flush()
+  expect(warnings).toEqual([])
+  tick()
+  expect(calls).toBe(2)
+  finish({ bytes: 2 * gib, detail: '[physical breakdown]' })
+  await flush()
+  tick()
+  expect(calls).toBe(2)
+  expect(warnings).toHaveLength(1)
+  expect(warnings[0]).toContain('2.00 GB of physical footprint')
+  expect(warnings[0]).toContain('[physical breakdown]')
+  rss = 4 * gib
+  tick()
+  finish(null)
+  await flush()
+  tick()
+  expect(calls).toBe(3)
+  expect(warnings).toHaveLength(2)
+  expect(warnings[1]).toContain(
+    '4.00 GB of resident memory (may include memory the system can reclaim)',
+  )
+  expect(warnings[1]).toContain('[resident breakdown]')
+})
