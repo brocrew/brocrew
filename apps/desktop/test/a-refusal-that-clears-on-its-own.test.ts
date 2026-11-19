@@ -296,7 +296,7 @@ describe('650 · a refusal that clears on its own', () => {
     hold = null
     expect(payload(await spawning)).toMatchObject({ outcome: 'ok', agent: id })
     const delivered = payload(await waiting)
-    expect(delivered).toMatchObject({ outcome: 'ok', delivery: 'queued', agent: id })
+    expect(delivered).toMatchObject({ outcome: 'ok', delivery: 'sent', agent: id })
     await until(
       () => eventsOf(id).some((event) => event.type === 'user_turn' && event.text === words.text),
       'the waiting message to reach the same conversation',

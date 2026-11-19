@@ -273,12 +273,19 @@ describe('648 · a task row that lies about its holder', () => {
       credentialGeneration++
       // Answering the card ends the turn, which is what wakes the flush.
       await host.respondPermission(worker, cardId, { outcome: 'deny' }, window)
-      await waitFor(() => endingsOn(worker).length > 0, 'the held brief to go')
+      const held = store
+        .events(worker)
+        .find(({ event }) => event.type === 'message_queued' && event.label === label)?.event
+      if (held?.type !== 'message_queued') throw new Error('the held task brief is missing')
+      expect(held.messageId).toMatch(/^msg_/)
+      const endingsOfBrief = () =>
+        endingsOn(worker).filter((event) => event.messageId === held.messageId)
+      await waitFor(() => endingsOfBrief().length > 0, 'the held brief to go')
 
       // 🔴 **The repair, a second time.** Before 648 this row read `waiting` / `null` for the whole
       // life of the conversation; 648 ended the brief unsent. ⚑ Now the flush leaves it held, and
       // once the holder is free this app reopens it on the current sign-in, where it goes first.
-      const endings = endingsOn(worker)
+      const endings = endingsOfBrief()
       expect(endings).toHaveLength(1)
       expect(endings[0]).toMatchObject({ reason: 'sent', text: 'do the thing' })
       const ledger = store.events(worker).map((entry) => entry.event)
