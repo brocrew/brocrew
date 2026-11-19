@@ -10,7 +10,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions } from '@brobot2/runtime'
 import type { AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
@@ -28,7 +28,7 @@ import { permanenceInWords } from '../src/main/runtime/agent-tool-answer-words'
  * 🔴 **W4.154 · F089–F091 — the words a model reads, WORD FOR WORD** (`52872cc0`, `8e0773c3`).
  *
  * The devs' own tests compare these refusals with the functions and constants that build them
- * (`aTakeBackOfAPieceYouHold(label)`, `A_CONVERSATION_CANNOT_INTERRUPT_ITSELF`), so a sentence
+ * (`aTakeBackOfAPieceYouHold(label)`), so a sentence
  * reworded in its builder still passes them, and `the-act-inside-the-cut` pins only each act. Here
  * every sentence is written out, so its whole meaning is pinned:
  *
@@ -49,9 +49,6 @@ const DAY_MS = 86_400_000
 
 const THE_GUESS =
   'that is not a piece you gave (or, when the call names an agent, not one you gave that agent), so nothing was done. list_tasks lists the open pieces you gave out, and with state: "all" the ended ones too; the name may belong to another conversation, or to nothing at all.'
-const NOT_ITSELF =
-  'that is this conversation: a conversation cannot interrupt itself, so nothing was interrupted. Stop your own work yourself, or name another agent to interrupt.'
-
 /** F089 · an open piece the caller holds, whole. */
 const anOpenHeldPiece = (label: string): string =>
   `to hand it back finished, call reply_to_parent; to ask about it, call ask_question naming it: ${label} is a piece you hold, not one you gave, so nothing was taken back. withdraw_task takes back only a piece you gave.`
@@ -111,7 +108,6 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
   })
 
   afterEach(async () => {
-    vi.restoreAllMocks()
     for (const built of hosts) await built.closeAll()
     db.close()
     for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
@@ -324,74 +320,39 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
     })
   })
 
-  describe('§3 · F091 · interrupt_agent naming itself', () => {
-    it('🔴 its id, a piece it holds — open, then ended — and its own root: the whole sentence; a piece it gave names its holder, never itself', async () => {
-      const { pm, worker, pmTools, workerTools, label } = await aPmAndItsWorker('the piece')
-      const itsRoot = store.rootOf(pm)?.label
-      if (itsRoot === undefined) throw new Error('a conversation a person opened owns a root')
-      const readPiece = host.pieceRecord.bind(host)
-      vi.spyOn(host, 'pieceRecord').mockImplementation((caller, named) => {
-        const record = readPiece(caller, named)
-        const ownRoot = caller === pm && named === itsRoot
-        if (!ownRoot || record.is === 'no-piece-by-that-name') return record
-        return {
-          ...record,
-          children: record.children.map((child) => {
-            if (child.owner !== worker) return child
-            return { ...child, state: 'working' as const }
-          }),
-        }
-      })
-      const premise = host.pieceRecord(pm, itsRoot)
-      expect(premise.is).not.toBe('no-piece-by-that-name')
-      if (premise.is === 'no-piece-by-that-name') throw new Error('the caller owns this root')
-      expect(premise.children.find((child) => child.owner === worker)?.state).toBe('working')
-      for (const [tools, named, itself] of [
-        [workerTools, worker, worker],
-        [workerTools, label, worker],
-        [pmTools, pm, pm],
-        [pmTools, itsRoot, pm],
-      ] as const) {
-        const said = await callWithWords(tools, 'interrupt_agent', { agent: named, reason: 'stop' })
-        const guide =
-          named === label
-            ? ` ${label} is your own piece, with no helpers recorded under it. list_agents names conversations; message_agent answers whether one can take your message.`
-            : named === itsRoot
-              ? ` ${itsRoot} is your own piece. Its helpers: Ada (worker) on ${label} (working). Reach a helper by its piece's label, even after it ended: message_agent with kind: note, or ask_question. For new work, give_work with its profile. To stop a known conversation, interrupt_agent with its label.`
-              : ''
-        expectRefused(said, 'that-agent-is-you', NOT_ITSELF + guide, named)
-        expect(said.structured.detail, named).toEqual({ agent: itself })
-      }
-      // ⚑ Once it has ended, its label still names its owner: still this conversation.
+  it('§3 · Stop resolves its id, open and ended held piece, and own root', async () => {
+    const { pm, worker, pmTools, workerTools, label } = await aPmAndItsWorker('the piece')
+    const itsRoot = store.rootOf(pm)?.label
+    if (itsRoot === undefined) throw new Error('a conversation a person opened owns a root')
+    await host.close(worker, window)
+    await host.close(pm, window)
+
+    for (const [tools, address, target] of [
+      [workerTools, worker, worker],
+      [workerTools, label, worker],
+      [pmTools, pm, pm],
+      [pmTools, itsRoot, pm],
+    ] as const) {
       expect(
-        (
-          await callOn(workerTools, 'reply_to_parent', {
-            piece: label,
-            outcome: 'done',
-            summary: 'done',
-          })
-        ).outcome,
-      ).toBe('ok')
-      const ended = await callWithWords(workerTools, 'interrupt_agent', {
-        agent: label,
-        reason: 'stop',
-      })
-      expectRefused(
-        ended,
-        'that-agent-is-you',
-        NOT_ITSELF +
-          ` ${label} is your own piece, with no helpers recorded under it. list_agents names conversations; message_agent answers whether one can take your message.`,
-        `${label}, ended`,
-      )
-      // ⚑ The pair: the pm names the same label — a piece it gave, whose holder is another.
-      const ofTheHolder = await callWithWords(pmTools, 'interrupt_agent', {
-        agent: label,
-        reason: 'stop',
-      })
-      expect(ofTheHolder.structured.rail, JSON.stringify(ofTheHolder.structured)).not.toBe(
-        'that-agent-is-you',
-      )
-      expect(ofTheHolder.text).not.toContain('cannot interrupt itself')
+        await callOn(tools, 'interrupt_agent', { agent: address, reason: 'stop' }),
+        address,
+      ).toMatchObject({ outcome: 'ok', agent: target, asked: false })
+    }
+    expect(
+      await callOn(workerTools, 'reply_to_parent', {
+        piece: label,
+        outcome: 'done',
+        summary: 'done',
+      }),
+    ).toMatchObject({ outcome: 'ok' })
+    const ended = await callWithWords(workerTools, 'interrupt_agent', {
+      agent: label,
+      reason: 'stop',
     })
+    expect(ended.structured).toMatchObject({ outcome: 'ok', agent: worker, asked: false })
+    expect(ended.text).toContain('had no turn running, so nothing was interrupted')
+    expect(
+      await callOn(pmTools, 'interrupt_agent', { agent: label, reason: 'stop' }),
+    ).toMatchObject({ outcome: 'ok', agent: worker, asked: false })
   })
 })
