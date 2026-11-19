@@ -825,12 +825,10 @@ export type RuntimeCommand =
    * only of a give that would start one — after the piece, the grant, the depth and the lookup,
    * once the lookup has found no conversation to give it to (D-016 ruling 12).
    */
-  | { kind: 'setSpawningEnabled'; enabled: boolean }
   /**
    * Turn services on or off in this workspace: a person's choice, and off until they make it.
    * ⚑ Off stops nothing that runs: it holds back new work for services.
    */
-  | { kind: 'setServicesOn'; on: boolean }
   /**
    * 🔴 **The mode every conversation a person starts begins in** (500, HO-036 §3.1) — *"a person
    * sets their approval mode once, and every conversation they start begins there."*
