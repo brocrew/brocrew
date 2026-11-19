@@ -121,12 +121,6 @@ export const INTERRUPT_RAILS = [
    * answers that nothing was running to interrupt.
    */
   'that-conversation-has-not-started',
-  /**
-   * ⚑ **A service's turn is on another caller's piece, while the caller's own waits behind it**:
-   * only the caller whose piece it is on, and a person, may stop it. ⚠️ `while-this-holds`: once that piece has ended, the service goes on to
-   * the next in its queue, and the same call is asked of that one.
-   */
-  'that-service-is-on-another-callers-piece',
 ] as const
 
 export type InterruptRail = (typeof INTERRUPT_RAILS)[number]
@@ -137,7 +131,6 @@ const PERMANENCE: Readonly<Record<InterruptRail, RailPermanence>> = {
   'a-person-is-being-asked': 'until-a-person-changes-it',
   'it-is-waiting-on-an-answer': 'until-a-person-changes-it',
   'that-conversation-has-not-started': 'while-this-holds',
-  'that-service-is-on-another-callers-piece': 'while-this-holds',
 }
 
 export function interruptPermanenceOf(rail: InterruptRail): RailPermanence {
@@ -198,7 +191,6 @@ const REMEDY: Readonly<Record<InterruptRail, RefusalRemedy | null>> = {
   'a-person-is-being-asked': null,
   'it-is-waiting-on-an-answer': null,
   'that-conversation-has-not-started': 'make-the-same-call-when-this-settles',
-  'that-service-is-on-another-callers-piece': 'make-the-same-call-when-this-settles',
 }
 
 /** ⛔ **What a caller may do instead, or `null` because this app knows of nothing** (425). */
@@ -209,12 +201,6 @@ export function interruptRemedyOf(rail: InterruptRail): RefusalRemedy | null {
 /**
  * The facts an interrupt refusal may state beyond the rail itself, carried as DATA (`341`, 100).
  *
- * ## ⛔ The field that is deliberately NOT here
- *
- * ⚠️ **Nothing says WHAT the person is being asked.** A permission's text is the thing a person is
- * deciding about, and handing it back in the refusal that just protected it would deliver the card's
- * contents to the caller the rail turned away — `394`'s `QuestionRefusalDetail` makes the same
- * omission for the same reason, and this is the door where the omission is load-bearing.
  */
 export interface InterruptRefusalDetail {
   /** The conversation this call named, echoed back so a model can match refusal to request. */
@@ -225,6 +211,8 @@ export interface InterruptRefusalDetail {
    * this interface's reason.
    */
   askedOf?: string
+  /** The action and short summary of a permission card left open by an explicit stop. */
+  approval?: string
 }
 
 /** 🔴 **A refusal, as a payload rather than a throw** — `341`'s shape, carried over MCP unchanged. */
@@ -264,8 +252,6 @@ const INTERRUPT_SENTENCES: Readonly<Record<InterruptRail, string>> = {
   // was already right, and the remedy says what to do rather than that it will work (`425`).
   'that-conversation-has-not-started':
     'that conversation has not started yet, so there is nothing running to interrupt. It comes up or fails to launch on its own: ask again in a moment.',
-  'that-service-is-on-another-callers-piece':
-    'Not stopped: that service is on another caller’s piece. Yours waits behind it.',
 }
 
 /** Build the whole payload from the rail and its facts, so its policy fields cannot drift apart. */

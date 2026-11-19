@@ -1105,6 +1105,9 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
     read: { readonly back: number; readonly search: string | null },
   ): { readonly turns: readonly TranscriptTurn[]; readonly older: boolean }
   lastAskToStop(sessionId: string, unread?: RowsUnread): AskToStop | null
+  lastExplicitStopRequest(
+    sessionId: string,
+  ): { readonly asker: string; readonly reason: string } | null
   appendGeneration(
     sessionId: string,
     generation: number,
@@ -1371,6 +1374,7 @@ export const NULL_SESSION_STORE: SessionStore = {
   whatOpenedTheLastEndedTurn: () => null,
   transcript: () => ({ turns: [], older: false }),
   lastAskToStop: () => null,
+  lastExplicitStopRequest: () => null,
   appendGeneration: () => {},
   promoteGeneration: () => true,
   abandonGeneration: () => {},
@@ -2575,6 +2579,15 @@ export function createSessionStore(
       WHERE session_id = ? AND generation = ? AND ordinal > ?
         AND type IN ('work_interrupted', 'user_decision')
         AND NOT json_valid(payload)`,
+  )
+  const selectLastExplicitStopOnTurn = db.prepare(
+    `SELECT payload, created_at, turn_id, type, ordinal FROM events
+      WHERE type = 'work_interrupted' AND session_id = ? AND generation = ? AND turn_id = ?
+        AND CASE WHEN json_valid(payload) THEN
+          json_extract(payload, '$.by') = 'an-agent'
+          AND json_type(payload, '$.agent') = 'text'
+          AND json_type(payload, '$.reason') = 'text' ELSE 0 END
+      ORDER BY ordinal DESC LIMIT 1`,
   )
   const selectSessionsRoutingTo = db.prepare(
     `SELECT DISTINCT routed.session_id AS id,
@@ -3805,14 +3818,15 @@ export function createSessionStore(
     return { turns, older: starts.length > back }
   }
 
-  function actorOfTheAsk(row: AskRow): Pick<AskToStop, 'by' | 'asker'> | null {
-    const asked = JSON.parse(row.payload) as { by?: unknown; agent?: unknown }
+  function actorOfTheAsk(row: AskRow): Pick<AskToStop, 'by' | 'asker' | 'reason'> | null {
+    const asked = JSON.parse(row.payload) as { by?: unknown; agent?: unknown; reason?: unknown }
     if (row.type === 'user_decision') return whoCancelledIt(asked.by as ActedBy | undefined)
     if (!(WHO_STOPPED_IT as readonly unknown[]).includes(asked.by)) return null
     const by = asked.by as WhoStoppedIt
     return {
       by,
       asker: by === 'an-agent' && typeof asked.agent === 'string' ? asked.agent : null,
+      ...(typeof asked.reason === 'string' ? { reason: asked.reason } : {}),
     }
   }
 
@@ -3837,7 +3851,7 @@ export function createSessionStore(
           : row.turn_id === open?.id
             ? 'a-turn-that-is-running-now'
             : 'a-turn-that-ended-earlier'
-    return { by: asked.by, asker: asked.asker, at: row.created_at, turn }
+    return { ...asked, at: row.created_at, turn }
   }
 
   function currentStatus(
@@ -6478,6 +6492,17 @@ export function createSessionStore(
     },
     lastAskToStop(sessionId, unread) {
       return lastAskToStopOf(sessionId, unread?.in(sessionId))
+    },
+    lastExplicitStopRequest(sessionId) {
+      const generation = activeGeneration(sessionId)
+      const turn = selectLastClosedTurn.get(sessionId, generation) as ClosedTurnRow | undefined
+      if (turn === undefined) return null
+      const row = selectLastExplicitStopOnTurn.get(sessionId, generation, turn.id) as
+        AskRow | undefined
+      const asked = row === undefined ? null : actorOfTheAsk(row)
+      return asked?.asker != null && asked.reason !== undefined
+        ? { asker: asked.asker, reason: asked.reason }
+        : null
     },
     questionsRaisedIn(sessionId, unread) {
       return questionsRaisedInSession(sessionId, unread?.in(sessionId))

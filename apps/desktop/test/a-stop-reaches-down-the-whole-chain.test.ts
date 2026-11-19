@@ -245,6 +245,62 @@ describe('629 · a stop reaches down the whole chain', () => {
       const asked = ledger(ali).find((event) => event.type === 'work_interrupted')
       expect(asked).toMatchObject({ type: 'work_interrupted', by: 'an-agent', agent: ada })
     })
+
+    it.each(['live', 'reopened', 'stopped by the person as well', 'reopened after both stops'])(
+      'explains an explicit stop once when the target is %s',
+      async (life) => {
+        const { ada, adaTools, ali, aliHandle } = await aChainOfThree()
+        const reason = 'The copied clock face is enough'
+        const personAlsoStops =
+          life === 'stopped by the person as well' || life === 'reopened after both stops'
+        await makeItWork(aliHandle)
+        if (personAlsoStops) {
+          // The provider acknowledges the agent's request while the same turn is still running.
+          vi.spyOn(aliHandle, 'interrupt').mockResolvedValueOnce(undefined)
+        }
+        expect(await callOn(adaTools, 'interrupt_agent', { agent: ali, reason })).toMatchObject({
+          outcome: 'ok',
+          asked: true,
+        })
+        expect(store.lastAskToStop(ali)).toMatchObject({ asker: ada, reason })
+        if (personAlsoStops) {
+          expect(aliHandle.status()).toBe('working')
+          expect(host.claimSession(ali, window)).not.toBeNull()
+          await host.interrupt(ali, window)
+          expect(store.lastAskToStop(ali)).toMatchObject({ by: 'a-person' })
+        }
+        await waitFor(
+          () => aliHandle.status() === 'idle',
+          'the provider to finish the stopped turn',
+        )
+        if (life === 'reopened' || life === 'reopened after both stops') {
+          await host.closeAll()
+          host = buildHost()
+          await host.reopenForAPerson(ali, window, null)
+        } else if (life === 'live') {
+          expect(host.claimSession(ali, window)).not.toBeNull()
+        }
+        const heard = () =>
+          ledger(ali).flatMap((event) => (event.type === 'assistant_message' ? [event.text] : []))
+        const send = async (message: string) => {
+          await host.send(ali, message, window)
+          await waitFor(
+            () => heard().some((word) => word.includes(message)),
+            'the message to reach the provider',
+          )
+          await waitFor(() => latestHandle().status() === 'idle', 'the continuation turn to end')
+        }
+
+        await send('Continue the clock work')
+        await send('Record the next clock detail')
+
+        const notice = heard().filter((word) => word.includes(reason))
+        expect(notice).toHaveLength(1)
+        expect(notice[0]).toContain(
+          `${host.whatToCallTheConversation(ada)}, conversation W4.1 · run the front-end work, stopped your turn: ${reason}. Read what was recorded before continuing instead of redoing it.`,
+        )
+      },
+    )
   })
 
   // ─────────────────────────────────────────────────────────────────────────────────────────
@@ -465,7 +521,7 @@ describe('629 · a stop reaches down the whole chain', () => {
           (one) => one.name === name,
         )?.description
         expect(said, `${name} has no description`).toBeTruthy()
-        expect(said, name).toContain('known conversation')
+        expect(said, name).toContain('Any conversation may do this')
         expect(said, name).not.toContain('an agent you created')
       }
     })

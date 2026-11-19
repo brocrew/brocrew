@@ -983,6 +983,8 @@ export interface WorkClosedEvent {
  */
 export interface WorkInterruptedEvent {
   type: 'work_interrupted'
+  /** The reason supplied with an explicit stop. */
+  reason?: string
   /**
    * ⛔ **One of {@link WhoStoppedIt}'s three words.** ⚠️ It is about the CALLER, never about the
    * conversation: `a-person` means a window's sink asked, `an-agent` means a tool call did, and

@@ -365,18 +365,15 @@ describe('services a person turns on and off', () => {
       releaseTheTurn()
     })
 
-    it('keeps a caller’s reach to the service bound to its own piece while off', async () => {
+    it('lets an agent stop the active service turn while services are off', async () => {
       const { host, other, service, releaseTheTurn } = await aServiceWithWorkQueued()
       host.setServicesOn(false)
       const stopped = await call(host, other, 'interrupt_agent', {
         agent: service,
         reason: 'not needed now',
       })
-      expect(stopped.structured).toMatchObject({
-        outcome: 'refused',
-        rail: 'that-service-is-on-another-callers-piece',
-      })
-      expect(world.stopsAsked).toEqual([])
+      expect(stopped.structured).toMatchObject({ outcome: 'ok', asked: true })
+      expect(world.stopsAsked).toEqual(['browser-driver'])
       releaseTheTurn()
     })
 

@@ -178,7 +178,7 @@ export interface AgentToolHost {
     },
     by: Caller,
   ): Promise<AnswerWithItsStop>
-  interruptAgent(id: string, by: Caller): Promise<InterruptOutcome>
+  interruptAgent(id: string, by: Caller, reason?: string): Promise<InterruptOutcome>
   questionsListedFor(sessionId: string): {
     readonly questions: readonly VisibleQuestion[]
     readonly rowsUnread: number
