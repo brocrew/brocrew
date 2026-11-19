@@ -510,7 +510,7 @@ describe('D-012 · a giver looks closer', () => {
         .at(-1) ?? ''
 
     it('a serial stall notice names the unresolved reminder and gives the giver its next actions', async () => {
-      const long = `build it ${'with care '.repeat(700)}`
+      const long = `build it ${'with care '.repeat(150)}`
       const { pm, worker, label } = await aPmItsWorkerAndAPeer()
       // ⚑ D-016 · the follow-up is held behind the brief's turn, so the turn that ends with the
       // piece still open is the one that answered it — see {@link theGiverFollowsItUp}.
@@ -538,7 +538,7 @@ describe('D-012 · a giver looks closer', () => {
     })
 
     it('🔴 who sent the last message and the start of it, then the start of the answer — and read_transcript', async () => {
-      const long = `build it ${'with care '.repeat(700)}`
+      const long = `build it ${'with care '.repeat(150)}`
       const { pm, worker, label } = await aPmItsWorkerAndAPeer()
       // ⚑ D-016 · the follow-up is held behind the brief's turn, so the turn that ends with the
       // piece still open is the one that answered it — see {@link theGiverFollowsItUp}.
@@ -583,7 +583,7 @@ describe('D-012 · a giver looks closer', () => {
       expect(name).not.toContain('sess_')
       expect(paragraphs[0]).toContain(`with ${name} is not being worked on`)
       expect(paragraphs[answerStarts]).toBe(`${name}'s answer starts:`)
-      // ⛔ **A preview, not the message**: the answer echoes 6 KB, and the notice carries its start.
+      // ⛔ **A preview, not the message**: the answer echoes the message, and the notice carries its start.
       const preview = paragraphs[answerStarts + 1] ?? ''
       expect(preview.length).toBeLessThanOrEqual(PREVIEW_CAP + 1)
       expect(preview.endsWith('…')).toBe(true)

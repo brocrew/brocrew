@@ -1,3 +1,4 @@
+import { recordedMessageWakeFailure } from './lib/recorded-message-wake'
 import { giveToSeededWorker } from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { waitFor } from './lib/f093-host'
@@ -72,7 +73,8 @@ const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
 /** ⚑ The new word — spelled here as a string, so `main` (which has no such word) can run this file. */
-const SHORTAGE = 'that-conversation-could-not-be-woken-just-now'
+const shortageReason = (code: string): RegExp =>
+  code === 'EMFILE' ? /BroCrew had too many files open/ : /ran short of open files, processes or memory/
 
 describe('705 · R39 — a shortage that clears by itself', () => {
   let userData: string
@@ -184,14 +186,6 @@ describe('705 · R39 — a shortage that clears by itself', () => {
   const wake = (pm: string, worker: string, piece: string): Promise<Record<string, unknown>> =>
     callOn(pm, 'message_agent', { agent: worker, text: 'carry on', kind: 'follow-up', piece })
 
-  const theRefusal = (payload: Record<string, unknown>): Record<string, unknown> => ({
-    outcome: payload.outcome,
-    rail: payload.rail,
-    permanence: payload.permanence,
-    retryable: payload.retryable,
-    remedy: payload.remedy,
-  })
-
   // ───────────────────────────────────────────────────────────────────────────────
   // the adapters' own errors
   // ───────────────────────────────────────────────────────────────────────────────
@@ -277,30 +271,22 @@ describe('705 · R39 — a shortage that clears by itself', () => {
       const { pm, worker, piece } = await aWorkerOver()
       gate.resumeFails = () => produced
       const refused = await wake(pm, worker, piece)
-      expect(theRefusal(refused)).toEqual({
-        outcome: 'refused',
-        rail: SHORTAGE,
-        permanence: 'while-this-holds',
-        retryable: true,
-        remedy: 'make-the-same-call-when-this-settles',
-      })
-      // ⚑ the closed reason is the errno's own code — by TYPE, never by the provider's text
-      expect(refused.detail).toEqual({ agent: worker, because: code })
-      // ⛔ …and it never says a person must look — the sentence the permanent word carries
-      expect(String(refused.reason)).not.toContain('until a person has looked')
-      expect(String(refused.reason)).toContain('Make the same call again in a moment')
+      recordedMessageWakeFailure(store, worker, refused, 'could-not-start', shortageReason(code))
     })
 
     it('⚑ standing rule 3 — the same call, once the shortage has cleared, wakes it', async () => {
       const produced = await make()
       const { pm, worker, piece } = await aWorkerOver()
       gate.resumeFails = () => produced
-      expect((await wake(pm, worker, piece)).rail).toBe(SHORTAGE)
+      const id = recordedMessageWakeFailure(
+        store, worker, await wake(pm, worker, piece), 'could-not-start', shortageReason(code),
+      )
       gate.resumeFails = undefined
-      expect(await wake(pm, worker, piece)).toMatchObject({
-        outcome: 'ok',
-        agent: worker,
-      })
+      expect(await wake(pm, worker, piece)).toMatchObject({ outcome: 'ok', agent: worker })
+      await waitFor(
+        () => !store.messagesWaitingIn(worker).some((one) => one.messageId === id),
+        'the original recorded message to leave the queue',
+      )
     })
   })
 
@@ -309,23 +295,15 @@ describe('705 · R39 — a shortage that clears by itself', () => {
   // ───────────────────────────────────────────────────────────────────────────────
 
   describe('§2 · a real never keeps the permanent word', () => {
-    const PERMANENT = {
-      outcome: 'refused',
-      rail: 'that-conversation-could-not-be-resumed',
-      permanence: 'until-a-person-changes-it',
-      retryable: false,
-      remedy: null,
-    }
-
     it('a missing provider session is not a shortage or a successful replacement', async () => {
       const { pm, worker, piece } = await aWorkerOver()
       issued.forgetAll()
       const address = store.workById(piece)?.label
       expect(address).toMatch(/^W/)
       const before = store.recorded().map(({ sessionId }) => sessionId)
-      await expect(wake(pm, worker, piece)).rejects.toMatchObject({
-        cause: { unavailable: 'its-session-is-gone', context: { address } },
-      })
+      recordedMessageWakeFailure(
+        store, worker, await wake(pm, worker, piece), 'provider-file-missing', /session file is missing/,
+      )
       expect(store.recorded().map(({ sessionId }) => sessionId)).toEqual(before)
       expect(store.replacements()).toEqual([])
     })
@@ -343,7 +321,9 @@ describe('705 · R39 — a shortage that clears by itself', () => {
         const { pm, worker, piece } = await aWorkerOver()
         gate.resumeFails = () => produced
         const refused = await wake(pm, worker, piece)
-        expect(theRefusal(refused), produced.message).toEqual(PERMANENT)
+        recordedMessageWakeFailure(
+          store, worker, refused, 'could-not-start', /its provider could not bring it back/,
+        )
       }
     })
   })
@@ -361,13 +341,9 @@ describe('705 · R39 — a shortage that clears by itself', () => {
       const { pm, worker, piece } = await aWorkerOver()
       gate.resumeFails = () => produced
       const refused = await wake(pm, worker, piece)
-      expect(theRefusal(refused)).toEqual({
-        outcome: 'refused',
-        rail: 'that-conversation-could-not-be-resumed',
-        permanence: 'until-a-person-changes-it',
-        retryable: false,
-        remedy: null,
-      })
+      recordedMessageWakeFailure(
+        store, worker, refused, 'could-not-start', /its provider could not bring it back/,
+      )
     })
   })
 
@@ -384,28 +360,33 @@ describe('705 · R39 — a shortage that clears by itself', () => {
         .map((item) => item.text)
     }
 
-    it('🔴 the refusal row says it lasts only while the reason does, and that the same call may work', async () => {
-      const produced = await SHORTAGES[1].make()
+    it('records a send receipt without a REFUSED row when a shortage blocks the wake', async () => {
+      const { code, make } = SHORTAGES[1]
+      const produced = await make()
       const { pm, worker, piece } = await aWorkerOver()
       gate.resumeFails = () => produced
-      await wake(pm, worker, piece)
-      const row = noticesOf(pm).find((text) => text.startsWith('refused: message_agent'))
-      expect(row).toBe(
-        `refused: message_agent · ${SHORTAGE} · only while the reason lasts · retrying may work · there is nothing to change — the same call again, once that has settled`,
+      const id = recordedMessageWakeFailure(
+        store, worker, await wake(pm, worker, piece), 'could-not-start', shortageReason(code),
       )
+      expect(events(pm)).toContainEqual(expect.objectContaining({
+        type: 'message_sent', to: worker, messageId: id, delivery: 'queued',
+      }))
+      expect(noticesOf(pm).some((text) => text.startsWith('refused: message_agent'))).toBe(false)
     })
 
-    it('⚑ control: the permanent word’s row still says somebody has to change it', async () => {
+    it('keeps the same send record when the provider cannot reopen the conversation', async () => {
       const produced = await claudeResumeOver(
         () => aSpawnRefusedAfterItsPipes('ENOENT', '/x/claude').child,
       )
       const { pm, worker, piece } = await aWorkerOver()
       gate.resumeFails = () => produced
-      await wake(pm, worker, piece)
-      const row = noticesOf(pm).find((text) => text.startsWith('refused: message_agent'))
-      expect(row).toBe(
-        'refused: message_agent · that-conversation-could-not-be-resumed · until somebody changes it · retrying will not help',
+      const id = recordedMessageWakeFailure(
+        store, worker, await wake(pm, worker, piece), 'could-not-start', /its provider could not bring it back/,
       )
+      expect(events(pm)).toContainEqual(expect.objectContaining({
+        type: 'message_sent', to: worker, messageId: id, delivery: 'queued',
+      }))
+      expect(noticesOf(pm).some((text) => text.startsWith('refused: message_agent'))).toBe(false)
     })
   })
 })

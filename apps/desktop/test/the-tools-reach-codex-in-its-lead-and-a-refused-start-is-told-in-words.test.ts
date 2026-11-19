@@ -1,3 +1,4 @@
+import { recordedMessageWakeFailure } from './lib/recorded-message-wake'
 import { openPmWithSeededWorker } from './lib/give-fixture'
 import { expectRecordedCannotRun, expectTaskKept, logKeepsFailure } from './lib/recorded-send'
 import { waitFor } from './lib/f093-host'
@@ -1040,7 +1041,6 @@ describe('§5 · Codex’s own launch failures, as the app reads them', () => {
 // §6 to §8 · every door, over a provider that fails the way a provider says so
 // ─────────────────────────────────────────────────────────────────────────────
 
-const COULD_NOT_BE_RESUMED = 'that-conversation-could-not-be-resumed'
 const THREAD_ID = '01a0d52b-4ac7-7060-9f71-9ad6fd1088dc'
 
 describe('§6 to §8 · what a failed start says at each door', () => {
@@ -1274,18 +1274,9 @@ describe('§6 to §8 · what a failed start says at each door', () => {
 
       gate.resumeFails = () => aResumeRefusedWith(refusedStart(SAID))
       const refused = await wakeByMessage(pm, worker, label)
-      expect(refused).toMatchObject({
-        rail: COULD_NOT_BE_RESUMED,
-        retryable: false,
-        detail: {
-          agent: worker,
-          because: 'its-provider-refused-it',
-          providerSaid:
-            'failed to load thread history for thread …: Too many open files (os error 24)',
-        },
-      })
-      expect(refused.reason).toBe(tools.A_WAKE_ITS_PROVIDER_REFUSED)
-      expect(refused.reason).not.toBe(tools.A_WAKE_WHOSE_PROGRAM_COULD_NOT_RUN)
+      recordedMessageWakeFailure(store, worker, refused, 'could-not-start', /its provider refused to start it/)
+      expect(JSON.stringify(refused)).not.toContain(SAID)
+      expect(JSON.stringify(refused)).not.toContain(THREAD_ID)
       // ⛔ The conversation was not replaced: a provider that refuses is not one that lost it.
       expect(host.sessionIds).toEqual(sessionsBefore)
       expect(store.piecesOwnedBy(worker)).toEqual(piecesBefore)
@@ -1294,21 +1285,14 @@ describe('§6 to §8 · what a failed start says at each door', () => {
       // of the provider's …
       gate.resumeFails = () => aResumeRefusedWith(new Error('the handshake died'))
       const generic = await wakeByMessage(pm, worker, label)
-      expect(generic).toMatchObject({
-        rail: COULD_NOT_BE_RESUMED,
-        detail: { agent: worker, because: 'the-provider-could-not-resume-it' },
-      })
-      expect(generic.detail).not.toHaveProperty('providerSaid')
-      expect(generic.reason).not.toBe(tools.A_WAKE_ITS_PROVIDER_REFUSED)
+      recordedMessageWakeFailure(store, worker, generic, 'could-not-start', /its provider could not bring it back/)
+      expect(JSON.stringify(generic)).not.toContain('the handshake died')
       // … and one that failed otherwise (StartFailed) gets the same generic word, which is the arm
       // the host's person-read wrapper would otherwise hide from the `ResumeError` reader.
       gate.resumeFails = () => aResumeRefusedWith(new StartFailed('the child exited'))
       const failedOtherwise = await wakeByMessage(pm, worker, label)
-      expect(failedOtherwise).toMatchObject({
-        rail: COULD_NOT_BE_RESUMED,
-        detail: { agent: worker, because: 'the-provider-could-not-resume-it' },
-      })
-      expect(failedOtherwise.reason).toBe(generic.reason)
+      recordedMessageWakeFailure(store, worker, failedOtherwise, 'could-not-start', /its provider could not bring it back/)
+      expect(JSON.stringify(failedOtherwise)).not.toContain('the child exited')
     })
 
     /** ⚑ A giver and its worker, the giver then stopped, and the worker's reply to it. */

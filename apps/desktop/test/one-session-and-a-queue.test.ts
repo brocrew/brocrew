@@ -209,7 +209,7 @@ describe('one session, and the callers who wait', () => {
         text: 'and mine',
       })
       expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
-      expect(refused.rail).toBe('not-a-piece-you-gave')
+      expect(refused.rail).toBe('no-piece-by-that-name')
       expect(refused.retryable).toBe(false)
 
       // Its own give starts a conversation of its own.

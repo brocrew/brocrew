@@ -12,15 +12,11 @@ import {
   A_WAKE_WHOSE_FOLDER_IS_GONE,
   A_WAKE_WHOSE_PROGRAM_COULD_NOT_RUN,
   TOOL_REFUSALS,
-  aFollowUpOnAPieceYouDidNotGive,
-  aFollowUpOnAPieceYouGaveAnother,
   aMessageAboutAQueuedPiece,
   aStartItsLoginOrSettingsRefused,
-  aFollowUpOnAPieceYouHold,
   aTakeBackOfAPieceYouHold,
   aTakeBackOfAPieceYouHoldThatEnded,
   aTakeBackOfYourOwnWork,
-  anAgentWithSeveralConversations,
   anEndedPieceSaid,
   refuseTool,
 } from '../src/main/runtime/agent-tools'
@@ -531,39 +527,6 @@ const OVERRIDES: readonly {
         yoursToRetitle: true,
       },
       3 * 24 * 60 * 60_000,
-    ),
-  },
-  // ⚑ **F087 · a follow-up naming a piece the caller holds, or gave another agent**, said as what it
-  // is — the word's own sentence guesses the name may belong to nothing. Planted with a deep label;
-  // the act comes first, so no label can push it past the cut.
-  {
-    key: 'TOOL_REFUSALS|not-a-piece-you-gave/a-piece-you-hold',
-    rail: 'not-a-piece-you-gave',
-    spreadAs: 'aFollowUpOnAPieceYouHold',
-    sentence: aFollowUpOnAPieceYouHold('W3.4.1.2.1.1'),
-  },
-  {
-    key: 'TOOL_REFUSALS|not-a-piece-you-gave/a-piece-you-gave-another',
-    rail: 'not-a-piece-you-gave',
-    spreadAs: 'aFollowUpOnAPieceYouGaveAnother',
-    sentence: aFollowUpOnAPieceYouGaveAnother('W3.4.1.2.1.1'),
-  },
-  // A follow-up naming a piece the caller neither gave nor holds: a note to the same agent. Planted
-  // with the longest address an agent has, its id.
-  {
-    key: 'TOOL_REFUSALS|not-a-piece-you-gave/a-piece-you-did-not-give',
-    rail: 'not-a-piece-you-gave',
-    spreadAs: 'aFollowUpOnAPieceYouDidNotGive',
-    sentence: aFollowUpOnAPieceYouDidNotGive('sess_0123456789abcdef0123456789abcdef'),
-  },
-  // An agent's profile name with several conversations in reach, at its longest: five labels named.
-  {
-    key: 'TOOL_REFUSALS|that-agent-has-several-conversations/their-labels',
-    rail: 'that-agent-has-several-conversations',
-    spreadAs: 'anAgentWithSeveralConversations',
-    sentence: anAgentWithSeveralConversations(
-      'a-profile-name-of-forty-characters-long',
-      Array.from({ length: 7 }, (_, at) => `W3.4.1.2.1.${at + 1}`),
     ),
   },
   // ⚑ A message about a piece still queued at a service, said with its label.

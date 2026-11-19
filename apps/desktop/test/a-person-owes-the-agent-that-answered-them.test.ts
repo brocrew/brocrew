@@ -454,9 +454,23 @@ describe('F097 · a person owes the agent that answered them', () => {
       piece: 'W1.1',
     })
     expect(asked, JSON.stringify(asked)).toMatchObject({ outcome: 'ok' })
+    const noticeAt = () => store.events(ada).find(
+      ({ event }) =>
+        event.type === 'user_turn' &&
+        (event.parts ?? [event]).some(
+          (part) => part.appNotice === 'a-question-stayed-unanswered' &&
+            part.text.includes(String(asked.question)),
+        ),
+    )?.ordinal
+    await waitFor(() => {
+      const ordinal = noticeAt()
+      return ordinal !== undefined && store.events(ada).some(
+        (entry) => entry.ordinal > ordinal && entry.event.type === 'turn',
+      )
+    }, 'the unanswered-question notice to open and finish a separate turn')
     await settle()
 
-    // ⛔ The fold's own row still says the person wrote; every reading of it says the answer instead.
+    // The informational notice preserves the task wait while the open question takes precedence.
     expect(pieceOf(ada, piece)?.state).toBe('waiting-on-the-person-who-wrote')
     expect(stateOf(ada)?.is).toBe('waiting-on-an-answer')
     expect(lastSaid(ada)?.is).toBe('waiting-on-an-answer')

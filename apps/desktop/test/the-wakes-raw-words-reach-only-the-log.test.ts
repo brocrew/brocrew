@@ -1,3 +1,4 @@
+import { recordedMessageWakeFailure } from './lib/recorded-message-wake'
 import { newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -174,8 +175,10 @@ describe('663 M50 · a wake refused logs the host’s own words and keeps them o
       })
 
       // ⚑ Positive — the caller is told, in the door's own closed sentence, that the wake failed.
-      expect(refused.structured.outcome).toBe('refused')
-      expect(refused.structured.rail).toBe('that-conversation-could-not-be-resumed')
+      recordedMessageWakeFailure(
+        store, worker, refused.structured, 'could-not-start', /could not bring it back/,
+      )
+      expect(refused.text).toContain('Your message is recorded for')
 
       // ⛔ Negative — but never in the provider's own words: neither field the caller reads carries
       // the raw string, so a model can never see what only a person reading the log should.

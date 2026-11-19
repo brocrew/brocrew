@@ -1,3 +1,4 @@
+import { recordedMessageWakeFailure } from './lib/recorded-message-wake'
 import { format } from 'node:util'
 import { expectRecordedGiveKept, recordedSendNotices } from './lib/recorded-send'
 import { newConversationGive, spawnFailureFixture } from './lib/give-fixture'
@@ -456,14 +457,9 @@ describe('707 · R39, extended — a spawn that ran short', () => {
       homeFails = shortOfDescriptors
       const wake = { agent: worker, text: 'carry on', kind: 'follow-up', piece: spawned.label }
       const refused = await callOn(pm, 'message_agent', wake)
-      expect(refused).toMatchObject({
-        outcome: 'refused',
-        rail: 'that-conversation-could-not-be-woken-just-now',
-        permanence: 'while-this-holds',
-        retryable: true,
-        remedy: 'make-the-same-call-when-this-settles',
-      })
-      expect(refused.detail).toEqual({ agent: worker, because: 'EMFILE' })
+      recordedMessageWakeFailure(
+        store, worker, refused, 'could-not-start', /BroCrew had too many files open/,
+      )
       homeFails = undefined
       expect(await callOn(pm, 'message_agent', wake)).toMatchObject({
         outcome: 'ok',

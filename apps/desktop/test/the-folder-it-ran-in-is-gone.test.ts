@@ -1,3 +1,4 @@
+import { recordedMessageWakeFailure } from './lib/recorded-message-wake'
 import { waitFor } from './lib/f093-host'
 import {
   fixtureProviderConfig,
@@ -58,7 +59,6 @@ import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-doub
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const COULD_NOT_BE_RESUMED = 'that-conversation-could-not-be-resumed'
 
 /**
  * ⚑ The sentence a person reads, for a gone folder at `path`. ⚑ **D-017b** — *did not reopen …
@@ -388,18 +388,10 @@ describe('724 · `717` F-2 — the folder it ran in is gone', () => {
         vi.spyOn(console, 'warn').mockImplementation(() => {})
 
         const refused = await wakeByMessage(pm, worker, piece)
-        expect(refused).toMatchObject({
-          outcome: 'refused',
-          rail: COULD_NOT_BE_RESUMED,
-          retryable: false,
-          detail: { agent: worker, because: 'its-folder-is-gone' },
-        })
-        const exported = tools as unknown as Record<string, unknown>
-        expect(typeof exported.A_WAKE_WHOSE_FOLDER_IS_GONE, 'no sentence for a gone folder').toBe(
-          'string',
+        recordedMessageWakeFailure(
+          store, worker, refused, 'could-not-start', /the folder it ran in is no longer there/, true,
         )
-        expect(refused.reason).toBe(exported.A_WAKE_WHOSE_FOLDER_IS_GONE)
-        expect(refused.reason).not.toBe(tools.A_WAKE_WHOSE_PROGRAM_COULD_NOT_RUN)
+        expect(JSON.stringify(refused)).not.toContain('could not run its provider’s program')
       })
     },
   )
@@ -416,9 +408,8 @@ describe('724 · `717` F-2 — the folder it ran in is gone', () => {
       })
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     const refused = await wakeByMessage(pm, worker, piece)
-    expect(refused).toMatchObject({
-      rail: COULD_NOT_BE_RESUMED,
-      detail: { agent: worker, because: 'the-provider-could-not-resume-it' },
-    })
+    recordedMessageWakeFailure(
+      store, worker, refused, 'could-not-start', /its provider could not bring it back/,
+    )
   })
 })
