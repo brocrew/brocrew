@@ -359,14 +359,10 @@ it.each([true, false])('colours live terminal warnings/errors only (TTY %s)', as
 it('rotates a full file to one older copy, so the two never pass twice the cap', async () => {
   const root = await folder()
   const file = join(root, 'logs', 'brocrew.log')
-  openLog(file, { console: false, maxBytes: 2000 })
-  // Rotation is checked as lines land, so write them in waves rather than one burst.
-  for (let wave = 0; wave < 12; wave++) {
-    for (let index = 0; index < 10; index++)
-      logInfo('fill', `line ${wave * 10 + index} ${'x'.repeat(20)}`)
-    await new Promise((resolve) => setTimeout(resolve, 20))
-  }
-  await vi.waitFor(async () => expect(await text(file)).toContain('line 119'))
+  // Finish each append before offering the next line to the rotation check.
+  openLog(file, { console: false, maxBytes: 2000, sync: true })
+  for (let index = 0; index < 48; index++) logInfo('fill', `line ${index} ${'x'.repeat(20)}`)
+  expect(await text(file)).toContain('line 47 ')
   const names = (await readdir(join(root, 'logs'))).sort()
   expect(names).toEqual(['brocrew.log', 'brocrew.old.log'])
   for (const name of names) expect((await stat(join(root, 'logs', name))).size).toBeLessThan(2400)
