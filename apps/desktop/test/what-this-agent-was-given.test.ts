@@ -258,8 +258,8 @@ describe('what an agent was given', () => {
       const ordinary = await open(host, provider, 'wren')
       const ordinaryTools = runtimes.at(-1)?.handed.at(-1)
       for (const [id, expected, count] of [
-        [primary, primaryTools, 34],
-        [ordinary, ordinaryTools, 34],
+        [primary, primaryTools, 35],
+        [ordinary, ordinaryTools, 35],
       ] as const) {
         if (expected === undefined) throw new Error('no runtime toolset captured')
         expect(expected.tools).toHaveLength(count)
