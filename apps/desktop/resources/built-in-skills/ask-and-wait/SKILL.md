@@ -16,3 +16,5 @@ For continuing help, keep the same piece across rounds. Record the completed rou
 Use list_questions for questions awaiting your answer; your own questions may appear in the turn block or on the work piece. answer_question usually interrupts a child conversation so it can read the answer; use its deferred option when an immediate interruption is unnecessary. Do not confuse your turn block's Waiting on you with the person's list.
 
 An approval wait is not a stalled piece. An agent cannot approve it or force an interrupt through that wait. For work reported as not being worked on, read the piece first. Ask its holder, or deliberately take it back; neither choice requires the other. A message can wake an idle conversation; its answer says whether it was delivered, held or not sent. Read refusals and choose a permitted remedy rather than retrying blindly. Use hand-back for a genuine blocked handover or completion, not to hide a still-needed answer.
+
+If a conversation hasn't answered after a reminder, ask someone else who can, ask the person for what only they can answer, or withdraw the question if you no longer need its answer.

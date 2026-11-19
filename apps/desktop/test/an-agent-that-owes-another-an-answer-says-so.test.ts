@@ -45,7 +45,13 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
 
 /** BroBot's child, as every door names her: the first new agent, by the piece she owns. */
 const ADA = 'Ada (the owner of W1.1 · Build the pages)'
-const OWES_ADA = `stalled · owes an answer to ${ADA}`
+const stalledOn = (id: string) => `stalled: question ${id} remains unanswered after a reminder`
+const owesAdaAfterReminder = (id: string): AgentState => ({
+  is: 'owes-an-answer',
+  to: [ADA],
+  stalledQuestion: id,
+  since: expect.any(Number),
+})
 const WAITING_ON_ADA = `waiting on ${ADA}`
 
 const settle = (): Promise<void> => settleFixtureTurns(2, 30)
@@ -265,19 +271,19 @@ describe('the host says who a conversation owes an answer to, and moves the word
     const id = await adaAsksHerParent(adaTools)
     await untilPushed(
       brobot,
-      { is: 'owes-an-answer', to: [ADA], stalled: true, since: expect.any(Number) },
+      owesAdaAfterReminder(id),
       'the parent to be pushed as owing',
     )
-    expect(stateOf(brobot)).toEqual({ is: 'owes-an-answer', to: [ADA], stalled: true, since: expect.any(Number) })
+    expect(stateOf(brobot)).toEqual(owesAdaAfterReminder(id))
     const asked = store.routedRequestsOf(ada).find((one) => one.requestId === id)?.at
     expect(asked).toEqual(expect.any(Number))
     expect(stateOf(brobot)).toMatchObject({ since: asked })
     expect(stateOf(ada)).toMatchObject({ is: 'waiting-on-an-answer', since: asked })
     const observer = await personOpens('reviewer')
-    expect(await wordsOf(observer, brobot)).toBe(OWES_ADA)
+    expect(await wordsOf(observer, brobot)).toBe(stalledOn(id))
     const agents = await callOn(agentToolsFor(host, observer), 'list_agents', {})
     const rows = agents.agents as { agent: string; state: string }[]
-    expect(rows.find((one) => one.agent === brobot)?.state).toBe(OWES_ADA)
+    expect(rows.find((one) => one.agent === brobot)?.state).toBe(stalledOn(id))
     expect(stateOf(ada)?.is).toBe('waiting-on-an-answer')
     expect(seeded).not.toHaveBeenCalled()
 
@@ -311,7 +317,7 @@ describe('the host says who a conversation owes an answer to, and moves the word
     const first = await adaAsksHerParent(adaTools)
     await untilPushed(
       brobot,
-      { is: 'owes-an-answer', to: [ADA], stalled: true, since: expect.any(Number) },
+      owesAdaAfterReminder(first),
       'the parent to owe the first',
     )
     const answered = await callOn(agentToolsFor(host, brobot), 'answer_question', {
@@ -406,7 +412,7 @@ describe('the host says who a conversation owes an answer to, and moves the word
 
     await untilPushed(
       brobot,
-      { is: 'owes-an-answer', to: [ADA], stalled: true, since: expect.any(Number) },
+      owesAdaAfterReminder(raised.id),
       'the parent to owe the card',
     )
 
@@ -436,10 +442,10 @@ describe('the host says who a conversation owes an answer to, and moves the word
 
   it('a stand-in owes what the conversation it replaced owed, and the replaced one owes nothing', async () => {
     const { brobot, ada, adaTools } = await aGiverWaitingOnAHelper()
-    await adaAsksHerParent(adaTools)
+    const id = await adaAsksHerParent(adaTools)
     await untilPushed(
       brobot,
-      { is: 'owes-an-answer', to: [ADA], stalled: true, since: expect.any(Number) },
+      owesAdaAfterReminder(id),
       'the parent to owe it',
     )
 
@@ -486,7 +492,7 @@ describe('the host says who a conversation owes an answer to, and moves the word
       'the stand-in to be pushed as owing the answer',
     )
     await settle()
-    expect(lastSaid(next)).toEqual({ is: 'owes-an-answer', to: [ADA], stalled: true, since: expect.any(Number) })
+    expect(lastSaid(next)).toEqual(owesAdaAfterReminder(id))
 
     // The replaced one owes nothing.
     const old = listed(brobot)
@@ -503,7 +509,7 @@ describe('the host says who a conversation owes an answer to, and moves the word
     const id = await adaAsksHerParent(adaTools)
     await untilPushed(
       brobot,
-      { is: 'owes-an-answer', to: [ADA], stalled: true, since: expect.any(Number) },
+      owesAdaAfterReminder(id),
       'the parent to be pushed as owing',
     )
     // Ada's question, as another machine exported it, now put to the reviewer by a conversation
@@ -548,10 +554,10 @@ describe('the host says who a conversation owes an answer to, and moves the word
 
     it('the parent that owes its child an answer is stopped by its countdown, and still says it owes', async () => {
       const { brobot, ada, adaTools } = await aGiverWaitingOnAHelper()
-      await adaAsksHerParent(adaTools)
+      const id = await adaAsksHerParent(adaTools)
       await untilPushed(
         brobot,
-        { is: 'owes-an-answer', to: [ADA], stalled: true, since: expect.any(Number) },
+        owesAdaAfterReminder(id),
         'the parent to owe it',
       )
       expect(runningOf(brobot)).toBe('in-a-window')
@@ -569,12 +575,7 @@ describe('the host says who a conversation owes an answer to, and moves the word
 
       await waitFor(() => runningOf(brobot) === 'not-running', 'the parent to be stopped')
       // The stop changed nothing about the question.
-      expect(listed(brobot)?.state).toEqual({
-        is: 'owes-an-answer',
-        to: [ADA],
-        stalled: true,
-        since: expect.any(Number),
-      })
+      expect(listed(brobot)?.state).toEqual(owesAdaAfterReminder(id))
       const open = store.routedRequestsOf(ada).filter((one) => one.state === 'open')
       expect(open.map((one) => one.parent)).toContain(brobot)
     })

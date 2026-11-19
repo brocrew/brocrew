@@ -159,15 +159,24 @@ describe('§1 · agentStateArm ranks all eight, and agentStateOf carries each ar
     // ⚑ **F036 · owes-an-answer carries who waits on it** — the first, and how many more — and its
     // own question still outranks it.
     const owes = { ...base, waitingOnTheAnswerOf: null, owesAnAnswerTo: ['Ada', 'Ali'] }
-    expect(agentStateOf(owes, 0)).toEqual({ is: 'owes-an-answer', to: ['Ada', 'Ali'], stalled: true })
-    expect(agentStateOf({ ...owes, background: running('b1', 'npm test') }, 0)).toEqual({
+    expect(agentStateOf(owes, 0)).toEqual({ is: 'owes-an-answer', to: ['Ada', 'Ali'] })
+    expect(agentStateWords(agentStateOf(owes, 0))).toBe('owes an answer to Ada +1')
+    expect(agentStateWords(agentStateOf({ ...owes, owesAnAnswerTo: ['Ada'] }, 0))).toBe(
+      'owes an answer to Ada',
+    )
+    const stalled = { ...owes, stalledQuestion: 'req_original' }
+    expect(agentStateOf(stalled, 0)).toEqual({
+      is: 'owes-an-answer',
+      to: ['Ada', 'Ali'],
+      stalledQuestion: 'req_original',
+    })
+    expect(agentStateWords(agentStateOf(stalled, 0))).toBe(
+      'stalled: question req_original remains unanswered after a reminder',
+    )
+    expect(agentStateOf({ ...stalled, background: running('b1', 'npm test') }, 0)).toEqual({
       is: 'owes-an-answer',
       to: ['Ada', 'Ali'],
     })
-    expect(agentStateWords(agentStateOf(owes, 0))).toBe('stalled · owes an answer to Ada +1')
-    expect(agentStateWords(agentStateOf({ ...owes, owesAnAnswerTo: ['Ada'] }, 0))).toBe(
-      'stalled · owes an answer to Ada',
-    )
     expect(agentStateOf({ ...owes, waitingOnTheAnswerOf: 'BroBot' }, 0)).toEqual({
       is: 'waiting-on-an-answer',
       from: 'BroBot',

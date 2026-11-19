@@ -55,6 +55,9 @@ const questionPayload = (one: VisibleQuestion): Readonly<Record<string, unknown>
   // one who may settle it*, which `because` alone cannot say now that it is absent on one of the
   // two `a-person` arms.
   went_to: one.request.went.to,
+  ...(one.stalledRecipient === undefined
+    ? {}
+    : { delivery: 'stalled after a reminder', recipient: one.stalledRecipient }),
   words: one.words,
   asked_at: one.request.at,
   ended_at: one.request.endedAt,
@@ -104,6 +107,10 @@ const QUESTION_STATE_SENTENCE: Partial<Readonly<Record<RequestState, string>>> =
 const questionLine = (one: VisibleQuestion): string => {
   const said = QUESTION_STATE_SENTENCE[one.request.state]
   const refused = theChannelRefusalIn(one.request)
+  const recipient = one.stalledRecipient
+  const delivery = recipient === undefined
+    ? ''
+    : ` · stalled after a reminder · conversation ${recipient.address} · ${recipient.title}`
   // **D-016 · commit 7 · R3 — the asker by its agent's name and its piece** — F033 · the one it
   // asked under ({@link VisibleQuestion.askerCalled}), as the question's own words name it. The
   // payload keeps its id.
@@ -120,7 +127,7 @@ const questionLine = (one: VisibleQuestion): string => {
         ? ' · addressed to a person, and it is still yours to answer if you know'
         : ''
       : ` · a person answers this one (${refused})`
-  }${wordsMissingClause(one)}`
+  }${delivery}${wordsMissingClause(one)}`
 }
 
 /** A question that is over, as a line says it: who asked, and how it ended. */

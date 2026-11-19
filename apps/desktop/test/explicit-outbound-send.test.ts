@@ -117,7 +117,7 @@ describe('explicit outbound sends', () => {
     const received = () =>
       world.sent.filter((one) => one.as === 'outbound-target' && one.words.includes(id))
     await waitFor(() => received().length >= 2, 'the unanswered question to start the next turn')
-    expect(received()[1]?.words).toContain(`Use asked_by ${sender} with this question id.`)
+    expect(received()[1]?.words).toContain(`using asked_by ${sender}, or give cannot_answer with your reason.`)
     expect(world.store.routedRequestsOf(sender)).toEqual(
       expect.arrayContaining([expect.objectContaining({ requestId: id, state: 'open' })]),
     )
@@ -152,13 +152,13 @@ describe('explicit outbound sends', () => {
       )
     await waitFor(() => notices().length === 1, 'the asker to receive the unanswered notice')
     expect(notices()[0]).toMatchObject({
-      text: expect.stringContaining(`didn’t answer after a reminder. Question ${id} is still open.`),
+      text: expect.stringContaining(`didn't answer question ${id} after a reminder.`),
     })
     expect(reminders()).toHaveLength(1)
     expect(storeQuestionState()).toBe('open')
     expect(host.agentCard(target, world.window, null)?.state).toMatchObject({
       is: 'owes-an-answer',
-      stalled: true,
+      stalledQuestion: id,
     })
 
     await host.closeAll()
@@ -180,6 +180,58 @@ describe('explicit outbound sends', () => {
 
     function storeQuestionState() {
       return world.store.routedRequestsOf(sender).find((one) => one.requestId === id)?.state
+    }
+  })
+
+  it('retracts a held unanswered notice when the asker withdraws the original question', async () => {
+    host.claimSession(sender, world.window)
+    const gate = Promise.withResolvers<void>()
+    world.turnsWait = gate.promise
+    try {
+      await host.send(sender, 'Hold the asker’s turn open.', world.window)
+      world.turnsWait = null
+      const asked = await send('ask_question', {
+        who_answers: 'an-agent',
+        agent: target,
+        question: 'Is a printed copy required?',
+      })
+      const id = asked.structured?.question
+      if (typeof id !== 'string') throw new Error('The question has no recorded id.')
+      const pendingNotice = () =>
+        world.store.messagesWaitingIn(sender).find(
+          (one) => one.authorship.appNotice === 'a-question-stayed-unanswered',
+        )
+      await waitFor(() => pendingNotice() !== undefined, 'the asker note to queue')
+      const queued = pendingNotice()
+      if (queued === undefined) throw new Error('The notice is absent from the mailbox.')
+      expect(queued.asks).toEqual({ asker: sender, requestId: id })
+
+      const withdrawn = await send('withdraw_question', { question: id })
+      expect(withdrawn.structured?.outcome).toBe('ok')
+      gate.resolve()
+      await waitFor(
+        () => world.ledger(sender).some(
+          (event) => event.type === 'message_unqueued' && event.messageId === queued.messageId,
+        ),
+        'withdrawal to retract the held notice',
+      )
+      expect(world.ledger(sender)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: 'message_unqueued',
+            messageId: queued.messageId,
+            reason: 'retracted',
+          }),
+        ]),
+      )
+      expect(world.ledger(sender)).not.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ type: 'user_turn', appNotice: 'a-question-stayed-unanswered' }),
+        ]),
+      )
+    } finally {
+      gate.resolve()
+      world.turnsWait = null
     }
   })
 
