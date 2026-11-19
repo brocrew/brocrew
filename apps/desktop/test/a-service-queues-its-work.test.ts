@@ -968,8 +968,9 @@ describe('a service queues the work it is given', () => {
       })
       const label = String(given.structured.label)
       expect(given.text.split('\n')[0]).toContain(
-        `Task ${label} held for browser-driver at conversation ${String(given.structured.agent)} · `,
+        `Task ${label} held for browser-driver in a new conversation ${String(given.structured.agent)} · `,
       )
+      expect(given.text.split('\n')[0]).toMatch(/Context: no current reading\.$/)
       expect(given.text.split('\n')[0]).not.toContain('Book the room')
       const behind = await call(host, first, 'give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
@@ -981,6 +982,9 @@ describe('a service queues the work it is given', () => {
       expect(behind.structured.receipt).toMatchObject({
         recipient: { state: { kind: 'queued', behind: 1 } },
       })
+      expect(behind.text.split('\n')[0]).toContain(
+        `Task ${String(behind.structured.label)} held for browser-driver in the existing conversation ${String(given.structured.agent)} · `,
+      )
       expect(behind.structured).not.toHaveProperty('folder')
     })
 

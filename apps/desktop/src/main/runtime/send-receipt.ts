@@ -1,3 +1,4 @@
+import type { ContextReading } from '@brobot2/runtime'
 import type { SendReceipt } from '../../shared/tool-outcome'
 import { describeConversation } from './conversation-address'
 
@@ -13,7 +14,12 @@ type DeliveryFacts = Pick<SendReceipt, 'attachments'> & {
 type Recorded = SendReceipt['recorded']
 export type SendFacts = DeliveryFacts &
   (
-    | { readonly recorded: Recorded & { readonly kind: 'task' }; readonly profile: string }
+    | {
+        readonly recorded: Recorded & { readonly kind: 'task' }
+        readonly profile: string
+        readonly targetKind: 'new' | 'continued'
+        readonly context?: ContextReading | null
+      }
     | {
         readonly recorded: Recorded & { readonly kind: 'message' | 'question' }
         readonly waitsFor?: string | null
@@ -36,10 +42,15 @@ export function sendReceipt(
   if (!('profile' in facts)) {
     return { receipt, said: outboundReceiptSaid(facts, address, conversation) }
   }
-  const recipient = `${facts.profile} at ${conversation}`
   const task = `Task ${recorded.taskLabel}`
-  if (state.kind === 'started') return { receipt, said: `${task} sent to ${recipient}.` }
-  if (state.kind === 'queued') return { receipt, said: `${task} held for ${recipient}.` }
+  if (state.kind === 'started' || state.kind === 'queued') {
+    const delivery = state.kind === 'started' ? 'sent to' : 'held for'
+    const target = facts.targetKind === 'new' ? 'a new' : 'the existing'
+    return {
+      receipt,
+      said: `${task} ${delivery} ${facts.profile} in ${target} ${conversation}. ${contextInTheReceipt(facts.context)}`,
+    }
+  }
   const cause = state.cause.reason
     .replace(/^This conversation did not start: /, '')
     .replace(/\.$/, '')
@@ -54,6 +65,17 @@ export function sendReceipt(
     receipt,
     said: `${task} is recorded in ${conversation}, but it could not start: ${cause}. The work is kept. Once the cause is fixed, send a message to this address to try starting it again.${person}`,
   }
+}
+
+function contextInTheReceipt(reading: ContextReading | null | undefined): string {
+  if (reading == null || reading.kind === 'unknown') return 'Context: no current reading.'
+  if (reading.kind === 'tokens') {
+    const used = Math.round(reading.used).toLocaleString('en-US')
+    return `Context: ${used} tokens used (window size not reported).`
+  }
+  const rounded = Math.round((100 * reading.used) / reading.window)
+  const percent = rounded === 0 && reading.used > 0 ? '<1' : String(rounded)
+  return `Context: ${percent}% used.`
 }
 
 function outboundReceiptSaid(

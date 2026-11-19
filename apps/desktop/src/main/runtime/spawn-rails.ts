@@ -901,6 +901,7 @@ export type GiveOutcome = ToolOutcome<
   {
     readonly piece: string
     readonly label: string
+    readonly targetKind: 'new' | 'continued'
     /** 🔴 **The conversation the brief reached** — after a replacement, not the one looked up (R2). */
     readonly owner: string
     /** The conversation the lookup found or the start made, before any replacement. */

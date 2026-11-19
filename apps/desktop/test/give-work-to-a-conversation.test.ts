@@ -338,7 +338,7 @@ describe('give_work goes to the conversation the giver names', () => {
     expect(delivery === 'sent' || delivery === 'held').toBe(true)
     const action = delivery === 'sent' ? 'sent to' : 'held for'
     expect(navigationReply(result.text).prose).toBe(
-      `Task ${label} ${action} pm at conversation ${named.label} · Lisbon trip.`,
+      `Task ${label} ${action} pm in the existing conversation ${named.label} · Lisbon trip. Context: no current reading.`,
     )
   })
 

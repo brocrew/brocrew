@@ -23810,9 +23810,21 @@ export class RuntimeHost implements LiveHost {
   receiptForSend(facts: SendFacts): ReturnType<typeof sendReceipt> {
     const delivery =
       'profile' in facts
-        ? facts
+        ? {
+            ...facts,
+            context: facts.state.kind === 'cannot-run' ? null : this.contextOfConversation(facts.to),
+          }
         : { ...facts, heldBehindTurn: this.heldBehindATurn(facts.recorded.id) }
     return sendReceipt(delivery, this.deps.store, this.theServiceOf(facts.to) !== null)
+  }
+
+  private contextOfConversation(
+    sessionId: string,
+    live = this.slots.get(sessionId)?.session ?? null,
+  ): ContextReading | null {
+    if (live !== null) return live.latestContext
+    const row = this.deps.store.newestOfType?.(sessionId, 'context_reading') ?? null
+    return row?.event.type === 'context_reading' ? row.event.reading : null
   }
 
   stateOfARecordedMessage(owner: string, id: string): SendRecipientState {
@@ -35464,14 +35476,7 @@ export class RuntimeHost implements LiveHost {
         : null
     const declaredWith =
       startedWith !== null && startedWith.length < MAX_TOOL_TEXT ? startedWith : null
-    const contextRow =
-      live === null ? (this.deps.store.newestOfType?.(sessionId, 'context_reading') ?? null) : null
-    const context =
-      live !== null
-        ? live.latestContext
-        : contextRow?.event.type === 'context_reading'
-          ? contextRow.event.reading
-          : null
+    const context = this.contextOfConversation(sessionId, live)
     return whatItWasGiven({
       sessionId,
       provider,
