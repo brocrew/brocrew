@@ -10820,7 +10820,8 @@ export class RuntimeHost implements LiveHost {
     const failures: AgentStatusRead['failures'][number][] = []
     const card = this.readAgentCard(id, by, me, (piece) => {
       const failure = piece.providerTurnFailure
-      if (piece.giver === me && failure !== undefined) failures.push({ piece: piece.piece, failure })
+      if (piece.giver === me && failure !== undefined)
+        failures.push({ piece: piece.piece, failure })
     })
     if (card === null) return null
     const questionFailure =

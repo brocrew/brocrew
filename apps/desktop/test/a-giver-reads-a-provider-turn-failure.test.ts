@@ -97,7 +97,6 @@ it('reads each giver’s recorded error and the current provider and model, live
       expect(listed.text).not.toContain(hidden.failure.message)
   }
   await check()
-  host.claimSession(holder, w.window)
   await host.close(holder, w.window)
   await check()
 })

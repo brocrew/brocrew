@@ -66,7 +66,10 @@ export function turnBlockChanges(
     rows: rows.map((row) => {
       const { providerTurnFailure, ...ordinary } = row
       if (providerTurnFailure === undefined) return row
-      if (providerTurnFailure.turnOrdinal !== latestFailure.get(row.owner) || diagnosed.has(row.owner))
+      if (
+        providerTurnFailure.turnOrdinal !== latestFailure.get(row.owner) ||
+        diagnosed.has(row.owner)
+      )
         return ordinary
       diagnosed.add(row.owner)
       return row

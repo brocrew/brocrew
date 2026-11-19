@@ -114,8 +114,7 @@ function extraLines(facts: ExtraTurnFacts, now: number): string[] {
     lines.push(
       ...rows.slice(0, 5).map((row) => {
         const label = [...row.label].length <= TURN_LABEL_POINTS ? row.label : row.piece
-        if (row.state === null || label !== row.label)
-          return TURN_BLOCK_WORDS.helperUnknown(label)
+        if (row.state === null || label !== row.label) return TURN_BLOCK_WORDS.helperUnknown(label)
         if (row.providerTurnFailure !== undefined) {
           const conversation = row.conversation.replace(/^conversation /, 'Conversation ')
           const cause = oneLine(row.providerTurnFailure.message, WORK_BRIEF_CHARS)

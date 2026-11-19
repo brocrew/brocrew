@@ -676,8 +676,7 @@ export function createGetAgentStatusTool(
           [
             cardText(card, conversation, (piece) =>
               pieceOnTheCardText(piece, piece.piece === newest?.piece ? diagnosis : undefined),
-            ) +
-              (archivedAt === null ? '' : archivedSaid(archivedAt, last.readAt)),
+            ) + (archivedAt === null ? '' : archivedSaid(archivedAt, last.readAt)),
             ...(questionFailure !== null && diagnosis !== undefined ? [diagnosis] : []),
             ...theLastTurnSaid(card.lastEndedTurn, last, named, askedBy, card.lastAskToStop),
           ].join('\n\n'),
