@@ -1200,19 +1200,33 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     expect(asked.at(-1)?.piece).toBe(fresh.piece)
   })
 
-  it("a question for the giver of a conversation's own root goes to a person, and one for the giver of a given piece goes to that giver", async () => {
+  it('refuses a root parent ask and records explicit person and actual giver asks', async () => {
     const { pm, worker, pmTools, workerTools, piece } = await aPmAndItsWorker('the piece')
     const rootPiece = store.rootOf(pm)
     if (rootPiece === null) throw new Error('the pm has no root')
 
-    // The pm holds only its root, so an unnamed ask is about that. Its giver is a person.
-    const fromPm = await callWithWords(pmTools, 'ask_question', {
+    const noGiver = await callWithWords(pmTools, 'ask_question', {
       question: 'which city?',
       who_answers: 'the-parent',
     })
+    expect(noGiver.structured).toMatchObject({
+      outcome: 'refused',
+      rail: 'no-conversation-gave-this-work',
+    })
+    expect(noGiver.structured).not.toHaveProperty('question')
+    expect(noGiver.structured).not.toHaveProperty('receipt')
+    expect(noGiver.text).toBe(
+      'Not sent: no conversation gave you this work. If you meant to ask the person, use who_answers: a-person.',
+    )
+    expect(askedIn(pm)).toEqual([])
+    expect(routedIn(pm)).toEqual([])
+
+    const fromPm = await callWithWords(pmTools, 'ask_question', {
+      question: 'which city?',
+      who_answers: 'a-person',
+    })
     expect(fromPm.structured.outcome, JSON.stringify(fromPm.structured)).toBe('ok')
     expect(fromPm.structured.went_to).toBe('a-person')
-    expect(fromPm.structured.went_to).not.toBe('the-parent')
     expect(fromPm.text).toBe(
       `Question ${fromPm.structured.question} recorded for the person. The answer arrives as a message.`,
     )

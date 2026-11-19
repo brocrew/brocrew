@@ -820,12 +820,9 @@ describe('611 · a question names who it is for', () => {
     })
   })
 
-  /**
-   * 🔴 **§5 · the ANSWER path, and the half of it that is still missing.**
-   */
-  describe('§5 · addressing is where it GOES, not a lock on who may answer', () => {
-    it('⚑ the parent may still answer a question its child addressed to a person', async () => {
-      const { pm, worker, pmTools, workerTools, piece } = await aWorkerHoldingWork()
+  describe('§5 · only the person answers a fresh person-addressed request', () => {
+    it('refuses a giver and the asker as proxies, then accepts the person’s answer', async () => {
+      const { worker, pmTools, workerTools, piece } = await aWorkerHoldingWork()
       const asked = await callOn(workerTools, 'ask_question', {
         piece,
         question: 'which cities?',
@@ -833,31 +830,52 @@ describe('611 · a question names who it is for', () => {
         options: ['Lisbon', 'Porto'],
       })
       expect(asked.outcome, JSON.stringify(asked)).toBe('ok')
-      // ⛔ **`HO-088` §2.3: *"Ada still SEES that Ali asked and sees the answer."*** ⚑ The words
-      // are there, and `answerable_by_you` says the door will take it.
       const listed = (await callOn(pmTools, 'list_questions', {})).questions as Record<
         string,
         unknown
       >[]
-      const row = listed.find((one) => one.question === asked.question)
-      expect(row?.answerable_by_you).toBe(true)
-      expect(row?.went_to).toBe('a-person')
-      expect(String(row?.words)).toContain('which cities?')
-
-      // 🔴 **And it really is answerable** — measured through the door rather than read off a
-      // field. ⛔ Refusing here would leave the question with NOBODY in this app able to settle
-      // it, which is `589`'s permanent *NEEDS YOU* rebuilt (see §5.2 below).
-      const answered = await callOn(pmTools, 'answer_question', {
-        question: asked.question,
+      const id = asked.question as string
+      expect(listed.some((one) => one.question === id)).toBe(false)
+      const route = () => store.routedRequestsOf(worker).find((one) => one.requestId === id)
+      expect(route()).toMatchObject({ parent: null, state: 'open' })
+      const proxy = {
+        question: id,
         answers: [{ part: 'answer', answer: ['Lisbon'] }],
+      }
+      const refusal = {
+        outcome: 'refused',
+        rail: 'person-addressed-request',
+        reason:
+          'Not answered: only the person can answer this request. If you asked it and no longer need it, withdraw it.',
+      }
+      expect(await callOn(pmTools, 'answer_question', { ...proxy, asked_by: worker })).toMatchObject(
+        refusal,
+      )
+      expect(await callOn(workerTools, 'answer_question', proxy)).toMatchObject(refusal)
+      const missing = await callOn(pmTools, 'answer_question', {
+        ...proxy,
+        question: `${id}-unknown`,
+        asked_by: worker,
       })
-      expect(answered.outcome, JSON.stringify(answered)).toBe('ok')
-      const settled = store.routedRequestsOf(worker).find((one) => one.requestId === asked.question)
-      expect(settled?.state).toBe('answered')
-      // ⚑ **It leaves the person's queue the moment the ledger says so.**
+      expect(missing).toMatchObject({ outcome: 'refused', rail: 'no-question-by-that-name' })
+      await personOpens('worker')
+      const unrelated = await callOn(theToolsetJustHandedOut(), 'answer_question', {
+        ...proxy,
+        asked_by: worker,
+      })
+      expect(unrelated).toMatchObject({ outcome: 'refused', rail: 'no-question-by-that-name' })
+      expect(route()?.state).toBe('open')
+      expect(host.questionsForAPerson().rows.map((item) => item.request.requestId)).toContain(id)
+
+      const response = { kind: 'answer' as const, answers: { answer: ['Lisbon'] } }
+      expect(await host.respondUserInput(worker, id, response, window)).toMatchObject({
+        outcome: 'taken',
+      })
+      expect(route()?.state).toBe('answered')
       expect(host.questionsForAPerson().rows).toEqual([])
-      expect(pm).not.toBe(worker)
-      // ⚠️ **And the answer reaches the worker as WORDS**, which is `591`'s route unchanged.
+      expect(await host.respondUserInput(worker, id, response, window)).toMatchObject({
+        outcome: 'refused',
+      })
       await waitFor(
         () => wordsIn(worker).some((text) => text.includes('Lisbon')),
         'the answer to reach the worker',

@@ -279,14 +279,16 @@ export function createWithdrawQuestionTool(
   return {
     name: 'withdraw_question',
     description:
-      'Withdraw a question you asked and no longer need answered. It closes the question: an answer given after this is refused, and nothing reaches you. Name it by the id ask_question returned.',
+      "Withdraw a question or action request you made and no longer need. Use the request id returned by ask_question or request_action. It stays in your conversation's history as withdrawn and leaves the open queue; a later answer is refused. Withdrawal does not record an answer.",
     /**
      * **D-009 · F012 — ruling 5: the asker can withdraw it.** Its own open question and
      * nothing else — `RuntimeHost.withdrawQuestion` is the rail.
      */
     beyondItsRails: 'nothing-its-rails-do-not-cover',
     input: {
-      question: z.string().describe('The question id, exactly as ask_question returned it.'),
+      question: z
+        .string()
+        .describe('The request id, exactly as ask_question or request_action returned it.'),
     },
     call: (args) =>
       guarded(async () => {
