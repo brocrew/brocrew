@@ -867,6 +867,7 @@ function fakeBridge() {
     setServicesOn: async () => ({ servicesOn: false }),
     // 500 · answers the fail-safe word, like the switch above answers the fail-closed one.
     setDefaultApprovalMode: async () => ({ defaultApprovalMode: 'ask' as const }),
+    readConversationIdentity: async () => null,
     // D-016 · R4 · ⛔ **`no-piece-by-that-name`, the refusal arm, as `setAgentDisplayName` answers
     // its own**: this double holds no work, so there is no piece to rename — in the door's own words.
     renameConversation: async () => ({

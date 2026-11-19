@@ -5,6 +5,7 @@ import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
 describe('renaming a conversation', () => {
+  const profileName = 'Selected Worker'
   let world: AServiceWorld
   let host: RuntimeHost
   let target: string
@@ -15,6 +16,7 @@ describe('renaming a conversation', () => {
     world = aServiceWorld()
     world.anAgent('caller', 'normal')
     world.anAgent('worker', 'normal')
+    expect(world.store.setAgentDisplayName('worker', profileName)).toBe(true)
     changed = []
     host = world.aHost({ announce: (notice) => changed.push(notice.what) })
     target = await world.aPersonOpens(host, 'worker')
@@ -45,7 +47,7 @@ describe('renaming a conversation', () => {
     expect(await readIdentity(target)).toEqual({
       conversation: target,
       address: root.label,
-      title: taskTitle ?? 'worker',
+      title: taskTitle ?? profileName,
       author: null,
     })
     changed.length = 0
@@ -133,7 +135,7 @@ describe('renaming a conversation', () => {
     expect(await readIdentity(sessionId)).toEqual({
       conversation: sessionId,
       address: sessionId,
-      title: 'worker',
+      title: profileName,
       author: null,
     })
 
