@@ -381,6 +381,7 @@ function whatARefusalAdds(
   if (structured === undefined || structured['outcome'] !== 'refused') return ''
   const rail = aText(structured['rail']) ?? ''
   const detail = detailOf(structured)
+  if (rail === 'a-person-is-being-asked' && aText(detail['approval']) !== undefined) return ''
   const said = Object.hasOwn(DETAIL_SAID, rail) ? (DETAIL_SAID[rail]?.(detail, context) ?? []) : []
   const unused = aText(structured['label_not_used'])
   if (unused !== undefined) said.push(theLabelWasUsedUp(unused))
@@ -433,6 +434,13 @@ export function appOnlyRefusalQuote(
   if (finalText === undefined) return reason
   refusalReason(reason)
   const rail = aText(structured?.['rail'])
+  if (
+    rail === 'a-person-is-being-asked' &&
+    aText(detailOf(structured)['approval']) !== undefined &&
+    finalText === reason
+  ) {
+    return reason
+  }
   const prefix =
     hasDirectRefusalOpening(reason) && finalText.startsWith(reason) ? '' : `refused (${rail}): `
   const base = `${prefix}${reason}`

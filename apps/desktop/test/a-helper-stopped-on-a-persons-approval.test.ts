@@ -209,6 +209,47 @@ describe('a helper stopped on a person’s approval', () => {
       expect(handle.status()).toBe('waiting_permission')
     })
 
+    it('interrupt_agent names the approval and leaves the card and held words untouched', async () => {
+      const { pmTools, worker, label, handle, card } = await aGiverAndItsStoppedHelper()
+      const reason = 'The person asked for a different chapter'
+      const held = await callOn(pmTools, 'message_agent', {
+        agent: worker,
+        kind: 'follow-up',
+        piece: label,
+        text: 'Read the next chapter when you can.',
+      })
+      expect(held.structured).toMatchObject({ delivery: 'queued' })
+      const before = ledger(worker)
+      const routes = store.routedRequestsOf(worker)
+
+      const stopped = await callOn(pmTools, 'interrupt_agent', { agent: label, reason })
+
+      expect(stopped.structured).toMatchObject({
+        outcome: 'refused',
+        rail: 'a-person-is-being-asked',
+      })
+      expect(stopped.text).toBe(
+        `Not stopped: conversation ${label} · The tests is waiting for the person to approve ${ITS_REQUEST} Ali (pm), who is giving you ${label} · The tests. A person is at that …), and only the person can settle that. Nothing was ended and your reason was not sent. The person can approve, deny or stop it themselves.`,
+      )
+      expect(handle.status()).toBe('waiting_permission')
+      expect(ledger(worker)).toEqual(before)
+      expect(store.routedRequestsOf(worker)).toEqual(routes)
+
+      host.claimSession(worker, window)
+      await host.respondPermission(worker, card, { outcome: 'allow' }, window)
+      expect(store.routedRequestsOf(worker).find((row) => row.requestId === card)?.state).toBe(
+        'decided',
+      )
+      expect(ledger(worker)).toContainEqual(
+        expect.objectContaining({
+          type: 'user_decision',
+          requestId: card,
+          outcome: 'allow',
+          by: { who: 'a-person' },
+        }),
+      )
+    })
+
     it('list_tasks: the piece it holds says what its holder’s turn is stopped on', async () => {
       const { pmTools } = await aGiverAndItsStoppedHelper()
       const board = await callOn(pmTools, 'list_tasks', {})
