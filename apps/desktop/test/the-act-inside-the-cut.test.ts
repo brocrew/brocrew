@@ -198,11 +198,6 @@ const LONG_PATH = `/Users/somebody/${'deep/'.repeat(50)}folder`
  */
 const LABEL_LISTS = new Set(['held', 'stalled', 'choices'])
 /**
- * ⚑ **D-038** — what a giver keeps past its folder that the child would not (`wouldLack`): both, from
- * a Codex `ask` giver. It was `BOTH_REMOVALS`, what the child's mode also took off.
- */
-const BOTH_PROTECTIONS = ['the-card-before-an-act', 'the-sandbox-around-an-act'] as const
-/**
  * ⚑ **D-042** — a model's name at its longest: 120 is the cap on one a person types
  * (`ipc.ts`' `aModelsName`, for `createSession` and a hand-added model), and a model an agent names
  * is either one of those or a provider's own, shorter, id.
@@ -236,13 +231,6 @@ const SPAWN_DETAILS: Partial<Record<(typeof SPAWN_RAILS)[number], readonly Spawn
     ],
     'service-provider-is-fixed': [
       { profileId: LONG_SLUG, provider: 'codex', choices: [LONG_MODEL] },
-    ],
-    // ⚑ **D-038** — the sentence names both modes now, the giver's and the one the child would run
-    // in, so `asked` is planted (without it the row prints `?`); a refusal is an `ask` giver whose
-    // child would run in `auto`, and `wouldLack` (it was `alsoRemoves`) is what the giver keeps.
-    'wider-than-its-parent': [
-      { asked: 'auto', spawnerRunsAs: 'ask', wouldLack: BOTH_PROTECTIONS },
-      { asked: 'auto', spawnerRunsAs: 'ask', wouldLack: [] },
     ],
     'no-such-profile': [{ profileId: LONG_SLUG }],
     // ⚑ The act comes before the name, so a name at its longest leaves it inside the cut.
@@ -725,7 +713,6 @@ const ACT: Readonly<Record<string, string>> = {
   // ⚑ **D-016 · commit 3** — `agent-already-has-work-open` went with the one-open-task rail; the
   // stall rule (`SPAWN_RAILS|its-work-has-stalled`) replaced it until a give came to
   // name a stall instead of refusing.
-  'TOOL_REFUSALS|spawning-disabled': 'no retry will pass until they switch it back on',
   'TOOL_REFUSALS|agent-did-not-start':
     'ask a person to read the detail and decide whether to start that conversation again',
   'TOOL_REFUSALS|agent-took-too-long-to-start': 'make the same call again',
@@ -745,7 +732,6 @@ const ACT: Readonly<Record<string, string>> = {
   'TOOL_REFUSALS|agent-did-not-start/its-sign-in-or-settings':
     'Ask a person to save an API key on the Codex card in Providers',
   'TOOL_REFUSALS|agent-name-taken': 'Choose a different name, or use the agent that exists',
-  'TOOL_REFUSALS|services-are-off-so-none-is-made': 'A person turns them on in Team',
   // ⚑ **D-016 · commit 3** — the task words became piece words, and a new piece is a give.
   'TOOL_REFUSALS|not-a-piece-you-gave': 'list_tasks lists the open pieces you gave out',
   // ⚑ **F087** — the same call as a note, or to the agent holding the piece.
@@ -825,7 +811,6 @@ const ACT: Readonly<Record<string, string>> = {
     'Make the same call again in a moment',
   'SPAWN_RAILS|malformed-request': 'Send exactly the fields this tool documents',
   'SPAWN_RAILS|its-provider-is-not-chosen': 'Ask a person to choose a provider for',
-  'SPAWN_RAILS|spawning-disabled': 'Only a person can switch it back on',
   'SPAWN_RAILS|no-piece-to-give-from': 'Do the work here until you hold a piece',
   // PE-006: a give names no mode the caller can change; the person who can decide is named first.
   'SPAWN_RAILS|name-the-piece-you-give-from': 'give again naming it as under',
@@ -837,7 +822,8 @@ const ACT: Readonly<Record<string, string>> = {
   'SPAWN_RAILS|conversation-title-needed': 'a new conversation needs conversation_title',
   'SPAWN_RAILS|a-service-has-one-conversation': 'leave to out',
   'SPAWN_RAILS|service-provider-is-fixed': 'Give it work on that provider',
-  'SPAWN_RAILS|services-are-off': 'Do the work yourself, or give it to another agent',
+  'SPAWN_RAILS|service-queue-not-owned':
+    'Ask the person with request_action to close any other BroCrew instance',
   'SPAWN_RAILS|its-kind-is-unknown': 'Give the work to another agent, or ask a person',
   'SPAWN_RAILS|that-is-this-conversation': 'Do this part within the piece you are working on',
   'SPAWN_RAILS|it-would-wait-on-itself': 'Finish or take back that work, then give this again',
@@ -846,12 +832,6 @@ const ACT: Readonly<Record<string, string>> = {
   'SPAWN_RAILS|its-record-cannot-be-read': 'Give the work to another agent',
   'SPAWN_RAILS|no-such-profile': 'list_profiles names them; create_agent makes one',
   'SPAWN_RAILS|folder-unusable': 'only a person can make it right',
-  // ⚑ **D-038 · the act moved to the front, and changed**: the work here, or the GIVER's own mode —
-  // an agent has no mode of its own, and no provider it could be moved to changes the verdict now.
-  'SPAWN_RAILS|wider-than-its-parent/1':
-    'Do this work here, or ask a person whether to change your approval mode',
-  'SPAWN_RAILS|wider-than-its-parent/2':
-    'Do this work here, or ask a person whether to change your approval mode',
   'REPLY_RAILS|no-piece-by-that-name': 'list_tasks names the pieces you hold',
   // ⚑ **D-016 · commit 3** — a root is a person's gift, so its answer goes to the person.
   'REPLY_RAILS|a-person-gave-that-piece': 'answer the person here',

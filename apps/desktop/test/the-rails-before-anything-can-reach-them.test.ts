@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions, FakeRuntime, whatTheChildWouldLack } from '@brobot2/runtime'
+import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
@@ -230,7 +230,6 @@ describe('341 · the rails, before anything can reach them', () => {
         conversationAt: () => null,
         recentWith: () => ({ rows: [], more: false }),
         serviceAt: () => ({ is: 'normal' }),
-        spawningEnabled: () => true,
         // ⚑ **Null — *nobody has said*** (419), and the agent has no default (677; D-042 · R2): the
         // token's provider is then the giver's. ⚑ **D-042 took the model off the token** (its
         // `runsOn` went): the launch names R1's pair, so no token carries one.
@@ -361,33 +360,21 @@ describe('341 · the rails, before anything can reach them', () => {
       expect(sessionIdsOf()).toHaveLength(before)
     })
 
-    it('🔴 criterion 7 · the kill switch refuses a START mid-session, ends nothing running, and still lets work reach a conversation the giver has', async () => {
+    it('gives to an existing or new conversation with the retired flag set to off', async () => {
       const parent = await ready()
       const first = admitted(await give(aPiece('worker'), as(parent)))
-
-      // ⛔ Thrown while both conversations are running — that is what "mid-session" means.
-      store.setSpawningEnabled(false)
+      db.prepare("UPDATE app_policy SET spawning_enabled = 0 WHERE id = 'policy'").run()
       await bringIdentityIntoBeing('second')
-      expect(await refusalOf(await give(aPiece('second'), as(parent)))).toBe('spawning-disabled')
-      // ⚑ **…and the child that was already running is still running.** The switch refuses; it does
-      // not kill.
-      expect(sessionIdsOf()).toContain(first.owner)
-      // ⚑ **Plan ruling 12 — the switch refuses only a give that would START a conversation**: the
-      // one this giver already has with `worker` still takes work.
-      expect(admitted(await give(aPiece('worker', { to: first.label }), as(parent))).owner).toBe(
-        first.owner,
-      )
-
-      // The paired positive: flip it back and the identical call succeeds.
-      store.setSpawningEnabled(true)
       expect((await give(aPiece('second'), as(parent))).ok).toBe(true)
+      expect(sessionIdsOf()).toContain(first.owner)
+      const continued = admitted(await give(aPiece('worker', { to: first.label }), as(parent)))
+      expect(continued.owner).toBe(first.owner)
     })
 
-    it('⛔ the fail-closed half · a database with no policy row refuses every start', async () => {
+    it('a give can start a conversation when there is no policy row', async () => {
       const parent = await ready()
-      db.prepare(`DELETE FROM app_policy`).run()
-      expect(store.spawnPolicy()).toEqual({ spawningEnabled: false })
-      expect(await refusalOf(await give(aPiece('worker'), as(parent)))).toBe('spawning-disabled')
+      db.prepare('DELETE FROM app_policy').run()
+      expect((await give(aPiece('worker'), as(parent))).ok).toBe(true)
     })
 
     it('⛔ a giver that is not running here gives nothing, and a live one gives', async () => {
@@ -502,36 +489,6 @@ describe('341 · the rails, before anything can reach them', () => {
       const asking = await personOpens('pm2', { approvalMode: 'ask' })
       const allowed = admitted(await give(aPiece('worker'), as(asking)))
       expect(store.find(allowed.owner)).toMatchObject({ approvalMode: 'ask', provider: 'codex' })
-
-      // 🔴 **…and WIDER is still refused: an `ask` giver whose child would run in `auto`.** ⚠️ No
-      // give can ask for it — the child takes its giver's mode, so a same-mode pair is never wider
-      // (D-038 F-B) — so the rail's own comparison is asked, the one `admitGive` calls.
-      const wouldLack = whatTheChildWouldLack(
-        { provider: 'codex', approvalMode: 'auto' },
-        { provider: 'claude', approvalMode: 'ask' },
-      )
-      expect(wouldLack).toEqual(['the-card-before-an-act'])
-      // ⚑ …against the admission above, one fact over: the same child under an `auto` giver.
-      expect(
-        whatTheChildWouldLack(
-          { provider: 'codex', approvalMode: 'auto' },
-          { provider: 'claude', approvalMode: 'auto' },
-        ),
-      ).toEqual([])
-      // ⛔ **The third field names what the GIVER keeps** (D-038: `alsoRemoves` became `wouldLack`),
-      // and the sentence leads with the act.
-      const said = describeRail('wider-than-its-parent', {
-        asked: 'auto',
-        spawnerRunsAs: 'ask',
-        wouldLack,
-      })
-      expect(said).toContain(
-        'Do this work here, or ask a person whether to change your approval mode',
-      )
-      expect(said).toContain('you run in “ask”, with the card before you act,')
-      expect(said).toContain('would run in “auto”')
-      expect(permanenceOf('wider-than-its-parent')).toBe('until-a-person-changes-it')
-      expect(retryableOf('wider-than-its-parent')).toBe(false)
     })
 
     it('🔴 THE DIVERGENCE · an `auto` giver hands `auto` down, which is the half HO-036 restored', async () => {
@@ -603,22 +560,6 @@ describe('341 · the rails, before anything can reach them', () => {
       // `wider-than-its-parent` here, and it is given, and runs in `auto` on Codex.
       const given = admitted(await give(aPiece('worker'), as(lax)))
       expect(given.delivery).toBe('sent')
-      expect(store.find(given.owner)).toMatchObject({ approvalMode: 'auto', provider: 'codex' })
-    })
-
-    it('⛔ the kill switch still answers first, because that is the more important sentence', async () => {
-      await bringIdentityIntoBeing('worker')
-      expect(store.setAgentProvider('worker', 'codex')).toBe(true)
-      const lax = await personOpens('pm', { approvalMode: 'auto' })
-      store.setSpawningEnabled(false)
-      // ⚠️ With starting switched off app-wide, a giver must hear the switch — being told about
-      // anything else would send it to fix a thing that was never going to be the reason.
-      // ⚑ **D-038 moved this fact (F050)**: this give was also wider until the rail compared reach;
-      // it is not now, so the switch is the ONLY thing standing in front of it.
-      expect(await refusalOf(await give(aPiece('worker'), as(lax)))).toBe('spawning-disabled')
-      // 🔴 **…and the paired positive, one fact over**: the switch back on, and the same give goes.
-      store.setSpawningEnabled(true)
-      const given = admitted(await give(aPiece('worker'), as(lax)))
       expect(store.find(given.owner)).toMatchObject({ approvalMode: 'auto', provider: 'codex' })
     })
 
@@ -886,9 +827,6 @@ describe('341 · the rails, before anything can reach them', () => {
         title: 'Read the ledger',
         brief: 'read the ledger',
       })
-      // ⛔ **And the spawning switch survives too**, which is what makes the rails a property of the
-      // app rather than of one run.
-      expect(reborn.spawnPolicy()).toEqual({ spawningEnabled: true })
     })
 
     // ⚑ **D-016 · three cases went with the three provenance columns** — `spawned_at` earlier than
