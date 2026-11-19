@@ -174,7 +174,11 @@ export function readAllConversationTasks(
   input: AllConversationTasksInput,
   store: Pick<
     SessionStore,
-    'conversationBinding' | 'workThisOneWasGiven' | 'rootOf' | 'turnBlockRootLines' | 'rootDoneCondition'
+    | 'conversationBinding'
+    | 'workThisOneWasGiven'
+    | 'rootOf'
+    | 'turnBlockRootLines'
+    | 'rootDoneCondition'
   >,
 ): AllConversationTasksResult {
   const { sessionId: conversation, filter } = input

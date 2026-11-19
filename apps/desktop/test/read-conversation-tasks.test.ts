@@ -140,6 +140,7 @@ describe('the selected conversation task panel', () => {
     const subject = world.store.rootOf(target)!
     const parent = world.store.rootOf(giver)!
     const at = world.clock + 200
+    const legacyTitle = 'x'.repeat(1600)
     const pieces = Array.from({ length: 22 }, (_, index) => {
       const piece = `work_all_${String(22 - index).padStart(2, '0')}`
       const number = world.store.numberUnder(parent.piece)
@@ -148,7 +149,7 @@ describe('the selected conversation task panel', () => {
         label: `${parent.label}.${number}`,
         parent: parent.piece,
         givenBy: giver,
-        title: index === 0 || index === 20 ? 'Index sources' : 'Read files',
+        title: `${legacyTitle} ${index === 0 || index === 20 ? 'Index sources' : 'Read files'}`,
         brief: 'The original brief',
       }
       world.store.recordGive(
@@ -235,12 +236,32 @@ describe('the selected conversation task panel', () => {
     expect(await all({ cursor: first.next, text: 'Read files' })).toEqual(invalid)
     expect(await all({ cursor: first.next, filter: 'active' })).toEqual(invalid)
     expect(await all({ cursor: first.next, sessionId: giver })).toEqual(invalid)
+    const longSearch = await all({ text: legacyTitle })
+    if (!longSearch.ok || longSearch.next === null) throw new Error('missing long search cursor')
+    expect(longSearch.next.length).toBeGreaterThan(2048)
+    expect(await all({ text: legacyTitle, cursor: longSearch.next })).toMatchObject({
+      ok: true,
+      tasks: [{ piece: pieces[20] }, { piece: pieces[21] }],
+      next: null,
+    })
     expect(await all({ sessionId: 'sess_missing' })).toEqual({
       ok: false,
       reason: 'unknown-conversation',
     })
     expect(world.store.events(target)).toEqual(ledger)
     expect(world.handles).toHaveLength(starts)
+
+    await host.close(target, world.window)
+    const running = () => host.resumableSessions().find((one) => one.sessionId === target)?.running
+    expect(running()).toBe('not-running')
+    const stoppedLedger = world.store.events(target)
+    const giverLedger = world.store.events(giver)
+    const stoppedStarts = world.handles.length
+    expect(await all()).toMatchObject({ ok: true })
+    expect(running()).toBe('not-running')
+    expect(world.handles).toHaveLength(stoppedStarts)
+    expect(world.store.events(target)).toEqual(stoppedLedger)
+    expect(world.store.events(giver)).toEqual(giverLedger)
 
     world.db
       .prepare(

@@ -1083,7 +1083,7 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
     sessionId,
     filter: z.enum(ALL_TASKS_FILTERS),
     text: z.string().optional(),
-    cursor: z.string().max(2048).optional(),
+    cursor: z.string().optional(),
   }),
   z.object({
     kind: z.literal('readConversationTitleHistory'),

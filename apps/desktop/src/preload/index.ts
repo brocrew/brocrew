@@ -9,7 +9,10 @@ import type {
   ConversationIdentityBatchInput,
   ConversationTitleHistoryInput,
 } from '../shared/conversation-title'
-import type { AllConversationTasksInput, ConversationTaskPageInput } from '../shared/conversation-task-page'
+import type {
+  AllConversationTasksInput,
+  ConversationTaskPageInput,
+} from '../shared/conversation-task-page'
 import type { HandedPath } from '../shared/attachment-contracts'
 import type { SessionSettingChanged } from '../shared/model-choice-contracts'
 import type { ListingAnswer } from '../shared/listing-published'
