@@ -45,7 +45,7 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
 
 /** BroBot's child, as every door names her: the first new agent, by the piece she owns. */
 const ADA = 'Ada (the owner of W1.1 · Build the pages)'
-const OWES_ADA = `owes an answer to ${ADA}`
+const OWES_ADA = `stalled · owes an answer to ${ADA}`
 const WAITING_ON_ADA = `waiting on ${ADA}`
 
 const settle = (): Promise<void> => settleFixtureTurns(2, 30)
@@ -265,10 +265,10 @@ describe('the host says who a conversation owes an answer to, and moves the word
     const id = await adaAsksHerParent(adaTools)
     await untilPushed(
       brobot,
-      { is: 'owes-an-answer', to: [ADA], since: expect.any(Number) },
+      { is: 'owes-an-answer', to: [ADA], stalled: true, since: expect.any(Number) },
       'the parent to be pushed as owing',
     )
-    expect(stateOf(brobot)).toEqual({ is: 'owes-an-answer', to: [ADA], since: expect.any(Number) })
+    expect(stateOf(brobot)).toEqual({ is: 'owes-an-answer', to: [ADA], stalled: true, since: expect.any(Number) })
     const asked = store.routedRequestsOf(ada).find((one) => one.requestId === id)?.at
     expect(asked).toEqual(expect.any(Number))
     expect(stateOf(brobot)).toMatchObject({ since: asked })
@@ -311,7 +311,7 @@ describe('the host says who a conversation owes an answer to, and moves the word
     const first = await adaAsksHerParent(adaTools)
     await untilPushed(
       brobot,
-      { is: 'owes-an-answer', to: [ADA], since: expect.any(Number) },
+      { is: 'owes-an-answer', to: [ADA], stalled: true, since: expect.any(Number) },
       'the parent to owe the first',
     )
     const answered = await callOn(agentToolsFor(host, brobot), 'answer_question', {
@@ -406,7 +406,7 @@ describe('the host says who a conversation owes an answer to, and moves the word
 
     await untilPushed(
       brobot,
-      { is: 'owes-an-answer', to: [ADA], since: expect.any(Number) },
+      { is: 'owes-an-answer', to: [ADA], stalled: true, since: expect.any(Number) },
       'the parent to owe the card',
     )
 
@@ -439,7 +439,7 @@ describe('the host says who a conversation owes an answer to, and moves the word
     await adaAsksHerParent(adaTools)
     await untilPushed(
       brobot,
-      { is: 'owes-an-answer', to: [ADA], since: expect.any(Number) },
+      { is: 'owes-an-answer', to: [ADA], stalled: true, since: expect.any(Number) },
       'the parent to owe it',
     )
 
@@ -486,7 +486,7 @@ describe('the host says who a conversation owes an answer to, and moves the word
       'the stand-in to be pushed as owing the answer',
     )
     await settle()
-    expect(lastSaid(next)).toEqual({ is: 'owes-an-answer', to: [ADA], since: expect.any(Number) })
+    expect(lastSaid(next)).toEqual({ is: 'owes-an-answer', to: [ADA], stalled: true, since: expect.any(Number) })
 
     // The replaced one owes nothing.
     const old = listed(brobot)
@@ -503,7 +503,7 @@ describe('the host says who a conversation owes an answer to, and moves the word
     const id = await adaAsksHerParent(adaTools)
     await untilPushed(
       brobot,
-      { is: 'owes-an-answer', to: [ADA], since: expect.any(Number) },
+      { is: 'owes-an-answer', to: [ADA], stalled: true, since: expect.any(Number) },
       'the parent to be pushed as owing',
     )
     // Ada's question, as another machine exported it, now put to the reviewer by a conversation
@@ -551,7 +551,7 @@ describe('the host says who a conversation owes an answer to, and moves the word
       await adaAsksHerParent(adaTools)
       await untilPushed(
         brobot,
-        { is: 'owes-an-answer', to: [ADA], since: expect.any(Number) },
+        { is: 'owes-an-answer', to: [ADA], stalled: true, since: expect.any(Number) },
         'the parent to owe it',
       )
       expect(runningOf(brobot)).toBe('in-a-window')
@@ -572,6 +572,7 @@ describe('the host says who a conversation owes an answer to, and moves the word
       expect(listed(brobot)?.state).toEqual({
         is: 'owes-an-answer',
         to: [ADA],
+        stalled: true,
         since: expect.any(Number),
       })
       const open = store.routedRequestsOf(ada).filter((one) => one.state === 'open')

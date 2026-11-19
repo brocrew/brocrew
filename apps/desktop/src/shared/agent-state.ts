@@ -148,12 +148,13 @@ export function agentStateOf(facts: AgentStateFacts, now: number): AgentState {
     ...(facts.stoppedWork ?? []).map((piece) => piece.holder),
   ]
   const [owedFirst, ...owedMore] = facts.owesAnAnswerTo
+  const inTheBackground = somethingRunning(facts.background)
   const arm = agentStateArm({
     needsYou: facts.needsYou,
     active: facts.active,
     waitingOnAnAnswer: from !== null,
     owesAnAnswer: owedFirst !== undefined,
-    inTheBackground: somethingRunning(facts.background),
+    inTheBackground,
     scheduled: scheduleHeld(facts.scheduled),
     waitingOnAWorker: first !== undefined,
   })
@@ -161,7 +162,12 @@ export function agentStateOf(facts: AgentStateFacts, now: number): AgentState {
     return { is: arm, from, ...since(facts.waitingOnTheAnswerSince) }
   }
   if (arm === 'owes-an-answer' && owedFirst !== undefined) {
-    return { is: arm, to: [owedFirst, ...owedMore], ...since(facts.owesAnAnswerSince) }
+    return {
+      is: arm,
+      to: [owedFirst, ...owedMore],
+      ...since(facts.owesAnAnswerSince),
+      ...(inTheBackground ? {} : { stalled: true }),
+    }
   }
   if (arm === 'in-the-background') return { is: arm, what: inTheBackground(facts.background) }
   if (arm === 'scheduled') return { is: arm, dueAt: nextWake(facts.scheduled.jobs, now) }
@@ -200,9 +206,8 @@ export function agentStateWords(state: AgentState): string {
       return `waiting on an answer from ${state.from}`
     case 'owes-an-answer': {
       const [first, ...more] = state.to
-      return more.length === 0
-        ? `owes an answer to ${first}`
-        : `owes an answer to ${first} +${String(more.length)}`
+      const names = more.length === 0 ? first : `${first} +${String(more.length)}`
+      return `${state.stalled === true ? 'stalled · ' : ''}owes an answer to ${names}`
     }
     case 'in-the-background':
       return state.what === null ? IN_THE_BACKGROUND : `${IN_THE_BACKGROUND} · ${state.what}`
