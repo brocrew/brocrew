@@ -108,9 +108,10 @@ const questionLine = (one: VisibleQuestion): string => {
   const said = QUESTION_STATE_SENTENCE[one.request.state]
   const refused = theChannelRefusalIn(one.request)
   const recipient = one.stalledRecipient
-  const delivery = recipient === undefined
-    ? ''
-    : ` · stalled after a reminder · conversation ${recipient.address} · ${recipient.title}`
+  const delivery =
+    recipient === undefined
+      ? ''
+      : ` · stalled after a reminder · conversation ${recipient.address} · ${recipient.title}`
   // **D-016 · commit 7 · R3 — the asker by its agent's name and its piece** — F033 · the one it
   // asked under ({@link VisibleQuestion.askerCalled}), as the question's own words name it. The
   // payload keeps its id.

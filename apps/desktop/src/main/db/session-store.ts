@@ -953,7 +953,11 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   reconciliationRecovery(owner: string): WorkRecoveryEvent | null
   reconciliationDrivenByTurn(owner: string, turn: string): readonly string[]
   reconciliationReceipts(owner: string, piece: string): readonly ReconciliationReceipt[]
-  queuedPromptProgress(target: string, messageId: string, appNotice: AppNotice): QueuedPromptProgress
+  queuedPromptProgress(
+    target: string,
+    messageId: string,
+    appNotice: AppNotice,
+  ): QueuedPromptProgress
   reconciliationDelivery(
     target: string,
     messageId: string,
@@ -2295,8 +2299,7 @@ export function createSessionStore(
     appNotice: AppNotice,
   ): QueuedPromptProgress {
     const message = selectReconciliationMessage.get(target, messageId) as
-      | { generation: number; ordinal: number; payload: string }
-      | undefined
+      { generation: number; ordinal: number; payload: string } | undefined
     if (message === undefined) return 'missing'
     const event = JSON.parse(message.payload) as QueuedMessageEvent | UnqueuedMessageEvent
     if (event.type === 'message_queued') return 'pending'

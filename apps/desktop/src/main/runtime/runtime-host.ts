@@ -12695,7 +12695,8 @@ export class RuntimeHost implements LiveHost {
     | { readonly ok: false; readonly refusal: ResourceRefusal } {
     const files: OfferedFileBytes[] = []
     for (const path of spelled) {
-      if (folder === null) return { ok: false, refusal: refuseResource('resource-unreadable', { path }) }
+      if (folder === null)
+        return { ok: false, refusal: refuseResource('resource-unreadable', { path }) }
       const placed = resolveResource(folder, path)
       if (!placed.ok) return placed
       const read = readOfferedFile(placed.realPath, path)
@@ -13373,7 +13374,14 @@ export class RuntimeHost implements LiveHost {
           ? { kind: 'started' }
           : this.stateOfARecordedMessage(to, outcome.messageId)
       const deliverNow = async (): Promise<SendRecipientState> => {
-        const outcome = await this.queueMessage(to, wordsFor(to), THE_APP_ITSELF, [], 'question', facts)
+        const outcome = await this.queueMessage(
+          to,
+          wordsFor(to),
+          THE_APP_ITSELF,
+          [],
+          'question',
+          facts,
+        )
         to = this.theOneInItsPlace(to)
         return deliveryState(outcome)
       }
@@ -13440,7 +13448,8 @@ export class RuntimeHost implements LiveHost {
     }
     const answerer = this.theOneInItsPlace(request.parent)
     const answererIds = this.theIdsItStandsFor(answerer)
-    if (!this.questionCanBeReminded(request.askedBy, request.requestId, answererIds)) return undefined
+    if (!this.questionCanBeReminded(request.askedBy, request.requestId, answererIds))
+      return undefined
     const { reminder } = this.questionWakeIds(request.askedBy, request.requestId)
     if (this.questionReminderProgress(answererIds, reminder) !== 'turn-ended') {
       return undefined
@@ -13480,7 +13489,9 @@ export class RuntimeHost implements LiveHost {
       if (progress === 'turn-ended') {
         void this.tellTheAskerItWentUnanswered(session.id, askedBy, requestId, notice).catch(
           (error: unknown) => {
-            console.warn(`The unanswered-question notice could not reach ${askedBy}: ${errorMessage(error)}`)
+            console.warn(
+              `The unanswered-question notice could not reach ${askedBy}: ${errorMessage(error)}`,
+            )
           },
         )
       } else if (progress === 'missing') {
@@ -13502,7 +13513,11 @@ export class RuntimeHost implements LiveHost {
   }
 
   private questionConversation(conversation: string) {
-    return describeConversation(this.deps.store, conversation, this.theServiceOf(conversation) !== null)
+    return describeConversation(
+      this.deps.store,
+      conversation,
+      this.theServiceOf(conversation) !== null,
+    )
   }
 
   private async tellTheAskerItWentUnanswered(
@@ -19586,12 +19601,13 @@ export class RuntimeHost implements LiveHost {
       (slot !== undefined && !going && (slot.session === null || status === 'working'))
     const answererIds =
       active || owed.owedQuestions.length === 0 ? [] : this.theIdsItStandsFor(sessionId)
-    const stalled = answererIds.length === 0
-      ? undefined
-      : owed.owedQuestions.find(({ askedBy, requestId }) => {
-          const { reminder } = this.questionWakeIds(askedBy, requestId)
-          return this.questionReminderProgress(answererIds, reminder) === 'turn-ended'
-        })
+    const stalled =
+      answererIds.length === 0
+        ? undefined
+        : owed.owedQuestions.find(({ askedBy, requestId }) => {
+            const { reminder } = this.questionWakeIds(askedBy, requestId)
+            return this.questionReminderProgress(answererIds, reminder) === 'turn-ended'
+          })
     return agentStateOf(
       {
         needsYou: owed.needsYou,
@@ -25175,7 +25191,8 @@ export class RuntimeHost implements LiveHost {
     messageAct?: string,
   ): Promise<void> {
     if (messageAct !== undefined) {
-      if (this.messageDestination(sessionId) === null) throw new Error(`unknown session: ${sessionId}`)
+      if (this.messageDestination(sessionId) === null)
+        throw new Error(`unknown session: ${sessionId}`)
       return
     }
     const me = sessionSpeakingAs(by)
@@ -25474,7 +25491,11 @@ export class RuntimeHost implements LiveHost {
   }
 
   private wordsMovedTo(held: QueuedMessage, receiver: string): string {
-    if (held.kind !== 'question' || held.asks === undefined || held.authorship.appNotice !== undefined) {
+    if (
+      held.kind !== 'question' ||
+      held.asks === undefined ||
+      held.authorship.appNotice !== undefined
+    ) {
       return held.text
     }
     const { asker, requestId } = held.asks

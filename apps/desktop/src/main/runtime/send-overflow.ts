@@ -3,11 +3,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { newResourceId } from '../db/ids'
 import type { GivenInput } from '../../shared/documents'
-import {
-  refuseResource,
-  type OfferedFileBytes,
-  type ResourceRefusal,
-} from '../resources/resources'
+import { refuseResource, type OfferedFileBytes, type ResourceRefusal } from '../resources/resources'
 import { WORK_BRIEF_CHARS } from '../../shared/work-fields'
 import type { SendReceipt } from '../../shared/tool-outcome'
 

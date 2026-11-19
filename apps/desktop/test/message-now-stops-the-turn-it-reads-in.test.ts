@@ -380,7 +380,9 @@ describe('message now · a message or an answer can stop the running turn', () =
         )
         return (
           notice !== -1 &&
-          events.slice(notice + 1).some((event) => event.type === 'status' && event.state === 'idle')
+          events
+            .slice(notice + 1)
+            .some((event) => event.type === 'status' && event.state === 'idle')
         )
       }, 'the unanswered-question notice turn to finish before the Stop fixture starts')
       return { ...chain, requestId: row.requestId }

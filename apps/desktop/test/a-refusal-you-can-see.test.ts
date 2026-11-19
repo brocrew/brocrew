@@ -836,7 +836,8 @@ describe('405 · a refusal you can see', () => {
         // ⚑ What the window joins on today is the receipt's first 200 characters: the kept sentence
         // must read on from them word for word.
         const { prose: said } = navigationReply(texts[at] ?? '')
-        const prefix = row.tool === 'give_work' || row.tool === 'message_agent' ? '' : `refused (${row.rail}): `
+        const prefix =
+          row.tool === 'give_work' || row.tool === 'message_agent' ? '' : `refused (${row.rail}): `
         expect(said.startsWith(prefix + (row.told?.text ?? '')), said).toBe(true)
         // Detail-bearing answers keep only the existing reason; app-only answers keep their tail.
         const permanence = permanenceInWords(row.rail, row.permanence)

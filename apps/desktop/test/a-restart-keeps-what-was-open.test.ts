@@ -852,7 +852,10 @@ describe('692 · a restart keeps what was open', () => {
       const tools = await personPresses(lead)
       // ⛔ **The provider forgets what it issued** — a conversation its files no longer hold.
       issued.forgetAll()
-      const before = store.recorded().map(({ sessionId }) => sessionId).sort()
+      const before = store
+        .recorded()
+        .map(({ sessionId }) => sessionId)
+        .sort()
       const said = await callOn(tools, 'message_agent', {
         agent: children[0],
         text: 'are you there',
@@ -874,7 +877,12 @@ describe('692 · a restart keeps what was open', () => {
           authorship: expect.objectContaining({ relayedFrom: lead }),
         }),
       )
-      expect(store.recorded().map(({ sessionId }) => sessionId).sort()).toEqual(before)
+      expect(
+        store
+          .recorded()
+          .map(({ sessionId }) => sessionId)
+          .sort(),
+      ).toEqual(before)
       expect(store.replacements()).toEqual([])
       expect(listed(children[0])).toEqual({ running: 'not-running' })
       expect(listed(children[1])).toEqual({ running: 'not-running' })

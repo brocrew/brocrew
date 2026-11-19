@@ -426,25 +426,28 @@ describe('415 · a question is not work', () => {
       expect(saidToProvider(worker)[1]).not.toContain(FINISHING_LINE)
     })
 
-    it.each([undefined, 'informational'])('sends a note without a declared kind (%s)', async (kind) => {
-      const { worker, pmTools, piece } = await aPmAndItsWorker()
-      await waitFor(() => saidToProvider(worker).length === 1, 'the brief to reach the provider')
-      const text = 'How far have you got?'
-      const sent = await callOn(pmTools, 'message_agent', {
-        agent: worker,
-        text,
-        ...(kind === undefined ? {} : { kind }),
-      })
-      expect(sent, JSON.stringify(sent)).toMatchObject({ outcome: 'ok', kind: 'note' })
-      expect(openTasksOf(worker)).toEqual([piece])
-      await letTheTurnFinish(worker)
-      await waitFor(
-        () => saidToProvider(worker).some((said) => said.includes(text)),
-        'the note to reach the provider',
-      )
-      expect(saidToProvider(worker).filter((said) => said.includes(text))).toHaveLength(1)
-      expect(openTasksOf(worker)).toEqual([piece])
-    })
+    it.each([undefined, 'informational'])(
+      'sends a note without a declared kind (%s)',
+      async (kind) => {
+        const { worker, pmTools, piece } = await aPmAndItsWorker()
+        await waitFor(() => saidToProvider(worker).length === 1, 'the brief to reach the provider')
+        const text = 'How far have you got?'
+        const sent = await callOn(pmTools, 'message_agent', {
+          agent: worker,
+          text,
+          ...(kind === undefined ? {} : { kind }),
+        })
+        expect(sent, JSON.stringify(sent)).toMatchObject({ outcome: 'ok', kind: 'note' })
+        expect(openTasksOf(worker)).toEqual([piece])
+        await letTheTurnFinish(worker)
+        await waitFor(
+          () => saidToProvider(worker).some((said) => said.includes(text)),
+          'the note to reach the provider',
+        )
+        expect(saidToProvider(worker).filter((said) => said.includes(text))).toHaveLength(1)
+        expect(openTasksOf(worker)).toEqual([piece])
+      },
+    )
 
     it('publishes the Message fields without a kind selector', () => {
       const tools = agentToolsFor(host, 'sess_1')
@@ -848,7 +851,12 @@ describe('415 · a question is not work', () => {
         text,
         piece: held.piece,
       })
-      expect(sent).toMatchObject({ outcome: 'ok', kind: 'note', piece: held.piece, label: held.label })
+      expect(sent).toMatchObject({
+        outcome: 'ok',
+        kind: 'note',
+        piece: held.piece,
+        label: held.label,
+      })
       await waitFor(
         () => saidToProvider(brobot).some((words) => words.includes(text)),
         'the note to reach the giver',
