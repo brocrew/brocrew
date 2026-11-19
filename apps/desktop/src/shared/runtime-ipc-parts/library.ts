@@ -455,7 +455,7 @@ export interface LibraryQuery {
 export interface LibraryFilters {
   /** Only this provider's conversations. Absent means every provider. */
   provider?: Provider
-  /** Only entries that record this profile. */
+  /** Select a profile by its roster slug. Entries retain the recorded spelling. */
   profileId?: string
   /** Only rows this app ran, or only rows found in the user's own home. */
   origin?: LibraryOrigin

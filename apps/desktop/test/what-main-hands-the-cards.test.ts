@@ -523,16 +523,23 @@ describe('671 · what main hands the cards', () => {
 
       const list = (input: LibraryQuery) =>
         executeRuntimeCommand(host, window, { kind: 'listLibrary', ...input })
-      const filters = { profileId: 'Dev' }
+      const dev = host.agentIdentities().identities.find(({ slug }) => slug === 'dev')
+      if (dev === undefined) throw new Error('Dev is missing from the roster')
+      const filters = { profileId: dev.slug }
       expect(page.entries[0]?.recordId).toBe(restored)
       expect(await list({ filters, query: 'claude', limit: 1 })).toMatchObject({
-        entries: [{ recordId: ranAgain }],
+        entries: [{ recordId: ranAgain, profileId: 'Dev' }],
         matched: 2,
         counts: page.counts,
       })
       expect(await list({ filters, limit: 1, offset: 1 })).toMatchObject({
-        entries: [{ recordId: ran }],
+        entries: [{ recordId: ran, profileId: 'Dev' }],
         matched: 2,
+      })
+      expect(await list({ filters: { profileId: 'Dev' } })).toMatchObject({ matched: 2 })
+      expect(await list({ filters: { profileId: DEFAULT_PROFILE_ID } })).toMatchObject({
+        entries: [{ recordId: preProfile }],
+        matched: 1,
       })
       expect(await list({ filters, query: 'never-a-library-match' })).toMatchObject({ matched: 0 })
       expect(await list({ filters: { profileId: 'unbound' } })).toMatchObject({ matched: 0 })

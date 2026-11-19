@@ -13,7 +13,7 @@ import type {
   LibraryPage,
   LibraryQuery,
 } from '../../shared/runtime-ipc'
-import { DEFAULT_PROFILE_ID } from '../../shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID, foldProfileName } from '../../shared/runtime-ipc'
 
 export type { LibraryCounts, LibraryEntry, LibraryFilters, LibraryPage, LibraryQuery }
 
@@ -391,7 +391,12 @@ function isBehind(derived: LibraryEntry['derived']): boolean {
 export function passesFilters(entry: LibraryEntry, filters: LibraryFilters | undefined): boolean {
   if (filters === undefined) return true
   if (filters.provider !== undefined && entry.provider !== filters.provider) return false
-  if (filters.profileId !== undefined && entry.profileId !== filters.profileId) return false
+  if (
+    filters.profileId !== undefined &&
+    (entry.profileId === undefined ||
+      foldProfileName(entry.profileId) !== foldProfileName(filters.profileId))
+  )
+    return false
   if (filters.origin !== undefined && entry.origin !== filters.origin) return false
   // The marquee (111, 115, 118, 119): `child != null` is being a child, and nothing else is.
   if (filters.kind === 'sub' && entry.child === null) return false
