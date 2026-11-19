@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { StartHandleKeepingRuntime as ProviderDouble } from './helpers/handle-keeping-runtime'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -35,7 +36,7 @@ const THE_BRIEF = 'run the tests'
  * What the double's card asks, as the giver is told it: its tool, and the first line of what it
  * would run — the double runs the brief as it was sent, which opens with its sender line.
  */
-const ITS_REQUEST = 'its request to use Bash (run: Sent by'
+const ITS_REQUEST = 'its request to use Bash (run: From'
 
 describe('a helper stopped on a person’s approval', () => {
   let userData: string
@@ -111,12 +112,11 @@ describe('a helper stopped on a person’s approval', () => {
     await host.close(await personOpens('worker', 'ask'), window)
     const pm = await personOpens('pm', 'ask')
     const pmTools = agentToolsFor(host, pm)
-    const given = await callOn(pmTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'The tests',
-      brief: THE_BRIEF,
-    })
+    const given = await callOn(
+      pmTools,
+      'give_work',
+      newConversationGive('worker', 'The tests', THE_BRIEF),
+    )
     expect(given.structured['outcome'], given.text).toBe('ok')
     const worker = String(given.structured['agent'])
     const handle = handles.at(-1)
@@ -346,12 +346,11 @@ describe('a helper stopped on a person’s approval', () => {
       await host.close(await personOpens('worker', 'auto'), window)
       const pm = await personOpens('pm', 'auto')
       const pmTools = agentToolsFor(host, pm)
-      const given = await callOn(pmTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'The tests',
-        brief: THE_BRIEF,
-      })
+      const given = await callOn(
+        pmTools,
+        'give_work',
+        newConversationGive('worker', 'The tests', THE_BRIEF),
+      )
       const worker = String(given.structured['agent'])
       await waitFor(
         () => ledger(worker).some((event) => event.type === 'turn'),
@@ -368,12 +367,11 @@ describe('a helper stopped on a person’s approval', () => {
       const pm = await personOpens('pm', 'auto')
       const pmHandle = handles.at(-1)
       const pmTools = agentToolsFor(host, pm)
-      const given = await callOn(pmTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'The tests',
-        brief: THE_BRIEF,
-      })
+      const given = await callOn(
+        pmTools,
+        'give_work',
+        newConversationGive('worker', 'The tests', THE_BRIEF),
+      )
       expect(given.structured['outcome'], given.text).toBe('ok')
       const worker = String(given.structured['agent'])
       const label = String(given.structured['label'])
@@ -412,9 +410,10 @@ describe('a helper stopped on a person’s approval', () => {
         text: 'One more thing.',
       })
       expect(sent.structured['delivery']).toBe('queued')
-      expect(sent.text).toContain(
-        'is free — at once, if it is — with whatever else is held for it, oldest first',
-      )
+      expect(sent.structured.receipt).toMatchObject({
+        recipient: { id: worker, state: { kind: 'queued' } },
+      })
+      expect(sent.text).toContain('it is working; it goes out when it is free.')
       expect(sent.text).not.toContain('Its turn is stopped')
 
       const answered = await callOn(pmTools, 'answer_question', {

@@ -1,3 +1,4 @@
+import { addressedGive, newConversationGive } from './lib/give-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { forestOf, storeForestOf } from './lib/forest-of-host'
@@ -184,12 +185,11 @@ describe('D-034 — the forest says, for each conversation, whose place it stand
   const aWorkerOver = async (): Promise<{ pm: string; worker: string; label: string }> => {
     await host.close(await personOpens('worker'), window)
     const pm = await personOpens('pm')
-    const given = await callOn(pm, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'The schema',
-      brief: 'migrate the schema',
-    })
+    const given = await callOn(
+      pm,
+      'give_work',
+      newConversationGive('worker', 'The schema', 'migrate the schema'),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     await waitFor(() => turnsIn(worker) > 0, 'the turn the brief opened to end')
@@ -253,12 +253,11 @@ describe('D-034 — the forest says, for each conversation, whose place it stand
   it('B · a PARENT that could never be reopened: its stand-in names it, and the work the stand-in gives hangs off the stand-in while the child still hangs under the old one', async () => {
     await host.close(await personOpens('worker'), window)
     const pm = await personOpens('pm')
-    const first = await callOn(pm, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'The schema',
-      brief: 'migrate the schema',
-    })
+    const first = await callOn(
+      pm,
+      'give_work',
+      newConversationGive('worker', 'The schema', 'migrate the schema'),
+    )
     expect(first.outcome, JSON.stringify(first)).toBe('ok')
     const worker = first.agent as string
     const label = first.label as string
@@ -281,12 +280,11 @@ describe('D-034 — the forest says, for each conversation, whose place it stand
     // ⚑ The stand-in takes back the old parent's piece and gives the child new work, in its own name.
     const back = await callOn(pmNext, 'withdraw_task', { piece: label })
     expect(back.outcome, JSON.stringify(back)).toBe('ok')
-    const second = await callOn(pmNext, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'The index',
-      brief: 'add the index',
-    })
+    const second = await callOn(
+      pmNext,
+      'give_work',
+      addressedGive(label, 'worker', 'The index', 'add the index'),
+    )
     expect(second.outcome, JSON.stringify(second)).toBe('ok')
     expect(second.agent).toBe(worker)
 

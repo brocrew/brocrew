@@ -35,11 +35,8 @@ describe('worker metadata after a later replacement with an unread ordinary cach
           world.window,
         )
       ).sessionId
-      const given = await world.gives(first, caller, 'document-reader', { parallel: true })
-      expect(given.ok).toBe(true)
-      if (!given.ok) throw new Error('fictional worker refused')
-      const birth = given.owner
       await first.closeAll()
+      const birth = await world.aRecordedWorker(caller, 'document-reader')
       const terminal = world.seedHistoricalSuccessor(birth, 'sess_historical_middle')
       const middle = hostWithOrdinaryHistory(unreadHistory)
       expect(
@@ -87,16 +84,12 @@ describe('worker metadata after a later replacement with an unread ordinary cach
         const born = world.store.workersBorn().length
         const sent = world.sent.length
         const conversations = world.conversationsRecorded()
-        for (const parallel of [false, true]) {
-          expect(await world.gives(next, caller, 'document-reader', { parallel })).toMatchObject({
+        expect(await world.gives(next, caller, 'document-reader', { to: undefined })).toMatchObject(
+          {
             ok: false,
-            refusal: {
-              rail: 'worker-binding-is-unknown',
-              reason:
-                "Not given: 'document-reader' has no known conversation. Tell a person, and give it again once that is fixed.",
-            },
-          })
-        }
+            refusal: { rail: 'name-the-conversation' },
+          },
+        )
         expect(world.store.workersBorn()).toHaveLength(born)
         expect(world.sent).toHaveLength(sent)
         expect(world.conversationsRecorded()).toBe(conversations)

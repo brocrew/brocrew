@@ -10,7 +10,6 @@ import { type TakeBackRefused } from '../host-split/host-command-contracts'
 import { ASKED_TO_STOP, type WhereAnAskLanded } from '../../../shared/how-work-stopped'
 import { AStartThatDidNotHappen, SessionStillStarting, unavailableOf } from '../session-unavailable'
 import { type AgentToolAnswer } from '@brobot2/runtime'
-import { type AgentToolHost } from './host'
 import { PROVIDER_DESCRIPTORS, type Provider, providerDescriptor } from '@brobot2/shared'
 import { type ReplyOutcome, theStoppedWork } from '../reply-rails'
 import { TOOL_SENTENCES, refuseTool } from './refusals'
@@ -66,80 +65,16 @@ export function anEndedPieceSaid(detail: EndedPieceDetail, readAt: number): stri
   return `${act} ${ended}, so nothing was changed.`
 }
 
-/**
- * **F087 · a follow-up naming a piece the caller HOLDS, said as what it is** — it is not one the
- * caller gave, so `not-a-piece-you-gave` is true; that word's own sentence then guesses *"the name may
- * belong to another conversation, or to nothing at all"*, which is false of the caller's own piece.
- * **The act first, inside the cut**: the same call as a note, which may name a piece the caller
- * holds, open or ended (F086). An OPEN piece it holds is `that-is-work-you-hold`'s, whose acts — ask
- * about it, hand it back — take open work; this is said of the rest, which a note may still name.
- */
-export function aFollowUpOnAPieceYouHold(label: string): string {
-  return (
-    `make the same call with kind note: ${label} is a piece you hold, not one you gave, so nothing ` +
-    `was sent. A follow-up names a piece you gave that agent; a note may name a piece you hold or ` +
-    `gave, open or ended.`
-  )
-}
-
 /** `that-piece-is-still-queued`'s sentence, naming the piece by its label. */
 export function aMessageAboutAQueuedPiece(label: string): string {
   return `Not sent: ${label} is still queued. Change its brief with update_work.`
 }
 
 /**
- * **F087 · a follow-up naming a piece the caller gave ANOTHER agent, said as what it is** — the
- * guess in `not-a-piece-you-gave`'s own sentence is false here too: the caller gave it, to another
- * conversation. **The act first, inside the cut**: the same call to the agent holding it, which the
- * piece's label names (D-016 · commit 7 · R1) — or a note to this one, which may name any piece the
- * caller gave.
- */
-export function aFollowUpOnAPieceYouGaveAnother(label: string): string {
-  return (
-    `make the same call with agent ${label}, which names the agent you gave it to: ${label} is a ` +
-    `piece you gave, but not to that agent, so nothing was sent. A follow-up goes to the agent ` +
-    `holding its piece; a note to that agent may still name it.`
-  )
-}
-
-/**
- * A follow-up naming a piece the caller neither gave nor holds, to an agent it may message: the same
- * words reach that agent as a note, which leaves the piece out because a note names only a piece
- * the caller holds or gave. It never says whether the piece exists.
- */
-export function aFollowUpOnAPieceYouDidNotGive(agent: string): string {
-  return (
-    `send it as kind note to ${agent}, leaving out piece: that is not a piece you gave that agent, ` +
-    `so nothing was sent.`
-  )
-}
-
-/** How many labels a sentence names; the detail carries them all. */
-const LABELS_NAMED = 5
-
-/** An agent's profile name that names several conversations in reach, with their labels. */
-export function anAgentWithSeveralConversations(
-  profile: string,
-  labels: readonly string[],
-): string {
-  const named = labels.slice(0, LABELS_NAMED)
-  const more = labels.length - named.length
-  const which =
-    more > 0
-      ? `${named.join(', ')} and ${more} more, all in the detail`
-      : `${named.slice(0, -1).join(', ')} or ${named.at(-1)}`
-  return (
-    `make the same call with agent set to one of ${profile}’s conversations: ${which}. ` +
-    `It has more than one you can reach, so nothing was done.`
-  )
-}
-
-/**
  * **F089 · `withdraw_task` naming a piece the caller HOLDS, open, said as what it is** — it is not
  * one the caller gave, so `not-a-piece-you-gave` is true; that word's own sentence then guesses the
  * name may belong to another conversation or to nothing at all, which is false of the caller's own
- * piece. **The act first, inside the cut**: the two doors open to work it holds, as
- * `that-is-work-you-hold` names them at `message_agent`.
+ * piece. The answer names the two tools for work the caller holds.
  */
 export function aTakeBackOfAPieceYouHold(label: string): string {
   return (
@@ -256,24 +191,8 @@ export function theQuestionsItEnded(endedQuestions: number): string {
  * would be false whenever one is held — and so would *until its turn ends*, one turn early. So
  * the sentences that use this say *until it is free*.
  */
-export const WITH_WHATEVER_ELSE_IS_HELD =
+const WITH_WHATEVER_ELSE_IS_HELD =
   'with whatever else is held for it, oldest first (a person\u2019s command goes on its own)'
-
-/**
- * **A held delivery's answer when what is held waits for a reopen on the current Claude
- * sign-in, for a person to answer what its turn is stopped on, or (F074) for its provider's usage
- * limit to reset** — `held`, then why ({@link AgentToolHost.whyWhatIsHeldWaits}) — or `null`, and
- * the caller says *until it is free*. It REPLACES that clause rather than following it: a free
- * conversation that waits for its reopen or for a reset does not take the words *at once*.
- */
-export function heldAndWhy(
-  host: Pick<AgentToolHost, 'whyWhatIsHeldWaits'>,
-  conversation: string,
-  held: string,
-): string | null {
-  const waits = host.whyWhatIsHeldWaits(conversation)
-  return waits === null ? null : `${held} ${waits}`
-}
 
 /**
  * **D-022 · R3 — what reached the holder of a piece**, in the words `withdraw_task` and
@@ -294,7 +213,7 @@ export function whatReachedItsHolder(
   what: 'a-stop' | 'a-stop-asked' | 'a-new-brief' | 'its-inputs',
   /**
    * Why what is held waits for more than the holder's turn, when it does — said IN PLACE of
-   * *until it is free* ({@link heldAndWhy}'s rule).
+   * *until it is free* (when it waits for more than a running turn).
    */
   waits: string | null,
 ): string {
@@ -354,7 +273,7 @@ export function whereTheReplyWent(
       return `it went to ${giver} straight away.${inItsPlace}`
     case 'held':
       // Held for the giver's reopen on the current sign-in, it says why in place of *until it is
-      // free* ({@link heldAndWhy}'s rule).
+      // free* (when it waits for more than a running turn).
       return replied.why === undefined
         ? `it is held until ${giver} is free, then goes out ${WITH_WHATEVER_ELSE_IS_HELD}.${inItsPlace}`
         : `it is held for ${giver}. ${replied.why}${inItsPlace}`
@@ -377,30 +296,6 @@ export const AS_A_DELIVERY: Readonly<Record<NewBriefDelivery, TellDelivery>> = {
   'not-delivered': 'not-delivered',
   'with-its-give': 'held',
   'after-it-ended': 'not-delivered',
-}
-
-/**
- * **D-017 · R10 — what a receipt says about a conversation that could never be reopened** (`05`
- * rule 3): once, to the sender whose message found it, what happened — and after that, where each
- * message went. `''` when nothing replaced it.
- *
- * **D-016 · commit 7 · R3 — named by the work each holds, and never by an id**: the one that
- * could not be reopened by the piece it owns, and the one in its place by its address — the label of
- * the piece that names it, or its id when it holds none — which every door that takes an agent takes.
- */
-export function whereItWent(
-  agent: string,
-  before: string | null,
-  wentTo: string | null,
-  host: Pick<AgentToolHost, 'nameByItsWork' | 'whatToCallTheConversation' | 'addressOf'>,
-): string {
-  if (wentTo === null) return ''
-  const who = host.whatToCallTheConversation(wentTo)
-  const was = host.nameByItsWork(agent)
-  const now = host.addressOf(wentTo)
-  return before === null
-    ? `The history of ${was} could not be reopened, so a new conversation of ${who}, ${now}, took your message. It has ${who}'s memory but not that history. `
-    : `${was} could not be reopened, and a new conversation of ${who}, ${now}, took its place: `
 }
 
 /**
@@ -434,7 +329,7 @@ export function whatBecameOfTheStop(
   },
   /**
    * **The receiver as a LATER sentence names it — its name alone**
-   * ({@link AgentToolHost.whatToCallTheConversation}). These words always follow the receipt's first
+   * . These words always follow the receipt's first
    * sentence, which named it in full, by the piece it owns: said in full again, the one name ran
    * five times through one paragraph.
    */
@@ -443,7 +338,7 @@ export function whatBecameOfTheStop(
   yours: (conversation: string) => boolean,
   nameOf: (conversation: string) => string,
   /**
-   * The receipt already says what the held words wait for ({@link heldAndWhy}), so a stop refused
+   * The receipt already says what the held words wait for , so a stop refused
    * because a person is being asked says only why it was refused.
    */
   itsWaitIsSaid = false,

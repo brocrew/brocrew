@@ -1,4 +1,3 @@
-import { AGENT_MESSAGE_KINDS } from '../src/shared/task-contracts'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -178,6 +177,8 @@ describe('553 · anyone may ask; work needs a relationship', () => {
     const boss = await personOpens('lead')
     const bossTools = theToolsetJustHandedOut()
     const given = await callOn(bossTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'the work',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'hand',
       title: 'the work',
@@ -228,6 +229,8 @@ describe('553 · anyone may ask; work needs a relationship', () => {
       // to the one conversation this caller has with that agent — none yet, so one it starts —
       // and nothing at all reached the conversation a person opened.
       const given = await callOn(bossTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'for me',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'scribe',
         title: 'for me',
@@ -243,6 +246,8 @@ describe('553 · anyone may ask; work needs a relationship', () => {
       // and D-014 refuses it at every word: a desk in the same room is not a conversation you
       // started.
       const nearby = await callOn(bossTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'for me',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'archivist',
         title: 'for me',
@@ -265,6 +270,7 @@ describe('553 · anyone may ask; work needs a relationship', () => {
       // ⚑ **REACHED · work to the agent of a conversation this caller STARTED** — the one
       // relationship the rule admits, and it needs nobody to open a sheet.
       const handed = await callOn(bossTools, 'give_work', {
+        to: child,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'hand',
         title: 'the thing',
@@ -308,6 +314,8 @@ describe('553 · anyone may ask; work needs a relationship', () => {
       expect(staffed.outcome, JSON.stringify(staffed)).toBe('ok')
       // ⚑ **D-016 · starting it and giving it work are one act** — the give starts it.
       const given = await callOn(pmTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'the piece',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'fresh-hand',
         title: 'the piece',
@@ -334,7 +342,7 @@ describe('553 · anyone may ask; work needs a relationship', () => {
      * ⚑ **D-016 · no message opens a piece**, whatever its kind: `work` is no kind now, and a piece
      * is opened by a give alone.
      */
-    it('🔴 D-010 · no `kind` to its OWN child is refused and opens nothing, and only a give opens one', async () => {
+    it('an ordinary message or old kind cannot open a task, and a give can', async () => {
       const { boss, bossTools, child } = await aBossItsChildAndAStranger()
       // ⚑ The fixture's own give — the count every step below is measured against.
       const before = store.piecesGivenBy(boss).length
@@ -344,8 +352,7 @@ describe('553 · anyone may ask; work needs a relationship', () => {
         agent: child,
         text: 'a thought about the thing',
       })
-      expect(said.outcome, JSON.stringify(said)).toBe('refused')
-      expect(said.rail).toBe('malformed-request')
+      expect(said).toMatchObject({ outcome: 'ok', kind: 'note' })
       expect(store.piecesGivenBy(boss)).toHaveLength(before)
       // ⚑ **A note opens nothing either**, echoed back so a caller sees which reading was taken.
       const noted = await callOn(bossTools, 'message_agent', {
@@ -362,11 +369,12 @@ describe('553 · anyone may ask; work needs a relationship', () => {
         text: 'a thought about the thing',
         kind: 'work',
       })
-      expect(worded.outcome, JSON.stringify(worded)).toBe('refused')
-      expect(worded.rail).toBe('malformed-request')
+      expect(worded).toMatchObject({ outcome: 'ok', kind: 'note' })
       expect(store.piecesGivenBy(boss)).toHaveLength(before)
 
       const given = await callOn(bossTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'the thing',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'hand',
         title: 'the thing',
@@ -376,47 +384,20 @@ describe('553 · anyone may ask; work needs a relationship', () => {
       expect(store.piecesGivenBy(boss)).toHaveLength(before + 1)
     })
 
-    /**
-     * ⛔ **The other acceptable answer was to REQUIRE the argument, and it was declined** — §2.1's
-     * price, asserted as the choice rather than re-deriving `538` §3.3's SDK measurement.
-     *
-     * ⚠️ **A required argument fails differently per provider**: the MCP SDK throws
-     * `McpError(InvalidParams, …)` before this app's own door runs on Claude, while
-     * `answerCodexToolCall` hands arguments over unparsed — so `required` would be a rail on one
-     * provider and a hint on the other, and the missing arm would still exist unhandled.
-     * 🔴 **So the published schema must still accept a call with no `kind` at all**, and it is
-     * asserted on the tool this app publishes rather than on a docblock about it.
-     */
-    it('⛔ the argument stayed OPTIONAL in the schema — the door refuses its absence on both providers', async () => {
+    it('leaves kind out of the provider schema and accepts a message without it', async () => {
       const { bossTools, child } = await aBossItsChildAndAStranger()
       const tool = bossTools.tools.find((one) => one.name === 'message_agent')
       if (tool === undefined) throw new Error('message_agent is not published')
-
-      // ⚑ **What a model is actually told**, read back out of the tool's own input shape —
-      // `parametersOf` is the reader both adapters build their schema through.
       const kind = parametersOf(tool.input ?? {}).find((one) => one.name === 'kind')
-      expect(kind, 'kind is not advertised at all').toBeDefined()
-      expect(kind?.required, 'requiring it would be a rail on Claude and a hint on Codex').toBe(
-        false,
-      )
-
-      // ⛔ **And the call reaches THIS door with the argument absent**, which is the half a schema
-      // assertion alone cannot make: the answer is this app's own named refusal, naming the
-      // vocabulary — never a transport error.
-      const said = await callOn(bossTools, 'message_agent', { agent: child, text: 'anything' })
-      expect(said.outcome, JSON.stringify(said)).toBe('refused')
-      expect(said.rail).toBe('malformed-request')
-      const problems = (said.detail as { problems: string[] }).problems.join(' ')
-      for (const member of AGENT_MESSAGE_KINDS) expect(problems).toContain(member)
-
-      // ⚠️ **What leaving it out means is published beside the field** (D-010): nothing — say which.
-      expect(kind?.description ?? '').toContain('There is no default')
+      expect(kind).toBeUndefined()
+      const sent = await callOn(bossTools, 'message_agent', { agent: child, text: 'anything' })
+      expect(sent).toMatchObject({ outcome: 'ok', agent: child, kind: 'note' })
     })
 
     // ⚑ **Landing D-014 · `1014 M23`**: what a model is told about giving work is what the rail
     // does. A sentence offering another way in sends it to a door that is permanently shut. ⚑
     // **D-016** — the message tool sends work to `give_work`, and the give says where work goes.
-    it('⛔ the description sends work to give_work, which goes only to your own conversation', async () => {
+    it('the description sends work to give_work, which names a destination', async () => {
       const { bossTools } = await aBossItsChildAndAStranger()
       const tool = bossTools.tools.find((one) => one.name === 'message_agent')
       if (tool === undefined) throw new Error('message_agent is not published')
@@ -425,9 +406,7 @@ describe('553 · anyone may ask; work needs a relationship', () => {
       expect(tool.description).not.toContain('granted you more')
       const give = bossTools.tools.find((one) => one.name === 'give_work')
       if (give === undefined) throw new Error('give_work is not published')
-      expect(give.description).toContain(
-        'By default, it goes to the one conversation you have with that agent',
-      )
+      expect(give.description).toContain('to says where it goes')
     })
   })
 

@@ -1,3 +1,5 @@
+import { fixturePersonEntry } from './lib/send-person-fixture'
+import { newConversationGive } from './lib/give-fixture'
 import { callOn } from './helpers/call-agent-tool'
 import { fixtureProviderConfig, neutralHostDeps, syntheticProviderHome } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -100,34 +102,31 @@ describe('M77 · a second answer to an already-answered question', () => {
     return last
   }
 
-  const bringIntoBeing = async (profileId: string): Promise<void> => {
-    const { sessionId } = await host.createSession(
-      { provider: 'claude', profileId, approvalMode: 'ask', cwd: root },
-      window,
-    )
-    await host.close(sessionId, window)
-  }
+  const { open: openForPerson, seed: bringIntoBeing } = fixturePersonEntry(
+    () => ({ host, root, window }),
+  )
 
-  it("hands the second answer the app's own FULL sentence, word for word", async () => {
+  const openWithAsker = async () => {
     await bringIntoBeing('mock-dev')
-    await host.createSession(
-      { provider: 'claude', profileId: 'lead', approvalMode: 'ask', cwd: root },
-      window,
-    )
+    await openForPerson('lead')
     const leadTools = lastToolset()
 
     // ⚑ **D-016 · one give is the old start and its work together**: the brief is the child's
     // first turn, and the piece it opens is the one the question is about.
-    const given = await callOn(leadTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'mock-dev',
-      title: 'answer a question',
-      brief: 'pick one of the two',
-    })
+    const given = await callOn(
+      leadTools,
+      'give_work',
+      newConversationGive('mock-dev', 'answer a question', 'pick one of the two'),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const asker = given.agent as string
     const askerTools = lastToolset()
     const piece = store.piecesOwnedBy(asker)[0]?.piece ?? ''
+    return { asker, askerTools, piece }
+  }
+
+  it("hands the second answer the app's own FULL sentence, word for word", async () => {
+    const { asker, askerTools, piece } = await openWithAsker()
     expect(piece).not.toBe('')
 
     const asked = await callOn(askerTools, 'ask_question', {
@@ -169,23 +168,7 @@ describe('M77 · a second answer to an already-answered question', () => {
   })
 
   it('takes a fresh, still-open question the ordinary way (positive control)', async () => {
-    await bringIntoBeing('mock-dev')
-    await host.createSession(
-      { provider: 'claude', profileId: 'lead', approvalMode: 'ask', cwd: root },
-      window,
-    )
-    const leadTools = lastToolset()
-
-    const given = await callOn(leadTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'mock-dev',
-      title: 'answer a question',
-      brief: 'pick one of the two',
-    })
-    expect(given.outcome).toBe('ok')
-    const asker = given.agent as string
-    const askerTools = lastToolset()
-    const piece = store.piecesOwnedBy(asker)[0]?.piece ?? ''
+    const { asker, askerTools, piece } = await openWithAsker()
 
     const asked = await callOn(askerTools, 'ask_question', {
       who_answers: 'a-person',

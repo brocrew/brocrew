@@ -1,3 +1,5 @@
+import { callOn } from './helpers/call-tool'
+import { newConversationGive, readSuccessfulGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { TASK_OUTCOMES, TASK_STALL_CAUSES } from '../src/shared/task-contracts'
@@ -9,7 +11,6 @@ import {
   CHANNEL_REFUSALS,
   FakeProviderSessions,
   FakeRuntime,
-  type AgentToolset,
   type FakeSessionHandle,
   type ResumeOptions,
   type SessionRef,
@@ -22,7 +23,7 @@ import { renderToString } from 'vue/server-renderer'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { distil } from '../src/main/runtime/digest'
 import { RuntimeHost } from './helpers/giver-notice-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
@@ -58,7 +59,7 @@ import {
   type DigestRegister,
 } from '../src/shared/digest'
 import { PERMANENCE_SAID, RAIL_PERMANENCES } from '../src/shared/refusals'
-import { pieceLine, theOwnerOf } from '../src/shared/piece-called'
+import { pieceLine } from '../src/shared/piece-called'
 import { agentName, type CreatedSession } from '../src/shared/runtime-ipc'
 import { UNDRIVEN_SENTENCES } from '../src/shared/tasks'
 import {
@@ -320,16 +321,6 @@ describe("463 · a night's backlog, rehearsed", () => {
     })
   }
 
-  const callOn = async (
-    tools: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = tools.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
-
   const renderQueue = (): Promise<string> =>
     renderToString(createSSRApp({ render: () => h(PersonsQueue as never, { floating: true }) }))
 
@@ -417,13 +408,17 @@ describe("463 · a night's backlog, rehearsed", () => {
       window,
     )
     // ⚑ D-016 · the give starts the worker, and its brief is its first turn.
-    const given = await callOn(agentToolsFor(host, opened.sessionId), 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'rumour-worker',
-      title: 'raise the question',
-      brief: 'raise the question whose answer provenance is under test',
-    })
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
+    const given = await readSuccessfulGive(() =>
+      callOn(
+        agentToolsFor(host, opened.sessionId),
+        'give_work',
+        newConversationGive(
+          'rumour-worker',
+          'raise the question',
+          'raise the question whose answer provenance is under test',
+        ),
+      ),
+    )
     const worker = given.agent as string
     const workerHandle = handles.at(-1)
     if (workerHandle === undefined) throw new Error('the worker received no provider handle')
@@ -1398,15 +1393,11 @@ describe("463 · a night's backlog, rehearsed", () => {
         .get(agentAnswer.worker)
         ?.history.entries.some(({ event }) => event.type === 'user_decision'),
     ).toBe(true)
-    // ⚑ **D-016 · the worker's brief is a turn now, and the double ECHOES what it was handed** —
-    // D-011's direction line, which names the giver's conversation: by the piece it owns since
-    // D-016 · commit 7 (R3), and by its id only when it holds none. Those are the provider's own
-    // words, not a row this app draws about who answered: every place the page names the PM is
-    // inside them, and nothing else on it does — by its work or by its id.
+    // The provider echoes the brief's sender line. The UI has no extra attribution here.
     const rumourRead = transcripts.get(agentAnswer.worker)
     const pmNamed = store.workThatNames(agentAnswer.pm)
-    expect(pmNamed, 'the premise: the PM owns work that names it').not.toBeNull()
-    const byItsWork = theOwnerOf(pmNamed!)
+    if (pmNamed === null) throw new Error('the PM has no addressable root')
+    const byItsWork = `conversation ${pmNamed.label} · ${agentOf(agentAnswer.pm)}`
     const naming = (text: string, name: string): number => text.split(name).length - 1
     const echoed = (name: string): number =>
       (rumourRead?.items ?? []).reduce(

@@ -141,6 +141,7 @@ describe('D-016 · what a giver is told about a piece it gave, through the real 
   const giveWork = async (pm: string, title: string, worker?: string): Promise<Given> => {
     const turns = worker === undefined ? 0 : turnsIn(worker)
     const given = await answerOf(pm, 'give_work', {
+      ...(worker === undefined ? { to: 'new', conversation_title: title } : { to: worker }),
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title,

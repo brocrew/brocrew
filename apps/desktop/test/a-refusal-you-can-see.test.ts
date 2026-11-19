@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import type { ToolRefusedEvent, TranscriptEvent } from '../src/shared/conversation-events'
 import { navigationReply } from './helpers/navigation-reply'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -171,12 +172,17 @@ describe('405 · a refusal you can see', () => {
   const seam = (over: Partial<AgentToolHost>): AgentToolHost => ({
     // ⚑ **D-016 · the give and its readers**, delegated like every other member.
     giveWork: (...args) => host.giveWork(...args),
+    receiptForSend: (...args) => host.receiptForSend(...args),
+    stateOfARecordedMessage: (...args) => host.stateOfARecordedMessage(...args),
+    holdAgentMessageForStart: (...args) => host.holdAgentMessageForStart(...args),
     updateWork: (...args) => host.updateWork(...args),
     // ⚑ **D-016 · commit 6 · `take_on_work`'s door**, delegated like every other member.
     takeOnWork: (...args) => host.takeOnWork(...args),
     whatAPieceIsTo: (...args) => host.whatAPieceIsTo(...args),
     mayCreateAgents: (...args) => host.mayCreateAgents(...args),
     readResource: (...args) => host.readResource(...args),
+    prepareTextForSend: (...args) => host.prepareTextForSend(...args),
+    prepareFilesForSend: (...args) => host.prepareFilesForSend(...args),
     queueMessage: (...args) => host.queueMessage(...args),
     messageAgentNow: (...args) => host.messageAgentNow(...args),
     agentsVisibleTo: (...args) => host.agentsVisibleTo(...args),
@@ -196,7 +202,6 @@ describe('405 · a refusal you can see', () => {
     // ⚑ **D-016 · commit 7 · R1 — the one reading of an agent address**, delegated like every other
     // member — see this helper's own note.
     theConversationAddressed: (...args) => host.theConversationAddressed(...args),
-    theConversationAProfileNames: (...args) => host.theConversationAProfileNames(...args),
     tookItsPlace: (...args) => host.tookItsPlace(...args),
     // ⚑ Added because the interface gained it, which is what this seam is for.
     whyWhatIsHeldWaits: (...args) => host.whyWhatIsHeldWaits(...args),
@@ -204,7 +209,6 @@ describe('405 · a refusal you can see', () => {
     raiseAQuestion: (...args) => host.raiseAQuestion(...args),
     requestAnAction: (...args) => host.requestAnAction(...args),
     // ⚑ **611 · delegated like every other member** — see this helper's own note.
-    passQuestionUp: (...args) => host.passQuestionUp(...args),
     withdrawQuestion: (...args) => host.withdrawQuestion(...args),
     // ⚑ **D-012's reader, delegated like every other member.**
     readTranscript: (...args) => host.readTranscript(...args),
@@ -299,12 +303,10 @@ describe('405 · a refusal you can see', () => {
       // give to any agent this app holds (D-014), and nobody has run a conversation as `worker`.
       const { call } = toolsOf(pm)
 
-      const refused = await call('give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'do the thing',
-        brief: 'do the thing',
-      })
+      const refused = await call(
+        'give_work',
+        newConversationGive('worker', 'do the thing', 'do the thing'),
+      )
       expect(refused.outcome).toBe('refused')
       expect(refused.rail).toBe('no-such-profile')
 
@@ -329,12 +331,10 @@ describe('405 · a refusal you can see', () => {
       const pm = await personOpens('pm')
       const { call } = toolsOf(pm)
 
-      const admitted = await call('give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'do the thing',
-        brief: 'do the thing',
-      })
+      const admitted = await call(
+        'give_work',
+        newConversationGive('worker', 'do the thing', 'do the thing'),
+      )
       expect(admitted.outcome).toBe('ok')
       expect(host.sessionIds).toContain(admitted.agent as string)
 
@@ -351,12 +351,7 @@ describe('405 · a refusal you can see', () => {
       store.setSpawningEnabled(false)
       const { call } = toolsOf(pm)
 
-      const refused = await call('give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'deeper',
-        brief: 'deeper',
-      })
+      const refused = await call('give_work', newConversationGive('worker', 'deeper', 'deeper'))
       expect(refused.rail).toBe('spawning-disabled')
 
       const row = theRefusalIn(pm)
@@ -380,12 +375,7 @@ describe('405 · a refusal you can see', () => {
       // The one fact that differs from the test above.
       store.setSpawningEnabled(true)
       const { call } = toolsOf(pm)
-      const admitted = await call('give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'deeper',
-        brief: 'deeper',
-      })
+      const admitted = await call('give_work', newConversationGive('worker', 'deeper', 'deeper'))
       expect(admitted.outcome).toBe('ok')
       expect(events(pm).length).toBeGreaterThan(0)
       expect(refusalsIn(pm)).toEqual([])
@@ -404,14 +394,8 @@ describe('405 · a refusal you can see', () => {
       const pm = await personOpens('pm', 'auto')
       const { call } = toolsOf(pm)
 
-      // 1 · `SPAWN_RAILS` — refused by the spawning switch, a start rail that waits on a person.
       store.setSpawningEnabled(false)
-      await call('give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'x',
-        brief: 'x',
-      })
+      await call('give_work', newConversationGive('worker', 'x', 'x'))
       // 2 · `TOOL_REFUSALS` — this file's own vocabulary. ⚑ D-016: a note, since a follow-up names
       // a piece and this one only needs an agent that is not there.
       await call('message_agent', { agent: 'sess_nobody', text: 'hello', kind: 'note' })
@@ -422,20 +406,9 @@ describe('405 · a refusal you can see', () => {
         question: 'req_nobody',
         answers: [{ part: 'p', answer: ['yes'] }],
       })
-      // 5 · 🔴 **The sample's only RETRYABLE row** (424). ⛔ **The four above were `{true, false}`
-      // between them until `424` turned three of them over**: `no-such-agent`, the reply's unknown
-      // piece and `no-question-by-that-name` are all `permanent` now, and `spawning-disabled` waits
-      // on a person — so without a fifth door the set assertion below would have become *"they are all
-      // false"*, which a hardcoded field satisfies. ⚑ **An answer over the bound is the real
-      // transient one** (a give is no longer refused over a stall): the same call with shorter words
-      // lands, and nobody else has to decide anything.
+      // Omitting an actual answer part is retryable by the same answerer.
       store.setSpawningEnabled(true)
-      const given = await call('give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'a piece',
-        brief: 'go',
-      })
+      const given = await call('give_work', newConversationGive('worker', 'a piece', 'go'))
       const asked = await toolsOf(given.agent as string).call('ask_question', {
         who_answers: 'the-parent',
         piece: given.label,
@@ -444,7 +417,7 @@ describe('405 · a refusal you can see', () => {
       expect(asked.outcome, JSON.stringify(asked)).toBe('ok')
       await call('answer_question', {
         question: asked.question,
-        answers: [{ part: 'answer', answer: ['y'.repeat(1281)] }],
+        answers: [{ part: 'not-asked', answer: ['yes'] }],
       })
 
       const rows = refusalsIn(pm)
@@ -460,7 +433,7 @@ describe('405 · a refusal you can see', () => {
         'no-such-agent',
         'no-piece-by-that-name',
         'no-question-by-that-name',
-        'answer-too-long',
+        'that-answer-cannot-be-sent',
       ])
       // 🔴 **The complete permanence and retryability vocabularies are present in this sample.** ⛔ A row
       // that hardcoded either field would pass a suite that only ever refused one door.
@@ -485,22 +458,15 @@ describe('405 · a refusal you can see', () => {
       await bringIdentityIntoBeing('worker')
       const pm = await personOpens('pm')
       const { call } = toolsOf(pm)
-      const spawned = await call('give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'work',
-        brief: 'work',
-      })
+      const spawned = await call('give_work', newConversationGive('worker', 'work', 'work'))
       const child = spawned.agent as string
 
       // ⚑ **The CHILD asks for something that cannot be** — an agent nobody has made.
       const childTools = toolsOf(child)
-      const refused = await childTools.call('give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'nobody-by-that-name',
-        title: 'a helper of my own',
-        brief: 'a helper of my own',
-      })
+      const refused = await childTools.call(
+        'give_work',
+        newConversationGive('nobody-by-that-name', 'a helper of my own', 'a helper of my own'),
+      )
       expect(refused.rail).toBe('no-such-profile')
 
       // ⛔ **The child's ledger, because the child is who tried.** ⚠️ Not the parent's: the parent
@@ -527,6 +493,8 @@ describe('405 · a refusal you can see', () => {
       const answered = await give.call({
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
+        to: 'new',
+        conversation_title: 'Read the fictional input',
         title: 'Read the fictional input',
         brief: 'Read the fictional input',
         inputs: [file],
@@ -540,9 +508,8 @@ describe('405 · a refusal you can see', () => {
       expect(JSON.stringify(rows)).not.toContain(file)
       expect(JSON.stringify(rows)).not.toContain('PRIVATE_CALLER_PATH')
       expect(rows[0]?.rail).toBe('resource-too-large')
-      expect(
-        answered.text.startsWith(`refused (resource-too-large): ${String(rows[0]?.told?.text)}`),
-      ).toBe(true)
+      expect(rows[0]?.told?.text).toMatch(/^Not sent: /)
+      expect(answered.text.startsWith(String(rows[0]?.told?.text))).toBe(true)
     })
 
     it('🔴 nothing a caller wrote reaches the ledger — not the arguments and not the detail; the sentence the app composed does', async () => {
@@ -557,10 +524,7 @@ describe('405 · a refusal you can see', () => {
       const secretFolder = join(work, 'northwind-acquisition')
       mkdirSync(secretFolder, { recursive: true })
       const refused = await call('give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: secretPurpose,
-        brief: secretPurpose,
+        ...newConversationGive('worker', secretPurpose, secretPurpose),
         folder: secretFolder,
       })
       expect(refused.outcome).toBe('refused')
@@ -623,9 +587,15 @@ describe('405 · a refusal you can see', () => {
         if (one === undefined) throw new Error(`no such tool: ${name}`)
         return one.call(args)
       }
-      await expect(invoke('give_work', { profile: 'w', title: 'x', brief: 'x' })).rejects.toThrow(
-        'the door blew up',
-      )
+      await expect(
+        invoke('give_work', {
+          to: 'new',
+          conversation_title: 'x',
+          profile: 'w',
+          title: 'x',
+          brief: 'x',
+        }),
+      ).rejects.toThrow('the door blew up')
       expect(noted).toEqual([])
       expect(refusalsIn(pm)).toEqual([])
 
@@ -711,18 +681,31 @@ describe('405 · a refusal you can see', () => {
     }
 
     it('🔴 a sentence longer than a receipt keeps is on the row whole, and a new host on the same file reads it back', async () => {
+      await bringIdentityIntoBeing('worker')
       const pm = await personOpens('pm')
-      const refused = await toolsOf(pm).call('give_work', {
+      const { call } = toolsOf(pm)
+      const task = {
         definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'ghost',
+        profile: 'worker',
         title: 'count the rows',
         brief: 'count the rows',
+      }
+      expect(
+        await call('give_work', {
+          ...task,
+          to: 'new',
+          conversation_title: `Fictional counts: ${'x'.repeat(170)}`,
+        }),
+      ).toMatchObject({ outcome: 'ok' })
+      const refused = await call('give_work', task)
+      expect(refused).toMatchObject({
+        outcome: 'refused',
+        rail: 'name-the-conversation',
       })
-      expect(refused.outcome).toBe('refused')
       const reason = refused.reason as string
       // ⚑ Longer than the 200 characters a tool's own row keeps of what it answered.
       expect(reason.length).toBeGreaterThan(200)
-      const sentence = `${reason} ${permanenceInWords('no-such-profile', 'permanent')}`
+      const sentence = `${reason} ${permanenceInWords('name-the-conversation', 'permanent')}`
       expect(theRefusalIn(pm).told).toEqual({ text: sentence, dropped: 0 })
 
       await host.closeAll()
@@ -748,6 +731,8 @@ describe('405 · a refusal you can see', () => {
       // ⚑ One word, written into every field that carries a caller's own work.
       const WORK = 'Northwind'
       await call('give_work', {
+        to: 'new',
+        conversation_title: `${WORK} memo`,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: `${WORK} memo`,
@@ -804,9 +789,10 @@ describe('405 · a refusal you can see', () => {
       ])
       const problem = 'Problems: definition_of_done: expected text, got a list.'
       // ⚑ Our own words, the problem line among them, kept whole: the receipt itself.
+      expect(wrongType).toMatch(/^Not sent: /)
       expect(wrongType).toContain(problem)
       expect(rows[0]?.told).toEqual({
-        text: wrongType.slice('refused (malformed-request): '.length),
+        text: wrongType,
         dropped: 0,
       })
       // ⛔ …and no value the caller sent is in them.
@@ -814,7 +800,10 @@ describe('405 · a refusal you can see', () => {
       // ⛔ A field the caller named is told to it, and its name never reaches the record.
       expect(withAKeyOfItsOwn).toContain('PRIVATE_CALLER_KEY')
       expect(takenWithAKey.text).toContain('PRIVATE_TAKE_KEY')
-      expect(rows[1]?.told).toEqual({ text: refuse('malformed-request').reason, dropped: 0 })
+      expect(rows[1]?.told).toEqual({
+        text: `Not sent: ${refuse('malformed-request').reason}`,
+        dropped: 0,
+      })
       expect(rows[2]?.told).toEqual({ text: takenWithAKey.structured?.['reason'], dropped: 0 })
       for (const own of ['PRIVATE_CALLER_KEY', 'PRIVATE_TAKE_KEY', 'A list where text belongs'])
         expect(JSON.stringify(rows)).not.toContain(own)
@@ -831,19 +820,11 @@ describe('405 · a refusal you can see', () => {
         if (tool === undefined) throw new Error(`no such tool: ${name}`)
         texts.push((await tool.call(args)).text)
       }
+      await said('give_work', newConversationGive('worker', 'x', 'x'))
+      await said('give_work', newConversationGive('ghost', 'x', 'x'))
       await said('give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'x',
-        brief: 'x',
-      })
-      await said('give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'ghost',
-        title: 'x',
-        brief: 'x',
-      })
-      await said('give_work', {
+        to: 'new',
+        conversation_title: 'x',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'x',
@@ -862,17 +843,24 @@ describe('405 · a refusal you can see', () => {
         // ⚑ What the window joins on today is the receipt's first 200 characters: the kept sentence
         // must read on from them word for word.
         const { prose: said } = navigationReply(texts[at] ?? '')
-        expect(said.startsWith(`refused (${row.rail}): ${row.told?.text ?? ''}`), said).toBe(true)
+        // give_work and message_agent publish the Not sent opening in the recorded reason.
+        const isSend = at < 4
+        const prefix = isSend ? '' : `refused (${row.rail}): `
+        if (isSend) expect(row.told?.text).toMatch(/^Not sent: /)
+        expect(said.startsWith(prefix + (row.told?.text ?? '')), said).toBe(true)
         // Detail-bearing answers keep only the existing reason; app-only answers keep their tail.
         const permanence = permanenceInWords(row.rail, row.permanence)
         expect(said.endsWith(` ${permanence}`), said).toBe(true)
         if (row.rail === 'malformed-request') {
-          expect(row.told).toEqual({ text: refuse('malformed-request').reason, dropped: 0 })
+          expect(row.told).toEqual({
+            text: `Not sent: ${refuse('malformed-request').reason}`,
+            dropped: 0,
+          })
           expect(said).toContain('unasked')
           expect(JSON.stringify(row)).not.toContain('unasked')
         } else {
           expect(row.told).toEqual({
-            text: said.slice(`refused (${row.rail}): `.length),
+            text: said.slice(prefix.length),
             dropped: 0,
           })
           expect((row.told?.text ?? '').split(permanence).length - 1).toBe(1)
@@ -963,6 +951,8 @@ describe('405 · a refusal you can see', () => {
 
     it('⚑ a refusal whose payload carries no sentence still writes its row, without one', () => {
       const facts = refusalIn('give_work', {
+        to: 'new',
+        conversation_title: 'A test conversation',
         outcome: 'refused',
         rail: 'spawning-disabled',
         permanence: 'while-this-holds',
@@ -1044,12 +1034,7 @@ describe('405 · a refusal you can see', () => {
     await bringIdentityIntoBeing('worker')
     const pm = await personOpens('pm')
     store.setSpawningEnabled(false)
-    await toolsOf(pm).call('give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'x',
-      brief: 'x',
-    })
+    await toolsOf(pm).call('give_work', newConversationGive('worker', 'x', 'x'))
     return pm
   }
 
@@ -1143,12 +1128,7 @@ describe('405 · a refusal you can see', () => {
     it('⚑ the raw event log gives it a line of its own', async () => {
       const pm = await personOpens('pm')
       const { call } = toolsOf(pm)
-      await call('give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'nobody',
-        title: 'x',
-        brief: 'x',
-      })
+      await call('give_work', newConversationGive('nobody', 'x', 'x'))
       const line = describeEvent(theRefusalIn(pm))
       expect(line).toContain('give_work')
       expect(line).toContain('no-such-profile')
@@ -1188,12 +1168,7 @@ describe('405 · a refusal you can see', () => {
       // call sites do exactly that.** ⛔ It is asserted anyway because a defect that throws here
       // would reach a model as a broken tool, which is the one shape `307` says a refusal must never
       // wear.
-      const refused = await call('give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'nobody',
-        title: 'x',
-        brief: 'x',
-      })
+      const refused = await call('give_work', newConversationGive('nobody', 'x', 'x'))
       expect(refused.outcome).toBe('refused')
       expect(refusalsIn(pm)).toEqual([])
     })

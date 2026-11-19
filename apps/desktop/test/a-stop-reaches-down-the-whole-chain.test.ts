@@ -1,3 +1,8 @@
+import {
+  giveAfterBriefTurn,
+  startThinking,
+  giveTwoHopsAfterBriefTurns,
+} from './lib/running-worker-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { callOn } from './helpers/call-agent-tool'
 import { chainAbove } from './helpers/conversation-ancestry'
@@ -143,48 +148,8 @@ describe('629 · a stop reaches down the whole chain', () => {
     return handle
   }
 
-  /**
-   * 🔴 **Put a conversation into a WORKING turn**, which is the state the ruling is about.
-   *
-   * ⛔ **Not the Fake's ordinary turn**, which parks on a permission card — and `INTERRUPT_RAILS`
-   * correctly refuses `a-person-is-being-asked`, so a fixture that used one would measure that
-   * rail instead of this one. ⚑ A thinking burst makes the handle `working` and nothing else.
-   */
-  const makeItWork = async (handle: FakeSessionHandle): Promise<void> => {
-    handle.simulateThinking({ text: 'driving the browser', redacted: false })
-    await waitFor(() => handle.status() === 'working', 'the conversation to be working')
-  }
-
   /** ⚑ A caller, as an agent's conversation spells one. */
   const asAgent = (sessionId: string): { ownerId: string } => ({ ownerId: `agent:${sessionId}` })
-
-  /**
-   * ⚑ **D-016 · a give, and the child's first turn is its brief** — waited out to its END, so the
-   * turn {@link makeItWork} starts is the only one in flight. ⛔ **The chain runs in `auto`** (BroBot
-   * is opened so, and a child runs in its giver's mode): in `ask` every brief parks on a permission
-   * card, and `INTERRUPT_RAILS` refuses `a-person-is-being-asked` — the rail this file must not
-   * measure.
-   */
-  const give = async (
-    tools: AgentToolset,
-    profile: string,
-    title: string,
-  ): Promise<{ agent: string; piece: string; label: string }> => {
-    const given = await callOn(tools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile,
-      title,
-      brief: title,
-    })
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    expect(given.started, JSON.stringify(given)).toBe(true)
-    const agent = given.agent as string
-    await waitFor(
-      () => ledger(agent).some((event) => event.type === 'turn'),
-      'the brief’s turn to end',
-    )
-    return { agent, piece: given.piece as string, label: given.label as string }
-  }
 
   /**
    * 🔴 **BroBot → Ada → Ali, through the real door.**
@@ -220,12 +185,15 @@ describe('629 · a stop reaches down the whole chain', () => {
     await bringIdentityIntoBeing(pmProfile)
     await bringIdentityIntoBeing(workerProfile)
     await bringIdentityIntoBeing(siblingProfile)
-    const brobot = await personOpens(DEFAULT_PROFILE_ID, 'auto')
-    const brobotTools = agentToolsFor(host, brobot)
-    const ada = (await give(brobotTools, pmProfile, 'run the front-end work')).agent
-    const adaHandle = latestHandle()
-    const adaTools = agentToolsFor(host, ada)
-    const toAli = await give(adaTools, workerProfile, 'build the world-clock page')
+    const { brobot, brobotTools, ada, adaHandle, adaTools, toAli } =
+      await giveTwoHopsAfterBriefTurns(
+        store,
+        () => personOpens(DEFAULT_PROFILE_ID, 'auto'),
+        (id) => agentToolsFor(host, id),
+        latestHandle,
+        pmProfile,
+        workerProfile,
+      )
     const ali = toAli.agent
     const aliHandle = latestHandle()
     return {
@@ -276,7 +244,7 @@ describe('629 · a stop reaches down the whole chain', () => {
       // `work_interrupted` with `whoDidIt`'s discriminated actor since `501`, and the agent arm
       // carries the asking CONVERSATION. ⚑ So no new field was needed and none was added.
       const { ada, ali, aliHandle, adaTools } = await aChainOfThree()
-      await makeItWork(aliHandle)
+      await startThinking(aliHandle)
       const said = await callOn(adaTools, 'interrupt_agent', { agent: ali, reason: 'stop' })
       expect(said.outcome, JSON.stringify(said)).toBe('ok')
       const asked = ledger(ali).find((event) => event.type === 'work_interrupted')
@@ -292,7 +260,7 @@ describe('629 · a stop reaches down the whole chain', () => {
     it('🔴 THE RULING · BroBot stops Ali directly, at depth 2, without going through Ada', async () => {
       const { brobot, ali, aliPiece, aliHandle, brobotTools } = await aChainOfThree()
       // Keep the descendant working so the stop measures interruption of active work.
-      await makeItWork(aliHandle)
+      await startThinking(aliHandle)
       expect(store.workById(aliPiece)?.label.split('.')).toHaveLength(3)
 
       const said = await callOn(brobotTools, 'interrupt_agent', {
@@ -322,7 +290,7 @@ describe('629 · a stop reaches down the whole chain', () => {
       // ⛔ **Without this arm, *the grandparent may* is satisfied by a build that admits
       // everybody** — standing rule 3's pairing, pointed at the allowed side.
       const { ada, ali, aliHandle, adaTools } = await aChainOfThree()
-      await makeItWork(aliHandle)
+      await startThinking(aliHandle)
       const said = await callOn(adaTools, 'interrupt_agent', { agent: ali, reason: 'stop' })
       expect(said.outcome, JSON.stringify(said)).toBe('ok')
       expect(ledger(ali).find((event) => event.type === 'work_interrupted')).toMatchObject({
@@ -332,8 +300,8 @@ describe('629 · a stop reaches down the whole chain', () => {
 
     it('a grandchild can stop its working parent, and a grandparent can stop its running descendant', async () => {
       const { ada, ali, aliHandle, adaHandle, brobotTools } = await aChainOfThree()
-      await makeItWork(aliHandle)
-      await makeItWork(adaHandle)
+      await startThinking(aliHandle)
+      await startThinking(adaHandle)
       const upward = await callOn(agentToolsFor(host, ali), 'interrupt_agent', {
         agent: ada,
         reason: 'no',
@@ -351,8 +319,10 @@ describe('629 · a stop reaches down the whole chain', () => {
   describe('§2 · peers may interrupt; self, spawning and work controls remain', () => {
     it('a sibling can stop its running sibling, and the parent can ask again', async () => {
       const { ali, aliHandle, adaTools, siblingProfile } = await aChainOfThree()
-      await makeItWork(aliHandle)
-      const sibling = (await give(adaTools, siblingProfile, 'the second worker')).agent
+      await startThinking(aliHandle)
+      const sibling = (
+        await giveAfterBriefTurn(store, adaTools, siblingProfile, 'the second worker')
+      ).agent
       const siblingTools = agentToolsFor(host, sibling)
       expect(store.parentOf(sibling)).toBe(store.parentOf(ali))
       expect(chainAbove(store, ali)).not.toContain(sibling)
@@ -365,9 +335,9 @@ describe('629 · a stop reaches down the whole chain', () => {
     })
     it('an unrelated colleague can stop a running peer as well as its own descendant', async () => {
       const { ali, aliHandle } = await aChainOfThree()
-      await makeItWork(aliHandle)
+      await startThinking(aliHandle)
       const other = await aChainOfThree()
-      await makeItWork(other.aliHandle)
+      await startThinking(other.aliHandle)
       expect(chainAbove(store, ali)).not.toContain(other.brobot)
       expect(chainAbove(store, ali)).not.toContain(other.ada)
 
@@ -385,7 +355,7 @@ describe('629 · a stop reaches down the whole chain', () => {
     })
     it('a conversation cannot interrupt itself, and a colleague can', async () => {
       const { ali, aliHandle, adaTools } = await aChainOfThree()
-      await makeItWork(aliHandle)
+      await startThinking(aliHandle)
       expect(chainAbove(store, ali)).not.toContain(ali)
 
       const itself = await callOn(agentToolsFor(host, ali), 'interrupt_agent', {
@@ -411,15 +381,17 @@ describe('629 · a stop reaches down the whole chain', () => {
       const request = {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: siblingProfile,
+        to: 'new',
+        conversation_title: 'a helper',
         title: 'a helper',
         brief: 'a helper',
       }
-      const refused = await host.giveWork({ ...request, piece: aliLabel }, asAgent(brobot))
+      const refused = await host.giveWork({ ...request, under: aliLabel }, asAgent(brobot))
       if (refused.ok) throw new Error(`the grandparent's give was admitted: ${refused.owner}`)
       expect(refused.refusal.rail).toBe('no-piece-you-hold-by-that-name')
 
       // ⚑ **THE PAIR one fact over** — the same request from the conversation that holds the piece.
-      const allowed = await host.giveWork({ ...request, piece: aliLabel }, asAgent(ali))
+      const allowed = await host.giveWork({ ...request, under: aliLabel }, asAgent(ali))
       expect(allowed.ok, JSON.stringify(allowed)).toBe(true)
       if (allowed.ok) expect(store.parentOf(allowed.owner)).toBe(ali)
     })
@@ -428,7 +400,7 @@ describe('629 · a stop reaches down the whole chain', () => {
     // to a conversation the caller STARTED. The chain is not a relationship that admits work.
     // ⚑ **D-016** — work is followed up only by the one that gave it: naming the grandchild's piece
     // is refused to the grandparent, which did not give it.
-    it('⛔ REFUSED · the chain grants no WORK — a grandparent may not give its grandchild work', async () => {
+    it('a grandparent cannot name an unseen task in a message to its grandchild', async () => {
       const { ali, aliLabel, brobotTools, adaTools } = await aChainOfThree()
       const refused = await callOn(brobotTools, 'message_agent', {
         agent: ali,
@@ -437,7 +409,7 @@ describe('629 · a stop reaches down the whole chain', () => {
         text: 'build the settings page too',
       })
       expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
-      expect(refused.rail).toBe('not-a-piece-you-gave')
+      expect(refused.rail).toBe('no-piece-by-that-name')
 
       // ⚑ **THE PAIR one fact over** — the same work from the conversation that started Ali.
       const given = await callOn(adaTools, 'message_agent', {
@@ -457,7 +429,7 @@ describe('629 · a stop reaches down the whole chain', () => {
   describe('§4 · a reach past a manager is visible to the manager', () => {
     it('🔴 Ada can read that her worker was stopped, and that BroBot did it', async () => {
       const { brobot, ada, ali, aliHandle, brobotTools } = await aChainOfThree()
-      await makeItWork(aliHandle)
+      await startThinking(aliHandle)
       expect(
         (await callOn(brobotTools, 'interrupt_agent', { agent: ali, reason: 'stop' })).outcome,
       ).toBe('ok')
@@ -526,7 +498,7 @@ describe('629 · a stop reaches down the whole chain', () => {
     it('🔴 F091 · its id, a piece it holds and its own root name this conversation: nothing is interrupted, and the acts are its own', async () => {
       const { brobot, ada, ali, aliLabel, aliHandle, brobotTools, adaTools, pmProfile } =
         await aChainOfThree()
-      await makeItWork(aliHandle)
+      await startThinking(aliHandle)
       const adaLabel = store.piecesOwnedBy(ada)[0]?.label
       expect(typeof adaLabel).toBe('string')
       const aliTools = agentToolsFor(host, ali)
@@ -559,7 +531,7 @@ describe('629 · a stop reaches down the whole chain', () => {
           named === aliLabel
             ? ` ${aliLabel} is your own piece, with no helpers recorded under it. list_agents names conversations; message_agent answers whether one can take your message.`
             : named === brobotsRoot
-              ? ` ${brobotsRoot} is your own piece. Its helpers: Ada (${pmProfile}) on ${adaLabel} (working). Reach a helper by its piece's label, even after it ended: message_agent with kind: note, or ask_question. For new work, give_work with its profile. To stop a known conversation, interrupt_agent with its label.`
+              ? ` ${brobotsRoot} is your own piece. Its helpers: Ada (${pmProfile}) on ${adaLabel} (working). Reach a helper by its task's label, even after it ended: message_agent or ask_question. For new work, give_work with its profile. To stop a known conversation, interrupt_agent with its label.`
               : ''
         expect(said.structured, named).toMatchObject({
           outcome: 'refused',
@@ -586,7 +558,7 @@ describe('629 · a stop reaches down the whole chain', () => {
       expect(aliHandle.status()).toBe('working')
       expect(ledger(ali).some((event) => event.type === 'work_interrupted')).toBe(false)
       const other = await aChainOfThree()
-      await makeItWork(other.aliHandle)
+      await startThinking(other.aliHandle)
       expect(
         await callOn(aliTools, 'interrupt_agent', { agent: other.ali, reason: 'stop' }),
       ).toMatchObject({ outcome: 'ok', asked: true })
@@ -634,7 +606,7 @@ describe('629 · a stop reaches down the whole chain', () => {
         ).toMatchObject({
           outcome: 'refused',
           rail: 'that-agent-is-you',
-          reason: refuseTool('that-agent-is-you').reason + guide,
+          reason: `Not sent: ${refuseTool('that-agent-is-you').reason}${guide}`,
         })
       }
       // ⚑ The controls: Ada's message to Ali's id still reaches the conversation in its place, and

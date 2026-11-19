@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import type { HandedPath } from '../src/shared/attachment-contracts'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import type { SessionInstructions } from '../src/shared/instruction-contracts'
@@ -664,12 +665,11 @@ class TheApp {
   async aPmItsWorkerAndAPeer(brief = 'build it') {
     await this.host.close((await this.personOpens('worker')).id, this.window)
     const pm = await this.personOpens('pm')
-    const given = await callOn(pm.tools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'the index',
-      brief,
-    })
+    const given = await callOn(
+      pm.tools,
+      'give_work',
+      newConversationGive('worker', 'the index', brief),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     return { pm, worker, label: given.label as string }
@@ -1458,6 +1458,8 @@ describe('D-027 · the work a turn of several drives', () => {
     const gave: { child: string; piece: string; label: string }[] = []
     for (const profile of ['worker', 'builder']) {
       const given = await callOn(pm.tools, 'give_work', {
+        to: 'new',
+        conversation_title: `The ${profile}`,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile,
         title: `The ${profile}`,
@@ -1511,8 +1513,10 @@ describe('D-027 · the work a turn of several drives', () => {
   it('§18 · an unnamed give hangs under the piece that every message of a turn of several drives', async () => {
     await bringIdentityIntoBeing('worker')
     const pm = await app.personOpens('pm')
-    const aGive = async (title: string, brief: string) => {
+    const aGive = async (title: string, brief: string, to: string) => {
       const answer = await callOn(pm.tools, 'give_work', {
+        to,
+        ...(to === 'new' ? { conversation_title: title } : {}),
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title,
@@ -1526,12 +1530,12 @@ describe('D-027 · the work a turn of several drives', () => {
         delivery: answer.delivery,
       }
     }
-    const first = await aGive('the first piece', 'read the first table')
+    const first = await aGive('the first piece', 'read the first table', 'new')
     const worker = first.agent
     app.host.claimSession(worker, app.window)
     await waitFor(() => app.cards(worker).length > 0, 'the worker to park on its first turn')
     // ⚑ The worker is busy, so the second piece is HELD behind the first turn.
-    const second = await aGive('the second piece', 'copy the second column over')
+    const second = await aGive('the second piece', 'copy the second column over', first.label)
     expect(second.agent).toBe(worker)
     expect(second.delivery).toBe('held')
     await bringIdentityIntoBeing('helper')
@@ -1558,12 +1562,11 @@ describe('D-027 · the work a turn of several drives', () => {
     await waitFor(() => app.cards(worker).length >= 3, 'that turn to park')
 
     // ⚑ Every message of the running turn drives the second piece, so an unnamed give hangs under it.
-    const unnamed = await callOn(app.toolsFor(worker), 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'helper',
-      title: 'a smaller piece',
-      brief: 'do the small part',
-    })
+    const unnamed = await callOn(
+      app.toolsFor(worker),
+      'give_work',
+      newConversationGive('helper', 'a smaller piece', 'do the small part'),
+    )
     expect(unnamed.outcome, JSON.stringify(unnamed)).toBe('ok')
     expect(app.store.workById(unnamed.piece as string)?.parent).toBe(second.piece)
 
@@ -1593,12 +1596,11 @@ describe('D-027 · the work a turn of several drives', () => {
         .sort(),
     ).toEqual([first.piece, second.piece].sort())
     await waitFor(() => app.cards(worker).length >= 5, 'that turn to park')
-    const refused = await callOn(app.toolsFor(worker), 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'helper',
-      title: 'never begun',
-      brief: 'never sent',
-    })
+    const refused = await callOn(
+      app.toolsFor(worker),
+      'give_work',
+      newConversationGive('helper', 'never begun', 'never sent'),
+    )
     expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
     expect(refused.rail).toBe('name-the-piece-you-give-from')
     expect([...((refused.detail as { held?: string[] }).held ?? [])].sort()).toEqual(
@@ -1629,17 +1631,14 @@ describe('D-027 · the work a turn of several drives', () => {
     await waitFor(() => both() !== undefined, 'the two notes to be handed over')
     const heard = withoutWhatThisAppAdds(both() ?? '')
     expect(heard).toContain('Message 2 of 2.')
-    // ⛔ Once each: the sender's profile, its piece's title, and the given piece's title.
-    expect(heard.split('(pm)'), heard).toHaveLength(2)
-    expect(heard.split('Ship the clock'), heard).toHaveLength(2)
-    expect(heard.split('the index'), heard).toHaveLength(2)
-    // ⚑ …and every fact is still in the second message: who sent it, about which piece, and the
-    // address an answer goes back to.
-    const name = /Sent by (.+?) \(pm\)/.exec(heard)?.[1] ?? ''
+    const firstName = `(conversation ${root} · Ship the clock)`
+    expect(heard.split(firstName), heard).toHaveLength(2)
+    expect(heard.split(`about task ${label} · the index`), heard).toHaveLength(2)
+    const name = /^From (.+?) \(conversation /m.exec(heard)?.[1] ?? ''
     expect(name).not.toBe('')
     const second = heard.slice(heard.indexOf('Message 2 of 2.'))
-    expect(second).toContain(`Sent by ${name}, who gave you ${label}.`)
-    expect(second).toContain(`This message is about ${label}.`)
-    expect(second).toContain(`do not reach ${name}, the owner of ${root}.`)
+    expect(second).toContain(`From ${name} (${root}), about task ${label}`)
+    expect(second).toContain(`This conversation gave you ${label}.`)
+    expect(second).toContain(`Your reply here doesn't reach ${name}:`)
   })
 })

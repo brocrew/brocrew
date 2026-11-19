@@ -1,14 +1,9 @@
 import {
-  AGENT_MESSAGE_KINDS,
   TASK_OUTCOMES,
   TASK_STATES as WORK_SEARCH_TASK_STATES,
 } from '../../../shared/task-contracts'
 import { MCP_SERVER_REQUEST_WHO } from '../../../shared/mcp-server-requests'
-import {
-  PASS_UP_RECIPIENTS,
-  type PassUpRecipient,
-  type QuestionRecipient,
-} from '../../../shared/question-contracts'
+import type { QuestionRecipient } from '../../../shared/question-contracts'
 import { type Provider, providerDescriptor, providerRecord, providerSchema } from '@brobot2/shared'
 import { QUESTION_RECIPIENTS, RECIPIENT_MEANS } from '../../../shared/questions'
 import { THEME_TOOL_NAMES } from '../../themes/tool-words'
@@ -133,7 +128,6 @@ export const TOOL_NAMES = [
 
   'propose_agent_rules',
 
-  'pass_question_up',
   // **D-009 · F012** — the asker takes back a question it asked (ruling 5). Appended: the
   // roster's order is pinned by index.
   'withdraw_question',
@@ -241,22 +235,10 @@ export const LISTING_INPUT = toolInputVocabulary(['open', 'ended', 'all'] as con
   all: "'all' is what is open, then what is over, a line each, newest first.",
 })
 
-// whose answer comes back.
-const MESSAGE_KIND_INPUT = toolInputVocabulary(AGENT_MESSAGE_KINDS, {
-  note: "'note' tells it something for its information; no reply is expected.",
-  'follow-up': "'follow-up' adds to a piece of work you gave it, which you name.",
-})
-
 // `request_routed.to` has no room for.
 const QUESTION_RECIPIENT_INPUT = toolInputVocabulary(
   QUESTION_RECIPIENTS as unknown as [QuestionRecipient, ...QuestionRecipient[]],
   RECIPIENT_MEANS,
-)
-
-// sentences `RECIPIENT_MEANS` already says for those two.
-const PASS_UP_RECIPIENT_INPUT = toolInputVocabulary(
-  PASS_UP_RECIPIENTS as unknown as [PassUpRecipient, ...PassUpRecipient[]],
-  { 'the-parent': RECIPIENT_MEANS['the-parent'], 'a-person': RECIPIENT_MEANS['a-person'] },
 )
 
 // Who a requested MCP server would be for.
@@ -294,17 +276,11 @@ const WORK_SEARCH_STATE_INPUT = toolInputVocabulary(
 export const TOOL_INPUT_ENUMS = {
   'search_work:scope': WORK_SEARCH_SCOPE_INPUT,
   'search_work:state': WORK_SEARCH_STATE_INPUT,
-  'message_agent:kind': MESSAGE_KIND_INPUT,
   'reply_to_parent:outcome': TASK_OUTCOME_INPUT,
   'create_agent:provider': PROVIDER_INPUT,
   'give_work:provider': PROVIDER_INPUT,
   'create_agent:kind': AGENT_KIND_INPUT,
-  // **611 · ONE vocabulary, advertised on BOTH question verbs** (HO-088 §2.1, §3.2). Two
-  // entries and not one shared name, because `TOOL_INPUT_ENUMS` is keyed by `verb:argument` and a
-  // reader asking *what may this verb be sent* must find its own row.
   'ask_question:who_answers': QUESTION_RECIPIENT_INPUT,
-  // **D-009 · no longer the same vocabulary**: a question is never passed to an agent by name.
-  'pass_question_up:who_answers': PASS_UP_RECIPIENT_INPUT,
   'find_files:where': FIND_WHERE_INPUT,
   'list_tasks:state': LISTING_INPUT,
   'list_questions:state': LISTING_INPUT,

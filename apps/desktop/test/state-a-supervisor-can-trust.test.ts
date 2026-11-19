@@ -1,3 +1,4 @@
+import { callOn } from './helpers/call-tool'
 import { waitFor } from './lib/f093-host'
 import { TASK_STALL_CAUSES } from '../src/shared/task-contracts'
 import type { TaskStallCause } from '../src/shared/task-contracts'
@@ -247,16 +248,6 @@ describe('484 · state a supervisor can trust', () => {
     await host.close(id, window)
   }
 
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
-
   const textOf = async (
     toolset: AgentToolset,
     name: ToolName,
@@ -287,11 +278,14 @@ describe('484 · state a supervisor can trust', () => {
     profile: string,
     brief: string,
     decorate?: (handle: FakeSessionHandle) => FakeSessionHandle,
+    to = 'new',
   ): Promise<{ agent: string; piece: string; label: string }> => {
     decorateNextHandle = decorate ?? null
     let given: Record<string, unknown>
     try {
       given = await callOn(tools, 'give_work', {
+        to,
+        ...(to === 'new' ? { conversation_title: brief } : {}),
         definition_of_done: 'The requested result and its checks are recorded.',
         profile,
         title: brief,
@@ -1258,7 +1252,7 @@ describe('484 · state a supervisor can trust', () => {
 
       // ⚑ **D-016 · the holder is told it was taken back** — a turn of its own, parked on its card —
       // so the next give is held behind it.
-      const next = await aGive(pmTools, workerProfile, '491-open-history')
+      const next = await aGive(pmTools, workerProfile, '491-open-history', undefined, worker)
       expect(next.agent).toBe(worker)
       await cardOn(worker, 2)
       const oldTask = { piece, label }
@@ -1363,7 +1357,13 @@ describe('484 · state a supervisor can trust', () => {
       expect(store.lastAskToStop(worker)).toBeNull()
       void pm
 
-      const second = await aGive(pmTools, workerProfile, '491-after-the-idle-stop')
+      const second = await aGive(
+        pmTools,
+        workerProfile,
+        '491-after-the-idle-stop',
+        undefined,
+        worker,
+      )
       expect(second.agent).toBe(worker)
       await cardOn(worker, 3)
       const card = [...store.events(worker)]

@@ -278,11 +278,15 @@ describe('685 §2.1 · the act a refusal carries, on its notice', () => {
     }
   })
 
-  it.each(['create_agent', 'give_work'] as const)(
+  it.each([
+    ['create_agent', 'Not sent: '],
+    ['give_work', 'Not sent: '],
+    ['answer_question', 'Not answered: '],
+  ] as const)(
     'matches a clipped %s refusal by the recorded text and leaves ambiguous receipts unclaimed',
-    async (tool) => {
+    async (tool, opening) => {
       const { kept } = await aRefusedAnswer()
-      const quote = 'Not sent: ' + 'The supplied argument cannot be used. '.repeat(6) + 'Try again.'
+      const quote = opening + 'The supplied argument cannot be used. '.repeat(6) + 'Try again.'
       const row = { ...kept, tool, told: { text: quote, dropped: 0 } }
       const wrongQuote = {
         ...row,

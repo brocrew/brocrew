@@ -1,3 +1,4 @@
+import { createWorkerAndGive } from './lib/give-fixture'
 import type { AgentState } from '../src/shared/agent-state-contracts'
 import type { PieceRow } from '../src/shared/task-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -244,13 +245,7 @@ describe('F097 · a person owes the agent that answered them', () => {
     )
     await settle()
     const brobotTools = agentToolsFor(host, brobot)
-    const given = await callOn(brobotTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      new: true,
-      title: 'Build the pages',
-      brief: 'build the pages',
-    })
+    const given = await createWorkerAndGive(brobotTools, 'Build the pages', 'build the pages')
     expect(given, JSON.stringify(given)).toMatchObject({ outcome: 'ok', label: 'W1.1' })
     const ada = given.agent as string
     await waitFor(() => stallNoticesIn(brobot).length === 1, 'the giver to be told of the stall')
@@ -425,6 +420,7 @@ describe('F097 · a person owes the agent that answered them', () => {
     const { brobot, brobotTools, ada, piece } = await aGiverAndItsHelper()
     const giveMore = (title: string): Promise<Record<string, unknown>> =>
       callOn(brobotTools, 'give_work', {
+        to: ada,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title,

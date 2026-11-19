@@ -226,6 +226,8 @@ describe('648 · a task row that lies about its holder', () => {
     await personOpens('pm', 'ask')
     const pmTools = theToolsetJustHandedOut()
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'The first piece',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'The first piece',
@@ -245,6 +247,7 @@ describe('648 · a task row that lies about its holder', () => {
   /** ⚑ **D-016** — the second give, to the conversation parked above, and the piece it opened. */
   const giveTheThing = async (pmTools: AgentToolset, worker: string): Promise<string> => {
     const gave = await callOn(pmTools, 'give_work', {
+      to: worker,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'The thing',
@@ -270,18 +273,23 @@ describe('648 · a task row that lies about its holder', () => {
       credentialGeneration++
       // Answering the card ends the turn, which is what wakes the flush.
       await host.respondPermission(worker, cardId, { outcome: 'deny' }, window)
-      await waitFor(() => endingsOn(worker).length > 0, 'the held brief to go')
+      await waitFor(
+        () => endingsOn(worker).some((event) => event.text === 'do the thing'),
+        'the held brief to go',
+      )
 
       // 🔴 **The repair, a second time.** Before 648 this row read `waiting` / `null` for the whole
       // life of the conversation; 648 ended the brief unsent. ⚑ Now the flush leaves it held, and
       // once the holder is free this app reopens it on the current sign-in, where it goes first.
-      const endings = endingsOn(worker)
+      const endings = endingsOn(worker).filter((event) => event.text === 'do the thing')
       expect(endings).toHaveLength(1)
       expect(endings[0]).toMatchObject({ reason: 'sent', text: 'do the thing' })
       const ledger = store.events(worker).map((entry) => entry.event)
       expect(ledger).toContainEqual({ type: 'reopened', because: 'the-sign-in-moved-on' })
       expect(ledger.findIndex((event) => event.type === 'reopened')).toBeLessThan(
-        ledger.findIndex((event) => event.type === 'message_unqueued'),
+        ledger.findIndex(
+          (event) => event.type === 'message_unqueued' && event.messageId === endings[0]?.messageId,
+        ),
       )
       expect(thePiece(worker, label).because).not.toBe('message_never_sent')
       expect(['working', 'stalled']).toContain(thePiece(worker, label).state)
@@ -303,7 +311,7 @@ describe('648 · a task row that lies about its holder', () => {
       await waitFor(() => thePiece(worker, label).state !== 'waiting', 'the flush to run')
 
       // ⛔ **It WENT**, and the ending says `sent` rather than `abandoned`.
-      const endings = endingsOn(worker)
+      const endings = endingsOn(worker).filter((event) => event.text === 'do the thing')
       expect(endings).toHaveLength(1)
       expect(endings[0]?.reason).toBe('sent')
       expect(thePiece(worker, label).because).toBeNull()
@@ -337,6 +345,8 @@ describe('648 · a task row that lies about its holder', () => {
       await personOpens('pm', approvalMode)
       const pmTools = theToolsetJustHandedOut()
       const given = await callOn(pmTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'The thing',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'The thing',
@@ -447,6 +457,8 @@ describe('648 · a task row that lies about its holder', () => {
       await personOpens('pm')
       const pmTools = theToolsetJustHandedOut()
       const given = await callOn(pmTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'The work',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'The work',

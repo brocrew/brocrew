@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { z } from 'zod'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
@@ -38,69 +39,48 @@ describe('tool refusals name their limits and fields without keeping caller text
     agentToolsFor(host, worker).tools.find((one) => one.name === name)!
   const refusals = () => world.ledger(worker).filter((event) => event.type === 'tool_refused')
 
-  it('publishes the exact summary, question and combined-choice character limits', () => {
+  it('publishes reply and question overflow and the choice limit', () => {
     expect(z.globalRegistry.get(tool('reply_to_parent').input.summary!)?.description).toBe(
-      'What the conversation that gave you this needs to read — for work you took on for a person, what its record keeps as its last status line. At most 1,280 characters (UTF-16 code units). Put longer detail in a file listed in resource_paths. Nothing is shortened for you.',
+      'What the conversation that gave you this needs to read. Anything over 2,000 characters arrives as a file the reader is pointed to.',
     )
     expect(z.globalRegistry.get(tool('ask_question').input.question!)?.description).toBe(
-      'What you need decided, in your own words, at most 1,280 characters (UTF-16 code units). Nothing is shortened for you. It shows under Waiting on you with Markdown: **bold**, lists, `code` for ids and paths, and links to files.',
+      'What you need answered, in your own words. Anything over 2,000 characters arrives as a file the reader is pointed to. It shows under Waiting on you with Markdown: **bold**, lists, `code` for ids and paths, and links to files.',
     )
     expect(z.globalRegistry.get(tool('request_action').input.action!)?.description).toBe(
-      'What the person should do, in plain words, at most 1280 characters. It shows under Waiting on you with Markdown: **bold**, lists, `code` for ids and paths, and links to files.',
+      'What the person should do, in plain words. Anything over 2,000 characters arrives as a file the reader is pointed to.',
     )
     expect(z.globalRegistry.get(tool('ask_question').input.options!)?.description).toBe(
-      'The choices you are offering, as a list of text choices with at most 1,280 characters in total (UTF-16 code units). Leave it out to ask for an answer in their own words.',
+      'The choices you are offering, at most 2,000 characters in total. Leave it out for a free answer.',
     )
   })
 
-  it('says the measured summary length once, keeps the piece open, and accepts the exact bound', async () => {
-    const before = world.store.piecesOwnedBy(worker)
-    const summary = 'PRIVATE_SUMMARY_'.padEnd(1840, 'x')
-    const no = await tool('reply_to_parent').call({ piece, outcome: 'done', summary })
-    const reason = `Not handed back: the summary is 1,840 characters; the most is 1,280, so cut at least 560. ${remedy}`
-    expect(no.structured).toMatchObject({
-      outcome: 'refused',
-      rail: 'summary-too-long',
-      reason,
-      permanence: 'while-this-holds',
-      retryable: true,
-      remedy: 'shorten-the-summary-and-attach-the-long-form',
-      detail: { was: 1840, limit: 1280 },
-    })
-    expect(no.text.startsWith(`refused (summary-too-long): ${reason}`)).toBe(true)
-    expect(no.text.match(/1,840/g)).toHaveLength(1)
-    expect(no.text.match(/1,280/g)).toHaveLength(1)
-    expect(no.text).not.toContain('It is ')
-    expect(world.store.piecesOwnedBy(worker)).toEqual(before)
-    expect(world.ledger(worker).some((event) => event.type === 'work_replied')).toBe(false)
-    const kept = refusals()[0]!
-    expect(kept.told?.text).toBe(no.text.slice('refused (summary-too-long): '.length))
-    expect(JSON.stringify(kept)).not.toContain('PRIVATE_SUMMARY_')
-    expect(JSON.stringify(kept)).not.toContain(piece)
-    const yes = await tool('reply_to_parent').call({
-      piece,
-      outcome: 'done',
-      summary: 'x'.repeat(1280),
-    })
-    expect(yes.structured?.outcome).toBe('ok')
+  it('records a long reply once with the full summary attached', async () => {
+    const summary = 'The first result. '.padEnd(2_000, 'x') + ' The final result.'
+    const done = await tool('reply_to_parent').call({ piece, outcome: 'done', summary })
+    expect(done.structured).toMatchObject({ outcome: 'ok', state: 'answered' })
+    const [resource] = world.store.resourcesOf(piece)
+    if (resource === undefined) throw new Error('the summary had no attachment')
+    expect(done.text.match(/2,018/g)).toHaveLength(1)
+    expect(done.text).toContain(`the full text is attached as summary.txt (${resource.resource})`)
+    expect(done.text).not.toContain('The final result.')
+    const read = host.readResource(resource.resource)
+    if (!read.ok || read.content.as !== 'file')
+      throw new Error('the summary attachment is unreadable')
+    expect(readFileSync(read.content.path, 'utf8')).toBe(summary)
+    const replies = world.ledger(worker).filter((event) => event.type === 'work_replied')
+    expect(replies).toHaveLength(1)
+    expect(replies[0]?.summary).toBe(
+      `${summary.slice(0, 2_000)} The full text is attached as ${resource.resource}: read it with read_document.`,
+    )
+    expect(refusals()).toEqual([])
   })
 
-  it('counts UTF-16 code units without repeating the summary itself', async () => {
-    const no = await tool('reply_to_parent').call({
-      piece,
-      outcome: 'done',
-      summary: '🟩'.repeat(641),
-    })
-    expect(no.structured?.reason).toBe(
-      `Not handed back: the summary is 1,282 characters; the most is 1,280, so cut at least 2. ${remedy}`,
-    )
-    expect(no.text).not.toContain('🟩')
-    const yes = await tool('reply_to_parent').call({
-      piece,
-      outcome: 'done',
-      summary: '🟩'.repeat(640),
-    })
-    expect(yes.structured?.outcome).toBe('ok')
+  it('keeps a reply of exactly 2,000 UTF-16 code units inline', async () => {
+    const summary = '🟩'.repeat(1_000)
+    const yes = await tool('reply_to_parent').call({ piece, outcome: 'done', summary })
+    expect(yes.structured).toMatchObject({ outcome: 'ok', resources: [] })
+    const reply = world.ledger(worker).find((event) => event.type === 'work_replied')
+    expect(reply?.summary).toBe(summary)
   })
 
   it('uses the shared-limit fallback when no measured length is available', () => {
@@ -110,6 +90,42 @@ describe('tool refusals name their limits and fields without keeping caller text
       ).toBe(`Not handed back: the summary exceeds 1,280 characters. ${remedy}`)
     }
   })
+
+  it.each(['ask_question', 'request_action'] as const)(
+    'keeps all long %s text in the file its recipient is shown',
+    async (name) => {
+      const intro = 'Please read this checklist. '
+      const text = `${intro}${'a'.repeat(2_000)} The final item is in the file.`
+      const args =
+        name === 'ask_question'
+          ? { piece, who_answers: 'a-person', question: text }
+          : { piece, action: text }
+      const sent = await tool(name).call(args)
+      expect(sent.structured).toMatchObject({ outcome: 'ok' })
+      const [resource] = world.store.resourcesOf(piece)
+      if (resource === undefined) throw new Error('the long text had no attachment')
+      expect(sent.text).toContain(
+        `the full text is attached as ${resource.name} (${resource.resource})`,
+      )
+      const result = host.readResource(resource.resource)
+      if (!result.ok || result.content.as !== 'file')
+        throw new Error('the attachment is unreadable')
+      expect(readFileSync(result.content.path, 'utf8')).toBe(text)
+
+      const row = host
+        .questionsForAPerson()
+        .rows.find((one) => one.request.requestId === sent.structured?.question)
+      expect(row?.asked?.prompt).toContain(intro)
+      expect(row?.asked?.prompt).toContain(resource.resource)
+      expect(row?.asked?.prompt).not.toContain('The final item is in the file.')
+      if (name === 'request_action') {
+        expect(row?.action?.files).toContainEqual({
+          resource: resource.resource,
+          name: resource.name,
+        })
+      }
+    },
+  )
 
   const problems: { name: string; args: Record<string, unknown>; expected: string }[] = [
     {
@@ -123,11 +139,6 @@ describe('tool refusals name their limits and fields without keeping caller text
       expected: 'question: required; expected non-empty text',
     },
     { name: 'empty question', args: { question: '' }, expected: 'question: must not be empty' },
-    {
-      name: 'long question',
-      args: { question: 'PRIVATE_QUESTION'.padEnd(1840, 'x') },
-      expected: 'question: at most 1,280 characters; got 1,840',
-    },
     {
       name: 'null question',
       args: { question: null },
@@ -191,8 +202,8 @@ describe('tool refusals name their limits and fields without keeping caller text
     },
     {
       name: 'long choices together',
-      args: { options: ['x'.repeat(1000), 'y'.repeat(840)] },
-      expected: 'options: at most 1,280 characters in total; got 1,840',
+      args: { options: ['x'.repeat(1000), 'y'.repeat(1001)] },
+      expected: 'options: at most 2,000 characters in total; got 2,001',
     },
     {
       name: 'empty move target',
@@ -247,7 +258,8 @@ describe('tool refusals name their limits and fields without keeping caller text
       expect(detail.problems).toContain(one.expected)
       expect(no.text).toContain(one.expected)
       const kept = refusals()[0]!
-      expect(kept.told?.text).toBe(no.text.slice('refused (malformed-request): '.length))
+      expect(no.text).toMatch(/^Not sent: /)
+      expect(kept.told?.text).toBe(no.text)
       expect(kept.told?.text).toContain(one.expected)
       expect(JSON.stringify(kept)).not.toContain('PRIVATE_')
       expect(world.store.piecesOwnedBy(worker)).toEqual(before)

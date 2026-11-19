@@ -1,3 +1,5 @@
+import { waitForGiverToBeToldAboutStalledWork } from './lib/running-worker-fixture'
+import { createWorkerAndGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { AgentState } from '../src/shared/agent-state-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -222,26 +224,10 @@ describe('the host says who a conversation owes an answer to, and moves the word
     const brobot = await personOpens(DEFAULT_PROFILE_ID)
     await settle()
     const brobotTools = agentToolsFor(host, brobot)
-    const given = await callOn(brobotTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      new: true,
-      title: 'Build the pages',
-      brief: 'build the pages',
-    })
+    const given = await createWorkerAndGive(brobotTools, 'Build the pages', 'build the pages')
     expect(given, JSON.stringify(given)).toMatchObject({ outcome: 'ok', label: 'W1.1' })
     const ada = given.agent as string
-    await waitFor(() => turnsIn(ada) >= 1 && turnsIn(brobot) >= 1, 'the stall notice’s turn')
-    await waitFor(
-      () => lastSaid(brobot)?.is === 'waiting-on-a-worker',
-      'the giver to be pushed as waiting on its helper',
-    )
-    await settle()
-    expect(lastSaid(brobot)).toEqual({
-      is: 'waiting-on-a-worker',
-      on: [ADA],
-      since: expect.any(Number),
-    })
+    await waitForGiverToBeToldAboutStalledWork(brobot, ada, turnsIn, lastSaid, settle, ADA)
     return { brobot, brobotTools, ada, adaTools: agentToolsFor(host, ada) }
   }
 

@@ -304,9 +304,12 @@ describe('429 · taking work back', () => {
     tools: AgentToolset,
     profile: string,
     title: string,
+    to = 'new',
     brief = title,
   ): Promise<{ agent: string; piece: string; label: string; delivery: unknown }> => {
     const given = await callOn(tools, 'give_work', {
+      to,
+      ...(to === 'new' ? { conversation_title: title } : {}),
       definition_of_done: 'The requested result and its checks are recorded.',
       profile,
       title,
@@ -405,7 +408,7 @@ describe('429 · taking work back', () => {
   // ─────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§1 · the reference, advertised and read as one set', () => {
-    it('🔴 piece is ADVERTISED on message_agent, optional, and its two readings are described', async () => {
+    it('🔴 message_agent advertises an optional task reference', async () => {
       const { pmTools } = await aPmAndItsWorker()
       const message = pmTools.tools.find((one) => one.name === 'message_agent')
       const parameters = parametersOf(message?.input ?? {})
@@ -419,38 +422,18 @@ describe('429 · taking work back', () => {
       // ⚑ **Optional, which is the shape a default belongs to.** Required would make every existing
       // caller malformed rather than making one reading explicit.
       expect(named?.required).toBe(false)
-      // ⛔ **Both readings are in the description**, because the field means two different things
-      // and a sentence naming only one would be advice that is right half the time — ⚑ D-016: a
-      // follow-up's, and a note's.
-      const said = named?.description ?? ''
-      expect(said).toContain('follow-up')
-      expect(said).toContain('note')
-      expect(said).toContain('list_tasks')
+      expect(named?.description).toBe('The task this is about, by its label (W1.2) or id, if any.')
+      expect(parameters.some((one) => one.name === 'kind')).toBe(false)
     })
 
-    it('🔴 an omitted reference on a FOLLOW-UP is the caller’s fault, and on a note means no piece', async () => {
-      // ⛔ **`429` §2.1's decision, re-ruled by D-016**: `MESSAGE_TASK_WHEN_UNSAID` — *an omitted
-      // reference means not about any task* — went with the kind that sent work. ⚑ A follow-up adds
-      // to a piece the caller gave, so one that names none is MALFORMED, by name; a note may be
-      // about no piece at all, and is admitted.
+    it('allows a message without a task reference', async () => {
       const { worker, pmTools } = await workAlreadyAnswered()
-      const unnamed = await callOn(pmTools, 'message_agent', {
-        kind: 'follow-up',
+      const sent = await callOn(pmTools, 'message_agent', {
         agent: worker,
-        text: 'read the brief and report',
+        text: 'Read the brief and report.',
       })
-      expect(unnamed.outcome, JSON.stringify(unnamed)).toBe('refused')
-      expect(unnamed.rail).toBe('malformed-request')
-      expect(JSON.stringify(unnamed.detail)).toContain(
-        'piece: on a follow-up, send the label or id of a piece you gave that agent',
-      )
-      const note = await callOn(pmTools, 'message_agent', {
-        kind: 'note',
-        agent: worker,
-        text: 'read the brief and report',
-      })
-      expect(note.outcome, JSON.stringify(note)).toBe('ok')
-      // ⚠️ **And neither opened anything**: a message hands nothing over (D-016).
+      expect(sent).toMatchObject({ outcome: 'ok', agent: worker })
+      expect(sent).not.toHaveProperty('piece')
       expect(piecesOf(worker)).toHaveLength(1)
     })
   })
@@ -459,7 +442,7 @@ describe('429 · taking work back', () => {
   // §2 · a message names the piece it is about — HO-023 §5, after D-016
   // ─────────────────────────────────────────────────────────────────────────────────────────
 
-  describe('§2 · a message names the piece it is about, and only one the caller gave', () => {
+  describe('§2 · a message names the task it is about', () => {
     // ⚑ **D-016** — `429`'s headline here (*the duplicate `415` measured is refused, naming the
     // reply*) went with work sent as a message: `that-task-was-already-answered` is no longer
     // reachable from `message_agent`, and the same words given again are a NEW piece by ruling
@@ -485,43 +468,37 @@ describe('429 · taking work back', () => {
       // ⚠️ **The follow-up went out and started a turn, so the worker is let back to idle first.**
       await letTheTurnFinish(worker)
       await waitFor(() => isIdle(worker), 'the worker to go idle after the follow-up')
-      const second = await aGive(pmTools, 'worker', 'a second piece')
+      const second = await aGive(pmTools, 'worker', 'a second piece', worker)
       expect(second.agent).toBe(worker)
       const back = await callOn(pmTools, 'withdraw_task', { piece: second.label })
       expect(back.outcome, JSON.stringify(back)).toBe('ok')
-      const again = await aGive(pmTools, 'worker', 'a second piece')
+      const again = await aGive(pmTools, 'worker', 'a second piece', worker)
       expect(again.agent).toBe(worker)
       expect(piecesOf(worker)).toHaveLength(3)
     })
 
-    it('⛔ a reference that is not a piece you gave THAT agent is one answer, whichever cause', async () => {
+    it('refuses an unknown task and admits a task the sender gave another conversation', async () => {
       const { worker, pmTools, label } = await workAlreadyAnswered()
-      // ⚑ **Two causes, one sentence** — an id this app never minted, and a piece given to a
-      // different agent of the caller's own. ⛔ Separating them is how a caller learns which pieces
-      // exist, which is the disclosure `no-such-agent` already folds away.
-      // ⚑ **D-016 · its own identity, because a give reaches the ONE conversation a giver has with
-      // an agent** — a second give to `worker` would reach `worker`. ⛔ Measured, not assumed: the
-      // give's own outcome is asserted before its id is used.
       await bringIdentityIntoBeing('helper')
       const other = (await aGive(pmTools, 'helper', 'a second child')).agent
       expect(other).not.toBe(worker)
-      for (const [named, why] of [
-        ['work_never_minted', 'an id this app never minted'],
-        [label, 'the right piece, aimed at the wrong agent'],
-      ] as const) {
-        const refused = await callOn(pmTools, 'message_agent', {
-          kind: 'follow-up',
-          agent: other,
-          text: 'do this',
-          piece: named,
-        })
-        expect(refused.outcome, `${why}: ${JSON.stringify(refused)}`).toBe('refused')
-        expect(refused.rail, why).toBe('not-a-piece-you-gave')
-        expect(refused.permanence, why).toBe('permanent')
-        expect(refused.remedy, why).toBeNull()
-      }
-      // ⚑ **The paired positive**: the same label, at the agent it was given to, resolves — so the
-      // refusals above are about the PAIR and not about the label being unreadable.
+      const refused = await callOn(pmTools, 'message_agent', {
+        agent: other,
+        text: 'Check this.',
+        piece: 'work_never_minted',
+      })
+      expect(refused).toMatchObject({
+        outcome: 'refused',
+        rail: 'no-piece-by-that-name',
+        permanence: 'permanent',
+        remedy: null,
+      })
+      const sent = await callOn(pmTools, 'message_agent', {
+        agent: other,
+        text: 'Check this.',
+        piece: label,
+      })
+      expect(sent).toMatchObject({ outcome: 'ok', agent: other, label })
       const resolved = await callOn(pmTools, 'message_agent', {
         kind: 'follow-up',
         agent: worker,
@@ -562,6 +539,7 @@ describe('429 · taking work back', () => {
       // nothing will ever answer. ⚑ A give is not refused over it; its answer names it,
       // with this verb as one of the two acts.
       const named = await callOn(pmTools, 'give_work', {
+        to: label,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'and another',
@@ -587,6 +565,7 @@ describe('429 · taking work back', () => {
 
       // 🔴 **The remedy, WALKED** — taken back, the piece is named to the next give no more.
       const admitted = await callOn(pmTools, 'give_work', {
+        to: label,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'and a third',
@@ -607,6 +586,7 @@ describe('429 · taking work back', () => {
       // words are not its title: the holder is TOLD the title when the piece is taken back (D-016),
       // and what must never reach the provider is the brief.
       const given = await callOn(pmTools, 'give_work', {
+        to: worker,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'the held piece',
@@ -643,7 +623,7 @@ describe('429 · taking work back', () => {
 
     it('⚑ a flush already in flight refuses, and the SAME call once it settles is admitted', async () => {
       const { worker, pmTools } = await workAlreadyAnswered(false)
-      const given = await aGive(pmTools, 'worker', 'held work')
+      const given = await aGive(pmTools, 'worker', 'held work', worker)
       expect(given.delivery, JSON.stringify(given)).toBe('held')
       const waiting = piecesOf(worker).find((one) => one.state === 'waiting')
       if (waiting === undefined) throw new Error('the second piece was not held')
@@ -688,7 +668,7 @@ describe('429 · taking work back', () => {
       expect((answered.detail as Record<string, unknown>).answered).toBe('done')
       expect((answered.detail as Record<string, unknown>).label).toBe(label)
 
-      const second = await aGive(pmTools, 'worker', 'a second piece')
+      const second = await aGive(pmTools, 'worker', 'a second piece', label)
       expect((await callOn(pmTools, 'withdraw_task', { piece: second.label })).outcome).toBe('ok')
       const twice = await callOn(pmTools, 'withdraw_task', { piece: second.label })
       expect(twice.outcome, JSON.stringify(twice)).toBe('refused')

@@ -1,3 +1,4 @@
+import { addressedGive, newConversationGive } from './lib/give-fixture'
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -11,7 +12,8 @@ import type {
   StartOptions,
 } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase } from '../src/main/db/connection'
+import { openDatabase, type AppDatabase } from '../src/main/db/connection'
+import { newAskedQuestionId } from '../src/main/db/ids'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { giverStallReceipts, RuntimeHost } from './helpers/giver-notice-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
@@ -140,12 +142,11 @@ describe('what a close does that a reopen never undoes', () => {
     const seeded = await personOpens('worker')
     await host.close(seeded, window)
     const pm = await personOpens('pm')
-    const given = await callOn(agentToolsFor(host, pm), 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'The work this dispatch is about',
-      brief,
-    })
+    const given = await callOn(
+      agentToolsFor(host, pm),
+      'give_work',
+      newConversationGive('worker', 'The work this dispatch is about', brief),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     return { pm, worker: given.agent as string }
   }
@@ -369,20 +370,6 @@ describe('what a close does that a reopen never undoes', () => {
       expect(runningOf(worker)).not.toBe('not-running')
     })
 
-    it('the pass-up door takes the one open question while its asker is stopped', async () => {
-      const { pm, worker, requestId } = await aWorkerAskingItsParent()
-      await host.close(worker, window)
-      expect(
-        store.routedRequestsOf(worker).filter((one) => one.requestId === requestId),
-      ).toHaveLength(1)
-
-      const passed = await callOn(agentToolsFor(host, pm), 'pass_question_up', {
-        question: requestId,
-        who_answers: 'a-person',
-      })
-      expect(passed.outcome, JSON.stringify(passed)).toBe('ok')
-    })
-
     it('…and after a RESTART it is still open, and the answer starts the asker', async () => {
       const { pm, worker, requestId } = await aWorkerAskingItsParent()
       await host.close(worker, window)
@@ -394,6 +381,93 @@ describe('what a close does that a reopen never undoes', () => {
       expect(answered.outcome, JSON.stringify(answered)).toBe('ok')
       await waitFor(() => theAnswerReached(worker), 'the answer to start the worker and reach it')
     })
+
+    it.each(['answered', 'work-closed'] as const)(
+      'a forwarded question already in a copied ledger settles once: %s',
+      async (ending) => {
+        const { pm, worker, label, requestId } = await aWorkerAskingItsParent()
+        const question = store.questionsRaisedIn(worker).get(requestId)
+        if (question === undefined) throw new Error('the original question was not recorded')
+        const forwarded = newAskedQuestionId()
+        const historicalCall = {
+          type: 'tool_call' as const,
+          id: 'historical-forward',
+          name: 'mcp__brobot__pass_question_up',
+          summary: 'pass the database question to a person',
+        }
+        const append = (event: TranscriptEvent): void =>
+          store.append(pm, store.nextOrdinal(pm), event, tick())
+        append(historicalCall)
+        append({
+          type: 'question_asked',
+          requestId: forwarded,
+          passedUpFrom: requestId,
+          prompt: question.prompt,
+          questions: question.questions,
+        })
+        append({ type: 'request_routed', requestId: forwarded, to: 'a-person' })
+
+        await host.closeAll()
+        const snapshot = join(userData, 'forwarded-cutover.sqlite')
+        db.prepare('VACUUM INTO ?').run(snapshot)
+        db.close()
+        db = openDatabase(snapshot)
+        store = createSessionStore(db, tick)
+        host = buildHost()
+
+        const read = await host.look(pm, window, false)
+        expect(read.history.entries.map(({ event }) => event)).toContainEqual(historicalCall)
+        expect(theQuestionOf(worker)).toMatchObject({ requestId, state: 'open' })
+        const copyState = () =>
+          store.routedRequestsOf(pm).find((one) => one.requestId === forwarded)?.state
+        expect(copyState()).toBe('open')
+        await host.resumeSession(pm, window)
+        const personAnswers = () =>
+          host.respondUserInput(
+            pm,
+            forwarded,
+            { kind: 'answer', answers: { answer: ['sqlite'] } },
+            window,
+          )
+        if (ending === 'answered') {
+          expect(await personAnswers()).toMatchObject({ outcome: 'taken' })
+          expect(await answerTo(pm, requestId)).toMatchObject({ outcome: 'ok' })
+          expect(await answerTo(pm, requestId)).toMatchObject({
+            outcome: 'refused',
+            rail: 'question-has-already-ended',
+          })
+          expect(theQuestionOf(worker).state).toBe('answered')
+          expect(store.theDecisionOn(pm, forwarded)).toMatchObject({
+            by: { who: 'a-person' },
+            outcome: 'answered',
+          })
+          for (const [session, questionId] of [
+            [pm, forwarded],
+            [worker, requestId],
+          ] as const) {
+            expect(
+              events(session).filter(
+                (event) => event.type === 'user_decision' && event.requestId === questionId,
+              ),
+            ).toHaveLength(1)
+          }
+        } else {
+          const close = () =>
+            callOn(agentToolsFor(host, pm), 'update_work', { piece: label, close: true })
+          expect(await close()).toMatchObject({ outcome: 'ok' })
+          expect(await close()).toMatchObject({ outcome: 'refused' })
+          expect(theQuestionOf(worker).state).toBe('work-closed')
+          expect(
+            events(pm).filter(
+              (event) =>
+                event.type === 'question_ended_with_its_piece' && event.requestId === forwarded,
+            ),
+          ).toEqual([{ type: 'question_ended_with_its_piece', requestId: forwarded, ending }])
+        }
+        expect(copyState()).toBe(ending)
+        expect(await personAnswers()).toMatchObject({ outcome: 'refused', stillOpen: false })
+      },
+    )
   })
 
   describe('a parent told the conversation had stopped', () => {
@@ -464,22 +538,23 @@ describe('what a close does that a reopen never undoes', () => {
       expect(noticesAbout(pm, label, 'not being worked on')).toHaveLength(1)
     })
 
-    it('held work a Close hands on: delivered at its start, never `message_never_sent`, and its giver is told nothing', async () => {
+    const giveBehindTheWorkersTurn = async () => {
       const { pm, worker } = await aPmAndItsWorker('busy with something else')
       host.claimSession(worker, window)
       const handle = handles.at(-1)
       if (handle === undefined) throw new Error('no provider handle was issued')
       await waitFor(() => cardsOn(worker) > 0, 'the worker to be busy')
-      const given = await callOn(agentToolsFor(host, pm), 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'The held one',
-        brief: 'the held one',
-      })
+      const given = await callOn(
+        agentToolsFor(host, pm),
+        'give_work',
+        addressedGive(worker, 'worker', 'The held one', 'the held one'),
+      )
       expect(given).toMatchObject({ outcome: 'ok', agent: worker, delivery: 'held' })
       const label = given.label as string
+      return { pm, worker, handle, label }
+    }
 
-      await host.close(worker, window)
+    const expectHeldBriefDelivered = async (pm: string, worker: string, label: string) => {
       await waitFor(
         () =>
           events(worker).some(
@@ -494,38 +569,20 @@ describe('what a close does that a reopen never undoes', () => {
       })
       expect(everythingSaidAbout(pm, label)).toEqual([])
       expect(whatEachReceiptTold(pm, label)).toEqual([])
+    }
+
+    it('held work a Close hands on: delivered at its start, never `message_never_sent`, and its giver is told nothing', async () => {
+      const { pm, worker, label } = await giveBehindTheWorkersTurn()
+
+      await host.close(worker, window)
+      await expectHeldBriefDelivered(pm, worker, label)
     })
 
     it('…and the same when the provider ends its OWN stream — its slot is still `live` while it is torn down', async () => {
-      const { pm, worker } = await aPmAndItsWorker('busy with something else')
-      host.claimSession(worker, window)
-      const handle = handles.at(-1)
-      if (handle === undefined) throw new Error('no provider handle was issued')
-      await waitFor(() => cardsOn(worker) > 0, 'the worker to be busy')
-      const given = await callOn(agentToolsFor(host, pm), 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'The held one',
-        brief: 'the held one',
-      })
-      expect(given).toMatchObject({ outcome: 'ok', agent: worker, delivery: 'held' })
-      const label = given.label as string
+      const { pm, worker, handle, label } = await giveBehindTheWorkersTurn()
 
       handle.simulateError('the provider fell over', true)
-      await waitFor(
-        () =>
-          events(worker).some(
-            (event) => event.type === 'user_turn' && event.text.startsWith('the held one'),
-          ),
-        'the held work to be handed on and delivered at the start',
-      )
-      await letItSettle()
-      expect(store.piecesOwnedBy(worker).find((one) => one.label === label)).toMatchObject({
-        state: 'working',
-        stalledBecause: null,
-      })
-      expect(everythingSaidAbout(pm, label)).toEqual([])
-      expect(whatEachReceiptTold(pm, label)).toEqual([])
+      await expectHeldBriefDelivered(pm, worker, label)
     })
 
     it('…and when that parent has stopped, a second stop neither starts it nor tells it — and a person is not handed it', async () => {
@@ -671,7 +728,10 @@ describe('what a close does that a reopen never undoes', () => {
         const lines = listed.text.split('\n')
         // One row for the question, and its own words once beneath it, with the asker to quote.
         expect(lines.filter((one) => one.startsWith(`  ${requestId} · `))).toHaveLength(1)
-        const quoted = lines.filter((one) => one.includes(`quoting ${requestId} with asked_by `))
+        const quoted = lines.filter((one) =>
+          one.includes(`asks you ${requestId} in your conversation`),
+        )
+        expect(lines.filter((one) => one.includes('Use asked_by '))).toHaveLength(1)
         expect(quoted).toHaveLength(1)
         expect(lines.filter((one) => one.includes(requestId))).toHaveLength(2)
         return entries.filter((one) => one.question === requestId).map((one) => one.state)

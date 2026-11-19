@@ -120,6 +120,8 @@ describe('459 · the project a spawn lands in', () => {
 
       const mine = await host.giveWork(
         {
+          to: 'new',
+          conversation_title: 'mine',
           definition_of_done: 'The requested result and its checks are recorded.',
           profile: 'pm',
           title: 'mine',
@@ -129,6 +131,8 @@ describe('459 · the project a spawn lands in', () => {
       )
       const yours = await host.giveWork(
         {
+          to: 'new',
+          conversation_title: 'yours',
           definition_of_done: 'The requested result and its checks are recorded.',
           profile: 'pm',
           title: 'yours',

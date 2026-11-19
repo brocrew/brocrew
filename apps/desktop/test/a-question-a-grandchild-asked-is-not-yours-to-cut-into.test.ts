@@ -168,6 +168,8 @@ describe('D-017 · R19 · a question a grandchild asked is not yours to cut into
     const brobot = await personOpens(DEFAULT_PROFILE_ID, 'auto')
     const brobotTools = agentToolsFor(host, brobot)
     const givenAda = await callOn(brobotTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'run the front-end work',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: pmProfile,
       title: 'run the front-end work',
@@ -177,6 +179,8 @@ describe('D-017 · R19 · a question a grandchild asked is not yours to cut into
     const ada = givenAda.agent as string
     const adaTools = agentToolsFor(host, ada)
     const givenAli = await callOn(adaTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'build the world-clock page',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: workerProfile,
       title: 'build the world-clock page',

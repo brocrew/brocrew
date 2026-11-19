@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import {
   syntheticProviderHome,
   neutralHostDeps,
@@ -130,12 +131,7 @@ describe('635 · the store widens, and viewing never executes', () => {
   const aPiece = async (): Promise<{ giver: string; owner: string; label: string }> => {
     const giver = await personOpens()
     const given = await host.giveWork(
-      {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'default',
-        title: 'Write the answer',
-        brief: 'write the answer',
-      },
+      newConversationGive('default', 'Write the answer', 'write the answer'),
       { ownerId: agentCallerId(giver) },
     )
     if (!given.ok) throw new Error(`expected a give, got ${given.refusal.rail}`)
@@ -173,6 +169,7 @@ describe('635 · the store widens, and viewing never executes', () => {
         'give_work',
         {
           profile: 'default',
+          to: piece.label,
           title: 'Read notes',
           brief: 'Read notes',
           definition_of_done: 'Notes read',

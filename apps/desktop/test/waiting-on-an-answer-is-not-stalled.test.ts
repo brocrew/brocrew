@@ -1,3 +1,4 @@
+import { giveWorkWithTitleAsBrief } from './lib/give-fixture'
 import { REQUEST_STATES } from '../src/shared/question-contracts'
 import type { RaisedQuestion, RoutedRequest } from '../src/shared/question-contracts'
 import { TASK_STATES } from '../src/shared/task-contracts'
@@ -212,16 +213,8 @@ describe('603 · waiting on an answer is not stalled', () => {
     for (const slug of ['worker-a', 'worker-b']) await bringIdentityIntoBeing(slug)
     const pm = await personOpens('pm')
     const pmTools = theToolsetJustHandedOut()
-    const give = async (slug: string, brief: string): Promise<string> => {
-      const made = await callOn(pmTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: slug,
-        title: brief,
-        brief,
-      })
-      expect(made.outcome, JSON.stringify(made)).toBe('ok')
-      return made.agent as string
-    }
+    const give = async (slug: string, brief: string) =>
+      (await giveWorkWithTitleAsBrief(pmTools, slug, brief)).agent
     const asks = await give('worker-a', 'the work a question will be raised about')
     const quiet = await give('worker-b', 'the work nobody asks about')
     await waitFor(

@@ -4,7 +4,6 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { CHANNEL_REFUSAL_SENTENCES, type AgentToolAnswer } from '@brobot2/runtime'
 import {
-  A_PERSON,
   CREATED_UNDER_ITS_PROFILE_NAME,
   DONE,
   FIX_IT_AND_CALL_AGAIN,
@@ -12,7 +11,6 @@ import {
   ITS_RULES_ARE_SAVED,
   RULES_PUT_BEFORE_A_PERSON,
   RULES_WRITTEN,
-  THE_CONVERSATION_THAT_GAVE_YOU_THIS_WORK,
   THE_PROVIDER_PROGRAM_IS_UNAVAILABLE,
   answerInWords,
   appOnlyRefusalQuote,
@@ -249,6 +247,17 @@ describe('the ledger quote adds only the reviewed app clauses', () => {
     const before = answered(refuseTool('no-such-agent'))
     expect(appOnlyRefusalQuote(before.structured)).toBe(before.structured!['reason'])
     expect(() => appOnlyRefusalQuote(before.structured, 'Another answer.')).toThrow('must prefix')
+  })
+
+  it('keeps the composed Not sent reason without adding a second prefix', () => {
+    const refusal = refuse('no-conversation-by-that-address', { address: 'W1.77' })
+    const before = answered(refusal, { permanence: 'permanent' })
+    const after = answerInWords({ ...before, text: refusal.reason }, context)
+    expect(after.text).toBe(`${refusal.reason} ${NEVER}`)
+    expect(appOnlyRefusalQuote(after.structured, after.text)).toBe(after.text)
+    expect(() => appOnlyRefusalQuote(after.structured, 'Not sent: something else.')).toThrow(
+      'must prefix',
+    )
   })
 })
 
@@ -790,10 +799,6 @@ describe('the approved success words, spelled once', () => {
     expect(
       windowsReported('Claude', [{ window: 'five-hour', first: '09:12', last: '14:40' }]),
     ).toBe('Windows Claude has reported: five-hour (first 09:12, last 14:40).')
-    expect(THE_CONVERSATION_THAT_GAVE_YOU_THIS_WORK).toBe(
-      'the conversation that gave you this work',
-    )
-    expect(A_PERSON).toBe('a person')
     expect(filesHoldingThoseWords('on your tree')).toBe(
       'Files on your tree holding those words, newest first:',
     )

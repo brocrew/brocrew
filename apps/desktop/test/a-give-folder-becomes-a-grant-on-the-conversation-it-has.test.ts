@@ -1,3 +1,5 @@
+import { addressedGive } from './lib/give-fixture'
+import { firstGiveInFolder } from './lib/folder-give-fixture'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -173,17 +175,7 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
    * that ends with its piece open stalls it, and a give to a stalled conversation is refused.
    */
   async function aHelperAtWork(giver: string): Promise<string> {
-    const first = await host.giveWork(
-      {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'pm',
-        title: 'the first piece',
-        brief: 'start here',
-        folder: repoA,
-      },
-      speakingAs(giver),
-    )
-    if (!first.ok) throw new Error(`refused: ${first.refusal.rail}`)
+    const first = await firstGiveInFolder(host, speakingAs(giver), repoA)
     await waitFor('the first turn to end', () => turnsEnded(first.owner) >= 1)
     const replied = await callAs(first.owner, 'reply_to_parent', {
       piece: first.label,
@@ -196,17 +188,7 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
 
   it('🔴 a first give’s folder is the new conversation’s working folder, granted nothing', async () => {
     const giver = await aGiver()
-    const first = await host.giveWork(
-      {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'pm',
-        title: 'the first piece',
-        brief: 'start here',
-        folder: repoA,
-      },
-      speakingAs(giver),
-    )
-    if (!first.ok) throw new Error(`refused: ${first.refusal.rail}`)
+    const first = await firstGiveInFolder(host, speakingAs(giver), repoA)
     expect(first.givenFolder).toEqual({ folder: repoA, use: 'working-folder' })
     expect(store.find(first.owner)?.cwd).toBe(repoA)
     await waitFor('the first turn', () => turnsEnded(first.owner) >= 1)
@@ -221,10 +203,7 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
     host.claimSession(helper, window)
     const second = await host.giveWork(
       {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'pm',
-        title: 'the second piece',
-        brief: 'work in B',
+        ...addressedGive(helper, 'pm', 'the second piece', 'work in B'),
         folder: repoB,
       },
       speakingAs(giver),
@@ -264,17 +243,7 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
   it('🔴 several pieces: the union — and a piece that ends takes its folder back at the next turn', async () => {
     // ⚑ The helper asks first, so its turn parks on a card and both gives are held behind it.
     const giver = await aGiver('ask')
-    const first = await host.giveWork(
-      {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'pm',
-        title: 'the first piece',
-        brief: 'start here',
-        folder: repoA,
-      },
-      speakingAs(giver),
-    )
-    if (!first.ok) throw new Error('refused')
+    const first = await firstGiveInFolder(host, speakingAs(giver), repoA)
     const helper = first.owner
     const cards = (): string[] =>
       store
@@ -286,20 +255,14 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
     mkdirSync(repoC)
     const two = await host.giveWork(
       {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'pm',
-        title: 'B',
-        brief: 'B',
+        ...addressedGive(first.label, 'pm', 'B', 'B'),
         folder: repoB,
       },
       speakingAs(giver),
     )
     const three = await host.giveWork(
       {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'pm',
-        title: 'C',
-        brief: 'C',
+        ...addressedGive(first.label, 'pm', 'C', 'C'),
         folder: repoC,
       },
       speakingAs(giver),
@@ -322,17 +285,7 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
 
   it('🔴 a busy conversation: the grant waits with its brief, queued — never widening the turn running', async () => {
     const giver = await aGiver('ask')
-    const first = await host.giveWork(
-      {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'pm',
-        title: 'the first piece',
-        brief: 'start here',
-        folder: repoA,
-      },
-      speakingAs(giver),
-    )
-    if (!first.ok) throw new Error('refused')
+    const first = await firstGiveInFolder(host, speakingAs(giver), repoA)
     const helper = first.owner
     host.claimSession(helper, window)
     const cards = (): string[] =>
@@ -342,10 +295,7 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
     await waitFor('the first turn to park on its card', () => cards().length === 1)
     const second = await host.giveWork(
       {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'pm',
-        title: 'B',
-        brief: 'work in B',
+        ...addressedGive(first.label, 'pm', 'B', 'work in B'),
         folder: repoB,
       },
       speakingAs(giver),
@@ -374,10 +324,7 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
     const helper = await aHelperAtWork(giver)
     const second = await host.giveWork(
       {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'pm',
-        title: 'B',
-        brief: 'B',
+        ...addressedGive(helper, 'pm', 'B', 'B'),
         folder: repoB,
       },
       speakingAs(giver),
@@ -396,15 +343,7 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
     const giver = await aGiver()
     const helper = await aHelperAtWork(giver)
     // ⚑ A give as a build before this one recorded it: the folder raw, no `givenFolder`.
-    const second = await host.giveWork(
-      {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'pm',
-        title: 'B',
-        brief: 'B',
-      },
-      speakingAs(giver),
-    )
+    const second = await host.giveWork(addressedGive(helper, 'pm', 'B', 'B'), speakingAs(giver))
     if (!second.ok) throw new Error('refused')
     expect(second.givenFolder).toBeNull()
     await waitFor('B’s turn', () => turnsEnded(helper) >= 2)
@@ -424,10 +363,7 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
     await host
       .giveWork(
         {
-          definition_of_done: 'The requested result and its checks are recorded.',
-          profile: 'pm',
-          title: 'B',
-          brief: 'B',
+          ...addressedGive(helper, 'pm', 'B', 'B'),
           folder: repoB,
         },
         speakingAs(giver),
@@ -445,10 +381,7 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
     const codex = join(scratch, 'home', '.codex')
     const given = await host.giveWork(
       {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'pm',
-        title: 'C',
-        brief: 'C',
+        ...addressedGive(helper, 'pm', 'C', 'C'),
         folder: codex,
       },
       speakingAs(giver),
@@ -469,10 +402,7 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
     const missing = join(scratch, 'not-here')
     const given = await host.giveWork(
       {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'pm',
-        title: 'B',
-        brief: 'B',
+        ...addressedGive(helper, 'pm', 'B', 'B'),
         folder: missing,
       },
       speakingAs(giver),
@@ -490,10 +420,7 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
     const helper = await aHelperAtWork(giver)
     const given = await host.giveWork(
       {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'pm',
-        title: 'B',
-        brief: 'B',
+        ...addressedGive(helper, 'pm', 'B', 'B'),
         folder: repoB,
       },
       speakingAs(giver),

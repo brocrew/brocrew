@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeRuntime } from '@brobot2/runtime'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { MAX_NORMAL_WORKERS_PER_POOL } from '../src/main/profile-execution-file'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 import {
   profileBundleSpans,
@@ -14,7 +13,7 @@ import { readSessionInstructions } from '../src/main/runtime/instructions'
 import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
-describe('one normal agent, one conversation per giver and provider', () => {
+describe('one normal agent on both providers', () => {
   let world: AServiceWorld
   beforeEach(() => {
     world = aServiceWorld({ holderReminders: 'declined' })
@@ -44,7 +43,7 @@ describe('one normal agent, one conversation per giver and provider', () => {
     const first = await world.gives(host, giver, 'draft-reader')
     expect(first.ok).toBe(true)
     if (!first.ok) throw new Error(first.refusal.reason)
-    const again = await world.gives(host, giver, 'draft-reader')
+    const again = await world.gives(host, giver, 'draft-reader', { to: first.owner })
     expect(again).toMatchObject({ ok: true, owner: first.owner })
     expect(world.store.recordedOne(first.owner)?.provider).toBe('claude')
     expect(world.store.providerOf('draft-reader')).toBe('claude')
@@ -63,11 +62,11 @@ describe('one normal agent, one conversation per giver and provider', () => {
     expect(world.store.recordedOne(claude.owner)?.provider).toBe('claude')
     expect(world.store.recordedOne(codex.owner)?.provider).toBe('codex')
     expect(world.store.providerOf('draft-reader')).toBe('claude')
-    expect(await world.gives(host, giver, 'draft-reader', { provider: 'codex' })).toMatchObject({
+    expect(await world.gives(host, giver, 'draft-reader', { to: codex.owner })).toMatchObject({
       ok: true,
       owner: codex.owner,
     })
-    expect(await world.gives(host, giver, 'draft-reader')).toMatchObject({
+    expect(await world.gives(host, giver, 'draft-reader', { to: claude.owner })).toMatchObject({
       ok: true,
       owner: claude.owner,
     })
@@ -85,7 +84,10 @@ describe('one normal agent, one conversation per giver and provider', () => {
     expect(named.runsOn).toMatchObject({ provider: 'codex', model: 'fake-codex-a' })
     expect(world.store.recordedOne(first.owner)?.provider).toBe('claude')
     expect(world.store.providerOf('draft-reader')).toBe('claude')
-    const again = await world.gives(host, giver, 'draft-reader', { model: 'fake-codex-a' })
+    const again = await world.gives(host, giver, 'draft-reader', {
+      to: named.owner,
+      model: 'fake-codex-a',
+    })
     expect(again).toMatchObject({ ok: true, owner: named.owner })
   })
 
@@ -442,7 +444,10 @@ describe('one normal agent, one conversation per giver and provider', () => {
     const next = world.aHost()
     await next.reopenForAPerson(giver, world.window, null)
     expect(
-      await world.gives(next, giver, 'draft-reader', { model: 'shared-fictional' }),
+      await world.gives(next, giver, 'draft-reader', {
+        to: codex.owner,
+        model: 'shared-fictional',
+      }),
     ).toMatchObject({ ok: true, owner: codex.owner, runsOn: { model: 'shared-fictional' } })
   })
 
@@ -483,7 +488,7 @@ describe('one normal agent, one conversation per giver and provider', () => {
     expect(world.startedAs).toEqual(['review-lead'])
   })
 
-  it('keeps reservations separate by provider and deduplicates a second give during a start', async () => {
+  it('keeps three concurrent new conversations separate across providers', async () => {
     const host = world.aHost()
     const giver = await caller(host)
     let release!: () => void
@@ -497,7 +502,7 @@ describe('one normal agent, one conversation per giver and provider', () => {
     ]
     try {
       await vi.waitFor(() =>
-        expect(world.startedAs.filter((p) => p === 'draft-reader')).toHaveLength(2),
+        expect(world.startedAs.filter((p) => p === 'draft-reader')).toHaveLength(3),
       )
     } finally {
       release()
@@ -505,53 +510,10 @@ describe('one normal agent, one conversation per giver and provider', () => {
     const [claude, codex, repeated] = await Promise.all(pending)
     expect(claude?.ok && codex?.ok && repeated?.ok).toBe(true)
     if (!claude?.ok || !codex?.ok || !repeated?.ok) throw new Error('give refused')
-    expect(codex.owner).toBe(repeated.owner)
-    expect(claude.owner).not.toBe(codex.owner)
-  })
-
-  it('preserves global worker numbering while ordinary work selects the first worker on its provider', async () => {
-    const host = world.aHost()
-    const giver = await caller(host)
-    const claude = await world.gives(host, giver, 'draft-reader', { parallel: true })
-    const codex = await world.gives(host, giver, 'draft-reader', {
-      provider: 'codex',
-      parallel: true,
-    })
-    expect(claude.ok && codex.ok).toBe(true)
-    if (!claude.ok || !codex.ok) throw new Error('give refused')
-    expect(world.store.workersBorn().map(({ number }) => number)).toEqual([1, 2])
-    expect(await world.gives(host, giver, 'draft-reader', { provider: 'codex' })).toMatchObject({
-      ok: true,
-      owner: codex.owner,
-    })
-    expect(await world.gives(host, giver, 'draft-reader')).toMatchObject({
-      ok: true,
-      owner: claude.owner,
-    })
-  })
-
-  it('distinguishes a full pool with no worker on the other provider from matching busy workers', async () => {
-    const host = world.aHost()
-    const giver = await caller(host)
-    for (let i = 0; i < MAX_NORMAL_WORKERS_PER_POOL; i += 1) {
-      expect(
-        (await world.gives(host, giver, 'draft-reader', { provider: 'claude', parallel: true })).ok,
-      ).toBe(true)
-    }
-    expect(world.store.workersBorn()).toHaveLength(MAX_NORMAL_WORKERS_PER_POOL)
-    expect(
-      await world.gives(host, giver, 'draft-reader', { provider: 'codex', parallel: true }),
-    ).toMatchObject({
-      ok: false,
-      refusal: { rail: 'no-room-for-provider-conversation', retryable: false },
-    })
-    expect(
-      await world.gives(host, giver, 'draft-reader', { provider: 'claude', parallel: true }),
-    ).toMatchObject({
-      ok: false,
-      refusal: { rail: 'no-free-worker-at-capacity', retryable: true },
-    })
-    expect(world.startedIn.filter((path) => path.endsWith('/draft-reader/codex'))).toEqual([])
+    expect(new Set([claude.owner, codex.owner, repeated.owner]).size).toBe(3)
+    expect(world.store.recordedOne(claude.owner)?.provider).toBe('claude')
+    expect(world.store.recordedOne(codex.owner)?.provider).toBe('codex')
+    expect(world.store.recordedOne(repeated.owner)?.provider).toBe('codex')
   })
 
   it('keeps a service on its single provider and permanently refuses a conflicting choice with its model list', async () => {
@@ -577,34 +539,34 @@ describe('one normal agent, one conversation per giver and provider', () => {
     expect(world.conversationsRecorded()).toBe(before)
   })
 
-  it('keeps both legacy conversations when parallel workers are added later and the host restarts', async () => {
+  it('keeps both addressed conversations when another is added later and the host restarts', async () => {
     const host = world.aHost()
     const giver = await caller(host)
     const claude = await world.gives(host, giver, 'draft-reader')
     const codex = await world.gives(host, giver, 'draft-reader', { provider: 'codex' })
     expect(claude.ok && codex.ok).toBe(true)
     if (!claude.ok || !codex.ok) throw new Error('give refused')
-    expect(
-      await world.gives(host, giver, 'draft-reader', { provider: 'codex', parallel: true }),
-    ).toMatchObject({ ok: true })
-    expect(await world.gives(host, giver, 'draft-reader')).toMatchObject({
+    expect(await world.gives(host, giver, 'draft-reader', { provider: 'codex' })).toMatchObject({
+      ok: true,
+    })
+    expect(await world.gives(host, giver, 'draft-reader', { to: claude.owner })).toMatchObject({
       ok: true,
       owner: claude.owner,
     })
     await host.closeAll()
     const next = world.aHost()
     await next.reopenForAPerson(giver, world.window, null)
-    expect(await world.gives(next, giver, 'draft-reader', { provider: 'codex' })).toMatchObject({
+    expect(await world.gives(next, giver, 'draft-reader', { to: codex.owner })).toMatchObject({
       ok: true,
       owner: codex.owner,
     })
-    expect(await world.gives(next, giver, 'draft-reader')).toMatchObject({
+    expect(await world.gives(next, giver, 'draft-reader', { to: claude.owner })).toMatchObject({
       ok: true,
       owner: claude.owner,
     })
   })
 
-  it('keeps an older provider’s ordinary conversation while another provider has an unrecorded worker birth', async () => {
+  it('reaches an existing conversation while another provider is starting a new one', async () => {
     const host = world.aHost()
     const giver = await caller(host)
     const claude = await world.gives(host, giver, 'draft-reader')
@@ -615,10 +577,10 @@ describe('one normal agent, one conversation per giver and provider', () => {
     world.startsWait = new Promise<void>((resolve) => {
       release = resolve
     })
-    const pending = world.gives(host, giver, 'draft-reader', { provider: 'claude', parallel: true })
+    const pending = world.gives(host, giver, 'draft-reader', { provider: 'claude' })
     void pending.catch(() => {})
     let ordinary: PromiseSettledResult<Awaited<ReturnType<typeof world.gives>>> | undefined
-    const delivery = world.gives(host, giver, 'draft-reader', { provider: 'codex' }).then(
+    const delivery = world.gives(host, giver, 'draft-reader', { to: codex.owner }).then(
       (value) => {
         ordinary = { status: 'fulfilled', value }
       },

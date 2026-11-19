@@ -1,3 +1,4 @@
+import { giveAfterBriefTurn, startThinking } from './lib/running-worker-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -148,46 +149,6 @@ describe('message now · a message or an answer can stop the running turn', () =
   }
 
   /**
-   * 🔴 **Put a conversation into a WORKING turn**, which is the state the ruling is about.
-   *
-   * ⛔ **Not the Fake's ordinary turn**, which parks on a permission card — and `INTERRUPT_RAILS`
-   * correctly refuses `a-person-is-being-asked`, so a fixture that used one would measure that
-   * rail instead of this one. ⚑ A thinking burst makes the handle `working` and nothing else.
-   */
-  const makeItWork = async (handle: FakeSessionHandle): Promise<void> => {
-    handle.simulateThinking({ text: 'driving the browser', redacted: false })
-    await waitFor(() => handle.status() === 'working', 'the conversation to be working')
-  }
-
-  /**
-   * ⚑ **D-016 · a give, and the child's first turn is its brief** — waited out to its END, so the
-   * turn {@link makeItWork} starts is the only one in flight. ⛔ **The chain runs in `auto`** (BroBot
-   * is opened so, and a child runs in its giver's mode): in `ask` every brief parks on a permission
-   * card, and `INTERRUPT_RAILS` refuses `a-person-is-being-asked` — the rail this file must not
-   * measure.
-   */
-  const give = async (
-    tools: AgentToolset,
-    profile: string,
-    title: string,
-  ): Promise<{ agent: string; piece: string; label: string }> => {
-    const given = await callOn(tools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile,
-      title,
-      brief: title,
-    })
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    expect(given.started, JSON.stringify(given)).toBe(true)
-    const agent = given.agent as string
-    await waitFor(
-      () => ledger(agent).some((event) => event.type === 'turn'),
-      'the brief’s turn to end',
-    )
-    return { agent, piece: given.piece as string, label: given.label as string }
-  }
-
-  /**
    * 🔴 **BroBot → Ada → Ali, through the real door.**
    *
    * ⛔ **Every hop is a give** and not a hand-written provenance row: what the ruling walks is what
@@ -222,9 +183,15 @@ describe('message now · a message or an answer can stop the running turn', () =
     await bringIdentityIntoBeing(siblingProfile)
     const brobot = await personOpens(DEFAULT_PROFILE_ID, 'auto')
     const brobotTools = agentToolsFor(host, brobot)
-    const ada = (await give(brobotTools, pmProfile, 'run the front-end work')).agent
+    const ada = (await giveAfterBriefTurn(store, brobotTools, pmProfile, 'run the front-end work'))
+      .agent
     const adaTools = agentToolsFor(host, ada)
-    const toAli = await give(adaTools, workerProfile, 'build the world-clock page')
+    const toAli = await giveAfterBriefTurn(
+      store,
+      adaTools,
+      workerProfile,
+      'build the world-clock page',
+    )
     const ali = toAli.agent
     const aliHandle = latestHandle()
     return {
@@ -262,7 +229,7 @@ describe('message now · a message or an answer can stop the running turn', () =
   describe('§1 · message_agent with interrupt', () => {
     it('🔴 the message is held, the running turn is asked to stop, and the receipt says so and promises no timing', async () => {
       const { ali, adaTools, aliHandle } = await aChainOfThree()
-      await makeItWork(aliHandle)
+      await startThinking(aliHandle)
 
       const said = await callOn(adaTools, 'message_agent', {
         agent: ali,
@@ -309,7 +276,7 @@ describe('message now · a message or an answer can stop the running turn', () =
       )
       expect(ledger(ali).some((event) => event.type === 'work_interrupted')).toBe(false)
 
-      await makeItWork(aliHandle)
+      await startThinking(aliHandle)
       const running = (
         await answerOn(adaTools, 'message_agent', {
           agent: ali,
@@ -329,7 +296,7 @@ describe('message now · a message or an answer can stop the running turn', () =
 
     it('…and the control: the same message without interrupt stops nothing and carries no such line', async () => {
       const { ali, adaTools, aliHandle } = await aChainOfThree()
-      await makeItWork(aliHandle)
+      await startThinking(aliHandle)
       const said = await callOn(adaTools, 'message_agent', {
         agent: ali,
         text: 'whenever you are free, a note',
@@ -345,7 +312,7 @@ describe('message now · a message or an answer can stop the running turn', () =
 
     it('a note to a known parent is delivered even when no running turn needs stopping', async () => {
       const { ada, ali, aliHandle, siblingProfile } = await aChainOfThree()
-      await makeItWork(aliHandle)
+      await startThinking(aliHandle)
       const upward = await callOn(asTools(ali), 'message_agent', {
         agent: ada,
         text: 'stop what you are doing',
@@ -392,7 +359,7 @@ describe('message now · a message or an answer can stop the running turn', () =
     /** Ali asks its parent a question, and goes on working. */
     async function aliAsksAndKeepsWorking() {
       const asked = await aliAsks()
-      await makeItWork(asked.aliHandle)
+      await startThinking(asked.aliHandle)
       return asked
     }
 
@@ -576,7 +543,7 @@ describe('message now · a message or an answer can stop the running turn', () =
         () => ledger(ali).filter((event) => event.type === 'turn').length === turnsBefore + 1,
         'the person’s turn to end',
       )
-      await makeItWork(aliHandle)
+      await startThinking(aliHandle)
       const said = await adaAnswersNow(adaTools, requestId)
       expect(said.outcome, JSON.stringify(said)).toBe('ok')
       expect(said.not_stopped_because).toBe('a-person-started-its-turn')

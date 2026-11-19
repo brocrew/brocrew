@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions } from '@brobot2/runtime'
 import { waitFor } from './lib/f093-host'
@@ -163,12 +164,15 @@ describe('396 · nothing waits on somebody looking', () => {
     await bringIdentityIntoBeing(workerProfile)
     const pm = await personOpens(pmProfile, host, 'auto')
     const pmTools = agentToolsFor(host, pm)
-    const given = await callOn(pmTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: workerProfile,
-      title: 'the work this dispatch is about',
-      brief: 'the work this dispatch is about',
-    })
+    const given = await callOn(
+      pmTools,
+      'give_work',
+      newConversationGive(
+        workerProfile,
+        'the work this dispatch is about',
+        'the work this dispatch is about',
+      ),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     const workerHandle = latestHandle()
@@ -501,7 +505,7 @@ describe('396 · nothing waits on somebody looking', () => {
       expect(rows[0]).toMatchObject({ asked_by: worker, state: 'open', answerable_by_you: true })
       // 🔴 **The words, and they are what makes this a door rather than a list.** An id alone names a
       // thing the caller still cannot act on: `answer_question` takes one entry per PART.
-      expect(String(rows[0]?.words)).toContain('part q0')
+      expect(String(rows[0]?.words)).toContain('Part id "q0":')
       expect(String(rows[0]?.words)).toContain('main')
 
       expect(
@@ -701,7 +705,10 @@ describe('396 · nothing waits on somebody looking', () => {
       await aNoteHeldBehindAnother({ worker, pmTools, workerHandle })
       await host.interrupt(worker, asPm(pm))
       await waitFor(
-        () => mailboxOf(store.events(worker)).some((one) => one.ending === 'sent'),
+        () =>
+          mailboxOf(store.events(worker)).some(
+            (one) => one.text === 'second' && one.ending === 'sent',
+          ),
         'the held message to go out',
       )
       await host.closeAll()
@@ -709,7 +716,12 @@ describe('396 · nothing waits on somebody looking', () => {
       // The constructor's sweep finds nothing to repair: the message already ended as `sent`,
       // not the `abandoned` a crash writes.
       buildHost(createSessionStore(db, tick))
-      expect(mailboxOf(store.events(worker)).map((one) => one.ending)).toEqual(['sent'])
+      expect(mailboxOf(store.events(worker)).map(({ text, ending }) => ({ text, ending }))).toEqual(
+        [
+          { text: 'the work this dispatch is about', ending: 'sent' },
+          { text: 'second', ending: 'sent' },
+        ],
+      )
     })
 
     it('a question answered through `list_questions` reads `answered` to the next launch', async () => {

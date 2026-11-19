@@ -1,3 +1,4 @@
+import { giveWorkWithTitleAsBrief, giveWorkerWithToolsets } from './lib/give-fixture'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
 import {
   RecordingSink,
@@ -153,39 +154,11 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
     return last
   }
 
-  const aGive = async (
-    tools: AgentToolset,
-    profile: string,
-    title: string,
-  ): Promise<{ agent: string; piece: string; label: string }> => {
-    const given = await callOn(tools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile,
-      title,
-      brief: title,
-    })
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    return {
-      agent: given.agent as string,
-      piece: given.piece as string,
-      label: given.label as string,
-    }
-  }
-
   /** A PM a person opened, and one worker it gave a piece to. */
   const aPmAndItsWorker = async (title: string) => {
     await bringIdentityIntoBeing('worker')
     const pm = await personOpens('pm')
-    const pmTools = theToolsetJustHandedOut()
-    const given = await aGive(pmTools, 'worker', title)
-    return {
-      pm,
-      worker: given.agent,
-      pmTools,
-      workerTools: theToolsetJustHandedOut(),
-      piece: given.piece,
-      label: given.label,
-    }
+    return { pm, ...(await giveWorkerWithToolsets(theToolsetJustHandedOut, title)) }
   }
 
   /** When the piece `label` that `holder` holds ended — its row's own moment. */
@@ -231,8 +204,8 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
       const { pm, worker, pmTools, workerTools, label } = await aPmAndItsWorker('the piece')
       await bringIdentityIntoBeing('helper')
       await bringIdentityIntoBeing('reviewer')
-      const back = await aGive(pmTools, 'helper', 'the piece taken back')
-      const closed = await aGive(pmTools, 'reviewer', 'the piece closed')
+      const back = await giveWorkWithTitleAsBrief(pmTools, 'helper', 'the piece taken back')
+      const closed = await giveWorkWithTitleAsBrief(pmTools, 'reviewer', 'the piece closed')
       expect(
         (
           await callOn(workerTools, 'reply_to_parent', {
@@ -313,7 +286,12 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
   describe('§2 · F090 · update_work on an ended piece its caller holds', () => {
     it('🔴 taken back while its give still waited: close, new brief and title are told how and when, by nobody, as the model reads it', async () => {
       const { worker, pmTools, workerTools } = await aPmAndItsWorker('the first piece')
-      const waited = await aGive(pmTools, 'worker', 'the piece that never reached it')
+      const waited = await giveWorkWithTitleAsBrief(
+        pmTools,
+        'worker',
+        'the piece that never reached it',
+        worker,
+      )
       expect(waited.agent).toBe(worker)
       expect((await callOn(pmTools, 'withdraw_task', { piece: waited.label })).outcome).toBe('ok')
       const row = store.piecesOwnedBy(worker).find((one) => one.label === waited.label)
@@ -373,7 +351,7 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
           named === label
             ? ` ${label} is your own piece, with no helpers recorded under it. list_agents names conversations; message_agent answers whether one can take your message.`
             : named === itsRoot
-              ? ` ${itsRoot} is your own piece. Its helpers: Ada (worker) on ${label} (working). Reach a helper by its piece's label, even after it ended: message_agent with kind: note, or ask_question. For new work, give_work with its profile. To stop a known conversation, interrupt_agent with its label.`
+              ? ` ${itsRoot} is your own piece. Its helpers: Ada (worker) on ${label} (working). Reach a helper by its task's label, even after it ended: message_agent or ask_question. For new work, give_work with its profile. To stop a known conversation, interrupt_agent with its label.`
               : ''
         expectRefused(said, 'that-agent-is-you', NOT_ITSELF + guide, named)
         expect(said.structured.detail, named).toEqual({ agent: itself })

@@ -1,3 +1,4 @@
+import { openNumberedPmAndGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -26,7 +27,6 @@ import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { agentName } from '../src/shared/runtime-ipc'
-import { theOwnerOf } from '../src/shared/piece-called'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
 import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 
@@ -254,18 +254,14 @@ describe('607 · a message from a person says so', () => {
    * there ({@link providerHeard}).
    */
   const aPmAndItsWorker = async (): Promise<APair> => {
-    const nth = ++pairs
-    const pmProfile = `pm-${String(nth)}`
-    const workerProfile = `worker-${String(nth)}`
-    await bringIdentityIntoBeing(workerProfile)
-    const pm = await personOpens(pmProfile)
-    const pmTools = agentToolsFor(host, pm)
-    const given = await callOn(pmTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: workerProfile,
-      title: 'the work this dispatch is about',
-      brief: 'the brief this dispatch hands over',
-    })
+    const { pm, pmProfile, pmTools, given } = await openNumberedPmAndGive(
+      ++pairs,
+      bringIdentityIntoBeing,
+      personOpens,
+      (pm) => agentToolsFor(host, pm),
+      'the work this dispatch is about',
+      'the brief this dispatch hands over',
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     await waitFor(() => pendingCardOn(worker) !== null, 'the card the brief’s turn parks on')
@@ -564,15 +560,14 @@ describe('607 · a message from a person says so', () => {
         'the agent’s flush to reach the provider',
       )
       const flushed = providerHeard(made.worker).find((said) => said.includes('queued work')) ?? ''
-      // ⚑ D-011 — named, with its conversation's address in the direction line: ⚑ D-016 · commit
-      // 7 · R3 — the piece the PM owns, composed from the product's own parts.
-      const pmNamed = store.workThatNames(made.pm)
-      if (pmNamed === null) throw new Error('the PM holds no piece, so no piece addresses it')
-      const answering = theDirectionLine(
-        `${agentName(made.pmProfile, store.agentIdentities())}, ${theOwnerOf(pmNamed)}`,
-        'caller',
+      const pmTask = store.workThatNames(made.pm)
+      if (pmTask === null) throw new Error('the PM has no addressable root')
+      const name = agentName(made.pmProfile, store.agentIdentities())
+      const title = 'the work this dispatch is about'
+      expect(flushed.split('\n')[0]).toBe(
+        `From ${name} (conversation ${pmTask.label} · ${name}), about task ${made.label} · ${title} in your conversation ${made.label} · ${title}.`,
       )
-      expect(flushed.startsWith('Sent by ') && flushed.includes(answering), flushed).toBe(true)
+      expect(flushed).toContain(theDirectionLine(name, 'caller'))
       expect(flushed).not.toContain(A_PERSON_SENT_IT)
     })
   })

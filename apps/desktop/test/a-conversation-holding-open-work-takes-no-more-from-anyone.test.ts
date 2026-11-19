@@ -152,6 +152,8 @@ describe('F146 · a conversation holding a stalled or parked piece still takes m
     const root = store.rootOf(parent)
     if (root === null) throw new Error('the parent owns no root')
     const given = await toolCall(parent, 'give_work', {
+      to: 'new',
+      conversation_title: 'Build the world clock page',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'Build the world clock page',
@@ -187,6 +189,7 @@ describe('F146 · a conversation holding a stalled or parked piece still takes m
 
   const giveMore = (fixture: AHelperHoldingAPiece): Promise<Record<string, unknown>> =>
     toolCall(fixture.parent, 'give_work', {
+      to: fixture.held.label,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'A piece of my own',
@@ -199,7 +202,6 @@ describe('F146 · a conversation holding a stalled or parked piece still takes m
   ): Promise<Record<string, unknown>> =>
     toolCall(fixture.parent, 'message_agent', {
       agent: fixture.child,
-      kind: 'follow-up',
       piece: fixture.held.label,
       text,
     })
@@ -211,6 +213,7 @@ describe('F146 · a conversation holding a stalled or parked piece still takes m
     const tool = agentToolsFor(host, fixture.parent).tools.find((one) => one.name === 'give_work')
     if (tool === undefined) throw new Error('no such tool: give_work')
     const said = await tool.call({
+      to: fixture.held.label,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'A piece of my own',
@@ -257,13 +260,16 @@ describe('F146 · a conversation holding a stalled or parked piece still takes m
       'outcome',
       'piece',
       'profile',
+      'receipt',
       'runs_on',
       'stalled',
       'started',
     ])
     expect(given.text).toContain(
-      `It still holds ${fixture.held.label} (its turn ended with this work still open) from you, not being worked on: follow it up with message_agent (kind follow-up), or take it back with withdraw_task.`,
+      `It still holds ${fixture.held.label} (its turn ended with this work still open) from you, not being worked on`,
     )
+    expect(given.text).toContain('follow it up with message_agent')
+    expect(given.text).toContain('take it back with withdraw_task')
     // ⚑ Given into the one conversation it has, and the stalled piece is still stalled beside it.
     expect(store.childrenOf(fixture.root.piece).map((one) => one.label)).toEqual([
       fixture.held.label,
@@ -289,11 +295,10 @@ describe('F146 · a conversation holding a stalled or parked piece still takes m
     // ⚑ A turn that does not name it — a note — runs and ends, and the piece is still parked.
     const turns = rowsIn(child, 'turn')
     const noted = await toolCall(fixture.parent, 'message_agent', {
-      agent: child,
-      kind: 'note',
+      agent: fixture.held.label,
       text: 'for your information',
     })
-    expect(noted.outcome, JSON.stringify(noted)).toBe('ok')
+    expect(noted).toMatchObject({ outcome: 'ok', agent: child })
     await waitFor(() => rowsIn(child, 'turn') > turns, 'the note’s turn to end')
     expect(store.openPiecesOf(child).map((one) => one.state)).toEqual(['waiting-on-purpose'])
 
@@ -304,7 +309,7 @@ describe('F146 · a conversation holding a stalled or parked piece still takes m
     expect(given.text).not.toContain('not being worked on')
   })
 
-  it('🔴 a follow-up naming a parked piece ends its wait, and a turn that ends with it open stalls it again', async () => {
+  it('a message explicitly naming a task its sender gave ends the wait and drives that task', async () => {
     const fixture = await aHelperHoldingAPiece('auto')
     const { child } = fixture
     expect((await parkIt(fixture)).outcome).toBe('ok')
@@ -320,6 +325,39 @@ describe('F146 · a conversation holding a stalled or parked piece still takes m
     expect(piece?.statusLine?.waiting).toBeUndefined()
     const given = await giveMoreSaid(fixture)
     expect(given.structured.stalled).toEqual([fixture.held.label])
+  })
+
+  it('keeps a task parked when another giver names their own task in a message to its holder', async () => {
+    const fixture = await aHelperHoldingAPiece('auto')
+    const { child } = fixture
+    const other = await personOpens('another-giver')
+    const otherTask = await toolCall(other, 'give_work', {
+      to: 'new',
+      conversation_title: 'A different job',
+      definition_of_done: 'The result is written down.',
+      profile: 'worker',
+      title: 'A different job',
+      brief: 'Do the different job.',
+    })
+    expect(otherTask).toMatchObject({ outcome: 'ok' })
+    expect(otherTask.agent).not.toBe(child)
+    expect((await parkIt(fixture)).outcome).toBe('ok')
+
+    const turns = rowsIn(child, 'turn')
+    const text = 'Here is an update on the different job.'
+    const sent = await toolCall(other, 'message_agent', {
+      agent: child,
+      piece: otherTask.label,
+      text,
+    })
+    expect(sent).toMatchObject({ outcome: 'ok', agent: child, label: otherTask.label })
+    await waitFor(() => rowsIn(child, 'turn') > turns, 'the other giver’s message to finish')
+    const delivered = store
+      .events(child)
+      .find(({ event }) => event.type === 'user_turn' && event.text === text)
+    expect(delivered).toBeDefined()
+    expect(delivered?.event).not.toHaveProperty('says', 'follow-up')
+    expect(store.openPiecesOf(child).map((one) => one.state)).toEqual(['waiting-on-purpose'])
   })
 
   /** The stall notices the giver was sent: messages whose first line says the work is not driven. */

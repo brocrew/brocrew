@@ -1,3 +1,4 @@
+import { addressedGive, newConversationGive, readSuccessfulRawGive } from './lib/give-fixture'
 import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import { waitFor } from './lib/f093-host'
@@ -312,13 +313,13 @@ describe('687 · what the cards cannot say yet', () => {
     const root = store.rootOf(pm)
     if (root === null) throw new Error('the PM owns no root')
     for (let once = 0; once < burn; once++) store.numberUnder(root.piece)
-    const given = await call(pmTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'The work this dispatch is about',
-      brief: 'build it',
-    })
-    expect(given.structured.outcome, JSON.stringify(given.structured)).toBe('ok')
+    const given = await readSuccessfulRawGive(() =>
+      call(
+        pmTools,
+        'give_work',
+        newConversationGive('worker', 'The work this dispatch is about', 'build it'),
+      ),
+    )
     return {
       pm,
       worker: given.structured.agent as string,
@@ -544,7 +545,7 @@ describe('687 · what the cards cannot say yet', () => {
    * `says` (`UserTurnEvent.says` stays absent on a brief).
    */
   describe('§2 · `678` H1 — `says` on the rows an agent’s `message_agent` produced, and on no other', () => {
-    it('🔴 IDLE: a follow-up’s turn says `follow-up`, and a brief’s says nothing — it names its piece', async () => {
+    it('🔴 IDLE: a message about work the sender gave says `follow-up` and a brief names its piece', async () => {
       const { worker, pmTools, piece, label } = await aPmAndItsWorker()
       const brief = turnSaying(worker, 'build it')
       expect(brief).toMatchObject({ piece, label })
@@ -559,15 +560,11 @@ describe('687 · what the cards cannot say yet', () => {
       expect(turnSaying(worker, 'what is left?')?.says).toBe('follow-up')
     })
 
-    it('🔴 a note is recorded as a note at both ends — and, since D-010, no kind named is no message', async () => {
+    it('🔴 a message without a kind is recorded at both ends', async () => {
       const { pm, worker, pmTools } = await aPmAndItsWorker()
       await letTheTurnFinish(worker)
-      // ⛔ **D-010 · there is no default kind**: the call is refused and nothing is written.
-      await call(pmTools, 'message_agent', { agent: worker, text: 'no kind named' })
-      expect(turnSaying(worker, 'no kind named')).toBeUndefined()
-      expect(receipts(pm)).toEqual([])
-      await call(pmTools, 'message_agent', { agent: worker, text: 'a note', kind: 'note' })
-      const turn = turnSaying(worker, 'a note')
+      await call(pmTools, 'message_agent', { agent: worker, text: 'a message' })
+      const turn = turnSaying(worker, 'a message')
       expect(turn?.says).toBe('note')
       expect(turn).not.toHaveProperty('piece')
       // ⚑ **The receipt says the same word**, from the same one value — the sender and the
@@ -713,21 +710,22 @@ describe('687 · what the cards cannot say yet', () => {
 
   /* ═════════════════ §4 · H6 — the flushed brief carries its label ════════════════════════════════ */
 
+  const giveWhileTheBriefIsStillRunning = async (worker: string, pmTools: AgentToolset) => {
+    await waitFor(
+      () => ledger(worker).some((event) => event.type === 'permission_request'),
+      'the worker to be busy',
+    )
+    return call(
+      pmTools,
+      'give_work',
+      addressedGive(worker, 'worker', 'Now build it', 'now build it'),
+    )
+  }
+
   describe('§4 · `678` H6 — a held brief’s flushed turn says its label on its own', () => {
     it('🔴 the turn a held brief flushes into carries the label its piece row was given a turn earlier', async () => {
       const { pm, worker, pmTools } = await aPmAndItsWorker(3)
-      await waitFor(
-        () => ledger(worker).some((event) => event.type === 'permission_request'),
-        'the worker to be busy',
-      )
-      // ⚑ **D-016** — a second give from the same giver reaches the SAME conversation, and is held
-      // behind the first brief's turn.
-      const again = await call(pmTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'Now build it',
-        brief: 'now build it',
-      })
+      const again = await giveWhileTheBriefIsStillRunning(worker, pmTools)
       expect(again.structured.agent).toBe(worker)
       expect(again.structured.delivery).toBe('held')
       const next = `${String(store.rootOf(pm)?.label)}.5`
@@ -789,16 +787,7 @@ describe('687 · what the cards cannot say yet', () => {
       // ⚑ **D-016** — the held words are a second give's brief, behind the first brief's turn; a
       // brief carries no `says`.
       const { pm, worker, pmTools } = await aPmAndItsWorker()
-      await waitFor(
-        () => ledger(worker).some((event) => event.type === 'permission_request'),
-        'the worker to be busy',
-      )
-      const again = await call(pmTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'Now build it',
-        brief: 'now build it',
-      })
+      const again = await giveWhileTheBriefIsStillRunning(worker, pmTools)
       expect(again.structured.delivery).toBe('held')
       await host.send(pm, 'keep the PM busy', window)
       expect((await host.queueMessage(pm, 'mine, held', window)).outcome).toBe('queued')

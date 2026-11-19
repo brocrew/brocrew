@@ -21941,8 +21941,9 @@ async function main() {
       approvalMode: 'auto',
       prompt:
         'You are running inside BroBot and have its agent-management tools. Do exactly one thing, ' +
-        `then stop: call give_work with profile ${JSON.stringify(child)}, title ` +
-        `"726 a child started outside its parent's folder", brief "Answer READY to whoever gave ` +
+        `then stop: call give_work with profile ${JSON.stringify(child)}, to "new", title ` +
+        `"726 a child started outside its parent's folder", conversation_title equal to that title, ` +
+        `definition_of_done "The child answered READY.", brief "Answer READY to whoever gave ` +
         `you this, and do nothing else.", and folder ${JSON.stringify(childCwd)}. Use no other ` +
         'tool. Then reply with the one word DONE.',
     })
@@ -23044,12 +23045,18 @@ async function main() {
               childChosenFor = provider
             }
             const title = `480 ${provider}/${outcome} isolated permission measurement`
-            const expectedGive = { profile: 'project-manager', title, brief: childWork }
+            const expectedGive = {
+              profile: 'project-manager',
+              to: 'new',
+              conversation_title: title,
+              title,
+              brief: childWork,
+              definition_of_done: 'The child recorded the requested result and its checks.',
+            }
             const givePrompt =
               'You are running inside BroBot and have its agent-management tools. Do exactly one ' +
-              'thing, then stop: call give_work exactly once with profile "project-manager", title ' +
-              `${JSON.stringify(title)}, and brief exactly equal to this JSON-decoded string: ` +
-              `${JSON.stringify(childWork)}. Preserve every decoded byte, and pass no other ` +
+              'thing, then stop: call give_work exactly once with the following JSON arguments. ' +
+              `${JSON.stringify(expectedGive)}. Preserve every decoded byte, and pass no other ` +
               'argument. ' +
               // ⛔ 665 · §6 is in the controller's OWN instructions, and it ends *"if you spawn agents
               // of your own, this block goes into their prompts verbatim"*. The child already has it —

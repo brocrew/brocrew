@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
@@ -246,12 +247,11 @@ describe('395 · the interruption that looks like a provider fault', () => {
     for (const one of siblings) await bringIdentityIntoBeing(one)
     const pm = await personOpens(pmProfile)
     const pmTools = agentToolsFor(host, pm)
-    const given = await callOn(pmTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: workerProfile,
-      title: 'The work',
-      brief: 'the work this dispatch is about',
-    })
+    const given = await callOn(
+      pmTools,
+      'give_work',
+      newConversationGive(workerProfile, 'The work', 'the work this dispatch is about'),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     const workerHandle = latestHandle()

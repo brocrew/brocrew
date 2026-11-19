@@ -15,6 +15,7 @@ import {
 } from '../../../shared/mcp-server-requests'
 import { PATH_SEGMENT_RULE, isPathSegment } from '../../../shared/runtime-ipc'
 import { REPLY_SUMMARY_LIMIT } from '../reply-rails'
+import { INLINE_TEXT_LIMIT, sendOverflowSaid } from '../send-overflow'
 import { type ToolRefusal, carryQuestionRefusal, refuseTool } from './refusals'
 import { answer, refusalAnswer } from './answers'
 import { z } from 'zod'
@@ -218,7 +219,7 @@ export function createRequestActionTool(
       action: z
         .string()
         .describe(
-          `What the person should do, in plain words, at most ${String(REPLY_SUMMARY_LIMIT)} characters. It shows under Waiting on you with Markdown: **bold**, lists, \`code\` for ids and paths, and links to files.`,
+          'What the person should do, in plain words. Anything over 2,000 characters arrives as a file the reader is pointed to.',
         ),
       resources: z
         .array(z.string())
@@ -237,11 +238,7 @@ export function createRequestActionTool(
           problems.push("piece must be a piece's label or id, or left out")
         }
         const said = typeof action === 'string' ? action.trim() : ''
-        if (said === '' || said.length > REPLY_SUMMARY_LIMIT) {
-          problems.push(
-            `action must say what to do, in 1 to ${String(REPLY_SUMMARY_LIMIT)} characters`,
-          )
-        }
+        if (said === '') problems.push('action must say what to do')
         if (
           paths !== undefined &&
           (!Array.isArray(paths) ||
@@ -259,25 +256,19 @@ export function createRequestActionTool(
         const asked = await host.requestAnAction(
           {
             piece: typeof piece === 'string' ? piece : null,
-            action: said,
+            action: typeof action === 'string' && action.length > INLINE_TEXT_LIMIT ? action : said,
             files: Array.isArray(paths) ? (paths as string[]) : [],
           },
           by,
         )
-        if ('resourceRefusal' in asked) {
-          const { resourceRefusal } = asked
-          return answer(
-            { ...resourceRefusal },
-            `refused (${resourceRefusal.rail}): ${resourceRefusal.reason}`,
-          )
-        }
         if (!asked.ok) {
           const carried = carryQuestionRefusal(asked.refusal)
           return answer(carried, `refused (${asked.refusal.rail}): ${asked.refusal.reason}`)
         }
         return answer(
           { outcome: 'ok', question: asked.question },
-          `The to-do is under Waiting on you as ${asked.question}. The person answers Done or Can’t do it, and the answer reaches you as a message; they may not be looking now. Carry on from here.`,
+          `The to-do is under Waiting on you as ${asked.question}. The person answers Done or Can’t do it, and the answer reaches you as a message; they may not be looking now. Carry on from here.` +
+            (asked.overflow === undefined ? '' : sendOverflowSaid(asked.overflow)),
         )
       }),
   }

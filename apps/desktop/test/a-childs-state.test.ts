@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { fixtureProviderConfig, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -152,12 +153,11 @@ describe('632 · a child avatar shows what the child is doing', () => {
     const worker = await personOpens('worker')
     await host.close(worker, window)
     const parent = await personOpens()
-    const given = await toolCall(parent, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'the world clock page',
-      brief: 'build the world clock page',
-    })
+    const given = await toolCall(
+      parent,
+      'give_work',
+      newConversationGive('worker', 'the world clock page', 'build the world clock page'),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const child = given.agent as string
     await vi.waitFor(() => {

@@ -1,3 +1,5 @@
+import { newConversationGive } from './lib/give-fixture'
+import { recordForwardedQuestion } from './lib/forwarded-question-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -222,12 +224,7 @@ describe('734 · the queue names agents, not folders', () => {
     profile: string,
     brief = 'do the thing',
   ): Promise<{ child: string; handle: FakeSessionHandle; piece: string; label: string }> => {
-    const given = await callOn(parent, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile,
-      title: brief,
-      brief,
-    })
+    const given = await callOn(parent, 'give_work', newConversationGive(profile, brief, brief))
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const child = given.agent as string
     const handle = latestHandle()
@@ -274,19 +271,6 @@ describe('734 · the queue names agents, not folders', () => {
     return question.id
   }
 
-  /**
-   * ⚑ **The parent passes it up to a person** — `pass_question_up`, which raises it again from the
-   * PARENT, addressed to a person: the row a person's queue lists is the parent's, one hop.
-   */
-  const passedUp = async (parent: string, questionId: string): Promise<string> => {
-    const passed = await callOn(parent, 'pass_question_up', {
-      question: questionId,
-      who_answers: 'a-person',
-    })
-    expect(passed.outcome, JSON.stringify(passed)).toBe('ok')
-    return passed.question as string
-  }
-
   const questionRow = (askedBy: string, requestId: string) =>
     host
       .questionsForAPerson()
@@ -330,11 +314,21 @@ describe('734 · the queue names agents, not folders', () => {
   // §1 · `732` F-1 — a person's queue names the conversation's AGENT
   // ─────────────────────────────────────────────────────────────────────────────────────────────
 
+  const questionPassedToThePerson = async () => {
+    const { pm } = await graceAndAda()
+    const { child: worker, handle } = await gives(pm, 'worker-g')
+    const passed = recordForwardedQuestion(store, tick, {
+      asker: worker,
+      original: await aChildAsks(worker, handle),
+      forwarder: pm,
+      to: 'a-person',
+    })
+    return { pm, worker, passed }
+  }
+
   describe('§1 · `732` F-1 — a person’s queue names the agent, never its folder', () => {
     it('🔴 §1.1 a question Ada passed up to you — Ada waiting on you — in the default folder', async () => {
-      const { pm } = await graceAndAda()
-      const { child: worker, handle } = await gives(pm, 'worker-g')
-      const passed = await passedUp(pm, await aChildAsks(worker, handle))
+      const { pm, worker, passed } = await questionPassedToThePerson()
       // ⛔ **The premise**: one default folder for both, so a folder cannot tell them apart.
       expect(theFolderOf(worker)).toBe('brobot-workspace')
       expect(theFolderOf(pm)).toBe('brobot-workspace')
@@ -443,9 +437,7 @@ describe('734 · the queue names agents, not folders', () => {
 
     it('⚑ §1.6 the names are read per look — renamed, the next look says the new ones', async () => {
       // ⚠️ A memo that outlived one answer would say *Ada* and *Bob* for the life of the app.
-      const { pm } = await graceAndAda()
-      const { child: worker, handle } = await gives(pm, 'worker-g')
-      const passed = await passedUp(pm, await aChildAsks(worker, handle))
+      const { pm, worker, passed } = await questionPassedToThePerson()
       const said = (): (string | undefined)[] => [
         questionRow(pm, passed)?.sentence,
         host.decisionsForAPerson().rows.find((one) => one.request.askedBy === worker)?.sentence,
@@ -553,12 +545,11 @@ describe('734 · the queue names agents, not folders', () => {
     try {
       // ⚑ **D-016 · the brief is the turn** — a give starts Bob and sends it, where a spawn started
       // him idle and a `work` message began the turn. ⛔ Not {@link gives}: this handle raises no card.
-      const given = await callOn(rig.pm, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker-g',
-        title: '734-a-turn-nobody-can-stop',
-        brief: '734-a-turn-nobody-can-stop',
-      })
+      const given = await callOn(
+        rig.pm,
+        'give_work',
+        newConversationGive('worker-g', '734-a-turn-nobody-can-stop', '734-a-turn-nobody-can-stop'),
+      )
       expect(given.outcome, JSON.stringify(given)).toBe('ok')
       expect(given.delivery).toBe('sent')
       worker = given.agent as string

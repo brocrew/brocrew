@@ -1,3 +1,4 @@
+import { giveTwoHopsAfterBriefTurns, startThinking } from './lib/running-worker-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { callOn } from './helpers/call-agent-tool'
 import { HandleKeepingRuntime as ProviderDouble } from './helpers/handle-keeping-runtime'
@@ -113,34 +114,6 @@ describe('F020 · a withdraw of a question already answered says so, and where i
     return handle
   }
 
-  /** ⚑ A thinking burst: the handle is `working`, no card is up, and no turn of ours is open. */
-  const makeItWork = async (handle: FakeSessionHandle): Promise<void> => {
-    handle.simulateThinking({ text: 'driving the browser', redacted: false })
-    await waitFor(() => handle.status() === 'working', 'the conversation to be working')
-  }
-
-  /** ⚑ A give, waited out to the END of the child's brief turn. */
-  const give = async (
-    tools: AgentToolset,
-    profile: string,
-    title: string,
-  ): Promise<{ agent: string; piece: string; label: string }> => {
-    const given = await callOn(tools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile,
-      title,
-      brief: title,
-    })
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    expect(given.started, JSON.stringify(given)).toBe(true)
-    const agent = given.agent as string
-    await waitFor(
-      () => ledger(agent).some((event) => event.type === 'turn'),
-      'the brief’s turn to end',
-    )
-    return { agent, piece: given.piece as string, label: given.label as string }
-  }
-
   /** ⚑ BroBot → Ada → Ali, through the real door, in `auto`. */
   const aChainOfThree = async (): Promise<{
     brobot: string
@@ -156,12 +129,14 @@ describe('F020 · a withdraw of a question already answered says so, and where i
     const workerProfile = `worker-${String(nth)}`
     await bringIdentityIntoBeing(pmProfile)
     await bringIdentityIntoBeing(workerProfile)
-    const brobot = await personOpens(DEFAULT_PROFILE_ID, 'auto')
-    const brobotTools = agentToolsFor(host, brobot)
-    const ada = (await give(brobotTools, pmProfile, 'run the front-end work')).agent
-    const adaHandle = latestHandle()
-    const adaTools = agentToolsFor(host, ada)
-    const toAli = await give(adaTools, workerProfile, 'build the world-clock page')
+    const { brobot, ada, adaHandle, adaTools, toAli } = await giveTwoHopsAfterBriefTurns(
+      store,
+      () => personOpens(DEFAULT_PROFILE_ID, 'auto'),
+      (id) => agentToolsFor(host, id),
+      latestHandle,
+      pmProfile,
+      workerProfile,
+    )
     return {
       brobot,
       ada,
@@ -209,7 +184,7 @@ describe('F020 · a withdraw of a question already answered says so, and where i
   const aliAsksAndKeepsWorking = async () => {
     const chain = await aChainOfThree()
     const id = await aliAsks(chain.ali, chain.aliPiece)
-    await makeItWork(chain.aliHandle)
+    await startThinking(chain.aliHandle)
     return { ...chain, id }
   }
 

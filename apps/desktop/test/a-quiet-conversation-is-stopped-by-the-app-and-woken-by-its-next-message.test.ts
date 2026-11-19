@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import { callOn } from './helpers/call-agent-tool'
 import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
@@ -394,12 +395,7 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
     const pm = await opens('pm')
     const pmTools = theToolsetJustHandedOut()
     const give = async (slug: string, brief: string): Promise<string> => {
-      const made = await callOn(pmTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: slug,
-        title: brief,
-        brief,
-      })
+      const made = await callOn(pmTools, 'give_work', newConversationGive(slug, brief, brief))
       expect(made.outcome, JSON.stringify(made)).toBe('ok')
       return made.agent as string
     }

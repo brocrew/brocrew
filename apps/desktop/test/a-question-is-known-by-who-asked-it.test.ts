@@ -241,6 +241,8 @@ describe('679 · a question is known by who asked it', () => {
     const children: Child[] = []
     for (const profile of profiles) {
       const given = await callOn(pm, 'give_work', {
+        to: 'new',
+        conversation_title: `the half ${profile} owns`,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile,
         title: `the half ${profile} owns`,
@@ -284,15 +286,6 @@ describe('679 · a question is known by who asked it', () => {
   const moveTheCounterOn = (child: Child): void => {
     expect(Reflect.get(child.handle, 'idCounter')).toBe(0)
     Reflect.set(child.handle, 'idCounter', 40)
-  }
-
-  /** ⚑ The PROSE half of a pass-up's answer — the row a person reads and a model reads first. */
-  const passedUpSentence = async (pm: string, question: string): Promise<string> => {
-    const tool = agentToolsFor(host, pm).tools.find((one) => one.name === 'pass_question_up')
-    if (tool === undefined) throw new Error('no pass_question_up')
-    // ⛔ A second pass of the same question is a second hop and answers with the same sentence
-    // shape, so the text read here is the tool's own, not one this test composed.
-    return (await tool.call({ question, who_answers: 'a-person' })).text
   }
 
   const answer = (
@@ -401,15 +394,6 @@ describe('679 · a question is known by who asked it', () => {
           rail: 'malformed-request',
         })
         expect(JSON.stringify(refused.detail), JSON.stringify(bad)).toContain('asked_by')
-        const passed = await callOn(pm, 'pass_question_up', {
-          question: a.id,
-          asked_by: bad,
-          who_answers: 'a-person',
-        })
-        expect(passed, JSON.stringify(bad)).toMatchObject({
-          outcome: 'refused',
-          rail: 'malformed-request',
-        })
       }
       expect([decisionsOn(older.id), decisionsOn(newer.id)]).toEqual([0, 0])
     })
@@ -595,83 +579,6 @@ describe('679 · a question is known by who asked it', () => {
 
       expect(await answer(pm, a.id)).toMatchObject({ outcome: 'ok', agent: older.id })
       await expect(again.answered).resolves.toMatchObject({ answers: { q0: ['main'] } })
-    })
-  })
-
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §2 · the pass-up door
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-
-  describe('§2 · the pass-up door', () => {
-    /** The words the pass-up carried, read off the passer's own new question. */
-    const wordsPassedUp = (pm: string): string[] =>
-      ledger(pm).flatMap((event) =>
-        event.type === 'question_asked' && event.passedUpFrom !== undefined ? [event.prompt] : [],
-      )
-
-    it('🔴 the arm where it collides · the shared id is refused by name, and naming the asker carries THAT child’s words', async () => {
-      const { pm, older, newer } = await aPmAndTwoChildren()
-      const a = await childAsks(older, 'which branch for the API?')
-      const b = await childAsks(newer, 'which branch for the docs?')
-      expect(b.id).toBe(a.id)
-
-      const refused = await callOn(pm, 'pass_question_up', {
-        question: a.id,
-        who_answers: 'a-person',
-      })
-      // ⛔ **Pinned on `main` @ `44c6f029`**: `ok`, carrying *"which branch for the docs?"* — the
-      // NEWER child's words under the older child's id.
-      expect(refused, JSON.stringify(refused)).toMatchObject({
-        outcome: 'refused',
-        rail: 'more-than-one-question-has-that-id',
-        detail: { question: a.id, askers: [older.id, newer.id] },
-      })
-      expect(wordsPassedUp(pm)).toEqual([])
-
-      const passed = await callOn(pm, 'pass_question_up', {
-        question: a.id,
-        asked_by: older.id,
-        who_answers: 'a-person',
-      })
-      expect(passed.outcome, JSON.stringify(passed)).toBe('ok')
-      expect(wordsPassedUp(pm)).toEqual(['which branch for the API?'])
-    })
-
-    it('⚑ a pass-up names the asker of the question it CARRIED, so the passer can quote the pair when the answer comes back', async () => {
-      const { pm, older, newer } = await aPmAndTwoChildren()
-      moveTheCounterOn(newer)
-      const a = await childAsks(older, 'which branch for the API?')
-      // ⚑ **The id was unique when it was passed up** — no `asked_by` given, none needed.
-      const passed = await callOn(pm, 'pass_question_up', {
-        question: a.id,
-        who_answers: 'a-person',
-      })
-      expect(passed, JSON.stringify(passed)).toMatchObject({
-        outcome: 'ok',
-        passed_up: a.id,
-        asked_by: older.id,
-      })
-      const said = await passedUpSentence(pm, a.id)
-      // ⚑ **D-016 · commit 7 · R3** — the sentence quotes the asker's address (the label of the
-      // piece it owns, which `answer_question` takes), and the payload above keeps its id.
-      expect(said).toContain(`answer_question with asked_by ${host.addressOf(older.id)}`)
-    })
-
-    it('⚑ THE CONTROL · ids that differ carry the right words by the id alone', async () => {
-      const { pm, older, newer } = await aPmAndTwoChildren()
-      moveTheCounterOn(newer)
-      const a = await childAsks(older, 'which branch for the API?')
-      const b = await childAsks(newer, 'which branch for the docs?')
-      expect(b.id).not.toBe(a.id)
-
-      for (const id of [a.id, b.id]) {
-        const passed = await callOn(pm, 'pass_question_up', {
-          question: id,
-          who_answers: 'a-person',
-        })
-        expect(passed.outcome, JSON.stringify(passed)).toBe('ok')
-      }
-      expect(wordsPassedUp(pm)).toEqual(['which branch for the API?', 'which branch for the docs?'])
     })
   })
 

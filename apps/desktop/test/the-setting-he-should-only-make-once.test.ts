@@ -203,6 +203,8 @@ describe('500 · the setting he should only ever make once', () => {
     const answered = (await tool.call({
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: profileSlug,
+      to: 'new',
+      conversation_title: 'the work this dispatch is about',
       title: 'the work this dispatch is about',
       brief: 'the work this dispatch is about',
     })) as { structured: Record<string, unknown> }

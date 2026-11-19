@@ -1,3 +1,7 @@
+import { newConversationGive } from './lib/give-fixture'
+import { readFileSync, writeFileSync } from 'node:fs'
+import { dirname, isAbsolute, join } from 'node:path'
+import { recordForwardedQuestion } from './lib/forwarded-question-fixture'
 import { distil } from '../src/main/runtime/digest'
 import { didIt } from '../src/shared/who-did-it'
 import {
@@ -145,22 +149,129 @@ describe('a service is reached through the piece it is on', () => {
     }
   }
 
+  it('a taskless sender attaches the complete long message as a readable file', async () => {
+    world.anAgent('caller', 'nothing kept')
+    world.anAgent('helper', 'normal')
+    const host = world.aHost()
+    const caller = await world.aPersonOpens(host, 'caller')
+    const sender = await world.aRecordedWorker(caller, 'helper')
+    await host.resumeSession(sender, world.window)
+    expect(world.store.rootOf(sender)).toBeNull()
+    expect(world.store.piecesOwnedBy(sender)).toEqual([])
+
+    const beginning = 'Taskless message starts here. '
+    const text = `${beginning}${'🚲 '.repeat(800)}The entire ending stays in the file.`
+    const cwd = world.store.recordedOne(sender)?.cwd
+    if (cwd === undefined) throw new Error('the sender has no working folder')
+    const explicit = 'A file to hand to the caller.\n'
+    writeFileSync(join(cwd, 'notes.txt'), explicit)
+    const sent = await call(host, sender, 'message_agent', {
+      agent: caller,
+      text,
+      resources: ['notes.txt'],
+    })
+    expect(sent.structured).toMatchObject({ outcome: 'ok', agent: caller })
+    const filename = /the full text is saved at (.+); the message shows its start/.exec(
+      sent.text,
+    )?.[1]
+    if (filename === undefined) throw new Error('no attachment path in the sender receipt')
+    expect(isAbsolute(filename)).toBe(true)
+    expect(dirname(filename)).toBe(cwd)
+    const receipt = sent.structured?.receipt as { attachments?: { name?: string; path?: string }[] }
+    const file = receipt?.attachments?.find((one) => one.name === 'notes.txt')?.path
+    if (file === undefined) throw new Error('no path for the explicit file')
+    expect(dirname(file)).toBe(cwd)
+    expect(readFileSync(file, 'utf8')).toBe(explicit)
+    await vi.waitFor(() => {
+      const turn = world.sent
+        .filter((one) => one.as === 'caller')
+        .find((one) => one.words.includes(beginning))
+      expect(turn?.words).toContain(`The full text is saved at ${filename}: read the file.`)
+      expect(turn?.words).toContain(`Read the file ${file}.`)
+      expect(turn?.words).not.toContain('The entire ending stays in the file.')
+    })
+    expect(readFileSync(filename, 'utf8')).toBe(text)
+    expect(world.store.rootOf(sender)).toBeNull()
+    expect(world.store.piecesOwnedBy(sender)).toEqual([])
+  })
+
+  it('keeps the sender’s files and text on its work when a message names the recipient’s task', async () => {
+    const { host, caller, one } = await aServiceOnTheFirstPiece()
+    const root = world.store.rootOf(caller)
+    if (root === null) throw new Error('the caller has no root task')
+    const text = 'About the service task. '.padEnd(2_001, 'x')
+    const notes = 'Tuesday, meeting room 2.\n'
+    writeFileSync(join(world.folder, 'meeting-notes.md'), notes)
+    const sent = await call(host, caller, 'message_agent', {
+      agent: one.label,
+      piece: one.label,
+      text,
+      resources: ['meeting-notes.md'],
+    })
+    expect(sent.structured).toMatchObject({ outcome: 'ok', piece: one.piece })
+    const files = world.store.resourcesOf(root.piece)
+    const file = files.find((one) => one.name === 'text.txt')
+    const explicit = files.find((one) => one.name === 'meeting-notes.md')
+    if (file === undefined || explicit === undefined)
+      throw new Error('the sender’s task lacks a file')
+    expect(sent.text).toContain(`(${file.resource})`)
+    expect(world.store.resourcesOf(one.piece)).toEqual([])
+    const read = host.readResource(file.resource)
+    if (!read.ok || read.content.as !== 'file') throw new Error('the attachment is unreadable')
+    expect(readFileSync(read.content.path, 'utf8')).toBe(text)
+    expect(sent.structured).toMatchObject({
+      receipt: {
+        attachments: [
+          { resource: explicit.resource, name: explicit.name },
+          { resource: file.resource, name: file.name, overflowField: 'text' },
+        ],
+      },
+    })
+    const readNotes = host.readResource(explicit.resource)
+    expect(readNotes).toMatchObject({ ok: true, content: { as: 'markdown', text: notes } })
+    await vi.waitFor(() => {
+      expect(world.sent.some((one) => one.words.includes(explicit.resource))).toBe(true)
+    })
+  })
+
+  const theHelperRepliesToTheService = async (host: RuntimeHost, service: string) => {
+    world.anAgent('helper', 'nothing kept')
+    const given = await call(
+      host,
+      service,
+      'give_work',
+      newConversationGive('helper', 'Find rooms', 'list the free rooms'),
+    )
+    expect(given.structured).toMatchObject({ outcome: 'ok' })
+    const helper = String(given.structured['owner'] ?? given.structured['agent'])
+    const replied = await call(host, helper, 'reply_to_parent', {
+      piece: String(given.structured['label']),
+      outcome: 'done',
+      summary: 'Room 4 is free.',
+    })
+    expect(replied.structured).toMatchObject({ outcome: 'ok' })
+  }
+
   describe('who may reach it', () => {
-    it('a profile name reaches only the service on the message caller’s piece', async () => {
+    it('a service message needs a conversation address and still has to reach the service', async () => {
       const { host, caller, stranger, service, one } = await aServiceOnTheFirstPiece()
-      const sent = await call(host, caller, 'message_agent', {
+      const byProfile = await call(host, caller, 'message_agent', {
         agent: 'browser-driver',
+        text: 'the room on the third floor',
+      })
+      expect(byProfile.structured).toMatchObject({ outcome: 'refused', rail: 'no-such-agent' })
+      const sent = await call(host, caller, 'message_agent', {
+        agent: one.label,
         kind: 'follow-up',
         piece: one.label,
         text: 'the room on the third floor',
       })
       expect(sent.structured).toMatchObject({ outcome: 'ok', agent: service })
       const denied = await call(host, stranger, 'message_agent', {
-        agent: 'browser-driver',
-        kind: 'note',
+        agent: service,
         text: 'the room on the third floor',
       })
-      expect(denied.structured).toMatchObject({ outcome: 'refused', rail: 'no-such-agent' })
+      expect(denied.structured).toMatchObject({ outcome: 'refused', rail: 'that-is-a-service' })
       const asked = await call(host, caller, 'ask_question', {
         who_answers: 'an-agent',
         agent: 'browser-driver',
@@ -824,21 +935,7 @@ describe('a service is reached through the piece it is on', () => {
         turnHeld: true,
         signInsChecked: true,
       })
-      world.anAgent('helper', 'nothing kept')
-      const given = await call(host, service, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'helper',
-        title: 'Find rooms',
-        brief: 'list the free rooms',
-      })
-      expect(given.structured).toMatchObject({ outcome: 'ok' })
-      const helper = String(given.structured['owner'] ?? given.structured['agent'])
-      const replied = await call(host, helper, 'reply_to_parent', {
-        piece: String(given.structured['label']),
-        outcome: 'done',
-        summary: 'Room 4 is free.',
-      })
-      expect(replied.structured).toMatchObject({ outcome: 'ok' })
+      await theHelperRepliesToTheService(host, service)
       const followed = await call(host, caller, 'message_agent', {
         agent: service,
         kind: 'follow-up',
@@ -1565,21 +1662,7 @@ describe('a service is reached through the piece it is on', () => {
         turnHeld: true,
         signInsChecked: true,
       })
-      world.anAgent('helper', 'nothing kept')
-      const given = await call(host, service, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'helper',
-        title: 'Find rooms',
-        brief: 'list the free rooms',
-      })
-      expect(given.structured).toMatchObject({ outcome: 'ok' })
-      const helper = String(given.structured['owner'] ?? given.structured['agent'])
-      const replied = await call(host, helper, 'reply_to_parent', {
-        piece: String(given.structured['label']),
-        outcome: 'done',
-        summary: 'Room 4 is free.',
-      })
-      expect(replied.structured).toMatchObject({ outcome: 'ok' })
+      await theHelperRepliesToTheService(host, service)
       const signIn = aGate()
       world.signInWait = signIn.held
       const taking = call(host, caller, 'withdraw_task', { piece: one.label })
@@ -2067,45 +2150,6 @@ describe('a service is reached through the piece it is on', () => {
       expect(routed(service).get(question.id)?.parent).toBeUndefined()
     })
 
-    /** A helper the service gave work while on its first piece, and a question that helper asked it. */
-    const aQuestionAskedOfItUnderTheFirstPiece = async (
-      host: RuntimeHost,
-      service: string,
-    ): Promise<{ helper: string; question: string }> => {
-      world.anAgent('helper', 'nothing kept')
-      const given = await call(host, service, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'helper',
-        title: 'Find rooms',
-        brief: 'list the free rooms',
-      })
-      expect(given.structured).toMatchObject({ outcome: 'ok' })
-      const helper = String(given.structured['owner'] ?? given.structured['agent'])
-      await vi.waitFor(() => {
-        expect(world.store.piecesOwnedBy(helper)).toHaveLength(1)
-      })
-      const asked = await call(host, helper, 'ask_question', {
-        question: 'which building?',
-        who_answers: 'the-parent',
-      })
-      expect(asked.structured).toMatchObject({ outcome: 'ok' })
-      return { helper, question: String(asked.structured['question']) }
-    }
-
-    it('passed up, go to the caller of the piece they were asked under', async () => {
-      const { host, caller, service } = await aServiceOnTheFirstPiece()
-      const { question } = await aQuestionAskedOfItUnderTheFirstPiece(host, service)
-      const passed = await call(host, service, 'pass_question_up', {
-        question,
-        who_answers: 'the-parent',
-      })
-      expect(passed.structured).toMatchObject({ outcome: 'ok' })
-      expect(routed(service).get(String(passed.structured['question']))).toMatchObject({
-        to: 'the-parent',
-        parent: caller,
-      })
-    })
-
     it('passed up by its caller, end with its piece in the caller’s archived ledger, and do not come back with it', async () => {
       const { host, caller, service, one } = await aServiceOnTheFirstPiece()
       const asked = await call(host, service, 'ask_question', {
@@ -2114,12 +2158,12 @@ describe('a service is reached through the piece it is on', () => {
         who_answers: 'the-parent',
       })
       const original = String(asked.structured['question'])
-      const passed = await call(host, caller, 'pass_question_up', {
-        question: original,
-        asked_by: service,
-        who_answers: 'a-person',
+      const copy = recordForwardedQuestion(world.store, () => world.clock++, {
+        asker: service,
+        original,
+        forwarder: caller,
+        to: 'a-person',
       })
-      const copy = String(passed.structured['question'])
       const queued = (): string[] =>
         host.questionsForAPerson().rows.map((row) => row.request.requestId)
       expect(queued()).toContain(copy)
@@ -2200,20 +2244,19 @@ describe('a service is reached through the piece it is on', () => {
       })
       expect(asked.structured).toMatchObject({ outcome: 'ok' })
       const original = String(asked.structured['question'])
-      const once = await call(host, caller, 'pass_question_up', {
-        question: original,
-        asked_by: service,
-        who_answers: 'the-parent',
+      const copy = recordForwardedQuestion(world.store, () => world.clock++, {
+        asker: service,
+        original,
+        forwarder: caller,
+        to: 'the-parent',
+        parent: boss,
       })
-      expect(once.structured).toMatchObject({ outcome: 'ok' })
-      const copy = String(once.structured['question'])
-      const twice = await call(host, boss, 'pass_question_up', {
-        question: copy,
-        asked_by: caller,
-        who_answers: 'a-person',
+      const outer = recordForwardedQuestion(world.store, () => world.clock++, {
+        asker: caller,
+        original: copy,
+        forwarder: boss,
+        to: 'a-person',
       })
-      expect(twice.structured).toMatchObject({ outcome: 'ok' })
-      const outer = String(twice.structured['question'])
       return { host, boss, caller, service, one, original, copy, outer }
     }
     const stateIn = (askedBy: string, requestId: string): string | undefined =>
@@ -2297,373 +2340,6 @@ describe('a service is reached through the piece it is on', () => {
         'work-withdrawn',
         'work-withdrawn',
       ])
-    })
-
-    it('passed up once it has gone on to another piece, go nowhere', async () => {
-      const { host, caller, service, one, two } = await aServiceOnTheFirstPiece()
-      const { question } = await aQuestionAskedOfItUnderTheFirstPiece(host, service)
-      await call(host, caller, 'withdraw_task', { piece: one.label })
-      await handedOver(service, two.piece)
-      const notPassed = await call(host, service, 'pass_question_up', {
-        question,
-        who_answers: 'the-parent',
-      })
-      expect(notPassed.structured).toMatchObject({
-        outcome: 'refused',
-        rail: 'nobody-to-pass-it-up-to',
-      })
-    })
-
-    it('passed up from further down, or off a helper’s card, go by the piece they were first asked under', async () => {
-      const { host, caller, service, one, two } = await aServiceOnTheFirstPiece()
-      world.anAgent('helper', 'nothing kept')
-      world.anAgent('sub-helper', 'nothing kept')
-      const given = await call(host, service, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'helper',
-        title: 'Find rooms',
-        brief: 'list the free rooms',
-      })
-      expect(given.structured).toMatchObject({ outcome: 'ok' })
-      const helper = String(given.structured['owner'] ?? given.structured['agent'])
-      await vi.waitFor(() => {
-        expect(world.store.piecesOwnedBy(helper)).toHaveLength(1)
-      })
-      const passedOn = await call(host, helper, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'sub-helper',
-        title: 'Check the floors',
-        brief: 'check each floor',
-      })
-      expect(passedOn.structured).toMatchObject({ outcome: 'ok' })
-      const subHelper = String(passedOn.structured['owner'] ?? passedOn.structured['agent'])
-      await vi.waitFor(() => {
-        expect(world.store.piecesOwnedBy(subHelper)).toHaveLength(1)
-      })
-      /** A question the sub-helper asks the helper, which the helper passes up to the service. */
-      const carriedUp = async (question: string): Promise<string> => {
-        const asked = await call(host, subHelper, 'ask_question', {
-          question,
-          who_answers: 'the-parent',
-        })
-        expect(asked.structured).toMatchObject({ outcome: 'ok' })
-        const hop = await call(host, helper, 'pass_question_up', {
-          question: String(asked.structured['question']),
-          who_answers: 'the-parent',
-        })
-        expect(hop.structured).toMatchObject({ outcome: 'ok' })
-        return String(hop.structured['question'])
-      }
-      const now = await carriedUp('which building?')
-      const later = await carriedUp('which wing?')
-      const handle = world.handles.filter((each) => each.as === 'helper').at(-1)?.handle
-      if (handle === undefined) throw new Error('no handle')
-      const card = handle.simulateUserInput('which floor?', ['first', 'second'])
-      await vi.waitFor(() => {
-        expect(routed(helper).get(card.id)).toMatchObject({ to: 'the-parent', parent: service })
-      })
-      const passed = await call(host, service, 'pass_question_up', {
-        question: now,
-        who_answers: 'the-parent',
-      })
-      expect(passed.structured).toMatchObject({ outcome: 'ok' })
-      expect(routed(service).get(String(passed.structured['question']))).toMatchObject({
-        to: 'the-parent',
-        parent: caller,
-      })
-      // The first piece ends, and the helper's with it; the helper is given work under the next.
-      expect(
-        (await call(host, service, 'withdraw_task', { piece: String(given.structured['label']) }))
-          .structured,
-      ).toMatchObject({ outcome: 'ok' })
-      await call(host, caller, 'withdraw_task', { piece: one.label })
-      await handedOver(service, two.piece)
-      const again = await call(host, service, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'helper',
-        title: 'Count the chairs',
-        brief: 'count the chairs',
-      })
-      expect(again.structured).toMatchObject({ outcome: 'ok' })
-      expect(again.structured['owner'] ?? again.structured['agent']).toBe(helper)
-      for (const question of [later, card.id]) {
-        const notPassed = await call(host, service, 'pass_question_up', {
-          question,
-          who_answers: 'the-parent',
-        })
-        expect(notPassed.structured).toMatchObject({
-          outcome: 'refused',
-          rail: 'nobody-to-pass-it-up-to',
-        })
-      }
-    })
-
-    it.each(['the same', 'an earlier'] as const)(
-      'passed up off a helper’s card, go by where its asker’s work stood when it was raised, never by %s time',
-      async (time) => {
-        const { host, caller, service, one, two } = await aServiceOnTheFirstPiece()
-        world.anAgent('helper', 'nothing kept')
-        const given = await call(host, service, 'give_work', {
-          definition_of_done: 'The requested result and its checks are recorded.',
-          profile: 'helper',
-          title: 'Find rooms',
-          brief: 'list the free rooms',
-        })
-        expect(given.structured).toMatchObject({ outcome: 'ok' })
-        const helper = String(given.structured['owner'] ?? given.structured['agent'])
-        await vi.waitFor(() => {
-          expect(world.store.piecesOwnedBy(helper)).toHaveLength(1)
-        })
-        const handle = world.handles.filter((each) => each.as === 'helper').at(-1)?.handle
-        if (handle === undefined) throw new Error('no handle')
-        const raised = async (prompt: string): Promise<{ id: string; at: number }> => {
-          const card = handle.simulateUserInput(prompt, ['first', 'second'])
-          await vi.waitFor(() => {
-            expect(routed(helper).get(card.id)).toMatchObject({ to: 'the-parent' })
-          })
-          const row = world.store
-            .events(helper)
-            .find(
-              (entry) => entry.event.type === 'request_routed' && entry.event.requestId === card.id,
-            )
-          if (row === undefined) throw new Error('no routing')
-          return { id: card.id, at: row.at }
-        }
-        // The same origin: passed up while it is still on the first piece, to that piece's caller.
-        const now = await raised('which floor?')
-        const passed = await call(host, service, 'pass_question_up', {
-          question: now.id,
-          who_answers: 'the-parent',
-        })
-        expect(passed.structured).toMatchObject({ outcome: 'ok' })
-        expect(routed(service).get(String(passed.structured['question']))).toMatchObject({
-          parent: caller,
-        })
-        // A card raised under the first piece, and the helper given work under the next with a
-        // clock that reads no later than the card's.
-        const late = await raised('which wing?')
-        await call(host, service, 'withdraw_task', { piece: String(given.structured['label']) })
-        await call(host, caller, 'withdraw_task', { piece: one.label })
-        await handedOver(service, two.piece)
-        // The clock reads the card's own time, or a minute before it, and holds still for the give.
-        world.clock = time === 'the same' ? late.at : late.at - 60_000
-        world.clockStep = 0
-        const again = await call(host, service, 'give_work', {
-          definition_of_done: 'The requested result and its checks are recorded.',
-          profile: 'helper',
-          title: 'Count the chairs',
-          brief: 'count the chairs',
-        })
-        world.clockStep = 1
-        expect(again.structured).toMatchObject({ outcome: 'ok' })
-        expect(
-          world.store.piecesOwnedBy(helper).find((one) => one.title === 'Count the chairs')
-            ?.givenAt,
-        ).toBe(time === 'the same' ? late.at : late.at - 60_000)
-        const notPassed = await call(host, service, 'pass_question_up', {
-          question: late.id,
-          who_answers: 'the-parent',
-        })
-        expect(notPassed.structured).toMatchObject({
-          outcome: 'refused',
-          rail: 'nobody-to-pass-it-up-to',
-        })
-      },
-    )
-
-    it('passed up off a helper’s card raised while it held work under two pieces, go nowhere, though one of them ends', async () => {
-      const { host, caller, other, service, one, two } = await aServiceOnTheFirstPiece()
-      world.anAgent('helper', 'nothing kept')
-      // Every turn from here stays working, so the helper's first piece never stalls.
-      const working = aGate()
-      world.turnsWait = working.held
-      const first = await call(host, service, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'helper',
-        title: 'Find rooms',
-        brief: 'list the free rooms',
-      })
-      expect(first.structured).toMatchObject({ outcome: 'ok' })
-      const helper = String(first.structured['owner'] ?? first.structured['agent'])
-      // The first piece ends with its helper's work still open; the next piece gives it more.
-      await call(host, caller, 'withdraw_task', { piece: one.label })
-      await handedOver(service, two.piece)
-      const second = await call(host, service, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'helper',
-        title: 'Count the chairs',
-        brief: 'count the chairs',
-      })
-      expect(second.structured).toMatchObject({ outcome: 'ok' })
-      await vi.waitFor(() => {
-        expect(world.store.openPiecesOf(helper)).toHaveLength(2)
-      })
-      const handle = world.handles.filter((each) => each.as === 'helper').at(-1)?.handle
-      if (handle === undefined) throw new Error('no handle')
-      const card = handle.simulateUserInput('which floor?', ['first', 'second'])
-      await vi.waitFor(() => {
-        expect(routed(helper).get(card.id)).toMatchObject({ to: 'the-parent' })
-      })
-      // The helper's work under the first piece ends after the card was raised.
-      expect(
-        (await call(host, service, 'withdraw_task', { piece: String(first.structured['label']) }))
-          .structured,
-      ).toMatchObject({ outcome: 'ok' })
-      const notPassed = await call(host, service, 'pass_question_up', {
-        question: card.id,
-        who_answers: 'the-parent',
-      })
-      expect(notPassed.structured).toMatchObject({
-        outcome: 'refused',
-        rail: 'nobody-to-pass-it-up-to',
-      })
-      expect([...routed(service).values()].some((row) => row.parent === other)).toBe(false)
-      world.turnsWait = null
-      working.release()
-    })
-
-    it('passed up off a helper’s card raised again under a reused id, go by its newest routing', async () => {
-      const { host, caller, other, service, one, two } = await aServiceOnTheFirstPiece()
-      world.anAgent('helper', 'nothing kept')
-      const first = await call(host, service, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'helper',
-        title: 'Find rooms',
-        brief: 'list the free rooms',
-      })
-      expect(first.structured).toMatchObject({ outcome: 'ok' })
-      const helper = String(first.structured['owner'] ?? first.structured['agent'])
-      const handle = world.handles.filter((each) => each.as === 'helper').at(-1)?.handle
-      if (handle === undefined) throw new Error('no handle')
-      const card = handle.simulateUserInput('which floor?', ['first', 'second'])
-      await vi.waitFor(() => {
-        expect(routed(helper).get(card.id)).toMatchObject({ to: 'the-parent' })
-      })
-      // The first piece and the helper's work under it end; the helper is given work under the next.
-      await call(host, service, 'withdraw_task', { piece: String(first.structured['label']) })
-      await call(host, caller, 'withdraw_task', { piece: one.label })
-      await handedOver(service, two.piece)
-      const again = await call(host, service, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'helper',
-        title: 'Count the chairs',
-        brief: 'count the chairs',
-      })
-      expect(again.structured).toMatchObject({ outcome: 'ok' })
-      // Its provider raises a card under the same id again, as one that started again may.
-      const raised = world.store
-        .events(helper)
-        .filter(
-          (entry) =>
-            (entry.event.type === 'user_input_request' && entry.event.id === card.id) ||
-            (entry.event.type === 'request_routed' && entry.event.requestId === card.id),
-        )
-      expect(raised).toHaveLength(2)
-      let ordinal = world.store.nextOrdinal(helper) + 1_000
-      for (const entry of raised) world.store.append(helper, ordinal++, entry.event, world.clock++)
-      const passed = await call(host, service, 'pass_question_up', {
-        question: card.id,
-        who_answers: 'the-parent',
-      })
-      expect(passed.structured).toMatchObject({ outcome: 'ok' })
-      expect(routed(service).get(String(passed.structured['question']))).toMatchObject({
-        parent: other,
-      })
-    })
-
-    it('passed up off a helper’s card, go by the work it held then, whose held brief a person had cancelled', async () => {
-      const { host, caller, other, service, one, two } = await aServiceOnTheFirstPiece()
-      world.anAgent('helper', 'nothing kept')
-      // Every turn from here stays working: the helper's first piece keeps it busy.
-      const working = aGate()
-      world.turnsWait = working.held
-      const busy = await call(host, service, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'helper',
-        title: 'Keep busy',
-        brief: 'keep busy',
-      })
-      expect(busy.structured).toMatchObject({ outcome: 'ok' })
-      const helper = String(busy.structured['owner'] ?? busy.structured['agent'])
-      await vi.waitFor(() => {
-        expect(rows(helper, 'user_turn')).toHaveLength(1)
-      })
-      const held = await call(host, service, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'helper',
-        title: 'Find rooms',
-        brief: 'list the free rooms',
-      })
-      expect(held.structured).toMatchObject({ outcome: 'ok' })
-      const brief = world.store
-        .piecesOwnedBy(helper)
-        .find((piece) => piece.title === 'Find rooms')?.messageId
-      if (brief == null) throw new Error('no held brief')
-      // A person cancels the held brief, and the service takes the other piece back.
-      host.claimSession(helper, world.window)
-      await host.cancelQueuedMessage(helper, brief, world.window)
-      expect(
-        (await call(host, service, 'withdraw_task', { piece: String(busy.structured['label']) }))
-          .structured,
-      ).toMatchObject({ outcome: 'ok' })
-      // The first piece ends; the helper is given work under the next, and raises a card.
-      await call(host, caller, 'withdraw_task', { piece: one.label })
-      await handedOver(service, two.piece)
-      const next = await call(host, service, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'helper',
-        title: 'Count the chairs',
-        brief: 'count the chairs',
-      })
-      expect(next.structured).toMatchObject({ outcome: 'ok' })
-      const handle = world.handles.filter((each) => each.as === 'helper').at(-1)?.handle
-      if (handle === undefined) throw new Error('no handle')
-      const card = handle.simulateUserInput('which floor?', ['first', 'second'])
-      await vi.waitFor(() => {
-        expect(routed(helper).get(card.id)).toMatchObject({ to: 'the-parent' })
-      })
-      const passed = await call(host, service, 'pass_question_up', {
-        question: card.id,
-        who_answers: 'the-parent',
-      })
-      expect(passed.structured).toMatchObject({ outcome: 'ok' })
-      expect(routed(service).get(String(passed.structured['question']))).toMatchObject({
-        parent: other,
-      })
-      world.turnsWait = null
-      working.release()
-    })
-
-    it('passed up after a restart that took it on to another piece, go nowhere', async () => {
-      const { host, caller, other, service, one, two } = await aServiceOnTheFirstPiece()
-      const { question } = await aQuestionAskedOfItUnderTheFirstPiece(host, service)
-      await call(host, caller, 'withdraw_task', { piece: one.label })
-      await handedOver(service, two.piece)
-      await host.closeAll()
-      const after = world.aHost()
-      // Its next caller's words start it again, so it can pass the question on.
-      const followed = await call(after, other, 'message_agent', {
-        agent: service,
-        kind: 'follow-up',
-        piece: two.label,
-        text: 'any news?',
-      })
-      expect(followed.structured).toMatchObject({ outcome: 'ok' })
-      await vi.waitFor(() => {
-        expect(
-          rows(service, 'user_turn').some(
-            (turn) => turn.type === 'user_turn' && turn.text.includes('any news?'),
-          ),
-        ).toBe(true)
-      })
-      const notPassed = await call(after, service, 'pass_question_up', {
-        question,
-        who_answers: 'the-parent',
-      })
-      expect(notPassed.structured).toMatchObject({
-        outcome: 'refused',
-        rail: 'nobody-to-pass-it-up-to',
-      })
     })
   })
 })

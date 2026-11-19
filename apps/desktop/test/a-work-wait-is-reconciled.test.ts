@@ -106,6 +106,26 @@ describe('a work wait is reconciled without a window', () => {
     intervals.at(-1)!()
     await settle()
   }
+  const giveToNewWorker = async (
+    owner: string,
+    task: { profile: string; title: string; brief: string; definition_of_done: string },
+  ) => {
+    const { tools } = agentToolsFor(host, owner)
+    const made = await tools
+      .find((tool) => tool.name === 'create_agent')!
+      .call({
+        profile_slug: task.profile,
+      })
+    expect(made.structured).toMatchObject({ outcome: 'ok' })
+    return tools
+      .find((tool) => tool.name === 'give_work')!
+      .call({
+        ...task,
+        to: 'new',
+        conversation_title: task.title,
+      })
+  }
+
   const create = async () => {
     const { sessionId } = await host.createSession(
       { provider: 'claude', profileId: DEFAULT_PROFILE_ID, approvalMode: 'auto', cwd: root },
@@ -264,11 +284,9 @@ describe('a work wait is reconciled without a window', () => {
     await host.close(grace, window)
     const children: { holder: string; piece: string }[] = []
     for (let n = 0; n < 3; n++) {
-      const tool = agentToolsFor(host, owner).tools.find((one) => one.name === 'give_work')!
       const result = (
-        await tool.call({
+        await giveToNewWorker(owner, {
           profile: `fictional-worker-${n}`,
-          new: true,
           title: `Fictional piece ${n}`,
           brief: 'Produce a checked result.',
           definition_of_done: 'The result is checked.',
@@ -367,11 +385,9 @@ describe('a work wait is reconciled without a window', () => {
     }
     vi.spyOn(reading, 'reconcileWork').mockImplementation(() => {})
     const { owner } = await create()
-    const tool = agentToolsFor(host, owner).tools.find((one) => one.name === 'give_work')!
     const given = (
-      await tool.call({
+      await giveToNewWorker(owner, {
         profile: 'fictional-known-holder',
-        new: true,
         title: 'Fictional resumed work',
         brief: 'Check the result.',
         definition_of_done: 'A checked result.',
@@ -675,9 +691,11 @@ describe('a work wait is reconciled without a window', () => {
       expect(value).toMatchObject({ outcome: 'ok' })
       return value
     }
+    await call('create_agent', { profile_slug: 'fictional-worker' })
     const child = await call('give_work', {
       profile: 'fictional-worker',
-      new: true,
+      to: 'new',
+      conversation_title: 'Fictional child',
       title: 'Fictional child',
       brief: 'Keep this open.',
       definition_of_done: 'A checked result.',
@@ -844,9 +862,11 @@ describe('a work wait is reconciled without a window', () => {
       expect(result).toMatchObject({ outcome: 'ok' })
       return result
     }
+    await call(owner, 'create_agent', { profile_slug: 'fictional-worker' })
     const child = await call(owner, 'give_work', {
       profile: 'fictional-worker',
-      new: true,
+      to: 'new',
+      conversation_title: 'Fictional owned work',
       title: 'Fictional owned work',
       brief: 'Produce a checked result.',
       definition_of_done: 'The result is checked.',
@@ -1048,30 +1068,43 @@ describe('a work wait is reconciled without a window', () => {
     }
   })
 
+  type LegacyReconciliation = {
+    reconcileWork(holders?: ReadonlySet<string>): void
+    reconciliationReading(piece: string): { rows: { issue: { cause?: string } | null }[] }
+  }
+
+  const afterLegacyTurnWithoutReconciliation = async (
+    holder: string,
+    recordLegacyFacts: (engine: LegacyReconciliation) => Promise<void>,
+  ) => {
+    await waitFor(() => store.theOpenTurn(holder) !== null, 'the old holder turn')
+    const engine = host as unknown as LegacyReconciliation
+    const paused = vi.spyOn(engine, 'reconcileWork').mockImplementation(() => {})
+    try {
+      const handle = handles[1] as unknown as { machine: { completeTurn(state: 'completed'): void } }
+      handle.machine.completeTurn('completed')
+      await waitFor(() => store.theOpenTurn(holder) === null, 'the old ordinary ending')
+      await recordLegacyFacts(engine)
+    } finally {
+      paused.mockRestore()
+    }
+  }
+
   it.each([1, 2])(
     'a legacy receipt in replacement giver 1 survives a %s-hop lineage and restart',
     async (hops) => {
       keepTurnsOpen = true
       const { owner } = await create()
-      const tool = agentToolsFor(host, owner).tools.find((one) => one.name === 'give_work')!
       const given = (
-        await tool.call({
+        await giveToNewWorker(owner, {
           profile: 'fictional-lineage-worker',
-          new: true,
           title: 'Fictional legacy work',
           brief: 'Check the result.',
           definition_of_done: 'A checked result.',
         })
       ).structured as { agent: string; piece: string }
       const { agent: holder, piece } = given
-      await waitFor(() => store.theOpenTurn(holder) !== null, 'the old holder turn')
-      const engine = host as unknown as { reconcileWork(holders?: ReadonlySet<string>): void }
-      const paused = vi.spyOn(engine, 'reconcileWork').mockImplementation(() => {})
-      try {
-        ;(
-          handles[1] as unknown as { machine: { completeTurn(state: 'completed'): void } }
-        ).machine.completeTurn('completed')
-        await waitFor(() => store.theOpenTurn(holder) === null, 'the old ordinary ending')
+      await afterLegacyTurnWithoutReconciliation(holder, async () => {
         let previous = owner
         for (let hop = 1; hop <= hops; hop++) {
           const { sessionId: next } = await host.createSession(
@@ -1090,9 +1123,7 @@ describe('a work wait is reconciled without a window', () => {
           previous = next
         }
         captureLegacyCut()
-      } finally {
-        paused.mockRestore()
-      }
+      })
       expect(store.workById(piece)?.givenBy).toBe(owner)
       expect(store.workReportedTo(owner).has(piece)).toBe(false)
       expect(store.legacyOrdinaryStallWasReported(holder, piece, owner)).toBe(true)
@@ -1111,34 +1142,27 @@ describe('a work wait is reconciled without a window', () => {
     },
   )
 
+  const giveLegacyHolderWork = async (owner: string, profile: string, title: string) => {
+    const given = await giveToNewWorker(owner, {
+      profile,
+      title,
+      brief: 'Check the result.',
+      definition_of_done: 'A checked result.',
+    })
+    return given.structured as { agent: string; piece: string }
+  }
+
   it.each(['receipt-giver', 'later-giver'] as const)(
     'an incomplete legacy giver read in the %s still reminds the holder',
     async (where) => {
       keepTurnsOpen = true
       const { owner } = await create()
-      const given = (
-        await agentToolsFor(host, owner)
-          .tools.find((one) => one.name === 'give_work')!
-          .call({
-            profile: 'fictional-incomplete-proof-worker',
-            new: true,
-            title: 'Fictional legacy work',
-            brief: 'Check the result.',
-            definition_of_done: 'A checked result.',
-          })
-      ).structured as { agent: string; piece: string }
-      const { agent: holder, piece } = given
-      await waitFor(() => store.theOpenTurn(holder) !== null, 'the old holder turn')
-      const engine = host as unknown as {
-        reconcileWork(holders?: ReadonlySet<string>): void
-        reconciliationReading(piece: string): { rows: { issue: { cause?: string } | null }[] }
-      }
-      const paused = vi.spyOn(engine, 'reconcileWork').mockImplementation(() => {})
-      try {
-        ;(
-          handles[1] as unknown as { machine: { completeTurn(state: 'completed'): void } }
-        ).machine.completeTurn('completed')
-        await waitFor(() => store.theOpenTurn(holder) === null, 'the old ordinary ending')
+      const { agent: holder, piece } = await giveLegacyHolderWork(
+        owner,
+        'fictional-incomplete-proof-worker',
+        'Fictional legacy work',
+      )
+      await afterLegacyTurnWithoutReconciliation(holder, async (engine) => {
         const receiptGiver = await host.createSession(
           {
             provider: 'claude',
@@ -1211,9 +1235,7 @@ describe('a work wait is reconciled without a window', () => {
         expect(engine.reconciliationReading(piece).rows[0]?.issue).toMatchObject({
           cause: 'turn_ended',
         })
-      } finally {
-        paused.mockRestore()
-      }
+      })
       await cycle()
       expect([...new Set(receipts(holder, piece).map((one) => one.step))]).toEqual(['holder'])
       expect(notices(holder)).toHaveLength(1)
@@ -1228,37 +1250,25 @@ describe('a work wait is reconciled without a window', () => {
   it('a generation rebuilt after the legacy cut rejects old proof and reminds its next stalled turn', async () => {
     keepTurnsOpen = true
     const { owner } = await create()
-    const given = (
-      await agentToolsFor(host, owner)
-        .tools.find((one) => one.name === 'give_work')!
-        .call({
-          profile: 'fictional-rebuilt-worker',
-          new: true,
-          title: 'Fictional rebuilt work',
-          brief: 'Check the result.',
-          definition_of_done: 'A checked result.',
-        })
-    ).structured as { agent: string; piece: string }
-    const { agent: holder, piece } = given
-    await waitFor(() => store.theOpenTurn(holder) !== null, 'the old holder turn')
-    const engine = host as unknown as { reconcileWork(holders?: ReadonlySet<string>): void }
-    const paused = vi.spyOn(engine, 'reconcileWork').mockImplementation(() => {})
-    try {
-      ;(
-        handles[1] as unknown as { machine: { completeTurn(state: 'completed'): void } }
-      ).machine.completeTurn('completed')
-      await waitFor(() => store.theOpenTurn(holder) === null, 'the old ordinary ending')
+    const { agent: holder, piece } = await giveLegacyHolderWork(
+      owner,
+      'fictional-rebuilt-worker',
+      'Fictional rebuilt work',
+    )
+    await afterLegacyTurnWithoutReconciliation(holder, async () => {
       record(owner, { type: 'work_stall_told', piece, cause: 'turn_ended', how: 'pushed' })
       captureLegacyCut()
       expect(store.legacyOrdinaryStallWasReported(holder, piece, owner)).toBe(true)
-    } finally {
-      paused.mockRestore()
-    }
+    })
     await host.closeAll()
     const oldGeneration = store.theActiveGeneration(holder)
     const source = store
       .events(holder)
-      .filter((one) => ['work_given', 'user_turn', 'turn'].includes(one.event.type))
+      .filter((one) =>
+        ['message_queued', 'work_given', 'user_turn', 'message_unqueued', 'turn'].includes(
+          one.event.type,
+        ),
+      )
     const generation = store.beginGeneration(holder)
     expect(generation).not.toBe(oldGeneration)
     const entries = source.map((one, ordinal) => ({ ordinal, event: one.event, at: tick() }))
@@ -1478,17 +1488,13 @@ describe('a work wait is reconciled without a window', () => {
   it('a giver new wait never inherits an old person receipt before the next tick', async () => {
     keepTurnsOpen = true
     const { owner } = await create()
-    const tools = agentToolsFor(host, owner).tools
     const given = (
-      await tools
-        .find((one) => one.name === 'give_work')!
-        .call({
-          profile: 'fictional-idle-worker',
-          new: true,
-          title: 'Fictional result',
-          brief: 'Check it.',
-          definition_of_done: 'Checked.',
-        })
+      await giveToNewWorker(owner, {
+        profile: 'fictional-idle-worker',
+        title: 'Fictional result',
+        brief: 'Check it.',
+        definition_of_done: 'Checked.',
+      })
     ).structured as Record<string, unknown>
     expect(given).toMatchObject({ outcome: 'ok' })
     const holder = given.agent as string
@@ -1529,6 +1535,7 @@ describe('a work wait is reconciled without a window', () => {
     ;(host as unknown as { workReconciler: { close(): void } }).workReconciler.close()
     const previous = receipts(holder, piece).at(-1)!.incident
     const at = clock + 60_000
+    const { tools } = agentToolsFor(host, owner)
     expect(
       (
         await tools
@@ -1602,15 +1609,12 @@ describe('a work wait is reconciled without a window', () => {
   it('a cross-holder target ending is found in its touched pass without a tick', async () => {
     const a = await create()
     const b = await create()
-    const given = await agentToolsFor(host, b.owner)
-      .tools.find((one) => one.name === 'give_work')!
-      .call({
-        profile: 'cross-holder-worker',
-        new: true,
-        title: 'Target',
-        brief: 'A fictional target.',
-        definition_of_done: 'A checked result.',
-      })
+    const given = await giveToNewWorker(b.owner, {
+      profile: 'cross-holder-worker',
+      title: 'Target',
+      brief: 'A fictional target.',
+      definition_of_done: 'A checked result.',
+    })
     const target = given.structured as { piece: string; label: string; agent: string }
     await settle()
     waiting(a.owner, a.work.piece, { kind: 'agent', piece: target.piece, label: target.label })
@@ -1719,16 +1723,20 @@ describe('a work wait is reconciled without a window', () => {
         expect(answer).toMatchObject({ outcome: 'ok' })
         return answer
       }
+      await call(owner, 'create_agent', { profile_slug: 'request-holder' })
       const a = await call(owner, 'give_work', {
         profile: 'request-holder',
-        new: true,
+        to: 'new',
+        conversation_title: 'Waiting work',
         title: 'Waiting work',
         brief: 'A fictional piece.',
         definition_of_done: 'Checked.',
       })
+      await call(owner, 'create_agent', { profile_slug: 'request-answerer' })
       const b = await call(owner, 'give_work', {
         profile: 'request-answerer',
-        new: true,
+        to: 'new',
+        conversation_title: 'Other work',
         title: 'Other work',
         brief: 'Another fictional piece.',
         definition_of_done: 'Checked.',

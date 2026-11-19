@@ -1,3 +1,5 @@
+import { newConversationGive } from './lib/give-fixture'
+import { expectRecordedCannotRun, expectTaskKept } from './lib/recorded-send'
 import type { SessionInstructions } from '../src/shared/instruction-contracts'
 import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -173,6 +175,7 @@ describe('through the host: a give never changes an agent’s provider', () => {
       profile,
       title: 'The work',
       brief: 'the work',
+      ...('to' in over ? {} : { to: 'new', conversation_title: 'The work' }),
       ...over,
     })
 
@@ -360,7 +363,7 @@ describe('through the host: a give never changes an agent’s provider', () => {
       expect(refused['rail']).toBe('malformed-request')
       expect(refused['detail']).toMatchObject({
         problems: [
-          '(request): unknown fields "priority" — it takes only profile, title, brief, definition_of_done, folder, piece, new, provider, parallel, inputs, model, effort',
+          '(request): unknown fields "priority" — it takes only profile, title, brief, definition_of_done, folder, to, conversation_title, under, provider, inputs, model, effort',
         ],
       })
     })
@@ -392,10 +395,10 @@ describe('through the host: a give never changes an agent’s provider', () => {
       expect(store.providerOf('ana')).toBeNull()
     })
 
-    it('a give asking for a NEW agent under its name is told the name exists, not to choose', async () => {
+    it('a create asking for that name is told the name exists, not to choose a provider', async () => {
       await anAgentThatRanOn('ana', ['claude', 'codex'])
-      const refused = await give(await aGiverOn('codex'), 'ana', { new: true })
-      expect(refused['rail']).toBe('that-profile-exists')
+      const refused = await callOn(await aGiverOn('codex'), 'create_agent', { profile_slug: 'ana' })
+      expect(refused['rail']).toBe('agent-name-taken')
     })
 
     it('once a person chooses, the same give starts on that provider', async () => {
@@ -450,8 +453,10 @@ describe('through the host: a give never changes an agent’s provider', () => {
       expect(store.providerOf('eve')).toBeNull()
     })
 
-    it('a new agent a give makes keeps the provider it starts on', async () => {
-      const given = await give(await aGiverOn('claude'), 'fresh', { new: true })
+    it('a new agent with no provider yet keeps the provider its first give starts on', async () => {
+      host.createAgent({ slug: 'fresh', displayName: null, provider: null })
+      expect(store.providerOf('fresh')).toBeNull()
+      const given = await give(await aGiverOn('claude'), 'fresh')
       expect(given['outcome'], JSON.stringify(given)).toBe('ok')
       expect(store.providerOf('fresh')).toBe('claude')
     })
@@ -524,7 +529,7 @@ describe('through the host: a give never changes an agent’s provider', () => {
   })
 
   describe('a stale copy of a Codex sign-in says what failed and what fixes it', () => {
-    it('the one-time copy is never refreshed, and a start on it is refused naming the sign-in and its remedy', async () => {
+    it('keeps the task when an unchanged copy of the Codex sign-in cannot be used', async () => {
       // ⚑ A fake sign-in, copied once into a scratch profile home, as a profile's first launch does.
       const source = join(userData, 'machine-codex', 'auth.json')
       const home = join(userData, 'scratch-profile-home')
@@ -557,26 +562,21 @@ describe('through the host: a give never changes an agent’s provider', () => {
       await anAgentThatRanOn('reader', [])
       host.setAgentProvider('reader', 'codex')
 
-      const refused = await give(await aGiverOn('codex'), 'reader')
+      const failed = await give(await aGiverOn('codex'), 'reader')
 
-      expect(refused).toMatchObject({
-        outcome: 'refused',
-        rail: 'agent-did-not-start',
-        detail: { profile: 'reader', because: 'its-sign-in-is-unusable', provider: 'codex' },
-      })
-      const said = String(refused['reason'])
-      expect(said).toContain('its Codex sign-in could not be used')
-      // 🔴 The remedy is one that reaches THIS agent's sign-in: the Codex card in Providers signs in
-      // only BroBot's own profile, so it is never named as where this agent is signed in.
-      expect(said).toContain('the Codex card signs in only BroBot’s own')
-      expect(said).not.toContain('again on the Codex card in Providers')
-      expect(said).toContain('BroCrew does not need restarting')
-      expect(said).not.toContain('somebody stopped it first')
-      // ⚑ What a person does, whole inside the 200 characters a giver's row keeps.
-      expect(`refused (agent-did-not-start): ${said}`.slice(0, 200)).toContain(
-        'Ask a person to save an API key on the Codex card in Providers, or to sign that agent in from one of its conversations: its Codex sign-in could not be used.',
+      const kept = expectRecordedCannotRun(
+        failed,
+        'task',
+        'its Codex sign-in could not be used',
+        true,
       )
-      expect(said).toContain('Nothing was given, and giving it again will not help until then.')
+      expectTaskKept(store, kept)
+      expect(store.recordedOne(kept.recipient.id)).toMatchObject({
+        profileId: 'reader',
+        provider: 'codex',
+        providerSessionId: null,
+      })
+      expect(JSON.stringify(failed)).not.toContain(home)
     })
 
     it('🔴 a first start with no Codex sign-in to copy says that, and what a person can do', async () => {
@@ -596,29 +596,26 @@ describe('through the host: a give never changes an agent’s provider', () => {
       await anAgentThatRanOn('reader', [])
       host.setAgentProvider('reader', 'codex')
 
-      const refused = await give(await aGiverOn('codex'), 'reader')
-
-      expect(refused).toMatchObject({
-        outcome: 'refused',
-        rail: 'agent-did-not-start',
-        detail: {
-          profile: 'reader',
-          because: 'this-computer-has-no-sign-in-to-copy',
-          provider: 'codex',
-        },
-      })
-      const said = String(refused['reason'])
-      // ⛔ Not "its sign-in could not be used": there was never one, and no place to renew it.
-      expect(said).not.toContain('its Codex sign-in could not be used')
-      expect(`refused (agent-did-not-start): ${said}`.slice(0, 200)).toContain(
-        'Ask a person to sign in on the Codex card in Providers, or to save an API key there: there is no Codex sign-in for that agent to start on.',
+      const giver = await aGiverOn('codex')
+      const tool = giver.tools.find((one) => one.name === 'give_work')
+      if (tool === undefined) throw new Error('give_work is missing')
+      const answered = await tool.call(newConversationGive('reader', 'First work', 'Check it.'))
+      const failed = answered.structured as Record<string, unknown>
+      const kept = expectRecordedCannotRun(
+        failed,
+        'task',
+        'This conversation did not start: there is no Codex sign-in for that agent to start on.',
+        true,
       )
-      expect(said).toContain('where it keeps none, of BroBot’s own')
-      expect(said).toContain('BroCrew does not need restarting')
-      // ⛔ The path of the missing file stays in the log.
-      expect(said).not.toContain('auth.json')
-      expect(said).not.toContain(userData)
-      expect(said).toContain('Nothing was given, and giving it again will not help until then.')
+      expectTaskKept(store, kept)
+      expect(answered.text).toContain(
+        'but it could not start: there is no Codex sign-in for that agent to start on.',
+      )
+      expect(answered.text).toContain('The work is kept.')
+      expect(answered.text).toContain('Ask the person to fix it, with request_action.')
+      expect(answered.text).not.toContain('Not sent:')
+      expect(answered.text).not.toContain('auth.json')
+      expect(answered.text).not.toContain(userData)
     })
   })
 })

@@ -1,3 +1,4 @@
+import { StartRecordingRuntime } from './lib/provider-double'
 import type { CardNobodyHolds, LedgerWalk, PersonsDecision } from '../src/shared/question-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -7,8 +8,8 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
-import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type { AgentToolset, FakeSessionHandle, StartOptions } from '@brobot2/runtime'
+import { FakeProviderSessions } from '@brobot2/runtime'
+import type { AgentToolset, FakeSessionHandle } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
@@ -62,21 +63,6 @@ class Window implements RuntimeEventSink {
   sendLiveness(): void {}
 }
 
-class ProviderDouble extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handles: FakeSessionHandle[],
-    sessions: FakeProviderSessions,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): Promise<FakeSessionHandle> {
-    const handle = await super.start(options)
-    this.handles.push(handle)
-    return handle
-  }
-}
-
 const DOORS: PersonsQueueDoors = {
   travel: () => {},
   settle: () => {},
@@ -109,7 +95,7 @@ describe('a helper nobody opened is answered from Waiting on you', () => {
       store,
       ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
-      createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued),
+      createRuntime: (provider: Provider) => new StartRecordingRuntime(provider, handles, issued),
       prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
@@ -158,6 +144,8 @@ describe('a helper nobody opened is answered from Waiting on you', () => {
       window,
     )
     const given = await callOn(agentToolsFor(host, pm), 'give_work', {
+      to: 'new',
+      conversation_title: 'Make the probe file',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'the-helper',
       title: 'Make the probe file',

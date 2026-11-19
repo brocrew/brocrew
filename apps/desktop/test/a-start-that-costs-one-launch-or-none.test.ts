@@ -105,12 +105,6 @@ describe('D-017 · a start that costs one launch or none', () => {
   const events = (sessionId: string): TranscriptEvent[] =>
     store.events(sessionId).map((entry) => entry.event)
 
-  /** ⚑ Every way words reach a conversation — a busy one HOLDS them, an idle one takes a turn. */
-  const wordsIn = (sessionId: string): string[] =>
-    events(sessionId).flatMap((event) =>
-      event.type === 'user_turn' || event.type === 'message_queued' ? [event.text] : [],
-    )
-
   /** ⚑ A real macrotask pause, so a negative is measured after whatever was queued has run. */
   const letItSettle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 50))
 
@@ -155,6 +149,12 @@ describe('D-017 · a start that costs one launch or none', () => {
     expect(secondAnswer).toMatchObject({ outcome: 'ok', agent: bo })
     // ⚑ **Still exactly one resume** for the whole test, after both deliveries have landed.
     expect(gate.entered).toBe(1)
-    expect(wordsIn(bo)).toEqual(['first', 'second'])
+    const queue = events(bo).flatMap((event) =>
+      event.type === 'message_queued' ? [event.text] : [],
+    )
+    expect(queue).toEqual(['first', 'second'])
+    expect(events(bo).flatMap((event) => (event.type === 'user_turn' ? [event.text] : []))).toEqual(
+      ['first'],
+    )
   })
 })

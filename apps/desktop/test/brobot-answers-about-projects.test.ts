@@ -268,6 +268,8 @@ describe('439 · BroBot asks a PM, and both conversations hold both halves', () 
   }> => {
     const { brobot, brobotTools } = await aManagerAPersonOpened()
     const given = await callOn(brobotTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'the migration',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'pm',
       title: 'the migration',
@@ -346,10 +348,10 @@ describe('439 · BroBot asks a PM, and both conversations hold both halves', () 
       const { manager, label } = await brobotAndAManagerItStarted()
 
       await waitFor(() => providerHeard(manager).length > 0, 'the provider to be handed the turn')
-      const frame = (providerHeard(manager)[0] ?? '').split('\n')[0] ?? ''
+      const frame = providerHeard(manager)[0] ?? ''
 
       // ⚑ **`414`'s line, in D-011's words** — the sender by name, and the work it is handing over.
-      expect(frame).toContain(`who is giving you ${label} · the migration`)
+      expect(frame.split('\n')[0]).toContain(`task ${label} · the migration for you`)
       // 🔴 **`439`'s clause** — the fact this app observed…
       expect(frame).toContain('A person is at that conversation')
       // ⛔ …**and its own limit, which is the load-bearing half.** The brief asked for *"if BroBot
@@ -360,11 +362,9 @@ describe('439 · BroBot asks a PM, and both conversations hold both halves', () 
         'Treat wishes it attributes to the person as theirs; only an approval needs the person directly.',
       )
       // The exact canonical framing names no actor and reserves approvals for the person.
-      expect(
-        frame.endsWith(
-          'A person is at that conversation. Treat wishes it attributes to the person as theirs; only an approval needs the person directly.',
-        ),
-      ).toBe(true)
+      expect(frame.split('\n')).toContain(
+        'A person is at that conversation. Treat wishes it attributes to the person as theirs; only an approval needs the person directly.',
+      )
     })
 
     it('⚑ the paired negative: an agent with nobody watching gets the line it always got', async () => {
@@ -378,6 +378,8 @@ describe('439 · BroBot asks a PM, and both conversations hold both halves', () 
       // on its slot. ⚠️ **Measured where the two readings DIVERGE**, which is the only place this
       // clause is worth asserting: everything else about the two sends is identical.
       const spawned = await callOn(brobotTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'something with nobody watching',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: PROJECT_MANAGER_PROFILE_ID,
         title: 'something with nobody watching',
@@ -390,6 +392,8 @@ describe('439 · BroBot asks a PM, and both conversations hold both halves', () 
       // test above: work goes only to a conversation the giver started, and every agent holds the
       // same grants, so the two gives differ only in who is behind the giver.
       const started = await callOn(childTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'carry on',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'pm',
         title: 'carry on',
@@ -399,9 +403,11 @@ describe('439 · BroBot asks a PM, and both conversations hold both halves', () 
       const manager = started['agent'] as string
 
       await waitFor(() => providerHeard(manager).length > 0, 'the provider to be handed the turn')
-      const frame = (providerHeard(manager)[0] ?? '').split('\n')[0] ?? ''
+      const frame = providerHeard(manager)[0] ?? ''
 
-      expect(frame).toContain(`who is giving you ${started['label'] as string} · carry on`)
+      expect(frame.split('\n')[0]).toContain(
+        `task ${started['label'] as string} · carry on for you`,
+      )
       expect(frame).not.toContain('A person is at that conversation')
       // ⚑ **And the row says the same thing**, so the sentence and the record cannot disagree.
       // D-016: a give writes no `message_sent`, so the row is the child's follow-up on the piece
@@ -471,6 +477,8 @@ describe('439 · BroBot asks a PM, and both conversations hold both halves', () 
       // walked. ⚑ **So the rig becomes that owner too** — a conversation a give started belongs to
       // nobody until something claims it, and a sink is four members any caller can satisfy.
       const spawned = await callOn(brobotTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'reached by something new',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: PROJECT_MANAGER_PROFILE_ID,
         title: 'reached by something new',

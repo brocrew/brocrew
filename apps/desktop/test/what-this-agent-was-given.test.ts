@@ -1,3 +1,4 @@
+import { waitFor } from './lib/host-fixture'
 import type { LaunchedEvent, TranscriptEvent } from '../src/shared/conversation-events'
 import type { UserTurnEvent } from '../src/shared/human-answer-contracts'
 import { createHash } from 'node:crypto'
@@ -202,14 +203,6 @@ describe('what an agent was given', () => {
   const ledger = (sessionId: string): TranscriptEvent[] =>
     store.events(sessionId).map((entry) => entry.event)
 
-  const waitFor = async (predicate: () => boolean, what: string): Promise<void> => {
-    for (let attempt = 0; attempt < 400; attempt++) {
-      if (predicate()) return
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
-    throw new Error(`timed out waiting for ${what}`)
-  }
-
   const turnsOf = (sessionId: string): UserTurnEvent[] =>
     ledger(sessionId).filter((event): event is UserTurnEvent => event.type === 'user_turn')
 
@@ -258,11 +251,12 @@ describe('what an agent was given', () => {
       const ordinary = await open(host, provider, 'wren')
       const ordinaryTools = runtimes.at(-1)?.handed.at(-1)
       for (const [id, expected, count] of [
-        [primary, primaryTools, 33],
-        [ordinary, ordinaryTools, 33],
+        [primary, primaryTools, 32],
+        [ordinary, ordinaryTools, 32],
       ] as const) {
         if (expected === undefined) throw new Error('no runtime toolset captured')
         expect(expected.tools).toHaveLength(count)
+        expect(expected.tools.map((tool) => tool.name)).not.toContain('pass_question_up')
         const given = launchesOf(id)[0]?.given
         expect(given?.tools).toMatchObject({ count, sha256: toolsetFingerprint(expected) })
         const live = await host.whatThisAgentWasGiven(id)
@@ -307,7 +301,7 @@ describe('what an agent was given', () => {
     }
     const historical = {
       ...given,
-      tools: { ...given.tools, count: 31, sha256: toolsetFingerprint(full) },
+      tools: { ...given.tools, count: 30, sha256: toolsetFingerprint(full) },
     }
     store.append(
       ordinary,
@@ -316,7 +310,7 @@ describe('what an agent was given', () => {
       Date.now(),
     )
     const read = await host.whatThisAgentWasGiven(ordinary)
-    expect(read.tools.list).toHaveLength(33)
+    expect(read.tools.list).toHaveLength(32)
     expect(read.tools.list.map((tool) => tool.name)).toContain('write_agent_rules')
     expect(read.tools.changedSinceLaunch).toBe(true)
     expect(launchesOf(ordinary).at(-1)?.given).toEqual(historical)
@@ -334,7 +328,7 @@ describe('what an agent was given', () => {
         .mockImplementation((asked) => (asked === id ? { ...row, profileId } : null))
       try {
         const read = await host.whatThisAgentWasGiven(id)
-        expect(read.tools.list).toHaveLength(33)
+        expect(read.tools.list).toHaveLength(32)
         expect(read.tools.list.map((tool) => tool.name)).toEqual(
           expect.arrayContaining(['read_agent_rules', 'propose_agent_rules', 'write_agent_rules']),
         )

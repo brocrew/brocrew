@@ -1,3 +1,4 @@
+import { addressedGive, newConversationGive, createWorkerAndGive } from './lib/give-fixture'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
 import { didIt, type ActedBy } from '../src/shared/who-did-it'
@@ -200,13 +201,12 @@ describe('a label names the conversation that owns the piece, and no more', () =
   const aFamily = async (): Promise<Family> => {
     const brobot = await personOpens(DEFAULT_PROFILE_ID)
     const brobotTools = agentToolsFor(host, brobot)
-    const givenAda = await callOn(brobotTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      new: true,
-      title: 'Build the pages',
-      brief: 'build the pages',
-    })
+    await callOn(brobotTools, 'create_agent', { profile_slug: 'worker' })
+    const givenAda = await callOn(
+      brobotTools,
+      'give_work',
+      newConversationGive('worker', 'Build the pages', 'build the pages'),
+    )
     expect(givenAda, JSON.stringify(givenAda)).toMatchObject({
       outcome: 'ok',
       label: 'W1.1',
@@ -214,13 +214,12 @@ describe('a label names the conversation that owns the piece, and no more', () =
     })
     const ada = givenAda.agent as string
     await waitFor(() => ledger(ada).some((event) => event.type === 'turn'), 'Ada’s first turn')
-    const givenAli = await callOn(agentToolsFor(host, ada), 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'tester',
-      new: true,
-      title: 'Wire the routes',
-      brief: 'wire the routes',
-    })
+    await callOn(agentToolsFor(host, ada), 'create_agent', { profile_slug: 'tester' })
+    const givenAli = await callOn(
+      agentToolsFor(host, ada),
+      'give_work',
+      newConversationGive('tester', 'Wire the routes', 'wire the routes'),
+    )
     expect(givenAli, JSON.stringify(givenAli)).toMatchObject({
       outcome: 'ok',
       label: 'W1.1.1',
@@ -608,25 +607,22 @@ describe('a label names the conversation that owns the piece, and no more', () =
     const aChildHoldingTwoPieces = async (): Promise<{ parent: string; child: string }> => {
       const parent = await personOpens(DEFAULT_PROFILE_ID, 'ask')
       const parentTools = agentToolsFor(host, parent)
-      const first = await callOn(parentTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        new: true,
-        title: 'Build the world clock page',
-        brief: 'build the world clock page',
-      })
+      const first = await createWorkerAndGive(
+        parentTools,
+        'Build the world clock page',
+        'build the world clock page',
+      )
       expect(first, JSON.stringify(first)).toMatchObject({ outcome: 'ok', label: 'W1.1' })
       const child = first.agent as string
       await waitFor(
         () => ledger(child).some((event) => event.type === 'permission_request'),
         'the card the brief’s turn raised',
       )
-      const second = await callOn(parentTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'Test the clock page',
-        brief: 'test the clock page',
-      })
+      const second = await callOn(
+        parentTools,
+        'give_work',
+        addressedGive(first.label, 'worker', 'Test the clock page', 'test the clock page'),
+      )
       expect(second, JSON.stringify(second)).toMatchObject({
         outcome: 'ok',
         agent: child,
@@ -691,12 +687,11 @@ describe('a label names the conversation that owns the piece, and no more', () =
     expect((await fullCall(brobotTools, 'get_agent_status', { agent: 'W1.1.1' })).text).toContain(
       startedAli,
     )
-    const givenMore = await callOn(brobotTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'Write the tests',
-      brief: 'write the tests',
-    })
+    const givenMore = await callOn(
+      brobotTools,
+      'give_work',
+      addressedGive('W1.1', 'worker', 'Write the tests', 'write the tests'),
+    )
     expect(givenMore, JSON.stringify(givenMore)).toMatchObject({ outcome: 'ok', label: 'W1.2' })
     expect(store.workThatNames(ada)?.label).toBe('W1.2')
     const aliNow = await fullCall(brobotTools, 'get_agent_status', { agent: 'W1.1.1' })
@@ -734,7 +729,7 @@ describe('a label names the conversation that owns the piece, and no more', () =
       piece: 'W1.1',
       text: 'hello',
     })
-    expect(message.text).toContain(ADA_BY_ITS_WORK)
+    expect(message.text).toBe('Delivered to conversation W1.1 · Build the pages.')
     await waitFor(
       () => ledger(ada).filter((event) => event.type === 'turn').length >= 3,
       'Ada to answer the follow-up',
@@ -875,14 +870,16 @@ describe('a label names the conversation that owns the piece, and no more', () =
           expect(said.text).toContain('Ada (worker) on W1.1')
           if (ended) expect(said.text).toContain('(ended: closed)')
           else expect(said.text).not.toContain('(ended:')
-          expect(said.text).toContain('kind: note')
+          expect(said.text).toContain('message_agent or ask_question')
           expect(said.text).toContain('give_work')
           expect(acts(ledger(ada))).toEqual(before)
           expect(queued).not.toHaveBeenCalled()
           expect(asked).not.toHaveBeenCalled()
           expect(stopped).not.toHaveBeenCalled()
           const told = `${said.structured.reason} This exact call can never succeed.`
-          expect(said.text).toBe(`refused (that-agent-is-you): ${told}`)
+          expect(said.text).toBe(
+            tool === 'interrupt_agent' ? `refused (that-agent-is-you): ${told}` : told,
+          )
           expect(refusalWritten).toHaveBeenCalledTimes(1)
           expect(refusalWritten).toHaveBeenCalledWith(brobot, tool, {
             rail: 'that-agent-is-you',

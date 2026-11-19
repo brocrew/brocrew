@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { callOn } from './helpers/call-agent-tool'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -32,15 +33,9 @@ import { workSearchQuery, clippedWorkText } from '../src/shared/work-search'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { keepResource, resourcesRoot } from '../src/main/resources/resources'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { MAX_RESOURCES_PER_REPLY, RESOURCE_ROLES } from '../src/shared/documents'
 import { PIECE_EVENT_TYPES } from '../src/shared/tasks'
-import {
-  RecordingSink,
-  syntheticProviderHome,
-  fixtureProviderConfig,
-  neutralHostDeps,
-} from './lib/host-fixture'
+import { RecordingSink, fixtureProviderConfig, fixtureHostPaths } from './lib/host-fixture'
 
 /**
  * D-016b · a reply keeps the files it was handed exactly as they were, and the tables that hold
@@ -94,12 +89,8 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
     const built = new RuntimeHost({
       store,
       workSearchReader,
-      ...neutralHostDeps(() => userData),
-      resourcesRoot: () => resourcesRoot(userData),
+      ...fixtureHostPaths(() => userData),
       createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions: issued }),
-      prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       readProviderConfig: fixtureProviderConfig,
@@ -131,10 +122,8 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
 
   const personOpens = personOpener(() => ({ host, root, window }), 'ask')
 
-  const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
-    const id = await personOpens(profileId)
-    await host.close(id, window)
-  }
+  const bringIdentityIntoBeing = async (profileId: string): Promise<void> =>
+    host.close(await personOpens(profileId), window)
 
   /** The toolset a session's calls are driven through, built the way the launch builds it. */
   const toolsOf = (sessionId: string): AgentToolset => agentToolsFor(host, sessionId)
@@ -151,12 +140,7 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
     await bringIdentityIntoBeing(workerProfile)
     const pm = await personOpens(`pm-${String(nth)}`)
     const pmTools = toolsOf(pm)
-    const given = await callOn(pmTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: workerProfile,
-      title: text,
-      brief: text,
-    })
+    const given = await callOn(pmTools, 'give_work', newConversationGive(workerProfile, text, text))
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     return { pm, worker: given.agent as string, pmTools, task: given.piece as string }
   }
@@ -194,7 +178,7 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
 
   describe('the recorded files have separate work memberships', () => {
     it('selects the listed main document by a resolved relative spelling', async () => {
-      const { worker, task } = await workWasGiven()
+      const { pm, worker, task } = await workWasGiven()
       const paths = [wrote('notes.md', '# Notes'), wrote('result.md', '# Result')]
       const folder = store.recordedOne(worker)?.cwd
       if (folder == null) throw new Error('the worker has no recorded folder')
@@ -212,6 +196,14 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
       expect(ids).toHaveLength(2)
       expect(landed.result_document).toBe(ids[1])
       expect(taskOf(worker, task)?.resultDocument).toBe(ids[1])
+      expect(landed.receipt).toMatchObject({
+        recorded: { kind: 'reply', id: task, taskLabel: taskOf(worker, task)?.label },
+        recipient: { id: pm, title: expect.any(String) },
+        attachments: [
+          { resource: ids[0], name: 'notes.md' },
+          { resource: ids[1], name: 'result.md' },
+        ],
+      })
       expect(keptHashes()).toEqual(paths.map((path) => shaOf(readFileSync(path))).sort())
     })
 
@@ -648,18 +640,22 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
       const second = await workWasGiven('shared dependency second')
       await bringIdentityIntoBeing('shared-child')
       const a = await callOn(toolsOf(first.worker), 'give_work', {
+        to: 'new',
+        conversation_title: 'child A',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'shared-child',
         title: 'child A',
         brief: 'child A',
-        piece: first.task,
+        under: first.task,
       })
       const b = await callOn(toolsOf(second.worker), 'give_work', {
+        to: 'new',
+        conversation_title: 'child B',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'shared-child',
         title: 'child B',
         brief: 'child B',
-        piece: second.task,
+        under: second.task,
       })
       expect(a.outcome).toBe('ok')
       expect(b.outcome).toBe('ok')

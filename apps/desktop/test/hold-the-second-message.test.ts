@@ -260,6 +260,8 @@ describe('657 · hold the second message instead of refusing it', () => {
     const call = toolsOf(parent)
     const given = payload(
       await call('give_work', {
+        to: 'new',
+        conversation_title: 'X',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'X',
@@ -293,6 +295,7 @@ describe('657 · hold the second message instead of refusing it', () => {
     expect(
       payload(
         await call('give_work', {
+          to: child,
           profile: 'worker',
           title: 'Go',
           brief: 'go',
@@ -318,6 +321,7 @@ describe('657 · hold the second message instead of refusing it', () => {
   }> => {
     const given = payload(
       await call('give_work', {
+        to: child,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'The task',
@@ -371,6 +375,7 @@ describe('657 · hold the second message instead of refusing it', () => {
     const given = {
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
+      to: child,
       title: 'Then this',
       brief: 'then do this',
     }
@@ -461,17 +466,14 @@ describe('657 · hold the second message instead of refusing it', () => {
     const [one, two] = settled.map(payload)
     // 🔴 **Held, not sent** — the second attempt never takes the idle branch.
     expect([one?.delivery, two?.delivery].sort()).toEqual(['queued', 'sent'])
-    // ⛔ It said *"when the turn it is running now ends"*, and a hold made after a lost race can
-    // find the winning turn already over — then it goes at once, with no turn to wait for.
-    // ⚑ **D-027 moved the other half**: what is held no longer goes out BEFORE it, one turn each —
-    // it goes out WITH it, in one turn, oldest first — so the answer says *"once <X> is free — at
-    // once, if it is — with whatever else is held for it, oldest first"*, and the old *"anything
-    // held before it has gone"* would now be false.
-    const heldText = settled.find((answer) => payload(answer).delivery === 'queued')?.text
-    expect(heldText).toContain('with whatever else is held for it, oldest first')
-    expect(heldText).toContain('at once, if it is')
-    expect(heldText).not.toContain('anything held before it has gone')
-    expect(heldText).not.toContain('the turn it is running now ends')
+    const held = settled.find((answer) => payload(answer).delivery === 'queued')
+    const receipt = held?.structured?.receipt as
+      { recipient: { address: string; title: string } } | undefined
+    expect(receipt).toBeDefined()
+    const line = held?.text.split('\n')[0]
+    expect(line).toBe(
+      `Held for conversation ${receipt?.recipient.address} · ${receipt?.recipient.title}.`,
+    )
     // 🔴 **And it goes out now**, with no `idle` event left to flush it.
     await until(
       () => turnTexts(child).length === turnsBefore + 2,
@@ -497,12 +499,14 @@ describe('657 · hold the second message instead of refusing it', () => {
     // when the loser reads the conversation.
     sendGate = latch()
     const first = call('give_work', {
+      to: child,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'This',
       brief: 'do this',
     })
     const second = call('give_work', {
+      to: child,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'And this',
@@ -542,6 +546,7 @@ describe('657 · hold the second message instead of refusing it', () => {
     const { child, call } = await aParentAndItsIdleChild()
     sendGate = latch()
     const first = call('give_work', {
+      to: child,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'This',
@@ -697,7 +702,11 @@ describe('657 · hold the second message instead of refusing it', () => {
     // 🔴 **RED before `657`**: the `message_queued` row re-read the caller's identity after the push,
     // so the caller was told *not queued* while the mailbox held the words and would send them.
     expect(answered).toMatchObject({ outcome: 'ok', delivery: 'queued' })
-    expect(eventsOf(child).filter((event) => event.type === 'message_queued')).toHaveLength(1)
+    expect(
+      eventsOf(child).filter(
+        (event) => event.type === 'message_queued' && event.text === 'and then this',
+      ),
+    ).toHaveLength(1)
   })
 
   // ───────────────────────────────────────────────────────────────────────────────────────────

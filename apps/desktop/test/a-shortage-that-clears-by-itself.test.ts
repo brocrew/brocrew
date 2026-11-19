@@ -1,3 +1,9 @@
+import {
+  expectRecordedCannotRun,
+  recordedSendNotices,
+  expectRecordedMessageDelivered,
+} from './lib/recorded-send'
+import { newConversationGive, readSuccessfulGive } from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -18,7 +24,6 @@ import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
-import { applyEvent, createTranscript, type NoticeItem } from '../src/renderer/src/lib/transcript'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
 import {
   aSpawnRefusedAfterItsPipes,
@@ -71,7 +76,6 @@ const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
 /** ⚑ The new word — spelled here as a string, so `main` (which has no such word) can run this file. */
-const SHORTAGE = 'that-conversation-could-not-be-woken-just-now'
 
 describe('705 · R39 — a shortage that clears by itself', () => {
   let userData: string
@@ -154,13 +158,9 @@ describe('705 · R39 — a shortage that clears by itself', () => {
   const aWorkerOver = async (): Promise<{ pm: string; worker: string; piece: string }> => {
     await host.close(await personOpens('worker'), window)
     const pm = await personOpens('pm')
-    const given = await callOn(pm, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'the work',
-      brief: 'migrate the schema',
-    })
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
+    const given = await readSuccessfulGive(() =>
+      callOn(pm, 'give_work', newConversationGive('worker', 'the work', 'migrate the schema')),
+    )
     const worker = given.agent as string
     const piece = given.piece as string
     await waitFor(() => turnsIn(worker) > 0, 'the turn the work opened to end')
@@ -182,16 +182,21 @@ describe('705 · R39 — a shortage that clears by itself', () => {
    * is gone). A follow-up, since the worker holds the parent's work — ⚑ **D-016 · naming that
    * piece**, which a follow-up must.
    */
-  const wake = (pm: string, worker: string, piece: string): Promise<Record<string, unknown>> =>
-    callOn(pm, 'message_agent', { agent: worker, text: 'carry on', kind: 'follow-up', piece })
+  const theWake = (pm: string, worker: string, piece: string) => {
+    const tool = agentToolsFor(host, pm).tools.find((one) => one.name === 'message_agent')
+    if (tool === undefined) throw new Error('no message_agent')
+    return tool.call({ agent: worker, text: 'carry on', piece })
+  }
 
-  const theRefusal = (payload: Record<string, unknown>): Record<string, unknown> => ({
-    outcome: payload.outcome,
-    rail: payload.rail,
-    permanence: payload.permanence,
-    retryable: payload.retryable,
-    remedy: payload.remedy,
-  })
+  const shortageWords = (code: string): string =>
+    code === 'EMFILE' ? 'BroCrew had too many files open' : 'ran short of open files'
+  const programFailure = 'could not run its provider’s program'
+
+  const remainsQueued = (worker: string, messageId: string): void => {
+    expect(store.messagesWaitingIn(worker)).toContainEqual(
+      expect.objectContaining({ messageId, text: 'carry on' }),
+    )
+  }
 
   // ───────────────────────────────────────────────────────────────────────────────
   // the adapters' own errors
@@ -273,35 +278,40 @@ describe('705 · R39 — a shortage that clears by itself', () => {
   // ───────────────────────────────────────────────────────────────────────────────
 
   describe.each(SHORTAGES)('§1 · $name', ({ code, make }) => {
-    it('🔴 the wake answers the retryable word — while this holds, retryable, the same call again', async () => {
+    const messageAfterFailedWake = async () => {
       const produced = await make()
       const { pm, worker, piece } = await aWorkerOver()
       gate.resumeFails = () => produced
-      const refused = await wake(pm, worker, piece)
-      expect(theRefusal(refused)).toEqual({
-        outcome: 'refused',
-        rail: SHORTAGE,
-        permanence: 'while-this-holds',
-        retryable: true,
-        remedy: 'make-the-same-call-when-this-settles',
-      })
-      // ⚑ the closed reason is the errno's own code — by TYPE, never by the provider's text
-      expect(refused.detail).toEqual({ agent: worker, because: code })
-      // ⛔ …and it never says a person must look — the sentence the permanent word carries
-      expect(String(refused.reason)).not.toContain('until a person has looked')
-      expect(String(refused.reason)).toContain('Make the same call again in a moment')
+      const answer = await theWake(pm, worker, piece)
+      const kept = expectRecordedCannotRun(
+        answer.structured as Record<string, unknown>,
+        'message',
+        shortageWords(code),
+        false,
+      )
+      return { pm, worker, kept, answer }
+    }
+
+    it('keeps the message and reports a temporary start failure', async () => {
+      const { worker, kept, answer } = await messageAfterFailedWake()
+      expect(kept.recipient.id).toBe(worker)
+      remainsQueued(worker, kept.recorded.id)
+      expect(answer.text).not.toContain('Ask the person to fix it')
     })
 
-    it('⚑ standing rule 3 — the same call, once the shortage has cleared, wakes it', async () => {
-      const produced = await make()
-      const { pm, worker, piece } = await aWorkerOver()
-      gate.resumeFails = () => produced
-      expect((await wake(pm, worker, piece)).rail).toBe(SHORTAGE)
+    it('starts the same conversation and delivers the kept message once when the shortage clears', async () => {
+      const { pm, worker, kept } = await messageAfterFailedWake()
       gate.resumeFails = undefined
-      expect(await wake(pm, worker, piece)).toMatchObject({
+      expect(
+        await callOn(pm, 'message_agent', {
+          agent: kept.recipient.address,
+          text: 'the cause is fixed',
+        }),
+      ).toMatchObject({
         outcome: 'ok',
-        agent: worker,
+        receipt: { recipient: { id: worker } },
       })
+      await expectRecordedMessageDelivered(() => events(worker), kept.recorded.id, 'carry on')
     })
   })
 
@@ -310,23 +320,28 @@ describe('705 · R39 — a shortage that clears by itself', () => {
   // ───────────────────────────────────────────────────────────────────────────────
 
   describe('§2 · a real never keeps the permanent word', () => {
-    const PERMANENT = {
-      outcome: 'refused',
-      rail: 'that-conversation-could-not-be-resumed',
-      permanence: 'until-a-person-changes-it',
-      retryable: false,
-      remedy: null,
-    }
-
     it('a missing provider session is not a shortage or a successful replacement', async () => {
       const { pm, worker, piece } = await aWorkerOver()
       issued.forgetAll()
       const address = store.workById(piece)?.label
       expect(address).toMatch(/^W/)
       const before = store.recorded().map(({ sessionId }) => sessionId)
-      await expect(wake(pm, worker, piece)).rejects.toMatchObject({
-        cause: { unavailable: 'its-session-is-gone', context: { address } },
+      const answer = await theWake(pm, worker, piece)
+      expect(answer.structured).toMatchObject({
+        outcome: 'ok',
+        receipt: {
+          recorded: { kind: 'message', id: expect.any(String) },
+          recipient: {
+            id: worker,
+            address,
+            state: { kind: 'cannot-run', cause: { code: 'provider-file-missing' } },
+          },
+        },
       })
+      expect(answer.text).toContain('its session file is missing')
+      expect(store.messagesWaitingIn(worker)).toContainEqual(
+        expect.objectContaining({ text: 'carry on' }),
+      )
       expect(store.recorded().map(({ sessionId }) => sessionId)).toEqual(before)
       expect(store.replacements()).toEqual([])
     })
@@ -343,8 +358,16 @@ describe('705 · R39 — a shortage that clears by itself', () => {
       ]) {
         const { pm, worker, piece } = await aWorkerOver()
         gate.resumeFails = () => produced
-        const refused = await wake(pm, worker, piece)
-        expect(theRefusal(refused), produced.message).toEqual(PERMANENT)
+        const answer = await theWake(pm, worker, piece)
+        const kept = expectRecordedCannotRun(
+          answer.structured as Record<string, unknown>,
+          'message',
+          programFailure,
+          true,
+        )
+        expect(kept.recipient.id).toBe(worker)
+        remainsQueued(worker, kept.recorded.id)
+        gate.resumeFails = undefined
       }
     })
   })
@@ -361,14 +384,15 @@ describe('705 · R39 — a shortage that clears by itself', () => {
       )
       const { pm, worker, piece } = await aWorkerOver()
       gate.resumeFails = () => produced
-      const refused = await wake(pm, worker, piece)
-      expect(theRefusal(refused)).toEqual({
-        outcome: 'refused',
-        rail: 'that-conversation-could-not-be-resumed',
-        permanence: 'until-a-person-changes-it',
-        retryable: false,
-        remedy: null,
-      })
+      const answer = await theWake(pm, worker, piece)
+      const kept = expectRecordedCannotRun(
+        answer.structured as Record<string, unknown>,
+        'message',
+        programFailure,
+        true,
+      )
+      remainsQueued(worker, kept.recorded.id)
+      expect(host.sessionIds).not.toContain(worker)
     })
   })
 
@@ -377,36 +401,46 @@ describe('705 · R39 — a shortage that clears by itself', () => {
   // ───────────────────────────────────────────────────────────────────────────────
 
   describe('§3 · what a person reads in the transcript', () => {
-    const noticesOf = (sessionId: string): string[] => {
-      const state = createTranscript()
-      for (const event of events(sessionId)) applyEvent(state, event)
-      return state.items
-        .filter((item): item is NoticeItem => item.kind === 'notice')
-        .map((item) => item.text)
-    }
+    const noticesOf = (sessionId: string) => recordedSendNotices(events(sessionId))
 
-    it('🔴 the refusal row says it lasts only while the reason does, and that the same call may work', async () => {
+    it('keeps the sent-message history and says how to retry after a shortage', async () => {
       const produced = await SHORTAGES[1].make()
       const { pm, worker, piece } = await aWorkerOver()
       gate.resumeFails = () => produced
-      await wake(pm, worker, piece)
-      const row = noticesOf(pm).find((text) => text.startsWith('refused: message_agent'))
-      expect(row).toBe(
-        `refused: message_agent · ${SHORTAGE} · only while the reason lasts · retrying may work · there is nothing to change — the same call again, once that has settled`,
+      const answer = await theWake(pm, worker, piece)
+      const kept = expectRecordedCannotRun(
+        answer.structured as Record<string, unknown>,
+        'message',
+        shortageWords(SHORTAGES[1].code),
+        false,
       )
+      expect(noticesOf(pm).some((text) => text.startsWith('refused: message_agent'))).toBe(false)
+      expect(events(pm)).toContainEqual(
+        expect.objectContaining({
+          type: 'message_sent',
+          messageId: kept.recorded.id,
+          to: worker,
+        }),
+      )
+      expect(answer.text).toContain('send a message to this address to try starting it again.')
+      expect(answer.text).not.toContain('Ask the person to fix it')
     })
 
-    it('⚑ control: the permanent word’s row still says somebody has to change it', async () => {
+    it('tells the giver when a person can fix the provider program', async () => {
       const produced = await claudeResumeOver(
         () => aSpawnRefusedAfterItsPipes('ENOENT', '/x/claude').child,
       )
       const { pm, worker, piece } = await aWorkerOver()
       gate.resumeFails = () => produced
-      await wake(pm, worker, piece)
-      const row = noticesOf(pm).find((text) => text.startsWith('refused: message_agent'))
-      expect(row).toBe(
-        'refused: message_agent · that-conversation-could-not-be-resumed · until somebody changes it · retrying will not help',
+      const answer = await theWake(pm, worker, piece)
+      expectRecordedCannotRun(
+        answer.structured as Record<string, unknown>,
+        'message',
+        programFailure,
+        true,
       )
+      expect(noticesOf(pm).some((text) => text.startsWith('refused: message_agent'))).toBe(false)
+      expect(answer.text).toContain('Ask the person to fix it, with request_action.')
     })
   })
 })

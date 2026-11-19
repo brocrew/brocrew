@@ -87,20 +87,33 @@ describe('archiving a conversation', () => {
     expect(await recordIds('left-out')).toEqual(expect.arrayContaining([root, helper]))
   })
 
-  it('comes back when a person sends it something', async () => {
+  it('delivers the person’s message through the window and leaves the conversation archived', async () => {
     const root = await world.open(host, 'claude', 'pm')
     await host.archiveConversation(root)
     expect(listed()).not.toContain(root)
-    await host.send(root, 'one more thing', world.window)
-    await waitFor(() => listed().includes(root), 'the conversation to come back')
-    // …and its transcript says so, never silently.
+
+    const sent = await host.startAndSend(root, 'one more thing', world.window)
+    expect(sent).toHaveProperty('sent.sessionId', root)
     await waitFor(
-      () => world.ledger(root).some((event) => event.type === 'reopened'),
-      'the reopened row',
+      () => world.turnsOf(root).some((event) => event.text === 'one more thing'),
+      'the message in the restored provider session',
     )
+    expect(listed()).not.toContain(root)
+    expect(await forest()).not.toContain(root)
+    expect(world.ledger(root)).toContainEqual({ type: 'reopened' })
+  })
+
+  it('brings back the conversation and its helper on the person’s explicit Reopen', async () => {
+    const root = await world.open(host, 'claude', 'pm')
+    const helper = aHelperOf(root, 'helper_1')
+    await host.archiveConversation(root)
+    expect(listed()).not.toContain(root)
+
+    expect((await host.reopenForAPerson(root, world.window, null)).sessionId).toBe(root)
+    expect(listed()).toEqual(expect.arrayContaining([root, helper]))
     expect(world.ledger(root)).toContainEqual({
       type: 'reopened',
-      broughtBack: 'Brought back from the archive: you wrote to it.',
+      broughtBack: 'Brought back from the archive: you opened it.',
     })
   })
 

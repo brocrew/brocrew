@@ -165,6 +165,8 @@ describe('one session, and the callers who wait', () => {
     const first = await personOpens('pm')
     const firstTools = theToolsetJustHandedOut()
     const given = await callOn(firstTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'the work this dispatch is about',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'the work this dispatch is about',
@@ -207,11 +209,13 @@ describe('one session, and the callers who wait', () => {
         text: 'and mine',
       })
       expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
-      expect(refused.rail).toBe('not-a-piece-you-gave')
+      expect(refused.rail).toBe('no-piece-by-that-name')
       expect(refused.retryable).toBe(false)
 
       // Its own give starts a conversation of its own.
       const its = await callOn(secondTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'and mine',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'and mine',
@@ -226,6 +230,7 @@ describe('one session, and the callers who wait', () => {
     it('a second caller’s note waits its turn, in the ledger’s order', async () => {
       const { worker, first, firstTools, secondTools, workerTools } = await oneWorkerAndTwoCallers()
       const held1 = await callOn(firstTools, 'give_work', {
+        to: worker,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'do mine',
@@ -300,6 +305,7 @@ describe('one session, and the callers who wait', () => {
       )
 
       const again = await callOn(firstTools, 'give_work', {
+        to: firstPiece,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'and also',
@@ -353,6 +359,7 @@ describe('one session, and the callers who wait', () => {
     it('the queue survives a quit: the held rows stay open, and the next start sends them first, in order', async () => {
       const { worker, firstTools, secondTools } = await oneWorkerAndTwoCallers()
       await callOn(firstTools, 'give_work', {
+        to: worker,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'do mine',
@@ -368,7 +375,7 @@ describe('one session, and the callers who wait', () => {
         'do mine',
         'then mine',
       ])
-      expect(mailboxOf(store.events(worker)).map((one) => one.ending)).toEqual([null, null])
+      expect(mailboxOf(store.events(worker)).map((one) => one.ending)).toEqual(['sent', null, null])
 
       host = buildHost()
       claimed.clear()
@@ -381,7 +388,11 @@ describe('one session, and the callers who wait', () => {
       expect(first.indexOf('do mine')).toBeGreaterThan(-1)
       expect(first.indexOf('do mine')).toBeLessThan(first.indexOf('then mine'))
       expect(stillHeld(store.events(worker))).toEqual([])
-      expect(mailboxOf(store.events(worker)).map((one) => one.ending)).toEqual(['sent', 'sent'])
+      expect(mailboxOf(store.events(worker)).map((one) => one.ending)).toEqual([
+        'sent',
+        'sent',
+        'sent',
+      ])
     })
   })
 })

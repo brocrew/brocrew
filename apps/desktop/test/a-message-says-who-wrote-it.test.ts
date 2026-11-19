@@ -174,6 +174,8 @@ describe('624 · a message says who wrote it', () => {
     const pm = await personOpens('pm-b')
     const pmTools = theToolsetJustHandedOut()
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'the world-clock page',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker-b',
       title: 'the world-clock page',

@@ -502,6 +502,8 @@ describe('609 · three waits, one family', () => {
       const top = await personOpens('pm')
       const topTools = theToolsetJustHandedOut()
       const given = await callOn(topTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'The middle of the chain',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'The middle of the chain',
@@ -533,6 +535,8 @@ describe('609 · three waits, one family', () => {
       // ⚑ **D-016 · the middle hands a piece on under the one it holds** — a give, which starts the
       // sub with the brief as its first turn.
       const handedOn = await callOn(middleTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'The work the middle hands on',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'The work the middle hands on',
@@ -603,6 +607,8 @@ describe('609 · three waits, one family', () => {
     const topTools = theToolsetJustHandedOut()
     latchNext = latch
     const given = await callOn(topTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'The report',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'The report',
@@ -619,6 +625,8 @@ describe('609 · three waits, one family', () => {
       'the owner to park on its card',
     )
     const handedOn = await callOn(middleTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'The notes for the report',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'The notes for the report',

@@ -182,14 +182,24 @@ describe('F009 · what an agent has done, read on demand', () => {
   const gives = async (
     tools: AgentToolset,
     title: string,
-    { profile = 'tester', piece }: { readonly profile?: string; readonly piece?: string } = {},
+    {
+      profile = 'tester',
+      to = 'new',
+      under,
+    }: {
+      readonly profile?: string
+      readonly to?: string
+      readonly under?: string
+    } = {},
   ): Promise<{ label: string; holder: string }> => {
     const given = await fullCall(tools, 'give_work', {
       definition_of_done: 'The requested result and its checks are recorded.',
       profile,
       title,
       brief: title,
-      ...(piece === undefined ? {} : { piece }),
+      to,
+      ...(to === 'new' ? { conversation_title: title } : {}),
+      ...(under === undefined ? {} : { under }),
     })
     expect(given.structured, given.text).toMatchObject({ outcome: 'ok' })
     const holder = given.structured.agent as string
@@ -261,15 +271,15 @@ describe('F009 · what an agent has done, read on demand', () => {
     expect(replied.structured, replied.text).toMatchObject({ outcome: 'ok' })
     const file = (replied.structured.resources as string[])[0] ?? ''
     expect(file).toMatch(/^res_/)
-    const w12 = await gives(oneTools, 'Test the clock page')
+    const w12 = await gives(oneTools, 'Test the clock page', { to: w11.label })
     expect(w12).toEqual({ label: 'W1.2', holder: first })
     const taken = await fullCall(oneTools, 'withdraw_task', { piece: 'W1.2' })
     expect(taken.structured, taken.text).toMatchObject({ outcome: 'ok' })
-    const w13 = await gives(oneTools, 'Translate the clock page')
+    const w13 = await gives(oneTools, 'Translate the clock page', { to: w11.label })
     expect(w13).toEqual({ label: 'W1.3', holder: first })
     const closed = await fullCall(oneTools, 'update_work', { piece: 'W1.3', close: true })
     expect(closed.structured, closed.text).toMatchObject({ outcome: 'ok' })
-    const w14 = await gives(oneTools, 'Ship the clock page')
+    const w14 = await gives(oneTools, 'Ship the clock page', { to: w11.label })
     expect(w14).toEqual({ label: 'W1.4', holder: first })
 
     const two = await personOpens(DEFAULT_PROFILE_ID)
@@ -448,10 +458,12 @@ describe('F009 · what an agent has done, read on demand', () => {
       // ⚑ An `ask`-mode giver: its helper parks on its card, so every further give is held open.
       const brobot = await personOpens(DEFAULT_PROFILE_ID, 'ask')
       const tools = agentToolsFor(host, brobot)
+      await fullCall(tools, 'create_agent', { profile_slug: 'tester' })
       const first = await fullCall(tools, 'give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'tester',
-        new: true,
+        to: 'new',
+        conversation_title: 'Piece 1',
         title: 'Piece 1',
         brief: 'piece 1',
       })
@@ -463,6 +475,7 @@ describe('F009 · what an agent has done, read on demand', () => {
       )
       for (let n = 2; n <= 12; n += 1) {
         const more = await fullCall(tools, 'give_work', {
+          to: first.structured.label,
           definition_of_done: 'The requested result and its checks are recorded.',
           profile: 'tester',
           title: `Piece ${String(n)}`,
@@ -501,10 +514,13 @@ describe('F009 · what an agent has done, read on demand', () => {
       // ⚑ Eleven of BroBot's conversations each give `tester` a piece: eleven conversations of it.
       for (let n = 1; n <= 11; n += 1) {
         const giver = await personOpens(DEFAULT_PROFILE_ID)
-        const given = await fullCall(agentToolsFor(host, giver), 'give_work', {
+        const tools = agentToolsFor(host, giver)
+        if (n === 1) await fullCall(tools, 'create_agent', { profile_slug: 'tester' })
+        const given = await fullCall(tools, 'give_work', {
           definition_of_done: 'The requested result and its checks are recorded.',
           profile: 'tester',
-          ...(n === 1 ? { new: true } : {}),
+          to: 'new',
+          conversation_title: `Errand ${String(n)}`,
           title: `Errand ${String(n)}`,
           brief: `errand ${String(n)}`,
         })
@@ -613,14 +629,14 @@ describe('F009 · what an agent has done, read on demand', () => {
       expect(w11.label).toBe('W1.1')
       const ada = w11.holder
       const adaTools = agentToolsFor(host, ada)
-      const w111 = await gives(adaTools, 'Wire the routes', { piece: 'W1.1' })
+      const w111 = await gives(adaTools, 'Wire the routes', { under: 'W1.1' })
       expect(w111.label).toBe('W1.1.1')
       const ali = w111.holder
       await answer(agentToolsFor(host, ali), 'W1.1.1')
       await answer(adaTools, 'W1.1')
-      const w12 = await gives(tools, 'Live check: the clock page', { profile: 'worker' })
+      const w12 = await gives(tools, 'Live check: the clock page', { profile: 'worker', to: ada })
       expect(w12).toEqual({ label: 'W1.2', holder: ada })
-      const w121 = await gives(adaTools, 'Check the routes', { piece: 'W1.2' })
+      const w121 = await gives(adaTools, 'Check the routes', { to: ali, under: 'W1.2' })
       expect(w121).toEqual({ label: 'W1.2.1', holder: ali })
       await answer(adaTools, 'W1.2')
       // ⚑ The premise: what names Ada now is W1.2, answered — what the record named her by before.
@@ -666,9 +682,9 @@ describe('F009 · what an agent has done, read on demand', () => {
       })
       expect(noted.structured, noted.text).toMatchObject({ outcome: 'ok', went_to: standIn })
       // ⚑ Then Ada gives it work from a piece she is given after, and answers that piece.
-      const w13 = await gives(tools, 'Ship the clock page', { profile: 'worker' })
+      const w13 = await gives(tools, 'Ship the clock page', { profile: 'worker', to: ada })
       expect(w13).toEqual({ label: 'W1.3', holder: ada })
-      const w131 = await gives(adaTools, 'Tag the release', { piece: 'W1.3' })
+      const w131 = await gives(adaTools, 'Tag the release', { to: ali, under: 'W1.3' })
       expect(w131).toEqual({ label: 'W1.3.1', holder: standIn })
       const answered = await fullCall(adaTools, 'reply_to_parent', {
         piece: 'W1.3',
@@ -705,13 +721,13 @@ describe('F009 · what an agent has done, read on demand', () => {
         summary: 'checked',
       })
       expect(done.structured, done.text).toMatchObject({ outcome: 'ok' })
-      const w13 = await gives(tools, 'Ship the clock page', { profile: 'worker' })
+      const w13 = await gives(tools, 'Ship the clock page', { profile: 'worker', to: ada })
       expect(w13).toEqual({ label: 'W1.3', holder: ada })
       const standIn = await seedTesterSuccessor(ali)
       await host.resumeSession(brobot, window)
       await host.resumeSession(ada, window)
       const adaTools = agentToolsFor(host, ada)
-      const w131 = await gives(adaTools, 'Tag the release', { piece: 'W1.3' })
+      const w131 = await gives(adaTools, 'Tag the release', { to: ali, under: 'W1.3' })
       expect(w131.label).toBe('W1.3.1')
       expect(w131.holder).toBe(standIn)
       const answered = await fullCall(adaTools, 'reply_to_parent', {

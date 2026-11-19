@@ -119,6 +119,8 @@ describe('one task, one reading, in every place it is drawn', () => {
     const giver = await personOpens('pm')
     const giverTools = theToolsetJustHandedOut()
     const given = await callOn(giverTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'the work one task is about',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'the work one task is about',

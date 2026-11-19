@@ -1,3 +1,4 @@
+import { recordForwardedQuestion } from './lib/forwarded-question-fixture'
 import { waitFor } from './lib/f093-host'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
@@ -5,14 +6,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type {
-  AgentToolset,
-  FakeSessionHandle,
-  ResumeOptions,
-  SessionRef,
-  StartOptions,
-} from '@brobot2/runtime'
+import { FakeProviderSessions } from '@brobot2/runtime'
+import type { AgentToolset, FakeSessionHandle } from '@brobot2/runtime'
 import { CHANNEL_REFUSALS, CHANNEL_REFUSAL_SENTENCES } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
@@ -20,15 +15,13 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
-import { resourcesRoot } from '../src/main/resources/resources'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { REQUEST_IS_OPEN, permissionShaped, theChannelRefusalIn } from '../src/shared/questions'
 import { agentName } from '../src/shared/runtime-ipc'
 import {
   RecordingSink,
-  syntheticProviderHome,
   fixtureProviderConfig,
-  neutralHostDeps,
+  fixtureHostPaths,
+  ObservedProviderLaunches,
 } from './lib/host-fixture'
 
 /**
@@ -77,27 +70,6 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
 const mainRoot = join(here, '../src/main')
 const sharedRoot = join(here, '../src/shared')
 
-/** `394`'s double, with the handles kept — a test has to BE the provider to park a turn on a card. */
-class ProviderDouble extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handles: FakeSessionHandle[],
-    sessions: FakeProviderSessions,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): Promise<FakeSessionHandle> {
-    const handle = await super.start(options)
-    this.handles.push(handle)
-    return handle
-  }
-  override async resume(ref: SessionRef, options: ResumeOptions): Promise<FakeSessionHandle> {
-    const handle = await super.resume(ref, options)
-    this.handles.push(handle)
-    return handle
-  }
-}
-
 describe('403 · a decision only a person can make', () => {
   let userData: string
   let root: string
@@ -117,12 +89,11 @@ describe('403 · a decision only a person can make', () => {
   const buildHost = (over: SessionStore = store): RuntimeHost => {
     const built = new RuntimeHost({
       store: over,
-      ...neutralHostDeps(() => userData),
-      resourcesRoot: () => resourcesRoot(userData),
-      createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued),
-      prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
+      ...fixtureHostPaths(() => userData),
+      createRuntime: (provider: Provider) =>
+        new ObservedProviderLaunches(provider, issued, (_kind, _options, handle) => {
+          handles.push(handle)
+        }),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       readProviderConfig: fixtureProviderConfig,
@@ -237,6 +208,8 @@ describe('403 · a decision only a person can make', () => {
     const handlesOf = new Map<string, FakeSessionHandle>()
     for (let index = 0; index < count; index++) {
       const spawned = await callOn(pmTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'the work this dispatch is about',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: siblings[index],
         title: 'the work this dispatch is about',
@@ -334,26 +307,6 @@ describe('403 · a decision only a person can make', () => {
     const session = publish.slots.get(sessionId)?.session
     if (session === undefined) throw new Error(`${sessionId} is not live`)
     publish.publishOurs(session, event, at)
-  }
-
-  /**
-   * 🔴 **612 · `lookForEscalations` stood here and is GONE with the deadline** (HO-088 §3.1).
-   *
-   * ⛔ **It drove `store.escalationsDue` and wrote what it named through the host's own door.**
-   * ⚑ **There is no sweep to drive**: a question reaches a person because an agent put it there,
-   * which is `611`'s `pass_question_up` — so this helper performs the ACT instead of advancing a
-   * clock, and every test below puts the real hazard on the real path.
-   *
-   * ⚠️ **It answers the PASSER's new request id**, because that is what the person's queue holds:
-   * passing up raises the passer's OWN question carrying the original words.
-   */
-  const thePmPassesItUp = async (pmTools: AgentToolset, questionId: string): Promise<string> => {
-    const passed = await callOn(pmTools, 'pass_question_up', {
-      question: questionId,
-      who_answers: 'a-person',
-    })
-    expect(passed.outcome, JSON.stringify(passed)).toBe('ok')
-    return passed.question as string
   }
 
   const idsIn = (rows: readonly { request: { requestId: string } }[]): string[] =>
@@ -604,21 +557,31 @@ describe('403 · a decision only a person can make', () => {
   // §2 · two readers, two guarantees, measured where they DIVERGE
   // ─────────────────────────────────────────────────────────────────────────────────────────
 
+  async function askRegion(worker: string, workerHandle: FakeSessionHandle) {
+    const question = workerHandle.simulateUserInput('which region?', ['eu', 'us'], false)
+    await waitFor(
+      () =>
+        ledger(worker).some(
+          (event) => event.type === 'request_routed' && event.requestId === question.id,
+        ),
+      'the routing of the question',
+    )
+    return question
+  }
+
   describe('§2 · the strict reader stays strict', () => {
     it('🔴 one world, both populations, and neither reader returns the other’s row', async () => {
-      const { pm, worker, pmTools, workerHandle } = await aPmAndItsWorker()
+      const { pm, worker, workerHandle } = await aPmAndItsWorker()
       const card = await aChildParksOnAPermission(worker)
-      const question = workerHandle.simulateUserInput('which region?', ['eu', 'us'], false)
-      await waitFor(
-        () =>
-          ledger(worker).some(
-            (event) => event.type === 'request_routed' && event.requestId === question.id,
-          ),
-        'the routing of the question',
-      )
+      const question = await askRegion(worker, workerHandle)
       // ⚑ **612 · the PM passes it up, because no clock does it any more** (HO-088 §3.1). ⛔ The
       // row in the person's queue is then the PM's own, carrying the worker's words.
-      const passed = await thePmPassesItUp(pmTools, question.id)
+      const passed = recordForwardedQuestion(store, tick, {
+        asker: worker,
+        original: question.id,
+        forwarder: pm,
+        to: 'a-person',
+      })
       // ⚑ **D-017 · R19 — and the PM's own card is a person's decision too.** The routed question
       // opened a turn in the PM, which the double parks on a card, and the PM has no parent: its
       // card is routed to a person, so the strict reader lists it beside the worker's.
@@ -685,19 +648,12 @@ describe('403 · a decision only a person can make', () => {
       const { worker, pmTools } = await aPmAndItsWorker()
       const card = await aChildParksOnAPermission(worker)
 
-      // ⚠️ **612 · this drove twenty escalation windows and asserted the sweep found nothing**
-      // (HO-088 §3.1, standing rule 26: strip AND re-aim). ⛔ **There is no sweep and no window**,
-      // so the old assertion could only ever pass — and what it was FOR survives: a permission is
-      // not the question queue's, whatever anybody does to it.
-      //
-      // ⚑ **So the act that CAN put a question in front of a person is tried instead**, which is
-      // `611`'s verb, and it is refused by name.
-      const passed = await callOn(pmTools, 'pass_question_up', {
+      const refused = await callOn(pmTools, 'answer_question', {
         question: card,
-        who_answers: 'a-person',
+        cannot_answer: 'The person who owns the permission decision must answer.',
       })
-      expect(passed.outcome, JSON.stringify(passed)).toBe('refused')
-      expect(passed.rail).toBe('a-person-answers-this-one')
+      expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
+      expect(refused.rail).toBe('a-person-answers-this-one')
       expect(
         store.routedRequestsOf(worker).find((one) => one.requestId === card)?.escalatedAt,
       ).toBeNull()
@@ -730,19 +686,17 @@ describe('403 · a decision only a person can make', () => {
      * `persons-queue.test.ts` §8 still measures it over a fixture (`worker → you`).
      */
     it('🔴 one hop ending at you, where the SAME relationship gives a question two', async () => {
-      const { pm, worker, pmTools, workerHandle } = await aPmAndItsWorker()
+      const { pm, worker, workerHandle } = await aPmAndItsWorker()
       await aChildParksOnAPermission(worker)
-      const question = workerHandle.simulateUserInput('which region?', ['eu', 'us'], false)
-      await waitFor(
-        () =>
-          ledger(worker).some(
-            (event) => event.type === 'request_routed' && event.requestId === question.id,
-          ),
-        'the routing of the question',
-      )
+      const question = await askRegion(worker, workerHandle)
       // ⚑ **612 · the PM passes it up** — one row in each population, which is what this section
       // needs and what a deadline used to arrange.
-      await thePmPassesItUp(pmTools, question.id)
+      recordForwardedQuestion(store, tick, {
+        asker: worker,
+        original: question.id,
+        forwarder: pm,
+        to: 'a-person',
+      })
 
       const [only] = host.decisionsForAPerson().rows
       expect(only?.reading.hops).toHaveLength(1)
@@ -917,14 +871,7 @@ describe('403 · a decision only a person can make', () => {
     it('🔴 `list_questions` no longer counts a permission as waiting on the caller', async () => {
       const { worker, pmTools, workerHandle } = await aPmAndItsWorker()
       await aChildParksOnAPermission(worker)
-      const question = workerHandle.simulateUserInput('which region?', ['eu', 'us'], false)
-      await waitFor(
-        () =>
-          ledger(worker).some(
-            (event) => event.type === 'request_routed' && event.requestId === question.id,
-          ),
-        'the routing of the question',
-      )
+      await askRegion(worker, workerHandle)
 
       // ⛔ **Two open rows, and exactly one of them is this caller's.** Until `403` the line read
       // *"2 waiting on you"* — about a row `answer_question` refuses it by name.
@@ -940,14 +887,7 @@ describe('403 · a decision only a person can make', () => {
       // ⚑ D-016 · an `auto` PM, so its worker runs its brief with no card: nothing is
       // permission-shaped.
       const { worker, pmTools, workerHandle } = await aPmAndItsWorker('auto')
-      const question = workerHandle.simulateUserInput('which region?', ['eu', 'us'], false)
-      await waitFor(
-        () =>
-          ledger(worker).some(
-            (event) => event.type === 'request_routed' && event.requestId === question.id,
-          ),
-        'the routing of the question',
-      )
+      await askRegion(worker, workerHandle)
       const line = await said(pmTools, 'list_questions')
       expect(line).toContain('1 waiting on you:')
       expect(line).not.toContain('waiting on a person')

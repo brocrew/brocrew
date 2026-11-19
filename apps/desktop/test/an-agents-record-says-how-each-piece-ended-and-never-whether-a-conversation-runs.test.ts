@@ -4,8 +4,7 @@ import { waitFor } from './lib/f093-host'
 import {
   fixtureProviderConfig,
   RecordingSink,
-  syntheticProviderHome,
-  neutralHostDeps,
+  fixtureHostPaths,
 } from './lib/host-fixture'
 
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -18,9 +17,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { resourcesRoot } from '../src/main/resources/resources'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 
@@ -74,12 +71,8 @@ describe('an agent’s record — the cases beyond what-an-agent-has-done', () =
   const buildHost = () =>
     new RuntimeHost({
       store,
-      ...neutralHostDeps(() => userData),
-      resourcesRoot: () => resourcesRoot(userData),
+      ...fixtureHostPaths(() => userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued),
-      prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       interruptWaitMs: 40,
@@ -139,8 +132,11 @@ describe('an agent’s record — the cases beyond what-an-agent-has-done', () =
     tools: AgentToolset,
     title: string,
     brief: string = title,
+    to = 'new',
   ): Promise<{ label: string; holder: string }> => {
     const given = await fullCall(tools, 'give_work', {
+      to,
+      ...(to === 'new' ? { conversation_title: title } : {}),
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'tester',
       title,
@@ -191,10 +187,12 @@ describe('an agent’s record — the cases beyond what-an-agent-has-done', () =
     it('read while one conversation is mid-turn and another was stopped, "running" is nowhere in it — and the two read alike', async () => {
       const parkedGiver = await personOpens(DEFAULT_PROFILE_ID, 'ask')
       const parkedTools = agentToolsFor(host, parkedGiver)
+      await fullCall(parkedTools, 'create_agent', { profile_slug: 'tester' })
       const first = await fullCall(parkedTools, 'give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'tester',
-        new: true,
+        to: 'new',
+        conversation_title: 'Check the forms',
         title: 'Check the forms',
         brief: 'check the forms',
       })
@@ -293,7 +291,7 @@ describe('an agent’s record — the cases beyond what-an-agent-has-done', () =
         ['Gamma page', 'done'],
       ] as const
       for (const [n, [title, outcome]] of answers.entries()) {
-        const given = await gives(tools, title, `zebra brief ${String(n)}`)
+        const given = await gives(tools, title, `zebra brief ${String(n)}`, holder ?? 'new')
         holder ??= given.holder
         expect(given.holder).toBe(holder)
         const replied = await fullCall(agentToolsFor(host, given.holder), 'reply_to_parent', {
@@ -303,7 +301,7 @@ describe('an agent’s record — the cases beyond what-an-agent-has-done', () =
         })
         expect(replied.structured, replied.text).toMatchObject({ outcome: 'ok' })
       }
-      const open = await gives(tools, 'Delta page', 'zebra brief open')
+      const open = await gives(tools, 'Delta page', 'zebra brief open', holder ?? 'new')
       expect(open.holder).toBe(holder)
 
       const record = await theRecordOf(tools, 'tester')
@@ -359,7 +357,7 @@ describe('an agent’s record — the cases beyond what-an-agent-has-done', () =
         summary: 'built',
       })
       expect(replied.structured, replied.text).toMatchObject({ outcome: 'ok' })
-      await gives(starterTools, 'Test the clock page')
+      await gives(starterTools, 'Test the clock page', 'Test the clock page', first)
 
       for (const tools of [starterTools, outsiderTools]) {
         const record = await theRecordOf(tools, 'tester')

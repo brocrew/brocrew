@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
 import { forestOf } from './lib/forest-of-host'
@@ -117,12 +118,11 @@ describe('a torn reply in a holder’s own ledger is counted by the forest', () 
     await host.close(seeded, window)
     const pm = await personOpens('pm')
     const pmTools = theToolsetJustHandedOut()
-    const given = await call(pmTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'Build it',
-      brief: 'build it',
-    })
+    const given = await call(
+      pmTools,
+      'give_work',
+      newConversationGive('worker', 'Build it', 'build it'),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     expect(store.openPiecesOf(worker).map((piece) => piece.label)).toEqual([given.label])

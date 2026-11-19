@@ -1,3 +1,10 @@
+import { format } from 'node:util'
+import {
+  expectRecordedCannotRun,
+  expectTaskKept,
+  expectRecordedMessageWithMissingProviderFile,
+} from './lib/recorded-send'
+import { newConversationGive, readSuccessfulGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import { chmodSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
@@ -26,9 +33,6 @@ const itWithPosixChmod = process.platform === 'win32' ? it.skip : it
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-const CANNOT_BE_STARTED = 'agent-could-not-be-started'
-const COULD_NOT_BE_RESUMED = 'that-conversation-could-not-be-resumed'
 
 class RecordingSink implements RuntimeEventSink {
   readonly aPersonIsBehindIt = true
@@ -164,12 +168,7 @@ describe('what a person must fix, said once', () => {
    * conversation with `worker` yet, so the give starts one, and its launch is what fails here.
    */
   const spawnWorker = (pm: string): Promise<Record<string, unknown>> =>
-    callOn(pm, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'The work',
-      brief: 'the work',
-    })
+    callOn(pm, 'give_work', newConversationGive('worker', 'The work', 'the work'))
 
   /**
    * A worker the PM gave work, and that then STOPPED — the conversation a wake brings back
@@ -178,13 +177,9 @@ describe('what a person must fix, said once', () => {
    * is the same stop. ⚑ **D-016** — the give starts it and gives it the work in one act.
    */
   const aWorkerThatStopped = async (pm: string): Promise<{ worker: string; label: string }> => {
-    const given = await callOn(pm, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'The schema',
-      brief: 'migrate the schema',
-    })
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
+    const given = await readSuccessfulGive(() =>
+      callOn(pm, 'give_work', newConversationGive('worker', 'The schema', 'migrate the schema')),
+    )
     const worker = given.agent as string
     await waitFor(
       () => store.piecesOwnedBy(worker).some((piece) => piece.giver === pm),
@@ -213,44 +208,45 @@ describe('what a person must fix, said once', () => {
       piece: label,
     })
 
-  /** The program's sentence is the word's own; the folder's is said instead of it. */
-  const programSentence = (): string => tools.refuseTool(CANNOT_BE_STARTED as never).reason
+  const programFailure = 'could not run its provider’s program'
+  const folderFailure = 'could not make or write a folder'
+
+  const aKeptGive = (result: Record<string, unknown>, reason: string, needsPerson = true) => {
+    const receipt = expectRecordedCannotRun(result, 'task', reason, needsPerson)
+    expectTaskKept(store, receipt)
+    return receipt
+  }
+
+  const aKeptMessage = (result: Record<string, unknown>, worker: string, reason: string) => {
+    const receipt = expectRecordedCannotRun(result, 'message', reason, true)
+    expect(receipt.recipient.id).toBe(worker)
+    expect(store.messagesWaitingIn(worker)).toContainEqual(
+      expect.objectContaining({ messageId: receipt.recorded.id, text: 'carry on' }),
+    )
+    return receipt
+  }
 
   // ───────────────────────────────────────────────────────────────────────────────
   // §1 · give_work's start (`spawn_agent` until D-016) — R66 and R67, the permanent word
   // ───────────────────────────────────────────────────────────────────────────────
 
   describe('§1 · `give_work`’s start: every start a person must fix has the permanent word', () => {
-    it('🔴 R67 — Codex’s missing program answers `agent-could-not-be-started`, not `agent-did-not-start`', async () => {
+    it('names Codex’s missing program and keeps the task', async () => {
       const pm = await aPmThatMaySpawn()
       vi.spyOn(console, 'warn').mockImplementation(() => {})
       gate.startFails = () =>
         new CodexUnavailableError('Codex isn’t available — the bundled Codex binary is missing.')
-      const refused = await spawnWorker(pm)
-      expect(refused).toMatchObject({
-        outcome: 'refused',
-        rail: CANNOT_BE_STARTED,
-        permanence: 'until-a-person-changes-it',
-        retryable: false,
-        remedy: null,
-        detail: { profile: 'worker', because: 'provider-binary-unavailable' },
-      })
-      expect(refused.reason).toBe(programSentence())
-      expect(String(refused.reason)).toContain('program')
+      const kept = aKeptGive(await spawnWorker(pm), programFailure)
+      expect(host.sessionIds).not.toContain(kept.recipient.id)
     })
 
-    it('🔴 R66 — Claude’s missing program, as the SDK’s real resolver misses it: the same word, the same reason', async () => {
+    it('names Claude’s missing program and keeps the task', async () => {
       const produced = await claudesMissingProgram(root)
       const pm = await aPmThatMaySpawn()
       vi.spyOn(console, 'warn').mockImplementation(() => {})
       gate.startFails = () => produced
-      const refused = await spawnWorker(pm)
-      expect(refused).toMatchObject({
-        rail: CANNOT_BE_STARTED,
-        retryable: false,
-        detail: { because: 'provider-binary-unavailable' },
-      })
-      expect(refused.reason).toBe(programSentence())
+      const kept = aKeptGive(await spawnWorker(pm), programFailure)
+      expect(host.sessionIds).not.toContain(kept.recipient.id)
     })
 
     itWithPosixChmod(
@@ -260,24 +256,13 @@ describe('what a person must fix, said once', () => {
         const logged = vi.spyOn(console, 'warn').mockImplementation(() => {})
         const refusal = aFolderTheDiskRefuses()
         homeFails = () => refusal
-        const refused = await spawnWorker(pm)
-        expect(refused).toMatchObject({
-          outcome: 'refused',
-          rail: CANNOT_BE_STARTED,
-          permanence: 'until-a-person-changes-it',
-          retryable: false,
-          detail: { profile: 'worker', because: 'EACCES' },
-        })
-        // ⚑ **The sentence says which, in words** (R66): a folder, not a program.
-        expect(refused.reason).toBe(tools.A_FOLDER_COULD_NOT_BE_MADE)
-        expect(String(refused.reason)).toContain('folder')
-        expect(String(refused.reason)).not.toContain('program')
-        const act = String(refused.reason).indexOf('nothing was sent')
-        expect(act).toBeGreaterThanOrEqual(0)
-        expect(act).toBeLessThan(200)
-        // ⛔ …and the path stays in the log, never in what the model is handed.
-        expect(JSON.stringify(refused)).not.toContain(join(root, 'locked'))
-        expect(logged.mock.calls.some(([line]) => String(line).includes('(EACCES)'))).toBe(true)
+        const result = await spawnWorker(pm)
+        const kept = aKeptGive(result, folderFailure)
+        expect(JSON.stringify(kept.recipient.state)).not.toContain('program')
+        expect(JSON.stringify(result)).not.toContain(join(root, 'locked'))
+        const diagnostic = logged.mock.calls.map((args) => format(...args)).join(' ')
+        expect(diagnostic).toContain('EACCES')
+        expect(diagnostic).toContain(join(root, 'locked'))
       },
     )
 
@@ -285,40 +270,39 @@ describe('what a person must fix, said once', () => {
       ['EROFS', 'mkdir'],
       ['ENOSPC', 'mkdir'],
       ['ENOTDIR', 'open'],
-    ])('🔴 R66 — %s from `%s` is the same word', async (code, syscall) => {
+    ])('retains the task when %s comes from %s', async (code, syscall) => {
       const pm = await aPmThatMaySpawn()
-      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const logged = vi.spyOn(console, 'warn').mockImplementation(() => {})
       homeFails = () => Object.assign(new Error(`${code}: ${syscall}`), { code, syscall })
-      const refused = await spawnWorker(pm)
-      expect(refused).toMatchObject({ rail: CANNOT_BE_STARTED, detail: { because: code } })
-      expect(refused.reason).toBe(tools.A_FOLDER_COULD_NOT_BE_MADE)
+      aKeptGive(await spawnWorker(pm), folderFailure)
+      expect(logged.mock.calls.map((args) => format(...args)).join(' ')).toContain(code)
     })
 
-    it('⚑ control — a sign-in keeps `agent-did-not-start`, and its sentence says whose and what fixes it', async () => {
+    it('names its sign-in cause while keeping the task', async () => {
       const pm = await aPmThatMaySpawn()
       vi.spyOn(console, 'warn').mockImplementation(() => {})
       gate.startFails = () => new AuthUnavailableError('claude', 'signed out')
-      const refused = await spawnWorker(pm)
-      expect(refused).toMatchObject({
-        rail: 'agent-did-not-start',
-        detail: { because: 'its-sign-in-is-unusable', provider: 'claude' },
-      })
-      expect(String(refused.reason)).toContain('its Claude sign-in could not be used')
-      expect(String(refused.reason)).not.toContain('somebody stopped it first')
+      const kept = aKeptGive(await spawnWorker(pm), 'Claude sign-in could not be used')
+      expect(JSON.stringify(kept.recipient.state)).not.toContain('somebody stopped it first')
     })
 
-    it('⚑ control — a machine that ran short keeps its retryable word', async () => {
+    it('keeps the task during a machine shortage without asking for a person', async () => {
       const pm = await aPmThatMaySpawn()
       vi.spyOn(console, 'warn').mockImplementation(() => {})
       homeFails = () =>
         Object.assign(new Error('EMFILE: open'), { code: 'EMFILE', syscall: 'open' })
-      expect((await spawnWorker(pm)).rail).toBe('agent-could-not-start-just-now')
+      aKeptGive(await spawnWorker(pm), 'BroCrew had too many files open', false)
     })
 
-    it('⚑ control — a containment refusal (a plain Error, no code) is still a broken tool', async () => {
+    it('keeps the task when an unexpected start error occurs without leaking the diagnostic', async () => {
       const pm = await aPmThatMaySpawn()
-      homeFails = () => new Error('providerHome ancestor passes through a symlink')
-      await expect(spawnWorker(pm)).rejects.toThrow('passes through a symlink')
+      const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const diagnostic = 'providerHome ancestor passes through a symlink'
+      homeFails = () => new Error(diagnostic)
+      const result = await spawnWorker(pm)
+      aKeptGive(result, 'for a reason BroCrew records only in its log', false)
+      expect(JSON.stringify(result)).not.toContain(diagnostic)
+      expect(warned.mock.calls.map((args) => format(...args)).join(' ')).toContain(diagnostic)
     })
   })
 
@@ -327,35 +311,26 @@ describe('what a person must fix, said once', () => {
   // ───────────────────────────────────────────────────────────────────────────────
 
   describe('§2 · the start a message makes: the wake’s own permanent word, saying which', () => {
-    it('🔴 a missing program at a wake: `that-conversation-could-not-be-resumed`, in the program’s words', async () => {
+    it('keeps the message when starting the recorded conversation needs its program', async () => {
       const pm = await aPmThatMaySpawn()
       const { worker, label } = await aWorkerThatStopped(pm)
       vi.spyOn(console, 'warn').mockImplementation(() => {})
       gate.resumeFails = () => new CodexUnavailableError('Codex isn’t available.')
-      const refused = await wakeByMessage(pm, worker, label)
-      expect(refused).toMatchObject({
-        rail: COULD_NOT_BE_RESUMED,
-        retryable: false,
-        detail: { agent: worker, because: 'provider-binary-unavailable' },
-      })
-      expect(refused.reason).toBe(tools.A_WAKE_WHOSE_PROGRAM_COULD_NOT_RUN)
+      aKeptMessage(await wakeByMessage(pm, worker, label), worker, programFailure)
     })
 
     itWithPosixChmod(
-      '🔴 a folder the disk refused at a wake: the wake’s word, in the folder’s words',
+      'keeps the message when starting the recorded conversation needs a writable folder',
       async () => {
         const pm = await aPmThatMaySpawn()
         const { worker, label } = await aWorkerThatStopped(pm)
-        vi.spyOn(console, 'warn').mockImplementation(() => {})
+        const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
         const refusal = aFolderTheDiskRefuses()
         homeFails = () => refusal
-        const refused = await wakeByMessage(pm, worker, label)
-        expect(refused).toMatchObject({
-          rail: COULD_NOT_BE_RESUMED,
-          retryable: false,
-          detail: { agent: worker, because: 'EACCES' },
-        })
-        expect(refused.reason).toBe(tools.A_WAKE_WHOSE_FOLDER_COULD_NOT_BE_MADE)
+        const result = await wakeByMessage(pm, worker, label)
+        aKeptMessage(result, worker, folderFailure)
+        expect(JSON.stringify(result)).not.toContain(join(root, 'locked'))
+        expect(warned.mock.calls.map((args) => format(...args)).join(' ')).toContain('EACCES')
       },
     )
 
@@ -364,9 +339,11 @@ describe('what a person must fix, said once', () => {
       const { worker, label } = await aWorkerThatStopped(pm)
       vi.spyOn(console, 'warn').mockImplementation(() => {})
       issued.forgetAll()
-      await expect(wakeByMessage(pm, worker, label)).rejects.toMatchObject({
-        cause: { unavailable: 'its-session-is-gone', context: { address: label } },
-      })
+      const result = await wakeByMessage(pm, worker, label)
+      expectRecordedMessageWithMissingProviderFile(result, worker, label)
+      expect(store.messagesWaitingIn(worker)).toContainEqual(
+        expect.objectContaining({ text: 'carry on' }),
+      )
       expect(store.replacements()).toEqual([])
     })
   })

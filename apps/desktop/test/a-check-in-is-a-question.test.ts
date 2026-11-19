@@ -94,7 +94,7 @@ describe('§1 · ⛔ the factory text says which verb a check-in is', () => {
     // on a held piece, what to ask a person, and how a question about a piece is answered.
     for (const launch of EVERY_LAUNCH) {
       expect(bundleFor(launch), `${launch} is not told what a check-in is`).toContain(
-        "Ask your questions with ask_question, even to agents; notes expect none. request_action tracks the person's actions. Never guarantee replies.",
+        'Ask with ask_question and tell with message_agent.',
       )
     }
   })
@@ -221,40 +221,6 @@ describe('§2 · 🔴 every tool the factory text names is a tool this app publi
 describe('§3 · ⛔ the refusal names a performable act — in the caller’s own vocabulary', () => {
   const sentenceOf = (rail: (typeof TOOL_REFUSALS)[number]): string => refuseTool(rail, {}).reason
 
-  it('🔴 `that-is-work-you-hold` names BOTH verbs, and says what each does to the work', () => {
-    // ⛔ **`HO-096` §2.2's shape, copied rather than its principle** — the model refusal is
-    // *"it can shorten the summary and put the long form in a file it names"*: an act, performable,
-    // in the caller's own words.
-    const said = sentenceOf('that-is-work-you-hold')
-    expect(said).toContain('ask_question')
-    expect(said).toContain('reply_to_parent')
-    expect(said).toContain('stays yours and stays open')
-    expect(said).toContain('ends it')
-    // ⚠️ **It says what was NOT done**, which every sentence in this table says and which a caller
-    // must never have to guess.
-    expect(said).toContain('nothing was sent')
-  })
-
-  it('⛔ …and every verb it names is one this app publishes — criterion 4', () => {
-    // 🔴 **The brief's criterion 4: the remedy is REACHABLE BY THE REFUSED CALLER, not merely
-    // present in the string.** ⚠️ `a-priced-cost-can-name-a-remedy-that-does-not-exist` is the
-    // failure this is measured against, and `402` is the same shape one layer down: a refusal
-    // telling a worker to use a tool only a manager holds is a remedy that does not exist.
-    const said = sentenceOf('that-is-work-you-hold')
-    const named = [...new Set(said.match(/\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/g) ?? [])]
-    expect(named.length, 'the sentence named no verb at all').toBeGreaterThan(1)
-    for (const word of named) {
-      expect(TOOL_NAMES as readonly string[], `\`${word}\` is no tool of ours`).toContain(word)
-    }
-    // ⚑ **Two verbs, and each is reachable by the caller standing in front of this refusal.**
-    // ⛔ `ask_question` declares `beyondItsRails: 'nothing-its-rails-do-not-cover'` and
-    // `reply_to_parent` has shipped in the worker text since `393` — neither asks a grant.
-    // ⚠️ **D-016 · the sentence no longer names `message_agent`**: it says what a follow-up is
-    // about (a piece given to somebody else) in words, so no gated verb is named at all — `402`'s
-    // defect is a template instructing an identity whose grant the template never saw.
-    expect(named.sort()).toEqual(['ask_question', 'reply_to_parent'])
-  })
-
   it('⚠️ the remedy FIELD is null, and the biconditional is what decided it', () => {
     // ⛔ **`REFUSAL_REMEDIES`: *"a rail carries an act if and only if this app can retry it."***
     // The sentence tells the caller what to do instead; the remedy field would promise this call
@@ -265,32 +231,6 @@ describe('§3 · ⛔ the refusal names a performable act — in the caller’s o
     // biconditional rather than a table nobody filled in.
     expect(TOOL_PERMANENCE['that-work-is-being-sent']).toBe('while-this-holds')
     expect(toolRemedyOf('that-work-is-being-sent')).not.toBeNull()
-  })
-
-  it('🔴 relay 1’s table, pinned: the rails that carried no act are permanent and silent', () => {
-    // Assert that `no-task-you-gave-that-agent` carries a remedy; callers need an actionable
-    // way to recover from this refusal.
-    //
-    // 🔴 **The asymmetry IS the partition, and this is it as a measurement**: every rail in that
-    // run that populated the field is `while-this-holds`, and the one that did not is `permanent`.
-    // ⚠️ **Pinned by NAME rather than by a count**, so the docblock beside `TOOL_REMEDY`'s new
-    // entry — which reproduces this table — cannot go quietly stale.
-    // ⚑ **D-010 retired the run's `agent-already-has-a-message-waiting`** — a conversation holds
-    // any number of messages now — ⛔ **and D-016 retired `agent-already-has-work-open` with the
-    // one-open-task rail**: a busy conversation takes a piece now, and `give_work`'s
-    // `its-work-has-stalled` carries the act in `SPAWN_RAILS`. So the retryable half of the run's
-    // table has no rail left in this one, and what is pinned is the half that remains.
-    //
-    // ⛔ **The one that did not carry an act** (`no-task-you-gave-that-agent` in the run, called
-    // `not-a-piece-you-gave` since D-016), plus the rail this dispatch split off it — both
-    // `permanent`, both silent, for the same stated reason.
-    for (const rail of ['not-a-piece-you-gave', 'that-is-work-you-hold'] as const) {
-      expect(TOOL_PERMANENCE[rail]).toBe('permanent')
-      expect(toolRemedyOf(rail)).toBeNull()
-    }
-    // ⚑ **`summary-too-long` is the fifth of the run's rails and it is `reply-rails.ts`'** — the
-    // model refusal `HO-096` §2.2 told this dispatch to copy. It is asserted in its own file;
-    // naming it here would be a second answer about somebody else's table.
   })
 
   it('⛔ the refusal the PO called correct-and-useless still fires where it is the truth', () => {
@@ -310,7 +250,6 @@ describe('§4 · ⚑ the vocabulary is closed, and the new member declares every
     // ⚠️ **The exhaustive `Record`s are compile errors and this is the runtime half** — a rail
     // added to the union with a table left short cannot reach here, and a rail whose SENTENCE is
     // empty compiles perfectly.
-    expect(TOOL_REFUSALS).toContain('that-is-work-you-hold')
     for (const rail of TOOL_REFUSALS) {
       expect(TOOL_PERMANENCE[rail], `${rail} has no permanence`).toBeTruthy()
       expect(refuseTool(rail, {}).reason.length, `${rail} has no sentence`).toBeGreaterThan(30)

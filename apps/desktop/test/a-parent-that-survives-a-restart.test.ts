@@ -1,3 +1,4 @@
+import { addressedGive, giveNewWorkerChecked, newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
@@ -268,20 +269,35 @@ describe('373 · a parent that survives a restart', () => {
     // ⚑ **D-016 · the child is started by a GIVE** — `spawn_agent` is gone — and the brief is its
     // first turn: in `ask` mode that turn parks on the card it raises, and the piece it hands the
     // child is the one every follow-up below names.
-    const given = await callOn(pmTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: workerProfile,
-      title: 'the work this dispatch is about',
-      brief: 'the work this dispatch is about',
-    })
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    expect(given.started, JSON.stringify(given)).toBe(true)
+    const given = await giveNewWorkerChecked(
+      pmTools,
+      workerProfile,
+      'the work this dispatch is about',
+      'the work this dispatch is about',
+    )
     return { pm, worker: given.agent as string, pmTools, piece: given.label as string }
   }
 
   // ───────────────────────────────────────────────────────────────────────────────────────────
   // §1 · the divergence — a cold resume with a live parent
   // ───────────────────────────────────────────────────────────────────────────────────────────
+
+  const giveToTheReopenedChild = async (toolset: AgentToolset, worker: string, piece: string) => {
+    const status = await callOn(toolset, 'get_agent_status', { agent: worker })
+    expect((status.agent as { state: string }).state).toBe('idle')
+    const blocked = await callOn(
+      toolset,
+      'give_work',
+      addressedGive(
+        piece,
+        'worker',
+        'the parent forgot the reopened child',
+        'the parent forgot the reopened child',
+      ),
+    )
+    expect(blocked).toMatchObject({ outcome: 'ok', agent: worker, stalled: [piece] })
+    return blocked
+  }
 
   describe('§1 · a parent commands its child across a restart', () => {
     it('🔴 the reopened parent commands its reopened child — the state the two readings disagree about', async () => {
@@ -320,15 +336,7 @@ describe('373 · a parent that survives a restart', () => {
       // ⚑ **D-016** — `profile-already-live` became the give's LOOKUP: the give finds this reopened
       // child, whose turn was stopped with the parent's piece open. ⚑ The give goes
       // through, and its answer names that piece.
-      const status = await callOn(toolset, 'get_agent_status', { agent: worker })
-      expect((status.agent as { state: string }).state).toBe('idle')
-      const blocked = await callOn(toolset, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'the parent forgot the reopened child',
-        brief: 'the parent forgot the reopened child',
-      })
-      expect(blocked).toMatchObject({ outcome: 'ok', agent: worker, stalled: [piece] })
+      const blocked = await giveToTheReopenedChild(toolset, worker, piece)
 
       // ⚑ **The give's brief is the child's turn now**, so the follow-up its answer names is held
       // behind it, accepted, until that turn ends.
@@ -340,7 +348,7 @@ describe('373 · a parent that survives a restart', () => {
           agent: worker,
           text: 'carry on',
         }),
-      ).toMatchObject({ outcome: 'ok', delivery: 'queued', agent: worker, kind: 'follow-up' })
+      ).toMatchObject({ outcome: 'ok', delivery: 'queued', agent: worker, kind: 'note' })
     })
 
     it('🔴 450 · an idle helper with a superseded Claude sign-in is named, then holds that exact follow-up until this app has reopened it on the current one', async () => {
@@ -355,21 +363,11 @@ describe('373 · a parent that survives a restart', () => {
 
       // 🔴 **Idle and sign-in-current are independent facts.** `liveChildAs` asks neither one; the
       // card asks only `handle.status()`, while `message_agent` later asks `checkSignIn()`.
-      const status = await callOn(toolset, 'get_agent_status', { agent: worker })
-      expect((status.agent as { state: string }).state).toBe('idle')
-      // ⚑ The give finds the reopened child, and its answer names the piece.
-      const blocked = await callOn(toolset, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'the parent forgot the reopened child',
-        brief: 'the parent forgot the reopened child',
-      })
-      expect(blocked).toMatchObject({ outcome: 'ok', agent: worker, stalled: [piece] })
+      const blocked = await giveToTheReopenedChild(toolset, worker, piece)
 
       // ⛔ **No piece is substituted between the two doors.**
       const named = (blocked.stalled as string[])[0]
       const held = await callOn(toolset, 'message_agent', {
-        kind: 'follow-up',
         piece: named,
         agent: worker,
         text: 'carry on',
@@ -380,7 +378,7 @@ describe('373 · a parent that survives a restart', () => {
         outcome: 'ok',
         delivery: 'queued',
         agent: worker,
-        kind: 'follow-up',
+        label: named,
       })
       // ⚑ **Held with the give's brief**, so the two go in together, as one turn, oldest first.
       await waitFor(
@@ -461,17 +459,14 @@ describe('373 · a parent that survives a restart', () => {
           })
         ).outcome,
       ).toBe('ok')
-      // ⛔ **Its own child, yes. The other PM's child, no.** ⚑ **D-016** — work is followed up only
-      // by its giver: the piece the other child holds is not one this caller gave, so the same
-      // call, aimed one conversation over, is refused by that relationship.
+      // The other recipient exists, but this caller cannot name its task by a private id.
       const refused = await callOn(toolset, 'message_agent', {
-        kind: 'follow-up',
         piece: second.piece,
         agent: second.worker,
         text: 'not mine',
       })
       expect(refused.outcome).toBe('refused')
-      expect(refused.rail).toBe('not-a-piece-you-gave')
+      expect(refused.rail).toBe('no-piece-by-that-name')
     })
 
     it('⚠️ the same pair BEFORE the restart gives the same two answers — so the restart is the only variable', async () => {
@@ -483,7 +478,6 @@ describe('373 · a parent that survives a restart', () => {
       expect(
         (
           await callOn(first.pmTools, 'message_agent', {
-            kind: 'follow-up',
             piece: first.piece,
             agent: first.worker,
             text: 'mine',
@@ -493,13 +487,12 @@ describe('373 · a parent that survives a restart', () => {
       expect(
         (
           await callOn(first.pmTools, 'message_agent', {
-            kind: 'follow-up',
             piece: second.piece,
             agent: second.worker,
             text: 'not mine',
           })
         ).rail,
-      ).toBe('not-a-piece-you-gave')
+      ).toBe('no-piece-by-that-name')
     })
 
     /**
@@ -668,6 +661,8 @@ describe('373 · a parent that survives a restart', () => {
       const request = {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
+        to: 'new',
+        conversation_title: 'While the app is up',
         title: 'while the app is up',
         brief: 'go',
       }
@@ -782,18 +777,18 @@ describe('373 · a parent that survives a restart', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§5 · a reopened conversation keeps the folder it ran in, and no folder bound', () => {
+    const giveWorkInThePackage = () =>
+      callOn(theToolsetJustHandedOut(), 'give_work', {
+        ...newConversationGive('mid', 'work in one package', 'work in one package'),
+        folder: join(root, 'pkg'),
+      })
+
     it('🔴 726 · R92 — the reopened child at `<root>/pkg` may start a child back at `<root>`', async () => {
       await bringIdentityIntoBeing('mid')
       await bringIdentityIntoBeing('deep')
       const pm = await personOpens('pm', root)
       // ⚑ **D-016** — a child is started by a give, and `folder` is where it starts.
-      const spawned = await callOn(theToolsetJustHandedOut(), 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'mid',
-        title: 'work in one package',
-        brief: 'work in one package',
-        folder: join(root, 'pkg'),
-      })
+      const spawned = await giveWorkInThePackage()
       expect(spawned.outcome, JSON.stringify(spawned)).toBe('ok')
       const mid = spawned.agent as string
       expect(store.find(mid)?.cwd).toBe(join(root, 'pkg'))
@@ -807,10 +802,11 @@ describe('373 · a parent that survives a restart', () => {
       // INSIDE `<root>/pkg` so it answers the same on `main`, and the call below is the only variable.
       const missing = join(root, 'pkg', 'not-there')
       const unusable = await callOn(toolset, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'deep',
-        title: 'work in a folder that does not exist',
-        brief: 'work in a folder that does not exist',
+        ...newConversationGive(
+          'deep',
+          'work in a folder that does not exist',
+          'work in a folder that does not exist',
+        ),
         folder: missing,
       })
       expect(unusable.outcome, JSON.stringify(unusable)).toBe('refused')
@@ -823,10 +819,7 @@ describe('373 · a parent that survives a restart', () => {
       // recorded folder was a bound no reopened conversation could stand wider than). R92: no folder
       // bound on where an agent may start a child.
       const allowed = await callOn(toolset, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'deep',
-        title: 'work at the root',
-        brief: 'work at the root',
+        ...newConversationGive('deep', 'work at the root', 'work at the root'),
         folder: root,
       })
       expect(allowed.outcome, JSON.stringify(allowed)).toBe('ok')
@@ -837,17 +830,13 @@ describe('373 · a parent that survives a restart', () => {
       await bringIdentityIntoBeing('mid')
       await bringIdentityIntoBeing('deep')
       await personOpens('pm', root)
-      const spawned = await callOn(theToolsetJustHandedOut(), 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'mid',
-        title: 'work in one package',
-        brief: 'work in one package',
-        folder: join(root, 'pkg'),
-      })
+      const spawned = await giveWorkInThePackage()
       const mid = (spawned as { agent: string }).agent
       await restart()
       const { toolset } = await reopen(mid, window)
       const allowed = await callOn(toolset, 'give_work', {
+        to: 'new',
+        conversation_title: 'work in a subfolder',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'deep',
         title: 'work in a subfolder',

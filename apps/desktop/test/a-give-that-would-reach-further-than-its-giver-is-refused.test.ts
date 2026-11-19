@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Provider } from '@brobot2/shared'
 import { whatTheChildWouldLack, type ApprovalMode, type Protection } from '@brobot2/runtime'
@@ -5,12 +6,14 @@ import {
   admitGive,
   describeRail,
   type GiveAdmission,
-  type GivingConversation,
   type SpawnRefusal,
 } from '../src/main/runtime/spawn-rails'
-import type { CallerIdentity } from '../src/main/runtime/runtime-host'
-import { agentCallerId } from '../src/main/runtime/agent-tools'
-import { giveFactsForTest as factsWith } from './lib/give-facts-fixture'
+import {
+  admittedGiveStart as startOf,
+  callerOfTestGiver as asThe,
+  giveFactsForTest as factsWith,
+  givingTestParent,
+} from './lib/give-facts-fixture'
 
 /**
  * D-038 · the rail that refuses a give which would start a conversation reaching further than its
@@ -70,28 +73,10 @@ const WORK = '/tmp/d038-reach-work'
 const CARD: Protection = 'the-card-before-an-act'
 const SANDBOX: Protection = 'the-sandbox-around-an-act'
 
-function aParent(provider: Provider, approvalMode: ApprovalMode): GivingConversation {
-  return { sessionId: 'sess_parent', profileId: 'pm', provider, cwd: WORK, approvalMode }
-}
+const aParent = (provider: Provider, approvalMode: ApprovalMode) =>
+  givingTestParent(WORK, provider, approvalMode)
 
-/** The giver speaking as itself, the one caller a give is answered for. */
-function asThe(giver: GivingConversation): CallerIdentity {
-  return { ownerId: agentCallerId(giver.sessionId) }
-}
-
-const A_GIVE = {
-  definition_of_done: 'The requested result and its checks are recorded.',
-  profile: 'worker',
-  title: 'x',
-  brief: 'x',
-} as const
-
-/** The start a give admitted, or `null` when it was refused. */
-function startOf(out: GiveAdmission): { provider: Provider; approvalMode: ApprovalMode } | null {
-  if (!out.ok) return null
-  if (out.goes.to !== 'a-new-conversation') throw new Error('nothing was found, so it must start')
-  return { provider: out.goes.start.provider, approvalMode: out.goes.start.approvalMode }
-}
+const A_GIVE = newConversationGive('worker', 'x', 'x')
 
 /**
  * The refusal a give came to, or a failure naming what it did instead. A give's refusal is the
@@ -193,15 +178,21 @@ describe('2 · the postures the comparison is asked about', () => {
   })
 })
 
-describe('3 · a lookup is not a rail', () => {
-  it('a conversation the giver already has is found before the rail is asked, and takes the give whatever the comparison would say', () => {
+describe('3 · an addressed conversation is not a start', () => {
+  it('a conversation the giver addresses takes the give whatever the comparison would say', () => {
     const giver = aParent('claude', 'ask')
     comparison.says = [CARD]
 
     const found = admitGive(
-      A_GIVE,
+      { ...A_GIVE, to: 'W1.2', conversation_title: undefined },
       asThe(giver),
-      factsWith(giver, 'claude', { helperAs: () => 'sess_found' }),
+      factsWith(giver, 'claude', {
+        conversationAt: () => ({
+          conversation: 'sess_found',
+          profileId: 'worker',
+          provider: 'claude',
+        }),
+      }),
     )
     expect(found.ok).toBe(true)
     if (!found.ok) throw new Error('the found conversation was refused')
@@ -212,15 +203,11 @@ describe('3 · a lookup is not a rail', () => {
       grant: null,
       notGranted: null,
     })
-    // The comparison is not even made for a lookup (D-038 F-C).
+    // The comparison is not made for an existing conversation (D-038 F-C).
     expect(comparison.calls).toHaveLength(0)
 
-    // The paired positive: the same armed comparison, nothing found, and the rail refuses.
-    const notFound = admitGive(
-      A_GIVE,
-      asThe(giver),
-      factsWith(giver, 'claude', { helperAs: () => null }),
-    )
+    // The paired positive: the same armed comparison, a new conversation, and the rail refuses.
+    const notFound = admitGive(A_GIVE, asThe(giver), factsWith(giver, 'claude'))
     expect(notFound.ok).toBe(false)
     expect(refusalOf(notFound).rail).toBe('wider-than-its-parent')
     expect(comparison.calls).toHaveLength(1)
@@ -228,16 +215,8 @@ describe('3 · a lookup is not a rail', () => {
 })
 
 describe('4 · where the rail sits among the rails of a start', () => {
-  it('the rail is asked after the kill switch and before the name and the folder', () => {
+  it('the rail is asked after the kill switch and before the folder', () => {
     const giver = aParent('claude', 'ask')
-    const ghost = {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'ghost',
-      title: 'x',
-      brief: 'x',
-    } as const
-    const onlyThePm = (slug: string): boolean => slug === 'pm'
-
     // The paired positive first: with the comparison armed and everything else ordinary, the rail
     // is the one that answers, so each answer below is a statement of order and not of a missing rail.
     comparison.says = [CARD]
@@ -248,19 +227,15 @@ describe('4 · where the rail sits among the rails of a start', () => {
     // (a) the kill switch answers first.
     const switchedOff = factsWith(giver, 'claude', { spawningEnabled: () => false })
     expect(refusalOf(admitGive(A_GIVE, asThe(giver), switchedOff)).rail).toBe('spawning-disabled')
-    // (b) an unknown agent asked for without `new` reaches the rail before the name rule.
-    const unknown = factsWith(giver, 'claude', { agentExists: onlyThePm })
-    expect(refusalOf(admitGive(ghost, asThe(giver), unknown)).rail).toBe('wider-than-its-parent')
-    // (c) an unusable folder is asked last of all.
+    // An unusable folder is checked after reach.
     const noFolder = factsWith(giver, 'claude', {
       checkFolder: () => ({ ok: false, reason: 'no such folder' }),
     })
     expect(refusalOf(admitGive(A_GIVE, asThe(giver), noFolder)).rail).toBe('wider-than-its-parent')
 
-    // The same three facts with nothing armed reach their own rails: the switch, the name, the folder.
+    // With the comparison clear, the switch and the folder give their own reasons.
     comparison.says = null
     expect(refusalOf(admitGive(A_GIVE, asThe(giver), switchedOff)).rail).toBe('spawning-disabled')
-    expect(refusalOf(admitGive(ghost, asThe(giver), unknown)).rail).toBe('no-such-profile')
     expect(refusalOf(admitGive(A_GIVE, asThe(giver), noFolder)).rail).toBe('folder-unusable')
   })
 })

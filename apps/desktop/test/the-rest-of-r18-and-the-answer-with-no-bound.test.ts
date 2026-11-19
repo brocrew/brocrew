@@ -1,26 +1,26 @@
+import { personOpener } from './helpers/person-opens-session'
+import { newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { FakeProviderSessions, FakeRuntime, type FakeSessionHandle } from '@brobot2/runtime'
-import type { AgentToolset, ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
+import { FakeProviderSessions, type FakeSessionHandle } from '@brobot2/runtime'
+import type { AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import type { AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { resourcesRoot } from '../src/main/resources/resources'
 import { exchangePreviewLines } from '../src/shared/last-exchange'
 import {
-  fixtureProviderConfig,
+  closeHostFixture,
+  fixtureDatabase,
+  fixtureFolder,
+  latestToolset,
+  numberedFixtureHostPaths,
   RecordingSink,
-  syntheticProviderHome,
-  neutralHostDeps,
+  ObservedProviderLaunches,
 } from './lib/host-fixture'
 
 /**
@@ -33,7 +33,7 @@ import {
  * | § | finding | what this file pins |
  * |---|---|---|
  * | 1 | **F2** | ⛔ gone with D-016: document registration and the per-project task number it read |
- * | 2 | **F4** | `answer_question`'s free text over `REPLY_SUMMARY_LIMIT` is refused before anything is recorded; a label and an answer at the bound are untouched |
+ * | 2 | **F4** | Long answers keep their complete text as a file. A chosen label and an answer at the inline limit arrive whole. |
  * | 3 | **F1** | `list_tasks` and the wait read behind the Team plates and the rail ANSWER over a torn row and carry the count; a notice push still fires |
  * | 4 | **F3** | an agent's card counts the rows its two ledger reads passed over, and only those |
  * | 5 | **the wider search** | four more statements that RAISED on one torn row — the next launch, a reopen, every agent's question doors, the limit band — now answer |
@@ -42,36 +42,10 @@ import {
  * frontend's (`676` §5.1); this is what main hands them.
  */
 
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
-
 /**
  * ⚑ **`394`'s double**: a test has to BE the provider to raise a provider's question, so every
  * handle is kept. Its registry is shared so every launch's toolset can be reached.
  */
-class ProviderDouble extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handed: AgentToolset[],
-    private readonly handles: FakeSessionHandle[],
-    sessions: FakeProviderSessions,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): Promise<FakeSessionHandle> {
-    const handle = await super.start(options)
-    if (options.agentTools) this.handed.push(options.agentTools)
-    this.handles.push(handle)
-    return handle
-  }
-  override async resume(ref: SessionRef, options: ResumeOptions): Promise<FakeSessionHandle> {
-    const handle = await super.resume(ref, options)
-    if (options.agentTools) this.handed.push(options.agentTools)
-    this.handles.push(handle)
-    return handle
-  }
-}
-
 /** A row the ledger cannot parse — the whole of what "torn" means here. */
 const TORN = '{not json'
 
@@ -85,7 +59,7 @@ describe('676 · the rest of R18, and the answer with no bound', () => {
   let handed: AgentToolset[]
   let handles: FakeSessionHandle[]
   let issued: FakeProviderSessions
-  let counter: number
+  let hostPaths: ReturnType<typeof numberedFixtureHostPaths>
   let clock: number
   let window: RecordingSink
   const tick = (): number => clock++
@@ -93,28 +67,24 @@ describe('676 · the rest of R18, and the answer with no bound', () => {
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      ...neutralHostDeps(() => userData),
-      resourcesRoot: () => resourcesRoot(userData),
-      createRuntime: (provider: Provider) => new ProviderDouble(provider, handed, handles, issued),
-      prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
-      newSessionId: () => `sess_${++counter}`,
-      now: tick,
-      readProviderConfig: fixtureProviderConfig,
+      ...hostPaths,
+      createRuntime: (provider: Provider) =>
+        new ObservedProviderLaunches(provider, issued, (_kind, options, handle) => {
+          if (options.agentTools) handed.push(options.agentTools)
+          handles.push(handle)
+        }),
     })
     hosts.push(built)
     return built
   }
 
   beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-676-'))
-    root = mkdtempSync(join(tmpdir(), 'brobot2-676-root-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    userData = fixtureFolder('brobot2-676-')
+    root = fixtureFolder('brobot2-676-root-')
+    db = fixtureDatabase(userData)
     clock = 6_760_000
     store = createSessionStore(db, tick)
-    counter = 0
+    hostPaths = numberedFixtureHostPaths(() => userData, tick)
     hosts = []
     handed = []
     handles = []
@@ -125,24 +95,12 @@ describe('676 · the rest of R18, and the answer with no bound', () => {
 
   afterEach(async () => {
     claimed.clear()
-    for (const built of hosts) await built.closeAll()
-    db.close()
-    for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
+    await closeHostFixture(hosts, db, userData, root)
   })
 
-  const personOpens = async (profileId: string): Promise<string> => {
-    const { sessionId } = await host.createSession(
-      { provider: 'claude', profileId, approvalMode: 'ask', cwd: root },
-      window,
-    )
-    return sessionId
-  }
+  const personOpens = personOpener(() => ({ host, root, window }), 'ask')
 
-  const theToolsetJustHandedOut = (): AgentToolset => {
-    const last = handed.at(-1)
-    if (last === undefined) throw new Error('no toolset was handed to that launch')
-    return last
-  }
+  const theToolsetJustHandedOut = () => latestToolset(handed)
 
   const latestHandle = (): FakeSessionHandle => {
     const handle = handles.at(-1)
@@ -188,12 +146,7 @@ describe('676 · the rest of R18, and the answer with no bound', () => {
     await host.close(seeded, window)
     const pm = await personOpens('pm')
     const pmTools = theToolsetJustHandedOut()
-    const given = await call(pmTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: brief,
-      brief,
-    })
+    const given = await call(pmTools, 'give_work', newConversationGive('worker', brief, brief))
     expect(given.structured.outcome, JSON.stringify(given.structured)).toBe('ok')
     return {
       pm,
@@ -273,10 +226,23 @@ describe('676 · the rest of R18, and the answer with no bound', () => {
         (event) => event.type === 'user_decision' && event.requestId === question,
       ).length
 
+    const attachmentOf = (answerer: string, full: string): string => {
+      const root = store.rootOf(answerer)
+      if (root === null) throw new Error('the answerer has no task')
+      const files = store.resourcesOf(root.piece)
+      expect(files).toHaveLength(1)
+      const file = files[0]
+      if (file === undefined) throw new Error('the answer has no attachment')
+      const read = host.readResource(file.resource)
+      if (!read.ok || read.content.as !== 'file') throw new Error('the answer is unreadable')
+      expect(readFileSync(read.content.path, 'utf8')).toBe(full)
+      return `The full text is attached as ${file.resource}: read it with read_document.`
+    }
+
     it('⚑ THE CONTROL: an answer AT the bound is taken and arrives whole, and no part is reported unsent', async () => {
       const { worker, pmTools, workerTools, task } = await aPmAndItsWorker()
       const question = await workerAsks(workerTools, task.piece)
-      const words = 'y'.repeat(1280)
+      const words = 'y'.repeat(2_000)
       const answered = await call(pmTools, 'answer_question', {
         question,
         answers: [{ part: 'answer', answer: [words] }],
@@ -301,60 +267,50 @@ describe('676 · the rest of R18, and the answer with no bound', () => {
       expect(answerTurns(worker)[0]).toContain(`answer: ${words}`)
     })
 
-    it('🔴 HELD branch: ONE unit over is refused with the length, the limit and what to do — nothing is recorded, and the same caller answers again', async () => {
-      const { worker, pmTools, workerTools, task } = await aPmAndItsWorker()
+    it('keeps a held answer one unit over the inline limit and settles the question once', async () => {
+      const { pm, worker, pmTools, workerTools, task } = await aPmAndItsWorker()
       const question = await workerAsks(workerTools, task.piece)
-      // ⛔ **The literal 1281**, never `REPLY_SUMMARY_LIMIT + 1` — a test that spells the constant
-      // moves with it and pins nothing (`a-bound-written-as-the-constant-cannot-pin-it`).
-      const refused = await call(pmTools, 'answer_question', {
-        question,
-        answers: [{ part: 'answer', answer: ['e'.repeat(1281)] }],
-      })
-      expect(refused.structured.outcome, JSON.stringify(refused.structured)).toBe('refused')
-      expect(refused.structured).toMatchObject({
-        rail: 'answer-too-long',
-        retryable: true,
-        remedy: 'shorten-the-answer-or-put-the-long-form-in-a-file',
-        detail: { question, argument: 'answers', limit: 1280, was: 1281 },
-      })
-      expect(refused.text).toContain(
-        'shorten your answer, or put the long form in a file and name its full path in your answer',
-      )
-      expect(refused.text).toContain('1281 units long and an answer may carry at most 1280')
-      expect(refused.text).toContain('the question is still waiting for your answer')
-      expect(decisionsOn(worker, question)).toBe(0)
-
-      // ⚑ **THE PAIR**: the same question, answered again within the bound, is taken whole.
-      const answered = await call(pmTools, 'answer_question', {
-        question,
-        answers: [{ part: 'answer', answer: ['see /tmp/the-long-form.md'] }],
-      })
-      expect(answered.structured.outcome, JSON.stringify(answered.structured)).toBe('ok')
+      const preview = 'e'.repeat(2_000)
+      const full = `${preview}z`
+      const args = { question, answers: [{ part: 'answer', answer: [full] }] }
+      const answered = await call(pmTools, 'answer_question', args)
+      expect(answered.structured.outcome).toBe('ok')
+      expect(answered.text).toContain('Your answer was 2,001 characters')
+      const pointer = attachmentOf(pm, full)
+      expect(decisionsOn(worker, question)).toBe(1)
+      const duplicate = await call(pmTools, 'answer_question', args)
+      expect(duplicate.structured.rail).toBe('question-has-already-ended')
       expect(decisionsOn(worker, question)).toBe(1)
       await letTheTurnFinish(worker)
       await waitFor(() => answerTurns(worker).length > 0, 'the answer to reach the worker')
       expect(answerTurns(worker)).toHaveLength(1)
-      expect(answerTurns(worker)[0]).toContain('answer: see /tmp/the-long-form.md')
-      expect(answerTurns(worker)[0]).not.toContain('e'.repeat(1280))
+      expect(answerTurns(worker)[0]).toContain(`answer: ${preview} ${pointer}`)
+      expect(answerTurns(worker)[0]).not.toContain(full)
     })
 
-    it('⚠️ units are UTF-16 units: a character of TWO counts as two', async () => {
-      const { pmTools, workerTools, task } = await aPmAndItsWorker()
+    it('keeps both halves of a character at the UTF-16 preview boundary', async () => {
+      const { pm, worker, pmTools, workerTools, task } = await aPmAndItsWorker()
       const question = await workerAsks(workerTools, task.piece)
-      const words = `${'w'.repeat(1279)}😀`
-      expect(words.length).toBe(1281)
-      const refused = await call(pmTools, 'answer_question', {
+      const preview = 'w'.repeat(1_999)
+      const full = `${preview}😀`
+      expect(full.length).toBe(2_001)
+      const answered = await call(pmTools, 'answer_question', {
         question,
-        answers: [{ part: 'answer', answer: [words] }],
+        answers: [{ part: 'answer', answer: [full] }],
       })
-      expect(refused.structured).toMatchObject({ rail: 'answer-too-long', detail: { was: 1281 } })
+      expect(answered.structured.outcome).toBe('ok')
+      const pointer = attachmentOf(pm, full)
+      await letTheTurnFinish(worker)
+      await waitFor(() => answerTurns(worker).length > 0, 'the answer to reach the worker')
+      expect(answerTurns(worker)[0]).toContain(`${preview} ${pointer}`)
+      expect(answerTurns(worker)[0]).not.toContain('😀')
     })
 
-    it('🔴 PROVIDER branch: a long typed answer is refused and the provider is handed nothing; a chosen LABEL is not counted', async () => {
-      const { worker, pmTools, workerHandle } = await aPmAndItsWorker()
+    it('gives a provider an inline preview of a long answer and keeps its offered label intact', async () => {
+      const { pm, worker, pmTools, workerHandle } = await aPmAndItsWorker()
       // ⚑ **A label longer than the bound**, which only a provider can offer — `ask_question`
       // refuses offered options past it. ⛔ It is the asker's words and must match by exact string.
-      const long = 'L'.repeat(1400)
+      const long = 'L'.repeat(2_400)
       const raise = async (): Promise<{ id: string; answered: Promise<unknown> }> => {
         const raised = workerHandle.simulateUserInput('which?', [long, 'short'], false, {
           allowOther: true,
@@ -370,57 +326,71 @@ describe('676 · the rest of R18, and the answer with no bound', () => {
       }
 
       const typed = await raise()
-      let handed = false
-      void typed.answered.then(() => (handed = true))
+      const full = 'v'.repeat(3_000)
       const free = await call(pmTools, 'answer_question', {
         question: typed.id,
-        answers: [{ part: 'q0', answer: ['v'.repeat(3000)] }],
+        answers: [{ part: 'q0', answer: [full] }],
       })
-      expect(free.structured).toMatchObject({
-        outcome: 'refused',
-        rail: 'answer-too-long',
-        detail: { argument: 'answers', limit: 1280, was: 3000 },
-      })
-      await new Promise((resolve) => setTimeout(resolve, 20))
-      expect(handed).toBe(false)
-      expect(decisionsOn(worker, typed.id)).toBe(0)
-      // ⚑ …and the same request takes a shorter answer, whole.
-      const short = await call(pmTools, 'answer_question', {
-        question: typed.id,
-        answers: [{ part: 'q0', answer: ['v'.repeat(1280)] }],
-      })
-      expect(short.structured.outcome, JSON.stringify(short.structured)).toBe('ok')
+      expect(free.structured.outcome).toBe('ok')
+      const pointer = attachmentOf(pm, full)
+      expect(decisionsOn(worker, typed.id)).toBe(1)
       const given = (await typed.answered) as { answers: Record<string, string[]> }
-      expect(given.answers.q0).toEqual(['v'.repeat(1280)])
+      expect(given.answers.q0).toEqual([`${full.slice(0, 2_000)} ${pointer}`])
+
+      const inline = await raise()
+      const atTheLimit = 'v'.repeat(2_000)
+      const short = await call(pmTools, 'answer_question', {
+        question: inline.id,
+        answers: [{ part: 'q0', answer: [atTheLimit] }],
+      })
+      expect(short.structured.outcome).toBe('ok')
+      const uncut = (await inline.answered) as { answers: Record<string, string[]> }
+      expect(uncut.answers.q0).toEqual([atTheLimit])
 
       const chose = await raise()
+      const notes = 'Notes about the offered choice.\n'
+      writeFileSync(join(root, 'choice-notes.md'), notes)
       const label = await call(pmTools, 'answer_question', {
         question: chose.id,
         answers: [{ part: 'q0', answer: [long] }],
+        resources: ['choice-notes.md'],
       })
       expect(label.structured.outcome, JSON.stringify(label.structured)).toBe('ok')
       expect(label.structured.not_asked).toEqual([])
       const chosen = (await chose.answered) as { answers: Record<string, string[]> }
       expect(chosen.answers.q0).toEqual([long])
+      const sender = store.rootOf(pm)
+      if (sender === null) throw new Error('the answerer has no task')
+      const file = store.resourcesOf(sender.piece).find((one) => one.name === 'choice-notes.md')
+      if (file === undefined) throw new Error('the answer did not keep its file')
+      expect(host.readResource(file.resource)).toMatchObject({
+        ok: true,
+        content: { as: 'markdown', text: notes },
+      })
+      expect(ledger(worker)).toContainEqual(
+        expect.objectContaining({
+          type: 'message_queued',
+          text: expect.stringContaining(file.resource),
+        }),
+      )
     })
 
-    it('🔴 the bound is on the WHOLE answer: ten strings of 1,280 are refused as 12,800 (`676` review)', async () => {
-      const { worker, pmTools, workerTools, task } = await aPmAndItsWorker()
+    it('attaches the whole answer when its short values exceed the limit together', async () => {
+      const { pm, worker, pmTools, workerTools, task } = await aPmAndItsWorker()
       const question = await workerAsks(workerTools, task.piece)
-      // ⛔ **Bounding each string** let this through as a 12,800-unit turn — `ask_question`'s
-      // *"an unbounded list defeats the one bound this door applies"*.
-      const refused = await call(pmTools, 'answer_question', {
+      const values = Array.from({ length: 10 }, (_, i) => String(i).repeat(1_280))
+      const answered = await call(pmTools, 'answer_question', {
         question,
-        answers: [
-          { part: 'answer', answer: Array.from({ length: 10 }, (_, i) => String(i).repeat(1280)) },
-        ],
+        answers: [{ part: 'answer', answer: values }],
       })
-      expect(refused.structured).toMatchObject({
-        outcome: 'refused',
-        rail: 'answer-too-long',
-        detail: { was: 12800, limit: 1280 },
-      })
-      expect(decisionsOn(worker, question)).toBe(0)
+      expect(answered.structured.outcome).toBe('ok')
+      expect(answered.text).toContain('Your answer was 12,800 characters')
+      const pointer = attachmentOf(pm, `answer: ${values.join(', ')}`)
+      expect(decisionsOn(worker, question)).toBe(1)
+      await letTheTurnFinish(worker)
+      await waitFor(() => answerTurns(worker).length > 0, 'the answer to reach the worker')
+      expect(answerTurns(worker)[0]).toContain(`${values[0]}, ${'1'.repeat(720)} ${pointer}`)
+      expect(answerTurns(worker)[0]).not.toContain(values[2])
     })
 
     it('⛔ a part the question never asked does not reach the asker, is not counted, and is named in `not_asked`', async () => {
@@ -430,7 +400,7 @@ describe('676 · the rest of R18, and the answer with no bound', () => {
         question,
         answers: [
           { part: 'answer', answer: ['yes'] },
-          { part: 'bogus', answer: ['b'.repeat(1281)] },
+          { part: 'bogus', answer: ['b'.repeat(2_001)] },
         ],
       })
       expect(answered.structured.outcome, JSON.stringify(answered.structured)).toBe('ok')

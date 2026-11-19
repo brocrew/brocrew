@@ -1,3 +1,5 @@
+import { expectRecordedMessageWithMissingProviderFile } from './lib/recorded-send'
+import { newConversationGive, readSuccessfulGive } from './lib/give-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -115,13 +117,9 @@ describe('what a replacement carries, and what it leaves behind', () => {
   const aWorkerOver = async (): Promise<{ pm: string; worker: string; label: string }> => {
     await host.close(await personOpens('worker'), window)
     const pm = await personOpens('pm')
-    const given = await callOn(pm, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'The schema',
-      brief: 'migrate the schema',
-    })
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
+    const given = await readSuccessfulGive(() =>
+      callOn(pm, 'give_work', newConversationGive('worker', 'The schema', 'migrate the schema')),
+    )
     const worker = given.agent as string
     await waitFor(() => turnsIn(worker) > 0, 'the turn the brief opened to end')
     expect(store.piecesOwnedBy(worker).some((one) => TASK_IS_OPEN[one.state])).toBe(true)
@@ -160,12 +158,11 @@ describe('what a replacement carries, and what it leaves behind', () => {
     host = buildHost(ProductRuntimeHost)
     await host.close(await personOpens('worker'), window)
     const pm = await personOpens('pm')
-    const given = await callOn(pm, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'The schema',
-      brief: 'migrate the schema',
-    })
+    const given = await callOn(
+      pm,
+      'give_work',
+      newConversationGive('worker', 'The schema', 'migrate the schema'),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     const label = given.label as string
@@ -191,10 +188,9 @@ describe('what a replacement carries, and what it leaves behind', () => {
     const all = store.recorded().map(({ sessionId }) => sessionId)
     const recorded = store.piecesOwnedBy(worker)[0]
     issued.forgetAll()
-    await expect(wake(pm, worker, label)).rejects.toMatchObject({
-      cause: { unavailable: 'its-session-is-gone', context: { address: label } },
-    })
-    expect(store.recorded().map(({ sessionId }) => sessionId)).toEqual(all)
+    const result = await wake(pm, worker, label)
+    expectRecordedMessageWithMissingProviderFile(result, worker, label)
+    expect(new Set(store.recorded().map(({ sessionId }) => sessionId))).toEqual(new Set(all))
     expect(store.replacements()).toEqual([])
     expect(store.piecesOwnedBy(worker)[0]).toEqual(recorded)
     expect(store.reconciliationReceipts(worker, before.piece)).toEqual(

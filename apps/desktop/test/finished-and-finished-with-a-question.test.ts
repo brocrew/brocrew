@@ -189,6 +189,8 @@ describe('406 · finished, and finished with a question', () => {
     const pmTools = agentToolsFor(host, pm)
     // ⚑ Any agent may give work to any agent this app holds (D-014), so the PM needs no grant here.
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'The work this dispatch is about',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: siblings[0],
       title: 'The work this dispatch is about',

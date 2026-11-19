@@ -1,3 +1,5 @@
+import { expectRecordedCannotRun, expectTaskKept } from './lib/recorded-send'
+import { addressedGive, newConversationGive, readSuccessfulGive } from './lib/give-fixture'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import type { PieceRow } from '../src/shared/task-contracts'
 import { performance } from 'node:perf_hooks'
@@ -689,13 +691,9 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
       window,
     )
     const pmLaunch = launches.at(-1)!
-    const given = await callOn(pmLaunch.toolset, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'The work',
-      brief: 'the work',
-    })
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
+    const given = await readSuccessfulGive(() =>
+      callOn(pmLaunch.toolset, 'give_work', newConversationGive('worker', 'The work', 'the work')),
+    )
     const worker = given.agent as string
     const workerLaunch = launches.at(-1)!
     if (approvalMode === 'auto') {
@@ -878,48 +876,45 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
     expect(answer.outcome, JSON.stringify(answer)).toBe('ok')
     expect(answer.stalled).toEqual(labels)
   }
-  const theGive = (pmLaunch: Launch, profile = 'worker') =>
-    callOn(pmLaunch.toolset, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile,
-      title: 'More',
-      brief: 'more',
-    })
+  const theGive = (pmLaunch: Launch, to: string, profile = 'worker') =>
+    callOn(
+      pmLaunch.toolset,
+      'give_work',
+      to === 'new'
+        ? newConversationGive(profile, 'More', 'more')
+        : addressedGive(to, profile, 'More', 'more'),
+    )
 
-  // ─────────────────────────────────────────────────────────────────────────────────────────
-  /** ⚑ The stop's own answer to a give: the same give again, once the stop has settled. */
-  const turnedAwayWhileItStops = (answer: Record<string, unknown>): void => {
-    expect(answer.outcome, JSON.stringify(answer)).toBe('refused')
-    expect(answer.rail).toBe('that-conversation-is-still-stopping')
-    expect(answer.retryable).toBe(true)
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────────────────────
   describe('a stalled piece is named to a give whatever its holder’s process is doing', () => {
-    it('🔴 a holder whose Close is under way turns a give away until the stop settles, and then the give names the piece it stalled', async () => {
+    it('keeps the new give during a closing holder’s stop and starts its existing address after the stop', async () => {
       const { pmLaunch, worker, workerLaunch } = await aPmAndItsWorker('auto')
       const [piece] = stalledOf(worker)
-      // ⚑ The premise: the brief's turn ended and stalled the piece on it.
       expect(piece).toMatchObject({ because: 'turn_ended' })
       const label = piece!.label
       const launched = launches.length
 
-      // ⚑ **The Close is under way and held open**: the slot is `closing`, the ledger unchanged.
       host.claimSession(worker, window)
       const closing = host.close(worker, window)
+      let keptTask: string | undefined
       try {
         await waitFor(() => listSaysClosing(worker), 'the worker’s Close to be under way')
         expect(stalledOf(worker)).toEqual([{ label, because: 'turn_ended' }])
 
-        // ⚑ The stall refuses nothing; the stop's own rail answers the give.
-        turnedAwayWhileItStops(await theGive(pmLaunch))
+        const answer = await theGive(pmLaunch, label)
+        const kept = expectRecordedCannotRun(
+          answer,
+          'task',
+          'has not finished putting away its last session',
+          false,
+        )
+        expectTaskKept(store, kept)
+        expect(kept.recipient.id).toBe(worker)
+        keptTask = kept.recorded.id
         expect(launches.length).toBe(launched)
 
-        // ⚑ **The paired positive · another profile the pm has never given to gives** — the
-        // answer above is about this holder's stop, not about the giver.
         await bringIdentityIntoBeing('other')
         const launchedBeforeOther = launches.length
-        const other = await theGive(pmLaunch, 'other')
+        const other = await theGive(pmLaunch, 'new', 'other')
         expect(other.outcome, JSON.stringify(other)).toBe('ok')
         expect(launches.length).toBe(launchedBeforeOther + 1)
       } finally {
@@ -927,10 +922,24 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
         await closing
       }
 
-      // ⚑ **The stop completed and moved nothing**: the piece is still stalled, and the same give
-      // now goes through and names it.
-      expect(stalledOf(worker)).toEqual([{ label, because: 'turn_ended' }])
-      namesTheStalledPiece(await theGive(pmLaunch), [label])
+      expect(stalledOf(worker)).toEqual([
+        { label, because: 'turn_ended' },
+        {
+          label: store.piecesOwnedBy(worker).find((row) => row.piece === keptTask)?.label,
+          because: null,
+        },
+      ])
+      const restarted = await callOn(pmLaunch.toolset, 'message_agent', {
+        agent: label,
+        text: 'the stop finished',
+      })
+      expect(restarted).toMatchObject({ outcome: 'ok', receipt: { recipient: { id: worker } } })
+      expect(
+        store
+          .piecesOwnedBy(worker)
+          .filter((row) => row.title === 'More')
+          .map((row) => row.piece),
+      ).toEqual([keptTask])
     })
 
     /**
@@ -964,7 +973,7 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
       try {
         await waitFor(() => resumeHold.entered === before + 1, 'the resume to reach the provider')
         const launched = launches.length
-        giving = theGive(pmLaunch)
+        giving = theGive(pmLaunch, label)
         let settled = false
         void giving.then(() => {
           settled = true
@@ -1017,7 +1026,7 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
       // ⚑ The same take-back, now the start has landed, ends the piece; a give then leaves it out.
       const tookBack = await callOn(pmLaunch.toolset, 'withdraw_task', { piece: label })
       expect(tookBack.outcome, JSON.stringify(tookBack)).toBe('ok')
-      const after = await theGive(pmLaunch)
+      const after = await theGive(pmLaunch, label)
       expect(after.outcome, JSON.stringify(after)).toBe('ok')
       expect((after.stalled as string[] | undefined) ?? []).not.toContain(label)
     })
@@ -1037,9 +1046,13 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
       expect(piece).toMatchObject({ because: 'turn_interrupted' })
 
       // ⚑ The give goes through, wakes the worker, and names the piece its turn left.
-      const given = await theGive(pmLaunch)
-      namesTheStalledPiece(given, [piece!.label])
+      const given = await theGive(pmLaunch, worker)
       expect(given.agent).toBe(worker)
+      const open = store.openPiecesOf(worker)
+      const previousTask = open.find((row) => row.label === piece?.label)
+      expect(given.stalled, JSON.stringify({ receipt: given.receipt, previousTask, open })).toEqual(
+        [piece!.label],
+      )
     })
   })
 
@@ -1128,12 +1141,7 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
       // ⚑ **The paired negative (b) · the arm does not answer ok to everything.** A caller that
       // speaks as no conversation at all is told it has no piece to give from.
       const fromTheApp = await host.giveWork(
-        {
-          definition_of_done: 'The requested result and its checks are recorded.',
-          profile: 'worker',
-          title: 'x',
-          brief: 'x',
-        },
+        newConversationGive('worker', 'x', 'x'),
         THE_APP_ITSELF,
       )
       expect(fromTheApp.ok).toBe(false)

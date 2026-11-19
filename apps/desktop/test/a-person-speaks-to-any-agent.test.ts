@@ -92,7 +92,7 @@ describe('PE-002 · a person can speak directly to any agent', () => {
       ),
     ).toContain(
       // ⚑ W4.187 · by its name alone: the sender line named it in full.
-      `The words you write in this turn do not reach Gil, ${theOwnerOf(THE_GIVERS_PIECE)}.`,
+      `Your reply here doesn't reach Gil, ${theOwnerOf(THE_GIVERS_PIECE)}:`,
     )
   })
 })

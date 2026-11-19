@@ -369,13 +369,15 @@ describe('standing-rule authority belongs to the host and changes remain attribu
       })
       const giver = await start('wren', provider)
       expect(launches.at(-1)?.externalMcp?.reservedToolNames).toEqual(TOOL_NAMES)
-      expect(TOOL_NAMES).toHaveLength(33)
+      expect(TOOL_NAMES).toHaveLength(32)
       expect(TOOL_NAMES).toContain('write_agent_rules')
       const primary = await start(DEFAULT_PROFILE_ID, provider)
       recruit(caller(primary))
       expect(store.setAgentProvider(DEFAULT_PROFILE_ID, provider)).toBe(true)
       const given = await host.giveWork(
         {
+          to: 'new',
+          conversation_title: 'Review a change',
           profile: DEFAULT_PROFILE_ID,
           title: 'Review a change',
           brief: 'Propose a standing-rule change.',
@@ -394,7 +396,7 @@ describe('standing-rule authority belongs to the host and changes remain attribu
       expect(store.recordedOne(helper)?.provider).toBe(provider)
       const helperNames = handed.at(-1)!.tools.map((one) => one.name)
       expect(launches.at(-1)?.externalMcp?.reservedToolNames).toEqual(TOOL_NAMES)
-      expect(helperNames).toHaveLength(33)
+      expect(helperNames).toHaveLength(32)
       expect(helperNames).toContain('write_agent_rules')
       await host.close(helper, window)
       const stopped = await host.whatThisAgentWasGiven(helper)

@@ -216,6 +216,8 @@ describe('419 · creating an agent, and the provider it runs on', () => {
       // standing. ⚠️ Any agent may give work to any agent this app holds (D-014), so the only thing
       // this call lacks is a name that exists. ⚑ **D-016 · R3** — `give_work` without `new: true`.
       const refused = await callOn(tools, 'give_work', {
+        to: 'new',
+        conversation_title: 'A first piece',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'archivist',
         title: 'A first piece',
@@ -229,6 +231,8 @@ describe('419 · creating an agent, and the provider it runs on', () => {
       // succeeds. That is what makes minting *a separate, deliberate act* rather than a sentence.
       await callOn(tools, 'create_agent', { profile_slug: 'archivist' })
       const given = await callOn(tools, 'give_work', {
+        to: 'new',
+        conversation_title: 'A first piece',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'archivist',
         title: 'A first piece',
@@ -447,6 +451,8 @@ describe('419 · creating an agent, and the provider it runs on', () => {
       await callOn(tools, 'create_agent', { profile_slug: 'archivist', provider: 'claude' })
 
       const given = await callOn(tools, 'give_work', {
+        to: 'new',
+        conversation_title: 'Its own provider',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'archivist',
         title: 'Its own provider',
@@ -464,6 +470,8 @@ describe('419 · creating an agent, and the provider it runs on', () => {
       expect(store.providerOf('silent')).toBe('codex')
 
       const given = await callOn(tools, 'give_work', {
+        to: 'new',
+        conversation_title: 'Nobody has said',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'silent',
         title: 'Nobody has said',

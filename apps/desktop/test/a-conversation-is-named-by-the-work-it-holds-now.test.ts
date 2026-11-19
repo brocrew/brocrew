@@ -1,3 +1,4 @@
+import { addressedGive, newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { rmSync } from 'node:fs'
@@ -156,13 +157,12 @@ describe('F033 · a conversation is named by the work it holds now', () => {
   }> => {
     const parent = await personOpens(DEFAULT_PROFILE_ID)
     const tools = agentToolsFor(host, parent)
-    const given = await callOn(tools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      new: true,
-      title: 'Receipt check: a long step',
-      brief: 'check the receipt',
-    })
+    await callOn(tools, 'create_agent', { profile_slug: 'worker' })
+    const given = await callOn(
+      tools,
+      'give_work',
+      newConversationGive('worker', 'Receipt check: a long step', 'check the receipt'),
+    )
     expect(given, JSON.stringify(given)).toMatchObject({ outcome: 'ok', label: 'W1.1' })
     const child = given.agent as string
     await waitFor(() => ledger(child).some((event) => event.type === 'turn'), 'its first turn')
@@ -178,13 +178,12 @@ describe('F033 · a conversation is named by the work it holds now', () => {
   ): Promise<{ parent: string; child: string; tools: AgentToolset }> => {
     const parent = await personOpens(DEFAULT_PROFILE_ID, 'ask')
     const tools = agentToolsFor(host, parent)
-    const first = await callOn(tools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      new: true,
-      title: 'Build the world clock page',
-      brief: 'build it',
-    })
+    await callOn(tools, 'create_agent', { profile_slug: 'worker' })
+    const first = await callOn(
+      tools,
+      'give_work',
+      newConversationGive('worker', 'Build the world clock page', 'build it'),
+    )
     expect(first, JSON.stringify(first)).toMatchObject({ outcome: 'ok', label: 'W1.1' })
     const child = first.agent as string
     await waitFor(
@@ -194,6 +193,7 @@ describe('F033 · a conversation is named by the work it holds now', () => {
     const titles = ['Test the clock page', 'Ship the clock page']
     for (let at = 1; at < count; at += 1) {
       const more = await callOn(tools, 'give_work', {
+        to: first.label,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: titles[at - 1],
@@ -354,12 +354,11 @@ describe('F033 · a conversation is named by the work it holds now', () => {
       const id = asked.structured.question as string
       expect(id, asked.text).toMatch(/^req_/)
       // The asker moves on while the question waits: a second piece.
-      const second = await callOn(tools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'Second piece',
-        brief: 'next',
-      })
+      const second = await callOn(
+        tools,
+        'give_work',
+        addressedGive('W1.1', 'worker', 'Second piece', 'next'),
+      )
       expect(second, JSON.stringify(second)).toMatchObject({ outcome: 'ok', label: 'W1.2' })
       // ⛔ Its words, while it waits, still name the asker by the piece it was asked under. ⚑ Read
       // now: a question that is over is listed without its words.
@@ -367,10 +366,9 @@ describe('F033 · a conversation is named by the work it holds now', () => {
       const words = (waiting.structured.questions as { question: string; words: string }[]).find(
         (one) => one.question === id,
       )?.words
-      expect(words).toContain(
-        'Ada (the owner of W1.1 · Receipt check: a long step) is waiting on an answer',
-      )
-      expect(words).toContain(`quoting ${id} with asked_by W1.1.`)
+      expect(words).toContain(`Ada (conversation W1.1 · Receipt check: a long step) asks you ${id}`)
+      expect(words).toContain('Use asked_by W1.1 with this question id.')
+      expect(words).toContain('About task W1.1 · Receipt check: a long step.')
       expect(words).not.toContain('W1.2')
       const answered = await fullCall(tools, 'answer_question', {
         question: id,
@@ -420,32 +418,26 @@ describe('F033 · a conversation is named by the work it holds now', () => {
       const { child: ada } = await aChildHolding(2)
       // Ada gives under her OLDER piece, while her newer one names her now.
       const adaTools = agentToolsFor(host, ada)
+      await callOn(adaTools, 'create_agent', { profile_slug: 'tester' })
       const given = await callOn(adaTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'tester',
-        new: true,
-        piece: 'W1.1',
-        title: 'Wire the routes',
-        brief: 'wire the routes',
+        ...newConversationGive('tester', 'Wire the routes', 'wire the routes'),
+        under: 'W1.1',
       })
       expect(given, JSON.stringify(given)).toMatchObject({ outcome: 'ok', label: 'W1.1.1' })
       const ali = given.agent as string
       await waitFor(() => handedTo(ali).length > 0, 'the brief to reach Ali')
       const brief = handedTo(ali)[0] ?? ''
       // ⚑ W4.187 · the direction line names the sender by its name alone: the sender line named it in full.
-      expect(brief).toContain('Ada, the owner of W1.1 · Build the world clock page')
+      expect(brief).toContain('From Ada (conversation W1.1 · Build the world clock page)')
       expect(brief).not.toContain('W1.2')
     })
 
     it('🔴 an answer names its answerer by its own piece above the question’s, beside a newer one it holds', async () => {
       const { ada, adaTools } = await aHelperHoldingTwo()
+      await callOn(adaTools, 'create_agent', { profile_slug: 'tester' })
       const given = await callOn(adaTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'tester',
-        new: true,
-        piece: 'W1.1',
-        title: 'Wire the routes',
-        brief: 'wire the routes',
+        ...newConversationGive('tester', 'Wire the routes', 'wire the routes'),
+        under: 'W1.1',
       })
       expect(given, JSON.stringify(given)).toMatchObject({ outcome: 'ok', label: 'W1.1.1' })
       const ali = given.agent as string
@@ -474,13 +466,10 @@ describe('F033 · a conversation is named by the work it holds now', () => {
     it('🔴 a note names its sender by the piece it is about, and so does its record read back', async () => {
       const { tools, adaTools } = await aHelperHoldingTwo()
       // Ada gives Ali a piece under her older piece, and Ali answers it.
+      await callOn(adaTools, 'create_agent', { profile_slug: 'tester' })
       const first = await callOn(adaTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'tester',
-        new: true,
-        piece: 'W1.1',
-        title: 'Wire the routes',
-        brief: 'wire the routes',
+        ...newConversationGive('tester', 'Wire the routes', 'wire the routes'),
+        under: 'W1.1',
       })
       expect(first, JSON.stringify(first)).toMatchObject({ outcome: 'ok', label: 'W1.1.1' })
       const ali = first.agent as string
@@ -493,11 +482,8 @@ describe('F033 · a conversation is named by the work it holds now', () => {
       expect(replied.structured, replied.text).toMatchObject({ outcome: 'ok' })
       // Then a piece under her newer one: the only work Ali holds open from her now.
       const second = await callOn(adaTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'tester',
-        piece: 'W1.2',
-        title: 'Check the tests',
-        brief: 'check the tests',
+        ...addressedGive(first.label, 'tester', 'Check the tests', 'check the tests'),
+        under: 'W1.2',
       })
       expect(second, JSON.stringify(second)).toMatchObject({
         outcome: 'ok',
@@ -519,7 +505,7 @@ describe('F033 · a conversation is named by the work it holds now', () => {
       await waitFor(() => theNote() !== undefined, 'the note to reach Ali')
       const note = theNote() ?? ''
       // ⚑ W4.187 · the direction line names the sender by its name alone: the sender line named it in full.
-      expect(note).toContain('Ada, the owner of W1.1 · Build the world clock page')
+      expect(note).toContain('From Ada (conversation W1.1 · Build the world clock page)')
       expect(withoutWhatThisAppAdds(note)).not.toContain('the owner of W1.2')
       // ⚑ And read back from its record, the message names its sender the same way.
       const read = await fullCall(tools, 'read_transcript', { agent: 'W1.2.1' })
@@ -557,13 +543,12 @@ describe('F033 · a conversation is named by the work it holds now', () => {
       expect(row?.work).toBeNull()
       // ⚑ The paired positive, from the same reader: a helper whose last piece is answered still
       // says so — that is what D-006 asked of a helper.
-      const given = await callOn(brobotTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        new: true,
-        title: 'Book the hotel',
-        brief: 'book it',
-      })
+      await callOn(brobotTools, 'create_agent', { profile_slug: 'worker' })
+      const given = await callOn(
+        brobotTools,
+        'give_work',
+        newConversationGive('worker', 'Book the hotel', 'book it'),
+      )
       expect(given, JSON.stringify(given)).toMatchObject({ outcome: 'ok', label: 'W1.2' })
       const helper = given.agent as string
       await allowItsCard(helper, 1)
@@ -589,20 +574,17 @@ describe('F033 · a conversation is named by the work it holds now', () => {
         brief: 'plan it',
       })
       expect(taken.structured, taken.text).toMatchObject({ outcome: 'ok', label: 'W1.1' })
+      await callOn(brobotTools, 'create_agent', { profile_slug: 'worker' })
       const given = await callOn(brobotTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        new: true,
-        piece: 'W1.1',
-        title: 'Book the hotel',
-        brief: 'book it',
+        ...newConversationGive('worker', 'Book the hotel', 'book it'),
+        under: 'W1.1',
       })
       expect(given, JSON.stringify(given)).toMatchObject({ outcome: 'ok', label: 'W1.1.1' })
       const helper = given.agent as string
       await waitFor(() => handedTo(helper).length > 0, 'the brief to reach the helper')
       const brief = handedTo(helper)[0] ?? ''
       // ⚑ The address it hands back is its root, never the piece it gave from.
-      expect(brief).toMatch(/, the owner of W1(?!\.?\d)/)
+      expect(brief).toMatch(/\(conversation W1 · /)
       expect(brief).not.toContain('the owner of W1.1')
       expect(store.workThatNamesUnder(brobot, given.piece as string)).toEqual({
         label: 'W1',

@@ -1,24 +1,15 @@
+import { clockedQuestionFixture } from './lib/clocked-question-fixture'
+import { callOn } from './helpers/call-tool'
+import { pmGivesNewWorkerTask } from './lib/give-fixture'
+import { recordForwardedQuestion } from './lib/forwarded-question-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions } from '@brobot2/runtime'
 import { type AgentToolset } from '@brobot2/runtime'
-import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost } from './helpers/giver-notice-host'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
+import type { SessionStore } from '../src/main/db/session-store'
+import type { RuntimeHost } from './helpers/giver-notice-host'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { REQUEST_IS_OPEN } from '../src/shared/questions'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
-import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import { waitFor } from './lib/host-fixture'
 
 /**
  * 🔴 **608 · the turn that no longer waits** — `HO-084` §4 (B1), held behind `603` by `HO-085` §4.
@@ -63,104 +54,26 @@ import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from '.
  * `waiting-on-an-answer-is-not-stalled.test.ts`; §3 here asserts only the half `608` made
  * ordinary — that the turn really does end, and that the surfaces say so anyway.
  */
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 describe('608 · the turn that no longer waits', () => {
-  class RecordingSink implements RuntimeEventSink {
-    readonly aPersonIsBehindIt = true
-    readonly messages: RuntimeEventMessage[] = []
-    alive = true
-    constructor(readonly ownerId: string) {}
-    send(message: RuntimeEventMessage): void {
-      this.messages.push(message)
-    }
-    sendLiveness(): void {}
-  }
-
-  let userData: string
-  let root: string
-  let db: AppDatabase
+  let fixture: ReturnType<typeof clockedQuestionFixture>
   let store: SessionStore
   let host: RuntimeHost
-  let hosts: RuntimeHost[]
-  let handed: AgentToolset[]
-  let issued: FakeProviderSessions
-  let counter: number
   let clock: number
-  let window: RecordingSink
-  const tick = (): number => clock++
-
-  const buildHost = (): RuntimeHost => {
-    const built = new RuntimeHost({
-      store,
-      ...neutralHostDeps(() => userData),
-      createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, handed, issued),
-      prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
-      newSessionId: () => `sess_${++counter}`,
-      now: tick,
-      readProviderConfig: fixtureProviderConfig,
-    })
-    hosts.push(built)
-    return built
-  }
+  const tick = () => clock++
 
   beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-608-'))
-    root = mkdtempSync(join(tmpdir(), 'brobot2-608-root-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
     clock = 8_000_000
-    store = createSessionStore(db, tick)
-    counter = 0
-    hosts = []
-    handed = []
-    issued = new FakeProviderSessions()
-    host = buildHost()
-    window = new RecordingSink('webContents:1')
+    fixture = clockedQuestionFixture('608', tick)
+    ;({ store, host } = fixture)
   })
 
-  afterEach(async () => {
-    for (const built of hosts) await built.closeAll()
-    db.close()
-    for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
-  })
+  afterEach(() => fixture.close())
 
-  const personOpens = async (profileId: string): Promise<string> => {
-    const { sessionId } = await host.createSession(
-      { provider: 'claude', profileId, approvalMode: 'ask', cwd: root },
-      window,
-    )
-    return sessionId
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
-
-  const theToolsetJustHandedOut = (): AgentToolset => {
-    const last = handed.at(-1)
-    if (last === undefined) throw new Error('no toolset was handed to that launch')
-    return last
-  }
+  const personOpens = (profile: string) => fixture.personOpens(profile)
+  const theToolsetJustHandedOut = () => fixture.latestToolset()
 
   const ledger = (sessionId: string): TranscriptEvent[] =>
     store.events(sessionId).map((entry) => entry.event)
-
-  const waitFor = async (predicate: () => boolean, what: string): Promise<void> => {
-    for (let attempt = 0; attempt < 400; attempt++) {
-      if (predicate()) return
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
-    throw new Error(`timed out waiting for ${what}`)
-  }
 
   /**
    * ⛔ **Every way words can reach a conversation, read as ONE population** (591's reader). ⚠️
@@ -197,18 +110,13 @@ describe('608 · the turn that no longer waits', () => {
     piece: string
   }> => {
     const seeded = await personOpens('worker')
-    await host.close(seeded, window)
-    const pm = await personOpens('pm')
-    const pmTools = theToolsetJustHandedOut()
-    const given = await callOn(pmTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'The schema',
-      brief: 'migrate the schema',
-    })
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    const worker = given.agent as string
-    const workerTools = theToolsetJustHandedOut()
+    await host.close(seeded, fixture.window)
+    const { pm, pmTools, worker, workerTools, given } = await pmGivesNewWorkerTask(
+      personOpens,
+      theToolsetJustHandedOut,
+      'The schema',
+      'migrate the schema',
+    )
     const open = store.openPiecesOf(worker).find((one) => one.piece === given.piece)
     if (open === undefined) throw new Error('the give never wrote its piece')
     await waitFor(
@@ -310,7 +218,10 @@ describe('608 · the turn that no longer waits', () => {
       // ⚑ **611 · a THIRD key** — where the question went, which is the one thing this call's
       // outcome varies in since `HO-088` §2. ⛔ It is the caller's own declaration copied back, so
       // it differs between two calls rather than being the constant this test's subject removed.
-      expect(Object.keys(payload).sort()).toEqual(['outcome', 'question', 'went_to'])
+      expect(Object.keys(payload).sort()).toEqual(['outcome', 'question', 'receipt', 'went_to'])
+      expect(payload.receipt).toMatchObject({
+        recorded: { kind: 'question', id: payload.question },
+      })
       // ⛔ **`answered`, `waitedForMs` and `question_is` are GONE rather than constant.** ⚑ All
       // three reported what a five-minute race had met; with no race, `answered` could only be
       // `null`, `waitedForMs` a few ticks of the caller's own dispatch, and the ledger read behind
@@ -321,8 +232,7 @@ describe('608 · the turn that no longer waits', () => {
       // 🔴 **591's clause is kept WORD FOR WORD, and it is load-bearing now rather than a
       // consolation**: before `608` it said an answer could still arrive after an expiry; after
       // `608` it is the only way an answer ever arrives.
-      expect(said.text).toContain('reaches you as a message rather than as this call')
-      expect(said.text).toContain('still theirs to answer')
+      expect(said.text).toContain('The answer arrives as a message.')
       // ⛔ **And it does NOT promise the work is still open**, which is `437`'s own review finding:
       // a parent can withdraw the work at any moment, so a sentence about the world is a sentence
       // that can be false by the time the model reads it.
@@ -342,7 +252,7 @@ describe('608 · the turn that no longer waits', () => {
      * real arm, with nothing in the test driving a sweep: a question a parent will not answer
      * still reaches a person. 🔴 **What moved is that the last step is an ACT.**
      */
-    it('🔴 the ask reaches a PERSON when the parent says so, with no clock in between', async () => {
+    it('🔴 a recorded forward reaches the person without an escalation', async () => {
       const { pm, worker, workerTools, piece } = await aWorkerHoldingWork()
       expect(host.questionsForAPerson().rows).toEqual([])
       const said = await callOn(workerTools, 'ask_question', {
@@ -361,14 +271,14 @@ describe('608 · the turn that no longer waits', () => {
       expect(host.questionsForAPerson().rows).toEqual([])
       expect(ledger(worker).some((event) => event.type === 'request_escalated')).toBe(false)
 
-      // ⚑ **And the ACT, which is what carries it now.**
-      const passed = await callOn(agentToolsFor(host, pm), 'pass_question_up', {
-        question: said.question,
-        who_answers: 'a-person',
+      const forwarded = recordForwardedQuestion(store, tick, {
+        asker: worker,
+        original: said.question as string,
+        forwarder: pm,
+        to: 'a-person',
       })
-      expect(passed.outcome, JSON.stringify(passed)).toBe('ok')
       expect(host.questionsForAPerson().rows.map((one) => one.request.requestId)).toEqual([
-        passed.question,
+        forwarded,
       ])
       // ⛔ **Still no escalation row anywhere**, which is the whole of `HO-088` §3.1.
       expect(ledger(pm).some((event) => event.type === 'request_escalated')).toBe(false)

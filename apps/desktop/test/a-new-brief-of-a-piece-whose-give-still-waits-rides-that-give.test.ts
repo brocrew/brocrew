@@ -1,3 +1,5 @@
+import { giveWorkerAndClaimItsBrief } from './lib/running-worker-fixture'
+import { newConversationGive, giveAndReadItsTask } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -70,7 +72,7 @@ const B2 = 'fix two: drop the archive'
  * What the provider is handed a new brief inside of, when it is a message of its own. ⚑ D-027 · a
  * message, no longer a turn: held, it goes with whatever else is held, each under its own frame.
  */
-const A_NEW_BRIEF_TURN = 'sends you the new brief of'
+const A_NEW_BRIEF_TURN = 'a new brief for task'
 
 type Refused = { outcome: string; rail: string; detail?: { held?: string[] } }
 
@@ -219,41 +221,17 @@ describe('D-022 · a giver’s correction reaches the owner, and the verbs say w
   }
 
   /** A give, answered `ok`. */
-  const aGive = async (
+  const aGive = (
     giver: string,
     profile: string,
     title: string,
     brief: string,
-    extra: Record<string, unknown> = {},
-  ): Promise<{ agent: string; piece: string; label: string; answer: Record<string, unknown> }> => {
-    const answer = await callOn(giver, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile,
-      title,
-      brief,
-      ...extra,
-    })
-    expect(answer.outcome, JSON.stringify(answer)).toBe('ok')
-    return {
-      agent: answer.agent as string,
-      piece: answer.piece as string,
-      label: answer.label as string,
-      answer,
-    }
-  }
+    to: string,
+  ) => giveAndReadItsTask((name, args) => callOn(giver, name, args), to, profile, title, brief)
 
   /** A PM a person opened, and a worker it gave one piece, whose first turn parks on a card. */
-  const aPmAndItsWorker = async (
-    suffix = '',
-    title = 'the first piece',
-  ): Promise<{ pm: string; worker: string; piece: string; label: string; title: string }> => {
-    await bringIdentityIntoBeing(`worker${suffix}`)
-    const pm = await personOpens(`pm${suffix}`)
-    const given = await aGive(pm, `worker${suffix}`, title, FIRST_BRIEF)
-    host.claimSession(given.agent, window)
-    await waitFor(() => cardsOn(given.agent) > 0, 'the worker to park on its first turn')
-    return { pm, worker: given.agent, piece: given.piece, label: given.label, title }
-  }
+  const aPmAndItsWorker = (suffix = '', title = 'the first piece') =>
+    giveWorkerAndClaimItsBrief({ host, store, window, personOpens }, suffix, title, FIRST_BRIEF)
 
   /** The same, with the worker's first turn let end: it holds the piece and is idle. */
   const anIdleWorker = async (suffix = '') => {
@@ -280,7 +258,7 @@ describe('D-022 · a giver’s correction reaches the owner, and the verbs say w
    */
   const aWorkerWithAHeldSecondGive = async (suffix = '', brief = SECOND_GIVE_BRIEF) => {
     const made = await aPmAndItsWorker(suffix)
-    const second = await aGive(made.pm, `worker${suffix}`, 'the second piece', brief)
+    const second = await aGive(made.pm, `worker${suffix}`, 'the second piece', brief, made.label)
     expect(second.agent).toBe(made.worker)
     expect(second.answer.delivery, JSON.stringify(second.answer)).toBe('held')
     const message = rowsOf(made.worker, 'message_queued').find((one) => one.piece === second.piece)
@@ -590,29 +568,29 @@ describe('D-022 · a giver’s correction reaches the owner, and the verbs say w
       // ⚑ The running turn is the person's own message: it drives no piece at all.
       await host.send(worker, 'look around', window)
       await waitFor(() => cardsOn(worker) >= 2, 'the worker to park on the person’s message')
-      const second = await aGive(pm, 'worker', 'the second piece', SECOND_GIVE_BRIEF)
+      const second = await aGive(pm, 'worker', 'the second piece', SECOND_GIVE_BRIEF, firstLabel)
       expect(second.agent).toBe(worker)
       expect(second.answer.delivery, JSON.stringify(second.answer)).toBe('held')
       expect(pieceOf(worker, second.piece).state).toBe('waiting')
       await bringIdentityIntoBeing('helper')
 
       // ⚑ Unnamed, the give hangs under the one piece that has reached the owner — not the held one.
-      const unnamed = await callOn(worker, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'helper',
-        title: 'a smaller piece',
-        brief: 'do the small part',
-      })
+      const unnamed = await callOn(
+        worker,
+        'give_work',
+        newConversationGive('helper', 'a smaller piece', 'do the small part'),
+      )
       expect(unnamed.outcome, JSON.stringify(unnamed)).toBe('ok')
       expect(store.workById(unnamed.piece as string)?.parent).toBe(first)
 
       // ⚑ The paired positive: naming the held piece still resolves, and hangs under IT.
       const named = await callOn(worker, 'give_work', {
+        to: unnamed.label,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'helper',
         title: 'another smaller piece',
         brief: 'do the other small part',
-        piece: second.label,
+        under: second.label,
       })
       expect(named.outcome, JSON.stringify(named)).toBe('ok')
       expect(store.workById(named.piece as string)?.parent).toBe(second.piece)
@@ -639,7 +617,7 @@ describe('D-022 · a giver’s correction reaches the owner, and the verbs say w
 
     it('R4 · of two pieces that have reached the giver an unnamed give hangs under the one its turn drives, and a turn that drives none is refused naming only the pieces that reached it', async () => {
       const { pm, worker, label: firstLabel } = await aPmAndItsWorker()
-      const second = await aGive(pm, 'worker', 'the second piece', SECOND_GIVE_BRIEF)
+      const second = await aGive(pm, 'worker', 'the second piece', SECOND_GIVE_BRIEF, firstLabel)
       expect(second.answer.delivery, JSON.stringify(second.answer)).toBe('held')
       await bringIdentityIntoBeing('helper')
 
@@ -649,12 +627,11 @@ describe('D-022 · a giver’s correction reaches the owner, and the verbs say w
         () => read(worker).some((turn) => turn.piece === second.piece) && cardsOn(worker) >= 2,
         'the second piece’s turn to park',
       )
-      const driven = await callOn(worker, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'helper',
-        title: 'a smaller piece',
-        brief: 'do the small part',
-      })
+      const driven = await callOn(
+        worker,
+        'give_work',
+        newConversationGive('helper', 'a smaller piece', 'do the small part'),
+      )
       expect(driven.outcome, JSON.stringify(driven)).toBe('ok')
       expect(store.workById(driven.piece as string)?.parent).toBe(second.piece)
       expect(driven.label).toBe(`${second.label}.1`)
@@ -663,16 +640,15 @@ describe('D-022 · a giver’s correction reaches the owner, and the verbs say w
       await letTheTurnEnd(worker)
       await host.send(worker, 'and now?', window)
       await waitFor(() => cardsOn(worker) >= 3, 'the worker to park on the person’s message')
-      const third = await aGive(pm, 'worker', 'the third piece', THIRD_GIVE_BRIEF)
+      const third = await aGive(pm, 'worker', 'the third piece', THIRD_GIVE_BRIEF, firstLabel)
       expect(third.answer.delivery, JSON.stringify(third.answer)).toBe('held')
 
       const refused = refusedWith(
-        await callOn(worker, 'give_work', {
-          definition_of_done: 'The requested result and its checks are recorded.',
-          profile: 'helper',
-          title: 'never begun',
-          brief: 'never sent',
-        }),
+        await callOn(
+          worker,
+          'give_work',
+          newConversationGive('helper', 'never begun', 'never sent'),
+        ),
         'name-the-piece-you-give-from',
       )
       // ⚑ It names the two that have reached the owner, and not the held third.
@@ -681,11 +657,12 @@ describe('D-022 · a giver’s correction reaches the owner, and the verbs say w
 
       // ⚑ The paired positive: naming the held third piece is taken, and hangs under it.
       const named = await callOn(worker, 'give_work', {
+        to: driven.label,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'helper',
         title: 'under the third',
         brief: 'do the third part',
-        piece: third.label,
+        under: third.label,
       })
       expect(named.outcome, JSON.stringify(named)).toBe('ok')
       expect(store.workById(named.piece as string)?.parent).toBe(third.piece)

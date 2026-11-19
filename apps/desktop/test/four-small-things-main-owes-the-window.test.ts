@@ -1,3 +1,4 @@
+import { newConversationGive, readSuccessfulGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { HandedPath } from '../src/shared/attachment-contracts'
 import type {
@@ -245,13 +246,13 @@ describe('689 · four small things main owes the window', () => {
     await host.close(seeded, window)
     const pm = await personOpens('pm')
     const pmTools = theToolsetJustHandedOut()
-    const given = await call(pmTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'The work this dispatch is about',
-      brief: 'build the thing',
-    })
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
+    const given = await readSuccessfulGive(() =>
+      call(
+        pmTools,
+        'give_work',
+        newConversationGive('worker', 'The work this dispatch is about', 'build the thing'),
+      ),
+    )
     const worker = given.agent as string
     const workerHandle = handles.at(-1)
     if (workerHandle === undefined) throw new Error('the give started no provider')

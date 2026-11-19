@@ -227,6 +227,8 @@ describe('584 · seed one identity, and generate the names', () => {
         'ok',
       )
       const started = await callOn(tools, 'give_work', {
+        to: 'new',
+        conversation_title: 'DEV-75297',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'pm-webapp',
         title: 'DEV-75297',
@@ -237,6 +239,8 @@ describe('584 · seed one identity, and generate the names', () => {
 
       // ⛔ **The same call one fact over, REFUSED** (standing rule 3): a name nobody created.
       const refused = await callOn(tools, 'give_work', {
+        to: 'new',
+        conversation_title: 'a name that was never created',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'pm-nobody-created',
         title: 'a name that was never created',

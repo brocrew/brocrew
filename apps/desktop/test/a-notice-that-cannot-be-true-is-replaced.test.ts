@@ -1,3 +1,4 @@
+import { giveParkedWorker, testResumeShapes } from './lib/running-worker-fixture'
 import { forestOf } from './lib/forest-of-host'
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
@@ -192,39 +193,10 @@ describe('711 · a notice that cannot be true is replaced', () => {
   const TAKEN_BACK_ANSWERED =
     /^taken back by this app before it was read, because it was no longer true: .+ answered that work$/
 
-  /**
-   * ⚑ **In ONE app run, a worker parked mid-turn on the work its parent gave it**, with a person's
-   * window on it — `what-a-waker-reads-after-its-own-act.test.ts`' rig. ⚑ D-016 · the give starts
-   * the worker, and its brief is the turn that parks.
-   */
-  const aPmAndItsParkedWorker = async (): Promise<{
-    pm: string
-    worker: string
-    piece: string
-    label: string
-  }> => {
-    await host.close(await personOpens('worker'), window)
-    const pm = await personOpens('pm')
-    const given = await callOn(pm, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'the migration',
-      brief: 'migrate',
-    })
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    const worker = given.agent as string
-    host.claimSession(worker, window)
-    await waitFor(() => cardsOn(worker) > 0, 'the worker to park mid-turn')
-    const piece = store.piecesOwnedBy(worker)[0]?.piece
-    if (piece === undefined) throw new Error('no piece')
-    expect(piece).toBe(given.piece)
-    return { pm, worker, piece, label: given.label as string }
-  }
+  const aPmAndItsParkedWorker = () =>
+    giveParkedWorker({ host, store, window, personOpens }, 'the migration')
 
-  describe.each([
-    ['the Fake', false],
-    ['Claude', true],
-  ] as const)('on %s’s shape', (_shape, silent) => {
+  describe.each(testResumeShapes)('on %s’s shape', (_shape, silent) => {
     /**
      * ⚑ **A parent MID-TURN when its child's turn ends with the work open**, so *"…is not being
      * worked on"* is HELD for it (`698` §3.2's rig).

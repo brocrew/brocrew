@@ -1,3 +1,4 @@
+import { newConversationGive, readSuccessfulGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -240,6 +241,18 @@ describe('729 · the words that were lost, and who asked', () => {
       (event) => event.type === 'message_unqueued' && event.work?.state === 'answered',
     )
 
+  const giveWorkerTheMigration = async (pm: string) => {
+    const given = await readSuccessfulGive(() =>
+      callOn(pm, 'give_work', newConversationGive('worker', 'The migration', 'migrate')),
+    )
+    const worker = given.agent as string
+    host.claimSession(worker, window)
+    await waitFor(() => cardsOn(worker) > 0, 'the worker to park mid-turn')
+    const piece = store.piecesOwnedBy(worker)[0]?.piece
+    if (piece === undefined) throw new Error('no piece')
+    return { worker, piece }
+  }
+
   /**
    * ⚑ **A worker parked mid-turn on the work its giver gave it** — `719`'s and `724`'s rig — and the
    * giver's own handle, for the roads that act on its provider.
@@ -257,18 +270,7 @@ describe('729 · the words that were lost, and who asked', () => {
     const pm = await personOpens('pm')
     const pmHandle = handles[before]
     if (pmHandle === undefined) throw new Error('the giver has no handle')
-    const given = await callOn(pm, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'The migration',
-      brief: 'migrate',
-    })
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    const worker = given.agent as string
-    host.claimSession(worker, window)
-    await waitFor(() => cardsOn(worker) > 0, 'the worker to park mid-turn')
-    const piece = store.piecesOwnedBy(worker)[0]?.piece
-    if (piece === undefined) throw new Error('no piece')
+    const { worker, piece } = await giveWorkerTheMigration(pm)
     return { pm, pmHandle, worker, piece }
   }
 
@@ -391,27 +393,15 @@ describe('729 · the words that were lost, and who asked', () => {
       decorateNext = aTurnThatWorks
       // ⚑ **D-016 · the boss's brief is the giver's first turn**, and on this handle that turn WORKS
       // until something ends it — the busy giver the answer is held for.
-      const givenPm = await callOn(boss, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'pm',
-        title: 'The plan',
-        brief: 'the plan',
-      })
+      const givenPm = await callOn(
+        boss,
+        'give_work',
+        newConversationGive('pm', 'The plan', 'the plan'),
+      )
       expect(givenPm.outcome, JSON.stringify(givenPm)).toBe('ok')
       expect(decorateNext).toBeNull()
       const pm = givenPm.agent as string
-      const given = await callOn(pm, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'The migration',
-        brief: 'migrate',
-      })
-      expect(given.outcome, JSON.stringify(given)).toBe('ok')
-      const worker = given.agent as string
-      host.claimSession(worker, window)
-      await waitFor(() => cardsOn(worker) > 0, 'the worker to park mid-turn')
-      const piece = store.piecesOwnedBy(worker)[0]?.piece
-      if (piece === undefined) throw new Error('no piece')
+      const { worker, piece } = await giveWorkerTheMigration(pm)
       host.claimSession(pm, window)
       await waitFor(
         () => host.agentCard(pm, window, null)?.state.is === 'active',

@@ -23,21 +23,7 @@ export interface AskQuestionArguments {
   readonly who_answers: QuestionRecipient
   /** Optional, and an empty list is a free-form question rather than a broken one. */
   readonly options?: readonly string[]
-}
-
-export interface PassQuestionUpArguments {
-  /** The question being carried, by the id this app gave it. */
-  readonly question: string
-  /**
-   * **679 · which conversation asked it** — {@link AnswerQuestionArguments.asked_by}, the same
-   * field for the same reason. It selects the question being CARRIED and never where it goes:
-   * that is `who_answers`, and `REPLY_ADDRESSING_KEYS` still refuses every spelling of an addressee.
-   */
-  readonly asked_by?: string
-  /** Who the next hop is — the same two ends `ask_question` takes. */
-  readonly who_answers: QuestionRecipient
-  /** Anything worth knowing that the original words do not say. Leave it out to add nothing. */
-  readonly context?: string
+  readonly resources?: readonly string[]
 }
 
 export interface AnswerQuestionArguments {
@@ -52,6 +38,7 @@ export interface AnswerQuestionArguments {
   readonly answers?: readonly { readonly part: string; readonly answer: readonly string[] }[]
   /** **D-009 · F012** — you cannot answer it, and why (ruling 2). */
   readonly cannot_answer?: string
+  readonly resources?: readonly string[]
   /**
    * `false` lets the asker finish its running turn before it reads the answer. Left out or `true`,
    * that turn is asked to stop so the answer is read now, when the answerer may stop the asker.
@@ -69,9 +56,7 @@ export const ANSWER_CANNOT_ARGUMENT = 'cannot_answer' satisfies keyof AnswerQues
 
 export const ANSWER_INTERRUPT_ARGUMENT = 'interrupt' satisfies keyof AnswerQuestionArguments
 
-/** **679 · shared by BOTH doors that take a routed question**, so one spelling reaches one key. */
-export const ASKED_BY_ARGUMENT = 'asked_by' satisfies keyof AnswerQuestionArguments &
-  keyof PassQuestionUpArguments
+export const ASKED_BY_ARGUMENT = 'asked_by' satisfies keyof AnswerQuestionArguments
 
 /**
  * **679 · what a model is told `asked_by` is — one sentence, advertised by both doors.** It says
@@ -94,10 +79,3 @@ export const ASK_WHO_ARGUMENT = 'who_answers' satisfies keyof AskQuestionArgumen
 
 /** **D-009** — who a question to `an-agent` is for. */
 export const ASK_AGENT_ARGUMENT = 'agent' satisfies keyof AskQuestionArguments
-
-/** The advertised names, as keys of {@link PassQuestionUpArguments} — see that interface (611). */
-export const PASS_QUESTION_ARGUMENT = 'question' satisfies keyof PassQuestionUpArguments
-
-export const PASS_CONTEXT_ARGUMENT = 'context' satisfies keyof PassQuestionUpArguments
-
-export const PASS_WHO_ARGUMENT = 'who_answers' satisfies keyof PassQuestionUpArguments

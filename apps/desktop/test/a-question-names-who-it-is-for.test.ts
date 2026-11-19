@@ -1,7 +1,8 @@
+import { giveOpenWorkerTask } from './lib/give-fixture'
+import { recordForwardedQuestion } from './lib/forwarded-question-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { callOn } from './helpers/call-agent-tool'
 import { waitFor } from './lib/f093-host'
-import { PASS_UP_RECIPIENTS } from '../src/shared/question-contracts'
 import type {
   RequestRoutedEvent,
   RoutedRequest,
@@ -23,10 +24,9 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { TOOL_INPUT_ENUMS, type ToolName } from '../src/main/runtime/agent-tools'
-import { QUESTION_RAILS, questionText } from '../src/main/runtime/question-rails'
+import { questionText } from '../src/main/runtime/question-rails'
 import { messageNamingItsSender, theDirectionLine } from '../src/main/runtime/turn-origin'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { TASK_IS_OPEN } from '../src/shared/tasks'
 import {
   QUESTION_RECIPIENTS,
   RECIPIENT_MEANS,
@@ -193,11 +193,6 @@ describe('611 · a question names who it is for', () => {
       )
       .map((one) => one.text)
 
-  const routingsIn = (sessionId: string): readonly RequestRoutedEvent[] =>
-    ledger(sessionId).filter(
-      (event): event is RequestRoutedEvent => event.type === 'request_routed',
-    )
-
   /**
    * ⚑ **The chain `HO-088` §1 watched**: a PM in a window, a worker it gave one piece of work.
    *
@@ -215,20 +210,13 @@ describe('611 · a question names who it is for', () => {
   }> => {
     const seeded = await personOpens('worker')
     await host.close(seeded, window)
-    const pm = await personOpens('pm')
-    const pmTools = theToolsetJustHandedOut()
-    const given = await callOn(pmTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'the work this dispatch is about',
-      brief: 'gather the requirements',
-    })
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    const worker = given.agent as string
-    const workerTools = theToolsetJustHandedOut()
-    const open = store.piecesOwnedBy(worker).find((one) => TASK_IS_OPEN[one.state])
-    if (open === undefined) throw new Error('the give never opened a piece')
-    return { pm, worker, pmTools, workerTools, piece: open.piece }
+    return giveOpenWorkerTask(
+      store,
+      personOpens,
+      theToolsetJustHandedOut,
+      'the work this dispatch is about',
+      'gather the requirements',
+    )
   }
 
   /** ⚑ One routing row of this conversation, by the arm it is on. */
@@ -300,7 +288,29 @@ describe('611 · a question names who it is for', () => {
         () => wordsIn(pm).some((text) => text.includes('which schema?')),
         'the upward question to reach the parent',
       )
+      const rendered = wordsIn(pm).find((text) => text.includes('which schema?'))
+      expect(rendered).toContain('Part id "answer": answer in your own words.')
+      expect(rendered?.split('which schema?')).toHaveLength(2)
+      expect(rendered).toContain(
+        'Answer with answer_question, one entry per part id: answers: [{ part: "<id>", answer: ["…"] }]. If you can\'t, use cannot_answer and say why.',
+      )
       expect(wordsIn(pm).some((text) => text.includes('which cities do you want?'))).toBe(false)
+    })
+
+    it('shows the answer part id and choice labels when an app question offers options', async () => {
+      const { pmTools, workerTools, piece } = await aWorkerHoldingWork()
+      const asked = await callOn(workerTools, 'ask_question', {
+        piece,
+        question: 'Pick a fictional schema.',
+        who_answers: 'the-parent',
+        options: ['Red schema', 'Blue schema'],
+      })
+      expect(asked.outcome, JSON.stringify(asked)).toBe('ok')
+      const listed = await textOn(pmTools, 'list_questions', {})
+      expect(listed).toContain(
+        'Part id "answer": choose one:\n        - Red schema\n        - Blue schema\n        (or an answer of your own)',
+      )
+      expect(listed.split('Pick a fictional schema.')).toHaveLength(2)
     })
 
     it('⛔ a value the vocabulary has not been taught is refused, never passed through', async () => {
@@ -348,26 +358,13 @@ describe('611 · a question names who it is for', () => {
       const tool = workerTools.tools.find((one) => one.name === 'ask_question')
       if (tool === undefined) throw new Error('no ask_question')
       expect(Object.keys(tool.input)).toContain('who_answers')
-      // ⚑ **The vocabulary is REGISTERED at both addresses**, which is what puts its members and
-      // their sentences into the published schema — `every-tool-enum-is-documented.test.ts` is the
-      // census that walks every registered address and asserts each member's own sentence, so a
-      // second copy of that walk here would be two readers of one rule.
-      //
-      // 🔴 **D-009 · two vocabularies now, and each says its own**: `ask_question` takes the three
-      // ends, and `pass_question_up` only the two a question climbs to — never an agent by name.
       const asking = TOOL_INPUT_ENUMS['ask_question:who_answers']
       expect(asking.members).toEqual([...QUESTION_RECIPIENTS])
       for (const member of QUESTION_RECIPIENTS) {
         expect(asking.sentences[member]).toBe(RECIPIENT_MEANS[member])
       }
-      const passing = TOOL_INPUT_ENUMS['pass_question_up:who_answers']
-      expect(passing.members).toEqual([...PASS_UP_RECIPIENTS])
-      expect(passing.members).not.toContain('an-agent')
-      for (const member of PASS_UP_RECIPIENTS) {
-        expect(passing.sentences[member]).toBe(RECIPIENT_MEANS[member])
-      }
       // ⛔ **And the description does not promise a default**, because there is not one.
-      expect(tool.description).toContain('Say who answers it')
+      expect(tool.description).toContain('who_answers: the-parent')
     })
   })
 
@@ -472,8 +469,8 @@ describe('611 · a question names who it is for', () => {
    * 🔴 **§3 · ONE queue item, two entrances** (`HO-090` §4).
    */
   describe('§3 · one question, two entrances', () => {
-    it('⛔ a question a parent PASSED UP and one its ASKER addressed are one population', async () => {
-      const { pmTools, worker, workerTools, piece } = await aWorkerHoldingWork()
+    it('⛔ a recorded forward and a direct question to a person share the same queue', async () => {
+      const { pm, worker, workerTools, piece } = await aWorkerHoldingWork()
       const escalating = await callOn(workerTools, 'ask_question', {
         piece,
         question: 'which schema?',
@@ -491,20 +488,15 @@ describe('611 · a question names who it is for', () => {
       const now = () => host.questionsForAPerson().rows.map((one) => one.request.requestId)
       expect(now()).toEqual([addressed.question])
 
-      // ⚠️ **612 · the second entrance was a DEADLINE and it is gone** (HO-088 §3.1, standing
-      // rule 26). ⛔ This waited for the sweep to make the parent-routed question a person's;
-      // `611`'s own §4 said that was one of two entrances, and the other one is now the only one
-      // — a parent that will not answer PASSES IT UP. ⚑ **The property is unchanged and the
-      // proof is stronger**: two rows that arrived by two different acts are one population, one
-      // shape and one reader.
-      const passed = await callOn(pmTools, 'pass_question_up', {
-        question: escalating.question,
-        who_answers: 'a-person',
+      const forwarded = recordForwardedQuestion(store, tick, {
+        asker: worker,
+        original: escalating.question as string,
+        forwarder: pm,
+        to: 'a-person',
       })
-      expect(passed.outcome, JSON.stringify(passed)).toBe('ok')
       const both = host.questionsForAPerson().rows
       expect(both.map((one) => one.request.requestId).sort()).toEqual(
-        [passed.question as string, addressed.question as string].sort(),
+        [forwarded, addressed.question as string].sort(),
       )
       // 🔴 **ONE row shape and not two that look alike** — every key the queue reads is on both.
       const keys = both.map((one) => Object.keys(one).sort())
@@ -517,7 +509,7 @@ describe('611 · a question names who it is for', () => {
       // is these two.
       const decisions = host.decisionsForAPerson().rows.map((one) => one.request.requestId)
       expect(decisions.length).toBeGreaterThan(0)
-      for (const mine of [passed.question, addressed.question]) {
+      for (const mine of [forwarded, addressed.question]) {
         expect(decisions, String(mine)).not.toContain(mine)
       }
       // ⚑ **And both questions are still visible to the parent**, which is `394` §2.
@@ -638,7 +630,7 @@ describe('611 · a question names who it is for', () => {
    */
   describe('§4 · a question passed up carries the original words', () => {
     it('🔴 the words are the ASKER’s, verbatim, and the passer’s context is BESIDE them', async () => {
-      const { pm, worker, pmTools, workerTools, piece } = await aWorkerHoldingWork()
+      const { pm, worker, workerTools, piece } = await aWorkerHoldingWork()
       const asked = await callOn(workerTools, 'ask_question', {
         piece,
         question: 'Which cities does he want on the trip?',
@@ -646,15 +638,16 @@ describe('611 · a question names who it is for', () => {
       })
       expect(asked.outcome, JSON.stringify(asked)).toBe('ok')
 
-      const passed = await callOn(pmTools, 'pass_question_up', {
-        question: asked.question,
-        who_answers: 'a-person',
+      const forwarded = recordForwardedQuestion(store, tick, {
+        asker: worker,
+        original: asked.question as string,
+        forwarder: pm,
+        to: 'a-person',
         context: 'I have no way to know this; it is his own preference.',
       })
-      expect(passed.outcome, JSON.stringify(passed)).toBe('ok')
 
       // ⛔ **The new row is in the PASSER's ledger and repeats the words EXACTLY.**
-      const raised = store.questionsRaisedIn(pm).get(passed.question as string)
+      const raised = store.questionsRaisedIn(pm).get(forwarded)
       if (raised === undefined) throw new Error('the passed-up question was not recorded')
       expect(raised.prompt).toBe('Which cities does he want on the trip?')
       // ⚑ **And the context is a field of its own** — *"the parent MAY add context; it may NOT
@@ -676,56 +669,34 @@ describe('611 · a question names who it is for', () => {
       expect(REQUEST_IS_OPEN[child?.state ?? 'answered']).toBe(true)
     })
 
-    it('⛔ there is no field to reword the question in, and that is the whole ruling', async () => {
-      const { pmTools } = await aWorkerHoldingWork()
-      const tool = pmTools.tools.find((one) => one.name === 'pass_question_up')
-      if (tool === undefined) throw new Error('no pass_question_up')
-      // ⚑ **`question` is an ID and not words** — the description says so, and the shape carries
-      // exactly these keys. ⚑ **679 · `asked_by` joined them**: it names which child ASKED, when two
-      // children's session-local ids are one string — a selector of the question carried, never
-      // words and never where it goes (`who_answers` is still the only end).
-      expect(Object.keys(tool.input).sort()).toEqual([
-        'asked_by',
-        'context',
-        'question',
-        'who_answers',
-      ])
-      // ⛔ **Nothing named for the words themselves.** A model that could send `prompt`, `text` or
-      // `summary` could reword a question at a hop, which is the act `HO-088` §3.1 forbids.
-      for (const reword of ['prompt', 'text', 'summary', 'question_text', 'words']) {
-        expect(Object.keys(tool.input), reword).not.toContain(reword)
-      }
-      expect(tool.description).toContain('exactly as it was asked')
-      expect(tool.description).toContain('you cannot reword them')
-    })
-
     it('⚑ the next hop READS the original words, with the context in its own paragraph', async () => {
-      const { pm, pmTools, workerTools, piece } = await aWorkerHoldingWork()
+      const { pm, pmTools, worker, workerTools, piece } = await aWorkerHoldingWork()
       const asked = await callOn(workerTools, 'ask_question', {
         piece,
         question: 'Which cities does he want on the trip?',
         who_answers: 'the-parent',
       })
-      const passed = await callOn(pmTools, 'pass_question_up', {
-        question: asked.question,
-        who_answers: 'a-person',
+      const forwarded = recordForwardedQuestion(store, tick, {
+        asker: worker,
+        original: asked.question as string,
+        forwarder: pm,
+        to: 'a-person',
         context: 'he has not said, and I cannot guess it',
       })
-      expect(passed.outcome, JSON.stringify(passed)).toBe('ok')
       // ⛔ **The passed-up question is the PASSER's own**, so it is in the person's queue under
       // that conversation — and the words there are the ORIGINAL asker's.
       const personsRow = host
         .questionsForAPerson()
-        .rows.find((one) => one.request.requestId === passed.question)
+        .rows.find((one) => one.request.requestId === forwarded)
       expect(personsRow?.request.askedBy).toBe(pm)
 
       // ⚑ **And the CONTEXT is rendered beside them, in its own paragraph**, by the same function
       // that composes the message a live next hop receives — so the two readings cannot drift.
-      const raised = store.questionsRaisedIn(pm).get(passed.question as string)
+      const raised = store.questionsRaisedIn(pm).get(forwarded)
       // ⚑ D-016 · commit 7 · R3 — the asker as the host hands it: named by its work, and the
       // address `asked_by` quotes.
       const asker = { called: host.nameByItsWork(pm), address: host.addressOf(pm) }
-      const rendered = questionText(asker, { ...raised!, id: passed.question as string })
+      const rendered = questionText(asker, { ...raised!, id: forwarded })
       expect(rendered).toContain('Which cities does he want on the trip?')
       expect(rendered).toContain('Context added by the conversation that passed it on')
       expect(rendered).toContain('he has not said, and I cannot guess it')
@@ -737,7 +708,7 @@ describe('611 · a question names who it is for', () => {
       )
       // ⚠️ **The CONTROL, one fact over**: the same renderer over a question nobody added to draws
       // no context paragraph at all.
-      const plain = store.questionsRaisedIn(pm).get(passed.question as string)
+      const plain = store.questionsRaisedIn(pm).get(forwarded)
       expect(questionText(asker, { ...plain!, id: 'x', context: null })).not.toContain(
         'Context added by',
       )
@@ -745,102 +716,6 @@ describe('611 · a question names who it is for', () => {
       // the question its WORKER asked it, which is the hop below rather than the one it made.
       const listed = await textOn(pmTools, 'list_questions', {})
       expect(listed).toContain(asked.question as string)
-    })
-
-    it('⛔ a conversation nothing spawned cannot pass UP, and is told the other end exists', async () => {
-      // 🔴 **This is `HO-088` §6's last hop** — BroBot itself, which nothing spawned.
-      const { pm, pmTools, workerTools, piece } = await aWorkerHoldingWork()
-      const asked = await callOn(workerTools, 'ask_question', {
-        piece,
-        question: 'which cities?',
-        who_answers: 'the-parent',
-      })
-      expect(store.parentOf(pm)).toBeNull()
-      const refused = await callOn(pmTools, 'pass_question_up', {
-        question: asked.question,
-        who_answers: 'the-parent',
-      })
-      expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
-      expect(refused.rail).toBe('nobody-to-pass-it-up-to')
-      // ⛔ **PERMANENT and with NO remedy code** — `425` §3.1's biconditional: nothing re-parents a
-      // conversation, so the identical call never lands. ⚑ The other end is in the SENTENCE.
-      expect(refused.permanence).toBe('permanent')
-      expect(refused.retryable).toBe(false)
-      expect(refused.remedy).toBeNull()
-      expect(String(refused.reason)).toContain('a person')
-
-      // ⚑ **The PAIRED call, one fact over, ALLOWED** (standing rule 3): the same question, the
-      // same caller, the other member of the vocabulary.
-      const passed = await callOn(pmTools, 'pass_question_up', {
-        question: asked.question,
-        who_answers: 'a-person',
-      })
-      expect(passed.outcome, JSON.stringify(passed)).toBe('ok')
-      // ⛔ **And the row names NO parent**, because there is none — rather than naming a
-      // conversation this app never asked.
-      const row = routingsIn(pm).find((one) => one.requestId === passed.question)
-      expect(row?.parent).toBeUndefined()
-      expect(routedIn(pm, 'the-person-the-asker-named').parent).toBeNull()
-    })
-
-    it('⚠️ a PERMISSION cannot be passed up, and nor can one that has ended', async () => {
-      const { pm, worker, pmTools, workerTools, piece } = await aWorkerHoldingWork()
-      // ⛔ **The permission arm.** A request the channel refused is a person's already, so there
-      // is nothing to pass — and it is refused by the rail that says so BY NAME.
-      const card = ledger(worker)
-        .filter(
-          (event): event is TranscriptEvent & { type: 'permission_request'; id: string } =>
-            event.type === 'permission_request',
-        )
-        .at(-1)
-      if (card === undefined) throw new Error('the worker is not parked on anything')
-      const permission = await callOn(pmTools, 'pass_question_up', {
-        question: card.id,
-        who_answers: 'a-person',
-      })
-      expect(permission.outcome, JSON.stringify(permission)).toBe('refused')
-      expect(permission.rail).toBe('a-person-answers-this-one')
-
-      // ⚑ **An id nothing routed to this caller** — the lookup IS the entitlement.
-      const invented = await callOn(pmTools, 'pass_question_up', {
-        question: 'req_00000000-0000-0000-0000-000000000000',
-        who_answers: 'a-person',
-      })
-      expect(invented.rail).toBe('no-question-by-that-name')
-
-      // ⚠️ **And one that has ended.** The work is withdrawn, which ends the question with it.
-      const asked = await callOn(workerTools, 'ask_question', {
-        piece,
-        question: 'which schema?',
-        who_answers: 'the-parent',
-      })
-      await callOn(pmTools, 'withdraw_task', { piece })
-      const ended = await callOn(pmTools, 'pass_question_up', {
-        question: asked.question,
-        who_answers: 'a-person',
-      })
-      expect(ended.rail).toBe('question-has-already-ended')
-      // ⛔ **Nothing was passed up by any of the three refusals.** ⚑ **D-016** — the one routing on
-      // the PM's ledger may be the permission card its own turn parks on (the delivered question
-      // opened it, and `withdraw_task` now awaits telling the worker, so that row can land first);
-      // it is a person's, and no pass-up of anybody's.
-      expect(
-        store
-          .routedRequestsOf(pm)
-          .filter((one) => one.went.is !== 'the-person-the-channel-left-it-with'),
-      ).toEqual([])
-      expect(store.questionsRaisedIn(pm).size).toBe(0)
-    })
-
-    it('⛔ the two new rails are in the vocabulary, permanent, and carry no remedy', () => {
-      for (const rail of ['nobody-to-pass-it-up-to', 'this-app-does-not-hold-those-words']) {
-        expect([...QUESTION_RAILS], rail).toContain(rail)
-      }
-      // ⚑ **Distinct sentences across the whole vocabulary** — `374`'s rule, re-asked because two
-      // members joined it.
-      const sentences = new Set<string>()
-      for (const rail of QUESTION_RAILS) sentences.add(rail)
-      expect(sentences.size).toBe(QUESTION_RAILS.length)
     })
   })
 
@@ -934,19 +809,10 @@ describe('611 · a question names who it is for', () => {
       expect(line).toContain('there is no default')
     })
 
-    it('PE-009 · an agent note is not answered by turn text', () => {
-      const line = theDirectionLine('Pam (pm), conversation `sess_9`', 'caller')
-      expect(line).not.toContain('You are answering Pam')
-      expect(line).toContain('words you write in this turn do not reach Pam')
-      expect(line).toContain('A note expects no answer')
-      expect(line).toContain('message_agent')
-      expect(line).toContain('answer_question')
-      expect(line).toContain('reply_to_parent')
-      // ⚑ W4.178 · words that hand over a piece: the same line without the note's sentence, whose
-      // piece line asks for `reply_to_parent`.
-      const brief = theDirectionLine('Pam (pm), conversation `sess_9`', 'caller', true)
-      expect(brief).not.toContain('A note expects no answer')
-      expect(brief).toBe(line.replace('A note expects no answer. ', ''))
+    it('explains how a reply reaches the named conversation', () => {
+      expect(theDirectionLine('Pam', 'caller')).toBe(
+        "Your reply here doesn't reach Pam: answer with answer_question, hand back with reply_to_parent, or tell it something with message_agent.",
+      )
     })
 
     it('⛔ it rides with the sender line on BOTH arms, in its own paragraph', () => {

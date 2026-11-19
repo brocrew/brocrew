@@ -1,3 +1,4 @@
+import { addressedGive, newConversationGive } from './lib/give-fixture'
 import { ToolWatchingResumeRuntime } from './lib/provider-double'
 import type { InjectedInstructionKind } from '../src/shared/instruction-contracts'
 import { legacyWorkspaceFiles } from './helpers/legacy-workspace-files'
@@ -208,8 +209,11 @@ describe('§1 · one instruction set', () => {
       expect(common).toContain(
         'Keep the judgement and hand off separable, noisy work when the saved time or expertise justifies coordination.',
       )
-      expect(common).toContain('Respect locked choices.')
+      expect(common).toContain(
+        'Its model and effort can change from this task on. If a person set either, it keeps both.',
+      )
       expect(common).toContain('Follow current permissions, tool contracts and refusals.')
+      expect(common).toContain('An existing conversation keeps its provider.')
     })
   })
 
@@ -425,9 +429,9 @@ describe('§1 · one instruction set', () => {
     for (const named of ['list_questions', 'answer_question']) {
       expect(TOOL_NAMES as readonly string[], `${named} is a tool`).toContain(named)
     }
-    expect(pm).toContain(
-      "Ask your questions with ask_question, even to agents; notes expect none. request_action tracks the person's actions. Never guarantee replies.",
-    )
+    expect(pm).toContain('Ask with ask_question and tell with message_agent.')
+    expect(pm).toContain("request_action tracks the person's actions.")
+    expect(pm).toContain('Never guarantee replies.')
     expect(pm).not.toMatch(/routed|travels|the app (sends|records|delivers)/i)
     expect(pm).not.toMatch(/your child(ren)? cannot/i)
   })
@@ -903,12 +907,11 @@ describe('§8 · what the host tells the reader, at a launch and at a reopen', (
     await host.close(await personOpens(DEFAULT_PROFILE_ID), window)
     const pm = await personOpens(DEFAULT_PROFILE_ID)
     const pmTools = handed.at(-1) as AgentToolset
-    const given = await callOn(pmTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'The text',
-      brief: 'the text this dispatch is about',
-    })
+    const given = await callOn(
+      pmTools,
+      'give_work',
+      newConversationGive('worker', 'The text', 'the text this dispatch is about'),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     expect(given.started).toBe(true)
     const child = given.agent as string
@@ -936,21 +939,17 @@ describe('§8 · what the host tells the reader, at a launch and at a reopen', (
     await host.close(await personOpens(DEFAULT_PROFILE_ID), window)
     const pm = await personOpens(DEFAULT_PROFILE_ID)
     const pmTools = handed.at(-1) as AgentToolset
-    const first = await callOn(pmTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'Build the pages',
-      brief: 'build the pages',
-    })
+    const first = await callOn(
+      pmTools,
+      'give_work',
+      newConversationGive('worker', 'Build the pages', 'build the pages'),
+    )
     expect(first.outcome, JSON.stringify(first)).toBe('ok')
     const worker = first.agent as string
     const workerTools = handed.at(-1) as AgentToolset
     const second = await callOn(workerTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'helper',
-      title: 'Check the pages',
-      brief: 'check the pages',
-      piece: first.label,
+      ...newConversationGive('helper', 'Check the pages', 'check the pages'),
+      under: first.label,
     })
     expect(second.outcome, JSON.stringify(second)).toBe('ok')
     expect(second.started).toBe(true)
@@ -961,12 +960,11 @@ describe('§8 · what the host tells the reader, at a launch and at a reopen', (
     })
     expect((seen.at(-1) as InstructionContext).startedBy).toBe(byThePieceItGaveFrom)
 
-    const third = await callOn(pmTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'Write the copy',
-      brief: 'write the copy',
-    })
+    const third = await callOn(
+      pmTools,
+      'give_work',
+      addressedGive(first.label, 'worker', 'Write the copy', 'write the copy'),
+    )
     expect(third.outcome, JSON.stringify(third)).toBe('ok')
     expect(host.nameByItsWork(worker)).toContain('(and 1 more)')
     expect(host.nameByItsWork(worker)).not.toBe(byThePieceItGaveFrom)
@@ -1010,22 +1008,28 @@ describe('§8 · what the host tells the reader, at a launch and at a reopen', (
     expect(thisConversationText(launched)).not.toContain(SPAWNING_OFF)
 
     const brobotTools = handed.at(-1) as AgentToolset
-    const admitted = await callOn(brobotTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: PROJECT_MANAGER_PROFILE_ID,
-      title: 'The delegation',
-      brief: 'the delegation the text instructs',
-    })
+    const admitted = await callOn(
+      brobotTools,
+      'give_work',
+      newConversationGive(
+        PROJECT_MANAGER_PROFILE_ID,
+        'The delegation',
+        'the delegation the text instructs',
+      ),
+    )
     expect(admitted.outcome, JSON.stringify(admitted)).toBe('ok')
     expect(admitted.started).toBe(true)
 
     expect(host.setSpawningEnabled(false)).toEqual({ spawningEnabled: false })
-    const refused = await callOn(brobotTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'reviewer',
-      title: 'The delegation',
-      brief: 'the delegation the text no longer instructs',
-    })
+    const refused = await callOn(
+      brobotTools,
+      'give_work',
+      newConversationGive(
+        'reviewer',
+        'The delegation',
+        'the delegation the text no longer instructs',
+      ),
+    )
     expect(refused.outcome).toBe('refused')
     expect(refused.rail).toBe('spawning-disabled')
     expect(refused.permanence).toBe('until-a-person-changes-it')
@@ -1050,7 +1054,9 @@ describe('§9 · one agent instruction set', () => {
     expect(said).toContain(
       'Keep the judgement and hand off separable, noisy work when the saved time or expertise justifies coordination.',
     )
-    expect(said).toContain('Respect locked choices.')
+    expect(said).toContain(
+      'Its model and effort can change from this task on. If a person set either, it keeps both.',
+    )
     expect(said).toContain('State how to check it; give the next agent enough context.')
     expect(said).toContain(
       'Prefer visible BroCrew agents to provider sub-agents, whose work cannot be revisited here.',

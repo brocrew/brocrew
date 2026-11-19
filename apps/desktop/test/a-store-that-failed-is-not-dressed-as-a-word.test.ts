@@ -1,3 +1,5 @@
+import { expectRecordedCannotRun } from './lib/recorded-send'
+import { newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import {
   fixtureProviderConfig,
@@ -117,12 +119,11 @@ describe('663 M33 · a store that failed is not dressed as a word', () => {
         window,
       )
     ).sessionId
-    const given = await callOn(pm, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'The schema',
-      brief: 'migrate the schema',
-    })
+    const given = await callOn(
+      pm,
+      'give_work',
+      newConversationGive('worker', 'The schema', 'migrate the schema'),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     await waitFor(
@@ -141,7 +142,7 @@ describe('663 M33 · a store that failed is not dressed as a word', () => {
   ): Promise<Record<string, unknown>> =>
     callOn(pm, 'message_agent', { agent: worker, text: 'carry on', kind: 'follow-up', piece })
 
-  it('§1 · a store failure `aWakeThatDidNotHappen` cannot recognise reaches the caller as a broken tool, never a refusal', async () => {
+  it('keeps the recorded message when a store read fails during the start', async () => {
     const { pm, worker, piece } = await aWorkerThatStopped()
     // ⚑ The store's own read, inside `resumeSession`, made to fail — a shape no shortage errno, no
     // `ResumeError` and no typed launch failure produces, so `aWakeThatDidNotHappen` returns null for
@@ -159,22 +160,43 @@ describe('663 M33 · a store that failed is not dressed as a word', () => {
       if (fromTheReopen) throw new Error('663 M33: the ledger read failed (disk I/O error)')
       return real(id)
     }
-    // ⛔ **Never a structured refusal** — the whole point is that this shape does not become one; a
-    // caller reading `outcome` off a resolved value never gets the chance, because there is none.
-    await expect(wakeByMessage(pm, worker, piece)).rejects.toThrow(
-      '663 M33: the ledger read failed (disk I/O error)',
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const outcome = await wakeByMessage(pm, worker, piece)
+    const kept = expectRecordedCannotRun(
+      outcome,
+      'message',
+      'for a reason BroCrew records only in its log',
+      false,
+    )
+    expect(kept.recipient.id).toBe(worker)
+    expect(store.messagesWaitingIn(worker)).toContainEqual(
+      expect.objectContaining({
+        messageId: kept.recorded.id,
+        text: 'carry on',
+      }),
+    )
+    expect(JSON.stringify(outcome)).not.toContain('disk I/O error')
+    expect(warned.mock.calls.flat().map(String).join(' ')).toContain(
+      'the ledger read failed (disk I/O error)',
     )
   })
 
-  it('§2 · control — the very same wake, failing on a cause it DOES recognise, still comes back as the ordinary refusal', async () => {
+  it('names a recognised sign-in failure while keeping the message', async () => {
     const { pm, worker, piece } = await aWorkerThatStopped()
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     gate.resumeFails = () => new AuthUnavailableError('claude', 'signed out')
-    const refused = await wakeByMessage(pm, worker, piece)
-    expect(refused).toMatchObject({
-      outcome: 'refused',
-      rail: 'agent-did-not-start',
-      detail: { agent: worker, because: 'its-sign-in-is-unusable', provider: 'claude' },
-    })
+    const kept = expectRecordedCannotRun(
+      await wakeByMessage(pm, worker, piece),
+      'message',
+      'Claude sign-in could not be used',
+      true,
+    )
+    expect(kept.recipient.id).toBe(worker)
+    expect(store.messagesWaitingIn(worker)).toContainEqual(
+      expect.objectContaining({
+        messageId: kept.recorded.id,
+        text: 'carry on',
+      }),
+    )
   })
 })

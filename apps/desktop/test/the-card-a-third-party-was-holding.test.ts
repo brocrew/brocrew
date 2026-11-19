@@ -1,3 +1,4 @@
+import { openNumberedPmAndGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { rmSync } from 'node:fs'
@@ -200,18 +201,14 @@ describe('496 · the card a third party was holding', () => {
     pmTools: AgentToolset
     workerHandle: FakeSessionHandle
   }> => {
-    const nth = ++pairs
-    const pmProfile = `pm-${String(nth)}`
-    const workerProfile = `worker-${String(nth)}`
-    await bringIdentityIntoBeing(workerProfile)
-    const pm = await personOpens(pmProfile)
-    const pmTools = agentToolsFor(host, pm)
-    const given = await callOn(pmTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: workerProfile,
-      title: 'the work this dispatch is about',
-      brief: 'a long piece of work',
-    })
+    const { pm, pmProfile, pmTools, given } = await openNumberedPmAndGive(
+      ++pairs,
+      bringIdentityIntoBeing,
+      personOpens,
+      (pm) => agentToolsFor(host, pm),
+      'the work this dispatch is about',
+      'a long piece of work',
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     return {
       pm,

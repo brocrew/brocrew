@@ -1,28 +1,19 @@
-import { personOpener } from './helpers/person-opens-session'
+import { clockedQuestionFixture } from './lib/clocked-question-fixture'
+import { addressedGive, giveOpenWorkerTask } from './lib/give-fixture'
 import { callOn } from './helpers/call-agent-tool'
 import { waitFor } from './lib/f093-host'
 import { TASK_STATES } from '../src/shared/task-contracts'
 import { REQUEST_STATES } from '../src/shared/question-contracts'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions } from '@brobot2/runtime'
 import { type AgentToolset } from '@brobot2/runtime'
-import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost } from './helpers/giver-notice-host'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
+import type { SessionStore } from '../src/main/db/session-store'
+import type { RuntimeHost } from './helpers/giver-notice-host'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { REQUEST_IS_OPEN } from '../src/shared/questions'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
-import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * 🔴 **591 · a question does not expire on a clock** — HO-082 §1–§4.1.
@@ -68,7 +59,6 @@ import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from '.
  * held behind `HO-085` §4 — so nothing this suite measures moved.
  */
 const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 const mainRoot = join(here, '../src/main')
 
 /** ⚑ Short enough that a section which lets a question go unanswered costs milliseconds. */
@@ -79,76 +69,23 @@ const BOUND = 150
 // a question does not expire on a clock because there is no clock, not because this one is short.
 
 describe('591 · a question does not expire on a clock', () => {
-  class RecordingSink implements RuntimeEventSink {
-    readonly aPersonIsBehindIt = true
-    readonly messages: RuntimeEventMessage[] = []
-    alive = true
-    constructor(readonly ownerId: string) {}
-    send(message: RuntimeEventMessage): void {
-      this.messages.push(message)
-    }
-    sendLiveness(): void {}
-  }
-
   /** ⚑ `415`'s instrument: remember the toolset each launch was handed. */
-  let userData: string
-  let root: string
-  let db: AppDatabase
+  let fixture: ReturnType<typeof clockedQuestionFixture>
   let store: SessionStore
   let host: RuntimeHost
-  let hosts: RuntimeHost[]
-  let handed: AgentToolset[]
-  let issued: FakeProviderSessions
-  let counter: number
   let clock: number
-  let window: RecordingSink
-  /** ⚠️ **Read at construction**, so a section that wants a longer bound sets it before `buildHost`. */
-  const tick = (): number => clock++
-
-  const buildHost = (): RuntimeHost => {
-    const built = new RuntimeHost({
-      store,
-      ...neutralHostDeps(() => userData),
-      createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, handed, issued),
-      prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
-      newSessionId: () => `sess_${++counter}`,
-      now: tick,
-      readProviderConfig: fixtureProviderConfig,
-    })
-    hosts.push(built)
-    return built
-  }
+  const tick = () => clock++
 
   beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-591-'))
-    root = mkdtempSync(join(tmpdir(), 'brobot2-591-root-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
     clock = 7_000_000
-    store = createSessionStore(db, tick)
-    counter = 0
-    hosts = []
-    handed = []
-    issued = new FakeProviderSessions()
-    host = buildHost()
-    window = new RecordingSink('webContents:1')
+    fixture = clockedQuestionFixture('591', tick)
+    ;({ store, host } = fixture)
   })
 
-  afterEach(async () => {
-    for (const built of hosts) await built.closeAll()
-    db.close()
-    for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
-  })
+  afterEach(() => fixture.close())
 
-  const personOpens = personOpener(() => ({ host, root, window }), 'ask')
-
-  const theToolsetJustHandedOut = (): AgentToolset => {
-    const last = handed.at(-1)
-    if (last === undefined) throw new Error('no toolset was handed to that launch')
-    return last
-  }
+  const personOpens = (profile: string) => fixture.personOpens(profile)
+  const theToolsetJustHandedOut = () => fixture.latestToolset()
 
   const ledger = (sessionId: string): TranscriptEvent[] =>
     store.events(sessionId).map((entry) => entry.event)
@@ -195,21 +132,14 @@ describe('591 · a question does not expire on a clock', () => {
     piece: string
   }> => {
     const seeded = await personOpens('worker')
-    await host.close(seeded, window)
-    const pm = await personOpens('pm')
-    const pmTools = theToolsetJustHandedOut()
-    const given = await callOn(pmTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'the work this dispatch is about',
-      brief: 'migrate the schema',
-    })
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    const worker = given.agent as string
-    const workerTools = theToolsetJustHandedOut()
-    const open = store.piecesOwnedBy(worker).find((one) => TASK_IS_OPEN[one.state])
-    if (open === undefined) throw new Error('the give never opened a piece')
-    return { pm, worker, pmTools, workerTools, piece: open.piece }
+    await host.close(seeded, fixture.window)
+    return giveOpenWorkerTask(
+      store,
+      personOpens,
+      theToolsetJustHandedOut,
+      'the work this dispatch is about',
+      'migrate the schema',
+    )
   }
 
   /**
@@ -433,8 +363,8 @@ describe('591 · a question does not expire on a clock', () => {
       // asked to one function, and the route is in there.
       const code = codeOf(mainRoot, 'runtime/runtime-host.ts')
       expect(code).not.toContain('aTurnIsWaiting')
-      expect(bodyOf(code, 'async answerQuestion(')).toContain(
-        'const told = this.deliverAnswer(held, request.requestId, speaking, said, null, null, stopAs)',
+      expect(bodyOf(code, 'async answerQuestion(')).toMatch(
+        /const told = this\.deliverAnswer\(\s*held,\s*request\.requestId,\s*speaking,\s*said,\s*null,\s*null,\s*stopAs,\s*files\.files,/,
       )
       expect(bodyOf(code, 'async respondUserInput(')).toContain(
         'return await this.aPersonAnswersAQuestionThisAppAsked(',
@@ -577,12 +507,11 @@ describe('591 · a question does not expire on a clock', () => {
       expect(stateOfRequest(worker, first.requestId)).toBe('open')
 
       // ⚑ **D-016 · the second piece is a second give**, which reaches the same worker.
-      const second = await callOn(pmTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'and rename the column',
-        brief: 'and rename the column',
-      })
+      const second = await callOn(
+        pmTools,
+        'give_work',
+        addressedGive(worker, 'worker', 'and rename the column', 'and rename the column'),
+      )
       expect(second.outcome, JSON.stringify(second)).toBe('ok')
       expect(second.agent).toBe(worker)
       const other = store.piecesOwnedBy(worker).find((one) => one.piece !== piece)
@@ -849,8 +778,7 @@ describe('591 · a question does not expire on a clock', () => {
         question: 'which schema?',
         who_answers: 'the-parent',
       })
-      expect(expired.text).toContain('still theirs to answer')
-      expect(expired.text).toContain('reaches you as a message')
+      expect(expired.text).toContain('The answer arrives as a message.')
       // ⛔ **And it does NOT promise the work is still open**, which is `437`'s own review finding
       // and the mistake this dispatch had every opportunity to repeat.
       expect(expired.text).not.toContain('the work is still yours')
@@ -892,7 +820,10 @@ describe('591 · a question does not expire on a clock', () => {
       // (HO-088 §2) — where the question went. ⛔ It is the caller's own declaration copied back,
       // which is why it satisfies `a-positive-assertion-must-differ-from-the-default` where
       // `answered: false` did not: the two arms are two different routings.
-      expect(Object.keys(payload).sort()).toEqual(['outcome', 'question', 'went_to'])
+      expect(Object.keys(payload).sort()).toEqual(['outcome', 'question', 'receipt', 'went_to'])
+      expect(payload.receipt).toMatchObject({
+        recorded: { kind: 'question', id: payload.question },
+      })
       expect(payload.went_to).toBe('the-parent')
       // ⛔ **`a-positive-assertion-must-differ-from-the-default`**: a payload that reported
       // `answered: false` on every call is a fact a model reads and can never act on.
@@ -955,7 +886,7 @@ describe('591 · a question does not expire on a clock', () => {
       // verb in this class and the claim is about the body.
       const body = ask.slice(ask.indexOf('): Promise<AskOutcome> {'))
       expect(body.length, 'the slice found no raiseAQuestion body').toBeGreaterThan(400)
-      expect(body).not.toContain('await ')
+      expect(body.match(/\bawait\s+[\w.]+/g)).toEqual(['await this.deliverQuestion'])
       expect(body).not.toContain('setTimeout')
       expect(body).not.toContain('new Promise')
       expect(body).not.toContain('Promise.race')

@@ -1,3 +1,6 @@
+import { callOn as callProviderTool } from './helpers/call-agent-tool'
+import { personOpener } from './helpers/person-opens-session'
+import { openAndGiveToNewChild, newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import {
   fixtureProviderConfig,
@@ -154,39 +157,28 @@ describe('D-009 · a model’s own question stays the model’s', () => {
     name: ToolName,
     args: Record<string, unknown>,
   ): Promise<Record<string, unknown>> => {
-    const tool = agentToolsFor(host, sessionId).tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
+    return callProviderTool(agentToolsFor(host, sessionId), name, args)
   }
 
-  const personOpens = async (
-    profileId: string,
-    approvalMode: 'ask' | 'auto' = 'ask',
-  ): Promise<string> => {
-    const { sessionId } = await host.createSession(
-      { provider: 'claude', profileId, approvalMode, cwd: root },
-      window,
-    )
-    return sessionId
-  }
+  const personOpens = personOpener(() => ({ host, root, window }), 'ask')
 
   /**
    * ⚑ A PM in a window, and one child it gave a piece to through the real door (D-016: the give
    * starts the child, and its brief is the child's first turn).
    */
   const aPmAndAChild = async (): Promise<{ pm: string; child: Child }> => {
-    await host.close(await personOpens('worker'), window)
-    const pm = await personOpens(DEFAULT_PROFILE_ID)
-    const spawned = await callOn(pm, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'the notes',
-      brief: 'the notes',
-    })
-    expect(spawned.outcome, JSON.stringify(spawned)).toBe('ok')
+    const { parent: pm, child } = await openAndGiveToNewChild(
+      personOpens,
+      (id) => host.close(id, window),
+      (id) => agentToolsFor(host, id),
+      DEFAULT_PROFILE_ID,
+      'worker',
+      'the notes',
+      'the notes',
+    )
     const handle = handles.at(-1)
     if (handle === undefined) throw new Error('no provider handle was issued to the child')
-    return { pm, child: { id: spawned.agent as string, handle } }
+    return { pm, child: { id: child, handle } }
   }
 
   const questionOf = (asker: string, requestId: string) =>
@@ -279,20 +271,18 @@ describe('D-009 · a model’s own question stays the model’s', () => {
     await host.close(await personOpens('pm'), window)
     await host.close(await personOpens('worker'), window)
     const lead = await personOpens(DEFAULT_PROFILE_ID, 'auto')
-    const spawnedPm = await callOn(lead, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'pm',
-      title: 'the release',
-      brief: 'the release',
-    })
+    const spawnedPm = await callOn(
+      lead,
+      'give_work',
+      newConversationGive('pm', 'the release', 'the release'),
+    )
     expect(spawnedPm.outcome, JSON.stringify(spawnedPm)).toBe('ok')
     const pm = spawnedPm.agent as string
-    const spawned = await callOn(pm, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'the notes',
-      brief: 'the notes',
-    })
+    const spawned = await callOn(
+      pm,
+      'give_work',
+      newConversationGive('worker', 'the notes', 'the notes'),
+    )
     expect(spawned.outcome, JSON.stringify(spawned)).toBe('ok')
     const handle = handles.at(-1)
     if (handle === undefined) throw new Error('no provider handle was issued to the child')

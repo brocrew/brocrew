@@ -77,6 +77,23 @@ describe('a service queues the work it is given', () => {
     return busy
   }
 
+  const recordWaitingWork = (
+    from: string,
+    to: string,
+    parent: string,
+    label: string,
+    piece: string,
+    number: number,
+  ): void => {
+    const words = { piece, parent, givenBy: from, title: 'Wait', brief: 'wait' }
+    world.store.recordGive(
+      { ...words, number, owner: to, folder: null, inputs: [] },
+      world.store.nextOrdinal(to),
+      { type: 'work_given', ...words, label },
+      world.clock++,
+    )
+  }
+
   describe('a give to a service', () => {
     it('is queued on its one conversation, given by its caller: the oldest is handed over, the rest wait their turn', async () => {
       const { host, first, second } = await aServiceAndTwoCallers()
@@ -105,6 +122,23 @@ describe('a service queues the work it is given', () => {
         .flatMap((row) => (row.type === 'message_queued' ? [row.piece] : []))
       expect(held).toEqual([one.piece])
       expect(world.startedAs).toEqual(['caller', 'other-caller', 'browser-driver'])
+    })
+
+    it('restores the same archived service only when its next task is recorded', async () => {
+      const { host, first, second } = await aServiceAndTwoCallers()
+      const current = accepted(await world.gives(host, first, 'browser-driver'))
+      const service = current.owner
+      await handedOver(service, current.piece)
+      expect(await host.archiveConversation(service)).toMatchObject({ done: true })
+      expect(host.whenItWasArchived(service)).toEqual(expect.any(Number))
+
+      const next = accepted(await world.gives(host, second, 'browser-driver'))
+      expect(next.owner).toBe(service)
+      expect(world.store.workById(next.piece)?.owner).toBe(service)
+      expect(host.whenItWasArchived(service)).toBeNull()
+      expect(
+        world.store.recorded().filter((row) => row.profileId === 'browser-driver'),
+      ).toHaveLength(1)
     })
 
     it('says on each caller’s board how many pieces are ahead of its own', async () => {
@@ -189,6 +223,27 @@ describe('a service queues the work it is given', () => {
   })
 
   describe('a give it refuses', () => {
+    const expectsServiceToRefuseSelfWait = async (
+      host: RuntimeHost,
+      caller: string,
+      under: string,
+    ) => {
+      expect(
+        refusedAs(
+          await host.giveWork(
+            {
+              profile: 'browser-driver',
+              title: 'Late',
+              brief: 'late',
+              under,
+              definition_of_done: 'The requested result and its checks are recorded.',
+            },
+            { ownerId: agentCallerId(caller) },
+          ),
+        ),
+      ).toBe('it-would-wait-on-itself')
+    }
+
     it('while services are switched off', async () => {
       const { host, first } = await aServiceAndTwoCallers({ servicesOn: false })
       expect(refusedAs(await world.gives(host, first, 'browser-driver'))).toBe('services-are-off')
@@ -245,31 +300,8 @@ describe('a service queues the work it is given', () => {
       })
       const servicePiece = world.store.piecesOwnedBy(service)[0]
       if (servicePiece === undefined) throw new Error('the service holds nothing')
-      const aGive = (from: string, to: string, under: string, label: string, id: string): void =>
-        world.store.recordGive(
-          {
-            piece: id,
-            parent: under,
-            number: 50,
-            owner: to,
-            givenBy: from,
-            title: 'Wait',
-            brief: 'wait',
-            folder: null,
-            inputs: [],
-          },
-          world.store.nextOrdinal(to),
-          {
-            type: 'work_given',
-            piece: id,
-            label,
-            parent: under,
-            givenBy: from,
-            title: 'Wait',
-            brief: 'wait',
-          },
-          world.clock++,
-        )
+      const aGive = (from: string, to: string, parent: string, label: string, id: string) =>
+        recordWaitingWork(from, to, parent, label, id, 50)
       aGive(
         service,
         'sess_helper',
@@ -312,20 +344,7 @@ describe('a service queues the work it is given', () => {
       )
       const next = world.aHost()
       const caller = await next.resumeSession(first, world.window, null)
-      expect(
-        refusedAs(
-          await next.giveWork(
-            {
-              profile: 'browser-driver',
-              title: 'Late',
-              brief: 'late',
-              piece: root.label,
-              definition_of_done: 'The requested result and its checks are recorded.',
-            },
-            { ownerId: agentCallerId(caller.sessionId) },
-          ),
-        ),
-      ).toBe('it-would-wait-on-itself')
+      await expectsServiceToRefuseSelfWait(next, caller.sessionId, root.label)
     })
 
     it('that would close a wait through a conversation that took another’s place', async () => {
@@ -348,30 +367,7 @@ describe('a service queues the work it is given', () => {
         })
       }
       const record = (from: string, to: string, parent: string, label: string, id: string) =>
-        world.store.recordGive(
-          {
-            piece: id,
-            parent,
-            number: 60,
-            owner: to,
-            givenBy: from,
-            title: 'Wait',
-            brief: 'wait',
-            folder: null,
-            inputs: [],
-          },
-          world.store.nextOrdinal(to),
-          {
-            type: 'work_given',
-            piece: id,
-            label,
-            parent,
-            givenBy: from,
-            title: 'Wait',
-            brief: 'wait',
-          },
-          world.clock++,
-        )
+        recordWaitingWork(from, to, parent, label, id, 60)
       record(service, 'sess_old_helper', servicePiece.piece, `${servicePiece.label}.60`, 'work_a')
       record('sess_old_helper', first, 'work_a', `${servicePiece.label}.60.1`, 'work_b')
       world.store.append(
@@ -384,20 +380,7 @@ describe('a service queues the work it is given', () => {
       const caller = await next.resumeSession(first, world.window, null)
       const root = world.store.rootOf(first)
       if (root === null) throw new Error('the caller owns no root')
-      expect(
-        refusedAs(
-          await next.giveWork(
-            {
-              profile: 'browser-driver',
-              title: 'Late',
-              brief: 'late',
-              piece: root.label,
-              definition_of_done: 'The requested result and its checks are recorded.',
-            },
-            { ownerId: agentCallerId(caller.sessionId) },
-          ),
-        ),
-      ).toBe('it-would-wait-on-itself')
+      await expectsServiceToRefuseSelfWait(next, caller.sessionId, root.label)
     })
 
     describe('where the service’s open work reaches more conversations than the check reads', () => {
@@ -419,31 +402,8 @@ describe('a service queues the work it is given', () => {
         if (held === undefined) throw new Error('the service holds nothing')
         await host.closeAll()
         world.anAgent('helper', 'nothing kept')
-        const aGive = (from: string, to: string, parent: string, label: string, id: string): void =>
-          world.store.recordGive(
-            {
-              piece: id,
-              parent,
-              number: 1000 + Number(id.split('_').at(-1)),
-              owner: to,
-              givenBy: from,
-              title: 'Wait',
-              brief: 'wait',
-              folder: null,
-              inputs: [],
-            },
-            world.store.nextOrdinal(to),
-            {
-              type: 'work_given',
-              piece: id,
-              label,
-              parent,
-              givenBy: from,
-              title: 'Wait',
-              brief: 'wait',
-            },
-            world.clock++,
-          )
+        const aGive = (from: string, to: string, parent: string, label: string, id: string) =>
+          recordWaitingWork(from, to, parent, label, id, 1000 + Number(id.split('_').at(-1)))
         for (let at = 0; at < helpers; at += 1) {
           const helper = `sess_helper_${String(at)}`
           world.store.create({
@@ -489,7 +449,7 @@ describe('a service queues the work it is given', () => {
             profile: 'browser-driver',
             title: 'Late',
             brief: 'late',
-            piece: at.root,
+            under: at.root,
           },
           { ownerId: agentCallerId(at.caller) },
         )
@@ -551,33 +511,8 @@ describe('a service queues the work it is given', () => {
             parentSessionId: first,
           })
         }
-        const aGive = (from: string, to: string, parent: string, label: string, id: string) => {
-          const number = Number(label.split('.').at(-1))
-          world.store.recordGive(
-            {
-              piece: id,
-              parent,
-              number,
-              owner: to,
-              givenBy: from,
-              title: 'Wait',
-              brief: 'wait',
-              folder: null,
-              inputs: [],
-            },
-            world.store.nextOrdinal(to),
-            {
-              type: 'work_given',
-              piece: id,
-              label,
-              parent,
-              givenBy: from,
-              title: 'Wait',
-              brief: 'wait',
-            },
-            world.clock++,
-          )
-        }
+        const aGive = (from: string, to: string, parent: string, label: string, id: string) =>
+          recordWaitingWork(from, to, parent, label, id, Number(label.split('.').at(-1)))
         const tear = (ledger: string, type = 'work_given'): void => {
           world.db
             .prepare(`UPDATE events SET payload = '{not json' WHERE session_id = ? AND type = ?`)
@@ -639,7 +574,7 @@ describe('a service queues the work it is given', () => {
               profile: 'browser-driver',
               title: 'Late',
               brief: 'late',
-              piece: root.label,
+              under: root.label,
             },
             { ownerId: agentCallerId(caller.sessionId) },
           )
@@ -712,7 +647,7 @@ describe('a service queues the work it is given', () => {
       world.anAgent('caller', 'nothing kept')
       const host = world.aHost()
       const caller = await world.aPersonOpens(host, 'caller')
-      const refused = await world.gives(host, caller, 'browser-driver')
+      const refused = await world.gives(host, caller, 'browser-driver', { to: undefined })
       expect(refusedAs(refused)).toBe('its-provider-is-not-chosen')
       expect(refused.ok ? '' : refused.refusal.reason).toBe(
         'Ask a person to choose a provider for “browser-driver” on its sheet, or give the work to ' +
@@ -809,22 +744,23 @@ describe('a service queues the work it is given', () => {
       drivenByTheTurn: () => null,
       isAHelper: () => false,
       agentExists: () => true,
-      helperAs: () => null,
+      conversationAt: () => null,
+      recentWith: () => ({ rows: [], more: false }),
       serviceAt: () => service,
       spawningEnabled: () => true,
-      creatorOf: () => null,
       itsProvider: () => ({ provider: 'claude', from: 'saved' }),
       theNamedModelsProvider: () => null,
       modelChoiceOf: () => null,
       checkFolder: (path) => ({ ok: true, path }),
     })
-    const admitted = (service: ServiceAtAGive): string => {
+    const admitted = (service: ServiceAtAGive, normalGive = {}): string => {
       const admission = admitGive(
         {
           definition_of_done: 'The requested result and its checks are recorded.',
           profile: 'browser-driver',
           title: 'A piece',
           brief: 'a piece',
+          ...normalGive,
         },
         { ownerId: agentCallerId('sess_caller') },
         facts(service),
@@ -867,8 +803,10 @@ describe('a service queues the work it is given', () => {
       expect(admitted({ is: 'unknown' })).toBe('its-kind-is-unknown')
     })
 
-    it('leaves an agent that is not a service to the lookup, as today', () => {
-      expect(admitted({ is: 'normal' })).toBe('a-new-conversation')
+    it('lets a give to a normal agent name a new conversation', () => {
+      expect(admitted({ is: 'normal' }, { to: 'new', conversation_title: 'A job' })).toBe(
+        'a-new-conversation',
+      )
     })
   })
 
@@ -1051,14 +989,16 @@ describe('a service queues the work it is given', () => {
 
     it('refuses a service giving work to itself, end to end', async () => {
       const { host, one } = await twoRunningServices()
-      expect(refusedAs(await world.gives(host, one, 'svc-one'))).toBe('that-is-this-conversation')
+      expect(refusedAs(await world.gives(host, one, 'svc-one', { to: undefined }))).toBe(
+        'that-is-this-conversation',
+      )
     })
 
     it('two services giving each other work at the same moment: one is given, the other closes no wait', async () => {
       const { host, one, two } = await twoRunningServices()
       const [toTwo, toOne] = await Promise.all([
-        world.gives(host, one, 'svc-two', { title: 'To two' }),
-        world.gives(host, two, 'svc-one', { title: 'To one' }),
+        world.gives(host, one, 'svc-two', { title: 'To two', to: undefined }),
+        world.gives(host, two, 'svc-one', { title: 'To one', to: undefined }),
       ])
       const outcomes = [toTwo, toOne].map((outcome) =>
         outcome.ok ? 'given' : outcome.refusal.rail,

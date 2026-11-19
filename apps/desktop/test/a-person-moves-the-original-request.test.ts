@@ -811,12 +811,13 @@ describe('a person moves the stored request', () => {
       who_answers: 'a-person',
       move_to: moveTo,
     })
-    const reason =
+    const why =
       rail === 'move-offer-is-held'
         ? 'This request is still being recorded, so it cannot be offered for a move yet.'
         : rail === 'move-offer-needs-a-person'
           ? 'That conversation is unavailable until a person restores it, so this request cannot be offered for a move.'
           : 'This request cannot be offered for a move.'
+    const reason = `Not sent: ${why}`
     expect(answered.structured).toEqual({
       outcome: 'refused',
       rail,
@@ -826,8 +827,7 @@ describe('a person moves the stored request', () => {
       reason,
       detail: {},
     })
-    const prefix = `refused (${rail}): `
-    expect(answered.text.startsWith(prefix + reason)).toBe(true)
+    expect(answered.text.startsWith(reason)).toBe(true)
     expect(answered.text).not.toContain(callerWords)
     const added = world
       .ledger(source)
@@ -841,7 +841,7 @@ describe('a person moves the stored request', () => {
         permanence,
         retryable,
         remedy,
-        told: { text: answered.text.slice(prefix.length), dropped: 0 },
+        told: { text: answered.text, dropped: 0 },
       },
     ])
     expect(JSON.stringify(added)).not.toContain(callerWords)

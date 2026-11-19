@@ -43,7 +43,6 @@ import {
   THE_PERSON_AT_A_WINDOW,
   type TurnOrigin,
 } from '../src/main/runtime/turn-origin'
-import { theOwnerOf } from '../src/shared/piece-called'
 import {
   aCommandTakesNoAttachments,
   aCompactionTakesNoInstructions,
@@ -450,6 +449,8 @@ describe('713 §1 · R59 — the host, over the REAL Codex adapter', () => {
     // worker's first turn.
     const tools = agentToolsFor(app.host, pm)
     const given = await callOn(tools, 'give_work', {
+      to: 'new',
+      conversation_title: 'The work 713 is about',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: workerProfile,
       title: 'The work 713 is about',
@@ -472,11 +473,11 @@ describe('713 §1 · R59 — the host, over the REAL Codex adapter', () => {
     if (pmNamed === null) throw new Error('the pm holds no piece, so no piece addresses it')
     // ⚑ W4.178 · the agent's `/compact` is the brief of a give: a brief says nothing of a note.
     const answering = theDirectionLine(
-      `${agentName('pm-713', app.store.agentIdentities())}, ${theOwnerOf(pmNamed)}`,
+      `${agentName('pm-713', app.store.agentIdentities())}`,
       'caller',
-      true,
     )
-    expect(heard.startsWith('Sent by ') && heard.includes(answering), heard).toBe(true)
+    expect(heard.startsWith('From ') && heard.includes(answering), heard).toBe(true)
+    expect(heard.split('\n')[0]).toContain(`(conversation ${pmNamed.label} ·`)
     expect(heard).toContain('/compact')
     expect(heard).not.toBe('/compact')
   })

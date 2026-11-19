@@ -1,3 +1,5 @@
+import { giveAndReadItsTask } from './lib/give-fixture'
+import { giveWorkerAndClaimItsBrief } from './lib/running-worker-fixture'
 import { waitFor } from './lib/f093-host'
 import { REQUEST_STATES } from '../src/shared/question-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -253,41 +255,19 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
   }
 
   /** A give, answered `ok`. `under` names the giver's own piece. */
-  const aGive = async (
+  const aGive = (
     giver: string,
     profile: string,
     title: string,
     brief: string,
+    to: string,
     extra: Record<string, unknown> = {},
-  ): Promise<{ agent: string; piece: string; label: string; answer: Record<string, unknown> }> => {
-    const answer = await callOn(giver, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile,
-      title,
-      brief,
-      ...extra,
-    })
-    expect(answer.outcome, JSON.stringify(answer)).toBe('ok')
-    return {
-      agent: answer.agent as string,
-      piece: answer.piece as string,
-      label: answer.label as string,
-      answer,
-    }
-  }
+  ) =>
+    giveAndReadItsTask((name, args) => callOn(giver, name, args), to, profile, title, brief, extra)
 
   /** A PM a person opened, and a worker it gave one piece, whose first turn parks on a card. */
-  const aPmAndItsWorker = async (
-    suffix = '',
-    title = 'the first piece',
-  ): Promise<{ pm: string; worker: string; piece: string; label: string; title: string }> => {
-    await bringIdentityIntoBeing(`worker${suffix}`)
-    const pm = await personOpens(`pm${suffix}`)
-    const given = await aGive(pm, `worker${suffix}`, title, THE_GIVES_BRIEF)
-    host.claimSession(given.agent, window)
-    await waitFor(() => cardsOn(given.agent) > 0, 'the worker to park on its first turn')
-    return { pm, worker: given.agent, piece: given.piece, label: given.label, title }
-  }
+  const aPmAndItsWorker = (suffix = '', title = 'the first piece') =>
+    giveWorkerAndClaimItsBrief({ host, store, window, personOpens }, suffix, title, THE_GIVES_BRIEF)
 
   /** The same, with the worker's first turn let end: it holds the piece and is idle. */
   const anIdleWorker = async (suffix = '') => {
@@ -352,12 +332,10 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
 
       // ⚑ The PROVIDER was handed the words framed by who sent them and which piece they are about.
       await waitFor(
-        () => saidToProvider(worker).some((said) => said.includes('sends you the new brief of')),
+        () => saidToProvider(worker).some((said) => said.includes('a new brief for task')),
         'the provider to be handed the new brief',
       )
-      const heard = saidToProvider(worker).filter((said) =>
-        said.includes('sends you the new brief of'),
-      )
+      const heard = saidToProvider(worker).filter((said) => said.includes('a new brief for task'))
       expect(heard).toHaveLength(1)
       expect(heard[0]).toContain(pieceLine(label, title))
       expect(heard[0]).toContain(THE_NEW_BRIEF)
@@ -396,18 +374,16 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
       )
       await letItSettle()
       expect(
-        saidToProvider(worker).filter((said) => said.includes('sends you the new brief of')),
+        saidToProvider(worker).filter((said) => said.includes('a new brief for task')),
       ).toEqual([])
 
       // ⚑ The turn ends: the provider hears it once, and the held row is closed as sent.
       await letTheTurnEnd(worker)
       await waitFor(
-        () => saidToProvider(worker).some((said) => said.includes('sends you the new brief of')),
+        () => saidToProvider(worker).some((said) => said.includes('a new brief for task')),
         'the held brief to reach the provider',
       )
-      const heard = saidToProvider(worker).filter((said) =>
-        said.includes('sends you the new brief of'),
-      )
+      const heard = saidToProvider(worker).filter((said) => said.includes('a new brief for task'))
       expect(heard).toHaveLength(1)
       expect(heard[0]).toContain(THE_NEW_BRIEF)
       expect(stillHeld(store.events(worker)).map((one) => one.messageId)).not.toContain(
@@ -429,9 +405,16 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
       const { pm, worker, piece, label, title } = await aPmAndItsWorker()
       // ⚑ The owner gives a child under this piece, so the open-pieces sentence has something to name.
       await bringIdentityIntoBeing('grandchild')
-      const child = await aGive(worker, 'grandchild', 'a smaller piece', 'do the small part', {
-        piece: label,
-      })
+      const child = await aGive(
+        worker,
+        'grandchild',
+        'a smaller piece',
+        'do the small part',
+        'new',
+        {
+          under: label,
+        },
+      )
       await letTheTurnEnd(worker)
       await waitFor(() => isIdle(worker), 'the worker to go idle')
       expect(TASK_IS_OPEN[pieceOf(worker, piece).state]).toBe(true)
@@ -508,7 +491,7 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
     it('closing a piece whose brief is still held takes the brief back and the piece is closed, not withdrawn', async () => {
       const { pm, worker, piece, label } = await aPmAndItsWorker()
       const HELD_BRIEF = 'held work text'
-      const second = await aGive(pm, 'worker', 'the held piece', HELD_BRIEF)
+      const second = await aGive(pm, 'worker', 'the held piece', HELD_BRIEF, label)
       // ⚑ D-022 · R3: a give held behind the owner's turn answers `held` (`queued` is `message_agent`'s).
       expect(second.answer.delivery).toBe('held')
       const waiting = pieceOf(worker, second.piece)
@@ -770,7 +753,9 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
       const aText = 'the table to migrate\n'
       const a = wrote('a.md', aText)
 
-      const given = await aGive(pm, 'worker', 'with inputs', THE_GIVES_BRIEF, { inputs: [a] })
+      const given = await aGive(pm, 'worker', 'with inputs', THE_GIVES_BRIEF, 'new', {
+        inputs: [a],
+      })
       const worker = given.agent
       host.claimSession(worker, window)
       const inputs = given.answer.inputs as { resource: string; name: string }[]
@@ -796,12 +781,10 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
       const briefed = await callOn(pm, 'update_work', { piece: given.label, brief: THE_NEW_BRIEF })
       expect(briefed.outcome, JSON.stringify(briefed)).toBe('ok')
       await waitFor(
-        () => saidToProvider(worker).some((said) => said.includes('sends you the new brief of')),
+        () => saidToProvider(worker).some((said) => said.includes('a new brief for task')),
         'the worker to be handed the new brief',
       )
-      const rebrief = saidToProvider(worker).find((said) =>
-        said.includes('sends you the new brief of'),
-      )
+      const rebrief = saidToProvider(worker).find((said) => said.includes('a new brief for task'))
       expect(rebrief).toContain(`(a.md)`)
       expect(rebrief).not.toContain('c.md')
 
@@ -812,6 +795,7 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
       const pieces = store.piecesOwnedBy(worker).length
       const hashes = keptHashes()
       const refused = await callOn(pm, 'give_work', {
+        to: given.label,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'never begun',
@@ -829,7 +813,7 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
       expect(saidToProvider(worker).some((said) => said.includes('never sent'))).toBe(false)
 
       // ⚑ The paired positive: a give with no inputs is taken, says no inputs and keeps no file.
-      const plain = await aGive(pm, 'worker', 'without inputs', 'plain work')
+      const plain = await aGive(pm, 'worker', 'without inputs', 'plain work', given.label)
       expect(plain.answer.inputs).toBeUndefined()
       expect(store.resourcesOf(plain.piece)).toEqual([])
       expect(keptHashes()).toEqual(hashes)

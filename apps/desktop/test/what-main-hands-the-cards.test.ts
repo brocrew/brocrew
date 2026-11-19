@@ -1,3 +1,4 @@
+import { addressedGive, newConversationGive, readSuccessfulRawGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { MessageSentEvent, TranscriptEvent } from '../src/shared/conversation-events'
 import { forestOf } from './lib/forest-of-host'
@@ -174,13 +175,13 @@ describe('671 · what main hands the cards', () => {
     await host.close(seeded, window)
     const pm = await personOpens('pm')
     const pmTools = theToolsetJustHandedOut()
-    const given = await call(pmTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'The work this dispatch is about',
-      brief: 'build it',
-    })
-    expect(given.structured.outcome, JSON.stringify(given.structured)).toBe('ok')
+    const given = await readSuccessfulRawGive(() =>
+      call(
+        pmTools,
+        'give_work',
+        newConversationGive('worker', 'The work this dispatch is about', 'build it'),
+      ),
+    )
     return {
       pm,
       worker: given.structured.agent as string,
@@ -307,7 +308,7 @@ describe('671 · what main hands the cards', () => {
       // and the piece it is about.
       expect(receipt).toMatchObject({
         to: worker,
-        kind: 'follow-up',
+        kind: 'note',
         delivery: 'sent',
         piece,
         label,
@@ -382,19 +383,23 @@ describe('671 · what main hands the cards', () => {
    * give's own answer.
    */
   describe('§2 · G2 — the relayed turn names the piece it OPENED', () => {
-    it('🔴 IDLE branch: the brief names its piece FIRST, then the piece row labels it, and the giver’s answer names the same id', async () => {
+    it('records the new task and its first brief before the provider takes the turn', async () => {
       const { worker, piece, label } = await aPmAndItsWorker()
       const turn = rowsOf(worker, 'user_turn').at(-1)
       const given = rowsOf(worker, 'work_given').at(-1)
+      const messageId = given?.event.messageId
       expect(turn?.event.text).toBe('build it')
-      expect(given?.event.messageId).toBeUndefined()
+      expect(messageId).toMatch(/^msg_/)
+      expect(
+        rowsOf(worker, 'message_queued').find((row) => row.event.messageId === messageId)?.event,
+      ).toMatchObject({ text: 'build it', piece, label })
+      expect(
+        rowsOf(worker, 'message_unqueued').find((row) => row.event.messageId === messageId)?.event,
+      ).toMatchObject({ reason: 'sent' })
       expect(turn?.event.piece).toBe(given?.event.piece)
       expect(turn?.event.label).toBe(given?.event.label)
       expect([piece, label]).toEqual([given?.event.piece, given?.event.label])
-      // ⚠️ **The ORDER on this branch** — `UserTurnEvent.piece`'s own note: the turn is published
-      // when the provider accepts it, and the piece row after it. A reader that joined in one
-      // direction only would miss exactly this branch.
-      expect(turn!.ordinal).toBeLessThan(given!.ordinal)
+      expect(given!.ordinal).toBeLessThan(turn!.ordinal)
     })
 
     it('🔴 HELD branch: the piece row comes FIRST, and the turn the brief flushes into names it', async () => {
@@ -405,12 +410,11 @@ describe('671 · what main hands the cards', () => {
         () => ledger(worker).some((event) => event.type === 'permission_request'),
         'the worker to be busy',
       )
-      const given = await call(pmTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'Now build it',
-        brief: 'now build it',
-      })
+      const given = await call(
+        pmTools,
+        'give_work',
+        addressedGive(worker, 'worker', 'Now build it', 'now build it'),
+      )
       expect(given.structured.agent).toBe(worker)
       expect(given.structured.delivery).toBe('held')
       const row = rowsOf(worker, 'work_given').at(-1)

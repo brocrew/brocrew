@@ -1,3 +1,4 @@
+import { addressedGive, newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import { RecordingSink, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
@@ -36,8 +37,8 @@ import { WORK_REPORT_MARK } from '../src/renderer/src/lib/work-report'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import type { TranscriptItem } from '../src/renderer/src/lib/transcript'
 
-import { TURN_AUTHORSHIP_KEYS, agentName } from '../src/shared/runtime-ipc'
-import { pieceLine, theOwnerOf } from '../src/shared/piece-called'
+import { TURN_AUTHORSHIP_KEYS } from '../src/shared/runtime-ipc'
+import { pieceLine } from '../src/shared/piece-called'
 import { theDirectionLine } from '../src/main/runtime/turn-origin'
 import { replyText } from '../src/main/runtime/reply-rails'
 import { homesUnder } from './helpers/scratch-host'
@@ -186,12 +187,7 @@ describe('413 · words the person did not say', () => {
     const pm = await personOpens(pmProfile)
     const pmTools = agentToolsFor(host, pm)
     const profile = siblings[0] as string
-    const given = await callOn(pmTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile,
-      title: 'The work',
-      brief: text,
-    })
+    const given = await callOn(pmTools, 'give_work', newConversationGive(profile, 'The work', text))
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     return {
       pm,
@@ -519,22 +515,20 @@ describe('413 · words the person did not say', () => {
       // ⛔ **Step 3 of the lifecycle** — *"BroBot gives the project manager the project, as a
       // numbered task."* This is the turn that was unattributed on BOTH providers. ⚑ **D-016** —
       // the give starts the PM, and the project is its first turn.
-      const given = await callOn(bossTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: pmProfile,
-        title: 'The project',
-        brief: 'deliver the project',
-      })
+      const given = await callOn(
+        bossTools,
+        'give_work',
+        newConversationGive(pmProfile, 'The project', 'deliver the project'),
+      )
       expect(given.outcome, JSON.stringify(given)).toBe('ok')
       const pm = given.agent as string
 
       const pmTools = agentToolsFor(host, pm)
-      const task = await callOn(pmTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: workerProfile,
-        title: 'Task 001',
-        brief: 'task 001',
-      })
+      const task = await callOn(
+        pmTools,
+        'give_work',
+        newConversationGive(workerProfile, 'Task 001', 'task 001'),
+      )
       expect(task.outcome, JSON.stringify(task)).toBe('ok')
       const worker = task.agent as string
 
@@ -767,12 +761,11 @@ describe('413 · words the person did not say', () => {
       // for a second one: `give_work`'s own description is *"held until that agent is free"*.
       // ⚑ **D-016** — a second give from the same giver reaches the SAME conversation, and the
       // one-open-task rail that made `415` finish the first piece here first is gone.
-      const second = await callOn(pmTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile,
-        title: 'Task two',
-        brief: 'task two',
-      })
+      const second = await callOn(
+        pmTools,
+        'give_work',
+        addressedGive(worker, profile, 'Task two', 'task two'),
+      )
       expect(second.agent).toBe(worker)
       // ⚑ **D-022 · R3** — `give_work` says `held` where it said `queued`: one word with the verbs
       // that tell a piece's holder.
@@ -812,12 +805,11 @@ describe('413 · words the person did not say', () => {
     it('⛔ the app going away holding a task keeps the held row OPEN, and it still knows whose it was', async () => {
       const { pmTools, worker, profile } = await workWasGiven('the first task')
       // ⚑ **D-016** — the second give is held behind the first brief's turn, as above.
-      const second = await callOn(pmTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile,
-        title: 'Task two',
-        brief: 'task two',
-      })
+      const second = await callOn(
+        pmTools,
+        'give_work',
+        addressedGive(worker, profile, 'Task two', 'task two'),
+      )
       expect(second.delivery, JSON.stringify(second)).toBe('held')
       const held = ledger(worker)
         .filter((event) => event.type === 'message_queued')
@@ -954,19 +946,8 @@ describe('413 · words the person did not say', () => {
      * piece it owns where it spelled the PM's id — composed from the product's own parts, never
      * typed.
      */
-    const answering = (pm: string): string => {
-      const named = store.workThatNames(pm)
-      const profile = store.identityOf(pm)?.profileSlug
-      if (named === null || profile === undefined) {
-        throw new Error(`${pm} holds no piece or has no identity, so nothing addresses it`)
-      }
-      // ⚑ W4.178 · every turn this answers hands over a piece: a brief says nothing of a note.
-      return theDirectionLine(
-        `${agentName(profile, store.agentIdentities())}, ${theOwnerOf(named)}`,
-        'caller',
-        true,
-      )
-    }
+    const answering = (pm: string): string =>
+      theDirectionLine(host.whatToCallTheConversation(pm), 'caller')
 
     it('🔴 a relayed TASK reaches the provider SAYING who wrote it — 414 closed this', async () => {
       // ⛔ **This is `413` §2's half 2, measured.** The brief calls it *"a reading of HO-020's
@@ -992,6 +973,7 @@ describe('413 · words the person did not say', () => {
       // ⛔ **`414`'s line, which is about the AUTHOR and says nothing about the work**, in front
       // of the words rather than after them — ⚑ D-016 · commit 7 · R3: its address is the piece
       // the author owns.
+      expect(handed).toContain(`(conversation ${host.addressOf(pm)} ·`)
       expect(handed).toContain(answering(pm))
       // 🔴 **439 · and the SECOND sentence, which is this file's own subject one tier up.**
       //
@@ -1002,22 +984,11 @@ describe('413 · words the person did not say', () => {
       // ⚑ **`aPersonIsBehindIt` is read off the SLOT** and there is no tool argument for it, so a
       // model cannot put this clause in front of its own words. See `TurnOrigin.aPersonIsBehindIt`.
       const first = handed.split('\n')[0] ?? ''
-      // ⚑ **D-011** — by name and relationship; the address is in the direction line (⚑ D-016 ·
-      // commit 7 · R3: the piece the sender owns, where it was its id).
-      // ⚑ **D-016** — the relationship names the piece, by its label and title.
-      expect(first).toContain(`(pm-1), who is giving you ${pieceLine(label, 'The work')}.`)
-      expect(first).toContain('A person is at that conversation')
-      // ⛔ **The disclaimer is the load-bearing half.** Without it a receiver reads *a person is
-      // there* and supplies the inference this app refuses to make for it.
-      expect(first).toContain(
-        'Treat wishes it attributes to the person as theirs; only an approval needs the person directly.',
+      expect(first).toContain(`: task ${pieceLine(label, 'The work')} for you`)
+      const attribution = handed.split('\n\n')[1]
+      expect(attribution).toBe(
+        'A person is at that conversation. Treat wishes it attributes to the person as theirs; only an approval needs the person directly.',
       )
-      // The exact canonical framing names no actor and reserves approvals for the person.
-      expect(
-        first.endsWith(
-          'A person is at that conversation. Treat wishes it attributes to the person as theirs; only an approval needs the person directly.',
-        ),
-      ).toBe(true)
       expect(first.toLowerCase()).not.toContain('asks:')
     })
 
@@ -1035,8 +1006,10 @@ describe('413 · words the person did not say', () => {
       const question = providerHeard(pm).find((said) => said.includes(raised.id))
       // ⛔ `questionText` leads with the asking conversation — ⚑ D-016 · commit 7 · R3: by its name
       // and the piece it owns, and quotes that piece's label as its address, where it was the id.
-      expect(question).toContain(`${host.nameByItsWork(worker)} is waiting on an answer`)
-      expect(question).toContain(`with asked_by ${host.addressOf(worker)}.`)
+      expect(question).toContain(
+        `${host.whatToCallTheConversation(worker)} (conversation ${host.addressOf(worker)} · The work) asks you ${raised.id}`,
+      )
+      expect(question).toContain(`Use asked_by ${host.addressOf(worker)} with this question id.`)
 
       const replied = await callOn(agentToolsFor(host, worker), 'reply_to_parent', {
         piece: label,
@@ -1073,6 +1046,7 @@ describe('413 · words the person did not say', () => {
       // do, by two different mechanisms that answer the same question.
       const given = providerHeard(worker).find((said) => said.includes('work to answer')) ?? ''
       expect(given).toContain('work to answer')
+      expect(given).toContain(`(conversation ${host.addressOf(pm)} ·`)
       expect(given).toContain(answering(pm))
     })
   })

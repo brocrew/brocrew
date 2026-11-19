@@ -1,3 +1,4 @@
+import type { Refusal } from '../../../shared/tool-outcome'
 import {
   type InterruptRefusal,
   interruptPermanenceOf,
@@ -56,10 +57,9 @@ export const TOOL_PERMANENCE: Readonly<Record<ToolRefusal, RailPermanence>> = {
   // **D-017 · R12 — and it no longer overstates**: it is said only about an id no conversation
   // has, and nothing makes an id exist.
   'no-such-agent': 'permanent',
+  'that-is-a-service': 'permanent',
   // **D-017 · R12** — nothing the caller does starts it, and waiting does not either.
   'that-conversation-takes-no-messages': 'permanent',
-  'that-is-a-service': 'permanent',
-  'that-agent-has-several-conversations': 'permanent',
   // Permanent for THIS request: the same arguments will be malformed forever.
   'malformed-request': 'permanent',
   'agent-cannot-take-a-message': 'until-a-person-changes-it',
@@ -160,9 +160,9 @@ const TOOL_REMEDY: Readonly<Record<ToolRefusal, RefusalRemedy | null>> = {
   'theme-too-large': 'change-what-you-sent-and-call-again',
   'theme-is-built-in': null,
   'no-such-agent': null,
-  'that-conversation-takes-no-messages': null,
   'that-is-a-service': null,
-  'that-agent-has-several-conversations': null,
+  'that-is-work-you-hold': null,
+  'that-conversation-takes-no-messages': null,
   'malformed-request': null,
   'agent-cannot-take-a-message': null,
   // **650 · the arm split out of the fold above carries the word that fold never could.**
@@ -241,7 +241,6 @@ const TOOL_REMEDY: Readonly<Record<ToolRefusal, RefusalRemedy | null>> = {
   'server-already-registered': null,
   'server-already-asked-for': null,
   'too-many-server-requests': null,
-  'that-is-work-you-hold': null,
   // **D-016 · null, for the same reason** — permanent; the act is in the sentence.
   'that-is-your-own-work': null,
   'that-piece-is-still-queued': 'make-the-same-call-when-this-settles',
@@ -252,14 +251,8 @@ export function toolRemedyOf(rail: ToolRefusal): RefusalRemedy | null {
   return TOOL_REMEDY[rail]
 }
 
-export type PublishedRefusal = {
+export type PublishedRefusal = Refusal & {
   readonly outcome: 'refused'
-  readonly rail: string
-  readonly permanence: RailPermanence
-  readonly retryable: boolean
-  readonly reason: string
-
-  readonly remedy: RefusalRemedy | null
   /**
    * **`object`, and the looseness is a TypeScript fact rather than a design one.** Each door
    * declares its own `…RefusalDetail` as an INTERFACE, and an interface has no implicit index
@@ -287,10 +280,6 @@ export const TOOL_SENTENCES: Readonly<Record<ToolRefusal, string>> = {
   ...THEME_TOOL_REASONS,
   'no-such-agent':
     'no conversation available to this call goes by that id or piece label, so nothing was done. list_agents names the conversations this app can run; list_profiles names every agent this app holds.',
-  // **D-017 · R12** — the act first, inside the cut; then which kinds of conversation this is.
-  // The detail carries every label; the refusal sentence names up to five.
-  'that-agent-has-several-conversations':
-    'make the same call with agent set to one of that agent\u2019s conversations, by a label the detail lists. It has more than one you can reach, so nothing was done.',
   'that-is-a-service':
     'Not sent: that conversation is a service, which takes its work one piece at a time. Give it the work with give_work.',
   'that-conversation-takes-no-messages':
@@ -383,7 +372,7 @@ export const TOOL_SENTENCES: Readonly<Record<ToolRefusal, string>> = {
   // at `message_agent` and at `update_work`, so it says *nothing was done*, true at both, and names
   // the acts of both doors and no other (D-023 · R2).
   'that-is-your-own-work':
-    'that is this conversation\u2019s own work, from a person, so nothing was done: ask a person with ask_question naming it, and answer the person here when it is done. Follow-ups, new briefs and closing are for pieces one conversation gives another.',
+    'that is this conversation\u2019s own work, from a person, so nothing was done: ask a person with ask_question naming it, and answer the person here when it is done. New briefs and closing are for pieces one conversation gives another.',
   // **663 · it gives the reason as the rule, not as the state**: a model told only *not yet* would
   // reasonably try another way in, and there is none that is safe.
   'that-conversation-is-still-stopping':
@@ -460,6 +449,13 @@ export function refuseTool(
   }
 }
 
+/** The caller has no recorded send to continue. */
+export function refusalSaid(reason: string): string {
+  if (reason.startsWith('Not sent:')) return reason
+  const words = reason.replace(/,? so nothing was sent(?=[.;]|$)/u, '')
+  return `Not sent: ${words}`
+}
+
 /** A spawn rail's refusal, carried over MCP **unchanged** — see the module note. */
 export function carryRailRefusal(refusal: SpawnRefusal): PublishedRefusal {
   return {
@@ -518,7 +514,8 @@ export function carryInterruptRefusal(refusal: InterruptRefusal): PublishedRefus
   }
 }
 
-export function carryQuestionRefusal(refusal: QuestionRefusal): PublishedRefusal {
+export function carryQuestionRefusal(refusal: QuestionRefusal | ResourceRefusal): PublishedRefusal {
+  if ('outcome' in refusal) return { ...refusal }
   return {
     outcome: 'refused',
     rail: refusal.rail,

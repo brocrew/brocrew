@@ -1,10 +1,6 @@
 import { createListTasksTool } from './tool-families/work-board'
 import { createReplyToParentTool, replyFields } from './tool-families/work-reply'
-import {
-  createAskQuestionTool,
-  createPassQuestionUpTool,
-  createWithdrawQuestionTool,
-} from './tool-families/question-routing'
+import { createAskQuestionTool, createWithdrawQuestionTool } from './tool-families/question-routing'
 import { AGENT_TOOL_INSTRUCTIONS, AGENT_TOOL_SERVER, type ToolName } from './tool-families/catalog'
 import { type AgentToolAnswer, type AgentToolDefinition, type AgentToolset } from '@brobot2/runtime'
 import { type AgentToolHost } from './tool-families/host'
@@ -68,11 +64,7 @@ export { TOOL_PERMANENCE } from './tool-families/refusals'
 export { toolRemedyOf } from './tool-families/refusals'
 export { type PublishedRefusal } from './tool-families/refusals'
 export { anEndedPieceSaid } from './tool-families/delivery'
-export { aFollowUpOnAPieceYouHold } from './tool-families/delivery'
 export { aMessageAboutAQueuedPiece } from './tool-families/delivery'
-export { aFollowUpOnAPieceYouGaveAnother } from './tool-families/delivery'
-export { aFollowUpOnAPieceYouDidNotGive } from './tool-families/delivery'
-export { anAgentWithSeveralConversations } from './tool-families/delivery'
 export { aTakeBackOfAPieceYouHold } from './tool-families/delivery'
 export { aTakeBackOfAPieceYouHoldThatEnded } from './tool-families/delivery'
 export { aTakeBackOfYourOwnWork } from './tool-families/delivery'
@@ -89,7 +81,6 @@ export { A_CONVERSATION_CANNOT_ASK_ITSELF } from './tool-families/launch-failure
 export { A_WAKE_WHOSE_FOLDER_COULD_NOT_BE_MADE } from './tool-families/launch-failures'
 export { A_REFUSED_ROW_SHOWS } from './tool-families/launch-failures'
 export { aStartItsLoginOrSettingsRefused } from './tool-families/launch-failures'
-export { THE_NEW_AGENT_WAS_MADE } from './tool-families/launch-failures'
 export { REPLY_ADDRESSING_KEYS } from './tool-families/catalog'
 export { ENDED_LISTED } from './tool-families/listings'
 export { ENDED_LISTED_AT_MOST } from './tool-families/listings'
@@ -132,10 +123,8 @@ export function agentToolsFor(
           error instanceof Error ? error.message : String(error)
         }`,
       )
-      // **D-039 · and whether the give made a new agent before its launch failed** — a give
-      // with `new: true` did ({@link THE_NEW_AGENT_WAS_MADE}).
       return refusalAnswer(
-        aLaunchRefused(failed, args['new'] === true, {
+        aLaunchRefused(failed, {
           ...(typeof args['profile'] === 'string' ? { profile: args['profile'] } : {}),
           because: failed.because,
         }),
@@ -170,7 +159,6 @@ export function agentToolsFor(
     createAskQuestionTool(host, by, me, selfRefusal, theConversationToReach, guarded),
     createListProfilesTool(host, by, me, guarded),
     createProposeAgentRulesTool(host, by, me, guarded),
-    createPassQuestionUpTool(host, by, me, guarded),
     createWithdrawQuestionTool(host, by, guarded),
     createReadTranscriptTool(host, by, me, readerInputs, readerFieldRefusal, guarded),
     createUpdateWorkTool(host, by, guarded),

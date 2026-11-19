@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -13,7 +14,6 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { isGiverStallNotice, RuntimeHost } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
   PREVIEW_CAP,
   TURNS_BACK_MAX,
@@ -24,12 +24,7 @@ import {
   senderOf,
 } from '../src/shared/last-exchange'
 import { ToolWatchingRuntime } from './lib/provider-double'
-import {
-  syntheticProviderHome,
-  fixtureProviderConfig,
-  neutralHostDeps,
-  RecordingSink,
-} from './lib/host-fixture'
+import { fixtureProviderConfig, fixtureHostPaths, RecordingSink } from './lib/host-fixture'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -55,11 +50,8 @@ describe('D-012 · a giver looks closer', () => {
     const issued = new FakeProviderSessions()
     host = new RuntimeHost({
       store,
-      ...neutralHostDeps(() => userData),
+      ...fixtureHostPaths(() => userData),
       createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, order, issued),
-      prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       readProviderConfig: fixtureProviderConfig,
     })
@@ -146,12 +138,11 @@ describe('D-012 · a giver looks closer', () => {
   const aPmItsWorkerAndAPeer = async (brief = 'build it') => {
     await host.close((await personOpens('worker')).id, window)
     const pm = await personOpens('pm')
-    const given = await callOn(pm.tools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'the index',
-      brief,
-    })
+    const given = await callOn(
+      pm.tools,
+      'give_work',
+      newConversationGive('worker', 'the index', brief),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     const label = given.label as string

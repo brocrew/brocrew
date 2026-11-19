@@ -266,6 +266,7 @@ describe('347 · the five tools', () => {
       profile,
       title,
       brief: `${title}.`,
+      ...('to' in more ? {} : { to: 'new', conversation_title: title }),
       ...more,
     })
 
@@ -329,10 +330,13 @@ describe('347 · the five tools', () => {
         title: 'The recorded title',
         brief: 'The recorded title.',
       })
-      // ⚑ **Written once the brief arrived** (R4) — after the conversation's own row.
-      expect(store.workById(given.piece as string)!.createdAt).toBeGreaterThan(
-        store.find(child)!.createdAt,
+      const events = store.events(child).map(({ event }) => event)
+      const task = events.findIndex(
+        (event) => event.type === 'work_given' && event.piece === given.piece,
       )
+      const launch = events.findIndex((event) => event.type === 'launched')
+      expect(task).toBeGreaterThanOrEqual(0)
+      expect(launch).toBeGreaterThan(task)
     })
 
     it('list_agents shows the caller, its child and an unrelated conversation to every reader', async () => {
@@ -424,7 +428,7 @@ describe('347 · the five tools', () => {
       // ⛔ **And the SECOND defence, measured rather than assumed.** ⚑ **D-016** — the one parent a
       // give CAN name is a piece, and naming the victim's root is refused as a piece this caller
       // does not hold: not yours and not found are one answer.
-      const redirected = await give(parent, 'worker', 'x', { piece: store.rootOf(victim)?.label })
+      const redirected = await give(parent, 'worker', 'x', { under: store.rootOf(victim)?.label })
       expect(redirected).toMatchObject({
         outcome: 'refused',
         rail: 'no-piece-you-hold-by-that-name',
@@ -594,46 +598,46 @@ describe('347 · the five tools', () => {
 
   describe('§3 · two gives in one tick', () => {
     /** ⚑ Every brief a conversation was handed — sent as a turn, or held behind one — by its piece. */
-    const briefsIn = (sessionId: string): string[] =>
-      store
-        .events(sessionId)
-        .flatMap((row) =>
-          (row.event.type === 'user_turn' || row.event.type === 'message_queued') &&
-          typeof row.event.piece === 'string'
-            ? [row.event.piece]
-            : [],
-        )
+    const briefsIn = (sessionId: string): string[] => {
+      const events = store.events(sessionId).map(({ event }) => event)
+      const queued = events.flatMap((event) =>
+        event.type === 'message_queued' && typeof event.piece === 'string' ? [event.piece] : [],
+      )
+      const sentDirectly = events.flatMap((event) =>
+        event.type === 'user_turn' &&
+        typeof event.piece === 'string' &&
+        !queued.includes(event.piece)
+          ? [event.piece]
+          : [],
+      )
+      return [...queued, ...sentDirectly]
+    }
 
-    it('🔴 ONE giver giving one identity twice in the same tick: ONE conversation, and both pieces reach it', async () => {
+    it('two gives to the same address in one tick both reach that conversation', async () => {
       await bringIdentityIntoBeing('worker')
       const parent = await personOpens('pm')
       const before = host.sessionIds.length
+      const started = await give(parent, 'worker', 'The work so far')
+      expect(started).toMatchObject({ outcome: 'ok', started: true })
+      const child = started.agent as string
 
-      // ⛔ **Issued together, with nothing awaited between them** — Codex makes parallel tool calls.
-      // ⚑ **D-016 · R2 — the lookup and the start are one synchronous stretch**: the first give
-      // reserves its conversation before its first `await`, so the second FINDS that reservation
-      // and joins its line rather than starting a second conversation. It was `profile-already-live`
-      // for the loser until `give_work` replaced `spawn_agent`.
       const [first, second] = await Promise.all([
-        give(parent, 'worker', 'Piece a'),
-        give(parent, 'worker', 'Piece b'),
+        give(parent, 'worker', 'Piece a', { to: started.label }),
+        give(parent, 'worker', 'Piece b', { to: started.label }),
       ])
       expect([first.outcome, second.outcome]).toEqual(['ok', 'ok'])
-      expect(second.agent).toBe(first.agent)
-      // ⚑ **Exactly one of them started it**, and one conversation was added.
-      expect([first.started, second.started].sort()).toEqual([false, true])
+      expect([first.agent, second.agent]).toEqual([child, child])
+      expect([first.started, second.started]).toEqual([false, false])
       expect(host.sessionIds).toHaveLength(before + 1)
       // ⚑ **Two pieces, two numbers** — their order is not promised; their numbers are (R4).
       expect(first.label).not.toBe(second.label)
-      const child = first.agent as string
       expect(
         store
           .piecesOwnedBy(child)
           .map((one) => one.piece)
           .sort(),
-      ).toEqual([first.piece, second.piece].sort())
-      // ⛔ **…and both BRIEFS arrived**, the one it started with and the one held behind it.
-      expect(briefsIn(child).sort()).toEqual([first.piece, second.piece].sort())
+      ).toEqual([started.piece, first.piece, second.piece].sort())
+      expect(briefsIn(child).sort()).toEqual([started.piece, first.piece, second.piece].sort())
     })
 
     it('⚑ 428 · …and TWO givers giving one identity in the same tick each get their OWN conversation', async () => {
@@ -655,12 +659,12 @@ describe('347 · the five tools', () => {
       expect(host.sessionIds).toContain(second.agent)
       // ⛔ **…and the lookup is keyed on the giver.** `a`'s next give reaches `a`'s conversation —
       // busy on its first brief, so it is held there — never `b`'s and never a third.
-      const again = await give(a, 'worker', 'A second for a')
+      const again = await give(a, 'worker', 'A second for a', { to: first.label })
       expect(again).toMatchObject({ outcome: 'ok', agent: first.agent, started: false })
       expect(again.delivery).toBe('held')
     })
 
-    it('🔴 a launch still IN FLIGHT is found by the lookup, before it has registered', async () => {
+    it('a new conversation gets its own launch even while another launch is in flight', async () => {
       // ⛔ **The reservation window itself, held open.** The first give's launch is parked inside
       // `start`: reserved, not registered, no row — the state where the reservation's own
       // `profileId` is the ONLY thing that can answer.
@@ -680,17 +684,16 @@ describe('347 · the five tools', () => {
       )
       try {
         await letItSettle()
-        // ⚑ **No second launch, and no answer yet**: the second give found the reservation and
-        // waits in its line for the start it is riding on.
-        expect(gate?.held).toBe(1)
+        expect(gate?.held).toBe(2)
         expect(answered).toBeNull()
       } finally {
         gate?.release()
         gate = null
       }
       const [first, second] = await Promise.all([inFlight, racing])
-      expect(second).toMatchObject({ outcome: 'ok', agent: first.agent, started: false })
-      expect(first.started).toBe(true)
+      expect(first).toMatchObject({ outcome: 'ok', started: true })
+      expect(second).toMatchObject({ outcome: 'ok', started: true })
+      expect(second.agent).not.toBe(first.agent)
     })
 
     it('⛔ …and an unnamed launch in flight already names the seeded profile, and is not the giver’s', async () => {
@@ -736,7 +739,9 @@ describe('347 · the five tools', () => {
 
       // ⚑ **The paired positive, one fact over: the giver's next give reaches ITS conversation** —
       // and the person's `default` conversation is still live beside it.
-      const again = await give(parent, DEFAULT_PROFILE_ID, 'A second of my own')
+      const again = await give(parent, DEFAULT_PROFILE_ID, 'A second of my own', {
+        to: admitted.label,
+      })
       expect(again).toMatchObject({ outcome: 'ok', agent: admitted.agent, started: false })
       expect(host.sessionIds).toContain(theirs)
     })
@@ -772,10 +777,12 @@ describe('347 · the five tools', () => {
       await until(() => (gate?.held ?? 0) > 0)
 
       let answered: Record<string, unknown> | null = null
-      const racing = give(parent, 'worker', 'Racing a reopen').then((answer) => {
-        answered = answer
-        return answer
-      })
+      const racing = give(parent, 'worker', 'Racing a reopen', { to: given.label }).then(
+        (answer) => {
+          answered = answer
+          return answer
+        },
+      )
       try {
         await letItSettle()
         // ⚑ **No second launch**: the give found the reopening conversation and waits for it.
@@ -841,9 +848,8 @@ describe('347 · the five tools', () => {
       expect(host.sessionIds).toContain(child)
       expect(host.sessionIds).toContain(sibling)
 
-      // ⛔ **`422`'s entitlement fact is UNCHANGED.** The other giver's child is not this caller's
-      // to follow up: a follow-up must name a piece the sender gave THAT agent, and the piece
-      // `there` gave went to its own conversation.
+      // The message may be about a task its sender gave to a different conversation.
+      // The destination stays the one explicitly named.
       expect(
         await toolsOf(there).call('message_agent', {
           agent: child,
@@ -851,10 +857,10 @@ describe('347 · the five tools', () => {
           kind: 'follow-up',
           piece: alsoThere.label,
         }),
-      ).toMatchObject({ outcome: 'refused', rail: 'not-a-piece-you-gave' })
+      ).toMatchObject({ outcome: 'ok', agent: child, label: alsoThere.label, kind: 'note' })
 
       // ⚑ **The key stands on the giver** — `there`'s next give reaches `there`'s conversation.
-      const again = await give(there, 'worker', 'A second one over there')
+      const again = await give(there, 'worker', 'A second one over there', { to: alsoThere.label })
       expect(again).toMatchObject({ outcome: 'ok', agent: sibling, started: false })
       expect(
         await toolsOf(there).call('message_agent', {
@@ -879,7 +885,7 @@ describe('347 · the five tools', () => {
       const first = await give(parent, 'worker', 'First')
       expect(first.outcome).toBe('ok')
       const child = first.agent as string
-      const second = await give(parent, 'worker', 'Second')
+      const second = await give(parent, 'worker', 'Second', { to: first.label })
       expect(second).toMatchObject({ outcome: 'ok', agent: child, started: false })
       expect(await call('get_agent_status', { agent: child })).toMatchObject({ outcome: 'ok' })
       expect(
@@ -902,17 +908,16 @@ describe('347 · the five tools', () => {
       expect(host.sessionIds).toContain(human)
     })
 
-    it('🔴 a same-giver reservation is FOUND; two givers’ reservations are each their own', async () => {
+    it('two new gives make independent reservations, whether their givers match or not', async () => {
       await bringIdentityIntoBeing('worker')
       const here = await personOpens('pm-a')
       const there = await personOpens('pm-b')
       const third = await personOpens('pm-c')
 
-      const heldPair = async (a: string, b: string, expected: 'one start' | 'two starts') => {
+      const heldPair = async (a: string, b: string) => {
         gate = new FakeLaunchGate()
         const before = recordedSessions()
         let secondAnswer: Record<string, unknown> | null = null
-        // No await between calls: the first reserves its slot before the second asks the lookup.
         const first = give(a, 'worker', 'First')
         const second = give(b, 'worker', 'Second').then((answer) => {
           secondAnswer = answer
@@ -921,13 +926,15 @@ describe('347 · the five tools', () => {
         try {
           await until(() => (gate?.held ?? 0) > 0)
           await letItSettle()
-          // Neither child has a committed ledger row while its provider launch is held.
-          expect(recordedSessions()).toBe(before)
+          expect(recordedSessions()).toBe(before + 2)
+          const recorded = [...new Set([a, b])]
+            .flatMap((giver) => store.piecesGivenBy(giver))
+            .filter((piece) => piece.title === 'First' || piece.title === 'Second')
+          expect(recorded.map((piece) => piece.title).sort()).toEqual(['First', 'Second'])
+          expect(new Set(recorded.map((piece) => piece.owner)).size).toBe(2)
           // ⛔ **Neither answered**: a give answers once its brief has gone.
           expect(secondAnswer).toBeNull()
-          // ⚑ The same giver's second give found the reservation and launched nothing; two givers'
-          // gives are two launches, held at the same instant.
-          expect(gate?.held).toBe(expected === 'one start' ? 1 : 2)
+          expect(gate?.held).toBe(2)
         } finally {
           gate?.release()
           gate = null
@@ -936,15 +943,13 @@ describe('347 · the five tools', () => {
         return Promise.all([first, second])
       }
 
-      // The control: a reservation alone, without a provider_session row, is found by the same
-      // giver's lookup. A ledger-only lookup that treats no row as nothing would start a second.
-      const sameGiver = await heldPair(here, here, 'one start')
+      const sameGiver = await heldPair(here, here)
       expect(sameGiver.map((one) => one.outcome)).toEqual(['ok', 'ok'])
-      expect(sameGiver[1]?.agent).toBe(sameGiver[0]?.agent)
+      expect(sameGiver[1]?.agent).not.toBe(sameGiver[0]?.agent)
 
       // 🔴 **`426` pinned this pair as a collision and `428` is what un-collides it.** Two givers,
       // two reservations of one identity held at the same instant — and each is its own.
-      const twoGivers = await heldPair(there, third, 'two starts')
+      const twoGivers = await heldPair(there, third)
       expect(twoGivers.map((one) => one.outcome)).toEqual(['ok', 'ok'])
       expect(twoGivers[1]?.agent).not.toBe(twoGivers[0]?.agent)
     })
@@ -960,7 +965,7 @@ describe('347 · the five tools', () => {
       const given = await give(parent, 'worker', 'While a person is talking to this identity')
       expect(given).toMatchObject({ outcome: 'ok', started: true })
       const child = given.agent as string
-      // ⚑ **Both live at once**, and the person's is not one this giver may follow up.
+      // Both live. A message can explicitly reach the person's conversation.
       expect(host.sessionIds).toContain(personHeld)
       expect(host.sessionIds).toContain(child)
       expect(
@@ -970,11 +975,11 @@ describe('347 · the five tools', () => {
           kind: 'follow-up',
           piece: given.label,
         }),
-      ).toMatchObject({ outcome: 'refused', rail: 'not-a-piece-you-gave' })
+      ).toMatchObject({ outcome: 'ok', agent: personHeld, label: given.label, kind: 'note' })
 
       // 🔴 **The paired positive, one fact over: the next give reaches the child this giver has**,
       // and never the person's.
-      const again = await give(parent, 'worker', 'Again')
+      const again = await give(parent, 'worker', 'Again', { to: given.label })
       expect(again).toMatchObject({ outcome: 'ok', agent: child, started: false })
       expect(again.agent).not.toBe(personHeld)
       expect(await call('get_agent_status', { agent: child })).toMatchObject({ outcome: 'ok' })
@@ -1067,7 +1072,7 @@ describe('347 · the five tools', () => {
       // or everywhere.
       // ⚑ `request_mcp_server` asks the person to register an outside MCP server.
       // ⚑ `request_action` asks the person to do something, as a to-do.
-      expect(offered).toHaveLength(33)
+      expect(offered).toHaveLength(32)
     })
 
     it('⚠️ no published tool queues work for an agent to pick up later', async () => {
@@ -1177,7 +1182,6 @@ describe('347 · the five tools', () => {
         // every spelling of an addressee is refused by the same list `reply_to_parent` refuses.
         // ⚑ And the question it names is one this app ROUTED TO IT, which is the opposite of
         // handing work to somebody not yet named.
-        pass_question_up: 'a question it was asked',
         // 🔴 **488 · it was `'nothing at all'`, the strongest form of that word on this list**
         // (HO-020's `list_profiles`): it advertised NO argument. ⚑ **F009 · it names an agent, by its
         // profile, now** — whose record to read: what that agent has done, before a caller chooses
@@ -1328,6 +1332,7 @@ describe('347 · the five tools', () => {
             'asked_by',
             'answers',
             'cannot_answer',
+            'resources',
             'interrupt',
           ])
           for (const aimed of REPLY_ADDRESSING_KEYS) {
@@ -1600,7 +1605,9 @@ describe('347 · the five tools', () => {
         store
           .events(child)
           .flatMap((row) =>
-            row.event.type === 'message_queued' && row.event.messageId !== undefined
+            row.event.type === 'message_queued' &&
+            ['and then this', 'and a third'].includes(row.event.text) &&
+            row.event.messageId !== undefined
               ? [row.event.messageId]
               : [],
           )

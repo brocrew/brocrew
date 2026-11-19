@@ -1,27 +1,20 @@
-import { personOpener } from './helpers/person-opens-session'
+import { newConversationGive } from './lib/give-fixture'
+import { fixturePersonEntry } from './lib/send-person-fixture'
 import { callOn } from './helpers/call-agent-tool'
 import { waitFor } from './lib/f093-host'
 import { MAILBOX_KINDS } from '../src/shared/conversation-events'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { REQUEST_STATES } from '../src/shared/question-contracts'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
+import { FakeProviderSessions } from '@brobot2/runtime'
 import type {
   AgentToolset,
   FakeSessionHandle,
-  ResumeOptions,
-  SessionRef,
-  StartOptions,
   UserInputResponse,
 } from '@brobot2/runtime'
 import { CHANNEL_REFUSALS, CHANNEL_REFUSAL_SENTENCES } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import type { AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { TOOL_NAMES, agentToolsFor } from '../src/main/runtime/agent-tools'
@@ -33,18 +26,18 @@ import {
 } from '../src/main/runtime/question-rails'
 import { REPLY_RAILS } from '../src/main/runtime/reply-rails'
 import { SPAWN_RAILS } from '../src/main/runtime/spawn-rails'
-import { resourcesRoot } from '../src/main/resources/resources'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { theMessagesOf } from '../src/shared/runtime-ipc'
 import { mailboxOf, stillHeld } from '../src/shared/mailbox'
 import { REQUEST_IS_OPEN, permissionShaped } from '../src/shared/questions'
 import { APPROVALS_ARE_THE_PERSONS } from './lib/the-core'
 import { composeProfileBundle } from '../src/main/runtime/factory-text'
 import {
+  closeHostFixture,
+  fixtureDatabase,
+  fixtureFolder,
+  numberedFixtureHostPaths,
   RecordingSink,
-  syntheticProviderHome,
-  neutralHostDeps,
-  fixtureProviderConfig,
+  ObservedProviderLaunches,
 } from './lib/host-fixture'
 
 /**
@@ -76,9 +69,6 @@ import {
  * the provider.
  */
 
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
-
 /**
  * `373`'s double, with the handles kept too.
  *
@@ -86,29 +76,6 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
  * provider asks its user something — and no fake can raise that on the app's behalf without a handle
  * to raise it from. ⚑ Its registry is shared so a restart finds the refs the first launch issued.
  */
-class ProviderDouble extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handed: AgentToolset[],
-    private readonly handles: FakeSessionHandle[],
-    sessions: FakeProviderSessions,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): Promise<FakeSessionHandle> {
-    const handle = await super.start(options)
-    if (options.agentTools) this.handed.push(options.agentTools)
-    this.handles.push(handle)
-    return handle
-  }
-  override async resume(ref: SessionRef, options: ResumeOptions): Promise<FakeSessionHandle> {
-    const handle = await super.resume(ref, options)
-    if (options.agentTools) this.handed.push(options.agentTools)
-    this.handles.push(handle)
-    return handle
-  }
-}
-
 describe('394 · a question finds a person, and a permission never travels', () => {
   let userData: string
   let root: string
@@ -119,7 +86,7 @@ describe('394 · a question finds a person, and a permission never travels', () 
   let handed: AgentToolset[]
   let handles: FakeSessionHandle[]
   let issued: FakeProviderSessions
-  let counter: number
+  let hostPaths: ReturnType<typeof numberedFixtureHostPaths>
   let clock: number
   let window: RecordingSink
   let claimed: Set<string>
@@ -140,28 +107,24 @@ describe('394 · a question finds a person, and a permission never travels', () 
   const buildHost = (over: SessionStore = store): RuntimeHost => {
     const built = new RuntimeHost({
       store: over,
-      ...neutralHostDeps(() => userData),
-      resourcesRoot: () => resourcesRoot(userData),
-      createRuntime: (provider: Provider) => new ProviderDouble(provider, handed, handles, issued),
-      prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
-      newSessionId: () => `sess_${++counter}`,
-      now: tick,
-      readProviderConfig: fixtureProviderConfig,
+      ...hostPaths,
+      createRuntime: (provider: Provider) =>
+        new ObservedProviderLaunches(provider, issued, (_kind, options, handle) => {
+          if (options.agentTools) handed.push(options.agentTools)
+          handles.push(handle)
+        }),
     })
     hosts.push(built)
     return built
   }
 
   beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-question-'))
-    root = mkdtempSync(join(tmpdir(), 'brobot2-question-root-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    userData = fixtureFolder('brobot2-question-')
+    root = fixtureFolder('brobot2-question-root-')
+    db = fixtureDatabase(userData)
     clock = 8_000_000
     store = createSessionStore(db, tick)
-    counter = 0
+    hostPaths = numberedFixtureHostPaths(() => userData, tick)
     hosts = []
     handed = []
     handles = []
@@ -172,18 +135,11 @@ describe('394 · a question finds a person, and a permission never travels', () 
     pairs = 0
   })
 
-  afterEach(async () => {
-    for (const built of hosts) await built.closeAll()
-    db.close()
-    for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
-  })
+  afterEach(() => closeHostFixture(hosts, db, userData, root))
 
-  const personOpens = personOpener(() => ({ host, root, window }), 'ask')
-
-  const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
-    const id = await personOpens(profileId)
-    await host.close(id, window)
-  }
+  const { open: personOpens, seed: bringIdentityIntoBeing } = fixturePersonEntry(
+    () => ({ host, root, window }),
+  )
 
   /** ⛔ Built the way a launch builds it, against the CURRENT host — `393`'s rule, and §5 needs it. */
   const toolsOf = (sessionId: string): AgentToolset => agentToolsFor(host, sessionId)
@@ -249,12 +205,11 @@ describe('394 · a question finds a person, and a permission never travels', () 
     claimed.add(pm)
     const pmTools = toolsOf(pm)
     // ⛔ No grant is set for the give (D-014: any agent may give work to any agent).
-    const given = await callOn(pmTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: workerProfile,
-      title: 'the work this dispatch is about',
-      brief: 'start on it',
-    })
+    const given = await callOn(
+      pmTools,
+      'give_work',
+      newConversationGive(workerProfile, 'the work this dispatch is about', 'start on it'),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     return { pm, worker: given.agent as string, pmTools, workerHandle: latestHandle() }
   }
@@ -566,7 +521,7 @@ describe('394 · a question finds a person, and a permission never travels', () 
       // ⚑ **And it names the child that asked** — by the piece it owns, as every sentence names
       // another conversation (D-016 · commit 7 · R3), where it used to print the id.
       expect(words?.type === 'user_turn' && words.text).toContain(
-        `${host.nameByItsWork(worker)} is waiting on an answer`,
+        `${host.whatToCallTheConversation(worker)} (conversation ${host.addressOf(worker)} · the work this dispatch is about) asks you ${asked.id}`,
       )
 
       // 🔴 **And the parent answers it, and the child goes on.** `answered` is the promise the fake's
@@ -736,13 +691,24 @@ describe('394 · a question finds a person, and a permission never travels', () 
         question: card,
         answers: [{ part: 'q0', answer: ['allow'] }],
       })
+      const reason =
+        'Not answered: only the person can answer this request. If you asked it and no longer need it, withdraw it.'
       expect(refused).toMatchObject({
         outcome: 'refused',
         rail: 'a-person-answers-this-one',
         permanence: 'permanent',
         retryable: false,
+        reason,
         detail: { because: 'a-permission-decision' },
       })
+      expect(ledger(pm)).toContainEqual(
+        expect.objectContaining({
+          type: 'tool_refused',
+          tool: 'answer_question',
+          rail: 'a-person-answers-this-one',
+          told: expect.objectContaining({ text: expect.stringContaining(reason) }),
+        }),
+      )
       // ⚑ **ONE FACT OVER, in the same conversation at the same moment**: a QUESTION from the same
       // child is answered. ⛔ Without this the refusal above would also pass against a door that
       // refused everything.

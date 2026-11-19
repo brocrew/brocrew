@@ -226,6 +226,8 @@ describe('650 · a refusal that clears on its own', () => {
     const call = toolsOf(parent)
     const given = payload(
       await call('give_work', {
+        to: 'new',
+        conversation_title: 'the control',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'sibling',
         title: 'the control',
@@ -247,6 +249,8 @@ describe('650 · a refusal that clears on its own', () => {
     armTheHold()
     const before = new Set((await cardsOf(call)).map((card) => card.agent))
     const spawning = call('give_work', {
+      to: 'new',
+      conversation_title: 'the subject',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'the subject',
@@ -277,8 +281,11 @@ describe('650 · a refusal that clears on its own', () => {
     // ⚑ **D-017 · R1 — *still starting* is never a refusal**: the words wait for the start.
     const waiting = call('message_agent', words)
     expect(await stillPending(waiting)).toBe('still pending')
-    // ⛔ **Nothing was sent or queued while the launch is held.**
-    expect(eventsOf(id).filter((event) => event.type !== 'status')).toEqual([])
+    expect(
+      eventsOf(id)
+        .filter((event) => event.type !== 'status')
+        .map((event) => event.type),
+    ).toEqual(['titled', 'message_queued', 'work_given'])
 
     // ⚠️ **The control, one fact over**: the same caller, the same words, a sibling that is running.
     expect(payload(await call('message_agent', { ...words, agent: sibling }))).toMatchObject({
@@ -292,7 +299,11 @@ describe('650 · a refusal that clears on its own', () => {
     hold = null
     expect(payload(await spawning)).toMatchObject({ outcome: 'ok', agent: id })
     const delivered = payload(await waiting)
-    expect(delivered).toMatchObject({ outcome: 'ok', delivery: 'sent', agent: id })
+    expect(delivered).toMatchObject({ outcome: 'ok', delivery: 'queued', agent: id })
+    await until(
+      () => eventsOf(id).some((event) => event.type === 'user_turn' && event.text === words.text),
+      'the waiting message to reach the same conversation',
+    )
     // ⚑ **The wait burned no number** (D-016 · R4): the control's give took the first number under
     // the parent's root and the give in flight the second; the waiting note took none.
     expect([...labelsIn(sibling), ...labelsIn(id)]).toEqual(['W3.1', 'W3.2'])
@@ -334,43 +345,42 @@ describe('650 · a refusal that clears on its own', () => {
   // §2 · the same arm, cleared by FAILING — and what the retry meets at both doors
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
-  it('§2 a launch that fails clears the wait too, and the waiting call and the retry meet no-such-agent at both doors', async () => {
+  it('§2 a failed launch settles the waiting message and a later send starts the same address', async () => {
     const { call, sibling } = await aParentWithASibling()
     const { id, spawning } = await aSpawnInFlight(call)
-    // ⚑ **D-016 · a note**: the piece in flight is not written until its brief arrives.
-    const words = { agent: id, text: 'please start on this', kind: 'note' }
-    // ⚑ **D-017 · R1** — the words wait for the start rather than being refused.
+    const words = { agent: id, text: 'please start on this' }
     const waiting = call('message_agent', words)
     expect(await stillPending(waiting)).toBe('still pending')
 
     hold?.fail()
-    hold = null
-    // ⚠️ **The give's own call rejects** rather than answering — a launch that fails is not a
-    // refusal `give_work` names. Settled, because what this section measures is the RETRY.
-    await Promise.allSettled([spawning])
-    // 🔴 **The waiting call is ANSWERED, and in the retry's word**: nothing was recorded, so there is
-    // no such conversation. ⛔ It was the tool call itself that failed, with the reopen's sentence.
-    expect(payload(await waiting)).toMatchObject({
-      outcome: 'refused',
-      rail: 'no-such-agent',
-      permanence: 'permanent',
+    try {
+      expect(payload(await spawning)).toMatchObject({
+        outcome: 'ok',
+        agent: id,
+        started: false,
+        receipt: {
+          recipient: { state: { kind: 'cannot-run', cause: { code: 'could-not-start' } } },
+        },
+      })
+      expect(payload(await waiting)).toMatchObject({
+        outcome: 'ok',
+        agent: id,
+        receipt: {
+          recorded: { kind: 'message', id: expect.any(String) },
+          recipient: { state: { kind: 'cannot-run' } },
+        },
+      })
+    } finally {
+      hold = null
+    }
+    expect(store.recordedOne(id)?.sessionId).toBe(id)
+    expect(labelsIn(id)).toEqual(['W3.2'])
+    expect(payload(await call('message_agent', { ...words, text: 'Try now' }))).toMatchObject({
+      outcome: 'ok',
+      agent: id,
     })
-    await until(
-      async () => !(await cardsOf(call)).some((card) => card.agent === id),
-      'the failed launch to be abandoned',
-    )
-
-    // 🔴 **The corrected docblock clause, measured**: the reservation is gone, so the retry is
-    // `no-such-agent` — not `that-conversation-has-already-ended`, which `interrupt-rails.ts` and
-    // `shared/refusals.ts` both claimed until `650`.
-    expect(payload(await call('message_agent', words))).toMatchObject({
-      outcome: 'refused',
-      rail: 'no-such-agent',
-      permanence: 'permanent',
-    })
-    expect(
-      payload(await call('interrupt_agent', { agent: id, reason: 'stop that' })),
-    ).toMatchObject({ outcome: 'refused', rail: 'no-such-agent' })
+    expect(host.sessionIds).toContain(id)
+    expect(labelsIn(id)).toEqual(['W3.2'])
     // ⚠️ **The control**: the same caller's same words to a conversation that did come up.
     expect(payload(await call('message_agent', { ...words, agent: sibling }))).toMatchObject({
       outcome: 'ok',
@@ -385,6 +395,8 @@ describe('650 · a refusal that clears on its own', () => {
     const { call } = await aParentWithASibling()
     const given = payload(
       await call('give_work', {
+        to: 'new',
+        conversation_title: 'x',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'x',
@@ -494,6 +506,8 @@ describe('650 · a refusal that clears on its own', () => {
   ): Promise<{ agent: string; piece: string }> => {
     const given = payload(
       await call('give_work', {
+        to: 'new',
+        conversation_title: 'a receiver that parks',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile,
         title: 'a receiver that parks',
@@ -529,7 +543,11 @@ describe('650 · a refusal that clears on its own', () => {
     expect(answers.map((one) => one.rail)).not.toContain('agent-started-a-turn-first')
     // ⚑ **The held words are in the mailbox, recorded once — and no number was consumed**: a
     // message opens no piece (D-016), so the receiver holds only the piece its brief opened.
-    expect(eventsOf(receiver).filter((event) => event.type === 'message_queued')).toHaveLength(1)
+    const held = eventsOf(receiver).filter(
+      (event) => event.type === 'message_queued' && event.text === told.text,
+    )
+    expect(held).toHaveLength(1)
+    expect(held[0]).toMatchObject({ text: 'then do this' })
     expect(labelsIn(receiver)).toEqual(['W2.1'])
     expect(numbered).not.toHaveBeenCalled()
   })
@@ -611,31 +629,40 @@ describe('650 · a refusal that clears on its own', () => {
   // §6 · §7 · the number, after the words have gone
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
-  it('§6 idle branch: a piece that cannot be written down after its brief went out is not reported as unsent', async () => {
-    // ⚠️ **No sibling given a piece first**: the control below is a give to it, and a give to a
-    // conversation whose piece stalled is refused (D-016 · the stall rule).
+  it('§6 a failed task write leaves no new conversation or brief', async () => {
     await bringIdentityIntoBeing('worker')
     await bringIdentityIntoBeing('sibling')
-    const call = toolsOf(await personOpens(DEFAULT_PROFILE_ID))
-    // ⚑ **D-016 · R4 — the number is taken BEFORE the send**, so what can fail after the words have
-    // gone is the piece's own row: `recordGive`, in the owner's ledger.
+    const parent = await personOpens(DEFAULT_PROFILE_ID)
+    const call = toolsOf(parent)
+    const sessionsBefore = [...host.sessionIds]
+    const resumableBefore = store
+      .resumable()
+      .map((row) => row.sessionId)
+      .sort()
     const failing = vi.spyOn(store, 'recordGive').mockImplementation(() => {
       throw new Error('SQLITE_FULL: database or disk is full')
     })
     const warned = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
 
-    await expect(
-      call('give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'x',
-        brief: 'build the thing',
-      }),
-    ).rejects.toThrow(/could not save/)
-    const worker = store.resumable().find((one) => one.profileId === 'worker')!.sessionId
-    const turns = eventsOf(worker).filter((event) => event.type === 'user_turn')
-    expect(JSON.stringify(turns)).toContain('build the thing')
-    expect(labelsIn(worker)).toEqual([])
+    const failed = await call('give_work', {
+      to: 'new',
+      conversation_title: 'x',
+      definition_of_done: 'The requested result and its checks are recorded.',
+      profile: 'worker',
+      title: 'x',
+      brief: 'build the thing',
+    })
+    expect(failed.text).toMatch(/^Not sent: /)
+    expect(payload(failed)).toMatchObject({ outcome: 'refused', rail: 'work-record-unavailable' })
+    expect(payload(failed)).not.toHaveProperty('receipt')
+    expect(host.sessionIds).toEqual(sessionsBefore)
+    expect(
+      store
+        .resumable()
+        .map((row) => row.sessionId)
+        .sort(),
+    ).toEqual(resumableBefore)
+    expect(store.piecesGivenBy(parent)).toEqual([])
     expect(warned.mock.calls.flat().join(' ')).toContain('table=work,work_resource,events')
 
     // ⚠️ **The control**: with the store answering, the same give to another agent writes its
@@ -643,6 +670,8 @@ describe('650 · a refusal that clears on its own', () => {
     failing.mockRestore()
     const control = payload(
       await call('give_work', {
+        to: 'new',
+        conversation_title: 'x',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'sibling',
         title: 'x',
@@ -653,7 +682,7 @@ describe('650 · a refusal that clears on its own', () => {
     expect(labelsIn(control.agent as string)).toEqual(['W3.2'])
   })
 
-  it('§7 held branch: a brief the mailbox will flush is not reported as unqueued', async () => {
+  it('§7 a failed task write leaves the busy receiver’s mailbox unchanged', async () => {
     await bringIdentityIntoBeing('sibling')
     const { call, receiver: control, piece } = await aCallerAndAParkingReceiver()
     // ⚠️ **A second identity**, because a give reaches the one conversation a giver has with it.
@@ -685,6 +714,7 @@ describe('650 · a refusal that clears on its own', () => {
     expect(
       payload(
         await call('give_work', {
+          to: control,
           profile: 'worker',
           title: 'x',
           brief: 'and then this',
@@ -694,21 +724,24 @@ describe('650 · a refusal that clears on its own', () => {
     ).toMatchObject({ outcome: 'ok', delivery: 'held', agent: control })
     expect(labelsIn(control)).toEqual(['W3.1', 'W3.3'])
 
+    const mailbox = eventsOf(worker.agent).filter((event) => event.type === 'message_queued')
     vi.spyOn(store, 'recordGive').mockImplementation(() => {
       throw new Error('SQLITE_READONLY: attempt to write a readonly database')
     })
     vi.spyOn(console, 'warn').mockImplementation(() => undefined)
 
-    await expect(
-      call('give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'sibling',
-        title: 'x',
-        brief: 'and then this',
-      }),
-    ).rejects.toThrow(/could not save/)
-    expect(eventsOf(worker.agent).filter((event) => event.type === 'message_queued')).toHaveLength(
-      1,
+    const failed = await call('give_work', {
+      to: worker.agent,
+      definition_of_done: 'The requested result and its checks are recorded.',
+      profile: 'sibling',
+      title: 'x',
+      brief: 'and then this',
+    })
+    expect(failed.text).toMatch(/^Not sent: /)
+    expect(payload(failed)).toMatchObject({ outcome: 'refused', rail: 'work-record-unavailable' })
+    expect(payload(failed)).not.toHaveProperty('receipt')
+    expect(eventsOf(worker.agent).filter((event) => event.type === 'message_queued')).toEqual(
+      mailbox,
     )
     expect(labelsIn(worker.agent)).toEqual(['W3.2'])
   })

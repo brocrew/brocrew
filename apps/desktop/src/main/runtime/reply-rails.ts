@@ -1,3 +1,5 @@
+import type { SendReceipt, ToolOutcome } from '../../shared/tool-outcome'
+import type { SendOverflow } from './send-overflow'
 import type {
   PieceRow,
   StoppedOnALogin,
@@ -442,7 +444,6 @@ export function admitReply(
   named: string,
   piece: PieceRow | undefined,
   root: boolean,
-  summary: string,
   /**
    * 🔴 **D-025 · what the host calls the one that ended the caller's piece** —
    * `RuntimeHost.whatToCallTheConversation`, PASSED: this module has no store. ⚑ The piece already
@@ -472,14 +473,6 @@ export function admitReply(
       ...(piece.endedBy === null || piece.endedBy === piece.owner
         ? {}
         : { called: whatToCall(piece.endedBy) }),
-    })
-  }
-  if (summary.length > REPLY_SUMMARY_LIMIT) {
-    return refuseReply('summary-too-long', {
-      piece: named,
-      label: piece.label,
-      limit: REPLY_SUMMARY_LIMIT,
-      was: summary.length,
     })
   }
   return null
@@ -569,63 +562,28 @@ export const REPLY_LANDED: Readonly<Record<ReplyDelivery, boolean>> = {
  * be kept. ⛔ They are not merged and neither is translated: each resource sentence already says the
  * reply was not recorded, for this caller to pass through unchanged.
  */
-export type ReplyOutcome =
-  | {
-      readonly ok: true
-      readonly piece: string
-      readonly label: string
-      /** The `work_resource` ids kept with the reply, in the order the files were handed in. */
-      readonly resources: readonly string[]
-      readonly resultDocument?: string
-      /**
-       * ⚑ A person gave the piece, so there was no conversation to deliver it to, and nothing was
-       * queued, told or woken (D-016 · commit 6 · R5).
-       */
-      readonly delivered: null
-    }
-  | ({
-      readonly ok: true
-      readonly piece: string
-      readonly label: string
-      /** The `work_resource` ids kept with the reply, in the order the files were handed in. */
-      readonly resources: readonly string[]
-      readonly resultDocument?: string
-      /**
-       * ⚑ **D-030 · the conversation the words went to, by the name every surface says** — its
-       * giver, or the one in its place (D-017 · R10) — ⛔ never its id.
-       */
-      readonly giver: string
-      /**
-       * ⚑ **D-030 · D-017 · R10 — the conversation that gave the piece could never be reopened**, so
-       * {@link giver} is the one that took its place, and the answer says so.
-       */
-      readonly tookItsPlace: boolean
-    } & (
-      | {
-          /** What became of the words. */
-          readonly delivered: 'sent'
-          readonly why?: undefined
-        }
-      | {
-          readonly delivered: 'held'
-          /**
-           * ⚑ Why it waits for more than its giver's turn, when it does: the giver holds a Claude
-           * sign-in this Mac moved on from, and this app reopens it for what is held; the giver's
-           * turn is stopped until a person answers it; or (F074) the giver's provider is at its
-           * usage limit, and it goes at the reset (`RuntimeHost.whyWhatIsHeldWaits`).
-           */
-          readonly why?: string
-        }
-      | {
-          readonly delivered: 'kept' | 'not-delivered'
-          /**
-           * ⚑ **D-017 · R14** — why, in words: the start's or the delivery's own reason, for `kept`;
-           * the record's, for `not-delivered` (D-030).
-           */
-          readonly why: string
-        }
-    ))
-  | { readonly ok: false; readonly refusal: ReplyRefusal | ResourceRefusal }
+export type ReplyOutcome = ToolOutcome<
+  {
+    readonly piece: string
+    readonly label: string
+    /** The resource ids kept with the reply, in the order the files were handed in. */
+    readonly resources: readonly string[]
+    readonly resultDocument?: string
+    readonly overflow?: SendOverflow
+  } & (
+    | { readonly delivered: null }
+    | ({
+        readonly giver: string
+        readonly tookItsPlace: boolean
+        readonly receipt?: SendReceipt
+      } & (
+        | { readonly delivered: 'sent'; readonly why?: undefined }
+        | { readonly delivered: 'held'; readonly why?: string }
+        | { readonly delivered: 'kept' | 'not-delivered'; readonly why: string }
+      ))
+  ),
+  ReplyRefusal | ResourceRefusal
+>
 
 /**
  * ⚑ **D-016 · resources as every sentence names them** — `res_… (name)`, joined. ⛔ One spelling

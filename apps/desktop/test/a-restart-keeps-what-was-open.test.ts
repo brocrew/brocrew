@@ -1,3 +1,4 @@
+import { answerOn } from './helpers/call-tool'
 import { waitFor } from './lib/f093-host'
 import { callOn } from './helpers/call-agent-tool'
 import { neutralHostDeps } from './lib/host-fixture'
@@ -27,7 +28,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
 import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import { agentCallerId, type ToolName } from '../src/main/runtime/agent-tools'
+import { agentCallerId } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import type { RuntimeChangeMessage, RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { stalledWorkSaid } from '../src/shared/stalled-work'
@@ -244,18 +245,6 @@ describe('692 · a restart keeps what was open', () => {
     host = buildHost()
   }
 
-  /** ⚑ The TEXT a model reads, beside the payload `callOn` returns. */
-  const textOf = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<{ structured: Record<string, unknown>; text: string }> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    const said = await tool.call(args)
-    return { structured: said.structured as Record<string, unknown>, text: said.text }
-  }
-
   const lastToolset = (): AgentToolset => {
     const last = handed.at(-1)
     if (last === undefined) throw new Error('no toolset was handed out')
@@ -326,6 +315,8 @@ describe('692 · a restart keeps what was open', () => {
     const children: string[] = []
     for (const kid of kids) {
       const given = await callOn(leadTools, 'give_work', {
+        to: 'new',
+        conversation_title: `the ${kid} half of the work`,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: kid,
         title: `the ${kid} half of the work`,
@@ -362,6 +353,7 @@ describe('692 · a restart keeps what was open', () => {
    */
   const giveTo = async (tools: AgentToolset, child: string, text: string): Promise<string> => {
     const given = await callOn(tools, 'give_work', {
+      to: child,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: profileOf(child),
       title: text,
@@ -448,18 +440,18 @@ describe('692 · a restart keeps what was open', () => {
       const before = launched.length
 
       // ⚑ **D-016 · a `note`** — the lead holds no open piece of this child's to follow up.
-      const { structured: said, text } = await textOf(leadTools, 'message_agent', {
+      const { structured: said, text } = await answerOn(leadTools, 'message_agent', {
         agent: child,
         kind: 'note',
         text: 'are you still there',
       })
       expect(said, JSON.stringify(said)).toMatchObject({ outcome: 'ok', agent: child })
-      // ⛔ **Not *"was idle"***: nothing was running in it. ⚑ **D-017 · R1** — any stopped
-      // conversation is started for a message, so the receipt says what reached it and never
-      // whether it ran.
-      // ⚑ **D-016 · commit 7 · R3** — the child named by the piece it owns, where it printed its id.
-      // The receipt does not echo the kind the call declared.
-      expect(text).toContain(`${host.nameByItsWork(child)} has been sent it straight away.`)
+      const address = store.firstTaskOf(child)?.label
+      const title = store.latestTaskTitle(child)
+      expect(said).toMatchObject({
+        receipt: { recipient: { id: child, address, title, state: { kind: 'started' } } },
+      })
+      expect(text).toBe(`Delivered to conversation ${address} · ${title}.`)
       expect(text).not.toContain('as note')
       expect(text).not.toContain('was idle')
       // ⛔ **Exactly one launch, and it is THAT child's** — the other two were not spoken to.
@@ -611,7 +603,7 @@ describe('692 · a restart keeps what was open', () => {
       expect(toldTheLead().join('\n')).toContain(ITS_TURN_WAS_STOPPED)
       // ⚑ **D-017 · R11 — `list_tasks` says the history, and `given_to_is` what the child is doing
       // now**: the same cause, and no second, process-shaped reading of its own.
-      const { text } = await textOf(tools, 'list_tasks', {})
+      const { text } = await answerOn(tools, 'list_tasks', {})
       expect(text).toContain(ITS_TURN_WAS_STOPPED)
     })
 
@@ -834,21 +826,50 @@ describe('692 · a restart keeps what was open', () => {
       expect(launched.length - before).toBe(0)
     })
 
+    const expectKeptMessage = (
+      said: Record<string, unknown>,
+      child: string,
+      code: 'provider-file-missing' | 'could-not-start',
+    ) => {
+      const kept = store
+        .messagesWaitingIn(child)
+        .find((message) => message.text === 'are you there')
+      expect(kept?.messageId).toEqual(expect.any(String))
+      expect(said).toMatchObject({
+        outcome: 'ok',
+        receipt: {
+          recorded: { kind: 'message', id: kept?.messageId },
+          recipient: { id: child, state: { kind: 'cannot-run', cause: { code } } },
+        },
+      })
+    }
+
+    const expectTemporaryStartFailureKeepsConversation = async (
+      tools: AgentToolset,
+      child: string,
+    ) => {
+      const said = await callOn(tools, 'message_agent', {
+        agent: child,
+        kind: 'note',
+        text: 'are you there',
+      })
+      expectKeptMessage(said, child, 'could-not-start')
+      expect(listed(child)).toEqual({ running: 'not-running' })
+    }
+
     it('a lost provider session leaves the same conversation recorded and starts no replacement', async () => {
       const { lead, children } = await theFourOpen()
       await quitAndRelaunch()
       const tools = await personPresses(lead)
       // ⛔ **The provider forgets what it issued** — a conversation its files no longer hold.
       issued.forgetAll()
-      const before = store.recorded().map(({ sessionId }) => sessionId)
-      await expect(
-        callOn(tools, 'message_agent', {
-          agent: children[0],
-          kind: 'note',
-          text: 'are you there',
-        }),
-      ).rejects.toMatchObject({ cause: { unavailable: 'its-session-is-gone' } })
-      expect(store.recorded().map(({ sessionId }) => sessionId)).toEqual(before)
+      const before = new Set(store.recorded().map(({ sessionId }) => sessionId))
+      const said = await callOn(tools, 'message_agent', {
+        agent: children[0],
+        text: 'are you there',
+      })
+      expectKeptMessage(said, children[0], 'provider-file-missing')
+      expect(new Set(store.recorded().map(({ sessionId }) => sessionId))).toEqual(before)
       expect(store.replacements()).toEqual([])
       expect(listed(children[0])).toEqual({ running: 'not-running' })
       expect(listed(children[1])).toEqual({ running: 'not-running' })
@@ -859,14 +880,7 @@ describe('692 · a restart keeps what was open', () => {
       await quitAndRelaunch()
       const tools = await personPresses(lead)
       CountingRuntime.failTheNextResume = new Error('the app-server closed its pipe')
-      const said = await callOn(tools, 'message_agent', {
-        agent: children[0],
-        kind: 'note',
-        text: 'are you there',
-      })
-      expect(said, JSON.stringify(said)).toMatchObject({ outcome: 'refused' })
-      // ⚑ **Still open**: nothing about the conversation was learned — only that this start failed.
-      expect(listed(children[0])).toEqual({ running: 'not-running' })
+      await expectTemporaryStartFailureKeepsConversation(tools, children[0])
     })
 
     /**
@@ -911,15 +925,11 @@ describe('692 · a restart keeps what was open', () => {
       await quitAndRelaunch()
       const tools = await personPresses(lead)
       CountingRuntime.theNextResumeThrows = lost
-      await expect(
-        callOn(tools, 'message_agent', {
-          agent: children[0],
-          kind: 'note',
-          text: 'are you there',
-        }),
-      ).rejects.toMatchObject({
-        cause: { unavailable: 'its-session-is-gone', cause: lost },
+      const said = await callOn(tools, 'message_agent', {
+        agent: children[0],
+        text: 'are you there',
       })
+      expectKeptMessage(said, children[0], 'provider-file-missing')
       expect(store.replacements()).toEqual([])
       expect(listed(children[0])).toEqual({ running: 'not-running' })
       expect(listed(children[1])).toEqual({ running: 'not-running' })
@@ -942,14 +952,7 @@ describe('692 · a restart keeps what was open', () => {
       await quitAndRelaunch()
       const tools = await personPresses(lead)
       CountingRuntime.theNextResumeThrows = died
-      const said = await callOn(tools, 'message_agent', {
-        agent: children[0],
-        kind: 'note',
-        text: 'are you there',
-      })
-      expect(said, JSON.stringify(said)).toMatchObject({ outcome: 'refused' })
-      // ⚑ **Still open**: an app-server that died says nothing about the conversation.
-      expect(listed(children[0])).toEqual({ running: 'not-running' })
+      await expectTemporaryStartFailureKeepsConversation(tools, children[0])
     })
 
     // Windows chmod cannot construct a POSIX permission denial.
@@ -989,7 +992,7 @@ describe('692 · a restart keeps what was open', () => {
           kind: 'note',
           text: 'are you there',
         })
-        expect(said, JSON.stringify(said)).toMatchObject({ outcome: 'refused' })
+        expectKeptMessage(said, children[0], 'could-not-start')
         expect(listed(children[0])).toEqual({ running: 'not-running' })
       },
     )

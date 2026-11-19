@@ -2,8 +2,8 @@
  * Archiving and deleting a conversation, as main answers the window.
  *
  * Archive is the everyday action: it keeps everything and takes the conversation and the helpers
- * below it out of the rail, Team and Waiting on you until a person restores it, or until something
- * starts one of them. Delete is a person's alone: it removes the parts they tick, from a list main
+ * below it out of the rail, Team and Waiting on you until the person restores it or new work is
+ * given to it. Delete is a person's alone: it removes the parts they tick, from a list main
  * reads first, and nothing else.
  */
 

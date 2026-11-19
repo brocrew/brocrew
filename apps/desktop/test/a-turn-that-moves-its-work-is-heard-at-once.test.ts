@@ -1,3 +1,4 @@
+import { addressedGive, newConversationGive } from './lib/give-fixture'
 import { callOn } from './helpers/call-agent-tool'
 import { waitFor } from './lib/f093-host'
 import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
@@ -262,12 +263,11 @@ describe('D-033 · a turn that moves a piece of work is heard by every window at
     const pm = await personOpens('pm')
     const pmTools = agentToolsFor(host, pm)
     decorateNextHandle = holdingAWorkingTurn
-    const given = await callOn(pmTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'the work',
-      brief: 'do the work',
-    })
+    const given = await callOn(
+      pmTools,
+      'give_work',
+      newConversationGive('worker', 'the work', 'do the work'),
+    )
     decorateNextHandle = null
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
@@ -426,12 +426,11 @@ describe('D-033 · a turn that moves a piece of work is heard by every window at
       // ⚑ The worker this give starts takes the next id, so its rows are watched from its start.
       watched = `sess_${String(counter + 1)}`
       announced = []
-      const given = await callOn(agentToolsFor(host, pm), 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'the work',
-        brief: 'do the work',
-      })
+      const given = await callOn(
+        agentToolsFor(host, pm),
+        'give_work',
+        newConversationGive('worker', 'the work', 'do the work'),
+      )
       expect(given.outcome, JSON.stringify(given)).toBe('ok')
       const worker = given.agent as string
       expect(worker, 'the worker took another id than the one watched').toBe(watched)
@@ -544,19 +543,18 @@ describe('D-033 · a turn that moves a piece of work is heard by every window at
       expect(work()).toHaveLength(0)
     })
 
-    it('⛔ a NEW piece first seen `working` is the give’s — no read at the worker’s status says it again', async () => {
+    it('announces the recorded piece and then its first working state once', async () => {
       const bring = await personOpens('worker')
       await host.close(bring, window)
       const pm = await personOpens('pm')
       watched = `sess_${String(counter + 1)}`
       announced = []
       decorateNextHandle = holdingAWorkingTurn
-      const given = await callOn(agentToolsFor(host, pm), 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'the work',
-        brief: 'do the work',
-      })
+      const given = await callOn(
+        agentToolsFor(host, pm),
+        'give_work',
+        newConversationGive('worker', 'the work', 'do the work'),
+      )
       decorateNextHandle = null
       expect(given.outcome, JSON.stringify(given)).toBe('ok')
       const worker = given.agent as string
@@ -569,14 +567,13 @@ describe('D-033 · a turn that moves a piece of work is heard by every window at
         'the worker on its new piece',
       )
       await settle()
-      // ⚑ The give said it (the positive)…
-      expect(work().length).toBeGreaterThanOrEqual(1)
-      // ⛔ …and no read of the worker's own status rows said it a second time: the piece was first
-      // seen there `working`, which is the give's to say.
-      expect(
-        work().filter((one) => one.at.startsWith('status:')),
-        JSON.stringify(work()),
-      ).toEqual([])
+      const relevant = work().filter(
+        (row) => row.at === 'work_given' || row.at.startsWith('status:'),
+      )
+      expect(relevant).toEqual([
+        { what: 'work', at: 'work_given' },
+        { what: 'work', at: 'status:working' },
+      ])
     })
 
     /**
@@ -605,12 +602,11 @@ describe('D-033 · a turn that moves a piece of work is heard by every window at
       const rowsBefore = store.events(w.worker).length
 
       announced = []
-      const given = await callOn(w.pmTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'the second work',
-        brief: 'do the second work',
-      })
+      const given = await callOn(
+        w.pmTools,
+        'give_work',
+        addressedGive(w.worker, 'worker', 'the second work', 'do the second work'),
+      )
       expect(given.outcome, JSON.stringify(given)).toBe('ok')
       // ⚑ The premise: the running conversation took it, and nothing was started to read it first.
       expect(given.agent).toBe(w.worker)

@@ -1,3 +1,4 @@
+import type { GivenInput } from '../../shared/documents'
 import {
   createLedgerHistoryRead,
   type LedgerWindowQuery,
@@ -86,6 +87,13 @@ import type {
   WorkGivenOut,
 } from '../../shared/task-contracts'
 import type { HandedPath } from '../../shared/attachment-contracts'
+import {
+  aConversationTitle,
+  aTitleAuthor,
+  CONVERSATION_TITLE_CHARS,
+  type ConversationTitle,
+  type ConversationTitledEvent,
+} from '../../shared/conversation-title'
 import type { ScheduleLevel, ScheduledRow } from '../../shared/agent-state-contracts'
 import { createSqliteSessionModels } from '../database/sqlite/agents/session-models'
 import { createOwnNotesStore, type OwnNotesStore } from './own-notes'
@@ -317,15 +325,6 @@ export type KeptFilesPaged =
 interface KeptFilesFrom {
   readonly olderThan: string | null
   readonly limit: number
-}
-
-export interface GivenInput {
-  /** `res_<32 hex>` — `newResourceId`. */
-  readonly resource: string
-  readonly title: string
-  readonly name: string
-  readonly sha256: string
-  readonly bytes: number
 }
 
 interface GivenPiece {
@@ -769,6 +768,19 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   findByProviderRef(provider: Provider, sessionId: string): string | null
   nameItsLaunch(sessionId: string, ref: ReturnType<typeof parseSessionRef>): boolean
   append(sessionId: string, ordinal: number, event: TranscriptEvent, at: number): void
+  /**
+   * Sets a conversation's title: one `titled` entry in its own ledger, at `ordinal`. Throws, writing
+   * nothing, unless the title is one line of 1 to 200 characters. Inside `atomically`, it commits or
+   * rolls back with the rest of that write.
+   */
+  titleConversation(
+    conversation: string,
+    ordinal: number,
+    titled: ConversationTitledEvent,
+    at: number,
+  ): void
+  /** The newest title set on a conversation in its current history, or `null` when none was. */
+  conversationTitle(conversation: string): ConversationTitle | null
   appendMany(
     sessionId: string,
     entries: { ordinal: number; event: TranscriptEvent; at: number }[],
@@ -931,6 +943,13 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
     pieces: readonly string[],
   ): ReadonlyMap<string, { readonly label: string; readonly title: string | null } | null>
   workByLabel(label: string): WorkRow | null
+  /**
+   * The first task recorded in this conversation, in the order tasks were stored (never by clock
+   * time), root or not, ended or open; `null` while it has none. Its label is the conversation's
+   * address, and it never changes.
+   */
+  firstTaskOf(conversation: string): { readonly piece: string; readonly label: string } | null
+  latestTaskTitle(conversation: string): string | null
   /** The root this conversation owns, or `null`: a conversation another one started owns none. */
   rootOf(conversation: string): WorkRow | null
   servicesBorn(): readonly { readonly conversation: string; readonly identity: string | null }[]
@@ -940,13 +959,7 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   workerGiverContains(giver: string, conversation: string): boolean
   /** The current worker, from a complete bounded replacement chain. */
   workerInItsPlace(conversation: string): string
-  /** A bounded complete ledger for reuse; null means it cannot prove absence. */
-  workerLedger(
-    conversation: string,
-    budget?: { rowsLeft: number; bytesLeft: number },
-  ): readonly PersistedEvent[] | null
   workerLineage(conversation: string): readonly string[]
-  workerQuestionTargets(): readonly { asker: string; recipient: string }[] | null
   rootLines(root: string): { readonly title: string | null; readonly statusLine: StatusLine | null }
   workThatNames(conversation: string, unread?: RowsUnread): WorkThatNamesIt | null
   workThatNamesAndItsWait(
@@ -968,18 +981,25 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   pieceOfItsChainHeldBy(piece: string, owner: string): string | null
   turnBlockPiecesOwnedBy(owner: string, unread?: RowsUnread): readonly PieceRow[]
   openPiecesOf(owner: string, unread?: RowsUnread): readonly PieceRow[]
-  newestChildAs(
-    parents: readonly string[],
-    profileSlug: string,
-    provider?: Provider,
-    except?: readonly string[],
-  ): string | null
   conversationsOf(profileSlug: string): readonly {
     readonly conversation: string
     readonly parent: string | null
     readonly startedAt: number
     readonly lastActiveAt: number
   }[]
+  /**
+   * The most recently active conversations of `recipientProfile` that hold work given from the
+   * giver's profile (or, for a giver with no profile, from the giver itself), newest first: at most
+   * `limit`, and whether there are more. Each carries the title of its latest task.
+   */
+  recentConversationsGivenFrom(
+    giver: string,
+    recipientProfile: string,
+    limit: number,
+  ): {
+    readonly rows: readonly { readonly conversation: string; readonly title: string | null }[]
+    readonly more: boolean
+  }
   newestPiecesHeldIn(
     conversations: readonly string[],
     limit: number,
@@ -1274,14 +1294,14 @@ export const NULL_SESSION_STORE: SessionStore = {
   workById: () => null,
   activityWorkNames: () => new Map(),
   workByLabel: () => null,
+  firstTaskOf: () => null,
+  latestTaskTitle: () => null,
   rootOf: () => null,
   servicesBorn: () => [],
   workersBorn: () => [],
   workerGiverContains: () => false,
   workerInItsPlace: (conversation) => conversation,
-  workerLedger: () => null,
   workerLineage: (conversation) => [conversation],
-  workerQuestionTargets: () => null,
   rootDoneCondition: () => null,
   rootLines: () => ({ title: null, statusLine: null }),
   turnBlockRootLines: () => null,
@@ -1295,8 +1315,8 @@ export const NULL_SESSION_STORE: SessionStore = {
   piecesWithTheirWaits: () => [],
   turnBlockPiecesOwnedBy: () => [],
   openPiecesOf: () => [],
-  newestChildAs: () => null,
   conversationsOf: () => [],
+  recentConversationsGivenFrom: () => ({ rows: [], more: false }),
   newestPiecesHeldIn: () => ({ rows: [], newest: 0, total: 0 }),
   pieceItWasStartedWith: () => null,
   addResource: () => {
@@ -1359,6 +1379,8 @@ export const NULL_SESSION_STORE: SessionStore = {
   findByProviderRef: () => null,
   nameItsLaunch: () => false,
   append: () => {},
+  titleConversation: () => {},
+  conversationTitle: () => null,
   appendMany: () => {},
   atomically: (work) => work(),
   onCommitted: () => () => undefined,
@@ -2836,6 +2858,59 @@ export function createSessionStore(
        updated_at = excluded.updated_at`,
   )
 
+  const selectNewestTitled = db.prepare(
+    `SELECT ordinal, payload, created_at FROM events INDEXED BY events_kind_owner_idx
+      WHERE type = 'titled' AND session_id = ? AND generation = ?
+      ORDER BY ordinal DESC LIMIT 1`,
+  )
+
+  /** The newest `titled` row of one generation; an unreadable one reads as none, and is logged. */
+  function newestConversationTitle(
+    conversation: string,
+    generation: number,
+  ): ConversationTitle | null {
+    const row = selectNewestTitled.get(conversation, generation) as EventRow | undefined
+    if (row === undefined) return null
+    const read = toPersistedEvents([row])[0]
+    if (read?.event.type !== 'titled') return null
+    return { title: read.event.title, author: read.event.author, at: read.at }
+  }
+
+  const selectTitledOf = db.prepare(
+    `SELECT payload, created_at FROM events INDEXED BY events_kind_owner_idx
+      WHERE type = 'titled' AND session_id = ? AND generation = ?
+      ORDER BY ordinal`,
+  )
+
+  /** A provider rebuild has no titles. A copied ledger may already hold their ordered prefix. */
+  function carryTitles(sessionId: string, from: number, to: number): void {
+    if (from === to) return
+    type TitleRow = { payload: string; created_at: number }
+    const titles = selectTitledOf.all(sessionId, from) as TitleRow[]
+    if (titles.length === 0) return
+    const copied = selectTitledOf.all(sessionId, to) as TitleRow[]
+    const firstMissing = titles.findIndex(
+      (title, index) =>
+        title.payload !== copied[index]?.payload || title.created_at !== copied[index]?.created_at,
+    )
+    if (firstMissing < 0) return
+    const last =
+      (selectMaxOrdinal.get(sessionId, to) as { max_ordinal: number | null } | undefined)
+        ?.max_ordinal ?? -1
+    titles.slice(firstMissing).forEach((title, index) => {
+      insertEvent.run(
+        newEventId(),
+        sessionId,
+        last + 1 + index,
+        'titled',
+        title.payload,
+        title.created_at,
+        null,
+        to,
+      )
+    })
+  }
+
   const appendTx = db.transaction(
     (
       sessionId: string,
@@ -3831,14 +3906,8 @@ export function createSessionStore(
   const selectHoldsAGivenPiece = db.prepare(
     `SELECT 1 AS yes FROM work WHERE owner_session_id = ? AND parent_id IS NOT NULL LIMIT 1`,
   )
-  const {
-    workersBorn,
-    workerGiverContains,
-    workerInItsPlace,
-    workerLedger,
-    workerReplacementChain,
-    workerQuestionTargets,
-  } = createWorkerRecordsRead(db, selectOne, activeGeneration)
+  const { workersBorn, workerGiverContains, workerInItsPlace, workerReplacementChain } =
+    createWorkerRecordsRead(db, selectOne)
 
   const selectOwnersOfPiecesAConversationGave = db.prepare(
     `SELECT DISTINCT owner_session_id AS id FROM work WHERE given_by_session_id IS NOT NULL`,
@@ -4183,13 +4252,15 @@ export function createSessionStore(
     rootNumbered: AppStatement
     childNumbered: AppStatement
     rootOwnedBy: AppStatement
+    firstOwnedBy: AppStatement
+    latestOwnedBy: AppStatement
     children: AppStatement
     doneCondition: AppStatement
     newestLine: AppStatement
     turnRootLine: AppStatement
     retitlesIn: AppStatement
-    childAs: AppStatement
     conversationsOf: AppStatement
+    recentGivenFrom: AppStatement
     newestHeldIn: AppStatement
     heldInCount: AppStatement
     insertResource: AppStatement
@@ -4232,6 +4303,15 @@ export function createSessionStore(
       rootOwnedBy: db.prepare(
         `SELECT ${WORK_COLUMNS} FROM work WHERE parent_id IS NULL AND owner_session_id = ?`,
       ),
+      // ⚑ Stored order is the row's insertion order (rowid), read in the owner index's own order.
+      firstOwnedBy: db.prepare(
+        `SELECT ${WORK_COLUMNS} FROM work INDEXED BY work_owner_idx
+          WHERE owner_session_id = ? ORDER BY rowid LIMIT 1`,
+      ),
+      latestOwnedBy: db.prepare(
+        `SELECT ${WORK_COLUMNS} FROM work INDEXED BY work_owner_idx
+          WHERE owner_session_id = ? ORDER BY rowid DESC LIMIT 1`,
+      ),
       children: db.prepare(`SELECT ${WORK_COLUMNS} FROM work WHERE parent_id = ? ORDER BY number`),
       doneCondition: db.prepare(
         `SELECT payload FROM events
@@ -4272,18 +4352,26 @@ export function createSessionStore(
             AND type = 'work_retitled'
           ORDER BY ordinal DESC`,
       ),
-      childAs: db.prepare(
-        `SELECT id, created_at FROM provider_session
-          WHERE parent_session_id = ? AND agent_identity_id = ?
-            AND (? IS NULL OR provider = ?)
-            AND id NOT IN (SELECT value FROM json_each(?))
-          ORDER BY created_at DESC, id DESC
-          LIMIT 1`,
-      ),
       conversationsOf: db.prepare(
         `SELECT id, parent_session_id, created_at, updated_at FROM provider_session
           WHERE agent_identity_id = ?
           ORDER BY updated_at DESC, id DESC`,
+      ),
+      recentGivenFrom: db.prepare(
+        `SELECT s.id,
+                (SELECT w.title FROM work AS w INDEXED BY work_owner_idx
+                  WHERE w.owner_session_id = s.id AND w.parent_id IS NOT NULL
+                  ORDER BY w.created_at DESC, w.id DESC LIMIT 1) AS title
+           FROM provider_session AS s
+          WHERE s.agent_identity_id = @recipient
+            AND EXISTS (
+              SELECT 1 FROM work AS w INDEXED BY work_owner_idx
+                JOIN provider_session AS g ON g.id = w.given_by_session_id
+               WHERE w.owner_session_id = s.id
+                 AND (g.id = @giver OR g.agent_identity_id =
+                      (SELECT agent_identity_id FROM provider_session WHERE id = @giver)))
+          ORDER BY s.updated_at DESC, s.id DESC
+          LIMIT @limit`,
       ),
       newestHeldIn: db.prepare(
         `SELECT id, owner_session_id FROM work
@@ -5183,6 +5271,21 @@ export function createSessionStore(
       appendTx(sessionId, ordinal, event, at, activeGeneration(sessionId), true)
     },
 
+    titleConversation(conversation, ordinal, titled, at) {
+      const title = aConversationTitle(titled.title)
+      if (title === null || !aTitleAuthor(titled.author)) {
+        throw new Error(
+          `a conversation title is one line of 1 to ${String(CONVERSATION_TITLE_CHARS)} characters, with its author`,
+        )
+      }
+      const event: ConversationTitledEvent = { type: 'titled', title, author: titled.author }
+      appendTx(conversation, ordinal, event, at, activeGeneration(conversation), true)
+    },
+
+    conversationTitle(conversation) {
+      return newestConversationTitle(conversation, activeGeneration(conversation))
+    },
+
     appendMany(sessionId, entries) {
       if (entries.length === 0) return
       appendManyTx(sessionId, entries, activeGeneration(sessionId), true)
@@ -5330,6 +5433,7 @@ export function createSessionStore(
 
     promoteGeneration(sessionId, generation, through) {
       return db.transaction(() => {
+        const outgoing = activeGeneration(sessionId)
         const flipped = promoteBuilding.run(
           generation,
           through.normalizerVersion,
@@ -5339,6 +5443,7 @@ export function createSessionStore(
           generation,
         )
         if (flipped.changes === 0) return false
+        carryTitles(sessionId, outgoing, generation)
         committed.whole(sessionId, 'promoted')
         ledgerWrites.set(sessionId, { ordinal: null, generation })
         const open = selectOpenTurnId.get(sessionId, generation) as { id: string } | undefined
@@ -5862,6 +5967,17 @@ export function createSessionStore(
       return row === undefined ? null : workRowFrom(row, numbers)
     },
 
+    firstTaskOf(conversation) {
+      const row = workSql().firstOwnedBy.get(conversation) as WorkDbRow | undefined
+      if (row === undefined) return null
+      return { piece: row.id, label: workRowWalked(row).label }
+    },
+
+    latestTaskTitle(conversation) {
+      const row = workSql().latestOwnedBy.get(conversation) as WorkDbRow | undefined
+      return row === undefined ? null : titleNow(row, activeGeneration(conversation))
+    },
+
     rootOf(conversation) {
       const row = workSql().rootOwnedBy.get(conversation) as WorkDbRow | undefined
       return row === undefined ? null : workRowFrom(row, [row.number])
@@ -5870,9 +5986,7 @@ export function createSessionStore(
     workersBorn,
     workerGiverContains,
     workerInItsPlace,
-    workerLedger,
     workerLineage: workerReplacementChain,
-    workerQuestionTargets,
 
     servicesBorn() {
       return (selectServicesBorn.all() as { id: string; identity: string | null }[]).map(
@@ -6093,27 +6207,16 @@ export function createSessionStore(
       return piecesOfSession(owner, unread?.in(owner)).filter((piece) => TASK_IS_OPEN[piece.state])
     },
 
-    newestChildAs(parents, profileSlug, provider, except = []) {
-      const identityId = agentIdentityRowId(profileSlug)
-      let newest: { readonly id: string; readonly created_at: number } | undefined
-      for (const parent of parents) {
-        const found = workSql().childAs.get(
-          parent,
-          identityId,
-          provider ?? null,
-          provider ?? null,
-          JSON.stringify(except),
-        ) as { id: string; created_at: number } | undefined
-        if (found === undefined) continue
-        if (
-          newest === undefined ||
-          found.created_at > newest.created_at ||
-          (found.created_at === newest.created_at && found.id > newest.id)
-        ) {
-          newest = found
-        }
+    recentConversationsGivenFrom(giver, recipientProfile, limit) {
+      const rows = workSql().recentGivenFrom.all({
+        recipient: agentIdentityRowId(recipientProfile),
+        giver,
+        limit: limit + 1,
+      }) as { id: string; title: string | null }[]
+      return {
+        rows: rows.slice(0, limit).map((row) => ({ conversation: row.id, title: row.title })),
+        more: rows.length > limit,
       }
-      return newest?.id ?? null
     },
 
     conversationsOf(profileSlug) {

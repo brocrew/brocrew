@@ -309,6 +309,8 @@ describe('D-033 · a Claude turn’s words compare what its conversation holds a
       return it.handle
     }
     const first = await callOn(pm, 'give_work', {
+      to: 'new',
+      conversation_title: 'The first',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'The first',
@@ -325,6 +327,7 @@ describe('D-033 · a Claude turn’s words compare what its conversation holds a
       'the worker on the first piece',
     )
     const second = await callOn(pm, 'give_work', {
+      to: first.label,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'The second',

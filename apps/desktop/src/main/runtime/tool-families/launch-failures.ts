@@ -190,10 +190,13 @@ export function aWakeThatDidNotHappen(error: unknown): {
   // **The provider's own class, and it carries no closed reason** — `ResumeError`'s message is
   // the provider's words and can name its own ids, so the reason given is the class's.
   if (error instanceof ResumeError) {
-    return {
-      rail: 'that-conversation-could-not-be-resumed',
-      because: 'the-provider-could-not-resume-it',
-    }
+    const program = spawnNoWaitClearsOf(error)
+    return program === null
+      ? {
+          rail: 'that-conversation-could-not-be-resumed',
+          because: 'the-provider-could-not-resume-it',
+        }
+      : { rail: 'that-conversation-could-not-be-resumed', because: program, what: 'program' }
   }
   const reason =
     unavailableOf(error) ??
@@ -331,36 +334,12 @@ export function aStartItsLoginOrSettingsRefused(
 }
 
 /**
- * **D-039 · what a give with `new: true` whose launch failed still did: it MADE the agent.**
- *
- * **The identity is the give's first write, after every rail and before the launch**
- * (`RuntimeHost.giveWork`), and a failed launch does not take it back — so the same give again
- * meets `that-profile-exists`. Said after the word's own sentence, whichever it is: every launch
- * failure `give_work` classifies comes after that write. No name and no id: the giver named it.
- */
-export const THE_NEW_AGENT_WAS_MADE =
-  'The new agent was made all the same: from now on, give to it without new.'
-
-/**
- * **D-039 · a failed launch's refusal, and what a give with `new: true` still did** — its
- * sentence ({@link theRefusalOfALaunch}), then {@link THE_NEW_AGENT_WAS_MADE} when it made one.
- */
-export function aLaunchRefused(
-  failed: NonNullable<ReturnType<typeof aLaunchThatDidNotStart>>,
-  madeANewAgent: boolean,
-  detail: Readonly<Record<string, unknown>>,
-): ToolRefusalPayload {
-  const said = theRefusalOfALaunch(failed, detail)
-  return madeANewAgent ? { ...said, reason: `${said.reason} ${THE_NEW_AGENT_WAS_MADE}` } : said
-}
-
-/**
  * **716 · a failed launch's refusal, in the sentence that says what a person must fix** — the two
  * places `give_work` picks it: a folder ({@link A_FOLDER_COULD_NOT_BE_MADE}) and, **D-039 · R2**,
  * a start its provider refused ({@link A_PROVIDER_REFUSED_THE_START}). Every other failure says its
  * word's own sentence.
  */
-function theRefusalOfALaunch(
+export function aLaunchRefused(
   failed: NonNullable<ReturnType<typeof aLaunchThatDidNotStart>>,
   detail: Readonly<Record<string, unknown>>,
 ): ToolRefusalPayload {

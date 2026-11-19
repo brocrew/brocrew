@@ -1,3 +1,4 @@
+import { hasDirectRefusalOpening } from '../../../../shared/tool-outcome'
 import type { NoticeItem } from '../transcript-message-contracts'
 import type { TranscriptState } from '../transcript-state-contracts'
 import type { TranscriptEvent } from '../../../../shared/conversation-events'
@@ -191,7 +192,7 @@ export function awaitItsReceipt(
  * 🔴 **685 · a receipt that IS a refusal hands its words to the notice** (`675` F-d).
  *
  * Join one refusal to a receipt from this app's own tool. Older receipts carry the rail in their
- * prefix. A `Not sent:` receipt must contain the recorded quote or agree through the provider's
+ * prefix. A direct-reason receipt must contain the recorded quote or agree through the provider's
  * summary cutoff. Leave the notice alone if more than one refusal matches.
  *
  * ⚠️ **An outgoing card already prints this receipt** (`outgoing-card.ts`), so the refusal is
@@ -209,16 +210,16 @@ export function tellItsRefusal(
   if (typeof name !== 'string' || set === null || set.declared === null) return null
   const split = splitQualified(set.naming, name)
   if (split === null || split.server !== set.declared.server) return null
-  const notSent = summary.startsWith('Not sent: ')
-  const clipped = notSent && RECEIPT_CUT.exec(summary)?.index === TOOL_RECEIPT_CUTOFF
+  const direct = hasDirectRefusalOpening(summary)
+  const clipped = direct && RECEIPT_CUT.exec(summary)?.index === TOOL_RECEIPT_CUTOFF
   const head = clipped ? summary.slice(0, TOOL_RECEIPT_CUTOFF) : summary
   const matching = state.refusalsAwaitingReceipt.filter((waiting) => {
     if (waiting.tool !== split.tool) return false
-    if (!notSent) return summary.startsWith(`refused (${waiting.rail}): `)
+    if (!direct) return summary.startsWith(`refused (${waiting.rail}): `)
     const quote = waiting.told?.text
     return (
       quote !== undefined &&
-      quote.startsWith('Not sent: ') &&
+      hasDirectRefusalOpening(quote) &&
       (head.startsWith(quote) || (clipped && quote.startsWith(head)))
     )
   })

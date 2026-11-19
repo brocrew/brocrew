@@ -148,6 +148,8 @@ describe('D-011 · the sender says where it stands', () => {
     await host.close((await personOpens('worker')).id, window)
     const pm = await personOpens('pm')
     const given = await callOn(pm.tools, 'give_work', {
+      to: 'new',
+      conversation_title: 'Build the index',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'Build the index',
@@ -173,26 +175,26 @@ describe('D-011 · the sender says where it stands', () => {
    * ⚑ **The tag's own sentence**, the first of the line. ⚠️ A person opened these senders, so `439`'s
    * clause follows it (*"A person is at that conversation…"*) — pinned in its own file, not here.
    */
-  const theTagIn = (turn: string): string =>
-    (turn.split('\n')[0] ?? '').split('. A person')[0] + '.'
+  const theTagIn = (turn: string): string => turn.split('\n')[0] ?? ''
 
   it('🔴 the giver, handing over work: by name, and "who is giving you" the piece, by its label and title', async () => {
     const { pm, worker, label } = await aPmItsWorkerAndAPeer()
     const turn = await theTurnCarrying(worker, 'build it')
-    const direction = turn.split('\n\n')[1]
-    expect(theTagIn(turn)).toBe(
-      `Sent by ${nameOf('pm')} (pm), who is giving you ${label} · Build the index.`,
+    const direction = turn.split('\n\n').find((line) => line.startsWith('Your reply here'))
+    expect(theTagIn(turn)).toContain(
+      `From ${nameOf('pm')} (conversation ${host.addressOf(pm.id)} ·`,
     )
     // ⚑ The address is still there, in the direction line — ⚑ D-016 · commit 7 · R3: the piece the
     // giver owns, the root the given piece hangs under, where it was the giver's id.
     const owns = store.workThatNames(pm.id)
     expect(owns).toEqual({ label: store.rootOf(pm.id)?.label, title: null, definitionOfDone: null })
+    expect(theTagIn(turn)).toContain(
+      `: task ${label} · Build the index for you in your conversation ${label} ·`,
+    )
     expect(label.startsWith(`${String(owns?.label)}.`), label).toBe(true)
     // ⚑ W4.178 · a brief, so the line says nothing of a note: its piece line asks for an answer.
-    expect(direction).toBe(
-      theDirectionLine(`${nameOf('pm')}, the owner of ${String(owns?.label)}`, 'caller', true),
-    )
-    expect(direction).not.toContain('A note expects no answer')
+    expect(direction).toBe(theDirectionLine(nameOf('pm'), 'caller'))
+    expect(turn).not.toContain('A note expects no answer')
     expect(turn).toContain('Finish it by calling reply_to_parent')
     // ⛔ …and never the old spellings: neither the profile sentence nor the giver's id.
     expect(turn).not.toContain('running as profile')
@@ -211,11 +213,14 @@ describe('D-011 · the sender says where it stands', () => {
       text: 'and the tests',
     })
     const turn = await theTurnCarrying(worker, 'and the tests')
-    expect(theTagIn(turn)).toBe(`Sent by ${nameOf('pm')} (pm), who gave you ${label}.`)
+    expect(theTagIn(turn)).toContain(
+      `From ${nameOf('pm')} (conversation ${host.addressOf(pm.id)} ·`,
+    )
+    expect(turn).toContain(`This conversation gave you ${label}.`)
     // 🔴 **F088 · and the line says so, last**, by its label and title — open, so with no word on
     // how it ended.
-    const about = `only an approval needs the person directly. This message is about ${label} · Build the index.`
-    expect((turn.split('\n')[0] ?? '').slice(-about.length)).toBe(about)
+    const about = `about task ${label} · Build the index in your conversation`
+    expect(theTagIn(turn)).toContain(about)
   })
 
   it('🔴 another agent that gave it no work: "another agent; it gave you no work"', async () => {
@@ -229,9 +234,11 @@ describe('D-011 · the sender says where it stands', () => {
       text: 'fyi: main moved',
     })
     const turn = await theTurnCarrying(worker, 'fyi: main moved')
-    expect(theTagIn(turn)).toBe(
-      `Sent by ${nameOf('reviewer')} (reviewer), another agent; it gave you no work.`,
+    expect(theTagIn(turn)).toContain(
+      `From ${nameOf('reviewer')} (conversation ${host.addressOf(peer.id)} ·`,
     )
+    expect(theTagIn(turn)).not.toContain('about task')
+    expect(turn).not.toContain('This conversation gave you')
   })
 
   it('🔴 worked out when the words GO: a follow-up held while its work was open goes out after the work closed', async () => {
@@ -255,12 +262,13 @@ describe('D-011 · the sender says where it stands', () => {
     await letTheTurnFinish(worker)
     const turn = await theTurnCarrying(worker, 'how is it going?')
     // ⛔ Not *"who gave you W<n>.1"*, which was true when the words were queued and is not now.
-    expect(theTagIn(turn)).toBe(
-      `Sent by ${nameOf('pm')} (pm), who gave you work that is now closed.`,
+    expect(theTagIn(turn)).toContain(
+      `From ${nameOf('pm')} (conversation ${host.addressOf(pm.id)} ·`,
     )
+    expect(turn).toContain('This conversation gave you work that is now closed.')
     // 🔴 **F088 · and the piece it is about, marked as it stands when the words GO** — answered,
     // which it was not when they were held.
-    const about = `only an approval needs the person directly. This message is about ${label} · Build the index (answered).`
-    expect((turn.split('\n')[0] ?? '').slice(-about.length)).toBe(about)
+    const about = `about task ${label} · Build the index (answered) in your conversation`
+    expect(theTagIn(turn)).toContain(about)
   })
 })

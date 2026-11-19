@@ -1,3 +1,4 @@
+import { addressedGive, newConversationGive } from './lib/give-fixture'
 import type { RuntimeHostDeps } from '../src/main/runtime/host-dependencies'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import type { UserTurnEvent } from '../src/shared/human-answer-contracts'
@@ -1125,12 +1126,7 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
         )
         codex.turnModes.push('held-open')
         const result = await host.giveWork(
-          {
-            definition_of_done: 'The requested result and its checks are recorded.',
-            profile: 'farah',
-            title: 'The open pull requests',
-            brief: MESSAGE,
-          },
+          newConversationGive('farah', 'The open pull requests', MESSAGE),
           { ownerId: agentCallerId(giver) },
         )
         if (!result.ok) throw new Error(`refused: ${result.refusal.rail}`)
@@ -1216,6 +1212,7 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
         codex.turnModes.push('held-open')
         const result = await host.giveWork(
           {
+            to: helper,
             definition_of_done: 'The fictional result is kept.',
             profile: 'farah',
             title: 'The new fictional give',
@@ -1263,7 +1260,18 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       })
 
       it('startup lifecycle and an empty terminal level survive both carry-on rechecks', async () => {
-        const { helper, piece } = await given()
+        const { giver, helper, piece } = await given()
+        const opened = store.newestOfType?.(helper, 'user_turn')
+        if (opened === undefined || opened === null) throw new Error('the first brief is missing')
+        const titles = store.events(helper).filter((row) => row.event.type === 'titled')
+        expect(titles.map((row) => row.event)).toEqual([
+          {
+            type: 'titled',
+            title: 'The open pull requests',
+            author: { kind: 'agent', conversation: giver },
+          },
+        ])
+        expect(titles[0]?.ordinal).toBeLessThan(opened.ordinal)
         let rechecked = 0
         codex.asItResumes = (handle) => {
           for (const event of afterReopen) says(handle, event)
@@ -1485,6 +1493,7 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
         codex.turnModes.push('held-open')
         const next = await host.giveWork(
           {
+            to: helper,
             definition_of_done: 'The result is recorded.',
             profile: 'farah',
             title: 'The next brief',
@@ -1553,6 +1562,7 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
           codex.turnModes.push('held-open')
           const next = await host.giveWork(
             {
+              to: helper,
               definition_of_done: 'The result is recorded.',
               profile: 'farah',
               title: 'The next brief',
@@ -1720,12 +1730,7 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
         accept(THE_COMPUTERS)
         codex.turnModes.push('refused')
         const given = await host.giveWork(
-          {
-            definition_of_done: 'The requested result and its checks are recorded.',
-            profile: 'farah',
-            title: 'The open pull requests',
-            brief: MESSAGE,
-          },
+          newConversationGive('farah', 'The open pull requests', MESSAGE),
           { ownerId: agentCallerId(giver) },
         )
         if (!given.ok) throw new Error(`refused: ${given.refusal.rail}`)
@@ -1750,6 +1755,7 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
         held: 1 | 2,
       ): Promise<{ helper: string; letItGo: () => Promise<void> }> {
         let giver = ''
+        let target = ''
         let reopened = false
         let briefsCheck: (() => void) | null = null
         let second: Promise<unknown> | null = null
@@ -1763,21 +1769,16 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
             (asked += 1) === held
               ? new Promise((resolve) => (briefsCheck = () => resolve(false)))
               : Promise.resolve(false)
-          second = host.giveWork(
-            {
-              definition_of_done: 'The requested result and its checks are recorded.',
-              profile: 'farah',
-              title: 'The release notes',
-              brief: SECOND,
-            },
-            { ownerId: agentCallerId(giver) },
-          )
+          second = host.giveWork(addressedGive(target, 'farah', 'The release notes', SECOND), {
+            ownerId: agentCallerId(giver),
+          })
           await vi.waitFor(() => expect(briefsCheck).not.toBeNull())
           codex.checksItsSignIn = async () => false
           return false
         }
         const { giver: theGiver, helper } = await aBriefRefused()
         giver = theGiver
+        target = helper
         await vi.waitFor(() => expect(briefsCheck).not.toBeNull())
         await settled()
         return {
@@ -1824,22 +1825,12 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
         accept(THE_COMPUTERS)
         codex.turnModes.push('held-open', 'refused')
         const older = await host.giveWork(
-          {
-            definition_of_done: 'The requested result and its checks are recorded.',
-            profile: 'farah',
-            title: 'The release notes',
-            brief: 'Draft the release notes.',
-          },
+          newConversationGive('farah', 'The release notes', 'Draft the release notes.'),
           { ownerId: agentCallerId(giver) },
         )
         if (!older.ok) throw new Error(`refused: ${older.refusal.rail}`)
         const refused = await host.giveWork(
-          {
-            definition_of_done: 'The requested result and its checks are recorded.',
-            profile: 'farah',
-            title: 'The open pull requests',
-            brief: MESSAGE,
-          },
+          addressedGive(older.label, 'farah', 'The open pull requests', MESSAGE),
           { ownerId: agentCallerId(giver) },
         )
         if (!refused.ok) throw new Error(`refused: ${refused.refusal.rail}`)

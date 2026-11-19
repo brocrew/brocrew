@@ -173,6 +173,8 @@ describe('424 §B · what `agent-cannot-take-a-message` still answers for', () =
     const parent = await personOpens('pm')
     const tools = agentToolsFor(host, parent)
     const first = await callOn(tools, 'give_work', {
+      to: 'new',
+      conversation_title: 'A',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'A',
@@ -181,6 +183,8 @@ describe('424 §B · what `agent-cannot-take-a-message` still answers for', () =
     expect(first.outcome, JSON.stringify(first)).toBe('ok')
     const firstHandle = latestHandle()
     const second = await callOn(tools, 'give_work', {
+      to: 'new',
+      conversation_title: 'B',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker-b',
       title: 'B',

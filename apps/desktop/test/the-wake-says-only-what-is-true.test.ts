@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import {
   RecordingSink,
@@ -124,12 +125,11 @@ describe('690 · the wake says only what is true', () => {
       { provider: 'claude', profileId: 'pm', approvalMode: 'auto', cwd: root },
       window,
     )
-    const given = await callOn(pm, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'The schema',
-      brief: 'migrate the schema',
-    })
+    const given = await callOn(
+      pm,
+      'give_work',
+      newConversationGive('worker', 'The schema', 'migrate the schema'),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     const workerHandle = handles.at(-1)
@@ -231,7 +231,7 @@ describe('690 · the wake says only what is true', () => {
       const { pm, piece } = await aPmAndItsRunningWorker()
       const message = await callOn(pm, 'message_agent', { ...aQuestionTo(pm, piece) })
       expect(message.rail).toBe('that-agent-is-you')
-      expect(message.reason).toBe(refuseTool('that-agent-is-you').reason)
+      expect(message.reason).toBe(`Not sent: ${refuseTool('that-agent-is-you').reason}`)
       // ⚑ **D-016 · a message gives no work**, so the sentence says what a message to itself is.
       expect(String(message.reason)).toContain('cannot send itself a message')
     })

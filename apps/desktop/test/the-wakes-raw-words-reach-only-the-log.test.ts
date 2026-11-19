@@ -1,3 +1,6 @@
+import { format } from 'node:util'
+import { expectRecordedCannotRun } from './lib/recorded-send'
+import { newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -117,12 +120,11 @@ describe('663 M50 · a wake refused logs the host’s own words and keeps them o
   const aPmAndItsIdleWorker = async (): Promise<{ pm: string; worker: string; label: string }> => {
     await host.close(await personOpens('worker'), window)
     const pm = await personOpens('pm')
-    const given = await callOn(pm, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'The schema',
-      brief: 'migrate the schema',
-    })
+    const given = await callOn(
+      pm,
+      'give_work',
+      newConversationGive('worker', 'The schema', 'migrate the schema'),
+    )
     expect(given.structured.outcome, JSON.stringify(given.structured)).toBe('ok')
     const worker = given.structured.agent as string
     await waitFor(() => turnsIn(worker) > 0, 'the turn the brief opened to end')
@@ -163,7 +165,7 @@ describe('663 M50 · a wake refused logs the host’s own words and keeps them o
 
     const warned: string[] = []
     const spy = vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
-      warned.push(args.map(String).join(' '))
+      warned.push(format(...args))
     })
     try {
       const refused = await callOn(pm, 'message_agent', {
@@ -174,8 +176,19 @@ describe('663 M50 · a wake refused logs the host’s own words and keeps them o
       })
 
       // ⚑ Positive — the caller is told, in the door's own closed sentence, that the wake failed.
-      expect(refused.structured.outcome).toBe('refused')
-      expect(refused.structured.rail).toBe('that-conversation-could-not-be-resumed')
+      const kept = expectRecordedCannotRun(
+        refused.structured,
+        'message',
+        'its provider could not bring it back',
+        false,
+      )
+      expect(kept.recipient.id).toBe(worker)
+      expect(store.messagesWaitingIn(worker)).toContainEqual(
+        expect.objectContaining({
+          messageId: kept.recorded.id,
+          text: 'how far along are you?',
+        }),
+      )
 
       // ⛔ Negative — but never in the provider's own words: neither field the caller reads carries
       // the raw string, so a model can never see what only a person reading the log should.

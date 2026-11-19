@@ -244,6 +244,8 @@ describe('732 · a retry that works, and names, not folders', () => {
     await bringIdentityIntoBeing('worker')
     const parent = await personOpens('lead', 'auto')
     const given = await callOn(parent, 'give_work', {
+      to: 'new',
+      conversation_title: 'the work',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'the work',
@@ -401,6 +403,8 @@ describe('732 · a retry that works, and names, not folders', () => {
       expect(host.setAgentDisplayName(slug, name), slug).not.toBeNull()
     }
     const givenPm = await callOn(boss, 'give_work', {
+      to: 'new',
+      conversation_title: 'plan',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'pm-g',
       title: 'plan',
@@ -412,6 +416,8 @@ describe('732 · a retry that works, and names, not folders', () => {
     let givenWorker: Record<string, unknown>
     try {
       givenWorker = await callOn(pm, 'give_work', {
+        to: 'new',
+        conversation_title: 'work',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker-g',
         title: 'work',

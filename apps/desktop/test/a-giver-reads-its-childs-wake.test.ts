@@ -171,6 +171,8 @@ describe('F080 · a giver reads its child’s wake', () => {
     await host.close((await personOpens('worker')).id, window)
     const pm = await personOpens('pm')
     const given = await call(pm.tools, 'give_work', {
+      to: 'new',
+      conversation_title: 'the index',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'the index',

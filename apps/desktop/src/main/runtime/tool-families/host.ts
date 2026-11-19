@@ -1,12 +1,14 @@
 import type {
-  AProfileNames,
   AnswerWithItsStop,
   FactsAQueueCarries,
   InterruptOutcome,
   MessageNowOutcome,
   OutOfReach,
+  RecordedAgentMessage,
   TheDoorsReach,
 } from '../message-records'
+import type { sendReceipt, SendFacts } from '../send-receipt'
+import type { SendRecipientState } from '../../../shared/tool-outcome'
 import type {
   ActionAsked,
   QuestionRecipient,
@@ -40,7 +42,7 @@ import type {
   AgentRulesReceipt,
   AgentRulesWrite,
 } from '../../../shared/agent-rules'
-import type { AskOutcome, PassUpOutcome, WithdrawQuestionOutcome } from '../question-rails'
+import type { AskOutcome, WithdrawQuestionOutcome } from '../question-rails'
 import type { Caller } from '../conversation-caller'
 import type { DocumentContent, DocumentForm } from '../../../shared/documents'
 import type { Exchange, ReceivedInATurn, TranscriptTurn } from '../../../shared/last-exchange'
@@ -56,6 +58,7 @@ import type { ProfileReading } from '../agent-records'
 import type { Provider } from '@brobot2/shared'
 import type { RefusalFacts } from '../../../shared/refusals'
 import type { ReplyOutcome } from '../reply-rails'
+import type { PreparedSendFiles, PreparedSendText } from '../send-overflow'
 import type { ResourceRefusal } from '../../resources/resources'
 import type { ResourceRow } from '../../db/session-store'
 import type { ToolName } from './catalog'
@@ -65,6 +68,15 @@ import type { ThemeStore } from '../../themes/store'
 export interface AgentToolHost {
   readonly themes?: Pick<ThemeStore, 'refresh' | 'snapshot' | 'raw' | 'save' | 'set'>
   giveWork(input: unknown, by: Caller): Promise<GiveOutcome>
+  receiptForSend(facts: SendFacts): ReturnType<typeof sendReceipt>
+  stateOfARecordedMessage(owner: string, id: string): SendRecipientState
+  holdAgentMessageForStart(
+    sessionId: string,
+    text: string,
+    by: Caller,
+    facts: FactsAQueueCarries,
+    says: AgentMessageKind,
+  ): Promise<RecordedAgentMessage | null> | null
   takeOnWork(input: unknown, by: Caller): Promise<TakeOnWorkOutcome>
   updateWork(
     input: {
@@ -85,6 +97,8 @@ export interface AgentToolHost {
   ):
     | { ok: true; resource: ResourceRow; form: DocumentForm; content: DocumentContent }
     | { ok: false; refusal: ResourceRefusal }
+  prepareTextForSend(sender: string, field: string, text: string, piece?: string): PreparedSendText
+  prepareFilesForSend(sender: string, paths: readonly string[], piece?: string): PreparedSendFiles
   queueMessage(
     sessionId: string,
     text: string,
@@ -123,12 +137,6 @@ export interface AgentToolHost {
     me: string | null,
     reach: TheDoorsReach,
   ): string
-  theConversationAProfileNames(
-    address: string,
-    by: Caller,
-    me: string | null,
-    forAMessage?: boolean,
-  ): AProfileNames
   tookItsPlace(sessionId: string): string | null
   whyWhatIsHeldWaits(sessionId: string, itsStopIsSaid?: boolean): string | null
   profilesVisibleTo(): ProfileReading
@@ -171,6 +179,7 @@ export interface AgentToolHost {
       answers: readonly { part: string; answer: readonly string[] }[]
       askedBy?: string | null
       cannot?: string | null
+      resources?: readonly string[]
       interrupt?: boolean
     },
     by: Caller,
@@ -204,6 +213,7 @@ export interface AgentToolHost {
       piece: string | null
       question: string
       options: readonly string[]
+      resources?: readonly string[]
       who: QuestionRecipient
       agent: string | null
       action?: ActionAsked
@@ -217,16 +227,7 @@ export interface AgentToolHost {
       readonly files: readonly string[]
     },
     by: Caller,
-  ): Promise<AskOutcome | { readonly ok: false; readonly resourceRefusal: ResourceRefusal }>
-  passQuestionUp(
-    input: {
-      requestId: string
-      who: Exclude<QuestionRecipient, 'an-agent'>
-      context: string | null
-      askedBy?: string | null
-    },
-    by: Caller,
-  ): Promise<PassUpOutcome>
+  ): Promise<AskOutcome>
   withdrawQuestion(input: { requestId: string }, by: Caller): WithdrawQuestionOutcome
   readTranscript(
     target: string,

@@ -1,3 +1,7 @@
+import { stalledWorkFixture } from './lib/running-worker-fixture'
+import { personOpener } from './helpers/person-opens-session'
+import { newConversationGive } from './lib/give-fixture'
+import { recordForwardedQuestion } from './lib/forwarded-question-fixture'
 import { waitFor } from './lib/f093-host'
 import type { PieceRow } from '../src/shared/task-contracts'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -22,7 +26,6 @@ import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
-import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import {
   RecordingSink,
   syntheticProviderHome,
@@ -149,34 +152,11 @@ describe('a to-do for a person', () => {
   const pieceOf = (owner: string, piece: string): PieceRow | undefined =>
     store.piecesOwnedBy(owner).find((one) => one.piece === piece)
 
-  /** BroBot gives a piece to its worker, minted Ada the first time; the brief's turn ends with it open. */
-  const aPieceGiven = async (
-    brobot: string,
-    title: string,
-    first: boolean,
-  ): Promise<{ ada: string; piece: string; label: string }> => {
-    const given = await ok(agentToolsFor(host, brobot), 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      ...(first ? { new: true } : {}),
-      title,
-      brief: title.toLowerCase(),
-    })
-    const ada = given.agent as string
-    const piece = given.piece as string
-    await waitFor(() => pieceOf(ada, piece)?.state === 'stalled', `the brief of ${title} to end`)
-    await settle()
-    return { ada, piece, label: given.label as string }
-  }
-  const aHelperWithAPiece = async (): Promise<{ brobot: string; ada: string; piece: string }> => {
-    const { sessionId: brobot } = await host.createSession(
-      { provider: 'claude', profileId: DEFAULT_PROFILE_ID, approvalMode: 'auto', cwd: root },
-      window,
-    )
-    await settle()
-    const { ada, piece } = await aPieceGiven(brobot, 'Build the pages', true)
-    return { brobot, ada, piece }
-  }
+  const personOpens = personOpener(() => ({ host, root, window }), 'auto')
+  const { give: aPieceGiven, open: aHelperWithAPiece } = stalledWorkFixture(
+    () => ({ host, store, personOpens }),
+    () => settle(),
+  )
   /** Ada asks about W1.1, of her giver or of a person; the question's id. */
   const asks = async (ada: string, whoAnswers: 'the-parent' | 'a-person'): Promise<string> => {
     const asked = await ok(agentToolsFor(host, ada), 'ask_question', {
@@ -290,7 +270,7 @@ describe('a to-do for a person', () => {
 
   it('the listed row names the agent a wait on an agent is on', async () => {
     const { brobot, ada } = await aHelperWithAPiece()
-    const other = await aPieceGiven(brobot, 'Write the copy', false)
+    const other = await aPieceGiven(brobot, 'Write the copy', 'W1.1')
     const listedAda = () =>
       [...host.resumableSessions(), ...host.unresumableSessions()].find(
         (one) => one.sessionId === ada,
@@ -298,13 +278,10 @@ describe('a to-do for a person', () => {
     // The row reads its newest open piece, W1.2: it waits on W1.1.1, which Ada gave another agent.
     const theNewest = (on: Record<string, unknown>) =>
       call(agentToolsFor(host, ada), 'update_work', { piece: other.label, status: 'waiting', on })
+    await call(agentToolsFor(host, ada), 'create_agent', { profile_slug: 'writer' })
     const handedOn = await call(agentToolsFor(host, ada), 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'writer',
-      new: true,
-      piece: 'W1.1',
-      title: 'Check the copy',
-      brief: 'check the copy',
+      ...newConversationGive('writer', 'Check the copy', 'check the copy'),
+      under: 'W1.1',
     })
     expect(handedOn).toMatchObject({ outcome: 'ok', label: 'W1.1.1' })
     expect(await theNewest({ agent: 'W1.1.1' })).toMatchObject({ outcome: 'ok' })
@@ -374,13 +351,12 @@ describe('a to-do for a person', () => {
 
   it('the listed row names the agent a wait its giver set on its own question is on', async () => {
     const { brobot, ada } = await aHelperWithAPiece()
-    const gave = await ok(agentToolsFor(host, brobot), 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'writer',
-      new: true,
-      title: 'Write the copy',
-      brief: 'write the copy',
-    })
+    await ok(agentToolsFor(host, brobot), 'create_agent', { profile_slug: 'writer' })
+    const gave = await ok(
+      agentToolsFor(host, brobot),
+      'give_work',
+      newConversationGive('writer', 'Write the copy', 'write the copy'),
+    )
     const bea = gave.agent as string
     await waitFor(
       () => store.piecesOwnedBy(bea).some((one) => one.state === 'stalled'),
@@ -419,12 +395,12 @@ describe('a to-do for a person', () => {
     }> => {
       const { brobot, ada } = await aHelperWithAPiece()
       const asked = await asks(ada, 'the-parent')
-      const passed = await ok(agentToolsFor(host, brobot), 'pass_question_up', {
-        question: asked,
-        asked_by: ada,
-        who_answers: 'a-person',
+      const passedUp = recordForwardedQuestion(store, tick, {
+        asker: ada,
+        original: asked,
+        forwarder: brobot,
+        to: 'a-person',
       })
-      const passedUp = passed.question as string
       expect(host.questionsForAPerson().rows.map((one) => one.request.requestId)).toContain(
         passedUp,
       )
@@ -561,7 +537,9 @@ describe('a to-do for a person', () => {
      * Ada gives part of W1.1 to Bea; Bea asks Ada about it, Ada passes it up to BroBot, and BroBot
      * to the person.
      */
-    const aChainOfTwoPassers = async (): Promise<{
+    const aChainOfTwoPassers = async (
+      whoAnswers: 'the-parent' | 'a-person' = 'the-parent',
+    ): Promise<{
       brobot: string
       ada: string
       bea: string
@@ -571,13 +549,12 @@ describe('a to-do for a person', () => {
       copyOfTheCopy: string
     }> => {
       const { brobot, ada } = await aHelperWithAPiece()
-      const gave = await ok(agentToolsFor(host, ada), 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'writer',
-        new: true,
-        title: 'Write the copy',
-        brief: 'write the copy',
-      })
+      await ok(agentToolsFor(host, ada), 'create_agent', { profile_slug: 'writer' })
+      const gave = await ok(
+        agentToolsFor(host, ada),
+        'give_work',
+        newConversationGive('writer', 'Write the copy', 'write the copy'),
+      )
       const bea = gave.agent as string
       const label = gave.label as string
       await waitFor(
@@ -587,21 +564,22 @@ describe('a to-do for a person', () => {
       const asked = await ok(agentToolsFor(host, bea), 'ask_question', {
         piece: label,
         question: 'which tone?',
-        who_answers: 'the-parent',
+        who_answers: whoAnswers,
       })
       const original = asked.question as string
-      const once = await ok(agentToolsFor(host, ada), 'pass_question_up', {
-        question: original,
-        asked_by: bea,
-        who_answers: 'the-parent',
+      const copy = recordForwardedQuestion(store, tick, {
+        asker: bea,
+        original,
+        forwarder: ada,
+        to: 'the-parent',
+        parent: brobot,
       })
-      const copy = once.question as string
-      const twice = await ok(agentToolsFor(host, brobot), 'pass_question_up', {
-        question: copy,
-        asked_by: ada,
-        who_answers: 'a-person',
+      const copyOfTheCopy = recordForwardedQuestion(store, tick, {
+        asker: ada,
+        original: copy,
+        forwarder: brobot,
+        to: 'a-person',
       })
-      const copyOfTheCopy = twice.question as string
       expect(host.questionsForAPerson().rows.map((one) => one.request.requestId)).toContain(
         copyOfTheCopy,
       )
@@ -894,39 +872,8 @@ describe('a to-do for a person', () => {
     }
 
     it('a question addressed to a person whose routing lost who gave the work still ends with every copy of it', async () => {
-      const { brobot, ada } = await aHelperWithAPiece()
-      const gave = await ok(agentToolsFor(host, ada), 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'writer',
-        new: true,
-        title: 'Write the copy',
-        brief: 'write the copy',
-      })
-      const bea = gave.agent as string
-      const label = gave.label as string
-      await waitFor(
-        () => store.piecesOwnedBy(bea).some((one) => one.state === 'stalled'),
-        'the writer’s brief to end',
-      )
-      // Bea asks the person; Ada, who gave the work, passes it to BroBot, and BroBot to the person.
-      const asked = await ok(agentToolsFor(host, bea), 'ask_question', {
-        piece: label,
-        question: 'which tone?',
-        who_answers: 'a-person',
-      })
-      const original = asked.question as string
-      const once = await ok(agentToolsFor(host, ada), 'pass_question_up', {
-        question: original,
-        asked_by: bea,
-        who_answers: 'the-parent',
-      })
-      const copy = once.question as string
-      const twice = await ok(agentToolsFor(host, brobot), 'pass_question_up', {
-        question: copy,
-        asked_by: ada,
-        who_answers: 'a-person',
-      })
-      const copyOfTheCopy = twice.question as string
+      const { brobot, ada, bea, label, original, copy, copyOfTheCopy } =
+        await aChainOfTwoPassers('a-person')
       // Bea's routing loses who gave the work. Still a well-formed routing to a person: a question
       // raised where nobody gave the work names nobody.
       db.prepare(

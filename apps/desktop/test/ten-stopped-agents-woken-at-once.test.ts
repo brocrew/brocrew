@@ -125,6 +125,8 @@ describe('ten stopped agents woken at once', () => {
     const tools = agentToolsFor(host, pm)
     for (let n = 0; n < HELPERS; n++) {
       const given = await callOn(tools, 'give_work', {
+        to: 'new',
+        conversation_title: `piece ${String(n)}`,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: `helper-${String(n)}`,
         title: `piece ${String(n)}`,

@@ -337,7 +337,7 @@ describe('services a person turns on and off', () => {
       })
     })
 
-    it('names a service by its agent in a question it asks its caller, never by the piece', async () => {
+    it('names the service conversation and the task it asks its caller about', async () => {
       const { host, caller, service, one, releaseTheTurn } = await aServiceWithWorkQueued()
       const asked = await call(host, service, 'ask_question', {
         piece: one.label,
@@ -355,7 +355,10 @@ describe('services a person turns on and off', () => {
       await vi.waitFor(() => {
         expect(told()).toBeDefined()
       })
-      expect(told()).toContain(`${host.whatToCallTheConversation(service)} (a service)`)
+      expect(told()).toMatch(
+        new RegExp(`^${host.whatToCallTheConversation(service)} \\(conversation .+\\) asks you `),
+      )
+      expect(told()).toContain(`About task ${one.label}`)
       expect(told()).not.toContain(`the owner of ${one.label}`)
       // Its caller waits on it by its agent's name too, never by the caller's own piece it holds.
       const waits = host
@@ -418,7 +421,13 @@ describe('services a person turns on and off', () => {
         text: 'the room on the third floor',
       })
       expect(sent.structured).toMatchObject({ outcome: 'ok', delivery: 'queued' })
-      expect(sent.text).toContain('It waits until services are on.')
+      expect(sent.structured?.receipt).toMatchObject({
+        recipient: {
+          id: service,
+          state: { kind: 'cannot-run', cause: { code: 'could-not-start' } },
+        },
+      })
+      expect(sent.text).toContain('Services are off')
       await new Promise((settled) => setTimeout(settled, 100))
       expect(wentIn(service, 'the room on the third floor')).toBe(false)
       const held = rows(service, 'message_queued').find(

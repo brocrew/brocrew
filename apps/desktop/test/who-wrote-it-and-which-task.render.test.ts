@@ -1,3 +1,4 @@
+import { addressedGive, newConversationGive } from './lib/give-fixture'
 import type { MessageSentEvent, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -15,7 +16,6 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import type {
   CreatedSession,
   RuntimeEventMessage,
@@ -55,7 +55,7 @@ import {
   THE_GO_AHEAD_WAS_NOT_SENT,
   TYPE_TO_CARRY_ON,
 } from '../src/shared/the-go-ahead'
-import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { fixtureHostPaths } from './lib/host-fixture'
 import { waitFor } from './lib/f093-host'
 import { latch } from './helpers/held-operation'
 // ⚑ 700 · `688` H2 — main's sentence and the row's are one value now, in `shared/`.
@@ -247,11 +247,8 @@ describe('688 · draw who wrote it, and which task', () => {
     created = new Map()
     host = new RuntimeHost({
       store,
-      ...neutralHostDeps(() => userData),
+      ...fixtureHostPaths(() => userData),
       createRuntime: (provider: Provider) => new Watching(provider),
-      prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       readProviderConfig: (provider, home) => ({
@@ -371,12 +368,15 @@ describe('688 · draw who wrote it, and which task', () => {
     claimed.add(pm)
     const pmTools = theToolsetJustHandedOut()
     const next = burnNumbers(pm, burn)
-    const given = await call(pmTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'the work this dispatch is about',
-      brief: 'the work this dispatch is about',
-    })
+    const given = await call(
+      pmTools,
+      'give_work',
+      newConversationGive(
+        'worker',
+        'the work this dispatch is about',
+        'the work this dispatch is about',
+      ),
+    )
     expect(given.structured.outcome, JSON.stringify(given.structured)).toBe('ok')
     expect(given.structured.label).toBe(next)
     return { pm, worker: given.structured.agent as string, pmTools, label: next }
@@ -912,7 +912,7 @@ describe('688 · draw who wrote it, and which task', () => {
   })
 
   describe('§3 · `687` H1 — the incoming card says what the sender said, and nothing when it did not', () => {
-    it('🔴 idle: the worker’s window draws *follow-up* and *note* beside the heading', async () => {
+    it('🔴 idle: the worker’s window draws the recorded kind beside the heading', async () => {
       const { worker, pmTools, label } = await aPmAndItsWorker()
       // ⚑ D-016 · the brief its give started it with is its first turn — let it end, so it is idle
       await letTheTurnFinish(worker)
@@ -1110,12 +1110,11 @@ describe('688 · draw who wrote it, and which task', () => {
       // ⚑ D-016 · the worker is busy from the start: its first brief is its turn, parked on a card
       await waitFor(() => rowsOf(worker, 'permission_request').length > 0, 'the worker to be busy')
       const next = burnNumbers(pm, 2)
-      const second = await call(pmTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'now build it',
-        brief: 'now build it',
-      })
+      const second = await call(
+        pmTools,
+        'give_work',
+        addressedGive(worker, 'worker', 'now build it', 'now build it'),
+      )
       expect(second.structured.outcome, JSON.stringify(second.structured)).toBe('ok')
       expect(second.structured.delivery).toBe('held')
       expect(second.structured.label).toBe(next)

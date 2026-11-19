@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { launchSkillSelections } from '../src/main/skills/launch-selection'
 import { SqliteSkillCatalogue } from '../src/main/skills/catalogue-store'
@@ -276,12 +277,11 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
     await host.close(seeded, window)
     const pm = await personOpens('pm', provider, approvalMode)
     const pmTools = theToolsetJustHandedOut()
-    const given = await callOn(pmTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'the work this dispatch is about',
-      brief: 'gather the requirements',
-    })
+    const given = await callOn(
+      pmTools,
+      'give_work',
+      newConversationGive('worker', 'the work this dispatch is about', 'gather the requirements'),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     const workerTools = theToolsetJustHandedOut()
@@ -1791,12 +1791,11 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       // A conversation that owns no root — a give started it — and a give in the worker's ledger
       // that names it as its giver, for a piece the work table has no row of.
       await host.close(await personOpens('stranger'), window)
-      const started = await callOn(pmTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'stranger',
-        title: 'another piece',
-        brief: 'something else',
-      })
+      const started = await callOn(
+        pmTools,
+        'give_work',
+        newConversationGive('stranger', 'another piece', 'something else'),
+      )
       expect(started.outcome, JSON.stringify(started)).toBe('ok')
       const stranger = started.agent as string
       await host.closeAll()

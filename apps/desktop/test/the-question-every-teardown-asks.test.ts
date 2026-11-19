@@ -1,3 +1,4 @@
+import { newConversationGive, readSuccessfulGive } from './lib/give-fixture'
 import {
   fixtureProviderConfig,
   RecordingSink,
@@ -259,13 +260,9 @@ describe('659 · the question every teardown asks', () => {
       window,
     )
     const pmLaunch = launches.at(-1)!
-    const given = await callOn(pmLaunch.toolset, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'The work',
-      brief: 'the work',
-    })
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
+    const given = await readSuccessfulGive(() =>
+      callOn(pmLaunch.toolset, 'give_work', newConversationGive('worker', 'The work', 'the work')),
+    )
     const worker = given.agent as string
     const workerLaunch = launches.at(-1)!
     if (approvalMode === 'auto') {
@@ -402,12 +399,11 @@ describe('659 · the question every teardown asks', () => {
       const { pm, pmLaunch } = await aPmWithAGrant()
       const launched = launches.length
       await failAndHold(pm, pmLaunch)
-      const answer = await callOn(pmLaunch.toolset, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'More',
-        brief: 'more',
-      })
+      const answer = await callOn(
+        pmLaunch.toolset,
+        'give_work',
+        newConversationGive('worker', 'More', 'more'),
+      )
       expect(answer.outcome, JSON.stringify(answer)).toBe('ok')
       // ⚑ **The premise, still held**: the give was answered while the parent was on its way out.
       expect(listSaysClosing(pm)).toBe(true)

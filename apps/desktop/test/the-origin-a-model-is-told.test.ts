@@ -1,20 +1,27 @@
-import { fixtureProviderConfig, neutralHostDeps, RecordingSink } from './lib/host-fixture'
+import { callOn } from './helpers/call-tool'
+import { fixturePersonEntry } from './lib/send-person-fixture'
+import { conversationLine } from '../src/main/runtime/conversation-address'
+import {
+  closeHostFixture,
+  numberedFixtureHostPaths,
+  RecordingSink,
+  fixtureDatabase,
+  fixtureFolder,
+} from './lib/host-fixture'
 import { waitFor } from './lib/f093-host'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, FakeRuntime, FakeSessionHandle } from '@brobot2/runtime'
 import type { AgentToolset, StartOptions } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import { type AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from './helpers/giver-notice-host'
 import type { Caller } from './helpers/giver-notice-host'
-import { agentCallerId, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { agentCallerId, agentToolsFor } from '../src/main/runtime/agent-tools'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import {
   A_PERSON_SENT_IT,
@@ -24,8 +31,6 @@ import {
   THE_PERSON_AT_A_WINDOW,
 } from '../src/main/runtime/turn-origin'
 import { messageNamingThePiece } from '../src/main/runtime/reply-rails'
-import { resourcesRoot } from '../src/main/resources/resources'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentName } from '../src/shared/runtime-ipc'
 import type { WhereTheSenderStands } from '../src/main/runtime/turn-origin'
 import { theOwnerOf } from '../src/shared/piece-called'
@@ -90,7 +95,6 @@ const PAM_GAVE_W1_3 = (): WhereTheSenderStands => ({
  */
 
 const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 const mainRoot = join(here, '../src/main')
 
 /** ⛔ **Comment-stripped**, so a census reads what the code does and not what a docblock says. */
@@ -125,7 +129,7 @@ describe('414 · the origin a model is told', () => {
   let host: RuntimeHost
   let hosts: RuntimeHost[]
   let issued: FakeProviderSessions
-  let counter: number
+  let hostPaths: ReturnType<typeof numberedFixtureHostPaths>
   let clock: number
   let window: RecordingSink
   let pairs: number
@@ -134,32 +138,20 @@ describe('414 · the origin a model is told', () => {
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      ...neutralHostDeps(() => userData),
-      resourcesRoot: () => resourcesRoot(userData),
+      ...hostPaths,
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
-      newSessionId: () => `sess_${++counter}`,
-      now: tick,
-      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built
   }
 
   beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-origin-'))
-    root = mkdtempSync(join(tmpdir(), 'brobot2-origin-root-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    userData = fixtureFolder('brobot2-origin-')
+    root = fixtureFolder('brobot2-origin-root-')
+    db = fixtureDatabase(userData)
     clock = 9_000_000
     store = createSessionStore(db, tick)
-    counter = 0
+    hostPaths = numberedFixtureHostPaths(() => userData, tick)
     hosts = []
     handles = []
     issued = new FakeProviderSessions()
@@ -168,34 +160,11 @@ describe('414 · the origin a model is told', () => {
     pairs = 0
   })
 
-  afterEach(async () => {
-    for (const built of hosts) await built.closeAll()
-    db.close()
-    for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
-  })
+  afterEach(() => closeHostFixture(hosts, db, userData, root))
 
-  const personOpens = async (profileId: string): Promise<string> => {
-    const { sessionId } = await host.createSession(
-      { provider: 'claude', profileId, approvalMode: 'ask', cwd: root },
-      window,
-    )
-    return sessionId
-  }
-
-  const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
-    const id = await personOpens(profileId)
-    await host.close(id, window)
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown> = {},
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
+  const { open: personOpens, seed: bringIdentityIntoBeing } = fixturePersonEntry(
+    () => ({ host, root, window }),
+  )
 
   const entries = (sessionId: string): readonly PersistedEventInfo[] => store.events(sessionId)
   const ledger = (sessionId: string): TranscriptEvent[] =>
@@ -299,6 +268,8 @@ describe('414 · the origin a model is told', () => {
   ): Promise<APair> => {
     const title = 'The work'
     const given = await callOn(made.pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: title,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: made.workerProfile,
       title,
@@ -357,6 +328,11 @@ describe('414 · the origin a model is told', () => {
       // 🔴 **F088 · `follows-it-up`** — words that name the piece it gave, which the line says
       // they are about.
       () => ({
+        conversations: {
+          sender: conversationLine(store, pair.pm),
+          senderAddress: host.addressOf(pair.pm),
+          receiver: conversationLine(store, pair.worker),
+        },
         name: agentName(pair.pmProfile, store.agentIdentities()),
         handsYou:
           stands === 'giving-it' ? { label: pair.label, title: pair.title, as: 'given' } : null,
@@ -372,16 +348,8 @@ describe('414 · the origin a model is told', () => {
    * piece it owns where it spelled its full `sess_<uuid>` — composed from the product's own parts
    * (the store's read, `theOwnerOf`, `theDirectionLine`), never typed.
    */
-  const answering = (pm: string, pmProfile: string): string => {
-    const named = store.workThatNames(pm)
-    if (named === null) throw new Error(`${pm} holds no piece, so no piece addresses it`)
-    // ⚑ W4.178 · every turn this answers hands over a piece: a brief says nothing of a note.
-    return theDirectionLine(
-      `${agentName(pmProfile, store.agentIdentities())}, ${theOwnerOf(named)}`,
-      'caller',
-      true,
-    )
-  }
+  const answering = (pmProfile: string): string =>
+    theDirectionLine(agentName(pmProfile, store.agentIdentities()), 'caller')
 
   /**
    * ⚑ **611 · the SENDER line on its own** (HO-088 §4.1) — the first paragraph of the frame.
@@ -432,10 +400,9 @@ describe('414 · the origin a model is told', () => {
       // ⚠️ **An attribution that follows the words it attributes is a footnote.** The surface
       // settled this in `413` — the sender goes ABOVE the bubble — and a model reads the same
       // string in the same direction.
-      // ⚑ **611 · the frame is TWO paragraphs** — the sender line and the direction line — so the
-      // words it precedes are the third non-empty line rather than the second.
-      expect(lines.slice(0, 2).join('\n\n')).toBe(theFrameFor(made))
-      expect(lines[2]).toBe('deploy the branch')
+      const frame = theFrameFor(made).split('\n').filter(Boolean)
+      expect(lines.slice(0, frame.length)).toEqual(frame)
+      expect(lines[frame.length]).toBe('deploy the branch')
       // ⛔ **`412`'s guard slices `.at(-1)` and refuses an address on it.** The finishing line is
       // still the last one, so that assertion still measures the line it was written about —
       // rather than being stepped around by a second sentence landing after it.
@@ -484,7 +451,8 @@ describe('414 · the origin a model is told', () => {
       // … and the frame addresses the sender by the same piece, and no longer by its id.
       await waitFor(() => providerHeard(made.worker).length > 0, 'the provider to answer')
       const framed = providerHeard(made.worker)[0] ?? ''
-      expect(framed).toContain(answering(made.pm, made.pmProfile))
+      expect(framed).toContain(`(conversation ${host.addressOf(made.pm)} ·`)
+      expect(framed).toContain(answering(made.pmProfile))
       expect(framed).not.toContain(`\`${made.pm}\``)
     })
 
@@ -558,6 +526,8 @@ describe('414 · the origin a model is told', () => {
       // independence is now covered by this test rather than assumed by it.
       const made = await aPm()
       const given = await callOn(made.pmTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'The work',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: made.workerProfile,
         title: 'The work',
@@ -614,9 +584,7 @@ describe('414 · the origin a model is told', () => {
     it('🔴 W4.187 · a sender is named in full once: the direction line says her name alone, and her piece’s title only when nothing above has said it', () => {
       const line = messageNamingItsSender('hello', PAM, PAM_GAVE_W1_3)
       expect(line).toContain('Sent by Pam (pm), who gave you W1.3.')
-      expect(line).toContain(
-        'The words you write in this turn do not reach Pam, the owner of W1 · The site.',
-      )
+      expect(line).toContain("Your reply here doesn't reach Pam, the owner of W1 · The site:")
       expect(line.split('(pm)')).toHaveLength(2)
       // ⚑ Words about the piece she owns: its title once, where the words name it.
       const aboutHerOwn = messageNamingItsSender('hello', PAM, () => ({
@@ -624,7 +592,7 @@ describe('414 · the origin a model is told', () => {
         about: { label: 'W1', title: 'The site' },
       }))
       expect(aboutHerOwn).toContain('This message is about W1 · The site.')
-      expect(aboutHerOwn).toContain('do not reach Pam, the owner of W1.')
+      expect(aboutHerOwn).toContain("doesn't reach Pam, the owner of W1:")
       expect(aboutHerOwn.split('The site')).toHaveLength(2)
     })
 
@@ -650,17 +618,17 @@ describe('414 · the origin a model is told', () => {
       expect(first).toContain(
         'Sent by Pam (pm), who gave you W1.3. This message is about W1.3 · The clock page.',
       )
-      expect(first).toContain('do not reach Pam, the owner of W1 · The site.')
+      expect(first).toContain("doesn't reach Pam, the owner of W1 · The site:")
       // ⚑ After that: her name, and the labels — who, which piece and the address all still there.
       expect(second).toContain('Sent by Pam, who gave you W1.3. This message is about W1.3.')
-      expect(second).toContain('do not reach Pam, the owner of W1.')
+      expect(second).toContain("doesn't reach Pam, the owner of W1:")
       expect(second).not.toContain('(pm)')
       // ⚑ Another sender in the same turn is named in full, the first time; a piece already titled
       // in this turn goes by its label.
       expect(third).toContain(
         'Sent by Ola (qa), another agent; it gave you no work. This message is about W1.3.',
       )
-      expect(third).toContain('do not reach Ola, the owner of W2 · The tests.')
+      expect(third).toContain("doesn't reach Ola, the owner of W2 · The tests:")
       // ⚑ The control: the same words handed over alone say everything in full again.
       expect(messageNamingItsSender('two', PAM, aboutTheClock)).toContain(
         'This message is about W1.3 · The clock page.',
@@ -711,16 +679,16 @@ describe('414 · the origin a model is told', () => {
         soFar,
       )
       expect(other).toContain('Sent by Ada (qa), who gave you W1.3.')
-      expect(other).toContain('do not reach Ada (qa), the owner of W1.')
+      expect(other).toContain("doesn't reach Ada (qa), the owner of W1:")
       expect(back).toContain('Sent by Ada (lead), who gave you W1.3.')
-      expect(back).toContain('do not reach Ada (lead), the owner of W1.')
+      expect(back).toContain("doesn't reach Ada (lead), the owner of W1:")
       // ⚑ An agent nobody has named goes by its profile's own word: that alone is no name.
       const unnamed = messageNamingItsSender('hello', { ...PAM, profile: 'reviewer' }, () => ({
         ...PAM_GAVE_W1_3(),
         name: 'reviewer',
       }))
       expect(unnamed).toContain('Sent by reviewer (reviewer), who gave you W1.3.')
-      expect(unnamed).toContain('do not reach reviewer (reviewer), the owner of W1 · The site.')
+      expect(unnamed).toContain("doesn't reach reviewer (reviewer), the owner of W1 · The site:")
     })
 
     it('⚑ W4.187 · a piece renamed between two mentions of one turn is said again under its new title', () => {
@@ -872,7 +840,9 @@ describe('414 · the origin a model is told', () => {
       // 🔴 **D-011 reversed this half** (proposal §8): the sender is named — *"Sent by Sam
       // (web-pm)"* — and an agent's name is the one a person gave its identity. ⛔ It is still no
       // invented actor: the name is the AGENT's, next to its profile, never a claim a person wrote.
-      expect(handed).toContain(`Sent by Alex Morgan (${made.pmProfile}), `)
+      expect(handed).toContain(
+        `From Alex Morgan (conversation ${host.addressOf(made.pm)} · Alex Morgan)`,
+      )
     })
   })
 
@@ -895,8 +865,11 @@ describe('414 · the origin a model is told', () => {
       // ⚑ **D-011** — the profile in brackets, and the address in the direction line: ⚑ D-016 ·
       // commit 7 · R3 — the piece the row's giver owns, where it was the giver's id.
       const heard = providerHeard(made.worker)[0] ?? ''
-      expect(heard).toContain(`(${made.pmProfile}), who is giving you ${String(row?.label)}`)
-      expect(heard).toContain(answering(String(row?.giver), made.pmProfile))
+      const giver = agentName(made.pmProfile, store.agentIdentities())
+      expect(heard).toContain(
+        `From ${giver} (${conversationLine(store, String(row?.giver))}): task ${row?.label}`,
+      )
+      expect(heard).toContain(answering(made.pmProfile))
     })
 
     // ⛔ **D-016 · *the row is built from `originOf`* went with the row's profile.** It pinned
@@ -1039,7 +1012,8 @@ describe('414 · the origin a model is told', () => {
       const made = await workWasGiven('work with a frame on it')
       await waitFor(() => providerHeard(made.worker).length > 0, 'the provider to answer')
       const framed = providerHeard(made.worker)[0] ?? ''
-      expect(framed).toContain(answering(made.pm, made.pmProfile))
+      expect(framed).toContain(`(conversation ${host.addressOf(made.pm)} ·`)
+      expect(framed).toContain(answering(made.pmProfile))
 
       // ⚑ **The same id, from the reader the child already has — and the address the frame hands
       // over is read by the child's own door as that id.** If these ever differ, the frame is
@@ -1079,6 +1053,8 @@ describe('414 · the origin a model is told', () => {
       // parent's profile starts one below itself, and never reaches the parent whatever id the frame
       // handed over.
       const upward = await callOn(workerTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'Up the tree',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: made.pmProfile,
         title: 'Up the tree',
@@ -1099,6 +1075,7 @@ describe('414 · the origin a model is told', () => {
       // profile reaches that very child, which is the conversation it started. ⚑ D-016: no reply
       // first — the one-open-task rail it was answered around is gone, and the busy child takes it.
       const downward = await callOn(made.pmTools, 'give_work', {
+        to: made.worker,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: store.identityOf(made.worker)?.profileSlug,
         title: 'Down the tree',
@@ -1129,8 +1106,12 @@ describe('414 · the origin a model is told', () => {
       // ⚑ `questionText` leads with the asking conversation — ⚑ D-016 · commit 7 · R3: by its name
       // and the piece it owns, and that piece's label is the address it quotes, where it was the id
       // twice — so the origin is IN the words.
-      expect(question).toContain(`${host.nameByItsWork(made.worker)} is waiting on an answer`)
-      expect(question).toContain(`with asked_by ${host.addressOf(made.worker)}.`)
+      expect(question).toContain(
+        `${host.whatToCallTheConversation(made.worker)} (${conversationLine(store, made.worker)}) asks you ${raised.id}`,
+      )
+      expect(question).toContain(
+        `Use asked_by ${host.addressOf(made.worker)} with this question id.`,
+      )
       expect(question).not.toContain('Sent by `')
     })
   })

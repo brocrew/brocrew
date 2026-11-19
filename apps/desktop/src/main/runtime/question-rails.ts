@@ -1,5 +1,6 @@
 import type {
   QuestionRecipient,
+  RaisedQuestion,
   RequestState,
   RoutedRequest,
 } from '../../shared/question-contracts'
@@ -12,6 +13,10 @@ import type { RailPermanence } from '../../shared/refusals'
 // re-export exists so `405` could move `RailPermanence` without touching seven readers; a word
 // added today has no such history and names its own home.
 import type { RefusalRemedy } from '../../shared/refusals'
+import type { ResourceRefusal } from '../resources/resources'
+import type { ReadableSendOverflow } from './send-overflow'
+import type { SendReceipt, ToolOutcome } from '../../shared/tool-outcome'
+import type { SendDestination } from './send-receipt'
 
 /**
  * 🔴 **The door an ANSWER passes, and the vocabulary it is refused in** (394, HO-007 S4).
@@ -237,46 +242,8 @@ export const QUESTION_RAILS = [
    * `document-registry-unavailable` shape `425` withdrew.**
    */
   'no-open-work-by-that-name',
-  /**
-   * 🔴 **611 · nothing spawned this conversation, so there is no parent to pass it to**
-   * (HO-088 §3.2).
-   *
-   * ⛔ **It fires on ONE argument and one topology**: `who_answers: 'the-parent'` from a
-   * conversation `SessionStore.parentOf` answers `null` for — a top-level conversation, which is
-   * what BroBot itself is. ⚑ **The remedy is the other member of the vocabulary**, and it is a real act
-   * rather than a pointer: the same question, passed to a person, which is the last hop of
-   * `HO-088` §6's chain.
-   *
-   * ⚠️ **`permanent`, and the claim is exact.** Nothing in this app re-parents a conversation —
-   * its parent is written once inside `createTx` and no path rewrites it — so the identical
-   * call never lands. ⛔ **It is refused rather than silently redirected to the person**: the PO
-   * ruled the app routes what the agent declared and infers nothing, and quietly sending a question
-   * somewhere the caller did not name is that rule broken in the direction that costs most.
-   */
-  'nobody-to-pass-it-up-to',
-  /**
-   * 🔴 **611 · this app does not hold the words to carry** (HO-088 §3.1).
-   *
-   * ⛔ **Passing a question up means repeating it VERBATIM**, and the words are read out of the
-   * original asker's own ledger rather than taken from the caller — see
-   * `RuntimeHost.passQuestionUp`. ⚠️ **When that read comes up empty there is nothing to repeat**:
-   * a `.brobot` bundle whose payload this build cannot parse, or a row `toPersistedEvents` skipped.
-   * ⚑ It is the same null `list_questions` already reports as *"this app does not hold the words
-   * for this one"*, reaching the other verb.
-   *
-   * ⛔ **Refused rather than summarised.** *"A question reworded at every hop arrives as something
-   * nobody asked"* — and a hop that invents the words because it could not find them is the worst
-   * case of that, because nothing downstream could tell.
-   *
-   * ⚠️ **`permanent`.** The words are gone from the ledger; no later state of the world puts them
-   * back, and a caller that wants the decision anyway has `ask_question`, which is its OWN question
-   * in its own words rather than a claim about somebody else's.
-   */
-  'this-app-does-not-hold-those-words',
   // 🔴 **D-009 · F012** — asking an agent this caller may not name, or itself.
   'no-agent-you-can-ask-by-that-name',
-  // 🔴 **D-009 · F012** — ruling 2: *only a question to your parent can be passed further up*.
-  'a-question-asked-of-you-by-name-is-yours',
   // 🔴 **D-009 · F012** — withdrawing a question this caller did not ask, or that has ended.
   'no-open-question-you-asked-by-that-name',
   /**
@@ -302,23 +269,6 @@ export const QUESTION_RAILS = [
    * the act; naming the piece is, and a name resolves among every piece it holds.
    */
   'no-piece-to-ask-about',
-  /**
-   * 🔴 **An answer — or a reason it cannot be given — longer than an answer may carry**, refused
-   * before anything is recorded: the question stays open and the same caller answers it again.
-   *
-   * ⛔ **Until now the words were cut and marked after the question was closed**, so the rest could
-   * not go the same way: one answerer re-sent it as a note, another never did, and the rest of its
-   * answer lived only in its own conversation. ⚑ `summary-too-long`'s rule, one door over: nothing
-   * is shortened for the caller, and it decides what the shorter answer says.
-   *
-   * ⚠️ **Measured as `REPLY_SUMMARY_LIMIT` measures** — UTF-16 units over the answerer's OWN words
-   * (`RuntimeHost`'s `oneAgentsAnswer`): an offered label is the asker's words, and a part the
-   * question never asked is not delivered, so neither is counted. ⚑ `cannot_answer` is measured
-   * whole, on the same bound.
-   *
-   * ⚠️ **`while-this-holds`**: the identical intent succeeds the moment the words are shorter.
-   */
-  'answer-too-long',
   'move-offer-not-available',
   'move-offer-is-held',
   'move-offer-needs-a-person',
@@ -343,16 +293,12 @@ const PERMANENCE: Readonly<Record<QuestionRail, RailPermanence>> = {
   // 🔴 **437** — see the rail's own note: work does not reopen, so the identical call never lands.
   'no-open-work-by-that-name': 'permanent',
   // 🔴 **611** — nothing re-parents a conversation, and the words are not coming back.
-  'nobody-to-pass-it-up-to': 'permanent',
-  'this-app-does-not-hold-those-words': 'permanent',
   // ⚑ **D-009** — each is changed by the call, never by the world: another id, another verb.
   'no-agent-you-can-ask-by-that-name': 'permanent',
-  'a-question-asked-of-you-by-name-is-yours': 'permanent',
   'no-open-question-you-asked-by-that-name': 'permanent',
   // ⚑ **D-016** — changed by the call: name a piece. See each rail's own note.
   'name-the-piece-you-ask-about': 'permanent',
   'no-piece-to-ask-about': 'permanent',
-  'answer-too-long': 'while-this-holds',
 }
 
 export function questionPermanenceOf(rail: QuestionRail): RailPermanence {
@@ -420,17 +366,13 @@ const REMEDY: Readonly<Record<QuestionRail, RefusalRemedy | null>> = {
   // call belongs on a permanent rail: *"a person is the other end it can go to."* ⚠️ A remedy
   // here would be `no-question-by-that-name`'s refusal one door over — *finding another id is not
   // making this id answerable* — with the id swapped for a recipient.
-  'nobody-to-pass-it-up-to': null,
   // ⛔ **Null.** There is nothing to do about words the ledger no longer holds, and pointing a
   // caller at `ask_question` would be telling it to invent the question it could not carry.
-  'this-app-does-not-hold-those-words': null,
   'no-agent-you-can-ask-by-that-name': null,
-  'a-question-asked-of-you-by-name-is-yours': null,
   'no-open-question-you-asked-by-that-name': null,
   // ⚑ **D-016 · null, by the biconditional** — permanent; the act is in the sentence.
   'name-the-piece-you-ask-about': null,
   'no-piece-to-ask-about': null,
-  'answer-too-long': 'shorten-the-answer-or-put-the-long-form-in-a-file',
 }
 
 /** ⛔ **What a caller may do instead, or `null` because this app knows of nothing** (425). */
@@ -494,15 +436,6 @@ export interface QuestionRefusalDetail {
   askers?: readonly string[]
   /** ⚑ **D-009** — the agent id a question was addressed to, echoed back on a refusal about it. */
   agent?: string
-  /**
-   * Which words were too long — the parts' `answers`, or the `cannot_answer` reason. Present only
-   * on `answer-too-long`.
-   */
-  argument?: 'answers' | 'cannot_answer'
-  /** How long those words may be, in UTF-16 units. Present only on `answer-too-long`. */
-  limit?: number
-  /** How long the ones that arrived were, in the same units. Present only on `answer-too-long`. */
-  was?: number
 }
 
 /**
@@ -552,7 +485,7 @@ const QUESTION_SENTENCES: Readonly<Record<QuestionRail, string>> = {
   'no-question-by-that-name':
     'nobody is waiting on you for a request by that id, so nothing was answered. list_questions names the requests you can answer — from conversations you started, and agents that asked you; sending that id again will never succeed.',
   'a-person-answers-this-one':
-    'that one is a person’s to settle rather than a question you can answer, so nothing was sent and it is still waiting for a person. Leave it for that person; retrying your answer will never succeed. The detail says what kind of thing it is.',
+    'Not answered: only the person can answer this request. If you asked it and no longer need it, withdraw it.',
   'question-has-already-ended':
     'no further answer is owed: that question has ended, so nobody is waiting and nothing was sent. The detail says how it ended; retrying this id cannot work.',
   'that-answer-cannot-be-sent':
@@ -574,19 +507,10 @@ const QUESTION_SENTENCES: Readonly<Record<QuestionRail, string>> = {
   // ⛔ And it names none of the folded causes — see the rail's note on why that is the point.
   'no-open-work-by-that-name':
     'you hold no open piece by that name, so nothing was asked and nobody was told. list_tasks names the pieces you hold, and a question has to name one of those; sending that name again will never succeed.',
-  // ⚑ **611 · it states a fact about THIS call and names the act left.** ⛔ It does not explain
-  // spawning, provenance or what a parent is — the class of sentence HO-015 §2 keeps out of a
-  // refusal.
-  'nobody-to-pass-it-up-to':
-    'nothing started this conversation, so there is no parent for that question to go to and nothing was sent. Pass it to a person with a-person instead; sending it to the parent again will never succeed.',
-  'this-app-does-not-hold-those-words':
-    'nothing can be passed up: this app no longer holds the question’s original words. Nothing was sent, and retrying this id cannot recover them.',
   // ⚑ **D-016 · commit 7 · R1 — *id or piece label*, one answer for both**: a label that names no
   // piece, or one whose owner the caller may not ask, reaches this sentence exactly as an unknown id.
   'no-agent-you-can-ask-by-that-name':
     'there is no other agent by that id or piece label that you can ask, so nothing was asked and nobody was told. list_agents names the agents you can ask; asking by that name again will never succeed.',
-  'a-question-asked-of-you-by-name-is-yours':
-    'that question was asked of you by name, so it is yours to answer — or to say you cannot, with answer_question and cannot_answer — and it cannot be passed on. Nothing was sent; passing it on again will never succeed.',
   'no-open-question-you-asked-by-that-name':
     'you have no open question by that id — you did not ask it, or it has ended — so nothing was withdrawn. Use the id ask_question returned; withdrawing this one again will never succeed.',
   // ⚑ **D-016 · the act first, inside the cut** — and no *never*: see the rail's own note.
@@ -594,25 +518,6 @@ const QUESTION_SENTENCES: Readonly<Record<QuestionRail, string>> = {
     'you hold more than one piece, so say which one this question is about: ask again naming it as piece. The detail lists the ones that have reached you; nothing was asked and nobody was told.',
   'no-piece-to-ask-about':
     'you hold no open piece of work that has reached you, so nothing was asked. A question to another agent needs no piece; otherwise do the work here until you hold a piece to ask about.',
-  // ⚑ The act first, inside the cut. ⚠️ The words' length and the limit are said by
-  // {@link answerTooLongSentence} whenever the detail holds them; this is the sentence without them.
-  'answer-too-long':
-    'shorten your answer, or put the long form in a file and name its full path in your answer. It is longer than an answer may be, so nothing was sent or shortened; the question is still waiting for your answer.',
-}
-
-/**
- * ⚑ **`answer-too-long`, with the length and the limit in the words** — what to do first, then the
- * two numbers, then what became of the call. ⚠️ Each from the detail, so the sentence and the data
- * a model reads beside it cannot disagree; without them it is the rail's own sentence.
- */
-function answerTooLongSentence(detail: QuestionRefusalDetail): string {
-  if (detail.was === undefined || detail.limit === undefined) {
-    return QUESTION_SENTENCES['answer-too-long']
-  }
-  const after = 'so nothing was sent or shortened; the question is still waiting for your answer.'
-  return detail.argument === 'cannot_answer'
-    ? `shorten your reason, or put the long form in a file and name its full path in cannot_answer. It is ${String(detail.was)} units long and a reason may be at most ${String(detail.limit)}, ${after}`
-    : `shorten your answer, or put the long form in a file and name its full path in your answer. Your own words in it are ${String(detail.was)} units long and an answer may carry at most ${String(detail.limit)}, ${after}`
 }
 
 /**
@@ -695,11 +600,9 @@ export function refuseQuestion(
     permanence,
     retryable: permanence === 'while-this-holds',
     reason: refusalReason(
-      rail === 'answer-too-long'
-        ? answerTooLongSentence(detail)
-        : rail === 'no-open-question-you-asked-by-that-name'
-          ? aQuestionThatEndedSentence(detail)
-          : QUESTION_SENTENCES[rail],
+      rail === 'no-open-question-you-asked-by-that-name'
+        ? aQuestionThatEndedSentence(detail)
+        : QUESTION_SENTENCES[rail],
     ),
     remedy: questionRemedyOf(rail),
     detail,
@@ -799,32 +702,40 @@ export const NO_SUCH_QUESTION_TO_ANSWER =
  * message — whether or not the asker could be started, so what became of the words is a second fact,
  * as a reply's is. ⚑ `kept` says it, in words, only when the start did not happen.
  */
-export type AnswerOutcome =
-  | {
-      readonly ok: true
-      readonly question: string
-      readonly asked: string
-      /**
-       * ⚑ **F033 · the piece the question was asked under**, by id — what the answer's receipt
-       * names the asker by — or `null`: it named none, or a provider asked it.
-       */
-      readonly piece: string | null
-      /**
-       * 🔴 **The parts the caller answered that the question never asked**, which did not reach the
-       * asker (`RuntimeHost`'s `oneAgentsAnswer`). ⛔ Not delivery vocabulary — the paragraph above
-       * still holds — but a fact about the WORDS, which the caller would otherwise believe all went.
-       * ⚑ Nothing that reaches the asker is cut: an answer over the bound is refused
-       * (`answer-too-long`). Always present, so an empty list is a measurement.
-       */
-      readonly notAsked: readonly string[]
-      /**
-       * ⚑ **D-017 · R1 — the asker could not be started now**: the answer is kept in its ledger and
-       * goes to it first when it next starts; the sentence says so, and why the start did not
-       * happen. ⚠️ Absent when the answer reached the asker, sent or held behind its turn.
-       */
-      readonly kept?: string
-    }
-  | { readonly ok: false; readonly refusal: QuestionRefusal }
+export interface AnAnswerDelivery {
+  readonly to: SendDestination
+  readonly taskLabel: string | null
+  readonly state: SendReceipt['recipient']['state']
+}
+
+export type AnswerOutcome = ToolOutcome<
+  {
+    readonly question: string
+    readonly asked: string
+    /**
+     * ⚑ **F033 · the piece the question was asked under**, by id — what the answer's receipt
+     * names the asker by — or `null`: it named none, or a provider asked it.
+     */
+    readonly piece: string | null
+    /**
+     * 🔴 **The parts the caller answered that the question never asked**, which did not reach the
+     * asker (`RuntimeHost`'s `oneAgentsAnswer`). ⛔ Not delivery vocabulary — the paragraph above
+     * still holds — but a fact about the WORDS, which the caller would otherwise believe all went.
+     * Always present, so an empty list is a measurement.
+     */
+    readonly notAsked: readonly string[]
+    /**
+     * ⚑ **D-017 · R1 — the asker could not be started now**: the answer is kept in its ledger and
+     * goes to it first when it next starts; the sentence says so, and why the start did not
+     * happen. ⚠️ Absent when the answer reached the asker, sent or held behind its turn.
+     */
+    readonly kept?: string
+    readonly overflow?: ReadableSendOverflow
+    readonly files?: SendReceipt['attachments']
+    readonly delivery?: AnAnswerDelivery
+  },
+  QuestionRefusal | ResourceRefusal
+>
 
 /**
  * 🔴 **The whole ask door, as a pure function of what the caller HOLDS** (437, criterion 29) —
@@ -897,49 +808,31 @@ export function noPieceToAskAbout(named: string, held: readonly string[]): Quest
  * send to*, and `437` §2 measures that `list_agents` does not name the parent — so widening what a
  * worker is told is a product decision and not a side effect of removing a wait.
  */
-export type AskOutcome =
-  | {
-      readonly ok: true
-      /** ⚑ **The id the parent quotes to answer.** */
-      readonly question: string
-      /**
-       * ⚑ **D-016 · where it went** — what the asker said, except that a question for the conversation
-       * that gave a ROOT, or work the asker took on for a person (commit 6), goes to a person: their
-       * giver is the person (spec D15).
-       */
-      readonly went: QuestionRecipient
-      /**
-       * ⚑ **D-016 · the piece it is about is the asker's own ROOT** — work a person gave it, which
-       * nothing hands back — so the answer says how that work ends instead of naming
-       * `reply_to_parent`, which refuses a root.
-       */
-      readonly aboutItsRoot: boolean
+export type AskOutcome = ToolOutcome<
+  {
+    /** ⚑ **The id the parent quotes to answer.** */
+    readonly question: string
+    /**
+     * ⚑ **D-016 · where it went** — what the asker said, except that a question for the conversation
+     * that gave a ROOT, or work the asker took on for a person (commit 6), goes to a person: their
+     * giver is the person (spec D15).
+     */
+    readonly went: QuestionRecipient
+    /**
+     * ⚑ **D-016 · the piece it is about is the asker's own ROOT** — work a person gave it, which
+     * nothing hands back — so the answer says how that work ends instead of naming
+     * `reply_to_parent`, which refuses a root.
+     */
+    readonly overflow?: ReadableSendOverflow
+    readonly files?: SendReceipt['attachments']
+    readonly delivery?: {
+      readonly to: SendDestination
+      readonly state: SendReceipt['recipient']['state']
+      readonly taskLabel: string | null
     }
-  | { readonly ok: false; readonly refusal: QuestionRefusal }
-
-/**
- * 🔴 **679 · what a pass-up states: the new question, AND the one it carried, by its asker.**
- *
- * ⛔ **The carried question stays open and stays the passer's** — it answers it with
- * `answer_question` when the answer comes back — and a provider's id is session-local, so a sibling
- * asked later can share it (`675` F-b). ⚑ Naming the asker here is what lets the passer quote the
- * pair then, rather than meet `more-than-one-question-has-that-id` with nothing recorded to choose by.
- */
-export type PassUpOutcome =
-  | {
-      readonly ok: true
-      readonly question: string
-      readonly carried: {
-        readonly question: string
-        readonly askedBy: string
-        /**
-         * ⚑ **F033 · the piece the carried question was asked under** (`RaisedQuestion.piece`), or
-         * `null` — so the receipt quotes its asker by the label the question's own words gave it.
-         */
-        readonly piece: string | null
-      }
-    }
-  | { readonly ok: false; readonly refusal: QuestionRefusal }
+  },
+  QuestionRefusal | ResourceRefusal
+>
 
 /**
  * 🔴 **The words a parent actually receives when a child asks it something.**
@@ -974,11 +867,14 @@ export function questionText(
     readonly called: string
     /** ⚑ What `asked_by` quotes — the label of the piece that names it, or its id. */
     readonly address: string
+    readonly line?: string
+    readonly receiverLine?: string
   },
   request: {
     id: string
     prompt: string
     questions: readonly UserInputQuestion[]
+    raisedBy?: RaisedQuestion['raisedBy']
     /**
      * 🔴 **611 · what a PASSER added, beside the original words rather than instead of them**
      * (HO-088 §3.1) — absent on a question the asker raised itself.
@@ -989,6 +885,7 @@ export function questionText(
      * piece, a passed-up one and a provider's.
      */
     label?: string | null
+    taskTitle?: string | null
   },
 ): string {
   const about =
@@ -996,9 +893,18 @@ export function questionText(
   const lines = [
     // ⚑ **679 · the asker beside the id** — a provider's id is session-local, so two children's can
     // be one string (`675` F-b), and a door handed the pair never has to refuse the id as shared.
-    `${asker.called} is waiting on an answer${about} before it can go on. Answer it with answer_question, quoting ${request.id} with asked_by ${asker.address}.`,
-    request.prompt,
+    asker.line === undefined
+      ? `${asker.called} is waiting on an answer${about} before it can go on. Answer it with answer_question, quoting ${request.id} with asked_by ${asker.address}.`
+      : `${asker.called} (${asker.line}) asks you ${request.id}${asker.receiverLine === undefined ? '' : ` in your ${asker.receiverLine}`}.`,
   ]
+  if (asker.line !== undefined) {
+    lines.push(`Use asked_by ${asker.address} with this question id.`)
+    if (request.label != null) {
+      const title = request.taskTitle == null ? '' : ` · ${request.taskTitle}`
+      lines.push(`About task ${request.label}${title}.`)
+    }
+  }
+  lines.push(request.prompt)
   // 🔴 **611 · a separate paragraph, and the separation is the ruling** (HO-088 §3.1). ⛔ *"The
   // parent MAY add context; it may NOT replace the question."* ⚠️ A sentence that merged the two
   // would be the reworded question this app refuses to let anybody write — so the words above are
@@ -1007,16 +913,28 @@ export function questionText(
     lines.push(`Context added by the conversation that passed it on: ${request.context}`)
   }
   for (const question of request.questions) {
-    const options =
-      question.options.length === 0
-        ? '    (answer in your own words)'
-        : question.options.map((option) => `    - ${option.label}`).join('\n')
+    const singleAsk =
+      request.raisedBy === 'this-app' &&
+      request.questions.length === 1 &&
+      question.id === 'answer' &&
+      request.prompt === question.prompt
+    const options = question.options.map((option) => `    - ${option.label}`)
+    const header = question.header === undefined ? '' : ` · ${question.header}`
+    const prompt = singleAsk
+      ? options.length === 0
+        ? 'answer in your own words.'
+        : 'choose one:'
+      : question.prompt
+    if (options.length === 0 && !singleAsk) options.push('    (answer in your own words)')
+    if (question.allowOther === true) options.push('    (or an answer of your own)')
+    if (question.multiSelect === true) options.push('    (this part takes more than one)')
     lines.push(
-      `  part ${question.id}${question.header === undefined ? '' : ` · ${question.header}`}: ${question.prompt}\n${options}` +
-        (question.allowOther === true ? '\n    (or an answer of your own)' : '') +
-        (question.multiSelect === true ? '\n    (this part takes more than one)' : ''),
+      [`Part id ${JSON.stringify(question.id)}${header}: ${prompt}`, ...options].join('\n'),
     )
   }
+  lines.push(
+    'Answer with answer_question, one entry per part id: answers: [{ part: "<id>", answer: ["…"] }]. If you can\'t, use cannot_answer and say why.',
+  )
   return lines.join('\n\n')
 }
 

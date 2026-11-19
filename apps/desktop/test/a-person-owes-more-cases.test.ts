@@ -1,3 +1,4 @@
+import { addressedGive, newConversationGive, createWorkerAndGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { AgentState } from '../src/shared/agent-state-contracts'
 import type { PieceRow } from '../src/shared/task-contracts'
@@ -229,13 +230,7 @@ describe('F097 · a person owes the agent that answered them — more cases', ()
     )
     await settle()
     const brobotTools = agentToolsFor(host, brobot)
-    const given = await callOn(brobotTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      new: true,
-      title: 'Build the pages',
-      brief: 'build the pages',
-    })
+    const given = await createWorkerAndGive(brobotTools, 'Build the pages', 'build the pages')
     expect(given, JSON.stringify(given)).toMatchObject({ outcome: 'ok', label: 'W1.1' })
     const ada = given.agent as string
     await waitFor(() => stallNoticesIn(brobot).length === 1, 'the giver to be told of the stall')
@@ -279,14 +274,11 @@ describe('F097 · a person owes the agent that answered them — more cases', ()
       // Ada gives a part of W1.1 to a new agent. Its brief's turn is held, so W1.1.1 stays open
       // (`working`) and nobody is told anything that would run Ada again.
       holdTheTurnEnds()
+      await callOn(agentToolsFor(host, ada), 'create_agent', { profile_slug: 'tester' })
       const giving = leftRunning(
         callOn(agentToolsFor(host, ada), 'give_work', {
-          definition_of_done: 'The requested result and its checks are recorded.',
-          profile: 'tester',
-          new: true,
-          piece: 'W1.1',
-          title: 'Wire the routes',
-          brief: 'wire the routes',
+          ...newConversationGive('tester', 'Wire the routes', 'wire the routes'),
+          under: 'W1.1',
         }),
       )
       await waitFor(
@@ -326,12 +318,11 @@ describe('F097 · a person owes the agent that answered them — more cases', ()
       holdTheTurnEnds()
       const said = userTurnsIn(ada)
       const giving = leftRunning(
-        callOn(brobotTools, 'give_work', {
-          definition_of_done: 'The requested result and its checks are recorded.',
-          profile: 'worker',
-          title: 'Write the tests',
-          brief: 'write the tests',
-        }),
+        callOn(
+          brobotTools,
+          'give_work',
+          addressedGive(ada, 'worker', 'Write the tests', 'write the tests'),
+        ),
       )
       await waitFor(
         () => userTurnsIn(ada) > said && labelled(ada, 'W1.2')?.state === 'working',
@@ -387,13 +378,12 @@ describe('F097 · a person owes the agent that answered them — more cases', ()
   describe('§3 · the person’s list: its order and its kept fold', () => {
     it('⚑ two holders are listed oldest first — the one written to first, not the one given work first', async () => {
       const { brobot, brobotTools, ada, piece } = await aGiverAndItsHelper()
-      const second = await callOn(brobotTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'tester',
-        new: true,
-        title: 'Review the pages',
-        brief: 'review the pages',
-      })
+      await callOn(brobotTools, 'create_agent', { profile_slug: 'tester' })
+      const second = await callOn(
+        brobotTools,
+        'give_work',
+        newConversationGive('tester', 'Review the pages', 'review the pages'),
+      )
       expect(second, JSON.stringify(second)).toMatchObject({ outcome: 'ok', label: 'W1.2' })
       const bob = second.agent as string
       await waitFor(() => stallNoticesIn(brobot).length === 2, 'the giver to be told of W1.2')

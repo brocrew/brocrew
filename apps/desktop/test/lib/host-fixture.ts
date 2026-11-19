@@ -19,7 +19,11 @@ import { mkdirSync, rmSync, mkdtempSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Provider } from '@brobot2/shared'
 import { NO_DISCOVERY } from '../../src/main/adopt/discover-sessions'
-import type { RuntimeEventSink, RuntimeHostDeps } from '../../src/main/runtime/runtime-host'
+import type {
+  RuntimeEventSink,
+  RuntimeHost,
+  RuntimeHostDeps,
+} from '../../src/main/runtime/runtime-host'
 import type { ProviderConfigInfo, RuntimeEventMessage } from '../../src/shared/runtime-ipc'
 
 export class RecordingSink implements RuntimeEventSink {
@@ -98,15 +102,36 @@ export function latestToolset(handed: readonly AgentToolset[]): AgentToolset {
   return last
 }
 
-/** Close the fixture host before its database and owned directories. */
+type FixtureHost = Pick<RuntimeHost, 'closeAll'>
+
+/** Close the fixture hosts before their database and owned directories. */
 export async function closeHostFixture(
-  host: Pick<import('../../src/main/runtime/runtime-host').RuntimeHost, 'closeAll'>,
+  host: FixtureHost | readonly FixtureHost[],
   db: Pick<import('../../src/main/db/connection').AppDatabase, 'close'>,
   ...folders: string[]
 ): Promise<void> {
-  await host.closeAll()
-  db.close()
-  for (const folder of folders) rmSync(folder, { recursive: true, force: true })
+  const failures: unknown[] = []
+  for (const fixture of 'closeAll' in host ? [host] : host) {
+    try {
+      await fixture.closeAll()
+    } catch (error) {
+      failures.push(error)
+    }
+  }
+  try {
+    db.close()
+  } catch (error) {
+    failures.push(error)
+  }
+  for (const folder of folders) {
+    try {
+      rmSync(folder, { recursive: true, force: true })
+    } catch (error) {
+      failures.push(error)
+    }
+  }
+  if (failures.length === 1) throw failures[0]
+  if (failures.length > 1) throw new AggregateError(failures, 'Fixture teardown failed')
 }
 
 /** ⚑ A reopen the test can hold at the provider: `hold` is awaited by every `resume`. */
@@ -138,11 +163,11 @@ export class ProviderDouble extends FakeRuntime {
   }
 }
 
-export class ObservedProviderLaunches extends FakeRuntime {
+export class StartObservingRuntime extends FakeRuntime {
   constructor(
     provider: Provider,
     sessions: FakeProviderSessions,
-    private readonly observe: (
+    protected readonly observe: (
       kind: 'start' | 'resume',
       options: StartOptions | ResumeOptions,
       handle: FakeSessionHandle,
@@ -156,7 +181,9 @@ export class ObservedProviderLaunches extends FakeRuntime {
     this.observe('start', options, handle)
     return handle
   }
+}
 
+export class ObservedProviderLaunches extends StartObservingRuntime {
   override async resume(ref: SessionRef, options: ResumeOptions): Promise<FakeSessionHandle> {
     const handle = await super.resume(ref, options)
     this.observe('resume', options, handle)
@@ -210,4 +237,16 @@ export function fixtureStoreStatements(prefix: string) {
       rmSync(folder, { recursive: true, force: true })
     },
   }
+}
+
+export async function waitForFixtureMessage(
+  ready: () => boolean,
+  what: string,
+  tries = 300,
+): Promise<void> {
+  for (let attempt = 0; attempt < tries; attempt += 1) {
+    if (ready()) return
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+  throw new Error(`timed out waiting for ${what}`)
 }

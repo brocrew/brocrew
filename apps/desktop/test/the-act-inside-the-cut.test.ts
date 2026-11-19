@@ -13,15 +13,11 @@ import {
   A_WAKE_WHOSE_FOLDER_IS_GONE,
   A_WAKE_WHOSE_PROGRAM_COULD_NOT_RUN,
   TOOL_REFUSALS,
-  aFollowUpOnAPieceYouDidNotGive,
-  aFollowUpOnAPieceYouGaveAnother,
   aMessageAboutAQueuedPiece,
   aStartItsLoginOrSettingsRefused,
-  aFollowUpOnAPieceYouHold,
   aTakeBackOfAPieceYouHold,
   aTakeBackOfAPieceYouHoldThatEnded,
   aTakeBackOfYourOwnWork,
-  anAgentWithSeveralConversations,
   anEndedPieceSaid,
   refuseTool,
 } from '../src/main/runtime/agent-tools'
@@ -226,13 +222,22 @@ const SPAWN_DETAILS: Partial<Record<(typeof SPAWN_RAILS)[number], readonly Spawn
     // names no model, provider or mode. ⚠️ A list of labels has no cap, so the list below is a
     // caller holding its root and two pieces.
     'name-the-piece-you-give-from': [{ held: ['W12', 'W3.4.1', 'W3.4.2'] }],
-    'no-free-worker-at-capacity': [{ profileId: LONG_SLUG }],
-    'no-room-for-provider-conversation': [{ profileId: LONG_SLUG, provider: 'codex' }],
+    'name-the-conversation': [
+      {
+        profileId: LONG_SLUG,
+        recent: [{ address: 'W12.345.6', title: LONG_MODEL }],
+        more: true,
+      },
+    ],
+    'its-provider-is-fixed': [
+      { address: 'W12.345.6', provider: 'codex', requestedProvider: 'claude' },
+    ],
+    'not-that-agents-conversation': [
+      { address: 'W12.345.6', profileId: LONG_SLUG, ownerProfile: LONG_SLUG },
+    ],
     'service-provider-is-fixed': [
       { profileId: LONG_SLUG, provider: 'codex', choices: [LONG_MODEL] },
     ],
-    'worker-binding-is-unknown': [{ profileId: LONG_SLUG }],
-    'that-profile-exists': [{ profileId: LONG_SLUG }],
     // ⚑ **D-038** — the sentence names both modes now, the giver's and the one the child would run
     // in, so `asked` is planted (without it the row prints `?`); a refusal is an `ask` giver whose
     // child would run in `auto`, and `wouldLack` (it was `alsoRemoves`) is what the giver keeps.
@@ -350,48 +355,40 @@ const VOCABULARIES: readonly {
     name: 'QUESTION_RAILS',
     module: 'runtime/question-rails.ts',
     rails: QUESTION_RAILS,
-    // ⚑ `answer-too-long` says its numbers: each arm with them at a length a call can reach, and the
-    // sentence a detail without them gets.
+    // Known endings include their time and where to read the reply.
     arms: (rail) =>
-      rail === 'answer-too-long'
+      rail === 'no-open-question-you-asked-by-that-name'
         ? [
             {},
-            { argument: 'answers', limit: 1280, was: 12_800_000 },
-            { argument: 'cannot_answer', limit: 1280, was: 12_800_000 },
+            {
+              state: 'answered',
+              at: 1_700_000_000_000,
+              itsAnswer: 'held-and-this-turn-is-stopping',
+            },
+            { state: 'answered', at: 1_700_000_000_000, itsAnswer: 'held-until-this-turn-ends' },
+            { state: 'answered', at: 1_700_000_000_000, itsAnswer: 'already-sent' },
+            {
+              state: 'answered',
+              at: 1_700_000_000_000,
+              itsAnswer: 'held-until-the-limit-resets',
+            },
+            {
+              state: 'rejected',
+              at: 1_700_000_000_000,
+              itsAnswer: 'held-and-this-turn-is-stopping',
+            },
+            { state: 'rejected', at: 1_700_000_000_000, itsAnswer: 'held-until-this-turn-ends' },
+            { state: 'rejected', at: 1_700_000_000_000, itsAnswer: 'already-sent' },
+            {
+              state: 'rejected',
+              at: 1_700_000_000_000,
+              itsAnswer: 'held-until-the-limit-resets',
+            },
+            { state: 'work-closed', at: 1_700_000_000_000 },
+            { state: 'withdrawn', at: 1_700_000_000_000 },
+            { state: 'withdrawn' },
           ].map((detail) => refuseQuestion(rail, detail as never).reason)
-        : // Known endings include their time; answered questions still say where to read the reply.
-          rail === 'no-open-question-you-asked-by-that-name'
-          ? [
-              {},
-              {
-                state: 'answered',
-                at: 1_700_000_000_000,
-                itsAnswer: 'held-and-this-turn-is-stopping',
-              },
-              { state: 'answered', at: 1_700_000_000_000, itsAnswer: 'held-until-this-turn-ends' },
-              { state: 'answered', at: 1_700_000_000_000, itsAnswer: 'already-sent' },
-              {
-                state: 'answered',
-                at: 1_700_000_000_000,
-                itsAnswer: 'held-until-the-limit-resets',
-              },
-              {
-                state: 'rejected',
-                at: 1_700_000_000_000,
-                itsAnswer: 'held-and-this-turn-is-stopping',
-              },
-              { state: 'rejected', at: 1_700_000_000_000, itsAnswer: 'held-until-this-turn-ends' },
-              { state: 'rejected', at: 1_700_000_000_000, itsAnswer: 'already-sent' },
-              {
-                state: 'rejected',
-                at: 1_700_000_000_000,
-                itsAnswer: 'held-until-the-limit-resets',
-              },
-              { state: 'work-closed', at: 1_700_000_000_000 },
-              { state: 'withdrawn', at: 1_700_000_000_000 },
-              { state: 'withdrawn' },
-            ].map((detail) => refuseQuestion(rail, detail as never).reason)
-          : [refuseQuestion(rail as never).reason],
+        : [refuseQuestion(rail as never).reason],
   },
   {
     name: 'INTERRUPT_RAILS',
@@ -530,39 +527,6 @@ const OVERRIDES: readonly {
       3 * 24 * 60 * 60_000,
     ),
   },
-  // ⚑ **F087 · a follow-up naming a piece the caller holds, or gave another agent**, said as what it
-  // is — the word's own sentence guesses the name may belong to nothing. Planted with a deep label;
-  // the act comes first, so no label can push it past the cut.
-  {
-    key: 'TOOL_REFUSALS|not-a-piece-you-gave/a-piece-you-hold',
-    rail: 'not-a-piece-you-gave',
-    spreadAs: 'aFollowUpOnAPieceYouHold',
-    sentence: aFollowUpOnAPieceYouHold('W3.4.1.2.1.1'),
-  },
-  {
-    key: 'TOOL_REFUSALS|not-a-piece-you-gave/a-piece-you-gave-another',
-    rail: 'not-a-piece-you-gave',
-    spreadAs: 'aFollowUpOnAPieceYouGaveAnother',
-    sentence: aFollowUpOnAPieceYouGaveAnother('W3.4.1.2.1.1'),
-  },
-  // A follow-up naming a piece the caller neither gave nor holds: a note to the same agent. Planted
-  // with the longest address an agent has, its id.
-  {
-    key: 'TOOL_REFUSALS|not-a-piece-you-gave/a-piece-you-did-not-give',
-    rail: 'not-a-piece-you-gave',
-    spreadAs: 'aFollowUpOnAPieceYouDidNotGive',
-    sentence: aFollowUpOnAPieceYouDidNotGive('sess_0123456789abcdef0123456789abcdef'),
-  },
-  // An agent's profile name with several conversations in reach, at its longest: five labels named.
-  {
-    key: 'TOOL_REFUSALS|that-agent-has-several-conversations/their-labels',
-    rail: 'that-agent-has-several-conversations',
-    spreadAs: 'anAgentWithSeveralConversations',
-    sentence: anAgentWithSeveralConversations(
-      'a-profile-name-of-forty-characters-long',
-      Array.from({ length: 7 }, (_, at) => `W3.4.1.2.1.${at + 1}`),
-    ),
-  },
   // ⚑ A message about a piece still queued at a service, said with its label.
   {
     key: 'TOOL_REFUSALS|that-piece-is-still-queued/its-label',
@@ -697,10 +661,6 @@ const ACT: Readonly<Record<string, string>> = {
   'TOOL_REFUSALS|that-conversation-takes-no-messages':
     'list_agents names the conversations this app can run',
   'TOOL_REFUSALS|that-is-a-service': 'Give it the work with give_work',
-  'TOOL_REFUSALS|that-agent-has-several-conversations':
-    'make the same call with agent set to one of that agent\u2019s conversations',
-  'TOOL_REFUSALS|that-agent-has-several-conversations/their-labels':
-    'make the same call with agent set to one of',
   'TOOL_REFUSALS|malformed-request': 'The problems are listed in the detail',
   'TOOL_REFUSALS|agent-cannot-take-a-message':
     'ask a person to inspect why that conversation cannot take a message',
@@ -744,10 +704,6 @@ const ACT: Readonly<Record<string, string>> = {
   'TOOL_REFUSALS|services-are-off-so-none-is-made': 'A person turns them on in Team',
   // ⚑ **D-016 · commit 3** — the task words became piece words, and a new piece is a give.
   'TOOL_REFUSALS|not-a-piece-you-gave': 'list_tasks lists the open pieces you gave out',
-  // ⚑ **F087** — the same call as a note, or to the agent holding the piece.
-  'TOOL_REFUSALS|not-a-piece-you-gave/a-piece-you-hold': 'make the same call with kind note',
-  'TOOL_REFUSALS|not-a-piece-you-gave/a-piece-you-gave-another': 'make the same call with agent',
-  'TOOL_REFUSALS|not-a-piece-you-gave/a-piece-you-did-not-give': 'send it as kind note to',
   'TOOL_REFUSALS|that-piece-is-still-queued': 'Change its brief with update_work',
   'TOOL_REFUSALS|that-piece-is-still-queued/its-label': 'Change its brief with update_work',
   // ⚑ **F089** — the doors open to work the caller holds, or nothing more owed, or the person.
@@ -824,15 +780,15 @@ const ACT: Readonly<Record<string, string>> = {
   'SPAWN_RAILS|spawning-disabled': 'Only a person can switch it back on',
   'SPAWN_RAILS|no-piece-to-give-from': 'Do the work here until you hold a piece',
   // PE-006: a give names no mode the caller can change; the person who can decide is named first.
-  'SPAWN_RAILS|name-the-piece-you-give-from': 'give again naming it as piece',
+  'SPAWN_RAILS|name-the-piece-you-give-from': 'give again naming it as under',
   'SPAWN_RAILS|no-piece-you-hold-by-that-name': 'list_tasks names what you hold',
-  'SPAWN_RAILS|parallel-not-for-a-service': 'Leave parallel out to queue the work',
-  'SPAWN_RAILS|no-free-worker-at-capacity': 'Give it again when one is free',
-  'SPAWN_RAILS|no-room-for-provider-conversation':
-    'Give work on a provider already in that pool, or choose another agent',
+  'SPAWN_RAILS|name-the-conversation': 'Give it again with to: "new"',
+  'SPAWN_RAILS|no-conversation-by-that-address': 'to: "new" starts one',
+  'SPAWN_RAILS|not-that-agents-conversation': 'is a conversation of',
+  'SPAWN_RAILS|its-provider-is-fixed': 'give with to: "new"',
+  'SPAWN_RAILS|conversation-title-needed': 'a new conversation needs conversation_title',
+  'SPAWN_RAILS|a-service-has-one-conversation': 'leave to out',
   'SPAWN_RAILS|service-provider-is-fixed': 'Give it work on that provider',
-  'SPAWN_RAILS|worker-binding-is-unknown': 'Tell a person, and give it again once that is fixed',
-  'SPAWN_RAILS|that-profile-exists': 'Give without new to use it',
   'SPAWN_RAILS|services-are-off': 'Do the work yourself, or give it to another agent',
   'SPAWN_RAILS|its-kind-is-unknown': 'Give the work to another agent, or ask a person',
   'SPAWN_RAILS|that-is-this-conversation': 'Do this part within the piece you are working on',
@@ -840,7 +796,7 @@ const ACT: Readonly<Record<string, string>> = {
   'SPAWN_RAILS|its-waits-cannot-all-be-checked':
     'Give the work to another agent, or give it again once some of the work',
   'SPAWN_RAILS|its-record-cannot-be-read': 'Give the work to another agent',
-  'SPAWN_RAILS|no-such-profile': 'check the spelling',
+  'SPAWN_RAILS|no-such-profile': 'list_profiles names them; create_agent makes one',
   'SPAWN_RAILS|folder-unusable': 'only a person can make it right',
   // ⚑ **D-038 · the act moved to the front, and changed**: the work here, or the GIVER's own mode —
   // an agent has no mode of its own, and no provider it could be moved to changes the verdict now.
@@ -860,7 +816,8 @@ const ACT: Readonly<Record<string, string>> = {
   'REPLY_RAILS|summary-too-long':
     'Put the rest in a Markdown file, a page, an image, a PDF or any other file and name its path in resource_paths',
   'QUESTION_RAILS|no-question-by-that-name': 'list_questions names the requests you can answer',
-  'QUESTION_RAILS|a-person-answers-this-one': 'that one is a person’s to settle',
+  'QUESTION_RAILS|a-person-answers-this-one':
+    'Not answered: only the person can answer this request.',
   'QUESTION_RAILS|that-answer-cannot-be-sent':
     'Answer every part it asks about, choosing one of its options unless it takes an answer of your own',
   // ⚑ **679 · a new word chose an act** — the same call, with the field that tells two askers apart.
@@ -872,11 +829,8 @@ const ACT: Readonly<Record<string, string>> = {
   // ⚑ **D-016 · commit 3** — a question names the piece it is about.
   'QUESTION_RAILS|name-the-piece-you-ask-about': 'ask again naming it as piece',
   'QUESTION_RAILS|no-piece-to-ask-about': 'A question to another agent needs no piece',
-  'QUESTION_RAILS|nobody-to-pass-it-up-to': 'Pass it to a person with a-person instead',
   // ⚑ **D-009 · F012's three**, each with its act inside the cut.
   'QUESTION_RAILS|no-agent-you-can-ask-by-that-name': 'list_agents names the agents you can ask',
-  'QUESTION_RAILS|a-question-asked-of-you-by-name-is-yours':
-    'it is yours to answer — or to say you cannot, with answer_question and cannot_answer',
   'QUESTION_RAILS|no-open-question-you-asked-by-that-name/1': 'Use the id ask_question returned',
   // ⚑ **F020** — the caller's own question, answered or declined: the act is to read the answer.
   'QUESTION_RAILS|no-open-question-you-asked-by-that-name/2': 'stop here and read its answer',
@@ -894,13 +848,6 @@ const ACT: Readonly<Record<string, string>> = {
     'read the reply declining it, which was sent to you as a message',
   'QUESTION_RAILS|no-open-question-you-asked-by-that-name/9':
     'end this turn to read the reply declining it before you report on that question',
-  // ⚑ The act first; the length and the limit after it.
-  'QUESTION_RAILS|answer-too-long/1':
-    'shorten your answer, or put the long form in a file and name its full path in your answer',
-  'QUESTION_RAILS|answer-too-long/2':
-    'shorten your answer, or put the long form in a file and name its full path in your answer',
-  'QUESTION_RAILS|answer-too-long/3':
-    'shorten your reason, or put the long form in a file and name its full path in cannot_answer',
   'INTERRUPT_RAILS|a-person-is-being-asked':
     'carry on with something else, or say that you are blocked on it',
   'INTERRUPT_RAILS|that-conversation-has-not-started': 'ask again in a moment',
@@ -985,8 +932,6 @@ const NO_ACT: Readonly<Record<string, string>> = {
     'the question ended, so no further answer is owed or repeatable',
   'QUESTION_RAILS|the-conversation-that-asked-has-gone':
     'the asking conversation is gone, so no further answer is owed or repeatable',
-  'QUESTION_RAILS|this-app-does-not-hold-those-words':
-    'the original words are gone, so the same id cannot be passed up',
   // The approved words say only whose piece the service is on; the act is its remedy, the same
   // stop once that piece has ended.
   'INTERRUPT_RAILS|that-service-is-on-another-callers-piece':
@@ -1089,7 +1034,7 @@ describe('675 · the act inside the cut', () => {
         for (const [field, value] of Object.entries(detail)) {
           // ⚑ A list of labels sits BEFORE an act in the give's sentences, so each one is looked for.
           const shown: readonly unknown[] =
-            field === 'provider'
+            field === 'provider' || field === 'requestedProvider'
               ? [PROVIDER_NAME[value as keyof typeof PROVIDER_NAME]]
               : LABEL_LISTS.has(field)
                 ? (value as readonly unknown[])

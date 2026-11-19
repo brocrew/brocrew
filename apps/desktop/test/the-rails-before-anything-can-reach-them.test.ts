@@ -1,4 +1,5 @@
-import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import { createFixtureConversation } from './lib/send-person-fixture'
+import { fixtureProviderConfig, fixtureHostPaths } from './lib/host-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -11,7 +12,6 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF, type CallerIdentity } from '../src/main/runtime/runtime-host'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
   SPAWN_RAILS,
   admitGive,
@@ -94,7 +94,7 @@ describe('341 · the rails, before anything can reach them', () => {
   const buildHost = (): RuntimeHost =>
     new RuntimeHost({
       store,
-      ...neutralHostDeps(() => userData),
+      ...fixtureHostPaths(() => userData),
       createRuntime: (provider: Provider) =>
         new FakeRuntime(provider, { sessions: providerSessions }),
       prepareProviderHome: (provider, profileId) => {
@@ -102,11 +102,6 @@ describe('341 · the rails, before anything can reach them', () => {
         mkdirSync(home, { recursive: true })
         return home
       },
-      providerHomePath: (provider) => join(userData, 'provider-homes', provider),
-      // ⚑ **339's own rule, wired in rather than faked** (341 §1C: *"call it, do not write a second
-      // one"*). `checkCwd` — which the folder rail asks — resolves through this exact seam, so the
-      // folder refusal below is `checkSessionCwd`'s sentence and not a double's.
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       readProviderConfig: fixtureProviderConfig,
@@ -128,8 +123,7 @@ describe('341 · the rails, before anything can reach them', () => {
   afterEach(async () => {
     await host.closeAll()
     db.close()
-    rmSync(userData, { recursive: true, force: true })
-    rmSync(work, { recursive: true, force: true })
+    for (const folder of [userData, work]) rmSync(folder, { recursive: true, force: true })
   })
 
   /** A conversation a PERSON opened, in a window. Depth 0 by construction. */
@@ -137,11 +131,15 @@ describe('341 · the rails, before anything can reach them', () => {
     profileId: string,
     options: { approvalMode?: 'ask' | 'auto'; sink?: RecordingSink } = {},
   ): Promise<string> => {
-    const { sessionId } = await host.createSession(
-      { provider: 'claude', profileId, cwd: work, approvalMode: options.approvalMode ?? 'ask' },
+    const opened = await createFixtureConversation(
+      host,
       options.sink ?? window,
+      work,
+      profileId,
+      'claude',
+      options.approvalMode ?? 'ask',
     )
-    return sessionId
+    return opened.sessionId
   }
 
   /**
@@ -180,6 +178,7 @@ describe('341 · the rails, before anything can reach them', () => {
     profile,
     title: 'Summarise the ledger',
     brief: 'summarise the ledger',
+    ...('to' in more ? {} : { to: 'new', conversation_title: 'Ledger summary' }),
     ...more,
   })
 
@@ -194,8 +193,6 @@ describe('341 · the rails, before anything can reach them', () => {
     if (!outcome.ok) throw new Error(`refused: ${outcome.refusal.rail}`)
     return outcome
   }
-
-  const sessionIdsOf = (): string[] => host.sessionIds
 
   /** Bounded, and it waits on the THING. */
   const until = async (check: () => boolean, what: string): Promise<void> => {
@@ -226,10 +223,10 @@ describe('341 · the rails, before anything can reach them', () => {
         isAHelper: () => false,
         agentExists: () => true,
         // ⚑ **Nothing found**, so the answer is a START — the only answer that carries a token.
-        helperAs: () => null,
+        conversationAt: () => null,
+        recentWith: () => ({ rows: [], more: false }),
         serviceAt: () => ({ is: 'normal' }),
         spawningEnabled: () => true,
-        creatorOf: () => null,
         // ⚑ **Null — *nobody has said*** (419), and the agent has no default (677; D-042 · R2): the
         // token's provider is then the giver's. ⚑ **D-042 took the model off the token** (its
         // `runsOn` went): the launch names R1's pair, so no token carries one.
@@ -244,6 +241,8 @@ describe('341 · the rails, before anything can reach them', () => {
           profile: 'worker',
           title: 'A real one',
           brief: 'a real one',
+          to: 'new',
+          conversation_title: 'A real job',
         },
         PLANNER,
         facts,
@@ -293,6 +292,13 @@ describe('341 · the rails, before anything can reach them', () => {
         found: expect.any(String),
         profile: 'worker',
         delivery: 'sent',
+        recipientState: { kind: 'started' },
+        receiptFacts: {
+          under: store.rootOf(parent)?.label,
+          at: expect.any(Number),
+          lastActive: null,
+          context: null,
+        },
         runsOn: {
           provider: 'claude',
           model: 'default',
@@ -317,7 +323,7 @@ describe('341 · the rails, before anything can reach them', () => {
       // ⛔ Born without a surface (336's door), and drivable by the giver (340's). The window that
       // opened the PARENT is handed nothing when it asks for what it may attach to.
       expect(host.attachOpenSessions(window).map((open) => open.sessionId)).toEqual([parent])
-      expect(sessionIdsOf()).toContain(given.owner)
+      expect(host.sessionIds).toContain(given.owner)
       // …and it is the giver's child, and the piece sits one below the giver's root.
       expect(store.parentOf(given.owner)).toBe(parent)
       const root = store.rootOf(parent)?.piece ?? 'no root'
@@ -326,7 +332,7 @@ describe('341 · the rails, before anything can reach them', () => {
 
     it('🔴 criterion 10 · an unrecognised key is REFUSED, not stripped — and no session is created', async () => {
       const parent = await ready()
-      const before = sessionIdsOf().length
+      const before = host.sessionIds.length
       const outcome = await give(
         // ⛔ **303 B, verbatim**: a command arrived with eight keys and parsed to seven. Zod's
         // DEFAULT is to strip this silently, which is the defect; `.strict()` is the rail.
@@ -338,13 +344,13 @@ describe('341 · the rails, before anything can reach them', () => {
       expect(
         (outcome.refusal.detail as { problems?: readonly string[] }).problems?.join(' '),
       ).toMatch(/priority/)
-      expect(sessionIdsOf()).toHaveLength(before)
+      expect(host.sessionIds).toHaveLength(before)
     })
 
     it('⛔ criterion 8 · a give with no brief is refused by the schema, before anything exists', async () => {
       // ⚑ **D-016 · the why is the piece** — its title and its brief — where it was a spawn's reason.
       const parent = await ready()
-      const before = sessionIdsOf().length
+      const before = host.sessionIds.length
       expect(await refusalOf(await give({ profile: 'worker', title: 'x' }, as(parent)))).toBe(
         'malformed-request',
       )
@@ -354,7 +360,7 @@ describe('341 · the rails, before anything can reach them', () => {
       expect(await refusalOf(await give(aPiece('worker', { title: '  ' }), as(parent)))).toBe(
         'malformed-request',
       )
-      expect(sessionIdsOf()).toHaveLength(before)
+      expect(host.sessionIds).toHaveLength(before)
     })
 
     it('🔴 criterion 7 · the kill switch refuses a START mid-session, ends nothing running, and still lets work reach a conversation the giver has', async () => {
@@ -367,10 +373,12 @@ describe('341 · the rails, before anything can reach them', () => {
       expect(await refusalOf(await give(aPiece('second'), as(parent)))).toBe('spawning-disabled')
       // ⚑ **…and the child that was already running is still running.** The switch refuses; it does
       // not kill.
-      expect(sessionIdsOf()).toContain(first.owner)
+      expect(host.sessionIds).toContain(first.owner)
       // ⚑ **Plan ruling 12 — the switch refuses only a give that would START a conversation**: the
       // one this giver already has with `worker` still takes work.
-      expect(admitted(await give(aPiece('worker'), as(parent))).owner).toBe(first.owner)
+      expect(admitted(await give(aPiece('worker', { to: first.label }), as(parent))).owner).toBe(
+        first.owner,
+      )
 
       // The paired positive: flip it back and the identical call succeeds.
       store.setSpawningEnabled(true)
@@ -447,6 +455,8 @@ describe('341 · the rails, before anything can reach them', () => {
           {
             definition_of_done: 'The requested result and its checks are recorded.',
             profile: `w${depth}`,
+            to: 'new',
+            conversation_title: `Level ${depth}`,
             title: `Level ${depth}`,
             brief: `level ${depth}`,
           },
@@ -627,7 +637,7 @@ describe('341 · the rails, before anything can reach them', () => {
         () => store.events(live).some((row) => row.event.type === 'turn'),
         'the brief turn to end',
       )
-      const second = admitted(await give(aPiece('worker'), as(parent)))
+      const second = admitted(await give(aPiece('worker', { to: first.label }), as(parent)))
       // ⚑ **Actionable**: the caller is told WHICH of its pieces stalled, in the same conversation.
       expect(second.owner).toBe(live)
       expect(second.stalled).toEqual([{ label: first.label, cause: 'turn_ended' }])
@@ -640,7 +650,7 @@ describe('341 · the rails, before anything can reach them', () => {
         'the second brief turn to end',
       )
       await host.close(live, THE_APP_ITSELF)
-      expect(sessionIdsOf()).not.toContain(live)
+      expect(host.sessionIds).not.toContain(live)
       expect(store.openPiecesOf(live).map((one) => one.stalledBecause)).toEqual([
         'turn_ended',
         'turn_ended',
@@ -651,7 +661,7 @@ describe('341 · the rails, before anything can reach them', () => {
       })
       const inItsPlace = host.tookItsPlace(live)
       expect(inItsPlace).toBeNull()
-      const again = admitted(await give(aPiece('worker'), as(parent)))
+      const again = admitted(await give(aPiece('worker', { to: first.label }), as(parent)))
       expect(again.found).toBe(live)
       // ⚑ **D-042 moved where *no start* is said** — `started: null` became `runsOn.how`: a give
       // that reaches the conversation it has, naming no model, leaves its pair `unchanged`.
@@ -674,7 +684,7 @@ describe('341 · the rails, before anything can reach them', () => {
       expect(given.owner).not.toBe(theirs)
       // ⚑ **D-042** — `started` became `runsOn.how` (see THE POSITIVE).
       expect(given.runsOn.how).toBe('started')
-      expect(sessionIdsOf()).toContain(theirs)
+      expect(host.sessionIds).toContain(theirs)
     })
 
     it('⚑ 428 · …and a SECOND giver starts its own conversation of the identity the first has', async () => {
@@ -687,7 +697,7 @@ describe('341 · the rails, before anything can reach them', () => {
       // ⚑ **D-042** — `started` became `runsOn.how` (see THE POSITIVE).
       expect(theirs.runsOn.how).toBe('started')
       // …and the first giver's next give reaches the one it has, which is the paired negative.
-      const again = admitted(await give(aPiece('worker'), as(first)))
+      const again = admitted(await give(aPiece('worker', { to: mine.label }), as(first)))
       expect(again.owner).toBe(mine.owner)
       // ⚑ It names no model, so the one it has is left `unchanged` — never `started`.
       expect(again.runsOn.how).toBe('unchanged')
@@ -698,7 +708,7 @@ describe('341 · the rails, before anything can reach them', () => {
       await bringIdentityIntoBeing('worker')
       // ⚑ **The conversation is this giver's own child, started under the OTHER spelling** (`428`).
       const first = admitted(await give(aPiece('Worker'), as(parent)))
-      const second = admitted(await give(aPiece('worker'), as(parent)))
+      const second = admitted(await give(aPiece('worker', { to: first.label }), as(parent)))
       expect(second.owner).toBe(first.owner)
       // ⚑ **D-042** — `started: null` became `runsOn.how`: found, so `unchanged`, never `started`.
       expect(first.runsOn.how).toBe('started')
@@ -708,7 +718,7 @@ describe('341 · the rails, before anything can reach them', () => {
     it('🔴 criterion 11 · the folder is verified before anything is created, in 339’s own words', async () => {
       const parent = await ready()
       const missing = join(work, 'not-here')
-      const before = sessionIdsOf().length
+      const before = host.sessionIds.length
       const refused = await give(aPiece('worker', { folder: missing }), as(parent))
       expect(await refusalOf(refused)).toBe('folder-unusable')
       if (refused.ok) throw new Error('unreachable')
@@ -718,7 +728,7 @@ describe('341 · the rails, before anything can reach them', () => {
       })
       expect(refused.refusal.reason).toContain(missing)
       // …and nothing was created for it.
-      expect(sessionIdsOf()).toHaveLength(before)
+      expect(host.sessionIds).toHaveLength(before)
 
       mkdirSync(missing)
       const allowed = admitted(await give(aPiece('worker', { folder: missing }), as(parent)))
@@ -744,10 +754,10 @@ describe('341 · the rails, before anything can reach them', () => {
       // *"trust ourselves"* shortcut would exempt is answered as no giver at all — ⚑ D-016c: in the
       // word that says so.
       await ready()
-      const before = sessionIdsOf().length
+      const before = host.sessionIds.length
       const refused = await give(aPiece('worker'), THE_APP_ITSELF)
       expect(await refusalOf(refused)).toBe('no-piece-to-give-from')
-      expect(sessionIdsOf()).toHaveLength(before)
+      expect(host.sessionIds).toHaveLength(before)
     })
   })
 
@@ -774,11 +784,9 @@ describe('341 · the rails, before anything can reach them', () => {
       )
       // ⛔ **The derivation is measured where the two answers DIFFER**, inside this one vocabulary.
       expect(SPAWN_RAILS.filter(retryableOf)).toEqual([
-        'no-free-worker-at-capacity',
         'it-would-wait-on-itself',
         'its-waits-cannot-all-be-checked',
       ])
-      expect(remedyOf('no-free-worker-at-capacity')).toBe('make-the-same-call-when-this-settles')
       // ⚑ A service waiting on its caller clears when that work ends: the same give then answers.
       expect(remedyOf('it-would-wait-on-itself')).toBe('make-the-same-call-when-this-settles')
       // ⚑ …and one whose waits reach too far to check clears as that work ends.
@@ -814,7 +822,7 @@ describe('341 · the rails, before anything can reach them', () => {
 
     it('🔴 a model that retries a permanent refusal is refused every time, and creates nothing', async () => {
       const parent = await personOpens('pm')
-      const before = sessionIdsOf().length
+      const before = host.sessionIds.length
       const rails: string[] = []
       for (let attempt = 0; attempt < 5; attempt++) {
         rails.push(await refusalOf(await give(aPiece('ghost'), as(parent))))
@@ -824,7 +832,7 @@ describe('341 · the rails, before anything can reach them', () => {
       expect(rails).toEqual(Array.from({ length: 5 }, () => 'no-such-profile'))
       expect(permanenceOf('no-such-profile')).toBe('permanent')
       expect(retryableOf('no-such-profile')).toBe(false)
-      expect(sessionIdsOf()).toHaveLength(before)
+      expect(host.sessionIds).toHaveLength(before)
       expect(store.agentIdentityOf('ghost')).toBeNull()
     })
 
@@ -858,6 +866,8 @@ describe('341 · the rails, before anything can reach them', () => {
           {
             definition_of_done: 'The requested result and its checks are recorded.',
             profile: 'worker',
+            to: 'new',
+            conversation_title: 'Read the ledger',
             title: 'Read the ledger',
             brief: 'read the ledger',
           },

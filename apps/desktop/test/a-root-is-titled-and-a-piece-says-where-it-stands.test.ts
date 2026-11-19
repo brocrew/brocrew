@@ -1,3 +1,4 @@
+import { addressedGive, newConversationGive } from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import type { TaskState, WorkRetitledEvent, WorkStatusSetEvent } from '../src/shared/task-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -163,12 +164,11 @@ describe('D-016 · a root is titled, and a piece says where it stands', () => {
   }> => {
     await host.close(await personOpens('worker'), window)
     const pm = await personOpens('pm')
-    const given = await callOn(pm, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'the work',
-      brief: 'migrate',
-    })
+    const given = await callOn(
+      pm,
+      'give_work',
+      newConversationGive('worker', 'the work', 'migrate'),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     host.claimSession(worker, window)
@@ -662,12 +662,11 @@ describe('D-016 · a root is titled, and a piece says where it stands', () => {
       expect(lineOf(await pieceHeld(worker, piece))?.text).toBe('mine')
 
       // (c) The worker is given a SECOND piece, held behind the first: it holds two.
-      const second = await callOn(pm, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'the second thing',
-        brief: 'and the backups',
-      })
+      const second = await callOn(
+        pm,
+        'give_work',
+        addressedGive(label, 'worker', 'the second thing', 'and the backups'),
+      )
       expect(second.outcome, JSON.stringify(second)).toBe('ok')
       expect(second.agent).toBe(worker)
       expect(second.delivery).toBe('held')
@@ -778,20 +777,18 @@ describe('D-016 · a root is titled, and a piece says where it stands', () => {
       await host.close(await personOpens('middle'), window)
       await host.close(await personOpens('leaf'), window)
       const brobot = await personOpens('brobot', 'auto')
-      const givenAda = await callOn(brobot, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'middle',
-        title: 'run the front-end work',
-        brief: 'run the front-end work',
-      })
+      const givenAda = await callOn(
+        brobot,
+        'give_work',
+        newConversationGive('middle', 'run the front-end work', 'run the front-end work'),
+      )
       expect(givenAda.outcome, JSON.stringify(givenAda)).toBe('ok')
       const ada = givenAda.agent as string
-      const givenAli = await callOn(ada, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'leaf',
-        title: 'build the world-clock page',
-        brief: 'build the world-clock page',
-      })
+      const givenAli = await callOn(
+        ada,
+        'give_work',
+        newConversationGive('leaf', 'build the world-clock page', 'build the world-clock page'),
+      )
       expect(givenAli.outcome, JSON.stringify(givenAli)).toBe('ok')
       const ali = givenAli.agent as string
       await waitFor(

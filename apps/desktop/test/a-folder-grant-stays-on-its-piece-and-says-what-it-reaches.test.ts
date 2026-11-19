@@ -1,3 +1,5 @@
+import { addressedGive, newConversationGive } from './lib/give-fixture'
+import { firstGiveInFolder } from './lib/folder-give-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
@@ -215,23 +217,23 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
    * that ends with its piece open stalls it, and a give to a stalled conversation is refused.
    */
   async function aHelperAtWork(giver: string, profile = 'pm'): Promise<string> {
-    const first = await host.giveWork(
-      {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile,
-        title: 'the first piece',
-        brief: 'start here',
-        folder: repoA,
-      },
-      speakingAs(giver),
-    )
-    if (!first.ok) throw new Error(`refused: ${first.refusal.rail}`)
+    const first = await firstGiveInFolder(host, speakingAs(giver), repoA, profile)
     await waitFor('the first turn to end', () => turnsEnded(first.owner) >= 1)
     await answered(first.owner, first.label)
     return first.owner
   }
 
   type GiveAnswer = { outcome?: string; label?: string; folder?: unknown }
+
+  async function grantRepoB(giver: string, to: string) {
+    const given = await callAs(giver, 'give_work', {
+      ...addressedGive(to, 'pm', 'B', 'B'),
+      folder: repoB,
+    })
+    const data = given.structured as GiveAnswer
+    expect(data.outcome, given.text).toBe('ok')
+    return { given, data }
+  }
 
   // ───────────────────────────── §1 · a grant rides its own conversation ─────────────────────────────
 
@@ -245,10 +247,7 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
       host.claimSession(dev, window)
       const given = await host.giveWork(
         {
-          definition_of_done: 'The requested result and its checks are recorded.',
-          profile: 'pm',
-          title: 'B',
-          brief: 'work in B',
+          ...addressedGive(pm, 'pm', 'B', 'work in B'),
           folder: repoB,
         },
         speakingAs(giver),
@@ -284,10 +283,7 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
       host.claimSession(helper, window)
       const given = await host.giveWork(
         {
-          definition_of_done: 'The requested result and its checks are recorded.',
-          profile: 'pm',
-          title: 'B',
-          brief: 'work in B',
+          ...addressedGive(helper, 'pm', 'B', 'work in B'),
           folder: repoB,
         },
         speakingAs(giver),
@@ -317,26 +313,13 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
 
     it('⛔ a held brief taken back before it went grants nothing and leaves the window — ⚑ shown queued until then', async () => {
       const giver = await aGiver('ask')
-      const first = await host.giveWork(
-        {
-          definition_of_done: 'The requested result and its checks are recorded.',
-          profile: 'pm',
-          title: 'the first piece',
-          brief: 'start here',
-          folder: repoA,
-        },
-        speakingAs(giver),
-      )
-      if (!first.ok) throw new Error(`refused: ${first.refusal.rail}`)
+      const first = await firstGiveInFolder(host, speakingAs(giver), repoA)
       const helper = first.owner
       host.claimSession(helper, window)
       await waitFor('the first turn to park on its card', () => cardsOf(helper).length === 1)
       const second = await host.giveWork(
         {
-          definition_of_done: 'The requested result and its checks are recorded.',
-          profile: 'pm',
-          title: 'B',
-          brief: 'work in B',
+          ...addressedGive(first.label, 'pm', 'B', 'work in B'),
           folder: repoB,
         },
         speakingAs(giver),
@@ -374,16 +357,8 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
 
     it('🔴 a helper that runs without asking: nothing new — ⛔ no write or read sentence', async () => {
       const giver = await aGiver()
-      await aHelperAtWork(giver)
-      const given = await callAs(giver, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'pm',
-        title: 'B',
-        brief: 'B',
-        folder: repoB,
-      })
-      const data = given.structured as GiveAnswer
-      expect(data.outcome, given.text).toBe('ok')
+      const helper = await aHelperAtWork(giver)
+      const { given, data } = await grantRepoB(giver, helper)
       expect(data.folder).toEqual({ folder: repoB, use: 'grant' })
       expect(given.text).toContain(
         `${RUNS_WITHOUT_ASKING} ${repoB}; the folder is shown as granted while ${data.label ?? '?'} is open.`,
@@ -394,27 +369,9 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
 
     it('🔴 Codex asking first may now write there without asking — ⛔ never told it still asks', async () => {
       const giver = await aGiver('ask', 'codex')
-      const first = await host.giveWork(
-        {
-          definition_of_done: 'The requested result and its checks are recorded.',
-          profile: 'pm',
-          title: 'the first piece',
-          brief: 'start here',
-          folder: repoA,
-        },
-        speakingAs(giver),
-      )
-      if (!first.ok) throw new Error(`refused: ${first.refusal.rail}`)
+      const first = await firstGiveInFolder(host, speakingAs(giver), repoA)
       await waitFor('the first turn to park on its card', () => cardsOf(first.owner).length === 1)
-      const given = await callAs(giver, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'pm',
-        title: 'B',
-        brief: 'B',
-        folder: repoB,
-      })
-      const data = given.structured as GiveAnswer
-      expect(data.outcome, given.text).toBe('ok')
+      const { given, data } = await grantRepoB(giver, first.label)
       expect(data.folder).toEqual({ folder: repoB, use: 'grant' })
       expect(given.text).toContain(
         `It may also write in ${repoB} without asking while ${data.label ?? '?'} is open; its own working folder is unchanged.`,
@@ -425,28 +382,10 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
 
     it('🔴 Claude asking first reads there without asking and still asks before changing anything — ⛔ never told it may write', async () => {
       const giver = await aGiver('ask', 'claude')
-      const first = await host.giveWork(
-        {
-          definition_of_done: 'The requested result and its checks are recorded.',
-          profile: 'pm',
-          title: 'the first piece',
-          brief: 'start here',
-          folder: repoA,
-        },
-        speakingAs(giver),
-      )
-      if (!first.ok) throw new Error(`refused: ${first.refusal.rail}`)
+      const first = await firstGiveInFolder(host, speakingAs(giver), repoA)
       expect(store.find(first.owner)?.provider).toBe('claude')
       await waitFor('the first turn to park on its card', () => cardsOf(first.owner).length === 1)
-      const given = await callAs(giver, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'pm',
-        title: 'B',
-        brief: 'B',
-        folder: repoB,
-      })
-      const data = given.structured as GiveAnswer
-      expect(data.outcome, given.text).toBe('ok')
+      const { given, data } = await grantRepoB(giver, first.label)
       expect(data.folder).toEqual({ folder: repoB, use: 'grant' })
       expect(given.text).toContain(
         `It may also work in ${repoB} while ${data.label ?? '?'} is open: it reads there without asking, and ${STILL_ASKS}; its own working folder is unchanged.`,
@@ -468,10 +407,7 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
       // ⚑ The start: its working folder is the giver's folder joined with the name.
       const first = await host.giveWork(
         {
-          definition_of_done: 'The requested result and its checks are recorded.',
-          profile: 'pm',
-          title: 'the first piece',
-          brief: 'start here',
+          ...newConversationGive('pm', 'the first piece', 'start here'),
           folder: 'a-relative-start',
         },
         speakingAs(giver),
@@ -487,6 +423,7 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
       const aGiveWith = async (folder: string, turn: number) => {
         const given = await host.giveWork(
           {
+            to: first.label,
             definition_of_done: 'The requested result and its checks are recorded.',
             profile: 'pm',
             title: `in ${folder}`,
@@ -573,10 +510,7 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
         const helper = await aHelperAtWork(giver)
         const given = await host.giveWork(
           {
-            definition_of_done: 'The requested result and its checks are recorded.',
-            profile: 'pm',
-            title: 'X',
-            brief: 'work in x',
+            ...addressedGive(helper, 'pm', 'X', 'work in x'),
             folder: '~/x',
           },
           speakingAs(giver),
@@ -602,15 +536,7 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
       placeOf = () => {
         throw new Error('the places could not be read')
       }
-      const given = await callAs(giver, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'pm',
-        title: 'B',
-        brief: 'B',
-        folder: repoB,
-      })
-      const data = given.structured as GiveAnswer
-      expect(data.outcome, given.text).toBe('ok')
+      const { given, data } = await grantRepoB(giver, helper)
       expect(data.folder).toEqual({
         folder: repoB,
         use: 'grant',

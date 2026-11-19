@@ -2,12 +2,14 @@ import type { Provider } from '@brobot2/shared'
 import type { AgentState } from '../../shared/agent-state-contracts'
 import type { AppNotice } from '../../shared/app-notice'
 import type { QueueOutcome } from '../../shared/runtime-ipc'
+import type { SendRecipientState } from '../../shared/tool-outcome'
+import type { SendDestination } from './send-receipt'
 import type { AnsweredQuestion } from '../../shared/human-answer-contracts'
 import type { HandedPath } from '../../shared/attachment-contracts'
 import type { TheQuestionItAsks } from '../../shared/conversation-events'
 import type { WorkReport } from '../../shared/task-contracts'
 import type { GivenFolder } from '../../shared/work-folders'
-import type { GivenInput } from '../db/session-store'
+import type { GivenInput } from '../../shared/documents'
 import type { InterruptRefusal } from './interrupt-rails'
 import type { AnswerOutcome } from './question-rails'
 import type { QueuedMessage } from './queued-message'
@@ -58,6 +60,8 @@ export interface Giving {
    * turn names them and the store writes their rows with the give's own ({@link recordTheGive}).
    */
   readonly inputs: readonly GivenInput[]
+  /** The job a give to a new conversation names; written as that conversation's first title. */
+  readonly conversationTitle?: string
 }
 
 /**
@@ -335,6 +339,12 @@ export type MessageNowOutcome = {
   readonly provider?: Provider
 }
 
+export interface RecordedAgentMessage {
+  readonly id: string
+  readonly to: SendDestination
+  readonly state: SendRecipientState
+}
+
 /**
  * ⚑ **D-017 · R12 — why a caller may not reach a conversation by that id** (`05` rule 6) — see
  * {@link RuntimeHost.whyItIsOutOfReach}.
@@ -371,12 +381,6 @@ export type OutOfReach =
  *    else tells the caller nothing.
  */
 export type TheDoorsReach = 'messaging' | 'interrupting' | 'reading' | 'answering'
-
-/** What an agent's profile name names: see {@link RuntimeHost.theConversationAProfileNames}. */
-export type AProfileNames =
-  | { readonly is: 'one'; readonly conversation: string }
-  | { readonly is: 'several'; readonly profile: string; readonly labels: readonly string[] }
-  | null
 
 /**
  * 🔴 **D-022 · R3 — what became of words about a piece, told to the conversation holding it** —

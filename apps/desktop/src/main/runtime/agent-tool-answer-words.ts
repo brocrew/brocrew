@@ -1,3 +1,4 @@
+import { hasDirectRefusalOpening } from '../../shared/tool-outcome'
 import { CHANNEL_REFUSAL_SENTENCES, type AgentToolAnswer } from '@brobot2/runtime'
 import { clockTimeFrom } from '../../shared/clock'
 import type { HowWorkStopped } from '../../shared/how-work-stopped'
@@ -114,10 +115,6 @@ export function windowsReported(provider: string, windows: readonly AWindowRepor
 }
 
 // Routing and search.
-
-export const THE_CONVERSATION_THAT_GAVE_YOU_THIS_WORK = 'the conversation that gave you this work'
-
-export const A_PERSON = 'a person'
 
 export function filesHoldingThoseWords(scope: string): string {
   return `Files ${scope} holding those words, newest first:`
@@ -365,7 +362,7 @@ const DETAIL_SAID: Readonly<Record<string, DetailSaid>> = {
 }
 
 /** For a give that used up a piece label and gave nothing. */
-export function theLabelWasUsedUp(label: string): string {
+function theLabelWasUsedUp(label: string): string {
   return `The label ${label} was used up by this failed give and names no piece.`
 }
 
@@ -433,7 +430,7 @@ export function appOnlyRefusalQuote(
   refusalReason(reason)
   const rail = aText(structured?.['rail'])
   const prefix =
-    reason.startsWith('Not sent:') && finalText.startsWith(reason) ? '' : `refused (${rail}): `
+    hasDirectRefusalOpening(reason) && finalText.startsWith(reason) ? '' : `refused (${rail}): `
   const base = `${prefix}${reason}`
   if (rail === undefined || !finalText.startsWith(base))
     throw new Error('A fresh refusal quote must prefix its composed answer.')

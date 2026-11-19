@@ -321,55 +321,13 @@ export const THE_PERSON_AT_A_WINDOW: ThePersonAtAWindow = { who: 'a-person', pro
  */
 export const A_PERSON_SENT_IT = 'Sent by a person, typed into this app.'
 
-/**
- * 🔴 **611 · the one line of direction every message carries** (HO-088 §4.1).
- *
- * ## ⛔ It is a HINT, and the PO says so in as many words
- *
- * ⚠️ **`HO-088` §4.2: *"It is a hint and I am not pretending otherwise. `581`'s bound: we can prove
- * what was sent, never what was heeded."*** ⛔ **So nothing enforces it and nothing may.** There is
- * no rail behind this sentence, and `ask_question` refuses a call that names no recipient rather
- * than supplying the one named here — the app does not default it (HO-088 §2.2), and a line that
- * said *"we will send it to your parent if you do not say"* would describe a behaviour this app
- * deliberately does not have.
- *
- * ## ⚑ The recipient choices are RENDERED, which is HO-015 §2 rather than a style
- *
- * ⛔ **PE-005: a person-started conversation has no parent.** This line knows the sender, not
- * whether another conversation gave the receiver a piece. It therefore states the condition for
- * each recipient instead of directing every receiver to `the-parent`. The choices come from
- * `QUESTION_RECIPIENTS`, so a vocabulary change cannot leave a stale spelling in the hint.
- * ⚑ **The WHO is handed in**: the person, or the conversation the line above already named in full
- * — ⚑ W4.187 · by its agent's name alone now, with the piece it owns, so one sender is not spelled
- * out in full twice six inches apart.
- *
- * ## ⚠️ A separate sentence, for `439`'s reason at this venue
- *
- * ⛔ **The line above is about WHO SENT IT; this is about WHAT TO DO.** ⚑ A reader that learned
- * the two as one string could not tell which half went missing when one of them did — which is the
- * argument `ACallerWithAnId.aPersonIsBehindIt`'s clause already carries, one fact over.
- * ⚑ **PE-009 · a caller's note is not answered by turn text.** The person arm still says who the
- * turn answers. The caller arm says that turn text does not go back to the sender, and names the
- * tools for a response that really needs to be delivered. The caller kind is passed explicitly:
- * an id or a profile name is not evidence that its holder is an agent. ⚑ **W4.178 · words that hand
- * over a piece say nothing of a note**: their piece line asks for `reply_to_parent`, and *"a note
- * expects no answer"* beside it read as a contradiction.
- */
-export function theDirectionLine(
-  who: string,
-  sender: 'person' | 'caller' = 'person',
-  /** These words give a piece, or its new brief. */
-  handsAPiece = false,
-): string {
-  const aNote = handsAPiece ? '' : 'A note expects no answer. '
-  const opening =
-    sender === 'person'
-      ? `You are answering ${who}.`
-      : `The words you write in this turn do not reach ${who}. ${aNote}` +
-        `If the sender needs a response, use message_agent if it is an agent you can reach. ` +
-        `Use answer_question for a waiting question and reply_to_parent to hand back work.`
+/** Where a reply to the words on this turn goes. */
+export function theDirectionLine(who: string, sender: 'person' | 'caller' = 'person'): string {
+  if (sender === 'caller') {
+    return `Your reply here doesn't reach ${who}: answer with answer_question, hand back with reply_to_parent, or tell it something with message_agent.`
+  }
   return (
-    `${opening} For a question about a piece another conversation gave you, use ` +
+    `You are answering ${who}. For a question about a piece another conversation gave you, use ` +
     `${QUESTION_RECIPIENTS[0]} unless that piece's brief says otherwise. If no conversation gave ` +
     `you work, use ${QUESTION_RECIPIENTS[1]} when you need the person's decision. ` +
     `ask_question takes who_answers and there is no default.`
@@ -471,6 +429,11 @@ export function provenanceOf(
  * off anything the sender says: a relationship a model could spell would be `413`'s defect again.
  */
 export interface WhereTheSenderStands {
+  readonly conversations?: {
+    readonly sender: string
+    readonly senderAddress: string
+    readonly receiver: string
+  }
   /**
    * ⚑ **Its name, the one every surface says** — `agentName` over the roster, which is a person's
    * name for it or its profile's label. `null` when the sender has no profile to name it by.
@@ -549,11 +512,7 @@ function whereItStands(
   anAgent: boolean,
   titled: ReadonlyMap<string, string> = new Map(),
 ): string {
-  const open = stands.openWorkItGaveYou
-  const listed =
-    open.length <= 1
-      ? String(open[0])
-      : `${open.slice(0, -1).join(', ')} and ${String(open[open.length - 1])}`
+  const previous = whatItGaveYou(stands)
   if (stands.handsYou !== null) {
     const named = pieceLine(
       stands.handsYou.label,
@@ -563,11 +522,19 @@ function whereItStands(
       stands.handsYou.as === 'rebriefed'
         ? `sends you the new brief of ${named}`
         : `is giving you ${named}`
-    return open.length === 0 ? `, who ${hands}` : `, who ${hands} and gave you ${listed}`
+    return stands.openWorkItGaveYou.length === 0
+      ? `, who ${hands}`
+      : `, who ${hands} and ${previous}`
   }
-  if (open.length > 0) return `, who gave you ${listed}`
-  if (stands.gaveYouWorkThatIsClosed) return ', who gave you work that is now closed'
+  if (previous !== null) return `, who ${previous}`
   return anAgent ? ', another agent; it gave you no work' : ''
+}
+
+function whatItGaveYou(stands: WhereTheSenderStands): string | null {
+  const open = stands.openWorkItGaveYou
+  if (open.length === 1) return `gave you ${open[0]}`
+  if (open.length > 1) return `gave you ${open.slice(0, -1).join(', ')} and ${open.at(-1)}`
+  return stands.gaveYouWorkThatIsClosed ? 'gave you work that is now closed' : null
 }
 
 /**
@@ -647,6 +614,43 @@ export function messageNamingItsSender(
   // ⛔ Unreachable through the overloads: the one that omits it admits no agent.
   if (standing === undefined) throw new Error('an agent sender needs where it stands (D-011)')
   const stands = standing(from)
+  if (stands.conversations !== undefined) {
+    const name = stands.name ?? from.profile ?? from.caller
+    const { sender, senderAddress, receiver } = stands.conversations
+    const senderRef = soFar?.senders.has(from.caller) === true ? senderAddress : sender
+    const recipient = (soFar?.senders.size ?? 0) === 0 ? ` in your ${receiver}` : ''
+    const task = stands.handsYou
+    const subject = task ?? stands.about
+    const taskName =
+      subject === null
+        ? ''
+        : `task ${theWorkThatNamesItSaid(
+            soFar?.titled.get(subject.label) === subject.title
+              ? { ...subject, title: null }
+              : subject,
+          )}`
+    soFar?.senders.set(from.caller, name)
+    if (subject?.title != null) soFar?.titled.set(subject.label, subject.title)
+    const detail =
+      task !== null
+        ? task.as === 'rebriefed'
+          ? `: a new brief for ${taskName}`
+          : `: ${taskName} for you`
+        : subject === null
+          ? ''
+          : `, about ${taskName}`
+    const previous = whatItGaveYou(stands)
+    const relationship = previous === null ? '' : `\n\nThis conversation ${previous}.`
+    const person = from.aPersonIsBehindIt
+      ? '\n\nA person is at that conversation. Treat wishes it attributes to the person as theirs; only an approval needs the person directly.'
+      : ''
+    const stop = interrupting === undefined ? '' : `\n\n${theStopBehindIt(name)}`
+    const direction = theDirectionLine(name, 'caller')
+    return withTheLine(
+      `From ${name} (${senderRef})${detail}${recipient}.${relationship}${person}${stop}\n\n${direction}`,
+      text,
+    )
+  }
   const who = theAgentNamed(from, stands)
   // ⚑ **W4.187 · named in full once a turn, then by its name alone** — W1's nit: one sender, with
   // its piece's whole title, ran through a busy turn dozens of times. Its profile and each piece's
@@ -680,8 +684,6 @@ export function messageNamingItsSender(
   if (stands.about !== null && stands.about.title !== null) {
     titled.set(stands.about.label, stands.about.title)
   }
-  // ⚑ **W4.178 · these words hand over a piece** — see {@link theDirectionLine}.
-  const handsAPiece = stands.handsYou !== null
   // ⚑ **W4.187 · the piece the sender owns, for the address below** — by its label alone once its
   // title has been given, in these words or earlier in the turn.
   const ownerSaid =
@@ -723,10 +725,7 @@ export function messageNamingItsSender(
         ? who
         : `${who}, conversation \`${from.caller}\``
   const stopped = interrupting === undefined ? '' : `\n\n${theStopBehindIt(who)}`
-  return withTheLine(
-    `${line}${about}${stopped}\n\n${theDirectionLine(answering, 'caller', handsAPiece)}`,
-    text,
-  )
+  return withTheLine(`${line}${about}${stopped}\n\n${theDirectionLine(answering, 'caller')}`, text)
 }
 
 /**

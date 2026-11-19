@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { seedHistoricalSuccessor } from './lib/historical-replacement'
@@ -147,20 +148,16 @@ describe('3d1eb064 · a replacement after a give names its starter alone', () =>
     await host.close(await personOpens('worker'), window)
     await host.close(await personOpens('helper'), window)
     const pm = await personOpens('pm')
-    const first = await callOn(pm, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'Build the pages',
-      brief: 'build the pages',
-    })
+    const first = await callOn(
+      pm,
+      'give_work',
+      newConversationGive('worker', 'Build the pages', 'build the pages'),
+    )
     expect(first.outcome, JSON.stringify(first)).toBe('ok')
     const worker = first.agent as string
     const second = await callOn(worker, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'helper',
-      title: 'Check the pages',
-      brief: 'check the pages',
-      piece: first.label,
+      ...newConversationGive('helper', 'Check the pages', 'check the pages'),
+      under: first.label,
     })
     expect(second.outcome, JSON.stringify(second)).toBe('ok')
     const helper = second.agent as string

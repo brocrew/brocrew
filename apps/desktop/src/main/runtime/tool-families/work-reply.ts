@@ -12,7 +12,8 @@ import { keptResources } from '../agent-tool-answer-words'
 import { SAVED_METHOD_CHARS } from '../../../shared/work-fields'
 import { HELD_FORMS_WITH_EXTENSIONS_SAID, MAX_RESOURCES_PER_REPLY } from '../../../shared/documents'
 import { TASK_OUTCOMES, type TaskOutcome } from '../../../shared/task-contracts'
-import { REPLY_SUMMARY_LIMIT, refuseReply } from '../reply-rails'
+import { refuseReply } from '../reply-rails'
+import { sendOverflowSaid } from '../send-overflow'
 import {
   REPLY_ADDRESSING_KEYS,
   TOOL_INPUT_ENUMS,
@@ -168,6 +169,7 @@ export function createReplyToParentTool(
           return answer(carried, `refused (${replied.refusal.rail}): ${replied.refusal.reason}`)
         }
         // The files kept with the reply, by id (the outcome holds no names).
+        const overflow = replied.overflow === undefined ? '' : sendOverflowSaid(replied.overflow)
         const kept = replied.resources.length === 0 ? '' : ` ${keptResources(replied.resources)}`
         const main =
           replied.resultDocument === undefined ? '' : ` Main result: ${replied.resultDocument}.`
@@ -189,7 +191,7 @@ export function createReplyToParentTool(
                 ? {}
                 : { result_document: replied.resultDocument }),
             },
-            `${replied.label} answered · it was a person’s own request, so the reply went to no other conversation — tell them here.${kept}${main}${saveMethod}`,
+            `${replied.label} answered · it was a person’s own request, so the reply went to no other conversation — tell them here.${kept}${main}${saveMethod}${overflow}`,
           )
         }
         return answer(
@@ -203,9 +205,10 @@ export function createReplyToParentTool(
               ? {}
               : { result_document: replied.resultDocument }),
             delivered: replied.delivered,
+            ...(replied.receipt === undefined ? {} : { receipt: replied.receipt }),
             ...(replied.why === undefined ? {} : { why: replied.why }),
           },
-          `${replied.label} answered · ${whereTheReplyWent(replied)}${kept}${main}${saveMethod}`,
+          `${replied.label} answered · ${whereTheReplyWent(replied)}${kept}${main}${saveMethod}${overflow}`,
         )
       }),
   }
@@ -230,7 +233,7 @@ export function replyFields() {
     summary: z
       .string()
       .describe(
-        `What the conversation that gave you this needs to read — for work you took on for a person, what its record keeps as its last status line. At most ${REPLY_SUMMARY_LIMIT.toLocaleString('en-US')} characters (UTF-16 code units). Put longer detail in a file listed in resource_paths. Nothing is shortened for you.`,
+        'What the conversation that gave you this needs to read. Anything over 2,000 characters arrives as a file the reader is pointed to.',
       ),
     saved_method: z
       .string()

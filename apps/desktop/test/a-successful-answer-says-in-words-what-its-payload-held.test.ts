@@ -234,10 +234,12 @@ describe('a successful answer says in words what its payload held', () => {
     decorateNextHandle = options.decorate ?? null
     let given: AgentToolAnswer
     try {
+      await ok(pmTools, 'create_agent', { profile_slug: 'worker' })
       given = await ok(pmTools, 'give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
-        new: true,
+        to: 'new',
+        conversation_title: 'Survey the kept files',
         title: 'Survey the kept files',
         brief: 'Survey the kept files and report.',
         ...(options.inputs === undefined ? {} : { inputs: options.inputs }),
@@ -389,7 +391,7 @@ describe('a successful answer says in words what its payload held', () => {
   // ─────────────────────────────────────────────────────────────────────────────────────────────
 
   it('list_questions carries each open question whole: its parts, options and asked_by', async () => {
-    const { pmTools, workerTools } = await aPmAndItsWorker()
+    const { pmTools, workerTools, label } = await aPmAndItsWorker()
     const asked = await ok(workerTools, 'ask_question', {
       who_answers: 'the-parent',
       question: 'Which suite should run?',
@@ -401,8 +403,9 @@ describe('a successful answer says in words what its payload held', () => {
     expect(listed).toContain('Which suite should run?')
     expect(listed).toContain('the unit suite')
     expect(listed).toContain('every suite')
-    expect(listed).toMatch(new RegExp(`quoting ${id} with asked_by \\S+`))
-    expect(listed).toMatch(/part \S+/)
+    expect(listed).toContain(`asks you ${id} in your conversation`)
+    expect(listed).toContain(`Use asked_by ${label} with this question id.`)
+    expect(listed).toContain('Part id "answer": choose one:')
   })
 
   // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -460,12 +463,11 @@ describe('a successful answer says in words what its payload held', () => {
   describe('a write says what happened, and none of what it was sent', () => {
     it('give_work keeps its generated label, the profile and how the brief went', async () => {
       const { given, label } = await aPmAndItsWorker()
-      expect(given.text).toMatch(
+      expect(given.text.split('\n')[0]).toMatch(
         new RegExp(
-          `^${label.replace(/\./g, '\\.')} given to .+ \\(worker\\); it (went to .+ straight away|is held)`,
+          `^New task ${label.replace(/\./g, '\\.')} in a new conversation ${label.replace(/\./g, '\\.')} · Survey the kept files, under your .+\\. It started on `,
         ),
       )
-      expect(given.text.split('\n')[0]).not.toContain('Survey the kept files')
       expect(given.text).toContain(
         `[${label} · Survey the kept files](brocrew://piece/${String(given.structured?.['piece'])})`,
       )
@@ -481,7 +483,7 @@ describe('a successful answer says in words what its payload held', () => {
       })
       expect(sent.text).not.toMatch(/as (note|follow-up)/)
       expect(sent.text).not.toContain('Also count the images.')
-      expect(sent.text).toMatch(/straight away|held for/)
+      expect(sent.text).toMatch(/^(Delivered to|Held for) conversation /)
     })
 
     it('update_work answers Done, with the label only when the call did not spell it', async () => {
@@ -531,7 +533,8 @@ describe('a successful answer says in words what its payload held', () => {
         question: 'May the survey skip the archive?',
       })
       const id = asked.structured?.['question'] as string
-      expect(asked.text).toContain(`as ${id}.`)
+      expect(asked.text).toMatch(new RegExp(`^Question ${id} (sent to|queued for) conversation `))
+      expect(asked.text).toContain('The answer arrives as a message.')
       expect(asked.text).not.toMatch(/the-parent|a-person/)
       expect(asked.text).not.toContain('May the survey skip the archive?')
 
@@ -687,6 +690,7 @@ describe('a successful answer says in words what its payload held', () => {
     it('update_work a new brief of a piece whose give still waits: says it rides that give', async () => {
       const { pmTools, worker } = await aPmAndItsWorker()
       const second = await ok(pmTools, 'give_work', {
+        to: worker,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'A second piece',

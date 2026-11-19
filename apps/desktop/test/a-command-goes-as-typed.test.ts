@@ -1,3 +1,5 @@
+import { StartRecordingRuntime } from './lib/provider-double'
+import { newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { HandedPath } from '../src/shared/attachment-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -6,8 +8,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { FakeProviderSessions, FakeRuntime, FakeSessionHandle } from '@brobot2/runtime'
-import type { AgentToolset, StartOptions } from '@brobot2/runtime'
+import { FakeProviderSessions, FakeSessionHandle } from '@brobot2/runtime'
+import type { AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
@@ -24,7 +26,6 @@ import {
   THE_PERSON_AT_A_WINDOW,
   type TurnOrigin,
 } from '../src/main/runtime/turn-origin'
-import { theOwnerOf } from '../src/shared/piece-called'
 import {
   aCommandTakesNoAttachments,
   aPersonsCommand,
@@ -32,11 +33,9 @@ import {
   mightBeAPersonsCommand,
   theCommandItNames,
 } from '../src/main/runtime/a-command-goes-as-typed'
-import { resourcesRoot } from '../src/main/resources/resources'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentName, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
-import { fixtureProviderConfig, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { fixtureHostPaths, fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * 🔴 **708 · `R42` — a person's command goes to the provider exactly as typed.**
@@ -92,21 +91,6 @@ class RecordingSink implements RuntimeEventSink {
   sendLiveness(): void {}
 }
 
-class ProviderDouble extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handles: FakeSessionHandle[],
-    sessions: FakeProviderSessions,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): Promise<FakeSessionHandle> {
-    const handle = await super.start(options)
-    this.handles.push(handle)
-    return handle
-  }
-}
-
 describe('708 · R42 — a person’s command goes to the provider exactly as typed', () => {
   let handles: FakeSessionHandle[]
   let userData: string
@@ -132,12 +116,8 @@ describe('708 · R42 — a person’s command goes to the provider exactly as ty
     issued = new FakeProviderSessions()
     host = new RuntimeHost({
       store,
-      ...neutralHostDeps(() => userData),
-      resourcesRoot: () => resourcesRoot(userData),
-      createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued),
-      prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
+      ...fixtureHostPaths(() => userData),
+      createRuntime: (provider: Provider) => new StartRecordingRuntime(provider, handles, issued),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       // ⚑ Short, so the arm whose provider never answers ends in this test's time and not in five
@@ -227,6 +207,7 @@ describe('708 · R42 — a person’s command goes to the provider exactly as ty
     pm: string
     worker: string
     tools: AgentToolset
+    label: string
   }> => {
     const workerProfile = 'worker-708'
     const opened = await host.createSession(
@@ -239,12 +220,15 @@ describe('708 · R42 — a person’s command goes to the provider exactly as ty
       window,
     )
     const tools = agentToolsFor(host, pm)
-    const given = await callOn(tools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: workerProfile,
-      title: 'the work this dispatch is about',
-      brief: 'the work this dispatch is about',
-    })
+    const given = await callOn(
+      tools,
+      'give_work',
+      newConversationGive(
+        workerProfile,
+        'the work this dispatch is about',
+        'the work this dispatch is about',
+      ),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     await unblockUntil(
@@ -252,7 +236,7 @@ describe('708 · R42 — a person’s command goes to the provider exactly as ty
       () => providerHeard(worker).length > 0,
       'the worker to hear its brief',
     )
-    return { pm, worker, tools }
+    return { pm, worker, tools, label: given.label as string }
   }
 
   /** What the provider heard LAST — a spawned worker has heard its purpose first. */
@@ -282,14 +266,14 @@ describe('708 · R42 — a person’s command goes to the provider exactly as ty
    * ⚑ **D-016 · commit 7 · R3 — the direction line that answers the pm**, addressed by the piece it
    * owns where it spelled the pm's id — composed from the product's own parts, never typed.
    */
-  const answeringThePm = (pm: string): string => {
-    const named = store.workThatNames(pm)
-    if (named === null) throw new Error('the pm holds no piece, so no piece addresses it')
-    // ⚑ W4.187 · the direction line names the sender by its name alone: the sender line named it in full.
-    return theDirectionLine(
-      `${agentName('pm-708', store.agentIdentities())}, ${theOwnerOf(named)}`,
-      'caller',
+  const expectAgentFrame = (heard: string, pm: string, label: string) => {
+    const task = store.workThatNames(pm)
+    if (task === null) throw new Error('the PM has no addressable root')
+    const name = agentName('pm-708', store.agentIdentities())
+    expect(heard.split('\n')[0]).toBe(
+      `From ${name} (conversation ${task.label} · ${name}) in your conversation ${label} · the work this dispatch is about.`,
     )
+    expect(heard).toContain(theDirectionLine(name, 'caller'))
   }
 
   describe('§1 · the composer — `send`', () => {
@@ -531,11 +515,7 @@ describe('708 · R42 — a person’s command goes to the provider exactly as ty
         'the worker to hear it',
       )
       const heard = lastHeard(made.worker)
-      // ⚑ D-011 — named, with its conversation's address in the direction line: ⚑ D-016 · commit
-      // 7 · R3 — the piece it owns.
-      expect(heard.startsWith('Sent by ') && heard.includes(answeringThePm(made.pm)), heard).toBe(
-        true,
-      )
+      expectAgentFrame(heard, made.pm, made.label)
       expect(heard).toContain('/clear')
       expect(heard).not.toBe('/clear')
       // ⚑ …and the control, on the SAME worker: a person's `/clear` there goes bare.
@@ -748,8 +728,7 @@ describe('708 · R42 — a person’s command goes to the provider exactly as ty
         () => providerHeard(made.worker).length > before,
         'the worker to hear it',
       )
-      expect(lastHeard(made.worker).startsWith('Sent by ')).toBe(true)
-      expect(lastHeard(made.worker)).toContain(answeringThePm(made.pm))
+      expectAgentFrame(lastHeard(made.worker), made.pm, made.label)
       expect(worker.commandsAsked, 'the gate asked on an agent’s behalf').toBe(0)
     })
 

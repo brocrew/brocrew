@@ -1,4 +1,5 @@
-import { waitFor } from './lib/f093-host'
+import { stalledWorkFixture } from './lib/running-worker-fixture'
+import { personOpener } from './helpers/person-opens-session'
 import type { PieceRow } from '../src/shared/task-contracts'
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
@@ -14,7 +15,6 @@ import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
-  DEFAULT_PROFILE_ID,
   type ResumableSessionInfo,
   type UnresumableSessionInfo,
 } from '../src/shared/runtime-ipc'
@@ -112,34 +112,11 @@ describe('a listed row says which piece its conversation waits on on purpose', (
   const pieceOf = (owner: string, piece: string): PieceRow | undefined =>
     store.piecesOwnedBy(owner).find((one) => one.piece === piece)
 
-  /** BroBot gives a piece to its worker, minted Ada the first time; the brief's turn ends with it open. */
-  const aPieceGiven = async (
-    brobot: string,
-    title: string,
-    first: boolean,
-  ): Promise<{ ada: string; piece: string; label: string }> => {
-    const given = await callOn(agentToolsFor(host, brobot), 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      ...(first ? { new: true } : {}),
-      title,
-      brief: title.toLowerCase(),
-    })
-    const ada = given.agent as string
-    const piece = given.piece as string
-    await waitFor(() => pieceOf(ada, piece)?.state === 'stalled', `the brief of ${title} to end`)
-    await settle()
-    return { ada, piece, label: given.label as string }
-  }
-  const aHelperWithAPiece = async (): Promise<{ brobot: string; ada: string; piece: string }> => {
-    const { sessionId: brobot } = await host.createSession(
-      { provider: 'claude', profileId: DEFAULT_PROFILE_ID, approvalMode: 'auto', cwd: root },
-      window,
-    )
-    await settle()
-    const { ada, piece } = await aPieceGiven(brobot, 'Build the pages', true)
-    return { brobot, ada, piece }
-  }
+  const personOpens = personOpener(() => ({ host, root, window }), 'auto')
+  const { give: aPieceGiven, open: aHelperWithAPiece } = stalledWorkFixture(
+    () => ({ host, store, personOpens }),
+    () => settle(),
+  )
   const statusOf = async (
     ada: string,
     label: string,
@@ -196,7 +173,7 @@ describe('a listed row says which piece its conversation waits on on purpose', (
 
   it('reads the newest open piece: an older marked piece behind a newer one is not said', async () => {
     const { brobot, ada } = await aHelperWithAPiece()
-    const second = await aPieceGiven(brobot, 'Write the copy', false)
+    const second = await aPieceGiven(brobot, 'Write the copy', 'W1.1')
     expect(second).toMatchObject({ ada, label: 'W1.2' })
     await statusOf(ada, 'W1.1', 'waiting for the designs', true)
     expect(listed(ada)).toMatchObject({ named: { label: 'W1.2' } })

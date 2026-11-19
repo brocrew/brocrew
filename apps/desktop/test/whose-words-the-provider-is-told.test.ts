@@ -260,6 +260,8 @@ describe('662 · whose words the provider is told — the real Claude adapter, e
     const pm = await personOpens('pm')
     const pmTools = agentToolsFor(host, pm)
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'The work',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: workerProfile,
       title: 'The work',

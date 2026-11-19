@@ -1,3 +1,6 @@
+import { personOpener } from './helpers/person-opens-session'
+import { callOn } from './helpers/call-tool'
+import { newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { HandedPath } from '../src/shared/attachment-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -29,7 +32,7 @@ import {
 } from '../src/main/db/session-store'
 import { giverStallReceipts, RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import { type Caller } from './helpers/giver-notice-host'
-import { agentCallerId, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { agentCallerId, agentToolsFor } from '../src/main/runtime/agent-tools'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
@@ -385,23 +388,7 @@ describe('670 · the hold at every door — the real Claude adapter', () => {
   const turnsCarrying = (sessionId: string, words: string): TranscriptEvent[] =>
     ledger(sessionId).filter((event) => event.type === 'user_turn' && event.text.includes(words))
 
-  const personOpens = async (profileId: string): Promise<string> => {
-    const { sessionId } = await host.createSession(
-      { provider: 'claude', profileId, approvalMode: 'ask', cwd: root },
-      window,
-    )
-    return sessionId
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown> = {},
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
+  const personOpens = personOpener(() => ({ host, root, window }), 'ask')
 
   /**
    * A PM a person opened, and one worker it gave a piece to, whose first turn has finished.
@@ -420,12 +407,11 @@ describe('670 · the hold at every door — the real Claude adapter', () => {
     await host.close(warmUp, window)
     const pm = await personOpens('pm')
     const pmTools = agentToolsFor(host, pm)
-    const given = await callOn(pmTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker-a',
-      title: 'The work',
-      brief: 'the work this dispatch is about',
-    })
+    const given = await callOn(
+      pmTools,
+      'give_work',
+      newConversationGive('worker-a', 'The work', 'the work this dispatch is about'),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     await waitFor(
@@ -492,7 +478,18 @@ describe('670 · the hold at every door — the real Claude adapter', () => {
       expect(heardCarrying('worker-a', 'the agent’s words')?.origin?.kind).toBe('peer')
       await waitFor(() => idle(worker), 'the flushed turn to end')
       const endings = everyHoldEndedOnce(ledger(worker))
-      expect([...endings.values()].flat()).toEqual(['sent'])
+      const heldRows = ledger(worker).filter((event) => event.type === 'message_queued')
+      const opening = heldRows.find((event) => event.kind === 'work')
+      const heldWords = heldRows.find((event) => event.text === 'ultracode: the person’s own words')
+      expect(opening?.messageId).toMatch(/^msg_/)
+      expect(heldWords?.messageId).toMatch(/^msg_/)
+      expect(opening?.messageId).not.toBe(heldWords?.messageId)
+      expect(endings).toEqual(
+        new Map([
+          [opening?.messageId, ['sent']],
+          [heldWords?.messageId, ['sent']],
+        ]),
+      )
       // ⚑ The ledger's turn is the person's own — no attribution key at all.
       expect(turnsCarrying(worker, 'the person’s own words')[0]).not.toHaveProperty('attribution')
     })

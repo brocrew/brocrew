@@ -88,7 +88,6 @@ const THE_SPLIT: Readonly<Record<ToolName, BeyondItsRails>> = {
   // question it carries stays open and stays the caller's. ⚑ Its entitlement is the LOOKUP — the
   // requests routed to this caller — so a question raised inside a family it did not start is an
   // id that finds nothing rather than a rail it can trip.
-  pass_question_up: 'nothing-its-rails-do-not-cover',
   answer_question: 'nothing-its-rails-do-not-cover',
   message_agent: 'nothing-its-rails-do-not-cover',
   withdraw_task: 'nothing-its-rails-do-not-cover',
@@ -205,6 +204,8 @@ describe('486 · the doors our own verbs do not need', () => {
     await bringIdentityIntoBeing(profileId)
     const parent = await personOpens('pm')
     const given = await toolsOf(parent).call('give_work', {
+      to: 'new',
+      conversation_title: 'work',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: profileId,
       title: 'work',

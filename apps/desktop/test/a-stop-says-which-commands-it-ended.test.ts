@@ -335,6 +335,8 @@ describe('F084 · a stop says which commands it ended, and what still runs', () 
     const pmTools = agentToolsFor(host, pm)
     decorateNextHandle = aWorkerWhoseStopEndsItsCommands(how)
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'the work',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile,
       title: 'the work',
@@ -480,6 +482,7 @@ describe('F084 · a stop says which commands it ended, and what still runs', () 
       await waitFor(() => handle.status() === 'idle', 'idle after the first stop')
       await callOn(pmTools, 'withdraw_task', { piece: label })
       const given = await callOn(pmTools, 'give_work', {
+        to: label,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile,
         title: 'the second',

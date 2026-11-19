@@ -1,3 +1,5 @@
+import { personOpener } from './helpers/person-opens-session'
+import { addressedGive, openAndGiveToNewChild, newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
@@ -98,26 +100,20 @@ describe('D-017 · a stop is not an ending', () => {
       return (await tool.call(args)).structured as Record<string, unknown>
     }
 
-    const personOpens = async (profileId: string): Promise<string> => {
-      const { sessionId } = await host.createSession(
-        { provider: 'claude', profileId, approvalMode: 'ask', cwd: root },
-        window,
-      )
-      return sessionId
-    }
+    const personOpens = personOpener(() => ({ host, root, window }), 'ask')
 
     /** ⚑ A PM in a window, and one child its give started through the real door (D-016). */
     const aPmAndAChild = async (): Promise<{ pm: string; child: string }> => {
-      await host.close(await personOpens('worker'), window)
-      const pm = await personOpens(DEFAULT_PROFILE_ID)
-      const spawned = await callOn(pm, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'The notes',
-        brief: 'the notes',
-      })
-      expect(spawned.outcome, JSON.stringify(spawned)).toBe('ok')
-      return { pm, child: spawned.agent as string }
+      const { parent: pm, child } = await openAndGiveToNewChild(
+        personOpens,
+        (id) => host.close(id, window),
+        (id) => agentToolsFor(host, id),
+        DEFAULT_PROFILE_ID,
+        'worker',
+        'The notes',
+        'the notes',
+      )
+      return { pm, child }
     }
 
     const questionOf = (asker: string, requestId: string) =>
@@ -247,13 +243,7 @@ describe('D-017 · a stop is not an ending', () => {
     const cardsOn = (sessionId: string): number =>
       eventsOf(sessionId).filter((event) => event.type === 'permission_request').length
 
-    const personOpens = async (profileId: string): Promise<string> => {
-      const { sessionId } = await host.createSession(
-        { provider: 'claude', profileId, approvalMode: 'ask', cwd: root },
-        window,
-      )
-      return sessionId
-    }
+    const personOpens = personOpener(() => ({ host, root, window }), 'ask')
 
     /**
      * ⚑ A PM in a window, and one worker its give started through the real door — both in 'ask'
@@ -262,12 +252,11 @@ describe('D-017 · a stop is not an ending', () => {
     const aPmAndItsWorker = async (): Promise<{ pm: string; worker: string }> => {
       await host.close(await personOpens('worker'), window)
       const pm = await personOpens('pm')
-      const spawned = await callOn(pm, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'The migration',
-        brief: 'the migration',
-      })
+      const spawned = await callOn(
+        pm,
+        'give_work',
+        newConversationGive('worker', 'The migration', 'the migration'),
+      )
       expect(spawned.outcome, JSON.stringify(spawned)).toBe('ok')
       return { pm, worker: spawned.agent as string }
     }
@@ -282,12 +271,11 @@ describe('D-017 · a stop is not an ending', () => {
 
       // ⚑ **Held, and piece-carrying** — the worker is busy, so a second give from the same giver
       // reaches the same conversation and is queued (D-016: no one-open-task rail).
-      const given = await callOn(pm, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'The schema',
-        brief: 'migrate the schema',
-      })
+      const given = await callOn(
+        pm,
+        'give_work',
+        addressedGive(worker, 'worker', 'The schema', 'migrate the schema'),
+      )
       expect(given.outcome, JSON.stringify(given)).toBe('ok')
       expect(given.agent).toBe(worker)
       expect(given.delivery).toBe('held')
@@ -304,7 +292,11 @@ describe('D-017 · a stop is not an ending', () => {
           (event) => event.type === 'message_queued' && event.messageId === messageId,
         ),
       ).toBe(true)
-      expect(eventsOf(worker).some((event) => event.type === 'message_unqueued')).toBe(false)
+      expect(
+        eventsOf(worker).some(
+          (event) => event.type === 'message_unqueued' && event.messageId === messageId,
+        ),
+      ).toBe(false)
 
       // ⚑ **Gate the conversation's own next start at its door.** A Close hands what it held to the
       // next start automatically (already pinned by `the-message-that-has-no-name.test.ts`'s "a
@@ -337,7 +329,7 @@ describe('D-017 · a stop is not an ending', () => {
       // writes, for the SAME message id.
       expect(eventsOf(worker).some((event) => event.type === 'reopened')).toBe(false)
       const endingsAtTheWithdrawal = eventsOf(worker).filter(
-        (event) => event.type === 'message_unqueued',
+        (event) => event.type === 'message_unqueued' && event.messageId === messageId,
       )
       expect(endingsAtTheWithdrawal).toHaveLength(1)
       expect(endingsAtTheWithdrawal[0]).toMatchObject({ reason: 'cancelled', messageId })
@@ -355,7 +347,9 @@ describe('D-017 · a stop is not an ending', () => {
       await new Promise((resolve) => setTimeout(resolve, 50))
 
       // 🔴 **Exactly one ending, ever — `cancelled`, never resent as a stale turn once it starts.**
-      const endings = eventsOf(worker).filter((event) => event.type === 'message_unqueued')
+      const endings = eventsOf(worker).filter(
+        (event) => event.type === 'message_unqueued' && event.messageId === messageId,
+      )
       expect(endings).toHaveLength(1)
       expect(endings[0]).toMatchObject({ reason: 'cancelled', messageId })
       expect(

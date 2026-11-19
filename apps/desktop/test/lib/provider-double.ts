@@ -1,3 +1,4 @@
+import { StartObservingRuntime } from './host-fixture'
 import { FakeRuntime, type FakeProviderSessions } from '@brobot2/runtime'
 import type {
   AgentToolset,
@@ -233,6 +234,14 @@ export function closingOnlyWhenReleased<Handle extends SessionHandle>(
       return typeof value === 'function' ? (value as () => unknown).bind(target) : value
     },
   })
+}
+
+export class StartRecordingRuntime extends StartObservingRuntime {
+  constructor(provider: Provider, handles: FakeSessionHandle[], sessions: FakeProviderSessions) {
+    super(provider, sessions, (_kind, _options, handle) => {
+      handles.push(handle)
+    })
+  }
 }
 
 /**

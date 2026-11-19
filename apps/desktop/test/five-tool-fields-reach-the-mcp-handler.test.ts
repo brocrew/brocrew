@@ -156,9 +156,12 @@ describe('five more tools answer field failures through Claude MCP', () => {
     expect(packet.result?.isError, JSON.stringify(packet)).not.toBe(true)
     return packet.result!.content!.map((one) => one.text ?? '').join('\n')
   }
-  function ownRefusal(packet: Packet, field: string): string {
+  function ownRefusal(name: ToolName, packet: Packet, field: string): string {
     const text = words(packet)
-    expect(text).toContain('refused (malformed-request)')
+    const opening = ['give_work', 'ask_question', 'message_agent'].includes(name)
+      ? 'Not sent: '
+      : 'refused (malformed-request): '
+    expect(text.startsWith(opening)).toBe(true)
     expect(text).toContain(field)
     expect(text).not.toContain('PRIVATE_VALUE')
     expect(text).not.toContain('MCP error')
@@ -182,7 +185,7 @@ describe('five more tools answer field failures through Claude MCP', () => {
     const args = valid('give_work')
     delete args.definition_of_done
     const before = effects()
-    ownRefusal(await wire.call(args), 'definition_of_done')
+    ownRefusal('give_work', await wire.call(args), 'definition_of_done')
     expect(effects()).toEqual(before)
   })
 
@@ -191,6 +194,7 @@ describe('five more tools answer field failures through Claude MCP', () => {
       const wire = await server(entry.name)
       const before = effects()
       const text = ownRefusal(
+        entry.name,
         await wire.call({ ...valid(entry.name), [entry.field]: entry.supplied }),
         entry.field,
       )
@@ -206,7 +210,7 @@ describe('five more tools answer field failures through Claude MCP', () => {
       const args = valid(entry.name)
       delete args[entry.field]
       const before = effects()
-      const text = ownRefusal(await wire.call(args), entry.field)
+      const text = ownRefusal(entry.name, await wire.call(args), entry.field)
       expect(text).toContain('required')
       expect(text).not.toContain('Symbol')
       expect(effects()).toEqual(before)
@@ -218,7 +222,7 @@ describe('five more tools answer field failures through Claude MCP', () => {
       delete args[entry.field]
       args['PRIVATE_TYPO'] = 'PRIVATE_VALUE'
       const before = effects()
-      const text = ownRefusal(await wire.call(args), entry.field)
+      const text = ownRefusal(entry.name, await wire.call(args), entry.field)
       expect(text).toContain('PRIVATE_TYPO')
       expect(kept()[0]?.told?.text).toBe(calls.at(-1)?.structured?.reason)
       expect(JSON.stringify(kept())).not.toContain('PRIVATE_TYPO')
@@ -238,8 +242,7 @@ describe('five more tools answer field failures through Claude MCP', () => {
       expect(properties[entry.field]).not.toHaveProperty('default')
       if (entry.name === 'ask_question')
         expect(properties.who_answers?.enum).toEqual(['the-parent', 'a-person', 'an-agent'])
-      if (entry.name === 'message_agent')
-        expect(properties.kind?.enum).toEqual(['note', 'follow-up'])
+      if (entry.name === 'message_agent') expect(properties).not.toHaveProperty('kind')
     })
   }
 
@@ -247,6 +250,7 @@ describe('five more tools answer field failures through Claude MCP', () => {
     const wire = await server('answer_question')
     const before = effects()
     const text = ownRefusal(
+      'answer_question',
       await wire.call({ question: 'q_fictional', answers: [{ part: 'PRIVATE_PART', answer: 42 }] }),
       'answers.0.answer',
     )
@@ -286,6 +290,7 @@ describe('five more tools answer field failures through Claude MCP', () => {
       delete args[entry.field]
       const wire = await server(name)
       const text = ownRefusal(
+        name,
         await wire.call({
           ...args,
           PRIVATE_FIRST: 1,
@@ -312,7 +317,11 @@ describe('five more tools answer field failures through Claude MCP', () => {
     it(`${name}: unknown keys remain refused even when all declared fields are valid`, async () => {
       const wire = await server(name)
       const before = effects()
-      ownRefusal(await wire.call({ ...valid(name), PRIVATE_TYPO: 'PRIVATE_VALUE' }), 'PRIVATE_TYPO')
+      ownRefusal(
+        name,
+        await wire.call({ ...valid(name), PRIVATE_TYPO: 'PRIVATE_VALUE' }),
+        'PRIVATE_TYPO',
+      )
       expect(effects()).toEqual(before)
       expect(JSON.stringify(kept())).not.toContain('PRIVATE_TYPO')
     })
@@ -327,7 +336,7 @@ describe('five more tools answer field failures through Claude MCP', () => {
         ...valid(name),
         ...Object.fromEntries(keys.map((key) => [key, 'PRIVATE_VALUE'])),
       })
-      const text = ownRefusal(packet, 'unknown fields')
+      const text = ownRefusal(name, packet, 'unknown fields')
       expect(text).toContain(`${keys[0]!.slice(0, 39)}…`)
       expect(text).toContain('and 3 more')
       expect(text.length).toBeLessThan(2000)
@@ -346,13 +355,17 @@ describe('five more tools answer field failures through Claude MCP', () => {
   }
 
   for (const patch of [
-    { kind: 'follow-up', peice: 'PRIVATE_MISSPELLED_PIECE' },
-    { kind: 'note', piece: '', peice: 'PRIVATE_MISSPELLED_PIECE' },
+    { piece: 42, peice: 'PRIVATE_MISSPELLED_PIECE' },
+    { piece: '', peice: 'PRIVATE_MISSPELLED_PIECE' },
   ]) {
-    it(`message_agent: ${patch.kind} piece failures include typo guidance without sending`, async () => {
+    it(`message_agent: piece with value ${JSON.stringify(patch.piece)} include typo guidance without sending`, async () => {
       const wire = await server('message_agent')
       const before = effects()
-      const text = ownRefusal(await wire.call({ ...valid('message_agent'), ...patch }), 'piece:')
+      const text = ownRefusal(
+        'message_agent',
+        await wire.call({ ...valid('message_agent'), ...patch }),
+        'piece:',
+      )
       expect(text).toContain('peice: not a field of message_agent; use ')
       expect(text).not.toContain('PRIVATE_MISSPELLED_PIECE')
       expect(kept()[0]?.told?.text).toBe(calls.at(-1)?.structured?.reason)
@@ -364,9 +377,9 @@ describe('five more tools answer field failures through Claude MCP', () => {
   for (const entry of [
     {
       name: 'give_work',
-      patch: { parallel: 'yes' },
-      field: 'parallel',
-      line: 'expected true or false, got text',
+      patch: { to: 42 },
+      field: 'to',
+      line: 'expected text, got a number',
     },
     {
       name: 'give_work',
@@ -409,6 +422,7 @@ describe('five more tools answer field failures through Claude MCP', () => {
       const wire = await server(entry.name)
       const before = effects()
       const text = ownRefusal(
+        entry.name,
         await wire.call({ ...valid(entry.name), ...entry.patch }),
         entry.field,
       )

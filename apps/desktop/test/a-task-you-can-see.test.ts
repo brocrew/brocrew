@@ -1,9 +1,11 @@
+import { fixturePersonEntry } from './lib/send-person-fixture'
+import { addressedGive, newConversationGive } from './lib/give-fixture'
 import { callOn } from './helpers/call-agent-tool'
 import { waitFor } from './lib/f093-host'
 import { TASK_STATES } from '../src/shared/task-contracts'
 import type { TaskState } from '../src/shared/task-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -23,12 +25,12 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import { type CallerIdentity } from './helpers/giver-notice-host'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN, derivePieces } from '../src/shared/tasks'
 import {
+  latestToolset,
+  closeHostFixture,
   RecordingSink,
-  syntheticProviderHome,
-  neutralHostDeps,
+  fixtureHostPaths,
   fixtureProviderConfig,
 } from './lib/host-fixture'
 
@@ -133,12 +135,9 @@ describe('379 · a task you can see', () => {
   const buildHost = (over: SessionStore = store): RuntimeHost => {
     const built = new RuntimeHost({
       store: over,
-      ...neutralHostDeps(() => userData),
+      ...fixtureHostPaths(() => userData),
       createRuntime: (provider: Provider) =>
         new ToolWatchingRuntime(provider, handed, issued, handles),
-      prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       readProviderConfig: fixtureProviderConfig,
@@ -165,36 +164,14 @@ describe('379 · a task you can see', () => {
     claimed = new Set<string>()
   })
 
-  afterEach(async () => {
-    for (const built of hosts) await built.closeAll()
-    db.close()
-    for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
-  })
+  afterEach(() => closeHostFixture(hosts, db, userData, root))
 
   // ⚑ **D-016** — a launch names no project any more, so the helper takes none.
-  const personOpens = async (profileId: string): Promise<string> => {
-    const { sessionId } = await host.createSession(
-      {
-        provider: 'claude',
-        profileId,
-        approvalMode: 'ask',
-        cwd: root,
-      },
-      window,
-    )
-    return sessionId
-  }
+  const { open: personOpens, seed: bringIdentityIntoBeing } = fixturePersonEntry(
+    () => ({ host, root, window }),
+  )
 
-  const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
-    const id = await personOpens(profileId)
-    await host.close(id, window)
-  }
-
-  const theToolsetJustHandedOut = (): AgentToolset => {
-    const last = handed.at(-1)
-    if (last === undefined) throw new Error('no toolset was handed to that launch')
-    return last
-  }
+  const theToolsetJustHandedOut = (): AgentToolset => latestToolset(handed)
 
   const speakingAs = (sessionId: string): CallerIdentity => ({ ownerId: agentCallerId(sessionId) })
 
@@ -238,14 +215,14 @@ describe('379 · a task you can see', () => {
     return { pm, pmTools: theToolsetJustHandedOut() }
   }
 
-  /** ⚑ **D-016 · a give to the worker, through the real tool** — the one door that gives work. */
-  const give = (pmTools: AgentToolset, brief: string): Promise<Record<string, unknown>> =>
-    callOn(pmTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: brief,
-      brief,
-    })
+  const give = (pmTools: AgentToolset, brief: string, to: string) =>
+    callOn(
+      pmTools,
+      'give_work',
+      to === 'new'
+        ? newConversationGive('worker', brief, brief)
+        : addressedGive(to, 'worker', brief, brief),
+    )
 
   /**
    * `373`'s helper: a PM in a window with one child of its own, through the real door.
@@ -265,7 +242,7 @@ describe('379 · a task you can see', () => {
     first: Record<string, unknown>
   }> => {
     const { pm, pmTools } = await aPm()
-    const first = await give(pmTools, brief)
+    const first = await give(pmTools, brief, 'new')
     expect(first.outcome, JSON.stringify(first)).toBe('ok')
     return {
       pm,
@@ -374,7 +351,7 @@ describe('379 · a task you can see', () => {
       const { pm, pmTools } = await aPm()
       expect(store.piecesGivenBy(pm)).toEqual([])
 
-      const said = await give(pmTools, 'read the brief and report')
+      const said = await give(pmTools, 'read the brief and report', 'new')
       expect(said.outcome, JSON.stringify(said)).toBe('ok')
       const worker = said.agent as string
 
@@ -408,6 +385,8 @@ describe('379 · a task you can see', () => {
       const { worker, pmTools, workerTools, first: straightOut } = await aPmAndItsWorker('first')
       expect(straightOut.delivery).toBe('sent')
       expect(straightOut.message).toBeUndefined()
+      const firstMessageId = lastQueuedMessageId(worker)
+      expect(firstMessageId).toMatch(/^msg_/)
 
       await cardOn(worker)
       await theWorkIsFinished(worker, workerTools)
@@ -415,7 +394,7 @@ describe('379 · a task you can see', () => {
       // The child is BUSY still — the reply was a tool call inside its turn — so this one is held
       // and DOES have a message id. ⚑ **D-016 · and it reaches the SAME conversation** — one
       // conversation per helper per giver.
-      const held = await give(pmTools, 'second')
+      const held = await give(pmTools, 'second', worker)
       // ⚑ **D-022 · R3** — a held give answers `held`, the word the verbs that tell a piece's
       // holder share, where it answered `queued`.
       expect(held.delivery, JSON.stringify(held)).toBe('held')
@@ -426,34 +405,31 @@ describe('379 · a task you can see', () => {
 
       const pieces = store.piecesOwnedBy(worker)
       expect(pieces).toHaveLength(2)
-      // ⛔ **Two pieces, and the difference between them is `messageId` and the state it implies** —
-      // never whether one exists.
-      expect(pieces.map((piece) => piece.messageId)).toEqual([null, heldMessageId])
+      expect(firstMessageId).not.toBe(heldMessageId)
+      expect(pieces.map((piece) => piece.messageId)).toEqual([firstMessageId, heldMessageId])
+      expect(new Set(pieces.map((piece) => piece.piece)).size).toBe(2)
       expect(pieces.map((piece) => piece.state)).toEqual(['answered', 'waiting'])
       expect(pieces.map((piece) => piece.label.split('.').at(-1))).toEqual(['1', '2'])
     })
 
-    it('⛔ …and it is recorded AFTER the message it names, on both branches', async () => {
-      // 🔴 **The order is the durability argument, and it is not cosmetic.** They are two appends: a
-      // crash between them leaves a brief with no piece, which reads as nothing at all. ⚠️ The
-      // reverse would leave a piece naming work that was never handed over — a row on somebody's
-      // board for a message that does not exist. `publishOurs`'s own rule is *"only after the
-      // provider has accepted it, never before"*.
+    it('records each task with its queued brief before the brief reaches the provider', async () => {
       const { worker, pmTools, workerTools } = await aPmAndItsWorker('first')
       const straightOut = typesIn(worker)
-      // ⚠️ **AFTER, not adjacent.** `send` awaits the provider before it publishes the turn, so the
-      // provider's own first frames can land between the two rows — an adjacency assertion would be
-      // pinning the double's scheduling rather than this dispatch's ordering rule.
       expect(straightOut.filter((type) => type === 'user_turn')).toHaveLength(1)
       expect(straightOut.filter((type) => type === 'work_given')).toHaveLength(1)
-      expect(straightOut.indexOf('work_given')).toBeGreaterThan(straightOut.indexOf('user_turn'))
+      const recorded = straightOut.indexOf('work_given')
+      const queued = straightOut.indexOf('message_queued')
+      expect(queued).toBeGreaterThan(-1)
+      expect(queued).toBeLessThan(recorded)
+      expect(recorded).toBeLessThan(straightOut.indexOf('user_turn'))
 
       await cardOn(worker)
       await theWorkIsFinished(worker, workerTools)
-      await give(pmTools, 'second')
+      await give(pmTools, 'second', worker)
       const held = typesIn(worker)
-      expect(held.indexOf('message_queued')).toBeGreaterThan(0)
-      expect(held.lastIndexOf('work_given')).toBeGreaterThan(held.indexOf('message_queued'))
+      expect(held.lastIndexOf('message_queued')).toBeGreaterThan(straightOut.length - 1)
+      expect(held.lastIndexOf('work_given')).toBeGreaterThan(held.lastIndexOf('message_queued'))
+      expect(held.filter((type) => type === 'user_turn')).toHaveLength(1)
     })
 
     it('⚑ durability is the LEDGER: the row is one event and the slot holds nothing', async () => {
@@ -489,7 +465,7 @@ describe('379 · a task you can see', () => {
       const { worker, pmTools, workerTools } = await aPmAndItsWorker('the first thing')
       await cardOn(worker)
       const first = await theWorkIsFinished(worker, workerTools)
-      const held = await give(pmTools, 'the second')
+      const held = await give(pmTools, 'the second', worker)
       expect(held.delivery, JSON.stringify(held)).toBe('held')
       const heldMessageId = lastQueuedMessageId(worker)
       const second = store.piecesOwnedBy(worker)[1]?.piece ?? ''
@@ -505,7 +481,7 @@ describe('379 · a task you can see', () => {
       expect(stateOf(worker, first)).toBe('answered')
       expect(
         ledger(worker)
-          .filter((event) => event.type === 'message_unqueued')
+          .filter((event) => event.type === 'message_unqueued' && event.messageId === heldMessageId)
           .map((event) => (event.type === 'message_unqueued' ? event.reason : '')),
       ).toEqual(['sent'])
       expect(store.piecesOwnedBy(worker)[1]?.messageId).toBe(heldMessageId)
@@ -523,7 +499,7 @@ describe('379 · a task you can see', () => {
       const { pm, worker, pmTools, workerTools } = await aPmAndItsWorker('the first thing')
       await cardOn(worker)
       const first = await theWorkIsFinished(worker, workerTools)
-      const held = await give(pmTools, 'the second')
+      const held = await give(pmTools, 'the second', worker)
       expect(held.delivery, JSON.stringify(held)).toBe('held')
       const heldMessageId = lastQueuedMessageId(worker)
       const second = store.piecesOwnedBy(worker)[1]?.piece ?? ''
@@ -537,7 +513,7 @@ describe('379 · a task you can see', () => {
 
       // ⚑ **A third piece**, and it is the one the ending below acts on. ⚠️ It is held, then flushed
       // by the turn ending, so it is genuinely being driven when the conversation is ended under it.
-      const third = await give(pmTools, 'the third')
+      const third = await give(pmTools, 'the third', worker)
       expect(third.delivery, JSON.stringify(third)).toBe('held')
       const running = store.piecesOwnedBy(worker)[2]?.piece ?? ''
       await letTheTurnFinish(worker)
@@ -611,7 +587,7 @@ describe('379 · a task you can see', () => {
       const { pm, worker, pmTools, workerTools } = await aPmAndItsWorker('the running one')
       await cardOn(worker)
       await theWorkIsFinished(worker, workerTools)
-      const first = await give(pmTools, 'held first')
+      const first = await give(pmTools, 'held first', worker)
       expect(first.delivery, JSON.stringify(first)).toBe('held')
       const firstMessageId = lastQueuedMessageId(worker)
       await letTheTurnFinish(worker)
@@ -621,7 +597,7 @@ describe('379 · a task you can see', () => {
       )
       await cardOn(worker)
       await theWorkIsFinished(worker, workerTools, 'the held one is done')
-      const second = await give(pmTools, 'held second')
+      const second = await give(pmTools, 'held second', worker)
       expect(second.delivery, JSON.stringify(second)).toBe('held')
       const secondMessageId = lastQueuedMessageId(worker)
       expect(secondMessageId).not.toBe(firstMessageId)
@@ -741,7 +717,7 @@ describe('379 · a task you can see', () => {
       const { pm, worker, pmTools, workerTools } = await aPmAndItsWorker('the first thing')
       await cardOn(worker)
       await theWorkIsFinished(worker, workerTools)
-      const held = await give(pmTools, 'the second')
+      const held = await give(pmTools, 'the second', worker)
       expect(held.delivery, JSON.stringify(held)).toBe('held')
       const heldMessageId = lastQueuedMessageId(worker)
       expect(store.piecesOwnedBy(worker).map((piece) => piece.endedAt === null)).toEqual([
@@ -753,7 +729,9 @@ describe('379 · a task you can see', () => {
       expect(first?.endedAt).not.toBeNull()
       expect(second?.endedAt).not.toBeNull()
       // ⚑ The stamp is the ENDING's own recorded time, not the moment the fold ran.
-      const ending = ledger(worker).findIndex((event) => event.type === 'message_unqueued')
+      const ending = ledger(worker).findIndex(
+        (event) => event.type === 'message_unqueued' && event.messageId === heldMessageId,
+      )
       expect(second?.endedAt).toBe(store.events(worker)[ending]?.at)
     })
   })
@@ -772,10 +750,10 @@ describe('379 · a task you can see', () => {
       const { pm, worker, pmTools, workerTools } = await aPmAndItsWorker('one')
       await cardOn(worker)
       await theWorkIsFinished(worker, workerTools)
-      const cancelled = await give(pmTools, 'two')
+      const cancelled = await give(pmTools, 'two', worker)
       expect(cancelled.delivery, JSON.stringify(cancelled)).toBe('held')
       await host.cancelQueuedMessage(worker, lastQueuedMessageId(worker), speakingAs(pm))
-      const carried = await give(pmTools, 'three')
+      const carried = await give(pmTools, 'three', worker)
       expect(carried.delivery, JSON.stringify(carried)).toBe('held')
       await letTheTurnFinish(worker)
       await waitFor(() => store.piecesOwnedBy(worker).length === 3, 'all three pieces')
@@ -897,7 +875,7 @@ describe('379 · a task you can see', () => {
       const { worker, pmTools, workerTools } = await aPmAndItsWorker('the running one')
       await cardOn(worker)
       await theWorkIsFinished(worker, workerTools)
-      const held = await give(pmTools, 'the held one')
+      const held = await give(pmTools, 'the held one', worker)
       expect(held.delivery, JSON.stringify(held)).toBe('held')
       const piece = store.piecesOwnedBy(worker)[1]?.piece ?? ''
       expect(stateOf(worker, piece)).toBe('waiting')
@@ -913,8 +891,15 @@ describe('379 · a task you can see', () => {
       const bytes = db
         .prepare('SELECT payload FROM events WHERE session_id = ? ORDER BY ordinal')
         .all(worker)
-      expect(JSON.stringify(bytes)).toContain('message_queued')
-      expect(JSON.stringify(bytes)).not.toContain('message_unqueued')
+      const message = lastQueuedMessageId(worker)
+      expect(message).toMatch(/^msg_/)
+      const record = (bytes as { payload: string }[])
+        .map(({ payload }) => JSON.parse(payload))
+        .filter((row) => row.messageId === message)
+      expect(record).toEqual([
+        expect.objectContaining({ type: 'message_queued', text: 'the held one' }),
+        expect.objectContaining({ type: 'work_given', brief: 'the held one' }),
+      ])
       // ⚑ The fold says `waiting`, truthfully, in BOTH worlds — and that is the correct answer for
       // exactly as long as nobody has told it which world it is in.
       expect(store.piecesOwnedBy(worker)[1]?.state).toBe('waiting')
@@ -922,6 +907,7 @@ describe('379 · a task you can see', () => {
 
     it('⛔ the NEXT LAUNCH writes the message’s ending, and the TASK stays open', async () => {
       const { worker, piece } = await aPieceLeftWaiting()
+      const waitingId = lastQueuedMessageId(worker)
 
       // 🔴 **Over a SECOND store object, and that is what makes the repair see this session.**
       // `live-hosts.ts` identifies a ledger by OBJECT — *"two `SessionStore`s opened over ONE
@@ -930,7 +916,9 @@ describe('379 · a task you can see', () => {
       // exclusion, not a crash: after a real one nothing is alive.
       const next = buildHost(createSessionStore(db, tick))
       try {
-        const ending = ledger(worker).filter((event) => event.type === 'message_unqueued')
+        const ending = ledger(worker).filter(
+          (event) => event.type === 'message_unqueued' && event.messageId === waitingId,
+        )
         expect(ending).toHaveLength(1)
         expect(ending[0]).toMatchObject({
           reason: 'abandoned',
@@ -961,9 +949,14 @@ describe('379 · a task you can see', () => {
       // running; a second host over the SAME store finds the session held elsewhere and must not
       // write an ending for a message that is about to be sent.
       const { worker, piece } = await aPieceLeftWaiting()
+      const waitingId = lastQueuedMessageId(worker)
       const alongside = buildHost()
       try {
-        expect(ledger(worker).filter((event) => event.type === 'message_unqueued')).toEqual([])
+        expect(
+          ledger(worker).filter(
+            (event) => event.type === 'message_unqueued' && event.messageId === waitingId,
+          ),
+        ).toEqual([])
         expect(stateOf(worker, piece)).toBe('waiting')
       } finally {
         await alongside.closeAll()
@@ -974,11 +967,12 @@ describe('379 · a task you can see', () => {
       // ⛔ **`354`'s rule, in the repair.** A `message_queued` with no `messageId` cannot be paired
       // with an ending, and writing one would join two messages that are not the same message.
       const { worker } = await aPmAndItsWorker('the work')
+      const prior = ledger(worker).filter((event) => event.type === 'message_unqueued')
       const ordinal = store.nextOrdinal(worker)
       store.append(worker, ordinal, { type: 'message_queued', text: 'from an older build' }, tick())
       const next = buildHost(createSessionStore(db, tick))
       try {
-        expect(ledger(worker).filter((event) => event.type === 'message_unqueued')).toEqual([])
+        expect(ledger(worker).filter((event) => event.type === 'message_unqueued')).toEqual(prior)
       } finally {
         await next.closeAll()
       }
@@ -1002,10 +996,10 @@ describe('379 · a task you can see', () => {
       const { pm, worker, pmTools, workerTools } = await aPmAndItsWorker('one')
       await cardOn(worker)
       await theWorkIsFinished(worker, workerTools)
-      const held = await give(pmTools, 'two')
+      const held = await give(pmTools, 'two', worker)
       expect(held.delivery, JSON.stringify(held)).toBe('held')
       await host.cancelQueuedMessage(worker, lastQueuedMessageId(worker), speakingAs(pm))
-      await give(pmTools, 'three')
+      await give(pmTools, 'three', worker)
 
       const under = store.rootOf(pm)
       if (under === null) throw new Error('the PM has no root')
@@ -1121,6 +1115,7 @@ describe('379 · a task you can see', () => {
       const { worker } = await aPmAndItsWorker('the work')
       const before = store.piecesOwnedBy(worker)
       expect(before[0]?.state).toBe('working')
+      expect(before[0]?.messageId).toMatch(/^msg_/)
 
       await host.closeAll()
       // ⚑ **Every durable field is unchanged** — the row is the same row, and only the derived state
@@ -1133,7 +1128,7 @@ describe('379 · a task you can see', () => {
         giver: before[0]?.giver,
         title: before[0]?.title,
         brief: before[0]?.brief,
-        messageId: null,
+        messageId: before[0]?.messageId,
         state: 'stalled',
         // ⚑ **D-016c · the TURN's cause**: the piece was RUNNING when the app quit, so the turn
         // `closeAll` force-ended stalled it `turn_interrupted`, and the stop itself is never a cause.
@@ -1164,7 +1159,7 @@ describe('379 · a task you can see', () => {
       // test is about is HELD: the hold reads `status() !== 'idle'`, which `working` satisfies.
       await letTheTurnFinish(worker)
       await busyWithNoCard()
-      const held = await give(pmTools, 'the held one')
+      const held = await give(pmTools, 'the held one', worker)
       expect(held.delivery, JSON.stringify(held)).toBe('held')
       const heldMessageId = lastQueuedMessageId(worker)
       const queuedRows = (): number =>

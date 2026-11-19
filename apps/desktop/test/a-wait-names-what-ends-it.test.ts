@@ -1,3 +1,6 @@
+import { stalledWorkFixture } from './lib/running-worker-fixture'
+import { personOpener } from './helpers/person-opens-session'
+import { newConversationGive } from './lib/give-fixture'
 import { HandleKeepingRuntime as ProviderDouble } from './helpers/handle-keeping-runtime'
 import { waitFor } from './lib/f093-host'
 import type { PieceRow } from '../src/shared/task-contracts'
@@ -17,7 +20,6 @@ import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { fixtureProviderConfig, RecordingSink, neutralHostDeps } from './lib/host-fixture'
 
 /**
@@ -126,34 +128,11 @@ describe('a wait names what will end it', () => {
       .filter((event) => event.type === 'work_status_set')
   const anHourAhead = (): string => new Date(clock + 3_600_000).toISOString()
 
-  /** BroBot gives a piece to its worker, minted Ada the first time; the brief's turn ends with it open. */
-  const aPieceGiven = async (
-    brobot: string,
-    title: string,
-    first: boolean,
-  ): Promise<{ ada: string; piece: string; label: string }> => {
-    const given = await ok(agentToolsFor(host, brobot), 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      ...(first ? { new: true } : {}),
-      title,
-      brief: title.toLowerCase(),
-    })
-    const ada = given.agent as string
-    const piece = given.piece as string
-    await waitFor(() => pieceOf(ada, piece)?.state === 'stalled', `the brief of ${title} to end`)
-    await settle()
-    return { ada, piece, label: given.label as string }
-  }
-  const aHelperWithAPiece = async (): Promise<{ brobot: string; ada: string; piece: string }> => {
-    const { sessionId: brobot } = await host.createSession(
-      { provider: 'claude', profileId: DEFAULT_PROFILE_ID, approvalMode: 'auto', cwd: root },
-      window,
-    )
-    await settle()
-    const { ada, piece } = await aPieceGiven(brobot, 'Build the pages', true)
-    return { brobot, ada, piece }
-  }
+  const personOpens = personOpener(() => ({ host, root, window }), 'auto')
+  const { give: aPieceGiven, open: aHelperWithAPiece } = stalledWorkFixture(
+    () => ({ host, store, personOpens }),
+    () => settle(),
+  )
   /** Ada asks about W1.1, of her giver or of a person; the question's id. */
   const asks = async (ada: string, whoAnswers: 'the-parent' | 'a-person'): Promise<string> => {
     const asked = await ok(agentToolsFor(host, ada), 'ask_question', {
@@ -173,13 +152,12 @@ describe('a wait names what will end it', () => {
   describe('a wait on each kind is kept on the line', () => {
     it('another agent’s piece, by its label', async () => {
       const { ada, piece } = await aHelperWithAPiece()
-      const other = await ok(agentToolsFor(host, ada), 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'writer',
-        new: true,
-        title: 'Write the copy',
-        brief: 'write the copy',
-      })
+      await ok(agentToolsFor(host, ada), 'create_agent', { profile_slug: 'writer' })
+      const other = await ok(
+        agentToolsFor(host, ada),
+        'give_work',
+        newConversationGive('writer', 'Write the copy', 'write the copy'),
+      )
       await settle()
       expect(await waitsOn(ada, { agent: other.label })).toMatchObject({ outcome: 'ok' })
       expect(pieceOf(ada, piece)).toMatchObject({
@@ -317,14 +295,14 @@ describe('a wait names what will end it', () => {
         {},
         "on.agent names W1.2, which this piece's holder holds too: an agent cannot wait on itself. Name what W1.2 waits on instead, or set the status without on",
         async (_ada, brobot) => {
-          const other = await aPieceGiven(brobot, 'Write the copy', false)
+          const other = await aPieceGiven(brobot, 'Write the copy', 'W1.1')
           return { on: { agent: other.label } }
         },
       ))
 
     it('its giver marking it waiting on another piece the same holder holds', async () => {
       const { brobot, ada, piece } = await aHelperWithAPiece()
-      const other = await aPieceGiven(brobot, 'Write the copy', false)
+      const other = await aPieceGiven(brobot, 'Write the copy', 'W1.1')
       const before = statusRows(ada).length
       const answer = await call(agentToolsFor(host, brobot), 'update_work', {
         piece: 'W1.1',
@@ -339,7 +317,7 @@ describe('a wait names what will end it', () => {
 
     it('a piece that has ended', () =>
       refusedFor({}, 'which has ended: say what the piece waits on now', async (_ada, brobot) => {
-        const other = await aPieceGiven(brobot, 'Write the copy', false)
+        const other = await aPieceGiven(brobot, 'Write the copy', 'W1.1')
         await ok(agentToolsFor(host, brobot), 'update_work', { piece: other.label, close: true })
         await settle()
         return { on: { agent: other.label } }
@@ -370,13 +348,12 @@ describe('a wait names what will end it', () => {
       window,
     )
     await settle()
-    const theirs = await ok(agentToolsFor(host, stranger), 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'outsider',
-      new: true,
-      title: 'Their work',
-      brief: 'their work',
-    })
+    await ok(agentToolsFor(host, stranger), 'create_agent', { profile_slug: 'outsider' })
+    const theirs = await ok(
+      agentToolsFor(host, stranger),
+      'give_work',
+      newConversationGive('outsider', 'Their work', 'their work'),
+    )
     const theirLabel = theirs.label as string
     const said = async (agent: string): Promise<unknown> => (await waitsOn(ada, { agent })).detail
     const nothing = await said('W99.9')

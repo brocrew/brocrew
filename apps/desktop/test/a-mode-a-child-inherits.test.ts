@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -20,12 +21,13 @@ import {
   remedyOf,
   retryableOf,
   SPAWN_RAILS,
-  type GiveAdmission,
-  type GivingConversation,
 } from '../src/main/runtime/spawn-rails'
-import type { CallerIdentity } from '../src/main/runtime/runtime-host'
-import { agentCallerId } from '../src/main/runtime/agent-tools'
-import { giveFactsForTest as factsWith } from './lib/give-facts-fixture'
+import {
+  admittedGiveStart as startOf,
+  callerOfTestGiver as asThe,
+  giveFactsForTest as factsWith,
+  givingTestParent,
+} from './lib/give-facts-fixture'
 import { SPAWN_RAIL_MEANS } from '../src/shared/capabilities'
 import { YOLO_MEANS, YOLO_MEANS_FOR_AGENTS_IT_STARTS } from '../src/renderer/src/lib/approval-mode'
 
@@ -230,26 +232,10 @@ describe('§4 · the sentence the PO ruled owed, and it is derived rather than t
 
 const WORK = '/tmp/499-work'
 
-function aParent(provider: Provider, approvalMode: ApprovalMode): GivingConversation {
-  return { sessionId: 'sess_parent', profileId: 'pm', provider, cwd: WORK, approvalMode }
-}
+const aParent = (provider: Provider, approvalMode: ApprovalMode) =>
+  givingTestParent(WORK, provider, approvalMode)
 
-function asThe(giver: GivingConversation): CallerIdentity {
-  return { ownerId: agentCallerId(giver.sessionId) }
-}
-
-const A_GIVE = {
-  definition_of_done: 'The requested result and its checks are recorded.',
-  profile: 'worker',
-  title: 'x',
-  brief: 'x',
-} as const
-
-function startOf(out: GiveAdmission): { provider: Provider; approvalMode: ApprovalMode } | null {
-  if (!out.ok) return null
-  if (out.goes.to !== 'a-new-conversation') throw new Error('nothing was found, so it must start')
-  return { provider: out.goes.start.provider, approvalMode: out.goes.start.approvalMode }
-}
+const A_GIVE = newConversationGive('worker', 'x', 'x')
 
 describe('§5 · the door — where a started conversation`s mode is decided, and what the refusal says', () => {
   it('🔴 every (giver, child provider) pair through the REAL door, and it agrees with the derivation', () => {

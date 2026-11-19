@@ -141,6 +141,8 @@ describe('who answered it', () => {
       await host.close(worker0, window)
       const parent = await opened('parent')
       const spawned = await callOn(agentToolsFor(host, parent), 'give_work', {
+        to: 'new',
+        conversation_title: 'Raise the question',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'Raise the question',

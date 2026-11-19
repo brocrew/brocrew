@@ -1,3 +1,5 @@
+import { callOn } from './helpers/call-tool'
+import { newConversationGive } from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { HandleKeepingRuntime as ProviderDouble } from './helpers/handle-keeping-runtime'
 import { waitFor } from './lib/f093-host'
@@ -376,16 +378,6 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
     await host.close(id, window)
   }
 
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown> = {},
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
-
   /** The words a model reads, and the payload beside them. */
   const callWithWords = async (
     toolset: AgentToolset,
@@ -455,12 +447,11 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
   }> => {
     await bringIdentityIntoBeing(workerProfile)
     const { id: pm, tools: pmTools } = await aPerson(pmProfile)
-    const given = await callOn(pmTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: workerProfile,
-      title: brief,
-      brief,
-    })
+    const given = await callOn(
+      pmTools,
+      'give_work',
+      newConversationGive(workerProfile, brief, brief),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     return {
@@ -575,11 +566,13 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
     await bringIdentityIntoBeing('worker')
     const handlesBeforeTheGive = handles.length
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'the errand',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'the errand',
       brief: 'the errand',
-      piece: pmRoot.label,
+      under: pmRoot.label,
     })
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     expect(given.label).toBe(`${pmRoot.label}.3`)
@@ -773,6 +766,8 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
       callOn(tools, 'give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile,
+        to: 'new',
+        conversation_title: 'errand',
         title: 'errand',
         brief: 'errand',
         ...extra,
@@ -812,7 +807,7 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
     expect(store.childrenOf(two.piece)).toEqual([])
 
     // Naming the second resolves it, and the piece hangs under that one.
-    const named = await give(c.tools, 'worker-c', { piece: two.label })
+    const named = await give(c.tools, 'worker-c', { under: two.label })
     expect(named.outcome, JSON.stringify(named)).toBe('ok')
     expect(store.workById(named.piece as string)?.parent).toBe(two.piece)
     expect(named.label).toBe(`${two.label}.1`)
@@ -823,11 +818,13 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
     const { id: pm, tools: pmTools } = await aPerson('pm')
     const taken = await takeOn(pmTools, 'the request')
     const admitted = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'the errand',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'the errand',
       brief: 'the errand',
-      piece: taken.label,
+      under: taken.label,
     })
     expect(admitted.outcome, JSON.stringify(admitted)).toBe('ok')
     const underIt = admitted.piece as string
@@ -920,11 +917,13 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
     const taken = await takeOn(pmTools, 'the request')
     await bringIdentityIntoBeing('worker')
     const errand = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'the errand',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'the errand',
       brief: 'the errand',
-      piece: taken.label,
+      under: taken.label,
     })
     expect(errand.outcome, JSON.stringify(errand)).toBe('ok')
     const workerTools = agentToolsFor(host, errand.agent as string)
@@ -984,7 +983,7 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
     )
   })
 
-  it('T8 · a question for the giver of a taken-on piece goes to a person, and the answer names reply_to_parent', async () => {
+  it('T8 · a question for the giver of a taken-on piece goes to a person and gets the person receipt', async () => {
     const asked = (sessionId: string): QuestionAskedEvent[] =>
       events(sessionId).filter(
         (event): event is QuestionAskedEvent => event.type === 'question_asked',
@@ -1004,8 +1003,9 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
     })
     expect(forPiece.structured.outcome, JSON.stringify(forPiece.structured)).toBe('ok')
     expect(forPiece.structured.went_to).toBe('a-person')
-    expect(forPiece.text).toContain('reply_to_parent is what does that')
-    expect(forPiece.text).not.toContain('is a person’s')
+    expect(forPiece.text).toBe(
+      `Question ${forPiece.structured.question} recorded for the person. The answer arrives as a message.`,
+    )
     const askedAbout = asked(pm).find((one) => one.prompt === 'which city?')
     expect(askedAbout?.piece).toBe(taken.piece)
     expect(askedAbout?.label).toBe(taken.label)
@@ -1014,7 +1014,7 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
     expect(routedAbout !== undefined && Object.hasOwn(routedAbout, 'parent')).toBe(false)
 
     // The paired positive: a conversation that took nothing on and asks about its own root reaches
-    // a person too — and its words are the other arm's, so the two texts really do differ.
+    // a person too and gets the same receipt format.
     const alone = await aPerson('pm-alone')
     const forRoot = await callWithWords(alone.tools, 'ask_question', {
       question: 'which city?',
@@ -1022,8 +1022,9 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
     })
     expect(forRoot.structured.outcome, JSON.stringify(forRoot.structured)).toBe('ok')
     expect(forRoot.structured.went_to).toBe('a-person')
-    expect(forRoot.text).toContain('this conversation’s own work is a person’s')
-    expect(forRoot.text).not.toContain('reply_to_parent is what does that')
+    expect(forRoot.text).toBe(
+      `Question ${forRoot.structured.question} recorded for the person. The answer arrives as a message.`,
+    )
     const askedRoot = asked(alone.id).find((one) => one.prompt === 'which city?')
     expect(askedRoot?.piece).toBe(alone.root.piece)
     expect(routed(alone.id).find((one) => one.requestId === askedRoot?.requestId)?.to).toBe(

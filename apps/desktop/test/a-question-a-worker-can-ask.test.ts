@@ -1,3 +1,4 @@
+import { newConversationGive, pmGivesNewWorkerTask } from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { callOn } from './helpers/call-agent-tool'
 import { waitFor } from './lib/f093-host'
@@ -277,17 +278,12 @@ describe('437 · a question a worker can ask its parent', () => {
     piece: string
   }> => {
     await bringIdentityIntoBeing('worker')
-    const pm = await personOpens('pm')
-    const pmTools = theToolsetJustHandedOut()
-    const given = await callOn(pmTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'the work this dispatch is about',
-      brief: 'migrate the schema',
-    })
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    const worker = given.agent as string
-    const workerTools = theToolsetJustHandedOut()
+    const { pm, pmTools, worker, workerTools } = await pmGivesNewWorkerTask(
+      personOpens,
+      theToolsetJustHandedOut,
+      'the work this dispatch is about',
+      'migrate the schema',
+    )
     return { pm, worker, pmTools, workerTools, piece: taskOf(worker).piece }
   }
 
@@ -618,12 +614,15 @@ describe('437 · a question a worker can ask its parent', () => {
       await bringIdentityIntoBeing('worker')
       const spawner = await personOpens('pm')
       const spawnerTools = theToolsetJustHandedOut()
-      const given = await callOn(spawnerTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'the work this question is about',
-        brief: 'the work this question is about',
-      })
+      const given = await callOn(
+        spawnerTools,
+        'give_work',
+        newConversationGive(
+          'worker',
+          'the work this question is about',
+          'the work this question is about',
+        ),
+      )
       expect(given.outcome, JSON.stringify(given)).toBe('ok')
       const worker = given.agent as string
       const workerTools = theToolsetJustHandedOut()
@@ -637,12 +636,15 @@ describe('437 · a question a worker can ask its parent', () => {
       // `assign-work-to-one-you-did-not-start`.)
       const bystander = await personOpens('brobot')
       const bystanderTools = theToolsetJustHandedOut()
-      const elsewhere = await callOn(bystanderTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'the work this question is about',
-        brief: 'the work this question is about',
-      })
+      const elsewhere = await callOn(
+        bystanderTools,
+        'give_work',
+        newConversationGive(
+          'worker',
+          'the work this question is about',
+          'the work this question is about',
+        ),
+      )
       expect(elsewhere.outcome, JSON.stringify(elsewhere)).toBe('ok')
       expect(elsewhere.agent).not.toBe(worker)
       expect(
@@ -965,12 +967,15 @@ describe('437 · a question a worker can ask its parent', () => {
       // ⚠️ The PM holds no piece given to it, so the id below is given in a THIRD conversation, which
       // is what makes this a different cause from the first rather than a second spelling of it.
       await bringIdentityIntoBeing('other')
-      const second = await callOn(pmTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'other',
-        title: 'a second child with work of its own',
-        brief: 'somebody else is doing this',
-      })
+      const second = await callOn(
+        pmTools,
+        'give_work',
+        newConversationGive(
+          'other',
+          'a second child with work of its own',
+          'somebody else is doing this',
+        ),
+      )
       expect(second.outcome, JSON.stringify(second)).toBe('ok')
       const other = second.agent as string
       const someoneElses = taskOf(other).piece
@@ -1039,21 +1044,14 @@ describe('437 · a question a worker can ask its parent', () => {
         // `679`'s review: `no-question-by-that-name` said nobody was waiting on a live id.
         'that-conversation-did-not-ask-that',
         'no-open-work-by-that-name',
-        // ⚑ **611 · the pass-up door's two, appended** (HO-088 §3.2) — one for a conversation
-        // nothing spawned, one for words this app no longer holds.
-        'nobody-to-pass-it-up-to',
-        'this-app-does-not-hold-those-words',
         // ⚑ **D-009 · F012's three, appended** — an agent the caller may not ask, a question asked of
         // it by name passed on, and a withdrawal of a question it did not ask.
         'no-agent-you-can-ask-by-that-name',
-        'a-question-asked-of-you-by-name-is-yours',
         'no-open-question-you-asked-by-that-name',
         // ⚑ **D-016 · an ask that names no piece, appended** — several held and none named, or none
         // held at all; `no-open-work-by-that-name` now answers a NAMED piece only.
         'name-the-piece-you-ask-about',
         'no-piece-to-ask-about',
-        // ⚑ An answer over the bound, refused before anything is recorded.
-        'answer-too-long',
         'move-offer-not-available',
         'move-offer-is-held',
         'move-offer-needs-a-person',

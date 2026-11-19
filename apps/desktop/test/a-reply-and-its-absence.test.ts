@@ -1,3 +1,5 @@
+import { expectHeldGiveWithoutMessage } from './lib/recorded-send'
+import { addressedGive, giveWorkWithTitleAsBrief } from './lib/give-fixture'
 import { callOn } from './helpers/call-agent-tool'
 import { cleanupAndReportFailures } from './helpers/cleanup-failure-trace'
 import { waitFor } from './lib/f093-host'
@@ -259,24 +261,6 @@ describe('393 · a reply, and its absence', () => {
    * ⚑ **D-016 · a give, by the agent's profile** — to a sibling identity it starts that agent's
    * conversation, and to the worker's own it reaches the worker. Returns who holds the piece.
    */
-  const giveTo = async (
-    tools: AgentToolset,
-    profile: string,
-    text: string,
-  ): Promise<{ agent: string; piece: string; label: string }> => {
-    const given = await callOn(tools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile,
-      title: text,
-      brief: text,
-    })
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    return {
-      agent: given.agent as string,
-      piece: given.piece as string,
-      label: given.label as string,
-    }
-  }
 
   /**
    * `373`'s helper: a PM in a window with one child of its own, started through the real door —
@@ -303,7 +287,7 @@ describe('393 · a reply, and its absence', () => {
     for (const one of siblings) await bringIdentityIntoBeing(one)
     const pm = await personOpens(pmProfile, options.projectSlug)
     const pmTools = toolsOf(pm)
-    const given = await giveTo(pmTools, workerProfile, text)
+    const given = await giveWorkWithTitleAsBrief(pmTools, workerProfile, text)
     return { pm, worker: given.agent, pmTools, siblings, task: given.piece }
   }
 
@@ -427,7 +411,12 @@ describe('393 · a reply, and its absence', () => {
       // ⚠️ **One fact over: a DIFFERENT piece, same caller, same everything else.** Without this the
       // refusal above would also pass against a tool that refused every second call. ⚑ **D-016** —
       // a second give to the same agent reaches the same worker.
-      const second = await giveTo(pmTools, siblings[0] as string, 'the second')
+      const second = await giveWorkWithTitleAsBrief(
+        pmTools,
+        siblings[0] as string,
+        'the second',
+        worker,
+      )
       expect(second.agent).toBe(worker)
       const next = second.piece
       expect(next).not.toBe(task)
@@ -454,17 +443,14 @@ describe('393 · a reply, and its absence', () => {
       })
       expect(closed.outcome, JSON.stringify(closed)).toBe('ok')
       // ⚑ **D-016** — the held one is a second give, its brief held behind the running turn's card.
-      // ⛔ **Called directly, not through `giveTo`**, so the raw result is read: a held give carries
+      // ⛔ **Called directly, without the fixture**, so the raw result is read: a held give carries
       // no `message` property (`650` F3 — *reported as not queued*).
-      const held = await callOn(pmTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: siblings[0] as string,
-        title: 'the held one',
-        brief: 'the held one',
-      })
-      expect(held.outcome, JSON.stringify(held)).toBe('ok')
-      expect(held.agent).toBe(worker)
-      expect(held).not.toHaveProperty('message')
+      const held = await callOn(
+        pmTools,
+        'give_work',
+        addressedGive(worker, siblings[0] as string, 'the held one', 'the held one'),
+      )
+      expectHeldGiveWithoutMessage(held, worker)
       const heldTask = held.piece as string
       const heldRow = [...ledger(worker)]
         .reverse()
@@ -493,7 +479,12 @@ describe('393 · a reply, and its absence', () => {
       // at that moment, which is the only time a second piece of work is admitted (HO-021 §1
       // property 3). ⚠️ The control is unchanged in what it controls for: a reply that lands, from
       // the same caller, against a task that has not ended.
-      const alive = await giveTo(pmTools, siblings[0] as string, 'the live one')
+      const alive = await giveWorkWithTitleAsBrief(
+        pmTools,
+        siblings[0] as string,
+        'the live one',
+        worker,
+      )
       expect(alive.agent).toBe(worker)
       const open = alive.piece
       expect(open).not.toBe(heldTask)
@@ -502,48 +493,14 @@ describe('393 · a reply, and its absence', () => {
       ).toBe('ok')
     })
 
-    it('🔴 a summary one unit over the bound is refused; one unit under it lands', async () => {
-      // ⛔ **The literals, not `REPLY_SUMMARY_LIMIT ± 1`** — `380`'s lesson on `MAX_DOCUMENT_BYTES`:
-      // a bound written as the constant moves with it and pins nothing.
-      expect(REPLY_SUMMARY_LIMIT).toBe(1280)
-      const over = await workWasGiven('long')
-      const refused = await reply(over.worker, {
-        piece: over.task,
-        outcome: 'done',
-        summary: 'x'.repeat(1281),
-      })
-      expect(refused.rail).toBe('summary-too-long')
-      expect(refused.permanence).toBe('while-this-holds')
-      expect(refused.retryable).toBe(true)
-      expect(refused.detail).toMatchObject({ limit: 1280, was: 1281 })
-      expect(refused.reason).toContain(
-        'the summary is 1,281 characters; the most is 1,280, so cut at least 1.',
-      )
-      // ⚑ **Nothing was shortened and nothing was recorded** — HO-007 S2's *"no silent truncation
-      // or erasure anywhere on this path"*, asserted as the task still being open.
-      expect(taskOf(over.worker, over.task)?.state).toBe('working')
-      expect(ledger(over.worker).some((event) => event.type === 'work_replied')).toBe(false)
-      // ⚠️ **And the sentence sends the caller to the remedy that exists**, rather than describing
-      // how the app stores things.
-      expect(refused.reason).toContain('resource_path')
-      expect(refused.reason).toContain('Nothing was shortened for you')
-      // 🔴 **425 · and now the same remedy as a WORD, so the ledger can carry it** (HO-023 §2.2).
-      // ⚑ **This is the cleanest rail in the whole dispatch**: the refusal is about the caller's own
-      // words, the caller can change them, and the act needs nothing from anybody else. ⛔ The word
-      // requires an ARTIFACT and never a provider verb — `422` §3 — which is why it says *a file*
-      // and the sentence one line up says `resource_path`.
-      expect(refused.remedy).toBe('shorten-the-summary-and-attach-the-long-form')
-
-      // ⛔ **One unit under, and it is the SAME call otherwise.**
-      const under = await reply(over.worker, {
-        piece: over.task,
-        outcome: 'done',
-        summary: 'x'.repeat(1280),
-      })
-      expect(under.outcome, JSON.stringify(under)).toBe('ok')
-      expect(taskOf(over.worker, over.task)?.state).toBe('answered')
-      // ⚑ **425 · the admitted call carries no remedy at all**, because there is nothing left to do.
-      expect(under).not.toHaveProperty('remedy')
+    it('keeps a 1,281-character summary inline and ends the task', async () => {
+      const { worker, task } = await workWasGiven('long')
+      const summary = 'x'.repeat(1_281)
+      const done = await reply(worker, { piece: task, outcome: 'done', summary })
+      expect(done).toMatchObject({ outcome: 'ok', resources: [] })
+      expect(done).not.toHaveProperty('remedy')
+      expect(taskOf(worker, task)).toMatchObject({ state: 'answered', summary })
+      expect(ledger(worker).filter((event) => event.type === 'work_replied')).toHaveLength(1)
     })
 
     it('🔴 every spelling of a destination is REFUSED, never overridden — and the same call without it lands', async () => {
@@ -788,7 +745,11 @@ describe('393 · a reply, and its absence', () => {
       await letTheTurnFinish(quiet.worker)
       expect(taskOf(quiet.worker, quiet.task)?.state).toBe('stalled')
 
-      const gone = await giveTo(quiet.pmTools, quiet.siblings[1] as string, 'work that is dropped')
+      const gone = await giveWorkWithTitleAsBrief(
+        quiet.pmTools,
+        quiet.siblings[1] as string,
+        'work that is dropped',
+      )
       const goneId = gone.agent
       const goneTask = gone.piece
       await thePersonEndsIt(goneId)
@@ -857,7 +818,11 @@ describe('393 · a reply, and its absence', () => {
 
     it('⚠️ an answered task reports its outcome to the parent, so silence and an answer are distinguishable', async () => {
       const quiet = await workWasGiven('the quiet one')
-      const loud = await giveTo(quiet.pmTools, quiet.siblings[1] as string, 'the answered one')
+      const loud = await giveWorkWithTitleAsBrief(
+        quiet.pmTools,
+        quiet.siblings[1] as string,
+        'the answered one',
+      )
       const loudId = loud.agent
       const loudTask = loud.piece
       await reply(loudId, { piece: loudTask, outcome: 'done', summary: 'here it is' })
@@ -1094,7 +1059,11 @@ describe('393 · a reply, and its absence', () => {
       // singleton refused it (`parent-is-holding-a-message`) and the words waited for nobody — the
       // state `393` could not finish: *a parent with two children that both finish while it is busy
       // hears from one of them.* ⚑ It hears from both now.
-      const second = await giveTo(pmTools, siblings[1] as string, 'the second piece')
+      const second = await giveWorkWithTitleAsBrief(
+        pmTools,
+        siblings[1] as string,
+        'the second piece',
+      )
       const secondId = second.agent
       const secondTask = second.piece
       const crowded = await reply(secondId, {

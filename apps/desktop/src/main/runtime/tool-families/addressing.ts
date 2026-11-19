@@ -2,7 +2,6 @@ import { type AgentToolAnswer } from '@brobot2/runtime'
 import { type AgentToolHost } from './host'
 import { type Caller } from '../conversation-caller'
 import { TASK_IS_OPEN } from '../../../shared/tasks'
-import { anAgentWithSeveralConversations } from './delivery'
 import { pieceNumbersOf } from '../../../shared/piece-called'
 import { refusalAnswer } from './answers'
 import { refuseTool } from './refusals'
@@ -13,11 +12,7 @@ import { skippedRecordsSentence, unreadRowsSentence } from './listings'
 export function conversationAddressing(
   host: Pick<
     AgentToolHost,
-    | 'agentCard'
-    | 'pieceRecord'
-    | 'theConversationAProfileNames'
-    | 'theConversationAddressed'
-    | 'tookItsPlace'
+    'agentCard' | 'pieceRecord' | 'theConversationAddressed' | 'tookItsPlace'
   >,
   by: Caller,
   me: string,
@@ -79,7 +74,7 @@ export function conversationAddressing(
             .join('; ')}.`,
         )
         lines.push(
-          "Reach a helper by its piece's label, even after it ended: message_agent with kind: note, or ask_question.",
+          "Reach a helper by its task's label, even after it ended: message_agent or ask_question.",
         )
         if (facts.helpers.some((helper) => helper.profile !== null))
           lines.push('For new work, give_work with its profile.')
@@ -102,24 +97,7 @@ export function conversationAddressing(
     return refusalAnswer({ ...payload, reason: aSelfAddressSaid })
   }
 
-  const theConversationToReach = (
-    spelled: string,
-    forAMessage = false,
-  ): { readonly agent: string } | { readonly refused: AgentToolAnswer } => {
-    const addressed = host.theConversationAddressed(spelled, by, me, 'messaging')
-    if (addressed !== spelled) return { agent: addressed }
-    const named = host.theConversationAProfileNames(spelled, by, me, forAMessage)
-    if (named === null) return { agent: spelled }
-    if (named.is === 'one') return { agent: named.conversation }
-    return {
-      refused: refusalAnswer({
-        ...refuseTool('that-agent-has-several-conversations', {
-          agent: spelled,
-          conversations: named.labels,
-        }),
-        reason: anAgentWithSeveralConversations(named.profile, named.labels),
-      }),
-    }
-  }
+  const theConversationToReach = (spelled: string): string =>
+    host.theConversationAddressed(spelled, by, me, 'messaging')
   return { selfRefusal, theConversationToReach }
 }

@@ -159,6 +159,8 @@ describe('488 · who exists, and what they were told', () => {
     await bringIdentityIntoBeing(profileId)
     const parent = await personOpens('pm')
     const given = await toolsOf(parent).call('give_work', {
+      to: 'new',
+      conversation_title: 'Work',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: profileId,
       title: 'Work',
@@ -249,6 +251,8 @@ describe('488 · who exists, and what they were told', () => {
       expect(noSuchProfile).toBeDefined()
       for (const name of ['builder', 'nobody-minted-this']) {
         const tried = await tools.call('give_work', {
+          to: 'new',
+          conversation_title: 'Work',
           definition_of_done: 'The requested result and its checks are recorded.',
           profile: name,
           title: 'Work',

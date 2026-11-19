@@ -1,19 +1,17 @@
-import { personOpener } from './helpers/person-opens-session'
+import { expectHeldGiveWithoutMessage } from './lib/recorded-send'
+import { addressedGive, giveWorkWithTitleAsBrief } from './lib/give-fixture'
+import { fixturePersonEntry } from './lib/send-person-fixture'
 import { callOn } from './helpers/call-agent-tool'
 import { waitFor } from './lib/f093-host'
 import { TASK_STATES } from '../src/shared/task-contracts'
 import type { PieceRow } from '../src/shared/task-contracts'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type { AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import { type AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
@@ -27,10 +25,13 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { clockTime } from '../src/shared/clock'
 import { TASK_IS_OPEN, derivePieces } from '../src/shared/tasks'
 import {
+  closeHostFixture,
   RecordingSink,
   syntheticProviderHome,
   neutralHostDeps,
   fixtureProviderConfig,
+  fixtureDatabase,
+  fixtureFolder,
 } from './lib/host-fixture'
 
 /**
@@ -52,8 +53,6 @@ import {
  * Only the provider is a double. No Electron, no port, no userData but its own temporary one.
  */
 
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 
 /** The one sentence an ended piece is refused in, up to the part that says how it ended. */
 const STOP = 'stop work on that piece; no further reply is owed.'
@@ -197,7 +196,7 @@ describe('D-025 · §2 · admitReply, over a literal piece', () => {
     piece: PieceRow,
     whatToCall: (conversation: string) => string,
   ): ReplyRefusal => {
-    const refusal = admitReply('W1.1', piece, false, 'a summary', whatToCall)
+    const refusal = admitReply('W1.1', piece, false, whatToCall)
     if (refusal === null) throw new Error(`a ${piece.state} piece was admitted`)
     return refusal
   }
@@ -323,7 +322,7 @@ describe('D-025 · §2 · admitReply, over a literal piece', () => {
     const admitted: string[] = []
     const whatToCall = whatToCallThem()
     for (const state of TASK_STATES) {
-      const outcome = admitReply('W1.1', pieceIn(state), false, 'a summary', whatToCall)
+      const outcome = admitReply('W1.1', pieceIn(state), false, whatToCall)
       ;(outcome === null ? admitted : refused).push(state)
       if (outcome !== null) expect(outcome.rail).toBe('piece-already-ended')
     }
@@ -336,11 +335,11 @@ describe('D-025 · §2 · admitReply, over a literal piece', () => {
     expect(whatToCall).not.toHaveBeenCalled()
 
     // No piece by that name: the detail is the caller's own echo and nothing more.
-    const unknown = admitReply('W9.9', undefined, false, 'a summary', whatToCall)
+    const unknown = admitReply('W9.9', undefined, false, whatToCall)
     expect(unknown?.rail).toBe('no-piece-by-that-name')
     expect(unknown?.detail).toEqual({ piece: 'W9.9' })
     // And its own root, which never ends, is a different word with the same bare detail.
-    const itsRoot = admitReply('W1', undefined, true, 'a summary', whatToCall)
+    const itsRoot = admitReply('W1', undefined, true, whatToCall)
     expect(itsRoot?.rail).toBe('a-person-gave-that-piece')
     expect(itsRoot?.detail).toEqual({ piece: 'W1' })
     expect(whatToCall).not.toHaveBeenCalled()
@@ -384,10 +383,9 @@ describe('D-025 · §3-§6 · a refused reply through the real host', () => {
   }
 
   beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-ended-piece-'))
-    root = mkdtempSync(join(tmpdir(), 'brobot2-ended-piece-root-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    userData = fixtureFolder('brobot2-ended-piece-')
+    root = fixtureFolder('brobot2-ended-piece-root-')
+    db = fixtureDatabase(userData)
     clock = 7_000_000
     store = createSessionStore(db, tick)
     counter = 0
@@ -398,18 +396,11 @@ describe('D-025 · §3-§6 · a refused reply through the real host', () => {
     pairs = 0
   })
 
-  afterEach(async () => {
-    for (const built of hosts) await built.closeAll()
-    db.close()
-    for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
-  })
+  afterEach(() => closeHostFixture(hosts, db, userData, root))
 
-  const personOpens = personOpener(() => ({ host, root, window }), 'ask')
-
-  const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
-    const id = await personOpens(profileId)
-    await host.close(id, window)
-  }
+  const { open: personOpens, seed: bringIdentityIntoBeing } = fixturePersonEntry(
+    () => ({ host, root, window }),
+  )
 
   /** The toolset a session's calls are driven through, built the way the launch builds it. */
   const toolsOf = (sessionId: string): AgentToolset => agentToolsFor(host, sessionId)
@@ -436,25 +427,6 @@ describe('D-025 · §3-§6 · a refused reply through the real host', () => {
     )
   }
 
-  const giveTo = async (
-    tools: AgentToolset,
-    profile: string,
-    text: string,
-  ): Promise<{ agent: string; piece: string; label: string }> => {
-    const given = await callOn(tools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile,
-      title: text,
-      brief: text,
-    })
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    return {
-      agent: given.agent as string,
-      piece: given.piece as string,
-      label: given.label as string,
-    }
-  }
-
   /** A PM in a window with one worker of its own, holding one piece of work the PM gave it. */
   const aPmAndItsWorker = async (
     text: string,
@@ -472,7 +444,7 @@ describe('D-025 · §3-§6 · a refused reply through the real host', () => {
     for (const one of siblings) await bringIdentityIntoBeing(one)
     const pm = await personOpens(`pm-${String(nth)}`)
     const pmTools = toolsOf(pm)
-    const given = await giveTo(pmTools, workerProfile, text)
+    const given = await giveWorkWithTitleAsBrief(pmTools, workerProfile, text)
     await cardOn(given.agent)
     return { pm, worker: given.agent, pmTools, siblings, task: given.piece, label: given.label }
   }
@@ -519,7 +491,12 @@ describe('D-025 · §3-§6 · a refused reply through the real host', () => {
 
     // The paired positive, same caller and same call shape: the worker now holds nothing open, a
     // new piece reaches the same worker, and a reply that names it lands.
-    const next = await giveTo(pmTools, siblings[0] as string, 'the next one')
+    const next = await giveWorkWithTitleAsBrief(
+      pmTools,
+      siblings[0] as string,
+      'the next one',
+      worker,
+    )
     expect(next.agent).toBe(worker)
     expect(next.piece).not.toBe(task)
     const landed = await reply(worker, { piece: next.piece, outcome: 'done', summary: 'the next' })
@@ -548,7 +525,12 @@ describe('D-025 · §3-§6 · a refused reply through the real host', () => {
     expect(JSON.stringify(refused)).not.toContain('giver')
 
     // The paired positive: a piece given after the take-back is answered by the same worker.
-    const next = await giveTo(pmTools, siblings[0] as string, 'the one after')
+    const next = await giveWorkWithTitleAsBrief(
+      pmTools,
+      siblings[0] as string,
+      'the one after',
+      worker,
+    )
     expect(next.agent).toBe(worker)
     expect(
       (await reply(worker, { piece: next.piece, outcome: 'done', summary: 'the one after' }))
@@ -587,15 +569,12 @@ describe('D-025 · §3-§6 · a refused reply through the real host', () => {
 
     // A second give is HELD behind the running turn's card. Called directly so the raw result is
     // read: a held give carries no message property.
-    const held = await callOn(pmTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: siblings[0] as string,
-      title: 'the held one',
-      brief: 'the held one',
-    })
-    expect(held.outcome, JSON.stringify(held)).toBe('ok')
-    expect(held.agent).toBe(worker)
-    expect(held).not.toHaveProperty('message')
+    const held = await callOn(
+      pmTools,
+      'give_work',
+      addressedGive(worker, siblings[0] as string, 'the held one', 'the held one'),
+    )
+    expectHeldGiveWithoutMessage(held, worker)
     const heldTask = held.piece as string
     const heldLabel = held.label as string
     const heldRow = [...ledger(worker)]
@@ -646,7 +625,12 @@ describe('D-025 · §3-§6 · a refused reply through the real host', () => {
     // The paired positive: §4's explicit take-back of an OPEN piece says "taken back by <name>" in
     // the same words, so the absence above is the row's and not the sentence's. And a live sibling
     // given after the cancel is answered by the same worker.
-    const alive = await giveTo(pmTools, siblings[0] as string, 'the live one')
+    const alive = await giveWorkWithTitleAsBrief(
+      pmTools,
+      siblings[0] as string,
+      'the live one',
+      worker,
+    )
     expect(alive.agent).toBe(worker)
     expect(alive.piece).not.toBe(heldTask)
     expect(

@@ -1,3 +1,4 @@
+import { expectRecordedCannotRun, expectTaskKept, logKeepsFailure } from './lib/recorded-send'
 import { neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -17,11 +18,10 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import { agentToolsFor, refuseTool, type ToolName } from '../src/main/runtime/agent-tools'
+import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { SessionUnavailable, unavailableOf } from '../src/main/runtime/session-unavailable'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import { permanenceInWords, theLabelWasUsedUp } from '../src/main/runtime/agent-tool-answer-words'
 
 /**
  * # 🔴 657 · a launch that did not start (`650` F2)
@@ -160,6 +160,8 @@ describe('657 · a launch that did not start', () => {
   const A_GIVE = {
     definition_of_done: 'The requested result and its checks are recorded.',
     profile: 'worker',
+    to: 'new',
+    conversation_title: 'A first piece',
     title: 'A first piece',
     brief: 'x',
   }
@@ -184,127 +186,87 @@ describe('657 · a launch that did not start', () => {
     throw new Error(`timed out waiting for ${what}`)
   }
 
-  it('§1 a provider that did not answer in time is ANSWERED, retryably, and the same call then starts', async () => {
+  it('keeps a task through a launch timeout and starts it later at the same address', async () => {
     host = buildHost(40)
     const call = await aParentThatMaySpawn()
     holdTheNextLaunch()
 
-    // 🔴 **It answers — RED before `657`, where this call REJECTED**: the throw reached the model as
-    // a broken tool. ⚑ This is the assertion a pass-through in its place would fail.
     const answered = await call('give_work', A_GIVE)
-    expect(payload(answered)).toMatchObject({
-      outcome: 'refused',
-      rail: 'agent-took-too-long-to-start',
-      permanence: 'while-this-holds',
-      retryable: true,
-      remedy: 'make-the-same-call-when-this-settles',
-      detail: { profile: 'worker', because: 'took-too-long' },
-    })
-    expect(payload(answered).reason).toBe(refuseTool('agent-took-too-long-to-start').reason)
-    expect(payload(answered).reason).toContain('Nobody has to act')
-    // A person's row shows the rail and its whole reason; the answer then adds only a used-up
-    // label, when there is one, and the permanence.
-    const kept = `refused (agent-took-too-long-to-start): ${String(payload(answered).reason)}`
-    expect(kept.length).toBeLessThanOrEqual(200)
-    const unused = payload(answered).label_not_used
-    const tail = [
-      ...(typeof unused === 'string' ? [theLabelWasUsedUp(unused)] : []),
-      permanenceInWords('agent-took-too-long-to-start', 'while-this-holds'),
-    ].join(' ')
-    expect(answered.text).toBe(`${kept} ${tail}\n[Ada](brocrew://agent/aid%3Aworker)`)
-    // The ledger keeps all the final words after the rail, including the unused label.
-    const refusedRow = store
-      .events(giver)
-      .map((one) => one.event)
-      .filter((one) => one.type === 'tool_refused')
-      .at(-1)
-    const keptText = refusedRow?.type === 'tool_refused' ? refusedRow.told?.text : undefined
-    expect(keptText).toBe(`${String(payload(answered).reason)} ${tail}`)
-    // ⛔ **D-016 · R4 — no piece was written**: the number the refused give took is burned.
-    expect(piecesUnderTheRoot()).toEqual([])
+    const kept = expectRecordedCannotRun(
+      payload(answered),
+      'task',
+      'no further launch progress',
+      false,
+    )
+    expectTaskKept(store, kept)
+    expect(piecesUnderTheRoot()).toEqual([kept.recorded.taskLabel])
+    expect(answered.text).toContain('The work is kept.')
 
-    // ⚠️ **The control, one fact over**: the same call with nothing holding the launch starts —
-    // under the NEXT number, because a number is never handed out twice.
     gate = null
-    expect(payload(await call('give_work', A_GIVE))).toMatchObject({
+    const retry = payload(
+      await call('message_agent', {
+        agent: kept.recipient.address,
+        text: 'Continue with the saved task.',
+      }),
+    )
+    expect(retry).toMatchObject({
       outcome: 'ok',
-      label: 'W2.2',
-      started: true,
+      receipt: { recipient: { id: kept.recipient.id } },
     })
-    expect(piecesUnderTheRoot()).toEqual(['W2.2'])
+    expect(store.recordedOne(kept.recipient.id)?.providerSessionId).toEqual(expect.any(String))
+    expect(piecesUnderTheRoot()).toEqual([kept.recorded.taskLabel])
   })
 
-  it('§2 a launch the app stopped before it started is answered as not started, a decision and not a retry', async () => {
+  it('keeps its task when the app shuts down during the first launch', async () => {
     const call = await aParentThatMaySpawn()
     const held = holdTheNextLaunch()
     const spawning = call('give_work', A_GIVE)
     await until(() => held.held > 0, 'the launch to reach its gate')
-    // ⚑ **D-017 · R11 — a start on its way in is `active`** (there is no *starting* state), and it
-    // is the only conversation here doing anything.
     const starting = (
       payload(await call('list_agents', {})) as { agents: { agent: string; state: string }[] }
     ).agents.find((one) => one.state === 'active')
     expect(starting).toBeDefined()
-    // ⚑ **D-017 — nothing ends a conversation** (`end_agent` is gone, and a person's Close of a
-    // child nobody holds is refused until it is taken over): what stops a spawn in flight is the
-    // app itself — a quit.
     await host.closeAll()
 
-    expect(payload(await spawning)).toMatchObject({
-      outcome: 'refused',
-      rail: 'agent-did-not-start',
-      permanence: 'until-a-person-changes-it',
-      retryable: false,
-      remedy: null,
-      detail: { profile: 'worker', because: 'shutting-down' },
-    })
-    // ⚠️ **True on this arm**: a stop nobody had to fix — and the sentence does not tell the parent
-    // a person has to change something before it may call again.
-    const said = String(payload(await spawning).reason)
-    expect(said).toContain('somebody stopped it first')
-    expect(said).not.toContain('has to change that first')
-    // ⛔ **D-016 · R4** — and nothing was given.
-    expect(piecesUnderTheRoot()).toEqual([])
+    const kept = expectRecordedCannotRun(payload(await spawning), 'task', 'shutting down', false)
+    expect(kept.recipient.id).toBe(starting?.agent)
+    expectTaskKept(store, kept)
+    expect(piecesUnderTheRoot()).toEqual([kept.recorded.taskLabel])
+    expect(store.recordedOne(kept.recipient.id)?.providerSessionId).toBeNull()
   })
 
-  it('§3 a sign-in the machine does not have is answered with a closed reason and none of the host text', async () => {
+  it('states an unusable sign-in as a person’s action and keeps the actual error in the log', async () => {
     const call = await aParentThatMaySpawn()
-    homeFails = new AuthUnavailableError(
+    const failure = new AuthUnavailableError(
       'claude',
       'the machine Claude login at /Users/somebody/.claude is not healthy',
     )
+    homeFails = failure
     const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const answered = payload(await call('give_work', A_GIVE))
-    expect(answered).toMatchObject({
-      outcome: 'refused',
-      rail: 'agent-did-not-start',
-      detail: { profile: 'worker', because: 'its-sign-in-is-unusable', provider: 'claude' },
-    })
-    // ⛔ **No path and no instruction reach the model** — the detail carries a reason, not the text.
+    const answered = await call('give_work', A_GIVE)
+    const kept = expectRecordedCannotRun(
+      payload(answered),
+      'task',
+      'its Claude sign-in could not be used',
+      true,
+    )
+    expectTaskKept(store, kept)
     expect(JSON.stringify(answered)).not.toContain('/Users/somebody')
-    // ⚑ What failed and what fixes it, and never that somebody stopped it.
-    expect(String(answered.reason)).toContain('its Claude sign-in could not be used')
-    expect(String(answered.reason)).toContain('sign in to Claude Code on this computer again')
-    expect(String(answered.reason)).not.toContain('somebody stopped it first')
-    expect(answered.retryable).toBe(false)
-    expect(piecesUnderTheRoot()).toEqual([])
-    // 🔴 **And the text is not LOST**: it reached the transcript as *"spawn_agent failed: …"* before
-    // `657`, and the host's log is where the precise diagnostic lives now.
-    expect(
-      warned.mock.calls.some(
-        (args) =>
-          String(args[0]).startsWith('give_work: ') &&
-          String(args[0]).includes('/Users/somebody/.claude'),
-      ),
-    ).toBe(true)
+    expect(answered.text).toContain('Ask the person to fix it, with request_action.')
+    expect(piecesUnderTheRoot()).toEqual([kept.recorded.taskLabel])
+    expect(logKeepsFailure(warned.mock.calls, failure)).toBe(true)
   })
 
-  it('§4 a failure this tool does not recognise still propagates — it is not dressed as a word', async () => {
+  it('keeps a task when an unclassified start error stays only in the log', async () => {
     const call = await aParentThatMaySpawn()
-    homeFails = new Error('the disk said no')
-    // ⛔ `375`'s rule: classify one type and let the rest through. A catch-all here would be the
-    // fold `650` spent a dispatch undoing.
-    await expect(call('give_work', A_GIVE)).rejects.toThrow('the disk said no')
+    const failure = new Error('the disk said no')
+    homeFails = failure
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const answered = await call('give_work', A_GIVE)
+    const kept = expectRecordedCannotRun(payload(answered), 'task', 'only in its log', false)
+    expectTaskKept(store, kept)
+    expect(JSON.stringify(answered)).not.toContain(failure.message)
+    expect(logKeepsFailure(warned.mock.calls, failure)).toBe(true)
   })
 
   it('§5 the host keeps the class as `cause`, and the sentence a person reads is unchanged', async () => {

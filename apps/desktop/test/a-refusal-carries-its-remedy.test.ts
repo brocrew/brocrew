@@ -117,8 +117,6 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
  *    stall, and its word went with it. §4 below builds `summary-too-long` for real instead.
  *  - `summary-too-long` — `a-reply-and-its-absence.test.ts` §3, one unit under the bound.
  *  - `that-answer-cannot-be-sent` — `a-question-finds-a-person.test.ts` §4, with the offered label.
- *  - `answer-too-long` — `the-rest-of-r18-and-the-answer-with-no-bound.test.ts` §2, one unit over the
- *    bound, then the same question answered at it.
  *  - `that-conversation-has-not-started` — `the-interruption-that-looks-like-a-fault.test.ts` §5, at
  *    `admitInterrupt`; ⚑ **and since `650` through `message_agent` as well**, in
  *    `a-refusal-that-clears-on-its-own.test.ts` §1–§3, where a held launch is refused and the same
@@ -367,6 +365,8 @@ describe('425 · a refusal carries its remedy', () => {
     const giver = await personOpens()
     const given = await host.giveWork(
       {
+        to: 'new',
+        conversation_title: 'write the long form',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'write the long form',
@@ -421,9 +421,6 @@ describe('425 · a refusal carries its remedy', () => {
       expect(carrying).toEqual(
         [
           'INTERRUPT_RAILS · that-conversation-has-not-started',
-          // ⚑ **The sixteenth**: an answer over the bound is refused, the question still open, and the
-          // same call with shorter words lands.
-          'QUESTION_RAILS · answer-too-long',
           'QUESTION_RAILS · move-offer-is-held',
           'QUESTION_RAILS · that-answer-cannot-be-sent',
           'REPLY_RAILS · summary-too-long',
@@ -460,7 +457,6 @@ describe('425 · a refusal carries its remedy', () => {
           // ⚑ **The nineteenth**: a give to a service whose waits reach too far to check; the same
           // give once some of that work has ended.
           'SPAWN_RAILS · its-waits-cannot-all-be-checked',
-          'SPAWN_RAILS · no-free-worker-at-capacity',
           // ⚑ **The twentieth**: a stop of a service on another caller's piece; the same stop once
           // that piece has ended.
           'INTERRUPT_RAILS · that-service-is-on-another-callers-piece',
@@ -477,7 +473,7 @@ describe('425 · a refusal carries its remedy', () => {
       )
       // ⚑ One fewer — `its-work-has-stalled` went, so a give is no longer refused over a stall;
       // services added two. Four more: a piece that cannot end with the copies of its questions.
-      expect(carrying).toHaveLength(31)
+      expect(carrying).toHaveLength(29)
     })
 
     it('🔴 the named rails with no remedy are independently not retryable', () => {
@@ -492,8 +488,12 @@ describe('425 · a refusal carries its remedy', () => {
       // deciding, which is `a-person-is-being-asked`'s row exactly. ⚑ **D-016** — that word and
       // `no-person-to-ask` went with proposals, and are gone from the roster below.
       const NAMED_WITHOUT_REMEDIES: readonly (readonly [string, string])[] = [
-        ['SPAWN_RAILS', 'worker-binding-is-unknown'],
-        ['SPAWN_RAILS', 'parallel-not-for-a-service'],
+        ['SPAWN_RAILS', 'name-the-conversation'],
+        ['SPAWN_RAILS', 'no-conversation-by-that-address'],
+        ['SPAWN_RAILS', 'not-that-agents-conversation'],
+        ['SPAWN_RAILS', 'its-provider-is-fixed'],
+        ['SPAWN_RAILS', 'conversation-title-needed'],
+        ['SPAWN_RAILS', 'a-service-has-one-conversation'],
         ['INTERRUPT_RAILS', 'a-person-is-being-asked'],
         // ⚑ **`496`'s rail, and the biconditional decided it before the table was written.** ⛔ The
         // PO named a real act — *withdraw the work, or wait for the person* — and neither half makes
@@ -562,7 +562,6 @@ describe('425 · a refusal carries its remedy', () => {
       // ⚑ D-010 two fewer — both mailbox words, with the one-held-message rule.
       // ⚑ D-016 one fewer and two more — the open-work rail out; the stall rule and a start that did
       // not happen in.
-      // ⚑ One more — an answer over the bound, refused with the question still open.
       // ⚑ One more — a restore while an archive or a delete is still under way.
       // ⚑ Two more — a give to a service that waits on its caller, and one whose waits can't all be
       // checked.
@@ -572,7 +571,7 @@ describe('425 · a refusal carries its remedy', () => {
       // ⚑ Four more — a piece that cannot end with the copies of its questions, two words at two
       // vocabularies.
       const retryable = everyRail().filter((one) => one.permanence === 'while-this-holds')
-      expect(retryable).toHaveLength(31)
+      expect(retryable).toHaveLength(29)
       expect(retryable.filter((one) => one.remedy === null)).toEqual([])
     })
 
@@ -670,13 +669,6 @@ describe('425 · a refusal carries its remedy', () => {
       // was tempting and still wrong**: *pass it to a person instead* is genuinely open to this
       // caller, and its SENTENCE says so — but a `RefusalRemedy` means *the thing you were trying
       // to do is waiting on something*, and naming the other end is a different call.
-      // ⚑ **Sixty-eight since `628` split `that-is-work-you-hold` off** (`HO-095` §3.2). ⛔ It is
-      // `permanent` — a `message_agent` naming work the caller HOLDS can never become the right
-      // call — so the biconditional decided the `null` before the table was written. ⚠️ **And it
-      // is the third row on this list where a remedy was tempting and still wrong**: *ask with
-      // `ask_question` instead* is genuinely open to this caller, and its SENTENCE names it — but
-      // a `RefusalRemedy` means *the thing you were trying to do is waiting on something*, and
-      // asking is a different call that keeps the work rather than sending it.
       // ⚑ **Sixty-nine since `657` answered a failed launch** — `agent-did-not-start` is a person's
       // to change (a Close, a sign-in, a missing binary), so the biconditional decided its `null`.
       // ⚑ **Seventy since `661` gave the answer doors `the-conversation-that-asked-has-ended`**
@@ -755,17 +747,15 @@ describe('425 · a refusal carries its remedy', () => {
       // ⚑ **+1**, `until-a-person-changes-it` and so `null`: `services-are-off-so-none-is-made`, a
       // service asked for while services are off — its sentence names the person who turns them on.
       // R03 removes the permanent ancestry-only read refusal; a known conversation is readable.
-      // Two provider choices cannot be cleared by retrying: a fixed service and a full pool.
-      // No per-agent grant rail is left; a service's conversation has its own word at the message door.
-      expect(quiet).toHaveLength(79)
-      for (const [rail, permanence] of [
-        ['service-provider-is-fixed', 'permanent'],
-        ['no-room-for-provider-conversation', 'until-a-person-changes-it'],
-      ]) {
-        expect(quiet).toContainEqual(
-          expect.objectContaining({ vocabulary: 'SPAWN_RAILS', rail, permanence, remedy: null }),
-        )
-      }
+      expect(quiet).toHaveLength(77)
+      expect(quiet).toContainEqual(
+        expect.objectContaining({
+          vocabulary: 'SPAWN_RAILS',
+          rail: 'service-provider-is-fixed',
+          permanence: 'permanent',
+          remedy: null,
+        }),
+      )
       for (const rail of ['move-offer-not-available', 'move-offer-needs-a-person']) {
         expect(quiet).toContainEqual(
           expect.objectContaining({ vocabulary: 'QUESTION_RAILS', rail, remedy: null }),
@@ -807,9 +797,11 @@ describe('425 · a refusal carries its remedy', () => {
         if (said === null) continue
         by.set(said, [...(by.get(said) ?? []), `${one.vocabulary} · ${one.rail}`].sort())
       }
-      // ⛔ **Every member is REACHED** — a word no rail uses is a word nothing measures
-      // (`a-closed-vocabulary-guards-what-a-member-says`).
-      expect([...by.keys()].sort()).toEqual([...REFUSAL_REMEDIES].sort())
+      const historical = 'shorten-the-answer-or-put-the-long-form-in-a-file'
+      expect(REFUSAL_REMEDIES).toContain(historical)
+      expect([...by.keys()].sort()).toEqual(
+        REFUSAL_REMEDIES.filter((one) => one !== historical).sort(),
+      )
       expect(by.get('change-what-you-sent-and-call-again')).toEqual([
         'TOOL_REFUSALS · theme-exists',
         'TOOL_REFUSALS · theme-invalid',
@@ -858,7 +850,6 @@ describe('425 · a refusal carries its remedy', () => {
           'SPAWN_RAILS · it-would-wait-on-itself',
           // A give to a service whose waits can't all be checked: the same give, once some has ended.
           'SPAWN_RAILS · its-waits-cannot-all-be-checked',
-          'SPAWN_RAILS · no-free-worker-at-capacity',
           // A stop of a service on another caller's piece: the same stop, once that piece has ended.
           'INTERRUPT_RAILS · that-service-is-on-another-callers-piece',
           // A message about a piece queued at a service: the same message, once it is handed over.
@@ -882,10 +873,6 @@ describe('425 · a refusal carries its remedy', () => {
       expect(REFUSAL_REMEDIES as readonly string[]).not.toContain(
         'withdraw-the-work-or-ask-about-it',
       )
-      // ⚑ An answer's act is a summary's, said of an answer: it carries no file, so a path goes in it.
-      expect(by.get('shorten-the-answer-or-put-the-long-form-in-a-file')).toEqual([
-        'QUESTION_RAILS · answer-too-long',
-      ])
       expect(by.get('offer-a-workspace-markdown-file-that-reads')).toEqual([
         'RESOURCE_RAILS · resource-empty',
         'RESOURCE_RAILS · resource-not-text',
@@ -981,7 +968,6 @@ describe('425 · a refusal carries its remedy', () => {
       // unhappened start's retryable words beside the open-work rail that went.
       // ⚑ **D-016, commit 5 (the giver's verbs)** — +2, the same two words as `quiet` above.
       // ⚑ **D-016, commit 6 (a request the person makes)** — +1, the same word as `quiet` above.
-      // ⚑ **Eighty-one** — `answer-too-long`, an answer over the bound.
       // ⚑ **Eighty-three** — F009's `no-agent-by-that-name`, the same word as `quiet` above.
       // ⚑ **Eighty-four** — `its-provider-is-not-chosen`, the same word as `quiet` above.
       // ⚑ **Eighty-seven** — `restore_agent`'s three: the two `quiet` gained, and
@@ -999,7 +985,7 @@ describe('425 · a refusal carries its remedy', () => {
       // The walk also includes the fixed service provider and a pool with no matching provider.
       // R03 removes the ancestry-only read refusal from the canonical vocabulary.
       // No per-agent grant rail is left; a service's conversation has its own word at the message door.
-      expect(walked).toHaveLength(110)
+      expect(walked).toHaveLength(106)
       expect(everyRail().some((one) => one.rail === 'not-a-conversation-below-you')).toBe(false)
       expect(walked).toEqual(everyRail().map((one) => `${one.vocabulary} · ${one.rail}`))
     })
@@ -1042,6 +1028,8 @@ describe('425 · a refusal carries its remedy', () => {
       const call = callerOf(host, pm)
       const secret = 'Northwind: do not write this into a ledger'
       await call('give_work', {
+        to: 'new',
+        conversation_title: secret,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'ghost',
         title: secret,
@@ -1135,6 +1123,8 @@ describe('425 · a refusal carries its remedy', () => {
       // rail refuses nothing now.
       const pm = await personOpens('pm', 'auto')
       const first = await callerOf(host, pm)('give_work', {
+        to: 'new',
+        conversation_title: 'work',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'work',
@@ -1147,15 +1137,20 @@ describe('425 · a refusal carries its remedy', () => {
         'the brief’s turn to end',
       )
 
-      const refused = await callerOf(host, child)('reply_to_parent', {
-        piece: first.label,
-        outcome: 'done',
-        summary: 'x'.repeat(REPLY_SUMMARY_LIMIT + 1),
-      })
-      expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
-      expect(refused.rail).toBe('summary-too-long')
-      // **The model**, which already had the sentence and now has the word beside it.
-      expect(refused.remedy).toBe('shorten-the-summary-and-attach-the-long-form')
+      const historical = refuseReply('summary-too-long', { was: REPLY_SUMMARY_LIMIT + 1 })
+      store.append(
+        child,
+        store.nextOrdinal(child),
+        {
+          type: 'tool_refused',
+          tool: 'reply_to_parent',
+          rail: historical.rail,
+          permanence: historical.permanence,
+          retryable: historical.retryable,
+          remedy: historical.remedy,
+        },
+        tick(),
+      )
 
       // **The ledger**, which had neither.
       const row = theRefusalIn(child)
@@ -1185,6 +1180,8 @@ describe('425 · a refusal carries its remedy', () => {
       // ⛔ **Standing rule 3 over the SAME reader** — a call admitted writes no row and carries no
       // remedy.
       const sent = await call('give_work', {
+        to: 'new',
+        conversation_title: 'work',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'work',

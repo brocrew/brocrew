@@ -313,6 +313,8 @@ describe('653 · a woken conversation drawn as ended', () => {
     const pmTools = toolsets.at(-1)
     if (pmTools === undefined) throw new Error('no toolset')
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'The work this dispatch is about',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'The work this dispatch is about',

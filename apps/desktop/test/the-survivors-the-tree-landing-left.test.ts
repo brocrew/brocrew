@@ -1,3 +1,4 @@
+import { addressedGive, newConversationGive, readSuccessfulGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import { recordHistoricalReplacement } from './lib/historical-replacement'
 import { TASK_STALL_CAUSES } from '../src/shared/task-contracts'
@@ -121,8 +122,6 @@ describe('the survivors the tree landing left', () => {
         // ⚑ The acts it does name are there, in the tools' own words.
         expect(said).toContain('withdraw_task')
         expect(said).toContain('message_agent')
-        // ⚑ The kind that continues the work, so it is not re-sent as new work.
-        expect(said).toContain('(kind follow-up)')
         for (const label of labels) expect(said).toContain(label)
         expect(said.endsWith('back with withdraw_task.')).toBe(true)
         // ⛔ …and it promises nothing about waiting.
@@ -326,22 +325,20 @@ describe('the survivors the tree landing left', () => {
         configurable: true,
       })
 
-      const first = await callOn(pm, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker-a',
-        title: 'The first piece',
-        brief: 'do the first piece',
-      })
+      const first = await callOn(
+        pm,
+        'give_work',
+        newConversationGive('worker-a', 'The first piece', 'do the first piece'),
+      )
       expect(first.outcome, JSON.stringify(first)).toBe('ok')
       // ⚑ **The premise**: the first notice is AT the door, so the second has something to queue behind.
       await waitFor(() => reached === 1, 'the first notice at the parent’s door')
 
-      const second = await callOn(pm, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker-b',
-        title: 'The second piece',
-        brief: 'do the second piece',
-      })
+      const second = await callOn(
+        pm,
+        'give_work',
+        newConversationGive('worker-b', 'The second piece', 'do the second piece'),
+      )
       expect(second.outcome, JSON.stringify(second)).toBe('ok')
       const firstPiece = first.piece as string
       const secondPiece = second.piece as string
@@ -375,13 +372,9 @@ describe('the survivors the tree landing left', () => {
     it("1016:M9 · a replaced giver is told of its predecessor's stalled piece when it gives the worker more", async () => {
       await host.close(await personOpens('worker', 'auto'), window)
       const pm = await personOpens('pm', 'auto')
-      const given = await callOn(pm, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'The schema',
-        brief: 'migrate the schema',
-      })
-      expect(given.outcome, JSON.stringify(given)).toBe('ok')
+      const given = await readSuccessfulGive(() =>
+        callOn(pm, 'give_work', newConversationGive('worker', 'The schema', 'migrate the schema')),
+      )
       const worker = given.agent as string
       const label = given.label as string
       // ⚑ The worker's turn ends with the piece open: nothing drives it.
@@ -408,12 +401,11 @@ describe('the survivors the tree landing left', () => {
       expect(next).not.toBe(piece?.giver)
 
       const said = (): string[] => read(worker).filter((text) => text.includes('and another piece'))
-      const named = await callOn(next, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'And another',
-        brief: 'and another piece',
-      })
+      const named = await callOn(
+        next,
+        'give_work',
+        addressedGive(label, 'worker', 'And another', 'and another piece'),
+      )
       // ⚑ Admitted, and the predecessor's stalled piece is named to its replacement.
       expect(named.outcome, JSON.stringify(named)).toBe('ok')
       expect(named.agent).toBe(worker)
@@ -424,12 +416,11 @@ describe('the survivors the tree landing left', () => {
       // and the next give names it no more.
       const back = await callOn(next, 'withdraw_task', { piece: label })
       expect(back.outcome, JSON.stringify(back)).toBe('ok')
-      const admitted = await callOn(next, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'And a third',
-        brief: 'a third piece',
-      })
+      const admitted = await callOn(
+        next,
+        'give_work',
+        addressedGive(label, 'worker', 'And a third', 'a third piece'),
+      )
       expect(admitted.outcome, JSON.stringify(admitted)).toBe('ok')
       expect((admitted.stalled as string[] | undefined) ?? []).not.toContain(label)
     })

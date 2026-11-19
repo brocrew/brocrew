@@ -169,6 +169,8 @@ describe('433 §A · the provider a person can change', () => {
 
       expect(providerColumn(PROJECT_MANAGER_PROFILE_ID)).toBeNull()
       const inherited = (await callOn(brobotTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'the first child',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: PROJECT_MANAGER_PROFILE_ID,
         title: 'the first child',
@@ -184,6 +186,8 @@ describe('433 §A · the provider a person can change', () => {
       expect(providerColumn(PROJECT_MANAGER_PROFILE_ID)).toBe('codex')
 
       const chosen = (await callOn(secondParentTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'the second child',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: PROJECT_MANAGER_PROFILE_ID,
         title: 'the second child',
@@ -213,6 +217,8 @@ describe('433 §A · the provider a person can change', () => {
       expect(providerColumn(PROJECT_MANAGER_PROFILE_ID)).toBeNull()
 
       const child = (await callOn(brobotTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'after clearing',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: PROJECT_MANAGER_PROFILE_ID,
         title: 'after clearing',
