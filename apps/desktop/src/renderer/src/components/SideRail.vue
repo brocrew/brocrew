@@ -1335,14 +1335,13 @@ const platform = platformHere()
                       <span :data-cy="`rail-state-word-${row.sessionId}`">
                         {{ row.worker ? workerState(row.word, row.named) : row.word }}
                       </span></template
-                    ><template v-if="row.elsewhere"> · {{ OPEN_IN_ANOTHER_WINDOW }}</template
-                    ><template v-if="row.place"> · {{ row.place }}</template
                     ><template v-if="row.activityAt !== undefined">
                       ·
                       <time :title="fullTime(row.activityAt)">{{
                         agoWords(row.activityAt, railMinute)
-                      }}</time>
-                    </template></small
+                      }}</time> </template
+                    ><template v-if="row.elsewhere"> · {{ OPEN_IN_ANOTHER_WINDOW }}</template
+                    ><template v-if="row.place"> · {{ row.place }}</template></small
                   >
                   <small
                     v-if="identities.get(row.sessionId)"
@@ -1351,7 +1350,7 @@ const platform = platformHere()
                         .filter(Boolean)
                         .join(' · ')
                     "
-                  >
+                    >Conversation
                     <span :data-cy="`rail-address-${row.sessionId}`">{{
                       identities.get(row.sessionId)?.address
                     }}</span>
