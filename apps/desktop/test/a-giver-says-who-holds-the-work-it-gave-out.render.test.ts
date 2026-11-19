@@ -67,6 +67,8 @@ import {
   syntheticProviderHome,
   neutralHostDeps,
   fixtureProviderConfig,
+  ProviderDouble,
+  type ResumeGate,
 } from './lib/host-fixture'
 
 /**
@@ -588,34 +590,7 @@ describe('§7 · the screen hands the names to the pane and to the palette’s w
  * lets the held ones go — which the teardown calls too, so a case that failed with a start still
  * held cannot leave the host waiting for it.
  */
-interface StartGate {
-  hold: Promise<void> | null
-  release: () => void
-  entered: number
-}
-
-class ProviderDouble extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handles: FakeSessionHandle[],
-    sessions: FakeProviderSessions,
-    private readonly startGate: StartGate,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): Promise<FakeSessionHandle> {
-    const handle = await super.start(options)
-    this.handles.push(handle)
-    return handle
-  }
-  override async resume(ref: SessionRef, options: ResumeOptions): Promise<FakeSessionHandle> {
-    this.startGate.entered += 1
-    if (this.startGate.hold !== null) await this.startGate.hold
-    const handle = await super.resume(ref, options)
-    this.handles.push(handle)
-    return handle
-  }
-}
+type StartGate = ResumeGate & { release: () => void }
 
 /** The conversation a person is behind: the sink a window hands the host. */
 /** What a tool answered: the payload a model parses and the sentence it reads. */

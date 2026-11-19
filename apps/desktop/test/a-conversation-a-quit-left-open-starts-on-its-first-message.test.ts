@@ -1,4 +1,4 @@
-import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import { fixtureProviderConfig, neutralHostDeps, waitFor } from './lib/host-fixture'
 import type { LedgerWalk } from '../src/shared/question-contracts'
 import type { HandedPath } from '../src/shared/attachment-contracts'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
@@ -32,7 +32,7 @@ import type {
   RuntimeEventMessage,
   SessionLivenessMessage,
 } from '../src/shared/runtime-ipc'
-import { everythingOverTheWire } from './lib/the-wire'
+import { fixtureRuntimeBridge } from './lib/runtime-command-bridge'
 
 /**
  * # 🔴 701 · a conversation the QUIT left open starts on its first message — ⚑ D-017b: EVERY one does
@@ -138,23 +138,7 @@ class AWindow {
       this.commands.push(command.kind)
       return (await executeRuntimeCommand(this.host, this.sink, command)) as T
     }
-    const bridge: Partial<RuntimeBridge> = {
-      createSession: (input) => run({ kind: 'createSession', ...input }),
-      resume: (input) => run({ kind: 'resume', ...input }),
-      claim: (input) => run({ kind: 'claim', ...input }),
-      // ⚑ **737 · the first message's one door** (`735` §3) — ⚑ D-017b: every message from a
-      // recorded view.
-      startAndSend: (input) => run({ kind: 'startAndSend', ...input }),
-      cancelLaunch: (input) => run({ kind: 'cancelLaunch', ...input }),
-      attachOpen: () => run({ kind: 'attachOpen' }),
-      send: (input) => run({ kind: 'send', ...input }),
-      sendInterrupting: (input) => run({ kind: 'sendInterrupting', ...input }),
-      queueMessage: (input) => run({ kind: 'queueMessage', ...input }),
-      close: (input) => run({ kind: 'close', ...input }),
-      // ⚑ **D-017b · the door every press that opens a conversation goes through** (`store.look`).
-      look: (input) => run({ kind: 'look', ...input }),
-      listResumable: () => run({ kind: 'listResumable' }),
-      listUnresumable: () => run({ kind: 'listUnresumable' }),
+    return fixtureRuntimeBridge(run, {
       onEvent: (fn) => {
         this.events.push(fn)
         return () => void this.events.splice(this.events.indexOf(fn), 1)
@@ -167,18 +151,10 @@ class AWindow {
         this.changed.push(fn)
         return () => void this.changed.splice(this.changed.indexOf(fn), 1)
       },
-    }
-    return everythingOverTheWire(bridge) as RuntimeBridge
+    })
   }
 }
 
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
 
 /** ⚑ Let every timer a launch armed fire before a count is taken (`692`'s `letItSettle`). */
 const letItSettle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 60))

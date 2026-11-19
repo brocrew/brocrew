@@ -1,17 +1,16 @@
+import { personOpener } from './helpers/person-opens-session'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { seedHistoricalSuccessor } from './lib/historical-replacement'
 import { createHash } from 'node:crypto'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeProviderSessions } from '@brobot2/runtime'
 import type { FakeSessionHandle } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import type { AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
@@ -27,6 +26,8 @@ import {
   RecordingSink,
   syntheticProviderHome,
   neutralHostDeps,
+  fixtureDatabase,
+  closeHostFixture,
 } from './lib/host-fixture'
 
 /**
@@ -62,9 +63,6 @@ import {
  * ⚑ Every file is kept by ONE `update_work` call so each takes its own `tick` timestamp (resource
  * ids are random: a shared timestamp would tie-break at random).
  */
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
-
 const shaOf = (bytes: Buffer | string): string => createHash('sha256').update(bytes).digest('hex')
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -382,8 +380,7 @@ describe('D-026 · one door lists the kept files, and every door that keeps one 
   beforeEach(() => {
     userData = mkdtempSync(join(tmpdir(), 'brobot2-d026-door-'))
     root = mkdtempSync(join(tmpdir(), 'brobot2-d026-door-root-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    db = fixtureDatabase(userData)
     clock = 9_260_000
     store = createSessionStore(db, tick)
     counter = 0
@@ -397,11 +394,7 @@ describe('D-026 · one door lists the kept files, and every door that keeps one 
     host = buildHost()
   })
 
-  afterEach(async () => {
-    await host.closeAll()
-    db.close()
-    for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
-  })
+  afterEach(() => closeHostFixture(host, db, userData, root))
 
   // ───────────────────────────────────────────────────────────────────────────────────────────
   // The helpers
@@ -410,22 +403,8 @@ describe('D-026 · one door lists the kept files, and every door that keeps one 
   const events = (sessionId: string): TranscriptEvent[] =>
     store.events(sessionId).map((entry) => entry.event)
 
-  /**
-   * A conversation a person opened. ⚑ `auto` unless said: a given child's brief turn then ends and
-   * it is idle. `ask` is the forest's, whose children inherit it and park on a card instead.
-   */
-  const personOpens = async (
-    profileId: string,
-    approvalMode: 'ask' | 'auto' = 'auto',
-  ): Promise<string> => {
-    const { sessionId } = await host.createSession(
-      { provider: 'claude', profileId, approvalMode, cwd: root },
-      window,
-    )
-    return sessionId
-  }
+  const personOpens = personOpener(() => ({ host, root, window }), 'auto')
 
-  /** An identity a give can name: opened by a person, then closed. */
   const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
     await host.close(await personOpens(profileId), window)
   }

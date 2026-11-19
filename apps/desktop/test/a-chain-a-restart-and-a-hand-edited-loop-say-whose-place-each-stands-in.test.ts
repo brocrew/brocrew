@@ -4,13 +4,11 @@ import { forestOf } from './lib/forest-of-host'
 import { seedHistoricalSuccessor } from './lib/historical-replacement'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import type { AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
@@ -21,6 +19,7 @@ import {
   RecordingSink,
   syntheticProviderHome,
   neutralHostDeps,
+  fixtureDatabase,
 } from './lib/host-fixture'
 
 /**
@@ -37,9 +36,6 @@ import {
  * ⚑ The harness is `what-a-replacement-carries-and-what-it-leaves-behind.test.ts`'s, with every
  * read and tool call taking the host it runs on, since two hosts share one database here.
  */
-
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 
 type Place = Pick<ForestConversation, 'standsInFor' | 'inItsPlace'>
 
@@ -86,8 +82,7 @@ describe('D-034 — a chain, a restart and a hand-edited loop', () => {
   beforeEach(() => {
     userData = mkdtempSync(join(tmpdir(), 'brobot2-d034-chain-'))
     root = mkdtempSync(join(tmpdir(), 'brobot2-d034-chain-root-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    db = fixtureDatabase(userData)
     clock = 7_100_000
     store = createSessionStore(db, tick)
     counter = 0

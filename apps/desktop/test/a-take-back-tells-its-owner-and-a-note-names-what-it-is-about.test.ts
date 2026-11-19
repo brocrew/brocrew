@@ -30,7 +30,7 @@ import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { agentName } from '../src/shared/runtime-ipc'
 import { permanenceInWords } from '../src/main/runtime/agent-tool-answer-words'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
-import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { fixtureProviderConfig, RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * # D-016 · a take-back tells its owner, and a note names what it is about
@@ -107,13 +107,7 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built
@@ -348,6 +342,22 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     return { next, tools: agentToolsFor(host, pm) }
   }
 
+  const followHistoricalWorker = async (worker: string, pm: string, label: string) => {
+    const { next, tools } = await restartWithHistoricalWorker(worker, pm)
+    const woken = await callOn(tools, 'message_agent', {
+      agent: worker,
+      text: 'carry on',
+      kind: 'follow-up',
+      piece: label,
+    })
+    expect(woken, JSON.stringify(woken)).toMatchObject({ outcome: 'ok', went_to: next })
+    await waitFor(
+      () => wordsIn(next).some((one) => one.text.includes('carry on')),
+      'the follow-up to reach the conversation that took its place',
+    )
+    return { next, tools }
+  }
+
   it('a piece taken back from a conversation that was replaced is not told to the one that took its place', async () => {
     const { pm, worker, pmTools, label } = await aPmAndItsWorker('the piece')
 
@@ -368,21 +378,10 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     const helperWasTold = await theNoticeIn(helper)
     expect(helperWasTold).toContain(second.label)
 
-    const { next, tools } = await restartWithHistoricalWorker(worker, pm)
-    const woken = await callOn(tools, 'message_agent', {
-      agent: worker,
-      text: 'carry on',
-      kind: 'follow-up',
-      piece: label,
-    })
-    expect(woken, JSON.stringify(woken)).toMatchObject({ outcome: 'ok', went_to: next })
+    const { next, tools } = await followHistoricalWorker(worker, pm, label)
     const before = store.piecesOwnedBy(worker)[0]
     expect(before?.state).toBe('stalled')
     expect(before?.stalledBecause).toBe('could_not_be_reopened')
-    await waitFor(
-      () => wordsIn(next).some((one) => one.text.includes('carry on')),
-      'the follow-up to reach the conversation that took its place',
-    )
     expect(takeBackNoticesIn(next)).toEqual([])
 
     const back = await callWithWords(tools, 'withdraw_task', { piece: label })
@@ -669,18 +668,7 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
 
   it('⛔ a conversation standing in another’s place does not name the pieces that one held', async () => {
     const { pm, worker, piece, label } = await aPmAndItsWorker('the piece')
-    const { next, tools } = await restartWithHistoricalWorker(worker, pm)
-    const woken = await callOn(tools, 'message_agent', {
-      agent: worker,
-      text: 'carry on',
-      kind: 'follow-up',
-      piece: label,
-    })
-    expect(woken, JSON.stringify(woken)).toMatchObject({ outcome: 'ok', went_to: next })
-    await waitFor(
-      () => wordsIn(next).some((one) => one.text.includes('carry on')),
-      'the follow-up to reach the conversation that took its place',
-    )
+    const { next, tools } = await followHistoricalWorker(worker, pm, label)
     // ⛔ The piece is the replaced worker's, and stays its own: the one in its place holds none of it.
     expect(store.piecesOwnedBy(next)).toEqual([])
     const refused = await callOn(agentToolsFor(host, next), 'message_agent', {
@@ -1182,14 +1170,7 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
       expect(refused.structured.detail, spelled).toEqual({ piece: spelled })
     }
     // ⛔ A conversation standing in another's place holds none of what that one held.
-    const { next, tools } = await restartWithHistoricalWorker(worker, pm)
-    const woken = await callOn(tools, 'message_agent', {
-      agent: worker,
-      text: 'carry on',
-      kind: 'follow-up',
-      piece: label,
-    })
-    expect(woken, JSON.stringify(woken)).toMatchObject({ outcome: 'ok', went_to: next })
+    const { next, tools } = await followHistoricalWorker(worker, pm, label)
     const fromNext = await callWithWords(agentToolsFor(host, next), 'withdraw_task', {
       piece: label,
     })

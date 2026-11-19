@@ -1,4 +1,10 @@
-import { fixtureProviderConfig, RecordingSink, neutralHostDeps } from './lib/host-fixture'
+import {
+  fixtureProviderConfig,
+  RecordingSink,
+  neutralHostDeps,
+  fixtureDatabase,
+  waitFor,
+} from './lib/host-fixture'
 import { recordHistoricalReplacement } from './lib/historical-replacement'
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -12,25 +18,12 @@ import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import type { AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
-
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
-
-const waitFor = async (predicate: () => boolean, what: string): Promise<void> => {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
+import { join } from 'node:path'
 
 /**
  * A real host over a real SQLite ledger, with the runtime the group chooses, and the helpers every
@@ -65,8 +58,7 @@ const mount = (
 ): Mounted => {
   const userData = mkdtempSync(join(tmpdir(), `brobot2-${tag}-`))
   const root = mkdtempSync(join(tmpdir(), `brobot2-${tag}-root-`))
-  const db: AppDatabase = openDatabase(join(userData, 'brobot2.sqlite'))
-  applyMigrations(db, migrationsFolder)
+  const db: AppDatabase = fixtureDatabase(userData)
   let clock = clockStart
   const tick = (): number => clock++
   const store = createSessionStore(db, tick)

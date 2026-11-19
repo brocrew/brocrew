@@ -138,6 +138,32 @@ export class ProviderDouble extends FakeRuntime {
   }
 }
 
+export class ObservedProviderLaunches extends FakeRuntime {
+  constructor(
+    provider: Provider,
+    sessions: FakeProviderSessions,
+    private readonly observe: (
+      kind: 'start' | 'resume',
+      options: StartOptions | ResumeOptions,
+      handle: FakeSessionHandle,
+    ) => void,
+  ) {
+    super(provider, { sessions })
+  }
+
+  override async start(options: StartOptions): Promise<FakeSessionHandle> {
+    const handle = await super.start(options)
+    this.observe('start', options, handle)
+    return handle
+  }
+
+  override async resume(ref: SessionRef, options: ResumeOptions): Promise<FakeSessionHandle> {
+    const handle = await super.resume(ref, options)
+    this.observe('resume', options, handle)
+    return handle
+  }
+}
+
 export function fixtureFolder(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
 }

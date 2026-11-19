@@ -22,8 +22,6 @@ import {
   type NoticeAboutAJob,
 } from '../src/main/runtime/runtime-host'
 import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import { resourcesRoot } from '../src/main/resources/resources'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
   importScheduleAttemptsFile,
   MAX_ATTEMPT_CONVERSATIONS,
@@ -35,7 +33,12 @@ import {
 import { clockTime, clockTimeFrom } from '../src/shared/clock'
 import type { RuntimeEventMessage, RuntimeStatesMessage } from '../src/shared/runtime-ipc'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
-import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  RecordingSink,
+  fixtureDatabase,
+  fixtureHostPaths,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 
 /**
  * Scheduled conversations use one wake-up per newest ledger level at launch and stop.
@@ -177,8 +180,7 @@ describe('D-029 · what the ledger says a conversation scheduled', () => {
 
   beforeEach(() => {
     userData = mkdtempSync(join(tmpdir(), 'brobot2-wakeup-ledger-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    db = fixtureDatabase(userData)
     clock = 1_000
     store = createSessionStore(db, tick)
     ordinals.clear()
@@ -517,22 +519,12 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
   const buildHost = (idleStopAfterMs: number, listening = true): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      ...neutralHostDeps(() => userData),
-      resourcesRoot: () => resourcesRoot(userData),
-      createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, control, issued),
-      prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
+      ...fixtureHostPaths(() => userData),
+      createRuntime: (provider) => new ProviderDouble(provider, handles, control, issued),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       interruptWaitMs: 40,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       ...(listening
         ? {
             statesMoved: (message: RuntimeStatesMessage): void => {
@@ -558,8 +550,7 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
   beforeEach(() => {
     userData = mkdtempSync(join(tmpdir(), 'brobot2-wakeup-host-'))
     root = mkdtempSync(join(tmpdir(), 'brobot2-wakeup-host-root-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    db = fixtureDatabase(userData)
     clock = LISTED
     store = createSessionStore(db, tick)
     counter = 0
@@ -2010,65 +2001,52 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
     expect(newestLevel(f)).not.toHaveProperty('jobs.0.notStarted')
   })
 
-  it('a missing provider session ends the held wake notice and refuses a later message without replacing the conversation', async () => {
-    const [a] = await aFirstLife(async ([first]) => makes(first!, ONE_SHOT_A), 'agent-a')
-    if (a === undefined) throw new Error('a conversation was opened')
-    // The provider no longer has any session: a resume says so.
-    issued.forgetAll()
-    const idsBefore = store.recorded().map((row) => row.sessionId)
-    const handlesBefore = handles.length
-
-    // The job has passed, so a notice is held and the wake-up is due at once.
-    restartsAt(local(9, 28, 15, 0))
-    await waitFor(
-      () => ledger(a).some((event) => event.type === 'message_unqueued'),
-      "A's held words to be ended",
-    )
-    const ended = ledger(a).find((event) => event.type === 'message_unqueued')
-    if (ended?.type !== 'message_unqueued') throw new Error('no message was unqueued')
-    expect(ended.reason).toBe('abandoned')
-    expect(ended.detail).toBe(
-      'This conversation could not wake: its provider session file is missing. Nothing ran.',
-    )
-    expect(ended.text).toBe(theHeldNotice(DUE))
-    await settle()
-
-    // The wake-up never replaced it.
-    expect(store.replacements()).toEqual([])
-    expect(store.recorded().map((row) => row.sessionId)).toEqual(idsBefore)
-    expect(wakeUpsOf(host).has(a)).toBe(false)
-    expect(stateOf(host, a)).toEqual({ is: 'idle' })
-    expect(handles.length).toBe(handlesBefore)
-
-    expect(await host.startAndSend(a, 'are you there', window)).toMatchObject({
-      notSent: { refusedBy: 'the-start', running: null },
-    })
-    expect(store.replacements()).toEqual([])
-    expect(store.recorded().map((row) => row.sessionId)).toEqual(idsBefore)
-    expect(wordsIn(a).some((one) => one.text.includes('are you there'))).toBe(false)
-    expect(handles.length).toBe(handlesBefore)
-  })
-
-  it('a scheduled wake records the missing file even when it held no missed-job notice', async () => {
+  it.each([
+    ['with a notice already held', true],
+    ['with no notice held', false],
+  ] as const)('records a missing provider file on scheduled wake %s', async (_, hadNotice) => {
     const [conversation] = await aFirstLife(async ([first]) => makes(first!, ONE_SHOT_A), 'agent-a')
     if (conversation === undefined) throw new Error('no conversation was opened')
-    const handlesBefore = handles.length
     issued.forgetAll()
-    restartsAt(local(9, 28, 14, 40))
-    expect(heldNotices(conversation)).toEqual([])
-    const wake = wakeUpsOf(host).get(conversation)
-    expect(wake?.startAt).toBe(DUE - LEAD)
-
-    clock = DUE - LEAD
-    timerCall(wake?.timer ?? null).fn()
+    const ids = () => store.recorded().map((row) => row.sessionId)
+    const idsBefore = ids()
+    const handlesBefore = handles.length
     const detail =
       'This conversation could not wake: its provider session file is missing. Nothing ran.'
-    await waitFor(
-      () => ledger(conversation).some((row) => row.type === 'error' && row.message === detail),
-      'the missing session wake row',
-    )
-    expect(ledger(conversation)).toContainEqual({ type: 'error', message: detail, fatal: false })
+    restartsAt(local(9, 28, hadNotice ? 15 : 14, hadNotice ? 0 : 40))
+
+    if (hadNotice) {
+      await waitFor(
+        () => ledger(conversation).some((event) => event.type === 'message_unqueued'),
+        'the held notice to be ended',
+      )
+      expect(ledger(conversation)).toContainEqual(
+        expect.objectContaining({ type: 'message_unqueued', reason: 'abandoned', detail, text: theHeldNotice(DUE) }),
+      )
+      await settle()
+      expect(stateOf(host, conversation)).toEqual({ is: 'idle' })
+      expect(ids()).toEqual(idsBefore)
+      expect(store.replacements()).toEqual([])
+      expect(handles.length).toBe(handlesBefore)
+      expect(await host.startAndSend(conversation, 'are you there', window)).toMatchObject({
+        notSent: { refusedBy: 'the-start', running: null },
+      })
+      expect(wordsIn(conversation).some((one) => one.text.includes('are you there'))).toBe(false)
+    } else {
+      expect(heldNotices(conversation)).toEqual([])
+      const wake = wakeUpsOf(host).get(conversation)
+      expect(wake?.startAt).toBe(DUE - LEAD)
+      clock = DUE - LEAD
+      timerCall(wake?.timer ?? null).fn()
+      await waitFor(
+        () => ledger(conversation).some((row) => row.type === 'error' && row.message === detail),
+        'the missing session wake row',
+      )
+      expect(ledger(conversation)).toContainEqual({ type: 'error', message: detail, fatal: false })
+    }
+
     expect(wakeUpsOf(host).has(conversation)).toBe(false)
+    expect(ids()).toEqual(idsBefore)
     expect(store.replacements()).toEqual([])
     expect(handles.length).toBe(handlesBefore)
   })

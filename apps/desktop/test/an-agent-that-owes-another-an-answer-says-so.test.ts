@@ -7,13 +7,10 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
-import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
+import { FakeProviderSessions } from '@brobot2/runtime'
 import type {
   AgentToolset,
   FakeSessionHandle,
-  ResumeOptions,
-  SessionRef,
-  StartOptions,
 } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
@@ -34,6 +31,8 @@ import {
   syntheticProviderHome,
   neutralHostDeps,
   fixtureProviderConfig,
+  ProviderDouble,
+  type ResumeGate,
 } from './lib/host-fixture'
 
 /**
@@ -62,34 +61,7 @@ async function settle(): Promise<void> {
 }
 
 /** A start the test can hold at the provider. */
-interface StartGate {
-  hold: Promise<void> | null
-  release: () => void
-  entered: number
-}
-
-class ProviderDouble extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handles: FakeSessionHandle[],
-    sessions: FakeProviderSessions,
-    private readonly startGate: StartGate,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): Promise<FakeSessionHandle> {
-    const handle = await super.start(options)
-    this.handles.push(handle)
-    return handle
-  }
-  override async resume(ref: SessionRef, options: ResumeOptions): Promise<FakeSessionHandle> {
-    this.startGate.entered += 1
-    if (this.startGate.hold !== null) await this.startGate.hold
-    const handle = await super.resume(ref, options)
-    this.handles.push(handle)
-    return handle
-  }
-}
+type StartGate = ResumeGate & { release: () => void }
 
 /** A delay no other timer in the host uses, and no test waits out. */
 const IDLE = 7_654_321

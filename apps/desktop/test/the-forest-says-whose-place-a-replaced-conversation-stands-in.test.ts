@@ -3,13 +3,11 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { forestOf, storeForestOf } from './lib/forest-of-host'
 import { recordHistoricalReplacement, seedHistoricalSuccessor } from './lib/historical-replacement'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import type { AppDatabase } from '../src/main/db/connection'
 import {
   createSessionStore,
   type ForestedConversation,
@@ -29,6 +27,7 @@ import {
   RecordingSink,
   syntheticProviderHome,
   neutralHostDeps,
+  fixtureDatabase,
 } from './lib/host-fixture'
 
 /**
@@ -47,9 +46,6 @@ import {
  * ⚑ **Real host, real SQLite ledger, real migrations, a plain `FakeRuntime` over
  * `FakeProviderSessions`**: the harness of `what-a-replacement-carries-and-what-it-leaves-behind.test.ts`.
  */
-
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 
 /** ⚑ The forest as a window reads it: each conversation by id, and every piece. */
 interface Reading {
@@ -101,8 +97,7 @@ describe('D-034 — the forest says, for each conversation, whose place it stand
   beforeEach(() => {
     userData = mkdtempSync(join(tmpdir(), 'brobot2-d034-'))
     root = mkdtempSync(join(tmpdir(), 'brobot2-d034-root-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    db = fixtureDatabase(userData)
     clock = 7_100_000
     store = createSessionStore(db, tick)
     counter = 0

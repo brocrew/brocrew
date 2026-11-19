@@ -1,17 +1,21 @@
-import { fixtureProviderConfig, neutralHostDeps, syntheticProviderHome } from './lib/host-fixture'
+import { callOn } from './helpers/call-agent-tool'
+import {
+  fixtureProviderConfig,
+  neutralHostDeps,
+  syntheticProviderHome,
+  fixtureDatabase,
+  ObservedProviderLaunches,
+} from './lib/host-fixture'
 import { seedHistoricalSuccessor } from './lib/historical-replacement'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
+import { FakeProviderSessions } from '@brobot2/runtime'
 import type {
   AgentToolset,
   FakeSessionHandle,
-  ResumeOptions,
-  SessionRef,
-  StartOptions,
 } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
@@ -267,33 +271,6 @@ interface Launch {
   readonly handle: FakeSessionHandle
 }
 
-/** Every launch, in order, and the toolset each was handed. */
-class LaunchWatchingRuntime extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handed: AgentToolset[],
-    private readonly launches: Launch[],
-    sessions: FakeProviderSessions,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): ReturnType<FakeRuntime['start']> {
-    const handle = await super.start(options)
-    this.launches.push({ kind: 'start', handle })
-    if (options.agentTools) this.handed.push(options.agentTools)
-    return handle
-  }
-  override async resume(
-    ref: SessionRef,
-    options: ResumeOptions,
-  ): ReturnType<FakeRuntime['resume']> {
-    const handle = await super.resume(ref, options)
-    this.launches.push({ kind: 'resume', handle })
-    if (options.agentTools) this.handed.push(options.agentTools)
-    return handle
-  }
-}
-
 class Sink implements RuntimeEventSink {
   readonly aPersonIsBehindIt = true
   readonly messages: RuntimeEventMessage[] = []
@@ -327,7 +304,10 @@ describe('§3 · a launch lists the profile’s other conversations', () => {
       store,
       ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) =>
-        new LaunchWatchingRuntime(provider, handed, launches, issued),
+        new ObservedProviderLaunches(provider, issued, (kind, options, handle) => {
+          launches.push({ kind, handle })
+          if (options.agentTools) handed.push(options.agentTools)
+        }),
       prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
@@ -364,8 +344,7 @@ describe('§3 · a launch lists the profile’s other conversations', () => {
   beforeEach(() => {
     userData = mkdtempSync(join(tmpdir(), 'brobot2-d024-launch-'))
     root = mkdtempSync(join(tmpdir(), 'brobot2-d024-launch-root-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    db = fixtureDatabase(userData)
     clock = Date.UTC(2030, 0, 1)
     activityAtRead = []
     store = createSessionStore(db, tick)
@@ -386,16 +365,6 @@ describe('§3 · a launch lists the profile’s other conversations', () => {
   })
 
   // ── helpers ────────────────────────────────────────────────────────────────
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: string,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
 
   /** A person opens a conversation. `ask` by default, so a brief it is given parks on a card. */
   const personOpens = async (

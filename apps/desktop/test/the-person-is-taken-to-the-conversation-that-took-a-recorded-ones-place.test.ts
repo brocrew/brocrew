@@ -1,4 +1,4 @@
-import { fixtureProviderConfig, neutralHostDeps, syntheticProviderHome } from './lib/host-fixture'
+import { fixtureProviderConfig, neutralHostDeps, syntheticProviderHome, waitFor } from './lib/host-fixture'
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -22,7 +22,7 @@ import type {
   RuntimeEventMessage,
   SessionLivenessMessage,
 } from '../src/shared/runtime-ipc'
-import { everythingOverTheWire } from './lib/the-wire'
+import { fixtureRuntimeBridge } from './lib/runtime-command-bridge'
 import { recordHistoricalReplacement } from './lib/historical-replacement'
 
 /**
@@ -74,19 +74,7 @@ class AWindow implements RuntimeEventSink {
   bridge(): RuntimeBridge {
     const run = async <T>(command: RuntimeCommand): Promise<T> =>
       (await executeRuntimeCommand(this.host(), this, command)) as T
-    const bridge: Partial<RuntimeBridge> = {
-      createSession: (input) => run({ kind: 'createSession', ...input }),
-      resume: (input) => run({ kind: 'resume', ...input }),
-      startAndSend: (input) => run({ kind: 'startAndSend', ...input }),
-      cancelLaunch: (input) => run({ kind: 'cancelLaunch', ...input }),
-      attachOpen: () => run({ kind: 'attachOpen' }),
-      send: (input) => run({ kind: 'send', ...input }),
-      sendInterrupting: (input) => run({ kind: 'sendInterrupting', ...input }),
-      queueMessage: (input) => run({ kind: 'queueMessage', ...input }),
-      close: (input) => run({ kind: 'close', ...input }),
-      look: (input) => run({ kind: 'look', ...input }),
-      listResumable: () => run({ kind: 'listResumable' }),
-      listUnresumable: () => run({ kind: 'listUnresumable' }),
+    return fixtureRuntimeBridge(run, {
       onEvent: (fn) => {
         this.events.push(fn)
         return () => void this.events.splice(this.events.indexOf(fn), 1)
@@ -99,18 +87,10 @@ class AWindow implements RuntimeEventSink {
         this.changed.push(fn)
         return () => void this.changed.splice(this.changed.indexOf(fn), 1)
       },
-    }
-    return everythingOverTheWire(bridge) as RuntimeBridge
+    })
   }
 }
 
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
 
 describe('the person is taken to the conversation that took a recorded one’s place', () => {
   let userData: string
