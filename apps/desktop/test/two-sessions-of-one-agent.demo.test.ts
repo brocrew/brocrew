@@ -175,7 +175,11 @@ describe('two sessions of one agent', () => {
   }
 
   /** A give from parent to worker, through the real tool. */
-  const gives = async (parent: string, title = 'x', to = 'new'): Promise<Record<string, unknown>> => {
+  const gives = async (
+    parent: string,
+    title = 'x',
+    to = 'new',
+  ): Promise<Record<string, unknown>> => {
     const given = await toolsOf(parent)('give_work', {
       to,
       ...(to === 'new' ? { conversation_title: title } : {}),

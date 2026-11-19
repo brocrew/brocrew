@@ -25,7 +25,9 @@ export function sendReceipt(
   const { state } = facts
   if (state.kind === 'started') return { receipt, said: `${task} sent to ${recipient}.` }
   if (state.kind === 'queued') return { receipt, said: `${task} held for ${recipient}.` }
-  const cause = state.cause.reason.replace(/^This conversation did not start: /, '').replace(/\.$/, '')
+  const cause = state.cause.reason
+    .replace(/^This conversation did not start: /, '')
+    .replace(/\.$/, '')
   if (state.cause.code === 'provider-file-missing') {
     return {
       receipt,

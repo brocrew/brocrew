@@ -155,7 +155,8 @@ describe('a to-do for a person', () => {
     title: string,
     to: string,
   ): Promise<{ ada: string; piece: string; label: string }> => {
-    if (to === 'new') await ok(agentToolsFor(host, brobot), 'create_agent', { profile_slug: 'worker' })
+    if (to === 'new')
+      await ok(agentToolsFor(host, brobot), 'create_agent', { profile_slug: 'worker' })
     const given = await ok(agentToolsFor(host, brobot), 'give_work', {
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',

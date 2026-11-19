@@ -1,6 +1,11 @@
 import { newResourceId } from '../db/ids'
 import type { GivenInput } from '../../shared/documents'
-import { keepResource, refuseResource, sha256Hex, type ResourceRefusal } from '../resources/resources'
+import {
+  keepResource,
+  refuseResource,
+  sha256Hex,
+  type ResourceRefusal,
+} from '../resources/resources'
 import { WORK_BRIEF_CHARS } from '../../shared/work-fields'
 
 export interface SendOverflow {
@@ -33,7 +38,10 @@ export function keepSendOverflow(
   }
   return {
     ok: true,
-    inline: text.trimStart().slice(0, WORK_BRIEF_CHARS).replace(/[\uD800-\uDBFF]$/, ''),
+    inline: text
+      .trimStart()
+      .slice(0, WORK_BRIEF_CHARS)
+      .replace(/[\uD800-\uDBFF]$/, ''),
     overflow: {
       field,
       characters: text.length,

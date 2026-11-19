@@ -546,9 +546,9 @@ describe('one normal agent on both providers', () => {
     const codex = await world.gives(host, giver, 'draft-reader', { provider: 'codex' })
     expect(claude.ok && codex.ok).toBe(true)
     if (!claude.ok || !codex.ok) throw new Error('give refused')
-    expect(
-      await world.gives(host, giver, 'draft-reader', { provider: 'codex' }),
-    ).toMatchObject({ ok: true })
+    expect(await world.gives(host, giver, 'draft-reader', { provider: 'codex' })).toMatchObject({
+      ok: true,
+    })
     expect(await world.gives(host, giver, 'draft-reader', { to: claude.owner })).toMatchObject({
       ok: true,
       owner: claude.owner,

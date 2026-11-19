@@ -67,19 +67,13 @@ describe('parallel worker tools and conversation readings', () => {
         number: 2,
         bornAs: b,
       })
-      const status = await tools
-        .find((one) => one.name === 'get_agent_status')!
-        .call({ agent: b })
+      const status = await tools.find((one) => one.name === 'get_agent_status')!.call({ agent: b })
       expect(status.structured).toMatchObject({ agent: { worker: { number: 2, bornAs: b } } })
-      expect(
-        next.resumableSessions().find((one) => one.sessionId === a)?.worker?.number,
-      ).toBe(1)
+      expect(next.resumableSessions().find((one) => one.sessionId === a)?.worker?.number).toBe(1)
       world.db
         .prepare('UPDATE provider_session SET external_ref = NULL, launched_as = NULL WHERE id = ?')
         .run(b)
-      expect(
-        next.unresumableSessions().find((one) => one.sessionId === b)?.worker?.number,
-      ).toBe(2)
+      expect(next.unresumableSessions().find((one) => one.sessionId === b)?.worker?.number).toBe(2)
       for (const probe of probes) expect(probe).not.toHaveBeenCalled()
     } finally {
       for (const probe of probes) probe.mockRestore()
@@ -115,9 +109,7 @@ describe('parallel worker tools and conversation readings', () => {
     await serviceHost.closeAll()
     world.loseTheKept()
     const unknown = world.aHost()
-    expect(
-      unknown.agentCard(a, { ownerId: agentCallerId(caller) }, caller)?.worker,
-    ).toBeUndefined()
+    expect(unknown.agentCard(a, { ownerId: agentCallerId(caller) }, caller)?.worker).toBeUndefined()
     expect(
       [...unknown.resumableSessions(), ...unknown.unresumableSessions()].find(
         (one) => one.sessionId === a,

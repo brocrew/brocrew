@@ -979,7 +979,13 @@ describe('a service queues the work it is given', () => {
         delivery: 'held',
         queued_behind: 0,
         folder: { use: 'grant', folder: world.folder },
-        receipt: { recipient: { address: given.structured.agent, title: expect.any(String), state: { kind: 'queued', behind: 0 } } },
+        receipt: {
+          recipient: {
+            address: given.structured.agent,
+            title: expect.any(String),
+            state: { kind: 'queued', behind: 0 },
+          },
+        },
       })
       const label = String(given.structured.label)
       expect(given.text.split('\n')[0]).toContain(
@@ -993,7 +999,9 @@ describe('a service queues the work it is given', () => {
         brief: 'order lunch for six',
       })
       expect(behind.structured).toMatchObject({ outcome: 'ok', queued_behind: 1 })
-      expect(behind.structured.receipt).toMatchObject({ recipient: { state: { kind: 'queued', behind: 1 } } })
+      expect(behind.structured.receipt).toMatchObject({
+        recipient: { state: { kind: 'queued', behind: 1 } },
+      })
       expect(behind.structured).not.toHaveProperty('folder')
     })
 

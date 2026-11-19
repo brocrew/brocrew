@@ -77,7 +77,6 @@ import type {
 import { filesLibraryForWindow, teamProfileGraphForWindow } from './window-reads'
 import type {
   FactsAQueueCarries,
-  Giving,
   ThePieceWrittenDown,
   ThePieceATurnCarries,
   OneMessageOfATurn,
@@ -439,7 +438,6 @@ import type {
 import {
   ABriefThatDidNotArrive,
   cannotRunOf,
-  AGiveThatGaveNothing,
   AStartThatDidNotHappen,
   SessionStillStarting,
   SessionUnavailable,
@@ -452,30 +450,17 @@ import {
 } from './session-unavailable'
 import { filesystemSpelling, folderIsGone } from './scratch-cwd'
 import {
-  admitGive,
-  giveRequestSchema,
   labelsSaid,
-  refuse,
   takeOnWorkRequestSchema,
   workRequestRefused,
   doneConditionSchema,
   workBriefSchema,
-  theProviderAStartRunsOn,
 } from './spawn-rails'
-import {
-  judgeAnAgentsChoice,
-  refuseModel,
-  type ListsAsLastRead,
-  type ModelRefusal,
-  type TheListAsked,
-} from '../connections/model-rails'
+import type { ListsAsLastRead, ModelRefusal, TheListAsked } from '../connections/model-rails'
 import type {
   AdmittedSpawn,
   AStallAGiveNames,
-  GiveAdmission,
-  GiveFacts,
   GiveOutcome,
-  GiveRequest,
   GivingConversation,
   HeldPiece,
   ServiceAtAGive,
@@ -1156,7 +1141,6 @@ import {
 import { identityUse, whatHoldsIt } from '../../shared/agent-roster'
 import type { AgentRemoved, IdentityUse, ItsProvider } from '../../shared/agent-roster'
 import {
-  STAND_IN_PROFILE,
   aChoiceIsInForce,
   judgeAgainstTheList,
   theEffortWhenNoneIsNamed,
@@ -23593,7 +23577,6 @@ export class RuntimeHost implements LiveHost {
     })
   }
 
-
   /**
    * ⚑ **D-042 · the pair a conversation runs on now** — what its next turn asks for when it runs,
    * else its row's — or `null` when nothing is selected for it yet.
@@ -23913,9 +23896,13 @@ export class RuntimeHost implements LiveHost {
       this.recordTheGive(live ?? to, giving, queued.messageId, null, { queued })
       onRecorded(to)
       if (this.theOneInItsPlace(to) !== to) {
-        throw new SessionUnavailable('cannot-be-reopened', 'The addressed conversation was replaced.', {
-          refusal: 'another conversation took its place',
-        })
+        throw new SessionUnavailable(
+          'cannot-be-reopened',
+          'The addressed conversation was replaced.',
+          {
+            refusal: 'another conversation took its place',
+          },
+        )
       }
       await this.ensureRunning(to, null)
       return (await this.aRecordedBriefWasDelivered(to, giving.piece))

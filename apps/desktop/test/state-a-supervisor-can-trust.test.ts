@@ -1366,7 +1366,13 @@ describe('484 · state a supervisor can trust', () => {
       expect(store.lastAskToStop(worker)).toBeNull()
       void pm
 
-      const second = await aGive(pmTools, workerProfile, '491-after-the-idle-stop', undefined, worker)
+      const second = await aGive(
+        pmTools,
+        workerProfile,
+        '491-after-the-idle-stop',
+        undefined,
+        worker,
+      )
       expect(second.agent).toBe(worker)
       await cardOn(worker, 3)
       const card = [...store.events(worker)]

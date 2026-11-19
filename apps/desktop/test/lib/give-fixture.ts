@@ -1,7 +1,14 @@
 const definitionOfDone = 'The requested result and its checks are recorded.'
 
 export function newConversationGive(profile: string, title: string, brief: string) {
-  return { to: 'new', conversation_title: title, definition_of_done: definitionOfDone, profile, title, brief }
+  return {
+    to: 'new',
+    conversation_title: title,
+    definition_of_done: definitionOfDone,
+    profile,
+    title,
+    brief,
+  }
 }
 
 export async function openPmWithSeededWorker(
@@ -17,4 +24,3 @@ export function giveWorkBeforeProviderStart(
 ) {
   return send('give_work', newConversationGive('worker', 'The work', 'the work'))
 }
-

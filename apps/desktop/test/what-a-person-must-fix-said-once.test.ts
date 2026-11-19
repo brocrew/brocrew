@@ -29,7 +29,6 @@ const itWithPosixChmod = process.platform === 'win32' ? it.skip : it
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
-const CANNOT_BE_STARTED = 'agent-could-not-be-started'
 const COULD_NOT_BE_RESUMED = 'that-conversation-could-not-be-resumed'
 
 class RecordingSink implements RuntimeEventSink {
@@ -218,9 +217,6 @@ describe('what a person must fix, said once', () => {
       kind: 'follow-up',
       piece: label,
     })
-
-  /** The program's sentence is the word's own; the folder's is said instead of it. */
-  const programSentence = (): string => tools.refuseTool(CANNOT_BE_STARTED as never).reason
 
   // ───────────────────────────────────────────────────────────────────────────────
   const programFailure = 'could not run its provider’s program'
