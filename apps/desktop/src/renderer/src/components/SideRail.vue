@@ -1314,9 +1314,12 @@ const platform = platformHere()
             class="rail-item rail-show-more"
             type="button"
             data-cy="rail-show-more"
+            :aria-label="`Show ${moreRecent} more recent conversations`"
+            :title="props.collapsed ? `Show ${moreRecent} more` : undefined"
             @click="recentLimit += RAIL_PAGE_SIZE"
           >
-            Show {{ moreRecent }} more
+            <svg class="icon" aria-hidden="true"><use href="#i-chevron" /></svg>
+            <span class="rail-copy">Show {{ moreRecent }} more</span>
           </button>
         </section>
         <!-- 🔴 **685 · the waits reading could not read every row** (`676` F-R18a) — so a row above
@@ -1442,6 +1445,10 @@ const platform = platformHere()
 .rail-find {
   color: var(--accent-text);
   font: inherit;
+}
+
+.rail-show-more .icon {
+  transform: rotate(90deg);
 }
 
 .rail-worker-heading {

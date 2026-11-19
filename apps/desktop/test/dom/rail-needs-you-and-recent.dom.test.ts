@@ -122,16 +122,22 @@ it('pages eligible Recent at fifteen, keeps older rows, and counts the live/list
   const older = Array.from({ length: 18 }, (_item, index) =>
     row(`older-${index}`, 'brobot', index + 2),
   )
-  const m = await rail([...waiting, ...older].reverse(), { open: [record([], 'older-1')] })
+  const m = await rail([...waiting, ...older].reverse(), {
+    open: [record([], 'older-1')],
+    activeId: 'older-17',
+  })
 
   expect(ids(m, 'needs-you')).toEqual(['recent-approval', 'older-approval'])
   expect(ids(m, 'recent')).toEqual(older.slice(0, 15).map(({ sessionId }) => sessionId))
   expect(count(m, 'rail-count-recent')).toBe('15 of 18')
   expect(count(m, 'rail-show-more')).toBe('Show 3 more')
+  expect(m.q('rail-toggle-recent').dataset.active).toBe('true')
   m.q('rail-show-more').click()
   await nextTick()
   expect(ids(m, 'recent')).toEqual(older.map(({ sessionId }) => sessionId))
   expect(count(m, 'rail-count-recent')).toBe('18 of 18')
+  expect(m.q('rail-toggle-recent').dataset.active).toBe('false')
+  expect(m.q('open-session-older-17').dataset.active).toBe('true')
   expect(m.all('rail-show-more')).toHaveLength(0)
   expect(ids(m, 'needs-you')).toEqual(['recent-approval', 'older-approval'])
 })
@@ -175,6 +181,13 @@ it('remembers each fold independently and a destination leaves the hidden select
   await nextTick()
   expect(storage.getItem('brobot2.railRecentOpen')).toBe('false')
   expect(count(again, 'rail-count-recent')).toBe('3')
+  unmountAll()
+
+  const saved = await rail(all)
+  expect(saved.q('rail-toggle-recent').getAttribute('aria-expanded')).toBe('false')
+  expect(saved.all('rail-rows-recent')).toHaveLength(0)
+  expect(count(saved, 'rail-count-recent')).toBe('3')
+  expect(saved.q('rail-toggle-needs-you').getAttribute('aria-expanded')).toBe('false')
   unmountAll()
 
   storage = memoryStorage()
