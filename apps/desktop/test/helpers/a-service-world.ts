@@ -85,7 +85,7 @@ export interface AServiceWorld {
     readonly effort: string | null
   }[]
   writesFail: WritesFail
-  startsFail: boolean
+  startsFail: boolean | Error
   /** While set, every resume of a conversation of this agent fails. */
   resumesFailFor: string | null
   /** The fictional provider no longer holds conversations of this agent. */
@@ -319,6 +319,7 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
           world.startedAs.push(as)
           world.startedIn.push(options.providerHome)
           if (world.startsWait !== null) await world.startsWait
+          if (world.startsFail instanceof Error) throw world.startsFail
           if (world.startsFail) throw new Error('the provider could not start')
           return itsTurnsKept(await super.start(options), as)
         }

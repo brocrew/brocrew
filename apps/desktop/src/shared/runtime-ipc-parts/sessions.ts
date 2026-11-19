@@ -193,8 +193,8 @@ export interface CreatedSession {
   /**
    * ⚑ **D-017b · a setting changed from this view would not reach the conversation** — set only on a
    * `recorded` hand-over: a window holds it or it is on its way somewhere (the setting is that
-   * window's), no message continues it, or its next message starts a new conversation in its place
-   * (R10). ⚑ The settings controls are then statements. ⛔ The host refuses the same rows
+   * window's), no message continues it, or its messages go to the conversation continuing its job.
+   * The settings controls are then statements. The host refuses the same rows
    * (`RuntimeHost.aSettingForItsNextStart`), off the same predicate.
    */
   settingsFixed?: boolean

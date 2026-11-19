@@ -1399,7 +1399,7 @@ const takenWithoutThisWindow = computed(() => turnsTakenWithoutThisWindow(props.
 /**
  * ⚑ **D-017b · the settings are statements here** — a view drawn from its ledger whose settings the
  * host would not take (`CreatedSession.settingsFixed`): a window holds it, no message continues it,
- * or its next message starts a new conversation in its place. ⚠️ A record that stopped and has not
+ * or its messages go to the conversation continuing its job. ⚠️ A record that stopped and has not
  * been looked at again still holds the last life's `meta`, which says nothing: statements until it
  * is.
  */

@@ -1,3 +1,4 @@
+import { StartFailed } from '@brobot2/runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SessionStore } from '../src/main/db/session-store'
 import { readProfileExecution, writeProfileExecution } from '../src/main/profile-execution-file'
@@ -193,7 +194,9 @@ describe('a service’s one conversation', () => {
         approvalMode: 'ask',
         profileId: 'caller',
       })
-      await expect(host.reopenForAPerson('sess_persons_row', world.window, null)).resolves.toMatchObject({
+      await expect(
+        host.reopenForAPerson('sess_persons_row', world.window, null),
+      ).resolves.toMatchObject({
         sessionId: 'sess_persons_row',
       })
       expect(world.conversationsRecorded()).toBe(before + 1)
@@ -218,7 +221,7 @@ describe('a service’s one conversation', () => {
       warned.mockRestore()
     })
 
-    it('is never offered a message or a setting that would start another in its place', async () => {
+    it('keeps a never-started service read-only for the person and lets a normal row keep settings', async () => {
       world.anAgent('browser-driver')
       world.anAgent('caller', 'nothing kept')
       const host = world.aHost()
@@ -239,11 +242,19 @@ describe('a service’s one conversation', () => {
         'no message continues this conversation, so a setting changed here would not reach it',
       )
       const persons = await host.look('sess_persons_row', world.window, false)
-      expect(persons.cannotTakeAMessage).not.toBeNull()
-      expect(persons.settingsFixed).toBe(true)
-      await expect(host.setApprovalMode('sess_persons_row', 'auto', world.window)).rejects.toThrow(
-        'no message continues this conversation, so a setting changed here would not reach it',
-      )
+      expect(persons.cannotTakeAMessage).toBeNull()
+      expect(persons.settingsFixed).toBe(false)
+      await expect(
+        host.setApprovalMode('sess_persons_row', 'auto', world.window),
+      ).resolves.toMatchObject({
+        approvalMode: 'auto',
+      })
+      await expect(
+        host.reopenForAPerson('sess_persons_row', world.window, null),
+      ).resolves.toMatchObject({
+        sessionId: 'sess_persons_row',
+        approvalMode: 'auto',
+      })
     })
   })
 
@@ -289,32 +300,62 @@ describe('a service’s one conversation', () => {
         )
       })
       const count = world.conversationsRecorded()
-      world.startsFail = true
-      await expect(host.reopenForAPerson(conversation, world.window, null)).rejects.toThrow(
-        'the provider could not start',
-      )
+      const failure = new StartFailed('the provider could not start')
+      world.startsFail = failure
+      const continued =
+        'This conversation did not continue: its provider could not be started again. The conversation is kept; if its provider fails the same way next time, a person has to look — BroCrew records why in its log.'
+      await expect(host.reopenForAPerson(conversation, world.window, null)).rejects.toMatchObject({
+        message: continued,
+        cause: { unavailable: 'its-provider-could-not-be-started', cause: failure },
+      })
       expect(world.store.recordedOne(conversation)?.neverStarted).toBe(true)
       expect(world.store.workByLabel(label)).toMatchObject({ piece, owner: conversation })
       const recorded = await host.look(conversation, world.window, false)
       expect(recorded.cannotTakeAMessage).toBeNull()
+      if (retry === 'person reopens') {
+        expect(await host.archiveConversation(conversation)).toEqual({
+          done: true,
+          conversations: [conversation],
+        })
+        await expect(host.reopenForAPerson(conversation, world.window, null)).rejects.toThrow(
+          continued,
+        )
+        expect((await host.listLibrary({ filters: { archived: 'only' } })).entries).toContainEqual(
+          expect.objectContaining({ recordId: conversation }),
+        )
+      }
       world.startsFail = false
       if (retry === 'message') {
-        const message = agentToolsFor(host, caller).tools.find((one) => one.name === 'message_agent')
+        const message = agentToolsFor(host, caller).tools.find(
+          (one) => one.name === 'message_agent',
+        )
         if (message === undefined) throw new Error('message_agent is unavailable')
-        const result = await message.call({ agent: label, kind: 'note', text: 'Continue this task.' })
+        const result = await message.call({
+          agent: label,
+          kind: 'note',
+          text: 'Continue this task.',
+        })
         expect(result.structured).toMatchObject({ outcome: 'ok', delivery: 'sent' })
         expect(
-          world.sent.some(({ as, words }) => as === 'worker' && words.includes('Continue this task.')),
+          world.sent.some(
+            ({ as, words }) => as === 'worker' && words.includes('Continue this task.'),
+          ),
         ).toBe(true)
       } else {
         const resumed = await host.reopenForAPerson(conversation, world.window, null)
         expect(resumed).toMatchObject({ sessionId: conversation, hasACommander: true })
-        expect(resumed.history.entries.map(({ event }) => event)).toContainEqual(
-          expect.objectContaining({ type: 'work_given', piece }),
+        expect(resumed.history.entries.map(({ event }) => event)).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ type: 'work_given', piece }),
+            { type: 'reopened', broughtBack: 'Brought back from the archive: you opened it.' },
+          ]),
         )
+        expect(world.ledger(conversation).filter((event) => event.type === 'reopened')).toHaveLength(1)
       }
       expect(world.conversationsRecorded()).toBe(count)
-      expect(world.startedAs).toEqual(['caller', 'worker', 'worker'])
+      expect(world.startedAs).toEqual(
+        retry === 'message' ? ['caller', 'worker', 'worker'] : ['caller', 'worker', 'worker', 'worker'],
+      )
       expect(world.resumesAsked).toBe(0)
       expect(world.store.workByLabel(label)).toMatchObject({ piece, owner: conversation })
       expect(world.store.replacements()).toEqual([])

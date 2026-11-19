@@ -3577,7 +3577,7 @@ function whyNoSettingForItsNextStart(
   canFirstStart: boolean,
 ): string | null {
   if (replacedBy.has(row.sessionId)) {
-    return 'its next message starts a new conversation in its place, so a setting changed here would not reach it'
+    return 'Its messages go to the conversation continuing its job, so settings changed here would not reach it. Change the settings there.'
   }
   if (!canFirstStart && row.unresumableReason !== null) {
     return 'no message continues this conversation, so a setting changed here would not reach it'
@@ -3719,13 +3719,8 @@ const WAKE_CHECK_MS = 60_000
  */
 const WAKE_RETRY_MAX_MS = 30 * 60_000
 
-/**
- * ⚑ **D-029 · why the words about a conversation's own jobs are ended rather than sent** — it can
- * never be reopened ({@link RuntimeHost.letGoOfItsMissedJobs}), and no conversation in its place
- * scheduled them. ⛔ A durable row names no conversation.
- */
-const ITS_JOBS_WENT_WITH_ITS_HISTORY =
-  'this conversation could never be reopened, and the jobs these words were about went with its history'
+const ITS_JOB_MESSAGES_WERE_NOT_DELIVERED =
+  'This conversation could not run, so these scheduled-job messages were not delivered. Its record stays readable.'
 
 const IT_COULD_NOT_WAKE =
   'This conversation could not wake: its provider session file is missing. Nothing ran.'
@@ -9991,7 +9986,7 @@ export class RuntimeHost implements LiveHost {
       const missing = theProviderLostIt(error)
       const endedANotice = this.letGoOfItsMissedJobs(
         conversation,
-        missing ? IT_COULD_NOT_WAKE : ITS_JOBS_WENT_WITH_ITS_HISTORY,
+        missing ? IT_COULD_NOT_WAKE : ITS_JOB_MESSAGES_WERE_NOT_DELIVERED,
       )
       if (missing && !endedANotice) this.recordItsMissingSessionWake(conversation)
       this.wordsHeld.delete(conversation)
@@ -20098,7 +20093,7 @@ export class RuntimeHost implements LiveHost {
     recorded = false,
   ): Promise<CreatedSession> {
     const id = slot.id
-    const parent = recorded ? slot.spawnedBy : spawn?.parentSessionId ?? null
+    const parent = recorded ? slot.spawnedBy : (spawn?.parentSessionId ?? null)
     // ⛔ **The cwd BEFORE the home** (203, from 195 H4). Both of these can refuse a launch and only
     // one of them writes to disk, so the refusal that costs nothing goes first — the same rule the
     // uniqueness check above already follows, and `profile-uniqueness.test.ts` already pins for the
@@ -25937,7 +25932,7 @@ export class RuntimeHost implements LiveHost {
   private async startTheRecordedConversation(
     conversation: string,
     window: RuntimeEventSink | null,
-    launchKey: string | null = null,
+    reopen?: { launchKey: string | null },
   ): Promise<CreatedSession> {
     const recorded = this.deps.store.recordedOne(conversation)
     const row = this.deps.store.findLive(conversation)
@@ -25960,8 +25955,9 @@ export class RuntimeHost implements LiveHost {
           anAgentAskedForIt: parent !== null,
           profileId,
         },
-        launchKey,
+        reopen?.launchKey ?? null,
       ),
+      reopen !== undefined,
     )
     try {
       return await this.startSessionInProfile(
@@ -25982,7 +25978,9 @@ export class RuntimeHost implements LiveHost {
       )
     } catch (error) {
       await this.cleanUpAFailedStart(slot)
-      throw this.refusalTranslated(this.aRefusalAPersonReads(error, conversation))
+      throw this.refusalTranslated(
+        this.aRefusalAPersonReads(error, conversation, reopen !== undefined),
+      )
     } finally {
       slot.settle()
     }
@@ -26039,7 +26037,7 @@ export class RuntimeHost implements LiveHost {
         detail: work
           ? `this conversation could never be reopened, and the piece this message carried (${queued.label ?? queued.piece}) was not sent to the conversation that took its place: it is its giver's to give again or take back`
           : itsJobs
-            ? ITS_JOBS_WENT_WITH_ITS_HISTORY
+            ? ITS_JOB_MESSAGES_WERE_NOT_DELIVERED
             : 'this conversation could never be reopened, so it went to the conversation that took its place',
         text: queued.text,
         ...(queued.attachments.length > 0 ? { attachments: [...queued.attachments] } : {}),
@@ -37522,7 +37520,7 @@ export class RuntimeHost implements LiveHost {
       }
       const recorded = this.deps.store.recordedOne(sessionId)
       if (recorded !== null && this.canFirstStartAsANormalConversation(recorded)) {
-        const started = await this.startTheRecordedConversation(sessionId, sink, launchKey)
+        const started = await this.startTheRecordedConversation(sessionId, sink, { launchKey })
         const attached =
           page === 'handed-on' && sink !== null
             ? this.attachHeldSession(sessionId, sink, 'attach')
@@ -38719,7 +38717,8 @@ export class RuntimeHost implements LiveHost {
                 refusal: row.unresumableReason ?? undefined,
               }),
       settingsFixed:
-        slot !== undefined || whyNoSettingForItsNextStart(row, this.replacedBy, canFirstStart) !== null,
+        slot !== undefined ||
+        whyNoSettingForItsNextStart(row, this.replacedBy, canFirstStart) !== null,
     }
   }
 
