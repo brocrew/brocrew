@@ -157,17 +157,7 @@ function deferredCatalogue() {
 it('fulfills a setup request that arrives while the real catalogue is pending', async () => {
   const catalogue = deferredCatalogue()
   const props = reactive<ScreenProps>({ setupProvider: null })
-  const m = screen(
-    {
-      ...client(),
-      providerCatalogue: catalogue.read,
-      checkProviderAuth: async () => ({
-        state: 'absent',
-        reason: 'Fictional setup needs sign-in.',
-      }),
-    },
-    props,
-  )
+  const m = screen({ ...client(), providerCatalogue: catalogue.read }, props)
   await settle()
   props.setupProvider = 'codex'
   await settle()
@@ -181,17 +171,7 @@ it('fulfills a setup request that arrives while the real catalogue is pending', 
 it('uses the latest setup request made during catalogue loading', async () => {
   const catalogue = deferredCatalogue()
   const props = reactive<ScreenProps>({ setupProvider: 'claude' })
-  const m = screen(
-    {
-      ...client(),
-      providerCatalogue: catalogue.read,
-      checkProviderAuth: async () => ({
-        state: 'absent',
-        reason: 'Fictional setup needs sign-in.',
-      }),
-    },
-    props,
-  )
+  const m = screen({ ...client(), providerCatalogue: catalogue.read }, props)
   await settle()
   props.setupProvider = 'codex'
   await settle()
@@ -230,17 +210,7 @@ it('fulfills the current setup request after an unread catalogue is retried', as
     .mockRejectedValueOnce(new Error('fictional first read failed'))
     .mockImplementationOnce(catalogue.read)
   const props = reactive<ScreenProps>({ setupProvider: 'codex' })
-  const m = screen(
-    {
-      ...client(),
-      providerCatalogue: read,
-      checkProviderAuth: async () => ({
-        state: 'absent',
-        reason: 'Fictional setup needs sign-in.',
-      }),
-    },
-    props,
-  )
+  const m = screen({ ...client(), providerCatalogue: read }, props)
   await settle()
   expect(m.q('provider-catalogue-status').textContent).toContain('fictional first read failed')
   props.setupProvider = 'claude'
@@ -257,17 +227,7 @@ it('fulfills the current setup request after an unread catalogue is retried', as
 it('retains a one-shot setup request through the parent prop cleanup before the catalogue answers', async () => {
   const catalogue = deferredCatalogue()
   const props = reactive<ScreenProps>({ setupProvider: 'claude' })
-  const m = screen(
-    {
-      ...client(),
-      providerCatalogue: catalogue.read,
-      checkProviderAuth: async () => ({
-        state: 'absent',
-        reason: 'Fictional setup needs sign-in.',
-      }),
-    },
-    props,
-  )
+  const m = screen({ ...client(), providerCatalogue: catalogue.read }, props)
   await settle()
   props.setupProvider = null
   await settle()

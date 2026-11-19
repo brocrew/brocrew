@@ -430,3 +430,32 @@ it('never lets a late initial idle read erase newer installer progress', async (
   expect(m.q('install-program').hasAttribute('disabled')).toBe(true)
   expect(m.q('install-progress').textContent).toContain('Downloading Claude Code')
 })
+
+
+it('closes wizard-owned native sign-in only after completion and the readiness recheck', async () => {
+  const { m, props, bridge, publish, signedIn } = fixture(true)
+  props.setupRequested = true
+  await settle()
+  m.q('setup-sign-in').click()
+  await settle()
+  expect(bridge.signIn).toHaveBeenCalledExactlyOnceWith('claude')
+  expect(m.all('provider-inline-setup')).toHaveLength(1)
+  signedIn()
+  publish({ phase: 'signed-in', progress: 'Signed in.', authUrl: null, exitCode: 0 })
+  await vi.waitFor(() => expect(m.all('provider-inline-setup')).toHaveLength(0))
+  expect(m.q('provider-standing').textContent?.trim()).toBe('Ready')
+})
+
+it('does not close later explicit setup for a native sign-in started outside it', async () => {
+  const { m, props, publish, signedIn } = fixture(true)
+  await settle()
+  m.q('native-sign-in').click()
+  await settle()
+  props.setupRequested = true
+  await settle()
+  expect(m.all('provider-inline-setup')).toHaveLength(1)
+  signedIn()
+  publish({ phase: 'signed-in', progress: 'Signed in.', authUrl: null, exitCode: 0 })
+  await vi.waitFor(() => expect(m.q('provider-standing').textContent?.trim()).toBe('Ready'))
+  expect(m.all('provider-inline-setup')).toHaveLength(1)
+})

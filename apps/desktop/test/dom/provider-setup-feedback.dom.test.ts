@@ -78,8 +78,8 @@ function limits(): LimitsDisplayState {
   }
 }
 
-function card(provider: Provider = 'claude') {
-  const auth = ref<AuthState>(ABSENT)
+function card(provider: Provider = 'claude', initial: AuthState = ABSENT, setupRequested = false) {
+  const auth = ref<AuthState>(initial)
   const copied: string[] = []
   Object.defineProperty(navigator, 'clipboard', {
     configurable: true,
@@ -106,6 +106,7 @@ function card(provider: Provider = 'claude') {
   } as unknown as ProviderCapabilityMap
   const props = reactive({
     provider,
+    setupRequested,
     descriptor: providerDescriptor(provider),
     capabilities,
     limit: null,
@@ -174,6 +175,15 @@ function cancel(m: Mounted) {
 }
 
 describe('setup feedback follows the latest facts', () => {
+  it('keeps explicit setup open when its initial signed-in reading arrives passively', async () => {
+    const out = card('codex', USABLE, true)
+    await settled()
+    expect(words(out.m.q('provider-standing'))).toBe('Ready')
+    expect(out.m.all('provider-inline-setup')).toHaveLength(1)
+    expect(out.m.q('setup-sign-in')).toBeDefined()
+    expect((out.m.q('setup-check') as HTMLButtonElement).disabled).toBe(false)
+  })
+
   it('renders opaque browser-completion words and keeps failed outcomes on their own detail', async () => {
     const out = card('codex')
     out.runtime.signInProvider.mockResolvedValueOnce({
@@ -260,9 +270,12 @@ describe('setup feedback follows the latest facts', () => {
     out.auth.value = USABLE
     out.props.loginMoved++
     await settled()
+    expect(words(out.m.q('provider-inline-setup'))).not.toContain('Not connected yet')
+    expect(out.m.all('setup-done')).toHaveLength(0)
+    out.m.q('setup-check').click()
+    await settled()
     expect(out.m.all('provider-inline-setup')).toHaveLength(0)
     expect(words(out.m.q('provider-standing'))).toBe('Ready')
-    expect(words(out.m.q('provider-status'))).not.toContain('Not connected yet')
   })
 
   it('keeps a genuine program failure after the local sign-in becomes usable', async () => {
