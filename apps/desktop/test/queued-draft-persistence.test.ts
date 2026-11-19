@@ -46,16 +46,27 @@ it('a same-path acquisition at capacity remains a newer attachment without dupli
   const book = createDraftBook()
   const key = draftKey('full')
   const files = Array.from({ length: MAX_HANDED_PATHS }, (_, index) => ({
-    path: `/fictional/${index}.md`, kind: 'file' as const, outsideCwd: false,
+    path: `/fictional/${index}.md`,
+    kind: 'file' as const,
+    outsideCwd: false,
   }))
   book.write(key, 'First message')
   book.paths.write(key, files)
   let reply!: (accepted: boolean) => void
-  const pending = book.send(key, () => new Promise<boolean>((resolve) => { reply = resolve }), true)
-  await book.paths.handing(key).acquire(async () => [
-    { handed: { path: '/fictional/extra.md', kind: 'file', outsideCwd: false } },
-    { handed: { ...files[0]! } },
-  ])
+  const pending = book.send(
+    key,
+    () =>
+      new Promise<boolean>((resolve) => {
+        reply = resolve
+      }),
+    true,
+  )
+  await book.paths
+    .handing(key)
+    .acquire(async () => [
+      { handed: { path: '/fictional/extra.md', kind: 'file', outsideCwd: false } },
+      { handed: { ...files[0]! } },
+    ])
   expect(book.paths.handing(key).staged).toEqual([files[0]])
   const snapshot = draftsToSave(book)
   expect(savedDraftsFrom(snapshot)).toEqual(snapshot)
