@@ -407,11 +407,11 @@ describe('652 · a resume that needs no window', () => {
       const resumesBefore = handed.resumes.length
       const recordedBefore = host.resumableSessions().length
 
-      // ⚠️ **The PROVIDER's refusal, by its words** — found by this dispatch's own review: a bare
-      // `rejects.toThrow()` also passes on the pre-652 host, whose null sink threw a `TypeError` on
-      // its first line before anything was asked, and on any future guard that refused a null reopen
-      // up front. ⚑ So: the provider WAS asked, and it was the provider that said no.
-      await expect(host.resumeSession(worker, null)).rejects.toThrow(/unknown session/)
+      // A bare rejection would also pass if the host failed before asking the provider.
+      await expect(host.resumeSession(worker, null)).rejects.toMatchObject({
+        message: expect.stringContaining('its provider session file is missing'),
+        cause: { unavailable: 'its-session-is-gone' },
+      })
       expect(handed.resumes).toHaveLength(resumesBefore + 1)
 
       // ⛔ **Refused, and nothing quietly took its place** — no provider STARTED, no slot kept, no

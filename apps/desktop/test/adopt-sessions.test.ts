@@ -359,9 +359,10 @@ describe('adopting existing sessions', () => {
     // refuses a ref it never issued, so an adopted conversation cannot complete a resume in this
     // suite at all — and reaching that refusal is itself the proof, because it lives downstream of
     // the check. Asserting a resolve here would be asserting the fake, not the rule.
-    await expect(host.resumeSession(idOf('parent-3'), new NullSink(), null)).rejects.toThrow(
-      /unknown session/,
-    )
+    await expect(host.resumeSession(idOf('parent-3'), new NullSink(), null)).rejects.toMatchObject({
+      message: expect.stringContaining('its provider session file is missing'),
+      cause: { unavailable: 'its-session-is-gone' },
+    })
   })
 
   it('records the profile whose home it was found in, so resume reopens in that home', async () => {

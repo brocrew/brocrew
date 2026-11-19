@@ -289,7 +289,7 @@ describe('724 · `717` F-2 — the folder it ran in is gone', () => {
       expect(said).not.toContain('no longer there')
     })
 
-    it('⚑ a gone folder the provider LOST the conversation in keeps the provider’s words', async () => {
+    it('a missing provider session takes precedence over a gone folder', async () => {
       // ⚑ Not a spawn at all: the provider has no such conversation (`noSuchSession`), which is
       // `692`'s signal to let a kept-open conversation go. ⛔ Called *the folder* here, that signal
       // would be wrapped away and a person told to put back a folder that would not bring it back.
@@ -298,9 +298,13 @@ describe('724 · `717` F-2 — the folder it ran in is gone', () => {
       rmSync(folder, { recursive: true })
       issued.forgetAll()
       vi.spyOn(console, 'warn').mockImplementation(() => {})
-      const said = await theReopen(sessionId)
-      expect(said).toContain('unknown session')
-      expect(said).not.toContain('no longer there')
+      const entered = gate.entered
+      const address = host.addressOf(sessionId)
+      await expect(host.resumeSession(sessionId, window)).rejects.toMatchObject({
+        message: `This conversation can't run: its provider session file is missing. Its record above stays readable. To continue the job, start a new conversation and point it at ${address}.`,
+        cause: { unavailable: 'its-session-is-gone' },
+      })
+      expect(gate.entered).toBe(entered + 1)
     })
 
     it('⚑ a gone folder whose launch WORKS reopens — nothing is asked before the launch', async () => {

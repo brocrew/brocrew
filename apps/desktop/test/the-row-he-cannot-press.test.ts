@@ -99,8 +99,24 @@ describe('504 · the row he cannot press', () => {
       expect(store.recordedOne(whole)?.unresumableReason).toBeNull()
     })
 
-    it('⛔ the reopen no longer says there is no recording of a conversation it holds', async () => {
+    it('reopens an eligible recording under the same ID and keeps its history', async () => {
       const lost = lostBeforeItsId('sess_lost')
+
+      const reopened = await host.resumeSession(lost, window)
+
+      expect(reopened.sessionId).toBe(lost)
+      expect(host.sessionIds).toEqual([lost])
+      expect(store.find(lost)?.ref.provider).toBe('claude')
+      const events = store.events(lost).map(({ event }) => event)
+      expect(events).toContainEqual(
+        expect.objectContaining({ type: 'user_turn', text: 'do the thing' }),
+      )
+      expect(events.map(({ type }) => type)).not.toContain('replaced_by')
+    })
+
+    it('refuses a launch cut before its provider gave it an ID and keeps its recording', async () => {
+      const lost = lostBeforeItsId('sess_lost')
+      expect(store.firstLaunchOf({ id: lost, launchedAs: 'unfinished-claude-launch' })).toBe(true)
       const said = await host.resumeSession(lost, window).then(
         () => null,
         (error: unknown) => (error as Error).message,
@@ -112,6 +128,8 @@ describe('504 · the row he cannot press', () => {
       expect(said).toContain('this one stopped before Claude gave it an id')
       expect(said).toContain('BroCrew could not continue this conversation')
       expect(said).not.toContain(lost)
+      expect(host.sessionIds).not.toContain(lost)
+      expect(store.recordedOne(lost)?.hasTranscript).toBe(true)
     })
 
     it('⚑ an id this app has never recorded still gets the sentence that is true of it', async () => {
