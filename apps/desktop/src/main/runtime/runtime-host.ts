@@ -8327,6 +8327,8 @@ export class RuntimeHost implements LiveHost {
       }
       return
     }
+    // An earlier delivery wakes a stopped service before its next queued piece is handed over.
+    if (slot === undefined && this.arrivals.has(conversation)) return
     const head = queue.waiting[0]
     if (head === undefined || head.messageId === null) return
     if (slot !== undefined && (session === null || !this.freeForItsNextPiece(session))) return
