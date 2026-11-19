@@ -5049,25 +5049,7 @@ export class RuntimeHost implements LiveHost {
     this.conversationIdle = new ConversationIdle(
       {
         closed: () => this.launches.closed,
-        isStillIdle: (conversation) => {
-          const state = this.stateOf(
-            conversation,
-            this.cardReads(),
-            rowsUnreadOnce(),
-            this.waitAsLastRead.get(conversation),
-            // ⚑ **D-036 · a helper's ledger that cannot be read is skipped and warned** (a note of its
-            // own, as {@link cardFor}'s), never the reason a stop is declined: waiting on the work it
-            // gave out is idle enough to stop ({@link idleEnoughToStop}).
-            this.workOutAsKept(this.oneWorkOutReadPerAnswer(rowsUnreadOnce())),
-            // ⚑ **F036 · read as kept** — owing an answer is idle enough to stop ({@link idleEnoughToStop}).
-            this.owedAsKept(
-              this.oneOwedReadPerAnswer(
-                this.ledgerAsKept(this.oneLedgerReadPerAnswer(rowsUnreadOnce())),
-              ),
-            ),
-          )
-          return this.idleEnoughToStop(conversation, state)
-        },
+        isStillIdle: (conversation) => this.idleEnoughToStop(conversation),
         close: (conversation) => this.close(conversation, THE_APP_ITSELF),
         errorMessage,
       },
@@ -7400,22 +7382,19 @@ export class RuntimeHost implements LiveHost {
    * events is delivered in one stretch of microtasks, and `setImmediate` runs once after all of
    * them, where a microtask would run between each pair. ⚑ **After the write, always** —
    * {@link theWorldMoved}'s rule — because the flush runs after the synchronous stretch that wrote.
-   * ⛔ **No dep, no mark**: a host nobody is listening to keeps nothing and derives nothing.
+   * A host without a state listener skips state publication.
    *
-   * 🔴 **D-018 · a mark drops the conversation's idle countdown** ({@link idleCountdowns}), and
-   * the flush it asks for arms a fresh one if it is still idle. ⚑ What the idle stop reads beside
-   * the one state ({@link idleEnoughToStop}) marks too — a flush or a handover settling, a
-   * person's interrupt-and-send letting the queue go, and planning moved by a person — so a
-   * conversation one of them leaves idle is counted again. ⛔ No dep, no mark, and no countdown: a
-   * host nobody is listening to stops nothing on its own.
+   * Live eligibility updates the idle countdown before publication can coalesce or wait for a
+   * window read. A mark while still eligible leaves the original deadline in place.
    */
   private stateMayHaveMoved(conversation: string): void {
     this.linkAnswers.invalidate()
     this.moveTheListing()
     this.moveThePersons()
     this.aServiceMayTakeItsNext(conversation)
+    if (this.idleEnoughToStop(conversation)) this.conversationIdle.countTheIdleMinutes(conversation)
+    else this.conversationIdle.cancel(conversation)
     if (this.deps.statesMoved === undefined) return
-    this.conversationIdle.cancel(conversation)
     this.statesToAsk.add(conversation)
     this.askTheFlush()
   }
@@ -7832,8 +7811,6 @@ export class RuntimeHost implements LiveHost {
    * Invalidation must republish even an equal state to clear the windows' pending UNKNOWN.
    * Unmarked stream frames cause no state read. A failed shared read keeps the marks;
    * a failed conversation read costs only its own state, and retries on a later trigger.
-   * Each successful idle-enough reading arms its countdown regardless of publication;
-   * an unreadable conversation is kept running until another fact arrives.
    */
   private statesThatMoved(asked: readonly string[]): readonly AgentStateMoved[] {
     if (asked.length === 0) return []
@@ -7869,9 +7846,6 @@ export class RuntimeHost implements LiveHost {
         const ledger = snapshotRead?.(conversation) ?? fullLedger ?? read(conversation)
         if (runs && fullLedger !== undefined) this.waitAsLastRead.set(conversation, fullLedger)
         const state = this.stateOf(conversation, reads, unread, ledger, workOut, owed)
-        // ⚑ **D-018 · counted from here while it is idle**, whatever the windows were last told.
-        if (this.idleEnoughToStop(conversation, state))
-          this.conversationIdle.countTheIdleMinutes(conversation)
         const limits = this.providerBlockDisclosure(conversation)
         const said = JSON.stringify({ state, ...limits })
         if (this.stateSaid.get(conversation)?.key === said) continue
@@ -27267,49 +27241,11 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * 🔴 **D-018 · is this running conversation idle enough for the app to stop its process?** (`05`
-   * rule 4) — asked when its countdown is armed ({@link sayWhatMoved}) and again when it fires
-   * ({@link stopItIfStillIdle}).
-   *
-   *  - **its one state** ({@link stateOf}): ⛔ never *active*. ⚑ *Waiting on an answer* counts as
-   *    idle — a question this app asked outlives a stop, and its answer starts it again (D-017 ·
-   *    R4) — ⚑ and so does *waiting on* the work it gave out (D-036): the work lives in ledgers, and
-   *    what comes of it — a reply, a stall's notice — is a message, which starts it (D-017 · R1).
-   *    ⚠️ A piece that stalled before the stop is its own to follow up, and no process holds that
-   *    either. ⚑ **W4.210 · and so does *needs you*, whenever the LEDGER is what holds it**: a
-   *    question it asked a person or passed up to one (whose answer is held and starts it, D-017 ·
-   *    R1), an ask against an agent's rules (which parks nobody and stays in front of the person),
-   *    ⚑ F097 · a piece waiting on the person who wrote to it (their next words start it) — each
-   *    still reads *needs you* once the process is gone, because it is read from the ledger. ⛔ A
-   *    card its PROVIDER holds open is the one *needs you* a stop would lose, and its provider is
-   *    then `waiting_permission`, never `idle` — the check below keeps it. ⚠️ *Needs you* ranks
-   *    above *active*, so a start or a delivery still on its way in is asked for here directly.
-   *  - ⛔ **nothing in the background and nothing scheduled** — those live inside the process — read
-   *    off its levels themselves, because *waiting on an answer* ranks above both
-   *    ({@link agentStateOf}) and its word would hide them. ⚑ D-029 · a start begins from what its
-   *    wake-up says its provider restores ({@link register}), so a conversation started for its
-   *    jobs holds them from its first moment, and is stoppable again once its provider says none —
-   *    or once they are past due and it has said nothing ({@link letGoOfJobsItNeverRestored}).
-   *  - **its provider**: running, not on its way out, and `idle` — no turn open, and no card the
-   *    provider holds (`waiting_permission`), which a stop would take with it.
-   *  - **what the one state does not read**: nothing in its mailbox, no flush or handover on its
-   *    way ({@link somethingIsOnItsWayTo}), no person's interrupt-and-send holding the queue.
-   *  - ⛔ **not planning, nor asked to**: a reopen leaves planning (R99, `741`) and the go-ahead is
-   *    drawn off the live handle, so a stop would take a person's plan mode and its go-ahead away.
+   * Arming and expiry both use the live session. Ledger-held questions and work can outlive a stop.
+   * Provider-held cards, in-flight deliveries and plans still need the running session.
    */
-  private idleEnoughToStop(conversation: string, state: AgentState): boolean {
-    // ⚑ **F036 · owing an answer is idle enough to stop**, as waiting on one is: the question stays
-    // open in its asker's ledger, so stopping this process loses nothing — whatever starts it next
-    // finds the question still there to answer (`list_questions`), and its state still says it.
-    // ⚑ **W4.210 · and so is *needs you*, held by the ledger** — see above; a card its provider
-    // holds is kept by its status. ⚠️ Its word hides a start or an arrival on its way: read them.
-    if (
-      state.is === 'active' ||
-      this.startsInFlight.has(conversation) ||
-      this.arrivals.has(conversation)
-    ) {
-      return false
-    }
+  private idleEnoughToStop(conversation: string): boolean {
+    if (this.startsInFlight.has(conversation) || this.arrivals.has(conversation)) return false
     const slot = this.slots.get(conversation)
     if (slot === undefined || slot.session === null || onItsWayOut(slot)) return false
     const session = slot.session
