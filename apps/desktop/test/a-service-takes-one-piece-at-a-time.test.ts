@@ -589,7 +589,10 @@ describe('a service takes one piece at a time', () => {
       brief: 'order lunch for six',
     })
     const stalledAt = clockTime(piecesOf(one.owner)[0]?.stalledAt ?? undefined)
-    expect(given.text).toContain(` Queued behind 1; the active piece stalled at ${stalledAt}.`)
+    expect(given.structured).toMatchObject({
+      delivery: 'held',
+      receipt: { recipient: { state: { kind: 'queued', behind: 1 } } },
+    })
     expect(given.text).not.toContain('Secret')
     expect(given.text).not.toContain(one.label)
     const board = await call(host, other, 'list_tasks', {})

@@ -1272,7 +1272,7 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
         expect(
           store
             .events(helper)
-            .filter((row) => row.ordinal > opened.ordinal)
+            .filter((row) => row.ordinal < opened.ordinal)
             .map((row) => row.event),
         ).toContainEqual({
           type: 'titled',

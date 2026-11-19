@@ -548,7 +548,7 @@ describe('D-033 · a turn that moves a piece of work is heard by every window at
       expect(work()).toHaveLength(0)
     })
 
-    it('⛔ a NEW piece first seen `working` is the give’s — no read at the worker’s status says it again', async () => {
+    it('announces the recorded task and first brief before the first working status', async () => {
       const bring = await personOpens('worker')
       await host.close(bring, window)
       const pm = await personOpens('pm')
@@ -575,14 +575,11 @@ describe('D-033 · a turn that moves a piece of work is heard by every window at
         'the worker on its new piece',
       )
       await settle()
-      // ⚑ The give said it (the positive)…
-      expect(work().length).toBeGreaterThanOrEqual(1)
-      // ⛔ …and no read of the worker's own status rows said it a second time: the piece was first
-      // seen there `working`, which is the give's to say.
-      expect(
-        work().filter((one) => one.at.startsWith('status:')),
-        JSON.stringify(work()),
-      ).toEqual([])
+      expect(work().map(({ at }) => at)).toEqual([
+        'work_given',
+        'message_unqueued',
+        'status:working',
+      ])
     })
 
     /**

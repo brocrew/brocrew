@@ -1,3 +1,6 @@
+import { format } from 'node:util'
+import { expectRecordedCannotRun, expectTaskKept } from './lib/recorded-send'
+import { newConversationGive } from './lib/give-fixture'
 import { RecordingSink, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -482,46 +485,26 @@ describe('710 · R52 — a person whose machine ran short', () => {
       return pm
     }
 
-    it('⚑ a give whose start ran short — the word, and its code as the closed reason', async () => {
+    it('keeps the give when the provider start runs out of open files', async () => {
       const produced = await AT_THE_SPAWN[0].make()
       const pm = await aPmThatMayGive()
-      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
       gate.startFails = () => produced
-      const refused = await callOn(pm, 'give_work', {
-        to: 'new',
-        conversation_title: 'x',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'x',
-        brief: 'x',
-      })
-      expect(refused).toMatchObject({
-        outcome: 'refused',
-        rail: 'agent-could-not-start-just-now',
-        retryable: true,
-        detail: { profile: 'worker', because: 'EMFILE' },
-      })
+      const result = await callOn(pm, 'give_work', newConversationGive('worker', 'x', 'x'))
+      const kept = expectRecordedCannotRun(result, 'task', 'BroCrew had too many files open', false)
+      expectTaskKept(store, kept)
+      expect(warned.mock.calls.map((args) => format(...args)).join(' ')).toContain('EMFILE')
     })
 
-    it('🔴 a Keychain read with no process slot left is the retryable word, not a sign-in', async () => {
+    it('names a process shortage when the sign-in check could not run', async () => {
       const pm = await aPmThatMayGive()
-      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
       theRealHome = true
       theKeychainAnswers(aSecurityThatCouldNotStart)
-      const refused = await callOn(pm, 'give_work', {
-        to: 'new',
-        conversation_title: 'x',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'x',
-        brief: 'x',
-      })
-      // ⛔ Measured on `main`: `agent-did-not-start` · `provider-sign-in-or-config-unusable`
-      expect(refused).toMatchObject({
-        outcome: 'refused',
-        rail: 'agent-could-not-start-just-now',
-        detail: { profile: 'worker', because: 'EAGAIN' },
-      })
+      const result = await callOn(pm, 'give_work', newConversationGive('worker', 'x', 'x'))
+      const kept = expectRecordedCannotRun(result, 'task', 'ran short of open files', false)
+      expectTaskKept(store, kept)
+      expect(warned.mock.calls.map((args) => format(...args)).join(' ')).toContain('EAGAIN')
     })
   })
 

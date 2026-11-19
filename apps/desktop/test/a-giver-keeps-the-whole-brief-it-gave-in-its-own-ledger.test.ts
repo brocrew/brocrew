@@ -1,7 +1,9 @@
+import { expectRecordedCannotRun, expectTaskKept, logKeepsFailure } from './lib/recorded-send'
+import type { SendReceipt } from '../src/shared/tool-outcome'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import type { WorkGivenEvent } from '../src/shared/task-contracts'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -201,13 +203,11 @@ describe('D-047 · the giver keeps the whole brief it gave, in its own ledger', 
   // §1 · a give that starts a new conversation
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
-  it('refuses fresh over-limit gives and rebriefs before any work row or delivery is produced', async () => {
+  it('keeps an oversized give readable and still refuses an oversized rebrief before recording it', async () => {
     const pm = await aPm()
-    const startsBefore = handles.length
-    const sessionsBefore = [...host.sessionIds]
-    const recorded = vi.spyOn(store, 'recordGive')
+    const kept: string[] = []
     for (const brief of ['x'.repeat(2001), HISTORICAL_BRIEF]) {
-      const refused = await callOn(pm, 'give_work', {
+      const given = await callOn(pm, 'give_work', {
         to: 'new',
         conversation_title: TITLE,
         definition_of_done: 'The fictional result and its checks are recorded.',
@@ -215,19 +215,22 @@ describe('D-047 · the giver keeps the whole brief it gave, in its own ledger', 
         title: TITLE,
         brief,
       })
-      expect(refused).toMatchObject({
-        outcome: 'refused',
-        rail: 'malformed-request',
-        detail: {
-          problems: ['The brief is limited to 2000 characters. Put the rest in an input file.'],
-        },
-      })
+      expect(given).toMatchObject({ outcome: 'ok', started: true })
+      const receipt = given.receipt as SendReceipt
+      const attached = receipt.attachments.find((one) => one.overflowField === 'brief')
+      if (attached === undefined || !('resource' in attached)) {
+        throw new Error('the brief was not attached as a task resource')
+      }
+      expect(attached.resource).toMatch(/^res_/)
+      const read = host.readResource(attached.resource)
+      if (!read.ok || read.content.as !== 'file') {
+        throw new Error('the attached brief was not readable as a file')
+      }
+      expect(readFileSync(read.content.path, 'utf8')).toBe(brief)
+      kept.push(receipt.recorded.id)
     }
-    expect(recorded).not.toHaveBeenCalled()
-    expect(handles).toHaveLength(startsBefore)
-    expect(host.sessionIds).toEqual(sessionsBefore)
-    expect(host.pieceBoard(pm).gave).toEqual([])
-    expect(sentBy(pm)).toHaveLength(0)
+    expect(new Set(kept).size).toBe(2)
+    expect(sentBy(pm)).toHaveLength(2)
     const { worker, piece, label } = await aGive(pm, TITLE, LONG_BRIEF)
     const sentBefore = sentBy(pm)
     const rebriefsBefore = rowsOf(worker, 'work_rebriefed')
@@ -448,7 +451,7 @@ describe('D-047 · the giver keeps the whole brief it gave, in its own ledger', 
       expect(sentBy(pm)).toHaveLength(1)
     })
 
-    it('⛔ a start that failed writes no row — the same give once it starts writes one', async () => {
+    it('keeps the giver’s full task row through failure and retry at the same address', async () => {
       const pm = await aPm()
       vi.spyOn(console, 'warn').mockImplementation(() => {})
       gate.startFails = () => new AuthUnavailableError('claude', 'signed out')
@@ -460,23 +463,28 @@ describe('D-047 · the giver keeps the whole brief it gave, in its own ledger', 
         title: TITLE,
         brief: LONG_BRIEF,
       })
-      expect(failed).toMatchObject({ outcome: 'refused', rail: 'agent-did-not-start' })
-      expect(sentBy(pm)).toHaveLength(0)
+      const receipt = expectRecordedCannotRun(failed, 'task', 'its Claude sign-in', true)
+      expectTaskKept(store, receipt)
+      const task = {
+        label: receipt.recorded.taskLabel,
+        as: 'given',
+        to: receipt.recipient.id,
+        brief: LONG_BRIEF,
+      }
+      expect(sentBy(pm)).toEqual([expect.objectContaining(task)])
 
       gate.startFails = undefined
-      const given = await callOn(pm, 'give_work', {
-        to: 'new',
-        conversation_title: TITLE,
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: TITLE,
-        brief: LONG_BRIEF,
+      const delivered = await callOn(pm, 'message_agent', {
+        agent: receipt.recipient.id,
+        kind: 'note',
+        text: 'Continue the same work.',
       })
-      expect(given.outcome, JSON.stringify(given)).toBe('ok')
-      expect(sentBy(pm)).toEqual([expect.objectContaining({ label: given.label, as: 'given' })])
+      expect(delivered).toMatchObject({ outcome: 'ok', agent: receipt.recipient.id })
+      expect(host.sessionIds).toContain(receipt.recipient.id)
+      expect(sentBy(pm)).toEqual([expect.objectContaining(task)])
     })
 
-    it('⛔ a delivery that failed writes no row — the same give delivered writes one', async () => {
+    it('records the second task once before a failed wake and keeps it on retry', async () => {
       const pm = await aPm()
       // ⚑ The conversation it has, its piece answered, then stopped by the app: a give to it now
       // has to start it again, and that start is the delivery made to fail.
@@ -493,13 +501,13 @@ describe('D-047 · the giver keeps the whole brief it gave, in its own ledger', 
       await waitFor(() => !host.sessionIds.includes(first.worker), 'the helper to be over')
       expect(sentBy(pm)).toHaveLength(1)
 
-      vi.spyOn(console, 'warn').mockImplementation(() => {})
-      gate.resumeFails = () =>
-        new ResumeError(
-          { provider: 'claude', sessionId: 'th_x', cwd: root, rotation: 0 },
-          'resume failed: x',
-          { cause: new Error('the handshake died') },
-        )
+      const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const failure = new ResumeError(
+        { provider: 'claude', sessionId: 'th_x', cwd: root, rotation: 0 },
+        'resume failed: x',
+        { cause: new Error('the handshake died') },
+      )
+      gate.resumeFails = () => failure
       const resumesBefore = gate.entered
       const failed = await callOn(pm, 'give_work', {
         to: first.label,
@@ -507,30 +515,30 @@ describe('D-047 · the giver keeps the whole brief it gave, in its own ledger', 
         profile: 'worker',
         title: 'the second piece',
         brief: SECOND_BRIEF,
-      }).catch((error: unknown) => ({ outcome: 'threw', error: String(error) }))
-      // ⚑ It reached the delivery: the conversation was asked to start again, and was not.
-      expect(gate.entered).toBeGreaterThan(resumesBefore)
-      expect(failed.outcome, JSON.stringify(failed)).not.toBe('ok')
-      expect(sentBy(pm)).toHaveLength(1)
-
-      // ⚑ The pair: the same give, the resume let through, is delivered and writes its row.
-      gate.resumeFails = undefined
-      const delivered = await callOn(pm, 'give_work', {
-        to: first.label,
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'the second piece',
-        brief: SECOND_BRIEF,
       })
-      expect(delivered.outcome, JSON.stringify(delivered)).toBe('ok')
+      expect(gate.entered).toBeGreaterThan(resumesBefore)
+      const kept = expectRecordedCannotRun(failed, 'task', 'only in its log', false)
+      expect(logKeepsFailure(warned.mock.calls, failure)).toBe(true)
+      expectTaskKept(store, kept)
+      expect(kept.recipient.id).toBe(first.worker)
       const rows = sentBy(pm)
       expect(rows).toHaveLength(2)
       expect(rows[1]).toMatchObject({
         as: 'given',
-        label: delivered.label,
-        to: delivered.agent,
+        label: kept.recorded.taskLabel,
+        to: first.worker,
         brief: SECOND_BRIEF,
       })
+
+      gate.resumeFails = undefined
+      const delivered = await callOn(pm, 'message_agent', {
+        agent: kept.recipient.id,
+        kind: 'note',
+        text: 'Continue on this address.',
+      })
+      expect(delivered).toMatchObject({ outcome: 'ok', agent: first.worker })
+      expect(host.sessionIds).toContain(first.worker)
+      expect(sentBy(pm)).toEqual(rows)
     })
   })
 

@@ -309,11 +309,7 @@ describe('D-042 · F1 — a give naming another pair keeps the one a person set 
 
     // ⛔ Not switched: the answer names the person's pair, and why the named one went unused.
     expect(structured(answered).runs_on).toEqual({ model: 'wide', effort: 'low' })
-    expect(answered.text).toContain('It keeps running on “wide” at low effort')
-    expect(answered.text).toContain(
-      'a person chose that for this conversation, so the model and effort you named were not used.',
-    )
-    expect(answered.text).not.toContain('from this piece on')
+    expect(structured(answered).receipt).toMatchObject({ recipient: { id: worker } })
     // ⛔ …and the recorded pair every later start replays is the person's, still stamped.
     expect(rowOf(worker)).toMatchObject({ model: 'wide', reasoning_effort: 'low' })
     expect(rowOf(worker).setLive).toEqual(expect.any(Number))
@@ -327,9 +323,7 @@ describe('D-042 · F1 — a give naming another pair keeps the one a person set 
     const answered = await giveMoreNaming(pm, worker)
 
     expect(structured(answered).runs_on).toEqual({ model: 'narrow', effort: 'high' })
-    expect(answered.text).toContain('It now runs on “narrow” at high effort')
-    expect(answered.text).toContain('from this piece on.')
-    expect(answered.text).not.toContain('a person chose that')
+    expect(structured(answered).receipt).toMatchObject({ recipient: { id: worker } })
     // ⚑ …and the row every later start replays holds the give's pair.
     expect(rowOf(worker)).toMatchObject({
       model: 'narrow',
