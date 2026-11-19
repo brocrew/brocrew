@@ -109,7 +109,13 @@ describe('M77 · a second answer to an already-answered question', () => {
     await host.close(sessionId, window)
   }
 
-  const giveQuestionTask = async (leadTools: AgentToolset) => {
+  const giveQuestionTask = async () => {
+    await bringIntoBeing('mock-dev')
+    await host.createSession(
+      { provider: 'claude', profileId: 'lead', approvalMode: 'ask', cwd: root },
+      window,
+    )
+    const leadTools = lastToolset()
     const given = await callOn(
       leadTools,
       'give_work',
@@ -120,16 +126,9 @@ describe('M77 · a second answer to an already-answered question', () => {
   }
 
   it("hands the second answer the app's own FULL sentence, word for word", async () => {
-    await bringIntoBeing('mock-dev')
-    await host.createSession(
-      { provider: 'claude', profileId: 'lead', approvalMode: 'ask', cwd: root },
-      window,
-    )
-    const leadTools = lastToolset()
-
     // ⚑ **D-016 · one give is the old start and its work together**: the brief is the child's
     // first turn, and the piece it opens is the one the question is about.
-    const { asker, askerTools } = await giveQuestionTask(leadTools)
+    const { asker, askerTools } = await giveQuestionTask()
     const piece = store.piecesOwnedBy(asker)[0]?.piece ?? ''
     expect(piece).not.toBe('')
 
@@ -172,14 +171,7 @@ describe('M77 · a second answer to an already-answered question', () => {
   })
 
   it('takes a fresh, still-open question the ordinary way (positive control)', async () => {
-    await bringIntoBeing('mock-dev')
-    await host.createSession(
-      { provider: 'claude', profileId: 'lead', approvalMode: 'ask', cwd: root },
-      window,
-    )
-    const leadTools = lastToolset()
-
-    const { asker, askerTools } = await giveQuestionTask(leadTools)
+    const { asker, askerTools } = await giveQuestionTask()
     const piece = store.piecesOwnedBy(asker)[0]?.piece ?? ''
 
     const asked = await callOn(askerTools, 'ask_question', {

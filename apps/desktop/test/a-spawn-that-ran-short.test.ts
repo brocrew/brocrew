@@ -1,5 +1,5 @@
 import { format } from 'node:util'
-import { expectRecordedCannotRun, expectTaskKept, recordedSendNotices } from './lib/recorded-send'
+import { expectRecordedGiveKept, recordedSendNotices } from './lib/recorded-send'
 import { newConversationGive, spawnFailureFixture } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -143,11 +143,8 @@ describe('707 · R39, extended — a spawn that ran short', () => {
     window,
   }))
 
-  const aKeptGive = (result: Record<string, unknown>, reason: string, needsPerson = false) => {
-    const receipt = expectRecordedCannotRun(result, 'task', reason, needsPerson)
-    expectTaskKept(store, receipt)
-    return receipt
-  }
+  const aKeptGive = (result: Record<string, unknown>, reason: string, needsPerson = false) =>
+    expectRecordedGiveKept(store, result, reason, needsPerson)
 
   const sendToTheKeptAddress = (pm: string, address: string) =>
     callOn(pm, 'message_agent', { agent: address, text: 'carry on', kind: 'note' })

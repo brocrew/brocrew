@@ -168,16 +168,24 @@ describe('a to-do for a person', () => {
     await settle()
     return { ada, piece, label: given.label as string }
   }
-  const giveWriterCopy = async (giver: string) => {
-    await ok(agentToolsFor(host, giver), 'create_agent', { profile_slug: 'writer' })
-    return ok(
-      agentToolsFor(host, giver),
+  const aHelperWithAPiece = () => openGiverAndGivePages({ host, root, window }, settle, aPieceGiven)
+  const openTheWriterAndWaitForItsBrief = async () => {
+    const { brobot, ada } = await aHelperWithAPiece()
+    await ok(agentToolsFor(host, ada), 'create_agent', { profile_slug: 'writer' })
+    const gave = await ok(
+      agentToolsFor(host, ada),
       'give_work',
       newConversationGive('writer', 'Write the copy', 'write the copy'),
     )
+    const bea = gave.agent as string
+    const label = gave.label as string
+    await waitFor(
+      () => store.piecesOwnedBy(bea).some((one) => one.state === 'stalled'),
+      'the writer’s brief to end',
+    )
+    return { brobot, ada, bea, label }
   }
 
-  const aHelperWithAPiece = () => openGiverAndGivePages({ host, root, window }, settle, aPieceGiven)
   /** Ada asks about W1.1, of her giver or of a person; the question's id. */
   const asks = async (ada: string, whoAnswers: 'the-parent' | 'a-person'): Promise<string> => {
     const asked = await ok(agentToolsFor(host, ada), 'ask_question', {
@@ -562,14 +570,7 @@ describe('a to-do for a person', () => {
       copy: string
       copyOfTheCopy: string
     }> => {
-      const { brobot, ada } = await aHelperWithAPiece()
-      const gave = await giveWriterCopy(ada)
-      const bea = gave.agent as string
-      const label = gave.label as string
-      await waitFor(
-        () => store.piecesOwnedBy(bea).some((one) => one.state === 'stalled'),
-        'the writer’s brief to end',
-      )
+      const { brobot, ada, bea, label } = await openTheWriterAndWaitForItsBrief()
       const asked = await ok(agentToolsFor(host, bea), 'ask_question', {
         piece: label,
         question: 'which tone?',
@@ -880,14 +881,7 @@ describe('a to-do for a person', () => {
     }
 
     it('a question addressed to a person whose routing lost who gave the work still ends with every copy of it', async () => {
-      const { brobot, ada } = await aHelperWithAPiece()
-      const gave = await giveWriterCopy(ada)
-      const bea = gave.agent as string
-      const label = gave.label as string
-      await waitFor(
-        () => store.piecesOwnedBy(bea).some((one) => one.state === 'stalled'),
-        'the writer’s brief to end',
-      )
+      const { brobot, ada, bea, label } = await openTheWriterAndWaitForItsBrief()
       // Bea asks the person; Ada, who gave the work, passes it to BroBot, and BroBot to the person.
       const asked = await ok(agentToolsFor(host, bea), 'ask_question', {
         piece: label,

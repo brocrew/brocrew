@@ -44,6 +44,17 @@ export function expectTaskKept(store: SessionStore, receipt: SendReceipt): void 
   expect(store.conversationTitle(recipient.id)?.title).toBe(recipient.title)
 }
 
+export function expectRecordedGiveKept(
+  store: SessionStore,
+  result: Record<string, unknown>,
+  reason: string,
+  needsPerson: boolean,
+): SendReceipt {
+  const receipt = expectRecordedCannotRun(result, 'task', reason, needsPerson)
+  expectTaskKept(store, receipt)
+  return receipt
+}
+
 export function logKeepsFailure(calls: readonly (readonly unknown[])[], wanted: Error): boolean {
   return calls.flat().some((value) => {
     let error: unknown = value
