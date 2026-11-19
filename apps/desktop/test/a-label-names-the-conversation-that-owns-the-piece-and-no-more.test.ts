@@ -849,6 +849,36 @@ describe('a label names the conversation that owns the piece, and no more', () =
       events.filter(
         (event) => !['tool_call', 'tool_result', 'assistant_message', 'turn'].includes(event.type),
       )
+    it.each(['ongoing', 'ended'])(
+      'stops the caller with an %s helper without acting on it',
+      async (life) => {
+        const { brobot, brobotTools, ada } = await settledFamily()
+        if (life === 'ended') {
+          expect(
+            await callOn(brobotTools, 'update_work', { piece: 'W1.1', close: true }),
+          ).toMatchObject({ outcome: 'ok' })
+        }
+        const before = acts(ledger(ada))
+        const queued = vi.spyOn(host, 'queueMessage')
+        const asked = vi.spyOn(host, 'raiseAQuestion')
+        const stopped = vi.spyOn(host, 'interruptAgent')
+        const refusalWritten = vi.spyOn(host, 'noteRefusal')
+        const reason = 'Stop the unfinished draft.'
+        const said = await fullCall(brobotTools, 'interrupt_agent', { agent: 'W1', reason })
+        expect(said.structured).toMatchObject({ outcome: 'ok', agent: brobot })
+        expect(said.text).not.toContain('Its helpers:')
+        expect(stopped).toHaveBeenCalledExactlyOnceWith(
+          brobot,
+          { ownerId: `agent:${brobot}` },
+          reason,
+        )
+        expect(acts(ledger(ada))).toEqual(before)
+        expect(queued).not.toHaveBeenCalled()
+        expect(asked).not.toHaveBeenCalled()
+        expect(refusalWritten).not.toHaveBeenCalled()
+      },
+    )
+
     for (const tool of ['message_agent', 'ask_question', 'interrupt_agent'] as const) {
       const argsFor = (agent: string): Record<string, unknown> =>
         tool === 'message_agent'
@@ -857,7 +887,8 @@ describe('a label names the conversation that owns the piece, and no more', () =
             ? { agent, who_answers: 'an-agent', question: 'Which helper owns this?' }
             : { agent, reason: 'Stop the unfinished draft.' }
 
-      for (const ended of [false, true]) {
+      const helperStates = tool === 'interrupt_agent' ? [] : [false, true]
+      for (const ended of helperStates) {
         it(`${tool} lists the visible ${ended ? 'ended' : 'ongoing'} helper without sending or asking it`, async () => {
           const { brobot, brobotTools, ada } = await settledFamily()
           if (ended) {

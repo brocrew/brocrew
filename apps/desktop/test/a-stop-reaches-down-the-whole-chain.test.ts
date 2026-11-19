@@ -19,6 +19,7 @@ import { resourcesRoot } from '../src/main/resources/resources'
 import {
   fixtureDatabase,
   fixtureFolder,
+  syntheticProviderHome,
   neutralHostDeps,
   fixtureProviderConfig,
   RecordingSink,
