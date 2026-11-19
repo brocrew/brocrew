@@ -23,7 +23,7 @@ import type {
   WorkReport,
 } from './task-contracts'
 import { whoCancelledIt, type AskToStop } from './how-work-stopped'
-import { aPersonDrove } from './piece-fold'
+import { aPersonDrove, failureAtTurnEnd, limitAtTurnEnd, withProviderFailure } from './piece-fold'
 import type { AsTheCutLeftIt, PieceFold, PieceTurnAuthorship } from './piece-fold'
 import { aPersonsOwnWords } from './a-persons-own-words'
 // ⚑ **A TYPE and nothing else** (467), so this module's own rule survives the import: it cannot
@@ -570,24 +570,6 @@ export function theWaitItMarks(event: { readonly waiting?: unknown; readonly on?
   if (event.waiting !== true) return {}
   const on = aWaitOnOf(event.on)
   return on === undefined ? { waiting: true } : { waiting: true, on }
-}
-
-/**
- * ⚑ **F074 — the usage limit a `turn` row says its turn ended on**, for {@link derivePieces}: only
- * a `failed` turn's, and ⛔ a reset at or before the row's own moment is none — the provider's
- * remembered word about a limit that had already reset is not about this turn.
- */
-function theLimitItEndedOn(
-  event: Extract<TranscriptEvent, { type: 'turn' }>,
-  at: number,
-): StoppedOnALimit | undefined {
-  if (event.state !== 'failed' || event.limit === undefined) return undefined
-  const { provider, resetsAt, window } = event.limit
-  return {
-    provider,
-    ...(resetsAt !== undefined && resetsAt > at ? { resetsAt } : {}),
-    ...(window === undefined ? {} : { window }),
-  }
 }
 
 export const waitsOnWhoWrote = (row: PieceRow): row is PieceWaitingOnWhoWrote =>
@@ -1211,6 +1193,7 @@ export function derivePieces(
       options.trackChanges &&
       (theStateAsRead(before) !== theStateAsRead(after) ||
         before.statusLine !== after.statusLine ||
+        before.providerTurnFailure !== after.providerTurnFailure ||
         before.definitionOfDone !== after.definitionOfDone) &&
       (changeTimes.get(after.piece)?.order ?? -1) <= changeOrder
     )
@@ -1252,6 +1235,7 @@ export function derivePieces(
   /** Whose words last drove each piece; notes preserve the author behind an existing person wait. */
   const whoseWordsDroveItLast = new Map<string, boolean>(from?.whoseWordsDroveItLast)
   let aPersonOpenedThisTurnFor = from?.aPersonOpenedThisTurnFor ?? null
+  const workDrivenThisTurn = new Set(from?.workDrivenThisTurn)
   /** ⚑ **F097** — a person's own words last drove this piece ({@link whoseWordsDroveItLast}). */
   const aPersonOpenedItFor = (piece: string): boolean => whoseWordsDroveItLast.get(piece) === true
   /**
@@ -1295,7 +1279,7 @@ export function derivePieces(
     // row, so they are stamped, and kept, together.
     const endedBy = TASK_IS_OPEN[state] ? held.row.endedBy : by
     const next: PieceRow = {
-      ...held.row,
+      ...(TASK_IS_OPEN[state] ? held.row : withProviderFailure(held.row, null)),
       ...(carried ?? {}),
       // ⚑ **D-025 · above `state`, and not beside `endedAt`**: `400` anchors the three lines from
       // `state,` to `stalledBecause: null,`, and a line among them would change their bytes.
@@ -1714,6 +1698,7 @@ export function derivePieces(
     }
     for (const [piece, held] of [...open]) {
       if (target !== null && piece !== target) continue
+      if (aTurnIsOpen && !preservesPersonWait) workDrivenThisTurn.add(piece)
       // Notes leave the person wait in place; substantive drives clear it.
       if (held.row.state === 'waiting-on-the-person-who-wrote') {
         if (preservesPersonWait) continue
@@ -1814,6 +1799,7 @@ export function derivePieces(
     onAKey = false,
     /** Its provider would not bill the account the turn ran on (`billingRefused`). */
     billingRefused = false,
+    providerFailure?: PieceRow['providerTurnFailure'] | null,
   ): void => {
     // 🔴 **The ONE place the two TURN causes are produced** — for a `turn`, a wake and a stop
     // alike, so a wake's end is a turn's end, said the same way (`400`'s one producer per cause).
@@ -1847,6 +1833,16 @@ export function derivePieces(
     for (const [piece, held] of [...open]) {
       if (held.row.state !== 'working') continue
       if (heldForTheQueue.has(piece) || heldForTheBackground.has(piece)) continue
+      if (
+        providerFailure !== undefined &&
+        workDrivenThisTurn.has(piece) &&
+        !(held.row.statusLine?.on && readsAsWaitingOnPurpose(held.row))
+      ) {
+        const next = withProviderFailure(held.row, providerFailure)
+        noteChange(held.row, next)
+        rows[held.index] = next
+        open.set(piece, { row: next, index: held.index })
+      }
       // ⚑ **F074 — a turn its provider refused for the usage limit is said at once**: what waits to
       // drive the work — a held message, a background wake — meets the same limit, and the app
       // holds its own until the reset, so its giver would hear nothing for hours.
@@ -2003,6 +1999,7 @@ export function derivePieces(
       // author of that older turn's ending. `SessionStore.appendTx` opens turns on this exact event.
       asked = null
       aTurnIsOpen = true
+      workDrivenThisTurn.clear()
       // ⚑ **D-016 · commit 6 · R4** — the drive a `status: working` began is this turn's, and this
       // row says what it drives.
       aDriveWaitsForItsTurn = false
@@ -2269,7 +2266,7 @@ export function derivePieces(
       const index = indexOfPiece.get(event.piece)
       const held = index === undefined ? undefined : rows[index]
       if (index === undefined || held === undefined) continue
-      const next: PieceRow =
+      let next: PieceRow =
         event.type === 'work_retitled'
           ? { ...held, title: event.title }
           : event.type === 'work_rebriefed'
@@ -2292,6 +2289,8 @@ export function derivePieces(
                   ...theWaitItMarks(event),
                 },
               }
+      if (event.type === 'work_status_set' && next.statusLine?.on && readsAsWaitingOnPurpose(next))
+        next = withProviderFailure(next, null)
       noteChange(held, next)
       rows[index] = next
       if (open.has(event.piece)) open.set(event.piece, { row: next, index })
@@ -2416,7 +2415,7 @@ export function derivePieces(
         endOfDrive(
           event.state === 'interrupted',
           entry.at,
-          theLimitItEndedOn(event, entry.at),
+          limitAtTurnEnd(event, entry.at),
           event.state === 'failed' && event.loginRefused === true,
           event.state === 'failed' && event.onAKey === true,
           event.state === 'failed' && event.billingRefused === true,
@@ -2445,7 +2444,7 @@ export function derivePieces(
       const cut =
         event.state === 'interrupted' ||
         (asked !== null &&
-          theLimitItEndedOn(event, entry.at) === undefined &&
+          limitAtTurnEnd(event, entry.at) === undefined &&
           !(event.state === 'failed' && event.loginRefused === true) &&
           !(event.state === 'failed' && event.billingRefused === true))
       const wentBack = restoreTheEarlierStalls()
@@ -2456,10 +2455,13 @@ export function derivePieces(
       endOfDrive(
         event.state === 'interrupted',
         entry.at,
-        theLimitItEndedOn(event, entry.at),
+        limitAtTurnEnd(event, entry.at),
         event.state === 'failed' && event.loginRefused === true,
         event.state === 'failed' && event.onAKey === true,
         event.state === 'failed' && event.billingRefused === true,
+        aTurnIsOpen && (!cut || event.state === 'failed')
+          ? failureAtTurnEnd(event, entry.ordinal)
+          : undefined,
       )
       // ⚑ What this turn had not gone back to yet is still cut, by the same stall.
       cutByAnInterrupt = new Map(cut ? theTurnGoesBackTo : [])
@@ -2666,6 +2668,7 @@ export function derivePieces(
     asked,
     whoseWordsDroveItLast: new Map(whoseWordsDroveItLast),
     aPersonOpenedThisTurnFor,
+    workDrivenThisTurn: new Set(workDrivenThisTurn),
     waitsOnWhoWroteSince: new Map(waitsOnWhoWroteSince),
     waitingToDriveIt: new Map(waitingToDriveIt),
     heldForTheQueue: new Map(heldForTheQueue),

@@ -17,6 +17,7 @@ import type {
 import type { HandedPath } from '../../shared/attachment-contracts'
 import type { WorkReport } from '../../shared/task-contracts'
 import { moveOriginOf } from '../../shared/move-request'
+import { WORDS_CAP } from '../../shared/last-exchange'
 import {
   boundRaw,
   boundRecall,
@@ -267,6 +268,26 @@ function boundRelayedIdentity(event: TranscriptEvent): TranscriptEvent {
 }
 
 function boundStoredPayloads(event: TranscriptEvent): TranscriptEvent {
+  if (event.type === 'turn' && event.providerFailure !== undefined) {
+    const { providerFailure, ...rest } = event
+    if (
+      event.state !== 'failed' ||
+      providerFailure === null ||
+      typeof providerFailure.message !== 'string' ||
+      providerFailure.message.trim() === ''
+    )
+      return rest
+    const { message, code } = providerFailure
+    // Bound the second copy. The existing diagnostic row still carries the full provider error.
+    const bounded =
+      message.length > WORDS_CAP
+        ? `${message.slice(0, WORDS_CAP - 1).replace(/[\uD800-\uDBFF]$/, '')}…`
+        : message
+    return {
+      ...rest,
+      providerFailure: { message: bounded, ...(isAStoredId(code) ? { code } : {}) },
+    }
+  }
   if (
     (event.type === 'work_given' || event.type === 'work_rebriefed') &&
     event.definitionOfDone !== undefined &&

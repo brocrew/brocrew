@@ -158,6 +158,12 @@ export interface PieceRow {
    * takes the ledger's own name as an argument instead.
    */
   readonly owner: string
+  /** The current recorded provider failure on this work, scoped to the owner's terminal ordinal. */
+  readonly providerTurnFailure?: {
+    readonly turnOrdinal: number
+    readonly message: string
+    readonly code?: string
+  }
   /** Epoch ms of the give — the `at` of the event, not of anything derived from it. */
   readonly givenAt: number
   /** Included only by the closing-block read, from an observed state or status revision. */

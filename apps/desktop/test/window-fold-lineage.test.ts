@@ -10,6 +10,7 @@ import { createSessionStore } from '../src/main/db/session-store'
 import { WindowReadEngine } from '../src/main/db/window-read-engine'
 import type { WindowReadQuery, WindowReadResult } from '../src/main/db/window-read-protocol'
 import { WindowWorkerReader } from '../src/main/db/window-worker-reader'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { bundleAWorker } from './helpers/bundle-a-worker'
 import { observeLedgerFolds } from './helpers/observe-ledger-folds'
 import { observeGenerationReads } from './helpers/observe-generation-reads'
@@ -271,4 +272,117 @@ it('keeps the historical turn cut after the current piece has closed', () => {
   const owner = cut.owners.find((one) => one.sessionId === 'alpha')!
   expect(owner.history.driven).toEqual({ value: ['alpha-child'] })
   expect(owner.history.states).toContainEqual(['alpha-child', 'closed'])
+})
+
+it('keeps the failure of driven work through an unrelated turn, a close, and recorded reopen', () => {
+  const { store, file } = world()
+  const terminalError = {
+    type: 'turn',
+    state: 'failed',
+    providerFailure: { message: 'The provider could not use this model.', code: 'modelNotFound' },
+  } as const
+  const append = (event: TranscriptEvent) => {
+    const ordinal = store.nextOrdinal('alpha')
+    store.append('alpha', ordinal, event, ordinal + 1)
+    return ordinal
+  }
+  const read = (piece: string) => store.piecesOwnedBy('alpha').find((one) => one.piece === piece)
+  const first = 'alpha-child'
+  const second = 'alpha-second'
+  const root = store.rootOf('alpha')!
+  append({
+    type: 'work_given',
+    piece: second,
+    parent: root.piece,
+    label: `${root.label}.2`,
+    title: 'Unrelated work',
+    brief: 'Read the next chapter',
+    givenBy: 'beta',
+  })
+  append({ type: 'user_turn', text: 'Work on the first piece', drives: first })
+  const failedAt = append(terminalError)
+  const diagnosis = { turnOrdinal: failedAt, ...terminalError.providerFailure }
+  expect(read(first)).toMatchObject({ owner: 'alpha', giver: 'alpha', providerTurnFailure: diagnosis })
+  expect(read(second)).toMatchObject({ owner: 'alpha', giver: 'beta' })
+  expect(read(second)).not.toHaveProperty('providerTurnFailure')
+  expect(store.piecesOwnedBy('beta')[0]).toMatchObject({ owner: 'beta', giver: 'alpha' })
+  expect(store.piecesOwnedBy('beta')[0]).not.toHaveProperty('providerTurnFailure')
+
+  append({
+    type: 'message_queued',
+    messageId: 'retry-first',
+    kind: 'work',
+    text: 'Retry the first piece',
+    drives: first,
+  })
+  append({ type: 'user_turn', text: 'Work on the second piece', drives: second })
+  append({ type: 'assistant_message', text: 'I checked the chapter.' })
+  append({ type: 'turn', state: 'completed' })
+  expect(read(first)?.providerTurnFailure).toEqual(diagnosis)
+
+  append({ type: 'status', state: 'ended' })
+  expect(read(first)?.providerTurnFailure).toEqual(diagnosis)
+  append({ type: 'reopened' })
+  const reopened = openDatabase(file)
+  cleanup.push(() => reopened.close())
+  expect(createSessionStore(reopened).piecesOwnedBy('alpha')).toEqual(store.piecesOwnedBy('alpha'))
+
+  append({ type: 'message_unqueued', messageId: 'retry-first', reason: 'sent', text: 'Retry' })
+  append({ type: 'user_turn', text: 'Retry the first piece', drives: first })
+  append({ type: 'status', state: 'working' })
+  append({ type: 'assistant_message', text: 'I started it again.' })
+  expect(read(first)?.providerTurnFailure).toEqual(diagnosis)
+  append({ type: 'turn', state: 'interrupted' })
+  expect(read(first)?.providerTurnFailure).toEqual(diagnosis)
+
+  append({ type: 'user_turn', text: 'Try it again', drives: first })
+  const failedAgain = append(terminalError)
+  expect(read(first)?.providerTurnFailure).toEqual({ ...diagnosis, turnOrdinal: failedAgain })
+  append({ type: 'user_turn', text: 'Retry once more', drives: first })
+  append({ type: 'work_interrupted', by: 'a-person' })
+  append({ type: 'turn', state: 'completed' })
+  expect(read(first)?.providerTurnFailure).toEqual({ ...diagnosis, turnOrdinal: failedAgain })
+
+  append({ type: 'user_turn', text: 'Finish the first piece', drives: first })
+  append({ type: 'turn', state: 'completed' })
+  expect(read(first)?.piece).toBe(first)
+  expect(read(first)).not.toHaveProperty('providerTurnFailure')
+
+  append({ type: 'user_turn', text: 'Try both pieces' })
+  const sharedFailure = append(terminalError)
+  expect(read(first)?.providerTurnFailure?.turnOrdinal).toBe(sharedFailure)
+  expect(read(second)?.providerTurnFailure?.turnOrdinal).toBe(sharedFailure)
+  append({ type: 'work_closed', piece: second, by: 'beta' })
+  expect(read(second)).toMatchObject({ state: 'closed', owner: 'alpha', giver: 'beta' })
+  expect(read(second)).not.toHaveProperty('providerTurnFailure')
+  expect(read(first)?.providerTurnFailure?.turnOrdinal).toBe(sharedFailure)
+})
+
+it('bounds only the copied provider reason on the turn and reads old or malformed rows normally', () => {
+  const { store } = world()
+  const message = `${'x'.repeat(4094)}🛠 long provider details`
+  const diagnostic = { type: 'error', message, fatal: false } as const
+  store.append('alpha', 1, { type: 'user_turn', text: 'Retry' }, 2)
+  store.append('alpha', 2, diagnostic, 3)
+  store.append(
+    'alpha',
+    3,
+    { type: 'turn', state: 'failed', providerFailure: { message, code: 'x'.repeat(201) } },
+    4,
+  )
+  store.append('alpha', 4, { type: 'turn', state: 'failed' }, 5)
+  const malformed = { type: 'turn', state: 'failed', providerFailure: null }
+  store.append('alpha', 5, malformed as unknown as TranscriptEvent, 6)
+
+  const bounded = `${'x'.repeat(4094)}…`
+  expect(store.events('alpha').slice(2).map(({ event }) => event)).toEqual([
+    diagnostic,
+    { type: 'turn', state: 'failed', providerFailure: { message: bounded } },
+    { type: 'turn', state: 'failed' },
+    { type: 'turn', state: 'failed' },
+  ])
+  expect(store.piecesOwnedBy('alpha')[0]?.providerTurnFailure).toEqual({
+    turnOrdinal: 3,
+    message: bounded,
+  })
 })
