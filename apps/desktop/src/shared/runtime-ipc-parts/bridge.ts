@@ -15,6 +15,8 @@ import type {
   ConversationIdentity,
   ConversationRenameInput,
   ConversationRenameResult,
+  ConversationTitleHistory,
+  ConversationTitleHistoryInput,
 } from '../conversation-title'
 import type {
   ResumableSessionInfo,
@@ -772,6 +774,9 @@ export interface RuntimeBridge {
    */
   retitleWork(input: { piece: string; title: string }): Promise<WorkRetitled>
   readConversationIdentity(input: { sessionId: string }): Promise<ConversationIdentity | null>
+  readConversationTitleHistory(
+    input: ConversationTitleHistoryInput,
+  ): Promise<ConversationTitleHistory | null>
   renameConversation(input: ConversationRenameInput): Promise<ConversationRenameResult>
   /**
    * Take back the piece a service is on, as a person (see {@link RuntimeCommandResults.takeBackWork}).

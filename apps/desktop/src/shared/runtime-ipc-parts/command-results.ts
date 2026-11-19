@@ -3,7 +3,11 @@ import type { AgentMemoryAmended, AgentMemoryReading, MemoryChecked } from '../a
 import type { AgentRemoved } from '../agent-roster'
 import type { ArchiveOutcome, DeleteOutcome, DeleteVerdict } from '../conversation-archive'
 import type { McpServerRequestForAPerson } from '../conversation-events'
-import type { ConversationIdentity, ConversationRenameResult } from '../conversation-title'
+import type {
+  ConversationIdentity,
+  ConversationRenameResult,
+  ConversationTitleHistory,
+} from '../conversation-title'
 import type {
   ResumableSessionInfo,
   UnresumableSessionInfo,
@@ -469,6 +473,7 @@ export interface RuntimeCommandResults {
    */
   retitleWork: WorkRetitled
   readConversationIdentity: ConversationIdentity | null
+  readConversationTitleHistory: ConversationTitleHistory | null
   renameConversation: ConversationRenameResult
   /** The piece a person took back, or the rail that refused it ({@link WorkTakenBackByAPerson}). */
   takeBackWork: WorkTakenBackByAPerson

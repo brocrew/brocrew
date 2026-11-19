@@ -34,6 +34,25 @@ export interface ConversationIdentity {
   readonly author: ConversationTitleAuthor | null
 }
 
+export interface ConversationTitleHistoryCursor {
+  readonly generation: number
+  readonly ordinal: number
+}
+
+export interface ConversationTitleHistoryInput {
+  readonly sessionId: string
+  readonly before?: ConversationTitleHistoryCursor
+}
+
+export type ConversationTitleHistory =
+  | {
+      readonly kind: 'titles'
+      readonly titles: readonly (ConversationTitle & { readonly ordinal: number })[]
+      readonly rowsUnread: number
+      readonly next: ConversationTitleHistoryCursor | null
+    }
+  | { readonly kind: 'generation-changed' }
+
 export interface ConversationRenameInput {
   readonly conversation: string
   readonly title: string

@@ -93,6 +93,8 @@ import {
   aTitleAuthor,
   CONVERSATION_TITLE_CHARS,
   type ConversationTitle,
+  type ConversationTitleHistory,
+  type ConversationTitleHistoryCursor,
   type ConversationTitledEvent,
 } from '../../shared/conversation-title'
 import type { ScheduleLevel, ScheduledRow } from '../../shared/agent-state-contracts'
@@ -785,6 +787,10 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   ): void
   /** The newest title set on a conversation in its current history, or `null` when none was. */
   conversationTitle(conversation: string): ConversationTitle | null
+  conversationTitleHistory(
+    conversation: string,
+    before?: ConversationTitleHistoryCursor,
+  ): ConversationTitleHistory
   appendMany(
     sessionId: string,
     entries: { ordinal: number; event: TranscriptEvent; at: number }[],
@@ -2908,6 +2914,38 @@ export function createSessionStore(
     `SELECT ordinal, payload, created_at FROM events INDEXED BY events_kind_owner_idx
       WHERE type = 'titled' AND session_id = ? AND generation = ?
       ORDER BY ordinal DESC LIMIT 1`,
+  )
+  const titlePageSize = 20
+  const selectTitledPage = db.prepare(
+    `SELECT ordinal, payload, created_at FROM events INDEXED BY events_kind_owner_idx
+      WHERE type = 'titled' AND session_id = ? AND generation = ? AND ordinal <= ?
+      ORDER BY ordinal DESC LIMIT ?`,
+  )
+  const conversationTitleHistory = db.transaction(
+    (conversation: string, before?: ConversationTitleHistoryCursor): ConversationTitleHistory => {
+      const generation = activeGeneration(conversation)
+      if (before !== undefined && before.generation !== generation) {
+        return { kind: 'generation-changed' }
+      }
+      const through = before === undefined ? Number.MAX_SAFE_INTEGER : before.ordinal - 1
+      const rows = selectTitledPage.all(
+        conversation,
+        generation,
+        through,
+        titlePageSize + 1,
+      ) as EventRow[]
+      const page = rows.slice(0, titlePageSize)
+      const titles = toPersistedEvents(page).flatMap(({ event, ordinal, at }) =>
+        event.type === 'titled' ? [{ ordinal, title: event.title, author: event.author, at }] : [],
+      )
+      return {
+        kind: 'titles',
+        titles,
+        rowsUnread: page.length - titles.length,
+        next:
+          rows.length > titlePageSize ? { generation, ordinal: page[titlePageSize - 1]!.ordinal } : null,
+      }
+    },
   )
 
   /** The newest `titled` row of one generation; an unreadable one reads as none, and is logged. */
@@ -5349,6 +5387,8 @@ export function createSessionStore(
     conversationTitle(conversation) {
       return newestConversationTitle(conversation, activeGeneration(conversation))
     },
+
+    conversationTitleHistory,
 
     appendMany(sessionId, entries) {
       if (entries.length === 0) return

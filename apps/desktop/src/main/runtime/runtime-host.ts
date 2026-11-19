@@ -113,6 +113,8 @@ import type {
   ConversationRenameInput,
   ConversationRenameResult,
   ConversationTitleAuthor,
+  ConversationTitleHistory,
+  ConversationTitleHistoryInput,
   ConversationTitledEvent,
 } from '../../shared/conversation-title'
 import {
@@ -18416,6 +18418,14 @@ export class RuntimeHost implements LiveHost {
       savedTitle,
     )
     return { conversation, address, title, author: savedTitle?.author ?? null }
+  }
+
+  readConversationTitleHistory(
+    input: ConversationTitleHistoryInput,
+  ): ConversationTitleHistory | null {
+    const { store } = this.deps
+    if (store.conversationBinding(input.sessionId) === null) return null
+    return store.conversationTitleHistory(input.sessionId, input.before)
   }
 
   renameConversation(

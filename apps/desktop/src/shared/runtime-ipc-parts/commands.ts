@@ -1,5 +1,6 @@
 import type { MemoryAmendmentAsked, MemoryCheckAsked, MemoryUndoAsked } from '../agent-memory'
 import type { RulesBaseline } from '../agent-rules'
+import type { ConversationTitleHistoryInput } from '../conversation-title'
 import type { ExternalMcpServerReach } from '../external-mcp'
 import type { DecideMoveRequestInput } from '../move-contracts'
 import type { OwnNotesWrite } from '../own-notes'
@@ -621,6 +622,7 @@ export type RuntimeCommand =
    */
   | { kind: 'retitleWork'; piece: string; title: string }
   | { kind: 'readConversationIdentity'; sessionId: string }
+  | ({ kind: 'readConversationTitleHistory' } & ConversationTitleHistoryInput)
   | { kind: 'renameConversation'; conversation: string; title: string }
   /**
    * A person takes back the piece a service is on, by its label or its id: the service is told to
