@@ -45,42 +45,56 @@ describe('window reader owns its native connection until confirmed exit', () => 
     const reads = Array.from({ length: WINDOW_READ_BOUNDS.pending }, (_, index) =>
       reader.read({ kind: 'routes' }, index === 0 ? stop.signal : undefined),
     )
-    worker.emit('message', { type: 'ready' })
-    await drain()
-    stop.abort()
-    worker.emit('message', { type: 'debug-window-read-timing', id: 1, phase: 'start', atUs: 100 })
-    worker.emit('message', { type: 'debug-window-read-timing', id: 1, phase: 'end', atUs: 200 })
+    const settled = Promise.allSettled(reads)
+    try {
+      worker.emit('message', { type: 'ready' })
+      await drain()
+      stop.abort()
+      worker.emit('message', { type: 'debug-window-read-timing', id: 1, phase: 'start', atUs: 100 })
+      worker.emit('message', { type: 'debug-window-read-timing', id: 1, phase: 'end', atUs: 200 })
 
-    await expect(reader.read({ kind: 'routes' })).rejects.toMatchObject({ why: 'busy' })
-    expect(timing).toHaveBeenCalledWith('start', { id: 1, kind: 'routes', atUs: 100 })
-    expect(timing).toHaveBeenCalledWith('end', { id: 1, kind: 'routes', atUs: 200 })
-    const owners = timing.mock.calls.find(([phase]) => phase === 'busy')?.[1].owners
-    expect(owners).toHaveLength(WINDOW_READ_BOUNDS.pending)
-    expect(owners?.[0]).toEqual({
-      id: 1,
-      kind: 'routes',
-      phase: 'end',
-      cancelled: true,
-      ageUs: expect.any(Number),
-    })
-    expect(worker.sent).toHaveLength(WINDOW_READ_BOUNDS.pending)
-
-    worker.emit('message', { type: 'read', id: 1, result })
-    await expect(reads[0]).resolves.toEqual(result)
-    expect(timing).toHaveBeenCalledWith(
-      'release',
-      expect.objectContaining({
+      await expect(reader.read({ kind: 'routes' })).rejects.toMatchObject({ why: 'busy' })
+      expect(timing).toHaveBeenCalledWith('start', { id: 1, kind: 'routes', atUs: 100 })
+      expect(timing).toHaveBeenCalledWith('end', { id: 1, kind: 'routes', atUs: 200 })
+      const owners = timing.mock.calls.find(([phase]) => phase === 'busy')?.[1].owners
+      expect(owners).toHaveLength(WINDOW_READ_BOUNDS.pending)
+      expect(owners?.[0]).toEqual({
         id: 1,
         kind: 'routes',
-        outcome: 'read',
-        receivedUs: expect.any(Number),
-      }),
+        phase: 'end',
+        cancelled: true,
+        ageUs: expect.any(Number),
+      })
+      expect(worker.sent).toHaveLength(WINDOW_READ_BOUNDS.pending)
+
+      worker.emit('message', { type: 'read', id: 1, result })
+      await expect(reads[0]).resolves.toEqual(result)
+      expect(timing).toHaveBeenCalledWith(
+        'release',
+        expect.objectContaining({
+          id: 1,
+          kind: 'routes',
+          outcome: 'read',
+          receivedUs: expect.any(Number),
+        }),
+      )
+    } finally {
+      worker.emit('exit', 0)
+      await settled
+      await reader.close()
+    }
+    expect((await settled).slice(1).every((read) => read.status === 'rejected')).toBe(true)
+    const releases = timing.mock.calls
+      .filter(([phase, facts]) => phase === 'release' && facts.outcome === 'exit')
+      .map(([, facts]) => facts)
+    expect(releases).toEqual(
+      Array.from({ length: WINDOW_READ_BOUNDS.pending - 1 }, (_, index) => ({
+        id: index + 2,
+        kind: 'routes',
+        outcome: 'exit',
+        atUs: expect.any(Number),
+      })),
     )
-    worker.emit('exit', 0)
-    expect(
-      (await Promise.allSettled(reads.slice(1))).every((read) => read.status === 'rejected'),
-    ).toBe(true)
-    await reader.close()
   })
 
   it('keeps permit and reply behavior if the timing writer throws', async () => {
@@ -89,14 +103,19 @@ describe('window reader owns its native connection until confirmed exit', () => 
       throw new Error('fictional log failure')
     })
     const answer = reader.read({ kind: 'routes' })
-    worker.emit('message', { type: 'ready' })
-    await drain()
-    worker.emit('message', { type: 'debug-window-read-timing', id: 1, phase: 'start', atUs: 100 })
-    worker.emit('message', { type: 'debug-window-read-timing', id: 1, phase: 'end', atUs: 200 })
-    worker.emit('message', { type: 'read', id: 1, result })
-    await expect(answer).resolves.toEqual(result)
-    worker.emit('exit', 0)
-    await reader.close()
+    const settled = Promise.allSettled([answer])
+    try {
+      worker.emit('message', { type: 'ready' })
+      await drain()
+      worker.emit('message', { type: 'debug-window-read-timing', id: 1, phase: 'start', atUs: 100 })
+      worker.emit('message', { type: 'debug-window-read-timing', id: 1, phase: 'end', atUs: 200 })
+      worker.emit('message', { type: 'read', id: 1, result })
+      await expect(answer).resolves.toEqual(result)
+    } finally {
+      worker.emit('exit', 0)
+      await settled
+      await reader.close()
+    }
   })
 
   it.each([false, true])('emits worker phases only for a Debug %s generation', async (debug) => {
@@ -130,6 +149,7 @@ describe('window reader owns its native connection until confirmed exit', () => 
       ])
       expect(read).toHaveBeenCalledTimes(2)
     } finally {
+      port.removeAllListeners('message')
       vi.unstubAllEnvs()
       vi.doUnmock('node:worker_threads')
       vi.doUnmock('../src/main/db/window-read-engine')

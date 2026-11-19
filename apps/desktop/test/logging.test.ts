@@ -3,6 +3,7 @@ import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promise
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import electronLog from 'electron-log'
 import { afterEach, expect, it, vi } from 'vitest'
 import { startWindowReader } from '../src/main/db/start-window-reader'
 import {
@@ -240,35 +241,73 @@ it('always keeps errors and info, keeps debug detail only in Debug mode, and sho
 
 it.each([false, true])('writes window worker timings to the app log with Debug %s', async (debug) => {
   const file = appLogFile(await folder())
-  openLog(file, { debug, console: false })
+  const transport = electronLog.transports.file
+  const before = { level: transport.level, resolvePathFn: transport.resolvePathFn, sync: transport.sync }
   const reader = startWindowReader('fictional-reader-log-test')
-  const answer = reader.read({ kind: 'routes' })
-  const workerFactory = vi.mocked(startWorker).mock
-  const worker = workerFactory.results.at(-1)?.value
-  if (worker === undefined) throw new Error('Missing fictional worker')
-  expect(workerFactory.lastCall?.[0]?.env).toEqual(
-    expect.objectContaining({ BROCREW_WINDOW_READ_TIMING: debug ? '1' : '0' }),
-  )
-  worker.emit('message', { type: 'ready' })
-  await Promise.resolve()
-  if (debug) {
-    worker.emit('message', { type: 'debug-window-read-timing', id: 1, phase: 'start', atUs: 100 })
-    worker.emit('message', { type: 'debug-window-read-timing', id: 1, phase: 'end', atUs: 200 })
+  const factory = vi.mocked(startWorker)
+  factory.mockClear()
+  const joined: Promise<unknown>[] = []
+  const read = () => {
+    const answer = reader.read({ kind: 'routes' })
+    joined.push(Promise.allSettled([answer]))
+    return answer
   }
-  worker.emit('message', { type: 'failed', id: 1, reason: 'worker-read-failed' })
-  await expect(answer).rejects.toMatchObject({ why: 'failed' })
-  worker.emit('exit', 0)
-  await reader.close()
+  try {
+    transport.resolvePathFn = () => file
+    transport.sync = true
+    transport.level = 'info'
+    setDebug(debug)
+    const answer = read()
+    const worker = factory.mock.results.at(-1)?.value
+    if (worker === undefined) throw new Error('Missing fictional worker')
+    expect(factory.mock.lastCall?.[0]?.env).toEqual(
+      expect.objectContaining({ BROCREW_WINDOW_READ_TIMING: debug ? '1' : '0' }),
+    )
+    const timing = (id: number) => {
+      worker.emit('message', { type: 'debug-window-read-timing', id, phase: 'start', atUs: 100 })
+      worker.emit('message', { type: 'debug-window-read-timing', id, phase: 'end', atUs: 200 })
+    }
+    const fail = (id: number) =>
+      worker.emit('message', { type: 'failed', id, reason: 'worker-read-failed' })
+    worker.emit('message', { type: 'ready' })
+    await Promise.resolve()
+    if (debug) timing(1)
+    fail(1)
+    await expect(answer).rejects.toMatchObject({ why: 'failed' })
 
-  logInfo('test', 'reader log drained')
-  await vi.waitFor(async () => expect(await text(file)).toContain('reader log drained'))
-  const written = await text(file)
-  if (debug) {
-    expect(written).toMatch(/\[debug\] \(window-reader-timing\) start.*workerId: 77.*atUs: 100/)
-    expect(written).toMatch(/\[debug\] \(window-reader-timing\) end.*workerId: 77.*atUs: 200/)
-    expect(written).toContain('(window-reader-timing) release')
-  } else expect(written).not.toContain('window-reader-timing')
-  expect(written).not.toContain('fictional-reader-log-test')
+    logInfo('test', 'reader log drained')
+    await vi.waitFor(async () => expect(await text(file)).toContain('reader log drained'))
+    const written = await text(file)
+    if (debug) {
+      expect(written).toMatch(/\[debug\] \(window-reader-timing\) start.*workerId: 77.*atUs: 100/)
+      expect(written).toMatch(/\[debug\] \(window-reader-timing\) end.*workerId: 77.*atUs: 200/)
+      expect(written).toContain('(window-reader-timing) release')
+
+      setDebug(false)
+      const later = read()
+      await Promise.resolve()
+      timing(2)
+      fail(2)
+      await expect(later).rejects.toMatchObject({ why: 'failed' })
+      expect(factory).toHaveBeenCalledTimes(1)
+      logInfo('test', 'reader log drained after toggle')
+      await vi.waitFor(async () =>
+        expect(await text(file)).toContain('reader log drained after toggle'),
+      )
+      const timingLines = (contents: string) =>
+        contents.split('\n').filter((line) => line.includes('(window-reader-timing)'))
+      expect(timingLines(await text(file))).toEqual(timingLines(written))
+    } else expect(written).not.toContain('window-reader-timing')
+    expect(written).not.toContain('fictional-reader-log-test')
+  } finally {
+    try {
+      factory.mock.results.at(-1)?.value?.emit('exit', 0)
+      await Promise.all(joined)
+      await reader.close()
+    } finally {
+      Object.assign(transport, before)
+    }
+  }
 })
 
 it('keeps minute writer totals at info with Debug off', async () => {
