@@ -1,4 +1,4 @@
-import { giveWorkWithTitleAsBrief } from './lib/give-fixture'
+import { giveAndWaitForBriefTurn, giveWorkWithTitleAsBrief } from './lib/give-fixture'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
 import {
   RecordingSink,
@@ -113,9 +113,12 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
     for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
   })
 
-  const personOpens = async (profileId: string): Promise<string> => {
+  const personOpens = async (
+    profileId: string,
+    approvalMode: 'ask' | 'auto' = 'ask',
+  ): Promise<string> => {
     const { sessionId } = await host.createSession(
-      { provider: 'claude', profileId, approvalMode: 'ask', cwd: root },
+      { provider: 'claude', profileId, approvalMode, cwd: root },
       window,
     )
     return sessionId
@@ -321,11 +324,18 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
   })
 
   it('§3 · Stop resolves its id, open and ended held piece, and own root', async () => {
-    const { pm, worker, pmTools, workerTools, label } = await aPmAndItsWorker('the piece')
+    await bringIdentityIntoBeing('worker')
+    const pm = await personOpens('pm', 'auto')
+    const pmTools = theToolsetJustHandedOut()
+    const { agent: worker, label } = await giveAndWaitForBriefTurn(
+      pmTools,
+      'worker',
+      'the piece',
+      (id) => store.events(id).map(({ event }) => event),
+    )
+    const workerTools = theToolsetJustHandedOut()
     const itsRoot = store.rootOf(pm)?.label
     if (itsRoot === undefined) throw new Error('a conversation a person opened owns a root')
-    await host.close(worker, window)
-    await host.close(pm, window)
 
     for (const [tools, address, target] of [
       [workerTools, worker, worker],
