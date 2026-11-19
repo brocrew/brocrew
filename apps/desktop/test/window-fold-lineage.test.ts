@@ -532,8 +532,17 @@ it('distinguishes the exact retraction of a provider failure notice from other o
   finish('cancelled')
   expect(progress()).toBe('not-delivered')
   queue()
-  finish('sent')
+  append({ type: 'message_unqueued', messageId, reason: 'sent', text: facts.text })
   expect(progress()).toBe('not-delivered')
+  append({
+    type: 'user_turn',
+    text: facts.text,
+    attribution: facts.attribution,
+    appNotice: facts.appNotice,
+  })
+  expect(progress()).toBe('running')
+  append({ type: 'turn', state: 'completed' })
+  expect(progress()).toBe('turn-ended')
   queue()
   finish('retracted')
   expect(progress()).toBe('retracted')

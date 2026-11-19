@@ -2359,9 +2359,15 @@ export function createSessionStore(
     } catch {
       return 'not-delivered'
     }
-    if (needsDisposition && (event?.messageId !== messageId || event.appNotice !== appNotice))
-      return 'not-delivered'
     if (event === null) return 'not-delivered'
+    if (needsDisposition) {
+      if (event.messageId !== messageId) return 'not-delivered'
+      const subjectOnItsTurn =
+        event.type === 'message_unqueued' &&
+        event.reason === 'sent' &&
+        event.appNotice === undefined
+      if (event.appNotice !== appNotice && !subjectOnItsTurn) return 'not-delivered'
+    }
     if (event.type === 'message_queued') return 'pending'
     if (needsDisposition && event.type === 'message_unqueued' && event.reason === 'retracted')
       return 'retracted'
