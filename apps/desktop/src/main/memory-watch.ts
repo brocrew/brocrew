@@ -147,10 +147,9 @@ export function startMemoryWatch(options: MemoryWatchOptions): MemoryWatch {
     if (options.rearmBelowBytes !== undefined && rss < options.rearmBelowBytes) reported = 0
     if (rss < floor) return
     const crossed = floor + Math.floor((rss - floor) / step) * step
-    if (crossed <= reported || confirming) return
-    reported = crossed
-    const detail = options.detail?.()
     const confirm = options.confirm
+    if (confirming || (confirm === undefined && crossed <= reported)) return
+    const detail = options.detail?.()
     if (confirm !== undefined) {
       confirming = true
       void (async () => confirm())()
@@ -158,6 +157,8 @@ export function startMemoryWatch(options: MemoryWatchOptions): MemoryWatch {
         .then((result) => {
           if (stopped) return
           if (result === null) {
+            if (crossed <= reported) return
+            reported = crossed
             options.log(theAppItselfHeadline(rss, 'resident') + (detail ? ` ${detail}` : ''))
             return
           }
@@ -172,6 +173,7 @@ export function startMemoryWatch(options: MemoryWatchOptions): MemoryWatch {
         })
       return
     }
+    reported = crossed
     options.log((options.headline ?? theAppItselfHeadline)(rss) + (detail ? ` ${detail}` : ''))
   }
 
