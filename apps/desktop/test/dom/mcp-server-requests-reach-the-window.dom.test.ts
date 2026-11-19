@@ -56,7 +56,6 @@ const agents: AgentIdentities = {
     },
   ],
   foldersWithoutARow: [],
-  spawningEnabled: true,
   defaultApprovalMode: 'ask',
   externalMcpServers: [],
 }
@@ -93,9 +92,6 @@ const runtime = {
   onStates: vi.fn(() => () => {}),
   onLimitsDisplayChanged: vi.fn(() => () => {}),
   attachOpen: vi.fn(async () => []),
-  setSpawningEnabled: vi.fn(async ({ enabled }: { enabled: boolean }) => ({
-    spawningEnabled: enabled,
-  })),
   listResumable: vi.fn(async () => []),
   listUnresumable: vi.fn(async () => []),
   agentIdentities: vi.fn(async () => agents),

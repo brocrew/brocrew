@@ -360,7 +360,6 @@ async function theTeam(): Promise<Mounted> {
   const agents = {
     identities: [ident('keeper'), ident('named', { displayName: 'Ada' })],
     foldersWithoutARow: [],
-    spawningEnabled: true,
     defaultApprovalMode: 'ask',
     use: [use('keeper', { conversations: 3 }), use('named', { conversations: 1 })],
   } as unknown as AgentIdentities

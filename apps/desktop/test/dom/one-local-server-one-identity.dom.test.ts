@@ -102,7 +102,6 @@ function storeOver(): AgentStore {
       const one = answers.list.identities[0]
       return one === undefined ? null : { ...one, modelChoiceCleared: null }
     },
-    setSpawningEnabled: async () => ({ spawningEnabled: answers.list.spawningEnabled }),
     registerExternalMcpServer: async (input: unknown) => {
       structuredClone(input)
       answers.registered.push(input)
@@ -161,7 +160,6 @@ beforeEach(() => {
       identities: [identity()],
       foldersWithoutARow: [],
       use: [],
-      spawningEnabled: true,
       defaultApprovalMode: 'ask',
       externalMcpServers: [server('jira', 8765)],
     },

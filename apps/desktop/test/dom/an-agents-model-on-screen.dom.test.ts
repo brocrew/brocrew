@@ -156,7 +156,6 @@ const roster = (): AgentIdentities =>
             : { provider: world.itsProvider, from: 'saved' },
       },
     ],
-    spawningEnabled: true,
     defaultApprovalMode: 'ask',
   }) as unknown as AgentIdentities
 
