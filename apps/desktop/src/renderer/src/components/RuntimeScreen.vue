@@ -1312,12 +1312,12 @@ function authChangedFor(profileId: string, changedProvider?: Provider): void {
   for (const provider of changedProvider
     ? [changedProvider]
     : (Object.keys(PROVIDER_NAME) as Provider[])) {
+    modelLists.forget(profileId, { retainAnswered: true, provider })
     const key = `${provider}:${profileId}`
     let refresh = authRefreshes.get(key)
     if (!refresh) {
       refresh = oneReadAtATime(async () => {
         if (actionableReadsClosed) return
-        modelLists.forget(profileId, { retainAnswered: true, provider })
         await Promise.all([
           readPrograms(),
           useProfileSignIn(provider, profileId, providerClient).check(),
