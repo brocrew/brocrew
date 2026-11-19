@@ -1,8 +1,10 @@
+import { providerSchema, type Provider } from '@brobot2/shared'
 import { TASK_STATES } from './task-contracts'
 import type { TaskOutcome, TaskState } from './task-contracts'
 import { z } from 'zod'
 
 import type { WorkFileGroup } from './work-file-groups'
+import { aTitleAuthor, type ConversationTitleAuthor } from './conversation-title'
 
 const WORK_SEARCH_SCOPES = ['mine', 'this-conversation', 'all'] as const
 export const WORK_SEARCH_BOUNDS = {
@@ -38,6 +40,7 @@ export const conversationSearchQuery = z
 export const workSearchQuery = conversationSearchQuery.extend({
   scope: z.enum(WORK_SEARCH_SCOPES).optional(),
   state: z.enum(TASK_STATES).optional(),
+  includeConversationMetadata: z.literal(true).optional(),
 })
 export type WorkSearchQuery = z.input<typeof workSearchQuery>
 
@@ -77,6 +80,11 @@ export interface ConversationSearchHit {
   readonly status: string | null
   readonly matched_tasks: readonly WorkSearchHit[]
   readonly tasks_omitted: number
+  readonly metadata?: {
+    readonly provider: Provider
+    readonly archived_at: number | null
+    readonly title_author: ConversationTitleAuthor | null
+  }
 }
 
 export interface WorkSearchPage {
@@ -144,6 +152,14 @@ const conversationHit = z
     status: z.string().max(WORK_SEARCH_BOUNDS.statusUnits).nullable(),
     matched_tasks: z.array(taskHit).max(50),
     tasks_omitted: count,
+    metadata: z
+      .object({
+        provider: providerSchema,
+        archived_at: z.number().finite().nullable(),
+        title_author: z.custom<ConversationTitleAuthor>(aTitleAuthor).nullable(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
 
