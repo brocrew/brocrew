@@ -375,7 +375,7 @@ describe('one session, and the callers who wait', () => {
         'do mine',
         'then mine',
       ])
-      expect(mailboxOf(store.events(worker)).map((one) => one.ending)).toEqual([null, null])
+      expect(mailboxOf(store.events(worker)).map((one) => one.ending)).toEqual(['sent', null, null])
 
       host = buildHost()
       claimed.clear()
@@ -388,7 +388,11 @@ describe('one session, and the callers who wait', () => {
       expect(first.indexOf('do mine')).toBeGreaterThan(-1)
       expect(first.indexOf('do mine')).toBeLessThan(first.indexOf('then mine'))
       expect(stillHeld(store.events(worker))).toEqual([])
-      expect(mailboxOf(store.events(worker)).map((one) => one.ending)).toEqual(['sent', 'sent'])
+      expect(mailboxOf(store.events(worker)).map((one) => one.ending)).toEqual([
+        'sent',
+        'sent',
+        'sent',
+      ])
     })
   })
 })

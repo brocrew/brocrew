@@ -487,9 +487,7 @@ describe('653 · a woken conversation drawn as ended', () => {
       expect(drawn(rebuilt.store, sessionId).ended).toBe(true)
     })
 
-    it('⚑ §1.5 a conversation in its FIRST life hands over exactly what it did — no key, no epoch', async () => {
-      // ⚠️ **The brief's byte-identity rule, pinned as the ABSENCE of the key**: a `null` would have
-      // changed the bytes of every spawned and every created hand-over. Two first lives, both doors.
+    it('§1.5 first attachment names the recorded Give boundary and omits it for an empty start', async () => {
       const { worker } = await aPmAndItsWorker('auto')
       const claimer = aWindow('as-shipped', 'webContents:2')
       await claimer.store.claim(worker)
@@ -501,14 +499,19 @@ describe('653 · a woken conversation drawn as ended', () => {
       const rebuilt = aWindow('as-shipped', 'webContents:3')
       await rebuilt.store.attachOpen()
 
-      for (const [handed, store, id] of [
-        [claimer.window.handed.at(-1), claimer.store, worker],
-        [rebuilt.window.handed.at(-1), rebuilt.store, made],
-      ] as const) {
-        expect(handed?.handover).toBe('attached')
-        expect(handed !== undefined && 'liveFrom' in handed).toBe(false)
-        expect((store.get(id) as SessionRecord).liveFrom).toBeNull()
-      }
+      const given = ledger.events(worker).find((entry) => entry.event.type === 'work_given')
+      expect(given).toBeDefined()
+      const boundary = given!.ordinal + 1
+      expect(claimer.window.handed.at(-1)).toMatchObject({
+        handover: 'attached',
+        liveFrom: boundary,
+      })
+      expect((claimer.store.get(worker) as SessionRecord).liveFrom).toBe(boundary)
+
+      const handed = rebuilt.window.handed.at(-1)
+      expect(handed?.handover).toBe('attached')
+      expect(handed).not.toHaveProperty('liveFrom')
+      expect((rebuilt.store.get(made) as SessionRecord).liveFrom).toBeNull()
     })
 
     it("⚑ §1.6 a RESUME needs no seam — the renderer's own epoch is the host's, measured", async () => {

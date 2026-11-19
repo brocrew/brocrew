@@ -284,7 +284,9 @@ describe('648 · a task row that lies about its holder', () => {
       const ledger = store.events(worker).map((entry) => entry.event)
       expect(ledger).toContainEqual({ type: 'reopened', because: 'the-sign-in-moved-on' })
       expect(ledger.findIndex((event) => event.type === 'reopened')).toBeLessThan(
-        ledger.findIndex((event) => event.type === 'message_unqueued'),
+        ledger.findIndex(
+          (event) => event.type === 'message_unqueued' && event.messageId === endings[0]?.messageId,
+        ),
       )
       expect(thePiece(worker, label).because).not.toBe('message_never_sent')
       expect(['working', 'stalled']).toContain(thePiece(worker, label).state)
@@ -306,7 +308,7 @@ describe('648 · a task row that lies about its holder', () => {
       await waitFor(() => thePiece(worker, label).state !== 'waiting', 'the flush to run')
 
       // ⛔ **It WENT**, and the ending says `sent` rather than `abandoned`.
-      const endings = endingsOn(worker)
+      const endings = endingsOn(worker).filter((event) => event.text === 'do the thing')
       expect(endings).toHaveLength(1)
       expect(endings[0]?.reason).toBe('sent')
       expect(thePiece(worker, label).because).toBeNull()

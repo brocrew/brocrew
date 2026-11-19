@@ -525,7 +525,7 @@ describe('696 §6 · D-042 — a default a stand-in’s list admitted is what it
   const spawnedWithAChoice = async (
     slug: string,
     model: string,
-  ): Promise<{ child: string; said: string }> => {
+  ): Promise<{ child: string; runsOn: unknown }> => {
     expect(
       store.createAgentIdentity({ slug, displayName: null, provider: null }, { by: 'a-person' }),
     ).not.toBeNull()
@@ -551,7 +551,8 @@ describe('696 §6 · D-042 — a default a stand-in’s list admitted is what it
       brief: 'work',
     })
     expect((answered.structured as { outcome: string }).outcome, answered.text).toBe('ok')
-    return { child: (answered.structured as { agent: string }).agent, said: answered.text }
+    const given = answered.structured as { agent: string; runs_on: unknown }
+    return { child: given.agent, runsOn: given.runs_on }
   }
 
   /** The conversation as a window opening it folds it — the ledger, replayed. */
@@ -570,7 +571,7 @@ describe('696 §6 · D-042 — a default a stand-in’s list admitted is what it
     )
 
   it('🔴 the default BroBot’s list admitted is SENT as chosen — named at the launch, recorded on the row, said in the answer — and set aside nowhere', async () => {
-    const { child, said } = await spawnedWithAChoice('fresh', 'wide')
+    const { child, runsOn } = await spawnedWithAChoice('fresh', 'wide')
     // The agent reads the same provider rows that admitted its saved choice.
     const its = await host.modelList('codex', 'fresh')
     expect(its.standIn).toBeNull()
@@ -582,16 +583,14 @@ describe('696 §6 · D-042 — a default a stand-in’s list admitted is what it
     expect(launches[0]?.options.reasoningEffort).toBe('high')
     // ⚑ …recorded on its row, so every later start replays it…
     expect(store.whatItRunsOn(child)).toMatchObject({ model: 'wide', reasoningEffort: 'high' })
-    // ⚑ …and the give's answer says what it runs on, and where that came from (R4, R1's order).
-    expect(said).toContain('It runs on “wide” at high effort')
-    expect(said).toContain('— its default.')
+    expect(runsOn).toMatchObject({ model: 'wide', effort: 'high' })
     // ⛔ …and nothing of `682`'s set-aside reaches the conversation a window folds.
     expect(setAsideRows(child)).toEqual([])
   })
 
   it('⚑ THE CONTROL — a default its own list offers too starts the same way: whose list judged it changes nothing at the launch', async () => {
     // ⚑ The agent's own list offers `narrow`, so `682` sent it as well — and still does.
-    const { child, said } = await spawnedWithAChoice('steady', 'narrow')
+    const { child, runsOn } = await spawnedWithAChoice('steady', 'narrow')
     expect((await host.modelList('codex', 'steady')).models.map((one) => one.id)).toEqual([
       'wide',
       'narrow',
@@ -601,7 +600,7 @@ describe('696 §6 · D-042 — a default a stand-in’s list admitted is what it
     expect(launches[0]?.options.model).toBe('narrow')
     expect(launches[0]?.options.reasoningEffort).toBe('high')
     expect(store.whatItRunsOn(child)).toMatchObject({ model: 'narrow', reasoningEffort: 'high' })
-    expect(said).toContain('It runs on “narrow” at high effort')
+    expect(runsOn).toMatchObject({ model: 'narrow', effort: 'high' })
     expect(setAsideRows(child)).toEqual([])
   })
 })

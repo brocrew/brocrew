@@ -494,7 +494,18 @@ describe('670 · the hold at every door — the real Claude adapter', () => {
       expect(heardCarrying('worker-a', 'the agent’s words')?.origin?.kind).toBe('peer')
       await waitFor(() => idle(worker), 'the flushed turn to end')
       const endings = everyHoldEndedOnce(ledger(worker))
-      expect([...endings.values()].flat()).toEqual(['sent'])
+      const heldRows = ledger(worker).filter((event) => event.type === 'message_queued')
+      const opening = heldRows.find((event) => event.kind === 'work')
+      const heldWords = heldRows.find((event) => event.text === 'ultracode: the person’s own words')
+      expect(opening?.messageId).toMatch(/^msg_/)
+      expect(heldWords?.messageId).toMatch(/^msg_/)
+      expect(opening?.messageId).not.toBe(heldWords?.messageId)
+      expect(endings).toEqual(
+        new Map([
+          [opening?.messageId, ['sent']],
+          [heldWords?.messageId, ['sent']],
+        ]),
+      )
       // ⚑ The ledger's turn is the person's own — no attribution key at all.
       expect(turnsCarrying(worker, 'the person’s own words')[0]).not.toHaveProperty('attribution')
     })

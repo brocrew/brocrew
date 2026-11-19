@@ -648,7 +648,11 @@ describe('400 · never close what you did not see finish', () => {
 
       const next = relaunchAfterACrash()
       try {
-        const ending = events(worker).filter((event) => event.type === 'message_unqueued')
+        const pendingMessage = taskOf(worker, waiting)?.messageId
+        expect(pendingMessage).toMatch(/^msg_/)
+        const ending = events(worker).filter(
+          (event) => event.type === 'message_unqueued' && event.messageId === pendingMessage,
+        )
         expect(ending).toHaveLength(1)
         expect(ending[0]).toMatchObject({ reason: 'abandoned' })
         expect(taskOf(worker, waiting)).toMatchObject({

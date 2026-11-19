@@ -309,7 +309,11 @@ describe('D-017 · a stop is not an ending', () => {
           (event) => event.type === 'message_queued' && event.messageId === messageId,
         ),
       ).toBe(true)
-      expect(eventsOf(worker).some((event) => event.type === 'message_unqueued')).toBe(false)
+      expect(
+        eventsOf(worker).some(
+          (event) => event.type === 'message_unqueued' && event.messageId === messageId,
+        ),
+      ).toBe(false)
 
       // ⚑ **Gate the conversation's own next start at its door.** A Close hands what it held to the
       // next start automatically (already pinned by `the-message-that-has-no-name.test.ts`'s "a
@@ -342,7 +346,7 @@ describe('D-017 · a stop is not an ending', () => {
       // writes, for the SAME message id.
       expect(eventsOf(worker).some((event) => event.type === 'reopened')).toBe(false)
       const endingsAtTheWithdrawal = eventsOf(worker).filter(
-        (event) => event.type === 'message_unqueued',
+        (event) => event.type === 'message_unqueued' && event.messageId === messageId,
       )
       expect(endingsAtTheWithdrawal).toHaveLength(1)
       expect(endingsAtTheWithdrawal[0]).toMatchObject({ reason: 'cancelled', messageId })
@@ -360,7 +364,9 @@ describe('D-017 · a stop is not an ending', () => {
       await new Promise((resolve) => setTimeout(resolve, 50))
 
       // 🔴 **Exactly one ending, ever — `cancelled`, never resent as a stale turn once it starts.**
-      const endings = eventsOf(worker).filter((event) => event.type === 'message_unqueued')
+      const endings = eventsOf(worker).filter(
+        (event) => event.type === 'message_unqueued' && event.messageId === messageId,
+      )
       expect(endings).toHaveLength(1)
       expect(endings[0]).toMatchObject({ reason: 'cancelled', messageId })
       expect(

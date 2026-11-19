@@ -1,3 +1,4 @@
+import { expectRecordedCannotRun, expectTaskKept } from './lib/recorded-send'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import type { PieceRow } from '../src/shared/task-contracts'
 import { performance } from 'node:perf_hooks'
@@ -891,16 +892,8 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
     })
 
   // ─────────────────────────────────────────────────────────────────────────────────────────
-  /** ⚑ The stop's own answer to a give: the same give again, once the stop has settled. */
-  const turnedAwayWhileItStops = (answer: Record<string, unknown>): void => {
-    expect(answer.outcome, JSON.stringify(answer)).toBe('refused')
-    expect(answer.rail).toBe('that-conversation-is-still-stopping')
-    expect(answer.retryable).toBe(true)
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────────────────────
   describe('a stalled piece is named to a give whatever its holder’s process is doing', () => {
-    it('🔴 a holder whose Close is under way turns a give away until the stop settles, and then the give names the piece it stalled', async () => {
+    it('records a Give during Close and delivers that task when the same holder restarts', async () => {
       const { pmLaunch, worker, workerLaunch } = await aPmAndItsWorker('auto')
       const [piece] = stalledOf(worker)
       // ⚑ The premise: the brief's turn ended and stalled the piece on it.
@@ -911,12 +904,17 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
       // ⚑ **The Close is under way and held open**: the slot is `closing`, the ledger unchanged.
       host.claimSession(worker, window)
       const closing = host.close(worker, window)
+      let keptTask: string | undefined
       try {
         await waitFor(() => listSaysClosing(worker), 'the worker’s Close to be under way')
         expect(stalledOf(worker)).toEqual([{ label, because: 'turn_ended' }])
 
-        // ⚑ The stall refuses nothing; the stop's own rail answers the give.
-        turnedAwayWhileItStops(await theGive(pmLaunch, label))
+        const answer = await theGive(pmLaunch, label)
+        const kept = expectRecordedCannotRun(answer, 'task', 'putting away', false)
+        expectTaskKept(store, kept)
+        expect(kept.recipient.id).toBe(worker)
+        expect(answer.stalled).toEqual([label])
+        keptTask = kept.recorded.id
         expect(launches.length).toBe(launched)
 
         // ⚑ **The paired positive · another profile the pm has never given to gives** — the
@@ -931,10 +929,19 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
         await closing
       }
 
-      // ⚑ **The stop completed and moved nothing**: the piece is still stalled, and the same give
-      // now goes through and names it.
-      expect(stalledOf(worker)).toEqual([{ label, because: 'turn_ended' }])
-      namesTheStalledPiece(await theGive(pmLaunch, label), [label])
+      expect(store.workById(keptTask!)?.owner).toBe(worker)
+      const restarted = await callOn(pmLaunch.toolset, 'message_agent', {
+        agent: label,
+        text: 'the stop finished',
+        kind: 'note',
+      })
+      expect(restarted).toMatchObject({ outcome: 'ok', agent: worker })
+      expect(
+        store
+          .piecesOwnedBy(worker)
+          .filter((row) => row.title === 'More')
+          .map((row) => row.piece),
+      ).toEqual([keptTask])
     })
 
     /**
