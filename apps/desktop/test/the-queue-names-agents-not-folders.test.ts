@@ -598,7 +598,13 @@ describe('734 · the queue names agents, not folders', () => {
       ])
       // ⚑ **The two rows about one ask name ONE identity** — one builder.
       expect(ofType(rig.worker, 'work_interrupted')).toEqual([
-        { type: 'work_interrupted', by: 'an-agent', agent: rig.boss, agentProfile: 'boss-g' },
+        {
+          type: 'work_interrupted',
+          by: 'an-agent',
+          agent: rig.boss,
+          agentProfile: 'boss-g',
+          reason: 'the plan changed',
+        },
       ])
       // ⚑ …which the one naming function names (R41) — what the frontend is to draw.
       const row = ofType(rig.worker, 'stop_unanswered')[0]

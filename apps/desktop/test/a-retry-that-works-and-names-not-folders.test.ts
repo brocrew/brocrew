@@ -582,7 +582,13 @@ describe('732 · a retry that works, and names, not folders', () => {
         expect(stopped.outcome, JSON.stringify(stopped)).toBe('ok')
         // 🔴 **RED on `main`**: `{ by, agent }` and no identity — the transcript could only say the id.
         expect(asksIn(rig.worker)).toEqual([
-          { type: 'work_interrupted', by: 'an-agent', agent: rig.boss, agentProfile: 'boss-g' },
+          {
+            type: 'work_interrupted',
+            by: 'an-agent',
+            agent: rig.boss,
+            agentProfile: 'boss-g',
+            reason: 'the plan changed',
+          },
         ])
         // ⚑ …which the one naming function names (R41) — what the transcript is to draw.
         expect(drawnAs(asksIn(rig.worker)[0])).toBe('Grace')
@@ -595,7 +601,13 @@ describe('732 · a retry that works, and names, not folders', () => {
       const stopped = await callOn(rig.pm, 'interrupt_agent', { agent: rig.worker, reason: 'done' })
       expect(stopped.outcome, JSON.stringify(stopped)).toBe('ok')
       expect(asksIn(rig.worker)).toEqual([
-        { type: 'work_interrupted', by: 'an-agent', agent: rig.pm, agentProfile: 'pm-g' },
+        {
+          type: 'work_interrupted',
+          by: 'an-agent',
+          agent: rig.pm,
+          agentProfile: 'pm-g',
+          reason: 'done',
+        },
       ])
       expect(drawnAs(asksIn(rig.worker)[0])).toBe('Ada')
     })
@@ -623,7 +635,13 @@ describe('732 · a retry that works, and names, not folders', () => {
       ).toBe('ok')
       expect(host.setAgentDisplayName('boss-g', 'Gina')).not.toBeNull()
       expect(asksIn(rig.worker)).toEqual([
-        { type: 'work_interrupted', by: 'an-agent', agent: rig.boss, agentProfile: 'boss-g' },
+        {
+          type: 'work_interrupted',
+          by: 'an-agent',
+          agent: rig.boss,
+          agentProfile: 'boss-g',
+          reason: 'why',
+        },
       ])
       expect(drawnAs(asksIn(rig.worker)[0])).toBe('Gina')
     })

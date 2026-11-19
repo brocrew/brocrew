@@ -624,7 +624,7 @@ describe('395 · the interruption that looks like a provider fault', () => {
 
   describe('§3 · the target-state rails, including the refusal nobody asked for', () => {
     it('🔴 a child parked on a PERSON’s card is refused — cutting in would answer it for them', async () => {
-      const { worker, pmTools, workerHandle } = await aPmAndItsWorker()
+      const { piece, worker, pmTools, workerHandle } = await aPmAndItsWorker()
       // ⚑ D-016 · the brief's turn is the one parked on its card.
       expect(workerHandle.status()).toBe('waiting_permission')
       const refused = await callOn(pmTools, 'interrupt_agent', { agent: worker, reason: 'stop' })
@@ -646,7 +646,12 @@ describe('395 · the interruption that looks like a provider fault', () => {
       // answer, then ask again if it is still working"*. ⚑ Waiting is not an act a model can
       // perform, so that sentence asked for a loop; what it says now is who ends this.
       expect(String(refused.reason)).not.toContain('then ask again if it is still working')
-      expect(String(refused.reason)).toContain('Only the person answering ends this')
+      expect(refused.reason).toContain(
+        `Not stopped: conversation ${piece} · The work is waiting for the person to approve its request to use Bash (`,
+      )
+      expect(refused.reason).toMatch(
+        /, and only the person can settle that\. Nothing was ended and your reason was not sent\. The person can approve, deny or stop it themselves\.$/,
+      )
       // ⛔ **And nothing happened to the card**: it is still pending, and the turn is still open.
       expect(workerHandle.status()).toBe('waiting_permission')
       expect(ledger(worker).some((event) => event.type === 'turn')).toBe(false)
@@ -811,9 +816,10 @@ describe('395 · the interruption that looks like a provider fault', () => {
       // was microseconds in this harness, and since `650` that is not so**: a held launch keeps it
       // open for as long as a test likes, and `a-refusal-that-clears-on-its-own.test.ts` §3 drives
       // `interrupt_agent` into it through the tool.
-      const source = readFileSync(join(mainRoot, 'runtime/runtime-host.ts'), 'utf8')
-        .replace(/\/\*[\s\S]*?\*\//g, ' ')
-        .replace(/^\s*\/\/.*$/gm, ' ')
+      const source = (file: string) =>
+        readFileSync(join(mainRoot, 'runtime', file), 'utf8')
+          .replace(/\/\*[\s\S]*?\*\//g, ' ')
+          .replace(/^\s*\/\/.*$/gm, ' ')
       for (const rail of INTERRUPT_RAILS) {
         const built = refuseInterrupt(rail, { agent: 'sess_x' })
         expect(built.permanence).toBe(interruptPermanenceOf(rail))
@@ -827,8 +833,10 @@ describe('395 · the interruption that looks like a provider fault', () => {
         }
       }
       // ⚑ **And the door really does reach every member**, by the same shape `374` uses one file over.
-      expect(source).toContain('admitInterrupt(sessionId, status, askedOf)')
-      expect(source).toContain("refuseInterrupt('that-conversation-has-not-started'")
+      expect(source('runtime-host.ts')).toMatch(/interruptAgent\([^)]*\)[^{]*\{\s*return stopTurn\(/)
+      const stop = source('stop-turn.ts')
+      expect(stop).toContain('admitInterrupt(id, status, waitingOn)')
+      expect(stop).toContain("refuseInterrupt('that-conversation-has-not-started'")
     })
 
     it('🔴 425 · a launch in flight is the one rail here with an act, and it is the SAME call', () => {

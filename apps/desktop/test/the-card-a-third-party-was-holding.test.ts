@@ -20,8 +20,6 @@ import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { REQUEST_IS_OPEN } from '../src/shared/questions'
-import { permanenceInWords } from '../src/main/runtime/agent-tool-answer-words'
-import type { RailPermanence } from '../src/shared/refusals'
 import {
   fixtureFolder,
   fixtureDatabase,
@@ -404,14 +402,10 @@ describe('496 · the card a third party was holding', () => {
       // ⛔ **A person reading the transcript and a model reading the answer are told the same
       // thing**, because the text is composed from the same bytes rather than written beside them.
       expect(structured.rail).toBe('a-person-is-being-asked')
-      expect(String(structured.reason)).toMatch(/[.!?]$/)
-      const permanence = permanenceInWords(
-        String(structured.rail),
-        structured.permanence as RailPermanence,
-      )
-      expect(said).toBe(
-        `refused (${String(structured.rail)}): ${String(structured.reason)} ${permanence}`,
-      )
+      expect(structured.permanence).toBe('until-a-person-changes-it')
+      expect(structured.retryable).toBe(false)
+      expect(String(structured.reason)).toMatch(/^Not stopped: conversation .+\.$/)
+      expect(said).toBe(structured.reason)
     })
   })
 })
