@@ -560,7 +560,7 @@ describe('405 · a refusal you can see', () => {
       expect(JSON.stringify(rows)).not.toContain('PRIVATE_CALLER_PATH')
       expect(rows[0]?.rail).toBe('resource-too-large')
       expect(
-        answered.text.startsWith(`refused (resource-too-large): ${String(rows[0]?.told?.text)}`),
+        answered.text.startsWith(String(rows[0]?.told?.text)),
       ).toBe(true)
     })
 
@@ -840,7 +840,7 @@ describe('405 · a refusal you can see', () => {
       // ⚑ Our own words, the problem line among them, kept whole: the receipt itself.
       expect(wrongType).toContain(problem)
       expect(rows[0]?.told).toEqual({
-        text: wrongType.slice('refused (malformed-request): '.length),
+        text: wrongType,
         dropped: 0,
       })
       // ⛔ …and no value the caller sent is in them.
@@ -848,7 +848,7 @@ describe('405 · a refusal you can see', () => {
       // ⛔ A field the caller named is told to it, and its name never reaches the record.
       expect(withAKeyOfItsOwn).toContain('PRIVATE_CALLER_KEY')
       expect(takenWithAKey.text).toContain('PRIVATE_TAKE_KEY')
-      expect(rows[1]?.told).toEqual({ text: refuse('malformed-request').reason, dropped: 0 })
+      expect(rows[1]?.told).toEqual({ text: `Not sent: ${refuse('malformed-request').reason}`, dropped: 0 })
       expect(rows[2]?.told).toEqual({ text: takenWithAKey.structured?.['reason'], dropped: 0 })
       for (const own of ['PRIVATE_CALLER_KEY', 'PRIVATE_TAKE_KEY', 'A list where text belongs'])
         expect(JSON.stringify(rows)).not.toContain(own)
@@ -902,17 +902,18 @@ describe('405 · a refusal you can see', () => {
         // ⚑ What the window joins on today is the receipt's first 200 characters: the kept sentence
         // must read on from them word for word.
         const { prose: said } = navigationReply(texts[at] ?? '')
-        expect(said.startsWith(`refused (${row.rail}): ${row.told?.text ?? ''}`), said).toBe(true)
+        const prefix = row.tool === 'give_work' ? '' : `refused (${row.rail}): `
+        expect(said.startsWith(prefix + (row.told?.text ?? '')), said).toBe(true)
         // Detail-bearing answers keep only the existing reason; app-only answers keep their tail.
         const permanence = permanenceInWords(row.rail, row.permanence)
         expect(said.endsWith(` ${permanence}`), said).toBe(true)
         if (row.rail === 'malformed-request') {
-          expect(row.told).toEqual({ text: refuse('malformed-request').reason, dropped: 0 })
+          expect(row.told).toEqual({ text: `Not sent: ${refuse('malformed-request').reason}`, dropped: 0 })
           expect(said).toContain('unasked')
           expect(JSON.stringify(row)).not.toContain('unasked')
         } else {
           expect(row.told).toEqual({
-            text: said.slice(`refused (${row.rail}): `.length),
+            text: said.slice(prefix.length),
             dropped: 0,
           })
           expect((row.told?.text ?? '').split(permanence).length - 1).toBe(1)
@@ -1088,6 +1089,8 @@ describe('405 · a refusal you can see', () => {
     store.setSpawningEnabled(false)
     await toolsOf(pm).call('give_work', {
       definition_of_done: 'The requested result and its checks are recorded.',
+      to: 'new',
+      conversation_title: 'x',
       profile: 'worker',
       title: 'x',
       brief: 'x',

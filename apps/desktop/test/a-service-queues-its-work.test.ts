@@ -965,7 +965,7 @@ describe('a service queues the work it is given', () => {
     const NOT_TOLD =
       'could not be told. The piece was queued and had not reached it, so nothing was sent.'
 
-    it('give_work says its place in line, and the folder it may work in once its turn comes', async () => {
+    it('a Give receipt says held and carries its place in line and the task folder', async () => {
       const { host, first } = await aServiceAndTwoCallers()
       const given = await call(host, first, 'give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
@@ -974,11 +974,16 @@ describe('a service queues the work it is given', () => {
         brief: 'book the meeting room for Tuesday',
         folder: world.folder,
       })
-      expect(given.structured).toMatchObject({ outcome: 'ok', queued_behind: 0 })
+      expect(given.structured).toMatchObject({
+        outcome: 'ok',
+        delivery: 'held',
+        queued_behind: 0,
+        folder: { use: 'grant', folder: world.folder },
+        receipt: { recipient: { state: { kind: 'queued', behind: 0 } } },
+      })
       const label = String(given.structured.label)
-      expect(given.text).toContain(' Queued; next in line.')
-      expect(given.text).toContain(
-        ` It may also work in ${world.folder} while ${label} is open, once its turn comes.`,
+      expect(given.text.split('\n')[0]).toBe(
+        `Task ${label} held for browser-driver at conversation ${label} · Book the room.`,
       )
       const behind = await call(host, first, 'give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
@@ -987,8 +992,8 @@ describe('a service queues the work it is given', () => {
         brief: 'order lunch for six',
       })
       expect(behind.structured).toMatchObject({ outcome: 'ok', queued_behind: 1 })
-      expect(behind.text).toContain(' Queued behind 1.')
-      expect(behind.text).not.toContain('once its turn comes')
+      expect(behind.structured.receipt).toMatchObject({ recipient: { state: { kind: 'queued', behind: 1 } } })
+      expect(behind.structured).not.toHaveProperty('folder')
     })
 
     it('update_work and withdraw_task say the service was not told, and why', async () => {

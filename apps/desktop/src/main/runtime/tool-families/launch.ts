@@ -28,7 +28,7 @@ import { type Provider, providerSchema } from '@brobot2/shared'
 import { TOOL_INPUT_ENUMS, type ToolName, documentedToolEnum } from './catalog'
 import { whatADeliveryMet } from './delivery'
 import { WORK_FIELD_WORDS } from '../../../shared/work-fields'
-import { type WhatItRunsOn, stalledPiecesSaid } from '../spawn-rails'
+import type { WhatItRunsOn } from '../spawn-rails'
 import { aPairInWords } from '../../../shared/model-choice'
 import { answer, itsLabelIsNotUsed, refusalAnswer, sendAnswer } from './answers'
 import { carryRailRefusal, refuseTool, type PublishedRefusal } from './refusals'
@@ -329,7 +329,6 @@ export function createGiveWorkTool(
         const notice =
           folder?.notice === undefined ? '' : ` ${protectedPlaceSaid(folder.folder, folder.notice)}`
         const stalled = given.stalled ?? []
-        const stalledNotice = stalled.length === 0 ? '' : ` ${stalledPiecesSaid(stalled)}`
         const overflow = given.overflow?.map(sendOverflowSaid).join('') ?? ''
         return answer(
           {
@@ -347,7 +346,7 @@ export function createGiveWorkTool(
             ...(folder === null ? {} : { folder }),
             ...(stalled.length === 0 ? {} : { stalled: stalled.map((one) => one.label) }),
           },
-          said + folderProblem + notice + stalledNotice + overflow,
+          said + folderProblem + notice + overflow,
         )
       }).then(sendAnswer),
   }
