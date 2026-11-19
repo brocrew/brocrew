@@ -373,10 +373,10 @@ describe("§4 · the app's own line counts the app itself, and says its agents a
   })
 })
 
-it('confirms only new resident steps and uses the footprint step for the warning', async () => {
+it('rechecks footprint at unchanged RSS and reports each warning step once', async () => {
   const gib = 1024 ** 3
   const warnings: string[] = []
-  let rss = 2 * gib
+  let rss = 6.4 * gib
   let calls = 0
   let tick: () => void = () => {}
   let finish: (sample: { bytes: number; detail: string } | null) => void = () => {}
@@ -401,32 +401,52 @@ it('confirms only new resident steps and uses the footprint step for the warning
     clearInterval: () => {},
   })
   tick()
-  rss = 3 * gib
   tick()
   expect(calls).toBe(1)
-  finish({ bytes: 2 * gib - 1, detail: '[below floor]' })
+  finish({ bytes: 1.5 * gib, detail: '[below floor]' })
   await flush()
   expect(warnings).toEqual([])
   tick()
   expect(calls).toBe(2)
-  finish({ bytes: 2 * gib, detail: '[physical breakdown]' })
-  await flush()
+  rss = 7 * gib
   tick()
   expect(calls).toBe(2)
+  rss = 6.4 * gib
+  finish({ bytes: 4.5 * gib, detail: '[physical breakdown]' })
+  await flush()
   expect(warnings).toHaveLength(1)
-  expect(warnings[0]).toContain('2.00 GB of physical footprint')
+  expect(warnings[0]).toContain('4.50 GB of physical footprint')
   expect(warnings[0]).toContain('[physical breakdown]')
+  tick()
+  expect(calls).toBe(3)
+  finish({ bytes: 4.75 * gib, detail: '[same footprint step]' })
+  await flush()
+  expect(warnings).toHaveLength(1)
+  tick()
+  expect(calls).toBe(4)
+  finish({ bytes: 5 * gib, detail: '[next footprint step]' })
+  await flush()
+  expect(warnings).toHaveLength(2)
+  expect(warnings[1]).toContain('5.00 GB of physical footprint')
+  tick()
+  expect(calls).toBe(5)
+  finish({ bytes: 5.25 * gib, detail: '[same footprint step]' })
+  await flush()
+  expect(warnings).toHaveLength(2)
   rss = 4 * gib
   tick()
   timeout(new Error('footprint timed out'))
   await flush()
-  tick()
-  expect(calls).toBe(3)
-  expect(warnings).toHaveLength(2)
-  expect(warnings[1]).toContain(
+  expect(warnings).toHaveLength(3)
+  expect(warnings[2]).toContain(
     '4.00 GB of resident memory (may include memory the system can reclaim)',
   )
-  expect(warnings[1]).toContain('[resident breakdown]')
+  expect(warnings[2]).toContain('[resident breakdown]')
+  tick()
+  expect(calls).toBe(7)
+  finish(null)
+  await flush()
+  expect(warnings).toHaveLength(3)
 })
 
 it('uses complete per-process footprint records and rejects invalid totals', () => {
