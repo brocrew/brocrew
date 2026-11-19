@@ -310,5 +310,5 @@ export type AgentRemoved =
  * this repo's own word for a directory.
  */
 export const AGENT_REMOVAL_MEANS =
-  'Removing an agent takes its row and the server grants on it. Its Claude and Codex folders stay ' +
-  'on disk, and creating the same name again picks them back up.'
+  'Removing an agent removes it from the team and clears its server selections. ' +
+  'Its Claude and Codex folders stay on disk, and creating the same name again picks them back up.'

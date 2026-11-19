@@ -43,7 +43,6 @@ function sheetHost(externalMcpServers: AgentIdentities['externalMcpServers'] = [
       identities: [identity],
       foldersWithoutARow: [],
       use: [],
-      spawningEnabled: true,
       defaultApprovalMode: 'ask',
       externalMcpServers,
     })),

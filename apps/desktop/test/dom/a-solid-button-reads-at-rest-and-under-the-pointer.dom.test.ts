@@ -26,7 +26,6 @@ const NO_AGENTS: AgentIdentities = {
   identities: [],
   foldersWithoutARow: [],
   use: [],
-  spawningEnabled: true,
   defaultApprovalMode: 'ask',
   externalMcpServers: [],
 }

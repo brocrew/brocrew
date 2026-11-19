@@ -72,7 +72,6 @@ import type { AppInfo } from '@brobot2/shared'
 import { profileItRunsAs, whereItWorks } from '../lib/session-record'
 import { agentName } from '../../../shared/runtime-ipc'
 import type { SessionRecord } from '../lib/session-record'
-import { useSpawnSafety } from '../lib/spawn-safety'
 import {
   RAIL_SECTION_REMEMBERED,
   RAIL_SECTIONS,
@@ -243,24 +242,6 @@ const emit = defineEmits<{
   /** A person pressed the toggle that collapses or expands the menu. */
   fold: []
 }>()
-
-/**
- * 🔴 **The global spawning switch — the WINDOW's, not this rail's** (390).
- *
- * ⚠️ **It used to be `props.agents.spawningEnabled` and a `setSpawning` emit**, which was right
- * while the rail was the only place it was drawn. `388` found the half that made it wrong: every
- * `OverlayHost` covers this rail, so the one control that stops agents creating conversations was
- * unreachable — by mouse and by Tab — whenever any modal was open. ⛔ **The stop is now drawn twice
- * and supplied once**, from `lib/spawn-safety.ts`, so no press and no read can put the two surfaces
- * in different states. ⚠️ **The identities SECTION that used to read {@link SideRail.agents} is
- * gone** — `EXT-008` §4.4 took it out of the navigation column at `570` — and the prop stays for
- * the two readers named on it, neither of which is a list.
- *
- * ⚑ **In the rail rather than inside a sheet, and that is still the whole of "fast"** (355 §1). A
- * kill switch you have to open something to reach is one you reach after the thing you wanted to
- * stop.
- */
-const safety = useSpawnSafety()
 
 /**
  * ⛔ **The *Waiting on you* badge counts what that page calls WORK** — the two REAL populations
@@ -955,11 +936,8 @@ const platform = platformHere()
            whose premise is that agents work while he is elsewhere, and neither the mockup nor the
            app tells him from the rail whether anything is happening."*
 
-           ⛔ **Here, and OUTSIDE `.rail-scroll`.** `385 §3` moved the kill switch out of the
-           scroller because *"the direction that stops things happening must never be slower than
-           the thing it stops"*; a signal that says whether anything IS happening has the same
-           claim on being unscrollable, and a workspace with a dozen threads is exactly the state
-           that would push it off the top. ⚑ **A second child of `.rail-primary-action`**, which is
+           The signal stays outside `.rail-scroll` so it remains visible with a long list.
+           It is a child of `.rail-primary-action`, which is
            already `flex-direction: column` with a gap — so this joins an existing layout rather
            than declaring one, `421`'s rule for new rows.
 
@@ -1351,54 +1329,7 @@ const platform = platformHere()
       </div>
     </div>
 
-    <!-- ⚑ **The anchored end of the rail** (385 §3) — v2.3's `.sidebar-bottom`: cards that never
-         scroll, above the user card, outside the `flex: 1` scroller.
-
-         ⛔ **Two slots in the mock and ONE of them has real material.** v2.3 anchors a safety card
-         and a context card; the safety card is this app's spawning switch, which is a global state
-         with a real control behind it. The context card is v2.3's ONE current project, and this
-         build has no projects — so the slot is left empty and named rather than filled with a
-         guess. -->
     <div class="rail-bottom">
-      <!-- 🔴 **The kill switch, ANCHORED since 385 §3 — and its own docblock is why.** It has said
-           since `340` that it is *"in the rail so it is reachable without opening anything"*, and
-           that was false the moment the rail scrolled: it sat below the conversation lists and
-           the destinations, inside `.rail-scroll`, and a workspace with a dozen threads
-           pushed it off the bottom. ⚠️ **The direction that stops things happening must never be
-           slower than the thing it stops** — a control you have to scroll to find is slower.
-           ⚑ **Turning it OFF is one press; turning it back ON asks once** (340's ruling, one layer
-           up: a widening is opt-in at the gesture). -->
-      <!-- ⚠️ **The words come from `spawn-safety.ts` and are composed nowhere else** (390). The
-           overlay layer draws this same control, and a second copy of these three sentences is
-           exactly how the rail and a modal header would come to say different things about one
-           switch. -->
-      <button
-        v-if="safety.view.value"
-        class="rail-item spawn-switch rail-safety"
-        :class="{ off: !safety.view.value.on }"
-        type="button"
-        data-cy="rail-spawning"
-        :title="props.collapsed ? safety.view.value.heading : undefined"
-        :aria-pressed="safety.view.value.on"
-        @click="safety.press()"
-      >
-        <span class="switch-dot" :class="{ on: safety.view.value.on }"></span>
-        <span class="rail-copy">
-          <strong :title="safety.view.value.heading" data-cy="rail-spawning-state">{{
-            safety.view.value.heading
-          }}</strong>
-          <!-- 🔴 **`531` · the sentence that says what this switch just did, and 2/3 of it was
-               never on screen.** ⛔ *Agents may create conversations. Press to stop that.* wanted
-               236 px of ink in a 131 px column and ellipsized after *Agents may create conv…*, so
-               the half a person could read named the state and not the gesture — on the one
-               control in this app whose whole job is to be pressed in a hurry. ⚑ `514` F1's shape:
-               a caveat a person cannot read in time is a caveat that was not given. -->
-          <small class="says" data-cy="rail-spawning-line" :title="safety.view.value.line">{{
-            safety.view.value.line
-          }}</small>
-        </span>
-      </button>
-
       <!-- Workspace actions and app updates have separate controls. -->
       <div ref="footerBox" class="rail-footer-box">
         <div class="rail-footer-controls">
@@ -1890,18 +1821,6 @@ const platform = platformHere()
   background: linear-gradient(0deg, var(--rail-bg-color, var(--rail)), transparent);
 }
 
-.rail-safety .rail-copy strong {
-  display: -webkit-box;
-  white-space: normal;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-.rail-safety {
-  border-color: var(--line-strong);
-  margin-bottom: var(--space-3);
-  background: var(--wash-2);
-}
-
 .rail-footer-controls {
   display: flex;
   align-items: center;
@@ -2012,25 +1931,6 @@ const platform = platformHere()
   margin-top: var(--space-1);
   color: var(--faint);
   font-size: var(--type-caption);
-}
-
-.spawn-switch {
-  align-items: flex-start;
-}
-
-.switch-dot {
-  width: 8px;
-  height: 8px;
-  flex: 0 0 auto;
-  margin-top: 5px;
-  border: var(--border-width) solid var(--line-strong);
-  border-radius: 50%;
-  background: var(--danger);
-}
-
-.switch-dot.on {
-  border-color: transparent;
-  background: var(--success);
 }
 
 /* The toggle beside the palette's button: its chevron points the way the menu will go. */

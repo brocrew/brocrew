@@ -8,7 +8,6 @@ const roster = (): AgentIdentities => ({
   identities: [],
   foldersWithoutARow: ['worker'],
   use: [],
-  spawningEnabled: false,
   defaultApprovalMode: 'ask',
   externalMcpServers: [],
 })
@@ -16,12 +15,12 @@ const roster = (): AgentIdentities => ({
 function world() {
   const list = roster()
   const read = vi.fn<RuntimeBridge['agentIdentities']>().mockResolvedValue(list)
-  const spawning = vi.fn<RuntimeBridge['setSpawningEnabled']>()
+  const approval = vi.fn<RuntimeBridge['setDefaultApprovalMode']>()
   const store = createAgentStore({
     agentIdentities: read,
-    setSpawningEnabled: spawning,
+    setDefaultApprovalMode: approval,
   } as unknown as RuntimeBridge)
-  return { list, read, spawning, store }
+  return { list, read, approval, store }
 }
 
 describe('agent store ownership', () => {
@@ -67,26 +66,26 @@ describe('agent store ownership', () => {
   })
 
   it('patches only through the operation and preserves list identity when the write fails', async () => {
-    const { store, spawning, read } = world()
+    const { store, approval, read } = world()
     await store.load()
     const held = store.identities.value
-    const seen: (boolean | undefined)[] = []
+    const seen: ('ask' | 'auto' | undefined)[] = []
     const stop = watchSyncEffect(() => {
-      seen.push(store.identities.value?.spawningEnabled)
+      seen.push(store.identities.value?.defaultApprovalMode)
     })
     try {
-      spawning.mockResolvedValueOnce({ spawningEnabled: true })
-      expect(await store.setSpawning(true)).toBeNull()
+      approval.mockResolvedValueOnce({ defaultApprovalMode: 'auto' })
+      expect(await store.setApprovalDefault('auto')).toBeNull()
       const changed = store.identities.value
       expect(changed).not.toBe(held)
       expect(changed?.identities).toBe(held?.identities)
       expect(changed?.foldersWithoutARow).toBe(held?.foldersWithoutARow)
-      expect(changed?.spawningEnabled).toBe(true)
-      spawning.mockRejectedValueOnce(new Error('write unavailable'))
-      expect(await store.setSpawning(false)).toBe('write unavailable')
+      expect(changed?.defaultApprovalMode).toBe('auto')
+      approval.mockRejectedValueOnce(new Error('write unavailable'))
+      expect(await store.setApprovalDefault('ask')).toBe('write unavailable')
       expect(store.identities.value).toBe(changed)
-      expect(seen).toEqual([false, true])
-      expect(spawning.mock.calls).toEqual([[{ enabled: true }], [{ enabled: false }]])
+      expect(seen).toEqual(['ask', 'auto'])
+      expect(approval.mock.calls).toEqual([[{ mode: 'auto' }], [{ mode: 'ask' }]])
       expect(read).toHaveBeenCalledTimes(1)
     } finally {
       stop()

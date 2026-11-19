@@ -34,7 +34,6 @@ import type {
   AgentRecordReading,
   AgentRulesOutcome,
   CreateAgentOutcome,
-  MayCreateAgents,
   McpServerAsked,
   McpServerRequestOutcome,
   ProposeRulesOutcome,
@@ -237,7 +236,6 @@ export interface AgentToolHost {
     | { readonly ok: true; readonly chosen: AgentModelChoice }
     | { readonly ok: false; readonly refusal: ModelRefusal }
   >
-  mayCreateAgents(me: string): MayCreateAgents
   raiseAQuestion(
     input: {
       moveTo?: string

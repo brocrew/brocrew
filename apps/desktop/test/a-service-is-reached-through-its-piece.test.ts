@@ -1971,8 +1971,7 @@ describe('a service is reached through the piece it is on', () => {
       await vi.waitFor(() => {
         expect(host.stalledWorkForAPerson().rows.map((row) => row.piece)).not.toContain(one.piece)
       })
-      // …and it is a service's piece, which keeps its own door: it is no stopped work either, with
-      // services on or off.
+      // A service's piece has its own take-back door, including after restart.
       const notStopped = (on: RuntimeHost): void => {
         expect(on.stoppedWorkForAPerson().rows.map((row) => row.piece)).not.toContain(one.piece)
         const waits = on
@@ -1983,17 +1982,13 @@ describe('a service is reached through the piece it is on', () => {
       }
       notStopped(host)
       await host.closeAll()
-      const off = world.aHost({ servicesOn: false })
-      await off.resumeSession(caller, world.window)
-      notStopped(off)
-      expect(await off.takeBackForAPerson(one.label, world.window)).toEqual({
-        ok: false,
-        rail: 'not-a-piece-a-service-is-on',
-      })
+      const after = world.aHost()
+      await after.resumeSession(caller, world.window)
+      notStopped(after)
     })
 
-    it('takes back no other piece: one queued behind it, a caller’s own work, or any while services are off', async () => {
-      const { host, caller, service, one, two } = await aServiceOnTheFirstPiece()
+    it('takes back neither a queued piece nor a caller’s own work through the service door', async () => {
+      const { host, caller, service, two } = await aServiceOnTheFirstPiece()
       const root = world.store.rootOf(caller)
       if (root === null) throw new Error('the caller holds no work of its own')
       for (const piece of [two.label, root.label, 'W999']) {
@@ -2003,12 +1998,6 @@ describe('a service is reached through the piece it is on', () => {
         })
       }
       expect(stateOf(service, two.piece)).toBe('waiting')
-      await host.closeAll()
-      const off = world.aHost({ servicesOn: false })
-      expect(await off.takeBackForAPerson(one.label, world.window)).toEqual({
-        ok: false,
-        rail: 'not-a-piece-a-service-is-on',
-      })
       expect(rows(service, 'work_taken_back')).toEqual([])
     })
 

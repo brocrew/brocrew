@@ -6,7 +6,7 @@ import type {
   PieceOnARecord,
 } from '../agent-records'
 import type { MadeByItsProfile, APieceItHolds, EndedPieceDetail } from '../work-records'
-import type { AgentIdentity, IdentityCreator } from '../../../shared/runtime-ipc'
+import type { AgentIdentity } from '../../../shared/runtime-ipc'
 import type { OwnInstructionsVersion } from '../../../shared/own-instructions'
 import type { AgentModelChoice } from '../../../shared/model-choice-contracts'
 import type { McpServerRequestWho } from '../../../shared/mcp-server-requests'
@@ -249,19 +249,6 @@ export type CreateAgentOutcome =
 
       /** Default model and effort read back after creation, or null when none was set. */
       readonly defaultModel: AgentModelChoice | null
-    }
-  | {
-      readonly ok: false
-      readonly rail: ToolRefusal
-      readonly detail: Readonly<Record<string, unknown>>
-    }
-
-export type MayCreateAgents =
-  | {
-      readonly ok: true
-
-      /** Who is creating, carried into the new identity's `created_by`; `null`: not recorded. */
-      readonly creator: IdentityCreator | null
     }
   | {
       readonly ok: false

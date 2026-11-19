@@ -168,8 +168,7 @@ export function providerTakesEffectNextTime(
  *
  * ## ⚠️ `null` is *nobody has answered yet*, and it is not `ask`
  *
- * ⛔ **`086`'s rule, on the one control where the wrong default is dangerous in both directions** —
- * `spawn-safety.ts` says it about the kill switch and it is the same shape here. A control drawn
+ * A control drawn
  * *asking* before the read lands claims a person is being consulted when nobody knows; drawn
  * *yolo* it claims a consent nobody has given.
  *

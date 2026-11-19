@@ -70,7 +70,6 @@ const CONTEXT: InstructionContext = {
   profileSlug: 'brobot',
   cwd: '/tmp/where',
   startedBy: null,
-  spawningEnabled: true,
   // ⚑ D-016 · a conversation a person started owns a root, unnumbered on its first launch.
   root: 'not-yet-numbered',
   configured: 'Never merge without asking me first.',
@@ -405,7 +404,6 @@ describe('§3 · the compiled bundle splits where the composer says it does (583
         {
           ...CONTEXT,
           startedBy: theConversationCalled('Ada', { label: 'W1', title: null }),
-          spawningEnabled: false,
           root: null,
         },
       ],
