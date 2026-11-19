@@ -2787,6 +2787,19 @@ export function createSessionStore(
       ORDER BY ordinal LIMIT ?`,
   )
   theFoldIndexHolds(selectMessagesWaitingIn)
+  const queueEndingStillApplies = (
+    endedAt: number | undefined,
+    queuedAt: number,
+    stored: Record<string, unknown> | null,
+  ): boolean =>
+    endedAt !== undefined &&
+    (endedAt >= queuedAt ||
+      providerFailureHolderStoredOn(
+        stored?.kind,
+        stored?.appNotice,
+        stored?.providerFailureHolder,
+      ) === undefined)
+
   const selectEveryConversationAndStatus = db.prepare(`SELECT id, status FROM provider_session`)
   const selectHeldMessageRowsOf = db.prepare(
     `SELECT rowid AS row, type, ordinal,
@@ -2842,7 +2855,7 @@ export function createSessionStore(
           text: unknown
           payload: string | null
         }[]
-        const ended = new Set<unknown>()
+        const ended = new Map<unknown, number>()
         let lastTornEnding = -Infinity
         let lastStart = -Infinity
         for (const one of rows) {
@@ -2851,7 +2864,7 @@ export function createSessionStore(
             tornHere.push({ row: one.row, session_id: conversation.id, ordinal: one.ordinal })
             if (one.type === 'message_unqueued')
               lastTornEnding = Math.max(lastTornEnding, one.ordinal)
-          } else if (one.type === 'message_unqueued') ended.add(one.message_id)
+          } else if (one.type === 'message_unqueued') ended.set(one.message_id, one.ordinal)
         }
         if (conversation.status === 'ended' || conversation.status === 'errored') {
           torn.push(...tornHere)
@@ -2861,7 +2874,8 @@ export function createSessionStore(
           if (one.type !== 'message_queued' || one.valid !== 1 || one.message_id === null) continue
           if (one.payload === null) continue
           if (one.for_its_next_start === 1 && lastStart <= one.ordinal) continue
-          const origin = moveOriginOf(aStoredObject(one.payload)?.movedFrom)
+          const stored = aStoredObject(one.payload)
+          const origin = moveOriginOf(stored?.movedFrom)
           if (origin !== undefined) {
             const decisionRow = selectTheDecisionOn.get(
               origin.sessionId,
@@ -2877,7 +2891,11 @@ export function createSessionStore(
             )
               continue
           }
-          if (ended.has(one.message_id) || lastTornEnding > one.ordinal) continue
+          if (
+            queueEndingStillApplies(ended.get(one.message_id), one.ordinal, stored) ||
+            lastTornEnding > one.ordinal
+          )
+            continue
           heldHere.push({
             row: one.row,
             session_id: conversation.id,
@@ -5980,11 +5998,11 @@ export function createSessionStore(
           unread?.in(sessionId)(row.ordinal)
         }
       }
-      const ended = new Set<unknown>()
+      const ended = new Map<unknown, number>()
       let lastTornEnding = -Infinity
       for (const row of read) {
         if (row.type !== 'message_unqueued') continue
-        if (row.valid === 1) ended.add(row.message_id)
+        if (row.valid === 1) ended.set(row.message_id, row.ordinal)
         else lastTornEnding = Math.max(lastTornEnding, row.ordinal)
       }
       const rows = read.filter(
@@ -5993,13 +6011,13 @@ export function createSessionStore(
           row.valid === 1 &&
           row.message_id !== null &&
           row.payload !== null &&
-          !ended.has(row.message_id) &&
           lastTornEnding <= row.ordinal,
       )
       return rows.flatMap((row) => {
         const stored = aStoredObject(row.payload)
         const messageId = stored?.messageId
         if (stored === null || typeof messageId !== 'string') return []
+        if (queueEndingStillApplies(ended.get(messageId), row.ordinal, stored)) return []
         const unansweredQuestion = theQuestionItAsks(stored.unansweredQuestion)?.asks
         const piece = isAStoredId(stored.piece) ? stored.piece : null
         const label =
