@@ -282,6 +282,15 @@ describe('what a replacement carries, and what it leaves behind', () => {
         ),
       'the notice without a current failure to be retracted',
     )
+    expect(ledger(next)).toContainEqual(
+      expect.objectContaining({
+        type: 'message_unqueued',
+        messageId,
+        reason: 'retracted',
+        detail:
+          'The app did not deliver this notice because it could not confirm it was still needed.',
+      }),
+    )
   })
 
   it('a second message to an id already replaced reaches the ONE conversation that took its place, never a second replacement', async () => {

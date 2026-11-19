@@ -28096,7 +28096,8 @@ export class RuntimeHost implements LiveHost {
           ? null
           : {
               reason: 'retracted',
-              detail: 'The app could no longer confirm this failed turn still needs a notice.',
+              detail:
+                'The app did not deliver this notice because it could not confirm it was still needed.',
             }
       }
       if (queued.piece !== undefined) {
