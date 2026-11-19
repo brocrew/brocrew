@@ -91,7 +91,7 @@ describe('D-017 · a start that costs one launch or none', () => {
     for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
   })
 
-  const personOpens = personOpener(() => ({ host, root, window }), 'ask')
+  const personOpens = personOpener(() => ({ host, root, window }), 'auto')
 
   const callOn = async (
     toolset: AgentToolset,

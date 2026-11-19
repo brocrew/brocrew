@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
-import type { SessionMachine } from '@brobot2/runtime'
+import { ResumeError, type SessionMachine } from '@brobot2/runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
@@ -741,16 +741,23 @@ describe('explicit outbound sends', () => {
 
   it('keeps the same Message record after a failed wake and delivers it once on reopen', async () => {
     await host.close(target, world.window)
-    world.resumesFailFor = 'outbound-target'
+    const ref = world.store.find(target)?.ref
+    if (ref === undefined) throw new Error('the stopped recipient has no provider reference')
+    const wake = vi
+      .spyOn(host, 'resumeSession')
+      .mockRejectedValueOnce(
+        new ResumeError(ref, 'the provider could not reopen this conversation'),
+      )
     const text = 'Keep this message across the failed wake.'
     const sent = await send('message_agent', { agent: target, text })
+    expect(wake).toHaveBeenCalledExactlyOnceWith(target, null, null, undefined, 'not-read')
     const receipt = sent.structured?.receipt as SendReceipt
     expect(receipt.recipient).toMatchObject({ id: target, state: { kind: 'cannot-run' } })
     const id = receipt.recorded.id
     expect(world.store.messagesWaitingIn(target)).toEqual([
       expect.objectContaining({ messageId: id, text }),
     ])
-    world.resumesFailFor = null
+    wake.mockRestore()
     await host.resumeSession(target, world.window)
     await waitFor(
       () =>

@@ -186,7 +186,12 @@ describe('what a replacement carries, and what it leaves behind', () => {
     )
     expect(receipts.some((one) => one.step === 'holder' && one.outcome === 'failed')).toBe(false)
     await host.close(worker, THE_APP_ITSELF)
-    const all = store.recorded().map(({ sessionId }) => sessionId)
+    const recordedIds = () =>
+      store
+        .recorded()
+        .map(({ sessionId }) => sessionId)
+        .sort()
+    const all = recordedIds()
     const recorded = store.piecesOwnedBy(worker)[0]
     issued.forgetAll()
     recordedMessageWakeFailure(
@@ -196,7 +201,7 @@ describe('what a replacement carries, and what it leaves behind', () => {
       'provider-file-missing',
       /session file is missing/,
     )
-    expect(store.recorded().map(({ sessionId }) => sessionId)).toEqual(all)
+    expect(recordedIds()).toEqual(all)
     expect(store.replacements()).toEqual([])
     expect(store.piecesOwnedBy(worker)[0]).toEqual(recorded)
     expect(store.reconciliationReceipts(worker, before.piece)).toEqual(
