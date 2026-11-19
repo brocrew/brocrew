@@ -17,7 +17,9 @@ const cursorShape = z.object({
   piece: z.string(),
 })
 
-const panelCursorShape = cursorShape.omit({ listing: true }).extend({ current: z.string().nullable() })
+const panelCursorShape = cursorShape
+  .omit({ listing: true })
+  .extend({ current: z.string().nullable() })
 const OTHER_TASKS_PER_PAGE = 5
 
 type TaskPoint = { readonly piece: string; readonly at: number }
@@ -112,9 +114,7 @@ export function listConversationTasks(
         at: root.createdAt,
       })
   }
-  const page = tasks
-    .filter((row) => cursor === null || olderThan(row, cursor))
-    .sort(newestFirst)
+  const page = tasks.filter((row) => cursor === null || olderThan(row, cursor)).sort(newestFirst)
   const shown = page.slice(0, Math.min(input.limit, 50))
   const last = shown.at(-1)
   const next =
@@ -163,7 +163,11 @@ export function readConversationTasks(
   input: ConversationTaskPageInput,
   store: Pick<
     SessionStore,
-    'conversationBinding' | 'piecesWithTheirWaits' | 'rootOf' | 'turnBlockRootLines' | 'rootDoneCondition'
+    | 'conversationBinding'
+    | 'piecesWithTheirWaits'
+    | 'rootOf'
+    | 'turnBlockRootLines'
+    | 'rootDoneCondition'
   >,
 ): ConversationTaskPageResult {
   const conversation = input.sessionId
@@ -211,7 +215,8 @@ export function readConversationTasks(
   }
 
   const currentId = current?.piece ?? null
-  if (cursor !== null && cursor.current !== currentId) return { ok: false, reason: 'invalid-cursor' }
+  if (cursor !== null && cursor.current !== currentId)
+    return { ok: false, reason: 'invalid-cursor' }
   const other = order.filter(
     (row) => row.piece !== currentId && (cursor === null || olderThan(row, cursor)),
   )

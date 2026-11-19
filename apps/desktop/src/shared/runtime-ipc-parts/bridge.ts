@@ -11,7 +11,10 @@ import type { AgentRemoved } from '../agent-roster'
 import type { RulesBaseline } from '../agent-rules'
 import type { ArchiveOutcome, DeleteOutcome, DeleteVerdict } from '../conversation-archive'
 import type { McpServerRequestForAPerson } from '../conversation-events'
-import type { ConversationTaskPageInput, ConversationTaskPageResult } from '../conversation-task-page'
+import type {
+  ConversationTaskPageInput,
+  ConversationTaskPageResult,
+} from '../conversation-task-page'
 import type {
   ConversationIdentity,
   ConversationRenameInput,
