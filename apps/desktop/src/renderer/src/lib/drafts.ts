@@ -507,7 +507,10 @@ export function createDraftBook(): DraftBook {
       slot: key,
       text: held ? puttingItBack(held.text, book.read(key)) : book.read(key),
       attached: held
-        ? [...held.attached, ...attached.filter((path) => !held.attached.some((old) => old.path === path.path))]
+        ? [
+            ...held.attached,
+            ...attached.filter((path) => !held.attached.some((old) => old.path === path.path)),
+          ]
         : attached,
     }
   }
@@ -519,9 +522,9 @@ export function createDraftBook(): DraftBook {
     send(key, send, hideQueued = false) {
       const pending = sending.get(key)
       if (pending) return pending
-      const run = (hideQueued
-        ? sendQueuedDraft(key, send)
-        : sendKeptDraftOnce(book, key, send)).finally(() => sending.delete(key))
+      const run = (
+        hideQueued ? sendQueuedDraft(key, send) : sendKeptDraftOnce(book, key, send)
+      ).finally(() => sending.delete(key))
       sending.set(key, run)
       return run
     },

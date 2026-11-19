@@ -3,9 +3,14 @@ import { defineComponent, h, nextTick, type Component } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import type { ClientSessionApi } from '../../src/shared/client-session-api'
 import type { RuntimeEventMessage } from '../../src/shared/runtime-ipc'
+import type { SavedDrafts } from '../../src/shared/saved-drafts'
 import { createSessionStore } from '../../src/renderer/src/lib/session-store'
 import { createDraftBook, draftKey } from '../../src/renderer/src/lib/drafts'
-import { draftsToSave, keepDraftsOnDisk, restoreDrafts } from '../../src/renderer/src/lib/kept-drafts'
+import {
+  draftsToSave,
+  keepDraftsOnDisk,
+  restoreDrafts,
+} from '../../src/renderer/src/lib/kept-drafts'
 import { mount, paneProps, record, unmountAll } from './harness'
 
 afterEach(unmountAll)
@@ -24,7 +29,7 @@ function openQueue() {
   const queue = vi.fn(() => reply)
   const store = createSessionStore({
     attachOpen: async () => [],
-    onEvent: (listener) => {
+    onEvent: (listener: Parameters<ClientSessionApi['onEvent']>[0]) => {
       hear = listener
       return () => {}
     },
@@ -33,33 +38,55 @@ function openQueue() {
   } as unknown as ClientSessionApi)
   hear({ sessionId: 'sess_A', ordinal: 0, at: 1, event: { type: 'status', state: 'working' } })
   const session = store.get('sess_A')!
-  Object.assign(session, record([{ type: 'status', state: 'working' }] as never))
-  Object.assign(session, { sessionId: 'sess_A' })
-  session.phase = 'open'
+  Object.assign(session, record([]))
+  Object.assign(session, { sessionId: 'sess_A', phase: 'open' })
+  hear({ sessionId: 'sess_A', ordinal: 0, at: 1, event: { type: 'status', state: 'working' } })
   const book = createDraftBook()
   const key = draftKey('sess_A')
   book.write(key, TEXT)
   book.paths.write(key, [FILE])
   let finished: Promise<void> | undefined
-  const view = mount(defineComponent({
-    setup: () => () => h(ConversationPane as Component, {
-      ...paneProps({ record: session }),
-      draft: book.read(key),
-      handing: book.paths.handing(key),
-      'onUpdate:draft': (text: string) => book.write(key, text),
-      submit: (text: string, intent: 'now' | 'queue' | 'interrupt', paths: typeof FILE[]) => {
-        finished = book.send(key, () => store.send('sess_A', text, intent, paths), intent === 'queue')
-        return finished
-      },
+  const view = mount(
+    defineComponent({
+      setup: () => () =>
+        h(ConversationPane as Component, {
+          ...paneProps({ record: session }),
+          draft: book.read(key),
+          handing: book.paths.handing(key),
+          'onUpdate:draft': (text: string) => book.write(key, text),
+          submit: (text: string, intent: 'now' | 'queue' | 'interrupt', paths: (typeof FILE)[]) => {
+            finished = book.send(
+              key,
+              () => store.send('sess_A', text, intent, paths),
+              intent === 'queue',
+            )
+            return finished
+          },
+        }),
     }),
-  }), {})
+    {},
+  )
   return {
-    book, key, view, queue, accept, refuse,
+    book,
+    key,
+    view,
+    queue,
+    accept,
+    refuse,
     settled: () => finished,
-    queued: () => hear({
-      sessionId: 'sess_A', ordinal: 1, at: 2,
-      event: { type: 'message_queued', messageId: 'q_A', kind: 'work', text: TEXT, attachments: [FILE] },
-    }),
+    queued: () =>
+      hear({
+        sessionId: 'sess_A',
+        ordinal: 1,
+        at: 2,
+        event: {
+          type: 'message_queued',
+          messageId: 'q_A',
+          kind: 'work',
+          text: TEXT,
+          attachments: [FILE],
+        },
+      }),
     stop: () => store.dispose(),
   }
 }
@@ -70,7 +97,10 @@ for (const gesture of ['button', 'shortcut']) {
     try {
       const input = q.view.q('prompt-input') as HTMLTextAreaElement
       if (gesture === 'button') q.view.q('queue-prompt').click()
-      else input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true }))
+      else
+        input.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true }),
+        )
       await nextTick()
       q.queued()
       await nextTick()
@@ -81,21 +111,26 @@ for (const gesture of ['button', 'shortcut']) {
       q.accept()
       await q.settled()
       expect(draftsToSave(q.book).drafts).toEqual([])
-    } finally { q.accept(); await q.settled(); q.stop() }
+    } finally {
+      q.accept()
+      await q.settled()
+      q.stop()
+    }
   })
 }
 
 it('keeps a crash-restorable snapshot and restores the original on refusal', async () => {
   const q = openQueue()
+  const save = vi.fn<(saved: SavedDrafts) => void>()
+  const keeper = keepDraftsOnDisk(q.book, save, { closing: () => false })
   try {
+    keeper.flush()
     q.view.q('queue-prompt').click()
     await nextTick()
-    const save = vi.fn()
-    const keeper = keepDraftsOnDisk(q.book, save, { closing: () => false })
     keeper.flush()
-    keeper.stop()
-    const saved = save.mock.calls[0][0]
+    const saved = save.mock.calls.at(-1)![0]
     expect(saved.drafts).toEqual([{ slot: q.key, text: TEXT, attached: [FILE] }])
+    expect(save.mock.calls.every(([packet]) => !packet.cleared?.includes(q.key))).toBe(true)
     const restarted = createDraftBook()
     restoreDrafts(restarted, saved)
     expect(restarted.read(q.key)).toBe(TEXT)
@@ -105,7 +140,12 @@ it('keeps a crash-restorable snapshot and restores the original on refusal', asy
     await nextTick()
     expect((q.view.q('prompt-input') as HTMLTextAreaElement).value).toBe(TEXT)
     expect(q.book.paths.read(q.key)).toEqual([FILE])
-  } finally { q.accept(); await q.settled(); q.stop() }
+  } finally {
+    keeper.stop()
+    q.accept()
+    await q.settled()
+    q.stop()
+  }
 })
 
 for (const accepted of [true, false]) {
@@ -122,8 +162,8 @@ for (const accepted of [true, false]) {
       q.view.q('queue-prompt').click()
       await nextTick()
       expect(q.queue).toHaveBeenCalledOnce()
-      expect(draftsToSave(q.book).drafts[0].text).toContain(TEXT)
-      expect(draftsToSave(q.book).drafts[0].text).toContain('My next thought')
+      expect(draftsToSave(q.book).drafts[0]!.text).toContain(TEXT)
+      expect(draftsToSave(q.book).drafts[0]!.text).toContain('My next thought')
       if (accepted) q.accept()
       else q.refuse(new Error('Fictional refusal with newer edits'))
       await q.settled()
@@ -131,6 +171,10 @@ for (const accepted of [true, false]) {
       expect(q.book.read(q.key).includes(TEXT)).toBe(!accepted)
       expect(q.book.paths.read(q.key).some((path) => path.path === '/fictional/new.md')).toBe(true)
       expect(q.book.paths.read(q.key).some((path) => path.path === FILE.path)).toBe(!accepted)
-    } finally { q.accept(); await q.settled(); q.stop() }
+    } finally {
+      q.accept()
+      await q.settled()
+      q.stop()
+    }
   })
 }
