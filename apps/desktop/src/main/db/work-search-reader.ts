@@ -70,7 +70,8 @@ export class WorkSearchWorkerReader implements WorkSearchReader {
           read.success &&
           read.data.ok &&
           !read.data.page.complete &&
-          read.data.page.next_cursor !== null
+          (read.data.page.next_cursor !== null ||
+            (parsed.data.grouped === true && read.data.page.grouped !== undefined))
         ) {
           progress = read.data
           return

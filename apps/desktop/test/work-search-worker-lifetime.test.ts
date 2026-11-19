@@ -202,23 +202,32 @@ describe('searches wait in order and retain a bounded partial page', () => {
     expect(start).toHaveBeenCalledTimes(1)
   })
 
-  it('returns its last validated checkpoint at the deadline and never overlaps its worker', async () => {
+  it.each(['flat', 'grouped'] as const)('returns its last validated %s checkpoint without overlapping its worker', async (mode) => {
     vi.useFakeTimers()
     const workers = [new WorkerDouble(), new WorkerDouble()]
     const start = vi.fn(() => workers[start.mock.calls.length - 1]! as unknown as Worker)
     const reader = new WorkSearchWorkerReader(start)
-    const pending = reader.read('sess_1', { scope: 'all' })
+    const pending = reader.read('sess_1', mode === 'flat' ? { scope: 'all' } : { grouped: true })
     const partial = {
       ...empty,
-      page: { ...empty.page, searched: 3, complete: false, next_cursor: 'fictional-cursor' },
+      page: {
+        ...empty.page,
+        searched: 3,
+        complete: false,
+        ...(mode === 'flat'
+          ? { next_cursor: 'fictional-cursor' }
+          : { next_cursor: null, grouped: { matched: null, groups: [] } }),
+      },
     }
     workers[0]!.emit('message', { kind: 'progress', result: partial })
     const queued = reader.read('sess_2', { scope: 'all' })
     await vi.advanceTimersByTimeAsync(WORK_SEARCH_BOUNDS.workerMs)
     expect(await pending).toEqual(partial)
-    expect(workSearchInWords(partial.page)).toContain(
-      'Older work has not been searched yet. next_cursor: fictional-cursor',
-    )
+    if (mode === 'flat') {
+      expect(workSearchInWords(partial.page)).toContain(
+        'Older work has not been searched yet. next_cursor: fictional-cursor',
+      )
+    }
     expect(start).toHaveBeenCalledTimes(1)
     workers[0]!.emit('message', empty)
     workers[0]!.emit('exit', 1)

@@ -23,6 +23,8 @@ export const WORK_SEARCH_BOUNDS = {
   waiting: 8,
 } as const
 
+export const WORK_SEARCH_GROUP_BOUNDS = { groups: 6, previews: 3, taskLabels: 3 } as const
+
 export const conversationSearchQuery = z
   .object({
     profile: z.string().min(1).max(200).optional(),
@@ -41,6 +43,7 @@ export const workSearchQuery = conversationSearchQuery.extend({
   scope: z.enum(WORK_SEARCH_SCOPES).optional(),
   state: z.enum(TASK_STATES).optional(),
   includeConversationMetadata: z.literal(true).optional(),
+  grouped: z.literal(true).optional(),
 })
 export type WorkSearchQuery = z.input<typeof workSearchQuery>
 
@@ -94,6 +97,25 @@ export interface WorkSearchPage {
   readonly ledgers_skipped: number
   readonly complete: boolean
   readonly next_cursor: string | null
+  readonly grouped?: GroupedWorkSearch
+}
+
+export interface GroupedWorkSearchPreview
+  extends Pick<
+    ConversationSearchHit,
+    'conversation' | 'address' | 'title' | 'last_active_at' | 'metadata'
+  > {
+  readonly matched_task_labels: readonly string[]
+  readonly tasks_omitted: number
+}
+
+export interface GroupedWorkSearch {
+  readonly matched: number | null
+  readonly groups: readonly {
+    readonly profile: string | null
+    readonly matched: number | null
+    readonly previews: readonly GroupedWorkSearchPreview[]
+  }[]
 }
 
 export type WorkSearchResult =
@@ -163,6 +185,33 @@ const conversationHit = z
   })
   .strict()
 
+const groupedPreview = conversationHit
+  .pick({
+    conversation: true,
+    address: true,
+    title: true,
+    last_active_at: true,
+    metadata: true,
+    tasks_omitted: true,
+  })
+  .extend({ matched_task_labels: z.array(z.string()).max(WORK_SEARCH_GROUP_BOUNDS.taskLabels) })
+const groupedSearch = z
+  .object({
+    matched: count.nullable(),
+    groups: z
+      .array(
+        z
+          .object({
+            profile: z.string().max(200).nullable(),
+            matched: count.nullable(),
+            previews: z.array(groupedPreview).max(WORK_SEARCH_GROUP_BOUNDS.previews),
+          })
+          .strict(),
+      )
+      .max(WORK_SEARCH_GROUP_BOUNDS.groups),
+  })
+  .strict()
+
 export const workSearchResult = z
   .discriminatedUnion('ok', [
     z
@@ -182,6 +231,7 @@ export const workSearchResult = z
             ledgers_skipped: count,
             complete: z.boolean(),
             next_cursor: z.string().max(2048).nullable(),
+            grouped: groupedSearch.optional(),
           })
           .strict(),
       })
