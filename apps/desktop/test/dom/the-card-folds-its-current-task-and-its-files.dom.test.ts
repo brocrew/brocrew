@@ -1,5 +1,5 @@
-import { memoryStorage } from './memory-storage'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { foldStorage } from './fold-storage-fixture'
+import { describe, expect, it } from 'vitest'
 import { userEvent } from 'vitest/browser'
 import { nextTick } from 'vue'
 import CardSection from '../../src/renderer/src/components/CardSection.vue'
@@ -16,19 +16,7 @@ import { META, drawerProps, mount, unmountAll, visible, type Mounted } from './h
  * computer. Sections without a fold keep their icon.
  */
 
-/** This file's own storage: the dom project runs files side by side on one origin. */
-let storage: Storage
-
-beforeEach(() => {
-  storage = memoryStorage()
-  vi.stubGlobal('localStorage', storage)
-})
-
-afterEach(() => {
-  unmountAll()
-  vi.unstubAllGlobals()
-  screenFacts().update({ cardFiles: null })
-})
+const storage = foldStorage()
 
 const FILE: KeptFile = {
   resourceId: 'res_results',
@@ -158,8 +146,8 @@ describe('Current task, Files and Running now use the shared fold', () => {
     expect(foldOf(again.q('card-files'))!.getAttribute('aria-expanded')).toBe('false')
     // ⛔ The control: the section left open is still open, so the key is the section's own.
     expect(foldOf(again.q('card-task'))!.getAttribute('aria-expanded')).toBe('true')
-    expect(storage.getItem('brobot2.cardFilesFolded')).toBe('true')
-    expect(storage.getItem('brobot2.cardTaskFolded')).toBeNull()
+    expect(storage().getItem('brobot2.cardFilesFolded')).toBe('true')
+    expect(storage().getItem('brobot2.cardTaskFolded')).toBeNull()
   })
 
   it('⚑ a folding section’s heading is as tall as one that does not fold', async () => {

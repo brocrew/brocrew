@@ -1,5 +1,5 @@
-import { memoryStorage } from './memory-storage'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { foldStorage } from './fold-storage-fixture'
+import { describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, ref } from 'vue'
 import type { RuntimeEvent } from '@brobot2/runtime'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
@@ -14,19 +14,7 @@ import { META, drawerProps, mount, unmountAll, visible, type Mounted } from './h
  * when the panel is drawn again. The still-running block's own fold is checked here too.
  */
 
-/** This file's own storage: the dom project runs files side by side on one origin. */
-let storage: Storage
-
-beforeEach(() => {
-  storage = memoryStorage()
-  vi.stubGlobal('localStorage', storage)
-})
-
-afterEach(() => {
-  unmountAll()
-  vi.unstubAllGlobals()
-  screenFacts().update({ cardFiles: null })
-})
+const storage = foldStorage()
 
 const OTHER = 'sess_another_conversation'
 
@@ -142,8 +130,8 @@ describe('a fold stays as it was left, in every conversation', () => {
     // A section folded and a block opened, the other two left as they start.
     FOLDS[0].button(first.m).click()
     await nextTick()
-    expect(storage.getItem(FOLDS[0].key)).toBe('true')
-    expect(storage.getItem(FOLDS[1].key)).toBeNull()
+    expect(storage().getItem(FOLDS[0].key)).toBe('true')
+    expect(storage().getItem(FOLDS[1].key)).toBeNull()
     unmountAll()
 
     const again = panel()
