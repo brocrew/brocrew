@@ -311,7 +311,10 @@ describe('608 · the turn that no longer waits', () => {
       // ⚑ **611 · a THIRD key** — where the question went, which is the one thing this call's
       // outcome varies in since `HO-088` §2. ⛔ It is the caller's own declaration copied back, so
       // it differs between two calls rather than being the constant this test's subject removed.
-      expect(Object.keys(payload).sort()).toEqual(['outcome', 'question', 'went_to'])
+      expect(Object.keys(payload).sort()).toEqual(['outcome', 'question', 'receipt', 'went_to'])
+      expect(payload.receipt).toMatchObject({
+        recorded: { kind: 'question', id: payload.question },
+      })
       // ⛔ **`answered`, `waitedForMs` and `question_is` are GONE rather than constant.** ⚑ All
       // three reported what a five-minute race had met; with no race, `answered` could only be
       // `null`, `waitedForMs` a few ticks of the caller's own dispatch, and the ledger read behind
@@ -322,8 +325,8 @@ describe('608 · the turn that no longer waits', () => {
       // 🔴 **591's clause is kept WORD FOR WORD, and it is load-bearing now rather than a
       // consolation**: before `608` it said an answer could still arrive after an expiry; after
       // `608` it is the only way an answer ever arrives.
-      expect(said.text).toContain('reaches you as a message rather than as this call')
-      expect(said.text).toContain('still theirs to answer')
+      expect(said.text).toContain('The answer arrives as a message.')
+      expect(said.text).not.toContain('still theirs to answer')
       // ⛔ **And it does NOT promise the work is still open**, which is `437`'s own review finding:
       // a parent can withdraw the work at any moment, so a sentence about the world is a sentence
       // that can be false by the time the model reads it.

@@ -43,13 +43,13 @@ describe('tool refusals name their limits and fields without keeping caller text
       'What the conversation that gave you this needs to read — for work you took on for a person, what its record keeps as its last status line. At most 1,280 characters (UTF-16 code units). Put longer detail in a file listed in resource_paths. Nothing is shortened for you.',
     )
     expect(z.globalRegistry.get(tool('ask_question').input.question!)?.description).toBe(
-      'What you need decided, in your own words, at most 1,280 characters (UTF-16 code units). Nothing is shortened for you. It shows under Waiting on you with Markdown: **bold**, lists, `code` for ids and paths, and links to files.',
+      'What you need answered, in your own words. Anything over 2,000 characters arrives as a file the reader is pointed to. It shows under Waiting on you with Markdown: **bold**, lists, `code` for ids and paths, and links to files.',
     )
     expect(z.globalRegistry.get(tool('request_action').input.action!)?.description).toBe(
-      'What the person should do, in plain words, at most 1280 characters. It shows under Waiting on you with Markdown: **bold**, lists, `code` for ids and paths, and links to files.',
+      'What the person should do, in plain words. Anything over 2,000 characters arrives as a file the reader is pointed to. It shows under Waiting on you with Markdown: **bold**, lists, `code` for ids and paths, and links to files.',
     )
     expect(z.globalRegistry.get(tool('ask_question').input.options!)?.description).toBe(
-      'The choices you are offering, as a list of text choices with at most 1,280 characters in total (UTF-16 code units). Leave it out to ask for an answer in their own words.',
+      'The choices you are offering, at most 2,000 characters in total. Leave it out for a free answer.',
     )
   })
 
@@ -124,11 +124,6 @@ describe('tool refusals name their limits and fields without keeping caller text
     },
     { name: 'empty question', args: { question: '' }, expected: 'question: must not be empty' },
     {
-      name: 'long question',
-      args: { question: 'PRIVATE_QUESTION'.padEnd(1840, 'x') },
-      expected: 'question: at most 1,280 characters; got 1,840',
-    },
-    {
       name: 'null question',
       args: { question: null },
       expected: 'question: expected text, got null',
@@ -191,8 +186,8 @@ describe('tool refusals name their limits and fields without keeping caller text
     },
     {
       name: 'long choices together',
-      args: { options: ['x'.repeat(1000), 'y'.repeat(840)] },
-      expected: 'options: at most 1,280 characters in total; got 1,840',
+      args: { options: ['x'.repeat(1000), '🟩'.repeat(500), 'y'] },
+      expected: 'options: at most 2,000 characters in total; got 2,001',
     },
     {
       name: 'empty move target',
@@ -247,7 +242,8 @@ describe('tool refusals name their limits and fields without keeping caller text
       expect(detail.problems).toContain(one.expected)
       expect(no.text).toContain(one.expected)
       const kept = refusals()[0]!
-      expect(kept.told?.text).toBe(no.text.slice('refused (malformed-request): '.length))
+      expect(no.text).toMatch(/^Not sent: /)
+      expect(kept.told?.text).toBe(no.text)
       expect(kept.told?.text).toContain(one.expected)
       expect(JSON.stringify(kept)).not.toContain('PRIVATE_')
       expect(world.store.piecesOwnedBy(worker)).toEqual(before)

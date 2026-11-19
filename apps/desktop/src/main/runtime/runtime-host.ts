@@ -23395,11 +23395,20 @@ export class RuntimeHost implements LiveHost {
       if (heldForService) return { id, to, state: this.stateOfARecordedMessage(to, id) }
       try {
         await this.ensureRunning(to, null)
-        await this.slots.get(to)?.session?.flushing
-        return { id, to, state: this.stateOfARecordedMessage(to, id) }
       } catch (error) {
+        const unavailable =
+          unavailableOf(error) ?? unavailableOf(error instanceof Error ? error.cause : undefined)
+        if (
+          unavailable === null &&
+          !(error instanceof ServicesAreOff) &&
+          aWakeThatDidNotHappen(error) === null
+        ) {
+          throw new AStartThatDidNotHappen(error)
+        }
         return { id, to, state: this.sendFailedAfterRecording(error) }
       }
+      await this.slots.get(to)?.session?.flushing
+      return { id, to, state: this.stateOfARecordedMessage(to, id) }
     })
   }
 

@@ -423,9 +423,12 @@ describe('653 · a woken conversation drawn as ended', () => {
         'the started turn to begin',
       )
 
+      const kept = ledger.events(worker).find((entry) => entry.ordinal === lifeBegins)
+      expect(kept?.event).toMatchObject({ type: 'message_queued', text: 'go on' })
+
       const { window, store } = aWindow()
       expect(await store.claim(worker)).toBe(true)
-      expect(window.handed.at(-1)).toMatchObject({ handover: 'attached', liveFrom: lifeBegins })
+      expect(window.handed.at(-1)).toMatchObject({ handover: 'attached', liveFrom: lifeBegins + 1 })
       expect(drawn(store, worker)).toMatchObject({ ended: false, live: true })
     })
 

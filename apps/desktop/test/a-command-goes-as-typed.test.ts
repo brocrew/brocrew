@@ -20,11 +20,9 @@ import { classifyHandedPath } from '../src/main/runtime/handed-path'
 import {
   A_PERSON_SENT_IT,
   messageNamingItsSender,
-  theDirectionLine,
   THE_PERSON_AT_A_WINDOW,
   type TurnOrigin,
 } from '../src/main/runtime/turn-origin'
-import { theOwnerOf } from '../src/shared/piece-called'
 import {
   aCommandTakesNoAttachments,
   aPersonsCommand,
@@ -287,11 +285,8 @@ describe('708 · R42 — a person’s command goes to the provider exactly as ty
   const answeringThePm = (pm: string): string => {
     const named = store.workThatNames(pm)
     if (named === null) throw new Error('the pm holds no piece, so no piece addresses it')
-    // ⚑ W4.187 · the direction line names the sender by its name alone: the sender line named it in full.
-    return theDirectionLine(
-      `${agentName('pm-708', store.agentIdentities())}, ${theOwnerOf(named)}`,
-      'caller',
-    )
+    const name = agentName('pm-708', store.agentIdentities())
+    return `From ${name} (conversation ${named.label} · ${name}), in your conversation `
   }
 
   describe('§1 · the composer — `send`', () => {
@@ -535,9 +530,7 @@ describe('708 · R42 — a person’s command goes to the provider exactly as ty
       const heard = lastHeard(made.worker)
       // ⚑ D-011 — named, with its conversation's address in the direction line: ⚑ D-016 · commit
       // 7 · R3 — the piece it owns.
-      expect(heard.startsWith('Sent by ') && heard.includes(answeringThePm(made.pm)), heard).toBe(
-        true,
-      )
+      expect(heard.startsWith(answeringThePm(made.pm)), heard).toBe(true)
       expect(heard).toContain('/clear')
       expect(heard).not.toBe('/clear')
       // ⚑ …and the control, on the SAME worker: a person's `/clear` there goes bare.
@@ -750,8 +743,8 @@ describe('708 · R42 — a person’s command goes to the provider exactly as ty
         () => providerHeard(made.worker).length > before,
         'the worker to hear it',
       )
-      expect(lastHeard(made.worker).startsWith('Sent by ')).toBe(true)
-      expect(lastHeard(made.worker)).toContain(answeringThePm(made.pm))
+      expect(lastHeard(made.worker).startsWith(answeringThePm(made.pm))).toBe(true)
+      expect(lastHeard(made.worker)).toContain('/compact')
       expect(worker.commandsAsked, 'the gate asked on an agent’s behalf').toBe(0)
     })
 

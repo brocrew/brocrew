@@ -297,6 +297,7 @@ describe('341 · the rails, before anything can reach them', () => {
         profile: 'worker',
         delivery: 'sent',
         recipientState: { kind: 'started' },
+        targetKind: 'new',
         runsOn: {
           provider: 'claude',
           model: 'default',

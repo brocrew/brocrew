@@ -21,7 +21,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { giverStallReceipts, isGiverStallNotice, RuntimeHost } from './helpers/giver-notice-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
-import { resourcesRoot } from '../src/main/resources/resources'
+import { resourceBytes, resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { MAX_RESOURCES_PER_REPLY } from '../src/shared/documents'
 import { stillHeld } from '../src/shared/mailbox'
@@ -767,9 +767,15 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
       const inputs = given.answer.inputs as { resource: string; name: string }[]
       expect(inputs).toHaveLength(1)
       expect(inputs[0]?.name).toBe('a.md')
-      expect(store.resourcesOf(given.piece)).toEqual([
-        expect.objectContaining({ name: 'a.md', role: 'input', sha256: shaOf(aText) }),
-      ])
+      const [saved] = store.resourcesOf(given.piece)
+      expect(store.resourcesOf(given.piece)).toHaveLength(1)
+      expect(saved).toMatchObject({ name: 'a.md', role: 'input', resource: inputs[0]?.resource })
+      expect(saved?.sha256).toMatch(/^[a-f0-9]{64}$/)
+      expect(saved?.sha256).not.toBe(shaOf(aText))
+      expect(resourceBytes(resourcesRoot(userData), saved!)).toMatchObject({
+        ok: true,
+        bytes: Buffer.from(aText),
+      })
       await waitFor(() => saidToProvider(worker).length > 0, 'the worker’s first turn')
       expect(saidToProvider(worker)[0]).toContain(`Its inputs: ${inputs[0]?.resource} (a.md)`)
 

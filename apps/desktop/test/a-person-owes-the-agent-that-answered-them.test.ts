@@ -324,11 +324,9 @@ describe('F097 · a person owes the agent that answered them', () => {
       const turns = turnsIn(ada)
       const sent = await callOn(brobotTools, 'message_agent', {
         agent: 'W1.1',
-        kind: 'note',
-        piece: 'W1.1',
         text,
       })
-      expect(sent, JSON.stringify(sent)).toMatchObject({ outcome: 'ok' })
+      expect(sent, JSON.stringify(sent)).toMatchObject({ outcome: 'ok', kind: 'note' })
       await waitFor(() => turnsIn(ada) > turns, 'the note-opened turn to end')
       await settle()
       expect(pieceOf(ada, piece)).toMatchObject({

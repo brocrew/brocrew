@@ -1,6 +1,7 @@
 import { personOpener } from './helpers/person-opens-session'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { theMessagesOf } from '../src/shared/runtime-ipc'
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -105,10 +106,9 @@ describe('D-017 · a start that costs one launch or none', () => {
   const events = (sessionId: string): TranscriptEvent[] =>
     store.events(sessionId).map((entry) => entry.event)
 
-  /** ⚑ Every way words reach a conversation — a busy one HOLDS them, an idle one takes a turn. */
-  const wordsIn = (sessionId: string): string[] =>
+  const deliveredWordsIn = (sessionId: string): string[] =>
     events(sessionId).flatMap((event) =>
-      event.type === 'user_turn' || event.type === 'message_queued' ? [event.text] : [],
+      event.type === 'user_turn' ? theMessagesOf(event).map((part) => part.text) : [],
     )
 
   /** ⚑ A real macrotask pause, so a negative is measured after whatever was queued has run. */
@@ -155,6 +155,7 @@ describe('D-017 · a start that costs one launch or none', () => {
     expect(secondAnswer).toMatchObject({ outcome: 'ok', agent: bo })
     // ⚑ **Still exactly one resume** for the whole test, after both deliveries have landed.
     expect(gate.entered).toBe(1)
-    expect(wordsIn(bo)).toEqual(['first', 'second'])
+    await waitFor(() => deliveredWordsIn(bo).includes('second'), 'both messages to be delivered')
+    expect(deliveredWordsIn(bo)).toEqual(['first', 'second'])
   })
 })

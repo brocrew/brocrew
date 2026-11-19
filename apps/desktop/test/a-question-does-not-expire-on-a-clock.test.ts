@@ -830,7 +830,7 @@ describe('591 · a question does not expire on a clock', () => {
    * each of the three silences gets its own reading and this section asserts they differ.
    */
   describe('§6 · what a model is told, and it is chosen by the row', () => {
-    it('⛔ the expiry sentence says the question is still theirs, and the ENDED sentence says it is not', async () => {
+    it('the send receipt names later delivery, and a withdrawn question is listed as ended', async () => {
       const { worker, pmTools, workerTools, piece } = await aWorkerHoldingWork()
       const toolset = workerTools.tools.find((one) => one.name === 'ask_question')
       if (toolset === undefined) throw new Error('no ask_question')
@@ -839,8 +839,8 @@ describe('591 · a question does not expire on a clock', () => {
         question: 'which schema?',
         who_answers: 'the-parent',
       })
-      expect(expired.text).toContain('still theirs to answer')
-      expect(expired.text).toContain('reaches you as a message')
+      expect(expired.text).toContain('The answer arrives as a message.')
+      expect(expired.text).not.toContain('still theirs to answer')
       // ⛔ **And it does NOT promise the work is still open**, which is `437`'s own review finding
       // and the mistake this dispatch had every opportunity to repeat.
       expect(expired.text).not.toContain('the work is still yours')
@@ -882,7 +882,10 @@ describe('591 · a question does not expire on a clock', () => {
       // (HO-088 §2) — where the question went. ⛔ It is the caller's own declaration copied back,
       // which is why it satisfies `a-positive-assertion-must-differ-from-the-default` where
       // `answered: false` did not: the two arms are two different routings.
-      expect(Object.keys(payload).sort()).toEqual(['outcome', 'question', 'went_to'])
+      expect(Object.keys(payload).sort()).toEqual(['outcome', 'question', 'receipt', 'went_to'])
+      expect(payload.receipt).toMatchObject({
+        recorded: { kind: 'question', id: payload.question },
+      })
       expect(payload.went_to).toBe('the-parent')
       // ⛔ **`a-positive-assertion-must-differ-from-the-default`**: a payload that reported
       // `answered: false` on every call is a fact a model reads and can never act on.
@@ -945,7 +948,7 @@ describe('591 · a question does not expire on a clock', () => {
       // verb in this class and the claim is about the body.
       const body = ask.slice(ask.indexOf('): Promise<AskOutcome> {'))
       expect(body.length, 'the slice found no raiseAQuestion body').toBeGreaterThan(400)
-      expect(body).not.toContain('await ')
+      expect(body.match(/\bawait\s+this\.\w+/g)).toEqual(['await this.deliverQuestion'])
       expect(body).not.toContain('setTimeout')
       expect(body).not.toContain('new Promise')
       expect(body).not.toContain('Promise.race')
