@@ -185,10 +185,7 @@ export function startMemoryWatch(options: MemoryWatchOptions): MemoryWatch {
 }
 
 /** ⚑ **The app's own line** — what it holds, and what to do before quitting it. */
-export function theAppItselfHeadline(
-  bytes: number,
-  metric?: 'footprint' | 'resident',
-): string {
+export function theAppItselfHeadline(bytes: number, metric?: 'footprint' | 'resident'): string {
   const amount =
     metric === 'footprint'
       ? `${gb(bytes)} GB of physical footprint`
@@ -272,9 +269,10 @@ export interface OwnProcess {
  * a plain name in the order Electron lists them, `main:0.29GB graphics:0.07GB network:0.04GB
  * window:0.19GB`, in the shape `describeSpawned` gives the agents.
  */
-export function whatTheAppItselfHolds(
-  processes: readonly OwnProcess[],
-): { bytes: number; said: string }
+export function whatTheAppItselfHolds(processes: readonly OwnProcess[]): {
+  bytes: number
+  said: string
+}
 export function whatTheAppItselfHolds(
   processes: readonly (OwnProcess & { pid: number })[],
   footprintOutput: string,
@@ -291,9 +289,7 @@ export function whatTheAppItselfHolds(
     if (blocks.length !== 1 + expected.size * 2) return null
     for (let i = 1; i < blocks.length; i += 2) {
       const pid = Number(blocks[i])
-      const matches = [
-        ...(blocks[i + 1] ?? '').matchAll(/^[ \t]*phys_footprint: (\d+) B[ \t]*$/gm),
-      ]
+      const matches = [...(blocks[i + 1] ?? '').matchAll(/^[ \t]*phys_footprint: (\d+) B[ \t]*$/gm)]
       const bytes = Number(matches[0]?.[1])
       if (!expected.delete(pid) || matches.length !== 1 || !Number.isSafeInteger(bytes)) return null
       footprints.set(pid, bytes)
@@ -304,7 +300,9 @@ export function whatTheAppItselfHolds(
   const parts: string[] = []
   for (const one of processes) {
     const held =
-      footprintOutput === undefined ? one.memory.workingSetSize * 1024 : footprints.get(one.pid ?? 0)
+      footprintOutput === undefined
+        ? one.memory.workingSetSize * 1024
+        : footprints.get(one.pid ?? 0)
     if (held === undefined) return null
     bytes += held
     parts.push(`${plainNameOf(one)}:${gb(held)}GB`)
