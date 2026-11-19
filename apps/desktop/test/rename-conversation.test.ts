@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
-import { CONVERSATION_IDENTITY_BATCH_SIZE } from '../src/shared/conversation-title'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
+import { callOn } from './helpers/call-tool'
 
 describe('renaming a conversation', () => {
   const profileName = 'Selected Worker'
@@ -40,7 +40,6 @@ describe('renaming a conversation', () => {
 
   it('projects only the requested distinct rail rows with the same canonical identity as selection', async () => {
     const empty = 'sess_rail_empty'
-    const service = 'sess_rail_service'
     world.anAgent('rail-service')
     expect(world.store.setAgentDisplayName('rail-service', 'Rail Service')).toBe(true)
     world.store.create({
@@ -51,14 +50,20 @@ describe('renaming a conversation', () => {
       profileId: 'worker',
       parentSessionId: caller,
     })
-    world.store.create({
-      id: service,
-      provider: 'claude',
-      cwd: '/work',
-      approvalMode: 'ask',
-      profileId: 'rail-service',
-      service: true,
+    const serviceTask = await callOn(agentToolsFor(host, caller), 'give_work', {
+      profile: 'rail-service',
+      title: 'Service task title',
+      brief: 'Complete the service task.',
+      definition_of_done: 'Record the result.',
     })
+    expect(serviceTask).toMatchObject({
+      outcome: 'ok',
+      agent: expect.any(String),
+      label: expect.any(String),
+    })
+    const service = serviceTask.agent as string
+    expect(world.store.firstTaskOf(service)?.label).toBe(serviceTask.label)
+    expect(world.store.latestTaskTitle(service)).toBe('Service task title')
     world.store.titleConversation(
       target,
       world.store.nextOrdinal(target),
@@ -67,21 +72,27 @@ describe('renaming a conversation', () => {
     )
     const root = world.store.rootOf(target)!
     const starts = world.handles.length
-    const ledger = world.store.events(target)
+    const expected = [
+      {
+        conversation: target,
+        address: root.label,
+        title: 'Saved rail title',
+        author: { kind: 'person' },
+      },
+      { conversation: empty, address: empty, title: profileName, author: null },
+      { conversation: service, address: service, title: 'Rail Service', author: null },
+    ].sort((first, second) => (first.conversation < second.conversation ? 1 : -1))
+    const ids = expected.map(({ conversation }) => conversation)
+    const before = ids.map((id) => world.store.events(id))
     const read = (sessionIds: readonly string[]) =>
       executeRuntimeCommand(host, world.window, { kind: 'readConversationIdentities', sessionIds })
 
-    expect(await read([target, 'sess_missing', empty, target, service])).toEqual([
-      { conversation: target, address: root.label, title: 'Saved rail title', author: { kind: 'person' } },
-      { conversation: empty, address: empty, title: profileName, author: null },
-      { conversation: service, address: service, title: 'Rail Service', author: null },
-    ])
+    expect(await read(['sess_missing', ...ids, target])).toEqual(expected)
     expect(await read([])).toEqual([])
-    await expect(read(Array(CONVERSATION_IDENTITY_BATCH_SIZE + 1).fill(target))).rejects.toThrow(
-      'invalid runtime command',
-    )
+    expect(await read(Array(15).fill(target))).toEqual([await readIdentity(target)])
+    await expect(read(Array(16).fill(target))).rejects.toThrow('invalid runtime command')
     expect(world.handles).toHaveLength(starts)
-    expect(world.store.events(target)).toEqual(ledger)
+    expect(ids.map((id) => world.store.events(id))).toEqual(before)
   })
 
   it('uses one ledger history for a person and an agent, while keeping the task title', async () => {
