@@ -2,20 +2,20 @@ import { giveAndWaitForBriefTurn, giveWorkWithTitleAsBrief } from './lib/give-fi
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
 import {
   RecordingSink,
+  fixtureDatabase,
+  fixtureFolder,
   fixtureProviderConfig,
   syntheticProviderHome,
   neutralHostDeps,
 } from './lib/host-fixture'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { closeAndRemove } from './helpers/scratch-host'
+import { personOpener } from './helpers/person-opens-session'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions } from '@brobot2/runtime'
 import type { AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import type { AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
@@ -43,8 +43,6 @@ import { permanenceInWords } from '../src/main/runtime/agent-tool-answer-words'
  * `a-take-back-tells-its-owner-and-a-note-names-what-it-is-about.test.ts`, cut to what this needs.
  */
 
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 const DAY_MS = 86_400_000
 
 const THE_GUESS =
@@ -93,10 +91,9 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
   }
 
   beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-held-words-'))
-    root = mkdtempSync(join(tmpdir(), 'brobot2-held-words-root-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    userData = fixtureFolder('brobot2-held-words-')
+    root = fixtureFolder('brobot2-held-words-root-')
+    db = fixtureDatabase(userData)
     clock = 7_200_000
     store = createSessionStore(db, tick)
     counter = 0
@@ -107,22 +104,9 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
     window = new RecordingSink('webContents:1')
   })
 
-  afterEach(async () => {
-    for (const built of hosts) await built.closeAll()
-    db.close()
-    for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
-  })
+  afterEach(() => closeAndRemove(hosts, db, userData, root))
 
-  const personOpens = async (
-    profileId: string,
-    approvalMode: 'ask' | 'auto' = 'ask',
-  ): Promise<string> => {
-    const { sessionId } = await host.createSession(
-      { provider: 'claude', profileId, approvalMode, cwd: root },
-      window,
-    )
-    return sessionId
-  }
+  const personOpens = personOpener(() => ({ host, root, window }), 'ask')
 
   const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
     const id = await personOpens(profileId)

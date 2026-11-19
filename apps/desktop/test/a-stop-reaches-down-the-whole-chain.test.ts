@@ -6,23 +6,19 @@ import { HandleKeepingRuntime as ProviderDouble } from './helpers/handle-keeping
 import { waitFor } from './lib/f093-host'
 import { seedHistoricalSuccessor } from './lib/historical-replacement'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { closeAndRemove, homesUnder } from './helpers/scratch-host'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeProviderSessions } from '@brobot2/runtime'
 import type { AgentToolset, FakeSessionHandle } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import type { AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from './helpers/giver-notice-host'
 import { agentToolsFor, refuseTool } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
-  syntheticProviderHome,
+  fixtureDatabase,
+  fixtureFolder,
   neutralHostDeps,
   fixtureProviderConfig,
   RecordingSink,
@@ -60,8 +56,6 @@ import {
  * §3 went with projects (D-016: no project, so no floor to cross) · §4 **the manager sees it** ·
  * §5 **`mayCommand` did not widen** · §6 **F091 · the addresses a conversation can use to stop its own turn**.
  */
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 
 describe('629 · a stop reaches down the whole chain', () => {
   let userData: string
@@ -84,9 +78,7 @@ describe('629 · a stop reaches down the whole chain', () => {
       ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued),
-      prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
+      ...homesUnder(() => userData),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       // ⚑ **Bounded, because `interruptAgent` races the provider against it** — the Fake's
@@ -99,10 +91,9 @@ describe('629 · a stop reaches down the whole chain', () => {
   }
 
   beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-629-'))
-    root = mkdtempSync(join(tmpdir(), 'brobot2-629-root-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    userData = fixtureFolder('brobot2-629-')
+    root = fixtureFolder('brobot2-629-root-')
+    db = fixtureDatabase(userData)
     clock = 9_000_000
     store = createSessionStore(db, tick)
     counter = 0
@@ -116,9 +107,7 @@ describe('629 · a stop reaches down the whole chain', () => {
 
   afterEach(async () => {
     vi.restoreAllMocks()
-    for (const built of hosts) await built.closeAll()
-    db.close()
-    for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
+    await closeAndRemove(hosts, db, userData, root)
   })
 
   const personOpens = personOpener(() => ({ host, root, window }), 'ask')
