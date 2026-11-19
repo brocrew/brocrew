@@ -99,7 +99,6 @@ it('searches recorded conversations with the same cursor and opens an archived m
   runtime.latestHistory.mockResolvedValue({
     entries: [
       {
-        sessionId: archive,
         ordinal: 0,
         at: 1_700_000_000_000,
         event: { type: 'assistant_message', text: 'The archived review is attached.' },
