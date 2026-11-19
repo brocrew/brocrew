@@ -342,7 +342,8 @@ describe("§4 · the app's own line counts the app itself, and says its agents a
     const sample = appsLine.slice(from, appsLine.indexOf('detail:', from))
     // The slice found the sample before any negative is asked of it.
     expect(sample).toContain('spawnedReader.refresh()')
-    expect(sample).toContain('itself = whatTheAppItselfHolds(app.getAppMetrics())')
+    expect(sample).toContain('appMetrics = app.getAppMetrics()')
+    expect(sample).toContain('itself = whatTheAppItselfHolds(appMetrics)')
     expect(sample).toContain('return itself.bytes')
     // ⛔ The agents' figure is never added to what the floor is held against.
     expect(sample).not.toContain('totalBytes(')
@@ -352,10 +353,13 @@ describe("§4 · the app's own line counts the app itself, and says its agents a
   it("§4 · index.ts: the breakdown is the counted reading, and the agents' three states are told apart", () => {
     const from = appsLine.indexOf('detail:')
     expect(from).toBeGreaterThan(-1)
-    const detail = appsLine.slice(from, appsLine.indexOf('log:', from))
-    expect(detail).toContain('`[${itself.said}] ${whatItsAgentsHoldApart(')
-    // One reading of the metrics in the whole app line: the breakdown never reads them again.
-    expect(appsLine.match(/getAppMetrics\(\)/g)).toHaveLength(1)
+    const detail = appsLine.slice(from, appsLine.indexOf('...(process.platform', from))
+    expect(detail).toContain('agentsApart = whatItsAgentsHoldApart(')
+    expect(detail).toContain('`[${itself.said}] ${agentsApart}`')
+    // The breakdown uses the captured sample. After footprint completes, the Mac branch
+    // reads metrics again only to verify the captured PID and creation-time identities.
+    expect(appsLine.match(/getAppMetrics\(\)/g)).toHaveLength(2)
+    expect(appsLine).toContain('current.get(pid) !== creationTime')
     expect(detail).not.toContain('getAppMetrics')
     // Not read yet is asked first, then a failure, then the listing.
     const notYet = detail.indexOf('!spawnedReader.everRead()')
@@ -376,6 +380,7 @@ it('confirms only new resident steps and uses the footprint step for the warning
   let calls = 0
   let tick: () => void = () => {}
   let finish: (sample: { bytes: number; detail: string } | null) => void = () => {}
+  let timeout: (error: Error) => void = () => {}
   const flush = async () => {
     await new Promise<void>((resolve) => setImmediate(resolve))
   }
@@ -383,8 +388,9 @@ it('confirms only new resident steps and uses the footprint step for the warning
     sample: () => rss,
     confirm: () => {
       calls++
-      return new Promise((resolve) => {
+      return new Promise((resolve, reject) => {
         finish = resolve
+        timeout = reject
       })
     },
     detail: () => '[resident breakdown]',
@@ -412,7 +418,7 @@ it('confirms only new resident steps and uses the footprint step for the warning
   expect(warnings[0]).toContain('[physical breakdown]')
   rss = 4 * gib
   tick()
-  finish(null)
+  timeout(new Error('footprint timed out'))
   await flush()
   tick()
   expect(calls).toBe(3)
@@ -421,4 +427,56 @@ it('confirms only new resident steps and uses the footprint step for the warning
     '4.00 GB of resident memory (may include memory the system can reclaim)',
   )
   expect(warnings[1]).toContain('[resident breakdown]')
+})
+
+it('uses complete per-process footprint records and rejects invalid totals', () => {
+  const gib = 1024 ** 3
+  const mainProcess = { ...own('Browser', 1), pid: 11 }
+  const processes = [mainProcess, { ...own('Tab', 1), pid: 12 }]
+  const record = (pid: number, bytes: number) =>
+    `BroCrew [${pid}]: 64-bit    Footprint: 1 B\nAuxiliary data:\n    phys_footprint: ${bytes} B\n`
+  const main = record(11, gib)
+  expect(whatTheAppItselfHolds(processes, main + record(12, gib))).toEqual({
+    bytes: 2 * gib,
+    said: 'main:1.00GB window:1.00GB',
+  })
+  expect(whatTheAppItselfHolds(processes, main)).toBeNull()
+  expect(whatTheAppItselfHolds(processes, main + record(13, gib))).toBeNull()
+  expect(whatTheAppItselfHolds(processes, main + main)).toBeNull()
+  const malformed = record(12, gib).replace(`phys_footprint: ${gib} B`, `phys_footprint: ${gib} KB`)
+  expect(whatTheAppItselfHolds(processes, main + malformed)).toBeNull()
+  expect(whatTheAppItselfHolds(processes, main + record(12, Number.MAX_SAFE_INTEGER))).toBeNull()
+  expect(whatTheAppItselfHolds([mainProcess, mainProcess], main + main)).toBeNull()
+})
+
+it('falls back after a synchronous confirmation failure and ignores a pending result after stop', async () => {
+  const gib = 1024 ** 3
+  const warnings: string[] = []
+  let rss = 2 * gib
+  let tick: () => void = () => {}
+  let finish: (result: { bytes: number; detail: string }) => void = () => {}
+  const watch = startMemoryWatch({
+    sample: () => rss,
+    confirm: () => {
+      if (rss === 2 * gib) throw new Error('could not start footprint')
+      return new Promise((resolve) => {
+        finish = resolve
+      })
+    },
+    log: (line) => warnings.push(line),
+    setInterval: (fn) => {
+      tick = fn
+    },
+    clearInterval: () => {},
+  })
+  tick()
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  expect(warnings).toHaveLength(1)
+  expect(warnings[0]).toContain('2.00 GB of resident memory')
+  rss = 3 * gib
+  tick()
+  watch.stop()
+  finish({ bytes: 3 * gib, detail: '[late footprint]' })
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  expect(warnings).toHaveLength(1)
 })
