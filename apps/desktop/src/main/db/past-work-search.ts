@@ -3,7 +3,7 @@ import Database from 'better-sqlite3'
 import type { AppDatabase } from './connection'
 import type { WorkLedgerRead } from './work-ledger-read'
 import { agentIdentityRowId } from './identity'
-import { conversationLine } from '../runtime/conversation-address'
+import { describeConversationForRead } from '../runtime/conversation-address'
 import { rowsUnreadOnce } from './rows-unread'
 import { conversationLink, pieceLink } from '../../shared/links'
 import { aPersonsOwnWords } from '../../shared/a-persons-own-words'
@@ -30,7 +30,7 @@ type Document = {
   field: PastWorkField
   snippet: string
 }
-type SearchReads = WorkLedgerRead & Parameters<typeof conversationLine>[0]
+type SearchReads = WorkLedgerRead & Parameters<typeof describeConversationForRead>[0]
 type Index = { db: Database.Database; versions: Map<string, number> }
 const searches = new WeakMap<AppDatabase, ProfilePastWorkSearch>()
 
@@ -291,7 +291,7 @@ class ProfilePastWorkSearch {
           conversation: doc.conversation,
           piece: doc.piece,
           label,
-          line: conversationLine(store, doc.conversation),
+          line: describeConversationForRead(store, doc.conversation).line,
           title,
           link:
             work === null

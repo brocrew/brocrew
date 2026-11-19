@@ -14,11 +14,7 @@ import {
 import type { PieceRow, StatusLine } from '../../shared/task-contracts'
 import { formOfName } from '../../shared/documents'
 import { workFileGroup } from '../../shared/work-file-groups'
-import {
-  canonicalAddressOf,
-  conversationDisplayTitle,
-  conversationLine,
-} from '../runtime/conversation-address'
+import { describeConversationForRead } from '../runtime/conversation-address'
 import { createSessionStore, type SessionStore } from './session-store'
 import { agentIdentityRowId } from './identity'
 import { rowsUnreadOnce, type RowsUnread } from './rows-unread'
@@ -292,8 +288,7 @@ export class WorkSearchEngine {
     taskLimit: number,
   ): ConversationSearchHit | null {
     const { id } = candidate
-    const address = canonicalAddressOf(store, id)
-    const title = conversationDisplayTitle(store, id)
+    const { address, title, line } = describeConversationForRead(store, id)
     const root = store.rootOf(id)
     const rootLines = root === null ? null : store.turnBlockRootLines(root.piece)
     if (root !== null && rootLines === null) throw new Error('unread conversation task')
@@ -380,7 +375,7 @@ export class WorkSearchEngine {
       conversation: id,
       address,
       title: clippedWorkText(title, WORK_SEARCH_BOUNDS.titleUnits).text ?? '',
-      line: conversationLine(store, id),
+      line,
       profile: candidate.profile,
       last_active_at: candidate.at,
       status: clippedWorkText(latest?.text ?? null, WORK_SEARCH_BOUNDS.statusUnits).text,

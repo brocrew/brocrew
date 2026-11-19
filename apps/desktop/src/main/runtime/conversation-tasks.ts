@@ -3,7 +3,7 @@ import { TASK_IS_OPEN } from '../../shared/tasks'
 import type { TaskState } from '../../shared/task-contracts'
 import type { SessionStore } from '../db/session-store'
 import { rowsUnreadOnce } from '../db/rows-unread'
-import { conversationLine, resolveConversationAddress } from './conversation-address'
+import { describeConversationForRead, resolveConversationAddress } from './conversation-address'
 
 const cursorShape = z.object({
   conversation: z.string(),
@@ -53,7 +53,10 @@ export function listConversationTasks(
     | 'conversationTitle'
     | 'latestTaskTitle'
     | 'agentIdentityNameById'
+    | 'recordedOne'
+    | 'parentOf'
   >,
+  itIsAService?: (conversation: string) => boolean,
 ): ConversationTasksResult {
   const conversation = resolveConversationAddress(input.conversation, store)
   if (store.conversationBinding(conversation) === null)
@@ -117,7 +120,7 @@ export function listConversationTasks(
   return {
     ok: true,
     conversation,
-    line: conversationLine(store, conversation),
+    line: describeConversationForRead(store, conversation, itIsAService?.(conversation)).line,
     tasks: shown,
     next,
     ended,

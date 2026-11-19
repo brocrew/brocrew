@@ -116,7 +116,8 @@ import type {
 } from '../../shared/conversation-title'
 import {
   canonicalAddressOf,
-  conversationLine,
+  describeConversationForRead,
+  isRecordedServiceConversation,
   resolveConversationAddress,
 } from './conversation-address'
 import { renameConversation } from './rename-conversation'
@@ -8116,11 +8117,7 @@ export class RuntimeHost implements LiveHost {
       }
     }
     const { store } = this.deps
-    const rootless =
-      rootlessReading?.() ??
-      (store.recordedOne(conversation) !== null &&
-        store.parentOf(conversation) === null &&
-        store.rootOf(conversation) === null)
+    const rootless = rootlessReading?.() ?? isRecordedServiceConversation(store, conversation)
     return rootless ? 'unknown' : null
   }
 
@@ -11147,7 +11144,7 @@ export class RuntimeHost implements LiveHost {
   }
 
   listConversationTasks(input: ConversationTasksInput) {
-    return listConversationTasks(input, this.deps.store)
+    return listConversationTasks(input, this.deps.store, (id) => this.itIsAService(id))
   }
 
   /**
@@ -18391,11 +18388,19 @@ export class RuntimeHost implements LiveHost {
   }
 
   nameByItsWork(conversation: string): string {
-    return conversationLine(this.deps.store, conversation)
+    return this.conversationForRead(conversation).line
   }
 
   addressOf(conversation: string): string {
-    return canonicalAddressOf(this.deps.store, conversation)
+    return this.conversationForRead(conversation).address
+  }
+
+  private conversationForRead(conversation: string) {
+    return describeConversationForRead(
+      this.deps.store,
+      conversation,
+      this.itIsAService(conversation),
+    )
   }
 
   renameConversation(
@@ -18404,6 +18409,7 @@ export class RuntimeHost implements LiveHost {
   ): Promise<ConversationRenameResult> {
     return renameConversation(input, author, {
       store: this.deps.store,
+      itIsAService: (id) => this.itIsAService(id),
       beforeWriting: async (conversation) => {
         await this.settleBeforeUse(conversation)
         const slot = this.slots.get(conversation)
@@ -19962,7 +19968,7 @@ export class RuntimeHost implements LiveHost {
       .conversationsOf(profileSlug)
       .filter((one) => !itself.includes(one.conversation) && !this.replacedBy.has(one.conversation))
     const shown = others.slice(0, OTHER_CONVERSATIONS_SHOWN).map((one) => ({
-      line: conversationLine(this.deps.store, one.conversation),
+      line: this.nameByItsWork(one.conversation),
       lastActiveAt: one.lastActiveAt,
     }))
     return { shown, more: others.length - shown.length }
