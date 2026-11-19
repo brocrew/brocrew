@@ -1141,6 +1141,8 @@ describe('D-036 · the host says who holds the work a conversation gave out', ()
       () => ledger(ada).filter((event) => event.type === 'permission_request').length > cardsBefore,
       'the helper to drive the original task again',
     )
+    await settle()
+    expect(stateOf(next)).toMatchObject({ is: 'waiting-on-a-worker' })
 
     // The stand-in counts what the conversation it replaced gave.
     await waitFor(

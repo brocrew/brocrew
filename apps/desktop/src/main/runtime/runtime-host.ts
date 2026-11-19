@@ -4538,13 +4538,17 @@ export class RuntimeHost implements LiveHost {
       if (!this.workerTerminals.has(birth)) {
         let terminal: string | null
         try {
-          terminal = this.completeWorkerTerminal(birth)
+          terminal = this.deps.store.workerInItsPlace(birth)
         } catch {
           terminal = null
         }
         this.workerTerminals.set(birth, terminal)
       }
-      return this.workerTerminals.get(birth)!
+      const terminal = this.workerTerminals.get(birth) ?? null
+      // Historical routes can be loaded after the durable terminal proof was first read.
+      return terminal !== null && this.workerTerminalAgreesWithRouting(birth, terminal)
+        ? terminal
+        : null
     })
     for (const birth of this.workerTerminals.keys()) {
       if (!keptBirths.has(birth)) this.workerTerminals.delete(birth)
@@ -24600,13 +24604,16 @@ export class RuntimeHost implements LiveHost {
 
   private completeWorkerTerminal(birth: string): string {
     const terminal = this.deps.store.workerInItsPlace(birth)
-    // Live routing is only a veto: a failed row cannot leave an old terminal looking current.
-    for (const known of [birth, terminal]) {
-      if (this.replacedBy.has(known) && this.theOneInItsPlace(known) !== terminal) {
-        throw new Error('worker ownership is unreadable')
-      }
+    if (!this.workerTerminalAgreesWithRouting(birth, terminal)) {
+      throw new Error('worker ownership is unreadable')
     }
     return terminal
+  }
+
+  private workerTerminalAgreesWithRouting(birth: string, terminal: string): boolean {
+    return [birth, terminal].every(
+      (seen) => !this.replacedBy.has(seen) || this.theOneInItsPlace(seen) === terminal,
+    )
   }
 
   /** A reserved id is current only while its matching birth intent still owns a live start. */
