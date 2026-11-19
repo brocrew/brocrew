@@ -241,6 +241,8 @@ describe('679 · a question is known by who asked it', () => {
     const children: Child[] = []
     for (const profile of profiles) {
       const given = await callOn(pm, 'give_work', {
+        to: 'new',
+        conversation_title: `the half ${profile} owns`,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile,
         title: `the half ${profile} owns`,

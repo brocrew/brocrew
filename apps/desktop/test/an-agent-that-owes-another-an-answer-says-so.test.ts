@@ -222,10 +222,12 @@ describe('the host says who a conversation owes an answer to, and moves the word
     const brobot = await personOpens(DEFAULT_PROFILE_ID)
     await settle()
     const brobotTools = agentToolsFor(host, brobot)
+    await callOn(brobotTools, 'create_agent', { profile_slug: 'worker' })
     const given = await callOn(brobotTools, 'give_work', {
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
-      new: true,
+      to: 'new',
+      conversation_title: 'Build the pages',
       title: 'Build the pages',
       brief: 'build the pages',
     })

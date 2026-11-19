@@ -263,6 +263,8 @@ describe('D-033 · a turn that moves a piece of work is heard by every window at
     const pmTools = agentToolsFor(host, pm)
     decorateNextHandle = holdingAWorkingTurn
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'the work',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'the work',
@@ -427,6 +429,8 @@ describe('D-033 · a turn that moves a piece of work is heard by every window at
       watched = `sess_${String(counter + 1)}`
       announced = []
       const given = await callOn(agentToolsFor(host, pm), 'give_work', {
+        to: 'new',
+        conversation_title: 'the work',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'the work',
@@ -552,6 +556,8 @@ describe('D-033 · a turn that moves a piece of work is heard by every window at
       announced = []
       decorateNextHandle = holdingAWorkingTurn
       const given = await callOn(agentToolsFor(host, pm), 'give_work', {
+        to: 'new',
+        conversation_title: 'the work',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'the work',
@@ -606,6 +612,7 @@ describe('D-033 · a turn that moves a piece of work is heard by every window at
 
       announced = []
       const given = await callOn(w.pmTools, 'give_work', {
+        to: w.worker,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'the second work',

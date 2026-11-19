@@ -111,6 +111,8 @@ describe('D-017 · a stop is not an ending', () => {
       await host.close(await personOpens('worker'), window)
       const pm = await personOpens(DEFAULT_PROFILE_ID)
       const spawned = await callOn(pm, 'give_work', {
+        to: 'new',
+        conversation_title: 'The notes',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'The notes',
@@ -263,6 +265,8 @@ describe('D-017 · a stop is not an ending', () => {
       await host.close(await personOpens('worker'), window)
       const pm = await personOpens('pm')
       const spawned = await callOn(pm, 'give_work', {
+        to: 'new',
+        conversation_title: 'The migration',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'The migration',
@@ -283,6 +287,7 @@ describe('D-017 · a stop is not an ending', () => {
       // ⚑ **Held, and piece-carrying** — the worker is busy, so a second give from the same giver
       // reaches the same conversation and is queued (D-016: no one-open-task rail).
       const given = await callOn(pm, 'give_work', {
+        to: worker,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'The schema',

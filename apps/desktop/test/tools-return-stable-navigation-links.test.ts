@@ -114,6 +114,7 @@ describe('tool results carry stable navigation targets', () => {
       } else if (name === 'give_work') {
         result = await call(name, {
           profile: 'helper',
+          to: label,
           title,
           brief: 'Read the notes.',
           definition_of_done: 'Notes are read.',
@@ -203,12 +204,11 @@ describe('tool results carry stable navigation targets', () => {
     const tool = agentToolsFor(host, caller).tools.find((one) => one.name === 'give_work')!
     const result = await tool.call({
       profile: 'helper',
-      new: true,
       title,
       brief: 'Read notes.',
       definition_of_done: 'Notes read.',
     })
-    expect(result.structured?.['outcome']).toBe('refused')
+    expect(result.structured).toMatchObject({ outcome: 'refused', rail: 'name-the-conversation' })
     proves(result, agentLink())
     expect(JSON.stringify(world.ledger(caller))).not.toContain('brocrew://')
   })

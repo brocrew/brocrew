@@ -175,6 +175,11 @@ export function describeEvent(event: TranscriptEvent): string {
       return `${event.piece} · titled ${event.title} · by ${event.actor === undefined ? (event.by ?? 'a person') : didIt(event.actor)} (ours)`
     case 'work_status_set':
       return `${event.piece} · status set · ${event.line.length} chars · by ${event.by} (ours)`
+    // A conversation's own title, printed whole like a piece's, with who set it.
+    case 'titled':
+      return `conversation titled ${event.title} · by ${
+        event.author.kind === 'person' ? 'a person' : event.author.conversation
+      } (ours)`
     // ⚑ **D-022 · R1 — and the held give it rides**, by the message's id, as `message_sent` prints
     // one: the give's `user_turn` then carries the newest brief, not the words its `message_queued`
     // holds.

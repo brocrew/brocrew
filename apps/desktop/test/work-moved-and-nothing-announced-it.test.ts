@@ -132,6 +132,8 @@ describe('638 · a change to a conversation’s work announces itself', () => {
    */
   const give = async (pmTools: AgentToolset): Promise<string> => {
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'The work',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'The work',

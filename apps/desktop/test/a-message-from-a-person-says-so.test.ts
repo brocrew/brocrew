@@ -261,6 +261,8 @@ describe('607 · a message from a person says so', () => {
     const pm = await personOpens(pmProfile)
     const pmTools = agentToolsFor(host, pm)
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'the work this dispatch is about',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: workerProfile,
       title: 'the work this dispatch is about',

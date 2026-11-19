@@ -236,6 +236,8 @@ describe('465 · a person who never answered', () => {
       window,
     )
     const spawned = await callOn(agentToolsFor(host, parent.sessionId), 'give_work', {
+      to: 'new',
+      conversation_title: 'the question under test',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'agent-side-worker',
       title: 'the question under test',
@@ -652,6 +654,8 @@ describe('465 · a person who never answered', () => {
     )
     const askerTools = agentToolsFor(host, asker.sessionId)
     const spawned = await callOn(askerTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'hold a card',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'peer-refused',
       title: 'hold a card',

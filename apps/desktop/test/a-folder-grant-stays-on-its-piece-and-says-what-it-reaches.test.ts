@@ -217,6 +217,8 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
   async function aHelperAtWork(giver: string, profile = 'pm'): Promise<string> {
     const first = await host.giveWork(
       {
+        to: 'new',
+        conversation_title: 'the first piece',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile,
         title: 'the first piece',
@@ -245,6 +247,7 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
       host.claimSession(dev, window)
       const given = await host.giveWork(
         {
+          to: pm,
           definition_of_done: 'The requested result and its checks are recorded.',
           profile: 'pm',
           title: 'B',
@@ -284,6 +287,7 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
       host.claimSession(helper, window)
       const given = await host.giveWork(
         {
+          to: helper,
           definition_of_done: 'The requested result and its checks are recorded.',
           profile: 'pm',
           title: 'B',
@@ -319,6 +323,8 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
       const giver = await aGiver('ask')
       const first = await host.giveWork(
         {
+          to: 'new',
+          conversation_title: 'the first piece',
           definition_of_done: 'The requested result and its checks are recorded.',
           profile: 'pm',
           title: 'the first piece',
@@ -333,6 +339,7 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
       await waitFor('the first turn to park on its card', () => cardsOf(helper).length === 1)
       const second = await host.giveWork(
         {
+          to: first.label,
           definition_of_done: 'The requested result and its checks are recorded.',
           profile: 'pm',
           title: 'B',
@@ -374,8 +381,9 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
 
     it('🔴 a helper that runs without asking: nothing new — ⛔ no write or read sentence', async () => {
       const giver = await aGiver()
-      await aHelperAtWork(giver)
+      const helper = await aHelperAtWork(giver)
       const given = await callAs(giver, 'give_work', {
+        to: helper,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'pm',
         title: 'B',
@@ -396,6 +404,8 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
       const giver = await aGiver('ask', 'codex')
       const first = await host.giveWork(
         {
+          to: 'new',
+          conversation_title: 'the first piece',
           definition_of_done: 'The requested result and its checks are recorded.',
           profile: 'pm',
           title: 'the first piece',
@@ -407,6 +417,7 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
       if (!first.ok) throw new Error(`refused: ${first.refusal.rail}`)
       await waitFor('the first turn to park on its card', () => cardsOf(first.owner).length === 1)
       const given = await callAs(giver, 'give_work', {
+        to: first.label,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'pm',
         title: 'B',
@@ -427,6 +438,8 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
       const giver = await aGiver('ask', 'claude')
       const first = await host.giveWork(
         {
+          to: 'new',
+          conversation_title: 'the first piece',
           definition_of_done: 'The requested result and its checks are recorded.',
           profile: 'pm',
           title: 'the first piece',
@@ -439,6 +452,7 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
       expect(store.find(first.owner)?.provider).toBe('claude')
       await waitFor('the first turn to park on its card', () => cardsOf(first.owner).length === 1)
       const given = await callAs(giver, 'give_work', {
+        to: first.label,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'pm',
         title: 'B',
@@ -468,6 +482,8 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
       // ⚑ The start: its working folder is the giver's folder joined with the name.
       const first = await host.giveWork(
         {
+          to: 'new',
+          conversation_title: 'the first piece',
           definition_of_done: 'The requested result and its checks are recorded.',
           profile: 'pm',
           title: 'the first piece',
@@ -487,6 +503,7 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
       const aGiveWith = async (folder: string, turn: number) => {
         const given = await host.giveWork(
           {
+            to: first.label,
             definition_of_done: 'The requested result and its checks are recorded.',
             profile: 'pm',
             title: `in ${folder}`,
@@ -573,6 +590,7 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
         const helper = await aHelperAtWork(giver)
         const given = await host.giveWork(
           {
+            to: helper,
             definition_of_done: 'The requested result and its checks are recorded.',
             profile: 'pm',
             title: 'X',
@@ -603,6 +621,7 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
         throw new Error('the places could not be read')
       }
       const given = await callAs(giver, 'give_work', {
+        to: helper,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'pm',
         title: 'B',

@@ -229,10 +229,12 @@ describe('F097 · a person owes the agent that answered them — more cases', ()
     )
     await settle()
     const brobotTools = agentToolsFor(host, brobot)
+    await callOn(brobotTools, 'create_agent', { profile_slug: 'worker' })
     const given = await callOn(brobotTools, 'give_work', {
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
-      new: true,
+      to: 'new',
+      conversation_title: 'Build the pages',
       title: 'Build the pages',
       brief: 'build the pages',
     })
@@ -279,12 +281,14 @@ describe('F097 · a person owes the agent that answered them — more cases', ()
       // Ada gives a part of W1.1 to a new agent. Its brief's turn is held, so W1.1.1 stays open
       // (`working`) and nobody is told anything that would run Ada again.
       holdTheTurnEnds()
+      await callOn(agentToolsFor(host, ada), 'create_agent', { profile_slug: 'tester' })
       const giving = leftRunning(
         callOn(agentToolsFor(host, ada), 'give_work', {
           definition_of_done: 'The requested result and its checks are recorded.',
           profile: 'tester',
-          new: true,
-          piece: 'W1.1',
+          to: 'new',
+          conversation_title: 'Wire the routes',
+          under: 'W1.1',
           title: 'Wire the routes',
           brief: 'wire the routes',
         }),
@@ -327,6 +331,7 @@ describe('F097 · a person owes the agent that answered them — more cases', ()
       const said = userTurnsIn(ada)
       const giving = leftRunning(
         callOn(brobotTools, 'give_work', {
+          to: ada,
           definition_of_done: 'The requested result and its checks are recorded.',
           profile: 'worker',
           title: 'Write the tests',
@@ -387,10 +392,12 @@ describe('F097 · a person owes the agent that answered them — more cases', ()
   describe('§3 · the person’s list: its order and its kept fold', () => {
     it('⚑ two holders are listed oldest first — the one written to first, not the one given work first', async () => {
       const { brobot, brobotTools, ada, piece } = await aGiverAndItsHelper()
+      await callOn(brobotTools, 'create_agent', { profile_slug: 'tester' })
       const second = await callOn(brobotTools, 'give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'tester',
-        new: true,
+        to: 'new',
+        conversation_title: 'Review the pages',
         title: 'Review the pages',
         brief: 'review the pages',
       })

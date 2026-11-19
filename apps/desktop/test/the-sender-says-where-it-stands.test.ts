@@ -148,6 +148,8 @@ describe('D-011 · the sender says where it stands', () => {
     await host.close((await personOpens('worker')).id, window)
     const pm = await personOpens('pm')
     const given = await callOn(pm.tools, 'give_work', {
+      to: 'new',
+      conversation_title: 'Build the index',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'Build the index',

@@ -223,6 +223,8 @@ describe('734 · the queue names agents, not folders', () => {
     brief = 'do the thing',
   ): Promise<{ child: string; handle: FakeSessionHandle; piece: string; label: string }> => {
     const given = await callOn(parent, 'give_work', {
+      to: 'new',
+      conversation_title: brief,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile,
       title: brief,
@@ -554,6 +556,8 @@ describe('734 · the queue names agents, not folders', () => {
       // ⚑ **D-016 · the brief is the turn** — a give starts Bob and sends it, where a spawn started
       // him idle and a `work` message began the turn. ⛔ Not {@link gives}: this handle raises no card.
       const given = await callOn(rig.pm, 'give_work', {
+        to: 'new',
+        conversation_title: '734-a-turn-nobody-can-stop',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker-g',
         title: '734-a-turn-nobody-can-stop',

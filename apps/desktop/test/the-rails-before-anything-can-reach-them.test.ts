@@ -180,6 +180,7 @@ describe('341 · the rails, before anything can reach them', () => {
     profile,
     title: 'Summarise the ledger',
     brief: 'summarise the ledger',
+    ...('to' in more ? {} : { to: 'new', conversation_title: 'Ledger summary' }),
     ...more,
   })
 
@@ -226,10 +227,10 @@ describe('341 · the rails, before anything can reach them', () => {
         isAHelper: () => false,
         agentExists: () => true,
         // ⚑ **Nothing found**, so the answer is a START — the only answer that carries a token.
-        helperAs: () => null,
+        conversationAt: () => null,
+        recentWith: () => ({ rows: [], more: false }),
         serviceAt: () => ({ is: 'normal' }),
         spawningEnabled: () => true,
-        creatorOf: () => null,
         // ⚑ **Null — *nobody has said*** (419), and the agent has no default (677; D-042 · R2): the
         // token's provider is then the giver's. ⚑ **D-042 took the model off the token** (its
         // `runsOn` went): the launch names R1's pair, so no token carries one.
@@ -244,6 +245,8 @@ describe('341 · the rails, before anything can reach them', () => {
           profile: 'worker',
           title: 'A real one',
           brief: 'a real one',
+          to: 'new',
+          conversation_title: 'A real job',
         },
         PLANNER,
         facts,
@@ -370,7 +373,9 @@ describe('341 · the rails, before anything can reach them', () => {
       expect(sessionIdsOf()).toContain(first.owner)
       // ⚑ **Plan ruling 12 — the switch refuses only a give that would START a conversation**: the
       // one this giver already has with `worker` still takes work.
-      expect(admitted(await give(aPiece('worker'), as(parent))).owner).toBe(first.owner)
+      expect(admitted(await give(aPiece('worker', { to: first.label }), as(parent))).owner).toBe(
+        first.owner,
+      )
 
       // The paired positive: flip it back and the identical call succeeds.
       store.setSpawningEnabled(true)
@@ -447,6 +452,8 @@ describe('341 · the rails, before anything can reach them', () => {
           {
             definition_of_done: 'The requested result and its checks are recorded.',
             profile: `w${depth}`,
+            to: 'new',
+            conversation_title: `Level ${depth}`,
             title: `Level ${depth}`,
             brief: `level ${depth}`,
           },
@@ -627,7 +634,7 @@ describe('341 · the rails, before anything can reach them', () => {
         () => store.events(live).some((row) => row.event.type === 'turn'),
         'the brief turn to end',
       )
-      const second = admitted(await give(aPiece('worker'), as(parent)))
+      const second = admitted(await give(aPiece('worker', { to: first.label }), as(parent)))
       // ⚑ **Actionable**: the caller is told WHICH of its pieces stalled, in the same conversation.
       expect(second.owner).toBe(live)
       expect(second.stalled).toEqual([{ label: first.label, cause: 'turn_ended' }])
@@ -687,7 +694,7 @@ describe('341 · the rails, before anything can reach them', () => {
       // ⚑ **D-042** — `started` became `runsOn.how` (see THE POSITIVE).
       expect(theirs.runsOn.how).toBe('started')
       // …and the first giver's next give reaches the one it has, which is the paired negative.
-      const again = admitted(await give(aPiece('worker'), as(first)))
+      const again = admitted(await give(aPiece('worker', { to: mine.label }), as(first)))
       expect(again.owner).toBe(mine.owner)
       // ⚑ It names no model, so the one it has is left `unchanged` — never `started`.
       expect(again.runsOn.how).toBe('unchanged')
@@ -698,7 +705,7 @@ describe('341 · the rails, before anything can reach them', () => {
       await bringIdentityIntoBeing('worker')
       // ⚑ **The conversation is this giver's own child, started under the OTHER spelling** (`428`).
       const first = admitted(await give(aPiece('Worker'), as(parent)))
-      const second = admitted(await give(aPiece('worker'), as(parent)))
+      const second = admitted(await give(aPiece('worker', { to: first.label }), as(parent)))
       expect(second.owner).toBe(first.owner)
       // ⚑ **D-042** — `started: null` became `runsOn.how`: found, so `unchanged`, never `started`.
       expect(first.runsOn.how).toBe('started')
@@ -774,11 +781,9 @@ describe('341 · the rails, before anything can reach them', () => {
       )
       // ⛔ **The derivation is measured where the two answers DIFFER**, inside this one vocabulary.
       expect(SPAWN_RAILS.filter(retryableOf)).toEqual([
-        'no-free-worker-at-capacity',
         'it-would-wait-on-itself',
         'its-waits-cannot-all-be-checked',
       ])
-      expect(remedyOf('no-free-worker-at-capacity')).toBe('make-the-same-call-when-this-settles')
       // ⚑ A service waiting on its caller clears when that work ends: the same give then answers.
       expect(remedyOf('it-would-wait-on-itself')).toBe('make-the-same-call-when-this-settles')
       // ⚑ …and one whose waits reach too far to check clears as that work ends.
@@ -858,6 +863,8 @@ describe('341 · the rails, before anything can reach them', () => {
           {
             definition_of_done: 'The requested result and its checks are recorded.',
             profile: 'worker',
+            to: 'new',
+            conversation_title: 'Read the ledger',
             title: 'Read the ledger',
             brief: 'read the ledger',
           },

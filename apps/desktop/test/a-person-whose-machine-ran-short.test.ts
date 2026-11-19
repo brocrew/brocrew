@@ -488,6 +488,8 @@ describe('710 · R52 — a person whose machine ran short', () => {
       vi.spyOn(console, 'warn').mockImplementation(() => {})
       gate.startFails = () => produced
       const refused = await callOn(pm, 'give_work', {
+        to: 'new',
+        conversation_title: 'x',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'x',
@@ -507,6 +509,8 @@ describe('710 · R52 — a person whose machine ran short', () => {
       theRealHome = true
       theKeychainAnswers(aSecurityThatCouldNotStart)
       const refused = await callOn(pm, 'give_work', {
+        to: 'new',
+        conversation_title: 'x',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'x',

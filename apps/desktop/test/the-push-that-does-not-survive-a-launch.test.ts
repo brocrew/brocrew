@@ -224,6 +224,8 @@ describe('404 · the push that does not survive a launch', () => {
     const pm = await personOpens(pmProfile)
     const pmTools = agentToolsFor(host, pm)
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: brief,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: workerProfile,
       title: brief,
@@ -245,8 +247,11 @@ describe('404 · the push that does not survive a launch', () => {
     pmTools: AgentToolset,
     profile: string,
     brief: string,
+    to = 'new',
   ): Promise<Record<string, unknown>> => {
     const given = await callOn(pmTools, 'give_work', {
+      to,
+      ...(to === 'new' ? { conversation_title: brief } : {}),
       definition_of_done: 'The requested result and its checks are recorded.',
       profile,
       title: brief,
@@ -482,7 +487,7 @@ describe('404 · the push that does not survive a launch', () => {
         summary: 'it is done',
       })
       expect(answered.outcome, JSON.stringify(answered)).toBe('ok')
-      const second = await aSecondGive(pmTools, workerProfile, 'the unfinished one')
+      const second = await aSecondGive(pmTools, workerProfile, 'the unfinished one', worker)
       expect(second.agent).toBe(worker)
       const unfinished = second.piece as string
       await host.close(pm, window)
@@ -679,7 +684,7 @@ describe('404 · the push that does not survive a launch', () => {
       // may hold more than one open piece now, and the held one is the one this reads.
       const { pm, worker, pmTools, workerProfile } = await aPmAndItsWorker('are you free?')
       await cardOn(worker)
-      const held = await aSecondGive(pmTools, workerProfile, 'the held one')
+      const held = await aSecondGive(pmTools, workerProfile, 'the held one', worker)
       expect(held.delivery, JSON.stringify(held)).toBe('held')
       const waiting = held.piece as string
       expect(stateOf(worker, waiting)).toBe('waiting')
@@ -741,7 +746,7 @@ describe('404 · the push that does not survive a launch', () => {
       const { pm, worker, pmTools, task, workerProfile, otherProfile } =
         await aPmAndItsWorker('the first one')
       await cardOn(worker)
-      const theHeldGive = await aSecondGive(pmTools, workerProfile, 'the held one')
+      const theHeldGive = await aSecondGive(pmTools, workerProfile, 'the held one', worker)
       expect(theHeldGive.delivery, JSON.stringify(theHeldGive)).toBe('held')
       const waiting = theHeldGive.piece as string
       unplugTheWindow()

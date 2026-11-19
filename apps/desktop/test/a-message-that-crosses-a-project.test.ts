@@ -153,6 +153,8 @@ describe('431 · the message that crosses a project', () => {
   ): Promise<{ child: string; childTools: AgentToolset; label: string }> => {
     await personOpens('worker')
     const given = await callOn(brobotTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'the work',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'the work',
@@ -311,6 +313,8 @@ describe('431 · the message that crosses a project', () => {
     it('🔴 a give files a piece in the RECEIVER’s ledger, and only in a conversation the giver started', async () => {
       const { brobot, brobotTools, manager } = await aManagerInAnotherProject()
       const toTheManagersProfile = await callOn(brobotTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'the thing',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'pm',
         title: 'the thing',
@@ -339,6 +343,8 @@ describe('431 · the message that crosses a project', () => {
       // same profile starts a conversation of its own.
       await personOpens('explorer')
       const second = await callOn(theToolsetJustHandedOut(), 'give_work', {
+        to: 'new',
+        conversation_title: 'and this too',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'and this too',

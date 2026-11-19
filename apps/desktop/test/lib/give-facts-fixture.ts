@@ -12,10 +12,10 @@ export function giveFactsForTest(
     drivenByTheTurn: () => null,
     isAHelper: () => false,
     agentExists: () => true,
-    helperAs: () => null,
+    conversationAt: () => null,
+    recentWith: () => ({ rows: [], more: false }),
     serviceAt: () => ({ is: 'normal' }),
     spawningEnabled: () => true,
-    creatorOf: () => null,
     itsProvider: () =>
       childProvider === null
         ? { provider: null, from: 'nothing-yet' }

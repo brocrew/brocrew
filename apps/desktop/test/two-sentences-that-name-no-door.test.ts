@@ -133,6 +133,8 @@ describe('two sentences that name a door', () => {
     const parent = await personOpens(DEFAULT_PROFILE_ID)
     const parentTools = theToolsetJustHandedOut()
     const given = await callOn(parentTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'The work',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'The work',

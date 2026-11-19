@@ -184,6 +184,8 @@ describe('D-047 · the giver keeps the whole brief it gave, in its own ledger', 
     brief: string,
   ): Promise<{ worker: string; piece: string; label: string }> => {
     const given = await callOn(pm, 'give_work', {
+      to: 'new',
+      conversation_title: title,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title,
@@ -206,6 +208,8 @@ describe('D-047 · the giver keeps the whole brief it gave, in its own ledger', 
     const recorded = vi.spyOn(store, 'recordGive')
     for (const brief of ['x'.repeat(2001), HISTORICAL_BRIEF]) {
       const refused = await callOn(pm, 'give_work', {
+        to: 'new',
+        conversation_title: TITLE,
         definition_of_done: 'The fictional result and its checks are recorded.',
         profile: 'worker',
         title: TITLE,
@@ -341,6 +345,8 @@ describe('D-047 · the giver keeps the whole brief it gave, in its own ledger', 
       expect(sentBy(pm)).toHaveLength(0)
 
       const given = await callTimed(pm, 'give_work', {
+        to: 'new',
+        conversation_title: TITLE,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: TITLE,
@@ -391,6 +397,7 @@ describe('D-047 · the giver keeps the whole brief it gave, in its own ledger', 
       expect(firstRow).toBeDefined()
 
       const second = await callTimed(pm, 'give_work', {
+        to: first.label,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'Then the second table',
@@ -428,6 +435,8 @@ describe('D-047 · the giver keeps the whole brief it gave, in its own ledger', 
     it('⛔ a refusal writes no row — a success beside it writes one', async () => {
       const pm = await aPm()
       const refused = await callOn(pm, 'give_work', {
+        to: 'new',
+        conversation_title: 't',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'nobody-by-that-name',
         title: 't',
@@ -444,6 +453,8 @@ describe('D-047 · the giver keeps the whole brief it gave, in its own ledger', 
       vi.spyOn(console, 'warn').mockImplementation(() => {})
       gate.startFails = () => new AuthUnavailableError('claude', 'signed out')
       const failed = await callOn(pm, 'give_work', {
+        to: 'new',
+        conversation_title: TITLE,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: TITLE,
@@ -454,6 +465,8 @@ describe('D-047 · the giver keeps the whole brief it gave, in its own ledger', 
 
       gate.startFails = undefined
       const given = await callOn(pm, 'give_work', {
+        to: 'new',
+        conversation_title: TITLE,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: TITLE,
@@ -489,6 +502,7 @@ describe('D-047 · the giver keeps the whole brief it gave, in its own ledger', 
         )
       const resumesBefore = gate.entered
       const failed = await callOn(pm, 'give_work', {
+        to: first.label,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'the second piece',
@@ -502,6 +516,7 @@ describe('D-047 · the giver keeps the whole brief it gave, in its own ledger', 
       // ⚑ The pair: the same give, the resume let through, is delivered and writes its row.
       gate.resumeFails = undefined
       const delivered = await callOn(pm, 'give_work', {
+        to: first.label,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'the second piece',

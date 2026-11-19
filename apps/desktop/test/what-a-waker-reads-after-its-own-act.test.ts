@@ -169,6 +169,8 @@ describe('what a waker reads after its own act', () => {
     brief: string,
   ): Promise<{ child: string; piece: string; label: string }> => {
     const given = await callOn(pm, 'give_work', {
+      to: 'new',
+      conversation_title: `The ${profile}`,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile,
       title: `The ${profile}`,

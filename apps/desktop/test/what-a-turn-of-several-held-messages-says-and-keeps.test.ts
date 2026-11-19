@@ -665,6 +665,8 @@ class TheApp {
     await this.host.close((await this.personOpens('worker')).id, this.window)
     const pm = await this.personOpens('pm')
     const given = await callOn(pm.tools, 'give_work', {
+      to: 'new',
+      conversation_title: 'the index',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'the index',
@@ -1458,6 +1460,8 @@ describe('D-027 · the work a turn of several drives', () => {
     const gave: { child: string; piece: string; label: string }[] = []
     for (const profile of ['worker', 'builder']) {
       const given = await callOn(pm.tools, 'give_work', {
+        to: 'new',
+        conversation_title: `The ${profile}`,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile,
         title: `The ${profile}`,
@@ -1511,8 +1515,10 @@ describe('D-027 · the work a turn of several drives', () => {
   it('§18 · an unnamed give hangs under the piece that every message of a turn of several drives', async () => {
     await bringIdentityIntoBeing('worker')
     const pm = await app.personOpens('pm')
-    const aGive = async (title: string, brief: string) => {
+    const aGive = async (title: string, brief: string, to: string) => {
       const answer = await callOn(pm.tools, 'give_work', {
+        to,
+        ...(to === 'new' ? { conversation_title: title } : {}),
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title,
@@ -1526,12 +1532,12 @@ describe('D-027 · the work a turn of several drives', () => {
         delivery: answer.delivery,
       }
     }
-    const first = await aGive('the first piece', 'read the first table')
+    const first = await aGive('the first piece', 'read the first table', 'new')
     const worker = first.agent
     app.host.claimSession(worker, app.window)
     await waitFor(() => app.cards(worker).length > 0, 'the worker to park on its first turn')
     // ⚑ The worker is busy, so the second piece is HELD behind the first turn.
-    const second = await aGive('the second piece', 'copy the second column over')
+    const second = await aGive('the second piece', 'copy the second column over', first.label)
     expect(second.agent).toBe(worker)
     expect(second.delivery).toBe('held')
     await bringIdentityIntoBeing('helper')
@@ -1559,6 +1565,8 @@ describe('D-027 · the work a turn of several drives', () => {
 
     // ⚑ Every message of the running turn drives the second piece, so an unnamed give hangs under it.
     const unnamed = await callOn(app.toolsFor(worker), 'give_work', {
+      to: 'new',
+      conversation_title: 'a smaller piece',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'helper',
       title: 'a smaller piece',
@@ -1594,6 +1602,8 @@ describe('D-027 · the work a turn of several drives', () => {
     ).toEqual([first.piece, second.piece].sort())
     await waitFor(() => app.cards(worker).length >= 5, 'that turn to park')
     const refused = await callOn(app.toolsFor(worker), 'give_work', {
+      to: 'new',
+      conversation_title: 'never begun',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'helper',
       title: 'never begun',

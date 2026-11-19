@@ -191,6 +191,8 @@ describe('508 · the work this conversation gave out', () => {
     title: string,
   ): Promise<string> => {
     const said = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: title,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile,
       title,
@@ -389,6 +391,8 @@ describe('508 · the work this conversation gave out', () => {
       // ⚑ **The control — no door writes that row**: the second parent's give to the same agent
       // reaches a conversation of its OWN, and never the first parent's worker.
       const own = await callOn(rivalTools, 'give_work', {
+        to: 'new',
+        conversation_title: across,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: across,

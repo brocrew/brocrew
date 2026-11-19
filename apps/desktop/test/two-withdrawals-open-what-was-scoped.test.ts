@@ -107,12 +107,14 @@ describe('two withdrawals — open what was scoped', () => {
     profile: string,
     title: string,
   ): Promise<{ agent: string; label: string; tools: AgentToolset }> => {
+    await callOn(giverTools, 'create_agent', { profile_slug: profile })
     const given = await callOn(giverTools, 'give_work', {
       definition_of_done: 'The requested result and its checks are recorded.',
       profile,
       title,
       brief: title.toLowerCase(),
-      new: true,
+      to: 'new',
+      conversation_title: title,
     })
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     return {
@@ -262,6 +264,7 @@ describe('two withdrawals — open what was scoped', () => {
     it('WORK never reaches a stranger, and lands in one the giver started', async () => {
       const { deskTools, reader, readerTools, writer } = await twoConversations()
       const held = await callOn(deskTools, 'give_work', {
+        to: reader,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'inspector',
         title: 'Get this written up',
@@ -304,6 +307,8 @@ describe('two withdrawals — open what was scoped', () => {
       expect(store.piecesGivenBy(reader)).toHaveLength(0)
 
       const given = await callOn(readerTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'Write this up',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'scribe',
         title: 'Write this up',

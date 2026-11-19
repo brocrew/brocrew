@@ -360,6 +360,8 @@ describe('682 · a person’s choice holds the whole launch', () => {
       expect(existsSync(join(homes(), 'fresh'))).toBe(false)
       const pm = await aPm()
       const answered = await callOn(pm, 'give_work', {
+        to: 'new',
+        conversation_title: 'work',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'fresh',
         title: 'work',
@@ -390,6 +392,8 @@ describe('682 · a person’s choice holds the whole launch', () => {
       ).toMatchObject({ ok: true })
       const pm = await aPm()
       const answered = await callOn(pm, 'give_work', {
+        to: 'new',
+        conversation_title: 'work',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'fresh',
         title: 'work',
@@ -457,6 +461,8 @@ describe('682 · a person’s choice holds the whole launch', () => {
       world.listed = []
       const pm = await aPm()
       const answered = await callOn(pm, 'give_work', {
+        to: 'new',
+        conversation_title: 'work',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'ran',
         title: 'work',
@@ -476,6 +482,8 @@ describe('682 · a person’s choice holds the whole launch', () => {
       world.lists['fresh/codex'] = new Error('network is down')
       const pm = await aPm()
       const answered = await callOn(pm, 'give_work', {
+        to: 'new',
+        conversation_title: 'work',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'fresh',
         title: 'work',
@@ -527,6 +535,8 @@ describe('682 · a person’s choice holds the whole launch', () => {
       // ⚑ The PM runs on Claude, so a start on Codex is the choice's and nobody else's.
       const pm = await aPm()
       const admitted = await callOn(pm, 'give_work', {
+        to: 'new',
+        conversation_title: 'work',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'builder',
         title: 'work',
@@ -543,6 +553,8 @@ describe('682 · a person’s choice holds the whole launch', () => {
       anAgent('builder')
       const pm = await aPm()
       const admitted = await callOn(pm, 'give_work', {
+        to: 'new',
+        conversation_title: 'work',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'builder',
         title: 'work',
@@ -677,6 +689,8 @@ describe('682 · a person’s choice holds the whole launch', () => {
       ).toBe(true)
       const pm = await aPm()
       const answered = await callOn(pm, 'give_work', {
+        to: 'new',
+        conversation_title: 'work',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'builder',
         title: 'work',
@@ -743,6 +757,8 @@ describe('682 · a person’s choice holds the whole launch', () => {
       const given = await callOn(pm, 'give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
+        to: 'new',
+        conversation_title: 'work',
         title: 'work',
         brief: 'go',
         ...(chosenFirst === undefined ? { model: 'narrow' } : {}),
@@ -1023,6 +1039,8 @@ describe('682 · a person’s choice holds the whole launch', () => {
       const pm = await aPmOn('codex', 'auto')
       // ⚑ **D-016 · the give starts it, and its brief is its first turn.**
       const given = await callOn(pm, 'give_work', {
+        to: 'new',
+        conversation_title: 'work',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'work',

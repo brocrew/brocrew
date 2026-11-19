@@ -372,6 +372,8 @@ describe('688 · draw who wrote it, and which task', () => {
     const pmTools = theToolsetJustHandedOut()
     const next = burnNumbers(pm, burn)
     const given = await call(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'the work this dispatch is about',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'the work this dispatch is about',
@@ -1111,6 +1113,7 @@ describe('688 · draw who wrote it, and which task', () => {
       await waitFor(() => rowsOf(worker, 'permission_request').length > 0, 'the worker to be busy')
       const next = burnNumbers(pm, 2)
       const second = await call(pmTools, 'give_work', {
+        to: worker,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'now build it',

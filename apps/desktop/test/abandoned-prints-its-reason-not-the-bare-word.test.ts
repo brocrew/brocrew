@@ -133,6 +133,8 @@ describe('675 M20 · abandoned prints why it cannot come back', () => {
     const pm = await personOpens(pmProfile)
     const pmTools = agentToolsFor(host, pm)
     const spawned = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'The work this row is about',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: workerProfile,
       title: 'The work this row is about',

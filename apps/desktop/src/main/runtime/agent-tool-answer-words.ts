@@ -1,3 +1,4 @@
+import { hasDirectRefusalOpening } from '../../shared/tool-outcome'
 import { CHANNEL_REFUSAL_SENTENCES, type AgentToolAnswer } from '@brobot2/runtime'
 import { clockTimeFrom } from '../../shared/clock'
 import type { HowWorkStopped } from '../../shared/how-work-stopped'
@@ -433,7 +434,7 @@ export function appOnlyRefusalQuote(
   refusalReason(reason)
   const rail = aText(structured?.['rail'])
   const prefix =
-    reason.startsWith('Not sent:') && finalText.startsWith(reason) ? '' : `refused (${rail}): `
+    hasDirectRefusalOpening(reason) && finalText.startsWith(reason) ? '' : `refused (${rail}): `
   const base = `${prefix}${reason}`
   if (rail === undefined || !finalText.startsWith(base))
     throw new Error('A fresh refusal quote must prefix its composed answer.')

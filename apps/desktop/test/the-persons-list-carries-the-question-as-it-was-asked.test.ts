@@ -357,6 +357,8 @@ describe('D-046 · the person’s list carries each question as it was asked', (
       const pmTools = agentToolsFor(host, pm)
       decorateNextHandle = holdingAWorkingTurn
       const given = await callOn(pmTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'the work',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'the work',

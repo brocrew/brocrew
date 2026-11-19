@@ -260,6 +260,8 @@ describe('659 · the question every teardown asks', () => {
     )
     const pmLaunch = launches.at(-1)!
     const given = await callOn(pmLaunch.toolset, 'give_work', {
+      to: 'new',
+      conversation_title: 'The work',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'The work',
@@ -403,6 +405,8 @@ describe('659 · the question every teardown asks', () => {
       const launched = launches.length
       await failAndHold(pm, pmLaunch)
       const answer = await callOn(pmLaunch.toolset, 'give_work', {
+        to: 'new',
+        conversation_title: 'More',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'More',

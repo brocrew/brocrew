@@ -115,6 +115,8 @@ const mount = (
     },
     async giveAChild(pm, profile, brief, title = `The ${profile}`) {
       const given = await callOn(pm, 'give_work', {
+        to: 'new',
+        conversation_title: title,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile,
         title,

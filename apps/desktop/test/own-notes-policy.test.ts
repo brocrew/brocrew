@@ -422,6 +422,8 @@ describe('own notes tools bind to their caller and person controls stay in the w
       expect(store.setAgentProvider('lark', provider)).toBe(true)
       const given = await host.giveWork(
         {
+          to: 'new',
+          conversation_title: 'Check a change',
           profile: 'lark',
           title: 'Check a change',
           brief: 'Keep the agreed scope.',

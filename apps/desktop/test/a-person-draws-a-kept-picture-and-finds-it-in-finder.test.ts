@@ -128,6 +128,8 @@ describe('D-032 · a person draws a kept picture or PDF, and finds any kept file
     const giver = await personOpens()
     const given = await host.giveWork(
       {
+        to: 'new',
+        conversation_title: 'Draw the chart',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'default',
         title: 'Draw the chart',

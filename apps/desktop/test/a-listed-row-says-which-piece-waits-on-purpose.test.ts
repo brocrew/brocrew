@@ -116,12 +116,15 @@ describe('a listed row says which piece its conversation waits on on purpose', (
   const aPieceGiven = async (
     brobot: string,
     title: string,
-    first: boolean,
+    to: string,
   ): Promise<{ ada: string; piece: string; label: string }> => {
-    const given = await callOn(agentToolsFor(host, brobot), 'give_work', {
+    const tools = agentToolsFor(host, brobot)
+    if (to === 'new') await callOn(tools, 'create_agent', { profile_slug: 'worker' })
+    const given = await callOn(tools, 'give_work', {
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
-      ...(first ? { new: true } : {}),
+      to,
+      ...(to === 'new' ? { conversation_title: title } : {}),
       title,
       brief: title.toLowerCase(),
     })
@@ -137,7 +140,7 @@ describe('a listed row says which piece its conversation waits on on purpose', (
       window,
     )
     await settle()
-    const { ada, piece } = await aPieceGiven(brobot, 'Build the pages', true)
+    const { ada, piece } = await aPieceGiven(brobot, 'Build the pages', 'new')
     return { brobot, ada, piece }
   }
   const statusOf = async (
@@ -196,7 +199,7 @@ describe('a listed row says which piece its conversation waits on on purpose', (
 
   it('reads the newest open piece: an older marked piece behind a newer one is not said', async () => {
     const { brobot, ada } = await aHelperWithAPiece()
-    const second = await aPieceGiven(brobot, 'Write the copy', false)
+    const second = await aPieceGiven(brobot, 'Write the copy', 'W1.1')
     expect(second).toMatchObject({ ada, label: 'W1.2' })
     await statusOf(ada, 'W1.1', 'waiting for the designs', true)
     expect(listed(ada)).toMatchObject({ named: { label: 'W1.2' } })

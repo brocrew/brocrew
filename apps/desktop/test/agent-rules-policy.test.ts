@@ -376,6 +376,8 @@ describe('standing-rule authority belongs to the host and changes remain attribu
       expect(store.setAgentProvider(DEFAULT_PROFILE_ID, provider)).toBe(true)
       const given = await host.giveWork(
         {
+          to: 'new',
+          conversation_title: 'Review a change',
           profile: DEFAULT_PROFILE_ID,
           title: 'Review a change',
           brief: 'Propose a standing-rule change.',

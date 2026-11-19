@@ -304,9 +304,12 @@ describe('429 · taking work back', () => {
     tools: AgentToolset,
     profile: string,
     title: string,
+    to = 'new',
     brief = title,
   ): Promise<{ agent: string; piece: string; label: string; delivery: unknown }> => {
     const given = await callOn(tools, 'give_work', {
+      to,
+      ...(to === 'new' ? { conversation_title: title } : {}),
       definition_of_done: 'The requested result and its checks are recorded.',
       profile,
       title,
@@ -485,11 +488,11 @@ describe('429 · taking work back', () => {
       // ⚠️ **The follow-up went out and started a turn, so the worker is let back to idle first.**
       await letTheTurnFinish(worker)
       await waitFor(() => isIdle(worker), 'the worker to go idle after the follow-up')
-      const second = await aGive(pmTools, 'worker', 'a second piece')
+      const second = await aGive(pmTools, 'worker', 'a second piece', worker)
       expect(second.agent).toBe(worker)
       const back = await callOn(pmTools, 'withdraw_task', { piece: second.label })
       expect(back.outcome, JSON.stringify(back)).toBe('ok')
-      const again = await aGive(pmTools, 'worker', 'a second piece')
+      const again = await aGive(pmTools, 'worker', 'a second piece', worker)
       expect(again.agent).toBe(worker)
       expect(piecesOf(worker)).toHaveLength(3)
     })
@@ -562,6 +565,7 @@ describe('429 · taking work back', () => {
       // nothing will ever answer. ⚑ A give is not refused over it; its answer names it,
       // with this verb as one of the two acts.
       const named = await callOn(pmTools, 'give_work', {
+        to: label,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'and another',
@@ -587,6 +591,7 @@ describe('429 · taking work back', () => {
 
       // 🔴 **The remedy, WALKED** — taken back, the piece is named to the next give no more.
       const admitted = await callOn(pmTools, 'give_work', {
+        to: label,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'and a third',
@@ -607,6 +612,7 @@ describe('429 · taking work back', () => {
       // words are not its title: the holder is TOLD the title when the piece is taken back (D-016),
       // and what must never reach the provider is the brief.
       const given = await callOn(pmTools, 'give_work', {
+        to: worker,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'the held piece',
@@ -643,7 +649,7 @@ describe('429 · taking work back', () => {
 
     it('⚑ a flush already in flight refuses, and the SAME call once it settles is admitted', async () => {
       const { worker, pmTools } = await workAlreadyAnswered(false)
-      const given = await aGive(pmTools, 'worker', 'held work')
+      const given = await aGive(pmTools, 'worker', 'held work', worker)
       expect(given.delivery, JSON.stringify(given)).toBe('held')
       const waiting = piecesOf(worker).find((one) => one.state === 'waiting')
       if (waiting === undefined) throw new Error('the second piece was not held')
@@ -688,7 +694,7 @@ describe('429 · taking work back', () => {
       expect((answered.detail as Record<string, unknown>).answered).toBe('done')
       expect((answered.detail as Record<string, unknown>).label).toBe(label)
 
-      const second = await aGive(pmTools, 'worker', 'a second piece')
+      const second = await aGive(pmTools, 'worker', 'a second piece', label)
       expect((await callOn(pmTools, 'withdraw_task', { piece: second.label })).outcome).toBe('ok')
       const twice = await callOn(pmTools, 'withdraw_task', { piece: second.label })
       expect(twice.outcome, JSON.stringify(twice)).toBe('refused')

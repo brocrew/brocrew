@@ -125,6 +125,8 @@ describe('690 · the wake says only what is true', () => {
       window,
     )
     const given = await callOn(pm, 'give_work', {
+      to: 'new',
+      conversation_title: 'The schema',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'The schema',

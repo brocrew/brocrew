@@ -212,6 +212,8 @@ describe('719 · a giver that asked was told', () => {
     await host.close(await personOpens('worker'), window)
     const pm = await personOpens('pm')
     const given = await callOn(pm, 'give_work', {
+      to: 'new',
+      conversation_title: 'the migration',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'the migration',

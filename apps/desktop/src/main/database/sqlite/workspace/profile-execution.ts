@@ -91,9 +91,6 @@ export type ProfileExecutionRead =
 /** The old file's versions the import reads. */
 const PROFILE_EXECUTION_VERSIONS = [1, 2]
 
-export const MAX_NORMAL_WORKER_POOLS = 128
-export const MAX_NORMAL_WORKERS_PER_POOL = 64
-
 /** Nothing kept: every profile is normal. */
 export const NO_PROFILE_EXECUTION: KeptProfileExecution = { profiles: {} }
 

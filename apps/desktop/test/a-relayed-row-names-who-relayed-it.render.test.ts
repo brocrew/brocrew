@@ -340,6 +340,8 @@ describe('545 §2 · the door writes the identity beside the conversation', () =
     const pmTools = agentToolsFor(host, pm)
     // ⚑ D-016 · the give starts the worker, and its brief is the relayed turn.
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'the work this dispatch is about',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: workerProfile,
       title: 'the work this dispatch is about',
@@ -379,6 +381,8 @@ describe('545 §2 · the door writes the identity beside the conversation', () =
     const pmTools = agentToolsFor(host, pm)
     // ⚑ D-016 · the give starts the worker, and its brief is the relayed turn.
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'the work this dispatch is about',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: workerProfile,
       title: 'the work this dispatch is about',

@@ -120,6 +120,8 @@ describe('one number a person can quote', () => {
     title: string,
   ): Promise<{ piece: string; label: string; worker: string }> => {
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: title,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title,

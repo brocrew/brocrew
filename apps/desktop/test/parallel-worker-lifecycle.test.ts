@@ -2,7 +2,6 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { claudeProjectDirName } from '@brobot2/runtime/claude'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { agentCallerId } from '../src/main/runtime/agent-tools'
 import { readProfileExecution } from '../src/main/profile-execution-file'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
@@ -24,31 +23,19 @@ describe('worker pools follow whole-tree lifecycle decisions', () => {
         world.window,
       )
     ).sessionId
-    const given = await world.gives(host, giver, 'document-reader', { parallel: true })
-    expect(given.ok).toBe(true)
-    if (!given.ok) throw new Error('setup refused')
-    expect(
-      await host.replyToParent(
-        {
-          piece: given.piece,
-          outcome: 'done',
-          summary: 'Draft checked.',
-          resourcePaths: [],
-          needsUserAction: false,
-        },
-        { ownerId: agentCallerId(given.owner) },
-      ),
-    ).toMatchObject({ ok: true })
-    await vi.waitFor(() => expect(world.handleOf('document-reader').status()).toBe('idle'))
-    return { host, giver, worker: given.owner }
+    await host.closeAll()
+    const worker = await world.aRecordedWorker(giver, 'document-reader')
+    const restarted = world.aHost()
+    await restarted.reopenForAPerson(giver, world.window, null)
+    return { host: restarted, giver, worker }
   }
 
   it('deletes a complete giver pool and its replacement workers, preserving another giver pool across restart', async () => {
-    const { host, giver, worker } = await setup()
-    const other = await world.aPersonOpens(host, 'review-lead')
-    expect(await world.gives(host, other, 'document-reader', { parallel: true })).toMatchObject({
-      ok: true,
-    })
+    const seed = await setup()
+    const { giver, worker } = seed
+    const other = await world.aPersonOpens(seed.host, 'review-lead')
+    await seed.host.closeAll()
+    await world.aRecordedWorker(other, 'document-reader')
     world.store.create({
       id: 'replacement-reader',
       provider: 'claude',
@@ -63,6 +50,7 @@ describe('worker pools follow whole-tree lifecycle decisions', () => {
       { type: 'replaced_by', sessionId: 'replacement-reader' },
       world.clock++,
     )
+    const host = world.aHost()
     const survivor = world.kept(identity)?.workerPools?.find((one) => one.giver === other)
     expect(host.deleteVerdict(worker)).toMatchObject({ ok: false })
     expect(await host.deleteConversation(giver, ['records'])).toMatchObject({
@@ -219,45 +207,11 @@ describe('worker pools follow whole-tree lifecycle decisions', () => {
     expect(world.kept(identity)).toEqual(before)
     expect(host.restoreConversation(giver)).toMatchObject({ done: true })
     await host.reopenForAPerson(giver, world.window, null)
-    expect(await world.gives(host, giver, 'document-reader')).toMatchObject({
+    expect(await world.gives(host, giver, 'document-reader', { to: worker })).toMatchObject({
       ok: true,
       owner: worker,
     })
     expect(world.store.workersBorn().map((one) => one.number)).toEqual([1])
-  })
-
-  it('refuses a giver delete while its unrecorded worker start is live, before a stop or write', async () => {
-    const host = world.aHost()
-    const giver = (
-      await host.createSession(
-        { provider: 'claude', profileId: 'review-lead', cwd: world.folder, approvalMode: 'auto' },
-        world.window,
-      )
-    ).sessionId
-    let release = () => {}
-    world.startsWait = new Promise<void>((resolve) => {
-      release = resolve
-    })
-    const pending = world.gives(host, giver, 'document-reader', { parallel: true })
-    void pending.catch(() => {})
-    try {
-      const before = readProfileExecution(world.db)
-      const stops = world.stopsAsked.slice()
-      expect(world.store.workersBorn()).toEqual([])
-      expect(await host.deleteConversation(giver, ['records'])).toEqual({
-        done: false,
-        refusal: 'Nothing was deleted: this app could not record which workers it was removing.',
-      })
-      expect(world.stopsAsked).toEqual(stops)
-      expect(world.store.recordedOne(giver)).not.toBeNull()
-      expect(readProfileExecution(world.db)).toEqual(before)
-      release()
-      expect(await pending).toMatchObject({ ok: true })
-    } finally {
-      release()
-      world.startsWait = null
-      await Promise.allSettled([pending])
-    }
   })
 
   it('does not infer a completed removal from missing records without an intent', async () => {
@@ -265,14 +219,8 @@ describe('worker pools follow whole-tree lifecycle decisions', () => {
     const before = world.kept(identity)
     await host.closeAll()
     world.store.deleteTheTree(world.store.conversationTree(giver))
-    const next = world.aHost()
-    const other = await world.aPersonOpens(next, 'review-lead')
+    world.aHost()
     expect(world.kept(identity)).toEqual(before)
-    for (const parallel of [false, true])
-      expect(await world.gives(next, other, 'document-reader', { parallel })).toMatchObject({
-        ok: false,
-        refusal: { rail: 'worker-binding-is-unknown' },
-      })
     expect(world.store.workersBorn()).toEqual([])
   })
 })

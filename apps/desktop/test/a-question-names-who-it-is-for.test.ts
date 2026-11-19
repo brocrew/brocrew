@@ -218,6 +218,8 @@ describe('611 · a question names who it is for', () => {
     const pm = await personOpens('pm')
     const pmTools = theToolsetJustHandedOut()
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'the work this dispatch is about',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'the work this dispatch is about',

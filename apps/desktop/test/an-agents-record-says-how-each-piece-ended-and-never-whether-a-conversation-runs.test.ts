@@ -139,8 +139,11 @@ describe('an agent’s record — the cases beyond what-an-agent-has-done', () =
     tools: AgentToolset,
     title: string,
     brief: string = title,
+    to = 'new',
   ): Promise<{ label: string; holder: string }> => {
     const given = await fullCall(tools, 'give_work', {
+      to,
+      ...(to === 'new' ? { conversation_title: title } : {}),
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'tester',
       title,
@@ -191,10 +194,12 @@ describe('an agent’s record — the cases beyond what-an-agent-has-done', () =
     it('read while one conversation is mid-turn and another was stopped, "running" is nowhere in it — and the two read alike', async () => {
       const parkedGiver = await personOpens(DEFAULT_PROFILE_ID, 'ask')
       const parkedTools = agentToolsFor(host, parkedGiver)
+      await fullCall(parkedTools, 'create_agent', { profile_slug: 'tester' })
       const first = await fullCall(parkedTools, 'give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'tester',
-        new: true,
+        to: 'new',
+        conversation_title: 'Check the forms',
         title: 'Check the forms',
         brief: 'check the forms',
       })
@@ -293,7 +298,7 @@ describe('an agent’s record — the cases beyond what-an-agent-has-done', () =
         ['Gamma page', 'done'],
       ] as const
       for (const [n, [title, outcome]] of answers.entries()) {
-        const given = await gives(tools, title, `zebra brief ${String(n)}`)
+        const given = await gives(tools, title, `zebra brief ${String(n)}`, holder ?? 'new')
         holder ??= given.holder
         expect(given.holder).toBe(holder)
         const replied = await fullCall(agentToolsFor(host, given.holder), 'reply_to_parent', {
@@ -303,7 +308,7 @@ describe('an agent’s record — the cases beyond what-an-agent-has-done', () =
         })
         expect(replied.structured, replied.text).toMatchObject({ outcome: 'ok' })
       }
-      const open = await gives(tools, 'Delta page', 'zebra brief open')
+      const open = await gives(tools, 'Delta page', 'zebra brief open', holder ?? 'new')
       expect(open.holder).toBe(holder)
 
       const record = await theRecordOf(tools, 'tester')
@@ -359,7 +364,7 @@ describe('an agent’s record — the cases beyond what-an-agent-has-done', () =
         summary: 'built',
       })
       expect(replied.structured, replied.text).toMatchObject({ outcome: 'ok' })
-      await gives(starterTools, 'Test the clock page')
+      await gives(starterTools, 'Test the clock page', 'Test the clock page', first)
 
       for (const tools of [starterTools, outsiderTools]) {
         const record = await theRecordOf(tools, 'tester')

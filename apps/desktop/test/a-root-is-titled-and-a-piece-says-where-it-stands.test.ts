@@ -164,6 +164,8 @@ describe('D-016 · a root is titled, and a piece says where it stands', () => {
     await host.close(await personOpens('worker'), window)
     const pm = await personOpens('pm')
     const given = await callOn(pm, 'give_work', {
+      to: 'new',
+      conversation_title: 'the work',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'the work',
@@ -663,6 +665,7 @@ describe('D-016 · a root is titled, and a piece says where it stands', () => {
 
       // (c) The worker is given a SECOND piece, held behind the first: it holds two.
       const second = await callOn(pm, 'give_work', {
+        to: label,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'the second thing',
@@ -779,6 +782,8 @@ describe('D-016 · a root is titled, and a piece says where it stands', () => {
       await host.close(await personOpens('leaf'), window)
       const brobot = await personOpens('brobot', 'auto')
       const givenAda = await callOn(brobot, 'give_work', {
+        to: 'new',
+        conversation_title: 'run the front-end work',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'middle',
         title: 'run the front-end work',
@@ -787,6 +792,8 @@ describe('D-016 · a root is titled, and a piece says where it stands', () => {
       expect(givenAda.outcome, JSON.stringify(givenAda)).toBe('ok')
       const ada = givenAda.agent as string
       const givenAli = await callOn(ada, 'give_work', {
+        to: 'new',
+        conversation_title: 'build the world-clock page',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'leaf',
         title: 'build the world-clock page',

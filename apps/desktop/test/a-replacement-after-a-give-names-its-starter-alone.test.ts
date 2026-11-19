@@ -148,6 +148,8 @@ describe('3d1eb064 · a replacement after a give names its starter alone', () =>
     await host.close(await personOpens('helper'), window)
     const pm = await personOpens('pm')
     const first = await callOn(pm, 'give_work', {
+      to: 'new',
+      conversation_title: 'Build the pages',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'Build the pages',
@@ -156,11 +158,13 @@ describe('3d1eb064 · a replacement after a give names its starter alone', () =>
     expect(first.outcome, JSON.stringify(first)).toBe('ok')
     const worker = first.agent as string
     const second = await callOn(worker, 'give_work', {
+      to: 'new',
+      conversation_title: 'Check the pages',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'helper',
       title: 'Check the pages',
       brief: 'check the pages',
-      piece: first.label,
+      under: first.label,
     })
     expect(second.outcome, JSON.stringify(second)).toBe('ok')
     const helper = second.agent as string

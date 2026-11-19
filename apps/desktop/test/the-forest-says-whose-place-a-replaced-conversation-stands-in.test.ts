@@ -185,6 +185,8 @@ describe('D-034 — the forest says, for each conversation, whose place it stand
     await host.close(await personOpens('worker'), window)
     const pm = await personOpens('pm')
     const given = await callOn(pm, 'give_work', {
+      to: 'new',
+      conversation_title: 'The schema',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'The schema',
@@ -254,6 +256,8 @@ describe('D-034 — the forest says, for each conversation, whose place it stand
     await host.close(await personOpens('worker'), window)
     const pm = await personOpens('pm')
     const first = await callOn(pm, 'give_work', {
+      to: 'new',
+      conversation_title: 'The schema',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'The schema',
@@ -282,6 +286,7 @@ describe('D-034 — the forest says, for each conversation, whose place it stand
     const back = await callOn(pmNext, 'withdraw_task', { piece: label })
     expect(back.outcome, JSON.stringify(back)).toBe('ok')
     const second = await callOn(pmNext, 'give_work', {
+      to: label,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'The index',

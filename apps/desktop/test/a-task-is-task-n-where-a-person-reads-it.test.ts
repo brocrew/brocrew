@@ -153,8 +153,11 @@ describe('705 · R38 — the receipts a model and a person both read', () => {
     pm: string,
     title: string,
     brief: string,
+    to = 'new',
   ): Promise<{ worker: string; piece: string; label: string }> => {
     const given = await answerOf(pm, 'give_work', {
+      to,
+      ...(to === 'new' ? { conversation_title: title } : {}),
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title,
@@ -195,7 +198,7 @@ describe('705 · R38 — the receipts a model and a person both read', () => {
       summary: 'the schema is migrated',
     })
     expect(replied.structured.outcome, JSON.stringify(replied.structured)).toBe('ok')
-    const second = await giveWork(pm, 'Backfill the column', 'backfill the column')
+    const second = await giveWork(pm, 'Backfill the column', 'backfill the column', first.label)
     expect(second.worker).toBe(worker)
     const withdrawn = await answerOf(pm, 'withdraw_task', { piece: second.label })
     expect(withdrawn.structured.outcome, JSON.stringify(withdrawn.structured)).toBe('ok')

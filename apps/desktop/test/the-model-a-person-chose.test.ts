@@ -100,10 +100,10 @@ function facts(
     drivenByTheTurn: () => null,
     isAHelper: () => false,
     agentExists: (slug) => slug === 'pm' || slug === 'worker',
-    helperAs: () => null,
+    conversationAt: () => null,
+    recentWith: () => ({ rows: [], more: false }),
     serviceAt: () => ({ is: 'normal' }),
     spawningEnabled: () => true,
-    creatorOf: () => null,
     itsProvider: () => ({ provider: null, from: 'nothing-yet' }),
     theNamedModelsProvider: () => null,
     modelChoiceOf: (slug) => {
@@ -121,6 +121,8 @@ const ask = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
   profile: 'worker',
   title: 'the work',
   brief: 'the work this is about',
+  to: 'new',
+  conversation_title: 'the job',
   ...over,
 })
 
@@ -839,6 +841,8 @@ describe('677 §4 · the door — `setAgentModelAndEffort`, against the provider
       const before = launched.length
       const outcome = await host.giveWork(
         {
+          to: 'new',
+          conversation_title: 'the work',
           definition_of_done: 'The requested result and its checks are recorded.',
           profile,
           title: 'the work',

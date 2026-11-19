@@ -80,6 +80,8 @@ describe('F093 · each conversation at work carries its own context reading', ()
       await give.call({
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
+        to: 'new',
+        conversation_title: 'the index',
         title: 'the index',
         brief: 'build it',
       })

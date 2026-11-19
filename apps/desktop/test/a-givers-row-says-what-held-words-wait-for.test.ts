@@ -202,6 +202,8 @@ describe('the giver’s list_tasks row says what held words wait for', () => {
     const given = await tool(giver, 'give_work').call({
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'helper',
+      to: 'new',
+      conversation_title: 'Build the index',
       title: 'Build the index',
       brief: 'build the index',
     })

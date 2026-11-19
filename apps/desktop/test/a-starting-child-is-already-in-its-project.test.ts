@@ -196,6 +196,8 @@ describe('681 · a starting child is already in its project', () => {
     const spawning = host
       .giveWork(
         {
+          to: 'new',
+          conversation_title: 'held at its gate',
           definition_of_done: 'The requested result and its checks are recorded.',
           profile: 'helper',
           title: 'held at its gate',
@@ -228,6 +230,8 @@ describe('681 · a starting child is already in its project', () => {
   const aRunningChild = async (parent: string): Promise<string> => {
     const given = await host.giveWork(
       {
+        to: 'new',
+        conversation_title: 'running',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'running',
@@ -301,8 +305,9 @@ describe('681 · a starting child is already in its project', () => {
   // ─────────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§3 give_work to a child that is still starting', () => {
-    const giveTo = (call: ReturnType<typeof toolsOf>, profile: string) =>
+    const giveTo = (call: ReturnType<typeof toolsOf>, profile: string, to: string) =>
       call('give_work', {
+        to,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile,
         title: 'do the thing',
@@ -317,7 +322,7 @@ describe('681 · a starting child is already in its project', () => {
       // never a refusal, so the work waits for the launch (raced against a short timer, because the
       // launch is held at its gate) — R30b's other half, one ruling on. ⚑ D-016: the give's lookup
       // finds the reservation in flight, so it reaches the starting child rather than a second one.
-      const waiting = giveTo(call, 'helper')
+      const waiting = giveTo(call, 'helper', child.id)
       const stillPending = new Promise<string>((resolve) => {
         setTimeout(() => resolve('still pending'), 100)
       })
@@ -342,6 +347,8 @@ describe('681 · a starting child is already in its project', () => {
       const give = (profile: string) =>
         host.giveWork(
           {
+            to: 'new',
+            conversation_title: 'please take this',
             definition_of_done: 'The requested result and its checks are recorded.',
             profile,
             title: 'please take this',
@@ -376,14 +383,13 @@ describe('681 · a starting child is already in its project', () => {
   // ─────────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§4 one identity, one parent, one tick', () => {
-    it('⛔ twice in one tick — ONE conversation: the second give finds the first one’s start', async () => {
-      // ⚑ **D-016 · R2 step 5** — `428`'s one-live-conversation rail became the give's LOOKUP: the
-      // second give in the same tick finds the first one's reservation and goes there, so one parent
-      // still holds ONE conversation of an identity, and nothing is refused.
+    it('two explicit new gives in one tick start different conversations of the same profile', async () => {
       const parent = await aParent()
       const both = await Promise.all([
         host.giveWork(
           {
+            to: 'new',
+            conversation_title: 'one',
             definition_of_done: 'The requested result and its checks are recorded.',
             profile: 'worker',
             title: 'one',
@@ -393,6 +399,8 @@ describe('681 · a starting child is already in its project', () => {
         ),
         host.giveWork(
           {
+            to: 'new',
+            conversation_title: 'two',
             definition_of_done: 'The requested result and its checks are recorded.',
             profile: 'worker',
             title: 'two',
@@ -405,13 +413,10 @@ describe('681 · a starting child is already in its project', () => {
       if (first === undefined || !first.ok || second === undefined || !second.ok) {
         throw new Error('expected both gives admitted')
       }
-      // ⚑ **D-042 moved where a start is said** — `started` became `runsOn.how`: the first give
-      // started the conversation, and the second, finding its reservation and naming no model,
-      // left it `unchanged` — never a second `started`.
       expect(first.runsOn.how).toBe('started')
-      expect(second.runsOn.how).toBe('unchanged')
-      expect(second.found).toBe(first.owner)
-      expect(second.owner).toBe(first.owner)
+      expect(second.runsOn.how).toBe('started')
+      expect(second.found).toBe(second.owner)
+      expect(second.owner).not.toBe(first.owner)
       expect(second.label).not.toBe(first.label)
     })
   })

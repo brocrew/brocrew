@@ -164,6 +164,8 @@ describe('396 · nothing waits on somebody looking', () => {
     const pm = await personOpens(pmProfile, host, 'auto')
     const pmTools = agentToolsFor(host, pm)
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'the work this dispatch is about',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: workerProfile,
       title: 'the work this dispatch is about',

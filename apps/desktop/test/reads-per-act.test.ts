@@ -212,6 +212,8 @@ describe('§1 · announcements per act, through the real host', () => {
     for (let i = 0; i < 3; i += 1) {
       const before = handed.length
       const given = await callOn(pmTools, 'give_work', {
+        to: 'new',
+        conversation_title: `slice ${String(i)}`,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: WORKERS[i],
         title: `slice ${String(i)}`,

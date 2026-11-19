@@ -201,6 +201,8 @@ describe('608 · the turn that no longer waits', () => {
     const pm = await personOpens('pm')
     const pmTools = theToolsetJustHandedOut()
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'The schema',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'The schema',

@@ -247,6 +247,8 @@ describe('395 · the interruption that looks like a provider fault', () => {
     const pm = await personOpens(pmProfile)
     const pmTools = agentToolsFor(host, pm)
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'The work',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: workerProfile,
       title: 'The work',

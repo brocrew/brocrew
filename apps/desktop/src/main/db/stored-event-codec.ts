@@ -1,6 +1,7 @@
 import type { EventRow, PersistedEvent } from './ledger-row-types'
 import type { SkipNote } from './rows-unread'
 import { answeredQuestionFields } from '../../shared/answered-question-fields'
+import { aConversationTitle, aTitleAuthor } from '../../shared/conversation-title'
 import { MAILBOX_KINDS } from '../../shared/conversation-events'
 import type {
   MailboxKind,
@@ -37,6 +38,7 @@ import { REPLY_SUMMARY_LIMIT } from '../runtime/reply-rails'
 import { isAWorkReport } from '../../shared/tasks'
 import { pieceNumbersOf } from '../../shared/piece-called'
 import { MAX_RESOURCES_PER_REPLY } from '../../shared/documents'
+import { DONE_CONDITION_CHARS, WORK_BRIEF_CHARS } from '../../shared/work-fields'
 
 export function toPersistedEvents(
   rows: EventRow[],
@@ -87,8 +89,20 @@ export function boundStoredEvent(event: TranscriptEvent): TranscriptEvent {
 
 function boundOneRow(event: TranscriptEvent): TranscriptEvent {
   return boundStoredPayloads(
-    boundCardFacts(boundWorkReport(boundRelayedIdentity(boundTheDrive(boundPieceNamed(event))))),
+    boundCardFacts(
+      boundWorkReport(boundRelayedIdentity(boundTheDrive(boundPieceNamed(boundTitled(event))))),
+    ),
   )
+}
+
+/** A stored title is read whole or not at all: a row that is not one is skipped, and noted. */
+function boundTitled(event: TranscriptEvent): TranscriptEvent {
+  if (event.type !== 'titled') return event
+  const title = aConversationTitle(event.title)
+  if (title === null || title !== event.title || !aTitleAuthor(event.author)) {
+    throw new Error('a stored conversation title could not be read')
+  }
+  return { type: 'titled', title, author: event.author }
 }
 
 function answerStoredOn(value: unknown): AnsweredQuestion | undefined {
@@ -257,7 +271,8 @@ function boundStoredPayloads(event: TranscriptEvent): TranscriptEvent {
     (event.type === 'work_given' || event.type === 'work_rebriefed') &&
     event.definitionOfDone !== undefined &&
     (typeof event.definitionOfDone !== 'string' ||
-      event.definitionOfDone.length > 512 ||
+      event.definitionOfDone.length >
+        (event.type === 'work_given' ? WORK_BRIEF_CHARS : DONE_CONDITION_CHARS) ||
       event.definitionOfDone.trim() === '')
   )
     throw new Error('unread done condition')

@@ -167,6 +167,8 @@ describe('663 · wake one conversation: its parent’s message carries it on', (
    */
   const gives = async (giver: string, profileId: string, brief: string): Promise<string> => {
     const given = await callOn(giver, 'give_work', {
+      to: 'new',
+      conversation_title: brief,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: profileId,
       title: brief,

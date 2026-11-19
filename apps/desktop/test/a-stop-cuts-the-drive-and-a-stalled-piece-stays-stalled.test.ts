@@ -690,6 +690,8 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
     )
     const pmLaunch = launches.at(-1)!
     const given = await callOn(pmLaunch.toolset, 'give_work', {
+      to: 'new',
+      conversation_title: 'The work',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'The work',
@@ -878,8 +880,10 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
     expect(answer.outcome, JSON.stringify(answer)).toBe('ok')
     expect(answer.stalled).toEqual(labels)
   }
-  const theGive = (pmLaunch: Launch, profile = 'worker') =>
+  const theGive = (pmLaunch: Launch, to: string, profile = 'worker') =>
     callOn(pmLaunch.toolset, 'give_work', {
+      to,
+      ...(to === 'new' ? { conversation_title: 'More' } : {}),
       definition_of_done: 'The requested result and its checks are recorded.',
       profile,
       title: 'More',
@@ -912,14 +916,14 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
         expect(stalledOf(worker)).toEqual([{ label, because: 'turn_ended' }])
 
         // ⚑ The stall refuses nothing; the stop's own rail answers the give.
-        turnedAwayWhileItStops(await theGive(pmLaunch))
+        turnedAwayWhileItStops(await theGive(pmLaunch, label))
         expect(launches.length).toBe(launched)
 
         // ⚑ **The paired positive · another profile the pm has never given to gives** — the
         // answer above is about this holder's stop, not about the giver.
         await bringIdentityIntoBeing('other')
         const launchedBeforeOther = launches.length
-        const other = await theGive(pmLaunch, 'other')
+        const other = await theGive(pmLaunch, 'new', 'other')
         expect(other.outcome, JSON.stringify(other)).toBe('ok')
         expect(launches.length).toBe(launchedBeforeOther + 1)
       } finally {
@@ -930,7 +934,7 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
       // ⚑ **The stop completed and moved nothing**: the piece is still stalled, and the same give
       // now goes through and names it.
       expect(stalledOf(worker)).toEqual([{ label, because: 'turn_ended' }])
-      namesTheStalledPiece(await theGive(pmLaunch), [label])
+      namesTheStalledPiece(await theGive(pmLaunch, label), [label])
     })
 
     /**
@@ -964,7 +968,7 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
       try {
         await waitFor(() => resumeHold.entered === before + 1, 'the resume to reach the provider')
         const launched = launches.length
-        giving = theGive(pmLaunch)
+        giving = theGive(pmLaunch, label)
         let settled = false
         void giving.then(() => {
           settled = true
@@ -1017,7 +1021,7 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
       // ⚑ The same take-back, now the start has landed, ends the piece; a give then leaves it out.
       const tookBack = await callOn(pmLaunch.toolset, 'withdraw_task', { piece: label })
       expect(tookBack.outcome, JSON.stringify(tookBack)).toBe('ok')
-      const after = await theGive(pmLaunch)
+      const after = await theGive(pmLaunch, label)
       expect(after.outcome, JSON.stringify(after)).toBe('ok')
       expect((after.stalled as string[] | undefined) ?? []).not.toContain(label)
     })
@@ -1037,7 +1041,7 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
       expect(piece).toMatchObject({ because: 'turn_interrupted' })
 
       // ⚑ The give goes through, wakes the worker, and names the piece its turn left.
-      const given = await theGive(pmLaunch)
+      const given = await theGive(pmLaunch, worker)
       namesTheStalledPiece(given, [piece!.label])
       expect(given.agent).toBe(worker)
     })
@@ -1129,6 +1133,8 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
       // speaks as no conversation at all is told it has no piece to give from.
       const fromTheApp = await host.giveWork(
         {
+          to: 'new',
+          conversation_title: 'x',
           definition_of_done: 'The requested result and its checks are recorded.',
           profile: 'worker',
           title: 'x',

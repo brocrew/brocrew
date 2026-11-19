@@ -39,10 +39,12 @@ const agentsIn = (said: Said, key: 'agents' | 'archived'): string[] =>
 /** A pm conversation, and the helper it started by giving it one piece. */
 async function aGiverAndItsHelper(): Promise<{ pm: string; helper: string; label: string }> {
   const pm = await world.open(host, 'claude', 'pm')
+  await call(pm, 'create_agent', { profile_slug: 'helper' })
   const gave = await call(pm, 'give_work', {
     definition_of_done: 'The requested result and its checks are recorded.',
     profile: 'helper',
-    new: true,
+    to: 'new',
+    conversation_title: 'Sort the letters',
     title: 'Sort the letters',
     brief: 'Sort the letters by date.',
   })

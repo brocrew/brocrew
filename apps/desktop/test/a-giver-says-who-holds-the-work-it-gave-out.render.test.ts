@@ -701,13 +701,17 @@ describe('D-036 · the host says who holds the work a conversation gave out', ()
     [...host.resumableSessions(), ...host.unresumableSessions()].find((row) => row.sessionId === id)
 
   /** The holder of the one piece a conversation was given, named by the app. */
-  const givenW11 = (title = 'Build the pages'): Record<string, unknown> => ({
-    definition_of_done: 'The requested result and its checks are recorded.',
-    profile: 'worker',
-    new: true,
-    title,
-    brief: title.toLowerCase(),
-  })
+  const givenW11 = async (tools: AgentToolset) => {
+    await callOn(tools, 'create_agent', { profile_slug: 'worker' })
+    return callOn(tools, 'give_work', {
+      definition_of_done: 'The requested result and its checks are recorded.',
+      profile: 'worker',
+      to: 'new',
+      conversation_title: 'Build the pages',
+      title: 'Build the pages',
+      brief: 'build the pages',
+    })
+  }
 
   /**
    * ⚑ **One family, nothing parked**: BroBot (a person's, the root `W1`) gives `W1.1` to Ada, and
@@ -724,15 +728,17 @@ describe('D-036 · the host says who holds the work a conversation gave out', ()
   }> => {
     const brobot = await personOpens(DEFAULT_PROFILE_ID)
     const brobotTools = agentToolsFor(host, brobot)
-    const givenAda = await callOn(brobotTools, 'give_work', givenW11())
+    const givenAda = await givenW11(brobotTools)
     expect(givenAda, JSON.stringify(givenAda)).toMatchObject({ outcome: 'ok', label: 'W1.1' })
     const ada = givenAda.agent as string
     await waitFor(() => turnsIn(ada) >= 1, 'Ada’s first turn')
     const adaTools = agentToolsFor(host, ada)
+    await callOn(adaTools, 'create_agent', { profile_slug: 'tester' })
     const givenAli = await callOn(adaTools, 'give_work', {
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'tester',
-      new: true,
+      to: 'new',
+      conversation_title: 'Wire the routes',
       title: 'Wire the routes',
       brief: 'wire the routes',
     })
@@ -838,10 +844,12 @@ describe('D-036 · the host says who holds the work a conversation gave out', ()
     // it is admitted held, as `a-label-names-the-conversation-that-owns-the-piece-and-no-more` does.
     const parent = await personOpens(DEFAULT_PROFILE_ID, 'ask')
     const parentTools = agentToolsFor(host, parent)
+    await callOn(parentTools, 'create_agent', { profile_slug: 'worker' })
     const first = await callOn(parentTools, 'give_work', {
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
-      new: true,
+      to: 'new',
+      conversation_title: 'Build the world clock page',
       title: 'Build the world clock page',
       brief: 'build the world clock page',
     })
@@ -852,6 +860,7 @@ describe('D-036 · the host says who holds the work a conversation gave out', ()
       'the card Ada’s brief raised',
     )
     const second = await callOn(parentTools, 'give_work', {
+      to: first.label,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'Test the clock page',
@@ -880,10 +889,12 @@ describe('D-036 · the host says who holds the work a conversation gave out', ()
     expect(await wordsOfParent()).toBe(`waiting on ${ADA_BY_HER_OLDEST}`)
 
     // A third give, to a second agent: now two holders, Ada first (the oldest give), once.
+    await callOn(parentTools, 'create_agent', { profile_slug: 'tester' })
     const third = await callOn(parentTools, 'give_work', {
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'tester',
-      new: true,
+      to: 'new',
+      conversation_title: 'Review the clock page',
       title: 'Review the clock page',
       brief: 'review the clock page',
     })
@@ -911,7 +922,7 @@ describe('D-036 · the host says who holds the work a conversation gave out', ()
     const brobot = await personOpens(DEFAULT_PROFILE_ID)
     await settle()
     const brobotTools = agentToolsFor(host, brobot)
-    const given = await callOn(brobotTools, 'give_work', givenW11())
+    const given = await givenW11(brobotTools)
     expect(given, JSON.stringify(given)).toMatchObject({ outcome: 'ok', label: 'W1.1' })
     const ada = given.agent as string
     // Ada's turn ends with her piece open, which hands BroBot a stall notice: one turn of its own.
@@ -937,7 +948,7 @@ describe('D-036 · the host says who holds the work a conversation gave out', ()
     expect(lastSaid(brobot)).toEqual({ is: 'idle' })
 
     const brobotTools = agentToolsFor(host, brobot)
-    const given = await callOn(brobotTools, 'give_work', givenW11())
+    const given = await givenW11(brobotTools)
     expect(given, JSON.stringify(given)).toMatchObject({ outcome: 'ok', label: 'W1.1' })
     const ada = given.agent as string
     await waitFor(
@@ -1038,7 +1049,7 @@ describe('D-036 · the host says who holds the work a conversation gave out', ()
   it('🔴 §13 · a stand-in counts what the conversation it replaced gave, and the replaced one counts nothing', async () => {
     // ⚑ A parent in `ask` mode, its helper parked on a card, so the piece stays open throughout.
     const parent = await personOpens(DEFAULT_PROFILE_ID, 'ask')
-    const given = await callOn(agentToolsFor(host, parent), 'give_work', givenW11())
+    const given = await givenW11(agentToolsFor(host, parent))
     expect(given, JSON.stringify(given)).toMatchObject({ outcome: 'ok', label: 'W1.1' })
     const ada = given.agent as string
     await waitFor(
@@ -1118,7 +1129,7 @@ describe('D-036 · the host says who holds the work a conversation gave out', ()
 
   it('🔴 §14 · a torn row in a helper’s ledger is the helper’s own record’s: the giver’s card says the work and counts nothing', async () => {
     const parent = await personOpens(DEFAULT_PROFILE_ID, 'ask')
-    const given = await callOn(agentToolsFor(host, parent), 'give_work', givenW11())
+    const given = await givenW11(agentToolsFor(host, parent))
     expect(given, JSON.stringify(given)).toMatchObject({ outcome: 'ok', label: 'W1.1' })
     const ada = given.agent as string
     await waitFor(
@@ -1337,6 +1348,8 @@ describe('D-018 · D-036 · a giver waiting on its helpers is counted and stoppe
     if (pmTools === undefined) throw new Error('no toolset was handed to the pm')
     const give = async (slug: string, brief: string): Promise<string> => {
       const made = await callOn(pmTools, 'give_work', {
+        to: 'new',
+        conversation_title: brief,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: slug,
         title: brief,

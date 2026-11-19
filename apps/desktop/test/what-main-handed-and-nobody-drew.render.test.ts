@@ -221,6 +221,8 @@ class HostWorld {
     const children: string[] = []
     for (const kid of kids) {
       const given = await this.callOn(leadTools, 'give_work', {
+        to: 'new',
+        conversation_title: `the ${kid} half of the work`,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: kid,
         title: `the ${kid} half of the work`,

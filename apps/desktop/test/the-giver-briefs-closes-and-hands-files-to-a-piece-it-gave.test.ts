@@ -258,6 +258,7 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
     profile: string,
     title: string,
     brief: string,
+    to: string,
     extra: Record<string, unknown> = {},
   ): Promise<{ agent: string; piece: string; label: string; answer: Record<string, unknown> }> => {
     const answer = await callOn(giver, 'give_work', {
@@ -265,6 +266,8 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
       profile,
       title,
       brief,
+      to,
+      ...(to === 'new' ? { conversation_title: title } : {}),
       ...extra,
     })
     expect(answer.outcome, JSON.stringify(answer)).toBe('ok')
@@ -283,7 +286,7 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
   ): Promise<{ pm: string; worker: string; piece: string; label: string; title: string }> => {
     await bringIdentityIntoBeing(`worker${suffix}`)
     const pm = await personOpens(`pm${suffix}`)
-    const given = await aGive(pm, `worker${suffix}`, title, THE_GIVES_BRIEF)
+    const given = await aGive(pm, `worker${suffix}`, title, THE_GIVES_BRIEF, 'new')
     host.claimSession(given.agent, window)
     await waitFor(() => cardsOn(given.agent) > 0, 'the worker to park on its first turn')
     return { pm, worker: given.agent, piece: given.piece, label: given.label, title }
@@ -429,9 +432,16 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
       const { pm, worker, piece, label, title } = await aPmAndItsWorker()
       // ⚑ The owner gives a child under this piece, so the open-pieces sentence has something to name.
       await bringIdentityIntoBeing('grandchild')
-      const child = await aGive(worker, 'grandchild', 'a smaller piece', 'do the small part', {
-        piece: label,
-      })
+      const child = await aGive(
+        worker,
+        'grandchild',
+        'a smaller piece',
+        'do the small part',
+        'new',
+        {
+          under: label,
+        },
+      )
       await letTheTurnEnd(worker)
       await waitFor(() => isIdle(worker), 'the worker to go idle')
       expect(TASK_IS_OPEN[pieceOf(worker, piece).state]).toBe(true)
@@ -508,7 +518,7 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
     it('closing a piece whose brief is still held takes the brief back and the piece is closed, not withdrawn', async () => {
       const { pm, worker, piece, label } = await aPmAndItsWorker()
       const HELD_BRIEF = 'held work text'
-      const second = await aGive(pm, 'worker', 'the held piece', HELD_BRIEF)
+      const second = await aGive(pm, 'worker', 'the held piece', HELD_BRIEF, label)
       // ⚑ D-022 · R3: a give held behind the owner's turn answers `held` (`queued` is `message_agent`'s).
       expect(second.answer.delivery).toBe('held')
       const waiting = pieceOf(worker, second.piece)
@@ -770,7 +780,9 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
       const aText = 'the table to migrate\n'
       const a = wrote('a.md', aText)
 
-      const given = await aGive(pm, 'worker', 'with inputs', THE_GIVES_BRIEF, { inputs: [a] })
+      const given = await aGive(pm, 'worker', 'with inputs', THE_GIVES_BRIEF, 'new', {
+        inputs: [a],
+      })
       const worker = given.agent
       host.claimSession(worker, window)
       const inputs = given.answer.inputs as { resource: string; name: string }[]
@@ -812,6 +824,7 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
       const pieces = store.piecesOwnedBy(worker).length
       const hashes = keptHashes()
       const refused = await callOn(pm, 'give_work', {
+        to: given.label,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'never begun',
@@ -829,7 +842,7 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
       expect(saidToProvider(worker).some((said) => said.includes('never sent'))).toBe(false)
 
       // ⚑ The paired positive: a give with no inputs is taken, says no inputs and keeps no file.
-      const plain = await aGive(pm, 'worker', 'without inputs', 'plain work')
+      const plain = await aGive(pm, 'worker', 'without inputs', 'plain work', given.label)
       expect(plain.answer.inputs).toBeUndefined()
       expect(store.resourcesOf(plain.piece)).toEqual([])
       expect(keptHashes()).toEqual(hashes)

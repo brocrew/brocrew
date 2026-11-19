@@ -118,6 +118,8 @@ describe('663 M33 · a store that failed is not dressed as a word', () => {
       )
     ).sessionId
     const given = await callOn(pm, 'give_work', {
+      to: 'new',
+      conversation_title: 'The schema',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'The schema',

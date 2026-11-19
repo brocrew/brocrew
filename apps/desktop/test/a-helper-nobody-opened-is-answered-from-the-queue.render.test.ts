@@ -158,6 +158,8 @@ describe('a helper nobody opened is answered from Waiting on you', () => {
       window,
     )
     const given = await callOn(agentToolsFor(host, pm), 'give_work', {
+      to: 'new',
+      conversation_title: 'Make the probe file',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'the-helper',
       title: 'Make the probe file',

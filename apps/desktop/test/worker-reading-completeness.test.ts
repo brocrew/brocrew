@@ -29,16 +29,14 @@ describe('complete worker metadata on conversation readings', () => {
         world.window,
       )
     ).sessionId
-    const primary = await world.gives(host, caller, 'document-reader', { parallel: true })
-    const extra = await world.gives(host, caller, 'document-reader', { parallel: true })
-    expect(primary.ok && extra.ok).toBe(true)
-    if (!primary.ok || !extra.ok) throw new Error('fictional workers were not started')
     await host.closeAll()
+    const primary = await world.aRecordedWorker(caller, 'document-reader')
+    const extra = await world.aRecordedWorker(caller, 'document-reader', 2)
     const bindings = world.kept(identity)?.workerPools?.flatMap((pool) => pool.workers)
     expect(bindings).toHaveLength(2)
     expect(bindings?.map((worker) => worker.phase)).toEqual(['bound', 'bound'])
     expect(bindings?.map((worker) => worker.assignment)).toEqual([undefined, undefined])
-    return { caller, primary: primary.owner, extra: extra.owner }
+    return { caller, primary, extra }
   }
 
   async function historicalReplacement() {
@@ -75,8 +73,6 @@ describe('complete worker metadata on conversation readings', () => {
     'workerLineage',
     'workerInItsPlace',
     'workerGiverContains',
-    'workerLedger',
-    'workerQuestionTargets',
   ] as const
 
   async function cachedOnly(read: () => Promise<void>) {

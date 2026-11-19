@@ -240,6 +240,8 @@ describe('D-042 · F1 — a give naming another pair keeps the one a person set 
       window,
     )
     const given = await callOn(pm, 'give_work', {
+      to: 'new',
+      conversation_title: 'first',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'first',
@@ -281,8 +283,9 @@ describe('D-042 · F1 — a give naming another pair keeps the one a person set 
   }
 
   /** ⚑ The SAME give in both arms: more work, naming `narrow` at `high` — another listed pair. */
-  const giveMoreNaming = async (pm: string): Promise<AgentToolAnswer> => {
+  const giveMoreNaming = async (pm: string, worker: string): Promise<AgentToolAnswer> => {
     const answered = await callOn(pm, 'give_work', {
+      to: worker,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'and then',
@@ -302,7 +305,7 @@ describe('D-042 · F1 — a give naming another pair keeps the one a person set 
     expect(rowOf(worker)).toMatchObject({ model: 'wide', reasoning_effort: 'low' })
     expect(rowOf(worker).setLive).toEqual(expect.any(Number))
 
-    const answered = await giveMoreNaming(pm)
+    const answered = await giveMoreNaming(pm, worker)
 
     // ⛔ Not switched: the answer names the person's pair, and why the named one went unused.
     expect(structured(answered).runs_on).toEqual({ model: 'wide', effort: 'low' })
@@ -321,7 +324,7 @@ describe('D-042 · F1 — a give naming another pair keeps the one a person set 
     // ⚑ The premise: the give's own pair, and no stamp.
     expect(rowOf(worker)).toMatchObject({ model: 'narrow', reasoning_effort: 'low', setLive: null })
 
-    const answered = await giveMoreNaming(pm)
+    const answered = await giveMoreNaming(pm, worker)
 
     expect(structured(answered).runs_on).toEqual({ model: 'narrow', effort: 'high' })
     expect(answered.text).toContain('It now runs on “narrow” at high effort')

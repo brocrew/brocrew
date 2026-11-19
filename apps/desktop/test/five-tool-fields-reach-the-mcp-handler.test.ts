@@ -364,9 +364,9 @@ describe('five more tools answer field failures through Claude MCP', () => {
   for (const entry of [
     {
       name: 'give_work',
-      patch: { parallel: 'yes' },
-      field: 'parallel',
-      line: 'expected true or false, got text',
+      patch: { to: 42 },
+      field: 'to',
+      line: 'expected text, got a number',
     },
     {
       name: 'give_work',

@@ -107,6 +107,12 @@ export type {
 import type { FindFilesAsked, FoundFiles } from './kept-file-search'
 import { KeptFiles } from './kept-files'
 import { WorkReads } from './work-reads'
+import { GiveWork } from './give-work'
+import type { ConversationTitledEvent } from '../../shared/conversation-title'
+import { canonicalAddressOf, resolveConversationAddress } from './conversation-address'
+import { sendReceipt, type SendFacts } from './send-receipt'
+import type { SendRecipientState } from '../../shared/tool-outcome'
+import type { NewSessionRecord } from '../db/session-store'
 import type {
   ItsLedger,
   StateLedger,
@@ -260,27 +266,8 @@ import type {
 } from '../../shared/reconciliation-contracts'
 import { indexWorkerReadings } from '../worker-readings'
 import type { WorkerBindingReading } from '../../shared/worker-reading'
-import { WORKER_OUTPUT_FAILURE } from '../worker-piece-folder'
 import type { StartAttemptLine, StartAttemptOutcome } from '../start-attempt-line'
-import {
-  isMcpServerRequestEnding,
-  mcpServerRequestsWaiting,
-} from '../../shared/mcp-server-requests'
-import {
-  assignNormalWorker,
-  bindNormalWorker,
-  NormalWorkerLeases,
-  releaseNormalAssignment,
-  reserveNormalWorker,
-  selectNormalWorker,
-  type WorkerSelection,
-} from '../normal-worker-pools'
-import type {
-  NormalWorkerAssignment,
-  NormalWorkerBinding,
-  NormalWorkerPool,
-  WorkerBorn,
-} from '../profile-execution-file'
+import type { NormalWorkerAssignment, WorkerBorn } from '../profile-execution-file'
 import { RUNTIME_CHANGE_SUBJECTS, TURN_ATTRIBUTION_KEYS } from '../../shared/runtime-ipc'
 import { originalMoveRequest, recordMovedRequest } from './move-request'
 import { DO_IT_HERE, MOVE_IT, MOVE_WORDS, movedHereLine } from '../../shared/move-request'
@@ -451,6 +438,7 @@ import type {
 } from '../../shared/conversation-events'
 import {
   ABriefThatDidNotArrive,
+  cannotRunOf,
   AGiveThatGaveNothing,
   AStartThatDidNotHappen,
   SessionStillStarting,
@@ -2826,10 +2814,11 @@ function keptFileOf(kept: KeptFileRow, roster: readonly AgentIdentity[] | null):
 
 /**
  * The rows a turn refused on its sign-in may hold and still have done nothing: how it went, what
- * its provider said of itself, and the record of work its words handed over. Any other row, a word
+ * its provider said of itself, and the recorded job title and task. Any other row, a word
  * of a reply or a tool call among them, means it did something, and then it is not carried on.
  */
 const A_TURN_THAT_DID_NOTHING_HOLDS: ReadonlySet<TranscriptEvent['type']> = new Set([
+  'titled',
   'work_given',
   'status',
   'error',
@@ -3411,6 +3400,9 @@ function whyItWasNotDelivered(error: unknown): string {
   }
   if (unwoken?.what === 'folder') {
     return 'This conversation did not start: BroCrew could not make or write a folder it needs.'
+  }
+  if (unwoken?.what === 'no-sign-in-to-copy') {
+    return 'This conversation did not start: there is no Codex sign-in for that agent to start on.'
   }
   if (unwoken?.what === 'gone-folder') {
     return 'This conversation did not start: the folder it ran in is no longer there.'
@@ -4205,8 +4197,6 @@ export class RuntimeHost implements LiveHost {
    * it is over ({@link resumeSession}), and no notice, held message or schedule asks to.
    */
   private readonly settingAside = new Map<string, SetAsideFor>()
-  /** What a delivery to an archived conversation is, for the start that brings it back to say. */
-  private readonly whatBringsItBack = new Map<string, string>()
   /**
    * A start bringing a conversation back from the archive, until its `reopened` row says so: the
    * rest of its tree, when each was archived, and the sentence. A start that fails puts them back.
@@ -4558,12 +4548,6 @@ export class RuntimeHost implements LiveHost {
   }
   /** The profiles whose entries could not be settled at the start: their kinds are unknown. */
   private profileExecutionConflicts: readonly string[] = []
-  private readonly normalWorkerLeases = new NormalWorkerLeases()
-  private reservingNormalWorker: {
-    readonly conversation: string
-    readonly fact: WorkerBorn
-  } | null = null
-  private readonly normalWorkerBirths = new Map<string, WorkerBorn>()
 
   /** The calendar built for the zone last read ({@link itsCalendar}). */
   private calendarRead: {
@@ -4943,6 +4927,7 @@ export class RuntimeHost implements LiveHost {
     | undefined
 
   private readonly workReads: WorkReads
+  private readonly giveWorkRunner: GiveWork
   private readonly schedulePlanning: SchedulePlanning
 
   constructor(private readonly deps: RuntimeHostDeps) {
@@ -4959,6 +4944,83 @@ export class RuntimeHost implements LiveHost {
       hasSlot: (id) => this.slots.has(id),
       startReservedFor: (id) => this.startsReserved.get(id),
       keptAttemptsFor: (id) => this.attemptsKept.conversations[id],
+    })
+    this.giveWorkRunner = new GiveWork({
+      store: () => this.deps.store,
+      resourcesRoot: () => this.deps.resourcesRoot?.(),
+      modelCatalogues: () => this.modelCatalogues,
+      deliveryWaitMs: () => this.deliveryWaitMs,
+      runningAs: (sessionId) => this.runningAs(sessionId),
+      heldBy: (conversation) => this.heldBy(conversation),
+      theTurnDrives: (conversation) => {
+        const session = this.slots.get(conversation)?.session ?? null
+        return session !== null && session.turnOpened ? session.itsTurnDrives : null
+      },
+      isAHelper: (conversation) => this.theParentInItsPlace(conversation) !== null,
+      theServiceAtAGive: (giver, profile) => this.theServiceAtAGive(giver, profile),
+      theServiceStartAGiveMeets: (input) => this.theServiceStartAGiveMeets(input),
+      itsProvider: (profileSlug) => this.itsProvider(profileSlug),
+      checkCwd: (path) => this.checkCwd(path),
+      addressOf: (conversation) => canonicalAddressOf(this.deps.store, conversation),
+      resolveConversationAddress: (address) => resolveConversationAddress(address, this.deps.store),
+      isAConversation: (conversation) =>
+        this.slots.has(conversation) || this.deps.store.recordedOne(conversation) !== null,
+      profileOf: (conversation) =>
+        this.profileOf(conversation) ?? this.slots.get(conversation)?.profileId ?? null,
+      theProviderOfConversation: (conversation) => this.theProviderOfConversation(conversation),
+      thePairItRunsOn: (conversation) => this.thePairItRunsOn(conversation),
+      switchedFor: (conversation, choice) => this.switchedFor(conversation, choice),
+      switchedBack: (conversation, wrote, was) => this.switchedBack(conversation, wrote, was),
+      keptFor: (conversation, spelled) => this.keptFor<never>(conversation, spelled),
+      aProtectedPlaceFor: (folder) => this.aProtectedPlaceFor(folder),
+      theBriefTo: (conversation, giving, by, onRecorded, deliver) =>
+        this.theBriefTo(conversation, giving, by, onRecorded, deliver),
+      queueTheBrief: (to, brief, by, giving, onAStop) =>
+        this.queueAs(to, brief, by, [], 'work', { giving }, null, 'as-it-finds-it', onAStop),
+      theServiceConversation: (profileId, conversation, provider) => {
+        let service: string
+        if (conversation !== null) service = conversation
+        else if (provider === null) throw new Error(`${profileId} has no provider`)
+        else service = this.recordTheServiceConversation(profileId, provider)
+        return this.startupRepairs.has(service)
+          ? this.settleBeforeUse(service).then(() => service)
+          : service
+      },
+      acceptAtTheService: (service, giving, pairAsked) =>
+        this.acceptAtTheService(service, giving, newQueuedMessageId(), pairAsked),
+      noteWhatItGave: (giver, giving, to) =>
+        this.noteWhatItGave(giver, { ...giving, as: 'given', to }),
+      whenItsActivePieceStalled: (service) => this.whenItsActivePieceStalled(service),
+      queuedAhead: (piece, owner) => this.queuedAhead(piece, owner),
+      stallsIn: (conversation, giver, stalledWhenRecorded) =>
+        this.stallsIn(conversation, giver, stalledWhenRecorded),
+      whatAGrantReaches: (conversation) => this.whatAGrantReaches(conversation),
+      whatItRunsOnNow: (conversation, judged, how, from, named) =>
+        this.whatItRunsOnNow(conversation, judged, how, from, named),
+      startFromAGive: (start, startsOn, giving) => {
+        this.reservingAStartFrom = giving.parent
+        const starting = this.createSession(
+          {
+            provider: start.provider,
+            cwd: start.cwd,
+            approvalMode: start.approvalMode,
+            profileId: start.profileId,
+            ...(startsOn === null ? {} : { model: startsOn.model }),
+            ...(startsOn?.effort == null ? {} : { reasoningEffort: startsOn.effort }),
+          },
+          null,
+          null,
+          start,
+          giving,
+        )
+        this.reservingAStartFrom = null
+        return starting
+      },
+      firstBriefWasDelivered: (to, piece) => this.aRecordedBriefWasDelivered(to, piece),
+      cannotRunAfterGive: (error) => {
+        console.warn('give_work: the start did not happen', error)
+        return this.sendFailedAfterRecording(error)
+      },
     })
     this.workReads = new WorkReads({
       currentStore: () => this.deps.store,
@@ -8254,44 +8316,7 @@ export class RuntimeHost implements LiveHost {
     if (slot !== undefined && slot.session === null && !onItsWayOut(slot)) {
       throw new Error(`${service} is still starting, so ${giving.label} was not written`)
     }
-    const session = slot?.session ?? null
-    if (session !== null) {
-      this.recordTheGive(session, giving, messageId, pairAsked)
-      return
-    }
-    const event: WorkGivenEvent = {
-      type: 'work_given',
-      piece: giving.piece,
-      label: giving.label,
-      parent: giving.parent,
-      givenBy: giving.giver,
-      title: giving.title,
-      brief: giving.brief,
-      definitionOfDone: giving.definitionOfDone,
-      messageId,
-      ...(giving.givenFolder === null ? {} : { givenFolder: giving.givenFolder }),
-      ...(pairAsked === null ? {} : { asked: pairAsked }),
-    }
-    const ordinal = this.deps.store.nextOrdinal(service)
-    const at = this.now()
-    this.deps.store.recordGive(
-      {
-        piece: giving.piece,
-        parent: giving.parent,
-        number: giving.number,
-        owner: service,
-        givenBy: giving.giver,
-        title: giving.title,
-        brief: giving.brief,
-        folder: giving.folder,
-        inputs: giving.inputs,
-      },
-      ordinal,
-      event,
-      at,
-    )
-    this.showTheWindowsLookingAt(service, { sessionId: service, ordinal, at, event })
-    this.theWorldMoved('work')
+    this.recordTheGive(slot?.session ?? service, giving, messageId, pairAsked)
   }
 
   /**
@@ -10443,6 +10468,7 @@ export class RuntimeHost implements LiveHost {
      * so commandedBy must be null when a spawn is supplied.
      */
     spawn: AdmittedSpawn | null = null,
+    firstGive?: ThePieceWrittenDown,
   ): Promise<CreatedSession> {
     // ⛔ A service has one conversation, and no start makes another.
     if (this.isAServicesAgent(input.profileId ?? DEFAULT_PROFILE_ID)) {
@@ -10453,18 +10479,28 @@ export class RuntimeHost implements LiveHost {
     }
     // One source for the answer, never two — see the parameter above.
     const commander = spawn === null ? commandedBy : spawn.commandedBy
-    const worker = this.reservingNormalWorker
-    if (
-      worker !== null &&
-      (spawn === null ||
-        (spawn.parentSessionId !== worker.fact.giver &&
-          !this.deps.store.workerGiverContains(worker.fact.giver, spawn.parentSessionId)) ||
-        foldProfileName(input.profileId ?? DEFAULT_PROFILE_ID) !==
-          this.deps.store.agentIdentities().find((one) => one.id === worker.fact.identity)?.slug)
-    ) {
-      throw new Error('worker reservation does not match the admitted start')
+    const id = this.deps.newSessionId()
+    const recordingGive = firstGive !== undefined && spawn !== null
+    if (recordingGive) {
+      const cwd = this.deps.resolveCwd(id, input.cwd)
+      const conversation: NewSessionRecord = {
+        id,
+        provider: input.provider,
+        profileId: spawn.profileId,
+        cwd,
+        approvalMode: spawn.approvalMode,
+        parentSessionId: spawn.parentSessionId,
+        ...(input.model === undefined ? {} : { model: input.model }),
+        ...(input.reasoningEffort === undefined ? {} : { reasoningEffort: input.reasoningEffort }),
+      }
+      const queued = this.briefForTheNextStart(firstGive, {
+        ownerId: agentCallerId(spawn.parentSessionId),
+      })
+      this.recordTheGive(id, firstGive, queued.messageId, null, { conversation, queued })
+      this.theWorldMoved('conversations')
+      this.theWorldMoved('agents')
+      input = { ...input, cwd }
     }
-    const id = worker?.conversation ?? this.deps.newSessionId()
     // Translated on the same rule as the reopen path (100): both refusals land on the same
     // launcher, and only one of them having a sentence a person can read would be an accident of
     // which button was pressed. A fresh id cannot collide in practice — which is exactly why this
@@ -10503,7 +10539,7 @@ export class RuntimeHost implements LiveHost {
       // the line above, and read from the slot forever after. Threading `null` down through
       // `startSession` → `startSessionInProfile` → `register` would put the question at four depths
       // and make three of them able to answer it differently.
-      return await this.startSession(slot, input, sink ?? NO_SURFACE, spawn)
+      return await this.startSession(slot, input, sink ?? NO_SURFACE, spawn, recordingGive)
     } catch (error) {
       await this.cleanUpAFailedStart(slot)
       throw this.refusalTranslated(this.aRefusalAPersonReads(error, id))
@@ -10813,10 +10849,9 @@ export class RuntimeHost implements LiveHost {
     me: string | null,
     reach: TheDoorsReach,
   ): string {
-    // ⚑ `workByLabel` answers `null` for anything that is not a label's shape: an id is read as one.
-    const row = this.deps.store.workByLabel(address)
-    if (row === null) return address
-    const owner = row.owner
+    const owner = resolveConversationAddress(address, this.deps.store)
+    if (owner === address) return address
+    const row = this.deps.store.workByLabel(address)!
     const admitted =
       reach === 'answering' ||
       this.whyItIsOutOfReach(owner, by, me) === null ||
@@ -13633,7 +13668,6 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **D-017 · R1 — not running: the answer is held in its LEDGER first**, beside the decision the
     // caller wrote, so a start that fails loses nothing — and then it is started, owned by the
     // person's window when a person answered (R5). ⚑ That start sends what waited for it first.
-    this.noteWhatBringsItBack(asker, () => 'its question was answered')
     const heldAs: { id?: string } = {}
     this.holdUntilItStarts(asker, text, facts, undefined, (_where, id) => {
       heldAs.id = id
@@ -13657,8 +13691,6 @@ export class RuntimeHost implements LiveHost {
         stop: nothingToStop,
         held: false,
       }
-    } finally {
-      this.whatBringsItBack.delete(asker)
     }
   }
 
@@ -19778,6 +19810,7 @@ export class RuntimeHost implements LiveHost {
     input: CreateSessionInput,
     sink: RuntimeEventSink,
     spawn: AdmittedSpawn | null,
+    recorded: boolean,
   ): Promise<CreatedSession> {
     // Resolved once, here, like the approval mode: absent ⇒ the default profile. Everything
     // downstream — the home, the recorded row, what resume will use — reads this one value.
@@ -19798,7 +19831,15 @@ export class RuntimeHost implements LiveHost {
     )
     this.profilesBeingCreated.push(profileId)
     try {
-      return await this.startSessionInProfile(slot, input, sink, profileId, namedBefore, spawn)
+      return await this.startSessionInProfile(
+        slot,
+        input,
+        sink,
+        profileId,
+        namedBefore,
+        spawn,
+        recorded,
+      )
     } finally {
       // By index of the FIRST match, so two launches into one profile release one claim each.
       const at = this.profilesBeingCreated.indexOf(profileId)
@@ -20067,6 +20108,7 @@ export class RuntimeHost implements LiveHost {
   ): Promise<CreatedSession> {
     const id = slot.id
     const parent = recorded ? slot.spawnedBy : (spawn?.parentSessionId ?? null)
+    const instructionConversation = recorded ? id : null
     // ⛔ **The cwd BEFORE the home** (203, from 195 H4). Both of these can refuse a launch and only
     // one of them writes to disk, so the refusal that costs nothing goes first — the same rule the
     // uniqueness check above already follows, and `profile-uniqueness.test.ts` already pins for the
@@ -20149,7 +20191,7 @@ export class RuntimeHost implements LiveHost {
       // spawn token are resolved, and never derived downstream.
       //
       // A first launch uses the parent in the spawn admission or in the already recorded row.
-      this.instructionContext(profileId, cwd, parent, null, slot.startedFrom),
+      this.instructionContext(profileId, cwd, parent, instructionConversation, slot.startedFrom),
       pack,
     )
     const systemHint = instructions?.systemHint
@@ -20243,7 +20285,8 @@ export class RuntimeHost implements LiveHost {
       agentTools,
       handle.instructionSources ?? [],
       instructions,
-      () => this.instructionContext(profileId, cwd, parent, null, slot.startedFrom),
+      () =>
+        this.instructionContext(profileId, cwd, parent, instructionConversation, slot.startedFrom),
       handle.launchSettings,
       builtInSkills,
     )
@@ -20259,11 +20302,7 @@ export class RuntimeHost implements LiveHost {
       sink,
       // ⚑ A conversation's FIRST life: there is nothing before ordinal 0 to leave behind (653),
       // unless it was recorded first, with work queued in it.
-      startingOrdinal: recorded
-        ? this.deps.store.nextOrdinal(id)
-        : this.normalWorkerBirths.has(id)
-          ? 1
-          : 0,
+      startingOrdinal: recorded ? this.deps.store.nextOrdinal(id) : 0,
       continuesARecording: recorded,
       instructions: instructions?.instructions,
       ...(builtInSkills ? { builtInSkills } : {}),
@@ -20307,19 +20346,6 @@ export class RuntimeHost implements LiveHost {
               // absence is what gives a conversation a person started its ROOT**, in that same
               // transaction (`NewSessionRecord.parentSessionId`).
               ...(spawn === null ? {} : { parentSessionId: spawn.parentSessionId }),
-              ...(this.normalWorkerBirths.has(id)
-                ? {
-                    worker: (() => {
-                      const fact = this.normalWorkerBirths.get(id)!
-                      return {
-                        identity: fact.identity,
-                        identityCreatedAt: fact.identityCreatedAt,
-                        giver: fact.giver,
-                        number: fact.number,
-                      }
-                    })(),
-                  }
-                : {}),
               // 🔴 **727 · R87 — the id this launch asked for, recorded with the row** — before this
               // host sends anything, so before the CLI can write a transcript under it. ⛔ A kill,
               // an error before init or a timed-out close can no longer leave one no row names.
@@ -23455,25 +23481,6 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * Describe a supplied folder as the working directory of a new conversation or an additional grant on an existing one, with any protected-place notice from {@link aProtectedPlaceFor}. Return `null` when none was named: inheriting the giver's folder adds no new grant to report.
-   */
-  private theFolderItGave(
-    asked: string | undefined,
-    goes: Extract<GiveAdmission, { ok: true }>['goes'],
-  ): GivenFolder | null {
-    if (asked === undefined || asked.trim() === '') return null
-    const given =
-      goes.to !== 'a-new-conversation'
-        ? goes.grant === null
-          ? null
-          : { folder: goes.grant, use: 'grant' as const }
-        : { folder: goes.start.cwd, use: 'working-folder' as const }
-    if (given === null) return null
-    const notice = this.aProtectedPlaceFor(given.folder)
-    return notice === null ? given : { ...given, notice }
-  }
-
-  /**
    * 🔴 **W4.189 · D — the place a folder meets, said and never refused** (R92). ⚑ Asked of the
    * places as this run knows them ({@link RuntimeHostDeps.thePlaces}); ⚠️ a host given none names
    * none, and a reading that throws is said as `could-not-check`.
@@ -23491,405 +23498,28 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  private createFromGive(start: AdmittedSpawn, startsOn: ModelAndEffort | null) {
-    return this.createSession(
-      {
-        provider: start.provider,
-        cwd: start.cwd,
-        approvalMode: start.approvalMode,
-        profileId: start.profileId,
-        ...(startsOn === null ? {} : { model: startsOn.model }),
-        ...(startsOn?.effort == null ? {} : { reasoningEffort: startsOn.effort }),
-      },
-      null,
-      null,
-      start,
-    )
+  giveWork(input: unknown, by: Caller): Promise<GiveOutcome> {
+    return this.giveWorkRunner.give(input, by)
   }
 
-  async giveWork(input: unknown, by: Caller): Promise<GiveOutcome> {
-    // ⚑ **The giver is the conversation the caller speaks as, stopping or not** ({@link runningAs}).
-    // ⛔ A caller that speaks as none — a person, a window, this app — holds no piece, and is told
-    // so: `raiseAQuestion`'s shape. ⚠️ **An agent with no session in this host cannot be
-    // mid-tool-call**, so for one this is a bug guard for a caller inside this process.
-    const speaking = sessionSpeakingAs(by)
-    // 🔴 **D-042 · the list it chooses from, read before the stretch** — the one await a give that
-    // names a model or an effort takes before its rails; the giver is read after it. ⛔ **A give
-    // that names neither awaits nothing**, so it reaches its reservation in the tick it was made.
-    const asking =
-      by === THE_APP_ITSELF || speaking === null
-        ? null
-        : this.theListAGiveChoosesFrom(input, speaking)
-    const choosing = asking === null ? null : await asking
-    // ⚑ A service starting is waited for here, before admission: its row goes into a conversation
-    // that has arrived, never beside a start reading where its new life begins.
-    for (let waited = 0; waited < 3; waited += 1) {
-      const starting = this.theServiceStartAGiveMeets(input)
-      if (starting === null) break
-      await withDeadline(starting, this.deliveryWaitMs, 'a service starting').catch(() => {})
-    }
-    const giver = speaking === null ? null : this.runningAs(speaking)
-    if (by === THE_APP_ITSELF || giver === null) {
-      return { ok: false, refusal: refuse('no-piece-to-give-from') }
-    }
-    let admission = admitGive(
-      input,
-      by,
-      this.giveFacts(giver, choosing?.theNamedModels ?? null, choosing?.list.rows ?? []),
-    )
-    if (!admission.ok) return admission
-    let { asked, under, goes } = admission
-    // 🔴 **D-042 · R4 — the choice, judged after every rail and before anything is written.**
-    let chosen = this.theChoiceOfAGive(asked, goes, choosing)
-    if (chosen !== null && !chosen.ok) return { ok: false, refusal: chosen.refusal }
-    // 🔴 **R2 · the files it hands over — the LAST rail, still inside the stretch**: read, hashed and
-    // kept, every one, before anything is written or sent (D-016 spec D7). ⚑ Synchronous, so two
-    // gives in one tick still find one conversation; ⚠️ a kept file whose give then fails is an
-    // orphan, and harmless — nothing reads a resource except through its row.
-    const kept = this.keptFor(admission.giver, asked.inputs ?? [])
-    if (!kept.ok) return { ok: false, refusal: kept.refusal }
-    const piece = newWorkId()
-    let outputFolder: string | null = null
-    if (asked.parallel === true && (asked.folder === undefined || asked.folder.trim() === '')) {
-      if (this.deps.makeWorkerPieceFolder === undefined) throw new Error(WORKER_OUTPUT_FAILURE)
-      try {
-        outputFolder = this.deps.makeWorkerPieceFolder(piece)
-      } catch {
-        throw new Error(WORKER_OUTPUT_FAILURE)
-      }
-      // The created path goes through the same folder, authority and model rails as a named one.
-      admission = admitGive(
-        { ...asked, folder: outputFolder },
-        by,
-        this.giveFacts(giver, choosing?.theNamedModels ?? null, choosing?.list.rows ?? []),
-      )
-      if (!admission.ok) return admission
-      ;({ asked, under, goes } = admission)
-      chosen = this.theChoiceOfAGive(asked, goes, choosing)
-      if (chosen !== null && !chosen.ok) return { ok: false, refusal: chosen.refusal }
-    }
-    const choice = chosen?.chosen ?? null
-    // ⚑ **The first write, only once every rail has answered** (R2): a new agent, made as
-    // `create_agent` makes one — a minted name, no rules, and the provider it starts on, kept.
-    if (goes.to === 'a-new-conversation' && goes.creating !== null) {
-      const created = this.deps.store.createAgentIdentity(
-        { slug: goes.creating.slug, displayName: null, provider: goes.start.provider },
-        goes.creating.by,
-      )
-      // ⛔ **Unreachable while the rails hold** — its row was read absent in this same stretch.
-      if (created === null) {
-        throw new Error(`${goes.creating.slug} was admitted as a new agent and already exists`)
-      }
-      this.theWorldMoved('agents')
-    }
-    // ⚑ **R4 — the number, before the send**, still inside the stretch: the owner is told the label.
-    const number = this.deps.store.numberUnder(under.piece)
-    const giving: Giving = {
-      piece,
-      parent: under.piece,
-      number,
-      // ⚑ The parent's label and this number — `W1.2` under `W1`, the spelling `pieceCalled` makes.
-      label: `${under.label}.${String(number)}`,
-      giver: admission.giver,
-      title: asked.title,
-      brief: asked.brief,
-      definitionOfDone: asked.definition_of_done,
-      folder: asked.folder ?? null,
-      givenFolder: (() => {
-        const folder = this.theFolderItGave(asked.folder, goes)
-        return folder === null || outputFolder === null
-          ? folder
-          : { ...folder, output: true as const }
-      })(),
-      // ⚑ **Each id minted before the send**, so the brief's turn names it and its row is written
-      // with the give's own.
-      inputs: kept.files.map((file) => ({
-        resource: newResourceId(),
-        title: file.title,
-        name: file.name,
-        sha256: file.sha256,
-        bytes: file.bytes.length,
-      })),
-    }
-    const inputs = giving.inputs.map(({ resource, name }) => ({ resource, name }))
-    const normal = goes.to === 'a-service' ? null : this.prepareNormalGive(asked, giving, goes)
-    try {
-      // ⚑ **A start or a brief that fails from here gave nothing under the label it took** — which is
-      // not handed out again, so the answer says it is not used ({@link AGiveThatGaveNothing}).
-      const gaveNothing = (error: unknown): never => {
-        if (error instanceof RecordWriteFailed) throw error
-        throw this.deps.store.workById(giving.piece) === null
-          ? new AGiveThatGaveNothing(giving.label, error)
-          : error
-      }
-      // ⚑ **The conversation the brief reaches** — `deliverWhenItRuns` hands over the one in its place.
-      let reached: string | null = null
-      // 🔴 **D-042 · R4 — what the give does to a conversation it has**, decided in the stretch and
-      // applied as the brief is handed over (`switchedFor`), so it holds from this piece on.
-      const applied: { how: WhatItRunsOn['how'] } = { how: 'unchanged' }
-      // ⚑ What the give named — the answer says what was used of exactly that.
-      const named = { model: asked.model !== undefined, effort: asked.effort !== undefined }
-      const deliver = (
-        to: string,
-        onAStop?: (to: string) => Promise<QueueOutcome>,
-      ): Promise<QueueOutcome> => {
-        reached = to
-        // ⚑ The pair this hand-over switched it from — `undefined` when it switched nothing.
-        let switchedFrom: ModelAndEffort | null | undefined
-        // ⚑ Once: a brief handed again after a stop finds the pair already switched.
-        if (goes.to === 'the-one-it-has' && choice !== null && applied.how !== 'switched') {
-          // A recorded stand-in may run on a different provider than the one that judged this choice.
-          if (this.theProviderOfConversation(to) !== choosing?.provider) {
-            applied.how = 'another-provider'
-          } else {
-            const was = this.thePairItRunsOn(to)
-            applied.how = this.switchedFor(to, choice)
-            if (applied.how === 'switched') switchedFrom = was
-          }
-        }
-        const queued = this.queueAs(
-          to,
-          asked.brief,
-          by,
-          [],
-          'work',
-          { giving },
-          null,
-          'as-it-finds-it',
-          onAStop,
-        )
-        if (switchedFrom === undefined || choice === null) return queued
-        const wrote = choice
-        const was = switchedFrom
-        // ⛔ **A brief that did not arrive takes its switch back** — the give answers that nothing
-        // was given, and *"from this piece on"* has no piece to hold from.
-        return queued.catch((error: unknown) => {
-          this.switchedBack(to, wrote, was)
-          applied.how = 'unchanged'
-          throw error
-        })
-      }
-      if (goes.to === 'a-service') {
-        // ⛔ Queued, never handed over: nothing is sent until the service's turn for it comes.
-        let service: string
-        try {
-          if (goes.conversation !== null) service = goes.conversation
-          else if (goes.provider === null) throw new Error(`${goes.profileId} has no provider`)
-          else service = this.recordTheServiceConversation(goes.profileId, goes.provider)
-          if (this.startupRepairs.has(service)) await this.settleBeforeUse(service)
-          this.acceptAtTheService(service, giving, newQueuedMessageId(), choice)
-        } catch (error) {
-          return gaveNothing(error)
-        }
-        this.noteWhatItGave(giving.giver, { ...giving, as: 'given', to: service })
-        const queueStalledAt = this.whenItsActivePieceStalled(service)
-        const judged = this.theProviderOfConversation(service) ?? giver.provider
-        return {
-          ok: true,
-          piece: giving.piece,
-          label: giving.label,
-          owner: service,
-          found: service,
-          profile: asked.profile,
-          delivery: 'held',
-          // ⚑ What its turn will run on: the pair it asked for, kept for that turn, else the row's.
-          runsOn: {
-            ...this.whatItRunsOnNow(service, judged, 'unchanged', null, named),
-            ...(choice === null
-              ? {}
-              : { model: choice.model, effort: choice.effort, effortReported: false }),
-          },
-          startedIn: null,
-          givenFolder: giving.givenFolder,
-          folderNotGranted: goes.notGranted,
-          grantReach: null,
-          inputs,
-          queuedBehind: this.queuedAhead(giving.piece, service) ?? 0,
-          ...(queueStalledAt === null ? {} : { queueStalledAt }),
-        }
-      }
-      if (goes.to === 'the-one-it-has') {
-        // ⚠️ A `try`, not a `.catch()`: an extra tick between the hand-over and this answer moves
-        // what a window reads next.
-        let delivered: QueueOutcome
-        try {
-          delivered = await this.theBriefTo(goes.conversation, asked.brief, by, deliver)
-        } catch (error) {
-          return gaveNothing(error)
-        }
-        const owner = this.deps.store.workById(giving.piece)?.owner ?? reached ?? goes.conversation
-        const judged = this.theProviderOfConversation(goes.conversation) ?? giver.provider
-        this.noteWhatItGave(giving.giver, { ...giving, as: 'given', to: owner })
-        // ⚑ **Read when the answer is formed**, against the conversation the brief reached: a
-        // follow-up, a take-back or a wait set while the give was on its way is said as it stands now,
-        // and the piece just given is never one of them.
-        const stalled = this.stallsIn(owner, giving.giver).filter(
-          (one) => one.label !== giving.label,
-        )
-        return {
-          ok: true,
-          piece: giving.piece,
-          label: giving.label,
-          owner,
-          found: goes.conversation,
-          profile: asked.profile,
-          ...(asked.parallel === true ? this.workerFields(owner) : {}),
-          delivery: delivered.outcome === 'sent' ? 'sent' : 'held',
-          runsOn: this.whatItRunsOnNow(owner, judged, applied.how, null, named),
-          startedIn: null,
-          givenFolder: giving.givenFolder,
-          folderNotGranted: goes.notGranted,
-          grantReach: goes.grant === null ? null : this.whatAGrantReaches(owner),
-          inputs,
-          ...(stalled.length === 0 ? {} : { stalled }),
-        }
-      }
-      const { start } = goes
-      const startedOnDefault =
-        asked.provider === undefined &&
-        asked.model === undefined &&
-        this.itsProvider(asked.profile).provider === start.provider
-      // ⚑ **D-042 · R1 — what it starts on, and where its MODEL came from**: the give's choice (its
-      // model the give's own only when the give named one — a give naming only an effort runs it on
-      // R1's model), else R1's order — asked here, in the stretch, and NAMED to the launch below, so
-      // the launch and the answer read one resolution. ⚠️ Left to the launch only where R1 has no
-      // whole pair here: the provider's default off its list (Codex's), or a model that offers no
-      // effort, which the launch resolves the same way.
-      const resolved = this.modelCatalogues.theSelectedPairIfNamed(start.provider, start.profileId)
-      const startsOn: ModelAndEffort | null = choice ?? (resolved?.effort == null ? null : resolved)
-      const from: WhereItCameFrom = named.model
-        ? 'named'
-        : (resolved?.from ?? 'the-providers-default')
-      // ⛔ **No sink, which is 336's door, and no second `commandedBy`, which is 340's.** The new
-      // conversation is born without a surface and commanded by the giver the token names; a person
-      // takes it over with `claimSession` when they want to watch it. ⚑ **Reserved before this call's
-      // first `await`** — the end of the synchronous stretch.
-      // ⚑ **W4.175 — and the piece it is started from**, which its launch names its starter by.
-      this.reservingAStartFrom = giving.parent
-      this.reservingNormalWorker =
-        normal?.fact === null || normal === null
-          ? null
-          : { conversation: normal.conversation, fact: normal.fact }
-      const starting = this.createFromGive(start, startsOn)
-      this.reservingAStartFrom = null
-      this.reservingNormalWorker = null
-      // ⚠️ Awaited in a `try`, for the hand-over's reason below: a `.catch()` adds a tick.
-      let sessionId: string
-      try {
-        ;({ sessionId } = await starting)
-      } catch (error) {
-        return gaveNothing(error)
-      }
-      if (normal !== null) {
-        try {
-          this.completeNormalBirth(normal)
-        } catch (error) {
-          await this.close(sessionId, THE_APP_ITSELF)
-          return gaveNothing(error)
-        }
-      }
-      // ⚑ **The brief is the new conversation's first turn** — no idle start. ⚠️ A give admitted in the
-      // same tick found this reservation and may be ahead of it in the line; both arrive.
-      let delivered: QueueOutcome
-      try {
-        delivered = await this.theBriefTo(sessionId, asked.brief, by, deliver)
-      } catch (error) {
-        return gaveNothing(error)
-      }
-      const owner = this.deps.store.workById(giving.piece)?.owner ?? reached ?? sessionId
-      this.noteWhatItGave(giving.giver, { ...giving, as: 'given', to: owner })
-      return {
-        ok: true,
-        piece: giving.piece,
-        label: giving.label,
-        owner,
-        found: sessionId,
-        profile: asked.profile,
-        ...(asked.parallel === true ? this.workerFields(owner) : {}),
-        delivery: delivered.outcome === 'sent' ? 'sent' : 'held',
-        runsOn: this.whatItRunsOnNow(owner, start.provider, 'started', from, named),
-        startedIn: start.cwd,
-        ...(startedOnDefault ? { startedOnDefault: true as const } : {}),
-        givenFolder: giving.givenFolder,
-        folderNotGranted: null,
-        grantReach: null,
-        inputs,
-      }
-    } finally {
-      this.finishNormalGive(normal, giving)
-    }
+  receiptForSend(facts: SendFacts): ReturnType<typeof sendReceipt> {
+    return sendReceipt(facts, this.deps.store)
   }
 
-  /**
-   * Resolve a model's provider before selecting its conversation. A service keeps its one provider
-   * and reads that provider's list for a conflicting-choice refusal. Ordinary gives naming neither
-   * a model nor an effort still reserve synchronously without a catalogue lookup.
-   */
-  private theListAGiveChoosesFrom(
-    input: unknown,
-    speaking: string,
-  ): Promise<{
-    readonly provider: Provider
-    readonly list: TheListAsked
-    readonly theNamedModels: Provider | null
-  } | null> | null {
-    const giving = this.runningAs(speaking)
-    const parsed = giveRequestSchema.safeParse(input)
-    if (giving === null || !parsed.success) return null
-    const asked = parsed.data
-    const service = asked.new === true ? null : this.theServiceAtAGive(speaking, asked.profile)
-    const fixed = service?.is === 'service' ? service.provider : null
-    const serviceConflict =
-      asked.provider !== undefined && fixed !== null && asked.provider !== fixed
-    if (asked.model === undefined && asked.effort === undefined && !serviceConflict) return null
-    const known = this.deps.store.agentIdentityOf(asked.profile) !== null
-    const resolved =
-      fixed ?? theProviderAStartRunsOn(asked, known, giving, this.whatAStartsProviderReads, null)
-    const legacy = resolved === null ? this.helperAs(speaking, asked.profile) : null
-    const preferred = resolved ?? (legacy === null ? null : this.theProviderOfConversation(legacy))
-    const listFor = (provider: Provider) => {
-      const found =
-        fixed !== null && service?.is === 'service'
-          ? service.conversation
-          : this.helperAs(speaking, asked.profile, provider)
-      const home =
-        found === null
-          ? known
-            ? asked.profile
-            : STAND_IN_PROFILE
-          : (this.profileOf(found) ?? STAND_IN_PROFILE)
-      return this.modelCatalogues.theListFor(provider, home)
-    }
-    return (async () => {
-      const first = preferred === null ? null : await listFor(preferred)
-      // An own-provider model needs no probe on another provider. Explicit choices never infer.
-      if (
-        asked.provider !== undefined ||
-        asked.model === undefined ||
-        (first !== null && theListedRow(first.rows, asked.model) !== undefined)
-      ) {
-        return preferred === null || first === null
-          ? null
-          : { provider: preferred, list: first, theNamedModels: null }
-      }
-      const theNamedModels = await this.modelCatalogues.theProviderWhoseListAloneHolds(asked.model)
-      const provider =
-        fixed ??
-        theProviderAStartRunsOn(
-          asked,
-          known,
-          giving,
-          this.whatAStartsProviderReads,
-          theNamedModels,
-        ) ??
-        preferred
-      if (provider === null) return null
-      return {
-        provider,
-        list: provider === preferred && first !== null ? first : await listFor(provider),
-        theNamedModels,
-      }
-    })()
+  private sendFailedAfterRecording(
+    error: unknown,
+  ): Extract<SendRecipientState, { kind: 'cannot-run' }> {
+    const cause = cannotRunOf(error, whyItWasNotDelivered(error))
+    const problem = aWakeThatDidNotHappen(error)?.what
+    const needsPerson =
+      cause.code === 'could-not-start' &&
+      (problem === 'sign-in' ||
+        problem === 'no-sign-in-to-copy' ||
+        problem === 'settings' ||
+        problem === 'program' ||
+        problem === 'folder' ||
+        problem === 'gone-folder')
+    return { kind: 'cannot-run', cause, ...(needsPerson ? { needsPerson: true } : {}) }
   }
 
   private itsProvider(profileSlug: string): ItsProvider {
@@ -23936,23 +23566,31 @@ export class RuntimeHost implements LiveHost {
    * stalled. ⚑ A stop changes nothing: a piece stalled before its holder stopped is named
    * all the same.
    */
-  private stallsIn(conversation: string, giver: string): readonly AStallAGiveNames[] {
+  private stallsIn(
+    conversation: string,
+    giver: string,
+    stalledWhenRecorded: readonly AStallAGiveNames[] = [],
+  ): readonly AStallAGiveNames[] {
     const fromIt = new Set<string | null>(this.theIdsItStandsFor(giver))
-    return composeWhatEachPieceIsWaitingOn(
-      this.deps.store.openPiecesOf(conversation),
-      this.oneWaitReadPerAnswer(),
-    ).flatMap((one) =>
-      fromIt.has(one.giver) && one.state === 'stalled' && one.stalledBecause !== null
-        ? [{ label: one.label, cause: one.stalledBecause }]
-        : [],
-    )
+    const readWaits = this.oneWaitReadPerAnswer()
+    const pieces = this.deps.store.openPiecesOf(conversation)
+    return pieces.flatMap((piece) => {
+      if (!fromIt.has(piece.giver) || piece.state !== 'stalled' || piece.stalledBecause === null) {
+        return []
+      }
+      const waits = readWaits(conversation)
+      const stalledBeforeStart = stalledWhenRecorded.some(
+        (one) => one.label === piece.label && one.cause === piece.stalledBecause,
+      )
+      const [current] = composeWhatEachPieceIsWaitingOn([piece], () =>
+        stalledBeforeStart && waits.aPerson ? { ...waits, aPerson: false } : waits,
+      )
+      return current?.state === 'stalled'
+        ? [{ label: piece.label, cause: piece.stalledBecause }]
+        : []
+    })
   }
 
-  /** ⚑ **D-042 · what {@link theProviderAStartRunsOn} reads**, off the store. */
-  private readonly whatAStartsProviderReads: Pick<GiveFacts, 'modelChoiceOf' | 'itsProvider'> = {
-    modelChoiceOf: (profileSlug) => this.deps.store.modelChoiceOf(profileSlug),
-    itsProvider: (profileSlug) => this.itsProvider(profileSlug),
-  }
 
   /**
    * ⚑ **D-042 · the pair a conversation runs on now** — what its next turn asks for when it runs,
@@ -23968,61 +23606,6 @@ export class RuntimeHost implements LiveHost {
     }
     const row = this.deps.store.findLive(conversation)
     return row?.model == null ? null : { model: row.model, effort: row.reasoningEffort }
-  }
-
-  /**
-   * 🔴 **D-042 · R4 — a give's choice, judged in its stretch** by `model-rails.ts`' one seam, against
-   * the list read before it — `null` when it named nothing.
-   *
-   * ⛔ **The provider is asked again here, after the rails**: a person moving that agent's provider
-   * while the list was read refuses the give (`the-provider-moved-meanwhile`) — the list it read is
-   * another provider's. ⚑ **`otherwise` is what it would run without this choice**: the
-   * conversation's own pair, or what a start resolves to (R1's order, completed from the list) —
-   * ⚑ where the provider's default row names no effort of its own, at the one the give names, as a
-   * start naming only that effort runs ({@link theProvidersDefaultIn}).
-   */
-  private theChoiceOfAGive(
-    asked: GiveRequest,
-    goes: Extract<GiveAdmission, { ok: true }>['goes'],
-    choosing: { readonly provider: Provider; readonly list: TheListAsked } | null,
-  ): ReturnType<typeof judgeAnAgentsChoice> | null {
-    if (choosing === null) return null
-    // The conversation about to be made (a start, or a service's first give), or the one it has.
-    const at:
-      | { readonly made: { readonly provider: Provider; readonly profile: string } }
-      | { readonly existing: string } =
-      goes.to === 'a-new-conversation'
-        ? { made: { provider: goes.start.provider, profile: goes.start.profileId } }
-        : goes.to === 'a-service' && goes.conversation === null
-          ? { made: { provider: goes.provider ?? choosing.provider, profile: goes.profileId } }
-          : { existing: goes.conversation ?? '' }
-    const provider =
-      'made' in at
-        ? at.made.provider
-        : (this.theProviderOfConversation(at.existing) ?? choosing.provider)
-    if (provider !== choosing.provider) {
-      return {
-        ok: false,
-        refusal: refuseModel('the-provider-moved-meanwhile', { door: 'give', provider }),
-      }
-    }
-    const otherwise =
-      'made' in at
-        ? (this.modelCatalogues.theSelectedPairIfNamed(provider, at.made.profile) ??
-          this.modelCatalogues.theProvidersDefaultIn(choosing.list, provider, asked.effort))
-        : (this.thePairItRunsOn(at.existing) ??
-          this.modelCatalogues.theSelectedPairIfNamed(provider, this.profileOf(at.existing)) ??
-          this.modelCatalogues.theProvidersDefaultIn(choosing.list, provider, asked.effort))
-    return judgeAnAgentsChoice(
-      {
-        ...(asked.model === undefined ? {} : { model: asked.model }),
-        ...(asked.effort === undefined ? {} : { effort: asked.effort }),
-      },
-      provider,
-      choosing.list,
-      otherwise === null ? null : { model: otherwise.model, effort: otherwise.effort },
-      'give',
-    )
   }
 
   /**
@@ -24315,20 +23898,39 @@ export class RuntimeHost implements LiveHost {
    */
   private async theBriefTo(
     conversation: string,
-    brief: string,
+    giving: ThePieceWrittenDown,
     by: Caller,
+    onRecorded: (to: string) => void,
     deliver: (to: string, onAStop?: (to: string) => Promise<QueueOutcome>) => Promise<QueueOutcome>,
   ): Promise<QueueOutcome> {
-    try {
-      if (this.takesADeliveryNow(conversation)) {
-        return await deliver(conversation, (to) => deliver(to))
+    const recordAndStart = async (to: string): Promise<QueueOutcome> => {
+      await this.refuseBeforeAStart(to, giving.brief, by, [])
+      const live = this.slots.get(to)?.session ?? null
+      if (live !== null && !this.itStoppedUnder(live)) return deliver(to)
+      const queued = this.briefForTheNextStart(giving, by)
+      this.recordTheGive(live ?? to, giving, queued.messageId, null, { queued })
+      onRecorded(to)
+      if (this.theOneInItsPlace(to) !== to) {
+        throw new SessionUnavailable('its-session-is-gone', 'The addressed conversation was replaced.')
       }
-      return await this.deliverWhenItRuns(conversation, brief, by, [], null, deliver)
+      await this.ensureRunning(to, null)
+      return (await this.aRecordedBriefWasDelivered(to, giving.piece))
+        ? { outcome: 'sent' }
+        : { outcome: 'queued', messageId: queued.messageId }
+    }
+    const inArrivalOrder = (address: string): Promise<QueueOutcome> =>
+      this.afterWhatArrivedFirst(address, async () => {
+        const to = address
+        if (this.startupRepairs.has(to)) await this.settleBeforeUse(to)
+        return this.runsNow(to) ? deliver(to, recordAndStart) : recordAndStart(to)
+      })
+    try {
+      return await (this.takesADeliveryNow(conversation)
+        ? deliver(conversation, inArrivalOrder)
+        : inArrivalOrder(conversation))
     } catch (error) {
       if (error instanceof RecordWriteFailed) throw error
-      // ⚑ **A reservation that never registered is gone without a row**, and a brief queued behind
-      // the one that met its failed launch meets only *unknown session* at its turn: it is the same
-      // start that did not happen, and the identical give starts a new conversation.
+      // The reservation may have disappeared before it recorded a conversation.
       const vanished =
         !(error instanceof AStartThatDidNotHappen) &&
         this.slots.get(conversation) === undefined &&
@@ -24344,222 +23946,27 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  /**
-   * The world `give_work`'s rails ask about, as thunks — see {@link GiveFacts} for why it is lazy.
-   */
-  private giveFacts(
-    giving: GivingConversation,
-    /** The provider whose list alone holds the model the give names ({@link theListAGiveChoosesFrom}). */
-    theNamedModels: Provider | null,
-    models: readonly { readonly id: string }[],
-  ): GiveFacts {
+  private briefForTheNextStart(
+    piece: ThePieceWrittenDown,
+    by: Caller,
+  ): QueuedMessageEvent & { readonly messageId: string } {
     return {
-      giver: () => giving,
-      held: (giver) => this.heldBy(giver),
-      // ⚑ **D-022 · R4 — what the turn the giver is in drives**, off the row that opened it: the
-      // caller is mid-tool-call, so that row is down. ⚠️ A call racing its own turn's row reads
-      // `null`, which infers nothing from it.
-      drivenByTheTurn: () => {
-        const session = this.slots.get(giving.sessionId)?.session ?? null
-        return session !== null && session.turnOpened ? session.itsTurnDrives : null
-      },
-      isAHelper: () => this.theParentInItsPlace(giving.sessionId) !== null,
-      agentExists: (profileSlug) => this.deps.store.agentIdentityOf(profileSlug) !== null,
-      helperAs: (giver, profileSlug, provider) => this.helperAs(giver, profileSlug, provider),
-      workerAt: (giver, profileSlug, parallel, provider) => {
-        const selected = this.normalWorkerAt(giver, profileSlug, parallel, provider)
-        if (selected.is === 'legacy') return { is: 'legacy' }
-        if (selected.is === 'full') return selected
-        if (selected.is !== 'known') return { is: 'unknown' }
-        return {
-          is: 'known',
-          conversation:
-            selected.selection.kind === 'existing'
-              ? this.currentNormalWorker(selected.selection.worker)
-              : null,
-        }
-      },
-      serviceAt: (giver, profileSlug) => this.theServiceAtAGive(giver, profileSlug),
-      spawningEnabled: () => this.deps.store.spawnPolicy().spawningEnabled,
-      creatorOf: () => this.agentCreation.creatorOf(giving.sessionId),
-      // ⚑ **Which provider the TARGET agent runs on, and what says so.** ⛔ It refuses nothing: it
-      // answers *as what*.
-      itsProvider: (profileSlug) => this.itsProvider(profileSlug),
-      theNamedModelsProvider: () => theNamedModels,
-      serviceModels: () => models.map(({ id }) => id),
-      // ⚑ **The TARGET's default model and effort** — whose provider it holds (`R31a`).
-      modelChoiceOf: (profileSlug) => this.deps.store.modelChoiceOf(profileSlug),
-      // ⚑ **339's rule, CALLED rather than copied** — {@link RuntimeHost.checkCwd} asks the very
-      // `resolveCwd` a launch asks, so the folder picker, a launch and this rail cannot disagree.
-      checkFolder: (path) => this.checkCwd(path),
+      type: 'message_queued',
+      kind: 'work',
+      messageId: newQueuedMessageId(),
+      text: piece.brief,
+      piece: piece.piece,
+      label: piece.label,
+      forItsNextStart: true,
+      ...whoseWordsTheseAre(by, this.profileOf),
     }
   }
 
-  /**
-   * 🔴 **D-016 · R2 step 5 — the one conversation this giver has with that agent, or `null`.**
-   *
-   * ⚑ **A reservation in flight FIRST** — {@link SessionSlot.profileId} is written when the slot is
-   * taken, and {@link createSession} takes it before its first `await` — so a give made in the same
-   * tick as a start finds the conversation that start is making. ⚑ **Then the rows** — the newest
-   * conversation the giver, or one it stands for (R10), started as that identity, running or not —
-   * and whichever is found is followed to the one in its place.
-   *
-   * ⛔ **Compared FOLDED**, because `Developer` and `developer` are one identity (238/187). ⚠️ The
-   * reservation's claim first and the registered session's second: the slot records the spelling it
-   * was asked for, and a resumed adopted slot names none.
-   */
-  private prepareNormalGive(
-    asked: GiveRequest,
-    giving: Giving,
-    goes: Exclude<Extract<GiveAdmission, { ok: true }>['goes'], { to: 'a-service' }>,
-  ): {
-    identity: string
-    createdAt: number
-    poolGiver: string
-    conversation: string
-    number: number
-    fact: WorkerBorn | null
-    release: () => void
-  } | null {
-    const provider =
-      goes.to === 'a-new-conversation'
-        ? goes.start.provider
-        : (this.theProviderOfConversation(goes.conversation) ?? undefined)
-    const selected = this.normalWorkerAt(
-      giving.giver,
-      asked.profile,
-      asked.parallel === true,
-      provider,
-    )
-    if (selected.is !== 'known') {
-      if (asked.parallel !== true) return null
-      throw new Error('No work was given because the worker could not be recorded.')
-    }
-    if (asked.parallel !== true && goes.to === 'the-one-it-has') return null
-    let entry = selected.entry
-    const pool = selected.pool
-    if (pool !== null && !(entry.workerPools ?? []).includes(pool)) {
-      entry = { ...entry, workerPools: [...(entry.workerPools ?? []), pool] }
-    }
-    const selection = selected.selection
-    if (selection.kind !== 'existing' && selection.kind !== 'start') {
-      throw new Error('No work was given because the worker could not be recorded.')
-    }
-    const newborn = selection.kind === 'start'
-    const conversation = newborn ? this.deps.newSessionId() : selection.worker.conversation
-    const number = newborn ? selection.number : selection.worker.number
-    if (
-      (goes.to === 'the-one-it-has' &&
-        (selection.kind !== 'existing' ||
-          this.currentNormalWorker(selection.worker) !== goes.conversation)) ||
-      (goes.to === 'a-new-conversation' && !newborn)
-    ) {
-      throw new Error('No work was given because the worker could not be recorded.')
-    }
-    const release = this.normalWorkerLeases.take(conversation)
-    if (release === null)
-      throw new Error('No work was given because the worker could not be recorded.')
-    try {
-      if (newborn) {
-        const reserved = reserveNormalWorker(entry, selected.poolGiver, number, conversation)
-        if (reserved === null)
-          throw new Error('No work was given because the worker could not be recorded.')
-        entry = reserved
-      }
-      const assigned = assignNormalWorker(entry, selected.poolGiver, conversation, {
-        piece: giving.piece,
-        giver: giving.giver,
-      })
-      if (assigned === null)
-        throw new Error('No work was given because the worker could not be recorded.')
-      this.keepTheProfileEntry(selected.identity.id, assigned, true)
-    } catch (error) {
-      release()
-      throw error
-    }
-    const fact = newborn
-      ? {
-          conversation,
-          identity: selected.identity.id,
-          identityCreatedAt: selected.identity.createdAt,
-          giver: selected.poolGiver,
-          number,
-        }
-      : null
-    if (fact !== null) this.normalWorkerBirths.set(conversation, fact)
-    return {
-      identity: selected.identity.id,
-      createdAt: selected.identity.createdAt,
-      poolGiver: selected.poolGiver,
-      conversation,
-      number,
-      fact,
-      release,
-    }
-  }
-
-  private completeNormalBirth(
-    normal: NonNullable<ReturnType<RuntimeHost['prepareNormalGive']>>,
-  ): void {
-    if (normal.fact === null) return
-    const born = this.deps.store
-      .workersBorn()
-      .filter((one) => one.conversation === normal.conversation)
-    const session = this.slots.get(normal.conversation)?.session
-    if (
-      born.length !== 1 ||
-      born[0]!.identity !== normal.identity ||
-      born[0]!.number !== normal.number ||
-      born[0]!.giver !== normal.poolGiver ||
-      session === undefined ||
-      session === null
-    ) {
-      throw new Error('No work was given because the worker could not be recorded.')
-    }
-    const read = this.profileExecution
-    const entry = read.readable ? read.kept.profiles[normal.identity] : undefined
-    const bound =
-      entry === undefined
-        ? null
-        : bindNormalWorker(entry, normal.poolGiver, normal.number, normal.conversation)
-    if (bound === null)
-      throw new Error('No work was given because the worker could not be recorded.')
-    this.keepTheProfileEntry(normal.identity, bound, true)
-  }
-
-  private finishNormalGive(
-    normal: ReturnType<RuntimeHost['prepareNormalGive']>,
-    giving: Giving,
-  ): void {
-    if (normal === null) return
-    normal.release()
-    this.normalWorkerBirths.delete(normal.conversation)
-    try {
-      const read = this.profileExecution
-      const entry = read.readable ? read.kept.profiles[normal.identity] : undefined
-      if (entry === undefined || entry.identityCreatedAt !== normal.createdAt) return
-      if (
-        this.normalAssignmentAccepted(normal.conversation, {
-          piece: giving.piece,
-          giver: giving.giver,
-        })
-      ) {
-        this.keepTheProfileEntry(
-          normal.identity,
-          releaseNormalAssignment(entry, normal.poolGiver, normal.conversation, giving.piece),
-          true,
-        )
-      } else if (
-        normal.fact !== null &&
-        this.deps.store.recordedOne(normal.conversation) === null &&
-        !this.slots.has(normal.conversation)
-      ) {
-        // No birth means no brief could be handed over. Recovery drops this reservation with proof.
-        this.takeTheProfileExecution()
-      }
-    } catch (error) {
-      console.warn(`worker assignment remains held: ${errorMessage(error)}`)
-    }
+  private async aRecordedBriefWasDelivered(owner: string, piece: string): Promise<boolean> {
+    await this.slots.get(owner)?.session?.flushing
+    return this.deps.store
+      .piecesOwnedBy(owner)
+      .some((one) => one.piece === piece && one.briefHandedOver === true)
   }
 
   private completeWorkerTerminal(birth: string): string {
@@ -24574,340 +23981,6 @@ export class RuntimeHost implements LiveHost {
     return [birth, terminal].every(
       (seen) => !this.replacedBy.has(seen) || this.theOneInItsPlace(seen) === terminal,
     )
-  }
-
-  /** A reserved id is current only while its matching birth intent still owns a live start. */
-  private currentNormalWorker(worker: NormalWorkerBinding): string {
-    const { phase: bindingPhase } = worker
-    if (bindingPhase === 'reserved' && this.deps.store.recordedOne(worker.conversation) === null) {
-      const slot = this.slots.get(worker.conversation)
-      const fact = this.normalWorkerBirths.get(worker.conversation)
-      if (slot === undefined || onItsWayOut(slot) || fact?.number !== worker.number) {
-        throw new Error('the worker reservation no longer owns a start')
-      }
-      return worker.conversation
-    }
-    return this.completeWorkerTerminal(worker.conversation)
-  }
-
-  /** An owned in-flight reservation excludes its id before a database lineage exists. */
-  private normalWorkerLineage(worker: NormalWorkerBinding): readonly string[] {
-    const current = this.currentNormalWorker(worker)
-    return this.deps.store.recordedOne(worker.conversation) === null
-      ? [current]
-      : this.deps.store.workerLineage(worker.conversation)
-  }
-
-  private normalWorkerAt(
-    giver: string,
-    profile: string,
-    parallel: boolean,
-    provider?: Provider,
-  ):
-    | { readonly is: 'legacy' | 'unknown' }
-    | { readonly is: 'full'; readonly noProvider?: true }
-    | {
-        readonly is: 'known'
-        readonly identity: AgentIdentity
-        readonly entry: ProfileExecution
-        readonly pool: NormalWorkerPool | null
-        readonly selection: WorkerSelection
-        readonly poolGiver: string
-      } {
-    try {
-      const read = this.profileExecution
-      if (parallel && (!read.readable || this.deps.profileExecution?.owned !== true))
-        return { is: 'unknown' }
-      const roster = this.deps.store.agentIdentities()
-      const identity = roster.find((one) => one.slug === foldProfileName(profile))
-      if (identity === undefined) return { is: 'legacy' }
-      const kind = kindOf(read, this.profileExecutionConflicts, identity.id, identity.createdAt)
-      if (kind === 'unknown') {
-        // Ordinary legacy work keeps the service-only fallback when no worker birth is at stake.
-        if (
-          !parallel &&
-          !(read.readable && (read.kept.profiles[identity.id]?.workerPools?.length ?? 0) > 0) &&
-          !this.deps.store.workersBorn().some((worker) => worker.identity === identity.id)
-        ) {
-          return { is: 'legacy' }
-        }
-        return { is: 'unknown' }
-      }
-      if (kind === 'service') return { is: 'legacy' }
-      const saved = read.readable ? read.kept.profiles[identity.id] : undefined
-      const entry: ProfileExecution =
-        saved?.identityCreatedAt === identity.createdAt
-          ? saved
-          : { kind: 'normal', identityCreatedAt: identity.createdAt }
-      const pools = (entry.workerPools ?? []).filter((pool) =>
-        this.deps.store.workerGiverContains(pool.giver, giver),
-      )
-      if (pools.length > 1) return { is: 'unknown' }
-      let pool = pools[0] ?? null
-      if (pool?.removing === true) return { is: 'unknown' }
-      if (pool === null && !parallel) return { is: 'legacy' }
-      let poolGiver = pool?.giver ?? giver
-      if (pool === null) {
-        const legacy = this.legacyHelperAs(giver, profile)
-        if (legacy !== null) {
-          const parent =
-            this.deps.store.parentOf(legacy) ?? this.slots.get(legacy)?.spawnedBy ?? null
-          if (parent === null || !this.deps.store.workerGiverContains(parent, giver))
-            return { is: 'unknown' }
-          poolGiver = parent
-          pool = {
-            giver: parent,
-            nextNumber: 2,
-            workers: [
-              {
-                number: 1,
-                conversation: legacy,
-                phase: this.deps.store.recordedOne(legacy) === null ? 'reserved' : 'bound',
-              },
-            ],
-          }
-        }
-      }
-      // Resolve every binding completely before selecting; a partial cache cannot pick an old worker.
-      const providers = new Map<string, Provider | null>()
-      for (const worker of pool?.workers ?? []) {
-        providers.set(
-          worker.conversation,
-          this.theProviderOfConversation(this.currentNormalWorker(worker)),
-        )
-      }
-      if (!parallel && provider !== undefined && pool !== null) {
-        // A provider's older ordinary conversation remains its primary when another provider adds a pool.
-        const bound = pool.workers.flatMap((worker) => [
-          worker.conversation,
-          ...this.normalWorkerLineage(worker),
-        ])
-        if (this.legacyHelperAs(giver, profile, provider, bound) !== null) return { is: 'legacy' }
-      }
-      const budget = { rowsLeft: 8192, bytesLeft: 8 * 1024 * 1024 }
-      const snapshots = new Map<string, ReturnType<SessionStore['workerLedger']>>()
-      const snapshot = (id: string): ReturnType<SessionStore['workerLedger']> => {
-        if (snapshots.has(id)) return snapshots.get(id)!
-        const read = this.deps.store.workerLedger(id, budget)
-        snapshots.set(id, read)
-        return read
-      }
-      const selection = selectNormalWorker(
-        pool,
-        parallel,
-        (conversation) => this.freeForNormalWork(conversation, roster, snapshot),
-        (conversation) => this.normalWorkerLeases.has(conversation),
-        (conversation) => provider === undefined || providers.get(conversation) === provider,
-      )
-      if (selection.kind === 'unknown') return { is: 'unknown' }
-      if (selection.kind === 'full') {
-        const noProvider =
-          provider !== undefined &&
-          !pool?.workers.some((one) => providers.get(one.conversation) === provider)
-        return { is: 'full', ...(noProvider ? { noProvider: true as const } : {}) }
-      }
-      return { is: 'known', identity, entry, pool, selection, poolGiver }
-    } catch {
-      return { is: 'unknown' }
-    }
-  }
-
-  private helperAs(giver: string, profile: string, provider?: Provider): string | null {
-    const selected = this.normalWorkerAt(giver, profile, false, provider)
-    if (selected.is === 'legacy') {
-      const identity = this.deps.store
-        .agentIdentities()
-        .find((one) => one.slug === foldProfileName(profile))
-      const read = this.profileExecution
-      const pools =
-        identity === undefined || !read.readable
-          ? []
-          : (read.kept.profiles[identity.id]?.workerPools ?? [])
-      const bound = pools
-        .filter((pool) => this.deps.store.workerGiverContains(pool.giver, giver))
-        .flatMap((pool) =>
-          pool.workers.flatMap((worker) => [
-            worker.conversation,
-            ...this.normalWorkerLineage(worker),
-          ]),
-        )
-      return this.legacyHelperAs(giver, profile, provider, bound)
-    }
-    if (selected.is !== 'known' || selected.selection.kind !== 'existing') return null
-    return this.currentNormalWorker(selected.selection.worker)
-  }
-
-  private freeForNormalWork(
-    birth: string,
-    roster: readonly AgentIdentity[],
-    snapshot: (id: string) => ReturnType<SessionStore['workerLedger']>,
-  ): boolean {
-    try {
-      if (!this.cutsAreReadable) return false
-      const lineage = this.deps.store.workerLineage(birth)
-      if (lineage.length === 0 || lineage.length > 64) return false
-      const conversation = lineage.at(-1)!
-      if (
-        this.archived.has(conversation) ||
-        this.settingAside.has(conversation) ||
-        this.startsInFlight.has(conversation) ||
-        this.firstMessagesInFlight.has(conversation) ||
-        this.arrivals.has(conversation)
-      )
-        return false
-      for (const id of lineage) {
-        const cut = this.cutsKept.cuts[id]
-        if (cut !== undefined && !isFinal(cut.state)) return false
-      }
-      const slot = this.slots.get(conversation)
-      if (slot !== undefined && (slot.session === null || onItsWayOut(slot))) return false
-      const session = slot?.session ?? null
-      if (
-        session !== null &&
-        (session.turnOpened ||
-          session.stopping !== null ||
-          session.stopStillAsked !== null ||
-          session.flushing !== null ||
-          session.handingOver.length > 0 ||
-          session.mailbox.length > 0 ||
-          session.holdingQueue !== 0 ||
-          this.somethingIsOnItsWayTo(session) ||
-          this.stopsOnTheirWay.has(session) ||
-          this.itStoppedUnder(session) ||
-          session.handle.status() !== 'idle' ||
-          session.handle.settings.planMode.effective ||
-          session.handle.settings.planMode.requested ||
-          somethingRunning(session.background) ||
-          scheduleHeld(session.scheduled))
-      )
-        return false
-      const row = this.deps.store.recordedOne(conversation)
-      if (row === null) return false
-      const stopped = session === null ? this.deps.store.find(conversation) : null
-      if (
-        session === null &&
-        (stopped === null || (stopped.planMode === true && stopped.planEndedAt === null))
-      )
-        return false
-      const unread = rowsUnreadOnce()
-      for (const id of lineage) {
-        const ledger = snapshot(id)
-        if (ledger === null) return false
-        const rules = this.deps.store.instructionAsksWaitingIn(id, unread)
-        if (rules === null || rules.length > 0) return false
-        const proposals = ledger.filter(
-          (row) =>
-            row.event.type === 'mcp_server_requested' ||
-            row.event.type === 'mcp_server_request_settled',
-        )
-        if (
-          proposals.some(({ event }) => {
-            if (
-              !('requestId' in event) ||
-              typeof event.requestId !== 'string' ||
-              event.requestId.length === 0
-            )
-              return true
-            if (event.type === 'mcp_server_request_settled')
-              return !isMcpServerRequestEnding(event.ending)
-            return (
-              event.type !== 'mcp_server_requested' ||
-              typeof event.name !== 'string' ||
-              typeof event.url !== 'string' ||
-              typeof event.reaches !== 'string' ||
-              typeof event.requestedBy !== 'string' ||
-              (event.whoGetsIt !== 'everyone' &&
-                (event.whoGetsIt !== 'only-these-agents' ||
-                  !Array.isArray(event.agents) ||
-                  event.agents.some((agent) => typeof agent !== 'string')))
-            )
-          })
-        )
-          return false
-        if (
-          mcpServerRequestsWaiting(
-            proposals.map((row) => ({
-              conversation: id,
-              at: row.at,
-              event: row.event as McpServerRequestedEvent | McpServerRequestSettledEvent,
-            })),
-          ).length > 0
-        )
-          return false
-        const children = this.deps.store.turnBlockCandidates(id, 257)
-        if (children === null || children.length > 256) return false
-        const owners = [...new Set(children.map((child) => child.owner))]
-        if (owners.length > 32 || owners.some((owner) => snapshot(owner) === null)) return false
-        if (
-          this.deps.store
-            .turnBlockPiecesOwnedBy(id, unread)
-            .some((piece) => TASK_IS_OPEN[piece.state]) ||
-          this.deps.store.piecesGivenBy(id, unread).some((piece) => TASK_IS_OPEN[piece.state]) ||
-          this.deps.store
-            .routedRequestsOf(id, unread)
-            .some((request) => REQUEST_IS_OPEN[request.state]) ||
-          this.deps.store.messagesWaitingIn(id, unread, 4096).length > 0
-        )
-          return false
-      }
-      const targets = this.deps.store.workerQuestionTargets()
-      if (targets === null) return false
-      const askers = [
-        ...new Set(
-          targets
-            .filter((target) => lineage.includes(target.recipient))
-            .map((target) => target.asker),
-        ),
-      ]
-      if (askers.length > 32) return false
-      for (const asker of askers) {
-        if (snapshot(asker) === null) return false
-        const open = this.deps.store.routedRequestsOf(asker, unread)
-        if (
-          open.some(
-            (request) =>
-              REQUEST_IS_OPEN[request.state] &&
-              request.parent !== null &&
-              lineage.includes(request.parent),
-          )
-        )
-          return false
-      }
-      const ledgers = this.oneLedgerReadPerAnswer(unread)
-      const state = this.stateOf(
-        conversation,
-        { roster, askingForRules: new Set(), asksUnread: 0 },
-        unread,
-        ledgers(conversation),
-        this.oneWorkOutReadPerAnswer(unread),
-        this.oneOwedReadPerAnswer(ledgers),
-      )
-      return state.is === 'idle' && unread.count === 0 && unread.ledgersSkipped === 0
-    } catch {
-      return false
-    }
-  }
-
-  private legacyHelperAs(
-    giver: string,
-    profileSlug: string,
-    provider?: Provider,
-    except: readonly string[] = [],
-  ): string | null {
-    const wanted = foldProfileName(profileSlug)
-    const parents = this.theIdsItStandsFor(giver)
-    const theirs = new Set(parents)
-    const excluded = new Set(except)
-    const reserved = [...this.slots.values()].find((slot) => {
-      if (excluded.has(slot.id)) return false
-      if (slot.spawnedBy === null || !theirs.has(slot.spawnedBy)) return false
-      if (provider !== undefined && slot.provider !== provider) return false
-      const identity = slot.profileId ?? slot.session?.profileId ?? null
-      return identity !== null && foldProfileName(identity) === wanted
-    })
-    const found =
-      reserved?.id ?? this.deps.store.newestChildAs(parents, profileSlug, provider, except)
-    return found === null ? null : this.theOneInItsPlace(found)
   }
 
   /**
@@ -25528,7 +24601,7 @@ export class RuntimeHost implements LiveHost {
      * ⚑ What the caller said these words are — `null`: a brief or a new brief, which names its
      * piece.
      */
-    says: AgentMessageKind | null,
+    _says: AgentMessageKind | null,
     /** ⚑ **D-017 · R10** — handed the conversation it goes to: the one that took its place, if any. */
     deliver: (to: string) => Promise<T>,
   ): Promise<T> {
@@ -25552,22 +24625,11 @@ export class RuntimeHost implements LiveHost {
       }
       await this.refuseBeforeAStart(to, text, by, attachments)
       const waker = sessionSpeakingAs(by)
-      this.noteWhatBringsItBack(to, () => {
-        const who =
-          waker !== null
-            ? this.whatToCallTheConversation(waker)
-            : theSurfaceAsking(by) !== null
-              ? 'you'
-              : 'This app'
-        return `${who} ${says === null ? 'gave it work' : 'wrote to it'}`
-      })
       let ran: string
       try {
         ran = await this.ensureRunning(to, theSurfaceAsking(by))
       } catch (error) {
         throw waker === null ? error : new AStartThatDidNotHappen(error)
-      } finally {
-        this.whatBringsItBack.delete(to)
       }
       return deliver(ran)
     })
@@ -26136,7 +25198,9 @@ export class RuntimeHost implements LiveHost {
   ): Promise<QueueOutcome> {
     // ⚑ **D-017 · R1** — the same words, once more, through the conversation's start.
     const startItAgain = (again: (to: string) => Promise<QueueOutcome>): Promise<QueueOutcome> =>
-      this.deliverWhenItRuns(sessionId, text, by, attachments, says, again)
+      facts.giving === undefined
+        ? this.deliverWhenItRuns(sessionId, text, by, attachments, says, again)
+        : again(sessionId)
     // 🔴 **`requireToMessage`, and the word IS the widening** (431 · criterion 6). ⛔ `send` asks
     // the same gate — see its own note for why the pair is the rule — and the three siblings left
     // on {@link requireToCommand} are `sendInterrupting`, `cancelQueuedMessage` and `interrupt`.
@@ -26351,13 +25415,7 @@ export class RuntimeHost implements LiveHost {
       // 🔴 **F088 · and the piece an agent's note or follow-up names** — see {@link QueuedMessage.about}.
       ...(about === null ? {} : { about }),
     }
-    session.mailbox.push(held)
-    if (TURN_ATTRIBUTION_KEYS.every((key) => held.authorship[key] === undefined))
-      this.declineMoveOffersFromText(session.id, by)
-    // Recorded BEFORE anything can go wrong with it (077 §3): from here the transcript holds the
-    // text, so no later failure can lose a message the user wrote. It is deliberately NOT a
-    // `user_turn` — nothing has been sent — so 045 opens no turn row for it.
-    this.publishOurs(session, {
+    const queued: QueuedMessageEvent = {
       type: 'message_queued',
       // ⚑ **The durable half of the name** (354) — the slot's copy dies with the process; this one
       // is what a reader rebuilding from the ledger has.
@@ -26381,12 +25439,16 @@ export class RuntimeHost implements LiveHost {
       ...(about === null ? {} : { about }),
       // ⚑ See {@link QueuedMessageEvent.asks}.
       ...(held.asks === undefined ? {} : { asks: held.asks }),
-    })
-    // 🔴 **AFTER the message it names, never before** (379). `publishOurs`'s own rule is *"only
-    // after the provider has accepted it"*, and the two rows are two appends: a crash between them
-    // leaves a held brief with no piece. ⛔ The reverse order would leave a piece naming work that
-    // was never handed over — a row on somebody's board for a message that does not exist.
-    if (giving !== null) this.recordTheGive(session, giving, id)
+    }
+    if (giving !== null) {
+      this.recordTheGive(session, giving, id, null, { queued, mailboxEntry: held })
+    } else {
+      session.mailbox.push(held)
+      if (TURN_ATTRIBUTION_KEYS.every((key) => held.authorship[key] === undefined)) {
+        this.declineMoveOffersFromText(session.id, by)
+      }
+      this.publishOurs(session, queued)
+    }
     if (says !== null) {
       this.noteTheSending(
         from,
@@ -26423,14 +25485,35 @@ export class RuntimeHost implements LiveHost {
    * is down — never with an ordinal taken inside another event's window.
    */
   private recordTheGive(
-    session: HostedSession,
+    target: HostedSession | string,
     piece: ThePieceWrittenDown,
     messageId: string | null,
     /** The model and effort a give to a service asked for, kept for its turn. */
     pairAsked: ModelAndEffort | null = null,
+    opening?: {
+      readonly conversation?: NewSessionRecord
+      readonly queued: QueuedMessageEvent
+      readonly mailboxEntry?: QueuedMessage
+    },
   ): void {
-    const ordinal = this.takeLedgerOrdinal(session)
+    const session = typeof target === 'string' ? null : target
+    const owner = typeof target === 'string' ? target : target.id
     const at = this.now()
+    // A give that starts a conversation writes its title in the same record as its first task, so
+    // neither stands without the other.
+    const titled: ConversationTitledEvent | null =
+      piece.conversationTitle === undefined || piece.giver === null
+        ? null
+        : {
+            type: 'titled',
+            title: piece.conversationTitle,
+            author: { kind: 'agent', conversation: piece.giver },
+          }
+    let next = session === null ? this.deps.store.nextOrdinal(owner) : 0
+    const nextOrdinal = (): number => (session === null ? next++ : this.takeLedgerOrdinal(session))
+    const titledAt = titled === null ? null : nextOrdinal()
+    const queuedAt = opening === undefined ? null : nextOrdinal()
+    const ordinal = nextOrdinal()
     const event: WorkGivenEvent = {
       type: 'work_given',
       piece: piece.piece,
@@ -26447,29 +25530,49 @@ export class RuntimeHost implements LiveHost {
       ...(piece.givenFolder === null ? {} : { givenFolder: piece.givenFolder }),
       ...(pairAsked === null ? {} : { asked: pairAsked }),
     }
-    this.record(
-      session,
-      () =>
-        this.deps.store.recordGive(
-          {
-            piece: piece.piece,
-            parent: piece.parent,
-            number: piece.number,
-            owner: session.id,
-            givenBy: piece.giver,
-            title: piece.title,
-            brief: piece.brief,
-            folder: piece.folder,
-            inputs: piece.inputs,
-          },
-          ordinal,
-          event,
-          at,
-        ),
-      'work,work_resource,events',
-    )
-    this.rememberLedgerOrdinal(session, ordinal)
-    this.emitOurs(session, { sessionId: session.id, ordinal, at, event })
+    this.writeRecord(owner, 'work,work_resource,events', () => {
+      if (opening?.conversation !== undefined) this.deps.store.create(opening.conversation)
+      if (titled !== null && titledAt !== null) {
+        this.deps.store.titleConversation(owner, titledAt, titled, at)
+      }
+      if (opening !== undefined && queuedAt !== null) {
+        this.deps.store.append(owner, queuedAt, opening.queued, at)
+      }
+      this.deps.store.recordGive(
+        {
+          piece: piece.piece,
+          parent: piece.parent,
+          number: piece.number,
+          owner,
+          givenBy: piece.giver,
+          title: piece.title,
+          brief: piece.brief,
+          folder: piece.folder,
+          inputs: piece.inputs,
+        },
+        ordinal,
+        event,
+        at,
+      )
+    })
+    const publish = (
+      ord: number,
+      event: WorkGivenEvent | ConversationTitledEvent | QueuedMessageEvent,
+    ): void => {
+      const row = { sessionId: owner, ordinal: ord, at, event }
+      if (session === null) this.showTheWindowsLookingAt(owner, row)
+      else this.emitOurs(session, row)
+    }
+    if (session !== null) {
+      this.rememberLedgerOrdinal(session, ordinal)
+      if (opening?.mailboxEntry !== undefined) session.mailbox.push(opening.mailboxEntry)
+    }
+    if (titled !== null && titledAt !== null) {
+      publish(titledAt, titled)
+    }
+    if (opening !== undefined && queuedAt !== null) publish(queuedAt, opening.queued)
+    publish(ordinal, event)
+    if (piece.giver !== null) this.restoreArchiveForNewWork(owner)
     // 🔴 **638 · work was GIVEN** — it opens the giver's *waiting on a worker* as well as the
     // owner's own list. ⛔ After the write, never before.
     this.theWorldMoved('work')
@@ -31978,9 +31081,8 @@ export class RuntimeHost implements LiveHost {
   /**
    * Archives a conversation and every conversation below it. What runs in them is stopped as the
    * app stops a conversation; every record and file is kept. They are left out of the rail, Team and
-   * the person's queue, and stay stopped (no notice, held message, schedule or launch starts them),
-   * until a person restores them ({@link restoreConversation}) or something starts one
-   * ({@link bringBackFromTheArchive}).
+   * the person's queue. Automatic wakes stay parked. A direct message or question can still be
+   * delivered while the conversation stays archived. The person or a new recorded give restores it.
    */
   async archiveConversation(sessionId: string): Promise<ArchiveOutcome> {
     if (this.deps.store.recordedOne(sessionId) === null) {
@@ -32049,9 +31151,7 @@ export class RuntimeHost implements LiveHost {
       }
     }
     try {
-      this.archived.remove(archived)
-      this.moveTheListing()
-      this.moveThePersons()
+      this.removeArchiveMarks(archived)
     } catch (error) {
       return { done: false, refusal: errorMessage(error) }
     }
@@ -32122,33 +31222,31 @@ export class RuntimeHost implements LiveHost {
     return wakeUp === undefined ? null : { wakesAt: wakeUp.startAt }
   }
 
-  /**
-   * Brings an archived conversation that is starting back to a person's lists, with its archived
-   * tree, so none runs out of their sight; its `reopened` row says so, and what brought it
-   * ({@link noteWhatBringsItBack}). Throws, and so stops the start, when the archived set can't be
-   * changed.
-   */
-  private bringBackFromTheArchive(
-    sessionId: string,
-    sink: RuntimeEventSink | null,
-  ): BringingBack | null {
+  /** A committed give brings its archived destination back even if the provider cannot start. */
+  restoreArchiveForNewWork(conversation: string): ArchiveOutcome | null {
+    return this.archived.has(conversation) ? this.restoreConversation(conversation) : null
+  }
+
+  private removeArchiveMarks(archived: readonly string[]): void {
+    this.archived.remove(archived)
+    this.moveTheListing()
+    this.moveThePersons()
+  }
+
+  /** Restore during the person's explicit Reopen. A failed start puts these marks back. */
+  private bringBackFromTheArchive(sessionId: string): BringingBack | null {
     if (!this.archived.has(sessionId)) return null
     const archived = this.theArchivedTreeOf(sessionId)
     const archivedAt = new Map(
       archived.map((conversation) => [conversation, this.archived.archivedAt(conversation) ?? 0]),
     )
-    this.archived.remove(archived)
-    this.moveTheListing()
-    this.moveThePersons()
-    const cause =
-      this.whatBringsItBack.get(sessionId) ?? (sink === null ? 'it was started' : 'you opened it')
-    this.whatBringsItBack.delete(sessionId)
+    this.removeArchiveMarks(archived)
     // Its own start judges its schedule and sends what it held; the others carry on once it has
     // started ({@link reopenSession}).
     const back: BringingBack = {
       others: archived.filter((conversation) => conversation !== sessionId),
       archivedAt,
-      saying: `Brought back from the archive: ${cause}.`,
+      saying: 'Brought back from the archive: you opened it.',
     }
     this.bringingBack.set(sessionId, back)
     this.theWorldMoved('conversations')
@@ -32181,11 +31279,6 @@ export class RuntimeHost implements LiveHost {
     this.bringingBack.delete(sessionId)
     this.carryOnAfterTheStop(back.others, NEWER_WORDS_AFTER_THE_ARCHIVE)
     return back.saying
-  }
-
-  /** What a delivery about to start `sessionId` is, said if the start brings it back. */
-  private noteWhatBringsItBack(sessionId: string, cause: () => string): void {
-    if (this.archived.has(sessionId)) this.whatBringsItBack.set(sessionId, cause())
   }
 
   /**
@@ -32610,7 +31703,6 @@ export class RuntimeHost implements LiveHost {
       this.heldAtAStop,
       this.providerFailedWith,
       this.replacedBy,
-      this.whatBringsItBack,
       this.bringingBack,
       // The starts planned for it: after a restart, for its jobs, on a renewed sign-in.
       this.startComingAfterTheRestart,
@@ -37199,7 +36291,7 @@ export class RuntimeHost implements LiveHost {
         if (running !== null) resumed = running
         else {
           try {
-            resumed = await this.reopenForAPerson(at, sink, launchKey)
+            resumed = await this.reopenForAPerson(at, sink, launchKey, 'message')
           } catch (error) {
             return notSent('the-start', errorMessage(error), error, {
               launch: whyALaunchWasRefused(error),
@@ -37288,18 +36380,21 @@ export class RuntimeHost implements LiveHost {
     sessionId: string,
     sink: RuntimeEventSink,
     launchKey: string | null,
+    intent: 'reopen' | 'message' = 'reopen',
   ): Promise<ResumedSession> {
     const at = this.theOneInItsPlace(sessionId)
+    const restoreArchive = intent === 'reopen'
     const inFlight = this.startsInFlight.get(at)
     if (inFlight !== undefined) {
       // ⚑ **D-029 · and a person's, a wake-up's start** — {@link ensureRunning}'s rule.
       this.wakingForItsJobs.delete(at)
       const ran = await inFlight
       return (
-        this.aPersonsWindowTakesIt(ran, sink) ?? (await this.resumeSession(ran, sink, launchKey))
+        (restoreArchive && this.archived.has(ran) ? null : this.aPersonsWindowTakesIt(ran, sink)) ??
+        (await this.resumeSession(ran, sink, launchKey, undefined, 'handed-on', restoreArchive))
       )
     }
-    const start = this.resumeSession(at, sink, launchKey)
+    const start = this.resumeSession(at, sink, launchKey, undefined, 'handed-on', restoreArchive)
     const joined = start.then((resumed) => resumed.sessionId)
     this.startsInFlight.set(at, joined)
     // ⚑ **D-019** — {@link ensureRunning}'s marks, for a person's start.
@@ -37389,8 +36484,9 @@ export class RuntimeHost implements LiveHost {
     because: ReopenedEvent['because'] = undefined,
     /** Whether the caller hands the page of history on; a start this app makes for itself does not. */
     page: 'handed-on' | 'not-read' = 'handed-on',
+    restoreArchive = false,
   ): Promise<ResumedSession> {
-    /** What this start brought back from the archive, put back if it fails. */
+    /** What this explicit reopen brought back from the archive, put back if it fails. */
     let broughtBack: BringingBack | null = null
     // ⛔ **Registered BEFORE the first await, because that is the whole of 265 §1.** Everything below
     // this line is owned by the asking surface; nothing above it was, and the wait immediately below
@@ -37429,22 +36525,23 @@ export class RuntimeHost implements LiveHost {
           this.attachHeldSession(sessionId, sink, 'attach') ??
           // ⚑ **D-017 · R5** — or one nobody spawned that a delivery started with no window.
           this.aPersonsWindowTakesIt(sessionId, sink)
-        if (held !== null) return held
+        if (held !== null) {
+          if (restoreArchive && this.archived.has(sessionId)) {
+            const outcome = this.restoreConversation(sessionId)
+            if (!outcome.done) throw new Error(outcome.refusal)
+          }
+          return held
+        }
       }
-      // Nothing starts a conversation an archive or a delete is stopping; anything that starts an
-      // archived one brings it back, so none runs out of a person's sight.
+      // An archive or a delete must finish its stop before anything can start the conversation.
       const settingAside = this.settingAside.get(sessionId)
       if (settingAside !== undefined) {
         throw new Error(
           `This conversation${SET_ASIDE_FOR[settingAside]}, so it was not started.` +
-            (settingAside === 'archive'
-              ? ' Send it again once that is done: whatever is sent to it brings it back.'
-              : settingAside === 'its-files'
-                ? ' Send it again in a moment.'
-                : ''),
+            (settingAside === 'its-files' ? ' Send it again in a moment.' : ''),
         )
       }
-      broughtBack = this.bringBackFromTheArchive(sessionId, sink)
+      if (restoreArchive) broughtBack = this.bringBackFromTheArchive(sessionId)
       // ⚑ **D-029** — what this start brings back, judged as it begins, whichever door starts it
       // ({@link judgeItsWakeUpAgain}). ⚑ Synchronous, like everything down to {@link reserve}.
       if (!this.judgeItsWakeUpAgain(sessionId) && this.wakingForItsJobs.has(sessionId)) {

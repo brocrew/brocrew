@@ -156,10 +156,12 @@ describe('F033 · a conversation is named by the work it holds now', () => {
   }> => {
     const parent = await personOpens(DEFAULT_PROFILE_ID)
     const tools = agentToolsFor(host, parent)
+    await callOn(tools, 'create_agent', { profile_slug: 'worker' })
     const given = await callOn(tools, 'give_work', {
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
-      new: true,
+      to: 'new',
+      conversation_title: 'Receipt check: a long step',
       title: 'Receipt check: a long step',
       brief: 'check the receipt',
     })
@@ -178,10 +180,12 @@ describe('F033 · a conversation is named by the work it holds now', () => {
   ): Promise<{ parent: string; child: string; tools: AgentToolset }> => {
     const parent = await personOpens(DEFAULT_PROFILE_ID, 'ask')
     const tools = agentToolsFor(host, parent)
+    await callOn(tools, 'create_agent', { profile_slug: 'worker' })
     const first = await callOn(tools, 'give_work', {
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
-      new: true,
+      to: 'new',
+      conversation_title: 'Build the world clock page',
       title: 'Build the world clock page',
       brief: 'build it',
     })
@@ -194,6 +198,7 @@ describe('F033 · a conversation is named by the work it holds now', () => {
     const titles = ['Test the clock page', 'Ship the clock page']
     for (let at = 1; at < count; at += 1) {
       const more = await callOn(tools, 'give_work', {
+        to: first.label,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: titles[at - 1],
@@ -355,6 +360,7 @@ describe('F033 · a conversation is named by the work it holds now', () => {
       expect(id, asked.text).toMatch(/^req_/)
       // The asker moves on while the question waits: a second piece.
       const second = await callOn(tools, 'give_work', {
+        to: 'W1.1',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'Second piece',
@@ -420,11 +426,13 @@ describe('F033 · a conversation is named by the work it holds now', () => {
       const { child: ada } = await aChildHolding(2)
       // Ada gives under her OLDER piece, while her newer one names her now.
       const adaTools = agentToolsFor(host, ada)
+      await callOn(adaTools, 'create_agent', { profile_slug: 'tester' })
       const given = await callOn(adaTools, 'give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'tester',
-        new: true,
-        piece: 'W1.1',
+        to: 'new',
+        conversation_title: 'Wire the routes',
+        under: 'W1.1',
         title: 'Wire the routes',
         brief: 'wire the routes',
       })
@@ -439,11 +447,13 @@ describe('F033 · a conversation is named by the work it holds now', () => {
 
     it('🔴 an answer names its answerer by its own piece above the question’s, beside a newer one it holds', async () => {
       const { ada, adaTools } = await aHelperHoldingTwo()
+      await callOn(adaTools, 'create_agent', { profile_slug: 'tester' })
       const given = await callOn(adaTools, 'give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'tester',
-        new: true,
-        piece: 'W1.1',
+        to: 'new',
+        conversation_title: 'Wire the routes',
+        under: 'W1.1',
         title: 'Wire the routes',
         brief: 'wire the routes',
       })
@@ -474,11 +484,13 @@ describe('F033 · a conversation is named by the work it holds now', () => {
     it('🔴 a note names its sender by the piece it is about, and so does its record read back', async () => {
       const { tools, adaTools } = await aHelperHoldingTwo()
       // Ada gives Ali a piece under her older piece, and Ali answers it.
+      await callOn(adaTools, 'create_agent', { profile_slug: 'tester' })
       const first = await callOn(adaTools, 'give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'tester',
-        new: true,
-        piece: 'W1.1',
+        to: 'new',
+        conversation_title: 'Wire the routes',
+        under: 'W1.1',
         title: 'Wire the routes',
         brief: 'wire the routes',
       })
@@ -493,9 +505,10 @@ describe('F033 · a conversation is named by the work it holds now', () => {
       expect(replied.structured, replied.text).toMatchObject({ outcome: 'ok' })
       // Then a piece under her newer one: the only work Ali holds open from her now.
       const second = await callOn(adaTools, 'give_work', {
+        to: first.label,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'tester',
-        piece: 'W1.2',
+        under: 'W1.2',
         title: 'Check the tests',
         brief: 'check the tests',
       })
@@ -557,10 +570,12 @@ describe('F033 · a conversation is named by the work it holds now', () => {
       expect(row?.work).toBeNull()
       // ⚑ The paired positive, from the same reader: a helper whose last piece is answered still
       // says so — that is what D-006 asked of a helper.
+      await callOn(brobotTools, 'create_agent', { profile_slug: 'worker' })
       const given = await callOn(brobotTools, 'give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
-        new: true,
+        to: 'new',
+        conversation_title: 'Book the hotel',
         title: 'Book the hotel',
         brief: 'book it',
       })
@@ -589,11 +604,13 @@ describe('F033 · a conversation is named by the work it holds now', () => {
         brief: 'plan it',
       })
       expect(taken.structured, taken.text).toMatchObject({ outcome: 'ok', label: 'W1.1' })
+      await callOn(brobotTools, 'create_agent', { profile_slug: 'worker' })
       const given = await callOn(brobotTools, 'give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
-        new: true,
-        piece: 'W1.1',
+        to: 'new',
+        conversation_title: 'Book the hotel',
+        under: 'W1.1',
         title: 'Book the hotel',
         brief: 'book it',
       })

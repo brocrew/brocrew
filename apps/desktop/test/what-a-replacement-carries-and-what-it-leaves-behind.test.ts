@@ -116,6 +116,8 @@ describe('what a replacement carries, and what it leaves behind', () => {
     await host.close(await personOpens('worker'), window)
     const pm = await personOpens('pm')
     const given = await callOn(pm, 'give_work', {
+      to: 'new',
+      conversation_title: 'The schema',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'The schema',
@@ -161,6 +163,8 @@ describe('what a replacement carries, and what it leaves behind', () => {
     await host.close(await personOpens('worker'), window)
     const pm = await personOpens('pm')
     const given = await callOn(pm, 'give_work', {
+      to: 'new',
+      conversation_title: 'The schema',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'The schema',

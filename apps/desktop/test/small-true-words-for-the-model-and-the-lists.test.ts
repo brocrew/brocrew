@@ -145,6 +145,8 @@ describe('724 · small true words, for the model and the lists', () => {
     await host.close(await personOpens('worker'), window)
     const pm = await personOpens('pm')
     const given = await callOn(pm, 'give_work', {
+      to: 'new',
+      conversation_title: 'the work',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'the work',

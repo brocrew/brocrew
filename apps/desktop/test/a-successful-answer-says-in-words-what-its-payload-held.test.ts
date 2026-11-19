@@ -234,10 +234,12 @@ describe('a successful answer says in words what its payload held', () => {
     decorateNextHandle = options.decorate ?? null
     let given: AgentToolAnswer
     try {
+      await ok(pmTools, 'create_agent', { profile_slug: 'worker' })
       given = await ok(pmTools, 'give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
-        new: true,
+        to: 'new',
+        conversation_title: 'Survey the kept files',
         title: 'Survey the kept files',
         brief: 'Survey the kept files and report.',
         ...(options.inputs === undefined ? {} : { inputs: options.inputs }),
@@ -687,6 +689,7 @@ describe('a successful answer says in words what its payload held', () => {
     it('update_work a new brief of a piece whose give still waits: says it rides that give', async () => {
       const { pmTools, worker } = await aPmAndItsWorker()
       const second = await ok(pmTools, 'give_work', {
+        to: worker,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'A second piece',

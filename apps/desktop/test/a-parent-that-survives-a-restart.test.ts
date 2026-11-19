@@ -269,6 +269,8 @@ describe('373 · a parent that survives a restart', () => {
     // first turn: in `ask` mode that turn parks on the card it raises, and the piece it hands the
     // child is the one every follow-up below names.
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'the work this dispatch is about',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: workerProfile,
       title: 'the work this dispatch is about',
@@ -323,6 +325,7 @@ describe('373 · a parent that survives a restart', () => {
       const status = await callOn(toolset, 'get_agent_status', { agent: worker })
       expect((status.agent as { state: string }).state).toBe('idle')
       const blocked = await callOn(toolset, 'give_work', {
+        to: piece,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'the parent forgot the reopened child',
@@ -359,6 +362,7 @@ describe('373 · a parent that survives a restart', () => {
       expect((status.agent as { state: string }).state).toBe('idle')
       // ⚑ The give finds the reopened child, and its answer names the piece.
       const blocked = await callOn(toolset, 'give_work', {
+        to: piece,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'the parent forgot the reopened child',
@@ -668,6 +672,8 @@ describe('373 · a parent that survives a restart', () => {
       const request = {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
+        to: 'new',
+        conversation_title: 'While the app is up',
         title: 'while the app is up',
         brief: 'go',
       }
@@ -788,6 +794,8 @@ describe('373 · a parent that survives a restart', () => {
       const pm = await personOpens('pm', root)
       // ⚑ **D-016** — a child is started by a give, and `folder` is where it starts.
       const spawned = await callOn(theToolsetJustHandedOut(), 'give_work', {
+        to: 'new',
+        conversation_title: 'work in one package',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'mid',
         title: 'work in one package',
@@ -807,6 +815,8 @@ describe('373 · a parent that survives a restart', () => {
       // INSIDE `<root>/pkg` so it answers the same on `main`, and the call below is the only variable.
       const missing = join(root, 'pkg', 'not-there')
       const unusable = await callOn(toolset, 'give_work', {
+        to: 'new',
+        conversation_title: 'work in a folder that does not exist',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'deep',
         title: 'work in a folder that does not exist',
@@ -823,6 +833,8 @@ describe('373 · a parent that survives a restart', () => {
       // recorded folder was a bound no reopened conversation could stand wider than). R92: no folder
       // bound on where an agent may start a child.
       const allowed = await callOn(toolset, 'give_work', {
+        to: 'new',
+        conversation_title: 'work at the root',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'deep',
         title: 'work at the root',
@@ -838,6 +850,8 @@ describe('373 · a parent that survives a restart', () => {
       await bringIdentityIntoBeing('deep')
       await personOpens('pm', root)
       const spawned = await callOn(theToolsetJustHandedOut(), 'give_work', {
+        to: 'new',
+        conversation_title: 'work in one package',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'mid',
         title: 'work in one package',
@@ -848,6 +862,8 @@ describe('373 · a parent that survives a restart', () => {
       await restart()
       const { toolset } = await reopen(mid, window)
       const allowed = await callOn(toolset, 'give_work', {
+        to: 'new',
+        conversation_title: 'work in a subfolder',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'deep',
         title: 'work in a subfolder',

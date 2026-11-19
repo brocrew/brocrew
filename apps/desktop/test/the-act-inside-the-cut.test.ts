@@ -226,13 +226,22 @@ const SPAWN_DETAILS: Partial<Record<(typeof SPAWN_RAILS)[number], readonly Spawn
     // names no model, provider or mode. ⚠️ A list of labels has no cap, so the list below is a
     // caller holding its root and two pieces.
     'name-the-piece-you-give-from': [{ held: ['W12', 'W3.4.1', 'W3.4.2'] }],
-    'no-free-worker-at-capacity': [{ profileId: LONG_SLUG }],
-    'no-room-for-provider-conversation': [{ profileId: LONG_SLUG, provider: 'codex' }],
+    'name-the-conversation': [
+      {
+        profileId: LONG_SLUG,
+        recent: [{ address: 'W12.345.6', title: LONG_MODEL }],
+        more: true,
+      },
+    ],
+    'its-provider-is-fixed': [
+      { address: 'W12.345.6', provider: 'codex', requestedProvider: 'claude' },
+    ],
+    'not-that-agents-conversation': [
+      { address: 'W12.345.6', profileId: LONG_SLUG, ownerProfile: LONG_SLUG },
+    ],
     'service-provider-is-fixed': [
       { profileId: LONG_SLUG, provider: 'codex', choices: [LONG_MODEL] },
     ],
-    'worker-binding-is-unknown': [{ profileId: LONG_SLUG }],
-    'that-profile-exists': [{ profileId: LONG_SLUG }],
     // ⚑ **D-038** — the sentence names both modes now, the giver's and the one the child would run
     // in, so `asked` is planted (without it the row prints `?`); a refusal is an `ask` giver whose
     // child would run in `auto`, and `wouldLack` (it was `alsoRemoves`) is what the giver keeps.
@@ -824,15 +833,15 @@ const ACT: Readonly<Record<string, string>> = {
   'SPAWN_RAILS|spawning-disabled': 'Only a person can switch it back on',
   'SPAWN_RAILS|no-piece-to-give-from': 'Do the work here until you hold a piece',
   // PE-006: a give names no mode the caller can change; the person who can decide is named first.
-  'SPAWN_RAILS|name-the-piece-you-give-from': 'give again naming it as piece',
+  'SPAWN_RAILS|name-the-piece-you-give-from': 'give again naming it as under',
   'SPAWN_RAILS|no-piece-you-hold-by-that-name': 'list_tasks names what you hold',
-  'SPAWN_RAILS|parallel-not-for-a-service': 'Leave parallel out to queue the work',
-  'SPAWN_RAILS|no-free-worker-at-capacity': 'Give it again when one is free',
-  'SPAWN_RAILS|no-room-for-provider-conversation':
-    'Give work on a provider already in that pool, or choose another agent',
+  'SPAWN_RAILS|name-the-conversation': 'Give it again with to: "new"',
+  'SPAWN_RAILS|no-conversation-by-that-address': 'to: "new" starts one',
+  'SPAWN_RAILS|not-that-agents-conversation': 'is a conversation of',
+  'SPAWN_RAILS|its-provider-is-fixed': 'give with to: "new"',
+  'SPAWN_RAILS|conversation-title-needed': 'a new conversation needs conversation_title',
+  'SPAWN_RAILS|a-service-has-one-conversation': 'leave to out',
   'SPAWN_RAILS|service-provider-is-fixed': 'Give it work on that provider',
-  'SPAWN_RAILS|worker-binding-is-unknown': 'Tell a person, and give it again once that is fixed',
-  'SPAWN_RAILS|that-profile-exists': 'Give without new to use it',
   'SPAWN_RAILS|services-are-off': 'Do the work yourself, or give it to another agent',
   'SPAWN_RAILS|its-kind-is-unknown': 'Give the work to another agent, or ask a person',
   'SPAWN_RAILS|that-is-this-conversation': 'Do this part within the piece you are working on',
@@ -840,7 +849,7 @@ const ACT: Readonly<Record<string, string>> = {
   'SPAWN_RAILS|its-waits-cannot-all-be-checked':
     'Give the work to another agent, or give it again once some of the work',
   'SPAWN_RAILS|its-record-cannot-be-read': 'Give the work to another agent',
-  'SPAWN_RAILS|no-such-profile': 'check the spelling',
+  'SPAWN_RAILS|no-such-profile': 'list_profiles names them; create_agent makes one',
   'SPAWN_RAILS|folder-unusable': 'only a person can make it right',
   // ⚑ **D-038 · the act moved to the front, and changed**: the work here, or the GIVER's own mode —
   // an agent has no mode of its own, and no provider it could be moved to changes the verdict now.
@@ -1089,7 +1098,7 @@ describe('675 · the act inside the cut', () => {
         for (const [field, value] of Object.entries(detail)) {
           // ⚑ A list of labels sits BEFORE an act in the give's sentences, so each one is looked for.
           const shown: readonly unknown[] =
-            field === 'provider'
+            field === 'provider' || field === 'requestedProvider'
               ? [PROVIDER_NAME[value as keyof typeof PROVIDER_NAME]]
               : LABEL_LISTS.has(field)
                 ? (value as readonly unknown[])

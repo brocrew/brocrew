@@ -418,6 +418,8 @@ describe("463 · a night's backlog, rehearsed", () => {
     )
     // ⚑ D-016 · the give starts the worker, and its brief is its first turn.
     const given = await callOn(agentToolsFor(host, opened.sessionId), 'give_work', {
+      to: 'new',
+      conversation_title: 'raise the question',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'rumour-worker',
       title: 'raise the question',

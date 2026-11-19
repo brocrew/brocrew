@@ -313,6 +313,8 @@ describe('687 · what the cards cannot say yet', () => {
     if (root === null) throw new Error('the PM owns no root')
     for (let once = 0; once < burn; once++) store.numberUnder(root.piece)
     const given = await call(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'The work this dispatch is about',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'The work this dispatch is about',
@@ -723,6 +725,7 @@ describe('687 · what the cards cannot say yet', () => {
       // ⚑ **D-016** — a second give from the same giver reaches the SAME conversation, and is held
       // behind the first brief's turn.
       const again = await call(pmTools, 'give_work', {
+        to: worker,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'Now build it',
@@ -794,6 +797,7 @@ describe('687 · what the cards cannot say yet', () => {
         'the worker to be busy',
       )
       const again = await call(pmTools, 'give_work', {
+        to: worker,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'Now build it',

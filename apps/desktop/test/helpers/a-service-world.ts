@@ -3,7 +3,6 @@ import { neutralHostDeps } from '../lib/host-fixture'
 import { seedHistoricalSuccessor } from '../lib/historical-replacement'
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { RuntimeHost as GiverNoticeHost } from './giver-notice-host'
-import { makeWorkerPieceFolder } from '../../src/main/worker-piece-folder'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
@@ -189,6 +188,8 @@ export interface AServiceWorld {
   ): string
   /** A conversation a person opens as `profile`, running, owning its root. */
   aPersonOpens(host: RuntimeHost, profile: string): Promise<string>
+  /** A worker already recorded by an older version, with its fictional provider session. */
+  aRecordedWorker(giver: string, profile: string, number?: number): Promise<string>
   /** `caller` gives `profile` a piece, as an agent gives one. */
   gives(
     host: RuntimeHost,
@@ -208,6 +209,7 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
   const hosts: RuntimeHost[] = []
   const issued = new FakeProviderSessions()
   let keptLost = false
+  const services = new Set<string>()
   const world: AServiceWorld = {
     folder,
     db,
@@ -375,7 +377,6 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
         ...(opts.listProfiles === undefined ? {} : { listProfiles: opts.listProfiles }),
         ...(opts.readInstructions === undefined ? {} : { readInstructions: opts.readInstructions }),
         resolveCwd: (sessionId, requested) => resolveSessionCwd(folder, sessionId, requested),
-        makeWorkerPieceFolder: (piece) => makeWorkerPieceFolder(folder, piece),
         newSessionId: () => `sess_${String(tick())}`,
         ...(opts.windowWriterStamp === undefined
           ? {}
@@ -420,6 +421,7 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
         { by: 'a-person' },
       )
       if (made === null) throw new Error(`${slug} already exists`)
+      if (kind === 'service') services.add(slug)
       if (kind !== 'nothing kept') {
         const read = readProfileExecution(db)
         if (!read.readable) throw new Error(read.why)
@@ -464,6 +466,48 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
       )
       return sessionId
     },
+    async aRecordedWorker(giver, profile, number = 1) {
+      const identity = world.store.agentIdentities().find((one) => one.slug === profile)
+      const read = readProfileExecution(db)
+      if (identity === undefined || !read.readable) throw new Error('the worker profile is missing')
+      const entry = read.kept.profiles[identity.id]
+      if (entry?.kind !== 'normal') throw new Error('the worker needs a normal profile')
+      const providerHome = join(folder, 'provider-homes', profile, 'claude')
+      const provider = new FakeRuntime('claude', { sessions: issued })
+      const handle = await provider.start({ providerHome, cwd: folder, approvalMode: 'auto' })
+      const id = `sess_${String(tick())}`
+      world.store.create({
+        id,
+        provider: 'claude',
+        cwd: folder,
+        approvalMode: 'auto',
+        profileId: profile,
+        parentSessionId: giver,
+        worker: { identity: identity.id, identityCreatedAt: identity.createdAt, giver, number },
+      })
+      world.store.append(id, 1, { type: 'session', ref: handle.ref }, tick())
+      await handle.close()
+      const pools = entry.workerPools ?? []
+      const pool = pools.find((one) => one.giver === giver)
+      writeProfileExecution(db, {
+        ...read.kept,
+        profiles: {
+          ...read.kept.profiles,
+          [identity.id]: {
+            ...entry,
+            workerPools: [
+              ...pools.filter((one) => one.giver !== giver),
+              {
+                giver,
+                nextNumber: number + 1,
+                workers: [...(pool?.workers ?? []), { conversation: id, number, phase: 'bound' }],
+              },
+            ],
+          },
+        },
+      })
+      return id
+    },
     gives(host, caller, profile, more = {}) {
       return host.giveWork(
         {
@@ -471,6 +515,9 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
           title: 'Book the room',
           brief: 'book the meeting room for Tuesday',
           definition_of_done: 'The room is booked and the confirmation is recorded.',
+          ...(services.has(profile) || 'to' in more
+            ? {}
+            : { to: 'new', conversation_title: 'Room booking' }),
           ...more,
         },
         { ownerId: agentCallerId(caller) },

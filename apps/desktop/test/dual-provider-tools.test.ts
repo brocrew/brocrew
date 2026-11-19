@@ -28,15 +28,14 @@ describe('provider choices in the public tools', () => {
     return { host, giver, tool }
   }
 
-  it('advertises an optional provider and explains conversation routing and separate native permissions', async () => {
+  it('advertises an optional provider and explains explicit conversation routing', async () => {
     const { tool } = await setup()
     const give = tool('give_work')
     const schema = z.toJSONSchema(z.looseObject(give.input))
     expect(schema.properties?.provider).toMatchObject({ enum: ['claude', 'codex'] })
     expect(schema.required ?? []).not.toContain('provider')
-    expect(give.description).toContain('one conversation per provider')
-    expect(give.description).toContain('Always allow')
-    expect(give.description).toContain('per provider')
+    expect(give.description).toContain('"new" starts a new conversation')
+    expect(give.description).toContain('an existing conversation keeps its provider')
   })
 
   it('names each conversation provider on both list and status even though the identity default differs', async () => {
@@ -60,7 +59,7 @@ describe('provider choices in the public tools', () => {
     const codex = await world.gives(host, giver, 'draft-reader', { provider: 'codex' })
     if (!claude.ok || !codex.ok) throw new Error('give refused')
     expect(host.setAgentProvider('draft-reader', 'codex')).toMatchObject({ provider: 'codex' })
-    expect(await world.gives(host, giver, 'draft-reader')).toMatchObject({
+    expect(await world.gives(host, giver, 'draft-reader', { to: codex.label })).toMatchObject({
       ok: true,
       owner: codex.owner,
     })
@@ -102,27 +101,28 @@ describe('provider choices in the public tools', () => {
     }
   })
 
-  it('explains a new conversation after a default change and still reaches the old one by provider', async () => {
+  it('uses the new default for a new conversation and still reaches the old one by address', async () => {
     const { host, giver, tool } = await setup()
     const original = await world.gives(host, giver, 'draft-reader')
     if (!original.ok) throw new Error('give refused')
     const before = world.conversationsRecorded()
     expect(host.setAgentProvider('draft-reader', 'codex')).toMatchObject({ provider: 'codex' })
     expect(world.conversationsRecorded()).toBe(before)
-    const give = (provider?: 'claude' | 'codex') =>
+    const give = (to: string) =>
       tool('give_work').call({
         profile: 'draft-reader',
+        to,
+        ...(to === 'new' ? { conversation_title: 'Check the fictional appendix' } : {}),
         title: 'Read the fictional appendix',
         brief: 'Read it and report.',
         definition_of_done: 'The appendix is checked.',
-        ...(provider === undefined ? {} : { provider }),
       })
-    const fresh = await give()
+    const fresh = await give('new')
     expect(fresh.structured).toMatchObject({ outcome: 'ok', started: true })
     expect(fresh.structured?.agent).not.toBe(original.owner)
     expect(fresh.text).toContain("started a new conversation on Codex, this agent's default")
     expect(world.store.workById(original.piece)?.owner).toBe(original.owner)
-    const old = await give('claude')
+    const old = await give(original.label)
     expect(old.structured).toMatchObject({ outcome: 'ok', agent: original.owner, started: false })
     expect(old.text).not.toContain('started a new conversation')
     expect(world.store.recordedOne(original.owner)?.provider).toBe('claude')

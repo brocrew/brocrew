@@ -7,7 +7,7 @@ import type { HandedPath } from '../../shared/attachment-contracts'
 import type { TheQuestionItAsks } from '../../shared/conversation-events'
 import type { WorkReport } from '../../shared/task-contracts'
 import type { GivenFolder } from '../../shared/work-folders'
-import type { GivenInput } from '../db/session-store'
+import type { GivenInput } from '../../shared/documents'
 import type { InterruptRefusal } from './interrupt-rails'
 import type { AnswerOutcome } from './question-rails'
 import type { QueuedMessage } from './queued-message'
@@ -58,6 +58,8 @@ export interface Giving {
    * turn names them and the store writes their rows with the give's own ({@link recordTheGive}).
    */
   readonly inputs: readonly GivenInput[]
+  /** The job a give to a new conversation names; written as that conversation's first title. */
+  readonly conversationTitle?: string
 }
 
 /**

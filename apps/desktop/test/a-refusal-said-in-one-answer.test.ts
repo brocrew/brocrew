@@ -250,6 +250,17 @@ describe('the ledger quote adds only the reviewed app clauses', () => {
     expect(appOnlyRefusalQuote(before.structured)).toBe(before.structured!['reason'])
     expect(() => appOnlyRefusalQuote(before.structured, 'Another answer.')).toThrow('must prefix')
   })
+
+  it('keeps the composed Not sent reason without adding a second prefix', () => {
+    const refusal = refuse('no-conversation-by-that-address', { address: 'W1.77' })
+    const before = answered(refusal, { permanence: 'permanent' })
+    const after = answerInWords({ ...before, text: refusal.reason }, context)
+    expect(after.text).toBe(`${refusal.reason} ${NEVER}`)
+    expect(appOnlyRefusalQuote(after.structured, after.text)).toBe(after.text)
+    expect(() => appOnlyRefusalQuote(after.structured, 'Not sent: something else.')).toThrow(
+      'must prefix',
+    )
+  })
 })
 
 describe('permanence, true on every rail of its class', () => {

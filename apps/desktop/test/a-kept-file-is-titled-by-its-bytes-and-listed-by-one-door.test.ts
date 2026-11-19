@@ -458,6 +458,7 @@ describe('D-026 · one door lists the kept files, and every door that keeps one 
       profile,
       title,
       brief,
+      ...('to' in extra ? {} : { to: 'new', conversation_title: title }),
       ...extra,
     })
     expect(answer.outcome, JSON.stringify(answer)).toBe('ok')
@@ -659,12 +660,26 @@ describe('D-026 · one door lists the kept files, and every door that keeps one 
       const pmRoot = rootOf(pm)
       const p1 = await aGive(pm, 'ali', 'the index', 'index it', {}, true)
       const aliKid = p1.agent
-      const p2 = await aGive(pm, 'ali', 'the second piece', 'plan the second piece', {}, true)
+      const p2 = await aGive(
+        pm,
+        'ali',
+        'the second piece',
+        'plan the second piece',
+        { to: p1.label },
+        true,
+      )
       // ⚠️ The second give reached the conversation the first started.
       expect(p2.agent).toBe(aliKid)
       for (let burned = 0; burned < 7; burned++) store.numberUnder(pmRoot.piece)
-      const p10 = await aGive(pm, 'ali', 'the tenth', 'plan the tenth piece', {}, true)
-      const p11 = await aGive(aliKid, 'bob', 'the leaf', 'leaf it', { piece: p1.label }, true)
+      const p10 = await aGive(
+        pm,
+        'ali',
+        'the tenth',
+        'plan the tenth piece',
+        { to: p1.label },
+        true,
+      )
+      const p11 = await aGive(aliKid, 'bob', 'the leaf', 'leaf it', { under: p1.label }, true)
       const bobKid = p11.agent
       expect([p1.label, p2.label, p10.label, p11.label]).toEqual([
         `${pmRoot.label}.1`,
@@ -871,7 +886,7 @@ describe('D-026 · one door lists the kept files, and every door that keeps one 
         'bob',
         'a fresh piece',
         'a fresh brief',
-        { piece: f.label.p2 },
+        { to: f.label.p11, under: f.label.p2 },
         true,
       )
       expect(host.filesKept({ scope: 'tree', conversation: quiet })).toEqual({

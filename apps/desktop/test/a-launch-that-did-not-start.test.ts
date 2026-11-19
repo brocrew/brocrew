@@ -160,6 +160,8 @@ describe('657 · a launch that did not start', () => {
   const A_GIVE = {
     definition_of_done: 'The requested result and its checks are recorded.',
     profile: 'worker',
+    to: 'new',
+    conversation_title: 'A first piece',
     title: 'A first piece',
     brief: 'x',
   }

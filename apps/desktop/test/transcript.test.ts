@@ -664,6 +664,15 @@ describe('transcript fold', () => {
         event: { type: 'work_retitled', piece: 'work_1', title: 'Read it', by: 'sess_parent' },
         adds: 0,
       },
+      // A conversation's title is the header's and the lists', never a row in its transcript.
+      {
+        event: {
+          type: 'titled',
+          title: 'DEV-100012',
+          author: { kind: 'agent', conversation: 'sess_parent' },
+        },
+        adds: 0,
+      },
       {
         event: { type: 'work_status_set', piece: 'work_1', line: 'reading', by: 'sess_child' },
         adds: 0,
@@ -998,6 +1007,7 @@ describe('transcript fold', () => {
       // ⚑ **D-042** · 682's `model_choice_set_aside` went (see the sweep above).
       // ⚑ **437's question row, and it arrived as a compile error like every one before it.**
       question_asked: true,
+      titled: true,
     }
     expect(
       [...new Set(ours.map((o) => o.event.type))].sort(),

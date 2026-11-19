@@ -1,6 +1,6 @@
+import type { SendRecipientState, ToolOutcome } from '../../shared/tool-outcome'
 import type { AgentModelChoice, WhereItCameFrom } from '../../shared/model-choice-contracts'
 import type { TaskStallCause } from '../../shared/task-contracts'
-import type { WorkerBindingReading } from '../../shared/worker-reading'
 import { DONE_CONDITION_CHARS, WORK_BRIEF_CHARS, WORK_FIELD_WORDS } from '../../shared/work-fields'
 import { refusalReason } from '../../shared/refusals'
 import { isAbsolute, join } from 'node:path'
@@ -18,10 +18,10 @@ import {
   PROVIDER_NAME,
   foldProfileName,
   isPathSegment,
-  type IdentityCreator,
 } from '../../shared/runtime-ipc'
 import type { ItsProvider, StartedOn } from '../../shared/agent-roster'
 import { PIECE_TITLE_CHARS } from '../../shared/piece-called'
+import { aConversationTitle } from '../../shared/conversation-title'
 import { MAX_RESOURCES_PER_REPLY } from '../../shared/documents'
 
 import type { RailPermanence, RefusalRemedy } from '../../shared/refusals'
@@ -32,6 +32,7 @@ import type { CallerIdentity } from './conversation-caller'
 import type { TellDelivery } from './message-records'
 import type { ResourceRefusal } from '../resources/resources'
 import type { ModelRefusal } from '../connections/model-rails'
+import type { SendOverflow } from './send-overflow'
 
 /**
  * 🔴 **D-016 · the rails of the GIVE — `give_work`'s, asked before anything can be written** (341's
@@ -59,14 +60,9 @@ import type { ModelRefusal } from '../connections/model-rails'
  *     is an oracle.
  *     ⚠️ A caller that speaks as no conversation holds none: `RuntimeHost.giveWork` answers it
  *     `no-piece-to-give-from` before these are asked.
- *  3. **The lookup** — the one conversation this giver has with that agent, over reservations in
- *     flight and rows alike ({@link GiveFacts.helperAs}). ⚠️ It is not a rail: it finds, and a give
- *     that finds one goes there, woken if it has stopped.
- *  4. **No stall rule**: a piece of this giver's that stalled there refuses nothing. The host
- *     names it in the give's answer, read as the answer is formed, with its cause, a follow-up and a
- *     take-back.
- *  5. **Only when nothing was found**, the rails of a START: the spawning switch,
- *     `wider-than-its-parent`, the profile rule (D-016 · R3), then the folder — the
+ *  3. The giver names a conversation by address, or uses "new" to start one. A service is named by its profile.
+ *  4. Stalled work is reported in the receipt with its cause and the available actions.
+ *  5. A new conversation checks the spawning switch, its reach and the working folder, the
  *     one clause that touches the disk, and asked only for a conversation that will work in it.
  *
  * ⛔ **Nothing is written on any path through {@link admitGive}.** A new agent's identity row, the
@@ -112,11 +108,19 @@ export const SPAWN_RAILS = [
   'services-are-off',
   /** Whether the agent is a service can't be told, and a service may be at stake. */
   'its-kind-is-unknown',
-  'worker-binding-is-unknown',
-  'parallel-not-for-a-service',
   'service-provider-is-fixed',
-  'no-free-worker-at-capacity',
-  'no-room-for-provider-conversation',
+  /** A give to a normal agent named no conversation: `to` is "new" or an address. */
+  'name-the-conversation',
+  /** `to` named an address no conversation answers to. */
+  'no-conversation-by-that-address',
+  /** `to` named a conversation of another agent than `profile`. */
+  'not-that-agents-conversation',
+  /** The addressed conversation runs on another provider; a conversation keeps its provider. */
+  'its-provider-is-fixed',
+  /** A give to "new" named no conversation_title. */
+  'conversation-title-needed',
+  /** A service has one conversation, so a give to it names no other. */
+  'a-service-has-one-conversation',
   /** The agent is a service, and the giver is that service's one conversation. */
   'that-is-this-conversation',
   /** The service already waits, through work it gave, on the giver: the piece would never be reached. */
@@ -125,12 +129,6 @@ export const SPAWN_RAILS = [
   'its-waits-cannot-all-be-checked',
   /** Whether the service waits on the giver can't be checked: a record it reaches can't be read. */
   'its-record-cannot-be-read',
-  /**
-   * 🔴 **D-016 · R3 — the give asked for a NEW agent under a name that is already one.** ⛔ Reusing
-   * it would hand the caller an agent with a memory when it asked for a fresh one; the sentence says
-   * to give without `new` to use the agent that exists.
-   */
-  'that-profile-exists',
   /**
    * ⛔ **The global switch is off, and this give would have started a conversation** (criterion 7;
    * ruling 12). One row, app-wide — `schema.ts`'s `appPolicy`.
@@ -157,9 +155,8 @@ export const SPAWN_RAILS = [
    */
   'wider-than-its-parent',
   /**
-   * 🔴 **D-016 · R3 — no agent by that name, and the give did not ask for a new one.** ⛔ A typo is
-   * not a new agent: creating one would mint a durable identity with an empty memory for a misspelt
-   * argument. The sentence names `list_profiles` and `new: true`.
+   * No agent by that name. ⛔ A typo is not a new agent; the sentence names `list_profiles` and
+   * `create_agent`.
    */
   'no-such-profile',
   /**
@@ -203,18 +200,19 @@ const PERMANENCE: Readonly<Record<SpawnRail, RailPermanence>> = {
   'no-piece-you-hold-by-that-name': 'permanent',
   'services-are-off': 'until-a-person-changes-it',
   'its-kind-is-unknown': 'until-a-person-changes-it',
-  'worker-binding-is-unknown': 'until-a-person-changes-it',
-  'parallel-not-for-a-service': 'permanent',
   'service-provider-is-fixed': 'permanent',
-  'no-free-worker-at-capacity': 'while-this-holds',
-  'no-room-for-provider-conversation': 'until-a-person-changes-it',
+  'name-the-conversation': 'permanent',
+  'no-conversation-by-that-address': 'permanent',
+  'not-that-agents-conversation': 'permanent',
+  'its-provider-is-fixed': 'permanent',
+  'conversation-title-needed': 'permanent',
+  'a-service-has-one-conversation': 'permanent',
   'that-is-this-conversation': 'permanent',
   'it-would-wait-on-itself': 'while-this-holds',
   'its-waits-cannot-all-be-checked': 'while-this-holds',
   // ⚑ **`permanent`**: a row that can't be read stays so, and the ledgers the check reads include
   // those of work that has ended, so no give to that service can clear it.
   'its-record-cannot-be-read': 'permanent',
-  'that-profile-exists': 'permanent',
   'spawning-disabled': 'until-a-person-changes-it',
   // 🔴 **`until-a-person-changes-it`** (499): the giver's own approvals button makes the identical
   // call succeed.
@@ -251,16 +249,17 @@ const REMEDY: Readonly<Record<SpawnRail, RefusalRemedy | null>> = {
   'no-piece-you-hold-by-that-name': null,
   'services-are-off': null,
   'its-kind-is-unknown': null,
-  'worker-binding-is-unknown': null,
-  'parallel-not-for-a-service': null,
   'service-provider-is-fixed': null,
-  'no-free-worker-at-capacity': 'make-the-same-call-when-this-settles',
-  'no-room-for-provider-conversation': null,
+  'name-the-conversation': null,
+  'no-conversation-by-that-address': null,
+  'not-that-agents-conversation': null,
+  'its-provider-is-fixed': null,
+  'conversation-title-needed': null,
+  'a-service-has-one-conversation': null,
   'that-is-this-conversation': null,
   'it-would-wait-on-itself': 'make-the-same-call-when-this-settles',
   'its-waits-cannot-all-be-checked': 'make-the-same-call-when-this-settles',
   'its-record-cannot-be-read': null,
-  'that-profile-exists': null,
   'spawning-disabled': null,
   'wider-than-its-parent': null,
   'no-such-profile': null,
@@ -301,9 +300,18 @@ export interface SpawnRefusalDetail {
   wouldLack?: readonly Protection[]
   /** The service's fixed provider and its current model list, for a different-provider refusal. */
   provider?: Provider
+  requestedProvider?: Provider
   choices?: readonly string[]
   /** `its-provider-is-not-chosen` — how many of its conversations started on each provider. */
   startedOn?: StartedOn
+  /** The address `to` named. */
+  address?: string
+  /** `not-that-agents-conversation` — the agent the addressed conversation belongs to. */
+  ownerProfile?: string
+  /** `name-the-conversation` — the giver's most recent conversations with that agent, newest first. */
+  recent?: readonly RecentConversation[]
+  /** `name-the-conversation` — whether it has more such conversations than `recent` lists. */
+  more?: boolean
   /** `folder-unusable`'s reason, which is `checkSessionCwd`'s own sentence and names the directory. */
   folderReason?: string
   /** `malformed-request`'s parse failure, flattened to something a caller can act on. */
@@ -363,7 +371,7 @@ export function stalledPiecesSaid(stalled: readonly AStallAGiveNames[]): string 
   if (stalled.length === 0) return ''
   const them = stalled.length > 1 ? 'them' : 'it'
   const named = labelsSaid(stalled.map((one) => `${one.label} (${undrivenSentence(one.cause)})`))
-  return `It still holds ${named} from you, not being worked on: follow ${them} up with message_agent (kind follow-up), or take ${them} back with withdraw_task.`
+  return `It still holds ${named} from you, not being worked on: follow ${them} up with message_agent , or take ${them} back with withdraw_task.`
 }
 
 /**
@@ -383,7 +391,7 @@ export function describeRail(rail: SpawnRail, detail: SpawnRefusalDetail = {}): 
     case 'no-piece-to-give-from':
       return 'Do the work here until you hold a piece; list_tasks shows your board. You hold no open piece that has reached you, so there is nothing to hang this under and nothing was given.'
     case 'name-the-piece-you-give-from':
-      return `Say which of your pieces this is for (${labelsSaid(detail.held)}): give again naming it as piece.`
+      return `Say which of your pieces this is for (${labelsSaid(detail.held)}): give again naming it as under.`
     case 'no-piece-you-hold-by-that-name':
       return 'You hold no open piece by that name, so nothing was given. list_tasks names what you hold.'
     case 'services-are-off':
@@ -391,12 +399,26 @@ export function describeRail(rail: SpawnRail, detail: SpawnRefusalDetail = {}): 
     case 'its-kind-is-unknown':
       if (detail.executionProblem) return `Not given: ${detail.executionProblem}`
       return `Not given: the services list can’t be read. Give the work to another agent, or ask a person; this app can’t tell whether “${detail.profileId ?? '?'}” is a service.`
-    case 'parallel-not-for-a-service':
-      return 'A service runs one piece at a time. Leave parallel out to queue the work.'
-    case 'no-free-worker-at-capacity':
-      return `Not given: '${detail.profileId ?? '?'}' already has 64 workers, and none is known to be free. Give it again when one is free.`
-    case 'worker-binding-is-unknown':
-      return `Not given: '${detail.profileId ?? '?'}' has no known conversation. Tell a person, and give it again once that is fixed.`
+    case 'name-the-conversation': {
+      const recent = (detail.recent ?? []).map(
+        (one) => `${one.address}${one.title === null ? '' : ` · ${one.title}`}`,
+      )
+      const listed =
+        recent.length === 0
+          ? ` You have no conversation with “${detail.profileId ?? '?'}” yet.`
+          : ` Your recent conversations with “${detail.profileId ?? '?'}”: ${recent.join('; ')}${detail.more === true ? '; and more (search finds the rest)' : ''}.`
+      return `Not sent: say which conversation this goes to. Give it again with to: "new" for a new job, or to: a conversation's address to continue its job.${listed}`
+    }
+    case 'no-conversation-by-that-address':
+      return `Not sent: no conversation has the address ${detail.address ?? '?'}. list_agents lists conversations; to: "new" starts one.`
+    case 'not-that-agents-conversation':
+      return `Not sent: ${detail.address ?? '?'} is a conversation of “${detail.ownerProfile ?? '?'}”, not of “${detail.profileId ?? '?'}”.`
+    case 'its-provider-is-fixed':
+      return `Not sent: conversation ${detail.address ?? '?'} runs on ${detail.provider === undefined ? 'another provider' : PROVIDER_NAME[detail.provider]} and keeps it. To use ${detail.requestedProvider === undefined ? 'another provider' : PROVIDER_NAME[detail.requestedProvider]}, give with to: "new" and a brief pointing at ${detail.address ?? 'that conversation'}.`
+    case 'conversation-title-needed':
+      return 'Not sent: a new conversation needs conversation_title, naming the job.'
+    case 'a-service-has-one-conversation':
+      return `Not sent: ${detail.profileId ?? '?'} is a service with one conversation; leave to out.`
     case 'that-is-this-conversation':
       return 'Not given: that agent is you. Do this part within the piece you are working on.'
     case 'it-would-wait-on-itself':
@@ -405,8 +427,6 @@ export function describeRail(rail: SpawnRail, detail: SpawnRefusalDetail = {}): 
       return `Not given: its waits can’t all be checked. Give the work to another agent, or give it again once some of the work “${detail.profileId ?? '?'}” waits on has ended.`
     case 'its-record-cannot-be-read':
       return `Not given: part of this app’s record of what “${detail.profileId ?? '?'}” gave can’t be read. Give the work to another agent.`
-    case 'that-profile-exists':
-      return `“${detail.profileId ?? '?'}” is already an agent, so no new one was made and nothing was given. Give without new to use it: it keeps its memory.`
     // ⚠️ **True at a refusal AND at a launch**: `factory-text.ts` renders this very string into the
     // instructions while the switch is off (`SPAWNING_IS_OFF`), where nothing has been attempted.
     case 'spawning-disabled':
@@ -426,17 +446,7 @@ export function describeRail(rail: SpawnRail, detail: SpawnRefusalDetail = {}): 
         'folder and reaching the network with nobody asked.'
       )
     case 'no-such-profile':
-      return (
-        'There is no agent by that name, so nothing was given: check the spelling — list_profiles ' +
-        'names every agent. To bring a new agent into existence under this name, give it again with ' +
-        `new: true. It asked for “${detail.profileId ?? '?'}”.`
-      )
-    case 'no-room-for-provider-conversation':
-      return (
-        'Give work on a provider already in that pool, or choose another agent. ' +
-        `Your worker pool for “${detail.profileId ?? '?'}” is full and has no conversation on ${detail.provider === undefined ? 'the chosen provider' : PROVIDER_NAME[detail.provider]}. ` +
-        'A person can remove a worker to make room; waiting for these workers to finish will not free a place for another provider.'
-      )
+      return `Not sent: no agent is called ${detail.profileId ?? '?'}. list_profiles names them; create_agent makes one.`
     case 'service-provider-is-fixed':
       return (
         `“${detail.profileId ?? '?'}” is a service with one conversation on ${detail.provider === undefined ? 'its provider' : PROVIDER_NAME[detail.provider]}. ` +
@@ -486,15 +496,17 @@ export function refuse(rail: SpawnRail, detail: SpawnRefusalDetail = {}): SpawnR
  * one conversation with it runs on, judged at `model-rails.ts`' seam — the list, then the model's
  * efforts.
  */
-export const doneConditionSchema = z
+const doneConditionText = z
   .string({ error: WORK_FIELD_WORDS.required })
   .refine((value) => value.trim() !== '', WORK_FIELD_WORDS.blank)
-  .max(DONE_CONDITION_CHARS, WORK_FIELD_WORDS.conditionLimit)
 
-export const workBriefSchema = z
-  .string()
-  .refine((value) => value.trim() !== '', 'must say something')
-  .max(WORK_BRIEF_CHARS, WORK_FIELD_WORDS.briefLimit)
+const workBriefText = z.string().refine((value) => value.trim() !== '', 'must say something')
+
+export const doneConditionSchema = doneConditionText.max(
+  DONE_CONDITION_CHARS,
+  WORK_FIELD_WORDS.conditionLimit,
+)
+export const workBriefSchema = workBriefText.max(WORK_BRIEF_CHARS, WORK_FIELD_WORDS.briefLimit)
 
 /** What a value sent for a field is, in a word or two. */
 function aValueOf(value: unknown): string {
@@ -609,21 +621,21 @@ export const giveRequestSchema = z
     profile: z.string().refine(isPathSegment, `must be ${PATH_SEGMENT_RULE}`),
     /** What the piece is called — the line a person and a model read beside its label. */
     title: z.string().trim().min(1).max(PIECE_TITLE_CHARS),
-    brief: workBriefSchema,
-    definition_of_done: doneConditionSchema,
+    brief: workBriefText,
+    definition_of_done: doneConditionText,
     /** ⚑ Used only when this give starts a conversation; a relative one is read from the giver's. */
     folder: z.string().optional(),
+    /** "new" for a new conversation, or the address of the conversation that continues the job. */
+    to: z.string().trim().min(1).max(200).optional(),
+    /** The job's name, for a new conversation. */
+    conversation_title: z.string().optional(),
     /**
-     * The caller's own piece to hang this under, by label or id — inferred: the one open piece that
+     * The caller's own task to hang this under, by label or id — inferred: the one open task that
      * has reached it, of several the one its turn drives, else its root (D-022 · R4).
      */
-    piece: z.string().min(1).max(200).optional(),
-    /** 🔴 **D-016 · R3** — bring a new agent into existence under `profile`. */
-    new: z.boolean().optional(),
-    /** Choose this provider's conversation; never change an existing conversation's provider. */
+    under: z.string().min(1).max(200).optional(),
+    /** The provider a new conversation runs on; an existing conversation keeps its own. */
     provider: providerSchema.optional(),
-    /** Choose a free worker of the same normal profile rather than queueing on its primary. */
-    parallel: z.boolean().optional(),
     /**
      * 🔴 **D-016 · files handed over with the work, kept as the piece's inputs** — read from the
      * giver's folder, and kept before anything is written or sent (`RuntimeHost.giveWork`).
@@ -648,7 +660,12 @@ export type GiveRequest = z.infer<typeof giveRequestSchema>
  * is refused by name (`303` B) rather than dropped.
  */
 export const takeOnWorkRequestSchema = giveRequestSchema
-  .pick({ title: true, brief: true, definition_of_done: true, piece: true, inputs: true })
+  .pick({ title: true, inputs: true })
+  .extend({
+    brief: workBriefSchema,
+    definition_of_done: doneConditionSchema,
+    piece: z.string().min(1).max(200).optional(),
+  })
   .strict()
 
 /**
@@ -767,30 +784,17 @@ export interface GiveFacts {
    * what a person asked it directly.
    */
   readonly isAHelper: () => boolean
-  /** Whether an agent by that name exists. */
   readonly agentExists: (profileSlug: string) => boolean
-  /**
-   * 🔴 **The conversation this giver has with that agent on the chosen provider, or `null`** (R2 step 5) — over the
-   * reservations in flight and the rows, the giver's predecessors included, followed through
-   * `theOneInItsPlace`. ⛔ **A lookup and not a rail**: whatever state it is in, a give that finds
-   * it goes there.
-   */
-  readonly helperAs: (giver: string, profileSlug: string, provider?: Provider) => string | null
-  /** Stable normal-worker lookup; no binding is invented from an incomplete reading. */
-  readonly workerAt?: (
-    giver: string,
-    profileSlug: string,
-    parallel: boolean,
-    provider?: Provider,
-  ) =>
-    | { readonly is: 'legacy' | 'unknown' }
-    | { readonly is: 'full'; readonly noProvider?: true }
-    | { readonly is: 'known'; readonly conversation: string | null }
+  /** The conversation an address names, its agent and the provider it runs on; `null` if none. */
+  readonly conversationAt: (address: string) => AddressedConversation | null
+  /** The giver's most recent conversations with that agent, newest first, read a page at most. */
+  readonly recentWith: (profileSlug: string) => {
+    readonly rows: readonly RecentConversation[]
+    readonly more: boolean
+  }
   /** Whether a give to `profileSlug` reaches a service, and how ({@link ServiceAtAGive}). */
   readonly serviceAt: (giver: string, profileSlug: string) => ServiceAtAGive
   readonly spawningEnabled: () => boolean
-  /** Who is creating, for a give that brings a new agent into existence; `null`: not recorded. */
-  readonly creatorOf: () => IdentityCreator | null
   /** The provider the TARGET agent runs on, and what says so (`theProviderOfAnAgent`). */
   readonly itsProvider: (profileSlug: string) => ItsProvider
   /**
@@ -803,6 +807,20 @@ export interface GiveFacts {
   /** 🔴 **The TARGET identity's default model and effort, or null** (677; D-042 · R2). */
   readonly modelChoiceOf: (profileSlug: string) => AgentModelChoice | null
   readonly checkFolder: (path: string) => { ok: true; path: string } | { ok: false; reason: string }
+}
+
+/** A conversation a give's `to` addressed. */
+interface AddressedConversation {
+  readonly conversation: string
+  readonly profileId: string
+  /** `null` for a conversation recorded before its provider was. */
+  readonly provider: Provider | null
+}
+
+/** One of the giver's recent conversations with an agent, as a refusal lists it. */
+interface RecentConversation {
+  readonly address: string
+  readonly title: string | null
 }
 
 /**
@@ -829,8 +847,7 @@ export type ServiceAtAGive =
  * ⚑ **What {@link admitGive} answers** — the piece it hangs under and where the work goes: the
  * conversation found, or a START, admitted.
  *
- * ⛔ **A start carries its plan and, for a new agent, who is creating it** — the identity row is the
- * host's first write, made after every rail has answered.
+ * A start carries its plan; nothing is written until every rail has answered.
  */
 export type GiveAdmission =
   | { readonly ok: false; readonly refusal: SpawnRefusal }
@@ -857,8 +874,8 @@ export type GiveAdmission =
         | {
             readonly to: 'a-new-conversation'
             readonly start: AdmittedSpawn
-            /** ⚑ The identity to write first, when the give asked for a new agent; else `null`. */
-            readonly creating: { readonly slug: string; readonly by: IdentityCreator | null } | null
+            /** The job's name, written as the new conversation's first title. */
+            readonly title: string
           }
         | {
             /** A service: the piece is queued on its one conversation, recorded first if none. */
@@ -880,63 +897,60 @@ export type GiveAdmission =
  * call whose payload names the rail"*. ⚠️ **A launch or a delivery that fails after admission still
  * THROWS**, and that is not a rail: `give_work` classifies it as `message_agent` and a start do.
  */
-export type GiveOutcome =
-  | {
-      readonly ok: true
-      readonly piece: string
-      readonly label: string
-      /** 🔴 **The conversation the brief reached** — after a replacement, not the one looked up (R2). */
-      readonly owner: string
-      /** The conversation the lookup found or the start made, before any replacement. */
-      readonly found: string
-      readonly profile: string
-      /** The bound normal worker selected by an explicit parallel give. */
-      readonly worker?: WorkerBindingReading
-      /**
-       * ⚑ **D-022 · R3 — what became of the brief**, in the words the giver's piece verbs share:
-       * `sent` as the owner's turn now, or `held` until its turn ends.
-       */
-      readonly delivery: Exclude<TellDelivery, 'not-delivered'>
-      /** 🔴 **D-042 · what the conversation runs on now** — see {@link WhatItRunsOn}. */
-      readonly runsOn: WhatItRunsOn
-      /** The folder the new conversation works in, when this give started one. */
-      readonly startedIn: string | null
-      /** This start used the agent's default provider, rather than a provider or model named in the give. */
-      readonly startedOnDefault?: true
-      /**
-       * 🔴 **W4.189 · the folder the give named, as this app used it** — the new conversation's
-       * working folder, or a grant on the one it has — with D's notice when it meets one of the
-       * places this app names; `null`: the give named none.
-       */
-      readonly givenFolder: GivenFolder | null
-      /** ⚑ **W4.189** — why a folder named for the conversation it has was not granted, or `null`. */
-      readonly folderNotGranted: string | null
-      /**
-       * ⚑ **W4.189 · what the grant changes for that conversation**, so the receipt says only what
-       * is true: `writes` — Codex asking first, which may now write there without asking; `reads` —
-       * Claude asking first, which reads there without asking and still asks before changing
-       * anything; `already` — a conversation that runs without asking reached it already. `null`:
-       * no grant.
-       */
-      readonly grantReach: 'writes' | 'reads' | 'already' | null
-      /** 🔴 **The files it handed over, kept as the piece's inputs** — by id and name; `[]`: none. */
-      readonly inputs: readonly { readonly resource: string; readonly name: string }[]
-      /** How many open pieces are ahead of it at the service it was queued on; absent for no service. */
-      readonly queuedBehind?: number
-      /** When the piece being worked on at that service stalled, while it stays stalled. */
-      readonly queueStalledAt?: number
-      /** The giver's stalled pieces in the conversation it went to, with why. */
-      readonly stalled?: readonly AStallAGiveNames[]
-    }
+export type GiveOutcome = ToolOutcome<
+  {
+    readonly piece: string
+    readonly label: string
+    /** 🔴 **The conversation the brief reached** — after a replacement, not the one looked up (R2). */
+    readonly owner: string
+    /** The conversation the lookup found or the start made, before any replacement. */
+    readonly found: string
+    readonly profile: string
+    /**
+     * ⚑ **D-022 · R3 — what became of the brief**, in the words the giver's piece verbs share:
+     * `sent` as the owner's turn now, or `held` until its turn ends.
+     */
+    readonly delivery: Exclude<TellDelivery, 'not-delivered'>
+    /** 🔴 **D-042 · what the conversation runs on now** — see {@link WhatItRunsOn}. */
+    readonly runsOn: WhatItRunsOn
+    /** The folder the new conversation works in, when this give started one. */
+    readonly startedIn: string | null
+    /** This start used the agent's default provider, rather than a provider or model named in the give. */
+    readonly startedOnDefault?: true
+    /**
+     * 🔴 **W4.189 · the folder the give named, as this app used it** — the new conversation's
+     * working folder, or a grant on the one it has — with D's notice when it meets one of the
+     * places this app names; `null`: the give named none.
+     */
+    readonly givenFolder: GivenFolder | null
+    /** ⚑ **W4.189** — why a folder named for the conversation it has was not granted, or `null`. */
+    readonly folderNotGranted: string | null
+    /**
+     * ⚑ **W4.189 · what the grant changes for that conversation**, so the receipt says only what
+     * is true: `writes` — Codex asking first, which may now write there without asking; `reads` —
+     * Claude asking first, which reads there without asking and still asks before changing
+     * anything; `already` — a conversation that runs without asking reached it already. `null`:
+     * no grant.
+     */
+    readonly grantReach: 'writes' | 'reads' | 'already' | null
+    /** 🔴 **The files it handed over, kept as the piece's inputs** — by id and name; `[]`: none. */
+    readonly inputs: readonly { readonly resource: string; readonly name: string }[]
+    readonly overflow?: readonly SendOverflow[]
+    /** How many open pieces are ahead of it at the service it was queued on; absent for no service. */
+    readonly queuedBehind?: number
+    readonly recipientState: SendRecipientState
+    /** When the piece being worked on at that service stalled, while it stays stalled. */
+    readonly queueStalledAt?: number
+    /** The giver's stalled pieces in the conversation it went to, with why. */
+    readonly stalled?: readonly AStallAGiveNames[]
+  },
   /**
    * ⚑ **A resource refusal is the give's last rail** — a file that cannot be kept refuses the whole
    * give before anything is written or sent. 🔴 **D-042 · and a model refusal its choice's**
    * (`model-rails.ts`), judged after the rails and before anything is written.
    */
-  | {
-      readonly ok: false
-      readonly refusal: SpawnRefusal | ResourceRefusal | ModelRefusal
-    }
+  SpawnRefusal | ResourceRefusal | ModelRefusal
+>
 
 /**
  * Resolve the provider before both conversation lookup and a new start. An explicit provider wins,
@@ -1008,9 +1022,9 @@ export function admitGive(
   // owner, and a replaced root owner has its own new root (D-016 spec D38).
   const held = facts.held(giving.sessionId)
   let under: HeldPiece
-  if (asked.piece !== undefined) {
-    const named = held.find((one) => one.piece === asked.piece || one.label === asked.piece)
-    if (named === undefined) return no('no-piece-you-hold-by-that-name', { piece: asked.piece })
+  if (asked.under !== undefined) {
+    const named = held.find((one) => one.piece === asked.under || one.label === asked.under)
+    if (named === undefined) return no('no-piece-you-hold-by-that-name', { piece: asked.under })
     under = named
   } else {
     // 🔴 **D-022 · R4 — only a piece whose brief has reached it counts**: the ONE such piece; of
@@ -1041,8 +1055,7 @@ export function admitGive(
     under = inferred
   }
 
-  // 3 · the lookup — a lookup, not a rail: whatever state the conversation is in, the work goes there.
-  const service = asked.new === true ? null : facts.serviceAt(giving.sessionId, asked.profile)
+  const service = facts.serviceAt(giving.sessionId, asked.profile)
   if (service?.is === 'off') return no('services-are-off', { profileId: asked.profile })
   if (service?.is === 'unknown')
     return no('its-kind-is-unknown', {
@@ -1062,8 +1075,8 @@ export function admitGive(
         choices: facts.serviceModels?.() ?? [],
       })
     }
-    if (asked.parallel === true)
-      return no('parallel-not-for-a-service', { profileId: asked.profile })
+    if (asked.to !== undefined)
+      return no('a-service-has-one-conversation', { profileId: asked.profile })
     if (service.isTheGiver) return no('that-is-this-conversation', { profileId: asked.profile })
     if (service.waitsOnTheGiver === 'yes') {
       return no('it-would-wait-on-itself', { profileId: asked.profile })
@@ -1108,37 +1121,34 @@ export function admitGive(
   }
 
   const known = facts.agentExists(asked.profile)
-  const provider = theProviderAStartRunsOn(
-    asked,
-    known,
-    giving,
-    facts,
-    facts.theNamedModelsProvider(),
-  )
-  const worker = facts.workerAt?.(
-    giving.sessionId,
-    asked.profile,
-    asked.parallel === true && asked.new !== true,
-    provider ?? undefined,
-  )
-  if (worker?.is === 'full') {
-    return asked.parallel === true && worker.noProvider !== true
-      ? no('no-free-worker-at-capacity', { profileId: asked.profile })
-      : no('no-room-for-provider-conversation', {
-          profileId: asked.profile,
-          ...(provider === null ? {} : { provider }),
-        })
+  if (!known) return no('no-such-profile', { profileId: asked.profile })
+  if (asked.to === undefined) {
+    const recent = facts.recentWith(asked.profile)
+    return no('name-the-conversation', {
+      profileId: asked.profile,
+      recent: recent.rows,
+      more: recent.more,
+    })
   }
-  if (worker?.is === 'unknown') return no('worker-binding-is-unknown', { profileId: asked.profile })
-  const found =
-    worker?.is === 'known'
-      ? worker.conversation
-      : facts.helperAs(giving.sessionId, asked.profile, provider ?? undefined)
-  if (found !== null) {
-    // 3b · ⚑ a found conversation proves the agent exists, and reusing it would give "a new agent" a
-    // memory — R3's own reason (D-016 spec D1).
-    if (asked.new === true) return no('that-profile-exists', { profileId: asked.profile })
-    // For an existing conversation, a supplied folder becomes an additional grant for this work. An unusable folder adds no grant and is explained in the receipt; it does not refuse the give. The host reports its location separately.
+  if (asked.to !== 'new') {
+    const at = facts.conversationAt(asked.to)
+    if (at === null) return no('no-conversation-by-that-address', { address: asked.to })
+    if (foldProfileName(at.profileId) !== foldProfileName(asked.profile)) {
+      return no('not-that-agents-conversation', {
+        address: asked.to,
+        profileId: asked.profile,
+        ownerProfile: at.profileId,
+      })
+    }
+    const requested = asked.provider ?? facts.theNamedModelsProvider()
+    if (requested !== null && at.provider !== null && requested !== at.provider) {
+      return no('its-provider-is-fixed', {
+        address: asked.to,
+        provider: at.provider,
+        requestedProvider: requested,
+      })
+    }
+    // For an existing conversation, a supplied folder becomes an additional grant for this work. An unusable folder adds no grant and is explained in the receipt; it does not refuse the give.
     let grant: string | null = null
     let notGranted: string | null = null
     if (asked.folder !== undefined && asked.folder.trim() !== '') {
@@ -1151,15 +1161,21 @@ export function admitGive(
       asked,
       giver: giving.sessionId,
       under,
-      goes: { to: 'the-one-it-has', conversation: found, grant, notGranted },
+      goes: { to: 'the-one-it-has', conversation: at.conversation, grant, notGranted },
     }
   }
+  const title = aConversationTitle(asked.conversation_title)
+  if (title === null) return no('conversation-title-needed')
+  const provider = theProviderAStartRunsOn(
+    asked,
+    known,
+    giving,
+    facts,
+    facts.theNamedModelsProvider(),
+  )
 
-  // 4 · nothing found: the rails of a START.
+  // 7 · "new": the rails of a START.
   if (!facts.spawningEnabled()) return no('spawning-disabled', { profileId: asked.profile })
-  // ⚑ **Whether the agent exists is a read of its row** — `list_profiles` names every one, so the
-  // answer is no secret — and it decides which of the two rails below the name meets.
-  const creating = asked.new === true && !known
 
   // ⛔ **INHERITED** (499, HO-036): a conversation a give starts runs in its giver's mode.
   const approvalMode = giving.approvalMode
@@ -1180,10 +1196,6 @@ export function admitGive(
       profileId: asked.profile,
     })
   }
-
-  // ⚑ **R3 — the name**: a typo is refused, and a new agent is asked for by `new` alone.
-  if (!known && asked.new !== true) return no('no-such-profile', { profileId: asked.profile })
-  if (known && asked.new === true) return no('that-profile-exists', { profileId: asked.profile })
 
   // ⚑ After the name, so a give a person's choice would not let through is never told to wait for it.
   if (provider === null) {
@@ -1207,10 +1219,9 @@ export function admitGive(
 
   const start: AdmittedSpawn = {
     parentSessionId: giving.sessionId,
-    // ⚑ **An agent this give creates starts under its folded name** — the one its row is written
-    // with; an existing one under the spelling the give used, which `provider_session.profile_id`
+    // An existing agent starts under the spelling the give used, which `provider_session.profile_id`
     // keeps (187).
-    profileId: known ? asked.profile : foldProfileName(asked.profile),
+    profileId: asked.profile,
     provider,
     cwd: folder.path,
     approvalMode,
@@ -1225,7 +1236,7 @@ export function admitGive(
     goes: {
       to: 'a-new-conversation',
       start,
-      creating: creating ? { slug: foldProfileName(asked.profile), by: facts.creatorOf() } : null,
+      title,
     },
   }
 }

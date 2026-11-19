@@ -826,6 +826,8 @@ describe('a service is reached through the piece it is on', () => {
       })
       world.anAgent('helper', 'nothing kept')
       const given = await call(host, service, 'give_work', {
+        to: 'new',
+        conversation_title: 'Find rooms',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'helper',
         title: 'Find rooms',
@@ -1567,6 +1569,8 @@ describe('a service is reached through the piece it is on', () => {
       })
       world.anAgent('helper', 'nothing kept')
       const given = await call(host, service, 'give_work', {
+        to: 'new',
+        conversation_title: 'Find rooms',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'helper',
         title: 'Find rooms',
@@ -2074,6 +2078,8 @@ describe('a service is reached through the piece it is on', () => {
     ): Promise<{ helper: string; question: string }> => {
       world.anAgent('helper', 'nothing kept')
       const given = await call(host, service, 'give_work', {
+        to: 'new',
+        conversation_title: 'Find rooms',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'helper',
         title: 'Find rooms',
@@ -2319,6 +2325,8 @@ describe('a service is reached through the piece it is on', () => {
       world.anAgent('helper', 'nothing kept')
       world.anAgent('sub-helper', 'nothing kept')
       const given = await call(host, service, 'give_work', {
+        to: 'new',
+        conversation_title: 'Find rooms',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'helper',
         title: 'Find rooms',
@@ -2330,6 +2338,8 @@ describe('a service is reached through the piece it is on', () => {
         expect(world.store.piecesOwnedBy(helper)).toHaveLength(1)
       })
       const passedOn = await call(host, helper, 'give_work', {
+        to: 'new',
+        conversation_title: 'Check the floors',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'sub-helper',
         title: 'Check the floors',
@@ -2379,6 +2389,7 @@ describe('a service is reached through the piece it is on', () => {
       await call(host, caller, 'withdraw_task', { piece: one.label })
       await handedOver(service, two.piece)
       const again = await call(host, service, 'give_work', {
+        to: helper,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'helper',
         title: 'Count the chairs',
@@ -2404,6 +2415,8 @@ describe('a service is reached through the piece it is on', () => {
         const { host, caller, service, one, two } = await aServiceOnTheFirstPiece()
         world.anAgent('helper', 'nothing kept')
         const given = await call(host, service, 'give_work', {
+          to: 'new',
+          conversation_title: 'Find rooms',
           definition_of_done: 'The requested result and its checks are recorded.',
           profile: 'helper',
           title: 'Find rooms',
@@ -2449,6 +2462,7 @@ describe('a service is reached through the piece it is on', () => {
         world.clock = time === 'the same' ? late.at : late.at - 60_000
         world.clockStep = 0
         const again = await call(host, service, 'give_work', {
+          to: helper,
           definition_of_done: 'The requested result and its checks are recorded.',
           profile: 'helper',
           title: 'Count the chairs',
@@ -2478,6 +2492,8 @@ describe('a service is reached through the piece it is on', () => {
       const working = aGate()
       world.turnsWait = working.held
       const first = await call(host, service, 'give_work', {
+        to: 'new',
+        conversation_title: 'Find rooms',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'helper',
         title: 'Find rooms',
@@ -2489,6 +2505,7 @@ describe('a service is reached through the piece it is on', () => {
       await call(host, caller, 'withdraw_task', { piece: one.label })
       await handedOver(service, two.piece)
       const second = await call(host, service, 'give_work', {
+        to: helper,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'helper',
         title: 'Count the chairs',
@@ -2526,6 +2543,8 @@ describe('a service is reached through the piece it is on', () => {
       const { host, caller, other, service, one, two } = await aServiceOnTheFirstPiece()
       world.anAgent('helper', 'nothing kept')
       const first = await call(host, service, 'give_work', {
+        to: 'new',
+        conversation_title: 'Find rooms',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'helper',
         title: 'Find rooms',
@@ -2544,6 +2563,7 @@ describe('a service is reached through the piece it is on', () => {
       await call(host, caller, 'withdraw_task', { piece: one.label })
       await handedOver(service, two.piece)
       const again = await call(host, service, 'give_work', {
+        to: helper,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'helper',
         title: 'Count the chairs',
@@ -2578,6 +2598,8 @@ describe('a service is reached through the piece it is on', () => {
       const working = aGate()
       world.turnsWait = working.held
       const busy = await call(host, service, 'give_work', {
+        to: 'new',
+        conversation_title: 'Keep busy',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'helper',
         title: 'Keep busy',
@@ -2589,6 +2611,7 @@ describe('a service is reached through the piece it is on', () => {
         expect(rows(helper, 'user_turn')).toHaveLength(1)
       })
       const held = await call(host, service, 'give_work', {
+        to: helper,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'helper',
         title: 'Find rooms',
@@ -2610,6 +2633,7 @@ describe('a service is reached through the piece it is on', () => {
       await call(host, caller, 'withdraw_task', { piece: one.label })
       await handedOver(service, two.piece)
       const next = await call(host, service, 'give_work', {
+        to: helper,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'helper',
         title: 'Count the chairs',

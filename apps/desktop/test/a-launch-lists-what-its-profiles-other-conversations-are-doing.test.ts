@@ -452,10 +452,12 @@ describe('§3 · a launch lists the profile’s other conversations', () => {
    */
   const twoAlisOfTwoGivers = async (afterTheFirst: () => void = () => {}) => {
     const bro = await personOpens(DEFAULT_PROFILE_ID)
+    await callOn(bro.tools, 'create_agent', { profile_slug: 'ali' })
     const first = await callOn(bro.tools, 'give_work', {
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'ali',
-      new: true,
+      to: 'new',
+      conversation_title: 'Check the fixes',
       title: 'Check the fixes',
       brief: 'check the fixes',
     })
@@ -469,6 +471,8 @@ describe('§3 · a launch lists the profile’s other conversations', () => {
 
     const ada = await personOpens('ada')
     const second = await callOn(ada.tools, 'give_work', {
+      to: 'new',
+      conversation_title: 'List the hotels',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'ali',
       title: 'List the hotels',
@@ -536,6 +540,8 @@ describe('§3 · a launch lists the profile’s other conversations', () => {
   it('a reopened conversation excludes itself and retains its helper address', async () => {
     const a = await personOpens('ali')
     const given = await callOn(a.tools, 'give_work', {
+      to: 'new',
+      conversation_title: 'Sub task',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'ali',
       title: 'Sub task',
@@ -571,6 +577,7 @@ describe('§3 · a launch lists the profile’s other conversations', () => {
     let ali = ''
     for (const title of titles) {
       const given = await callOn(bro.tools, 'give_work', {
+        ...(ali === '' ? { to: 'new', conversation_title: title } : { to: ali }),
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'ali',
         title,

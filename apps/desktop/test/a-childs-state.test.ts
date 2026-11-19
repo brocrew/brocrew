@@ -153,6 +153,8 @@ describe('632 · a child avatar shows what the child is doing', () => {
     await host.close(worker, window)
     const parent = await personOpens()
     const given = await toolCall(parent, 'give_work', {
+      to: 'new',
+      conversation_title: 'the world clock page',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'the world clock page',

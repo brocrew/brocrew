@@ -122,6 +122,8 @@ describe('an answer an agent passes down says when a person decided it', () => {
     await host.close((await personOpens('worker')).id, window)
     const pm = await personOpens(DEFAULT_PROFILE_ID)
     const given = await callOn(pm.tools, 'give_work', {
+      to: 'new',
+      conversation_title: 'The notes',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'The notes',
@@ -270,6 +272,8 @@ describe('an answer an agent passes down says when a person decided it', () => {
       await host.close((await personOpens('worker')).id, window)
       const top = await personOpens(DEFAULT_PROFILE_ID)
       const toLead = await callOn(top.tools, 'give_work', {
+        to: 'new',
+        conversation_title: 'The front end',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'lead',
         title: 'The front end',
@@ -280,6 +284,8 @@ describe('an answer an agent passes down says when a person decided it', () => {
       const leadTools = order.at(-1)
       if (leadTools === undefined) throw new Error('no lead toolset')
       const toWorker = await callOn(leadTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'The notes',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'The notes',

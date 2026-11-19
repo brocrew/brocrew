@@ -226,6 +226,8 @@ describe('650 · a refusal that clears on its own', () => {
     const call = toolsOf(parent)
     const given = payload(
       await call('give_work', {
+        to: 'new',
+        conversation_title: 'the control',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'sibling',
         title: 'the control',
@@ -247,6 +249,8 @@ describe('650 · a refusal that clears on its own', () => {
     armTheHold()
     const before = new Set((await cardsOf(call)).map((card) => card.agent))
     const spawning = call('give_work', {
+      to: 'new',
+      conversation_title: 'the subject',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'the subject',
@@ -385,6 +389,8 @@ describe('650 · a refusal that clears on its own', () => {
     const { call } = await aParentWithASibling()
     const given = payload(
       await call('give_work', {
+        to: 'new',
+        conversation_title: 'x',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'x',
@@ -494,6 +500,8 @@ describe('650 · a refusal that clears on its own', () => {
   ): Promise<{ agent: string; piece: string }> => {
     const given = payload(
       await call('give_work', {
+        to: 'new',
+        conversation_title: 'a receiver that parks',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile,
         title: 'a receiver that parks',
@@ -626,6 +634,8 @@ describe('650 · a refusal that clears on its own', () => {
 
     await expect(
       call('give_work', {
+        to: 'new',
+        conversation_title: 'x',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'x',
@@ -643,6 +653,8 @@ describe('650 · a refusal that clears on its own', () => {
     failing.mockRestore()
     const control = payload(
       await call('give_work', {
+        to: 'new',
+        conversation_title: 'x',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'sibling',
         title: 'x',
@@ -685,6 +697,7 @@ describe('650 · a refusal that clears on its own', () => {
     expect(
       payload(
         await call('give_work', {
+          to: control,
           profile: 'worker',
           title: 'x',
           brief: 'and then this',
@@ -701,6 +714,7 @@ describe('650 · a refusal that clears on its own', () => {
 
     await expect(
       call('give_work', {
+        to: worker.agent,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'sibling',
         title: 'x',

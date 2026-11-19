@@ -193,6 +193,8 @@ describe('355 · the identity door a person writes through', () => {
       const asPm = { ownerId: agentCallerId(parent) }
       const refused = await host.giveWork(
         {
+          to: 'new',
+          conversation_title: 'While it is off',
           definition_of_done: 'The requested result and its checks are recorded.',
           profile: 'worker',
           title: 'While it is off',
@@ -209,6 +211,8 @@ describe('355 · the identity door a person writes through', () => {
       })
       const allowed = await host.giveWork(
         {
+          to: 'new',
+          conversation_title: 'Once it is back on',
           definition_of_done: 'The requested result and its checks are recorded.',
           profile: 'worker',
           title: 'Once it is back on',

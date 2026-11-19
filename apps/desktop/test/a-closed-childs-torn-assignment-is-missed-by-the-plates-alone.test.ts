@@ -162,6 +162,8 @@ describe('676 M13 · a closed child’s torn assignment is missed by the plates 
     const pm = await personOpens('pm')
     const pmTools = theToolsetJustHandedOut()
     const given = await call(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'the work this dispatch is about',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'the work this dispatch is about',
