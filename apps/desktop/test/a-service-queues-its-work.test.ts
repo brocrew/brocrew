@@ -83,6 +83,8 @@ describe('a service queues the work it is given', () => {
   describe('a give to a service', () => {
     it('keeps its address and title across reads with work from two callers', async () => {
       const { host, first, second } = await aServiceAndTwoCallers()
+      const serviceName = 'Browser Driver'
+      expect(world.store.setAgentDisplayName('browser-driver', serviceName)).toBe(true)
       const firstTools = agentToolsFor(host, first)
       const secondTools = agentToolsFor(host, second)
       const give = (title: string) => ({
@@ -94,8 +96,8 @@ describe('a service queues the work it is given', () => {
       const one = await callOn(firstTools, 'give_work', give('First caller job'))
       const two = await callOn(secondTools, 'give_work', give('Second caller job'))
       const service = one.agent as string
-      const recipient = { id: service, address: service, title: 'browser-driver' }
-      const line = `conversation ${service} · browser-driver`
+      const recipient = { id: service, address: service, title: serviceName }
+      const line = `conversation ${service} · ${serviceName}`
       expect(one).toMatchObject({ outcome: 'ok', receipt: { recipient } })
       expect(two).toMatchObject({ outcome: 'ok', agent: service, receipt: { recipient } })
       expect(world.store.firstTaskOf(service)?.label).toBe(one.label)
@@ -136,7 +138,7 @@ describe('a service queues the work it is given', () => {
         expect(search.read(first, { profile: 'browser-driver' })).toMatchObject({
           ok: true,
           page: {
-            hits: [{ conversation: service, address: service, title: 'browser-driver', line }],
+            hits: [{ conversation: service, address: service, title: serviceName, line }],
           },
         })
         expect(search.read(first, { profile: 'normal-reader' })).toMatchObject({
