@@ -158,7 +158,6 @@ function storeOver(): { store: AgentStore; lists: ModelLists } {
       identities: [ident(world.slug, { provider: world.itsProvider })],
       ...(world.kind === 'service' ? { services: [world.slug] } : {}),
       foldersWithoutARow: [],
-      spawningEnabled: true,
       defaultApprovalMode: 'ask',
       use: [],
     }) as unknown as AgentIdentities

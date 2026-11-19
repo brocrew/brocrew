@@ -721,10 +721,6 @@ const runtime: RuntimeBridge = Object.freeze({
   }): Promise<ExternalMcpServerRow> => command({ kind: 'registerExternalMcpServer', ...input }),
   removeExternalMcpServer: (input: { serverId: string }): Promise<boolean> =>
     command({ kind: 'removeExternalMcpServer', ...input }),
-  setSpawningEnabled: (input: { enabled: boolean }): Promise<{ spawningEnabled: boolean }> =>
-    command({ kind: 'setSpawningEnabled', ...input }),
-  setServicesOn: (input: { on: boolean }): Promise<{ servicesOn: boolean }> =>
-    command({ kind: 'setServicesOn', ...input }),
   setDefaultApprovalMode: (input: {
     mode: 'ask' | 'auto'
   }): Promise<{ defaultApprovalMode: 'ask' | 'auto' }> =>

@@ -75,7 +75,6 @@ it('owns state and file marks through superseding notices, partial failures, del
     return result
   }
   const host = world.aHost({
-    servicesOn: false,
     windowReader: {
       read,
       close: async () => {

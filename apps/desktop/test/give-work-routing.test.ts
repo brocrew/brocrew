@@ -27,7 +27,6 @@ const facts: GiveFacts = {
     more: true,
   }),
   serviceAt: () => ({ is: 'normal' }),
-  spawningEnabled: () => true,
   itsProvider: () => ({ provider: 'claude', from: 'saved' }),
   theNamedModelsProvider: () => null,
   modelChoiceOf: () => null,

@@ -523,7 +523,6 @@ describe('688 §7 · O1 — the agent’s own instructions draw in the sheet’s
     identities: [identity],
     foldersWithoutARow: [],
     use: [],
-    spawningEnabled: true,
     defaultApprovalMode: 'ask',
     externalMcpServers: [],
   } as unknown as AgentIdentities

@@ -28,7 +28,6 @@ const REGISTER: AgentIdentities = {
   identities: [],
   foldersWithoutARow: [],
   use: [],
-  spawningEnabled: true,
   defaultApprovalMode: 'ask',
   externalMcpServers: [
     {

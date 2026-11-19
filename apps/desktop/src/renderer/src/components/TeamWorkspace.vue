@@ -204,19 +204,6 @@ async function remove(slug: string): Promise<void> {
   busy.value = null
 }
 
-/** Whether services are on in this workspace, as the host last said. */
-const servicesOn = computed(() => props.agents?.servicesOn === true)
-const servicesBusy = ref(false)
-
-async function switchServices(event: Event): Promise<void> {
-  const input = event.target as HTMLInputElement
-  servicesBusy.value = true
-  message.value = await store.setServices(input.checked)
-  servicesBusy.value = false
-  // A refused change leaves the switch where services still stand.
-  if (message.value !== null) input.checked = servicesOn.value
-}
-
 /**
  * 🔴 **Each agent's conversations, from the one list** (593; ⚑ D-016 · the rail's list, narrowed) —
  * see {@link theirConversations}. ⛔ `null` is *the list has not answered yet*.
@@ -264,22 +251,6 @@ function pressForest(row: ForestRow): void {
         <p class="eyebrow">Workspace directory</p>
         <h1 class="bb-page-title">Team</h1>
         <p class="team-lede">Identities persist before and between conversations.</p>
-      </div>
-      <div class="team-services" data-cy="team-services">
-        <label class="team-services-switch">
-          <input
-            type="checkbox"
-            role="switch"
-            :checked="servicesOn"
-            :disabled="servicesBusy || props.agents === null"
-            data-cy="team-services-switch"
-            @change="switchServices"
-          />
-          <span>Services</span>
-        </label>
-        <small class="team-services-line" data-cy="team-services-line">{{
-          servicesOn ? 'On: agents can be services.' : 'Off: queued work waits. Nothing is stopped.'
-        }}</small>
       </div>
       <button
         class="bb-button bb-button--primary"

@@ -30,7 +30,6 @@ function context(over: Partial<InstructionContext> = {}): InstructionContext {
     profileSlug: 'fictional-writer',
     cwd: '/tmp/work',
     startedBy: null,
-    spawningEnabled: true,
     root: 'not-yet-numbered',
     others: { shown: [], more: 0 },
     ...over,
