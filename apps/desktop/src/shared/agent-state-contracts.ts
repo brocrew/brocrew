@@ -174,6 +174,8 @@ export type AgentState =
       readonly to: readonly [string, ...string[]]
       /** When the oldest of those questions was put to it, epoch ms; absent where this app cannot say. */
       readonly since?: number
+      /** The answerer has no running turn or background work. */
+      readonly stalled?: true
     }
   | { readonly is: 'in-the-background'; readonly what: string | null }
   | { readonly is: 'scheduled'; readonly dueAt: number | null }

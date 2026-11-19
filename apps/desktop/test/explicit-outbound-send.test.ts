@@ -5,6 +5,7 @@ import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { SendReceipt } from '../src/shared/tool-outcome'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
+import { waitFor } from './lib/f093-host'
 
 describe('explicit outbound sends', () => {
   let world: AServiceWorld
@@ -76,6 +77,34 @@ describe('explicit outbound sends', () => {
     } finally {
       gate.resolve()
     }
+  })
+
+  it('starts the answerer’s next turn with an unanswered recorded question', async () => {
+    const asked = await send('ask_question', {
+      who_answers: 'an-agent',
+      agent: target,
+      question: 'Does the report cover the old routing?',
+    })
+    const id = asked.structured?.question
+    if (typeof id !== 'string') throw new Error('The question has no recorded id.')
+    const received = () =>
+      world.sent.filter((one) => one.as === 'outbound-target' && one.words.includes(id))
+    await waitFor(() => received().length >= 2, 'the unanswered question to start the next turn')
+    expect(received()[1]?.words).toContain(`Use asked_by ${sender} with this question id.`)
+    expect(world.store.routedRequestsOf(sender)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ requestId: id, state: 'open' })]),
+    )
+    const answer = agentToolsFor(host, target).tools.find((one) => one.name === 'answer_question')
+    if (answer === undefined) throw new Error('The answer tool is missing.')
+    const result = await answer.call({
+      asked_by: sender,
+      question: id,
+      answers: [{ part: 'answer', answer: ['Yes.'] }],
+    })
+    expect(result.structured?.outcome).toBe('ok')
+    expect(world.store.routedRequestsOf(sender).find((one) => one.requestId === id)?.state).toBe(
+      'answered',
+    )
   })
 
   it('keeps an archived recipient archived and reports the first failed wake of a recorded question', async () => {
