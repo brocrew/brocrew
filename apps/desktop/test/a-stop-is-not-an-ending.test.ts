@@ -93,8 +93,6 @@ describe('D-017 · a stop is not an ending', () => {
     const callOn = (sessionId: string, name: ToolName, args: Record<string, unknown>) =>
       callAgentTool(agentToolsFor(host, sessionId), name, args)
 
-    const personOpens = personOpener(() => ({ host, root, window }), 'ask')
-
     /** ⚑ A PM in a window, and one child its give started through the real door (D-016). */
     const aPmAndAChild = () =>
       openAndGiveToNewChild({ host, root, window }, 'The notes', 'the notes')

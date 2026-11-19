@@ -164,8 +164,15 @@ describe('what a waker reads after its own act', () => {
    * ⚑ **D-016 · a child given a piece** — `give_work` starts it, and its brief (`go`, or `migrate`)
    * is its first turn; a person's window is put on it. Returns the child, its piece's id and label.
    */
-  const giveAChild = (pm: string, profile: string, brief: string) =>
-    giveChildWithProfileTitle((name, args) => callOn(pm, name, args), profile, brief)
+  const giveAChild = async (pm: string, profile: string, brief: string) => {
+    const given = await giveChildWithProfileTitle(
+      (name, args) => callOn(pm, name, args),
+      profile,
+      brief,
+    )
+    host.claimSession(given.child, window)
+    return given
+  }
 
   /**
    * ⚑ **In ONE app run, a worker parked mid-turn on the work its parent gave it**, with a person's
