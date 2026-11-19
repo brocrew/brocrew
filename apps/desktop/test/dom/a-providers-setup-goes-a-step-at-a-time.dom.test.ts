@@ -377,7 +377,7 @@ describe('§8 · the Providers card’s Set up opens it', () => {
     m.q('setup-check').click()
     await settled()
     expect(m.all('provider-inline-setup')).toHaveLength(0)
-    expect(m.q('provider-standing').textContent).toBe('Ready')
+    expect(m.q('provider-standing').textContent?.trim()).toBe('Ready')
     expect(m.q('provider-account').textContent).toContain('Runs on your')
   })
 })
