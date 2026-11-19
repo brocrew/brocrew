@@ -9,6 +9,7 @@ import { theMessagesOf } from '../src/shared/runtime-ipc'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { describeConversation } from '../src/main/runtime/conversation-address'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
+import { deferred } from './helpers/quit-open-list-cases'
 import { waitFor } from './lib/f093-host'
 import { recordHistoricalReplacement } from './lib/historical-replacement'
 
@@ -114,8 +115,8 @@ describe('explicit outbound sends', () => {
   })
 
   it('records a busy Message and an Ask in order before either is delivered', async () => {
-    const gate = Promise.withResolvers<void>()
-    const batch = Promise.withResolvers<void>()
+    const gate = deferred()
+    const batch = deferred()
     world.turnsWait = gate.promise
     try {
       await host.send(target, 'Hold this turn open.', world.window)
@@ -192,7 +193,7 @@ describe('explicit outbound sends', () => {
 
   it('moves an undelivered Ask with the same question and the successor’s receiver header', async () => {
     const successor = await world.aPersonOpens(host, 'outbound-target')
-    const gate = Promise.withResolvers<void>()
+    const gate = deferred()
     world.turnsWait = gate.promise
     try {
       await host.send(target, 'Hold this conversation open.', world.window)
@@ -308,8 +309,8 @@ describe('explicit outbound sends', () => {
       )
       const handle = world.handleOf(profile)
       const handover = vi.spyOn(handle, 'send')
-      const initial = Promise.withResolvers<void>()
-      const replay = Promise.withResolvers<void>()
+      const initial = deferred()
+      const replay = deferred()
       world.turnsWait = initial.promise
       try {
         const asked = await send('ask_question', {
@@ -402,7 +403,7 @@ describe('explicit outbound sends', () => {
 
   it('delivers held messages even if the reminder read fails at the turn boundary', async () => {
     const handle = world.handleOf('outbound-target')
-    const gate = Promise.withResolvers<void>()
+    const gate = deferred()
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const progress = vi.spyOn(world.store, 'queuedPromptProgress')
     world.turnsWait = gate.promise
@@ -528,7 +529,7 @@ describe('explicit outbound sends', () => {
     'retracts a rehydrated unanswered notice once the question is %s',
     async (ended) => {
       host.claimSession(sender, world.window)
-      const gate = Promise.withResolvers<void>()
+      const gate = deferred()
       const keepBusy: (() => void)[] = []
       let receiver = sender
       world.turnsWait = gate.promise
@@ -638,7 +639,7 @@ describe('explicit outbound sends', () => {
   )
 
   it('keeps an unanswered notice in an archived asker’s mailbox until an explicit reopen', async () => {
-    const gate = Promise.withResolvers<void>()
+    const gate = deferred()
     world.turnsWait = gate.promise
     try {
       const asked = await send('ask_question', {
