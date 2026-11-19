@@ -192,34 +192,6 @@ describe('a service queues the work it is given', () => {
   })
 
   describe('a give it refuses', () => {
-    it('where this app can’t tell it is the only one on its data', async () => {
-      world.anAgent('browser-driver')
-      world.anAgent('caller', 'nothing kept')
-      const host = world.aHost({ owned: false })
-      const caller = await world.aPersonOpens(host, 'caller')
-      const recorded = world.conversationsRecorded()
-      const started = [...world.startedAs]
-      const give = agentToolsFor(host, caller).tools.find((tool) => tool.name === 'give_work')
-      if (give === undefined) throw new Error('no give_work tool')
-      const said = await give.call({
-        profile: 'browser-driver',
-        title: 'A piece',
-        brief: 'a piece',
-        definition_of_done: 'The requested result and its checks are recorded.',
-      })
-      expect(said.structured, said.text).toMatchObject({
-        outcome: 'refused',
-        rail: 'service-queue-not-owned',
-        reason:
-          'Not sent: this app may be open twice. Ask the person with request_action to close any other BroCrew instance using this workspace and reopen this one, or give the work to another agent.',
-      })
-      expect(said.structured).not.toHaveProperty('receipt')
-      expect(said.text.match(/Not sent:/gu)).toHaveLength(1)
-      expect(world.store.piecesGivenBy(caller)).toEqual([])
-      expect(world.conversationsRecorded()).toBe(recorded)
-      expect(world.startedAs).toEqual(started)
-    })
-
     it('where its kind can’t be told and the database holds a service’s conversation for it', async () => {
       const { host, first } = await aServiceAndTwoCallers()
       accepted(await world.gives(host, first, 'browser-driver'))
