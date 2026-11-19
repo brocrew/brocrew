@@ -326,14 +326,16 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
   it('§3 · Stop resolves its id, open and ended held piece, and own root', async () => {
     await bringIdentityIntoBeing('worker')
     const pm = await personOpens('pm', 'auto')
-    const pmTools = theToolsetJustHandedOut()
     const { agent: worker, label } = await giveAndWaitForBriefTurn(
-      pmTools,
+      theToolsetJustHandedOut(),
       'worker',
       'the piece',
       (id) => store.events(id).map(({ event }) => event),
     )
-    const workerTools = theToolsetJustHandedOut()
+    await host.closeAll()
+    host = buildHost()
+    const pmTools = agentToolsFor(host, pm)
+    const workerTools = agentToolsFor(host, worker)
     const itsRoot = store.rootOf(pm)?.label
     if (itsRoot === undefined) throw new Error('a conversation a person opened owns a root')
 
