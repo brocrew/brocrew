@@ -18392,7 +18392,7 @@ export class RuntimeHost implements LiveHost {
   }
 
   addressOf(conversation: string): string {
-    return this.conversationForRead(conversation).address
+    return canonicalAddressOf(this.deps.store, conversation, this.itIsAService(conversation))
   }
 
   private conversationForRead(conversation: string) {
