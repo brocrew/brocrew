@@ -353,6 +353,13 @@ const note = computed(() =>
   }),
 )
 
+const searchIncomplete = computed(
+  () =>
+    searchPage.value?.complete === false ||
+    searchGaps.value.unread > 0 ||
+    searchGaps.value.skipped > 0,
+)
+
 const searchNote = computed(() => {
   const page = searchPage.value
   if (!page) return searchFailed.value ? '' : 'Searching conversations…'
@@ -367,7 +374,7 @@ const searchNote = computed(() => {
   return [
     `${searchHits.value.length} shown.`,
     ...(gaps.length ? [`${gaps.join(' · ')}.`] : []),
-    ...(!page.complete || gaps.length ? ['Results may be incomplete.'] : []),
+    ...(searchIncomplete.value ? ['Results may be incomplete.'] : []),
   ].join(' ')
 })
 
@@ -784,7 +791,9 @@ defineExpose({
           class="palette-miss"
           data-cy="palette-no-match"
         >
-          <strong>{{ noMatchHeading(query) }}</strong>
+          <strong>{{
+            useReader && searchIncomplete ? 'No matches in the pages read' : noMatchHeading(query)
+          }}</strong>
           <p v-if="!useReader">{{ NO_MATCH_BODY }}</p>
           <button
             type="button"

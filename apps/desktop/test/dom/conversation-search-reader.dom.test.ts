@@ -189,3 +189,13 @@ it('does not dispatch a queued conversation search after quitting starts', async
   await vi.advanceTimersByTimeAsync(180)
   expect(search).not.toHaveBeenCalled()
 })
+
+it('labels an empty incomplete reading without claiming there are no matches', async () => {
+  window.api.runtime.searchWork = vi.fn(async () => result([], null, 1))
+  await openPalette()
+  typeQuery('missing invoices')
+  await expect
+    .poll(() => insidePalette('palette-no-match')?.textContent)
+    .toContain('No matches in the pages read')
+  expect(insidePalette('palette-searched')?.textContent).toContain('1 unread row.')
+})
