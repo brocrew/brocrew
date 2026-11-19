@@ -9,12 +9,21 @@ for (const accepted of [false, true]) {
     const book = createDraftBook()
     const key = draftKey('queued')
     const original = Array.from({ length: MAX_HANDED_PATHS }, (_, index) => ({
-      path: `/fictional/${index}.md`, kind: 'file' as const, outsideCwd: false,
+      path: `/fictional/${index}.md`,
+      kind: 'file' as const,
+      outsideCwd: false,
     }))
     book.write(key, 'First message')
     book.paths.write(key, original)
     let reply!: (accepted: boolean) => void
-    const pending = book.send(key, () => new Promise<boolean>((resolve) => { reply = resolve }), true)
+    const pending = book.send(
+      key,
+      () =>
+        new Promise<boolean>((resolve) => {
+          reply = resolve
+        }),
+      true,
+    )
     book.write(key, 'Newer typing')
     book.paths.handing(key).stage([{ path: '/fictional/new.md', kind: 'file', outsideCwd: false }])
     expect(book.paths.handing(key).refusal).toContain(`${MAX_HANDED_PATHS} attachments`)

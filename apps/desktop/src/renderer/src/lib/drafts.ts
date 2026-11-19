@@ -219,7 +219,10 @@ export function createAttachmentBook(): AttachmentBook {
           write(key, next)
           return
         }
-        const staged = stageVerdicts(submitted, next.map((handed) => ({ handed })))
+        const staged = stageVerdicts(
+          submitted,
+          next.map((handed) => ({ handed })),
+        )
         write(key, staged.next)
         if (staged.refusal !== null) refuse(key, staged.refusal)
       },
@@ -273,7 +276,11 @@ export function createAttachmentBook(): AttachmentBook {
       const submitted = read(key)
       hidden.set(key, submitted)
       return (accepted) => {
-        if (accepted) write(key, read(key).filter((path) => !submitted.includes(path)))
+        if (accepted)
+          write(
+            key,
+            read(key).filter((path) => !submitted.includes(path)),
+          )
         hidden.delete(key)
       }
     },
