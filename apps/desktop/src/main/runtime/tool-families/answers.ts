@@ -17,7 +17,8 @@ export const refusalAnswer = (payload: ToolRefusalPayload): AgentToolAnswer =>
 
 export function refusedAsk(asked: Extract<AskOutcome, { ok: false }>): AgentToolAnswer {
   if ('resourceFailure' in asked) return answer({ ...asked.refusal }, asked.refusal.reason)
-  return refusalAnswer(carryQuestionRefusal(asked.refusal))
+  const carried = carryQuestionRefusal(asked.refusal)
+  return answer(carried, `refused (${carried.rail}): ${carried.reason}`)
 }
 
 export function sendAnswer(result: AgentToolAnswer): AgentToolAnswer {

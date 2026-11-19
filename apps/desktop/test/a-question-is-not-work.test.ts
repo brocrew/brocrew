@@ -861,8 +861,9 @@ describe('415 · a question is not work', () => {
         () => saidToProvider(brobot).some((words) => words.includes(text)),
         'the note to reach the giver',
       )
-      expect(store.workById(held.piece)?.owner).toBe(pm)
-      expect(TASK_IS_OPEN[store.workById(held.piece)?.state ?? 'answered']).toBe(true)
+      const stillHeld = store.piecesOwnedBy(pm).find((one) => one.piece === held.piece)
+      expect(stillHeld?.owner).toBe(pm)
+      expect(TASK_IS_OPEN[stillHeld?.state ?? 'answered']).toBe(true)
     })
 
     it('asks the giver a question while the task remains open', async () => {
