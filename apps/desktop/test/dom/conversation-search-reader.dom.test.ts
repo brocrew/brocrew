@@ -2,7 +2,11 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { nextTick, type Ref } from 'vue'
 import { appClosing } from '../../src/renderer/src/lib/app-closing'
 import type { RuntimeBridge } from '../../src/shared/runtime-ipc'
-import type { ConversationSearchHit, WorkSearchResult } from '../../src/shared/work-search'
+import type {
+  ConversationSearchHit,
+  GroupedWorkSearch,
+  WorkSearchResult,
+} from '../../src/shared/work-search'
 import { mount } from './harness'
 import { workerRows } from './parallel-workers-fixture'
 import {
@@ -89,6 +93,164 @@ function typeQuery(words: string): void {
   input.value = words
   input.dispatchEvent(new Event('input', { bubbles: true }))
 }
+
+function setGrouping(checked: boolean): void {
+  const control = insidePalette('palette-group-search') as HTMLInputElement
+  control.checked = checked
+  control.dispatchEvent(new Event('change', { bubbles: true }))
+}
+
+function groupedPage(
+  groups: GroupedWorkSearch['groups'],
+  matched: number | null,
+  next: string | null,
+): WorkSearchResult {
+  return {
+    ok: true,
+    page: {
+      hits: [],
+      grouped: { groups, matched },
+      next_cursor: next,
+      searched: 640,
+      complete: matched !== null,
+      rows_unread: matched === null ? 1 : 0,
+      ledgers_skipped: 0,
+    },
+  }
+}
+
+function preview(id: string, title: string) {
+  return {
+    conversation: id,
+    address: `W4.${id}`,
+    title,
+    last_active_at: 1_700_000_000_000,
+    matched_task_labels: ['W6.2'],
+    tasks_omitted: 1,
+  }
+}
+
+it('pages exact worker groups and opens all matches for one profile with the keyboard', async () => {
+  const editor = {
+    profile: 'editor',
+    matched: 13,
+    previews: [
+      preview('editor-one', 'Newest review'),
+      preview('editor-two', 'Second review'),
+      preview('editor-three', 'Third review'),
+    ],
+  }
+  const others = ['design', 'planner', 'ops', 'tools', null].map((profile, index) => ({
+    profile,
+    matched: 1,
+    previews: [preview(`other-${index}`, `Other match ${index}`)],
+  }))
+  const search = vi
+    .fn<RuntimeBridge['searchWork']>()
+    .mockResolvedValueOnce(groupedPage([editor, ...others], 19, 'next-profile-page'))
+    .mockResolvedValueOnce(
+      groupedPage(
+        [{ profile: 'desk', matched: 1, previews: [preview('desk-one', 'Desk match')] }],
+        19,
+        null,
+      ),
+    )
+    .mockResolvedValueOnce(result([hit('editor-all', 'Full editor result', 'W1.8')], null))
+  window.api.runtime.searchWork = search
+  await openPalette()
+  typeQuery('group-scenario')
+  setGrouping(true)
+
+  const groups = () => document.querySelectorAll('[data-cy="palette-profile-group"]')
+  await expect.poll(() => groups().length).toBe(6)
+  expect(groups()[0]?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Editor · 13')
+  expect(groups()[5]?.textContent?.trim()).toContain('No profile')
+  expect(insidePalette('palette-row-open-editor-one')?.textContent).toContain('W6.2')
+  expect(insidePalette('palette-row-open-editor-three')?.textContent).toContain('Third review')
+  expect(insidePalette('palette-searched')?.textContent).toBe('19 matching conversations.')
+  const input = {
+    words: 'group-scenario',
+    grouped: true,
+    limit: 20,
+    includeConversationMetadata: true,
+  }
+  expect(search).toHaveBeenNthCalledWith(1, { conversation: caller, query: input })
+
+  insidePalette('palette-search-more')!.click()
+  await expect.poll(() => groups().length).toBe(7)
+  expect(search).toHaveBeenNthCalledWith(2, {
+    conversation: caller,
+    query: { ...input, cursor: 'next-profile-page' },
+  })
+  expect(insidePalette('palette-searched')?.textContent).toBe('19 matching conversations.')
+
+  const box = insidePalette('palette-search')!
+  const press = (key: string) =>
+    box.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }))
+  box.focus()
+  press('ArrowDown')
+  press('ArrowDown')
+  press('ArrowDown')
+  const expand = insidePalette('palette-row-expand-profile:editor')!
+  await expect.poll(() => expand.getAttribute('aria-selected')).toBe('true')
+  expect(expand.textContent?.trim()).toBe('All 13 from Editor')
+  press('Enter')
+  await expect
+    .poll(() => insidePalette('palette-row-open-editor-all')?.textContent)
+    .toContain('Full editor result')
+  expect(search).toHaveBeenNthCalledWith(3, {
+    conversation: caller,
+    query: {
+      words: 'group-scenario',
+      profile: 'editor',
+      limit: 20,
+      includeConversationMetadata: true,
+    },
+  })
+  expect(groups()).toHaveLength(0)
+  expect((insidePalette('palette-profile-filter') as HTMLSelectElement).value).toBe('editor')
+  expect((insidePalette('palette-group-search') as HTMLInputElement).checked).toBe(false)
+})
+
+it('keeps partial group counts unknown and discards a late grouped reply after mode changes', async () => {
+  let finish!: (result: WorkSearchResult) => void
+  const delayed = new Promise<WorkSearchResult>((resolve) => {
+    finish = resolve
+  })
+  const partial = [
+    { profile: 'editor', matched: null, previews: [preview('partial', 'Readable review')] },
+  ]
+  const search = vi
+    .fn<RuntimeBridge['searchWork']>()
+    .mockResolvedValueOnce(groupedPage(partial, null, null))
+    .mockReturnValueOnce(delayed)
+    .mockResolvedValueOnce(result([hit('flat-new', 'Flat current result', 'W9')], null))
+  window.api.runtime.searchWork = search
+  await openPalette()
+  setGrouping(true)
+  await expect
+    .poll(() => insidePalette('palette-row-open-partial')?.textContent)
+    .toContain('Readable review')
+  expect(insidePalette('palette-profile-group')?.textContent?.trim()).toBe('Editor')
+  expect(insidePalette('palette-row-expand-profile:editor')?.textContent?.trim()).toBe(
+    'Search Editor',
+  )
+  expect(insidePalette('palette-search-more')).toBeNull()
+  expect(insidePalette('palette-searched')?.textContent).toContain('1 unread row.')
+  expect(insidePalette('palette-searched')?.textContent).not.toContain('640')
+
+  typeQuery('revised words')
+  await expect.poll(() => search.mock.calls.length).toBe(2)
+  setGrouping(false)
+  await expect
+    .poll(() => insidePalette('palette-row-open-flat-new')?.textContent)
+    .toContain('Flat current result')
+  finish(groupedPage(partial, null, null))
+  await delayed
+  await nextTick()
+  expect(insidePalette('palette-row-open-partial')).toBeNull()
+  expect(insidePalette('palette-row-open-flat-new')).not.toBeNull()
+})
 
 it('searches recorded conversations with the same cursor and opens an archived match read-only', async () => {
   const search = vi.fn<RuntimeBridge['searchWork']>()
