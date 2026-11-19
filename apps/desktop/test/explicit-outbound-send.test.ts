@@ -190,6 +190,109 @@ describe('explicit outbound sends', () => {
     }
   })
 
+  it.each(['codex', 'claude'] as const)(
+    'folds the %s reminder from the first batched turn after reopen',
+    async (provider) => {
+      const profile = 'outbound-replay-target'
+      world.anAgent(profile, 'normal', provider)
+      const { sessionId } = await host.createSession(
+        { provider, profileId: profile, cwd: world.folder, approvalMode: 'auto' },
+        world.window,
+      )
+      const handle = world.handleOf(profile)
+      const handover = vi.spyOn(handle, 'send')
+      const initial = Promise.withResolvers<void>()
+      const replay = Promise.withResolvers<void>()
+      world.turnsWait = initial.promise
+      try {
+        const asked = await send('ask_question', {
+          who_answers: 'an-agent',
+          agent: sessionId,
+          question: 'Is the earlier draft still needed?',
+        })
+        const id = asked.structured?.question
+        if (typeof id !== 'string') throw new Error('The question has no recorded id.')
+        expect(asked.structured?.receipt).toMatchObject({
+          recipient: { id: sessionId, state: { kind: 'started' } },
+        })
+        const note = 'The appendix is ready in the same folder.'
+        const held = await send('message_agent', { agent: sessionId, text: note })
+        expect(held.structured?.delivery).toBe('queued')
+
+        // Refuse the first batch before the provider takes either part.
+        handover.mockRejectedValueOnce(new Error('The provider did not take the batch.'))
+        world.turnsWait = null
+        initial.resolve()
+        await waitFor(() => handover.mock.calls.length === 2, 'the first batch to reach the handover')
+        expect(handover.mock.calls[1]?.[0]).toContain(note)
+        expect(handover.mock.calls[1]?.[0]).toContain(`Question ${id} from conversation`)
+        const waiting = () => world.store.messagesWaitingIn(sessionId)
+        const [heldNote, reminder] = waiting()
+        if (reminder === undefined) throw new Error('The queued reminder is missing.')
+        expect(heldNote?.text).toBe(note)
+        expect(reminder).toMatchObject({
+          asks: { asker: sender, requestId: id },
+          authorship: { appNotice: 'an-answer-is-still-owed' },
+        })
+        const progress = () =>
+          world.store.queuedPromptProgress(
+            sessionId,
+            reminder.messageId,
+            'an-answer-is-still-owed',
+          )
+        expect(progress()).toBe('pending')
+        await host.closeAll()
+        expect(progress()).toBe('pending')
+        expect(waiting().map((row) => row.messageId)).toEqual([
+          heldNote?.messageId,
+          reminder.messageId,
+        ])
+
+        host = world.aHost()
+        await host.resumeSession(sender, world.window)
+        const beforeReopen = world.ledger(sessionId).length
+        world.turnsWait = replay.promise
+        await host.resumeSession(sessionId, world.window)
+        await waitFor(() => progress() === 'running', 'the reopened batch to have a recorded turn')
+        expect(world.handleOf(profile)).not.toBe(handle)
+        expect(world.store.recordedOne(sessionId)?.provider).toBe(provider)
+        const firstTurn = world.ledger(sessionId).slice(beforeReopen).find(
+          (event) => event.type === 'user_turn',
+        )
+        expect(firstTurn).toMatchObject({
+          parts: [
+            expect.objectContaining({ text: note }),
+            expect.objectContaining({ text: reminder.text, appNotice: 'an-answer-is-still-owed' }),
+          ],
+        })
+        const notices = () =>
+          world.ledger(sender).filter(
+            (event) => event.type === 'user_turn' && event.appNotice === 'a-question-stayed-unanswered',
+          )
+        expect(notices()).toHaveLength(0)
+        world.turnsWait = null
+        replay.resolve()
+        await waitFor(() => progress() === 'turn-ended', 'the recorded reminder turn to close')
+        await waitFor(() => notices().length === 1, 'one unanswered notice to reach the asker')
+        expect(notices()[0]).toMatchObject({
+          text: expect.stringContaining(`didn't answer question ${id} after a reminder.`),
+        })
+        expect(
+          world.ledger(sessionId).filter(
+            (event) => event.type === 'message_queued' && event.appNotice === 'an-answer-is-still-owed',
+          ),
+        ).toHaveLength(1)
+        const question = world.store.routedRequestsOf(sender).find((row) => row.requestId === id)
+        expect(question?.state).toBe('open')
+      } finally {
+        world.turnsWait = null
+        initial.resolve()
+        replay.resolve()
+        handover.mockRestore()
+      }
+    },
+  )
+
   it('delivers held messages even if the reminder read fails at the turn boundary', async () => {
     const gate = Promise.withResolvers<void>()
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
