@@ -1,5 +1,5 @@
 import type { HandedPath } from '../../../shared/attachment-contracts'
-import { isNewAgentDraftSlot } from '../../../shared/saved-drafts'
+import { isNewAgentDraftSlot, type SavedDraft } from '../../../shared/saved-drafts'
 import { reactive, shallowReactive, watch, type WatchStopHandle } from 'vue'
 import {
   MAX_HANDED_PATHS,
@@ -283,7 +283,9 @@ export interface DraftBook {
   /** Remember what is typed here. Empty text is forgotten rather than stored as a blank. */
   write(key: string, text: string): void
   /** Coalesce a submitted gesture for this slot until runtime settles, across composer mounts. */
-  send(key: string, send: () => Promise<boolean>): Promise<void>
+  send(key: string, send: () => Promise<boolean>, queued?: boolean): Promise<void>
+  /** Includes the submitted queue draft until acceptance, beside any newer typing. */
+  saved(): SavedDraft[]
   /**
    * Forget every draft that is not in `live`. Called with the conversations still open, so a
    * conversation that ends takes its draft with it: no unbounded growth, and no ghost text
@@ -496,18 +498,35 @@ export function createDraftBook(): DraftBook {
   const drafts = reactive(new Map<string, string>())
   const paths = createAttachmentBook()
   const sending = new Map<string, Promise<void>>()
+  const queued = shallowReactive(new Map<string, SavedDraft>())
+
+  const savedSlot = (key: string): SavedDraft => {
+    const held = queued.get(key)
+    const attached = paths.read(key)
+    return {
+      slot: key,
+      text: held ? puttingItBack(held.text, book.read(key)) : book.read(key),
+      attached: held
+        ? [...held.attached, ...attached.filter((path) => !held.attached.some((old) => old.path === path.path))]
+        : attached,
+    }
+  }
 
   const book: DraftBook = {
     paths,
     read: (key) => drafts.get(key) ?? '',
 
-    send(key, send) {
+    send(key, send, hideQueued = false) {
       const pending = sending.get(key)
       if (pending) return pending
-      const run = sendKeptDraftOnce(book, key, send).finally(() => sending.delete(key))
+      const run = (hideQueued
+        ? sendQueuedDraft(key, send)
+        : sendKeptDraftOnce(book, key, send)).finally(() => sending.delete(key))
       sending.set(key, run)
       return run
     },
+
+    saved: () => [...new Set([...drafts.keys(), ...paths.keys(), ...queued.keys()])].map(savedSlot),
 
     write: (key, text) => {
       // An empty draft is the absence of one. Storing '' would leave a slot behind for every
@@ -563,6 +582,25 @@ export function createDraftBook(): DraftBook {
     },
   }
   return book
+
+  async function sendQueuedDraft(key: string, send: () => Promise<boolean>): Promise<void> {
+    queued.set(key, savedSlot(key))
+    book.write(key, '')
+    paths.write(key, [])
+    const handing = paths.handing(key)
+    const refusal = handing.refusal
+    let accepted = false
+    try {
+      accepted = await send()
+    } finally {
+      const retained = savedSlot(key)
+      queued.delete(key)
+      if (!accepted) {
+        book.write(key, retained.text)
+        paths.write(key, retained.attached)
+      } else if (handing.refusal === refusal) handing.refuse(null)
+    }
+  }
 }
 
 /**

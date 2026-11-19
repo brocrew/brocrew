@@ -1853,11 +1853,7 @@ function select(sessionId: string): void {
   void openConversation(sessionId)
 }
 
-/**
- * Keep the original conversation's draft while runtime validates the message. Acceptance clears
- * only unchanged content in that slot, even if the person has moved to another conversation.
- * A recorded conversation continues through its existing start-and-send path.
- */
+/** Keep the original slot until acceptance; queued drafts leave the composer while they wait. */
 async function send(
   text: string,
   intent: SendIntent = 'now',
@@ -1865,13 +1861,14 @@ async function send(
 ): Promise<void> {
   const sessionId = activeId.value
   if (!sessionId) return
-  await drafts.send(draftKey(sessionId), async () => {
+  const submit = async (): Promise<boolean> => {
     const starting = store.isLaunching(sessionId)
     if (store.get(sessionId)?.phase === 'recorded' && !starting) {
       return continueIt(sessionId, text, attachments, true, true)
     }
     return store.send(sessionId, text, starting ? 'queue' : intent, attachments)
-  })
+  }
+  await drafts.send(draftKey(sessionId), submit, intent === 'queue')
 }
 
 /**

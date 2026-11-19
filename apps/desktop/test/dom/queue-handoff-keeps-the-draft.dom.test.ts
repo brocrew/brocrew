@@ -5,7 +5,7 @@ import type { ClientSessionApi } from '../../src/shared/client-session-api'
 import type { RuntimeEventMessage } from '../../src/shared/runtime-ipc'
 import { createSessionStore } from '../../src/renderer/src/lib/session-store'
 import { createDraftBook, draftKey } from '../../src/renderer/src/lib/drafts'
-import { draftsToSave, restoreDrafts } from '../../src/renderer/src/lib/kept-drafts'
+import { draftsToSave, keepDraftsOnDisk, restoreDrafts } from '../../src/renderer/src/lib/kept-drafts'
 import { mount, paneProps, record, unmountAll } from './harness'
 
 afterEach(unmountAll)
@@ -34,7 +34,7 @@ function openQueue() {
   hear({ sessionId: 'sess_A', ordinal: 0, at: 1, event: { type: 'status', state: 'working' } })
   const session = store.get('sess_A')!
   Object.assign(session, record([{ type: 'status', state: 'working' }] as never))
-  session.sessionId = 'sess_A'
+  Object.assign(session, { sessionId: 'sess_A' })
   session.phase = 'open'
   const book = createDraftBook()
   const key = draftKey('sess_A')
@@ -90,7 +90,11 @@ it('keeps a crash-restorable snapshot and restores the original on refusal', asy
   try {
     q.view.q('queue-prompt').click()
     await nextTick()
-    const saved = draftsToSave(q.book)
+    const save = vi.fn()
+    const keeper = keepDraftsOnDisk(q.book, save, { closing: () => false })
+    keeper.flush()
+    keeper.stop()
+    const saved = save.mock.calls[0][0]
     expect(saved.drafts).toEqual([{ slot: q.key, text: TEXT, attached: [FILE] }])
     const restarted = createDraftBook()
     restoreDrafts(restarted, saved)

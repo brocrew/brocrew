@@ -126,12 +126,10 @@ function plainHanded(handed: HandedPath): HandedPath {
  * book already forgets an emptied slot, so a message that was SENT leaves nothing behind.
  */
 export function draftsToSave(book: DraftBook): SavedDrafts {
-  const slots = new Set([...book.keys(), ...book.paths.keys()])
   return {
-    drafts: [...slots].map((slot) => ({
-      slot,
-      text: book.read(slot),
-      attached: book.paths.read(slot).map(plainHanded),
+    drafts: book.saved().map((draft) => ({
+      ...draft,
+      attached: draft.attached.map(plainHanded),
     })),
   }
 }
