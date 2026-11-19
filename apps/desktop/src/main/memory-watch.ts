@@ -57,6 +57,7 @@ export interface MemoryWatchOptions {
    * alone, which is still a trail.
    */
   detail?: () => string
+  confirm?: () => Promise<{ bytes: number; detail: string } | null>
   log: (message: string) => void
   /**
    * ⚑ **What the line says the figure is** — the app itself, by default
@@ -136,15 +137,37 @@ export function startMemoryWatch(options: MemoryWatchOptions): MemoryWatch {
    * bury the climb it is there to show.
    */
   let reported = 0
+  let confirmedStep = 0
+  let confirming = false
 
   const tick = (): void => {
     const rss = options.sample()
     if (options.rearmBelowBytes !== undefined && rss < options.rearmBelowBytes) reported = 0
     if (rss < floor) return
     const crossed = floor + Math.floor((rss - floor) / step) * step
-    if (crossed <= reported) return
+    if (crossed <= reported || confirming) return
     reported = crossed
     const detail = options.detail?.()
+    if (options.confirm !== undefined) {
+      confirming = true
+      void options.confirm()
+        .catch(() => null)
+        .then((result) => {
+          if (result === null) {
+            options.log(theAppItselfHeadline(rss, 'resident') + (detail ? ` ${detail}` : ''))
+            return
+          }
+          if (result.bytes < floor) return
+          const stepReached = floor + Math.floor((result.bytes - floor) / step) * step
+          if (stepReached <= confirmedStep) return
+          confirmedStep = stepReached
+          options.log(theAppItselfHeadline(result.bytes, 'footprint') + ` ${result.detail}`)
+        })
+        .finally(() => {
+          confirming = false
+        })
+      return
+    }
     options.log((options.headline ?? theAppItselfHeadline)(rss) + (detail ? ` ${detail}` : ''))
   }
 
@@ -157,10 +180,19 @@ export function startMemoryWatch(options: MemoryWatchOptions): MemoryWatch {
 }
 
 /** ⚑ **The app's own line** — what it holds, and what to do before quitting it. */
-export function theAppItselfHeadline(bytes: number): string {
+export function theAppItselfHeadline(
+  bytes: number,
+  metric?: 'footprint' | 'resident',
+): string {
+  const amount =
+    metric === 'footprint'
+      ? `${gb(bytes)} GB of physical footprint`
+      : metric === 'resident'
+        ? `${gb(bytes)} GB of resident memory (may include memory the system can reclaim)`
+        : `${gb(bytes)} GB`
   return (
     `[memory] BroCrew itself — its main process, its window and their helpers — is holding ` +
-    `${gb(bytes)} GB, far above what it normally holds (about 1 GB at most). If it keeps climbing, ` +
+    `${amount}, far above what it normally holds (about 1 GB at most). If it keeps climbing, ` +
     'capture a heap snapshot before quitting it: a quit or a kill takes the evidence with it.'
   )
 }
@@ -235,14 +267,17 @@ export interface OwnProcess {
  * a plain name in the order Electron lists them, `main:0.29GB graphics:0.07GB network:0.04GB
  * window:0.19GB`, in the shape `describeSpawned` gives the agents.
  */
-export function whatTheAppItselfHolds(processes: readonly OwnProcess[]): {
+export function whatTheAppItselfHolds(
+  processes: readonly OwnProcess[],
+  bytesOf: (one: OwnProcess, index: number) => number = (one) => one.memory.workingSetSize * 1024,
+): {
   readonly bytes: number
   readonly said: string
 } {
   return {
-    bytes: processes.reduce((total, one) => total + one.memory.workingSetSize * 1024, 0),
+    bytes: processes.reduce((total, one, index) => total + bytesOf(one, index), 0),
     said: processes
-      .map((one) => `${plainNameOf(one)}:${gb(one.memory.workingSetSize * 1024)}GB`)
+      .map((one, index) => `${plainNameOf(one)}:${gb(bytesOf(one, index))}GB`)
       .join(' '),
   }
 }
