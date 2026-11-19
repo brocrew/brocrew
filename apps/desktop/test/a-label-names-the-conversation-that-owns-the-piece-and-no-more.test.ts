@@ -72,8 +72,7 @@ interface Answer {
   readonly text: string
 }
 
-/** The sentence every case below expects Ada, BroBot's child, to be called by. */
-const ADA_BY_ITS_WORK = 'Ada (the owner of W1.1 · Build the pages)'
+const ADA_CONVERSATION = 'conversation W1.1 · Build the pages'
 
 describe('a label names the conversation that owns the piece, and no more', () => {
   let userData: string
@@ -491,7 +490,7 @@ describe('a label names the conversation that owns the piece, and no more', () =
       title: null,
       definitionOfDone: null,
     })
-    expect(host.nameByItsWork(brobot)).toBe('BroBot (the owner of W1)')
+    expect(host.nameByItsWork(brobot)).toBe('conversation W1 · brobot')
     expect(retitlesIn(brobot)).toHaveLength(0)
 
     const renamed = host.retitleForAPerson('W1', '  Build the pages ')
@@ -509,7 +508,7 @@ describe('a label names the conversation that owns the piece, and no more', () =
       title: 'Build the pages',
       definitionOfDone: null,
     })
-    expect(host.nameByItsWork(brobot)).toBe('BroBot (the owner of W1 · Build the pages)')
+    expect(host.nameByItsWork(brobot)).toBe('conversation W1 · Build the pages')
 
     const again = host.retitleForAPerson('W1', 'Ship the pages', { ownerId: `agent:${brobot}` })
     expect(again).toMatchObject({ ok: true, label: 'W1', title: 'Ship the pages' })
@@ -520,7 +519,7 @@ describe('a label names the conversation that owns the piece, and no more', () =
       title: 'Ship the pages',
       definitionOfDone: null,
     })
-    expect(host.nameByItsWork(brobot)).toBe('BroBot (the owner of W1 · Ship the pages)')
+    expect(host.nameByItsWork(brobot)).toBe('conversation W1 · Ship the pages')
 
     const listed = await callOn(agentToolsFor(host, brobot), 'list_agents', {})
     const mine = (listed.agents as { agent: string; named: unknown }[]).find(
@@ -564,12 +563,12 @@ describe('a label names the conversation that owns the piece, and no more', () =
 
     expect(retitlesIn(brobot)).toHaveLength(0)
     expect(ledger(brobot)).toHaveLength(rowsBefore)
-    expect(host.nameByItsWork(brobot)).toBe('BroBot (the owner of W1)')
+    expect(host.nameByItsWork(brobot)).toBe('conversation W1 · brobot')
 
     const renamed = host.retitleForAPerson('W1', ' Build the world ')
     expect(renamed).toMatchObject({ ok: true, label: 'W1', title: 'Build the world' })
     expect(retitlesIn(brobot)).toHaveLength(1)
-    expect(host.nameByItsWork(brobot)).toBe('BroBot (the owner of W1 · Build the world)')
+    expect(host.nameByItsWork(brobot)).toBe('conversation W1 · Build the world')
   })
 
   it('⛔ a piece a conversation gave is named by that conversation: a person’s rename of it, by label or by id, changes nothing and announces nothing', async () => {
@@ -592,7 +591,7 @@ describe('a label names the conversation that owns the piece, and no more', () =
     expect(retitlesIn(ada)).toHaveLength(0)
     expect(ledger(ada)).toHaveLength(adaRows)
     expect(store.workThatNames(ada)).toEqual({ label: 'W1.1', title: 'Build the pages' })
-    expect(host.nameByItsWork(ada)).toBe(ADA_BY_ITS_WORK)
+    expect(host.nameByItsWork(ada)).toBe(ADA_CONVERSATION)
     expect(worksAnnounced()).toBe(announcedBefore)
 
     // ⚑ The paired positive, in the same test: the root piece, which nobody gave, is renamed by the
@@ -601,7 +600,7 @@ describe('a label names the conversation that owns the piece, and no more', () =
     expect(renamed).toMatchObject({ ok: true, label: 'W1', title: 'Build the site' })
     expect(retitlesIn(brobot)).toHaveLength(1)
     expect(worksAnnounced()).toBe(announcedBefore + 1)
-    expect(host.nameByItsWork(ada)).toBe(ADA_BY_ITS_WORK)
+    expect(host.nameByItsWork(ada)).toBe(ADA_CONVERSATION)
   })
 
   describe('a conversation holding several pieces', () => {
@@ -636,40 +635,36 @@ describe('a label names the conversation that owns the piece, and no more', () =
       return { parent, child }
     }
 
-    it('🔴 is named by its newest OPEN piece and how many more, else the piece that ended last and how, and a write to its ledger re-names it', async () => {
+    it('keeps its first-task address and saved title as later tasks change', async () => {
       const { parent, child } = await aChildHoldingTwoPieces()
       const parentTools = agentToolsFor(host, parent)
       expect(store.openPiecesOf(child).map((one) => one.label)).toEqual(['W1.1', 'W1.2'])
 
-      // (a) Both open: the newest of them names it, and says it holds one more (F033).
+      const canonicalLine = 'conversation W1.1 · Build the world clock page'
       expect(store.workThatNames(child)).toEqual({
         label: 'W1.2',
         title: 'Test the clock page',
         more: 1,
       })
-      expect(host.nameByItsWork(child)).toBe(
-        'Ada (the owner of W1.2 · Test the clock page (and 1 more))',
-      )
+      expect(host.nameByItsWork(child)).toBe(canonicalLine)
 
-      // (b) A giver’s new title for the piece is a write to the child’s ledger — the name, already
-      // asked for once, follows at once.
       const retitled = await callOn(parentTools, 'update_work', {
         piece: 'W1.2',
         title: 'Test the world clock page',
       })
       expect(retitled, JSON.stringify(retitled)).toMatchObject({ outcome: 'ok' })
-      expect(host.nameByItsWork(child)).toBe(
-        'Ada (the owner of W1.2 · Test the world clock page (and 1 more))',
-      )
+      expect(store.workThatNames(child)).toEqual({
+        label: 'W1.2',
+        title: 'Test the world clock page',
+        more: 1,
+      })
+      expect(host.nameByItsWork(child)).toBe(canonicalLine)
 
-      // (c) The newer piece closed: the older one, still open, names it — alone now.
       const closedNewer = await callOn(parentTools, 'update_work', { piece: 'W1.2', close: true })
       expect(closedNewer, JSON.stringify(closedNewer)).toMatchObject({ outcome: 'ok' })
       expect(store.openPiecesOf(child).map((one) => one.label)).toEqual(['W1.1'])
-      expect(host.nameByItsWork(child)).toBe('Ada (the owner of W1.1 · Build the world clock page)')
+      expect(host.nameByItsWork(child)).toBe(canonicalLine)
 
-      // (d) Nothing open: ⚑ F033 · the piece that ENDED LAST names it — W1.1, closed after W1.2,
-      // though W1.2 is the newest it held — and says how it ended, so nobody reads her as still on it.
       const closedOlder = await callOn(parentTools, 'update_work', { piece: 'W1.1', close: true })
       expect(closedOlder, JSON.stringify(closedOlder)).toMatchObject({ outcome: 'ok' })
       expect(store.openPiecesOf(child)).toHaveLength(0)
@@ -678,16 +673,17 @@ describe('a label names the conversation that owns the piece, and no more', () =
         title: 'Build the world clock page',
         ended: 'closed',
       })
-      expect(host.nameByItsWork(child)).toBe(
-        'Ada (the owner of W1.1 · Build the world clock page (closed))',
-      )
+      expect(host.nameByItsWork(child)).toBe(canonicalLine)
+      expect(host.addressOf(child)).toBe('W1.1')
+      const byClosedTask = await fullCall(parentTools, 'get_agent_status', { agent: 'W1.2' })
+      expect(byClosedTask.structured).toMatchObject({ outcome: 'ok', agent: { agent: child } })
+      expect(byClosedTask.text).toContain(canonicalLine)
     })
   })
 
   it('⚑ W4.209 · a card names who started it by the piece it started it from, never by the starter’s work now', async () => {
     const { brobotTools, ada } = await aFamily()
-    // ⚑ W4.209 · never by the starter's work NOW: Ada started Ali from W1.1, and is then given W1.2,
-    // which is what names Ada now — Ali's card still says the piece Ada started it from.
+    // Ali's card names the piece Ada started it from after Ada takes on another piece.
     const startedAli = 'started by Ada (the owner of W1.1 · Build the pages)'
     expect((await fullCall(brobotTools, 'get_agent_status', { agent: 'W1.1.1' })).text).toContain(
       startedAli,
@@ -717,10 +713,9 @@ describe('a label names the conversation that owns the piece, and no more', () =
       'Ada to be idle after Ali’s notice',
     )
 
-    // The status line names the child by its work and says who started it — ⚑ W4.209 · by the piece
-    // the parent started it from, with the parent's name, as its record and its launch line say it.
+    // The status line names the conversation and shows the parent's recorded start piece.
     const status = await fullCall(brobotTools, 'get_agent_status', { agent: 'W1.1' })
-    expect(status.text).toContain('the owner of W1.1 · Build the pages · Ada (worker)')
+    expect(status.text).toContain(`${ADA_CONVERSATION} · Ada (worker)`)
     expect(status.text).toContain('started by BroBot (the owner of W1')
     expect(status.text).toContain('holds W1.1 · Build the pages')
 
@@ -728,7 +723,7 @@ describe('a label names the conversation that owns the piece, and no more', () =
       agent: 'W1.1',
       reason: 'nothing to stop',
     })
-    expect(interrupt.text).toContain(ADA_BY_ITS_WORK)
+    expect(interrupt.text).toContain(ADA_CONVERSATION)
 
     const message = await fullCall(brobotTools, 'message_agent', {
       agent: 'W1.1',
@@ -736,7 +731,7 @@ describe('a label names the conversation that owns the piece, and no more', () =
       piece: 'W1.1',
       text: 'hello',
     })
-    expect(message.text).toContain(ADA_BY_ITS_WORK)
+    expect(message.text).toContain(ADA_CONVERSATION)
     await waitFor(
       () => ledger(ada).filter((event) => event.type === 'turn').length >= 3,
       'Ada to answer the follow-up',
@@ -770,7 +765,7 @@ describe('a label names the conversation that owns the piece, and no more', () =
       parentSessionId: brobot,
     })
     expect(store.workThatNames('sess_bare')).toBeNull()
-    expect(host.nameByItsWork('sess_bare')).toBe('Ada')
+    expect(host.nameByItsWork('sess_bare')).toBe('conversation sess_bare · Ada')
     expect(host.addressOf('sess_bare')).toBe('sess_bare')
   })
 
@@ -830,7 +825,7 @@ describe('a label names the conversation that owns the piece, and no more', () =
     expect(worksAnnounced()).toBe(before + 1)
     expect(seen).toEqual([{ label: 'W1', title: 'Build the pages', definitionOfDone: null }])
     expect(retitlesIn(brobot)).toHaveLength(1)
-    expect(host.nameByItsWork(brobot)).toBe('BroBot (the owner of W1 · Build the pages)')
+    expect(host.nameByItsWork(brobot)).toBe('conversation W1 · Build the pages')
   })
 
   describe('a self-address names the helpers under the caller’s piece', () => {
