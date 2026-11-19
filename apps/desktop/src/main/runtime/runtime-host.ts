@@ -13051,6 +13051,9 @@ export class RuntimeHost implements LiveHost {
       ...(drives === null ? {} : { drives }),
       ...(from === null ? {} : { origin: from }),
       ...(facts.asks === undefined ? {} : { asks: facts.asks }),
+      ...(facts.unansweredQuestion === undefined
+        ? {}
+        : { unansweredQuestion: facts.unansweredQuestion }),
       ...(itNames === null ? {} : { about: itNames }),
     }
     const row: QueuedMessageEvent = {
@@ -13064,6 +13067,9 @@ export class RuntimeHost implements LiveHost {
       ...(drives === null ? {} : { drives }),
       ...(itNames === null ? {} : { about: itNames }),
       ...(held.asks === undefined ? {} : { asks: held.asks }),
+      ...(held.unansweredQuestion === undefined
+        ? {}
+        : { unansweredQuestion: held.unansweredQuestion }),
     }
     return { held, row }
   }
@@ -13394,8 +13400,20 @@ export class RuntimeHost implements LiveHost {
   }
 
   private wakeForOwedQuestions(session: HostedSession): void {
+    try {
+      this.queueOwedQuestionReminders(session)
+    } catch (error) {
+      if (!(error instanceof RecordWriteFailed)) {
+        console.warn(`Could not check which answers ${session.id} owes: ${errorMessage(error)}`)
+      }
+    }
+  }
+
+  private queueOwedQuestionReminders(session: HostedSession): void {
     const owed = this.oneOwedReadPerAnswer(this.oneLedgerReadPerAnswer())(session.id)
     if (owed.length === 0) return
+    const last = this.deps.store.lastEndedTurn(session.id)
+    if (last?.how !== 'it-finished' || last.who !== null) return
 
     const waiting = new Set(
       [...session.mailbox, ...session.handingOver].flatMap(({ asks }) =>
@@ -13454,7 +13472,7 @@ export class RuntimeHost implements LiveHost {
         this.holdUntilItStarts(
           to,
           `Conversation ${address} · ${title} didn't answer question ${question} after a reminder.`,
-          { asks: { asker, requestId: question }, appNotice: notice },
+          { unansweredQuestion: { asker, requestId: question }, appNotice: notice },
           'notice',
           resolve,
           id,
@@ -27291,6 +27309,7 @@ export class RuntimeHost implements LiveHost {
     const itNoLongerGoes =
       queued.piece === undefined &&
       queued.asks === undefined &&
+      queued.unansweredQuestion === undefined &&
       queued.origin?.who !== 'a-caller-with-an-id'
         ? null
         : this.whyItNoLongerGoes(session.id, queued)
@@ -27868,11 +27887,9 @@ export class RuntimeHost implements LiveHost {
       // ({@link aCallersWordsWaitForItsQueue}), asked in the same stretch as this, with nothing
       // awaited between.
       if (this.theReachOfACallersWords(sessionId, queued) === 'outlived') return ITS_PIECE_HAD_ENDED
-      if (
-        queued.asks !== undefined &&
-        (queued.kind === 'question' || queued.authorship.appNotice === 'a-question-stayed-unanswered')
-      ) {
-        const { asker, requestId } = queued.asks
+      const question = queued.kind === 'question' ? queued.asks : queued.unansweredQuestion
+      if (question !== undefined) {
+        const { asker, requestId } = question
         const ended = this.howItsQuestionEnded(asker, requestId)
         if (ended === null) return null
         return {
@@ -27955,6 +27972,9 @@ export class RuntimeHost implements LiveHost {
       // ⚑ **F088 · and the piece they name**, so its sender line still says which.
       ...(row.about === undefined ? {} : { about: row.about }),
       ...(row.asks === undefined ? {} : { asks: row.asks }),
+      ...(row.unansweredQuestion === undefined
+        ? {}
+        : { unansweredQuestion: row.unansweredQuestion }),
       ...(origin === null ? {} : { origin }),
     }
   }
@@ -40993,15 +41013,7 @@ export class RuntimeHost implements LiveHost {
       const wake = session.questionWakeDue === true
       delete session.questionWakeDue
       if (event.state === 'idle') {
-        if (wake) {
-          try {
-            this.wakeForOwedQuestions(session)
-          } catch (error) {
-            if (!(error instanceof RecordWriteFailed)) {
-              console.warn(`Could not check which answers ${session.id} owes: ${errorMessage(error)}`)
-            }
-          }
-        }
+        if (wake) this.wakeForOwedQuestions(session)
         this.flushQueued(session)
       }
     }

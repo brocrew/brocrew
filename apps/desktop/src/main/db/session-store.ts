@@ -377,6 +377,7 @@ export interface WaitingMessage {
   readonly drives?: string
   readonly about?: string
   readonly asks?: TheQuestionItAsks
+  readonly unansweredQuestion?: TheQuestionItAsks
 }
 
 interface AdoptedSessionRecord {
@@ -5718,6 +5719,7 @@ export function createSessionStore(
         const stored = aStoredObject(row.payload)
         const messageId = stored?.messageId
         if (stored === null || typeof messageId !== 'string') return []
+        const unansweredQuestion = theQuestionItAsks(stored.unansweredQuestion)?.asks
         const piece = isAStoredId(stored.piece) ? stored.piece : null
         const label =
           piece !== null &&
@@ -5739,6 +5741,7 @@ export function createSessionStore(
             ...(isAStoredId(stored.drives) ? { drives: stored.drives } : {}),
             ...(isAStoredId(stored.about) ? { about: stored.about } : {}),
             ...(theQuestionItAsks(stored.asks) ?? {}),
+            ...(unansweredQuestion === undefined ? {} : { unansweredQuestion }),
           },
         ]
       })

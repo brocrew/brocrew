@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
+import type { SessionMachine } from '@brobot2/runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
@@ -232,6 +233,71 @@ describe('explicit outbound sends', () => {
     }
   })
 
+  it.each([
+    ['codex', 'completed'],
+    ['claude', 'interrupted'],
+  ] as const)(
+    'keeps an unanswered question without waking a %s turn the person stopped',
+    async (provider, terminal) => {
+      const profile = 'outbound-stop-target'
+      world.anAgent(profile, 'normal', provider)
+      const { sessionId } = await host.createSession(
+        { provider, profileId: profile, cwd: world.folder, approvalMode: 'ask' },
+        world.window,
+      )
+      const handle = world.handleOf(profile)
+      const providerTurn = handle as unknown as {
+        machine: SessionMachine
+        driveTurn(text: string, turnId: number): Promise<void>
+      }
+      const drive = vi.spyOn(providerTurn, 'driveTurn').mockResolvedValue(undefined)
+      // Drive the actual Stop through the host with the terminal each provider reports.
+      const stopping = vi.spyOn(handle, 'interrupt').mockImplementationOnce(async () => {
+        providerTurn.machine.completeTurn(terminal)
+      })
+      try {
+        const asked = await send('ask_question', {
+          who_answers: 'an-agent',
+          agent: sessionId,
+          question: 'Does this include the previous version?',
+        })
+        const id = asked.structured?.question
+        if (typeof id !== 'string') throw new Error('The question has no recorded id.')
+        await waitFor(() => handle.status() === 'working', 'the question turn to open')
+        const beforeStop = world.ledger(sessionId).length
+        await host.interrupt(sessionId, world.window)
+        const stopRows = () => world.ledger(sessionId).slice(beforeStop)
+        await waitFor(
+          () => stopRows().some((event) => event.type === 'status' && event.state === 'idle'),
+          'the stopped turn to send its terminal status',
+        )
+        expect(stopRows()).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ type: 'work_interrupted', by: 'a-person' }),
+            expect.objectContaining({ type: 'turn', state: terminal }),
+          ]),
+        )
+        expect(world.store.lastEndedTurn(sessionId)?.who).toBe('a-person')
+        expect(world.store.routedRequestsOf(sender).find((one) => one.requestId === id)?.state).toBe(
+          'open',
+        )
+        const reminders = () =>
+          world.ledger(sessionId).filter(
+            (event) => event.type === 'message_queued' && event.appNotice === 'an-answer-is-still-owed',
+          )
+        expect(reminders()).toHaveLength(0)
+        expect(world.sent.filter((one) => one.as === profile && one.words.includes(id))).toHaveLength(1)
+
+        await host.send(sessionId, 'Continue with the earlier question.', world.window)
+        providerTurn.machine.completeTurn('completed')
+        await waitFor(() => reminders().length === 1, 'a reminder after the next ordinary turn')
+      } finally {
+        stopping.mockRestore()
+        drive.mockRestore()
+      }
+    },
+  )
+
   it.each(['withdrawn', 'answered'] as const)(
     'retracts a held unanswered notice once the question is %s',
     async (ended) => {
@@ -255,7 +321,8 @@ describe('explicit outbound sends', () => {
         await waitFor(() => pendingNotice() !== undefined, 'the asker note to queue')
         const queued = pendingNotice()
         if (queued === undefined) throw new Error('The notice is absent from the mailbox.')
-        expect(queued.asks).toEqual({ asker: sender, requestId: id })
+        expect(queued.unansweredQuestion).toEqual({ asker: sender, requestId: id })
+        expect(queued).not.toHaveProperty('asks')
 
         if (ended === 'withdrawn') {
           const withdrawn = await send('withdraw_question', { question: id })
@@ -325,7 +392,7 @@ describe('explicit outbound sends', () => {
         )
       await waitFor(() => notice() !== undefined, 'the unanswered notice to be kept')
       const queued = notice()
-      expect(queued?.asks).toEqual({ asker: sender, requestId: id })
+      expect(queued?.unansweredQuestion).toEqual({ asker: sender, requestId: id })
 
       await host.send(target, 'The answerer can take another turn.', world.window)
       expect(world.resumesAsked).toBe(resumesBefore)
