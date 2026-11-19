@@ -372,7 +372,6 @@ describe('give_work goes to the conversation the giver names', () => {
       expect(nextHost.tookItsPlace(original.owner)).toBe(successor)
       expect(await nextHost.archiveConversation(original.owner)).toMatchObject({ done: true })
       expect(await nextHost.archiveConversation(successor)).toMatchObject({ done: true })
-      const originalArchive = nextHost.whenItWasArchived(original.owner)
       const successorArchive = nextHost.whenItWasArchived(successor)
       const originalModel = store.whatItRunsOn(original.owner)
       const successorModel = store.whatItRunsOn(successor)
@@ -429,9 +428,13 @@ describe('give_work goes to the conversation the giver names', () => {
           receipt: { recipient: { id: successor, address: recorded.label, title } },
         })
         expect(world.ledger(original.owner)).toEqual(originalLedger)
-        expect(nextHost.whenItWasArchived(original.owner)).toBe(originalArchive)
         expect(store.whatItRunsOn(original.owner)).toEqual(originalModel)
         expect(world.resumesAsked).toBe(resumes + 1)
+        // The listing follows the replacement; Restore addresses the archived record itself.
+        expect(nextHost.restoreConversation(original.owner)).toEqual({
+          done: true,
+          conversations: [original.owner],
+        })
       } finally {
         allowResume()
         await Promise.allSettled([pending])
