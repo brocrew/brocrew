@@ -189,6 +189,46 @@ describe('five more tools answer field failures through Claude MCP', () => {
     expect(effects()).toEqual(before)
   })
 
+  it('compact_agent keeps required text fields and records malformed requests at the handler', async () => {
+    const wire = await server('compact_agent')
+    const advertised = await wire.list()
+    expect(advertised.error).toBeUndefined()
+    const schema = advertised.result!.tools![0]!.inputSchema
+    expect(schema.required).toEqual(['agent', 'reason'])
+    expect(schema.properties).toMatchObject({
+      agent: { type: 'string', description: 'The conversation, by any of its labels.' },
+      reason: { type: 'string', description: 'Why you are asking for compaction.' },
+    })
+
+    const compact = vi.spyOn(host, 'compactConversation')
+    const before = effects()
+    const reason = 'Make room for the next reply'
+    for (const args of [
+      { reason },
+      { agent: worker },
+      { agent: ['PRIVATE_VALUE'], reason },
+      { agent: worker, reason: ['PRIVATE_VALUE'] },
+    ]) {
+      const text = ownRefusal(
+        'compact_agent',
+        await wire.call(args),
+        'agent and reason are both required',
+      )
+      expect(text).not.toContain('Symbol')
+      expect(kept().at(-1)).toMatchObject({
+        tool: 'compact_agent',
+        rail: 'malformed-request',
+        told: {
+          text: expect.stringContaining('the arguments did not match what this tool accepts'),
+        },
+      })
+    }
+    expect(calls).toHaveLength(4)
+    expect(kept()).toHaveLength(4)
+    expect(compact).not.toHaveBeenCalled()
+    expect(effects()).toEqual(before)
+  })
+
   for (const entry of cases) {
     it(`${entry.name}: wrong field type gets a field remedy, without effects or caller values`, async () => {
       const wire = await server(entry.name)
