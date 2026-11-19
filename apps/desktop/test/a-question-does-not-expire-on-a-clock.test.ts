@@ -293,7 +293,7 @@ describe('591 · a question does not expire on a clock', () => {
    */
   describe('§1 · an answer given after the bound reaches the agent', () => {
     it('⛔ the call does not wait, the question stays open, and the answer arrives as a turn the worker reads', async () => {
-      const { pm, worker, pmTools, workerTools, piece } = await aWorkerHoldingWork()
+      const { worker, pmTools, workerTools, piece } = await aWorkerHoldingWork()
       const said = await callOn(workerTools, 'ask_question', {
         who_answers: 'the-parent',
         piece,
@@ -336,7 +336,7 @@ describe('591 · a question does not expire on a clock', () => {
       expect(delivered?.text).toContain('which schema?')
       // ⚑ **And it names who answered** — by the piece that conversation owns, as every sentence
       // names another conversation (D-016 · commit 7 · R3), where it used to print the id.
-      expect(delivered?.text).toContain(`${host.nameByItsWork(pm)} answered the question you asked`)
+      expect(delivered?.text).toContain('Ali (the owner of W2) answered the question you asked')
 
       // 🔴 **THE LOAD-BEARING HALF: it becomes a turn the worker actually reads.** ⛔ A notice that
       // only ever sat in a mailbox would be *reaches the agent* asserted about a queue.
@@ -371,7 +371,7 @@ describe('591 · a question does not expire on a clock', () => {
       // answer arrives either way. ⛔ The test above takes the BUSY arm (held, then flushed); this
       // takes the IDLE one, where the worker's turn has already ended, which is the state `608`
       // made ordinary.
-      const { pm, worker, pmTools, workerTools, piece } = await aWorkerHoldingWork()
+      const { worker, pmTools, workerTools, piece } = await aWorkerHoldingWork()
       const asking = callOn(workerTools, 'ask_question', {
         who_answers: 'the-parent',
         piece,
@@ -414,7 +414,7 @@ describe('591 · a question does not expire on a clock', () => {
           .filter((event) => event.type === 'message_queued'),
       ).toEqual([])
       expect(wordsIn(worker).at(-1)?.text).toContain(
-        `${host.nameByItsWork(pm)} answered the question you asked`,
+        'Ali (the owner of W2) answered the question you asked',
       )
 
       // ⚑ **And there is no second route left at either door** — the branch that settled a parked

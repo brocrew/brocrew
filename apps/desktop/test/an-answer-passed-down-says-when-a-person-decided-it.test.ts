@@ -27,6 +27,7 @@ const PASSED_UP =
   'It had passed your question up, and a person answered it there. Its answer below is in its own words: it may quote that answer, or say it differently.'
 const INSTEAD = 'instead of that person'
 const CANNOT_TELL = 'This app cannot tell you whether it asked them first.'
+const ROOT_ANSWERER = 'BroBot (the owner of W2)'
 
 describe('an answer an agent passes down says when a person decided it', () => {
   let userData: string
@@ -192,7 +193,7 @@ describe('an answer an agent passes down says when a person decided it', () => {
 
       const text = await theAnswerTo(worker, id)
       expect(text).toContain(
-        `${host.nameByItsWork(pm.id)} answered the question you asked about ${piece}, quoting ${id}.\n\n${PASSED_UP}\n\nYou asked: which city?`,
+        `${ROOT_ANSWERER} answered the question you asked about ${piece}, quoting ${id}.\n\n${PASSED_UP}\n\nYou asked: which city?`,
       )
       expect(text).not.toContain(INSTEAD)
       expect(text).not.toContain(CANNOT_TELL)
@@ -207,7 +208,7 @@ describe('an answer an agent passes down says when a person decided it', () => {
 
       const text = await theAnswerTo(worker, id)
       expect(text).toContain(
-        `${host.nameByItsWork(pm.id)} answered the question you asked about ${piece}, quoting ${id}.\n\nYou asked: which city?`,
+        `${ROOT_ANSWERER} answered the question you asked about ${piece}, quoting ${id}.\n\nYou asked: which city?`,
       )
       expect(text).not.toContain('It had passed your question up')
     })
@@ -247,7 +248,7 @@ describe('an answer an agent passes down says when a person decided it', () => {
 
       const text = await theAnswerTo(worker, id)
       expect(text).toContain(
-        `${host.nameByItsWork(pm.id)} declined to answer the question you asked about ${piece}, quoting ${id}.`,
+        `${ROOT_ANSWERER} declined to answer the question you asked about ${piece}, quoting ${id}.`,
       )
       expect(text).not.toContain('It had passed your question up')
       expect(text).not.toContain(INSTEAD)
@@ -303,7 +304,7 @@ describe('an answer an agent passes down says when a person decided it', () => {
 
       const text = await theAnswerTo(worker, id)
       expect(text).toContain(
-        `${host.nameByItsWork(lead)} answered the question you asked about ${piece}, quoting ${id}.\n\nYou asked: which city?`,
+        `Ada (the owner of W3.1 · The front end) answered the question you asked about ${piece}, quoting ${id}.\n\nYou asked: which city?`,
       )
       expect(text).not.toContain('It had passed your question up')
     })
@@ -317,7 +318,7 @@ describe('an answer an agent passes down says when a person decided it', () => {
 
       const text = await theAnswerTo(worker, id)
       expect(text).toContain(
-        `${host.nameByItsWork(pm.id)} answered the question you asked a person about ${piece}, instead of that person, quoting ${id}. ${CANNOT_TELL}\n\nYou asked: which colour?`,
+        `${ROOT_ANSWERER} answered the question you asked a person about ${piece}, instead of that person, quoting ${id}. ${CANNOT_TELL}\n\nYou asked: which colour?`,
       )
       expect(text).not.toContain('It had passed your question up')
     })
@@ -351,7 +352,7 @@ describe('an answer an agent passes down says when a person decided it', () => {
 
       const text = await theAnswerTo(worker, id)
       expect(text).toContain(
-        `${host.nameByItsWork(pm.id)} answered the question you asked about ${piece}, quoting ${id}.\n\n${PASSED_UP}`,
+        `${ROOT_ANSWERER} answered the question you asked about ${piece}, quoting ${id}.\n\n${PASSED_UP}`,
       )
       expect(text).not.toContain(INSTEAD)
       expect(text).not.toContain(CANNOT_TELL)
@@ -378,7 +379,7 @@ describe('an answer an agent passes down says when a person decided it', () => {
 
       const text = await theAnswerTo(ada.id, id)
       expect(text).toContain(
-        `${host.nameByItsWork(bo.id)} answered the question you asked, quoting ${id}.`,
+        `Ada (the owner of W2) answered the question you asked, quoting ${id}.`,
       )
       expect(text).not.toContain('It had passed your question up')
       expect(text).not.toContain(INSTEAD)
