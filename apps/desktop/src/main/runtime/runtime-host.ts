@@ -8290,7 +8290,7 @@ export class RuntimeHost implements LiveHost {
    * whether it is free for its next piece ({@link advanceTheService}).
    */
   private aServiceMayTakeItsNext(conversation: string): void {
-    if (!this.servicesAreOn() || this.servicesToAdvance.has(conversation)) return
+    if (this.servicesToAdvance.has(conversation)) return
     this.servicesToAdvance.add(conversation)
     queueMicrotask(async () => {
       try {
@@ -8314,7 +8314,7 @@ export class RuntimeHost implements LiveHost {
    * is started for it ({@link startTheServiceFor}).
    */
   private advanceTheService(conversation: string): void {
-    if (!this.servicesAreOn() || this.deps.profileExecution?.owned !== true) return
+    if (this.deps.profileExecution?.owned !== true) return
     if (this.launches.closed) return
     // ⛔ Only a service whose kind is known: where it can't be told, nothing moves its queue.
     const service = this.theServiceOf(conversation)
@@ -8497,7 +8497,6 @@ export class RuntimeHost implements LiveHost {
    * starting; `null` for any other give.
    */
   private theServiceStartAGiveMeets(input: unknown): Promise<void> | null {
-    if (!this.servicesAreOn()) return null
     const named =
       typeof input === 'object' && input !== null ? (input as { profile?: unknown }).profile : null
     if (typeof named !== 'string') return null
@@ -8603,9 +8602,8 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * A service on a piece, running nothing, that holds words kept for its next start while services
-   * were off: started for them now. ⚑ A service on no piece takes its next one from its queue
-   * instead ({@link advanceTheService}).
+   * Start an idle service for held messages on its active piece. A service with no active piece
+   * takes its next one from the work queue.
    */
   private startForWhatWaits(service: string): void {
     if (this.startupRepairs.has(service)) {
@@ -8617,7 +8615,7 @@ export class RuntimeHost implements LiveHost {
       )
       return
     }
-    if (!this.servicesAreOn() || this.deps.profileExecution?.owned !== true) return
+    if (this.deps.profileExecution?.owned !== true) return
     if (this.slots.has(service) || this.startsInFlight.has(service)) return
     if (this.launches.closed || this.keptStopped(service)) return
     // ⚑ A start already coming takes what waits with it: the restart's, a cut turn's, or a wake-up's.
