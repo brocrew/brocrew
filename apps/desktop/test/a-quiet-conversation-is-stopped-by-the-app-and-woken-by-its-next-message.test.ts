@@ -155,7 +155,11 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
   }
 
   /** A host over the shared database. The idle delay is the dep when given, the default when not. */
-  const buildHost = (idleStopAfterMs?: number, windowReader?: WindowStoreReader): RuntimeHost => {
+  const buildHost = (
+    idleStopAfterMs?: number,
+    windowReader?: WindowStoreReader,
+    publications = pushed,
+  ): RuntimeHost => {
     const built = new RuntimeHost({
       store: wrappedStore(store),
       ...neutralHostDeps(() => userData),
@@ -173,7 +177,7 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
       interruptWaitMs: 40,
       readProviderConfig: fixtureProviderConfig,
       statesMoved: (message) => {
-        pushed.push(message)
+        publications.push(message)
       },
       ...(idleStopAfterMs === undefined ? {} : { idleStopAfterMs }),
       ...(windowReader === undefined
@@ -1027,6 +1031,7 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
 
   const publicationModes = ['rejecting', 'parked', 'parked with a schedule'] as const
   it.each(publicationModes)('stops while window publication is %s', async (mode) => {
+    const publications: RuntimeStatesMessage[] = []
     let release!: () => void
     const parked = new Promise<void>((resolve) => {
       release = resolve
@@ -1036,14 +1041,14 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
       throw new Error('window read failed')
     })
     try {
-      host = buildHost(IDLE, { read, close: async () => {} })
-      const a = await opens('agent-a')
+      host = buildHost(IDLE, { read, close: async () => {} }, publications)
+      await opens('agent-a')
       await waitFor(
         () => read.mock.calls.some(([query]) => query.kind === 'routes'),
         'publication to reach the window reader',
       )
       await settle()
-      expect(saidOf(a)).toEqual([])
+      expect(publications).toEqual([])
       if (mode === 'parked with a schedule') {
         const first = theOneLive()
         handleOf(0).simulateScheduledWork()
@@ -1052,7 +1057,7 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
         handleOf(0).simulateScheduledWork({ jobs: [] })
         await waitFor(() => live().length === 1, 'the schedule release to arm a countdown')
         expect(theOneLive().timer).not.toBe(first.timer)
-        expect(saidOf(a)).toEqual([])
+        expect(publications).toEqual([])
       }
       const countdown = theOneLive()
       await fire(countdown)
