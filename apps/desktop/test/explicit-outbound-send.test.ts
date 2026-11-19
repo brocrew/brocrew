@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { SendReceipt } from '../src/shared/tool-outcome'
@@ -160,6 +160,12 @@ describe('explicit outbound sends', () => {
       is: 'owes-an-answer',
       stalledQuestion: id,
     })
+    const list = agentToolsFor(host, target).tools.find((one) => one.name === 'list_questions')
+    if (list === undefined) throw new Error('The question list tool is missing.')
+    const listed = await list.call({})
+    expect(listed.structured?.questions).toContainEqual(
+      expect.objectContaining({ question: id, state: 'open', delivery: 'stalled after a reminder' }),
+    )
 
     await host.closeAll()
     host = world.aHost()
@@ -183,55 +189,158 @@ describe('explicit outbound sends', () => {
     }
   })
 
-  it('retracts a held unanswered notice when the asker withdraws the original question', async () => {
-    host.claimSession(sender, world.window)
+  it('delivers held messages even if the reminder read fails at the turn boundary', async () => {
+    const gate = Promise.withResolvers<void>()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const progress = vi.spyOn(world.store, 'queuedPromptProgress')
+    world.turnsWait = gate.promise
+    try {
+      const question = await send('ask_question', {
+        who_answers: 'an-agent',
+        agent: target,
+        question: 'Is this the final version?',
+      })
+      expect(question.structured?.outcome).toBe('ok')
+      const text = 'Send this along after the question.'
+      const message = await send('message_agent', { agent: target, text })
+      expect(message.structured?.delivery).toBe('queued')
+      const fault = 'The reminder progress could not be read.'
+      progress.mockImplementationOnce(() => {
+        throw new Error(fault)
+      })
+      world.turnsWait = null
+      gate.resolve()
+      await waitFor(
+        () => world.sent.some((one) => one.as === 'outbound-target' && one.words.includes(text)),
+        'the held message to go after the reminder read fails',
+      )
+      expect(progress).toHaveBeenCalledWith(target, expect.any(String), 'an-answer-is-still-owed')
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(fault))
+      const next = 'The same provider still takes new words.'
+      const handle = world.handleOf('outbound-target')
+      await waitFor(() => handle.status() === 'idle', 'the held message’s turn to finish')
+      await host.send(target, next, world.window)
+      expect(world.handleOf('outbound-target')).toBe(handle)
+      expect(world.sent.some((one) => one.as === 'outbound-target' && one.words.includes(next))).toBe(
+        true,
+      )
+    } finally {
+      world.turnsWait = null
+      gate.resolve()
+      progress.mockRestore()
+      warn.mockRestore()
+    }
+  })
+
+  it.each(['withdrawn', 'answered'] as const)(
+    'retracts a held unanswered notice once the question is %s',
+    async (ended) => {
+      host.claimSession(sender, world.window)
+      const gate = Promise.withResolvers<void>()
+      world.turnsWait = gate.promise
+      try {
+        await host.send(sender, 'Hold the asker’s turn open.', world.window)
+        world.turnsWait = null
+        const asked = await send('ask_question', {
+          who_answers: 'an-agent',
+          agent: target,
+          question: 'Is a printed copy required?',
+        })
+        const id = asked.structured?.question
+        if (typeof id !== 'string') throw new Error('The question has no recorded id.')
+        const pendingNotice = () =>
+          world.store.messagesWaitingIn(sender).find(
+            (one) => one.authorship.appNotice === 'a-question-stayed-unanswered',
+          )
+        await waitFor(() => pendingNotice() !== undefined, 'the asker note to queue')
+        const queued = pendingNotice()
+        if (queued === undefined) throw new Error('The notice is absent from the mailbox.')
+        expect(queued.asks).toEqual({ asker: sender, requestId: id })
+
+        if (ended === 'withdrawn') {
+          const withdrawn = await send('withdraw_question', { question: id })
+          expect(withdrawn.structured?.outcome).toBe('ok')
+        } else {
+          const answer = agentToolsFor(host, target).tools.find((one) => one.name === 'answer_question')
+          if (answer === undefined) throw new Error('The answer tool is missing.')
+          const answered = await answer.call({
+            asked_by: sender,
+            question: id,
+            answers: [{ part: 'answer', answer: ['Yes.'] }],
+            interrupt: false,
+          })
+          expect(answered.structured?.outcome).toBe('ok')
+        }
+        expect(world.store.routedRequestsOf(sender).find((one) => one.requestId === id)?.state).toBe(
+          ended,
+        )
+        gate.resolve()
+        await waitFor(
+          () => world.ledger(sender).some(
+            (event) => event.type === 'message_unqueued' && event.messageId === queued.messageId,
+          ),
+          'settlement to retract the held notice',
+        )
+        expect(world.ledger(sender)).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              type: 'message_unqueued',
+              messageId: queued.messageId,
+              reason: 'retracted',
+            }),
+          ]),
+        )
+        expect(world.ledger(sender)).not.toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ type: 'user_turn', appNotice: 'a-question-stayed-unanswered' }),
+          ]),
+        )
+      } finally {
+        gate.resolve()
+        world.turnsWait = null
+      }
+    },
+  )
+
+  it('keeps an unanswered notice in an archived asker’s mailbox until an explicit reopen', async () => {
     const gate = Promise.withResolvers<void>()
     world.turnsWait = gate.promise
     try {
-      await host.send(sender, 'Hold the asker’s turn open.', world.window)
-      world.turnsWait = null
       const asked = await send('ask_question', {
         who_answers: 'an-agent',
         agent: target,
-        question: 'Is a printed copy required?',
+        question: 'Does the list include the earlier record?',
       })
       const id = asked.structured?.question
       if (typeof id !== 'string') throw new Error('The question has no recorded id.')
-      const pendingNotice = () =>
+      expect(await host.archiveConversation(sender)).toMatchObject({ done: true })
+      const archivedAt = host.whenItWasArchived(sender)
+      expect(archivedAt).toEqual(expect.any(Number))
+      const resumesBefore = world.resumesAsked
+      world.turnsWait = null
+      gate.resolve()
+      const notice = () =>
         world.store.messagesWaitingIn(sender).find(
           (one) => one.authorship.appNotice === 'a-question-stayed-unanswered',
         )
-      await waitFor(() => pendingNotice() !== undefined, 'the asker note to queue')
-      const queued = pendingNotice()
-      if (queued === undefined) throw new Error('The notice is absent from the mailbox.')
-      expect(queued.asks).toEqual({ asker: sender, requestId: id })
+      await waitFor(() => notice() !== undefined, 'the unanswered notice to be kept')
+      const queued = notice()
+      expect(queued?.asks).toEqual({ asker: sender, requestId: id })
 
-      const withdrawn = await send('withdraw_question', { question: id })
-      expect(withdrawn.structured?.outcome).toBe('ok')
-      gate.resolve()
+      await host.send(target, 'The answerer can take another turn.', world.window)
+      expect(world.resumesAsked).toBe(resumesBefore)
+      expect(host.whenItWasArchived(sender)).toBe(archivedAt)
+      expect(notice()?.messageId).toBe(queued?.messageId)
+      expect(host.restoreConversation(sender)).toMatchObject({ done: true })
+      await host.resumeSession(sender, world.window)
       await waitFor(
-        () => world.ledger(sender).some(
-          (event) => event.type === 'message_unqueued' && event.messageId === queued.messageId,
-        ),
-        'withdrawal to retract the held notice',
+        () => world.sent.some((one) => one.as === 'outbound-sender' && one.words.includes(id)),
+        'the notice to go after an explicit reopen',
       )
-      expect(world.ledger(sender)).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            type: 'message_unqueued',
-            messageId: queued.messageId,
-            reason: 'retracted',
-          }),
-        ]),
-      )
-      expect(world.ledger(sender)).not.toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ type: 'user_turn', appNotice: 'a-question-stayed-unanswered' }),
-        ]),
-      )
+      expect(world.resumesAsked).toBe(resumesBefore + 1)
     } finally {
-      gate.resolve()
       world.turnsWait = null
+      gate.resolve()
     }
   })
 
@@ -257,6 +366,29 @@ describe('explicit outbound sends', () => {
     expect(held.map((row) => row.text).join('\n')).toContain(receipt.recorded.id)
     expect(asked.text).toContain(`Question ${receipt.recorded.id} is recorded`)
     expect(host.whenItWasArchived(target)).toBe(archivedAt)
+  })
+
+  it('keeps the same Message record after a failed wake and delivers it once on reopen', async () => {
+    await host.close(target, world.window)
+    world.resumesFailFor = 'outbound-target'
+    const text = 'Keep this message across the failed wake.'
+    const sent = await send('message_agent', { agent: target, text })
+    const receipt = sent.structured?.receipt as SendReceipt
+    expect(receipt.recipient).toMatchObject({ id: target, state: { kind: 'cannot-run' } })
+    const id = receipt.recorded.id
+    expect(world.store.messagesWaitingIn(target)).toEqual([
+      expect.objectContaining({ messageId: id, text }),
+    ])
+    world.resumesFailFor = null
+    await host.resumeSession(target, world.window)
+    await waitFor(
+      () => world.ledger(target).some(
+        (event) => event.type === 'message_unqueued' && event.messageId === id && event.reason === 'sent',
+      ),
+      'the recorded message to go after reopen',
+    )
+    expect(world.store.messagesWaitingIn(target)).toEqual([])
+    expect(world.sent.filter((one) => one.as === 'outbound-target' && one.words.includes(text))).toHaveLength(1)
   })
 
   it('returns a short receipt for a question put in front of the person', async () => {

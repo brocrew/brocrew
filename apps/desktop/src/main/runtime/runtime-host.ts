@@ -13460,7 +13460,11 @@ export class RuntimeHost implements LiveHost {
           id,
         ),
       )
-      if (where === 'its-ledger' && !this.servicesHoldItBack(to, THE_APP_ITSELF)) {
+      if (
+        where === 'its-ledger' &&
+        !this.keptStopped(to) &&
+        !this.servicesHoldItBack(to, THE_APP_ITSELF)
+      ) {
         await this.ensureRunning(to, null)
       }
     })
@@ -40989,7 +40993,15 @@ export class RuntimeHost implements LiveHost {
       const wake = session.questionWakeDue === true
       delete session.questionWakeDue
       if (event.state === 'idle') {
-        if (wake) keepGoing(() => this.wakeForOwedQuestions(session), undefined)
+        if (wake) {
+          try {
+            this.wakeForOwedQuestions(session)
+          } catch (error) {
+            if (!(error instanceof RecordWriteFailed)) {
+              console.warn(`Could not check which answers ${session.id} owes: ${errorMessage(error)}`)
+            }
+          }
+        }
         this.flushQueued(session)
       }
     }
