@@ -1,4 +1,4 @@
-import { addressedGive, newConversationGive } from './lib/give-fixture'
+import { addressedGive, givePagesToNewWorker, newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { AgentState, AgentStateFacts } from '../src/shared/agent-state-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -845,13 +845,11 @@ describe('D-036 · the host says who holds the work a conversation gave out', ()
     // it is admitted held, as `a-label-names-the-conversation-that-owns-the-piece-and-no-more` does.
     const parent = await personOpens(DEFAULT_PROFILE_ID, 'ask')
     const parentTools = agentToolsFor(host, parent)
-    await callOn(parentTools, 'create_agent', { profile_slug: 'worker' })
-    const first = await callOn(
+    const first = await givePagesToNewWorker(
       parentTools,
-      'give_work',
-      newConversationGive('worker', 'Build the world clock page', 'build the world clock page'),
+      'Build the world clock page',
+      'build the world clock page',
     )
-    expect(first, JSON.stringify(first)).toMatchObject({ outcome: 'ok', label: 'W1.1' })
     const ada = first.agent as string
     await waitFor(
       () => ledger(ada).some((event) => event.type === 'permission_request'),

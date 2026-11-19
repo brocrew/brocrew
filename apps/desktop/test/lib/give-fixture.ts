@@ -32,8 +32,35 @@ export function callNewConversationGive(
   return callOn(tools, 'give_work', newConversationGive(profile, title, brief))
 }
 
+export async function giveAndWaitForBriefTurn(
+  tools: AgentToolset,
+  profile: string,
+  title: string,
+  ledger: (agent: string) => readonly { type: string }[],
+): Promise<{ agent: string; piece: string; label: string }> {
+  const given = await callNewConversationGive(tools, profile, title, title)
+  expect(given.outcome, JSON.stringify(given)).toBe('ok')
+  expect(given.started, JSON.stringify(given)).toBe(true)
+  const agent = given.agent as string
+  await waitFor(
+    () => ledger(agent).some((event) => event.type === 'turn'),
+    'the brief’s turn to end',
+  )
+  return { agent, piece: given.piece as string, label: given.label as string }
+}
+
 export function addressedGive<To, Profile>(to: To, profile: Profile, title: string, brief: string) {
   return { to, definition_of_done: definitionOfDone, profile, title, brief }
+}
+
+export function callAddressedGive(
+  tools: AgentToolset,
+  to: string,
+  profile: string,
+  title: string,
+  brief = title,
+) {
+  return callOn(tools, 'give_work', addressedGive(to, profile, title, brief))
 }
 
 export function giveToConversation(to: string, profile: string, title: string, brief: string) {
@@ -113,6 +140,16 @@ export async function giveToSeededWorker(
     callNewConversationGive(agentToolsFor(host, pm), 'worker', title, brief),
   )
   return { pm, given }
+}
+
+export async function givePagesToWorker(
+  call: typeof callOn,
+  tools: AgentToolset,
+  title: string,
+  to: string,
+) {
+  if (to === 'new') await call(tools, 'create_agent', { profile_slug: 'worker' })
+  return call(tools, 'give_work', giveToConversation(to, 'worker', title, title.toLowerCase()))
 }
 
 export async function openGiverAndGivePages(
@@ -226,9 +263,13 @@ export const giveLateServiceTask = (host: RuntimeHost, caller: string, under: st
     { ownerId: agentCallerId(caller) },
   )
 
-export async function givePagesToNewWorker(tools: AgentToolset) {
+export async function givePagesToNewWorker(
+  tools: AgentToolset,
+  title = 'Build the pages',
+  brief = 'build the pages',
+) {
   await callOn(tools, 'create_agent', { profile_slug: 'worker' })
-  const given = await callNewConversationGive(tools, 'worker', 'Build the pages', 'build the pages')
+  const given = await callNewConversationGive(tools, 'worker', title, brief)
   expect(given, JSON.stringify(given)).toMatchObject({ outcome: 'ok', label: 'W1.1' })
   return given
 }

@@ -65,6 +65,23 @@ describe('a service is reached through the piece it is on', () => {
     return { given, helper }
   }
 
+  const giveAndReportAFreeRoom = async (host: RuntimeHost, service: string) => {
+    const { given, helper } = await giveRoomsTask(host, service)
+    const replied = await call(host, helper, 'reply_to_parent', {
+      piece: String(given.structured['label']),
+      outcome: 'done',
+      summary: 'Room 4 is free.',
+    })
+    expect(replied.structured).toMatchObject({ outcome: 'ok' })
+  }
+  const giveChairsTask = (host: RuntimeHost, service: string, helper: string) =>
+    call(
+      host,
+      service,
+      'give_work',
+      addressedGive(helper, 'helper', 'Count the chairs', 'count the chairs'),
+    )
+
   const piecesOf = (service: string): readonly PieceRow[] => world.store.piecesOwnedBy(service)
   const stateOf = (service: string, piece: string): string | undefined =>
     piecesOf(service).find((one) => one.piece === piece)?.state
@@ -838,13 +855,7 @@ describe('a service is reached through the piece it is on', () => {
         signInsChecked: true,
       })
       world.anAgent('helper', 'nothing kept')
-      const { given, helper } = await giveRoomsTask(host, service)
-      const replied = await call(host, helper, 'reply_to_parent', {
-        piece: String(given.structured['label']),
-        outcome: 'done',
-        summary: 'Room 4 is free.',
-      })
-      expect(replied.structured).toMatchObject({ outcome: 'ok' })
+      await giveAndReportAFreeRoom(host, service)
       const followed = await call(host, caller, 'message_agent', {
         agent: service,
         kind: 'follow-up',
@@ -1572,13 +1583,7 @@ describe('a service is reached through the piece it is on', () => {
         signInsChecked: true,
       })
       world.anAgent('helper', 'nothing kept')
-      const { given, helper } = await giveRoomsTask(host, service)
-      const replied = await call(host, helper, 'reply_to_parent', {
-        piece: String(given.structured['label']),
-        outcome: 'done',
-        summary: 'Room 4 is free.',
-      })
-      expect(replied.structured).toMatchObject({ outcome: 'ok' })
+      await giveAndReportAFreeRoom(host, service)
       const signIn = aGate()
       world.signInWait = signIn.held
       const taking = call(host, caller, 'withdraw_task', { piece: one.label })
@@ -2072,14 +2077,7 @@ describe('a service is reached through the piece it is on', () => {
       service: string,
     ): Promise<{ helper: string; question: string }> => {
       world.anAgent('helper', 'nothing kept')
-      const given = await call(
-        host,
-        service,
-        'give_work',
-        newConversationGive('helper', 'Find rooms', 'list the free rooms'),
-      )
-      expect(given.structured).toMatchObject({ outcome: 'ok' })
-      const helper = String(given.structured['owner'] ?? given.structured['agent'])
+      const { helper } = await giveRoomsTask(host, service)
       await vi.waitFor(() => {
         expect(world.store.piecesOwnedBy(helper)).toHaveLength(1)
       })
@@ -2317,14 +2315,7 @@ describe('a service is reached through the piece it is on', () => {
       const { host, caller, service, one, two } = await aServiceOnTheFirstPiece()
       world.anAgent('helper', 'nothing kept')
       world.anAgent('sub-helper', 'nothing kept')
-      const given = await call(
-        host,
-        service,
-        'give_work',
-        newConversationGive('helper', 'Find rooms', 'list the free rooms'),
-      )
-      expect(given.structured).toMatchObject({ outcome: 'ok' })
-      const helper = String(given.structured['owner'] ?? given.structured['agent'])
+      const { given, helper } = await giveRoomsTask(host, service)
       await vi.waitFor(() => {
         expect(world.store.piecesOwnedBy(helper)).toHaveLength(1)
       })
@@ -2377,12 +2368,7 @@ describe('a service is reached through the piece it is on', () => {
       ).toMatchObject({ outcome: 'ok' })
       await call(host, caller, 'withdraw_task', { piece: one.label })
       await handedOver(service, two.piece)
-      const again = await call(
-        host,
-        service,
-        'give_work',
-        addressedGive(helper, 'helper', 'Count the chairs', 'count the chairs'),
-      )
+      const again = await giveChairsTask(host, service, helper)
       expect(again.structured).toMatchObject({ outcome: 'ok' })
       expect(again.structured['owner'] ?? again.structured['agent']).toBe(helper)
       for (const question of [later, card.id]) {
@@ -2402,14 +2388,7 @@ describe('a service is reached through the piece it is on', () => {
       async (time) => {
         const { host, caller, service, one, two } = await aServiceOnTheFirstPiece()
         world.anAgent('helper', 'nothing kept')
-        const given = await call(
-          host,
-          service,
-          'give_work',
-          newConversationGive('helper', 'Find rooms', 'list the free rooms'),
-        )
-        expect(given.structured).toMatchObject({ outcome: 'ok' })
-        const helper = String(given.structured['owner'] ?? given.structured['agent'])
+        const { given, helper } = await giveRoomsTask(host, service)
         await vi.waitFor(() => {
           expect(world.store.piecesOwnedBy(helper)).toHaveLength(1)
         })
@@ -2447,12 +2426,7 @@ describe('a service is reached through the piece it is on', () => {
         // The clock reads the card's own time, or a minute before it, and holds still for the give.
         world.clock = time === 'the same' ? late.at : late.at - 60_000
         world.clockStep = 0
-        const again = await call(
-          host,
-          service,
-          'give_work',
-          addressedGive(helper, 'helper', 'Count the chairs', 'count the chairs'),
-        )
+        const again = await giveChairsTask(host, service, helper)
         world.clockStep = 1
         expect(again.structured).toMatchObject({ outcome: 'ok' })
         expect(
@@ -2476,23 +2450,11 @@ describe('a service is reached through the piece it is on', () => {
       // Every turn from here stays working, so the helper's first piece never stalls.
       const working = aGate()
       world.turnsWait = working.held
-      const first = await call(
-        host,
-        service,
-        'give_work',
-        newConversationGive('helper', 'Find rooms', 'list the free rooms'),
-      )
-      expect(first.structured).toMatchObject({ outcome: 'ok' })
-      const helper = String(first.structured['owner'] ?? first.structured['agent'])
+      const { given: first, helper } = await giveRoomsTask(host, service)
       // The first piece ends with its helper's work still open; the next piece gives it more.
       await call(host, caller, 'withdraw_task', { piece: one.label })
       await handedOver(service, two.piece)
-      const second = await call(
-        host,
-        service,
-        'give_work',
-        addressedGive(helper, 'helper', 'Count the chairs', 'count the chairs'),
-      )
+      const second = await giveChairsTask(host, service, helper)
       expect(second.structured).toMatchObject({ outcome: 'ok' })
       await vi.waitFor(() => {
         expect(world.store.openPiecesOf(helper)).toHaveLength(2)
@@ -2524,14 +2486,7 @@ describe('a service is reached through the piece it is on', () => {
     it('passed up off a helper’s card raised again under a reused id, go by its newest routing', async () => {
       const { host, caller, other, service, one, two } = await aServiceOnTheFirstPiece()
       world.anAgent('helper', 'nothing kept')
-      const first = await call(
-        host,
-        service,
-        'give_work',
-        newConversationGive('helper', 'Find rooms', 'list the free rooms'),
-      )
-      expect(first.structured).toMatchObject({ outcome: 'ok' })
-      const helper = String(first.structured['owner'] ?? first.structured['agent'])
+      const { given: first, helper } = await giveRoomsTask(host, service)
       const handle = world.handles.filter((each) => each.as === 'helper').at(-1)?.handle
       if (handle === undefined) throw new Error('no handle')
       const card = handle.simulateUserInput('which floor?', ['first', 'second'])
@@ -2542,12 +2497,7 @@ describe('a service is reached through the piece it is on', () => {
       await call(host, service, 'withdraw_task', { piece: String(first.structured['label']) })
       await call(host, caller, 'withdraw_task', { piece: one.label })
       await handedOver(service, two.piece)
-      const again = await call(
-        host,
-        service,
-        'give_work',
-        addressedGive(helper, 'helper', 'Count the chairs', 'count the chairs'),
-      )
+      const again = await giveChairsTask(host, service, helper)
       expect(again.structured).toMatchObject({ outcome: 'ok' })
       // Its provider raises a card under the same id again, as one that started again may.
       const raised = world.store
@@ -2608,12 +2558,7 @@ describe('a service is reached through the piece it is on', () => {
       // The first piece ends; the helper is given work under the next, and raises a card.
       await call(host, caller, 'withdraw_task', { piece: one.label })
       await handedOver(service, two.piece)
-      const next = await call(
-        host,
-        service,
-        'give_work',
-        addressedGive(helper, 'helper', 'Count the chairs', 'count the chairs'),
-      )
+      const next = await giveChairsTask(host, service, helper)
       expect(next.structured).toMatchObject({ outcome: 'ok' })
       const handle = world.handles.filter((each) => each.as === 'helper').at(-1)?.handle
       if (handle === undefined) throw new Error('no handle')

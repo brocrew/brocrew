@@ -1,4 +1,4 @@
-import { newConversationGive } from './lib/give-fixture'
+import { giveAndWaitForBriefTurn } from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { callOn } from './helpers/call-agent-tool'
 import { HandleKeepingRuntime as ProviderDouble } from './helpers/handle-keeping-runtime'
@@ -121,21 +121,8 @@ describe('F020 · a withdraw of a question already answered says so, and where i
   }
 
   /** ⚑ A give, waited out to the END of the child's brief turn. */
-  const give = async (
-    tools: AgentToolset,
-    profile: string,
-    title: string,
-  ): Promise<{ agent: string; piece: string; label: string }> => {
-    const given = await callOn(tools, 'give_work', newConversationGive(profile, title, title))
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    expect(given.started, JSON.stringify(given)).toBe(true)
-    const agent = given.agent as string
-    await waitFor(
-      () => ledger(agent).some((event) => event.type === 'turn'),
-      'the brief’s turn to end',
-    )
-    return { agent, piece: given.piece as string, label: given.label as string }
-  }
+  const give = (tools: AgentToolset, profile: string, title: string) =>
+    giveAndWaitForBriefTurn(tools, profile, title, ledger)
 
   /** ⚑ BroBot → Ada → Ali, through the real door, in `auto`. */
   const aChainOfThree = async (): Promise<{

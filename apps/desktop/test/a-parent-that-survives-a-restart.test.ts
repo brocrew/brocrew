@@ -303,6 +303,11 @@ describe('373 · a parent that survives a restart', () => {
       expect(said.agent).toBe(worker)
     })
 
+    const giveToReopenedWorker = (tools: AgentToolset, piece: string) => {
+      const title = 'the parent forgot the reopened child'
+      return callOn(tools, 'give_work', addressedGive(piece, 'worker', title, title))
+    }
+
     it('⚑ 450 · a healthy reopened idle helper accepts the follow-up its give’s answer names', async () => {
       const { pm, worker, piece } = await aPmAndItsWorker()
       await restart()
@@ -319,16 +324,7 @@ describe('373 · a parent that survives a restart', () => {
       // through, and its answer names that piece.
       const status = await callOn(toolset, 'get_agent_status', { agent: worker })
       expect((status.agent as { state: string }).state).toBe('idle')
-      const blocked = await callOn(
-        toolset,
-        'give_work',
-        addressedGive(
-          piece,
-          'worker',
-          'the parent forgot the reopened child',
-          'the parent forgot the reopened child',
-        ),
-      )
+      const blocked = await giveToReopenedWorker(toolset, piece)
       expect(blocked).toMatchObject({ outcome: 'ok', agent: worker, stalled: [piece] })
 
       // ⚑ **The give's brief is the child's turn now**, so the follow-up its answer names is held
@@ -359,16 +355,7 @@ describe('373 · a parent that survives a restart', () => {
       const status = await callOn(toolset, 'get_agent_status', { agent: worker })
       expect((status.agent as { state: string }).state).toBe('idle')
       // ⚑ The give finds the reopened child, and its answer names the piece.
-      const blocked = await callOn(
-        toolset,
-        'give_work',
-        addressedGive(
-          piece,
-          'worker',
-          'the parent forgot the reopened child',
-          'the parent forgot the reopened child',
-        ),
-      )
+      const blocked = await giveToReopenedWorker(toolset, piece)
       expect(blocked).toMatchObject({ outcome: 'ok', agent: worker, stalled: [piece] })
 
       // ⛔ **No piece is substituted between the two doors.**
