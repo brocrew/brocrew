@@ -505,6 +505,49 @@ it('keeps a provider failure notice holder on the queued notice across a cold re
   ).not.toHaveProperty('providerFailureHolder')
 })
 
+it('distinguishes the exact retraction of a provider failure notice from other outcomes', () => {
+  const { store, db } = world()
+  const recipient = 'beta'
+  const messageId = 'a-provider-failure-notice'
+  const facts = {
+    messageId,
+    text: 'The recipient could not run that model.',
+    appNotice: 'a-provider-turn-failed',
+    attribution: 'app_authored',
+  } as const
+  const append = (event: TranscriptEvent) => {
+    const ordinal = store.nextOrdinal(recipient)
+    store.append(recipient, ordinal, event, ordinal)
+    return ordinal
+  }
+  const queue = () =>
+    append({ ...facts, type: 'message_queued', kind: 'notice', providerFailureHolder: 'alpha' })
+  const finish = (reason: 'retracted' | 'cancelled' | 'sent') =>
+    append({ ...facts, type: 'message_unqueued', reason })
+  const progress = () => store.providerFailureNoticeProgress(recipient, messageId)
+
+  expect(progress()).toBe('missing')
+  queue()
+  expect(progress()).toBe('pending')
+  finish('cancelled')
+  expect(progress()).toBe('not-delivered')
+  queue()
+  finish('sent')
+  expect(progress()).toBe('not-delivered')
+  queue()
+  finish('retracted')
+  expect(progress()).toBe('retracted')
+  expect(store.queuedPromptProgress(recipient, messageId, facts.appNotice)).toBe('not-delivered')
+
+  const unread = queue()
+  db.prepare('UPDATE events SET payload = ? WHERE session_id = ? AND ordinal = ?').run(
+    'unreadable',
+    recipient,
+    unread,
+  )
+  expect(progress()).toBe('not-delivered')
+})
+
 it('reads an ordinary holder failure through wakes, stopped completions and reopen', () => {
   const { store, file } = world()
   const append = (event: TranscriptEvent) => {

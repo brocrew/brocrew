@@ -646,6 +646,7 @@ export interface ScheduleEvidenceRow {
 }
 
 type QueuedPromptProgress = 'missing' | 'pending' | 'running' | 'turn-ended' | 'not-delivered'
+type ProviderFailureNoticeProgress = QueuedPromptProgress | 'retracted'
 
 export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore {
   /** Indexed candidate pages; the caller folds owners within its turn-block budget. */
@@ -970,6 +971,7 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
     messageId: string,
     appNotice: AppNotice,
   ): QueuedPromptProgress
+  providerFailureNoticeProgress(target: string, messageId: string): ProviderFailureNoticeProgress
   reconciliationDelivery(
     target: string,
     messageId: string,
@@ -1337,6 +1339,7 @@ export const NULL_SESSION_STORE: SessionStore = {
   reconciliationDrivenByTurn: () => [],
   reconciliationReceipts: () => [],
   queuedPromptProgress: () => 'missing',
+  providerFailureNoticeProgress: () => 'not-delivered',
   reconciliationDelivery: () => 'not-delivered',
   workById: () => null,
   activityWorkNames: () => new Map(),
@@ -2313,10 +2316,14 @@ export function createSessionStore(
         AND CASE WHEN json_valid(payload) THEN CASE WHEN json_type(payload, '$.piece') = 'text' AND length(CAST(json_extract(payload, '$.piece') AS BLOB)) BETWEEN 1 AND 512 THEN json_extract(payload, '$.piece') END END IS NULL
       LIMIT 1`,
   )
+  // RC3 can replan an explicit retraction. A newer unread queue row can supersede it.
   const selectReconciliationMessage = db.prepare(
     `SELECT generation, ordinal, payload FROM events
-      WHERE session_id = ? AND type IN ('message_queued', 'message_unqueued')
-        AND json_valid(payload) AND json_extract(payload, '$.messageId') = ?
+      WHERE session_id = @target AND type IN ('message_queued', 'message_unqueued')
+        AND CASE WHEN json_valid(payload) THEN
+              CASE WHEN json_type(payload, '$.messageId') IS 'text'
+                THEN json_extract(payload, '$.messageId') = @messageId ELSE @needsDisposition END
+              ELSE @needsDisposition END
       ORDER BY generation DESC, ordinal DESC LIMIT 1`,
   )
   const selectTurnAfterReconciliation = db.prepare(
@@ -2326,16 +2333,30 @@ export function createSessionStore(
       ORDER BY e.ordinal LIMIT 1`,
   )
 
-  function queuedPromptProgress(
+  function readQueuedPromptProgress(
     target: string,
     messageId: string,
     appNotice: AppNotice,
-  ): QueuedPromptProgress {
-    const message = selectReconciliationMessage.get(target, messageId) as
-      { generation: number; ordinal: number; payload: string } | undefined
+    needsDisposition: boolean,
+  ): ProviderFailureNoticeProgress {
+    const message = selectReconciliationMessage.get({
+      target,
+      messageId,
+      needsDisposition: needsDisposition ? 1 : 0,
+    }) as { generation: number; ordinal: number; payload: string } | undefined
     if (message === undefined) return 'missing'
-    const event = JSON.parse(message.payload) as QueuedMessageEvent | UnqueuedMessageEvent
+    let event: QueuedMessageEvent | UnqueuedMessageEvent | null
+    try {
+      event = JSON.parse(message.payload) as QueuedMessageEvent | UnqueuedMessageEvent | null
+    } catch {
+      return 'not-delivered'
+    }
+    if (needsDisposition && (event?.messageId !== messageId || event.appNotice !== appNotice))
+      return 'not-delivered'
+    if (event === null) return 'not-delivered'
     if (event.type === 'message_queued') return 'pending'
+    if (needsDisposition && event.type === 'message_unqueued' && event.reason === 'retracted')
+      return 'retracted'
     if (event.reason !== 'sent') return 'not-delivered'
     const opened = selectTurnAfterReconciliation.get(
       target,
@@ -2350,6 +2371,15 @@ export function createSessionStore(
     )
       return 'not-delivered'
     return opened.closed_at === null ? 'running' : 'turn-ended'
+  }
+
+  function queuedPromptProgress(
+    target: string,
+    messageId: string,
+    appNotice: AppNotice,
+  ): QueuedPromptProgress {
+    const progress = readQueuedPromptProgress(target, messageId, appNotice, false)
+    return progress === 'retracted' ? 'not-delivered' : progress
   }
 
   const selectTurnBlockInstructions = db.prepare(
@@ -6179,6 +6209,9 @@ export function createSessionStore(
       })
     },
     queuedPromptProgress,
+    providerFailureNoticeProgress(target, messageId) {
+      return readQueuedPromptProgress(target, messageId, 'a-provider-turn-failed', true)
+    },
     reconciliationDelivery(target, messageId) {
       const progress = queuedPromptProgress(target, messageId, 'a-work-wait-needs-attention')
       return progress === 'missing' ? 'not-delivered' : progress
