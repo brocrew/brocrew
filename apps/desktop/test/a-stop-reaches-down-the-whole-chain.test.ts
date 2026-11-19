@@ -14,7 +14,7 @@ import type { Provider } from '@brobot2/shared'
 import type { AppDatabase } from '../src/main/db/connection'
 import type { SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from './helpers/giver-notice-host'
-import { agentToolsFor, refuseTool } from '../src/main/runtime/agent-tools'
+import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import {
   syntheticProviderHome,
@@ -564,23 +564,16 @@ describe('629 · a stop reaches down the whole chain', () => {
       expect(woken, JSON.stringify(woken)).toMatchObject({ outcome: 'ok', went_to: next })
       const nextTools = agentToolsFor(host, next)
       for (const named of [ali, aliLabel, next]) {
-        const guide =
-          named === aliLabel
-            ? ` ${aliLabel} is your own piece, with no helpers recorded under it. list_agents names conversations; message_agent answers whether one can take your message.`
-            : ''
         expect(
           await callOn(nextTools, 'interrupt_agent', { agent: named, reason: 'stop' }),
           named,
         ).toMatchObject({ outcome: 'ok', agent: next })
-        // ⚑ …and `message_agent`'s own word, where the host's gate answered a conversation that could
-        // take no message, and sent a person to look at it.
         expect(
-          await callOn(nextTools, 'message_agent', { kind: 'note', agent: named, text: 'hello' }),
+          await callOn(nextTools, 'message_agent', { agent: named, text: 'hello' }),
           named,
         ).toMatchObject({
-          outcome: 'refused',
-          rail: 'that-agent-is-you',
-          reason: refuseTool('that-agent-is-you').reason + guide,
+          outcome: 'ok',
+          receipt: { recipient: { id: next } },
         })
       }
       // ⚑ The controls: Ada's message to Ali's id still reaches the conversation in its place, and

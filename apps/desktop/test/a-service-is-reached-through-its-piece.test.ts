@@ -11,7 +11,7 @@ import type { PieceRow } from '../src/shared/task-contracts'
 import type { SendReceipt } from '../src/shared/tool-outcome'
 import { TurnInProgress } from '@brobot2/runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { agentCallerId, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import {
   THE_APP_ITSELF,
   type GiveOutcome,
@@ -82,6 +82,17 @@ describe('a service is reached through the piece it is on', () => {
       service,
       'give_work',
       addressedGive(helper, 'helper', 'Count the chairs', 'count the chairs'),
+    )
+
+  const queueServiceFollowUp = (host: RuntimeHost, caller: string, one: Given, text: string) =>
+    host.queueMessage(
+      one.owner,
+      text,
+      { ownerId: agentCallerId(caller) },
+      [],
+      'work',
+      { aboutPiece: { piece: one.piece, label: one.label } },
+      'follow-up',
     )
 
   const piecesOf = (service: string): readonly PieceRow[] => world.store.piecesOwnedBy(service)
@@ -696,7 +707,7 @@ describe('a service is reached through the piece it is on', () => {
       releaseTheTurn()
     })
 
-    it('holds a caller’s words while its queue can’t be read: they neither go nor end, and ask no stop; a person’s go', async () => {
+    it('holds an internal follow-up while its queue can’t be read: they neither go nor end, and ask no stop; a person’s go', async () => {
       const { host, caller, service, one, releaseTheTurn } = await aServiceOnTheFirstPiece({
         turnHeld: true,
         signInsChecked: true,
@@ -705,13 +716,13 @@ describe('a service is reached through the piece it is on', () => {
       await host.send(service, 'how is it going?', world.window)
       const signIn = aGate()
       world.signInWait = signIn.held
-      const sending = call(host, caller, 'message_agent', {
-        agent: service,
-        kind: 'follow-up',
-        piece: one.label,
-        interrupt: true,
-        text: 'the room on the third floor',
-      })
+      const sending = host.messageAgentNow(
+        service,
+        'the room on the third floor',
+        { ownerId: agentCallerId(caller) },
+        'follow-up',
+        { aboutPiece: { piece: one.piece, label: one.label } },
+      )
       await new Promise((settled) => setTimeout(settled, 50))
       const ordinal = world.store.nextOrdinal(service) + 1_000
       world.store.append(
@@ -726,11 +737,10 @@ describe('a service is reached through the piece it is on', () => {
       const quiet = vi.spyOn(console, 'warn').mockImplementation(() => {})
       world.signInWait = null
       signIn.release()
-      expect((await sending).structured).toMatchObject({
-        outcome: 'ok',
-        delivery: 'queued',
-        asked_to_stop: false,
-        not_stopped_because: 'could-not-be-asked',
+      expect(await sending).toMatchObject({
+        ok: true,
+        delivery: { outcome: 'queued' },
+        stop: 'could-not-be-asked',
       })
       expect(world.stopsAsked).toEqual([])
       releaseTheTurn()
@@ -761,15 +771,10 @@ describe('a service is reached through the piece it is on', () => {
       quiet.mockRestore()
     })
 
-    it('keeps a caller’s held words through a restart that can’t read the services list', async () => {
+    it('keeps an internal follow-up through a restart that can’t read the services list', async () => {
       const { host, caller, service, one } = await aServiceOnTheFirstPiece({ turnHeld: true })
-      const followed = await call(host, caller, 'message_agent', {
-        agent: service,
-        kind: 'follow-up',
-        piece: one.label,
-        text: 'the room on the third floor',
-      })
-      expect(followed.structured).toMatchObject({ outcome: 'ok', delivery: 'queued' })
+      const followed = await queueServiceFollowUp(host, caller, one, 'the room on the third floor')
+      expect(followed.outcome).toBe('queued')
       world.turnsWait = null
       await host.closeAll()
       world.loseTheKept()
@@ -801,19 +806,14 @@ describe('a service is reached through the piece it is on', () => {
     })
 
     it.each(['answered', 'answered, and no ending can be read', 'unread', 'unchanged'] as const)(
-      'asks a caller’s held words again after the flush’s last wait, once its piece is %s',
+      'asks an internal follow-up again after the flush’s last wait, once its piece is %s',
       async (meanwhile) => {
         const { host, caller, service, one, releaseTheTurn } = await aServiceOnTheFirstPiece({
           turnHeld: true,
           signInsChecked: true,
         })
-        const followed = await call(host, caller, 'message_agent', {
-          agent: service,
-          kind: 'follow-up',
-          piece: one.label,
-          text: 'the room on the third floor',
-        })
-        expect(followed.structured).toMatchObject({ outcome: 'ok', delivery: 'queued' })
+        const followed = await queueServiceFollowUp(host, caller, one, 'the room on the third floor')
+        expect(followed.outcome).toBe('queued')
         const signIn = aGate()
         world.signInWait = signIn.held
         const checked = world.signInChecks
@@ -904,13 +904,7 @@ describe('a service is reached through the piece it is on', () => {
         world.db
           .prepare('UPDATE events SET payload = ? WHERE session_id = ? AND ordinal = ?')
           .run(whole, service, tornAt)
-        const more = await call(host, caller, 'message_agent', {
-          agent: service,
-          kind: 'follow-up',
-          piece: one.label,
-          text: 'and the one beside it',
-        })
-        expect(more.structured).toMatchObject({ outcome: 'ok' })
+        await queueServiceFollowUp(host, caller, one, 'and the one beside it')
         await vi.waitFor(() => {
           expect(
             rows(service, 'user_turn').some(
@@ -922,20 +916,15 @@ describe('a service is reached through the piece it is on', () => {
       },
     )
 
-    it('lets nothing held with a caller’s words overtake them while they wait for its queue, after the last wait', async () => {
+    it('lets nothing held with an internal follow-up overtake them while they wait for its queue, after the last wait', async () => {
       const { host, caller, service, one, releaseTheTurn } = await aServiceOnTheFirstPiece({
         turnHeld: true,
         signInsChecked: true,
       })
       world.anAgent('helper', 'nothing kept')
       await giveAndReportAFreeRoom(host, service)
-      const followed = await call(host, caller, 'message_agent', {
-        agent: service,
-        kind: 'follow-up',
-        piece: one.label,
-        text: 'the room on the third floor',
-      })
-      expect(followed.structured).toMatchObject({ outcome: 'ok', delivery: 'queued' })
+      const followed = await queueServiceFollowUp(host, caller, one, 'the room on the third floor')
+      expect(followed.outcome).toBe('queued')
       const signIn = aGate()
       world.signInWait = signIn.held
       const checked = world.signInChecks
@@ -967,7 +956,7 @@ describe('a service is reached through the piece it is on', () => {
     })
 
     it.each(['answered', 'unread', 'unchanged'] as const)(
-      'asks a caller’s words again as they go straight in, after the last wait, once its piece is %s',
+      'asks an internal follow-up again as it goes straight in, after the last wait, once its piece is %s',
       async (meanwhile) => {
         const { host, caller, service, one } = await aServiceOnTheFirstPiece({
           signInsChecked: true,
@@ -975,12 +964,10 @@ describe('a service is reached through the piece it is on', () => {
         const signIn = aGate()
         world.signInWait = signIn.held
         world.signInChecksLetThrough = world.signInChecks + 1
-        const sending = call(host, caller, 'message_agent', {
-          agent: service,
-          kind: 'follow-up',
-          piece: one.label,
-          text: 'the room on the third floor',
-        })
+        const sending = queueServiceFollowUp(host, caller, one, 'the room on the third floor').then(
+          (sent) => sent.outcome,
+          () => 'refused',
+        )
         await vi.waitFor(() => {
           expect(world.signInChecks).toBe(world.signInChecksLetThrough + 1)
         })
@@ -1018,7 +1005,7 @@ describe('a service is reached through the piece it is on', () => {
           (turn) => turn.type === 'user_turn' && turn.text.includes('the room on the third floor'),
         )
         expect(went).toBe(meanwhile === 'unchanged')
-        expect(sent.structured['outcome']).toBe(meanwhile === 'unchanged' ? 'ok' : 'refused')
+        expect(sent).toBe(meanwhile === 'unchanged' ? 'sent' : 'refused')
       },
     )
 
@@ -1754,18 +1741,13 @@ describe('a service is reached through the piece it is on', () => {
       await handedOver(service, two.piece)
     })
 
-    it('drops a follow-up its caller sent before taking the piece back', async () => {
+    it('drops an internal follow-up its caller sent before taking the piece back', async () => {
       const { host, caller, service, one, two, releaseTheTurn } = await aServiceOnTheFirstPiece({
         turnHeld: true,
         interruptWaitMs: 200,
       })
-      const followed = await call(host, caller, 'message_agent', {
-        agent: service,
-        kind: 'follow-up',
-        piece: one.label,
-        text: 'the room on the third floor',
-      })
-      expect(followed.structured).toMatchObject({ outcome: 'ok', delivery: 'queued' })
+      const followed = await queueServiceFollowUp(host, caller, one, 'the room on the third floor')
+      expect(followed.outcome).toBe('queued')
       await call(host, caller, 'withdraw_task', { piece: one.label })
       releaseTheTurn()
       await handedOver(service, two.piece)
