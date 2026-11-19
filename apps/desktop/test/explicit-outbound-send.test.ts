@@ -586,6 +586,7 @@ describe('explicit outbound sends', () => {
         const firstAsker = world.handleOf('outbound-sender')
         if (ended === 'answered after moving') {
           receiver = await world.aPersonOpens(host, 'outbound-sender')
+          await host.setApprovalMode(receiver, 'auto', world.window)
         }
         await host.closeAll()
         gate.resolve()
@@ -672,7 +673,7 @@ describe('explicit outbound sends', () => {
     },
   )
 
-  it('keeps an unanswered notice in an archived asker’s mailbox until an explicit reopen', async () => {
+  it('keeps an unanswered notice in an archived asker’s mailbox until Restore', async () => {
     const gate = deferred()
     world.turnsWait = gate.promise
     try {
@@ -702,10 +703,10 @@ describe('explicit outbound sends', () => {
       expect(host.whenItWasArchived(sender)).toBe(archivedAt)
       expect(notice()?.messageId).toBe(queued?.messageId)
       expect(host.restoreConversation(sender)).toMatchObject({ done: true })
-      await host.resumeSession(sender, world.window)
+      expect(host.whenItWasArchived(sender)).toBeNull()
       await waitFor(
         () => world.sent.some((one) => one.as === 'outbound-sender' && one.words.includes(id)),
-        'the notice to go after an explicit reopen',
+        'the notice to go when Restore opens the asker',
       )
       expect(world.resumesAsked).toBe(resumesBefore + 1)
     } finally {

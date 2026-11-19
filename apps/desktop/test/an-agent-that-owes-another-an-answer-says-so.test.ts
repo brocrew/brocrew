@@ -294,7 +294,12 @@ describe('the host says who a conversation owes an answer to, and moves the word
     if (typeof passed.question !== 'string') throw new Error(JSON.stringify(passed))
     expect(passed.outcome).toBe('ok')
     expect(store.questionsRaisedIn(brobot).get(passed.question)?.passedUpFrom).toBe(id)
-    const declined = await host.respondUserInput(brobot, passed.question, { kind: 'reject' }, window)
+    const declined = await host.respondUserInput(
+      brobot,
+      passed.question,
+      { kind: 'reject' },
+      window,
+    )
     expect(declined.outcome).toBe('taken')
     expect(store.routedRequestsOf(ada).find((row) => row.requestId === id)?.state).toBe('open')
     await untilPushed(brobot, owesAda, 'the parent to owe the passed-up question without a stall')
