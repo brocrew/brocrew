@@ -141,7 +141,14 @@ const homes: string[] = []
 afterEach(() => {
   for (const home of homes.splice(0)) fs.rmSync(home, { recursive: true, force: true })
 })
-function setup(opts: { profileName?: string; allowed?: () => boolean; off?: boolean } = {}) {
+function setup(
+  opts: {
+    profileName?: string
+    allowed?: () => boolean
+    off?: boolean
+    logger?: typeof silentLogger
+  } = {},
+) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'fictional helper '))
   homes.push(home)
   const profileDir = path.join(home, opts.profileName ?? 'Fern’s profile ünïcode')
@@ -158,7 +165,7 @@ function setup(opts: { profileName?: string; allowed?: () => boolean; off?: bool
       remembered.off = off
       remembered.calls.push(off)
     },
-    logger: silentLogger,
+    logger: opts.logger ?? silentLogger,
   })
   return { fixture, helper, profileDir, home, remembered }
 }
@@ -468,13 +475,40 @@ describe('placing a tab with the helper', () => {
     expect(await helper.place(7, MARKER, 1000)).toEqual({ created: false, helper: 'refused' })
   })
   it('an evaluation that fails or never answers after dispatch is uncertain and throws', async () => {
-    const { fixture, helper } = setup()
-    await helper.install(1000)
+    let reason: unknown
+    const { fixture, helper } = setup({
+      logger: {
+        ...silentLogger,
+        info: (message, fields) => {
+          if (message === 'BroCrew helper') reason = fields?.reason
+        },
+      },
+    })
+    const installed = await helper.install(1000)
+    expect(
+      installed,
+      JSON.stringify({
+        reason,
+        methods: methods(fixture),
+        workers: fixture.workers.length,
+        sessions: fixture.sessions,
+        detached: fixture.detached,
+        evaluations: fixture.evaluated.map((arg) => {
+          if (arg === undefined) return 'protocol'
+          return Array.isArray(arg) && arg[0] === 'place-tab' ? 'place-tab' : 'other'
+        }),
+      }),
+    ).toBe('ready')
+    const placement = ['place-tab', { windowId: 7, url: MARKER }]
     fixture.evaluateFails = true
+    const beforeFailure = fixture.evaluated.length
     await expect(helper.place(7, MARKER, 1000)).rejects.toThrow()
+    expect(fixture.evaluated.slice(beforeFailure)).toEqual([placement])
     fixture.evaluateFails = false
     fixture.evaluateHangs = true
+    const beforeHang = fixture.evaluated.length
     await expect(helper.place(7, MARKER, 30)).rejects.toThrow('timeout')
+    expect(fixture.evaluated.slice(beforeHang)).toEqual([placement])
   })
   it('dispatches nothing once the profile changes or extensions are turned off', async () => {
     let allowed = true
