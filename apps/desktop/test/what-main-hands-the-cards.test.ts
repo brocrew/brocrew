@@ -537,7 +537,8 @@ describe('671 · what main hands the cards', () => {
       expect(await list({ filters, query: 'never-a-library-match' })).toMatchObject({ matched: 0 })
       expect(await list({ filters: { profileId: 'unbound' } })).toMatchObject({ matched: 0 })
 
-      await host.archiveConversation(ran)
+      expect(await host.archiveConversation(ran)).toMatchObject({ done: true })
+      expect(await host.archiveConversation(preProfile)).toMatchObject({ done: true })
       expect(await list({ filters: { ...filters, archived: 'only' } })).toMatchObject({
         entries: [{ recordId: ran }],
         matched: 1,
