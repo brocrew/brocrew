@@ -849,13 +849,11 @@ describe('a label names the conversation that owns the piece, and no more', () =
       events.filter(
         (event) => !['tool_call', 'tool_result', 'assistant_message', 'turn'].includes(event.type),
       )
-    for (const tool of ['message_agent', 'ask_question', 'interrupt_agent'] as const) {
+    for (const tool of ['ask_question', 'interrupt_agent'] as const) {
       const argsFor = (agent: string): Record<string, unknown> =>
-        tool === 'message_agent'
-          ? { agent, kind: 'note', text: 'Read the helper’s result.' }
-          : tool === 'ask_question'
-            ? { agent, who_answers: 'an-agent', question: 'Which helper owns this?' }
-            : { agent, reason: 'Stop the unfinished draft.' }
+        tool === 'ask_question'
+          ? { agent, who_answers: 'an-agent', question: 'Which helper owns this?' }
+          : { agent, reason: 'Stop the unfinished draft.' }
 
       for (const ended of [false, true]) {
         it(`${tool} lists the visible ${ended ? 'ended' : 'ongoing'} helper without sending or asking it`, async () => {
@@ -877,7 +875,7 @@ describe('a label names the conversation that owns the piece, and no more', () =
           expect(said.text).toContain('Ada (worker) on W1.1')
           if (ended) expect(said.text).toContain('(ended: closed)')
           else expect(said.text).not.toContain('(ended:')
-          expect(said.text).toContain('kind: note')
+          expect(said.text).toContain('message_agent or ask_question')
           expect(said.text).toContain('give_work')
           expect(acts(ledger(ada))).toEqual(before)
           expect(queued).not.toHaveBeenCalled()
@@ -922,10 +920,10 @@ describe('a label names the conversation that owns the piece, and no more', () =
 
     it('the caller’s non-root piece lists its own child and not the parent’s helper', async () => {
       const { ada } = await settledFamily()
-      const said = await fullCall(agentToolsFor(host, ada), 'message_agent', {
+      const said = await fullCall(agentToolsFor(host, ada), 'ask_question', {
         agent: 'W1.1',
-        kind: 'note',
-        text: 'Read the helper’s result.',
+        who_answers: 'an-agent',
+        question: 'Which helper owns this?',
       })
       expect(said.text).toContain('W1.1 is your own piece.')
       expect(said.text).toContain('Ali (tester) on W1.1.1')
@@ -1057,7 +1055,7 @@ describe('a label names the conversation that owns the piece, and no more', () =
       }
     })
 
-    it('a root with no helper pieces says so, while an id self-address stays generic', async () => {
+    it('a Message reaches its own conversation by its root label and by its ID', async () => {
       const me = await personOpens(DEFAULT_PROFILE_ID)
       const tools = agentToolsFor(host, me)
       const label = await fullCall(tools, 'message_agent', {
@@ -1065,14 +1063,13 @@ describe('a label names the conversation that owns the piece, and no more', () =
         kind: 'note',
         text: 'Read this.',
       })
-      expect(label.text).toContain('W1 is your own piece, with no helpers recorded under it.')
+      expect(label.structured).toMatchObject({ outcome: 'ok', agent: me })
       const id = await fullCall(tools, 'message_agent', {
         agent: me,
         kind: 'note',
         text: 'Read this.',
       })
-      expect(id.structured.rail).toBe('that-agent-is-you')
-      expect(id.text).not.toContain('is your own piece')
+      expect(id.structured).toMatchObject({ outcome: 'ok', agent: me })
     })
   })
 })

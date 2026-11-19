@@ -378,6 +378,7 @@ export interface WaitingMessage {
   readonly about?: string
   readonly asks?: TheQuestionItAsks
   readonly unansweredQuestion?: TheQuestionItAsks
+  readonly messageAct?: string
 }
 
 interface AdoptedSessionRecord {
@@ -5742,6 +5743,7 @@ export function createSessionStore(
             ...(isAStoredId(stored.about) ? { about: stored.about } : {}),
             ...(theQuestionItAsks(stored.asks) ?? {}),
             ...(unansweredQuestion === undefined ? {} : { unansweredQuestion }),
+            ...(isAStoredId(stored.messageAct) ? { messageAct: stored.messageAct } : {}),
           },
         ]
       })

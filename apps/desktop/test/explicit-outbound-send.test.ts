@@ -7,8 +7,10 @@ import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { SendReceipt } from '../src/shared/tool-outcome'
 import { theMessagesOf } from '../src/shared/runtime-ipc'
 import { resourcesRoot } from '../src/main/resources/resources'
+import { describeConversation } from '../src/main/runtime/conversation-address'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 import { waitFor } from './lib/f093-host'
+import { recordHistoricalReplacement } from './lib/historical-replacement'
 
 describe('explicit outbound sends', () => {
   let world: AServiceWorld
@@ -171,6 +173,58 @@ describe('explicit outbound sends', () => {
     expect(world.store.routedRequestsOf(sender).find((one) => one.requestId === id)?.state).toBe(
       'answered',
     )
+  })
+
+  it('moves an undelivered Ask with the same question and the successor’s receiver header', async () => {
+    const successor = await world.aPersonOpens(host, 'outbound-target')
+    const gate = Promise.withResolvers<void>()
+    world.turnsWait = gate.promise
+    try {
+      await host.send(target, 'Hold this conversation open.', world.window)
+      const prompt = 'Which of these two plans applies?'
+      const result = await send('ask_question', {
+        who_answers: 'an-agent',
+        agent: target,
+        question: prompt,
+        options: ['Original', 'Revised'],
+      })
+      const receipt = result.structured?.receipt as SendReceipt
+      expect(receipt.recipient).toMatchObject({ id: target, state: { kind: 'queued' } })
+      const id = receipt.recorded.id
+      const original = world.store.messagesWaitingIn(target).find((row) => row.asks?.requestId === id)
+      if (original === undefined) throw new Error('The queued Ask is missing.')
+      await host.closeAll()
+      world.turnsWait = null
+      gate.resolve()
+      recordHistoricalReplacement(world.store, target, successor, world.clock++)
+
+      host = world.aHost()
+      const starting = host as unknown as {
+        startForADelivery(id: string, window: null): Promise<string>
+      }
+      expect(await starting.startForADelivery(target, null)).toBe(successor)
+      const delivered = () => world.ledger(successor).find(
+        (event) => event.type === 'user_turn' && event.text.includes(prompt),
+      )
+      await waitFor(() => delivered() !== undefined, 'the moved Ask to reach the successor')
+      const line = describeConversation(world.store, successor, false).line
+      expect(delivered()).toMatchObject({
+        text: expect.stringContaining(`asks you ${id} in your ${line}.`),
+      })
+      expect(world.ledger(successor)).toContainEqual(
+        expect.objectContaining({ type: 'message_queued', asks: { asker: sender, requestId: id } }),
+      )
+      expect(original.text).toContain(`in your conversation ${receipt.recipient.address} ·`)
+      expect(world.store.questionsRaisedIn(sender).get(id)).toMatchObject({
+        prompt,
+        questions: [
+          expect.objectContaining({ options: [{ label: 'Original' }, { label: 'Revised' }] }),
+        ],
+      })
+    } finally {
+      world.turnsWait = null
+      gate.resolve()
+    }
   })
 
   it('sends one reminder and one notice to the asker while the original question stays open', async () => {
@@ -455,12 +509,13 @@ describe('explicit outbound sends', () => {
     },
   )
 
-  it.each(['withdrawn', 'answered'] as const)(
+  it.each(['withdrawn', 'answered', 'answered after moving'] as const)(
     'retracts a rehydrated unanswered notice once the question is %s',
     async (ended) => {
       host.claimSession(sender, world.window)
       const gate = Promise.withResolvers<void>()
       const keepBusy: (() => void)[] = []
+      let receiver = sender
       world.turnsWait = gate.promise
       try {
         await host.send(sender, 'Hold the asker’s turn open.', world.window)
@@ -473,7 +528,7 @@ describe('explicit outbound sends', () => {
         const id = asked.structured?.question
         if (typeof id !== 'string') throw new Error('The question has no recorded id.')
         const pendingNotice = () =>
-          world.store.messagesWaitingIn(sender).find(
+          world.store.messagesWaitingIn(receiver).find(
             (one) => one.authorship.appNotice === 'a-question-stayed-unanswered',
           )
         await waitFor(() => pendingNotice() !== undefined, 'the asker note to queue')
@@ -483,8 +538,12 @@ describe('explicit outbound sends', () => {
         expect(queued).not.toHaveProperty('asks')
 
         const firstAsker = world.handleOf('outbound-sender')
+        if (ended === 'answered after moving') {
+          receiver = await world.aPersonOpens(host, 'outbound-sender')
+        }
         await host.closeAll()
         gate.resolve()
+        if (receiver !== sender) recordHistoricalReplacement(world.store, sender, receiver, world.clock++)
         host = world.aHost()
         await host.resumeSession(target, world.window)
         world.onResumed = (profile, handle) => {
@@ -492,9 +551,24 @@ describe('explicit outbound sends', () => {
           const busy = vi.spyOn(handle, 'status').mockReturnValue('working')
           keepBusy.push(() => busy.mockRestore())
         }
-        await host.resumeSession(sender, world.window)
+        let noticeId = queued.messageId
+        if (receiver !== sender) {
+          const starting = host as unknown as {
+            startForADelivery(id: string, window: null): Promise<string>
+          }
+          expect(await starting.startForADelivery(sender, null)).toBe(receiver)
+          const moved = pendingNotice()
+          if (moved === undefined) throw new Error('The moved notice is missing.')
+          expect(moved.unansweredQuestion).toEqual(queued.unansweredQuestion)
+          noticeId = moved.messageId
+          keepBusy.pop()?.()
+          await host.closeAll()
+          host = world.aHost()
+          await host.resumeSession(target, world.window)
+        }
+        await host.resumeSession(receiver, world.window)
         expect(world.handleOf('outbound-sender')).not.toBe(firstAsker)
-        expect(pendingNotice()?.messageId).toBe(queued.messageId)
+        expect(pendingNotice()?.messageId).toBe(noticeId)
         expect(world.store.routedRequestsOf(sender).find((one) => one.requestId === id)?.state).toBe(
           'open',
         )
@@ -514,26 +588,26 @@ describe('explicit outbound sends', () => {
           expect(answered.structured?.outcome).toBe('ok')
         }
         expect(world.store.routedRequestsOf(sender).find((one) => one.requestId === id)?.state).toBe(
-          ended,
+          ended === 'withdrawn' ? 'withdrawn' : 'answered',
         )
         keepBusy.pop()?.()
-        await host.send(sender, 'A new turn after the settlement.', world.window)
+        await host.send(receiver, 'A new turn after the settlement.', world.window)
         await waitFor(
-          () => world.ledger(sender).some(
-            (event) => event.type === 'message_unqueued' && event.messageId === queued.messageId,
+          () => world.ledger(receiver).some(
+            (event) => event.type === 'message_unqueued' && event.messageId === noticeId,
           ),
           'settlement to retract the held notice',
         )
-        expect(world.ledger(sender)).toEqual(
+        expect(world.ledger(receiver)).toEqual(
           expect.arrayContaining([
             expect.objectContaining({
               type: 'message_unqueued',
-              messageId: queued.messageId,
+              messageId: noticeId,
               reason: 'retracted',
             }),
           ]),
         )
-        const delivered = world.ledger(sender).flatMap(
+        const delivered = world.ledger(receiver).flatMap(
           (event) => event.type === 'user_turn' ? theMessagesOf(event) : [],
         )
         expect(delivered.some((part) => part.appNotice === 'a-question-stayed-unanswered')).toBe(

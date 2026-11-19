@@ -542,53 +542,18 @@ describe('347 · the five tools', () => {
       expect(eventKinds(child)).toContain('message_queued')
     })
 
-    it('⛔ 424 · a self-message is refused BY NAME and is not retryable — `422`’s finding, closed', async () => {
-      await bringIdentityIntoBeing('worker')
+    it('sends a Message to the caller by its listed address', async () => {
       const parent = await personOpens('pm')
       const { call } = toolsOf(parent)
-
-      // ⛔ **A real id the tool itself advertises.** `list_agents` deliberately includes the caller,
-      // and `message_agent`'s precheck deliberately admits `me`, so this is not a malformed call or
-      // an invented identifier. The later host gate is the one that refuses it.
-      //
-      // ⚠️ **That precheck is `withinMessagingReach` since `431` and was `agentCard`** — the reader
-      // changed and the `me` clause did not, which is what keeps this refusal reachable. ⛔ The
-      // host's own gate has no `me` and refuses a conversation queueing words into itself, so the
-      // clause is a disclosure allowance at the door rather than an entitlement.
       const listed = (await call('list_agents', {})).agents as { agent: string }[]
       expect(listed.map((one) => one.agent)).toContain(parent)
-      const sameCall = { agent: parent, text: 'keep this for me', kind: 'note' }
-      const refused = await call('message_agent', sameCall)
-      // 🔴 **`422` measured this arriving as `agent-cannot-take-a-message · while-this-holds ·
-      // retryable: true`** — a real, advertised id, refused for ever, with *"come back later"*
-      // written on it. ⛔ `424` split the arm out: the rail names what is actually wrong, and the
-      // permanence says that no later moment is different.
-      expect(refused).toMatchObject({
-        outcome: 'refused',
-        rail: 'that-agent-is-you',
-        permanence: 'permanent',
-        retryable: false,
-      })
-      // ⚠️ **And it does not say the receiver is busy**, which is the sentence the old fold gave a
-      // caller about itself — a reason answering with another reason's sentence (340's finding).
-      expect(String(refused.reason)).not.toContain('not in a state')
-
-      // 🔴 **The identical call, again.** Nothing about the world moved, and the answer is the same
-      // one — which is now what the payload SAYS will happen rather than the opposite of it.
-      expect(await call('message_agent', sameCall)).toMatchObject({
-        outcome: 'refused',
-        rail: 'that-agent-is-you',
-        permanence: 'permanent',
-        retryable: false,
-      })
-
-      // ⚑ **One entitlement fact over, the same gesture lands.** A child this caller commands is the
-      // ordinary positive; a blanket implementation that refused every message would fail here.
-      const child = (await give(parent, 'worker', 'Receive the same words')).agent as string
-      expect(await call('message_agent', { ...sameCall, agent: child })).toMatchObject({
+      const message = await call('message_agent', { agent: parent, text: 'keep this for me' })
+      expect(message).toMatchObject({
         outcome: 'ok',
-        agent: child,
+        agent: parent,
+        receipt: { recipient: { id: parent } },
       })
+      expect(eventKinds(parent)).toContain('message_sent')
     })
   })
 

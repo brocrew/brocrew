@@ -205,16 +205,7 @@ describe('433 §B · the agents a reach can see', () => {
       expect(saidBy('interrupt_agent')).not.toContain('Being listed is not a promise')
     })
 
-    /**
-     * 🔴 **The counterexample that killed the first draft, kept as an assertion.**
-     *
-     * ⛔ **A caller can SEE a conversation it may not write to, and the commonest instance is
-     * ITSELF.** ⚑ That is not a hole: `424` split `that-agent-is-you` out precisely so the refusal
-     * is permanent and honest instead of a retry promise. ⚠️ **What it is, is the bound on what
-     * `list_agents` may promise** — and the pair below is the two answers in one sample, so a future
-     * sentence that widens the promise has a red waiting for it.
-     */
-    it('⛔ seeing is not sending: the caller’s own row is listed and permanently refused', async () => {
+    it('a listed conversation can send a note to itself and to its manager', async () => {
       const { brobot, brobotTools } = await twoCallersAndOneTarget()
       expect(await idsListedBy(brobotTools)).toContain(brobot)
       expect(
@@ -223,9 +214,7 @@ describe('433 §B · the agents a reach can see', () => {
           text: 'hello me',
           kind: 'note',
         }),
-      ).toMatchObject({ outcome: 'refused', rail: 'that-agent-is-you', permanence: 'permanent' })
-      // ⚑ **The paired positive, one target over**: the same caller writing to a conversation it may
-      // write to — so the refusal above is about the TARGET being itself, not about the door.
+      ).toMatchObject({ outcome: 'ok', agent: brobot })
       const { manager } = {
         manager: (await idsListedBy(brobotTools)).filter((id) => id !== brobot)[0] as string,
       }

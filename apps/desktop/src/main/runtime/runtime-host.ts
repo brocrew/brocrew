@@ -8727,7 +8727,7 @@ export class RuntimeHost implements LiveHost {
     says: AgentMessageKind,
   ): Promise<QueueOutcome> {
     const to = this.theOneInItsPlace(sessionId)
-    await this.refuseBeforeAStart(to, text, by, attachments)
+    await this.refuseBeforeAStart(to, text, by, attachments, facts.messageAct)
     const from = this.originOf(by)
     const toProfile = from?.who === 'a-caller-with-an-id' ? this.profileOf(to) : null
     const kept = await this.keptUntilItStarts(to, text, facts, kind, { by, says, attachments })
@@ -8844,8 +8844,12 @@ export class RuntimeHost implements LiveHost {
    */
   private aCallersWordsWaitForItsQueue(session: HostedSession): boolean {
     return session.mailbox.some(
-      (queued) => this.theReachOfACallersWords(session.id, queued) === 'unknown',
+      (queued) => this.theReachOfHeldWords(session.id, queued) === 'unknown',
     )
+  }
+
+  private theReachOfHeldWords(sessionId: string, queued: QueuedMessage) {
+    return queued.messageAct === undefined ? this.theReachOfACallersWords(sessionId, queued) : null
   }
 
   /**
@@ -10842,6 +10846,14 @@ export class RuntimeHost implements LiveHost {
       if (!aRowADeliveryCanStart(row)) return { is: 'takes-no-messages' }
     }
     return this.theServiceOf(sessionId) === null ? { is: 'takes-no-messages' } : { is: 'a-service' }
+  }
+
+  messageDestination(address: string): string | null {
+    const destination = resolveConversationAddress(address, this.deps.store)
+    const current = this.theOneInItsPlace(destination)
+    return this.slots.has(current) || this.deps.store.recordedOne(current) !== null
+      ? destination
+      : null
   }
 
   /** A known piece label names its owner for reads; other doors retain their own reach. */
@@ -13090,6 +13102,7 @@ export class RuntimeHost implements LiveHost {
       ...(facts.unansweredQuestion === undefined
         ? {}
         : { unansweredQuestion: facts.unansweredQuestion }),
+      ...(facts.messageAct === undefined ? {} : { messageAct: facts.messageAct }),
       ...(itNames === null ? {} : { about: itNames }),
     }
     const row: QueuedMessageEvent = {
@@ -13106,6 +13119,7 @@ export class RuntimeHost implements LiveHost {
       ...(held.unansweredQuestion === undefined
         ? {}
         : { unansweredQuestion: held.unansweredQuestion }),
+      ...(held.messageAct === undefined ? {} : { messageAct: held.messageAct }),
     }
     return { held, row }
   }
@@ -22146,7 +22160,7 @@ export class RuntimeHost implements LiveHost {
     // — it refuses the command {@link handToProvider} would send bare, so both ask about one sender.
     // ⚠️ Spelled at both call sites rather than hoisted, because `the-origin-a-model-is-told.test.ts`
     // §6 reads the HANDOVER's origin off its call; the gate's is spelled the same for symmetry.
-    const session = this.requireToMessage(sessionId, by)
+    const session = this.requireToMessage(sessionId, by, facts.messageAct)
     // ⚑ **D-017 · R1** — a stop that lands in the gate's awaits is waited out and the words go after
     // the start ({@link aDeliveryAStopCaught}), never refused *still closing*.
     let handed: Awaited<ReturnType<typeof recheckHandedPaths>>
@@ -22243,7 +22257,9 @@ export class RuntimeHost implements LiveHost {
       // ⛔ A caller's words go straight in to a service only while it is still on that caller's
       // piece, asked again after the gate's waits, in the tick they are handed over: else they lose
       // the race, and the queue door asks them again ({@link aCallersWordsGoNow}).
-      if (this.aCallersWordsNoLongerGoStraightIn(sessionId, by)) throw new TurnInProgress()
+      if (facts.messageAct === undefined && this.aCallersWordsNoLongerGoStraightIn(sessionId, by)) {
+        throw new TurnInProgress()
+      }
       await this.handToProvider(
         session,
         text,
@@ -23317,7 +23333,7 @@ export class RuntimeHost implements LiveHost {
         deliver,
       )
     }
-    return this.deliverWhenItRuns(sessionId, text, by, attachments, says, deliver)
+    return this.deliverWhenItRuns(sessionId, text, by, attachments, says, deliver, facts.messageAct)
   }
 
   /** Keep the recipient's message before opening a stopped conversation. */
@@ -24911,12 +24927,13 @@ export class RuntimeHost implements LiveHost {
     _says: AgentMessageKind | null,
     /** ⚑ **D-017 · R10** — handed the conversation it goes to: the one that took its place, if any. */
     deliver: (to: string) => Promise<T>,
+    messageAct?: string,
   ): Promise<T> {
     const onArrival = (async () => {
       const arriving = this.theOneInItsPlace(sessionId)
       if (this.startupRepairs.has(arriving)) await this.settleBeforeUse(arriving)
       if (!this.runsNow(arriving)) {
-        await this.refuseBeforeAStart(arriving, text, by, attachments)
+        await this.refuseBeforeAStart(arriving, text, by, attachments, messageAct)
       }
     })()
     const inLine = this.afterWhatArrivedFirst(sessionId, async () => {
@@ -24930,7 +24947,7 @@ export class RuntimeHost implements LiveHost {
         this.aPersonsWindowTakesIt(to, theSurfaceAsking(by))
         return deliver(to)
       }
-      await this.refuseBeforeAStart(to, text, by, attachments)
+      await this.refuseBeforeAStart(to, text, by, attachments, messageAct)
       const waker = sessionSpeakingAs(by)
       let ran: string
       try {
@@ -25126,7 +25143,12 @@ export class RuntimeHost implements LiveHost {
     text: string,
     by: Caller,
     attachments: readonly HandedPath[],
+    messageAct?: string,
   ): Promise<void> {
+    if (messageAct !== undefined) {
+      if (this.messageDestination(sessionId) === null) throw new Error(`unknown session: ${sessionId}`)
+      return
+    }
     const me = sessionSpeakingAs(by)
     if (me !== null) {
       if (this.itsCallerMessagesAService(sessionId, by)) return
@@ -25387,7 +25409,12 @@ export class RuntimeHost implements LiveHost {
         ...queued.authorship,
       })
       if (work || itsJobs) continue
-      const held: QueuedMessage = { ...queued, id: newQueuedMessageId(), since: this.now() }
+      const held: QueuedMessage = {
+        ...queued,
+        id: newQueuedMessageId(),
+        since: this.now(),
+        text: this.wordsMovedTo(queued, next.id),
+      }
       delete held.interrupting
       next.mailbox.push(held)
       this.publishOurs(next, {
@@ -25406,6 +25433,8 @@ export class RuntimeHost implements LiveHost {
         ...(held.unansweredQuestion === undefined
           ? {}
           : { unansweredQuestion: held.unansweredQuestion }),
+        ...(held.asks === undefined ? {} : { asks: held.asks }),
+        ...(held.messageAct === undefined ? {} : { messageAct: held.messageAct }),
       })
       moved += 1
     }
@@ -25413,6 +25442,21 @@ export class RuntimeHost implements LiveHost {
     this.publishStateIfChanged(next)
     this.flushQueued(next)
     this.theWorldMoved('work')
+  }
+
+  private wordsMovedTo(held: QueuedMessage, receiver: string): string {
+    if (held.kind !== 'question' || held.asks === undefined || held.authorship.appNotice !== undefined) {
+      return held.text
+    }
+    const { asker, requestId } = held.asks
+    try {
+      const question = this.deps.store.questionsRaisedIn(asker).get(requestId)
+      if (question?.raisedBy !== 'this-app' || question.passedUpFrom != null) return held.text
+      return this.outboundQuestionWords(asker, receiver, { ...question, id: requestId })
+    } catch (error) {
+      console.warn(`Could not read question ${requestId} while moving it: ${errorMessage(error)}`)
+      return held.text
+    }
   }
 
   /**
@@ -25509,14 +25553,14 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **D-017 · R1** — the same words, once more, through the conversation's start.
     const startItAgain = (again: (to: string) => Promise<QueueOutcome>): Promise<QueueOutcome> =>
       facts.giving === undefined
-        ? this.deliverWhenItRuns(sessionId, text, by, attachments, says, again)
+        ? this.deliverWhenItRuns(sessionId, text, by, attachments, says, again, facts.messageAct)
         : again(sessionId)
     // 🔴 **`requireToMessage`, and the word IS the widening** (431 · criterion 6). ⛔ `send` asks
     // the same gate — see its own note for why the pair is the rule — and the three siblings left
     // on {@link requireToCommand} are `sendInterrupting`, `cancelQueuedMessage` and `interrupt`.
     // What this verb asks is {@link withinMessagingReach}, which admits everything `mayCommand` does
     // and any other conversation that is not a service's.
-    const session = this.requireToMessage(sessionId, by)
+    const session = this.requireToMessage(sessionId, by, facts.messageAct)
     // ⚑ **708 · the same `this.originOf(by)` the held branch records below** — the gate refuses a
     // person's command that carries attachments at the QUEUE, while the composer still holds them.
     // 🔴 **A sign-in that moved on HOLDS the words a reopen carries** ({@link aReopenCarriesIt}): an
@@ -25722,6 +25766,7 @@ export class RuntimeHost implements LiveHost {
       ...(from === null ? {} : { origin: from }),
       // ⚑ **The question a held question's notice asks** — see {@link QueuedMessage.asks}.
       ...(facts.asks === undefined ? {} : { asks: facts.asks }),
+      ...(facts.messageAct === undefined ? {} : { messageAct: facts.messageAct }),
       // 🔴 **F088 · and the piece an agent's note or follow-up names** — see {@link QueuedMessage.about}.
       ...(about === null ? {} : { about }),
     }
@@ -25749,6 +25794,7 @@ export class RuntimeHost implements LiveHost {
       ...(about === null ? {} : { about }),
       // ⚑ See {@link QueuedMessageEvent.asks}.
       ...(held.asks === undefined ? {} : { asks: held.asks }),
+      ...(held.messageAct === undefined ? {} : { messageAct: held.messageAct }),
     }
     if (giving !== null) {
       this.recordTheGive(session, giving, id, null, { queued, mailboxEntry: held })
@@ -27320,7 +27366,7 @@ export class RuntimeHost implements LiveHost {
    * words.
    */
   private aCallersWordsGoNow(session: HostedSession, queued: QueuedMessage): boolean {
-    const reach = this.theReachOfACallersWords(session.id, queued)
+    const reach = this.theReachOfHeldWords(session.id, queued)
     if (reach === null || reach === 'reaches') return true
     if (reach === 'outlived') this.endItUnsent(session, queued, ITS_PIECE_HAD_ENDED)
     return false
@@ -27482,7 +27528,7 @@ export class RuntimeHost implements LiveHost {
       // ⚑ …and while any caller's words wait for their queue, only a person's own go with them, so
       // nothing overtakes the words that wait.
       const someWait = going.some(
-        ({ queued }) => this.theReachOfACallersWords(session.id, queued) === 'unknown',
+        ({ queued }) => this.theReachOfHeldWords(session.id, queued) === 'unknown',
       )
       going = going.filter(
         ({ queued }) =>
@@ -27924,7 +27970,7 @@ export class RuntimeHost implements LiveHost {
       // can't be read are not ended here, and no flush takes them while it can't
       // ({@link aCallersWordsWaitForItsQueue}), asked in the same stretch as this, with nothing
       // awaited between.
-      if (this.theReachOfACallersWords(sessionId, queued) === 'outlived') return ITS_PIECE_HAD_ENDED
+      if (this.theReachOfHeldWords(sessionId, queued) === 'outlived') return ITS_PIECE_HAD_ENDED
       const question = queued.kind === 'question' ? queued.asks : queued.unansweredQuestion
       if (question !== undefined) {
         const { asker, requestId } = question
@@ -28013,6 +28059,7 @@ export class RuntimeHost implements LiveHost {
       ...(row.unansweredQuestion === undefined
         ? {}
         : { unansweredQuestion: row.unansweredQuestion }),
+      ...(row.messageAct === undefined ? {} : { messageAct: row.messageAct }),
       ...(origin === null ? {} : { origin }),
     }
   }
@@ -39171,8 +39218,10 @@ export class RuntimeHost implements LiveHost {
    * in a conversation it could not take back if that verb were published — which is a note for the
    * dispatch that publishes it, not a hole this one opened.
    */
-  private requireToMessage(sessionId: string, by: Caller): HostedSession {
-    return this.sessionFor(sessionId, (slot) => this.assertMayMessage(slot, by))
+  private requireToMessage(sessionId: string, by: Caller, messageAct?: string): HostedSession {
+    return this.sessionFor(sessionId, (slot) => {
+      if (messageAct === undefined) this.assertMayMessage(slot, by)
+    })
   }
 
   /** Read any known conversation's transcript, including an empty one. */

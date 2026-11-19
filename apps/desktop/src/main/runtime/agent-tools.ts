@@ -155,7 +155,7 @@ export function agentToolsFor(
     createListAgentsTool(host, by, me, readerInputs, readerFieldRefusal, guarded),
     createGetAgentStatusTool(host, by, me, readerInputs, readerFieldRefusal, guarded),
     createGiveWorkTool(host, by, theModels, theEfforts, launchedOrSaid),
-    createMessageAgentTool(host, by, me, selfRefusal, theConversationToReach, guarded),
+    createMessageAgentTool(host, by, me, guarded),
     createReadDocumentTool(host, readerInputs, readerFieldRefusal, guarded),
     createReplyToParentTool(host, by, me, guarded, replyInput),
     createListTasksTool(host, by, me, readerInputs, readerFieldRefusal, guarded),
