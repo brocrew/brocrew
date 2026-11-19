@@ -1073,7 +1073,8 @@ describe('347 · the five tools', () => {
       // or everywhere.
       // ⚑ `request_mcp_server` asks the person to register an outside MCP server.
       // ⚑ `request_action` asks the person to do something, as a to-do.
-      expect(offered).toHaveLength(34)
+      expect(offered).toHaveLength(35)
+      expect(offered.at(-2)).toBe('compact_agent')
       expect(offered.at(-1)).toBe('rename_conversation')
     })
 
@@ -1151,6 +1152,7 @@ describe('347 · the five tools', () => {
         // the *"work for somebody to pick up later"* it could queue is none. ⚠️ It reaches only a
         // conversation below this caller, as `end_agent` did until D-017.
         interrupt_agent: 'the agent',
+        compact_agent: 'the agent',
         // 🔴 **`list_questions` names NOTHING AT ALL** (396), which was `list_tasks`' answer until
         // D-016 gave it a piece to read, and for its reason: a conversation is told about its own family, `me` is minted by the toolset,
         // and there is no argument for whose questions to look at. ⛔ It is a READER — it hands

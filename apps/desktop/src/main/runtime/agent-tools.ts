@@ -33,7 +33,11 @@ import {
   createListProfilesTool,
 } from './tool-families/directory'
 import { createRenameConversationTool } from './tool-families/rename-conversation'
-import { createInterruptAgentTool, createMessageAgentTool } from './tool-families/messaging'
+import {
+  createCompactAgentTool,
+  createInterruptAgentTool,
+  createMessageAgentTool,
+} from './tool-families/messaging'
 import {
   createSearchWorkTool,
   createTakeOnWorkTool,
@@ -239,6 +243,7 @@ export function agentToolsFor(
       createWriteAgentRulesTool(host, by, me, guarded),
       createReadOwnNotesTool(host, by, me, guarded),
       createWriteOwnNotesTool(host, by, me, guarded),
+      createCompactAgentTool(host, by, me, guarded),
       createRenameConversationTool(host, me),
     ].map(recordsWhatItRefused),
   }

@@ -8,6 +8,7 @@ import type {
   TheDoorsReach,
 } from '../message-records'
 import type { ConversationTasksInput, ConversationTasksResult } from '../conversation-tasks'
+import type { CompactConversationInput, CompactConversationOutcome } from '../compact-conversation'
 import type {
   ActionAsked,
   QuestionRecipient,
@@ -207,6 +208,7 @@ export interface AgentToolHost {
     by: Caller,
   ): Promise<AnswerWithItsStop>
   interruptAgent(id: string, by: Caller, reason?: string): Promise<InterruptOutcome>
+  compactConversation(input: CompactConversationInput): Promise<CompactConversationOutcome>
   questionsListedFor(sessionId: string): {
     readonly questions: readonly VisibleQuestion[]
     readonly rowsUnread: number

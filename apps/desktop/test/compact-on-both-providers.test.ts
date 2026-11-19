@@ -1,3 +1,5 @@
+import type { ClaudeQuery } from '@brobot2/runtime/claude'
+import { ClaudeRuntime } from '@brobot2/runtime/claude'
 import { neutralHostDeps, syntheticProviderHome } from './lib/host-fixture'
 import type { HandedPath } from '../src/shared/attachment-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -5,31 +7,21 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import {
-  CodexRuntime,
-  type CodexIncoming,
-  type CodexLaunchContext,
-  type CodexTransport,
-} from '@brobot2/runtime/codex'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { CodexRuntime, type CodexLaunchContext } from '@brobot2/runtime/codex'
 import {
   FakeProviderSessions,
   FakeRuntime,
   capabilitiesFor,
+  withDeadline,
   type AgentRuntime,
   type AgentToolset,
   type FakeSessionHandle,
   type StartOptions,
 } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { CODEX_PROTOCOL_VERSION } from '../../../packages/runtime/src/codex/protocol-version'
-import {
-  completedTurn,
-  threadStartResponse,
-  turnCompletedNotification,
-  turnStartResponse,
-  turnStartedNotification,
-} from '../../../packages/runtime/test/fixtures/codex-protocol'
+import { deferred, ready, route } from '../../../packages/runtime/test/fixtures/plugin-readiness'
+import { ScriptedCodex, Wire } from './lib/scripted-codex-compaction'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
@@ -91,163 +83,6 @@ class RecordingSink implements RuntimeEventSink {
     this.messages.push(message)
   }
   sendLiveness(): void {}
-}
-
-/** An async queue the scripted app-server pushes into. */
-class Wire<T> implements AsyncIterable<T> {
-  private readonly waiting: T[] = []
-  private settle: ((result: IteratorResult<T>) => void) | null = null
-  private closed = false
-  push(item: T): void {
-    const settle = this.settle
-    if (settle) {
-      this.settle = null
-      settle({ value: item, done: false })
-      return
-    }
-    this.waiting.push(item)
-  }
-  close(): void {
-    this.closed = true
-    const settle = this.settle
-    if (settle) {
-      this.settle = null
-      settle({ value: undefined as never, done: true })
-    }
-  }
-  [Symbol.asyncIterator](): AsyncIterator<T> {
-    return {
-      next: (): Promise<IteratorResult<T>> => {
-        if (this.waiting.length > 0) {
-          return Promise.resolve({ value: this.waiting.shift() as T, done: false })
-        }
-        if (this.closed) return Promise.resolve({ value: undefined as never, done: true })
-        return new Promise<IteratorResult<T>>((resolve) => {
-          this.settle = resolve
-        })
-      },
-    }
-  }
-}
-
-/**
- * ⚑ **The app-server, scripted from what `probe:codex-command-as-typed` measured on 0.146.0.**
- *
- * - `turn/start` → its id, then (after the answer, as Codex writes it) `turn/started`, one agent
- *   message and `turn/completed` — an ordinary turn.
- * - `thread/compact/start` → `{}`, then `turn/started` under a NEW id, the `contextCompaction` item
- *   opening and closing, Codex's own warning, and `turn/completed`.
- *
- * ⚠️ Every request is kept, so a test reads what the adapter ASKED rather than what it emitted.
- */
-class ScriptedCodex implements CodexTransport {
-  private readonly queue = new Wire<CodexIncoming>()
-  private turns = 0
-  readonly requests: { method: string; params: Record<string, unknown> }[] = []
-  constructor(readonly home: string) {}
-  request(method: string, params?: unknown): Promise<unknown> {
-    const given = (params ?? {}) as Record<string, unknown>
-    this.requests.push({ method, params: given })
-    if (method === 'initialize') {
-      return Promise.resolve({
-        userAgent: `brobot2/${CODEX_PROTOCOL_VERSION} (Mac OS 26.3.0; arm64) vscode/1.130.0 (brobot2; 0.0.0)`,
-        codexHome: this.home,
-      })
-    }
-    if (method === 'thread/start' || method === 'thread/resume') {
-      const cwd = (given as { cwd?: string }).cwd ?? '/tmp/x'
-      // ⚑ A conformant app-server applies the profile it was asked for — `auto` is `never` with no
-      // sandbox — and the adapter fails a handshake that echoes anything else (013).
-      const unattended = given['approvalPolicy'] === 'never'
-      return Promise.resolve(
-        threadStartResponse(
-          'th_1',
-          cwd,
-          unattended ? { approvalPolicy: 'never', sandbox: { type: 'dangerFullAccess' } } : {},
-        ) as unknown as Record<string, unknown>,
-      )
-    }
-    if (method === 'turn/start') {
-      const id = `tn_${String(++this.turns)}`
-      setTimeout(() => this.anOrdinaryTurn(id), 0)
-      return Promise.resolve(turnStartResponse(id))
-    }
-    if (method === 'thread/compact/start') {
-      const id = `tc_${String(++this.turns)}`
-      setTimeout(() => this.aCompaction(id), 0)
-      return Promise.resolve({})
-    }
-    if (method === 'model/list') {
-      // ⚑ **D-042 · R1 moved a fact here: every start NAMES its model and effort**, and a Codex start
-      // naming nothing reads `model/list` and names the row it marks `isDefault`, at that row's
-      // `defaultReasoningEffort` — the `{}` every other request is answered with now refuses the
-      // launch (`nothing-names-a-model`, F2) before any conversation opens. One row, in the shape
-      // 058 measured on 0.146.0 (`codex-runtime.ts`' `listModels`). ⚠️ The probe's app-server is
-      // built BEFORE the session's, so `transports.at(-1)` is still the conversation's own.
-      return Promise.resolve({
-        data: [
-          {
-            id: 'm',
-            model: 'm',
-            displayName: 'm',
-            hidden: false,
-            isDefault: true,
-            supportedReasoningEfforts: [{ reasoningEffort: 'medium', description: 'medium' }],
-            defaultReasoningEffort: 'medium',
-          },
-        ],
-        nextCursor: null,
-      })
-    }
-    return Promise.resolve({})
-  }
-  private push(method: string, params: unknown): void {
-    this.queue.push({ kind: 'notification', method, params })
-  }
-  private anOrdinaryTurn(id: string): void {
-    this.push('turn/started', turnStartedNotification('th_1', id))
-    this.push('item/completed', {
-      threadId: 'th_1',
-      turnId: id,
-      item: { type: 'agentMessage', id: `m_${id}`, text: 'ok' },
-      completedAtMs: 1,
-    })
-    this.push('turn/completed', turnCompletedNotification('th_1', completedTurn(id)))
-  }
-  private aCompaction(id: string): void {
-    this.push('turn/started', turnStartedNotification('th_1', id))
-    const item = { type: 'contextCompaction', id: `cc_${id}` }
-    this.push('item/started', { threadId: 'th_1', turnId: id, item, startedAtMs: 1 })
-    this.push('item/completed', { threadId: 'th_1', turnId: id, item, completedAtMs: 2 })
-    this.push('warning', {
-      threadId: null,
-      message:
-        'Heads up: Long threads and multiple compactions can cause the model to be less accurate. Start a new thread when possible to keep threads small and targeted.',
-    })
-    this.push('turn/completed', turnCompletedNotification('th_1', completedTurn(id)))
-  }
-  notify(): void {}
-  respond(): void {}
-  respondError(): void {}
-  incoming(): AsyncIterable<CodexIncoming> {
-    return this.queue
-  }
-  close(): void {
-    this.queue.close()
-  }
-  exited: Promise<void> | undefined
-  /** The text of every `turn/start` this app-server was sent, in order. */
-  turnTexts(): string[] {
-    return this.requests
-      .filter((one) => one.method === 'turn/start')
-      .map((one) => {
-        const input = one.params['input'] as { text?: string }[] | undefined
-        return input?.[0]?.text ?? ''
-      })
-  }
-  asked(method: string): number {
-    return this.requests.filter((one) => one.method === method).length
-  }
 }
 
 /** A FakeRuntime that keeps its handles, and makes a Codex one compact on request (§2). */
@@ -354,14 +189,37 @@ describe('713 §1 · R59 — the host, over the REAL Codex adapter', () => {
   let app: Harness
   let transports: ScriptedCodex[]
   let claudes: FakeSessionHandle[]
+  let awaitManagedPlugin: boolean
+  let heldInput:
+    | { accepted: ReturnType<typeof deferred<void>>; release: ReturnType<typeof deferred<void>> }
+    | undefined
 
   beforeEach(() => {
     transports = []
     claudes = []
+    awaitManagedPlugin = false
+    heldInput = undefined
+    class ScriptedCodexRuntime extends CodexRuntime {
+      override async start(options: StartOptions) {
+        const handle = await super.start(
+          awaitManagedPlugin ? { ...options, managedPluginMcp: [route] } : options,
+        )
+        const gate = heldInput
+        if (gate !== undefined) {
+          const send = handle.send.bind(handle)
+          handle.send = (text, origin, onAccepted) =>
+            send(text, origin, () => {
+              onAccepted?.()
+              gate.accepted.resolve()
+            }).then(() => gate.release.promise)
+        }
+        return handle
+      }
+    }
     const sessions = new FakeProviderSessions()
     app = anApp((provider) => {
       if (provider === 'claude') return new ProviderDouble('claude', claudes, sessions)
-      return new CodexRuntime((context: CodexLaunchContext) => {
+      return new ScriptedCodexRuntime((context: CodexLaunchContext) => {
         const transport = new ScriptedCodex(context.providerHome)
         transports.push(transport)
         return transport
@@ -418,6 +276,211 @@ describe('713 §1 · R59 — the host, over the REAL Codex adapter', () => {
       ),
     ).toBe(true)
   })
+
+  it('waits for native confirmation and delivers the compaction notice with the next input once', async () => {
+    const { id, codex } = await aPersonOpensCodex()
+    app.store.createAgentIdentity(
+      { slug: 'director', displayName: 'Ada', provider: 'claude' },
+      { by: 'a-person' },
+    )
+    const { sessionId: caller } = await app.host.createSession(
+      { provider: 'claude', profileId: 'director', approvalMode: 'auto', cwd: app.root },
+      app.window,
+    )
+    const address = app.host.addressOf(caller)
+    const title = 'Plan the migration'
+    expect(app.host.retitleForAPerson(address, title)).toMatchObject({ ok: true })
+    const tool = agentToolsFor(app.host, caller).tools.find((one) => one.name === 'compact_agent')
+    if (tool === undefined) throw new Error('no compact_agent tool')
+    let confirm = (): void => {}
+    codex.compactionMayFinish = new Promise<void>((resolve) => {
+      confirm = resolve
+    })
+    const reason = 'Keep the settled plan and free its context'
+    const notice = `Ada, conversation ${address} · ${title}, compacted this conversation: ${reason}.`
+    const notices = () =>
+      app
+        .ledger(id)
+        .filter(
+          (event) => 'appNotice' in event && event.appNotice === 'a-conversation-was-compacted',
+        )
+    try {
+      const requested = await tool.call({ agent: app.host.addressOf(id), reason })
+      expect(requested.structured).toMatchObject({ outcome: 'ok', agent: id, requested: true })
+      expect(requested.text).toMatch(/^Compaction requested for conversation W\d+ · /)
+      expect(codex.asked('thread/compact/start')).toBe(1)
+      expect(codex.turnTexts()).toEqual([])
+      expect(compactionsIn(app.ledger(id))).toEqual([])
+      expect(notices()).toEqual([])
+
+      const busy = await tool.call({ agent: id, reason })
+      expect(busy.structured).toMatchObject({
+        outcome: 'refused',
+        rail: 'compaction-target-busy',
+      })
+      expect(busy.text).toMatch(/is busy\. Wait until it is idle, then try again\.$/)
+      expect(codex.asked('thread/compact/start')).toBe(1)
+    } finally {
+      confirm()
+    }
+    await waitFor(() => turnsEnded(app.ledger(id), 'completed') >= 1, 'the compaction to end')
+    expect(compactionsIn(app.ledger(id))).toMatchObject([{ trigger: 'manual' }])
+    expect(codex.turnTexts(), 'a confirmed notice must not start a model turn').toEqual([])
+    expect(notices()).toMatchObject([{ text: notice }])
+    expect(userTurns(app.ledger(id))).not.toContain('/compact')
+
+    const next = 'Check the migration plan'
+    await app.host.send(id, next, app.window)
+    await waitFor(() => turnsEnded(app.ledger(id), 'completed') >= 2, 'the next input to end')
+    expect(codex.turnTexts()).toHaveLength(1)
+    const [first = ''] = codex.turnTexts()
+    expect(first).toContain(next)
+    expect(first.split(notice)).toHaveLength(2)
+
+    const later = 'List the remaining tasks'
+    await app.host.send(id, later, app.window)
+    await waitFor(() => turnsEnded(app.ledger(id), 'completed') >= 3, 'the later input to end')
+    expect(codex.turnTexts()).toHaveLength(2)
+    expect(codex.turnTexts()[1]).toContain(later)
+    expect(codex.turnTexts()[1]).not.toContain(reason)
+  })
+
+  it('keeps the notice when Codex stops before dispatching its carrying input', async () => {
+    awaitManagedPlugin = true
+    const { id, codex } = await aPersonOpensCodex()
+    const { sessionId: caller } = await app.host.createSession(
+      { provider: 'claude', approvalMode: 'auto', cwd: app.root },
+      app.window,
+    )
+    const reason = 'Make room for the next comparison'
+    expect(
+      await callOn(agentToolsFor(app.host, caller), 'compact_agent', { agent: id, reason }),
+    ).toMatchObject({ outcome: 'ok', requested: true })
+    await waitFor(() => turnsEnded(app.ledger(id), 'completed') === 1, 'confirmed compaction')
+    const notice = app.store
+      .messagesWaitingIn(id)
+      .find((row) => row.authorship.appNotice === 'a-conversation-was-compacted')
+    if (notice === undefined) throw new Error('missing confirmed compaction notice')
+    const receipts = () =>
+      app
+        .ledger(id)
+        .filter((row) => row.type === 'message_unqueued' && row.messageId === notice.messageId)
+
+    const discovery = deferred<unknown>()
+    codex.pluginDiscovery = discovery.promise
+    const unsent = 'This input waits for plugin discovery'
+    try {
+      await app.host.send(id, unsent, app.window)
+      await waitFor(() => codex.asked('mcpServerStatus/list') === 1, 'plugin discovery to begin')
+      expect(userTurns(app.ledger(id))).toContain(unsent)
+      expect(codex.turnTexts()).toEqual([])
+      await app.host.interrupt(id, app.window)
+      await waitFor(() => turnsEnded(app.ledger(id), 'interrupted') === 1, 'the stopped turn')
+      expect(receipts()).toEqual([])
+      expect(app.store.messagesWaitingIn(id).map((row) => row.messageId)).toContain(
+        notice.messageId,
+      )
+    } finally {
+      discovery.resolve(ready())
+    }
+    await app.host.close(id, app.window)
+    expect(codex.turnTexts()).toEqual([])
+    const reopened = await app.host.reopenForAPerson(id, app.window, null)
+    expect(reopened.sessionId).toBe(id)
+    const resumed = transports.at(-1)
+    if (resumed === undefined) throw new Error('no resumed Codex transport')
+    expect(resumed).not.toBe(codex)
+
+    const next = 'Continue the comparison'
+    const acceptance = deferred<void>()
+    resumed.ordinaryTurnMayStart = acceptance.promise
+    try {
+      await app.host.send(id, next, app.window)
+      await waitFor(() => resumed.asked('turn/start') === 1, 'input to reach Codex')
+      expect(userTurns(app.ledger(id))).toContain(next)
+      expect(receipts()).toEqual([])
+    } finally {
+      acceptance.resolve()
+    }
+    await waitFor(() => turnsEnded(app.ledger(id), 'completed') === 2, 'the accepted turn')
+    expect(resumed.turnTexts()).toHaveLength(1)
+    expect(resumed.turnTexts()[0]).toContain(next)
+    expect(resumed.turnTexts()[0]?.split(reason)).toHaveLength(2)
+    expect(resumed.turnTexts()[0]).not.toContain(unsent)
+    expect(receipts()).toEqual([expect.objectContaining({ reason: 'sent' })])
+
+    await app.host.send(id, 'One more comparison', app.window)
+    await waitFor(() => turnsEnded(app.ledger(id), 'completed') === 3, 'the later turn')
+    expect(resumed.turnTexts()).toHaveLength(2)
+    expect(resumed.turnTexts()[1]).not.toContain(reason)
+    expect(receipts()).toHaveLength(1)
+  })
+
+  it.each([
+    { path: 'one held message', messages: ['First queued'], abandon: false },
+    {
+      path: 'a batch of held messages',
+      messages: ['First queued', 'Second queued'],
+      abandon: false,
+    },
+    { path: 'an abandoned handover', messages: ['First queued'], abandon: true },
+  ])(
+    'settles compaction notices only after a queued turn is recorded: $path',
+    async ({ messages, abandon }) => {
+      const gate = { accepted: deferred<void>(), release: deferred<void>() }
+      heldInput = gate
+      const { id, codex } = await aPersonOpensCodex()
+      const confirmation = deferred<void>()
+      codex.compactionMayFinish = confirmation.promise
+      const reason = 'Leave room for the queued follow-up'
+      const carryingText = messages.join('\n\n')
+      try {
+        expect(
+          await app.host.compactConversation({ conversation: id, agent: id, reason }),
+        ).toMatchObject({ ok: true })
+        const queuedIds: string[] = []
+        for (const message of messages) {
+          const queued = await app.host.queueMessage(id, message, app.window)
+          if (queued.outcome !== 'queued') throw new Error('expected a held message')
+          queuedIds.push(queued.messageId)
+        }
+        confirmation.resolve()
+        await withDeadline(gate.accepted.promise, 2_000, 'Codex accepts the carrying input')
+        expect(codex.turnTexts()).toHaveLength(1)
+        expect(codex.turnTexts()[0]).toContain(reason)
+        const notice = app.store
+          .messagesWaitingIn(id)
+          .find((row) => row.authorship.appNotice === 'a-conversation-was-compacted')
+        if (notice === undefined) throw new Error('missing pending compaction notice')
+        const carryingRows = () =>
+          app.ledger(id).flatMap((row) => {
+            if (row.type === 'user_turn' && row.text === carryingText) return ['input']
+            if (row.type === 'message_unqueued' && row.messageId === notice.messageId)
+              return [row.reason]
+            return []
+          })
+        expect(carryingRows()).toEqual([])
+        if (abandon) await app.host.close(id, app.window)
+        gate.release.resolve()
+        // The resumed flush publishes or takes its abandoned branch before the next macrotask.
+        await new Promise<void>((resolve) => setTimeout(resolve, 0))
+        const messageEndings = app
+          .ledger(id)
+          .flatMap((row) =>
+            row.type === 'message_unqueued' &&
+            row.messageId !== undefined &&
+            queuedIds.includes(row.messageId)
+              ? [row.reason]
+              : [],
+          )
+        expect(messageEndings).toEqual(messages.map(() => (abandon ? 'abandoned' : 'sent')))
+        expect(carryingRows()).toEqual(abandon ? [] : ['input', 'sent'])
+      } finally {
+        confirmation.resolve()
+        gate.release.resolve()
+      }
+    },
+  )
 
   it('⚑ the control: a person’s ordinary message on Codex is still words, framed', async () => {
     const { id, codex } = await aPersonOpensCodex()
@@ -614,6 +677,179 @@ describe('713 §2 · R59 at every door, on a double that compacts on request', (
     await waitFor(() => heardAsWords(id).length === 1, 'the CLI to hear it')
     expect(heardAsWords(id)).toEqual(['/compact keep the test plan'])
   })
+
+  it.each([true, false])(
+    'uses a Claude built-in only when its catalogue lists it: %s',
+    async (listed) => {
+      const { sessionId: id } = await app.host.createSession(
+        { provider: 'claude', approvalMode: 'auto', cwd: app.root },
+        app.window,
+      )
+      const claude = handles.at(-1)
+      if (claude === undefined) throw new Error('no Claude handle')
+      const { sessionId: caller } = await app.host.createSession(
+        { provider: 'codex', approvalMode: 'auto', cwd: app.root },
+        app.window,
+      )
+      claude.commandsAnswer = {
+        prefix: '/',
+        commands: [{ name: listed ? 'compact' : 'clear' }],
+      }
+      const sent = vi.spyOn(claude, 'send').mockResolvedValueOnce(undefined)
+      const result = await callOn(agentToolsFor(app.host, caller), 'compact_agent', {
+        agent: id,
+        reason: 'Keep the tested plan',
+      })
+
+      if (listed) {
+        expect(result).toMatchObject({ outcome: 'ok', agent: id, requested: true })
+        expect(sent).toHaveBeenCalledExactlyOnceWith('/compact')
+        expect(compactionsIn(app.ledger(id))).toEqual([])
+      } else {
+        expect(result).toMatchObject({ outcome: 'refused', rail: 'compaction-unavailable' })
+        expect(sent).not.toHaveBeenCalled()
+      }
+    },
+  )
+})
+
+it('keeps a confirmed notice when Claude stops before pushing its carrying input', async () => {
+  type Frame = ClaudeQuery extends AsyncIterable<infer Message> ? Message : never
+  const cleanup: (() => Promise<void> | void)[] = []
+  let outgoing: (() => Promise<{ text: string; uuid: string } | null>) | undefined
+  let incoming: Wire<Frame> | undefined
+  let releaseSettings = (): void => {}
+  const setPermissionMode = vi.fn(async () => {})
+  const claude = new ClaudeRuntime(
+    ({ prompt, options }) => {
+      const wire = new Wire<Frame>()
+      incoming = wire
+      const next = prompt[Symbol.asyncIterator]()
+      outgoing = async () => {
+        const message = await next.next()
+        if (message.done === true) return null
+        const { content } = message.value.message
+        const { uuid } = message.value
+        if (typeof content !== 'string' || typeof uuid !== 'string') {
+          throw new Error('expected a scripted Claude text input')
+        }
+        return { text: content, uuid }
+      }
+      wire.push({
+        type: 'system',
+        subtype: 'init',
+        session_id: 'fixture_compaction_session',
+        cwd: options.cwd,
+      } as Frame)
+      return {
+        setPermissionMode,
+        supportedCommands: async () => [{ name: 'compact', description: 'Compact context' }],
+        interrupt: async () => {},
+        close: () => wire.close(),
+        [Symbol.asyncIterator]: () => wire[Symbol.asyncIterator](),
+      }
+    },
+    async () => true,
+    undefined,
+    undefined,
+    undefined,
+    async () => 'fictional-test-key',
+  )
+  const app = anApp(
+    (provider) => (provider === 'claude' ? claude : new FakeRuntime(provider)),
+    cleanup,
+  )
+  const readInput = () => {
+    if (outgoing === undefined) throw new Error('Claude was not started')
+    return outgoing()
+  }
+  const emit = (frame: Frame): void => {
+    if (incoming === undefined) throw new Error('Claude was not started')
+    incoming.push(frame)
+  }
+  const finish = (uuid: string): void =>
+    emit({ type: 'result', subtype: 'success', is_error: false, user_message_uuid: uuid } as Frame)
+
+  try {
+    const { sessionId: id } = await app.host.createSession(
+      { provider: 'claude', approvalMode: 'auto', cwd: app.root },
+      app.window,
+    )
+    const { sessionId: caller } = await app.host.createSession(
+      { provider: 'codex', approvalMode: 'auto', cwd: app.root },
+      app.window,
+    )
+    const reason = 'Retain the evidence for the review'
+    expect(
+      await callOn(agentToolsFor(app.host, caller), 'compact_agent', { agent: id, reason }),
+    ).toMatchObject({ outcome: 'ok', requested: true })
+    const compaction = await withDeadline(readInput(), 2_000, 'scripted Claude compaction input')
+    if (compaction === null) throw new Error('Claude did not receive the compaction command')
+    expect(compaction.text).toBe('/compact')
+    emit({
+      type: 'system',
+      subtype: 'compact_boundary',
+      compact_metadata: { trigger: 'manual', pre_tokens: 1200 },
+    } as Frame)
+    finish(compaction.uuid)
+
+    const notices = () =>
+      app.store
+        .messagesWaitingIn(id)
+        .filter((row) => row.authorship.appNotice === 'a-conversation-was-compacted')
+    await waitFor(
+      () => notices().length === 1 && turnsEnded(app.ledger(id), 'completed') === 1,
+      'confirmed compaction',
+    )
+    const [notice] = notices()
+    if (notice === undefined) throw new Error('missing confirmed compaction notice')
+    const receipts = () =>
+      app
+        .ledger(id)
+        .filter((row) => row.type === 'message_unqueued' && row.messageId === notice.messageId)
+
+    const nextOnTheOldQuery = readInput()
+    setPermissionMode.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (releaseSettings = resolve)),
+    )
+    await app.host.setSessionSetting(id, { kind: 'planMode', on: true }, app.window)
+    const refused = expect(
+      app.host.send(id, 'This input never leaves the app', app.window),
+    ).rejects.toThrow('stopped before its message could be sent')
+    try {
+      await vi.waitFor(() => expect(setPermissionMode).toHaveBeenCalledTimes(1))
+      await app.host.interrupt(id, app.window)
+      await waitFor(() => turnsEnded(app.ledger(id), 'interrupted') === 1, 'the stopped turn')
+    } finally {
+      releaseSettings()
+    }
+    await refused
+    expect(receipts()).toEqual([])
+    expect(notices().map((row) => row.messageId)).toEqual([notice.messageId])
+
+    await withDeadline(app.host.close(id, app.window), 5_000, 'close the stopped Claude session')
+    expect(
+      await withDeadline(nextOnTheOldQuery, 2_000, 'old Claude input stream closes'),
+    ).toBeNull()
+    const reopened = await withDeadline(
+      app.host.reopenForAPerson(id, app.window, null),
+      5_000,
+      'reopen the same Claude session',
+    )
+    expect(reopened.sessionId).toBe(id)
+    await withDeadline(app.host.send(id, 'Continue now', app.window), 5_000, 'send after reopen')
+    const continued = await withDeadline(readInput(), 2_000, 'scripted Claude input after reopen')
+    if (continued === null) throw new Error('Claude did not receive the next input')
+    expect(continued.text).toContain('Continue now')
+    expect(continued.text.split(reason)).toHaveLength(2)
+    expect(continued.text).not.toContain('This input never leaves the app')
+    expect(receipts()).toEqual([expect.objectContaining({ reason: 'sent' })])
+    expect(notices()).toEqual([])
+    finish(continued.uuid)
+  } finally {
+    releaseSettings()
+    for (const step of cleanup.splice(0).reverse()) await step()
+  }
 })
 
 describe('713 §3 · R60 — "Compact now…" has a road on both providers', () => {
