@@ -1105,10 +1105,12 @@ describe('484 · state a supervisor can trust', () => {
       expect(JSON.stringify(recordedElsewhere)).not.toContain(reason)
       expect(delivered).toHaveLength(1)
       expect(delivered[0]).not.toContain(reason)
-
       const followUp = `${reason}-but-spoken`
       await host.send(worker, followUp, asPm(pm))
-      await waitFor(() => JSON.stringify(ledger(worker)).includes(followUp), 'the spoken ledger row')
+      await waitFor(
+        () => JSON.stringify(ledger(worker)).includes(followUp),
+        'the spoken ledger row',
+      )
       expect(delivered).toHaveLength(2)
       expect(delivered[1]).toContain(
         `stopped your turn: ${reason}. Read what was recorded before continuing instead of redoing it.`,

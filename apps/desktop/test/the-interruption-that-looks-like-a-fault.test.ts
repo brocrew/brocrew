@@ -833,7 +833,9 @@ describe('395 · the interruption that looks like a provider fault', () => {
         }
       }
       // ⚑ **And the door really does reach every member**, by the same shape `374` uses one file over.
-      expect(source('runtime-host.ts')).toMatch(/interruptAgent\([^)]*\)[^{]*\{\s*return stopTurn\(/)
+      expect(source('runtime-host.ts')).toMatch(
+        /interruptAgent\([^)]*\)[^{]*\{\s*return stopTurn\(/,
+      )
       const stop = source('stop-turn.ts')
       expect(stop).toContain('admitInterrupt(id, status, waitingOn)')
       expect(stop).toContain("refuseInterrupt('that-conversation-has-not-started'")
