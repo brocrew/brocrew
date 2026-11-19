@@ -242,10 +242,10 @@ async function copyMachineSignIn(): Promise<void> {
   // ⚑ No check here: a copy that landed is a login notice, which asks again (`loginMoved`).
 }
 
-async function signInHere(): Promise<void> {
+async function signInHere(): Promise<boolean> {
   if (nativeSignIn.value) {
     if (keyStatus.value?.set === false) await nativeSetup.signIn()
-    return
+    return false
   }
   let connected = false
   await withGesture('signing-in', async () => {
@@ -265,6 +265,7 @@ async function signInHere(): Promise<void> {
     }
   })
   if (connected) await refreshConnectedModels()
+  return connected
 }
 
 async function cancelSignIn(): Promise<void> {
@@ -715,7 +716,7 @@ const setupKey = ref(false)
 const setupExternal = ref(false)
 const setupCopySays = ref<string | null>(null)
 const setupCheckFailure = ref<string | null>(null)
-const setupStep = ref<1 | 2 | 3>(1)
+const setupStep = ref<1 | 2>(1)
 const setupChecking = ref(false)
 const setupReady = computed(
   () =>
@@ -730,7 +731,6 @@ const setupReady = computed(
 watch(setupReady, (ready) => {
   if (ready) {
     setupCheckFailure.value = null
-    settingUp.value = false
   }
 })
 const setupBusy = computed(
@@ -769,8 +769,14 @@ function useSetupKey(): void {
 async function setupSignIn(): Promise<void> {
   if (setupBusy.value || !canSetUpSignIn.value) return
   setupKey.value = false
-  if (nativeSignIn.value || signIn.value.state === 'available') await signInHere()
-  else setupExternal.value = true
+  if (nativeSignIn.value) {
+    if (keyStatus.value?.set === false)
+      await nativeSetup.signIn(() => {
+        if (setupReady.value) settingUp.value = false
+      })
+  } else if (signIn.value.state === 'available') {
+    if ((await signInHere()) && setupReady.value) settingUp.value = false
+  } else setupExternal.value = true
 }
 async function copySetupCommand(): Promise<void> {
   if (!props.setup) return
@@ -802,7 +808,7 @@ async function checkSetup(): Promise<void> {
     }
     await aPersonChecksAgain()
     await readKey()
-    if (setupReady.value) setupStep.value = 3
+    if (setupReady.value) settingUp.value = false
     else
       setupCheckFailure.value =
         auth.value?.state === 'usable'
@@ -1021,9 +1027,7 @@ defineExpose({ beginSetup })
       <ol class="setup-steps" aria-label="Setup steps">
         <li :aria-current="setupStep === 1 ? 'step' : undefined">1 · Connect</li>
         <li :aria-current="setupStep === 2 ? 'step' : undefined">2 · Check</li>
-        <li :aria-current="setupStep === 3 ? 'step' : undefined">3 · Done</li>
       </ol>
-      <template v-if="setupStep !== 3">
         <p class="line">Sign in or use an API key.</p>
         <div class="actions">
           <button
@@ -1101,18 +1105,6 @@ defineExpose({ beginSetup })
             {{ setupChecking ? 'Checking…' : 'Check' }}
           </button>
         </div>
-      </template>
-      <template v-else
-        ><p class="line" data-cy="setup-ready">{{ name }} is ready.</p>
-        <button
-          type="button"
-          class="bb-button bb-button--primary"
-          data-cy="setup-done"
-          @click="closeSetup"
-        >
-          Done
-        </button></template
-      >
       <p v-if="authNotice" class="line" :class="{ warn: authNoticeWarns }" role="status">
         {{ authNotice }}
       </p>

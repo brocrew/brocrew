@@ -19,7 +19,7 @@ export function useProviderSetup(
   let alive = true
   let read = 0
   let events = 0
-  let intent: Operation | null = null
+  let intent: { operation: Operation; completed?: () => void } | null = null
 
   const busy = computed(
     () =>
@@ -33,11 +33,17 @@ export function useProviderSetup(
     if (next.phase === 'failed' || next.phase === 'cancelled') intent = null
     const finished =
       next.phase === 'installed' ? 'install' : next.phase === 'signed-in' ? 'signIn' : null
-    if (finished === null || intent !== finished) return
+    if (finished === null || intent?.operation !== finished) return
+    const after = intent.completed
+    const ours = read
     intent = null
-    void completed(finished).catch((error: unknown) => {
-      if (alive) failure.value = `Could not check setup again. ${readableError(error)}`
-    })
+    void completed(finished)
+      .then(() => {
+        if (alive && ours === read) after?.()
+      })
+      .catch((error: unknown) => {
+        if (alive) failure.value = `Could not check setup again. ${readableError(error)}`
+      })
   }
   async function refresh(): Promise<void> {
     const ours = ++read
@@ -54,14 +60,14 @@ export function useProviderSetup(
       if (alive && ours === read) failure.value = readableError(error)
     }
   }
-  async function run(operation: Operation): Promise<void> {
+  async function run(operation: Operation, after?: () => void): Promise<void> {
     if (busy.value) return
     failure.value = null
     if (!bridge) {
       failure.value = 'Setup could not start. Close Settings and try again.'
       return
     }
-    intent = operation
+    intent = { operation, completed: after }
     admitting.value = true
     const ours = read
     const id = provider()
@@ -114,7 +120,7 @@ export function useProviderSetup(
     busy,
     error: computed(() => failure.value ?? (state.value?.error ? state.value.progress : null)),
     install: () => run('install'),
-    signIn: () => run('signIn'),
+    signIn: (after?: () => void) => run('signIn', after),
     cancel,
   }
 }
