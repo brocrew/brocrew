@@ -5,7 +5,7 @@ import { composeProfileBundle } from '../src/main/runtime/factory-text'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import type { GiveOutcome, RuntimeHost } from '../src/main/runtime/runtime-host'
 import { createAgentStore } from '../src/renderer/src/lib/agent-store'
-import type { AgentIdentity, RuntimeBridge } from '../src/shared/runtime-ipc'
+import { theMessagesOf, type AgentIdentity, type RuntimeBridge } from '../src/shared/runtime-ipc'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
 type Given = Extract<GiveOutcome, { ok: true }>
@@ -334,16 +334,17 @@ describe('Service lifecycle', () => {
       const taken = await call(after, caller, 'withdraw_task', { piece: one.label })
       expect(taken.structured).toMatchObject({ outcome: 'ok', state: 'withdrawn' })
       await vi.waitFor(() => {
-        const delivered = rows(service, 'user_turn').slice(before)
+        const delivered = rows(service, 'user_turn')
+          .slice(before)
+          .flatMap((row) => (row.type === 'user_turn' ? theMessagesOf(row) : []))
         const notice = delivered.findIndex(
-          (row) =>
-            row.type === 'user_turn' &&
-            row.appNotice === 'a-piece-taken-back' &&
-            row.piece === one.piece &&
-            row.text.includes(`took back ${one.label}`),
+          (message) =>
+            message.appNotice === 'a-piece-taken-back' &&
+            message.drives === one.piece &&
+            message.text.includes(`took back ${one.label}`),
         )
         const handover = delivered.findIndex(
-          (row) => row.type === 'user_turn' && row.piece === two.piece && row.text.includes(two.label),
+          (message) => message.piece === two.piece && message.text.includes(two.label),
         )
         expect(notice).toBeGreaterThanOrEqual(0)
         expect(handover).toBeGreaterThan(notice)
