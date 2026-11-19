@@ -11,6 +11,7 @@ import { THEME_TOOL_NAMES } from '../../themes/tool-words'
 import { type ToolsToldInText } from '../factory-text'
 import { agentToolStringEnum } from '@brobot2/runtime'
 import { z } from 'zod'
+import { TASK_RECORD_SECTIONS } from '../task-record-pages'
 
 /**
  * **The MCP server name every one of this app's own tools is published under** (466).
@@ -236,6 +237,12 @@ export const LISTING_INPUT = toolInputVocabulary(['open', 'ended', 'all'] as con
   all: "'all' is what is open, then what is over, a line each, newest first.",
 })
 
+const TASK_RECORD_SECTION_INPUT = toolInputVocabulary(TASK_RECORD_SECTIONS, {
+  children: "'children' pages through the tasks under this task.",
+  files: "'files' pages through the files kept for this task.",
+  exchanges: "'exchanges' pages through the rest of the last exchange.",
+})
+
 // whose answer comes back.
 const MESSAGE_KIND_INPUT = toolInputVocabulary(AGENT_MESSAGE_KINDS, {
   note: "'note' tells it something for its information; no reply is expected.",
@@ -286,6 +293,7 @@ export const TOOL_INPUT_ENUMS = {
   // **D-009 · no longer the same vocabulary**: a question is never passed to an agent by name.
   'pass_question_up:who_answers': PASS_UP_RECIPIENT_INPUT,
   'find_files:where': FIND_WHERE_INPUT,
+  'list_tasks:more': TASK_RECORD_SECTION_INPUT,
   'list_tasks:state': LISTING_INPUT,
   'list_questions:state': LISTING_INPUT,
   'request_mcp_server:who_gets_it': MCP_REQUEST_WHO_INPUT,
