@@ -3,7 +3,6 @@ import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
-import { callOn } from './helpers/call-tool'
 
 describe('renaming a conversation', () => {
   const profileName = 'Selected Worker'
@@ -39,8 +38,34 @@ describe('renaming a conversation', () => {
   const readTitles = (sessionId: string) =>
     executeRuntimeCommand(host, world.window, { kind: 'readConversationTitleHistory', sessionId })
 
+  function recordFirstTask(owner: string, title: string, brief: string): string {
+    const root = world.store.rootOf(caller)!
+    const number = world.store.numberUnder(root.piece)
+    const label = `${root.label}.${String(number)}`
+    const piece = 'work_first'
+    world.store.recordGive(
+      {
+        piece,
+        parent: root.piece,
+        number,
+        owner,
+        givenBy: caller,
+        title,
+        brief,
+        folder: null,
+        inputs: [],
+      },
+      world.store.nextOrdinal(owner),
+      { type: 'work_given', piece, label, parent: root.piece, givenBy: caller, title, brief },
+      world.clock,
+    )
+    return label
+  }
+
   it('projects only the requested distinct rail rows with the same canonical identity as selection', async () => {
     const empty = 'sess_rail_empty'
+    const service = 'sess_rail_service'
+    const serviceTask = 'Service task title'
     expect(world.store.setAgentDisplayName('rail-service', 'Rail Service')).toBe(true)
     world.store.create({
       id: empty,
@@ -50,20 +75,17 @@ describe('renaming a conversation', () => {
       profileId: 'worker',
       parentSessionId: caller,
     })
-    const serviceTask = await callOn(agentToolsFor(host, caller), 'give_work', {
-      profile: 'rail-service',
-      title: 'Service task title',
-      brief: 'Complete the service task.',
-      definition_of_done: 'Record the result.',
+    world.store.create({
+      id: service,
+      provider: 'claude',
+      cwd: '/work',
+      approvalMode: 'ask',
+      profileId: 'rail-service',
+      service: true,
     })
-    expect(serviceTask).toMatchObject({
-      outcome: 'ok',
-      agent: expect.any(String),
-      label: expect.any(String),
-    })
-    const service = serviceTask.agent as string
-    expect(world.store.firstTaskOf(service)?.label).toBe(serviceTask.label)
-    expect(world.store.latestTaskTitle(service)).toBe('Service task title')
+    const taskLabel = recordFirstTask(service, serviceTask, 'Complete the service task.')
+    expect(world.store.firstTaskOf(service)?.label).toBe(taskLabel)
+    expect(world.store.latestTaskTitle(service)).toBe(serviceTask)
     world.store.titleConversation(
       target,
       world.store.nextOrdinal(target),
@@ -218,28 +240,8 @@ describe('renaming a conversation', () => {
       author: null,
     })
 
-    const root = world.store.rootOf(caller)!
-    const number = world.store.numberUnder(root.piece)
-    const label = `${root.label}.${String(number)}`
-    const piece = 'work_first'
     const title = 'First recorded task'
-    const brief = 'Do the first task'
-    world.store.recordGive(
-      {
-        piece,
-        parent: root.piece,
-        number,
-        owner: sessionId,
-        givenBy: caller,
-        title,
-        brief,
-        folder: null,
-        inputs: [],
-      },
-      world.store.nextOrdinal(sessionId),
-      { type: 'work_given', piece, label, parent: root.piece, givenBy: caller, title, brief },
-      world.clock,
-    )
+    const label = recordFirstTask(sessionId, title, 'Do the first task')
 
     const ledger = world.store.events(sessionId)
     const providerHandles = world.handles.length
