@@ -72,7 +72,7 @@ describe('renaming a conversation', () => {
     )
     const root = world.store.rootOf(target)!
     const starts = world.handles.length
-    const expected = [
+    const descending = [
       {
         conversation: target,
         address: root.label,
@@ -82,12 +82,13 @@ describe('renaming a conversation', () => {
       { conversation: empty, address: empty, title: profileName, author: null },
       { conversation: service, address: service, title: 'Rail Service', author: null },
     ].sort((first, second) => (first.conversation < second.conversation ? 1 : -1))
+    const expected = [descending[1]!, descending[0]!, descending[2]!]
     const ids = expected.map(({ conversation }) => conversation)
     const before = ids.map((id) => world.store.events(id))
     const read = (sessionIds: readonly string[]) =>
       executeRuntimeCommand(host, world.window, { kind: 'readConversationIdentities', sessionIds })
 
-    expect(await read(['sess_missing', ...ids, target])).toEqual(expected)
+    expect(await read(['sess_missing', ...ids, ids[0]!])).toEqual(expected)
     expect(await read([])).toEqual([])
     expect(await read(Array(15).fill(target))).toEqual([await readIdentity(target)])
     await expect(read(Array(16).fill(target))).rejects.toThrow('invalid runtime command')
