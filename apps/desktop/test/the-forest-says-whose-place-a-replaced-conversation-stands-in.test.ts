@@ -34,8 +34,8 @@ import {
 /**
  * # D-034 — the forest says, for each conversation, whose place it stands in
  *
- * ⚑ **A conversation that could never be reopened is replaced** by a new conversation of the same
- * agent (D-017 · R10, `replaceWhatCanNeverBeReopened`). Until D-034 the forest drew both as two
+ * When an earlier version recorded a replacement, both identities stay in the ledger.
+ * Until D-034 the forest drew both as two
  * unrelated nodes, so a parent's new work to its child hung off a conversation the Graph did not
  * draw over that child. `RuntimeHost.forestReading` now names, on each conversation,
  * `standsInFor` (the ones whose chain of replacements ends at it) and `inItsPlace` (the end of its
@@ -46,7 +46,6 @@ import {
  *
  * ⚑ **Real host, real SQLite ledger, real migrations, a plain `FakeRuntime` over
  * `FakeProviderSessions`**: the harness of `what-a-replacement-carries-and-what-it-leaves-behind.test.ts`.
- * `issued.forgetAll()` is what makes a stopped conversation one its provider no longer has.
  */
 
 const here = dirname(fileURLToPath(import.meta.url))
