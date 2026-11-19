@@ -105,9 +105,16 @@ export function holderReconciliationReceipt(
   }
 }
 
-export function providerFailureDiagnosis(conversation: string, cause: string): string {
+export function providerFailureDiagnosis(
+  conversation: string,
+  cause: string,
+  includeRecoveryAdvice = true,
+): string {
   const reason = cause.replace(/[.]$/, '')
-  return `${conversation} couldn't run: ${reason}. Check its status and settings before choosing how to continue.`
+  return (
+    `${conversation} couldn't run: ${reason}.` +
+    (includeRecoveryAdvice ? ' Check its status and settings before choosing how to continue.' : '')
+  )
 }
 
 export function workRecoveryEvent(said: unknown): WorkRecoveryEvent | null {

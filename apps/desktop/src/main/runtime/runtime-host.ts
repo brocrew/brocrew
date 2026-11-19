@@ -17057,6 +17057,23 @@ export class RuntimeHost implements LiveHost {
     return pieces
   }
 
+  providerFailureForItsAsker(
+    holder: string,
+    asker: string,
+  ): NonNullable<PieceRow['providerTurnFailure']> | null {
+    try {
+      const episode = this.deps.store.providerFailureEpisode(holder)
+      if (typeof episode === 'string') return null
+      const audience = this.providerFailureRecipients(holder, episode)
+      const recipient = audience.recipients.get(this.theOneInItsPlace(asker))
+      if (!audience.complete || recipient === undefined || recipient.questions.size === 0)
+        return null
+      return { turnOrdinal: episode.terminalOrdinal, ...episode.cause }
+    } catch {
+      return null
+    }
+  }
+
   private reconcileProviderFailureNotices(holders: ReadonlySet<string>): void {
     for (const holder of holders) {
       try {
@@ -17120,7 +17137,11 @@ export class RuntimeHost implements LiveHost {
     const pieces = [...recipient.pieces.values()].join(', ')
     const questions = [...recipient.questions].join(', ')
     const text =
-      providerFailureDiagnosis(`Conversation ${address} · ${title}`, episode.cause.message) +
+      providerFailureDiagnosis(
+        `Conversation ${address} · ${title}`,
+        episode.cause.message,
+        recipient.pieces.size > 0,
+      ) +
       (pieces === '' ? '' : `\n\nAffected tasks: ${pieces}.`) +
       (questions === '' ? '' : `\n\nUnanswered questions: ${questions}.`)
     const prepared = this.prepareTextForSend(holder, 'provider failure notice', text)

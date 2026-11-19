@@ -233,6 +233,11 @@ describe('what a replacement carries, and what it leaves behind', () => {
     db = openDatabase(join(userData, 'brobot2.sqlite'))
     store = createSessionStore(db, tick)
     host = buildHost(ProductRuntimeHost)
+    expect(host.providerFailureForItsAsker(holder, asker)).toEqual({
+      message,
+      turnOrdinal: terminalOrdinal,
+    })
+    expect(host.providerFailureForItsAsker(holder, holder)).toBeNull()
     await waitFor(
       () =>
         ledger(asker).some(
@@ -256,11 +261,17 @@ describe('what a replacement carries, and what it leaves behind', () => {
       'text',
       expect.stringContaining(`Unanswered questions: ${requestId}.`),
     )
+    expect(notices[1]).toHaveProperty('text', expect.stringContaining(message))
+    expect(notices[1]).toHaveProperty('text', expect.not.stringContaining('Check its status'))
     expect(store.reconciliationReceiptsForOwner(holder).map(({ outcome }) => outcome)).toEqual([
       'planned',
       'planned',
       'delivered',
     ])
+    expect(await callOn(asker, 'withdraw_question', { question: requestId })).toMatchObject({
+      outcome: 'ok',
+    })
+    expect(host.providerFailureForItsAsker(holder, asker)).toBeNull()
   })
 
   it('a lost session leaves the work and its successful automatic holder reminder recorded', async () => {

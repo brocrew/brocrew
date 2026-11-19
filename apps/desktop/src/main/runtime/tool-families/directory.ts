@@ -92,7 +92,9 @@ const cardText = (card: AgentCard, called: string): string =>
   // line's words (`AgentCard.parentCalled`), never by the starter's work now.
   `${card.parentCalled === null ? '' : ` · started by ${card.parentCalled}`}` +
   // **D-016 · the pieces it holds** (spec D17) — its root, then its open pieces with their states.
-  (card.pieces.length === 0 ? '' : ` · holds ${card.pieces.map(pieceOnTheCardText).join(', ')}`) +
+  (card.pieces.length === 0
+    ? ''
+    : ` · holds ${card.pieces.map((piece) => pieceOnTheCardText(piece)).join(', ')}`) +
   // **676 · F3 — said on the line, where both readers of a card read it** (`AgentCard.rowsUnread`):
   // above `0`, its last ending and its last ask to stop may be older than the truth. Nothing on
   // a clean card, so the ordinary line is unchanged.
@@ -181,8 +183,10 @@ const theLastTurnSaid = (
 }
 
 /** **D-016** — `W1 · Plan the trip`, or `W1.2 · Draft the plan (working)` for an open piece. */
-const pieceOnTheCardText = (one: PieceOnTheCard): string =>
-  `${pieceLine(one.label, one.title)}${one.state === null ? '' : ` (${one.state})`}`
+const pieceOnTheCardText = (one: PieceOnTheCard, diagnosis?: string): string => {
+  const detail = diagnosis ?? one.state
+  return `${pieceLine(one.label, one.title)}${detail === null ? '' : ` (${detail})`}`
+}
 
 /**
  * **D-017 · R11 — one card as a tool's payload carries it**: every field the card holds, with its
