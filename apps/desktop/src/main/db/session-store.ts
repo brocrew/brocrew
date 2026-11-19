@@ -1415,6 +1415,7 @@ export const NULL_SESSION_STORE: SessionStore = {
   append: () => {},
   titleConversation: () => {},
   conversationTitle: () => null,
+  conversationTitleHistory: () => ({ kind: 'titles', titles: [], rowsUnread: 0, next: null }),
   appendMany: () => {},
   atomically: (work) => work(),
   onCommitted: () => () => undefined,
