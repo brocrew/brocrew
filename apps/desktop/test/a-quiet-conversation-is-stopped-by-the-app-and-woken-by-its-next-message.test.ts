@@ -1,4 +1,5 @@
 import { waitFor } from './lib/f093-host'
+import { RecordingSink } from './helpers/a-service-world'
 import { callOn } from './helpers/call-agent-tool'
 import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import type { AgentState } from '../src/shared/agent-state-contracts'
@@ -25,14 +26,12 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import type { WindowStoreReader } from '../src/main/db/window-read-protocol'
 import { RuntimeHost } from './helpers/giver-notice-host'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 
 import type {
   ResumableSessionInfo,
-  RuntimeEventMessage,
   RuntimeStatesMessage,
   UnresumableSessionInfo,
 } from '../src/shared/runtime-ipc'
@@ -67,17 +66,6 @@ async function settle(): Promise<void> {
     for (let turn = 0; turn < 5; turn++) await new Promise((resolve) => setImmediate(resolve))
     await new Promise((resolve) => setTimeout(resolve, 30))
   }
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
 }
 
 /** The provider double: collects every handle it issues and the toolset each launch was handed. */
@@ -250,18 +238,13 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
    * finish. A refused run-out has decided synchronously, so a negative may be read straight after;
    * a stop is waited for.
    */
-  const fire = async (countdown: Countdown): Promise<void> => {
-    fired.add(countdown.timer)
-    countdown.fn()
+  const fire = async (...countdowns: Countdown[]): Promise<void> => {
+    for (const countdown of countdowns) fired.add(countdown.timer)
+    for (const countdown of countdowns) countdown.fn()
     await settle()
   }
   /** Run out every countdown the host holds, at one instant. */
-  const fireAll = async (): Promise<void> => {
-    const all = live()
-    for (const countdown of all) fired.add(countdown.timer)
-    for (const countdown of all) countdown.fn()
-    await settle()
-  }
+  const fireAll = (): Promise<void> => fire(...live())
   /** The one countdown a test expects to be live. */
   const theOneLive = (): Countdown => {
     const now = live()
