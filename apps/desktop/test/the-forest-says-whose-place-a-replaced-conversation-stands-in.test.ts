@@ -34,13 +34,6 @@ import {
 /**
  * # D-034 — the forest says, for each conversation, whose place it stands in
  *
- * When an earlier version recorded a replacement, both identities stay in the ledger.
- * Until D-034 the forest drew both as two
- * unrelated nodes, so a parent's new work to its child hung off a conversation the Graph did not
- * draw over that child. `RuntimeHost.forestReading` now names, on each conversation,
- * `standsInFor` (the ones whose chain of replacements ends at it) and `inItsPlace` (the end of its
- * own chain), each named with whether this reading drew it.
- *
  * Lifted from the dev's scratch cases A–C, with what the scratch only logged now asserted, plus what the scratch never reached: a named conversation
  * this reading did not draw, and the store's half, which carries neither field.
  *
