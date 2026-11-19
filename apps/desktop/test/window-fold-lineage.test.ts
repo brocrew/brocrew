@@ -438,7 +438,9 @@ it('reads a taskless failure notice beside a legacy piece receipt after reopenin
   append(existing, 12)
   append(notice, 13)
   const reopened = openDatabase(file)
-  cleanup.push(() => reopened.close())
+  cleanup.push(() => {
+    reopened.close()
+  })
   const read = createSessionStore(reopened)
   const pieceReceipt = { ...existing, at: 12 }
   expect(read.reconciliationReceiptsForOwner('alpha')).toEqual([
