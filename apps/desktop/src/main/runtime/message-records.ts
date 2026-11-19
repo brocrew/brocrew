@@ -207,6 +207,7 @@ export interface TurnFacts {
    * waiting is taken back rather than sent ({@link RuntimeHost.whyItNoLongerGoes}).
    */
   readonly asks?: TheQuestionItAsks
+  readonly unansweredQuestion?: TheQuestionItAsks
   /**
    * 🔴 **This app's OWN report of something it observed** (624, `HO-095` §6.1) — see
    * {@link AppNotice}.
