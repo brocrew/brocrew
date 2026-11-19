@@ -1028,83 +1028,83 @@ defineExpose({ beginSetup })
         <li :aria-current="setupStep === 1 ? 'step' : undefined">1 · Connect</li>
         <li :aria-current="setupStep === 2 ? 'step' : undefined">2 · Check</li>
       </ol>
-        <p class="line">Sign in or use an API key.</p>
-        <div class="actions">
-          <button
-            type="button"
-            class="bb-button"
-            data-cy="setup-sign-in"
-            :disabled="setupBusy || !canSetUpSignIn"
-            :title="!canSetUpSignIn && signIn.state !== 'available' ? signIn.reason : undefined"
-            @click="setupSignIn"
-          >
-            Sign in
-          </button>
-          <button
-            type="button"
-            class="bb-button"
-            data-cy="setup-use-key"
-            :disabled="setupBusy"
-            @click="useSetupKey"
-          >
-            Use an API key
-          </button>
-          <button
-            v-if="authBusy === 'signing-in' || nativeSetup.busy.value"
-            type="button"
-            class="bb-button"
-            @click="cancelSignIn"
-          >
-            Cancel sign-in
-          </button>
-        </div>
-        <div v-if="setupExternal && props.setup" class="setup-command">
-          <p class="line">
-            Run this command in {{ props.setup.shell }}. Follow its sign-in, then come back here.
-          </p>
-          <p v-if="props.setup.signInInstructions" class="line">
-            {{ props.setup.signInInstructions }}
-          </p>
-          <code data-cy="setup-command">{{ props.setup.signInCommand }}</code>
-          <button type="button" class="bb-button" data-cy="setup-copy" @click="copySetupCommand">
-            Copy command
-          </button>
-          <p v-if="setupCopySays" class="line quiet" role="status">{{ setupCopySays }}</p>
-        </div>
-        <label v-if="setupKey" class="setup-key"
-          >API key<input
-            v-model="keyDraft"
-            class="bb-input"
-            type="password"
-            autocomplete="off"
-            :disabled="setupBusy"
-            :placeholder="`Paste your ${name} API key`"
-            data-cy="setup-key-input"
-        /></label>
-        <p v-if="setupKey || keyStatus?.set" class="line quiet">{{ checkSpends }}</p>
-        <p v-if="signIn.state !== 'available' && !setupKey && !props.setup" class="line quiet">
-          {{ signIn.reason }}
+      <p class="line">Sign in or use an API key.</p>
+      <div class="actions">
+        <button
+          type="button"
+          class="bb-button"
+          data-cy="setup-sign-in"
+          :disabled="setupBusy || !canSetUpSignIn"
+          :title="!canSetUpSignIn && signIn.state !== 'available' ? signIn.reason : undefined"
+          @click="setupSignIn"
+        >
+          Sign in
+        </button>
+        <button
+          type="button"
+          class="bb-button"
+          data-cy="setup-use-key"
+          :disabled="setupBusy"
+          @click="useSetupKey"
+        >
+          Use an API key
+        </button>
+        <button
+          v-if="authBusy === 'signing-in' || nativeSetup.busy.value"
+          type="button"
+          class="bb-button"
+          @click="cancelSignIn"
+        >
+          Cancel sign-in
+        </button>
+      </div>
+      <div v-if="setupExternal && props.setup" class="setup-command">
+        <p class="line">
+          Run this command in {{ props.setup.shell }}. Follow its sign-in, then come back here.
         </p>
-        <ProviderSetupProgress
-          v-if="nativeSignIn"
-          :progress="nativeSetup.state.value?.progress ?? ''"
-          :auth-url="nativeSetup.state.value?.authUrl ?? null"
-          :error="nativeSetup.error.value"
-        />
-        <div class="actions">
-          <button
-            type="button"
-            class="bb-button bb-button--primary"
-            data-cy="setup-check"
-            :disabled="
-              setupBusy ||
-              !(setupExternal || auth?.state === 'usable' || keyStatus?.set || keyDraft.trim())
-            "
-            @click="checkSetup"
-          >
-            {{ setupChecking ? 'Checking…' : 'Check' }}
-          </button>
-        </div>
+        <p v-if="props.setup.signInInstructions" class="line">
+          {{ props.setup.signInInstructions }}
+        </p>
+        <code data-cy="setup-command">{{ props.setup.signInCommand }}</code>
+        <button type="button" class="bb-button" data-cy="setup-copy" @click="copySetupCommand">
+          Copy command
+        </button>
+        <p v-if="setupCopySays" class="line quiet" role="status">{{ setupCopySays }}</p>
+      </div>
+      <label v-if="setupKey" class="setup-key"
+        >API key<input
+          v-model="keyDraft"
+          class="bb-input"
+          type="password"
+          autocomplete="off"
+          :disabled="setupBusy"
+          :placeholder="`Paste your ${name} API key`"
+          data-cy="setup-key-input"
+      /></label>
+      <p v-if="setupKey || keyStatus?.set" class="line quiet">{{ checkSpends }}</p>
+      <p v-if="signIn.state !== 'available' && !setupKey && !props.setup" class="line quiet">
+        {{ signIn.reason }}
+      </p>
+      <ProviderSetupProgress
+        v-if="nativeSignIn"
+        :progress="nativeSetup.state.value?.progress ?? ''"
+        :auth-url="nativeSetup.state.value?.authUrl ?? null"
+        :error="nativeSetup.error.value"
+      />
+      <div class="actions">
+        <button
+          type="button"
+          class="bb-button bb-button--primary"
+          data-cy="setup-check"
+          :disabled="
+            setupBusy ||
+            !(setupExternal || auth?.state === 'usable' || keyStatus?.set || keyDraft.trim())
+          "
+          @click="checkSetup"
+        >
+          {{ setupChecking ? 'Checking…' : 'Check' }}
+        </button>
+      </div>
       <p v-if="authNotice" class="line" :class="{ warn: authNoticeWarns }" role="status">
         {{ authNotice }}
       </p>

@@ -431,7 +431,6 @@ it('never lets a late initial idle read erase newer installer progress', async (
   expect(m.q('install-progress').textContent).toContain('Downloading Claude Code')
 })
 
-
 it('closes wizard-owned native sign-in only after completion and the readiness recheck', async () => {
   const { m, props, bridge, publish, signedIn } = fixture(true)
   props.setupRequested = true
@@ -460,9 +459,9 @@ it('does not close later explicit setup for a native sign-in started outside it'
   expect(m.all('provider-inline-setup')).toHaveLength(1)
 })
 
-
 it.each(['failed', 'cancelled', 'admission-rejected'] as const)(
-  'retires wizard native completion after %s before a late signed-in event', async (outcome) => {
+  'retires wizard native completion after %s before a late signed-in event',
+  async (outcome) => {
     const { m, props, bridge, publish, signedIn, readVersions } = fixture(true)
     props.setupRequested = true
     await settle()
