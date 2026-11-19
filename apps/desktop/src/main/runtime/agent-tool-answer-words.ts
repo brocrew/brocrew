@@ -382,6 +382,7 @@ function whatARefusalAdds(
   const rail = aText(structured['rail']) ?? ''
   const detail = detailOf(structured)
   if (rail === 'a-person-is-being-asked' && aText(detail['approval']) !== undefined) return ''
+  if (isCompleteCompactionRefusal(rail)) return ''
   const said = Object.hasOwn(DETAIL_SAID, rail) ? (DETAIL_SAID[rail]?.(detail, context) ?? []) : []
   const unused = aText(structured['label_not_used'])
   if (unused !== undefined) said.push(theLabelWasUsedUp(unused))
@@ -425,6 +426,18 @@ function detailOf(
     : {}
 }
 
+function isCompleteCompactionRefusal(rail: string | undefined): boolean {
+  switch (rail) {
+    case 'compaction-target-busy':
+    case 'compaction-target-not-running':
+    case 'compaction-unavailable':
+    case 'compaction-request-failed':
+      return true
+    default:
+      return false
+  }
+}
+
 /** Keep the existing reason, adding app-only clauses only when they are the whole answer. */
 export function appOnlyRefusalQuote(
   structured: Readonly<Record<string, unknown>> | undefined,
@@ -446,6 +459,7 @@ export function appOnlyRefusalQuote(
     return reason
   }
   if (rail !== undefined && finalText === reason && reason.startsWith('Not changed:')) return reason
+  if (isCompleteCompactionRefusal(rail) && finalText === reason) return reason
   const prefix =
     hasDirectRefusalOpening(reason) && finalText.startsWith(reason) ? '' : `refused (${rail}): `
   const base = `${prefix}${reason}`
