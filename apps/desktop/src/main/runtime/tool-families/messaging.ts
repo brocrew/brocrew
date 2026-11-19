@@ -451,12 +451,12 @@ export function createInterruptAgentTool(
     name: 'interrupt_agent',
 
     description:
-      'Ask a known conversation to stop what it is doing right now. Its conversation stays open and it can be given something else. It asks the turn it is in to stop: that turn may end there, throwing away whatever it was part-way through, or it may be finished anyway — once the agent is no longer working, get_agent_status says which, so read it there before you rely on either. The stop also ends commands that turn started: ' +
+      'Ask the turn a conversation is running to stop, by any of its labels. Any conversation may do this; give the reason in reason — the conversation is told who stopped it and why. Its conversation stays open and can be given more work. That turn may end there, throwing away what it was part-way through, or may finish anyway; get_agent_status says which once it has stopped working. Work it already recorded and what it already did stay as they were. The stop also ends commands that turn started: ' +
       PROVIDER_DESCRIPTORS.map(
         (descriptor) => `on ${descriptor.displayName}, ${descriptor.words.interruptActionSummary}`,
       ).join('; ') +
       '.' +
-      ' A command an earlier turn left running keeps running. The answer names what the stop ended, once that turn has ended, and what still runs. The agent is not told who stopped it or why — only, the next time it is sent words, which of its commands the stop ended: to stop its turn and tell it why in one act, use message_agent with interrupt.',
+      " A command an earlier turn left running keeps running. The answer names what the stop ended and what still runs. A turn waiting on the person's approval is not stopped: the answer says what it is waiting for, and only the person can settle it.",
     /**
      * **486 · a person is asked as well** (HO-031 §2.4).
      *
@@ -466,11 +466,11 @@ export function createInterruptAgentTool(
     input: {
       agent: z
         .string()
-        .describe('The agent, by the piece it owns (W1.2) or by its id from list_agents.'),
+        .describe('The conversation, by any of its task labels or its id from list_agents.'),
       reason: z
         .string()
         .describe(
-          'Why you are stopping it. This is for you, not for it: the agent never sees these words and this app does not keep them. Required so that destroying work in flight is a stated decision.',
+          'Why you are stopping it. The conversation reads this, with your name, before it goes on.',
         ),
     },
     call: (args) =>
@@ -494,7 +494,7 @@ export function createInterruptAgentTool(
         // **Every refusal arrives as a value, so there is no catch** (395): an interrupt that
         // failed for any other reason is a bug, and reporting one as a refusal would tell a model a
         // person could fix it.
-        const outcome = await host.interruptAgent(addressed, by)
+        const outcome = await host.interruptAgent(addressed, by, reason)
         if (!outcome.ok) {
           // **Two vocabularies meet here and neither is rewritten.** `'no-such-agent'` is
           // `TOOL_REFUSALS`' word — the same one every door gives about an id no conversation has
@@ -503,7 +503,12 @@ export function createInterruptAgentTool(
             return refusalAnswer(refuseTool(outcome.refusal, { agent: addressed }))
           }
           const carried = carryInterruptRefusal(outcome.refusal)
-          return answer(carried, `refused (${outcome.refusal.rail}): ${outcome.refusal.reason}`)
+          return answer(
+            carried,
+            outcome.refusal.detail.approval === undefined
+              ? `refused (${outcome.refusal.rail}): ${outcome.refusal.reason}`
+              : outcome.refusal.reason,
+          )
         }
         const now = agentStateWords(outcome.state)
         // **D-016 · commit 7 · R3 — named by the piece it owns**; the payload keeps its id.

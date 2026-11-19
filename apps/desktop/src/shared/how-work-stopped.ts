@@ -450,6 +450,8 @@ export interface AskToStop extends StopAsker {
   readonly at: number
   /** Which turn it landed on — see {@link WHERE_AN_ASK_LANDED}. */
   readonly turn: WhereAnAskLanded
+  /** The reason supplied with an explicit stop. */
+  readonly reason?: string
 }
 
 /**

@@ -1178,7 +1178,9 @@ import {
   type PassUpOutcome,
   type QuestionRefusal,
 } from './question-rails'
-import { admitInterrupt, refuseInterrupt } from './interrupt-rails'
+import { admitInterrupt } from './interrupt-rails'
+import { describeConversation } from './conversation-address'
+import { explicitStopWords, stopTurn, type ExplicitStopNotice } from './stop-turn'
 import { distilSkipping } from './digest'
 import { MAX_DIGEST_SPAN_MS, WINDOW_WAS_CHOSEN, type DigestReading } from '../../shared/digest'
 import { newQueuedMessageId, queuedDisclosure } from './queued-message'
@@ -2517,6 +2519,8 @@ interface HostedSession {
   stopEndedUntold: string[]
   /** ⚑ **F084** — how many of {@link stopEndedUntold} the last words handed over said. */
   stopEndedSaid: number
+  explicitStopNotice: ExplicitStopNotice | null
+  explicitStopSaid: ExplicitStopNotice | null
   /**
    * ⚑ **The questions this app raised for it since its last turn ended**, by id — the ones a stop
    * of the turn that runs ends ({@link RuntimeHost.askTheWorkToStop}). ⚑ Emptied as a turn ends.
@@ -8839,22 +8843,6 @@ export class RuntimeHost implements LiveHost {
   private aBriefWaitsForServices(session: HostedSession): boolean {
     if (this.servicesAreOn()) return false
     return session.mailbox.some((queued) => this.aServiceBrief(session, queued))
-  }
-
-  /**
-   * Whether `service` is on another caller's piece while a piece `by` gave it (or the conversation it
-   * stands for gave it) waits there, queued: a stop it may ask once that piece has ended.
-   */
-  private onAnotherCallersPiece(service: string, by: Caller): boolean {
-    const speaking = sessionSpeakingAs(by)
-    if (speaking === null) return false
-    const kind = this.theServiceOf(service)
-    if (kind === null || kind === 'unknown' || this.thePieceItIsOn(service) === null) return false
-    if (this.thePieceItIsOnFor(service, by) !== null) return false
-    const ids = this.theIdsItStandsFor(speaking)
-    return (this.theQueueOf(service)?.waiting ?? []).some(
-      (one) => one.giver !== null && ids.includes(one.giver),
-    )
   }
 
   /**
@@ -21583,7 +21571,18 @@ export class RuntimeHost implements LiveHost {
   }
 
   private withWhatThisLifeStillOwes(session: HostedSession, said: string): string {
-    const words = this.withWhatItsLastStopEnded(session, said)
+    let words = this.withWhatItsLastStopEnded(session, said)
+    const stop = session.explicitStopNotice
+    if (stop !== null) {
+      session.explicitStopSaid = stop
+      const { line } = describeConversation(
+        this.deps.store,
+        stop.asker,
+        this.itIsAService(stop.asker),
+      )
+      const actor = `${this.whatToCallTheConversation(stop.asker)}, ${line}`
+      words = `${explicitStopWords(stop, actor)}\n\n${words}`
+    }
     const lead = session.firstTurnLead
     if (lead === null) return words
     session.firstTurnLead = null
@@ -21615,6 +21614,14 @@ export class RuntimeHost implements LiveHost {
     if (event.state !== 'failed' || event.wordOf !== 'this-app') {
       session.stopEndedUntold.splice(0, session.stopEndedSaid)
       session.questionsAStopEndedUntold.splice(0, session.questionsAStopEndedSaid)
+      if (session.explicitStopSaid === session.explicitStopNotice) session.explicitStopNotice = null
+    }
+    session.explicitStopSaid = null
+    if (session.explicitStopNotice?.interrupted === null) {
+      session.explicitStopNotice = {
+        ...session.explicitStopNotice,
+        interrupted: event.state === 'interrupted',
+      }
     }
     session.stopEndedSaid = 0
     session.questionsAStopEndedSaid = 0
@@ -28610,9 +28617,10 @@ export class RuntimeHost implements LiveHost {
     by: Caller,
     /** Questions this app asked for it stay open: the stop only makes way for words to it. */
     keepsWhatThisAppAsked = false,
+    reason?: string,
   ): Promise<void> {
     const raised = keepsWhatThisAppAsked ? this.deps.store.questionsRaisedIn(session.id) : null
-    this.recordTheAsk(session, by)
+    this.recordTheAsk(session, by, reason)
     // ⛔ **The FOLD decides which are still open, never a predicate written here** — `396`'s rule
     // for the launch sweep, second venue: *"nothing has ended it"* is a property of a ledger, and a
     // second reading of it would be free to disagree with the door that refuses an answer.
@@ -28698,7 +28706,7 @@ export class RuntimeHost implements LiveHost {
    * gate that refused it would have taken the quit path down with it. ⚑ Until `501` that caller was
    * written down as a person.
    */
-  private recordTheAsk(session: HostedSession, by: Caller): void {
+  private recordTheAsk(session: HostedSession, by: Caller, reason?: string): void {
     const actor = whoDidIt(by)
     if (actor.who === 'the-app-itself') return
     const ask: WorkInterruptedEvent = {
@@ -28709,11 +28717,33 @@ export class RuntimeHost implements LiveHost {
       // pairing this writer has to remember.
       by: actor.who,
       ...(actor.who === 'an-agent' ? { agent: actor.agent } : {}),
+      ...(reason === undefined ? {} : { reason }),
       // 🔴 **732 · `730` F-4 — and WHO that agent is** — see {@link theIdentityThatAsked}, the
       // builder `stop_unanswered` names its asker with too (`734`).
       ...this.theIdentityThatAsked(actor),
     }
     this.publishOurs(session, ask)
+    if (actor.who === 'an-agent' && reason !== undefined) {
+      session.explicitStopNotice = { asker: actor.agent, reason, interrupted: null }
+    }
+  }
+
+  private explicitNoticeFromItsLastTurn(id: string): ExplicitStopNotice | null {
+    try {
+      const last = this.deps.store.lastEndedTurn(id)
+      if (last === null || last.since !== 'nothing-has-started-since') return null
+      const ask = this.deps.store.lastExplicitStopRequest(id)
+      if (ask === null) return null
+      return {
+        ...ask,
+        interrupted: last.how === 'it-was-stopped' || last.how === 'it-was-stopped-and-it-faulted',
+      }
+    } catch (error) {
+      console.warn(
+        `runtime host could not read the reason for ${id}'s last stop: ${errorMessage(error)}`,
+      )
+      return null
+    }
   }
 
   /**
@@ -28735,139 +28765,47 @@ export class RuntimeHost implements LiveHost {
     return itsIdentity === null ? {} : { agentProfile: itsIdentity.profileSlug }
   }
 
-  /**
-   * Ask the known conversation to stop its running turn.
-   *
-   * ## ⛔ Why this is not {@link interrupt} with a different caller
-   *
-   * ⚠️ **{@link interrupt} REFUSES BY THROWING**, through `requireToCommand` — `unknown session`,
-   * `session is still starting`, or a translated `SessionUnavailable`. `message_agent`'s own comment
-   * says what that costs a model: *"a throw is transport `-32603` — a shape that tells the model its
-   * tool is broken rather than that it asked about somebody else's agent."* ⛔ So this method
-   * answers, and the tool carries the payload.
-   *
-   * ## ⚑ The rails, in the one order they may be asked
-   *
-   *  1. **Existence** — `no-such-agent` only for an id no conversation has.
-   *  2. **Whether a turn runs in it** — a conversation stopped, stopping or idle with no turn open
-   *     is answered *nothing to interrupt*, and nothing is asked.
-   *  3. **The target's state** — {@link admitInterrupt}, and the rail that matters is
-   *     `a-person-is-being-asked`.
-   *
-   * ## ⚠️ What the answer claims, and what it refuses to claim
-   *
-   * 🔴 **`asked`, never `stopped`, and the two providers are why.** Claude's `interrupt()` forces a
-   * local terminal after a bounded ack wait, so the turn is over when it returns. **Codex's does
-   * not**: with a turn live it fires `turn/interrupt` and awaits the request's ANSWER, unbounded — an
-   * app-server that never answers leaves `await handle.interrupt()` pending for ever, and one that
-   * answers can still leave the turn running (`704` measured Codex refusing a turn it had not started
-   * and completing it). ⛔ **So a tool that answered
-   * *"stopped"* would be false on one provider and would hang on the other.** ⚑ This is
-   * `stopBackgroundWork`'s established ruling (233/240) one verb over: *what `true` means is that
-   * the request went out, not that the work died*.
-   *
-   * ⚠️ **The wait is bounded HERE — and since `709` in interrupt-and-send, which holds the queue
-   * (`704` H-8), and since `720` in a person's {@link interrupt} too (`709` F-6).** ⛔ That door
-   * used to be left unbounded on the grounds that *"a person pressing Stop is watching the window
-   * and can press it again"* — and a hung Stop held the window's `record.busy`, disabling the plan's
-   * go-ahead and the Reopen buttons with nothing saying why. ⚑ The one difference left: a refusal
-   * that lands inside the wait reaches a person's caller, and is swallowed here, where a model's
-   * tool call has an answer to give. ⛔ The deadline releases the WAITER, not the work (185) — the
-   * interrupt is still in flight, and `state` reports what was true when we stopped waiting.
-   */
-  async interruptAgent(id: string, by: Caller): Promise<InterruptOutcome> {
-    // ⚑ **D-017 · R10** — an id that could never be reopened is the one that took its place.
-    const sessionId = this.theOneInItsPlace(id)
-    // ⚑ **D-017 · R12 — `no-such-agent` only for an id no conversation has** (`05` rule 6).
-    const slot = this.slots.get(sessionId)
-    if (slot === undefined && this.deps.store.recordedOne(sessionId) === null) {
-      return { ok: false, refusal: 'no-such-agent' }
-    }
-    const speaking = sessionSpeakingAs(by)
-    if (speaking !== null && this.theOneInItsPlace(speaking) === sessionId) {
-      return { ok: false, refusal: 'that-agent-is-you' }
-    }
-    // ⚑ A service on another caller's piece: only that caller, or a person, may stop its turn.
-    if (this.onAnotherCallersPiece(sessionId, by)) {
-      return {
-        ok: false,
-        refusal: refuseInterrupt('that-service-is-on-another-callers-piece', { agent: sessionId }),
-      }
-    }
-    // ⚑ **D-017 — nothing is running in it, so nothing is asked**: a conversation this app is not
-    // running, or one whose provider has stopped or is being stopped. ⛔ Not started to be stopped,
-    // which would spend a provider on a conversation to tell it nothing.
-    // 🔴 **659 · both doors** — see {@link onItsWayOut}: a stream that failed under the host is
-    // stopping whatever its provider still says.
-    if (slot === undefined || onItsWayOut(slot)) return this.nothingToInterrupt(sessionId)
-    const session = slot.session
-    const status = session === null ? null : session.handle.status()
-    if (status === 'ended' || status === 'errored') return this.nothingToInterrupt(sessionId)
-    // ⚑ **D-017 — an idle conversation has no turn to interrupt**, so nothing is asked of its
-    // provider, and nothing it is waiting on is ended: no turn of this app's is open, no message is
-    // being handed over, and its provider says it is idle. ⚠️ A turn that starts a moment later is
-    // not caught — the same call then finds it working.
-    if (
-      session !== null &&
-      status === 'idle' &&
-      !session.turnOpened &&
-      session.flushing === null &&
-      session.handingOver.length === 0
-    ) {
-      return this.nothingToInterrupt(sessionId)
-    }
-    // ⚑ **D-017 · R19 — a card routed to another conversation is that one's to answer**, and the
-    // refusal says whose: the same read the state is ({@link whoOwesIt}). ⚑ D-036 · only whose
-    // answer it waits on is asked, so the work it gave out is read as none (`() => []`): no holder's
-    // ledger is folded, and no holder named, for a word this refusal never says.
-    const askedOf =
-      status === 'waiting_permission'
-        ? this.whoOwesIt(
-            sessionId,
+  interruptAgent(id: string, by: Caller, reason?: string): Promise<InterruptOutcome> {
+    return stopTurn(
+      { conversation: id, caller: by, reason },
+      {
+        waitMs: this.interruptWaitMs,
+        currentConversation: (conversation) => this.theOneInItsPlace(conversation),
+        findSlot: (conversation) => {
+          const slot = this.slots.get(conversation)
+          return slot === undefined
+            ? undefined
+            : { session: slot.session, closing: onItsWayOut(slot) }
+        },
+        isRecorded: (conversation) => this.deps.store.recordedOne(conversation) !== null,
+        whoseAnswerItAwaits: (conversation) =>
+          this.whoOwesIt(
+            conversation,
             this.cardReads(),
             rowsUnreadOnce(),
             undefined,
             () => [],
             () => [],
-          ).askedOf
-        : null
-    const refusal = admitInterrupt(sessionId, status, askedOf)
-    if (refusal !== null) return { ok: false, refusal }
-    // ⚑ Narrowed by the rails above: a null session reached `that-conversation-has-not-started`.
-    if (session === null)
-      return {
-        ok: false,
-        refusal: refuseInterrupt('that-conversation-has-not-started', { agent: sessionId }),
-      }
-    // ⚑ **F084 · the stopped turn's ending, waited for inside the same bound**: it says what the stop
-    // ended, and the state read after it is the one the stop left. ⚠️ Asked before the stop, so an
-    // ending the stop brings at once is not missed.
-    const itsEnding = this.whatTheStopOfItsTurnEnds(session, this.interruptWaitMs)
-    const asked = this.askTheWorkToStop(session, by)
-    // ⚑ **F084 · an explicit stop** — at once, while the stop's own pass is still on its way.
-    session.handle.endEverythingTheTurnStarted?.()
-    // 🔴 **723 · R83 — an agent's ask a provider leaves unanswered is said on the conversation it
-    // stopped**, where a person watching sees it, and a person's Stop joins it rather than queue a
-    // second ask behind it.
-    this.sayWhenTheStopGoesUnanswered(session, asked, by)
-    // ⛔ **`void`-ed on the timeout path rather than left unhandled**: the interrupt is still
-    // running and a rejection nobody is awaiting is an unhandled rejection.
-    asked.catch((error: unknown) => {
-      console.warn(`runtime session ${sessionId} failed to interrupt: ${errorMessage(error)}`)
-    })
-    await settledWithin(asked, this.interruptWaitMs)
-    const ended = await itsEnding
-    // ⚠️ **Re-read AFTER the wait**, so it is what is true now rather than what was true when the
-    // rails ran — in the one derivation's words ({@link stateOf}).
-    const unread = rowsUnreadOnce()
-    return {
-      ok: true,
-      agent: sessionId,
-      asked: true,
-      state: this.stateOf(sessionId, this.cardReads(), unread),
-      ...(ended === undefined ? {} : { ended }),
-      stillRunning: this.whatStillRunsIn(sessionId),
-    }
+          ).askedOf,
+        pendingApproval: (conversation) =>
+          this.whatItIsStoppedOn(conversation, undefined, true)?.asks ?? null,
+        conversationLine: (conversation) =>
+          describeConversation(this.deps.store, conversation, this.itIsAService(conversation)).line,
+        waitForEnding: (session) => this.whatTheStopOfItsTurnEnds(session, this.interruptWaitMs),
+        askToStop: (session, caller, why) => this.askTheWorkToStop(session, caller, false, why),
+        reportUnanswered: (session, requested, caller) => {
+          this.sayWhenTheStopGoesUnanswered(session, requested, caller)
+          void requested.catch((error: unknown) => {
+            console.warn(
+              `runtime session ${session.id} failed to interrupt: ${errorMessage(error)}`,
+            )
+          })
+        },
+        waitUntilSettled: settledWithin,
+        stateOf: (conversation) => this.stateOf(conversation, this.cardReads(), rowsUnreadOnce()),
+        stillRunningIn: (conversation) => this.whatStillRunsIn(conversation),
+      },
+    )
   }
 
   /**
@@ -28898,22 +28836,6 @@ export class RuntimeHost implements LiveHost {
 
   private mayInterrupt(sessionId: string): boolean {
     return this.slots.has(sessionId) || this.deps.store.recordedOne(sessionId) !== null
-  }
-
-  /**
-   * ⚑ **D-017 — no turn runs in it, so nothing was asked** — and what it is doing, in the one
-   * derivation's words ({@link stateOf}), exactly as `get_agent_status` says it: work it left
-   * running, a wake-up it is waiting on, or a person's answer it waits for — never a word of this
-   * door's own.
-   */
-  private nothingToInterrupt(sessionId: string): InterruptOutcome {
-    return {
-      ok: true,
-      agent: sessionId,
-      asked: false,
-      state: this.stateOf(sessionId, this.cardReads(), rowsUnreadOnce()),
-      stillRunning: this.whatStillRunsIn(sessionId),
-    }
   }
 
   /**
@@ -38229,6 +38151,10 @@ export class RuntimeHost implements LiveHost {
       lastStopEnded: [],
       stopEndedUntold: [],
       stopEndedSaid: 0,
+      explicitStopNotice: options.continuesARecording
+        ? this.explicitNoticeFromItsLastTurn(id)
+        : null,
+      explicitStopSaid: null,
       askedSinceItsLastTurnEnded: new Set<string>(),
       questionsAStopEndedUntold: options.continuesARecording
         ? this.theQuestionsTheStopOfItsLastTurnEnded(id)
@@ -39904,7 +39830,11 @@ export class RuntimeHost implements LiveHost {
    * ⚑ Nothing, while a request its provider raised that went to another conversation stands: the
    * turn waits on that one too, and its answer goes straight in.
    */
-  private whatItIsStoppedOn(sessionId: string, ledger?: ItsLedger): StoppedOnAPerson | null {
+  private whatItIsStoppedOn(
+    sessionId: string,
+    ledger?: ItsLedger,
+    permissionOnly = false,
+  ): StoppedOnAPerson | null {
     const slot = this.slots.get(sessionId)
     if (slot === undefined || onItsWayOut(slot)) return null
     if (slot.session?.handle.status() !== 'waiting_permission') return null
@@ -39915,11 +39845,8 @@ export class RuntimeHost implements LiveHost {
     if (parking.some((one) => one.went.to !== 'a-person')) return null
     const newest = parking.at(-1)
     if (newest === undefined) return null
-    return {
-      asks: this.whatTheRequestAsks(sessionId, newest.requestId),
-      since: newest.at,
-      readAt: this.now(),
-    }
+    const asks = this.whatTheRequestAsks(sessionId, newest.requestId, permissionOnly)
+    return asks === null ? null : { asks, since: newest.at, readAt: this.now() }
   }
 
   /**
@@ -39928,7 +39855,11 @@ export class RuntimeHost implements LiveHost {
    * the turn is stopped on, which nothing after it in the ledger can be. ⚑ Its row's words, cut to
    * one line: the card a person answers holds the whole of it.
    */
-  private whatTheRequestAsks(sessionId: string, requestId: string): string {
+  private whatTheRequestAsks(
+    sessionId: string,
+    requestId: string,
+    permissionOnly: boolean,
+  ): string | null {
     const oneLine = (text: string): string => {
       const line = text.split('\n')[0]?.trim() ?? ''
       return line.length > ASKS_SAID_CHARS
@@ -39942,6 +39873,7 @@ export class RuntimeHost implements LiveHost {
         ? `its request to use ${asked.action}`
         : `its request to use ${asked.action} (${what})`
     }
+    if (permissionOnly) return null
     const question = this.deps.store.newestOfType?.(sessionId, 'user_input_request')?.event
     if (question?.type === 'user_input_request' && question.id === requestId) {
       const what = oneLine(question.prompt)

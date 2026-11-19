@@ -270,21 +270,27 @@ describe('a service is reached through the piece it is on', () => {
       releaseTheTurn()
     })
 
-    it('refuses the caller whose piece is only queued, with the words for each act', async () => {
-      const { host, other, service, two } = await aServiceOnTheFirstPiece()
-      for (const agent of [service, two.label]) {
-        const stopped = await call(host, other, 'interrupt_agent', {
-          agent,
-          reason: 'not needed now',
-        })
-        expect(stopped.structured).toMatchObject({
-          outcome: 'refused',
-          rail: 'that-service-is-on-another-callers-piece',
-          retryable: true,
-          remedy: 'make-the-same-call-when-this-settles',
-        })
-        expect(stopped.text).toContain('Not stopped: that service is on another caller’s piece.')
+    it.each(['id', 'label'])('lets a queued caller stop the active service by %s', async (key) => {
+      const { host, other, service, two, releaseTheTurn } = await aServiceOnTheFirstPiece({
+        turnHeld: true,
+      })
+      try {
+        const agent = key === 'id' ? service : two.label
+        const reason = 'The room booking was cancelled'
+        const stopped = await call(host, other, 'interrupt_agent', { agent, reason })
+        expect(stopped.structured).toMatchObject({ outcome: 'ok', asked: true, agent: service })
+        expect(world.stopsAsked).toEqual(['browser-driver'])
+        expect(world.explicitStops).toEqual(['browser-driver'])
+        expect(rows(service, 'work_interrupted')).toContainEqual(
+          expect.objectContaining({ by: 'an-agent', agent: other, reason }),
+        )
+      } finally {
+        releaseTheTurn()
       }
+    })
+
+    it('keeps the send behavior of a caller whose piece is queued', async () => {
+      const { host, other, service, two } = await aServiceOnTheFirstPiece()
       for (const [agent, kind] of [
         [service, 'follow-up'],
         [two.label, 'note'],

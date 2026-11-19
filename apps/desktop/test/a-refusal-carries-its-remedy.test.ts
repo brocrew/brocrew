@@ -462,9 +462,6 @@ describe('425 · a refusal carries its remedy', () => {
           // ⚑ **The nineteenth**: a give to a service whose waits reach too far to check; the same
           // give once some of that work has ended.
           'SPAWN_RAILS · its-waits-cannot-all-be-checked',
-          // ⚑ **The twentieth**: a stop of a service on another caller's piece; the same stop once
-          // that piece has ended.
-          'INTERRUPT_RAILS · that-service-is-on-another-callers-piece',
           // ⚑ **The twenty-first**: a message about a piece still queued at a service; the same
           // message once it is handed over.
           'TOOL_REFUSALS · that-piece-is-still-queued',
@@ -478,7 +475,7 @@ describe('425 · a refusal carries its remedy', () => {
       )
       // ⚑ One fewer — `its-work-has-stalled` went, so a give is no longer refused over a stall;
       // services added two. Four more: a piece that cannot end with the copies of its questions.
-      expect(carrying).toHaveLength(30)
+      expect(carrying).toHaveLength(29)
     })
 
     it('🔴 the named rails with no remedy are independently not retryable', () => {
@@ -571,13 +568,12 @@ describe('425 · a refusal carries its remedy', () => {
       // ⚑ One more — a restore while an archive or a delete is still under way.
       // ⚑ Two more — a give to a service that waits on its caller, and one whose waits can't all be
       // checked.
-      // ⚑ Two more — a stop of a service on another caller's piece, and a message about a piece
-      // still queued at one. One fewer — the stall rule refuses nothing now; the give's answer
+      // ⚑ One more — a message about a piece still queued at a service. The give's answer
       // names the stall.
       // ⚑ Four more — a piece that cannot end with the copies of its questions, two words at two
       // vocabularies.
       const retryable = everyRail().filter((one) => one.permanence === 'while-this-holds')
-      expect(retryable).toHaveLength(30)
+      expect(retryable).toHaveLength(29)
       expect(retryable.filter((one) => one.remedy === null)).toEqual([])
     })
 
@@ -863,8 +859,6 @@ describe('425 · a refusal carries its remedy', () => {
           'SPAWN_RAILS · it-would-wait-on-itself',
           // A give to a service whose waits can't all be checked: the same give, once some has ended.
           'SPAWN_RAILS · its-waits-cannot-all-be-checked',
-          // A stop of a service on another caller's piece: the same stop, once that piece has ended.
-          'INTERRUPT_RAILS · that-service-is-on-another-callers-piece',
           // A message about a piece queued at a service: the same message, once it is handed over.
           'TOOL_REFUSALS · that-piece-is-still-queued',
           // A piece that cannot end with the copies passed up of its questions, at a take-back, a
@@ -993,8 +987,7 @@ describe('425 · a refusal carries its remedy', () => {
       // ⚑ **Ninety-three** — a give to a service's six: the four `quiet` gained, and
       // `it-would-wait-on-itself` and `its-waits-cannot-all-be-checked`, which the same give clears
       // once that work has ended.
-      // ⚑ **Two more** — a stop of a service on another caller's piece, and a message about a
-      // piece still queued at one, each the same call once that has settled.
+      // ⚑ One more — a message about a piece still queued at a service.
       // ⚑ **Three more** came with Move and work search, and one went: the stall rule is out, so
       // a give is no longer refused over a stall.
       // The walk includes worker selection and the current-work read failure.
@@ -1003,7 +996,7 @@ describe('425 · a refusal carries its remedy', () => {
       // The walk also includes the fixed service provider and a pool with no matching provider.
       // R03 removes the ancestry-only read refusal from the canonical vocabulary.
       // No per-agent grant rail is left; a service's conversation has its own word at the message door.
-      expect(walked).toHaveLength(111)
+      expect(walked).toHaveLength(110)
       expect(everyRail().some((one) => one.rail === 'not-a-conversation-below-you')).toBe(false)
       expect(walked).toEqual(everyRail().map((one) => `${one.vocabulary} · ${one.rail}`))
     })

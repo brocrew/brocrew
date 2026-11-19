@@ -991,10 +991,6 @@ const NO_ACT: Readonly<Record<string, string>> = {
     'the asking conversation is gone, so no further answer is owed or repeatable',
   'QUESTION_RAILS|this-app-does-not-hold-those-words':
     'the original words are gone, so the same id cannot be passed up',
-  // The approved words say only whose piece the service is on; the act is its remedy, the same
-  // stop once that piece has ended.
-  'INTERRUPT_RAILS|that-service-is-on-another-callers-piece':
-    'the service is on another caller’s piece; the same stop goes once that piece has ended',
 }
 
 /**
