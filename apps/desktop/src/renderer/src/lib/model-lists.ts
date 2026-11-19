@@ -88,12 +88,12 @@ export interface ModelLists {
    * provider ANSWERED is read again (the host's memo answers it with no child). ⛔ A failing one is
    * not, and a failed re-read keeps the answer it had.
    */
-  reread(): Promise<void>
+  reread(provider?: Provider): Promise<void>
   /**
    * Retire outstanding catalogue reads after a credential gesture. A forced reread can retain
    * successful rows for display while launch readiness waits for the current account's answer.
    */
-  forget(profileId: string, options?: { readonly retainAnswered?: boolean }): void
+  forget(profileId: string, options?: { readonly retainAnswered?: boolean; readonly provider?: Provider }): void
   /** ⚑ Add a model to a provider's list by hand — `null`, or the door's words. */
   add(provider: Provider, model: string): Promise<string | null>
   /** ⚑ Take a hand-added model off a provider's list — `null`, or the door's words. */
@@ -245,23 +245,27 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
       if (options?.once === true && now !== null) return Promise.resolve()
       return ask(provider, profileId)
     },
-    async reread() {
+    async reread(provider) {
       await Promise.all(
         [...asked.values()]
-          .filter(({ provider, profileId }) => {
-            const held = heldFor(provider, profileId)
-            return held?.state === 'answered' && held.list.notAsked === null
+          .filter((parts) => {
+            if (provider !== undefined && parts.provider !== provider) return false
+            const held = heldFor(parts.provider, parts.profileId)
+            return held?.state === 'answered' && (held.refreshing || held.list.notAsked === null)
           })
           .map(({ provider, profileId }) => askAfresh(provider, profileId)),
       )
     },
     forget(profileId, options) {
       for (const provider of new Set([...asked.values()].map((parts) => parts.provider))) {
-        tickets.set(provider, (tickets.get(provider) ?? 0) + 1)
+        if (options?.provider === undefined || options.provider === provider)
+          tickets.set(provider, (tickets.get(provider) ?? 0) + 1)
       }
-      inFlight.clear()
+      for (const [key, parts] of asked)
+        if (options?.provider === undefined || options.provider === parts.provider) inFlight.delete(key)
       const next = { ...lists.value }
       for (const [key, parts] of asked) {
+        if (options?.provider !== undefined && options.provider !== parts.provider) continue
         const held = next[key]
         if (profileOf(parts.profileId) !== profileId && held?.state !== 'asking') {
           if (held?.state === 'answered' && held.refreshing)

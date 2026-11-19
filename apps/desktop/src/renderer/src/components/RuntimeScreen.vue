@@ -1251,7 +1251,7 @@ const capabilities = ref<ProviderCapabilityMap | null>(null)
  */
 const programs = ref<Partial<Record<Provider, ProviderProgram>> | null>(null)
 let programsRead = 0
-async function readPrograms(): Promise<void> {
+async function readProgramsOnce(): Promise<void> {
   const reading = ++programsRead
   const ask = window.api.runtime.providerVersions
   if (typeof ask !== 'function') return
@@ -1266,6 +1266,7 @@ async function readPrograms(): Promise<void> {
     // said on the Providers screen
   }
 }
+const readPrograms = oneReadAtATime(readProgramsOnce)
 watch(place, () => void readPrograms())
 
 /**
@@ -1306,17 +1307,28 @@ function pickModelForActive(pick: PickedModel): Promise<WhatAPickBecame | null |
 }
 
 /** Refresh the profile's provider facts after a credential gesture settles. */
+const authRefreshes = new Map<string, () => Promise<void>>()
 function authChangedFor(profileId: string, changedProvider?: Provider): void {
-  void readPrograms()
   for (const provider of changedProvider
     ? [changedProvider]
-    : (Object.keys(PROVIDER_NAME) as Provider[]))
-    void useProfileSignIn(provider, profileId, providerClient).check()
-  // Retire old-account requests while keeping previous rows visible during the new read.
-  modelLists.forget(profileId, { retainAnswered: true })
-  void modelLists.reread()
-  for (const shown of listsShown.value) {
-    void modelLists.read(shown.provider, shown.profileId)
+    : (Object.keys(PROVIDER_NAME) as Provider[])) {
+    const key = `${provider}:${profileId}`
+    let refresh = authRefreshes.get(key)
+    if (!refresh) {
+      refresh = oneReadAtATime(async () => {
+        modelLists.forget(profileId, { retainAnswered: true, provider })
+        await Promise.all([
+          readPrograms(),
+          useProfileSignIn(provider, profileId, providerClient).check(),
+          modelLists.reread(provider),
+          ...listsShown.value
+            .filter((shown) => shown.provider === provider)
+            .map((shown) => modelLists.read(shown.provider, shown.profileId)),
+        ])
+      })
+      authRefreshes.set(key, refresh)
+    }
+    void refresh()
   }
 }
 

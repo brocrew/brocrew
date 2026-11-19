@@ -1,4 +1,4 @@
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, provide, type ShallowRef } from 'vue'
 import type { ClientProviderApi } from '../../src/shared/client-provider-api'
 import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
@@ -133,12 +133,12 @@ it('isolates distinct clients, out-of-order generations and refusals without cha
   const factsA = answer(24)
   nextA.resolve(factsA)
   await settle()
-  expect(left.held().value).toBe(factsA)
+  expect(left.held().value).toBeNull()
   expect(right.held().value).toBeNull()
   const factsB = answer(72)
   firstB.resolve(factsB)
   oldA.resolve(answer(1))
-  await settle()
+  await vi.waitFor(() => expect(left.held().value).toBe(factsA))
   expect(left.held().value).toBe(factsA)
   expect(right.held().value).toBe(factsB)
   a.read.mockRejectedValueOnce(new Error('Fictional read refused'))
@@ -181,7 +181,6 @@ it('coalesces login notices received during one usage read and settles the last 
   for (const read of followups) read.resolve(answer(10))
   await settle()
   const final = out.held().value?.claude[0]?.usedPercent
-  console.log('CARD399_USAGE_BURST', JSON.stringify({ notices: 50, concurrent, followups: followups.length, retained, final }))
   expect(retained).toBe(true)
   expect(concurrent).toBe(1)
   expect(followups).toHaveLength(1)

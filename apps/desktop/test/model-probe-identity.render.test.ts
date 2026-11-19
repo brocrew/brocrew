@@ -258,3 +258,22 @@ it('settles retained refresh ownership when another profile supplied an unavaila
   expect(lists.readiness('claude', 'alpha').state).toBe('settled')
   expect(calls).toBeGreaterThan(2)
 })
+
+
+it('does not retire a different provider while refreshing a provider-scoped login', async () => {
+  const other = deferred()
+  let read = () => Promise.resolve(ACCOUNT_A)
+  const lists = holderOver(() => read())
+  await lists.read('claude', 'work')
+  read = () => other.promise
+  const pending = lists.read('codex', 'work')
+  lists.forget('work', { retainAnswered: true, provider: 'claude' })
+  read = () => Promise.resolve(ACCOUNT_B)
+  await lists.reread('claude')
+  expect(lists.readiness('codex', 'work').state).toBe('pending')
+  other.resolve({ ...ACCOUNT_A, provider: 'codex' })
+  await pending
+  expect(lists.held('codex', 'work')).toMatchObject({ state: 'answered', list: { provider: 'codex' } })
+  expect(lists.readiness('codex', 'work').state).toBe('settled')
+  expect(shownIn(lists)).toEqual(ACCOUNT_B)
+})

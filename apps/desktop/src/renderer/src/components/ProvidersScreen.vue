@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { oneReadAtATime } from '../lib/one-read-at-a-time'
 import { readProviderSetup } from '../lib/provider-setup'
 import {
   computed,
@@ -107,10 +108,22 @@ function accessFor(provider: Provider) {
   }
   return access
 }
-function readAccess(provider: Provider): void {
-  const access = accessFor(provider)
-  void access.check()
-  void access.readKey()
+const accessRefreshes = new Map<Provider, () => Promise<void>>()
+function readAccess(provider: Provider): Promise<void> {
+  let refresh = accessRefreshes.get(provider)
+  if (!refresh) {
+    const access = accessFor(provider)
+    refresh = oneReadAtATime(async () => {
+      if (!mounted) return
+      await Promise.all([access.check(), access.readKey()])
+      loginMoved.value = {
+        ...loginMoved.value,
+        [provider]: (loginMoved.value[provider] ?? 0) + 1,
+      }
+    })
+    accessRefreshes.set(provider, refresh)
+  }
+  return refresh()
 }
 function readVisibleAccess(): void {
   for (const provider of providers.value) {
@@ -322,11 +335,7 @@ onMounted(() => {
     if (message.what === 'usage') {
       emit('usageMoved')
     } else {
-      if (providers.value.includes(message.provider)) readAccess(message.provider)
-      loginMoved.value = {
-        ...loginMoved.value,
-        [message.provider]: (loginMoved.value[message.provider] ?? 0) + 1,
-      }
+      if (providers.value.includes(message.provider)) void readAccess(message.provider)
     }
   })
   document.addEventListener('visibilitychange', lookAgain)
