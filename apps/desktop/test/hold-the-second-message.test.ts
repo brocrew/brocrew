@@ -1,3 +1,4 @@
+import type { SendReceipt } from '../src/shared/tool-outcome'
 import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
 import { latch } from './helpers/held-operation'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
@@ -428,9 +429,8 @@ describe('657 · hold the second message instead of refusing it', () => {
       expect(matched).toHaveLength(1)
       expect(matched[0]).toMatchObject({ to: child, addressedAs: child, toLabel: named })
     }
-    // ⚑ Read before the winner's turn stops on its card, it goes once the child is free; read after,
-    // it waits for the person's answer to that card — never for the turn's end, either way.
-    expect(held?.text).toMatch(/at once, if it is|Its turn is stopped until a person answers/)
+    expect(held?.text).toMatch(/^Held for conversation /)
+    expect(held?.text).toMatch(/it is working|Its turn is stopped until a person answers/)
     expect(held?.text).not.toContain('anything held before it has gone')
     expect(held?.text).not.toContain('the turn it is running now ends')
   })
@@ -466,17 +466,11 @@ describe('657 · hold the second message instead of refusing it', () => {
     const [one, two] = settled.map(payload)
     // 🔴 **Held, not sent** — the second attempt never takes the idle branch.
     expect([one?.delivery, two?.delivery].sort()).toEqual(['queued', 'sent'])
-    // ⛔ It said *"when the turn it is running now ends"*, and a hold made after a lost race can
-    // find the winning turn already over — then it goes at once, with no turn to wait for.
-    // ⚑ **D-027 moved the other half**: what is held no longer goes out BEFORE it, one turn each —
-    // it goes out WITH it, in one turn, oldest first — so the answer says *"once <X> is free — at
-    // once, if it is — with whatever else is held for it, oldest first"*, and the old *"anything
-    // held before it has gone"* would now be false.
-    const heldText = settled.find((answer) => payload(answer).delivery === 'queued')?.text
-    expect(heldText).toContain('with whatever else is held for it, oldest first')
-    expect(heldText).toContain('at once, if it is')
-    expect(heldText).not.toContain('anything held before it has gone')
-    expect(heldText).not.toContain('the turn it is running now ends')
+    const held = settled.find((answer) => payload(answer).delivery === 'queued')
+    const receipt = held?.structured?.receipt as SendReceipt
+    expect(receipt.recipient.state.kind).toBe('queued')
+    const { address, title } = receipt.recipient
+    expect(held?.text).toBe(`Held for conversation ${address} · ${title}.`)
     // 🔴 **And it goes out now**, with no `idle` event left to flush it.
     await until(
       () => turnTexts(child).length === turnsBefore + 2,
