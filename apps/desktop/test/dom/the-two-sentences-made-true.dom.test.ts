@@ -187,11 +187,10 @@ describe('§3 · F6 · the conversation the notice is about is there to open', (
     )
     await new Promise((resolve) => setTimeout(resolve, 0))
     await nextTick()
-    // ⚑ **One heading over its list** — BroBot's, whose conversation it is (2026-10-01) — and no
-    // closed one to find.
-    const heading = rail.q('rail-toggle-brobot').querySelector<HTMLElement>('.section-name')!
+    // One Recent heading over the list, without a stopped-only section.
+    const heading = rail.q('rail-toggle-recent').querySelector<HTMLElement>('.section-name')!
     expect(visible(heading)).toBe(true)
-    expect(heading.textContent?.trim()).toBe('BroBot')
+    expect(heading.textContent?.trim()).toBe('Recent')
     expect(rail.all('rail-closed-conversations')).toHaveLength(0)
     // ⚑ …and in it, the row is the press that opens the conversation
     const row = rail.q('open-session-sess_stale')

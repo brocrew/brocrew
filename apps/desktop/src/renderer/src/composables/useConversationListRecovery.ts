@@ -95,8 +95,14 @@ export function useRecoveredConversationList(
   sessions: () => ClientSessionApi | undefined,
   sharedProviderBlocks: () => ProviderBlockStore | undefined,
 ) {
-  const hostResumable = ref<ResumableSessionInfo[]>([])
-  const hostUnresumable = ref<UnresumableSessionInfo[]>([])
+  const listing = shallowRef<{
+    readonly resumable: readonly ResumableSessionInfo[]
+    readonly unresumable: readonly UnresumableSessionInfo[]
+    readonly complete: boolean
+  }>({ resumable: [], unresumable: [], complete: false })
+  const hostResumable = computed(() => listing.value.resumable)
+  const hostUnresumable = computed(() => listing.value.unresumable)
+  const coverageComplete = computed(() => listing.value.complete)
   /** Whether the list has ever looked. Until it has, it has no count to give — not a count of 0. */
   const looked = ref(false)
   const listError = ref<string | null>(null)
@@ -167,8 +173,7 @@ export function useRecoveredConversationList(
   }
 
   const listRecovery = useConversationListRecovery(workspace, () => {
-    hostResumable.value = []
-    hostUnresumable.value = []
+    listing.value = { resumable: [], unresumable: [], complete: false }
     lastShown = undefined
     said.value = new Map()
     looked.value = false
@@ -182,6 +187,7 @@ export function useRecoveredConversationList(
     const cycle = listRecovery.begin()
     if (cycle === undefined) return
     let retry = false
+    let accepted = false
     const asked = ++readsAsked
     const providerReadAt = providerBlocks.value.beginRead()
     try {
@@ -192,20 +198,22 @@ export function useRecoveredConversationList(
       if (typeof sessionsApi?.listConversations === 'function') {
         const result = await sessionsApi.listConversations()
         if (!listRecovery.current(cycle)) return
-        if ('refused' in result) throw new Error(result.refused)
-        answer = result
-        retry = result.refresh === true
+        const refused = 'refused' in result
+        retry = !refused && result.refresh === true
         if (lastShown !== undefined) {
           const epoch = epochDecision(lastShown.published.epoch, result.published.epoch)
           if (epoch === 'drop' || epoch === 'hold') return
           if (
             epoch === 'accept' &&
             (result.published.seq < lastShown.published.seq ||
-              (result.published.seq === lastShown.published.seq &&
+              (!refused &&
+                result.published.seq === lastShown.published.seq &&
                 (result.readAsOf ?? 0) <= (lastShown.readAsOf ?? 0)))
           )
             return
         }
+        if (refused) throw new Error(result.refused)
+        answer = result
         resumable = result.resumable
         unresumable = result.unresumable
         if (!result.published.covers.complete) {
@@ -235,8 +243,12 @@ export function useRecoveredConversationList(
           : [...answer.resumable, ...answer.unresumable],
         providerReadAt,
       )
-      hostResumable.value = [...resumable]
-      hostUnresumable.value = [...unresumable]
+      listing.value = {
+        resumable,
+        unresumable,
+        complete: answer?.published.covers.complete === true && !answer.refresh,
+      }
+      accepted = true
       // A dispatch floor cannot replace states pushed after that floor, even before this caller joined.
       said.value = new Map(
         [...said.value].filter(([id, heard]) => {
@@ -264,6 +276,7 @@ export function useRecoveredConversationList(
       }
     } catch (cause) {
       if (!listRecovery.current(cycle)) return
+      if (!accepted && listing.value.complete) listing.value = { ...listing.value, complete: false }
       if (listRecovery.failed()) listError.value = readableError(cause)
       retry = true
     } finally {
@@ -276,6 +289,7 @@ export function useRecoveredConversationList(
   return {
     hostResumable,
     hostUnresumable,
+    coverageComplete,
     looked,
     listError,
     said,

@@ -203,7 +203,7 @@ const angleOf = (chevron: Element): number => {
   return Math.round((Math.atan2(matrix.b, matrix.a) * 180) / Math.PI)
 }
 
-const chevronOf = (m: Mounted, section: 'brobot' | 'agents'): Element =>
+const chevronOf = (m: Mounted, section: 'needs-you' | 'recent'): Element =>
   m.q(`rail-toggle-${section}`).querySelector('.chev')!
 
 describe('the rail says what it could not read, and which sections are open', () => {
@@ -233,21 +233,21 @@ describe('the rail says what it could not read, and which sections are open', ()
 
     // (a) A fresh viewer: both sections open. A fresh mount, so no transition is in flight.
     const open = await rail(rows)
-    expect(open.q('rail-toggle-brobot').getAttribute('aria-expanded')).toBe('true')
-    expect(angleOf(chevronOf(open, 'brobot'))).toBe(90)
-    expect(angleOf(chevronOf(open, 'agents'))).toBe(90)
+    expect(open.q('rail-toggle-needs-you').getAttribute('aria-expanded')).toBe('true')
+    expect(angleOf(chevronOf(open, 'needs-you'))).toBe(90)
+    expect(angleOf(chevronOf(open, 'recent'))).toBe(90)
     unmountAll()
 
-    // (b) The same rows, BroBot's section remembered folded.
-    storage.setItem('brobot2.railBroBotOpen', 'false')
+    // (b) The same rows, Needs you remembered folded.
+    storage.setItem('brobot2.railNeedsYouOpen', 'false')
     const folded = await rail(rows)
-    expect(folded.q('rail-toggle-brobot').getAttribute('aria-expanded')).toBe('false')
-    expect(folded.all('rail-rows-brobot')).toHaveLength(0)
-    expect(angleOf(chevronOf(folded, 'brobot'))).toBe(0)
-    // ⚑ The other agents' chevron is open in both mounts and reads 90 in both, so the 0 above is
-    // BroBot's fold and not a rail whose chevrons never turn.
-    expect(folded.q('rail-toggle-agents').getAttribute('aria-expanded')).toBe('true')
-    expect(angleOf(chevronOf(folded, 'agents'))).toBe(90)
+    expect(folded.q('rail-toggle-needs-you').getAttribute('aria-expanded')).toBe('false')
+    expect(folded.all('rail-rows-needs-you')).toHaveLength(0)
+    expect(angleOf(chevronOf(folded, 'needs-you'))).toBe(0)
+    // ⚑ The Recent chevron is open in both mounts and reads 90 in both, so the 0 above is
+    // the Needs you fold and not a rail whose chevrons never turn.
+    expect(folded.q('rail-toggle-recent').getAttribute('aria-expanded')).toBe('true')
+    expect(angleOf(chevronOf(folded, 'recent'))).toBe(90)
   })
 })
 

@@ -443,9 +443,7 @@ describe('one row per conversation, and the count is the rows (090, D-017b)', ()
     // The paired positive: the others are still here, so one row was merged and not the list.
     expect(m.all('open-session-sess_child')).toHaveLength(1)
     expect(m.all('open-session-sess_lostref')).toHaveLength(1)
-    // ⚑ 2026-10-01 · counted by section: two of BroBot's, and the reviewer's.
-    expect(m.q('rail-count-brobot').textContent).toBe('2')
-    expect(m.q('rail-count-agents').textContent).toBe('1')
+    expect(m.q('rail-count-recent').textContent).toBe('3 shown')
   })
 
   it('⚠️ …and it reaches the UNRESUMABLE half too', async () => {
@@ -455,7 +453,7 @@ describe('one row per conversation, and the count is the rows (090, D-017b)', ()
     )
     expect(m.all('open-session-sess_lostref')).toHaveLength(1)
     expect(m.all('open-session-sess_refless')).toHaveLength(1)
-    expect(m.q('rail-count-brobot').textContent).toBe('2')
+    expect(m.q('rail-count-recent').textContent).toBe('2 shown')
     // ⚑ **Drawn from its RECORD, not the host's row** (`151 M28`, landing D-017b): the held record's
     // folder is its own, so a host row that took its place would read `thing` instead.
     expect(row(m, 'sess_lostref').textContent).toContain('held-here')
@@ -743,9 +741,8 @@ describe('a conversation from the user’s own folder is not on the rail (154 §
     expect(drawn.textContent).toContain('brobot-otherproj')
     // …and the adopted row, in the same rail, still is not.
     expect(m.all('open-session-sess_userhome')).toHaveLength(0)
-    // ⚠️ The count above the list is the rail's own claim about what it is showing — the other
-    // agents' section's, since the developer is not BroBot (2026-10-01).
-    expect(m.q('rail-count-agents').textContent).toBe('1')
+    // The Recent count uses the displayed rows and excludes the adopted row.
+    expect(m.q('rail-count-recent').textContent).toBe('1 shown')
     // ⚠️ **571 · RE-AIMED, not stripped** (standing rule 26). ⛔ This read
     // `expect(m.all('no-open-sessions')).toHaveLength(0)`, and `571` deleted that element: the
     // empty sentence *"Nothing running. Start one above, or reopen one below."* was this rail's
@@ -770,7 +767,7 @@ describe('a conversation from the user’s own folder is not on the rail (154 §
     const m = await rail({ resumable: [OPENABLE], unresumable: [LOST_REF, USER_HOME] })
     // Three rows in, two out. A count still taken from the two host lists would promise a row
     // this list will not draw — `086`, and the failure `119` fixed on the scan button.
-    expect(m.q('rail-count-brobot').textContent).toBe('2')
+    expect(m.q('rail-count-recent').textContent).toBe('2 shown')
   })
 
   /**
@@ -792,8 +789,9 @@ describe('a conversation from the user’s own folder is not on the rail (154 §
     const section = ours.q('rail-conversations')
     expect(visible(section)).toBe(true)
     const said = section.textContent ?? ''
-    expect(said).toContain('BroBot')
-    expect(ours.q('rail-count-brobot').textContent).toBe('1')
+    expect(said).toContain('Recent')
+    expect(ours.q('open-session-sess_lostref').textContent).toContain('BroBot')
+    expect(ours.q('rail-count-recent').textContent).toBe('1 shown')
     // Keep adopted conversations visible only in the Sessions UI. The rail adds no hint,
     // badge, count, or other reference to the excluded rows.
     expect(said).not.toContain('Sessions')
