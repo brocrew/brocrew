@@ -232,9 +232,10 @@ describe('D-009 · agents ask each other, and the answer comes back', () => {
       expect(store.piecesOwnedBy(ada.id)).toEqual([])
       expect(waitOf(ada.id)).toBeNull()
 
-      const id = await askBo(ada, bo)
+      const id = await askBo(ada, bo, { agent: rootOf(bo.id) })
       // ⚑ The routing names Bo as the one who answers.
       expect(questionOf(ada.id, id)).toMatchObject({
+        askedBy: ada.id,
         state: 'open',
         parent: bo.id,
         went: { is: 'the-agent-the-asker-named', to: 'an-agent' },

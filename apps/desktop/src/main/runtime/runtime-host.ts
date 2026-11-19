@@ -18868,6 +18868,15 @@ export class RuntimeHost implements LiveHost {
     const underTheId = this.questionsRoutedToWhatItStandsFor(speaking).filter(
       (one) => one.requestId === questionId,
     )
+    if (
+      underTheId.length === 0 &&
+      this.isOwnOrGivenPersonQuestion(speaking, askedBy ?? speaking, questionId)
+    ) {
+      return {
+        is: 'refused',
+        refusal: refuseQuestion('person-addressed-request', { question: questionId }),
+      }
+    }
     // ⚑ **In routing order**, because `questionsRoutedTo` sorts by `at` — so a refusal names the
     // askers in the order their requests reached this caller.
     const askers = [...new Set(underTheId.map((one) => one.askedBy))]
@@ -18894,6 +18903,20 @@ export class RuntimeHost implements LiveHost {
       }
     }
     return { is: 'found', request: underTheId[underTheId.length - 1] }
+  }
+
+  private isOwnOrGivenPersonQuestion(speaking: string, asker: string, questionId: string): boolean {
+    const raised = this.deps.store.questionsRaisedIn(asker).get(questionId)
+    if (raised?.raisedBy !== 'this-app' || raised.passedUpFrom !== null) return false
+    if (speaking !== asker) {
+      const giver = raised.piece === null ? null : this.deps.store.workById(raised.piece)?.givenBy
+      if (giver == null || !this.theIdsItStandsFor(speaking).includes(giver)) return false
+    }
+    const route = this.deps.store
+      .routedRequestsOf(asker)
+      .filter((one) => one.requestId === questionId)
+      .at(-1)
+    return route?.parent === null && route.went.is === 'the-person-the-asker-named'
   }
 
   /**
@@ -18925,8 +18948,8 @@ export class RuntimeHost implements LiveHost {
    * ⚠️ **`questionsRoutedTo(speaking)` is asked of nothing else** — ⚑ D-017 · R10: and of the
    * conversations it took the place of ({@link questionsRoutedToWhatItStandsFor}) — so a caller cannot
    * spell an id that reaches a family it did not start — *"not yours"* and *"no such request"* are one absence by
-   * construction. `refuse-on-entitlement-before-refusing-on-existence`, made structural exactly as
-   * `393`'s reply is.
+   * construction. If no route matched, the asker or the work giver can get the person-only
+   * refusal for an exact app-raised request. That read never supplies a request to settle.
    *
    * ## 🔴 A permission in that scope is refused BY NAME, and that is criterion 10 with teeth
    *

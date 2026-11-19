@@ -331,7 +331,7 @@ describe('the host says who a conversation owes an answer to, and moves the word
     expect(await wordsOf(observer, brobot)).toBe(WAITING_ON_ADA)
   })
 
-  it('a question its child addressed to a person names the parent and is not the parent’s to owe', async () => {
+  it('a question its child addressed to a person has no agent answerer', async () => {
     const { brobot, ada, adaTools } = await aGiverWaitingOnAHelper()
     // First a question to the parent and its answer, so Ada is in the index.
     const first = await adaAsksHerParent(adaTools)
@@ -361,7 +361,7 @@ describe('the host says who a conversation owes an answer to, and moves the word
       .at(-1)
     expect(routing).toMatchObject({
       state: 'open',
-      parent: brobot,
+      parent: null,
       went: { is: 'the-person-the-asker-named' },
     })
     await settle()

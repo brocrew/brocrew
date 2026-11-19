@@ -350,7 +350,12 @@ describe('a to-do for a person', () => {
       asked_by: ada,
       answers: [{ part: 'answer', answer: ['Done'] }],
     })
-    expect(proxy).toMatchObject({ outcome: 'refused' })
+    expect(proxy).toMatchObject({
+      outcome: 'refused',
+      rail: 'person-addressed-request',
+      reason:
+        'Not answered: only the person can answer this request. If you asked it and no longer need it, withdraw it.',
+    })
     expect(route(id)?.state).toBe('open')
     expect(queued()).toContain(id)
 

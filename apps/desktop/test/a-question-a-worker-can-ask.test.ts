@@ -1031,6 +1031,7 @@ describe('437 · a question a worker can ask its parent', () => {
       expect([...QUESTION_RAILS]).toEqual([
         'no-question-by-that-name',
         'a-person-answers-this-one',
+        'person-addressed-request',
         'question-has-already-ended',
         'that-answer-cannot-be-sent',
         'the-conversation-that-asked-has-gone',
@@ -1057,6 +1058,7 @@ describe('437 · a question a worker can ask its parent', () => {
         // held at all; `no-open-work-by-that-name` now answers a NAMED piece only.
         'name-the-piece-you-ask-about',
         'no-piece-to-ask-about',
+        'no-conversation-gave-this-work',
         // ⚑ An answer over the bound, refused before anything is recorded.
         'answer-too-long',
         'move-offer-not-available',

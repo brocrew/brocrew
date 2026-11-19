@@ -96,6 +96,7 @@ export const QUESTION_RAILS = [
    * answering with another reason's sentence.
    */
   'a-person-answers-this-one',
+  'person-addressed-request',
   /**
    * ⛔ **Nobody is waiting for this answer any more** — a person or the parent settled it, the
    * provider withdrew it, the work it was about was taken back, or the conversation ended around
@@ -339,6 +340,7 @@ const PERMANENCE: Readonly<Record<QuestionRail, RailPermanence>> = {
   // 🔴 **`permanent` since `424`** — see the rail's own note, and HO-023 §2.1.
   'no-question-by-that-name': 'permanent',
   'a-person-answers-this-one': 'permanent',
+  'person-addressed-request': 'permanent',
   'question-has-already-ended': 'permanent',
   'that-answer-cannot-be-sent': 'while-this-holds',
   'the-conversation-that-asked-has-gone': 'permanent',
@@ -407,6 +409,7 @@ const REMEDY: Readonly<Record<QuestionRail, RefusalRemedy | null>> = {
   'move-offer-needs-a-person': null,
   'no-question-by-that-name': null,
   'a-person-answers-this-one': null,
+  'person-addressed-request': null,
   'question-has-already-ended': null,
   'that-answer-cannot-be-sent': 'answer-every-part-the-request-asks-for',
   'the-conversation-that-asked-has-gone': null,
@@ -560,6 +563,8 @@ const QUESTION_SENTENCES: Readonly<Record<QuestionRail, string>> = {
     'nobody is waiting on you for a request by that id, so nothing was answered. list_questions names the requests you can answer — from conversations you started, and agents that asked you; sending that id again will never succeed.',
   'a-person-answers-this-one':
     'that one is a person’s to settle rather than a question you can answer, so nothing was sent and it is still waiting for a person. Leave it for that person; retrying your answer will never succeed. The detail says what kind of thing it is.',
+  'person-addressed-request':
+    'only the person can answer this request. If you asked it and no longer need it, withdraw it.',
   'question-has-already-ended':
     'no further answer is owed: that question has ended, so nobody is waiting and nothing was sent. The detail says how it ended; retrying this id cannot work.',
   'that-answer-cannot-be-sent':
