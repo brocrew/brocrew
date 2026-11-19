@@ -276,6 +276,11 @@ describe('§0 · the prose reader, and a census is only as good as it', () => {
     }
   })
 
+  it('checks that the census source roster has not collapsed', () => {
+    const files = everySource()
+    expect(files.length, 'the roster collapsed').toBeGreaterThan(1000)
+  })
+
   it.each([
     {
       file: 'fixture.ts',
