@@ -27,6 +27,13 @@ export interface ConversationTitle {
   readonly at: number
 }
 
+export interface ConversationIdentity {
+  readonly conversation: string
+  readonly address: string
+  readonly title: string
+  readonly author: ConversationTitleAuthor | null
+}
+
 export interface ConversationRenameInput {
   readonly conversation: string
   readonly title: string

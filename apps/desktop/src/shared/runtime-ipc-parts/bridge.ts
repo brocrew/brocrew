@@ -11,7 +11,11 @@ import type { AgentRemoved } from '../agent-roster'
 import type { RulesBaseline } from '../agent-rules'
 import type { ArchiveOutcome, DeleteOutcome, DeleteVerdict } from '../conversation-archive'
 import type { McpServerRequestForAPerson } from '../conversation-events'
-import type { ConversationRenameInput, ConversationRenameResult } from '../conversation-title'
+import type {
+  ConversationIdentity,
+  ConversationRenameInput,
+  ConversationRenameResult,
+} from '../conversation-title'
 import type {
   ResumableSessionInfo,
   UnresumableSessionInfo,
@@ -767,6 +771,7 @@ export interface RuntimeBridge {
    * list that names the conversation reads the newest title. Nobody is told.
    */
   retitleWork(input: { piece: string; title: string }): Promise<WorkRetitled>
+  readConversationIdentity(input: { sessionId: string }): Promise<ConversationIdentity | null>
   renameConversation(input: ConversationRenameInput): Promise<ConversationRenameResult>
   /**
    * Take back the piece a service is on, as a person (see {@link RuntimeCommandResults.takeBackWork}).

@@ -530,6 +530,8 @@ const runtime: RuntimeBridge = Object.freeze({
   // so it is `plain-by-construction` on both halves of `363`'s question, as its neighbour above is.
   retitleWork: (input: { piece: string; title: string }) =>
     command({ kind: 'retitleWork', ...input }),
+  readConversationIdentity: (input: SessionInput) =>
+    command({ kind: 'readConversationIdentity', ...input }),
   renameConversation: (input: { conversation: string; title: string }) =>
     command({ kind: 'renameConversation', ...input }),
   takeBackWork: (input: { piece: string }) => command({ kind: 'takeBackWork', ...input }),
