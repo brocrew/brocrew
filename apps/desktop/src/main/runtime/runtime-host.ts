@@ -13448,7 +13448,7 @@ export class RuntimeHost implements LiveHost {
     asker: string,
     id: string,
     answererIds: readonly string[],
-    ledgerOf: (conversation: string) => StateLedger = this.oneLedgerReadPerAnswer(),
+    ledgerOf: (conversation: string) => ItsLedger = this.oneLedgerReadPerAnswer(),
   ): boolean {
     const original = ledgerOf(asker).raised.get(id)
     return (
