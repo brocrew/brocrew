@@ -1019,7 +1019,7 @@ export interface ToolRefusedEvent {
    * ⚠️ **What guarantees that, said exactly.** `what-an-agent-is-told-about-its-work.test.ts` §3
    * asserts absolute SENTENCE uniqueness over a vocabulary list DERIVED from the modules — so a
    * list this paragraph has never heard of is covered on the commit that adds it. ⚑ NAME sharing is
-   * limited to its explicit allowlist: `malformed-request` and `spawning-disabled`, each owned by
+   * limited to its explicit allowlist: `malformed-request`, owned by
    * `SPAWN_RAILS` and `TOOL_REFUSALS`.
    *
    * ⛔ **`405` F8 reported three of seven checked and `412` found that stale in both halves.** Two
