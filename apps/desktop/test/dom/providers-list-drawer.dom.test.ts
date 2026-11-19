@@ -389,6 +389,10 @@ describe('the Providers list opens the existing controls in one drawer', () => {
     expect(row(m, 'codex').textContent).toContain("Couldn't check")
   })
   it('opens the requested setup provider through the existing Settings route', async () => {
+    window.api.runtime.checkProviderAuth = async () => ({
+      state: 'absent',
+      reason: 'Fictional setup still needs a sign-in.',
+    })
     const m = screen({ setupProvider: 'codex' })
     await settle()
     expect(m.q('provider-drawer').textContent).toContain('Codex')

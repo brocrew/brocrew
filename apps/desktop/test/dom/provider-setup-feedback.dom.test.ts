@@ -246,8 +246,13 @@ describe('setup feedback follows the latest facts', () => {
     await settled()
     out.auth.value = USABLE
     expect(out.m.all('provider-inline-setup')).toHaveLength(0)
-    out.m.q('sign-in-check').click()
+    const checks = out.runtime.checkProviderAuth.mock.calls.length
+    const check = [...out.m.q('provider-status').querySelectorAll('button')].find(
+      (button) => button.textContent?.trim() === 'Check again',
+    )!
+    check.click()
     await settled()
+    expect(out.runtime.checkProviderAuth).toHaveBeenCalledTimes(checks + 1)
     expect(words(out.m.q('provider-auth-notice'))).toBe('Signed in to Codex.')
   })
 
