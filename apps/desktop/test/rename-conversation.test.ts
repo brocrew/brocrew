@@ -118,7 +118,7 @@ describe('renaming a conversation', () => {
     ])
   })
 
-  it('reads recorded conversations with no task, using their raw id and no title author', async () => {
+  it('keeps the same selected id while its first task gives it an address and fallback title', async () => {
     const sessionId = 'sess_no_tasks'
     world.store.create({
       id: sessionId,
@@ -136,5 +136,39 @@ describe('renaming a conversation', () => {
       title: 'worker',
       author: null,
     })
+
+    const root = world.store.rootOf(caller)!
+    const number = world.store.numberUnder(root.piece)
+    const label = `${root.label}.${String(number)}`
+    const piece = 'work_first'
+    const title = 'First recorded task'
+    const brief = 'Do the first task'
+    world.store.recordGive(
+      {
+        piece,
+        parent: root.piece,
+        number,
+        owner: sessionId,
+        givenBy: caller,
+        title,
+        brief,
+        folder: null,
+        inputs: [],
+      },
+      world.store.nextOrdinal(sessionId),
+      { type: 'work_given', piece, label, parent: root.piece, givenBy: caller, title, brief },
+      world.clock,
+    )
+
+    const ledger = world.store.events(sessionId)
+    const providerHandles = world.handles.length
+    expect(await readIdentity(sessionId)).toEqual({
+      conversation: sessionId,
+      address: label,
+      title,
+      author: null,
+    })
+    expect(world.store.events(sessionId)).toEqual(ledger)
+    expect(world.handles).toHaveLength(providerHandles)
   })
 })
