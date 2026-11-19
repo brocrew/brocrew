@@ -707,19 +707,23 @@ describe('687 · what the cards cannot say yet', () => {
   /* ═════════════════ §4 · H6 — the flushed brief carries its label ════════════════════════════════ */
 
   describe('§4 · `678` H6 — a held brief’s flushed turn says its label on its own', () => {
-    it('🔴 the turn a held brief flushes into carries the label its piece row was given a turn earlier', async () => {
-      const { pm, worker, pmTools } = await aPmAndItsWorker(3)
+    const giveBehindTheBusyBrief = async (pmTools: AgentToolset, worker: string) => {
       await waitFor(
         () => ledger(worker).some((event) => event.type === 'permission_request'),
         'the worker to be busy',
       )
-      // ⚑ **D-016** — a second give from the same giver reaches the SAME conversation, and is held
-      // behind the first brief's turn.
-      const again = await call(
+      return call(
         pmTools,
         'give_work',
         addressedGive(worker, 'worker', 'Now build it', 'now build it'),
       )
+    }
+
+    it('🔴 the turn a held brief flushes into carries the label its piece row was given a turn earlier', async () => {
+      const { pm, worker, pmTools } = await aPmAndItsWorker(3)
+      // ⚑ **D-016** — a second give from the same giver reaches the SAME conversation, and is held
+      // behind the first brief's turn.
+      const again = await giveBehindTheBusyBrief(pmTools, worker)
       expect(again.structured.agent).toBe(worker)
       expect(again.structured.delivery).toBe('held')
       const next = `${String(store.rootOf(pm)?.label)}.5`
@@ -781,15 +785,7 @@ describe('687 · what the cards cannot say yet', () => {
       // ⚑ **D-016** — the held words are a second give's brief, behind the first brief's turn; a
       // brief carries no `says`.
       const { pm, worker, pmTools } = await aPmAndItsWorker()
-      await waitFor(
-        () => ledger(worker).some((event) => event.type === 'permission_request'),
-        'the worker to be busy',
-      )
-      const again = await call(
-        pmTools,
-        'give_work',
-        addressedGive(worker, 'worker', 'Now build it', 'now build it'),
-      )
+      const again = await giveBehindTheBusyBrief(pmTools, worker)
       expect(again.structured.delivery).toBe('held')
       await host.send(pm, 'keep the PM busy', window)
       expect((await host.queueMessage(pm, 'mine, held', window)).outcome).toBe('queued')

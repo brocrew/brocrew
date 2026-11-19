@@ -1,4 +1,4 @@
-import { addressedGive, newConversationGive } from './lib/give-fixture'
+import { addressedGive, givePagesToNewWorker } from './lib/give-fixture'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
 import { didIt, type ActedBy } from '../src/shared/who-did-it'
@@ -613,13 +613,11 @@ describe('a label names the conversation that owns the piece, and no more', () =
     const aChildHoldingTwoPieces = async (): Promise<{ parent: string; child: string }> => {
       const parent = await personOpens(DEFAULT_PROFILE_ID, 'ask')
       const parentTools = agentToolsFor(host, parent)
-      await callOn(parentTools, 'create_agent', { profile_slug: 'worker' })
-      const first = await callOn(
+      const first = await givePagesToNewWorker(
         parentTools,
-        'give_work',
-        newConversationGive('worker', 'Build the world clock page', 'build the world clock page'),
+        'Build the world clock page',
+        'build the world clock page',
       )
-      expect(first, JSON.stringify(first)).toMatchObject({ outcome: 'ok', label: 'W1.1' })
       const child = first.agent as string
       await waitFor(
         () => ledger(child).some((event) => event.type === 'permission_request'),

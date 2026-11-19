@@ -1,4 +1,4 @@
-import { newConversationGive } from './lib/give-fixture'
+import { giveAndWaitForBriefTurn } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -167,21 +167,8 @@ describe('message now · a message or an answer can stop the running turn', () =
    * card, and `INTERRUPT_RAILS` refuses `a-person-is-being-asked` — the rail this file must not
    * measure.
    */
-  const give = async (
-    tools: AgentToolset,
-    profile: string,
-    title: string,
-  ): Promise<{ agent: string; piece: string; label: string }> => {
-    const given = await callOn(tools, 'give_work', newConversationGive(profile, title, title))
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    expect(given.started, JSON.stringify(given)).toBe(true)
-    const agent = given.agent as string
-    await waitFor(
-      () => ledger(agent).some((event) => event.type === 'turn'),
-      'the brief’s turn to end',
-    )
-    return { agent, piece: given.piece as string, label: given.label as string }
-  }
+  const give = (tools: AgentToolset, profile: string, title: string) =>
+    giveAndWaitForBriefTurn(tools, profile, title, ledger)
 
   /**
    * 🔴 **BroBot → Ada → Ali, through the real door.**

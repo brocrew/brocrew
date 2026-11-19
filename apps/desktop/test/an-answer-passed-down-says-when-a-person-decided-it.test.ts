@@ -1,4 +1,4 @@
-import { newConversationGive } from './lib/give-fixture'
+import { callNewConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { rmSync } from 'node:fs'
@@ -122,11 +122,7 @@ describe('an answer an agent passes down says when a person decided it', () => {
   const aPmWithAWorkerOnATask = async () => {
     await host.close((await personOpens('worker')).id, window)
     const pm = await personOpens(DEFAULT_PROFILE_ID)
-    const given = await callOn(
-      pm.tools,
-      'give_work',
-      newConversationGive('worker', 'The notes', 'write it'),
-    )
+    const given = await callNewConversationGive(pm.tools, 'worker', 'The notes', 'write it')
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     const workerTools = order.at(-1)

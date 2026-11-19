@@ -1,4 +1,4 @@
-import { newConversationGive } from './lib/give-fixture'
+import { giveAndWaitForBriefTurn } from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { callOn } from './helpers/call-agent-tool'
 import { chainAbove } from './helpers/conversation-ancestry'
@@ -166,21 +166,8 @@ describe('629 · a stop reaches down the whole chain', () => {
    * card, and `INTERRUPT_RAILS` refuses `a-person-is-being-asked` — the rail this file must not
    * measure.
    */
-  const give = async (
-    tools: AgentToolset,
-    profile: string,
-    title: string,
-  ): Promise<{ agent: string; piece: string; label: string }> => {
-    const given = await callOn(tools, 'give_work', newConversationGive(profile, title, title))
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    expect(given.started, JSON.stringify(given)).toBe(true)
-    const agent = given.agent as string
-    await waitFor(
-      () => ledger(agent).some((event) => event.type === 'turn'),
-      'the brief’s turn to end',
-    )
-    return { agent, piece: given.piece as string, label: given.label as string }
-  }
+  const give = (tools: AgentToolset, profile: string, title: string) =>
+    giveAndWaitForBriefTurn(tools, profile, title, ledger)
 
   /**
    * 🔴 **BroBot → Ada → Ali, through the real door.**

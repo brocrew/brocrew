@@ -1,4 +1,4 @@
-import { giveToConversation, openGiverAndGivePages } from './lib/give-fixture'
+import { givePagesToWorker, openGiverAndGivePages } from './lib/give-fixture'
 import { HandleKeepingRuntime as ProviderDouble } from './helpers/handle-keeping-runtime'
 import { waitFor } from './lib/f093-host'
 import type { PieceRow } from '../src/shared/task-contracts'
@@ -133,12 +133,7 @@ describe('a wait names what will end it', () => {
     to: string,
   ): Promise<{ ada: string; piece: string; label: string }> => {
     const tools = agentToolsFor(host, brobot)
-    if (to === 'new') await ok(tools, 'create_agent', { profile_slug: 'worker' })
-    const given = await ok(
-      tools,
-      'give_work',
-      giveToConversation(to, 'worker', title, title.toLowerCase()),
-    )
+    const given = await givePagesToWorker(ok, tools, title, to)
     const ada = given.agent as string
     const piece = given.piece as string
     await waitFor(() => pieceOf(ada, piece)?.state === 'stalled', `the brief of ${title} to end`)
