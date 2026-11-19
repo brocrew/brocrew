@@ -18,12 +18,7 @@ export class ConversationIdle {
   /** ⚑ D-018 · see {@link DEFAULT_IDLE_STOP_AFTER_MS}. */
   private readonly idleStopAfterMs: number
 
-  /**
-   * 🔴 **D-018 · each running conversation's idle countdown, while it is idle** — armed by the flush
-   * that derives it idle ({@link sayWhatMoved}, {@link idleEnoughToStop}), dropped by every mark
-   * ({@link stateMayHaveMoved}) — the slot going is one — and run into {@link stopItIfStillIdle}.
-   * ⛔ One per conversation and never a sweep; it belongs to this host and dies with it.
-   */
+  /** One deadline per eligible live conversation. */
   private readonly idleCountdowns = new Map<string, ReturnType<typeof setTimeout>>()
 
   constructor(
@@ -33,11 +28,9 @@ export class ConversationIdle {
     this.idleStopAfterMs = idleStopAfterMs ?? DEFAULT_IDLE_STOP_AFTER_MS
   }
 
-  /**
-   * ⚑ **D-018 · arm its idle countdown** ({@link idleCountdowns}) — the mark that asked for this
-   * flush already dropped any earlier one.
-   */
+  /** Arm a new deadline when the conversation first becomes eligible. */
   countTheIdleMinutes(conversation: string): void {
+    if (this.idleCountdowns.has(conversation)) return
     const countdown = setTimeout(
       () => void this.stopItIfStillIdle(conversation, countdown),
       this.idleStopAfterMs,
@@ -60,11 +53,8 @@ export class ConversationIdle {
    * through the conversation's own close ({@link close}, {@link THE_APP_ITSELF}), the one a quit
    * uses.
    *
-   * ⛔ **A countdown a mark dropped says nothing**: it is no longer this conversation's, so
-   * something moved since it was armed. ⛔ **Nor once a quit has begun**
-   * ({@link LaunchRegistry.closed}): the quit stops every process itself, and the database is
-   * closing. ⚑ The one state is derived again at this instant, and {@link idleEnoughToStop}
-   * re-reads what it does not carry.
+   * The callback must still own the current deadline. Recheck live eligibility before closing.
+   * During quit, the host's shutdown path stops the processes.
    *
    * ⚑ The provider writes `session: ended` and `status: ended`, the row's status is recorded, the
    * slot goes and every window is told — D-019's marks and `conversations`. ⛔ No row of this app's,
