@@ -35,10 +35,23 @@ export function usePaletteSearch(
 ) {
   const profile = ref('')
   const grouped = ref(false)
+  const dates = ref({ from: '', to: '' })
+  const invalidDates = computed(() => {
+    const { from, to } = dates.value
+    return from !== '' && to !== '' && from > to
+  })
+  const clearDates = () => {
+    dates.value = { from: '', to: '' }
+  }
   const searchAvailable = computed(() => !!props.searchCaller && !!props.searchConversations)
   const useReader = computed(
     () =>
-      searchAvailable.value && (query.value.trim() !== '' || profile.value !== '' || grouped.value),
+      searchAvailable.value &&
+      (query.value.trim() !== '' ||
+        profile.value !== '' ||
+        grouped.value ||
+        dates.value.from !== '' ||
+        dates.value.to !== ''),
   )
   const searchPage = ref<WorkSearchPage | null>(null)
   const searchHits = ref<readonly ConversationSearchHit[]>([])
@@ -52,7 +65,16 @@ export function usePaletteSearch(
     const caller = props.searchCaller
     const search = props.searchConversations
     const cursor = more ? searchPage.value?.next_cursor : null
-    if (appClosing.value || !caller || !search || searchBusy.value || (more && !cursor)) return
+    if (
+      appClosing.value ||
+      !caller ||
+      !search ||
+      invalidDates.value ||
+      searchBusy.value ||
+      (more && !cursor)
+    )
+      return
+    const { from, to } = dates.value
     const reading = ++searchRequest
     searchBusy.value = true
     searchFailed.value = null
@@ -61,6 +83,8 @@ export function usePaletteSearch(
         words: query.value.trim(),
         ...(profile.value ? { profile: profile.value } : {}),
         ...(grouped.value ? { grouped: true } : {}),
+        ...(from ? { from } : {}),
+        ...(to ? { to } : {}),
         ...(cursor ? { cursor } : {}),
         limit: 20,
         includeConversationMetadata: true,
@@ -89,7 +113,16 @@ export function usePaletteSearch(
   }
 
   watch(
-    [query, profile, grouped, showing, () => props.searchCaller, searchAvailable],
+    [
+      query,
+      profile,
+      grouped,
+      () => dates.value.from,
+      () => dates.value.to,
+      showing,
+      () => props.searchCaller,
+      searchAvailable,
+    ],
     (_selected, _old, cleanUp) => {
       searchRequest += 1
       searchHits.value = []
@@ -101,6 +134,11 @@ export function usePaletteSearch(
       if (!showing.value) {
         profile.value = ''
         grouped.value = false
+        clearDates()
+        return
+      }
+      if (invalidDates.value) {
+        searchFailed.value = 'From must be on or before To.'
         return
       }
       if (!useReader.value) return
@@ -210,6 +248,9 @@ export function usePaletteSearch(
   return {
     profile,
     grouped,
+    dates,
+    invalidDates,
+    clearDates,
     searchAvailable,
     useReader,
     searchPage,
