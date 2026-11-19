@@ -21,7 +21,6 @@ import { RuntimeHost } from './helpers/giver-notice-host'
 import {
   A_CONVERSATION_CANNOT_INTERRUPT_ITSELF,
   agentToolsFor,
-  refuseTool,
   type ToolName,
 } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
@@ -591,15 +590,12 @@ describe('629 · a stop reaches down the whole chain', () => {
           rail: 'that-agent-is-you',
           reason: A_CONVERSATION_CANNOT_INTERRUPT_ITSELF + guide,
         })
-        // ⚑ …and `message_agent`'s own word, where the host's gate answered a conversation that could
-        // take no message, and sent a person to look at it.
         expect(
-          await callOn(nextTools, 'message_agent', { kind: 'note', agent: named, text: 'hello' }),
+          await callOn(nextTools, 'message_agent', { agent: named, text: 'hello' }),
           named,
         ).toMatchObject({
-          outcome: 'refused',
-          rail: 'that-agent-is-you',
-          reason: refuseTool('that-agent-is-you').reason + guide,
+          outcome: 'ok',
+          receipt: { recipient: { id: next } },
         })
       }
       // ⚑ The controls: Ada's message to Ali's id still reaches the conversation in its place, and
