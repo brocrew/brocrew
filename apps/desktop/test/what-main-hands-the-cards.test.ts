@@ -16,6 +16,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
+import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { REPLY_SUMMARY_LIMIT } from '../src/main/runtime/reply-rails'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
@@ -24,6 +25,7 @@ import {
   agentName,
   type AgentIdentity,
   type LibraryEntry,
+  type LibraryQuery,
 } from '../src/shared/runtime-ipc'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
 import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
@@ -495,10 +497,11 @@ describe('671 · what main hands the cards', () => {
   describe('§3 · G4a — `LibraryEntry.profileId`, on the entries this app RAN and no other', () => {
     it('🔴 ours names the identity it ran as; a pre-profile row names the default; user-home and restored name none', async () => {
       const ran = await personOpens('Dev')
+      const ranAgain = await personOpens('Dev')
       const preProfile = await personOpens('worker')
       const fromHome = await personOpens('pm')
       const restored = await personOpens('reviewer')
-      for (const id of [ran, preProfile, fromHome, restored]) await host.close(id, window)
+      for (const id of [ran, ranAgain, preProfile, fromHome, restored]) await host.close(id, window)
       // ⚑ **Each provenance planted on the row the library reads** — the three predicates
       // `session-store.ts` owns: `adopted_at` + no `profile_id` is the person's own home, a
       // `restored_at` is a bundle, and no `profile_id` without `adopted_at` is a pre-profile row.
@@ -517,6 +520,28 @@ describe('671 · what main hands the cards', () => {
       expect(entry(fromHome)).not.toHaveProperty('profileId')
       expect(entry(restored)?.origin).toBe('restored')
       expect(entry(restored)).not.toHaveProperty('profileId')
+
+      const list = (input: LibraryQuery) =>
+        executeRuntimeCommand(host, window, { kind: 'listLibrary', ...input })
+      const filters = { profileId: 'Dev' }
+      expect(page.entries[0]?.recordId).toBe(restored)
+      expect(await list({ filters, query: 'claude', limit: 1 })).toMatchObject({
+        entries: [{ recordId: ranAgain }],
+        matched: 2,
+        counts: page.counts,
+      })
+      expect(await list({ filters, limit: 1, offset: 1 })).toMatchObject({
+        entries: [{ recordId: ran }],
+        matched: 2,
+      })
+      expect(await list({ filters, query: 'never-a-library-match' })).toMatchObject({ matched: 0 })
+      expect(await list({ filters: { profileId: 'unbound' } })).toMatchObject({ matched: 0 })
+
+      await host.archiveConversation(ran)
+      expect(await list({ filters: { ...filters, archived: 'only' } })).toMatchObject({
+        entries: [{ recordId: ran }],
+        matched: 1,
+      })
     })
   })
 
