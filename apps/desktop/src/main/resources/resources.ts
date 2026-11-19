@@ -275,11 +275,21 @@ export type OfferedResource =
 /** A file that passed {@link readOfferedResource} — what {@link keepResource} keeps. */
 export type OfferedFile = Extract<OfferedResource, { readonly ok: true }>
 
-/** Read a regular file without blocking, within its size bound, retaining its exact bytes. */
 export function readOfferedResource(
   realPath: string,
   suppliedPath: string = realPath,
 ): OfferedResource {
+  const file = readOfferedFile(realPath, suppliedPath)
+  return file.ok ? { ...file, sha256: sha256Hex(file.bytes) } : file
+}
+
+export type OfferedFileBytes = Omit<OfferedFile, 'sha256'>
+
+/** Read a regular file without blocking, within its size bound, retaining its exact bytes. */
+export function readOfferedFile(
+  realPath: string,
+  suppliedPath: string,
+): OfferedFileBytes | Extract<OfferedResource, { readonly ok: false }> {
   const name = basename(realPath)
   const form = formOfName(name)
   let fd: number
@@ -318,7 +328,7 @@ export function readOfferedResource(
       return { ok: false, refusal: refuseResource('resource-not-text', { path: realPath }) }
     }
   }
-  return { ok: true, name, form, bytes, sha256: sha256Hex(bytes) }
+  return { ok: true, name, form, bytes }
 }
 
 /**

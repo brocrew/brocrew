@@ -1,13 +1,11 @@
-import { randomUUID } from 'node:crypto'
-import { writeFileSync } from 'node:fs'
+import { randomBytes, randomUUID } from 'node:crypto'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { newResourceId } from '../db/ids'
 import type { GivenInput } from '../../shared/documents'
 import {
-  keepResource,
   refuseResource,
-  sha256Hex,
-  type OfferedFile,
+  type OfferedFileBytes,
   type ResourceRefusal,
 } from '../resources/resources'
 import { WORK_BRIEF_CHARS } from '../../shared/work-fields'
@@ -35,21 +33,15 @@ export function keepSendOverflow(
 
   const name = `${field.replaceAll('_', '-')}.txt`
   const bytes = Buffer.from(text, 'utf8')
-  const sha256 = sha256Hex(bytes)
-  const kept = keepResource(root, { name, bytes, sha256 })
-  if (!kept.ok) {
-    return {
-      ok: false,
-      refusal: refuseResource('resource-could-not-be-kept', { path: name, problem: kept.problem }),
-    }
-  }
+  const kept = keepPlainSendFile(root, name, bytes)
+  if (!kept.ok) return kept
   return {
     ok: true,
     inline: overflowPreview(text),
     overflow: {
       field,
       characters: text.length,
-      file: { resource: newResourceId(), name, title: name, sha256, bytes: bytes.length },
+      file: { resource: newResourceId(), name, title: name, sha256: kept.key, bytes: bytes.length },
     },
   }
 }
@@ -86,7 +78,7 @@ export type PreparedSendFiles =
 
 export function keepTasklessSendFiles(
   cwd: string,
-  offered: readonly OfferedFile[],
+  offered: readonly OfferedFileBytes[],
 ): PreparedSendFiles {
   const files: { path: string; name: string }[] = []
   for (const { name, bytes } of offered) {
@@ -130,16 +122,34 @@ export function keepTasklessSendText(cwd: string, field: string, text: string): 
   }
 }
 
-function writeTasklessFile(
-  cwd: string,
+export function keepPlainSendFile(
+  root: string,
   name: string,
+  body: Buffer,
+):
+  | { readonly ok: true; readonly key: string }
+  | { readonly ok: false; readonly refusal: ResourceRefusal } {
+  // The existing resource row and reader take a 64-hex directory name.
+  const key = randomBytes(32).toString('hex')
+  const folder = resolve(root, key)
+  const kept = writeSendFile(resolve(folder, name), body, folder)
+  return kept.ok ? { ok: true, key } : kept
+}
+
+function writeTasklessFile(cwd: string, name: string, body: string | Buffer) {
+  return writeSendFile(resolve(cwd, `brocrew-${randomUUID()}-${name}`), body)
+}
+
+function writeSendFile(
+  path: string,
   body: string | Buffer,
+  folder?: string,
 ):
   | { readonly ok: true; readonly path: string }
   | { readonly ok: false; readonly refusal: ResourceRefusal } {
-  const path = resolve(cwd, `brocrew-${randomUUID()}-${name}`)
   try {
-    writeFileSync(path, body, { encoding: 'utf8', flag: 'wx' })
+    if (folder !== undefined) mkdirSync(folder, { recursive: true, mode: 0o700 })
+    writeFileSync(path, body)
     return { ok: true, path }
   } catch (error) {
     return {
