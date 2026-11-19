@@ -316,6 +316,7 @@ describe('477 · who did it', () => {
       'cannot_answer',
       'interrupt',
       'question',
+      'resources',
     ])
 
     // ⛔ **The negative, over every tool and with its search shape named** (standing rule 4): not

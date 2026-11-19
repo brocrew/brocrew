@@ -422,8 +422,9 @@ describe('591 · a question does not expire on a clock', () => {
       // asked to one function, and the route is in there.
       const code = codeOf(mainRoot, 'runtime/runtime-host.ts')
       expect(code).not.toContain('aTurnIsWaiting')
-      expect(bodyOf(code, 'async answerQuestion(')).toContain(
-        'const told = this.deliverAnswer(held, request.requestId, speaking, said, null, null, stopAs)',
+      const agentAnswer = bodyOf(code, 'async answerQuestion(').replace(/\s+/g, '')
+      expect(agentAnswer).toContain(
+        'consttold=this.deliverAnswer(held,request.requestId,speaking,said,null,null,stopAs,files.files,)',
       )
       expect(bodyOf(code, 'async respondUserInput(')).toContain(
         'return await this.aPersonAnswersAQuestionThisAppAsked(',

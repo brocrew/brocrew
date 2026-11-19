@@ -505,7 +505,7 @@ describe('396 · nothing waits on somebody looking', () => {
       expect(rows[0]).toMatchObject({ asked_by: worker, state: 'open', answerable_by_you: true })
       // 🔴 **The words, and they are what makes this a door rather than a list.** An id alone names a
       // thing the caller still cannot act on: `answer_question` takes one entry per PART.
-      expect(String(rows[0]?.words)).toContain('part q0')
+      expect(String(rows[0]?.words)).toContain('Part id "q0": which branch?')
       expect(String(rows[0]?.words)).toContain('main')
 
       expect(

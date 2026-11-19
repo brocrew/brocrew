@@ -405,10 +405,23 @@ describe('F033 · a conversation is named by the work it holds now', () => {
         question: id,
         answers: [{ part: 'answer', answer: ['round'] }],
       })
-      expect(answered.structured, answered.text).toMatchObject({ outcome: 'ok' })
-      expect(answered.text).toMatch(
-        /^(Ada \(the owner of W1\.1 · Build the world clock page\)|Your answer is held for Ada \(the owner of W1\.1 · Build the world clock page\))/,
-      )
+      expect(answered.structured, answered.text).toMatchObject({
+        outcome: 'ok',
+        receipt: {
+          recorded: { kind: 'reply', id, taskLabel: 'W1.1' },
+          recipient: {
+            id: child,
+            address: 'W1.1',
+            title: 'Build the world clock page',
+            state: { kind: 'queued' },
+          },
+        },
+      })
+      expect(
+        answered.text.startsWith(
+          'Your answer is held for conversation W1.1 · Build the world clock page.',
+        ),
+      ).toBe(true)
       expect(answered.text).not.toContain('W1.2')
     })
 
