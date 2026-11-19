@@ -7,7 +7,7 @@ import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
 import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { DRAWER_W_MIN } from '../../src/renderer/src/lib/drawer'
 import type { KeptFile } from '../../src/shared/runtime-ipc'
-import { META, drawerProps, mount, unmountAll, visible, type Mounted } from './harness'
+import { META, drawerProps, mount, visible, type Mounted } from './harness'
 
 /**
  * The agent card's Current task, Files and Running now sections fold: a chevron where the section's icon was,
