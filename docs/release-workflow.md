@@ -1,5 +1,15 @@
 # Release BroCrew
 
+## RC and signing checks without Windows signing charges
+
+For RC/test builds, the release operator uses `macos.yml` with `signed_release_validation: true` on a reserved `vX.Y.Z-mac-signing-check.N` tag (`N` starts at 1). Set `package_version` to `X.Y.Z`, `accepted_source_sha` to the reviewed full commit SHA at that tag, and leave `guided_update_rehearsal` false. The workflow checks the tag, version and actual checkout before signing.
+
+This route uses the release Mac build flags (`released: '1'`), Developer ID signing and notarization, and keeps the five Mac distribution files in `mac-signing-validation-<run_id>-<run_attempt>`. It has no Windows build or SSL.com signing calls and publishes no release. Reserved tags are excluded from `release.yml`; do not use normal release tags for RC/test runs. Keep existing secrets and environments unchanged.
+
+Majid tests the release once on the RC. That human acceptance carries to the final build only for the exact same commit and release flags; any source change requires a new RC. Run the normal final release workflow once for Windows signing. Its final signed files must still pass the automated upgrade rows on both OSes, signature/notarization checks and file hash checks before publication. Retain the accepted RC commit/flags and final run/artifact IDs and hashes, then publish the existing draft bytes unchanged. No second Majid retest is required for that unchanged source and release configuration; RC acceptance does not replace checks of the newly built final files.
+
+For 0.2.30, existing draft release `450695914` already holds the actual signed RC2 files. Publish those existing bytes only on Majid's YES; do not rebuild them.
+
 ## Required full-workspace AWS qualification before every cut
 
 Before creating a version tag, run the full fictional workspace qualification on the exact selected release commit. The checkout must contain that commit, and `AWS_RUN` must name the installed AWS lane wrapper (`aws-run.sh`):

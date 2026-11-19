@@ -164,6 +164,53 @@ describe('signed validation without a paid Windows build', () => {
     return root
   }
 
+  it('uses the release Mac flags and Developer ID action without any Windows signing route', () => {
+    const mac = workflow()
+    const job = mac.jobs['signed-release-validation']
+    expect(job.needs).toBe('flags')
+    expect(job.environment).toBe('mac-signing')
+    expect(job['runs-on']).toContain("'macos-15'")
+    expect(job.permissions).toEqual({ contents: 'read' })
+    const build = job.steps.find((step) => step.uses === './.github/actions/signed-mac')
+    expect(build.with.released).toBe('1')
+    expect(build.with.version).toBe('${{ needs.flags.outputs.signing_version }}')
+    const action = load(readFileSync(join(repo, '.github/actions/signed-mac/action.yml'), 'utf8'))
+    const packageStep = action.runs.steps.find((step) => step.env?.BROCREW_RELEASE_BUILD)
+    expect(packageStep.env.BROCREW_RELEASE_BUILD).toBe('${{ inputs.released }}')
+    for (const flag of ['-c.forceCodeSigning=true', '-c.mac.notarize=true', '--publish never']) {
+      expect(packageStep.run).toContain(flag)
+    }
+    const github = {
+      repository: 'brocrew/brocrew',
+      event_name: 'workflow_dispatch',
+      ref_type: 'tag',
+      ref: 'refs/tags/v0.2.12-mac-signing-check.1',
+    }
+    const inputs = { signed_release_validation: true, guided_update_rehearsal: false }
+    const needs = {
+      flags: {
+        outputs: { mac: 'false', signing_version: '0.2.12', signing_source: 'a'.repeat(40) },
+      },
+    }
+    const reachable = Object.entries(mac.jobs).filter(([, entry]) =>
+      new Function('github', 'inputs', 'needs', 'startsWith', `return (${entry.if})`)(
+        github,
+        inputs,
+        needs,
+        (value, prefix) => value.startsWith(prefix),
+      ),
+    )
+    expect(reachable.map(([name]) => name)).toEqual(['flags', 'signed-release-validation'])
+    expect(JSON.stringify([job.steps, action.runs.steps])).not.toMatch(
+      /gh release|--publish always/,
+    )
+    expect(JSON.stringify([mac.jobs, action.runs.steps])).not.toMatch(
+      /windows-signing|sslcom\/|ES_USERNAME|ES_PASSWORD|CREDENTIAL_ID|ES_TOTP_SECRET|--win\b/,
+    )
+    const release = load(readFileSync(join(repo, '.github/workflows/release.yml'), 'utf8'))
+    expect(release.on.push.tags).toContain('!v*-mac-signing-check.*')
+  })
+
   it('checks the actual tag, version and checked-out source before signed mode can run', () => {
     const mac = workflow()
     const preflight = mac.jobs.flags.steps.find((entry) => entry.id === 'signing')
