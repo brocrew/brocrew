@@ -1,4 +1,4 @@
-import { giveToConversation } from './lib/give-fixture'
+import { giveWorkWithTitleAsBrief } from './lib/give-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { recordHistoricallyMovedNote, seedHistoricalSuccessor } from './lib/historical-replacement'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -252,20 +252,7 @@ describe('F086 · F087 · F088 · a message names a piece however it ended', () 
   const nameOf = (profile: string): string => agentName(profile, store.agentIdentities())
 
   /** A give, answered `ok`, with the piece it wrote down. */
-  const aGive = async (
-    tools: AgentToolset,
-    profile: string,
-    title: string,
-    to = 'new',
-  ): Promise<{ agent: string; piece: string; label: string }> => {
-    const given = await callOn(tools, 'give_work', giveToConversation(to, profile, title, title))
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    return {
-      agent: given.agent as string,
-      piece: given.piece as string,
-      label: given.label as string,
-    }
-  }
+  const aGive = giveWorkWithTitleAsBrief
 
   /** A PM a person opened, and one worker it gave a piece to, whose first turn parks on a card. */
   const aPmAndItsWorker = async (title: string) => {

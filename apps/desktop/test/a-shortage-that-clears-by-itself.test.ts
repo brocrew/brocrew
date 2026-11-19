@@ -1,4 +1,4 @@
-import { newConversationGive } from './lib/give-fixture'
+import { giveToSeededWorker } from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -153,14 +153,13 @@ describe('705 · R39 — a shortage that clears by itself', () => {
    * one call.
    */
   const aWorkerOver = async (): Promise<{ pm: string; worker: string; piece: string }> => {
-    await host.close(await personOpens('worker'), window)
-    const pm = await personOpens('pm')
-    const given = await callOn(
-      pm,
-      'give_work',
-      newConversationGive('worker', 'the work', 'migrate the schema'),
+    const { pm, given } = await giveToSeededWorker(
+      host,
+      window,
+      personOpens,
+      'the work',
+      'migrate the schema',
     )
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     const piece = given.piece as string
     await waitFor(() => turnsIn(worker) > 0, 'the turn the work opened to end')

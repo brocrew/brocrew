@@ -109,6 +109,16 @@ describe('M77 · a second answer to an already-answered question', () => {
     await host.close(sessionId, window)
   }
 
+  const giveQuestionTask = async (leadTools: AgentToolset) => {
+    const given = await callOn(
+      leadTools,
+      'give_work',
+      newConversationGive('mock-dev', 'answer a question', 'pick one of the two'),
+    )
+    expect(given.outcome, JSON.stringify(given)).toBe('ok')
+    return { asker: given.agent as string, askerTools: lastToolset() }
+  }
+
   it("hands the second answer the app's own FULL sentence, word for word", async () => {
     await bringIntoBeing('mock-dev')
     await host.createSession(
@@ -119,14 +129,7 @@ describe('M77 · a second answer to an already-answered question', () => {
 
     // ⚑ **D-016 · one give is the old start and its work together**: the brief is the child's
     // first turn, and the piece it opens is the one the question is about.
-    const given = await callOn(
-      leadTools,
-      'give_work',
-      newConversationGive('mock-dev', 'answer a question', 'pick one of the two'),
-    )
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    const asker = given.agent as string
-    const askerTools = lastToolset()
+    const { asker, askerTools } = await giveQuestionTask(leadTools)
     const piece = store.piecesOwnedBy(asker)[0]?.piece ?? ''
     expect(piece).not.toBe('')
 
@@ -176,14 +179,7 @@ describe('M77 · a second answer to an already-answered question', () => {
     )
     const leadTools = lastToolset()
 
-    const given = await callOn(
-      leadTools,
-      'give_work',
-      newConversationGive('mock-dev', 'answer a question', 'pick one of the two'),
-    )
-    expect(given.outcome).toBe('ok')
-    const asker = given.agent as string
-    const askerTools = lastToolset()
+    const { asker, askerTools } = await giveQuestionTask(leadTools)
     const piece = store.piecesOwnedBy(asker)[0]?.piece ?? ''
 
     const asked = await callOn(askerTools, 'ask_question', {

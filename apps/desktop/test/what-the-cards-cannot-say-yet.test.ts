@@ -1,4 +1,4 @@
-import { addressedGive, newConversationGive } from './lib/give-fixture'
+import { addressedGive, giveWorkerThroughRawTool } from './lib/give-fixture'
 import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import { waitFor } from './lib/f093-host'
@@ -313,21 +313,14 @@ describe('687 · what the cards cannot say yet', () => {
     const root = store.rootOf(pm)
     if (root === null) throw new Error('the PM owns no root')
     for (let once = 0; once < burn; once++) store.numberUnder(root.piece)
-    const given = await call(
+    const given = await giveWorkerThroughRawTool(
+      call,
       pmTools,
-      'give_work',
-      newConversationGive('worker', 'The work this dispatch is about', 'build it'),
+      theToolsetJustHandedOut,
+      'The work this dispatch is about',
+      'build it',
     )
-    expect(given.structured.outcome, JSON.stringify(given.structured)).toBe('ok')
-    return {
-      pm,
-      worker: given.structured.agent as string,
-      pmTools,
-      workerTools: theToolsetJustHandedOut(),
-      piece: given.structured.piece as string,
-      label: given.structured.label as string,
-      expected: `${root.label}.${String(burn + 1)}`,
-    }
+    return { pm, ...given, expected: `${root.label}.${String(burn + 1)}` }
   }
 
   /**

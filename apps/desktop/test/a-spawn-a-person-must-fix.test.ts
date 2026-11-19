@@ -1,8 +1,6 @@
-import { callOn as callAgentTool } from './helpers/call-agent-tool'
 import { format } from 'node:util'
 import { expectRecordedCannotRun, expectTaskKept, recordedSendNotices } from './lib/recorded-send'
 import { newConversationGive, spawnFailureFixture } from './lib/give-fixture'
-import { personOpener } from './helpers/person-opens-session'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { spawn } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -24,7 +22,7 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
 import { aSpawnRefusedAfterItsPipes } from '../../../packages/runtime/test/fixtures/a-spawn-that-failed'
@@ -142,19 +140,11 @@ describe('710 · R51 — a spawn a person must fix', () => {
   const events = (sessionId: string): TranscriptEvent[] =>
     store.events(sessionId).map((entry) => entry.event)
 
-  const personOpens = personOpener(() => ({ host, root, window }), 'auto')
-
-  const callOn = (
-    caller: string,
-    name: ToolName,
-    args: Record<string, unknown> = {},
-  ): Promise<Record<string, unknown>> => callAgentTool(agentToolsFor(host, caller), name, args)
-
-  const { aPmThatMaySpawn, spawnWorker } = spawnFailureFixture(
-    personOpens,
-    (id) => host.close(id, window),
-    callOn,
-  )
+  const { aPmThatMaySpawn, spawnWorker, callOn } = spawnFailureFixture(() => ({
+    host,
+    root,
+    window,
+  }))
 
   const programFailure = 'could not run its provider’s program'
 

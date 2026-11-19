@@ -1,4 +1,4 @@
-import { newConversationGive } from './lib/give-fixture'
+import { giveOpenWorkerTask } from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { callOn } from './helpers/call-agent-tool'
 import { waitFor } from './lib/f093-host'
@@ -27,7 +27,6 @@ import { TOOL_INPUT_ENUMS, type ToolName } from '../src/main/runtime/agent-tools
 import { QUESTION_RAILS, questionText } from '../src/main/runtime/question-rails'
 import { messageNamingItsSender, theDirectionLine } from '../src/main/runtime/turn-origin'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { TASK_IS_OPEN } from '../src/shared/tasks'
 import {
   QUESTION_RECIPIENTS,
   RECIPIENT_MEANS,
@@ -216,19 +215,13 @@ describe('611 · a question names who it is for', () => {
   }> => {
     const seeded = await personOpens('worker')
     await host.close(seeded, window)
-    const pm = await personOpens('pm')
-    const pmTools = theToolsetJustHandedOut()
-    const given = await callOn(
-      pmTools,
-      'give_work',
-      newConversationGive('worker', 'the work this dispatch is about', 'gather the requirements'),
+    return giveOpenWorkerTask(
+      store,
+      personOpens,
+      theToolsetJustHandedOut,
+      'the work this dispatch is about',
+      'gather the requirements',
     )
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    const worker = given.agent as string
-    const workerTools = theToolsetJustHandedOut()
-    const open = store.piecesOwnedBy(worker).find((one) => TASK_IS_OPEN[one.state])
-    if (open === undefined) throw new Error('the give never opened a piece')
-    return { pm, worker, pmTools, workerTools, piece: open.piece }
   }
 
   /** ⚑ One routing row of this conversation, by the arm it is on. */

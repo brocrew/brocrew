@@ -1,4 +1,4 @@
-import { newConversationGive } from './lib/give-fixture'
+import { giveWorkerThroughRawTool } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { MessageSentEvent, TranscriptEvent } from '../src/shared/conversation-events'
 import { forestOf } from './lib/forest-of-host'
@@ -175,20 +175,14 @@ describe('671 · what main hands the cards', () => {
     await host.close(seeded, window)
     const pm = await personOpens('pm')
     const pmTools = theToolsetJustHandedOut()
-    const given = await call(
+    const given = await giveWorkerThroughRawTool(
+      call,
       pmTools,
-      'give_work',
-      newConversationGive('worker', 'The work this dispatch is about', 'build it'),
+      theToolsetJustHandedOut,
+      'The work this dispatch is about',
+      'build it',
     )
-    expect(given.structured.outcome, JSON.stringify(given.structured)).toBe('ok')
-    return {
-      pm,
-      worker: given.structured.agent as string,
-      pmTools,
-      workerTools: theToolsetJustHandedOut(),
-      piece: given.structured.piece as string,
-      label: given.structured.label as string,
-    }
+    return { pm, ...given }
   }
 
   /** The fake provider parks every turn on a card; a person allowing it lets the turn end. */

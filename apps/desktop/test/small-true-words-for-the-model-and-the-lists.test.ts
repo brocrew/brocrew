@@ -1,4 +1,4 @@
-import { newConversationGive } from './lib/give-fixture'
+import { giveParkedWorker } from './lib/give-fixture'
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -138,27 +138,8 @@ describe('724 · small true words, for the model and the lists', () => {
    * window on it — `711`'s and `719`'s rig. ⚑ **D-016** — the give starts the worker's conversation,
    * and its brief is that conversation's first turn, which parks on its card (the giver's `ask`).
    */
-  const aPmAndItsParkedWorker = async (): Promise<{
-    pm: string
-    worker: string
-    piece: string
-  }> => {
-    await host.close(await personOpens('worker'), window)
-    const pm = await personOpens('pm')
-    const given = await callOn(
-      pm,
-      'give_work',
-      newConversationGive('worker', 'the work', 'migrate'),
-    )
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    const worker = given.agent as string
-    host.claimSession(worker, window)
-    await waitFor(() => cardsOn(worker) > 0, 'the worker to park mid-turn')
-    const piece = store.piecesOwnedBy(worker)[0]?.piece
-    if (piece === undefined) throw new Error('no piece')
-    expect(piece).toBe(given.piece)
-    return { pm, worker, piece }
-  }
+  const aPmAndItsParkedWorker = () =>
+    giveParkedWorker({ host, store, window, personOpens }, 'the work')
 
   const theWords = 'the migration is finished; the indexes are rebuilt'
 

@@ -18,7 +18,6 @@ import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { fixtureProviderConfig, RecordingSink, neutralHostDeps } from './lib/host-fixture'
 
 /**
@@ -147,15 +146,7 @@ describe('a wait names what will end it', () => {
     return { ada, piece, label: given.label as string }
   }
   const aHelperWithAPiece = () =>
-    openGiverAndGivePages(
-      () =>
-        host.createSession(
-          { provider: 'claude', profileId: DEFAULT_PROFILE_ID, approvalMode: 'auto', cwd: root },
-          window,
-        ),
-      settle,
-      aPieceGiven,
-    )
+    openGiverAndGivePages({ host, root, window }, settle, aPieceGiven)
   /** Ada asks about W1.1, of her giver or of a person; the question's id. */
   const asks = async (ada: string, whoAnswers: 'the-parent' | 'a-person'): Promise<string> => {
     const asked = await ok(agentToolsFor(host, ada), 'ask_question', {

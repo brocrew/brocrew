@@ -1,4 +1,4 @@
-import { newConversationGive } from './lib/give-fixture'
+import { giveOpenWorkerTask } from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { callOn } from './helpers/call-agent-tool'
 import { waitFor } from './lib/f093-host'
@@ -18,7 +18,6 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { theQuestionsAStopEnded } from '../src/main/runtime/turn-origin'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { REQUEST_IS_OPEN } from '../src/shared/questions'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
 import {
@@ -154,19 +153,13 @@ describe('a stop ends only the questions its turn asked, and tells the asker', (
   }> => {
     const seeded = await personOpens('worker')
     await host.close(seeded, window)
-    const pm = await personOpens('pm')
-    const pmTools = theToolsetJustHandedOut()
-    const given = await callOn(
-      pmTools,
-      'give_work',
-      newConversationGive('worker', 'the work this dispatch is about', 'gather the requirements'),
+    return giveOpenWorkerTask(
+      store,
+      personOpens,
+      theToolsetJustHandedOut,
+      'the work this dispatch is about',
+      'gather the requirements',
     )
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    const worker = given.agent as string
-    const workerTools = theToolsetJustHandedOut()
-    const open = store.piecesOwnedBy(worker).find((one) => TASK_IS_OPEN[one.state])
-    if (open === undefined) throw new Error('the give never opened a piece')
-    return { pm, worker, pmTools, workerTools, piece: open.piece }
   }
 
   // ───────────────────────────────────────────────────────────────────────────────────────────

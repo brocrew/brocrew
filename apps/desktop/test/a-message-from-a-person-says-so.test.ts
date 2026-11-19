@@ -1,4 +1,4 @@
-import { newConversationGive } from './lib/give-fixture'
+import { openNumberedPmAndGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -255,20 +255,13 @@ describe('607 · a message from a person says so', () => {
    * there ({@link providerHeard}).
    */
   const aPmAndItsWorker = async (): Promise<APair> => {
-    const nth = ++pairs
-    const pmProfile = `pm-${String(nth)}`
-    const workerProfile = `worker-${String(nth)}`
-    await bringIdentityIntoBeing(workerProfile)
-    const pm = await personOpens(pmProfile)
-    const pmTools = agentToolsFor(host, pm)
-    const given = await callOn(
-      pmTools,
-      'give_work',
-      newConversationGive(
-        workerProfile,
-        'the work this dispatch is about',
-        'the brief this dispatch hands over',
-      ),
+    const { pm, pmProfile, pmTools, given } = await openNumberedPmAndGive(
+      ++pairs,
+      bringIdentityIntoBeing,
+      personOpens,
+      (id) => agentToolsFor(host, id),
+      'the work this dispatch is about',
+      'the brief this dispatch hands over',
     )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
