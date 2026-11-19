@@ -19,7 +19,6 @@ import {
   runnable,
   searchedNote,
   type PaletteAgent,
-  type PaletteCommand,
   type PaletteNavigation,
   type PaletteOpenRow,
 } from '../lib/command-palette'
