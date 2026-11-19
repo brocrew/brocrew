@@ -248,12 +248,12 @@ it('reads saved titles only on demand, follows the cursor and restarts after a r
     .mockResolvedValueOnce(savedTitles('Title from the other window', 3))
   window.api.runtime.readConversationTitleHistory = read
   window.api.runtime.readConversationIdentity = vi.fn(async () => null)
+  localStorage.setItem('brobot2.drawerOpen', 'true')
+  localStorage.setItem('brobot2.drawerTab', 'open')
   const m = await mountWith([row(sessionId, task)])
-  await expect.poll(() => m.all('conversation-linked-task').length).toBe(1)
+  await expect.poll(() => m.all('conversation-title-history').length).toBe(1)
   const fallbackTitle = m.q('conversation-title').textContent?.trim()
   expect(fallbackTitle).toContain(task.title)
-  m.q('conversation-linked-task').click()
-  await expect.poll(() => m.all('conversation-title-history').length).toBe(1)
   expect(read).not.toHaveBeenCalled()
 
   const history = m.q('conversation-title-history')
