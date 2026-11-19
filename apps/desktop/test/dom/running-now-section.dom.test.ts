@@ -36,10 +36,18 @@ afterEach(async () => {
 function panel() {
   const scene = idlePanel(1)
   const file: KeptFile = {
-    resourceId: 'fictional-map-notes', name: 'map-notes.md', title: 'Map notes', form: 'markdown',
-    bytes: 240, role: 'made', keptAt: 1800000000000, sha256: 'b'.repeat(64),
+    resourceId: 'fictional-map-notes',
+    name: 'map-notes.md',
+    title: 'Map notes',
+    form: 'markdown',
+    bytes: 240,
+    role: 'made',
+    keptAt: 1800000000000,
+    sha256: 'b'.repeat(64),
     addedBy: { conversation: OWNER, name: 'Map editor', identity: 'map-editor' },
-    piece: 'fictional-map-task', label: 'W95', pieceTitle: 'Read the map',
+    piece: 'fictional-map-task',
+    label: 'W95',
+    pieceTitle: 'Read the map',
   }
   screenFacts().update({
     reading: scene.reading,
@@ -49,9 +57,15 @@ function panel() {
   const state = createTranscript()
   state.background.running = [{ id: 'map-check', kind: 'shell', description: 'Check the map' }]
   mount(IconSprite, {})
-  return mount(SessionDrawer, drawerProps({
-    session: { ...META, sessionId: OWNER }, state, identities: scene.identities,
-  }), { width: 400, height: 1000 })
+  return mount(
+    SessionDrawer,
+    drawerProps({
+      session: { ...META, sessionId: OWNER },
+      state,
+      identities: scene.identities,
+    }),
+    { width: 400, height: 1000 },
+  )
 }
 
 it('keeps the running count on a saved fold and leaves agent information visible', async () => {
@@ -93,7 +107,14 @@ it('matches neighboring cards and keeps the instructions-to-first-card spacing',
   const style = getComputedStyle(task)
   for (const other of [run, files, started]) {
     const actual = getComputedStyle(other)
-    for (const property of ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderRadius'] as const)
+    for (const property of [
+      'paddingTop',
+      'paddingRight',
+      'paddingBottom',
+      'paddingLeft',
+      'borderTopWidth',
+      'borderRadius',
+    ] as const)
       expect(actual[property], property).toBe(style[property])
   }
   expect(run.getBoundingClientRect().left).toBe(task.getBoundingClientRect().left)
@@ -102,15 +123,22 @@ it('matches neighboring cards and keeps the instructions-to-first-card spacing',
   expect(run.getBoundingClientRect().top - task.getBoundingClientRect().bottom).toBeCloseTo(gap)
   expect(files.getBoundingClientRect().top - run.getBoundingClientRect().bottom).toBeCloseTo(gap)
   const inputs = view.q('card-open-inputs')
-  expect(task.getBoundingClientRect().top - inputs.getBoundingClientRect().bottom)
-    .toBeCloseTo(parseFloat(getComputedStyle(inputs).marginBottom))
+  expect(task.getBoundingClientRect().top - inputs.getBoundingClientRect().bottom).toBeCloseTo(
+    parseFloat(getComputedStyle(inputs).marginBottom),
+  )
   expect(view.host.querySelector('[data-cy="card-agent"]')).toBeNull()
   if (import.meta.env.VITE_RUNNING_SECTION_CAPTURE)
-    await page.screenshot({ element: view.host, path: `${import.meta.env.VITE_RUNNING_SECTION_CAPTURE}/classic-open.png` })
+    await page.screenshot({
+      element: view.host,
+      path: `${import.meta.env.VITE_RUNNING_SECTION_CAPTURE}/classic-open.png`,
+    })
   run.querySelector<HTMLButtonElement>('.head > button')!.click()
   await nextTick()
   await drawnReady()
   expect(visible(view.q('running-now-rows'))).toBe(false)
   if (import.meta.env.VITE_RUNNING_SECTION_CAPTURE)
-    await page.screenshot({ element: view.host, path: `${import.meta.env.VITE_RUNNING_SECTION_CAPTURE}/classic-collapsed.png` })
+    await page.screenshot({
+      element: view.host,
+      path: `${import.meta.env.VITE_RUNNING_SECTION_CAPTURE}/classic-collapsed.png`,
+    })
 })
