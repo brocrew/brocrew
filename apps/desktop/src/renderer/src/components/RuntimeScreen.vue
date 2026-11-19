@@ -3057,6 +3057,7 @@ const selectedForIdentity = computed(() =>
 )
 const conversationIdentity = ref<ConversationIdentity | null>(null)
 const workRevision = ref(0)
+const agentIdentityRevision = ref(0)
 const readTitleHistory: TitleHistorySource['read'] = (input) =>
   appClosing.value ? Promise.resolve(null) : window.api.runtime.readConversationTitleHistory(input)
 const readTaskPage: TaskPageSource['read'] = (input) =>
@@ -3220,6 +3221,7 @@ onMounted(() => {
     // ⚑ **UI-012 · and the model lists** — a last pick, a default or a hand-added model moved.
     agents: () => {
       void readSelectedIdentity()
+      agentIdentityRevision.value += 1
       teamProfileGraph.markStale()
       filesLibrary.markStale()
       refreshAgents()
@@ -3855,7 +3857,7 @@ onUnmounted(() => {
           @new-conversation="place = 'new'"
           @select="select"
           :read-identities="readRailIdentities"
-          :identity-revision="workRevision"
+          :identity-revision="workRevision + agentIdentityRevision"
           :search-conversations="searchConversations"
           @read-conversation="openFoundConversation"
           @go="

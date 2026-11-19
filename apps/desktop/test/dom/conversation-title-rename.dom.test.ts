@@ -171,6 +171,13 @@ it('reads canonical identity on selection, refreshes on work, and rereads on reo
   await expect.poll(() => m.q(`rail-address-${sessionId}`).textContent).toBe(sessionId)
   expect(readRail).toHaveBeenLastCalledWith({ sessionIds: [sessionId, serviceId] })
 
+  primary = { ...primary, title: 'Renamed profile fallback' }
+  changed({ what: 'agents' })
+  await expect.poll(title).toBe('Renamed profile fallback')
+  await expect
+    .poll(() => m.q(`open-session-${sessionId}`).getAttribute('aria-label'))
+    .toBe('Renamed profile fallback')
+
   primary = { ...primary, address, title: 'First task title' }
   changed({ what: 'work' })
   await expect.poll(title).toBe('First task title')

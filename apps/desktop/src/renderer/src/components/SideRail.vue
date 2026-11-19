@@ -1280,7 +1280,10 @@ const platform = platformHere()
                   :data-cy="`rail-work-label-${row.sessionId}`"
                   >{{ row.named.label }}</span
                 >
-                <span class="rail-copy" :class="{ 'rail-worker-top': row.worker }">
+                <span
+                  class="rail-copy"
+                  :class="{ 'rail-worker-top': row.worker && !identities.get(row.sessionId) }"
+                >
                   <!-- The full title remains available on hover and as the button’s name. -->
                   <strong
                     :data-cy="row.worker ? `rail-worker-name-${row.sessionId}` : undefined"

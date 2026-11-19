@@ -185,6 +185,8 @@ it('joins identities only for visible rows in bounded raw-ID batches and discard
   expect(m.q('open-session-story-0').getAttribute('aria-label')).toBe('Resolved story-0')
   expect(count(m, 'rail-address-story-0')).toBe('address/story-0')
   expect(m.q('open-session-story-0').textContent).toContain('Named by you')
+  expect(count(m, 'rail-address-story-2')).toBe('address/story-2')
+  expect(m.q('open-session-story-2').textContent).not.toContain('Named by you')
   expect(m.q('open-session-story-1').textContent).not.toContain('Named by you')
   expect(m.all('rail-address-story-1')).toHaveLength(0)
   expect(m.all('rail-address-story-17')).toHaveLength(0)
