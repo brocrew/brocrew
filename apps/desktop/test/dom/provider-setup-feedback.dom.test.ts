@@ -185,7 +185,7 @@ describe('setup feedback follows the latest facts', () => {
     await begin(out.m)
     out.m.q('setup-sign-in').click()
     await settled()
-    expect(words(out.m.q('provider-inline-setup').querySelector('[role="status"]')!)).toBe(
+    expect(words(out.m.q('provider-auth-notice'))).toBe(
       'Fable has connected this workspace.',
     )
     out.m.unmount()
@@ -216,10 +216,7 @@ describe('setup feedback follows the latest facts', () => {
       out.auth.value = USABLE
       out.m.q('setup-check').click()
       await settled()
-      expect(words(out.m.q('setup-ready'))).toBe('Claude is ready.')
-      expect(words(out.m.q('provider-inline-setup'))).not.toContain('Not connected yet')
-      out.m.q('setup-done').click()
-      await settled()
+      expect(out.m.all('provider-inline-setup')).toHaveLength(0)
       expect(words(out.m.q('provider-standing'))).toBe('Ready')
       expect(words(out.m.q('provider-status'))).not.toContain('Not connected yet')
     },
@@ -241,16 +238,15 @@ describe('setup feedback follows the latest facts', () => {
     },
   )
 
-  it('keeps a real sign-in completion notice through a readiness check and Done', async () => {
+  it('finishes setup after successful sign-in and keeps its notice through a normal recheck', async () => {
     const out = card('codex')
     await settled()
     await begin(out.m)
     out.m.q('setup-sign-in').click()
     await settled()
     out.auth.value = USABLE
-    out.m.q('setup-check').click()
-    await settled()
-    out.m.q('setup-done').click()
+    expect(out.m.all('provider-inline-setup')).toHaveLength(0)
+    out.m.q('sign-in-check').click()
     await settled()
     expect(words(out.m.q('provider-auth-notice'))).toBe('Signed in to Codex.')
   })
@@ -261,11 +257,9 @@ describe('setup feedback follows the latest facts', () => {
     out.auth.value = USABLE
     out.props.loginMoved++
     await settled()
-    expect(words(out.m.q('provider-inline-setup'))).not.toContain('Not connected yet')
-    expect(out.m.all('setup-done')).toHaveLength(0)
-    out.m.q('setup-check').click()
-    await settled()
-    expect(out.m.all('setup-done')).toHaveLength(1)
+    expect(out.m.all('provider-inline-setup')).toHaveLength(0)
+    expect(words(out.m.q('provider-standing'))).toBe('Ready')
+    expect(words(out.m.q('provider-status'))).not.toContain('Not connected yet')
   })
 
   it('keeps a genuine program failure after the local sign-in becomes usable', async () => {
