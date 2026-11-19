@@ -350,11 +350,15 @@ describe('a service’s one conversation', () => {
             { type: 'reopened', broughtBack: 'Brought back from the archive: you opened it.' },
           ]),
         )
-        expect(world.ledger(conversation).filter((event) => event.type === 'reopened')).toHaveLength(1)
+        expect(
+          world.ledger(conversation).filter((event) => event.type === 'reopened'),
+        ).toHaveLength(1)
       }
       expect(world.conversationsRecorded()).toBe(count)
       expect(world.startedAs).toEqual(
-        retry === 'message' ? ['caller', 'worker', 'worker'] : ['caller', 'worker', 'worker', 'worker'],
+        retry === 'message'
+          ? ['caller', 'worker', 'worker']
+          : ['caller', 'worker', 'worker', 'worker'],
       )
       expect(world.resumesAsked).toBe(0)
       expect(world.store.workByLabel(label)).toMatchObject({ piece, owner: conversation })

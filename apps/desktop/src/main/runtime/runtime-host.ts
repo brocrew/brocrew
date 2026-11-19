@@ -25944,19 +25944,20 @@ export class RuntimeHost implements LiveHost {
     }
     const profileId = row.profileId ?? DEFAULT_PROFILE_ID
     const parent = this.deps.store.parentOf(conversation)
-    const slot = this.refusalsTranslated(() =>
-      this.reserve(
-        conversation,
-        {
-          ownerId: window?.ownerId ?? null,
-          ownerIsAPerson: window?.aPersonIsBehindIt ?? false,
-          commandedBy: parent === null ? null : agentCallerId(parent),
-          spawnedBy: parent,
-          anAgentAskedForIt: parent !== null,
-          profileId,
-        },
-        reopen?.launchKey ?? null,
-      ),
+    const slot = this.refusalsTranslated(
+      () =>
+        this.reserve(
+          conversation,
+          {
+            ownerId: window?.ownerId ?? null,
+            ownerIsAPerson: window?.aPersonIsBehindIt ?? false,
+            commandedBy: parent === null ? null : agentCallerId(parent),
+            spawnedBy: parent,
+            anAgentAskedForIt: parent !== null,
+            profileId,
+          },
+          reopen?.launchKey ?? null,
+        ),
       reopen !== undefined,
     )
     try {
