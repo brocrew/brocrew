@@ -5,6 +5,7 @@ import type { DecideMoveRequestInput, MoveRequestAck } from '../shared/move-cont
 import type { LedgerWalk, PersonsDecision, PersonsQuestion } from '../shared/question-contracts'
 import type { WhatEachConversationIsWaitingOn, WorkGivenOut } from '../shared/task-contracts'
 import type { McpServerRequestForAPerson } from '../shared/conversation-events'
+import type { ConversationTitleHistoryInput } from '../shared/conversation-title'
 import type { HandedPath } from '../shared/attachment-contracts'
 import type { SessionSettingChanged } from '../shared/model-choice-contracts'
 import type { ListingAnswer } from '../shared/listing-published'
@@ -532,6 +533,15 @@ const runtime: RuntimeBridge = Object.freeze({
     command({ kind: 'retitleWork', ...input }),
   readConversationIdentity: (input: SessionInput) =>
     command({ kind: 'readConversationIdentity', ...input }),
+  readConversationTitleHistory: ({ sessionId, before }: ConversationTitleHistoryInput) =>
+    command({
+      kind: 'readConversationTitleHistory',
+      sessionId,
+      before:
+        before === undefined
+          ? undefined
+          : { generation: before.generation, ordinal: before.ordinal },
+    }),
   renameConversation: (input: { conversation: string; title: string }) =>
     command({ kind: 'renameConversation', ...input }),
   takeBackWork: (input: { piece: string }) => command({ kind: 'takeBackWork', ...input }),

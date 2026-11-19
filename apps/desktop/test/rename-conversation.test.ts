@@ -34,6 +34,8 @@ describe('renaming a conversation', () => {
 
   const readIdentity = (sessionId: string) =>
     executeRuntimeCommand(host, world.window, { kind: 'readConversationIdentity', sessionId })
+  const readTitles = (sessionId: string) =>
+    executeRuntimeCommand(host, world.window, { kind: 'readConversationTitleHistory', sessionId })
 
   it('uses one ledger history for a person and an agent, while keeping the task title', async () => {
     const root = world.store.rootOf(target)!
@@ -43,6 +45,12 @@ describe('renaming a conversation', () => {
         (row) => row.sessionId === target,
       )
     const beforePersonRename = world.store.recordedOne(target)!.updatedAt
+    expect(await readTitles(target)).toEqual({
+      kind: 'titles',
+      titles: [],
+      rowsUnread: 0,
+      next: null,
+    })
     expect(listed()?.named).toMatchObject({ label: root.label, title: taskTitle })
     expect(await readIdentity(target)).toEqual({
       conversation: target,
@@ -80,6 +88,7 @@ describe('renaming a conversation', () => {
     })
     expect(changed).toContain('work')
     const beforeRead = world.store.events(target)
+    const recordedBeforeRead = world.store.recordedOne(target)
     const providerHandles = world.handles.length
     expect(await readIdentity(target)).toEqual({
       conversation: target,
@@ -88,6 +97,17 @@ describe('renaming a conversation', () => {
       author: { kind: 'agent', conversation: caller },
     })
     expect(await readIdentity('sess_missing')).toBeNull()
+    expect(await readTitles(target)).toMatchObject({
+      kind: 'titles',
+      titles: [
+        { title: 'A new job title', author: { kind: 'agent', conversation: caller } },
+        { title: 'Person’s job title', author: { kind: 'person' } },
+      ],
+      rowsUnread: 0,
+      next: null,
+    })
+    expect(await readTitles('sess_missing')).toBeNull()
+    expect(world.store.recordedOne(target)).toEqual(recordedBeforeRead)
     expect(world.store.events(target)).toEqual(beforeRead)
     expect(world.handles).toHaveLength(providerHandles)
     expect(host.nameByItsWork(target)).toBe(`conversation ${root.label} · A new job title`)

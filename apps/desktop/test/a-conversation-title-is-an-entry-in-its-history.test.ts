@@ -151,6 +151,59 @@ describe("a conversation's title", () => {
     expect(HISTORY_TYPES as readonly string[]).not.toContain('titled')
   })
 
+  it('pages saved titles by ordinal across unread rows and later renames', () => {
+    const session = 'sess_job'
+    for (let ordinal = 1; ordinal <= 22; ordinal++) {
+      const title = `Title ${ordinal}`
+      store.titleConversation(session, ordinal, byPerson(title), AT + ordinal)
+    }
+    db.prepare('UPDATE events SET payload = ? WHERE session_id = ? AND ordinal = ?').run(
+      'broken JSON',
+      session,
+      3,
+    )
+
+    const first = store.conversationTitleHistory(session)
+    if (first.kind !== 'titles' || first.next === null) throw new Error('expected a continuation')
+    expect(first.rowsUnread).toBe(1)
+    expect(first.titles).toEqual(
+      Array.from({ length: 19 }, (_, index) => {
+        const ordinal = 22 - index
+        return { ordinal, title: `Title ${ordinal}`, author: { kind: 'person' }, at: AT + ordinal }
+      }),
+    )
+    expect(first.next.ordinal).toBe(3)
+
+    store.titleConversation(session, 23, byAgent('New title'), AT + 23)
+    expect(store.conversationTitleHistory(session, first.next)).toEqual({
+      kind: 'titles',
+      titles: [
+        { ordinal: 2, title: 'Title 2', author: { kind: 'person' }, at: AT + 2 },
+        { ordinal: 1, title: 'Title 1', author: { kind: 'person' }, at: AT + 1 },
+      ],
+      rowsUnread: 0,
+      next: null,
+    })
+
+    const generation = store.beginGeneration(session)
+    expect(
+      store.promoteGeneration(session, generation, { normalizerVersion: 1, derivedThrough: 0 }),
+    ).toBe(true)
+    expect(store.conversationTitleHistory(session, first.next)).toEqual({
+      kind: 'generation-changed',
+    })
+    expect(store.conversationTitleHistory(session)).toMatchObject({
+      kind: 'titles',
+      titles: expect.arrayContaining([
+        expect.objectContaining({
+          title: 'New title',
+          author: { kind: 'agent', conversation: 'sess_giver' },
+          at: AT + 23,
+        }),
+      ]),
+    })
+  })
+
   it('§5 a rebuild of provider history keeps every title, in order, with its author', async () => {
     store.adopt({
       id: 'sess_adopted',
