@@ -2,7 +2,7 @@
 import type { AgentIdentity } from '../../../shared/runtime-ipc'
 import type { WorkSearchQuery, WorkSearchResult } from '../../../shared/work-search'
 import { fullTime } from '../lib/clock'
-import { usePaletteSearch, type SearchRow } from '../composables/usePaletteSearch'
+import { usePaletteSearch, type SearchBand, type SearchRow } from '../composables/usePaletteSearch'
 import { useClientApi } from '../client-provider/injection'
 import { chordSaid, platformHere } from '../lib/this-computer'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
@@ -206,7 +206,7 @@ const {
   searchNote,
 } = usePaletteSearch(props, query, showing)
 
-const bands = computed(() => {
+const bands = computed<readonly SearchBand[]>(() => {
   if (!useReader.value) return bandedResults(commands.value, query.value)
   return [
     ...readerBands.value,

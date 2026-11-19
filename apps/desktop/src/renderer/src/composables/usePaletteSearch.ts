@@ -22,7 +22,7 @@ interface PaletteSearchProps {
 
 export type SearchRow = PaletteCommand & { readonly expandProfile?: string }
 
-interface SearchBand {
+export interface SearchBand {
   group: PaletteCommand['group']
   rows: readonly SearchRow[]
   profileGroup?: { key: string; name: string; matched: number | null }
