@@ -309,14 +309,14 @@ export class WorkSearchEngine {
         afterId: through?.id ?? null,
         cap: WORK_SEARCH_BOUNDS.candidates + 1,
       }) as Candidate[]
-    const pageBudget = new WorkSearchPageBudget(
-      () => this.now() - started >= WORK_SEARCH_BOUNDS.workerMs - WORK_SEARCH_BOUNDS.pageMs,
-    )
+    const workerScanMs = WORK_SEARCH_BOUNDS.workerMs - WORK_SEARCH_BOUNDS.pageMs
+    const scanMs = groups === null ? WORK_SEARCH_BOUNDS.pageMs : workerScanMs
+    const pageBudget = new WorkSearchPageBudget(() => this.now() - started >= workerScanMs)
     for (const candidate of candidates.slice(0, WORK_SEARCH_BOUNDS.candidates)) {
       if (
         (groups === null && (query.scope === undefined ? hits.length : matchedTasks) >= query.limit) ||
         (searched > 0 &&
-          (this.now() - started >= WORK_SEARCH_BOUNDS.pageMs ||
+          (this.now() - started >= scanMs ||
             pageBudget.returnedRows >= WORK_SEARCH_BOUNDS.pageRows))
       )
         break

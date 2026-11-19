@@ -11,7 +11,7 @@ import { createSessionStore } from '../src/main/db/session-store'
 import { WorkSearchEngine } from '../src/main/db/work-search-engine'
 import { WorkSearchWorkerReader } from '../src/main/db/work-search-reader'
 import { workSearchInWords } from '../src/shared/work-search-words'
-import { workSearchResult, type WorkSearchResult } from '../src/shared/work-search'
+import { WORK_SEARCH_BOUNDS, workSearchResult, type WorkSearchResult } from '../src/shared/work-search'
 import { bundleAWorker } from './helpers/bundle-a-worker'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -412,6 +412,10 @@ it('stops at 1000 conversation candidates and continues without repeating a page
     expect(next.page.searched).toBe(total - 1000)
     expect(next.page.hits).toEqual([])
     expect(next.page.next_cursor).toBeNull()
+    expect(engine.read('fictional_0', { ...query, grouped: true })).toMatchObject({
+      ok: true,
+      page: { searched: 1000, complete: false, next_cursor: null, grouped: { matched: null } },
+    })
     expect(db.prepare('SELECT total_changes() AS count').get()).toEqual(before)
   } finally {
     engine.close()
@@ -561,8 +565,17 @@ it('groups distinct conversation matches before selecting the six visible profil
       page: { grouped: { matched: 4, groups: [{ profile: 'profile_7', matched: 4 }] } },
     })
 
+    const withinWorkerBudget = engine.read(caller, query, (progress) => {
+      if (progress.ok && progress.page.searched > 0) clock = WORK_SEARCH_BOUNDS.pageMs + 1
+    })
+    expect(withinWorkerBudget).toMatchObject({
+      ok: true,
+      page: { complete: true, searched: 11, grouped: { matched: 11 } },
+    })
+
+    clock = 0
     const cutShort = engine.read(caller, query, (progress) => {
-      if (progress.ok && progress.page.searched > 0) clock = 1000
+      if (progress.ok && progress.page.searched > 0) clock = WORK_SEARCH_BOUNDS.workerMs
     })
     expect(cutShort).toMatchObject({
       ok: true,
@@ -585,5 +598,64 @@ it('groups distinct conversation matches before selecting the six visible profil
     })
   } finally {
     engine.close()
+  }
+})
+
+it('finds exact grouped totals for 640 conversations across 72 profiles in the real worker', async () => {
+  const day = '2080-01-02'
+  const at = Date.parse(day)
+  store.atomically(() => {
+    for (let index = 0; index < 640; index++) {
+      const id = `grouped_scale_${String(index).padStart(3, '0')}`
+      store.create({
+        id,
+        provider: 'codex',
+        profileId: `profile_${index % 72}`,
+        cwd: directory,
+        approvalMode: 'ask',
+      })
+      store.titleConversation(
+        id,
+        store.nextOrdinal(id),
+        { type: 'titled', title: 'Scale preview', author: { kind: 'person' } },
+        at,
+      )
+    }
+  })
+
+  const reader = new WorkSearchWorkerReader((caller, query) => {
+    return new Worker(join(directory, 'search.cjs'), { workerData: { file, caller, query } })
+  })
+  const query = { grouped: true, from: day, to: day, words: 'Scale preview' } as const
+  try {
+    const first = await reader.read('fictional_0', query)
+    if (!first.ok || first.page.grouped === undefined || first.page.next_cursor === null) {
+      throw new Error(`grouped search did not return a continuation: ${JSON.stringify(first)}`)
+    }
+    expect(first.page).toMatchObject({ complete: true, searched: 640, grouped: { matched: 640 } })
+    expect(first.page.grouped.groups.map(({ profile, matched, previews }) => ({
+      profile,
+      matched,
+      ids: previews.map(({ conversation }) => conversation),
+    }))).toEqual(Array.from({ length: 6 }, (_, index) => ({
+      profile: `profile_${63 - index}`,
+      matched: 9,
+      ids: [639, 567, 495].map((ordinal) => `grouped_scale_${String(ordinal - index)}`),
+    })))
+
+    const second = await reader.read('fictional_0', { ...query, cursor: first.page.next_cursor })
+    expect(second).toMatchObject({
+      ok: true,
+      page: {
+        complete: true,
+        searched: 640,
+        grouped: {
+          matched: 640,
+          groups: Array.from({ length: 6 }, (_, index) => ({ profile: `profile_${57 - index}`, matched: 9 })),
+        },
+      },
+    })
+  } finally {
+    await reader.close()
   }
 })
