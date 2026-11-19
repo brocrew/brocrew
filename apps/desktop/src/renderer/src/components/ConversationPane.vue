@@ -696,6 +696,16 @@ function showTheBand(): void {
   if (!props.drawerOpen) emit('toggleDrawer')
 }
 
+async function showTaskSection(): Promise<void> {
+  const conversation = props.record.sessionId
+  showTheBand()
+  await nextTick()
+  if (props.record.sessionId !== conversation) return
+  const section = paneBody.value?.querySelector<HTMLElement>('[data-cy="card-task"]')
+  section?.scrollIntoView({ block: 'nearest' })
+  section?.focus({ preventScroll: true })
+}
+
 /**
  * ⚑ **D-010 · *Put it back* APPENDS** — {@link puttingItBack} and {@link withTheseToo}: several
  * messages may wait, so one put back joins what is in the composer rather than replacing it.
@@ -1906,6 +1916,7 @@ onUnmounted(() => {
       :tools="control.tools"
       :named="props.named ?? null"
       :identity="props.identity"
+      :open-task="showTaskSection"
       :rename="props.rename"
       :archive="props.archive"
       :activity="activity"

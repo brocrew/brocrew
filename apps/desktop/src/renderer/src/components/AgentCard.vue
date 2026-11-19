@@ -595,6 +595,8 @@ const fileManager = fileManagerHere()
         icon="#i-play"
         accent
         fold="brobot2.cardTaskFolded"
+        tabindex="-1"
+        aria-label="Current task"
         data-cy="card-task"
       >
         <template #title>
@@ -1232,6 +1234,11 @@ button.run-effort[aria-expanded='true'] {
 }
 
 /* Its work in three counts, under the current task. */
+.card-task:focus {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
 .task-counts {
   display: flex;
   flex-wrap: wrap;

@@ -142,6 +142,7 @@ const props = withDefaults(
     /** Linked task details and marks from the conversation list. */
     named?: WorkThatNamesIt | null
     identity?: ConversationIdentity | null
+    openTask?: () => void
     /** Write the conversation's title through the host. */
     rename?: (input: ConversationRenameInput) => Promise<ConversationRenameResult>
     /**
@@ -559,7 +560,16 @@ const panelToggleName = computed(() =>
         </template>
         <template v-if="task">
           <template v-if="identity"> · </template>
-          <span data-cy="conversation-linked-task">Task {{ task }}</span>
+          <button
+            v-if="props.openTask"
+            class="title-task"
+            type="button"
+            data-cy="conversation-linked-task"
+            @click="props.openTask"
+          >
+            Task {{ task }}
+          </button>
+          <span v-else data-cy="conversation-linked-task">Task {{ task }}</span>
         </template>
       </small>
       <small
@@ -937,6 +947,17 @@ h1 {
   color: var(--muted);
   font-size: var(--type-caption);
   overflow-wrap: anywhere;
+}
+
+.title-task {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-text);
+  cursor: pointer;
+  font: inherit;
+  text-align: start;
+  text-decoration: underline;
 }
 
 .title-refused {
