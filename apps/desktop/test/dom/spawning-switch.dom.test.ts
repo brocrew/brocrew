@@ -4,7 +4,6 @@ import { nextTick } from 'vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import TeamWorkspace from '../../src/renderer/src/components/TeamWorkspace.vue'
 import { useSpawnSafety } from '../../src/renderer/src/lib/spawn-safety'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type { AgentIdentities, AgentIdentity } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, type Mounted } from './harness'
 import { assertDrawn, drawnReady, lineCount, cutsOf, titleRecovers } from './drawn'
@@ -40,14 +39,6 @@ const identity = (slug: string): AgentIdentity => ({
   provider: null,
   // ⚑ **516** — presence IS the grant, so an empty list is *granted none*, not *not chosen*.
   externalMcpServerIds: [],
-  capabilities: { ...DEFAULT_CAPABILITIES },
-  chosen: {
-    maxDepth: 'default',
-    canMessage: 'default',
-    canAssignWork: 'default',
-    canCreateAgents: 'default',
-    canWriteRules: 'default',
-  },
 })
 
 const agents = (over: Partial<AgentIdentities> = {}): AgentIdentities => ({

@@ -304,7 +304,7 @@ describe('F009 · what an agent has done, read on demand', () => {
       expect(record.structured, record.text).toMatchObject({ outcome: 'ok', profile: 'tester' })
 
       // ⚑ Its rules, as they begin: the first line holding a word, the list's mark left off.
-      expect(record.structured.rules_told).toBe(true)
+      expect(record.structured).not.toHaveProperty('rules_told')
       expect(record.structured.rules_begin).toBe(
         'You are a careful tester of web pages: you check every link and every form.',
       )
@@ -726,10 +726,9 @@ describe('F009 · what an agent has done, read on demand', () => {
   })
 
   describe('2 · the reach', () => {
-    it('narrow message reach leaves the full conversation and piece record readable', async () => {
+    it('every caller reads the full conversation and piece record', async () => {
       const { one, two, oneTools, twoTools, first, standIn, second, file } =
         await aTesterWithAHistory()
-      expect(store.setCapabilities(DEFAULT_PROFILE_ID, { canMessage: 'none' } as never)).toBe(true)
 
       const fromOne = await theRecordOf(oneTools, 'tester')
       expect(fromOne.structured, fromOne.text).toMatchObject({ outcome: 'ok' })
@@ -751,8 +750,10 @@ describe('F009 · what an agent has done, read on demand', () => {
         (fromTwo.structured.pieces as PiecePayload[]).map((piece) => piece.label).sort(),
       ).toEqual(['W1.1', 'W1.2', 'W1.3', 'W1.4', 'W2.1'])
       expect(fromTwo.text).toContain('W1.4')
-      // ⚑ Each reaches a conversation of it, so each is told how its rules begin.
-      expect(fromTwo.structured.rules_told).toBe(true)
+      // ⚑ Every caller is told how its rules begin.
+      expect(fromTwo.structured.rules_begin).toBe(
+        'You are a careful tester of web pages: you check every link and every form.',
+      )
       // ⚑ Its files are not folded by reach: `find_files` names them to any caller.
       expect((fromTwo.structured.files as { resource: string }[]).map((f) => f.resource)).toEqual([
         file,
@@ -763,7 +764,7 @@ describe('F009 · what an agent has done, read on demand', () => {
       expect(one).not.toBe(two)
     })
 
-    it('🔴 how its rules begin is told only to a caller that reaches the agent — never whether it has any', async () => {
+    it('🔴 how its rules begin is told to every caller, and so is that it has none', async () => {
       const brobot = await personOpens(DEFAULT_PROFILE_ID)
       const tools = agentToolsFor(host, brobot)
       for (const [name, rules] of [
@@ -776,29 +777,14 @@ describe('F009 · what an agent has done, read on demand', () => {
         })
         expect(made.structured, made.text).toMatchObject({ outcome: 'ok' })
       }
-      // ⚑ The paired positive: a grant that reaches any conversation reaches agents nobody started.
       const told = await theRecordOf(tools, 'auditor')
-      expect(told.structured).toMatchObject({
-        rules_told: true,
-        rules_begin: 'You are an auditor of accounts.',
-      })
+      expect(told.structured).toMatchObject({ rules_begin: 'You are an auditor of accounts.' })
+      expect(told.structured).not.toHaveProperty('rules_told')
       expect(told.text).toContain('It has no conversations.')
 
-      expect(store.setCapabilities(DEFAULT_PROFILE_ID, { canMessage: 'none' } as never)).toBe(true)
-      const NOT_TOLD =
-        'How its standing rules begin is told only to a caller that can reach its conversations.'
-      for (const name of ['auditor', 'scribe']) {
-        const record = await theRecordOf(tools, name)
-        expect(record.structured, record.text).toMatchObject({
-          outcome: 'ok',
-          rules_told: false,
-          rules_begin: null,
-        })
-        // ⛔ One sentence for rules and for none: a caller out of reach learns neither.
-        expect(record.text).toContain(NOT_TOLD)
-        expect(record.text).not.toContain('auditor of accounts')
-        expect(record.text).not.toContain('It has no standing rules.')
-      }
+      const none = await theRecordOf(tools, 'scribe')
+      expect(none.structured, none.text).toMatchObject({ outcome: 'ok', rules_begin: null })
+      expect(none.text).toContain('It has no standing rules.')
     })
 
     it('⛔ a name this app holds no agent by is refused, and the refusal names the door that lists them', async () => {

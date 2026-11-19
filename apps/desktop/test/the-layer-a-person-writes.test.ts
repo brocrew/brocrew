@@ -201,13 +201,13 @@ describe('582 · the layer a person writes', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   it.each(['none', 'propose', 'relay', null] as const)(
-    'launches with the fixed rule policy under dormant value %s',
+    'launches with the one rule policy whatever the retired can_write_rules column holds (%s)',
     async (held) => {
       await bringIdentityIntoBeing('worker')
-      expect(store.setCapabilities('worker', { canWriteRules: held })).toBe(true)
+      db.prepare('UPDATE agent_identity SET can_write_rules = ? WHERE slug = ?').run(held, 'worker')
       const opened = await personOpens('worker')
       expect(reads.at(-1)?.instructions.composed).toContain(
-        "- You can read any agent's standing rules and propose a replacement; the person decides. A BroBot conversation the person started may also save one directly, but never its own. Each version keeps its author and reason, and the person can undo it.",
+        '- Only the person and the profile that created an agent can change its standing rules; any conversation of that profile counts, and when no creating profile is recorded, only the person can. Being the same profile as the agent gives no right to change its rules: an agent never writes its own, and keeps its own notes instead. Anyone else, the agent included, can propose a change, and the person decides a proposal. Each version keeps its author and reason, and can be undone.',
       )
       expect(reads.at(-1)?.instructions.composed).not.toContain(
         "save a person's rule for another agent",
@@ -350,27 +350,22 @@ describe('582 · the layer a person writes', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§4 · the agent’s ask', () => {
-    /** Legacy grant values remain stored but do not authorize these requests. */
-    const anAgentThatMayAsk = async (held: 'propose' | 'relay'): Promise<string> => {
+    const openAsker = async (): Promise<string> => {
       await bringIdentityIntoBeing('worker')
       await bringIdentityIntoBeing('asker')
-      expect(store.setCapabilities('asker', { canWriteRules: held })).toBe(true)
       return personOpens('asker')
     }
 
-    it('🔴 a PROPOSAL writes no version, and approving it writes one', async () => {
-      const asking = await anAgentThatMayAsk('propose')
-      const asked = host.proposeAgentRules(
+    const propose = (asking: string, text: string, why: string, relaying = false) =>
+      host.proposeAgentRules(
         asking,
-        {
-          about: 'worker',
-          text: 'Never force-push.',
-          why: 'it keeps coming up',
-          relaying: false,
-          expectedVersion: 0,
-        },
+        { about: 'worker', text, why, relaying, expectedVersion: 0 },
         { ownerId: agentCallerId(asking) },
       )
+
+    it('🔴 a PROPOSAL writes no version, and approving it writes one', async () => {
+      const asking = await openAsker()
+      const asked = propose(asking, 'Never force-push.', 'it keeps coming up')
       expect(asked.ok && asked.wrote).toBe('a-request')
       // ⛔ **`HO-009` §2.2's gate, measured**: the ask exists and the rules do not.
       expect(store.ownInstructionsOf('worker').versions).toEqual([])
@@ -388,18 +383,8 @@ describe('582 · the layer a person writes', () => {
     })
 
     it('⛔ REFUSING writes nothing at all, and takes the ask down', async () => {
-      const asking = await anAgentThatMayAsk('propose')
-      const asked = host.proposeAgentRules(
-        asking,
-        {
-          about: 'worker',
-          text: 'Never force-push.',
-          why: 'it keeps coming up',
-          relaying: false,
-          expectedVersion: 0,
-        },
-        { ownerId: agentCallerId(asking) },
-      )
+      const asking = await openAsker()
+      const asked = propose(asking, 'Never force-push.', 'it keeps coming up')
       const askId = asked.ok && asked.wrote === 'a-request' ? asked.askId : ''
       expect(host.decideInstruction(askId, false, window)).toEqual({ outcome: 'taken' })
       expect(store.ownInstructionsOf('worker').versions).toEqual([])
@@ -407,37 +392,11 @@ describe('582 · the layer a person writes', () => {
       await host.close(asking, window)
     })
 
-    it('refuses the historical relay shortcut even with its old grant', async () => {
-      const asking = await anAgentThatMayAsk('relay')
-      const refused = host.proposeAgentRules(
-        asking,
-        {
-          about: 'worker',
-          text: 'Never force-push.',
-          why: 'The person said so',
-          relaying: true,
-          expectedVersion: 0,
-        },
-        { ownerId: agentCallerId(asking) },
-      )
-      expect(!refused.ok && refused.rail).toBe('malformed-request')
-      expect(host.agentInstructions('worker').own.versions).toEqual([])
-      expect(host.agentInstructions('worker').waiting).toEqual([])
-      await host.close(asking, window)
-    })
-
     it('refuses a relay claim and allows the same replacement as a proposal', async () => {
-      const asking = await anAgentThatMayAsk('propose')
-      const said = {
-        about: 'worker',
-        text: 'Never force-push.',
-        why: 'The person said so',
-      }
-      const refused = host.proposeAgentRules(
-        asking,
-        { ...said, relaying: true, expectedVersion: 0 },
-        { ownerId: agentCallerId(asking) },
-      )
+      const asking = await openAsker()
+      const text = 'Never force-push.'
+      const why = 'The person said so'
+      const refused = propose(asking, text, why, true)
       expect(refused.ok).toBe(false)
       expect(!refused.ok && refused.rail).toBe('malformed-request')
       // ⛔ **Nothing was written, which is what makes this a refusal rather than a downgrade.**
@@ -446,52 +405,31 @@ describe('582 · the layer a person writes', () => {
       // ⚑ **ONE FACT OVER — the identical call without the claim — is ALLOWED.** This is the pair
       // that makes the rail measured rather than asserted: the two readings diverge here and
       // nowhere else.
-      const allowed = host.proposeAgentRules(
-        asking,
-        { ...said, relaying: false, expectedVersion: 0 },
-        { ownerId: agentCallerId(asking) },
-      )
+      const allowed = propose(asking, text, why)
       expect(allowed.ok && allowed.wrote).toBe('a-request')
       await host.close(asking, window)
     })
 
-    it('a known agent without a rule grant still receives the target lookup result', async () => {
-      await bringIdentityIntoBeing('worker')
-      await bringIdentityIntoBeing('asker')
-      const asking = await personOpens('asker')
-      const refused = host.proposeAgentRules(
-        asking,
-        { about: 'nobody-at-all', text: 'x', why: 'y', relaying: false, expectedVersion: 0 },
-        { ownerId: agentCallerId(asking) },
-      )
-      expect(!refused.ok && refused.rail).toBe('no-such-agent')
-      await host.close(asking, window)
-    })
-
-    it('⚠️ a granted caller naming an identity that does not exist is told THAT', async () => {
-      const asking = await anAgentThatMayAsk('propose')
-      const refused = host.proposeAgentRules(
-        asking,
-        { about: 'nobody-at-all', text: 'x', why: 'y', relaying: false, expectedVersion: 0 },
-        { ownerId: agentCallerId(asking) },
-      )
-      expect(!refused.ok && refused.rail).toBe('no-such-agent')
-      await host.close(asking, window)
-    })
+    it.each([null, 'propose'])(
+      'a known agent naming a missing identity is told no-such-agent with retired grant %s',
+      async (retiredGrant) => {
+        const asking = await openAsker()
+        db.prepare("UPDATE agent_identity SET can_write_rules = ? WHERE slug = 'asker'").run(
+          retiredGrant,
+        )
+        const refused = host.proposeAgentRules(
+          asking,
+          { about: 'nobody-at-all', text: 'x', why: 'y', relaying: false, expectedVersion: 0 },
+          { ownerId: agentCallerId(asking) },
+        )
+        expect(!refused.ok && refused.rail).toBe('no-such-agent')
+        await host.close(asking, window)
+      },
+    )
 
     it('🔴 a person’s own save SUPERSEDES an ask waiting about that identity', async () => {
-      const asking = await anAgentThatMayAsk('propose')
-      host.proposeAgentRules(
-        asking,
-        {
-          about: 'worker',
-          text: 'The agent’s idea.',
-          why: 'mine',
-          relaying: false,
-          expectedVersion: 0,
-        },
-        { ownerId: agentCallerId(asking) },
-      )
+      const asking = await openAsker()
+      propose(asking, 'The agent’s idea.', 'mine')
       host.instructAgent('worker', 'The person’s own rule.', undefined, window)
       // ⛔ **Otherwise a person answers a card describing a world that moved** — they write their
       // rules and then approve an older proposal on top of them.

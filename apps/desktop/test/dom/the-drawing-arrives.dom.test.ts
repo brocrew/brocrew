@@ -4,7 +4,6 @@ import { defineComponent, h, nextTick, type PropType } from 'vue'
 import OverlayHost from '../../src/renderer/src/components/OverlayHost.vue'
 import SessionTools from '../../src/renderer/src/components/SessionTools.vue'
 import { useSpawnSafety } from '../../src/renderer/src/lib/spawn-safety'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type { AgentIdentities } from '../../src/shared/runtime-ipc'
 import type { ToolRegistry } from '../../src/renderer/src/lib/transcript'
 import { mount, unmountAll } from './harness'
@@ -68,14 +67,6 @@ const IDENTITIES: AgentIdentities = {
       provider: null,
       // ⚑ **516** — presence IS the grant, so an empty list is *granted none*, not *not chosen*.
       externalMcpServerIds: [],
-      capabilities: { ...DEFAULT_CAPABILITIES },
-      chosen: {
-        maxDepth: 'default',
-        canMessage: 'default',
-        canAssignWork: 'default',
-        canCreateAgents: 'default',
-        canWriteRules: 'default',
-      },
     },
   ],
   foldersWithoutARow: [],

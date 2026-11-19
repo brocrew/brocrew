@@ -17,7 +17,6 @@ import {
 } from '../src/shared/move-request'
 import { conversationLink } from '../src/shared/links'
 import type { SessionStore } from '../src/main/db/session-store'
-import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import { RecordingSink } from './helpers/a-service-world'
 import { answerCodexToolCall } from '../../../packages/runtime/src/codex/agent-tools'
 import type { AgentToolAnswer } from '@brobot2/runtime'
@@ -672,7 +671,7 @@ describe('a person moves the stored request', () => {
     },
   )
 
-  it.each(['unchanged', 'grants', 'archive', 'owner'] as const)(
+  it.each(['unchanged', 'archive', 'owner'] as const)(
     'held target check revalidates %s before committing',
     async (change) => {
       const requestId = await offer()
@@ -696,8 +695,6 @@ describe('a person moves the stored request', () => {
       )
       try {
         await entered
-        if (change === 'grants')
-          host.setCapabilities('source', { ...DEFAULT_CAPABILITIES, canMessage: 'none' })
         if (change === 'archive') expect((await host.archiveConversation(target)).done).toBe(true)
         if (change === 'owner') {
           await host.close(target, world.window)

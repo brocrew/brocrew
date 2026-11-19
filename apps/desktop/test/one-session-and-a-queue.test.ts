@@ -11,7 +11,6 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { RuntimeHost } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import { mailboxOf, stillHeld } from '../src/shared/mailbox'
 import { theMessagesOf } from '../src/shared/runtime-ipc'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
@@ -182,8 +181,7 @@ describe('one session, and the callers who wait', () => {
     expect(openPiecesOf(worker).map((one) => [one.label, one.giver])).toEqual([
       [given.label, first],
     ])
-    expect(store.capabilitiesOf('archivist')).toEqual(DEFAULT_CAPABILITIES)
-    expect(store.capabilitiesOf('archivist')?.canAssignWork).toBe('any')
+    expect(store.agentIdentityOf('archivist')).not.toBeNull()
     return {
       worker,
       first,

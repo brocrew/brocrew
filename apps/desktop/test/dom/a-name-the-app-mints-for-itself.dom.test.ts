@@ -5,7 +5,6 @@ import { allProviderCapabilities } from '../../../../packages/runtime/src/capabi
 import TeamWorkspace from '../../src/renderer/src/components/TeamWorkspace.vue'
 import StartAsAgent from '../../src/renderer/src/components/StartAsAgent.vue'
 import type { AgentStore } from '../../src/renderer/src/lib/agent-store'
-import { CAPABILITY_FIELDS, type ProfileCapabilities } from '../../src/shared/capabilities'
 import type { AgentIdentities, AgentIdentity } from '../../src/shared/runtime-ipc'
 import { HUMAN_NAMES, aNameForANewAgent, namesThatCanBeGiven } from '../../src/shared/human-names'
 import { assertClipped, assertDrawn, drawnReady, inkRects } from './drawn'
@@ -137,18 +136,6 @@ const identity = (slug: string, displayName: string | null): AgentIdentity => ({
   // ⚑ **598 · who brought it into being** — null is *nobody recorded it*; see `AgentIdentity.createdBy`.
   createdBy: null,
   externalMcpServerIds: [],
-  // ⚑ **D-016** — each field's own `narrowest`, read off the schema now that the set it made is
-  // gone.
-  capabilities: Object.fromEntries(
-    CAPABILITY_FIELDS.map((field) => [field.key, field.narrowest]),
-  ) as unknown as ProfileCapabilities,
-  chosen: {
-    maxDepth: 'default',
-    canMessage: 'default',
-    canAssignWork: 'default',
-    canCreateAgents: 'default',
-    canWriteRules: 'default',
-  },
 })
 
 /**

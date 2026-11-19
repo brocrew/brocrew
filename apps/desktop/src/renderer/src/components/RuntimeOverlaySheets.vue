@@ -23,7 +23,6 @@ import { readableError } from '../lib/session-record'
 import { afterAPlacedLaunch } from '../lib/placed-launch'
 import type { DraftBook } from '../lib/drafts'
 import { newAgentDraftSlot } from '../../../shared/saved-drafts'
-import { conversationsToReopen, type AConversationToReopen } from '../lib/reopening'
 import { useOverlays, type Overlay } from '../lib/overlay-store'
 import OverlayHost from './OverlayHost.vue'
 import NewAgent from './NewAgent.vue'
@@ -41,7 +40,6 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   settings: [tab: SettingsTab]
-  reopen: [sessionId: string]
   archived: [conversations: readonly string[]]
   deleted: [conversations: readonly string[]]
 }>()
@@ -182,16 +180,6 @@ function overlayLabel(overlay: Overlay): string {
       return 'Delete a conversation'
   }
 }
-/**
- * Only this window's held conversations are offered for reopening. Keep the fold lazy: no grant
- * sheet means no walk through live transcripts, and no new dependency on them for other overlays.
- */
-const openAsForSheet = computed<readonly AConversationToReopen[]>(() => {
-  const overlay = overlays.overlay.value
-  if (overlay === null || overlay.kind !== 'agentCapabilities') return []
-  // ⚑ **678 · no longer which of them is the selected one** — R26: every draft survives the reopen.
-  return conversationsToReopen(store.live.value, overlay.profileSlug)
-})
 </script>
 
 <template>
@@ -201,8 +189,8 @@ const openAsForSheet = computed<readonly AConversationToReopen[]>(() => {
     @close="closeOverlay()"
   >
     <NewAgent v-if="overlays.overlay.value.kind === 'newAgent'" @close="overlays.close()" />
-    <!-- Edit the external_mcp_server rows resolved at launch. Agent grants are configured
-         separately on CapabilitiesSheet. -->
+    <!-- Edit the external_mcp_server rows resolved at launch. Which restricted ones an agent may
+         use is set on CapabilitiesSheet. -->
     <ExternalMcpRegistry
       v-else-if="overlays.overlay.value.kind === 'externalMcpServers'"
       @close="overlays.close()"
@@ -256,10 +244,8 @@ const openAsForSheet = computed<readonly AConversationToReopen[]>(() => {
           :profile-slug="overlays.overlay.value.profileSlug"
           :runs-on="overlayProvider"
           :capabilities="props.capabilities"
-          :open-as="openAsForSheet"
           @close="overlays.close()"
           @start-conversation="(slug) => overlays.open({ kind: 'startAsAgent', profileSlug: slug })"
-          @reopen="(sessionId) => emit('reopen', sessionId)"
         />
         <StartAsAgent
           v-else

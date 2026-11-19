@@ -11,11 +11,6 @@ import {
   uniqueIndex,
   type AnySQLiteColumn,
 } from 'drizzle-orm/sqlite-core'
-import {
-  CAPABILITY_FIELDS,
-  MAX_CAPABILITY_COUNT,
-  type AnyCapabilityField,
-} from '../../shared/capabilities'
 import { RESOURCE_ROLES } from '../../shared/documents'
 import { FOLD_TYPE_LIST } from './fold-index'
 import { HUMAN_CONTEXT_TERM, HUMAN_FINAL_TERM } from './human-answer-index'
@@ -26,16 +21,9 @@ function oneOf(words: readonly string[]): SQL {
   return sql.raw(words.map((word) => `'${word.replaceAll("'", "''")}'`).join(', '))
 }
 
-function capabilityCheck(field: AnyCapabilityField, column: AnySQLiteColumn): SQL {
-  switch (field.editor) {
-    case 'count':
-      return sql`${column} IS NULL OR (typeof(${column}) = 'integer' AND ${column} BETWEEN 0 AND ${sql.raw(String(MAX_CAPABILITY_COUNT))})`
-    case 'choice':
-      if (field.vocabulary === undefined || field.vocabulary.length === 0) {
-        throw new Error(`capability ${field.key} is a choice with no vocabulary`)
-      }
-      return sql`${column} IS NULL OR ${column} IN (${oneOf(field.vocabulary)})`
-  }
+/** The CHECK kept on a retired agent_identity column, so the stored schema stays as it was. */
+function retiredChoiceCheck(column: AnySQLiteColumn, words: readonly string[]): SQL {
+  return sql`${column} IS NULL OR ${column} IN (${oneOf(words)})`
 }
 
 export const agentIdentity = sqliteTable(
@@ -45,6 +33,7 @@ export const agentIdentity = sqliteTable(
     id: text('id').primaryKey(),
     slug: text('slug').notNull(),
     displayName: text('display_name'),
+    /** Retired columns: kept as stored, never read or written. */
     maxDepth: integer('max_depth'),
     canMessage: text('can_message'),
     canAssignWork: text('can_assign_work'),
@@ -61,8 +50,22 @@ export const agentIdentity = sqliteTable(
   (t) => [
     uniqueIndex('agent_identity_slug_uq').on(sql`${t.slug} COLLATE NOCASE`),
     check('agent_identity_slug_folded_ck', sql`${t.slug} = lower(${t.slug})`),
-    ...CAPABILITY_FIELDS.map((field) =>
-      check(`agent_identity_${field.column}_ck`, capabilityCheck(field, t[field.key])),
+    check(
+      'agent_identity_max_depth_ck',
+      sql`${t.maxDepth} IS NULL OR (typeof(${t.maxDepth}) = 'integer' AND ${t.maxDepth} BETWEEN 0 AND 64)`,
+    ),
+    check('agent_identity_can_message_ck', retiredChoiceCheck(t.canMessage, ['none', 'any'])),
+    check(
+      'agent_identity_can_assign_work_ck',
+      retiredChoiceCheck(t.canAssignWork, ['none', 'any']),
+    ),
+    check(
+      'agent_identity_can_create_agents_ck',
+      retiredChoiceCheck(t.canCreateAgents, ['none', 'any']),
+    ),
+    check(
+      'agent_identity_can_write_rules_ck',
+      retiredChoiceCheck(t.canWriteRules, ['none', 'propose', 'relay']),
     ),
   ],
 )

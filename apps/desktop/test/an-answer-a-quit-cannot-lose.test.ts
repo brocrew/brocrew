@@ -391,13 +391,12 @@ describe('an answer a quit cannot lose', () => {
 
   describe('a person’s window takes a root a delivery started with no window', () => {
     it('and cannot take an agent-spawned child the same way', async () => {
-      // A giver allowed to message a conversation it did not start.
+      // A giver, which may message a conversation it did not start.
       await host.createSession(
         { provider: 'claude', profileId: 'giver', approvalMode: 'ask', cwd: root },
         window,
       )
       const giverTools = lastToolset()
-      expect(store.setCapabilities('giver', { canMessage: 'any' })).toBe(true)
 
       // A root, built directly and then closed.
       const { sessionId: root_ } = await host.createSession(

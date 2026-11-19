@@ -30,7 +30,7 @@ function fixture() {
   const agents: ClientAgentApi = {
     agentIdentities: read,
     setSpawningEnabled: write,
-    setCapabilities: unused,
+    setExternalMcpServers: unused,
     setAgentProvider: unused,
     setAgentDisplayName: unused,
     agentInstructions: unused,

@@ -60,7 +60,7 @@ const NAME = (id: string): string => id.replace('sess_', '')
       defaultApprovalMode: 'ask',
       externalMcpServers: [],
     }),
-    setCapabilities: async () => null,
+    setExternalMcpServers: async () => null,
     setSpawningEnabled: async () => ({ spawningEnabled: true }),
   },
 }

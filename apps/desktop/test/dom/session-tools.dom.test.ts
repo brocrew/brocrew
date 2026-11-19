@@ -8,7 +8,6 @@ import OverlayHost from '../../src/renderer/src/components/OverlayHost.vue'
 import SessionTools from '../../src/renderer/src/components/SessionTools.vue'
 import type { SessionRecord } from '../../src/renderer/src/lib/session-record'
 import { useSpawnSafety } from '../../src/renderer/src/lib/spawn-safety'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type { AgentIdentities } from '../../src/shared/runtime-ipc'
 import type { ToolRegistry } from '../../src/renderer/src/lib/transcript'
 import { catalogue, readInventory } from '../../src/renderer/src/lib/tool-inventory'
@@ -46,14 +45,6 @@ const IDENTITIES: AgentIdentities = {
       provider: null,
       // ⚑ **516** — presence IS the grant, so an empty list is *granted none*, not *not chosen*.
       externalMcpServerIds: [],
-      capabilities: { ...DEFAULT_CAPABILITIES },
-      chosen: {
-        maxDepth: 'default',
-        canMessage: 'default',
-        canAssignWork: 'default',
-        canCreateAgents: 'default',
-        canWriteRules: 'default',
-      },
     },
   ],
   foldersWithoutARow: [],
@@ -1016,9 +1007,7 @@ describe('§5 · what the workbench SAYS when there is little or nothing to say'
     // lines out of the catalogue, and it is a fact about the whole inventory rather than a note on
     // one group.
     expect(m.q('tools-why').innerText).toBe(
-      'Every conversation gets the same tools, except write_agent_rules. ' +
-        'Only a BroBot conversation a person started gets it, to change another agent’s rules. ' +
-        'BroCrew still checks every call against its rules.',
+      'Every conversation gets the same tools. BroCrew still checks every call against its rules.',
     )
     expect(
       m.q('tools-list').contains(m.q('tools-why')),

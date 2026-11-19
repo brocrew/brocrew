@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_CAPABILITIES } from '../src/main/db/session-store'
 import { admitGive, type GiveFacts } from '../src/main/runtime/spawn-rails'
 
 const facts: GiveFacts = {
@@ -13,14 +12,12 @@ const facts: GiveFacts = {
   held: () => [{ piece: 'root', label: 'W1', root: true, giver: null, received: true }],
   drivenByTheTurn: () => null,
   isAHelper: () => false,
-  mayGiveWork: () => null,
-  depthOf: () => 0,
-  capabilitiesOf: () => DEFAULT_CAPABILITIES,
+  agentExists: () => true,
   helperAs: () => null,
   workerAt: () => ({ is: 'full' }),
   serviceAt: () => ({ is: 'normal' }),
   spawningEnabled: () => true,
-  mayCreateAgents: () => null,
+  creatorOf: () => null,
   itsProvider: () => ({ provider: 'claude', from: 'saved' }),
   theNamedModelsProvider: () => null,
   modelChoiceOf: () => null,

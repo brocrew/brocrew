@@ -29,14 +29,6 @@ import {
 /**
  * # 🔴 732 · a retry that works, and names, not folders
  *
- *  - **§1 · `681` F-a, under R30b** — *"the walls answer before the shared word, so a starting
- *    target meets exactly the wall a running one would, and* retry *is said only where a retry can
- *    work."* ⛔ On `main` a caller that gave a child work, then woke it, and gave it more while the
- *    wake was in flight was told `that-conversation-has-not-started` — retry — and the retry met
- *    `agent-already-has-work-open`. ⚑ **D-017 · R1** — a start in flight is now WAITED ON, so a
- *    message no wall refuses is delivered once the start lands and nothing says *not started* to it
- *    at all (§1.2, §1.4). ⚑ **D-016 · the open-work rail is gone** (the work message went with it),
- *    so the cases that measured it are gone too; the walls still answer first (§1.5).
  *  - **§2 · `729` F-1, under R41** — *"every identity a person reads is NAMED (`agentName`), never by
  *    slug, and never by a folder."* ⛔ On `main` the stalled-work band named the holder and the giver by
  *    the basename of their working folder, and in the default folder that is `brobot-workspace` for
@@ -191,10 +183,6 @@ describe('732 · a retry that works, and names, not folders', () => {
     throw new Error(`timed out waiting for ${what}`)
   }
 
-  const grant = (profileId: string, edit: Parameters<SessionStore['setCapabilities']>[1]): void => {
-    expect(store.setCapabilities(profileId, edit), profileId).toBe(true)
-  }
-
   /**
    * ⚑ **A person opens a conversation with NO folder chosen** — the app's default workspace, which
    * every conversation below shares: the folder is one word for all of them (§2's premise).
@@ -314,8 +302,7 @@ describe('732 · a retry that works, and names, not folders', () => {
     // conversation with an agent, so an outsider's give never reaches this child at all, and the
     // rail that holds a give back from a helper is the stall rule, asked of what the child's ledger
     // says — and the two resume shapes they ran in went with them. ⚑ What §1 still measures is the
-    // rest of R30b's order: a question and a person's words WAIT for the start (§1.2, §1.4), and the
-    // walls answer first (§1.5).
+    // rest of R30b's order: a question and a person's words WAIT for the start (§1.2, §1.4).
 
     it('⚑ §1.2 control · a QUESTION to the same starting child WAITS for the start and is delivered — never told to retry', async () => {
       // ⚑ A question never meets the open-work rail (HO-021 §1: the investigate half), so for it the
@@ -378,32 +365,6 @@ describe('732 · a retry that works, and names, not folders', () => {
           ),
         'the words to reach the child they waited for',
       )
-    })
-
-    it('⛔ §1.5 control · the walls still answer FIRST — a parent a person has narrowed to giving no work meets that wall, starting or running', async () => {
-      // ⚑ **R30b's order, kept**: entitlement, boundary and the assignment wall, then the receiver's
-      // open work, then *not started*. ⛔ A read asked ahead of the walls would tell this parent to
-      // withdraw or ask about work it may no longer give at all.
-      const wake = await aWakeInFlightIntoWorkItHolds(false)
-      grant('lead', { canAssignWork: 'none' })
-      // ⚑ **D-016 · more work is a give**, which finds this very child — the parent's one
-      // conversation with `worker`. ⚑ The wall is asked before the lookup (R2 step 3).
-      const more = {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'more',
-        brief: 'and this too',
-      }
-      const answering = callOn(wake.parent, 'give_work', more)
-      wake.release()
-      expect((await wake.woken).outcome).toBe('ok')
-      const starting = await answering
-      await waitFor(() => host.sessionIds.includes(wake.child), 'the wake to land')
-      const running = await callOn(wake.parent, 'give_work', more)
-      expect({ starting: starting.rail, running: running.rail }).toEqual({
-        starting: 'may-not-assign-work',
-        running: 'may-not-assign-work',
-      })
     })
   })
 

@@ -9,7 +9,6 @@ import type {
 } from '../agent-memory'
 import type { AgentRemoved } from '../agent-roster'
 import type { RulesBaseline } from '../agent-rules'
-import type { CapabilityGrant } from '../capabilities'
 import type { ArchiveOutcome, DeleteOutcome, DeleteVerdict } from '../conversation-archive'
 import type { McpServerRequestForAPerson } from '../conversation-events'
 import type {
@@ -713,13 +712,12 @@ export interface RuntimeBridge {
    */
   agentIdentities(): Promise<AgentIdentities>
   /**
-   * Set one identity's capabilities (355). Null when that identity has no row — see
-   * {@link RuntimeCommandResults.setCapabilities}.
+   * Replace the restricted external MCP servers one identity is associated with (516). Null when
+   * that identity has no row — see {@link RuntimeCommandResults.setExternalMcpServers}.
    */
-  setCapabilities(input: {
+  setExternalMcpServers(input: {
     profileId: string
-    grant: CapabilityGrant
-    /** ⚑ **516 · the COMPLETE set**, saved in one transaction with the grant beside it. */
+    /** ⚑ **516 · the COMPLETE set.** */
     externalMcpServerIds: readonly string[]
   }): Promise<AgentIdentity | null>
   /**

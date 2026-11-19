@@ -16,7 +16,6 @@ import {
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import {
-  DEFAULT_CAPABILITIES,
   createSessionStore,
   modelChoiceWritten,
   parseModelChoice,
@@ -100,13 +99,11 @@ function facts(
     held: () => [{ piece: 'work_root', label: 'W1', root: true, giver: null, received: true }],
     drivenByTheTurn: () => null,
     isAHelper: () => false,
-    mayGiveWork: () => null,
-    depthOf: () => 0,
-    capabilitiesOf: (slug) => (slug === 'pm' || slug === 'worker' ? DEFAULT_CAPABILITIES : null),
+    agentExists: (slug) => slug === 'pm' || slug === 'worker',
     helperAs: () => null,
     serviceAt: () => ({ is: 'normal' }),
     spawningEnabled: () => true,
-    mayCreateAgents: () => null,
+    creatorOf: () => null,
     itsProvider: () => ({ provider: null, from: 'nothing-yet' }),
     theNamedModelsProvider: () => null,
     modelChoiceOf: (slug) => {

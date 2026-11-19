@@ -24,7 +24,6 @@ import {
   theList,
   theListedRow,
 } from '../../src/shared/model-choice'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type {
   AgentIdentities,
   AgentIdentity,
@@ -136,8 +135,6 @@ const ident = (slug: string): AgentIdentity =>
     createdBy: null,
     provider: null,
     externalMcpServerIds: [],
-    capabilities: DEFAULT_CAPABILITIES,
-    chosen: Object.fromEntries(Object.keys(DEFAULT_CAPABILITIES).map((key) => [key, 'default'])),
   }) as unknown as AgentIdentity
 
 /** A new object every read, as the real door answers — so a roster re-read is a CHANGE. */

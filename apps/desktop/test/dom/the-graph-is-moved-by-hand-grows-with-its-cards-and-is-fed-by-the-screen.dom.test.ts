@@ -6,7 +6,6 @@ import ConversationPane from '../../src/renderer/src/components/ConversationPane
 import TeamForest from '../../src/renderer/src/components/TeamForest.vue'
 import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import type { ForestView } from '../../src/renderer/src/lib/the-forest'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type { AgentIdentity } from '../../src/shared/runtime-ipc'
 import { conv, forestDrawn, task, viewOf } from './forest-fixture'
 import { mount, paneProps, record, unmountAll, type Mounted } from './harness'
@@ -228,14 +227,6 @@ describe('the Graph is moved by hand, grows with its cards, and is fed by the sc
       createdBy: null,
       provider: null,
       externalMcpServerIds: [],
-      capabilities: { ...DEFAULT_CAPABILITIES },
-      chosen: {
-        maxDepth: 'default',
-        canMessage: 'default',
-        canAssignWork: 'default',
-        canCreateAgents: 'default',
-        canWriteRules: 'default',
-      },
     })
 
     it('🔴 the Graph tab’s drawing takes the whole column — a page’s forest takes only its own height', async () => {

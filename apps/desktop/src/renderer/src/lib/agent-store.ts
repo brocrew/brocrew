@@ -12,7 +12,6 @@ import type {
 } from '../../../shared/runtime-ipc'
 import { agentName } from '../../../shared/runtime-ipc'
 
-import type { CapabilityGrant } from '../../../shared/capabilities'
 import type { ExternalMcpServerReach } from '../../../shared/external-mcp'
 // ⚑ **558 · a VALUE import, and it costs nothing here.** ⛔ The 135 kB rule is about the workspace
 // package `@brobot2/shared`, whose `contracts.ts` pulls zod; `apps/desktop/src/shared` is inside the
@@ -27,8 +26,8 @@ import { WHERE_AGENTS_ARE_CREATED } from './where-agents-are-created'
  * ⛔ **These are ROWS and not the launcher's profile names.** `RuntimeBridge.profiles()` answers a
  * `readdir` of `provider-homes/`; a folder is there for anything anyone ever typed into the
  * launcher, including a launch that was refused before it registered. An identity EXISTS when the
- * database says so — which is what `give_work`'s `no-such-profile` rail and `setCapabilities`
- * both key on — so a grant surface built off the folders would offer grants the door refuses.
+ * database says so — which is what `give_work`'s `no-such-profile` rail and `setExternalMcpServers`
+ * both key on — so a surface built off the folders would offer rows the door refuses.
  * {@link AgentIdentities.foldersWithoutARow} is the difference, reported rather than repaired.
  *
  * ⚑ **A module with no Vue component around it**, so a test drives it with a fake bridge instead of
@@ -51,26 +50,14 @@ export interface AgentStore {
    */
   load(): Promise<void>
   /**
-   * Write one identity's capabilities.
+   * Replace the restricted external MCP servers one identity is associated with (516).
    *
-   * ⛔ **Answers the REFUSAL SENTENCE, or null when it saved**: a boolean throws the sentence away, and for this door the sentence is either *this
-   * identity has no row* (criterion 12) or the main process's own words about who may ask.
+   * ⛔ **Answers the REFUSAL SENTENCE, or null when it saved**: for this door the sentence is either
+   * *this identity has no row* (criterion 12) or the main process's own words about who may ask.
    */
-  save(
+  saveExternalMcpServers(
     profileId: string,
-    grant: CapabilityGrant,
-    /**
-     * 🔴 **516 · the COMPLETE set of RESTRICTED servers this identity is granted** (`507` §5, narrowed by
-     * 524).
-     *
-     * ⛔ **Required, and it travels with the grant so the two commit in ONE transaction.** The sheet
-     * has one Save button; two commands behind one press can half-succeed, and the surface would
-     * then have to draw a state that is neither saved nor unsaved.
-     *
-     * ⚠️ **Not a field on {@link CapabilityGrant}.** Every member of that record is one column on
-     * one row; this is a set of rows in another table — `507` §5's *"a related capability grant with
-     * a different relational shape"*.
-     */
+    /** The COMPLETE set of RESTRICTED servers this identity is associated with. */
     externalMcpServerIds: readonly string[],
   ): Promise<string | null>
   /**
@@ -104,13 +91,12 @@ export interface AgentStore {
    * 🔴 **Say which provider this identity's NEXT conversation starts on** (433), or `null` to hand
    * it back to the app's fallback.
    *
-   * ⛔ **Its own method and deliberately not a field on {@link AgentStore.save}'s grant.** Provider
-   * is not a capability — no rail reads it, `419` §3 — and folding it into `CapabilityGrant` would
-   * make one writer answer two questions. ⚠️ **It is also its own GESTURE**, which matters on a
+   * ⛔ **Its own method and deliberately not a field on {@link AgentStore.saveExternalMcpServers}.** Provider
+   * is its own column, `419` §3. ⚠️ **It is also its own GESTURE**, which matters on a
    * sheet with a Save button: a Save that sent two commands could half-succeed, and the sheet would
    * have to report a state that is neither saved nor unsaved.
    *
-   * ⚑ **Answers the refusal SENTENCE when it did not write** — {@link AgentStore.save}'s rule, as
+   * ⚑ **Answers the refusal SENTENCE when it did not write** — {@link AgentStore.saveExternalMcpServers}'s rule, as
    * `{ ok: false, reason }`.
    *
    * 🔴 **`696` · and when it wrote, what the SAME act cleared** (`682`'s `R31b`): moving an identity
@@ -131,7 +117,7 @@ export interface AgentStore {
    * 🔴 **Correct what an identity is called** (558, `HO-063` gap 2). `null` to say nobody has named
    * it. Answers the refusal SENTENCE, or null when it wrote.
    *
-   * ⛔ **Its own method and deliberately not a field on {@link AgentStore.save}'s grant**, for
+   * ⛔ **Its own method and deliberately not a field on {@link AgentStore.saveExternalMcpServers}**, for
    * {@link AgentStore.chooseProviderFor}'s reason one method up: a name is not a capability, no
    * rail reads it, and a Save that sent two commands could half-succeed.
    */
@@ -151,7 +137,7 @@ export interface AgentStore {
    * 🔴 **Append one version of an identity's own instructions** (582) — a person's own save.
    * Answers the refusal SENTENCE, or null when it wrote.
    *
-   * ⛔ **Its own method and deliberately not a field on {@link AgentStore.save}'s grant**, for
+   * ⛔ **Its own method and deliberately not a field on {@link AgentStore.saveExternalMcpServers}**, for
    * {@link AgentStore.renameTo}'s reason one method up: rules are not a capability, no rail reads
    * them, and a Save that sent two commands could half-succeed.
    *
@@ -218,7 +204,7 @@ export interface AgentStore {
    * 🔴 **Bring an identity into existence** (423, HO-023 §3) — the renderer half of `419`'s
    * `createAgent`, which shipped a wire, a preload member and no caller.
    *
-   * ⛔ **Answers the refusal SENTENCE, or null when it wrote** — {@link AgentStore.save}'s rule. ⚠️ **There is no null arm here and that is the door's own shape**:
+   * ⛔ **Answers the refusal SENTENCE, or null when it wrote** — {@link AgentStore.saveExternalMcpServers}'s rule. ⚠️ **There is no null arm here and that is the door's own shape**:
    * `RuntimeHost.createAgent` THROWS on a taken name rather than resolving to null, because *"there
    * is no useful `there was no such identity to create`"* — so every refusal this can meet is an
    * exception, and all five of them carry a sentence somebody wrote for a person.
@@ -341,7 +327,7 @@ export function createAgentStore(bridge: ClientAgentApi): AgentStore {
    *
    * ⛔ **It was `error.message` raw, and that is a library talking.** `ipcMain.handle` rejections
    * arrive wrapped: `Error invoking remote method 'runtime:command': Error: <the sentence>`. So
-   * every refusal this store has ever surfaced — `setCapabilities`' *"who may ask"*, the switch's,
+   * every refusal this store has ever surfaced — `setExternalMcpServers`' *"who may ask"*, the switch's,
    * and now `419`'s *"There is already an agent called worker."* — reached the screen with nine
    * words of Electron in front of it. ⚠️ **No test could see it**: a fake bridge rejects with a
    * plain `Error`, so the wrapper only exists in the shipped app, which is `249 M20`'s finding on
@@ -354,7 +340,7 @@ export function createAgentStore(bridge: ClientAgentApi): AgentStore {
   const sentence = (error: unknown): string => readableError(error)
 
   /**
-   * ⚠️ **A named function rather than a method on the object below**, because `save` calls it: a
+   * ⚠️ **A named function rather than a method on the object below**, because `saveExternalMcpServers` calls it: a
    * `this.load(...)` would break the moment a caller destructured the store, which is a shape a
    * composable invites.
    */
@@ -391,15 +377,14 @@ export function createAgentStore(bridge: ClientAgentApi): AgentStore {
     loadError,
     load,
 
-    async save(profileId, grant, externalMcpServerIds) {
+    async saveExternalMcpServers(profileId, externalMcpServerIds) {
       try {
         // ⛔ **The array is rebuilt HERE rather than forwarded** (363's two questions). The caller is
         // a Vue component and the ids come off a `reactive`, so handing its array to the preload
         // would put a `Proxy` on the wire — `355`'s defect, which a handed-over field re-opens.
         // ⚑ A fresh array of strings is a thing `structuredClone` can carry.
-        const saved = await bridge.setCapabilities({
+        const saved = await bridge.setExternalMcpServers({
           profileId,
-          grant,
           externalMcpServerIds: [...externalMcpServerIds],
         })
         // ⚠️ **Null is criterion 12 and it is not an error to be swallowed.** The store refuses to
@@ -418,7 +403,7 @@ export function createAgentStore(bridge: ClientAgentApi): AgentStore {
     async chooseProviderFor(profileId, provider) {
       try {
         const saved = await bridge.setAgentProvider({ profileId, provider })
-        // ⚠️ **Null is criterion 12**, and it is `save`'s sentence one door over — the store refuses
+        // ⚠️ **Null is criterion 12**, and it is `saveExternalMcpServers`' sentence one door over — the store refuses
         // to CREATE a row, so a null means the identity this sheet is about has stopped existing.
         if (saved === null) {
           return {
@@ -586,7 +571,7 @@ export function createAgentStore(bridge: ClientAgentApi): AgentStore {
           provider: said.provider,
           ...(said.asAService === true ? { asAService: true as const } : {}),
         })
-        // ⛔ **Re-read, never pushed — and NOT patched-then-re-read like `save` above.** That
+        // ⛔ **Re-read, never pushed — and NOT patched-then-re-read like `saveExternalMcpServers` above.** That
         // one patches because it knows which row changed and holds the row the database just
         // returned; this one is an INSERT into a list the database orders (`ORDER BY slug`), so
         // appending the answer would make this store a second authority on where the row goes.

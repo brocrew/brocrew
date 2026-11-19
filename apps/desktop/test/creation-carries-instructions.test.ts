@@ -26,7 +26,6 @@ import {
   configuredLayerOf,
   whatIsInForce,
 } from '../src/shared/own-instructions'
-import { CAPABILITY_FIELDS } from '../src/shared/capabilities'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { closeAndRemove } from './helpers/scratch-host'
 
@@ -140,11 +139,6 @@ describe('618 · creation carries instructions', () => {
     return (await tool.call(args)).structured as Record<string, unknown>
   }
 
-  /**
-   * ⚑ **A live BroBot and its toolset.** ⛔ It holds the one default set every agent holds —
-   * `canCreateAgents: 'any'` and `canWriteRules: 'none'` — which is the ordinary state §6 measures
-   * and the state every section but that one runs in.
-   */
   const brobot = async (): Promise<{ me: string; tools: AgentToolset }> => {
     const me = await personOpens(DEFAULT_PROFILE_ID)
     return { me, tools: toolsOfLastLaunch() }
@@ -536,16 +530,9 @@ describe('618 · creation carries instructions', () => {
       await host.close(first, window)
     })
 
-    /**
-     * 🔴 **The BOUNDARY of the widening, measured from both sides in one test.**
-     *
-     * ⛔ **`canCreateAgents` buys the creating write. It buys nothing afterwards.** BroBot holds
-     * the ruled `canWriteRules: 'none'` like every agent — and the same caller that just wrote an
-     * identity's first rules cannot ask to change them.
-     */
+    /** A proposal from the creator records a request and leaves the rules in force unchanged. */
     it('proposes a later change without rewriting the creator rules', async () => {
       const { tools } = await brobot()
-      expect(store.capabilitiesOf(DEFAULT_PROFILE_ID)?.canWriteRules).toBe('none')
       expect(
         (await callOn(tools, 'create_agent', { profile_slug: 'archivist', rules: 'Mine.' }))[
           'rules'
@@ -632,47 +619,8 @@ describe('618 · creation carries instructions', () => {
   // §5 · the spawn rails still fire first
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
-  describe('§5 · entitlement before the argument, with the argument at its worst', () => {
-    /**
-     * 🔴 **`HO-078` §4.4, and HO-031 §2.5 is the order.**
-     *
-     * ⛔ **Tested where the two readings DIVERGE** (standing rule 3): the SAME call, over the
-     * bound, meets a different word depending only on the caller's grant. ⚠️ A test that sent a
-     * well-formed call would have been a comparison where both readings agree, which is what
-     * `341`'s three surviving rows were.
-     */
-    it('🔴 an unentitled caller sending 20,000 characters meets the GRANT, not the bound', async () => {
-      // ⚠️ **A person narrows the grant at the sheet** — the only thing that moves it. ⛔ **After a
-      // launch, because `setCapabilities` REFUSES to create the row** (criterion 12 from the other
-      // side): an identity nobody has run as has nothing to narrow.
-      const opened = await brobot()
-      await host.close(opened.me, window)
-      expect(store.setCapabilities(DEFAULT_PROFILE_ID, { canCreateAgents: 'none' })).toBe(true)
-      const { tools } = await brobot()
-      const refused = await callOn(tools, 'create_agent', {
-        profile_slug: 'archivist',
-        rules: 'x'.repeat(20_000),
-      })
-      expect(refused['rail']).toBe('may-not-create-agents')
-      expect(refused['permanence']).toBe('until-a-person-changes-it')
-      // ⛔ **It never learns that this field has a bound**, which is the trade HO-031 §2.5 asks
-      // for: a caller that may not create has no use for the arguments it would have needed.
-      expect(problemsOf(refused)).toEqual([])
-      expect(identityRow('archivist')).toBeUndefined()
-
-      // ⚑ **The pair, one fact over**: widen the grant and the identical call meets the bound.
-      expect(store.setCapabilities(DEFAULT_PROFILE_ID, { canCreateAgents: 'any' })).toBe(true)
-      const second = await personOpens(DEFAULT_PROFILE_ID)
-      const now = await callOn(toolsOfLastLaunch(), 'create_agent', {
-        profile_slug: 'archivist',
-        rules: 'x'.repeat(20_000),
-      })
-      expect(now['rail']).toBe('malformed-request')
-      expect(problemsOf(now)[0]).toContain('rules')
-      await host.close(second, window)
-    })
-
-    it('⛔ the kill switch is asked in front of it too, and writes nothing either', async () => {
+  describe('§5 · the spawning switch before the argument', () => {
+    it('⛔ the kill switch is asked first, and writes nothing', async () => {
       const { tools } = await brobot()
       store.setSpawningEnabled(false)
       const refused = await callOn(tools, 'create_agent', {
@@ -682,49 +630,6 @@ describe('618 · creation carries instructions', () => {
       expect(refused['rail']).toBe('spawning-disabled')
       expect(identityRow('archivist')).toBeUndefined()
       expect(db.prepare('SELECT COUNT(*) AS n FROM identity_instruction').get()).toEqual({ n: 0 })
-    })
-  })
-
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §6 · the grant nothing seeds, and its help
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-
-  describe('§6 · the optional argument, and the measurement behind it', () => {
-    /**
-     * 🔴 **The measurement the tool's own description rests on** (`456`'s defect, avoided).
-     *
-     * ⛔ **Nothing in this app seeds a grant** (D-014) — not the app's own row, not any other — so
-     * on a fresh install EVERY identity holds the ruled `'none'` and `propose_agent_rules`
-     * refuses every caller. ⚠️ **That is why the `rules` field's description names no sibling
-     * verb**: a clause sending a caller there would send it to a refusal, which is the exact shape
-     * `456` measured costing eleven of twelve live arms.
-     *
-     * ⛔ **It is also why the creating write is not gated on that column**: gating it would have
-     * shipped `HO-078` §4 dark on every install.
-     */
-    it('🔴 nothing seeds `canWriteRules`, so a fresh install holds the ruled `none` everywhere', () => {
-      const field = CAPABILITY_FIELDS.find((one) => one.key === 'canWriteRules')
-      expect(field?.ruled).toBe('none')
-    })
-
-    /**
-     * ⚠️ **The person-facing sentence this ruling made false, pinned BY NAME** (standing rules 5
-     * and 8.1).
-     *
-     * ⛔ **`canCreateAgents`' help read *"a name, and nothing else"*** and was rendered directly
-     * beside the control a person sets. ⚑ This is the repaired clause and the withdrawn one, so a
-     * later edit that quietly put the old sentence back goes red here.
-     */
-    it('⚠️ the grant’s own help says what creation now carries, and its BOUND', () => {
-      const help = CAPABILITY_FIELDS.find((one) => one.key === 'canCreateAgents')?.help ?? ''
-      expect(help).toContain('the standing rules that new agent starts with')
-      expect(help).toContain('only as it creates the agent and never again')
-      expect(help).not.toContain('a name, and nothing else')
-      // ⚑ **The control that makes the negative mean something**: the OLD sentence really is the
-      // one that would have matched.
-      expect('a name, and nothing else. It does not start that agent').toContain(
-        'a name, and nothing else',
-      )
     })
   })
 })

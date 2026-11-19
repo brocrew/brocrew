@@ -18,7 +18,6 @@ import {
   type TranscriptState,
 } from '../src/renderer/src/lib/transcript'
 import type { WindowState } from '../src/renderer/src/lib/transcript-window'
-import { CAPABILITY_FIELDS, DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import { ASKED_TO_STOP, stoppedBy } from '../src/shared/how-work-stopped'
 import {
   DEFAULT_PROFILE_ID,
@@ -75,11 +74,6 @@ const since737 = (): Promise<typeof import('../src/renderer/src/lib/stop-unanswe
 
 /* ------------------------------------------------------------------ the roster */
 
-/** ⚑ Every capability at `'default'` — nothing here reads a grant; a grant invented here would be this file's. */
-const CHOSEN = Object.fromEntries(
-  CAPABILITY_FIELDS.map((field) => [field.key, 'default']),
-) as unknown as AgentIdentity['chosen']
-
 /** ⚑ A whole roster row, as the host's `agentIdentities` hands it out. */
 const identity = (slug: string, displayName: string | null): AgentIdentity => ({
   id: `aid:${slug}`,
@@ -87,8 +81,6 @@ const identity = (slug: string, displayName: string | null): AgentIdentity => ({
   displayName,
   createdAt: AT - 86_400_000,
   createdBy: null,
-  capabilities: { ...DEFAULT_CAPABILITIES },
-  chosen: CHOSEN,
   provider: null,
   externalMcpServerIds: [],
 })

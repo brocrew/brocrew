@@ -19,7 +19,7 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { derivePieces } from '../src/shared/tasks'
 import {
@@ -1075,11 +1075,7 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
         .map((entry) => entry.event)
 
     it('🔴 a caller whose process is stopping is still the caller: create_agent and propose_agent_rules get their normal answers', async () => {
-      // ⚑ The grants, as a person gives them at the sheet: `pm` may create, and may propose rules.
       const { pm: running, pmLaunch: runningLaunch } = await aPmWithAGrant()
-      expect(
-        store.setCapabilities('pm', { canWriteRules: 'propose', canCreateAgents: 'any' }),
-      ).toBe(true)
 
       // ⚑ **The paired positive (a) · a pm that is running** gets the two answers.
       const fromRunning = await bothCallsFrom(runningLaunch, 'helper-running')
@@ -1129,15 +1125,8 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
         failedPm.pmLaunch.letCloseFinish()
       }
 
-      // ⚑ **The paired negatives (b) · the arm does not answer ok to everything.** A caller that
-      // is no conversation this host holds is refused for lack of a grant, naming no one…
-      const nobody = agentToolsFor(host, 'sess_nobody')
-      const refused = await callOn(nobody, 'create_agent', { profile_slug: 'helper-nobody' })
-      expect(refused.outcome).toBe('refused')
-      expect(refused.rail).toBe('may-not-create-agents')
-      expect((refused.detail as { you: unknown }).you).toBeNull()
-
-      // …and one that speaks as no conversation at all is told it has no piece to give from.
+      // ⚑ **The paired negative (b) · the arm does not answer ok to everything.** A caller that
+      // speaks as no conversation at all is told it has no piece to give from.
       const fromTheApp = await host.giveWork(
         {
           definition_of_done: 'The requested result and its checks are recorded.',

@@ -25,7 +25,6 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { composeProfileBundle, thisConversationSpans } from '../src/main/runtime/factory-text'
 import { messageNamingThePiece } from '../src/main/runtime/reply-rails'
 import { SPAWN_RAILS, refuse } from '../src/main/runtime/spawn-rails'
-import { MESSAGE_RAILS, refuseMessage } from '../src/main/runtime/message-rails'
 import { REPLY_RAILS, refuseReply } from '../src/main/runtime/reply-rails'
 import { QUESTION_RAILS, refuseQuestion } from '../src/main/runtime/question-rails'
 import { INTERRUPT_RAILS, refuseInterrupt } from '../src/main/runtime/interrupt-rails'
@@ -36,7 +35,6 @@ import {
   WORK_SEARCH_REFUSAL_WORDS,
   workSearchRefusal,
 } from '../src/shared/work-search-words'
-import { DEFAULT_CAPABILITIES, type ProfileCapabilities } from '../src/shared/capabilities'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
@@ -330,15 +328,13 @@ describe('what an agent is told about its work', () => {
   })
 
   describe('the tools the composed text names', () => {
-    const launchedWith = (capabilities: ProfileCapabilities | null): string =>
+    const launched = (): string =>
       `${composeProfileBundle({ configured: null })}${
         thisConversationSpans({
           profileSlug: 'somebody',
           cwd: '/w',
           startedBy: null,
-          depth: 0,
           spawningEnabled: true,
-          capabilities,
           root: 'W1',
           others: { shown: [], more: 0 },
         }).text
@@ -346,12 +342,7 @@ describe('what an agent is told about its work', () => {
 
     it('every snake_case name in the whole composed bundle is a tool this app publishes', () => {
       const named = [
-        ...new Set(
-          Array.from(
-            launchedWith(DEFAULT_CAPABILITIES).matchAll(/\b[a-z]+(?:_[a-z]+)+\b/g),
-            (found) => found[0],
-          ),
-        ),
+        ...new Set(Array.from(launched().matchAll(/\b[a-z]+(?:_[a-z]+)+\b/g), (found) => found[0])),
       ]
       const published: readonly string[] = TOOL_NAMES
       for (const name of named) {
@@ -386,12 +377,6 @@ describe('what an agent is told about its work', () => {
         rails: TOOL_REFUSALS as readonly string[],
         reason: (rail: string) => refuseTool(rail as never).reason,
         permanence: (rail: string) => refuseTool(rail as never).permanence,
-      },
-      {
-        name: 'MESSAGE_RAILS',
-        rails: MESSAGE_RAILS as readonly string[],
-        reason: (rail: string) => refuseMessage(rail as never).reason,
-        permanence: (rail: string) => refuseMessage(rail as never).permanence,
       },
       {
         name: 'REPLY_RAILS',

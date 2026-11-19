@@ -1,11 +1,14 @@
+import { callOn } from './helpers/call-agent-tool'
+import { personOpenerOverIpc } from './helpers/person-opens-session'
 import { ToolWatchingRuntime } from './lib/provider-double'
 import {
   neutralHostDeps,
   RecordingSink,
+  latestToolset,
   syntheticProviderHome,
   fixtureProviderConfig,
 } from './lib/host-fixture'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -19,22 +22,11 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { CallerIdentity } from '../src/main/runtime/runtime-host'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
-import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import {
-  CAPABILITY_FIELDS,
-  ASSIGNMENT_REACH_ADMITS,
-  MESSAGING_REACH,
-  type MessagingReach,
-  MESSAGING_REACH_ADMITS,
-  capabilityField,
-  type AnyCapabilityField,
-} from '../src/shared/capabilities'
-import { reachesWhatItDidNotStart } from '../src/main/runtime/message-rails'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { agentStateWords } from '../src/shared/agent-state'
 
-/** Read discovery remains available when messaging is narrowed. */
+/** Any agent sees, reads and messages a conversation it did not start. */
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -77,7 +69,6 @@ describe('433 §B · the agents a reach can see', () => {
     elsewhere = mkdtempSync(join(tmpdir(), 'brobot2-seeing-elsewhere-'))
     db = openDatabase(join(userData, 'brobot2.sqlite'))
     applyMigrations(db, migrationsFolder)
-    // ⛔ **Past `0013`'s own wall clock** — `a-second-project-and-the-grant.test.ts` argues why.
     clock = Date.UTC(2030, 0, 1)
     store = createSessionStore(db, tick)
     counter = 0
@@ -94,37 +85,8 @@ describe('433 §B · the agents a reach can see', () => {
     for (const dir of [userData, root, elsewhere]) rmSync(dir, { recursive: true, force: true })
   })
 
-  /** ⛔ Through the real boundary, so nothing here reaches a host method a window cannot. */
-  const ask = (command: Parameters<typeof executeRuntimeCommand>[2]): Promise<unknown> =>
-    executeRuntimeCommand(host, window, command)
-
-  /** `423`'s *New conversation as …* — a person opens a conversation as an identity. */
-  const personOpens = async (profileId: string): Promise<string> => {
-    const opened = (await ask({
-      kind: 'createSession',
-      provider: 'claude',
-      profileId,
-      approvalMode: 'ask',
-      cwd: root,
-    })) as { sessionId: string }
-    return opened.sessionId
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: string,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
-
-  const theToolsetJustHandedOut = (): AgentToolset => {
-    const last = handed.at(-1)
-    if (last === undefined) throw new Error('no toolset was handed to that launch')
-    return last
-  }
+  const personOpens = personOpenerOverIpc(() => ({ host, root, window }))
+  const theToolsetJustHandedOut = (): AgentToolset => latestToolset(handed)
 
   /** What an agent's own calls look like from outside the toolset — `agent:<its session>`. */
   const speakingAs = (sessionId: string): CallerIdentity => ({ ownerId: agentCallerId(sessionId) })
@@ -134,7 +96,7 @@ describe('433 §B · the agents a reach can see', () => {
     return listed.agents.map((one) => one.agent).sort()
   }
 
-  /** Two callers differ only in their message grant. */
+  /** Two callers, neither of which started the target. */
   const twoCallersAndOneTarget = async (): Promise<{
     brobot: string
     brobotTools: AgentToolset
@@ -147,15 +109,6 @@ describe('433 §B · the agents a reach can see', () => {
     const brobotTools = theToolsetJustHandedOut()
     const explorer = await personOpens('explorer')
     const explorerTools = theToolsetJustHandedOut()
-    // 🔴 **549 · the narrow caller is one a PERSON narrowed** (HO-058 §1) — the ruled default is
-    // `any`, so a caller left alone is not the narrow half of this pair. ⚑ **D-016 · narrowed to
-    // `none`**, the one narrower word left now `same-project` is gone — still one column, one word
-    // apart, nothing else different, which is what standing rule 3 asks of it. ⚠️ **That the DEFAULT
-    // does not refuse is measured in `two-withdrawals-open-what-was-scoped.test.ts` §4.**
-    expect(store.setCapabilities('explorer', { canMessage: 'none' })).toBe(true)
-    // ⛔ **Two callers, one grant apart, and nothing else different about them** — standing rule 3.
-    expect(store.capabilitiesOf(DEFAULT_PROFILE_ID)?.canMessage).toBe('any')
-    expect(store.capabilitiesOf('explorer')?.canMessage).toBe('none')
     expect(store.parentOf(manager)).toBeNull()
     return { brobot, brobotTools, explorer, explorerTools, manager }
   }
@@ -166,7 +119,7 @@ describe('433 §B · the agents a reach can see', () => {
 
   describe('§1 · the ruling, as two callers over one target', () => {
     /** Both readers answer for the same known conversation. */
-    it('both callers read a foreign conversation while only one may message it', async () => {
+    it('both callers read a conversation they did not start, and both may message it', async () => {
       const { brobot, brobotTools, explorer, explorerTools, manager } =
         await twoCallersAndOneTarget()
 
@@ -191,11 +144,11 @@ describe('433 §B · the agents a reach can see', () => {
           text: 'hello',
           kind: 'note',
         }),
-      ).toMatchObject({ outcome: 'refused', rail: 'may-not-message' })
+      ).toMatchObject({ outcome: 'ok', agent: manager })
     })
 
-    /** Reads report existence while messages retain their reach refusal. */
-    it('a narrow caller can read a real conversation and still cannot message it', async () => {
+    /** Reads report existence: a real conversation is read, a ghost is no-such-agent. */
+    it('a caller reads a real conversation and is told a ghost does not exist', async () => {
       const { brobot, explorer, explorerTools, manager } = await twoCallersAndOneTarget()
       const aboutTheReal = await callOn(explorerTools, 'get_agent_status', { agent: manager })
       const aboutAGhost = await callOn(explorerTools, 'get_agent_status', {
@@ -203,25 +156,15 @@ describe('433 §B · the agents a reach can see', () => {
       })
       expect(aboutTheReal).toMatchObject({ outcome: 'ok', agent: { agent: manager } })
       expect(aboutAGhost).toMatchObject({ outcome: 'refused', rail: 'no-such-agent' })
-      expect(
-        await callOn(explorerTools, 'message_agent', {
-          agent: manager,
-          text: 'anything at all',
-          kind: 'note',
-        }),
-      ).toMatchObject({ outcome: 'refused', rail: 'may-not-message', detail: { reach: 'none' } })
       const listed = await idsListedBy(explorerTools)
       expect(listed).toEqual([brobot, explorer, manager].sort())
       expect(listed).not.toContain('sess_nobody_ever_opened')
     })
 
-    /** The two callers can read known cards, while message reach stays separate. */
-    it('the card reader answers independently of the send door', async () => {
+    /** The card reader answers for every known conversation, and no-such-agent for a ghost. */
+    it('the card reader answers every known conversation for both callers', async () => {
       const { brobot, brobotTools, explorer, explorerTools, manager } =
         await twoCallersAndOneTarget()
-      // Messaging remains narrowed for explorer; the reader checks existence alone.
-      expect(host.mayReachAtAll('message', speakingAs(brobot))).toBeNull()
-      expect(host.mayReachAtAll('message', speakingAs(explorer))?.rail).toBe('may-not-message')
       const ghost = 'sess_nobody_ever_opened'
       const targets = [brobot, explorer, manager, ghost]
       for (const [who, tools] of [
@@ -236,13 +179,6 @@ describe('433 §B · the agents a reach can see', () => {
           else expect(seen, pair).toMatchObject({ outcome: 'ok', agent: { agent: target } })
         }
       }
-      expect(
-        await callOn(explorerTools, 'message_agent', {
-          agent: manager,
-          text: 'hello',
-          kind: 'note',
-        }),
-      ).toMatchObject({ outcome: 'refused', rail: 'may-not-message' })
     })
 
     /** Reader descriptions promise discovery without promising a send. */
@@ -300,18 +236,6 @@ describe('433 §B · the agents a reach can see', () => {
           kind: 'note',
         }),
       ).toMatchObject({ outcome: 'ok' })
-    })
-
-    /** The grant help states which door the choice controls. */
-    it('the grant sheet distinguishes message reach from reading', () => {
-      const field = CAPABILITY_FIELDS.find((one) => one.key === 'canMessage')
-      expect(field, 'the field this whole suite is about is gone').toBeDefined()
-      const help = field?.help ?? ''
-      expect(help).toContain('send a message to')
-      expect(help).toContain('may read conversations and named work regardless of this setting')
-      expect(capabilityField('canAssignWork').help).not.toContain(
-        'read conversations and named work',
-      )
     })
 
     /**
@@ -388,120 +312,12 @@ describe('433 §B · the agents a reach can see', () => {
         outcome: 'refused',
         rail: 'not-a-piece-you-gave',
       })
-      // ⚑ **The same call, one caller over** — the narrow identity meets the same word, because
-      // the reach is not asked at this door. ⛔ **The fixture's own return, never `handed.at(-1)`**
+      // ⚑ **The same call, one caller over** — the other identity meets the same word. ⛔ **The fixture's own return, never `handed.at(-1)`**
       // — a later launch would silently point this pair at a different caller and the refusal
       // would go on passing.
       expect(await callOn(explorerTools, 'withdraw_task', { piece: itsRoot?.label })).toMatchObject(
         { outcome: 'refused', rail: 'not-a-piece-you-gave' },
       )
-    })
-  })
-
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §4 · 449 · what the surfaces SAY about the enforcement §1 measures
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-
-  /** The model-facing grant text must describe the message gate it controls. */
-  describe('§4 · one word, two composites, and the three places that publish it', () => {
-    /**
-     * ⛔ **The MODEL's own copy of the rule, against the enforcement above** (standing rule 5).
-     *
-     * ⚑ **It is the same bytes the person's sheet draws**, which is the property that makes this
-     * one sentence rather than three that happen to agree today — `433` F8's shape, refused.
-     */
-    it('⛔ each grant a model reads names what its OWN gate asks, and the sheet says it in the same bytes', () => {
-      // ⚑ **D-016 · the sentence under test is `any`'s** — `same-project`'s, which this read first,
-      // went with the word.
-      const said = MESSAGING_REACH_ADMITS.any
-      expect(said).toContain('whoever started it')
-      // ⛔ **The roster is DERIVED from the descriptors, not typed here** — every field whose
-      // vocabulary IS this one. ⚑ A third reach grant added tomorrow goes red until both of its
-      // surfaces say what it admits, which is the whole reason `431` F8's shape keeps recurring:
-      // *a help string two hundred lines from the docblock that was already corrected.*
-      // ⚠️ **Widened to the union first**: `CAPABILITY_FIELDS` is a `const` tuple whose members
-      // have DIFFERENT types, and only some of them declare `vocabulary` at all — reading the
-      // property off the tuple does not compile, which is the tightening `374` bought deliberately.
-      //
-      // ⚑ **D-016 · by DECLARATION as well as spelling.** `same-project` was the word that told this
-      // vocabulary from `CREATION_REACH`; with it gone both spell `none|any`, and a spelling filter
-      // alone would sweep `canCreateAgents` in. ⛔ So each descriptor is read out of the source too,
-      // and a field is on THIS vocabulary when its `vocabulary` is spread from `MESSAGING_REACH`.
-      const capabilitiesSource = readFileSync(join(here, '../src/shared/capabilities.ts'), 'utf8')
-      const declaredFrom = (key: string): string | null => {
-        const at = capabilitiesSource.indexOf(`    key: '${key}',`)
-        if (at < 0) return null
-        const body = capabilitiesSource.slice(at, capabilitiesSource.indexOf('\n  },', at))
-        return /vocabulary: \[\.\.\.(\w+)\]/.exec(body)?.[1] ?? null
-      }
-      // ⚠️ **The anchor, present before it is used**: the neighbour this filter must now tell apart.
-      expect(declaredFrom('canCreateAgents')).toBe('CREATION_REACH')
-      const everyField: readonly AnyCapabilityField[] = CAPABILITY_FIELDS
-      const reachFields = everyField.filter(
-        (field) =>
-          field.vocabulary !== undefined &&
-          [...field.vocabulary].join('|') === [...MESSAGING_REACH].join('|') &&
-          declaredFrom(field.key) === 'MESSAGING_REACH',
-      )
-      // ⚑ **553 · a second field on this vocabulary, and a second composite with it** (HO-060 §2).
-      // ⛔ The whole point of this walk is that sharing `MESSAGING_REACH` is not sharing a gate;
-      // `canAssignWork` is the proof, and the loop below holds it to the same rule as
-      // `canMessage` — its own `says` table, naming both facts. ⚑ **D-014 · the interrupt grant
-      // left the vocabulary**: ending and interrupting are asked of the chain, not of a grant.
-      expect(reachFields.map((field) => field.key)).toEqual(['canMessage', 'canAssignWork'])
-      // 🔴 **553 · a TABLE, because a ternary was a comparison tested where both sides agree.**
-      // ⛔ One that picked a table by key checked any other field on this vocabulary against the
-      // MESSAGE table by default, so the walk would have passed over a field whose sentence nobody
-      // had decided. ⚑ **A named table forces the decision**: a third reach grant goes red on the
-      // equality two lines up until somebody adds a row here and says whose sentence it reads, and
-      // then `admits[word]` is `undefined` until they do — which is this test's own argument
-      // applied to itself.
-      //
-      // ⚠️ **`satisfies` and not an annotation**, because a `Record` over `CapabilityKey` would
-      // demand a row for every field including the four on other vocabularies, and one over
-      // `(typeof reachFields)[number]['key']` widens to the same thing — the union is computed
-      // from the `const` tuple and not from the filter.
-      const SAYS = {
-        canMessage: MESSAGING_REACH_ADMITS,
-        canAssignWork: ASSIGNMENT_REACH_ADMITS,
-      } satisfies Readonly<Record<string, Readonly<Record<MessagingReach, string>>>>
-      for (const field of reachFields) {
-        const admits = SAYS[field.key as keyof typeof SAYS]
-        for (const word of MESSAGING_REACH) {
-          expect(field.help, `${field.key} does not say what ${word} reaches`).toContain(
-            admits[word],
-          )
-        }
-      }
-      // 🔴 **493 · vocabulary equality is not gate equality.** Message `any` reaches a
-      // conversation this identity did not start; giving work at `any` still goes only to one it
-      // Work goes to a conversation the caller has with the agent, started when needed.
-      expect(ASSIGNMENT_REACH_ADMITS.any).not.toBe(MESSAGING_REACH_ADMITS.any)
-      expect(ASSIGNMENT_REACH_ADMITS.any).toBe(
-        'any agent — the work goes to a conversation it has with that agent, started for it when needed',
-      )
-      // ⚠️ **Non-vacuity**: a field on the OTHER two-word vocabulary does not carry these
-      // sentences, so the loop above is about this vocabulary rather than about help strings being
-      // long enough to contain anything.
-      expect(capabilityField('canCreateAgents').help).not.toContain(said)
-      // ⛔ **`none` is NOT `any`'s claim** — the two words of the one vocabulary say two things.
-      expect(MESSAGING_REACH_ADMITS.none).not.toBe(said)
-      // 🔴 **D-014 · the two tables differ at `any` and nowhere else.** ⛔ `565` gave
-      // `admitAssignment` a third arm — *an identity that accepts many callers accepts work from any
-      // caller* — and D-014 withdrew it (a shared service takes questions and notes, not work).
-      // ⚑ **What separates the two tables is `any`**, asserted above, and `none` is pinned
-      // byte-identical so a rewrite of either one arrives as a decision (D-016: `same-project`, the
-      // other word pinned here, is gone).
-      expect(ASSIGNMENT_REACH_ADMITS.none).toBe(MESSAGING_REACH_ADMITS.none)
-      // ⛔ **No word admits work by the receiver's breadth any more** — absence, on purpose.
-      for (const word of MESSAGING_REACH) {
-        expect(ASSIGNMENT_REACH_ADMITS[word], word).not.toContain('many callers')
-      }
-      expect(SAYS.canAssignWork).not.toBe(SAYS.canMessage)
-      // ⚑ **D-016 · the pair is `none` against `any` now** — it compared `none` with `same-project`.
-      expect(reachesWhatItDidNotStart('none')).toBe(false)
-      // ⚠️ **Non-vacuity for the pair above**: the one word that DOES reach past its holder.
-      expect(reachesWhatItDidNotStart('any')).toBe(true)
     })
   })
 })

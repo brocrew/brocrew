@@ -13,11 +13,6 @@ import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { TOOL_NAMES } from '../src/main/runtime/agent-tools'
-import {
-  CAPABILITY_FIELDS,
-  DEFAULT_CAPABILITIES,
-  capabilityField,
-} from '../src/shared/capabilities'
 import { HUMAN_NAMES } from '../src/shared/human-names'
 import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
@@ -60,12 +55,6 @@ const NOTHING_INJECTED: SessionInstructions = {
  * agent; BroBot's only seeded grant was `project-manager`, so *"create another agent"* had exactly
  * one legal answer — the identity already running — and the product reached for the illegitimate
  * one and ended a live conversation. ⛔ **The rail was not wrong. This capability was missing.**
- *
- * ## ⚑ The property this file measures
- *
- * > **An identity can be brought into existence — by a person, and by an agent that holds the
- * > grant — without launching anything. And `give_work` still refuses an unknown slug** unless the
- * > giver asks for a new agent (D-016 · R3).
  *
  * ⚠️ **Real host, real SQLite ledger, real migrations, real rails.** The only double is the
  * provider, which records the toolset each launch was handed — so every refusal below is the
@@ -171,7 +160,6 @@ describe('419 · creating an agent, and the provider it runs on', () => {
     return (await tool.call(args)).structured as Record<string, unknown>
   }
 
-  /** ⚑ A session whose identity holds the creation grant, and the toolset it was handed. */
   const anAgentThatMayCreate = async (): Promise<AgentToolset> => {
     await personOpens(DEFAULT_PROFILE_ID)
     return toolsOfLastLaunch()
@@ -207,7 +195,7 @@ describe('419 · creating an agent, and the provider it runs on', () => {
       expect(rows('SELECT id FROM provider_session')).toEqual([])
     })
 
-    it('🔴 an AGENT that holds the grant creates one, through the tool, and nothing starts', async () => {
+    it('🔴 an AGENT creates one, through the tool, and nothing starts', async () => {
       const tools = await anAgentThatMayCreate()
       const launchesBefore = handed.length
       const answer = await callOn(tools, 'create_agent', { profile_slug: 'archivist' })
@@ -261,12 +249,14 @@ describe('419 · creating an agent, and the provider it runs on', () => {
         'ok',
       )
 
-      const again = await callOn(tools, 'create_agent', { profile_slug: 'worker' })
-      expect(again['rail']).toBe('agent-name-taken')
-      expect(again['detail']).toEqual({ agent: 'worker' })
+      const create = tools.tools.find((one) => one.name === 'create_agent')!
+      const again = await create.call({ profile_slug: 'worker' })
+      expect(again.text).toMatch(/^Not sent: there is already an agent with that name/)
+      expect(again.structured?.['rail']).toBe('agent-name-taken')
+      expect(again.structured?.['detail']).toEqual({ agent: 'worker' })
       // ⛔ **Permanent, because it is a fact about the CALL rather than about the world.**
-      expect(again['permanence']).toBe('permanent')
-      expect(again['retryable']).toBe(false)
+      expect(again.structured?.['permanence']).toBe('permanent')
+      expect(again.structured?.['retryable']).toBe(false)
 
       // ⚑ **One letter over, and it is allowed** — so the refusal is about the name and not about
       // creating.
@@ -350,29 +340,36 @@ describe('419 · creating an agent, and the provider it runs on', () => {
   })
 
   // ─────────────────────────────────────────────────────────────────────────────────────────────
-  // §3 · the capability
+  // §3 · who may create, and who it records
   // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-  describe('§3 · its own grant, and nobody else is given it', () => {
-    it('⛔ an identity without the grant is refused, and the same call one grant over is not', async () => {
-      await personOpens('explorer')
-      const unentitled = toolsOfLastLaunch()
-      // ⚠️ Every agent holds the grant by default (D-014), so a person narrows it first.
-      store.setCapabilities('explorer', { canCreateAgents: 'none' })
-      const refused = await callOn(unentitled, 'create_agent', { profile_slug: 'archivist' })
+  describe('§3 · any agent creates, and the new identity names its creator', () => {
+    it.each([
+      { when: 'running conversation', name: 'Explorer', profile: 'explorer' },
+      { when: 'new conversation', name: DEFAULT_PROFILE_ID, profile: DEFAULT_PROFILE_ID },
+    ])(
+      'a $when creates with the retired grant set to none and records its folded profile',
+      async ({ when, name, profile }) => {
+        await personOpens(name)
+        db.prepare("UPDATE agent_identity SET can_create_agents = 'none' WHERE slug = ?").run(
+          profile,
+        )
+        if (when === 'new conversation') await personOpens(name)
+        expect(identityRow(profile)?.['can_create_agents']).toBe('none')
 
-      expect(refused['rail']).toBe('may-not-create-agents')
-      expect(refused['permanence']).toBe('until-a-person-changes-it')
-      expect(refused['retryable']).toBe(false)
-      expect(identityRow('archivist')).toBeUndefined()
-
-      // ⚑ **One grant over, measured at the same moment** — the same conversation, the same call,
-      // and the only thing that changed is the column a person owns.
-      store.setCapabilities('explorer', { canCreateAgents: 'any' })
-      expect(
-        (await callOn(unentitled, 'create_agent', { profile_slug: 'archivist' }))['outcome'],
-      ).toBe('ok')
-    })
+        const tools = toolsOfLastLaunch()
+        const answer = await callOn(tools, 'create_agent', { profile_slug: 'archivist' })
+        expect(answer['outcome'], JSON.stringify(answer)).toBe('ok')
+        expect(store.agentIdentityOf('archivist')?.createdBy).toEqual({
+          by: 'an-agent',
+          agent: profile,
+        })
+        const roster = await callOn(tools, 'list_profiles', {})
+        expect(roster['profiles']).toEqual(
+          expect.arrayContaining([expect.objectContaining({ profile: 'archivist' })]),
+        )
+      },
+    )
 
     it('⛔ the kill switch refuses a creation, and the refusal says a person has to change it', async () => {
       const tools = await anAgentThatMayCreate()
@@ -394,48 +391,29 @@ describe('419 · creating an agent, and the provider it runs on', () => {
       )
     })
 
-    it('🔴 a caller this host can no longer find holds NOTHING, and is refused', async () => {
-      // ⛔ **A toolset outlives the conversation it was built for.** `agentToolsFor` closes over the
-      // session id, and a call that arrives after the slot has gone — a tool call racing a close —
-      // reaches a host that cannot say who is asking.
+    it('⚑ a toolset that outlives its conversation creates as the profile that conversation’s record names', async () => {
+      // A tool call racing a close reaches a host with no live slot; the recorded conversation
+      // still says which profile it ran as, and that is the creator recorded.
       const sessionId = await personOpens(DEFAULT_PROFILE_ID)
       const tools = toolsOfLastLaunch()
       await host.close(sessionId, window)
 
-      const refused = await callOn(tools, 'create_agent', { profile_slug: 'archivist' })
-      // ⚑ **Refused for lack of a GRANT, which is the narrow direction rather than a lie**: a
-      // session this host cannot find holds no capabilities at all, and *we cannot tell who is
-      // asking* has exactly one safe reading.
-      expect(refused['rail']).toBe('may-not-create-agents')
-      expect(refused['detail']).toEqual({ you: null })
-      expect(identityRow('archivist')).toBeUndefined()
+      const answer = await callOn(tools, 'create_agent', { profile_slug: 'archivist' })
+      expect(answer['outcome']).toBe('ok')
+      expect(store.agentIdentityOf('archivist')?.createdBy).toEqual({
+        by: 'an-agent',
+        agent: DEFAULT_PROFILE_ID,
+      })
     })
 
-    it('⛔ the switch is asked BEFORE the grant, so an unentitled caller learns nothing about itself', async () => {
-      await personOpens('explorer')
-      const unentitled = toolsOfLastLaunch()
-      store.setCapabilities('explorer', { canCreateAgents: 'none' })
-      host.setSpawningEnabled(false)
-      // ⚠️ Both facts are true of this call — the switch is off AND the caller holds nothing — and
-      // the rail it meets is the app-wide one, which says nothing about the caller.
-      expect(
-        (await callOn(unentitled, 'create_agent', { profile_slug: 'archivist' }))['rail'],
-      ).toBe('spawning-disabled')
-    })
-
-    it('⚑ nothing is SEEDED at creation: BroBot and every other identity hold the one default set', async () => {
-      // 🔴 **D-014 · one set of grants, the same for every agent.** ⛔ No row is written with a
-      // grant in it: the column stays NULL, and NULL reads as the ruled default.
-      expect(capabilityField('canCreateAgents').ruled).toBe('any')
+    it('⚑ a launch mints only its own identity: a fresh install ships one agent', async () => {
       await personOpens(DEFAULT_PROFILE_ID)
-      expect(identityRow(DEFAULT_PROFILE_ID)?.['can_create_agents']).toBeNull()
-      expect(store.capabilitiesOf(DEFAULT_PROFILE_ID)).toEqual(DEFAULT_CAPABILITIES)
+      expect(identityRow(DEFAULT_PROFILE_ID)).toBeDefined()
       // 🔴 **584 · that launch used to mint the project manager as well, and it does not any more**
       // (`HO-078` §1). ⚑ **The absence is ASSERTED rather than stepped over**, because *a fresh
       // install ships one agent* is the ruling this line is the local witness of.
       expect(identityRow(PROJECT_MANAGER_PROFILE_ID)).toBeUndefined()
-      // ⚑ **So a PERSON brings it into being** — `HO-078` §3.1's own shape — and it holds exactly
-      // what BroBot holds.
+      // ⚑ **So a PERSON brings it into being** — `HO-078` §3.1's own shape.
       expect(
         store.createAgentIdentity(
           { slug: PROJECT_MANAGER_PROFILE_ID, displayName: null, provider: null },
@@ -443,47 +421,9 @@ describe('419 · creating an agent, and the provider it runs on', () => {
         ),
         'the identity this app used to ship and a person now creates',
       ).not.toBeNull()
-      expect(identityRow(PROJECT_MANAGER_PROFILE_ID)?.['can_create_agents']).toBeNull()
-      expect(store.capabilitiesOf(PROJECT_MANAGER_PROFILE_ID)).toEqual(DEFAULT_CAPABILITIES)
-      // ⚑ **And an identity a launch brings into being, one door over**, holds the same.
-      await personOpens('archivist')
-      expect(identityRow('archivist')?.['can_create_agents']).toBeNull()
-      expect(store.capabilitiesOf('archivist')).toEqual(DEFAULT_CAPABILITIES)
-    })
-
-    it('🔴 a person narrowing the grant is NOT re-granted by the next launch', async () => {
-      await host.close(await personOpens(DEFAULT_PROFILE_ID), window)
-      store.setCapabilities(DEFAULT_PROFILE_ID, { canCreateAgents: 'none' })
-      await personOpens(DEFAULT_PROFILE_ID)
-
-      // ⛔ Standing rule 11: the app never re-grants what a person removed — the launch's
-      // `INSERT OR IGNORE` writes no grant, and never over a row that exists.
-      expect(identityRow(DEFAULT_PROFILE_ID)?.['can_create_agents']).toBe('none')
-      expect(
-        (await callOn(toolsOfLastLaunch(), 'create_agent', { profile_slug: 'archivist' }))['rail'],
-      ).toBe('may-not-create-agents')
-    })
-
-    it('⚠️ a word this app cannot read never reaches the column — the database refuses it', async () => {
-      await personOpens(DEFAULT_PROFILE_ID)
-      // ⚑ **The DIRECTION is observable on this field** (D-014): `ruled` is `'any'` and `narrowest`
-      // is `'none'`, so a value that widened and one that narrowed would disagree.
-      const field = capabilityField('canCreateAgents')
-      expect(field.ruled).not.toBe(field.narrowest)
-      expect(store.capabilitiesOf(DEFAULT_PROFILE_ID)?.canCreateAgents).toBe(field.ruled)
-      // 🔴 **D-016 · R6 — re-aimed from the fold to the CHECK.** The column's CHECK is built from
-      // this field's own vocabulary, so a word outside it is refused where it is written, and the
-      // row keeps what it said.
-      const write = (word: string) =>
-        db
-          .prepare('UPDATE agent_identity SET can_create_agents = ? WHERE slug = ?')
-          .run(word, DEFAULT_PROFILE_ID)
-      expect(() => write('everything')).toThrow(/agent_identity_can_create_agents_ck/)
-      expect(identityRow(DEFAULT_PROFILE_ID)?.['can_create_agents']).toBeNull()
-      expect(store.capabilitiesOf(DEFAULT_PROFILE_ID)?.canCreateAgents).toBe(field.ruled)
-      // ⚑ **The pair, one word over**: a word of the vocabulary lands, and reads as written.
-      write(field.narrowest)
-      expect(store.capabilitiesOf(DEFAULT_PROFILE_ID)?.canCreateAgents).toBe(field.narrowest)
+      expect(store.agentIdentityOf(PROJECT_MANAGER_PROFILE_ID)?.createdBy).toEqual({
+        by: 'a-person',
+      })
     })
   })
 
@@ -611,20 +551,6 @@ describe('419 · creating an agent, and the provider it runs on', () => {
       expect(refusalsIn(me).map((one) => `${one.tool}:${one.rail}`)).toEqual([
         'create_agent:malformed-request',
       ])
-    })
-  })
-
-  // ─────────────────────────────────────────────────────────────────────────────────────────────
-  // §6 · the migration
-  // ─────────────────────────────────────────────────────────────────────────────────────────────
-
-  // ⚑ **D-016 · the one migration** — `0026`'s journal order and its seed on a database created at
-  // `0025` lost their subject when every migration became `0000_the_tree.sql`; the schema stands.
-  describe('§6 · the capability columns, in the one migration', () => {
-    it('⛔ the capability schema and the columns it names still agree', () => {
-      const columns = rows('PRAGMA table_info(agent_identity)').map((one) => one['name'])
-      for (const field of CAPABILITY_FIELDS) expect(columns).toContain(field.column)
-      expect(columns).toContain('provider')
     })
   })
 })

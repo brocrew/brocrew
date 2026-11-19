@@ -1,4 +1,5 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { chainAbove } from './helpers/conversation-ancestry'
 import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -251,9 +252,9 @@ describe('D-024 · a profile reads across its own conversations', () => {
       'ali',
       'ali',
     ])
-    expect(store.ancestorsOf(ali1)).toEqual([])
-    expect(store.ancestorsOf(ali2)).toEqual([])
-    expect(store.ancestorsOf(ali3)).toEqual([pm])
+    expect(chainAbove(store, ali1)).toEqual([])
+    expect(chainAbove(store, ali2)).toEqual([])
+    expect(chainAbove(store, ali3)).toEqual([pm])
     expect(store.identityOf(strayA)).toBeNull()
     expect(store.identityOf(strayB)).toBeNull()
 
@@ -336,16 +337,6 @@ describe('D-024 · a profile reads across its own conversations', () => {
     })
     expect([ali1, ali2, bob, strayA, strayB].map((id) => store.events(id))).toEqual(afterRefusals)
 
-    // A narrowed message grant still refuses sending while the same reader can inspect.
-    expect(store.setCapabilities('ali', { canMessage: 'none' })).toBe(true)
-    const bobBeforeMessage = store.events(bob)
-    const denied = await callOn(ali2, 'message_agent', {
-      agent: bob,
-      kind: 'note',
-      text: 'this must not be sent',
-    })
-    expect(denied).toMatchObject({ outcome: 'refused', rail: 'may-not-message' })
-    expect(store.events(bob)).toEqual(bobBeforeMessage)
     for (const agent of [bob, rootLabelOf(bob)]) {
       const read = await callFull(ali2, 'read_transcript', { agent })
       expect(read.structured, read.text).toMatchObject({ outcome: 'ok', agent: bob })

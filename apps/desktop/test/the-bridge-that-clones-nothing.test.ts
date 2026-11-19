@@ -7,9 +7,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { reactive, ref } from 'vue'
 import { createAgentStore } from '../src/renderer/src/lib/agent-store'
 import { createSessionStore } from '../src/renderer/src/lib/session-store'
-import { DEFAULT_CAPABILITIES, type CapabilityGrant } from '../src/shared/capabilities'
 import { NOT_THE_WIRE, asTheWireWouldCarry, everythingOverTheWire } from './lib/the-wire'
-import type { AgentIdentities, RuntimeBridge, RuntimeCommandKind } from '../src/shared/runtime-ipc'
+import { agentRosterForWire } from './lib/agent-roster-fixture'
+import type { RuntimeBridge, RuntimeCommandKind } from '../src/shared/runtime-ipc'
 import { storageBridge } from '../src/preload/storage'
 import { STORAGE_CHANNELS, type CacheClearState } from '../src/shared/storage'
 
@@ -39,13 +39,13 @@ describe('§1 · the clone can fail, and it says where (361 §2)', () => {
     ['a `ref` holding an object, read through `.value`', () => ref({ provider: 'codex' }).value],
     ['a `ref` holding an array, read through `.value`', () => ref(['worker']).value],
     ['a member of a `reactive(new Map())`', () => reactive(new Map([['k', { a: 1 }]])).get('k')],
-    ['a proxy nested one level down', () => ({ grant: reactive({ canMessage: 'any' }) })],
+    ['a proxy nested one level down', () => ({ target: reactive({ of: 'cwd' }) })],
     ['a proxy inside an array', () => ({ attachments: [reactive({ path: '/a' })] })],
     ['a function', () => ({ onDone: (): void => {} })],
   ] as const
 
   it.each(REFUSED)('🔴 refuses %s', (_what, build) => {
-    expect(() => asTheWireWouldCarry('setCapabilities', build())).toThrow(
+    expect(() => asTheWireWouldCarry('revealPath', build())).toThrow(
       /would not survive ipcRenderer\.invoke/,
     )
   })
@@ -61,13 +61,13 @@ describe('§1 · the clone can fail, and it says where (361 §2)', () => {
     ['a copy of what a `ref` holds', () => ({ ...ref({ provider: 'codex' }).value })],
     ['a copy of an array a `ref` holds', () => [...ref(['worker']).value]],
     ['a copy of a map member', () => ({ ...reactive(new Map([['k', { a: 1 }]])).get('k') })],
-    ['a plain value one level down', () => ({ grant: { canMessage: 'any' } })],
+    ['a plain value one level down', () => ({ target: { of: 'cwd' } })],
     ['plain members of an array', () => ({ attachments: [{ path: '/a' }] })],
     ['no function at all', () => ({ onDone: 'done' })],
   ] as const
 
   it.each(CARRIED)('⚑ carries %s', (_what, build) => {
-    expect(() => asTheWireWouldCarry('setCapabilities', build())).not.toThrow()
+    expect(() => asTheWireWouldCarry('revealPath', build())).not.toThrow()
   })
 
   it('⚠️ names a `ref` as a `ref`, because the fix for one is not the fix for the other', () => {
@@ -152,9 +152,6 @@ type VerbRow =
  * Classify actual caller construction, not declared payload types: a two-string object can still
  * arrive wrapped in a Vue proxy, as cancellation did. Type-shaped enumeration would miss it.
  */
-/** ⚑ The line in `CapabilitiesSheet.grant()` that builds each field of the grant. */
-const THE_SHEETS_GRANT = '[field.key, set[field.key] === true ? value[field.key] : null]'
-
 const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
   skills: {
     how: 'handed-over',
@@ -378,31 +375,17 @@ const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
       },
     ],
   },
-  setCapabilities: {
-    how: 'handed-over',
-    note:
-      '🔴 THE VERB `355` FIXED, and `plain-by-construction` here would re-open the hole it closed. ' +
-      '`agentStore.save` writes the wrapper `{ profileId, grant }` itself, but `grant` ' +
-      'is handed in whole: `CapabilitiesSheet.grant()` builds a FRESH object with ' +
-      '`Object.fromEntries`, each field `value[field.key]` read out of a `reactive({})`, or ' +
-      '`null`. ⚑ Every capability value is a number or a word, so what it reads out is a ' +
-      'primitive. ⛔ Handing the reactive itself, or a field whose value is an array or an ' +
-      'object, crosses as a Proxy and throws at the bridge. ⚑ Measured rather than read: §7 ' +
-      'drives the store over a wire, with the proxy planted back.',
-    producers: [
-      {
-        at: 'src/renderer/src/components/CapabilitiesSheet.vue',
-        builds: THE_SHEETS_GRANT,
-      },
-    ],
-  },
+  // ⛔ **`plain-by-construction` on both halves**: `agentStore.saveExternalMcpServers` writes
+  // `{ profileId, externalMcpServerIds: [...ids] }` itself — a string and a FRESH array it spreads at
+  // the call, so a reactive list the sheet holds never reaches the wire. §7 drives that.
+  setExternalMcpServers: { how: 'plain-by-construction' },
   revealPath: {
     how: 'handed-over',
     note:
       '⚑ THE VERB `356` ADDED, and `plain-by-construction` here is the wrong answer that compiles ' +
       '(365). `session-store.revealPath` writes the wrapper `{ sessionId, target }` itself — but ' +
       '`target` is a `SessionPathTarget`, an OBJECT handed in whole, which is the half ' +
-      '`setCapabilities` fails. All four producers are literals written at the press: `{ of: ' +
+      '`setSessionSetting` and `respondPermission` share. All four producers are literals written at the press: `{ of: ' +
       "'cwd' }`, `{ of: 'home' }` and `{ of: 'config-file', name: file.name }` in `SessionInfo`, " +
       "and `{ of: 'instruction-source', index }` in `SessionInstructions`. 🔴 A proxy here would " +
       'be SILENT rather than loud — the store catches and answers `no-path`, which the panel ' +
@@ -501,7 +484,7 @@ const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
   // ⚑ **516 · the registry's two writes** (HO-040 §4.2). ⛔ **`plain-by-construction`, and they earn
   // the label on BOTH halves** (363, 365): the preload builds the outer literal itself
   // (`{ kind, ...input }`), and every field it did not build — `name`, `url`, `serverId` — is a
-  // string however it was read. ⚠️ **`createAgent` above is the shape, not `setCapabilities`**: what
+  // string however it was read. ⚠️ **`createAgent` above is the shape, not `revealPath`**: what
   // makes a row `handed-over` is a field somebody ELSE made, and three strings are not one. ⛔ **Not
   // `nothing` either** — both carry a payload, unlike the queue verbs.
   //
@@ -520,9 +503,8 @@ const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
   agentIdentities: { how: 'nothing' },
   // 433. ⛔ **`plain-by-construction`, and it earns the label on BOTH halves** (363, 365): the
   // preload builds the outer literal itself (`{ kind, ...input }`), and every field it did not build
-  // — `profileId`, `provider` — is a `string | null`. ⚑ It is `setSpawningEnabled`'s shape below
-  // rather than `setCapabilities`' above: the grant is an OBJECT somebody else made, which is what
-  // makes that row the one `handed-over` in this neighbourhood, and a provider is a word.
+  // — `profileId`, `provider` — is a `string | null`. ⚑ It is `setSpawningEnabled`'s shape below:
+  // a provider is a word.
   setAgentProvider: { how: 'plain-by-construction' },
   // 558. ⛔ **`plain-by-construction`, and it earns the label on both halves for
   // `setAgentProvider`'s reason directly above**: the preload builds `{ kind, ...input }` itself,
@@ -557,7 +539,7 @@ const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
   // builds `{ kind, ...input }` itself, and the four fields it did not build — `profileId`,
   // `provider`, `model`, `effort` — are each a `string | null`. ⚠️ **Flat ON PURPOSE**: a nested
   // `choice` object would have been a field this call site did not build, and the row would be
-  // `handed-over` with `setCapabilities`.
+  // `handed-over`.
   setAgentModelAndEffort: { how: 'plain-by-construction' },
   // 677. ⛔ **`plain-by-construction` and not `nothing`**: one string, `agentInstructions`' shape.
   agentModelAndEffort: { how: 'plain-by-construction' },
@@ -631,7 +613,7 @@ const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
   // 500. ⛔ **`plain-by-construction`, and it earns the label on BOTH halves** (363, 365): the
   // preload builds the outer literal itself (`{ kind, ...input }`), `agent-store.ts` writes
   // `{ mode }` at its own call site, and `mode` is a WORD — a primitive however it was read.
-  // ⚠️ **`setSpawningEnabled` above is the shape, not `setCapabilities`**: the thing that makes a
+  // ⚠️ **`setSpawningEnabled` above is the shape, not `revealPath`**: the thing that makes a
   // row `handed-over` is a field somebody ELSE made, and a two-member union is not one. ⛔ It is
   // also the reason `ipc.ts` takes a `z.enum` rather than a `z.string()` — the vocabulary is this
   // app's own code on both sides of the wire.
@@ -1123,77 +1105,33 @@ describe('§6 · every double the renderer store runs on is a wire (361 §2)', (
   })
 })
 
-/* ---------------------- §7 · the three verbs `355` added, measured rather than labelled (363) */
+/* ------------------------------ §7 · the agent store's three verbs, measured rather than labelled (363) */
 
 /**
- * 🔴 **`355` and `361` were built in parallel off one base and neither could see the other**, so
- * `agentIdentities`, `setCapabilities` and `setSpawningEnabled` reached the table above by way of a
- * compile error on the merge. ⛔ **The table cannot earn their rows on its own** — §2 says in as
- * many words that it records how a call site builds its payload TODAY and is not a guard — and two
- * of the three carry the value 84 other rows carry. This section is what those two are worth.
- *
- * ⚠️ **That number said 38 and had said 38 since `363`** — through `419`, `433`, `438`, `441` and
- * `462`, each of which moved the first number and moved the two sentences beside the assertion and
- * not this one. ⛔ It is corrected here by `510` because `510` moved the number again, and it is
- * recorded rather than quietly fixed: a sentence three sections away from the assertion it quotes
- * is exactly where `a-number-can-survive-the-death-of-its-derivation` keeps happening.
- *
- * ⚠️ **`setCapabilities` is the verb `355` FIXED**, and `plain-by-construction` for it would have
- * been a label that agreed with itself: the sheet's `grant()` is what makes the payload cloneable,
- * and a table that called the wrapper plain would have gone green with the fix removed. ⛔ Here it
- * does not: the proxy is planted back and the store answers with the wire's own sentence.
+ * 🔴 **The table cannot earn its rows on its own** — §2 says in as many words that it records how a
+ * call site builds its payload TODAY and is not a guard. This section drives the agent store's three
+ * verbs over the wire.
  *
  * ⚑ **The store, not a component.** `createAgentStore` takes the bridge as an argument — the shape
  * `session-store.ts` has — so the three call sites can be driven in the node project with the wire
  * in the middle, which is where `361` put every other renderer store's double.
  */
 
-const A_ROW: AgentIdentities = {
-  identities: [
-    {
-      id: 'aid:pm',
-      slug: 'pm',
-      displayName: null,
-      createdAt: 1_700_000_000_000,
-      // ⚑ **598 · who brought it into being** — null is *nobody recorded it*; see `AgentIdentity.createdBy`.
-      createdBy: null,
-      provider: null,
-      // ⚑ **516** — presence IS the grant, so an empty list is *granted none*, not *not chosen*.
-      externalMcpServerIds: [],
-      capabilities: DEFAULT_CAPABILITIES,
-      chosen: {
-        maxDepth: 'default',
-        canMessage: 'default',
-        canAssignWork: 'default',
-        canCreateAgents: 'default',
-        // ⚑ **582 · nobody has chosen**, like every other field on this row.
-        canWriteRules: 'default',
-      },
-    },
-  ],
-  foldersWithoutARow: [],
-  use: [],
-  spawningEnabled: true,
-  // 500 · required on `AgentIdentities`; this row is the wire's, and the launch default rides it.
-  defaultApprovalMode: 'ask',
-  // ⚑ **516** — the global registry, carried on the same read; empty is a real answer.
-  externalMcpServers: [],
-}
-
 /** A store over a bridge whose every verb crosses the wire, and the payloads that got through. */
 function agentStoreOverTheWire(): {
   store: ReturnType<typeof createAgentStore>
   seen: { verb: string; input: unknown }[]
 } {
+  const roster = agentRosterForWire()
   const seen: { verb: string; input: unknown }[] = []
   const bridge = everythingOverTheWire({
     agentIdentities: async (input: unknown) => {
       seen.push({ verb: 'agentIdentities', input })
-      return A_ROW
+      return roster
     },
-    setCapabilities: async (input: unknown) => {
-      seen.push({ verb: 'setCapabilities', input })
-      return A_ROW.identities[0] ?? null
+    setExternalMcpServers: async (input: unknown) => {
+      seen.push({ verb: 'setExternalMcpServers', input })
+      return roster.identities[0] ?? null
     },
     setSpawningEnabled: async (input: unknown) => {
       seen.push({ verb: 'setSpawningEnabled', input })
@@ -1203,85 +1141,43 @@ function agentStoreOverTheWire(): {
   return { store: createAgentStore(bridge), seen }
 }
 
-const PLAIN_GRANT: CapabilityGrant = {
-  maxDepth: 4,
-  canMessage: 'none',
-  canAssignWork: null,
-  canCreateAgents: null,
-  canWriteRules: null,
-}
-
-describe('§7 · the agent store crosses a wire, and one of its three verbs can be broken (363)', () => {
+describe('§7 · the agent store crosses a wire (363)', () => {
   it('⚑ all three payloads survive the clone, and each arrives as a COPY', async () => {
     const { store, seen } = agentStoreOverTheWire()
     await store.load()
-    // ⚑ **516 · the third argument is the COMPLETE set of registered servers**, and empty is the
-    // sample that changes nothing: it is what every identity holds until somebody ticks a box.
-    expect(await store.save('pm', PLAIN_GRANT, [])).toBeNull()
+    const ids = ['ems:docs']
+    expect(await store.saveExternalMcpServers('pm', ids)).toBeNull()
     expect(await store.setSpawning(false)).toBeNull()
 
-    // ⛔ `save` re-reads, so `agentIdentities` is here twice — the order is the store's, not this
+    // ⛔ the save re-reads, so `agentIdentities` is here twice — the order is the store's, not this
     // test's, and pinning it is what would notice a save that stopped refreshing the list.
     expect(seen.map(({ verb }) => verb)).toEqual([
       'agentIdentities',
-      'setCapabilities',
+      'setExternalMcpServers',
       'agentIdentities',
       'setSpawningEnabled',
     ])
-    // ⚑ **`undefined` since 369, and that is the strongest reading of the `nothing` row**: the
-    // store calls `bridge.agentIdentities()` with no argument at all, so the far side is handed
-    // nothing rather than an empty wrapper. ⛔ Asserted rather than skipped — a verb whose row says
-    // `nothing` must be SHOWN to send nothing, or the row is a label. `seen` proves the call
-    // happened; this proves what it carried.
+    // ⚑ The store calls `bridge.agentIdentities()` with no argument at all, so the far side is
+    // handed nothing rather than an empty wrapper.
     expect(seen[0]).toBeDefined()
     expect(seen[0]?.input).toBeUndefined()
-    expect(seen[1]?.input).toEqual({
-      profileId: 'pm',
-      grant: PLAIN_GRANT,
-      externalMcpServerIds: [],
-    })
+    expect(seen[1]?.input).toEqual({ profileId: 'pm', externalMcpServerIds: ['ems:docs'] })
     expect(seen[3]?.input).toEqual({ enabled: false })
     // ⚠️ The half that says this really went over a wire rather than past one: the far side holds a
     // copy. Without it every assertion above would pass just as well against a passthrough.
-    expect((seen[1]?.input as { grant: unknown }).grant).not.toBe(PLAIN_GRANT)
+    expect((seen[1]?.input as { externalMcpServerIds: unknown }).externalMcpServerIds).not.toBe(ids)
   })
 
   /**
-   * 🔴 **The plant, and it is `355`'s own defect put back.** `value` in `CapabilitiesSheet` is a
-   * `reactive({})`, so a grant that IS that state, rather than `grant()`'s fresh object, crosses as
-   * a Proxy. ⛔ **This is what makes `setCapabilities`'s `handed-over` row a measurement**: the
-   * wrapper is an object literal `agent-store.ts` writes itself, and the payload is refused anyway.
+   * ⚑ **What the `plain-by-construction` row claims, driven.** The sheet keeps its ticked servers in
+   * reactive state; the store spreads them into a fresh array, so the list crosses.
    */
-  it('🔴 a grant that is the sheet’s reactive state is refused, naming the field', async () => {
+  it('⚑ a server list that is reactive state still crosses, because the store copies it', async () => {
     const { store, seen } = agentStoreOverTheWire()
-    const editing = reactive<Record<string, unknown>>({ ...PLAIN_GRANT })
-    const refusal = await store.save('pm', editing as unknown as CapabilityGrant, [])
-    expect(refusal).toContain('would not survive ipcRenderer.invoke')
-    expect(refusal).toContain('grant is a Vue reactive Proxy')
-    expect(refusal).toContain('setCapabilities')
-    expect(seen, 'the wire delivered a payload the shipped app would have refused').toEqual([])
-  })
-
-  /**
-   * ⚑ **The paired positive, one fact over** — the same state read field by field into a fresh
-   * object, which is what the sheet's `grant()` really does.
-   */
-  it('⚑ …and the same grant built fresh out of the proxy is delivered', async () => {
-    const { store, seen } = agentStoreOverTheWire()
-    const editing = reactive<Record<string, unknown>>({ ...PLAIN_GRANT })
-    const fresh = Object.fromEntries(Object.keys(PLAIN_GRANT).map((key) => [key, editing[key]]))
-    expect(await store.save('pm', fresh as unknown as CapabilityGrant, [])).toBeNull()
-    expect(seen.map(({ verb }) => verb)).toEqual(['setCapabilities', 'agentIdentities'])
-    // ⛔ …and it arrived whole. A pair that only counted the calls would be satisfied by a wire
-    // that carried an empty grant, which is the shape `355` reported: two fields save, two do not.
-    expect(seen[0]?.input).toEqual({
-      profileId: 'pm',
-      grant: PLAIN_GRANT,
-      // ⚑ **516 · the third field the wrapper carries**, and `toEqual` over the WHOLE payload is
-      // what makes it visible: a version of this assertion written as `toMatchObject` would have
-      // let a field arrive on the wire with nothing in this file saying so.
-      externalMcpServerIds: [],
-    })
+    const ticked = reactive(['ems:docs'])
+    expect(await store.saveExternalMcpServers('pm', ticked)).toBeNull()
+    expect(seen.map(({ verb }) => verb)).toEqual(['setExternalMcpServers', 'agentIdentities'])
+    expect(seen[0]?.input).toEqual({ profileId: 'pm', externalMcpServerIds: ['ems:docs'] })
   })
 })
 
@@ -1298,7 +1194,7 @@ describe('§7 · the agent store crosses a wire, and one of its three verbs can 
  *    into the list the provider itself reported rather than a path, so the payload is a string and
  *    a number and there is no shape for a proxy to hide in.
  *  - `revealPath` sends `{ sessionId, target }`, and `target` is an OBJECT the store did not build.
- *    That is `setCapabilities`'s half of the rule, so it is `handed-over`.
+ *    That is the half of the rule that makes a row `handed-over`.
  *
  * 🔴 **And the consequence is worse here than at any of the four sites `361` found.** Every one of
  * those was LOUD: a read error on screen, a turn that never started, two fields that would not save,
@@ -1446,7 +1342,6 @@ describe('§9 · every handed-over verb names its producers, and they exist (473
       'respondUserInput',
       'revealPath',
       'searchWork',
-      'setCapabilities',
       'setSessionSetting',
       'skills',
     ])
@@ -1460,6 +1355,6 @@ describe('§9 · every handed-over verb names its producers, and they exist (473
     // producer, and a missing one is invisible to every assertion that walks the list it is not in.
     // ⚑ UI-012 · `setSessionSetting`'s one producer became two: the picker's model, then its effort.
     // ⚑ …and three: plan mode is built where the agent card asks for it, not relayed from a tab.
-    expect(handed.reduce((so, [, entry]) => so + entry.producers.length, 0)).toBe(18)
+    expect(handed.reduce((so, [, entry]) => so + entry.producers.length, 0)).toBe(17)
   })
 })

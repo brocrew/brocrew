@@ -1,7 +1,6 @@
 import { NOTHING_HAS_ARRIVED, type WhatIsBeingDone } from '../../src/shared/what-is-being-done'
 import type { AgentIdentities, ResumableSessionInfo } from '../../src/shared/runtime-ipc'
 import type { AgentStore } from '../../src/renderer/src/lib/agent-store'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 
 export const NOW = 1800000000000
 const RECIPE_ID = 'aid:recipe-worker'
@@ -50,14 +49,6 @@ export function identities(count = 3): AgentIdentities {
         createdBy: null,
         provider: 'codex',
         externalMcpServerIds: [],
-        capabilities: DEFAULT_CAPABILITIES,
-        chosen: {
-          maxDepth: 'default',
-          canMessage: 'default',
-          canAssignWork: 'default',
-          canCreateAgents: 'default',
-          canWriteRules: 'default',
-        },
       },
     ],
     use: [

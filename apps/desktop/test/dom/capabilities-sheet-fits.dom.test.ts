@@ -4,7 +4,6 @@ import { defineComponent, h, nextTick, type PropType } from 'vue'
 import CapabilitiesSheet from '../../src/renderer/src/components/CapabilitiesSheet.vue'
 import OverlayHost from '../../src/renderer/src/components/OverlayHost.vue'
 import { createAgentStore, type AgentStore } from '../../src/renderer/src/lib/agent-store'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type { AgentIdentity, RuntimeBridge } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll } from './harness'
 
@@ -31,7 +30,6 @@ afterEach(async () => {
   await page.viewport(ORIGINAL.width, ORIGINAL.height)
 })
 
-/** A row with every capability set, so the sheet is drawn at its TALLEST and widest. */
 const CROWDED: AgentIdentity[] = [
   {
     id: 'agp:default:pm',
@@ -43,22 +41,6 @@ const CROWDED: AgentIdentity[] = [
     provider: null,
     // ⚑ **516** — presence IS the grant, so an empty list is *granted none*, not *not chosen*.
     externalMcpServerIds: [],
-    // ⚑ **D-016** — `same-project` and `takesWorkFrom` went with projects; `none` is each reach's
-    // word that is not its default, and the one whose sentence is longest.
-    capabilities: {
-      maxDepth: 3,
-      canMessage: 'none',
-      canAssignWork: 'none',
-      canCreateAgents: 'none',
-      canWriteRules: 'propose',
-    },
-    chosen: {
-      maxDepth: 'chosen',
-      canMessage: 'chosen',
-      canAssignWork: 'chosen',
-      canCreateAgents: 'chosen',
-      canWriteRules: 'chosen',
-    },
   },
   ...['worker', 'reviewer', 'planner', 'archivist', 'scribe'].map((slug) => ({
     id: `agp:default:${slug}`,
@@ -70,14 +52,6 @@ const CROWDED: AgentIdentity[] = [
     provider: null,
     // ⚑ **516** — presence IS the grant, so an empty list is *granted none*, not *not chosen*.
     externalMcpServerIds: [],
-    capabilities: DEFAULT_CAPABILITIES,
-    chosen: {
-      maxDepth: 'default' as const,
-      canMessage: 'default' as const,
-      canAssignWork: 'default' as const,
-      canCreateAgents: 'default' as const,
-      canWriteRules: 'default' as const,
-    },
   })),
 ]
 
@@ -204,7 +178,7 @@ describe('355 · the capabilities sheet does not clip', () => {
         Math.round(width * 0.92),
       )
     }
-    expect(sheet.querySelectorAll('[data-cy^="capability-"]').length).toBeGreaterThanOrEqual(4)
+    expect(m.all('capability-external-mcp')).toHaveLength(1)
 
     // 2 · nothing inside it reaches past the box that cuts it.
     expect(escapes(sheet)).toEqual([])

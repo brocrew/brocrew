@@ -4,11 +4,7 @@ import { defineComponent, h, nextTick, type PropType } from 'vue'
 import CapabilitiesSheet from '../../src/renderer/src/components/CapabilitiesSheet.vue'
 import OverlayHost from '../../src/renderer/src/components/OverlayHost.vue'
 import { createAgentStore, type AgentStore } from '../../src/renderer/src/lib/agent-store'
-import {
-  CAPABILITY_FIELDS,
-  DEFAULT_CAPABILITIES,
-  SPAWN_RAIL_MEANS,
-} from '../../src/shared/capabilities'
+import { SPAWN_RAIL_MEANS } from '../../src/shared/capabilities'
 import type { AgentIdentity, RuntimeBridge } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll } from './harness'
 
@@ -47,15 +43,6 @@ const IDENTITIES: AgentIdentity[] = [
     provider: null,
     // ⚑ **516** — presence IS the grant, so an empty list is *granted none*, not *not chosen*.
     externalMcpServerIds: [],
-    // ⚑ **D-016** — `none`, the one reach word left that is not the default (`same-project` went).
-    capabilities: { ...DEFAULT_CAPABILITIES, canMessage: 'none' },
-    chosen: {
-      maxDepth: 'default',
-      canMessage: 'chosen',
-      canAssignWork: 'default',
-      canCreateAgents: 'default',
-      canWriteRules: 'default',
-    },
   },
   {
     id: 'agp:default:worker',
@@ -67,14 +54,6 @@ const IDENTITIES: AgentIdentity[] = [
     provider: null,
     // ⚑ **516** — presence IS the grant, so an empty list is *granted none*, not *not chosen*.
     externalMcpServerIds: [],
-    capabilities: DEFAULT_CAPABILITIES,
-    chosen: {
-      maxDepth: 'default',
-      canMessage: 'default',
-      canAssignWork: 'default',
-      canCreateAgents: 'default',
-      canWriteRules: 'default',
-    },
   },
 ]
 
@@ -125,8 +104,8 @@ async function open(
   return m
 }
 
-/** The first grant control the sheet draws, read off the table it draws from. */
-const FIRST_GRANT = `capability-${CAPABILITY_FIELDS[0].key}`
+/** The first control the sheet draws below the sentence: the external servers this identity may use. */
+const FIRST_GRANT = 'capability-external-mcp'
 
 describe('§1 · it is on the sheet, and a person reads it BEFORE the first control', () => {
   it('⛔ the whole sentence renders, and it is the constant rather than a paraphrase', async () => {
@@ -175,7 +154,7 @@ describe('§1 · it is on the sheet, and a person reads it BEFORE the first cont
   })
 
   it('⛔ …and it is absent on the state that has no grant to make, which is the paired negative', async () => {
-    // A profile with no row: `setCapabilities` refuses to create one, so there is nothing to grant
+    // A profile with no row: `setExternalMcpServers` refuses to create one, so there is nothing to grant
     // and nothing this sentence would be about. ⚑ The positive beside it is what makes the absence
     // a measurement — the sheet DID render, on a state that draws its own explanation.
     await page.viewport(1440, 1000)

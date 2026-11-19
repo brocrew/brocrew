@@ -35,9 +35,8 @@ import {
  * never read by a test that would go red if they went:
  *
  * - **R3 · the name.** A new agent is asked for by `new: true` alone. It is made by the give, with
- *   the giver recorded as its creator, under the folded spelling; a giver without the grant to
- *   create agents is refused and nothing is made; and `new` given to a name that already is an agent
- *   is refused, whether or not the giver has a conversation with it - reusing it would hand a "new"
+ *   the giver recorded as its creator, under the folded spelling; and `new` given to a name that
+ *   already is an agent is refused, whether or not the giver has a conversation with it - reusing it would hand a "new"
  *   agent the old one's memory.
  * - **R2 step 2 · the piece.** A giver that holds several pieces that have reached it must say which
  *   one the new piece hangs under, by label or by id (D-022 · R4: a piece whose give still waits
@@ -265,36 +264,40 @@ describe('D-016 · a new agent is asked for by name, and a give names the piece 
   }
 
   describe('R3 · a new agent is asked for by name', () => {
-    it('a give with `new: true` to a name nobody holds makes the agent and records the giver as its creator', async () => {
-      const pm = await personOpens('pm')
-      // The control: a launch-made identity reads `this-app`, which is exactly what a give that
-      // left the creating to the launch would write for the new one.
-      expect(createdByOf('pm')).toEqual({ by: 'this-app' })
-      expect(createdByOf('archivist')).toBeUndefined()
+    it.each([null, 'none'])(
+      'a give with new: true records its creator with retired grant %s',
+      async (retiredGrant) => {
+        const pm = await personOpens('pm')
+        db.prepare("UPDATE agent_identity SET can_create_agents = ? WHERE slug = 'pm'").run(
+          retiredGrant,
+        )
+        // A launch-made identity records the app as creator.
+        expect(createdByOf('pm')).toEqual({ by: 'this-app' })
+        expect(createdByOf('archivist')).toBeUndefined()
 
-      // A typo is still refused, and makes nothing.
-      const ghost = await callOn(pm.tools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'ghost',
-        title: 'Haunt',
-        brief: 'boo',
-      })
-      expect(ghost.rail, JSON.stringify(ghost)).toBe('no-such-profile')
-      expect(createdByOf('ghost')).toBeUndefined()
+        const ghost = await callOn(pm.tools, 'give_work', {
+          definition_of_done: 'The requested result and its checks are recorded.',
+          profile: 'ghost',
+          title: 'Haunt',
+          brief: 'boo',
+        })
+        expect(ghost.rail, JSON.stringify(ghost)).toBe('no-such-profile')
+        expect(createdByOf('ghost')).toBeUndefined()
 
-      const given = await callOn(pm.tools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'archivist',
-        title: 'Index the ledger',
-        brief: 'index it',
-        new: true,
-      })
-      expect(given.outcome, JSON.stringify(given)).toBe('ok')
-      expect(given.started).toBe(true)
-      expect(createdByOf('archivist')).toEqual(by('pm'))
-      expect(creatorColumn('archivist')).toBe(agentIdentityRowId('pm'))
-      expect(store.identityOf(given.agent as string)?.profileSlug).toBe('archivist')
-    })
+        const given = await callOn(pm.tools, 'give_work', {
+          definition_of_done: 'The requested result and its checks are recorded.',
+          profile: 'archivist',
+          title: 'Index the ledger',
+          brief: 'index it',
+          new: true,
+        })
+        expect(given.outcome, JSON.stringify(given)).toBe('ok')
+        expect(given.started).toBe(true)
+        expect(createdByOf('archivist')).toEqual(by('pm'))
+        expect(creatorColumn('archivist')).toBe(agentIdentityRowId('pm'))
+        expect(store.identityOf(given.agent as string)?.profileSlug).toBe('archivist')
+      },
+    )
 
     it("a new agent's name is folded once - `Archivist` is the identity `archivist`, and its conversation starts under that spelling", async () => {
       await aKnownAgent('worker')
@@ -323,35 +326,6 @@ describe('D-016 · a new agent is asked for by name, and a give names the piece 
       })
       expect(known.outcome, JSON.stringify(known)).toBe('ok')
       expect(store.find(known.agent as string)?.profileId).toBe('Worker')
-    })
-
-    it('a giver without the grant to create agents is refused a new name and nothing is made - granted, the identical call makes it', async () => {
-      const pm = await personOpens('pm')
-      expect(store.setCapabilities('pm', { canCreateAgents: 'none' })).toBe(true)
-      const sessionsBefore = host.sessionIds.length
-      const launchesBefore = order.length
-      const ask = {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'archivist',
-        title: 'Index the ledger',
-        brief: 'index it',
-        new: true,
-      }
-
-      const refused = await callOn(pm.tools, 'give_work', ask)
-      expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
-      expect(refused.rail).toBe('may-not-create-agents')
-      expect(refused.permanence).toBe('until-a-person-changes-it')
-      expect(store.agentIdentities().some((one) => one.slug === 'archivist')).toBe(false)
-      expect(host.sessionIds.length).toBe(sessionsBefore)
-      expect(order.length).toBe(launchesBefore)
-
-      // One grant over, the same call.
-      expect(store.setCapabilities('pm', { canCreateAgents: 'any' })).toBe(true)
-      const granted = await callOn(pm.tools, 'give_work', ask)
-      expect(granted.outcome, JSON.stringify(granted)).toBe('ok')
-      expect(granted.started).toBe(true)
-      expect(store.agentIdentities().some((one) => one.slug === 'archivist')).toBe(true)
     })
 
     it('`new: true` for a name that already is an agent is refused and starts nothing - the identical give without it goes', async () => {

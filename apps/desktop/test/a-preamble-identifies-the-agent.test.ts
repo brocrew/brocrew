@@ -14,7 +14,6 @@ import {
   oneMessageAsTheModelGotIt,
   whatThisLaunchGave,
 } from '../src/main/runtime/what-this-agent-was-given'
-import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import { PRODUCT_NAME } from '../src/shared/product-name'
 
 const tail =
@@ -57,7 +56,6 @@ describe('the agreed preamble identifies one agent', () => {
         mkdirSync(cwd)
         const context = {
           ...identity,
-          capabilities: DEFAULT_CAPABILITIES,
           configured: 'Keep these exact rules.',
         }
         const compiled = profileBundleSpans(context, provider)

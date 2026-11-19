@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { providerSchema } from '@brobot2/shared'
-import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { theConversationCalled } from '../src/shared/piece-called'
 import {
@@ -20,7 +19,7 @@ import { BROBOTS_ADDITION, howYouWork } from './lib/the-core'
 const roots: string[] = []
 afterEach(() => roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true })))
 
-/** The factory sections of one launch's bundle — the text no profile, depth or grant may change. */
+/** The factory sections of one launch's bundle — the text no profile or giver may change. */
 const factoryOf = (context: InstructionContext): string => {
   const { text, spans } = profileBundleSpans(context)
   return spans
@@ -30,40 +29,30 @@ const factoryOf = (context: InstructionContext): string => {
 }
 
 /**
- * Launches that differ in profile, depth and grants. The core reads none of them; only BroBot's
+ * Launches that differ in profile and in who started them. The core reads neither; only BroBot's
  * profile adds its own paragraphs.
  */
 const LAUNCHES: readonly Omit<InstructionContext, 'cwd' | 'spawningEnabled' | 'others'>[] = [
   {
     profileSlug: DEFAULT_PROFILE_ID,
     startedBy: null,
-    depth: 0,
-    capabilities: DEFAULT_CAPABILITIES,
     root: 'W1',
   },
   {
     profileSlug: 'project-manager',
     startedBy: theConversationCalled('Giver', { label: 'W1', title: 'Bakery website' }),
-    depth: 1,
-    capabilities: { ...DEFAULT_CAPABILITIES, canAssignWork: 'none' },
     root: null,
   },
   {
     profileSlug: 'worker',
     startedBy: theConversationCalled('Pm', { label: 'W1.1.1.1.1.1', title: 'Check the pages' }),
-    depth: 6,
-    capabilities: {
-      ...DEFAULT_CAPABILITIES,
-      maxDepth: 0,
-      canCreateAgents: 'none',
-    },
     root: null,
   },
 ]
 
 describe('one set of instructions for every agent', () => {
   for (const provider of providerSchema.options) {
-    it(`${provider}: every profile, depth and grant gets the same core, and BroBot its addition`, () => {
+    it(`${provider}: every profile gets the same core, and BroBot its addition`, () => {
       const root = mkdtempSync(join(tmpdir(), 'brobot-one-set-'))
       roots.push(root)
       const cwd = join(root, 'work')
@@ -99,7 +88,7 @@ describe('one set of instructions for every agent', () => {
       LAUNCHES.forEach((launch, index) => {
         expect(published[index]?.handed).toContain(agentPreamble(launch))
       })
-      // Every profile but BroBot gets the same core, word for word, at any depth and grant.
+      // Every profile but BroBot gets the same core, word for word, whoever started it.
       const rulesOf = (file: string): string => file.slice(file.indexOf('# Your instructions'))
       const brobot = LAUNCHES.findIndex((launch) => launch.profileSlug === DEFAULT_PROFILE_ID)
       const others = published.filter((_, index) => index !== brobot)
@@ -115,12 +104,6 @@ describe('one set of instructions for every agent', () => {
       const brobotsFactory = factories[brobot] ?? ''
       expect(brobotsFactory).toContain(`${howYouWork(true)}\n`)
       expect(brobotsFactory.replace(`\n\n${BROBOTS_ADDITION.join('\n\n')}`, '')).toBe(othersFactory)
-      // A grant moved changes nothing in the core: the grants are said under "What you may do".
-      const [first] = contexts
-      if (first === undefined) throw new Error('no launch')
-      expect(
-        factoryOf({ ...first, capabilities: { ...DEFAULT_CAPABILITIES, canMessage: 'none' } }),
-      ).toBe(factories[0])
     })
   }
 })

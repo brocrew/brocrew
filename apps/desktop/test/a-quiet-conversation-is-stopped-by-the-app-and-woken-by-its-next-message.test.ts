@@ -654,7 +654,6 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
   it('⚑ W4.210 · an agent whose ask against another’s rules waits on a person is stopped, the ask stays in front of them, and their decision starts nothing and clears it', async () => {
     await bringIdentityIntoBeing('worker-b')
     await bringIdentityIntoBeing('agent-a')
-    expect(store.setCapabilities('agent-a', { canWriteRules: 'propose' })).toBe(true)
     const a = await opens('agent-a')
     await settle()
     const asked = host.proposeAgentRules(

@@ -15,7 +15,6 @@ import {
   forgetProfileSignIns,
   useProfileSignIn,
 } from '../../src/renderer/src/composables/useProfileSignIn'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
 import type {
   AgentIdentities,
@@ -60,14 +59,6 @@ const agents: AgentIdentities = {
       createdBy: null,
       provider: 'codex',
       externalMcpServerIds: [],
-      capabilities: { ...DEFAULT_CAPABILITIES },
-      chosen: {
-        maxDepth: 'default',
-        canMessage: 'default',
-        canAssignWork: 'default',
-        canCreateAgents: 'default',
-        canWriteRules: 'default',
-      },
     },
   ],
   use: [

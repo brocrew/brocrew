@@ -1,4 +1,3 @@
-import { grantSays } from './helpers/capability-grant'
 import { ToolWatchingResumeRuntime } from './lib/provider-double'
 import type { InjectedInstructionKind } from '../src/shared/instruction-contracts'
 import { legacyWorkspaceFiles } from './helpers/legacy-workspace-files'
@@ -29,6 +28,8 @@ import {
   BUNDLE_MARKER,
   bundleHeader,
   composeProfileBundle,
+  MAY_NOT_SAVE_MEMORY,
+  MAY_SAVE_MEMORY,
   NO_TEXT_PROMISES_A_WATCHER,
   NOT_IN_THE_FACTORY_TEXT,
   thisConversationSpans,
@@ -48,19 +49,7 @@ import {
 import { CLAUDE_INSTRUCTIONS_FILE } from '../src/main/providers/claude/layout.mjs'
 import { CODEX_INSTRUCTIONS_FILE } from '../src/main/providers/codex/layout.mjs'
 import { WORKSPACE_INSTRUCTIONS, workspaceInstructionFiles } from '../src/main/runtime/workspace'
-import {
-  ASSIGNMENT_REACH_ADMITS,
-  CAPABILITY_FIELDS,
-  DEFAULT_CAPABILITIES,
-  MESSAGING_REACH,
-  MESSAGING_REACH_ADMITS,
-  capabilityField,
-} from '../src/shared/capabilities'
-import type {
-  AnyCapabilityField,
-  ConversationAtLaunch,
-  ProfileCapabilities,
-} from '../src/shared/capabilities'
+import { RULE_WRITING_POLICY } from '../src/shared/capabilities'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { agentPreamble } from '../src/main/runtime/agent-preamble'
 import { APPROVALS_ARE_THE_PERSONS, howYouWork } from './lib/the-core'
@@ -70,10 +59,10 @@ const PROJECT_MANAGER_PROFILE_ID = 'project-manager'
 
 const GRANTS_HEADING = '## What you may do'
 const SPAWNING_OFF =
-  '- This app currently blocks creating agents and starting new agent conversations. Giving work to an existing conversation still depends on your permissions.'
+  '- This app currently blocks creating agents and starting new agent conversations.'
 
 const FIXED_RULE_POLICY =
-  "- You can read any agent's standing rules and propose a replacement; the person decides. A BroBot conversation the person started may also save one directly, but never its own. Each version keeps its author and reason, and the person can undo it."
+  '- Only the person and the profile that created an agent can change its standing rules; any conversation of that profile counts, and when no creating profile is recorded, only the person can. Being the same profile as the agent gives no right to change its rules: an agent never writes its own, and keeps its own notes instead. Anyone else, the agent included, can propose a change, and the person decides a proposal. Each version keeps its author and reason, and can be undone.'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -109,11 +98,6 @@ const NOT_ONE_DOMAIN: Record<string, RegExp> = {
   compile: /\bcompil(e|es|ed|ing)\b/i,
 }
 
-const GRANTED: ProfileCapabilities = {
-  ...DEFAULT_CAPABILITIES,
-  canMessage: 'any',
-}
-
 const thisConversationText = (launch: InstructionContext): string =>
   thisConversationSpans(launch).text
 
@@ -129,11 +113,9 @@ const OTHERS_IN_EVERY_FORM: InstructionContext['others'] = {
 
 const everyBundle = (): string[] =>
   [
-    context({ capabilities: null, root: 'not-yet-numbered', others: OTHERS_IN_EVERY_FORM }),
+    context({ profileSlug: null, root: 'not-yet-numbered', others: OTHERS_IN_EVERY_FORM }),
     context({
-      capabilities: GRANTED,
       startedBy: theConversationCalled('Ada', { label: 'W2', title: 'Plan the trip' }),
-      depth: 1,
       others: OTHERS_IN_EVERY_FORM,
     }),
   ].map((launch) => `${composeProfileBundle(launch)}\n\n${thisConversationText(launch)}`)
@@ -143,8 +125,6 @@ function context(over: Partial<InstructionContext> = {}): InstructionContext {
     profileSlug: 'default',
     cwd: '/tmp/work',
     startedBy: null,
-    depth: 0,
-    capabilities: null,
     spawningEnabled: true,
     root: null,
     others: { shown: [], more: 0 },
@@ -211,11 +191,10 @@ describe('§1 · one instruction set', () => {
 
     it('⛔ the memory rule and the work rule stay generic', () => {
       const plain = composeProfileBundle(context())
-      const granted = composeProfileBundle(context({ capabilities: GRANTED }))
       expect(plain).toContain(
         "Keep the person's standing wishes in your own notes and, when permitted, tested lessons in saved methods; keep task facts separate.",
       )
-      expect(granted).toContain(
+      expect(plain).toContain(
         'A specialist may keep work that is small, tightly connected, covered by an exact installed procedure, or cheaper to do than hand off.',
       )
     })
@@ -223,15 +202,14 @@ describe('§1 · one instruction set', () => {
     it('🔴 the conventions and delegation rules speak in generic terms', () => {
       const common = composeProfileBundle(context())
       expect(common).toContain('Follow local conventions; explain conflicts.')
-      const granted = composeProfileBundle(context({ capabilities: GRANTED }))
-      expect(granted).toContain(
+      expect(common).toContain(
         'A specialist may keep work that is small, tightly connected, covered by an exact installed procedure, or cheaper to do than hand off.',
       )
-      expect(granted).toContain(
+      expect(common).toContain(
         'Keep the judgement and hand off separable, noisy work when the saved time or expertise justifies coordination.',
       )
-      expect(granted).toContain('Respect locked choices.')
-      expect(granted).toContain('Follow current permissions, tool contracts and refusals.')
+      expect(common).toContain('Respect locked choices.')
+      expect(common).toContain('Follow current permissions, tool contracts and refusals.')
     })
   })
 
@@ -474,37 +452,16 @@ describe('§2 · the common rules reach every agent', () => {
 })
 
 describe('§3 · the dynamic layer moves when the data moves', () => {
-  it('says the four resolved permissions and the current-rule qualification', () => {
-    const text = thisConversationText(context({ capabilities: DEFAULT_CAPABILITIES }))
-    expect(text).toContain(
-      "As of this launch, for BroCrew's agent tools (the tools always check the current rules):",
-    )
-    expect(grantLines(text)).toEqual(expectedPermissions(DEFAULT_CAPABILITIES))
-  })
-
-  it('says the reach of each tool route without extending giving-work permission', () => {
-    for (const value of MESSAGING_REACH) {
-      const capabilities = { ...DEFAULT_CAPABILITIES, canMessage: value, canAssignWork: value }
-      expect(grantLines(thisConversationText(context({ capabilities })))).toEqual(
-        expectedPermissions(capabilities),
-      )
-      expect(capabilityField('canMessage').help).toContain(MESSAGING_REACH_ADMITS[value])
-      expect(capabilityField('canAssignWork').help).toContain(ASSIGNMENT_REACH_ADMITS[value])
+  it('says the rule-writing policy and whether this conversation may save memory, and no grant', () => {
+    const known = thisConversationText(context())
+    expect(grantLines(known)).toEqual([FIXED_RULE_POLICY, `- ${MAY_SAVE_MEMORY}`])
+    const none = thisConversationText(context({ profileSlug: null }))
+    expect(grantLines(none)).toEqual([FIXED_RULE_POLICY, `- ${MAY_NOT_SAVE_MEMORY}`])
+    for (const said of [known, none]) {
+      expect(said).not.toContain('As of this launch, for')
+      expect(said).not.toContain('cannot list its permissions')
+      expect(said).not.toContain('A person set these')
     }
-    expect(ASSIGNMENT_REACH_ADMITS.any).not.toBe(MESSAGING_REACH_ADMITS.any)
-    expect(ASSIGNMENT_REACH_ADMITS.any).not.toContain('whoever started it')
-  })
-
-  it('an unknown identity gets no invented permission', () => {
-    const none = thisConversationText(context({ capabilities: null }))
-    expect(none).toContain(GRANTS_HEADING)
-    expect(none).toContain(
-      "The app cannot identify this conversation's profile, so it cannot list its permissions. Read each tool's response.",
-    )
-    expect(none).not.toContain('As of this launch, for')
-    expect(grantLines(none)).toEqual([])
-    const known = thisConversationText(context({ capabilities: DEFAULT_CAPABILITIES }))
-    expect(grantLines(known)).toEqual(expectedPermissions(DEFAULT_CAPABILITIES))
   })
 
   it('🔴 the parent is named by the piece it owns, rendered as provenance and not as delegation', () => {
@@ -906,24 +863,21 @@ describe('§8 · what the host tells the reader, at a launch and at a reopen', (
     const ctx = seen.at(-1) as InstructionContext
     expect(ctx.profileSlug).toBe(DEFAULT_PROFILE_ID)
     expect(ctx.startedBy).toBeNull()
-    expect(ctx.capabilities).toEqual(DEFAULT_CAPABILITIES)
     expect(thisConversationText(ctx)).toMatch(/What you may do/)
-    expect(store.capabilitiesOf(DEFAULT_PROFILE_ID)).toEqual(ctx.capabilities)
+    expect(store.agentIdentityOf(DEFAULT_PROFILE_ID)).not.toBeNull()
   })
 
-  it('🔴 …and a row a person narrowed OUTRANKS the fallback — standing rule 11, at the reader', async () => {
+  it('a stored retired grant column changes nothing a launch is told', async () => {
     const first = await personOpens(DEFAULT_PROFILE_ID)
+    const before = thisConversationText(seen.at(-1) as InstructionContext)
     await host.close(first, window)
-    expect(store.setCapabilities(DEFAULT_PROFILE_ID, { canMessage: 'none' })).toBe(true)
+    db.prepare(
+      "UPDATE agent_identity SET can_message = 'none', can_assign_work = 'none', can_create_agents = 'none', max_depth = 0 WHERE slug = ?",
+    ).run(DEFAULT_PROFILE_ID)
     await personOpens(DEFAULT_PROFILE_ID)
-    const ctx = seen.at(-1) as InstructionContext
-    expect(ctx.capabilities?.canMessage).toBe('none')
-    expect(DEFAULT_CAPABILITIES.canMessage).toBe('any')
-    const said = thisConversationText(ctx)
-    expect(said).toContain('- You may not send messages to other conversations.')
-    const file = composeProfileBundle(ctx)
-    expect(file).toContain('hand off separable, noisy work')
-    expect(file).toContain('Follow current permissions, tool contracts and refusals.')
+    const said = thisConversationText(seen.at(-1) as InstructionContext)
+    expect(grantLines(said)).toEqual(grantLines(before))
+    expect(said).not.toContain('You may not')
   })
 
   it('⚑ …and the app-wide spawn switch reaches the context, both ways', async () => {
@@ -937,22 +891,11 @@ describe('§8 · what the host tells the reader, at a launch and at a reopen', (
     expect(thisConversationText(ctx)).toContain(SPAWNING_OFF)
   })
 
-  it('⛔ …and a first launch of an identity the app insists on NOTHING for gets the ruled values', async () => {
+  it('⛔ …and a first launch of a new identity is told the rule-writing policy', async () => {
     await personOpens('a-fresh-one')
     const ctx = seen.at(-1) as InstructionContext
-    expect(ctx.capabilities).toEqual(DEFAULT_CAPABILITIES)
-    expect(ctx.capabilities?.canWriteRules).toBe('none')
-    expect(store.capabilitiesOf('a-fresh-one')).toEqual(ctx.capabilities)
+    expect(store.agentIdentityOf('a-fresh-one')).not.toBeNull()
     expect(thisConversationText(ctx)).toContain(FIXED_RULE_POLICY)
-  })
-
-  it('⛔ …and the SECOND launch of the same identity does carry them — the paired positive', async () => {
-    const first = await personOpens(DEFAULT_PROFILE_ID)
-    await host.close(first, window)
-    await personOpens(DEFAULT_PROFILE_ID)
-    const ctx = seen.at(-1) as InstructionContext
-    expect(ctx.capabilities?.canMessage).toBe('any')
-    expect(thisConversationText(ctx)).toMatch(/You may message any conversation\./)
   })
 
   it('🔴 a child a GIVE started is told its parent — and is told the same thing after a restart', async () => {
@@ -1115,69 +1058,17 @@ describe('§9 · one agent instruction set', () => {
     expect(said).toContain('Choose a supported model and offered effort at each handoff')
   })
 
-  it('says the same core whatever the grants: what an agent may do is said under its own heading', () => {
-    const narrow = {
-      ...DEFAULT_CAPABILITIES,
-      canMessage: 'none' as const,
-      canWriteRules: 'none' as const,
-    }
-    const wide = {
-      ...narrow,
-      canMessage: 'any' as const,
-      canWriteRules: 'relay' as const,
-    }
-    const proposing = { ...wide, canWriteRules: 'propose' as const }
-    const none = composeProfileBundle(context({ capabilities: narrow }))
-    const some = composeProfileBundle(context({ capabilities: wide }))
-    const asksApproval = composeProfileBundle(context({ capabilities: proposing }))
-    expect(none).toContain(howYouWork(false))
-    expect(some).toBe(none)
-    expect(asksApproval).toBe(none)
-    const told = (capabilities: ProfileCapabilities): string =>
-      thisConversationText({ ...context(), capabilities })
-    expect(told(narrow)).toContain('- You may not send messages to other conversations.')
-    expect(told(wide)).toContain('- You may message any conversation.')
-    for (const allowed of [narrow, wide, proposing]) {
-      expect(told(allowed)).toContain(FIXED_RULE_POLICY)
-    }
+  it('says the rule-writing policy under its own heading, never in the shared core', () => {
+    expect(composeProfileBundle(context())).not.toContain(RULE_WRITING_POLICY)
+    expect(thisConversationText(context())).toContain(FIXED_RULE_POLICY)
   })
 })
 
-function valuesFor(field: AnyCapabilityField): readonly unknown[] {
-  switch (field.editor) {
-    case 'count':
-      return [0, 7]
-    case 'choice': {
-      const words = field.vocabulary as readonly string[] | undefined
-      expect(words, `${field.key} is a choice with no vocabulary`).toBeDefined()
-      const said = words as readonly string[]
-      expect(said.length, `${field.key}'s vocabulary has nothing to compare`).toBeGreaterThan(1)
-      return said
-    }
-    default: {
-      const unreached: never = field.editor
-      throw new Error(`no values for the ${String(unreached)} editor`)
-    }
-  }
-}
-
-function endsOf(field: AnyCapabilityField): readonly [unknown, unknown] {
-  const values = valuesFor(field)
-  return [values[0], values[values.length - 1]]
-}
-
-function withField(
-  base: ProfileCapabilities,
-  field: AnyCapabilityField,
-  value: unknown,
-): ProfileCapabilities {
-  return { ...base, [field.key]: value } as ProfileCapabilities
-}
-
 function grantsIn(said: string): string {
   const at = said.indexOf(GRANTS_HEADING)
-  expect(at, 'the text has no grant section').toBeGreaterThan(-1)
-  return said.slice(at)
+  expect(at, 'the text has no "What you may do" section').toBeGreaterThan(-1)
+  const next = said.indexOf('\n## ', at + GRANTS_HEADING.length)
+  return said.slice(at, next === -1 ? undefined : next)
 }
 
 function grantLines(said: string): string[] {
@@ -1186,104 +1077,14 @@ function grantLines(said: string): string[] {
     .filter((line) => line.startsWith('- ') && line !== SPAWNING_OFF)
 }
 
-const AT_A_PERSONS_OWN_CONVERSATION: ConversationAtLaunch = { depth: 0 }
-
-describe('§10 · a grant says its own value, and every grant says one', () => {
-  it('🔴 every capability answers the question, and answers it with something', () => {
-    for (const field of CAPABILITY_FIELDS) {
-      expect(field, field.key).toHaveProperty('says')
-      expect(typeof field.says, field.key).toBe('function')
-      for (const value of valuesFor(field)) {
-        for (const at of [null, AT_A_PERSONS_OWN_CONVERSATION]) {
-          const said = grantSays(field, withField(DEFAULT_CAPABILITIES, field, value), at)
-          expect(said, `${field.key} said nothing for ${JSON.stringify(value)}`).not.toBe('')
-          expect(said.trim(), `${field.key} said padding`).toBe(said)
-        }
-      }
-    }
-  })
-
-  it('🔴 …and it says DIFFERENT values differently, which is the half a layout test cannot see', () => {
-    for (const field of CAPABILITY_FIELDS) {
-      const said = new Map<string, unknown>()
-      for (const value of valuesFor(field)) {
-        const sentence = grantSays(field, withField(DEFAULT_CAPABILITIES, field, value), null)
-        const clash = said.get(sentence)
-        expect(
-          clash,
-          `${field.key} says the same thing for ${JSON.stringify(clash)} and ${JSON.stringify(value)}`,
-        ).toBeUndefined()
-        said.set(sentence, value)
-      }
-    }
-  })
-
-  it('prints the approved model words for each permission value', () => {
-    for (const field of CAPABILITY_FIELDS.filter((field) => field.key !== 'maxDepth')) {
-      for (const value of valuesFor(field)) {
-        const allowed = withField(DEFAULT_CAPABILITIES, field, value)
-        expect(grantLines(thisConversationText(context({ capabilities: allowed })))).toEqual(
-          expectedPermissions(allowed),
-        )
-      }
-    }
-  })
-
-  it('moves exactly the permission whose resolved value changed', () => {
-    const fields = CAPABILITY_FIELDS.filter(
-      (field) => field.key !== 'maxDepth' && field.key !== 'canWriteRules',
-    )
-    for (const field of fields) {
-      const [low, high] = endsOf(field)
-      const a = grantLines(
-        thisConversationText(
-          context({ capabilities: withField(DEFAULT_CAPABILITIES, field, low) }),
-        ),
-      )
-      const b = grantLines(
-        thisConversationText(
-          context({ capabilities: withField(DEFAULT_CAPABILITIES, field, high) }),
-        ),
-      )
-      expect(a).not.toEqual(b)
-      expect(a.filter((line, index) => line !== b[index])).toHaveLength(1)
-    }
-  })
-
-  it('🔴 a grant’s sentence is handed its OWN value and can reach no neighbour', () => {
-    for (const field of CAPABILITY_FIELDS) {
-      let low = DEFAULT_CAPABILITIES
-      let high = DEFAULT_CAPABILITIES
-      for (const other of CAPABILITY_FIELDS) {
-        if (other.key === field.key) continue
-        const [a, b] = endsOf(other)
-        low = withField(low, other, a)
-        high = withField(high, other, b)
-      }
-      expect(low, `${field.key}'s neighbours did not move`).not.toEqual(high)
-      expect(grantSays(field, low, null), `${field.key} read a neighbour`).toBe(
-        grantSays(field, high, null),
-      )
-    }
-  })
-
-  it('⛔ the section no longer claims a PERSON set them, and the bound it carries survives', () => {
-    const said = thisConversationText(context({ capabilities: DEFAULT_CAPABILITIES }))
-    expect(said).not.toContain('A person set these')
-    expect(said).toContain("for BroCrew's agent tools (the tools always check the current rules)")
-  })
-
+describe('§10 · the app-wide switch', () => {
   it('⚑ the app-wide switch is said only when it is OFF, in the rail’s own words', () => {
-    const on = thisConversationText(
-      context({ capabilities: DEFAULT_CAPABILITIES, spawningEnabled: true }),
-    )
-    const off = thisConversationText(
-      context({ capabilities: DEFAULT_CAPABILITIES, spawningEnabled: false }),
-    )
+    const on = thisConversationText(context({ spawningEnabled: true }))
+    const off = thisConversationText(context({ spawningEnabled: false }))
     expect(off).toContain(SPAWNING_OFF)
     expect(on).not.toContain(SPAWNING_OFF)
     expect(grantLines(off)).toEqual(grantLines(on))
-    const nobody = thisConversationText(context({ capabilities: null, spawningEnabled: false }))
+    const nobody = thisConversationText(context({ profileSlug: null, spawningEnabled: false }))
     expect(nobody).toContain(SPAWNING_OFF)
   })
 })
@@ -1303,18 +1104,3 @@ describe('the workspace rules in the conversation block', () => {
     })
   }
 })
-
-function expectedPermissions(allowed: ProfileCapabilities): string[] {
-  return [
-    allowed.canMessage === 'any'
-      ? '- You may message any conversation.'
-      : '- You may not send messages to other conversations.',
-    allowed.canAssignWork === 'any'
-      ? '- You may give work to any agent, through your own conversation with it.'
-      : '- You may not give work to other agents.',
-    allowed.canCreateAgents === 'any'
-      ? '- You may create agents and give them their initial rules.'
-      : '- You may not create agents.',
-    FIXED_RULE_POLICY,
-  ]
-}

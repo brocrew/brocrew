@@ -214,9 +214,6 @@ const SAMPLES: Record<RuntimeCommandKind, RuntimeCommand> = {
   signInProvider: { kind: 'signInProvider', provider: 'claude' },
   cancelProviderSignIn: { kind: 'cancelProviderSignIn', provider: 'claude' },
   checkCwd: { kind: 'checkCwd', path: '/tmp' },
-  // 355 · the capability door. ⚠️ The grant names every field, always — the wire refuses a payload
-  // that drops one — so this sample is the whole schema at its ruled defaults, which is the shape a
-  // sheet with nothing touched sends.
   skills: { kind: 'skills', request: { operation: 'list', offset: 0 } },
   agentIdentities: { kind: 'agentIdentities' },
   // 419 · ⚠️ **A name nothing has created**: a sample that got PAST the quit door would still be a
@@ -341,17 +338,9 @@ const SAMPLES: Record<RuntimeCommandKind, RuntimeCommand> = {
   restoreConversation: { kind: 'restoreConversation', sessionId: 's' },
   checkDeleteConversation: { kind: 'checkDeleteConversation', sessionId: 's' },
   deleteConversation: { kind: 'deleteConversation', sessionId: 's', parts: ['records'] },
-  setCapabilities: {
-    kind: 'setCapabilities',
+  setExternalMcpServers: {
+    kind: 'setExternalMcpServers',
     profileId: 'pm',
-    grant: {
-      maxDepth: null,
-      canMessage: null,
-      canAssignWork: null,
-      canCreateAgents: null,
-      // ⚑ **582 · nobody has chosen** — the whole grant on this fixture is nulls.
-      canWriteRules: null,
-    },
     // ⚑ **516 · required on this command, and EMPTY is the sample that changes nothing.** The wire
     // carries the complete set, so `[]` is *this identity reaches no external server* — which is
     // what every identity holds until somebody ticks a box, and therefore the sample that cannot
@@ -433,7 +422,7 @@ class RecordingSink implements RuntimeEventSink {
 /**
  * ⛔ **The same sink, declaring what a real window declares** (355, on 349).
  *
- * `355`'s three capability verbs are refused at the door unless the channel they arrived on says a
+ * The identity verbs are refused at the door unless the channel they arrived on says a
  * person is behind it — the first reader of `RuntimeEventSink.aPersonIsBehindIt` at the IPC layer.
  * ⚠️ **The refusal is not this file's subject**, and the test below would otherwise fail for a
  * reason that has nothing to do with a quit: *"changes nothing at all while the app is running"* is
@@ -442,7 +431,7 @@ class RecordingSink implements RuntimeEventSink {
  *
  * ⚑ **Two sinks rather than flipping the one**, so the difference stays visible: every other verb is
  * still driven by a sink that claims nothing, and the person gate itself is performed — refused and
- * allowed at the same moment — in `the-grant-nobody-can-give.test.ts` §3.
+ * allowed at the same moment — in `the-grant-nobody-can-give.test.ts` §2.
  */
 class WindowSink extends RecordingSink {
   override readonly aPersonIsBehindIt = true
@@ -452,10 +441,9 @@ class WindowSink extends RecordingSink {
 const NEEDS_A_PERSON = new Set<RuntimeCommandKind>([
   'skills',
   'agentIdentities',
-  'setCapabilities',
-  // 🔴 **433's provider door, gated with the capability three and NOT because provider is a
-  // capability.** ⛔ It is not one — no rail reads it (`419` §3) — and the gate is `createAgent`'s
-  // argument instead: this verb configures an identity, and *"the human is unrestricted"* is a
+  'setExternalMcpServers',
+  // 🔴 **433's provider door.** ⛔ No rail reads it (`419` §3), and the gate is `createAgent`'s
+  // argument: this verb configures an identity, and *"the human is unrestricted"* is a
   // statement about a human, so the channel has to declare one.
   'setAgentProvider',
   'setSpawningEnabled',

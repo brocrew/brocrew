@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { providerSchema, type Provider } from '@brobot2/shared'
-import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import {
   composeProfileBundle,
   MAY_NOT_SAVE_MEMORY,
@@ -11,6 +10,7 @@ import {
   thisConversationSpans,
   type InstructionContext,
 } from '../src/main/runtime/factory-text'
+import { RULE_WRITING_POLICY } from '../src/shared/capabilities'
 import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
 
@@ -30,8 +30,6 @@ function context(over: Partial<InstructionContext> = {}): InstructionContext {
     profileSlug: 'fictional-writer',
     cwd: '/tmp/work',
     startedBy: null,
-    depth: 0,
-    capabilities: DEFAULT_CAPABILITIES,
     spawningEnabled: true,
     root: 'not-yet-numbered',
     others: { shown: [], more: 0 },
@@ -39,7 +37,7 @@ function context(over: Partial<InstructionContext> = {}): InstructionContext {
   }
 }
 const withAProfile = context()
-const withNone = context({ profileSlug: null, capabilities: null })
+const withNone = context({ profileSlug: null })
 
 /** The "What you may do" section of a launch's own text. */
 function whatYouMayDo(launch: InstructionContext): string {
@@ -71,20 +69,16 @@ function handed(provider: Provider, launch: InstructionContext): string {
 }
 
 describe('"What you may do" says whether this conversation may save memory', () => {
-  it('with a profile: it may, in its own paragraph after the agent-tool lines', () => {
+  it('with a profile: it may, as the line after the rule-writing policy', () => {
     const said = whatYouMayDo(withAProfile)
-    expect(said).toContain(`\n\n${MAY_SAVE_MEMORY}`)
+    expect(said).toContain(`- ${RULE_WRITING_POLICY}\n- ${MAY_SAVE_MEMORY}`)
     expect(said).not.toContain(MAY_NOT_SAVE_MEMORY)
-    expect(said.indexOf(MAY_SAVE_MEMORY)).toBeGreaterThan(said.indexOf('- You may'))
   })
 
-  it('without one: it may not, after the sentence that says the profile is unknown', () => {
+  it('without one: it may not, as the line after the rule-writing policy', () => {
     const said = whatYouMayDo(withNone)
-    expect(said).toContain(MAY_NOT_SAVE_MEMORY)
+    expect(said).toContain(`- ${RULE_WRITING_POLICY}\n- ${MAY_NOT_SAVE_MEMORY}`)
     expect(said).not.toContain(MAY_SAVE_MEMORY)
-    expect(said.indexOf(MAY_NOT_SAVE_MEMORY)).toBeGreaterThan(
-      said.indexOf("The app cannot identify this conversation's profile"),
-    )
   })
 
   for (const provider of providerSchema.options) {

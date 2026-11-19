@@ -2,7 +2,6 @@ import Database from 'better-sqlite3'
 import { randomUUID } from 'node:crypto'
 import { serialize } from 'node:v8'
 import { formOfName } from '../../shared/documents'
-import { MAX_CAPABILITY_COUNT } from '../../shared/capabilities'
 import { pieceCalled } from '../../shared/piece-called'
 import {
   FILES_LIBRARY_BOUNDS as B,
@@ -48,7 +47,6 @@ type FullTask = {
   label: string
   title: string | null
   breadcrumb: string
-  depth: number
 }
 type FullKeep = LibraryKeep
 type Group = { representative: FullKeep; matching: Set<string>; matchingCount?: number }
@@ -631,34 +629,44 @@ export class FilesLibraryEngine {
       owners.set(owner, found)
       return found
     }
-    const task = (id: string, path = new Set<string>()): FullTask => {
-      const known = tasks.get(id)
-      if (known !== undefined) {
-        if (known.depth + path.size > MAX_CAPABILITY_COUNT + 2) throw new Failed('ancestry')
-        return known
+    // Walks up iteratively to the nearest task already read, or to a root; a repeated id is a
+    // cycle and a missing parent is a broken tree, and both report the ancestry unreadable.
+    const task = (id: string): FullTask => {
+      const above: Work[] = []
+      const seen = new Set<string>()
+      let parent: FullTask | null = null
+      for (let next: string | null = id; next !== null;) {
+        const known = tasks.get(next)
+        if (known !== undefined) {
+          parent = known
+          break
+        }
+        if (seen.has(next)) throw new Failed('ancestry')
+        seen.add(next)
+        const row: Work | undefined = this.get<Work>(
+          `SELECT id, parent_id, number, owner_session_id, given_by_session_id,
+          CASE WHEN length(CAST(title AS BLOB)) <= ${B.fieldBytes} THEN title END AS title,
+          length(CAST(title AS BLOB)) > ${B.fieldBytes} AS oversized FROM work WHERE id = ?`,
+          next,
+        )
+        if (row === undefined || !Number.isSafeInteger(row.number) || row.number < 1)
+          throw new Failed('ancestry')
+        above.push(row)
+        next = row.parent_id
       }
-      if (path.has(id) || path.size >= MAX_CAPABILITY_COUNT + 2) throw new Failed('ancestry')
-      path.add(id)
-      const row = this.get<Work>(
-        `SELECT id, parent_id, number, owner_session_id, given_by_session_id,
-        CASE WHEN length(CAST(title AS BLOB)) <= ${B.fieldBytes} THEN title END AS title,
-        length(CAST(title AS BLOB)) > ${B.fieldBytes} AS oversized FROM work WHERE id = ?`,
-        id,
-      )
-      if (row === undefined || !Number.isSafeInteger(row.number) || row.number < 1)
-        throw new Failed('ancestry')
-      const parent = row.parent_id === null ? null : task(row.parent_id, path)
-      const title = currentWorkTitle(row.title, newest(row.owner_session_id).get(row.id) ?? null)
-      const label = parent === null ? pieceCalled([row.number]) : `${parent.label}.${row.number}`
-      const breadcrumb =
-        (parent === null ? '' : `${parent.breadcrumb} / `) +
-        `${label}${title === null ? '' : ` · ${title}`}`
-      const depth = (parent?.depth ?? 0) + 1
-      if (depth > MAX_CAPABILITY_COUNT + 2) throw new Failed('ancestry')
-      const result = { row, label, title, breadcrumb, depth }
-      this.allocated(result)
-      tasks.set(id, result)
-      return result
+      for (const row of above.reverse()) {
+        const title = currentWorkTitle(row.title, newest(row.owner_session_id).get(row.id) ?? null)
+        const label = parent === null ? pieceCalled([row.number]) : `${parent.label}.${row.number}`
+        const breadcrumb =
+          (parent === null ? '' : `${parent.breadcrumb} / `) +
+          `${label}${title === null ? '' : ` · ${title}`}`
+        const result: FullTask = { row, label, title, breadcrumb }
+        this.allocated(result)
+        tasks.set(row.id, result)
+        parent = result
+      }
+      if (parent === null) throw new Failed('ancestry')
+      return parent
     }
     const person = (id: string | null): LibraryKeep['addedBy'] => {
       if (id === null) return null

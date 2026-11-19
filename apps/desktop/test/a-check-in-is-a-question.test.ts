@@ -14,7 +14,6 @@ import {
   refuseTool,
 } from '../src/main/runtime/agent-tools'
 import { PERMANENCE_SAID, RAIL_PERMANENCES } from '../src/shared/refusals'
-import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 
 import { theConversationCalled } from '../src/shared/piece-called'
 
@@ -38,13 +37,11 @@ import { theConversationCalled } from '../src/shared/piece-called'
  *  - **§5** — `HO-095` §3.4: *"this call can never succeed"*, seconds before one succeeded.
  */
 
-/** A root conversation holding the one default set, and its own root piece (D-016). */
+/** A root conversation and its own root piece (D-016). */
 const context = (over: Partial<InstructionContext> = {}): InstructionContext => ({
   profileSlug: 'somebody',
   cwd: '/tmp/work',
   startedBy: null,
-  depth: 0,
-  capabilities: DEFAULT_CAPABILITIES,
   spawningEnabled: true,
   root: 'W1',
   // ⚑ **D-024 · R1 — required**: the profile's other conversations. None here, which renders no
@@ -55,10 +52,8 @@ const context = (over: Partial<InstructionContext> = {}): InstructionContext => 
 
 /**
  * ⚑ **The launches whose composed text differs** (D-014: there are no roles, so every agent gets
- * the same rules). What still changes the bundle is where the conversation stands and whether this
- * app can name its identity: a conversation it cannot name gets no grant lines at all.
- * ⚑ **D-024 · R1 — where it stands now moves only this conversation's own text**; the profile's
- * file moves with the grants alone, so the identity this app cannot name still moves both.
+ * the same rules). What still changes the composed text is where the conversation stands and
+ * whether this app can name its profile, which decides the memory line.
  */
 /**
  * The conversation a spawned launch was started by, named the way the dynamic layer renders it: its
@@ -71,31 +66,25 @@ const LAUNCHES = {
   // ⚑ D-016 · a conversation another agent started owns no root.
   'a conversation another agent started': {
     startedBy: STARTED_BY,
-    depth: 1,
     root: null,
   },
-  'a conversation this app cannot name': { profileSlug: null, capabilities: null },
+  'a conversation this app cannot name': { profileSlug: null },
 } as const satisfies Record<string, Partial<InstructionContext>>
 
 const EVERY_LAUNCH = Object.keys(LAUNCHES) as (keyof typeof LAUNCHES)[]
 
 /**
- * The composed text for one launch, with the widest grants this app can give an identity.
+ * The composed text for one launch.
  *
  * ⚑ **D-024 · R1 — two compositions now, and this reads both**: the profile's own file
  * (`composeProfileBundle` — the factory rules and the person's text) and this conversation's own
  * text, sent with its launch (`thisConversationSpans` — `## This conversation` and `## What you
- * have been granted`, which left the file). ⛔ §2's census is over the words an agent is GIVEN, and
+ * may do`, which left the file). ⛔ §2's census is over the words an agent is GIVEN, and
  * the dynamic layer still names a tool (`update_work`, in the root line): the file alone would leave
  * that name uncounted.
  */
 const bundleFor = (launch: keyof typeof LAUNCHES): string => {
-  const launched = context({
-    // ⚑ **The WIDEST grants an identity can hold**, so every branched sentence in the factory
-    // text is rendered and §2's census walks the whole surface rather than the narrow arm.
-    capabilities: { ...DEFAULT_CAPABILITIES, canWriteRules: 'relay' as const },
-    ...LAUNCHES[launch],
-  })
+  const launched = context(LAUNCHES[launch])
   return `${composeProfileBundle(launched)}${thisConversationSpans(launched).text}`
 }
 
@@ -164,26 +153,19 @@ describe('§1 · ⛔ the factory text says which verb a check-in is', () => {
 describe('§2 · 🔴 every tool the factory text names is a tool this app publishes', () => {
   /**
    * ⛔ **A `snake_case` word, which is the shape every tool in this app is named in.** ⚠️ It over-
-   * collects by design — `can_message` is not a tool — so the census subtracts a
+   * collects by design — `definition_of_done` is not a tool — so the census subtracts a
    * named, argued exemption list rather than narrowing the pattern until only tools survive.
    */
   const SNAKE = /\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/g
 
   /**
-   * ⚑ **Not tools, and each is here for a stated reason** — a column, a grant word, or a piece of
-   * this app's own vocabulary a sentence renders.
+   * ⚑ **Not tools, and each is here for a stated reason** — a piece of this app's own vocabulary
+   * a sentence renders.
    *
    * ⛔ **An exemption list is where this census could go quiet**, so it is short, it is named, and
    * §2's second test plants a word that is NOT on it.
    */
   const NOT_A_TOOL = new Set([
-    // ⚑ Capability COLUMNS, which the dynamic layer renders from `CAPABILITY_FIELDS`. ⛔ Only the
-    // kept ones (D-014): a column nothing reads any more is not exempt, so a sentence naming one
-    // fails here.
-    'can_message',
-    'can_assign_work',
-    'can_create_agents',
-    'can_write_rules',
     // ⚑ A field the work tools take, named in the core's sentence on give_work and take_on_work.
     'definition_of_done',
     // ⚑ D-016 · `same_project` was exempt here and went with projects, so a sentence naming it
@@ -275,8 +257,8 @@ describe('§3 · ⛔ the refusal names a performable act — in the caller’s o
 
   it('⚠️ the remedy FIELD is null, and the biconditional is what decided it', () => {
     // ⛔ **`REFUSAL_REMEDIES`: *"a rail carries an act if and only if this app can retry it."***
-    // ⚑ `may-not-relay-a-rule` is the precedent word for word: *"The SENTENCE tells the caller it
-    // may ask; the remedy field would promise this call could be replayed, and it cannot."*
+    // The sentence tells the caller what to do instead; the remedy field would promise this call
+    // could be replayed, and it cannot.
     expect(TOOL_PERMANENCE['that-is-work-you-hold']).toBe('permanent')
     expect(toolRemedyOf('that-is-work-you-hold')).toBeNull()
     // ⚑ **The control**: a rail that IS retryable carries one, so the null above is the

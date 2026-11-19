@@ -4,7 +4,6 @@ import ImageViewer from '../../src/renderer/src/components/ImageViewer.vue'
 import OverlayHost from '../../src/renderer/src/components/OverlayHost.vue'
 import CapabilitiesSheet from '../../src/renderer/src/components/CapabilitiesSheet.vue'
 import { createAgentStore, type AgentStore } from '../../src/renderer/src/lib/agent-store'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type { RuntimeBridge } from '../../src/shared/runtime-ipc'
 import CanonicalDocumentViewer from '../../src/renderer/src/components/CanonicalDocumentViewer.vue'
 import SessionTools from '../../src/renderer/src/components/SessionTools.vue'
@@ -81,14 +80,6 @@ function capabilityStore(): AgentStore {
           displayName: null,
           createdAt: 1_700_000_000_000,
           provider: null,
-          capabilities: DEFAULT_CAPABILITIES,
-          chosen: {
-            maxDepth: 'default',
-            canMessage: 'default',
-            canAssignWork: 'default',
-            canCreateAgents: 'default',
-            canWriteRules: 'default',
-          },
         },
       ],
       foldersWithoutARow: [],

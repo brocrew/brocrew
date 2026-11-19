@@ -9,7 +9,6 @@ import { inTheProvidersWords } from '../../src/renderer/src/lib/permission-offer
 import * as since725 from '../../src/renderer/src/lib/permission-offer'
 import { acceptEvent, createSessionRecord } from '../../src/renderer/src/lib/session-record'
 import { applyEvent } from '../../src/renderer/src/lib/transcript'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import {
   agentName,
   type AgentIdentity,
@@ -156,20 +155,6 @@ const aLegacyGrant: TranscriptEvent = {
   },
 } as TranscriptEvent
 
-const CHOSEN = {
-  canSpawn: 'default',
-  canStaff: 'default',
-  maxDepth: 'default',
-  maxConcurrent: 'default',
-  canMessage: 'default',
-  canAssignWork: 'default',
-  canInterrupt: 'default',
-  canCreateAgents: 'default',
-  takesWorkFrom: 'default',
-  canCreateProjects: 'default',
-  canWriteRules: 'default',
-} as unknown as AgentIdentity['chosen']
-
 /** ⚑ The identity the conversation runs as, NAMED by a person — `agentName` finds it by its slug. */
 const ADA: AgentIdentity = {
   id: 'aid:ada',
@@ -179,8 +164,6 @@ const ADA: AgentIdentity = {
   createdBy: null,
   provider: 'codex',
   externalMcpServerIds: [],
-  capabilities: { ...DEFAULT_CAPABILITIES },
-  chosen: CHOSEN,
 }
 
 /** ⚑ A Codex conversation, run as `ada` — the host's echo of both facts on `meta`. */

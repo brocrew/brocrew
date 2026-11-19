@@ -308,7 +308,7 @@ describe('own notes tools bind to their caller and person controls stay in the w
       outcome: 'refused',
       rail: 'no-such-agent',
     })
-    expect(store.capabilitiesOf('absent')).toBeNull()
+    expect(store.agentIdentityOf('absent')).toBeNull()
     expect(store.ownNotesOf('lark')!.versions).toEqual([])
   })
 
@@ -746,6 +746,6 @@ describe('own notes tools bind to their caller and person controls stay in the w
       await expect(executeRuntimeCommand(host, window, commandWithExtra)).rejects.toThrow()
     }
     expect(store.ownNotesOf('lark')!.versions).toEqual([])
-    expect(store.capabilitiesOf('absent')).toBeNull()
+    expect(store.agentIdentityOf('absent')).toBeNull()
   })
 })

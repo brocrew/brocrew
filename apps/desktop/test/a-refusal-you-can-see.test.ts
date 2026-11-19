@@ -148,10 +148,6 @@ describe('405 · a refusal you can see', () => {
     await host.close(id, window)
   }
 
-  const grant = (profileId: string, edit: Parameters<SessionStore['setCapabilities']>[1]): void => {
-    expect(store.setCapabilities(profileId, edit)).toBe(true)
-  }
-
   /** The toolset one session is offered, called the way a provider would call it. */
   const toolsOf = (sessionId: string) => {
     const set = agentToolsFor(host, sessionId)
@@ -180,7 +176,6 @@ describe('405 · a refusal you can see', () => {
     takeOnWork: (...args) => host.takeOnWork(...args),
     whatAPieceIsTo: (...args) => host.whatAPieceIsTo(...args),
     mayCreateAgents: (...args) => host.mayCreateAgents(...args),
-    mayReachAtAll: (...args) => host.mayReachAtAll(...args),
     readResource: (...args) => host.readResource(...args),
     queueMessage: (...args) => host.queueMessage(...args),
     messageAgentNow: (...args) => host.messageAgentNow(...args),
@@ -349,12 +344,11 @@ describe('405 · a refusal you can see', () => {
       expect(refusalsIn(pm)).toEqual([])
     })
 
-    it('🔴 `too-deep` — the second rail `402` produced live, and it reads DIFFERENTLY from the first', async () => {
+    it('🔴 `spawning-disabled` — a second rail produced live, and it reads DIFFERENTLY from the first', async () => {
       await bringIdentityIntoBeing('worker')
       const pm = await personOpens('pm')
-      // ⛔ **The identity exists AND the depth is refused**, so the rail that fires is the depth one
-      // and not the existence one — `admitGive` asks depth first (R2).
-      grant('pm', { maxDepth: 0 })
+      // The identity exists and the app starts no new conversation, so the switch is what refuses.
+      store.setSpawningEnabled(false)
       const { call } = toolsOf(pm)
 
       const refused = await call('give_work', {
@@ -363,29 +357,28 @@ describe('405 · a refusal you can see', () => {
         title: 'deeper',
         brief: 'deeper',
       })
-      expect(refused.rail).toBe('too-deep')
+      expect(refused.rail).toBe('spawning-disabled')
 
       const row = theRefusalIn(pm)
-      expect(row.rail).toBe('too-deep')
-      expect(row.permanence).toBe(permanenceOf('too-deep'))
-      expect(row.retryable).toBe(retryableOf('too-deep'))
+      expect(row.rail).toBe('spawning-disabled')
+      expect(row.permanence).toBe(permanenceOf('spawning-disabled'))
+      expect(row.retryable).toBe(retryableOf('spawning-disabled'))
       // 🔴 **The two rails DIVERGE, and that is the point of measuring both** (standing rule 3).
       // ⛔ Three of `341`'s own rows survived because they had only ever been measured where two
       // readings agree (`a-comparison-tested-where-both-sides-agree`). ⚑ `no-such-profile` is a
       // fact about the CALL and is `permanent`, so a row that recorded a constant permanence would
       // satisfy §1's first test and die here.
-      expect(permanenceOf('too-deep')).not.toBe(permanenceOf('no-such-profile'))
+      expect(permanenceOf('spawning-disabled')).not.toBe(permanenceOf('no-such-profile'))
       expect(row.permanence).toBe('until-a-person-changes-it')
-      // ⚑ **And `max_depth` is why**: a count on the grant sheet, with no call the caller could
-      // change — the door fills in the parent itself.
+      // A person turns the switch back on; no change to the call does.
       expect(row.retryable).toBe(false)
     })
 
-    it('⚑ the paired positive for depth — `maxDepth` back at its default admits the identical call', async () => {
+    it('⚑ the paired positive — the switch on admits the identical call', async () => {
       await bringIdentityIntoBeing('worker')
       const pm = await personOpens('pm')
-      // ⚑ `null` is *use the default*, which is the one fact that differs from the test above.
-      grant('pm', { maxDepth: null })
+      // The one fact that differs from the test above.
+      store.setSpawningEnabled(true)
       const { call } = toolsOf(pm)
       const admitted = await call('give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
@@ -411,9 +404,8 @@ describe('405 · a refusal you can see', () => {
       const pm = await personOpens('pm', 'auto')
       const { call } = toolsOf(pm)
 
-      // 1 · `SPAWN_RAILS` — the door `341` built, refused by the depth a person set: the one
-      // start rail that waits on a person now that any agent may give to any agent (D-014).
-      grant('pm', { maxDepth: 0 })
+      // 1 · `SPAWN_RAILS` — refused by the spawning switch, a start rail that waits on a person.
+      store.setSpawningEnabled(false)
       await call('give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
@@ -432,12 +424,12 @@ describe('405 · a refusal you can see', () => {
       })
       // 5 · 🔴 **The sample's only RETRYABLE row** (424). ⛔ **The four above were `{true, false}`
       // between them until `424` turned three of them over**: `no-such-agent`, the reply's unknown
-      // piece and `no-question-by-that-name` are all `permanent` now, and `too-deep` waits on a
-      // person — so without a fifth door the set assertion below would have become *"they are all
+      // piece and `no-question-by-that-name` are all `permanent` now, and `spawning-disabled` waits
+      // on a person — so without a fifth door the set assertion below would have become *"they are all
       // false"*, which a hardcoded field satisfies. ⚑ **An answer over the bound is the real
       // transient one** (a give is no longer refused over a stall): the same call with shorter words
       // lands, and nobody else has to decide anything.
-      grant('pm', { maxDepth: null })
+      store.setSpawningEnabled(true)
       const given = await call('give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
@@ -464,7 +456,7 @@ describe('405 · a refusal you can see', () => {
         'answer_question',
       ])
       expect(rows.map((one) => one.rail)).toEqual([
-        'too-deep',
+        'spawning-disabled',
         'no-such-agent',
         'no-piece-by-that-name',
         'no-question-by-that-name',
@@ -556,8 +548,8 @@ describe('405 · a refusal you can see', () => {
     it('🔴 nothing a caller wrote reaches the ledger — not the arguments and not the detail; the sentence the app composed does', async () => {
       await bringIdentityIntoBeing('worker')
       const pm = await personOpens('pm')
-      // ⚑ **Refused by the depth a person set** — the give's one start rail that waits on a person.
-      grant('pm', { maxDepth: 0 })
+      // Refused by the spawning switch, a start rail that waits on a person.
+      store.setSpawningEnabled(false)
       const { call } = toolsOf(pm)
       // ⛔ **Words a person could have written**, in the fields `give_work` carries them in: the
       // `title` and `brief` are the work itself and `folder` is a path on this machine.
@@ -586,7 +578,7 @@ describe('405 · a refusal you can see', () => {
       expect(refused.reason as string).not.toContain('Northwind')
       // ⚑ **The positive control, over the same string** — the negatives above are worth nothing
       // without it, because an empty row would pass all three.
-      expect(written).toContain('too-deep')
+      expect(written).toContain('spawning-disabled')
       expect(written).toContain('give_work')
       // ⛔ **Exactly seven keys, so a later field cannot arrive unnoticed.** ⚑ **425 added the sixth**
       // — `remedy` — and this assertion is the reason the addition had to be argued rather than
@@ -602,7 +594,7 @@ describe('405 · a refusal you can see', () => {
         'type',
       ] as string[])
       // 🔴 **And the sixth field is `null` here, which is the whole of `425` §3.1 in one line.**
-      // `too-deep` is a depth a person set; nothing this caller can do changes it, so the app says
+      // `spawning-disabled` is a person's switch; nothing this caller can do changes it, so the app says
       // nothing rather than inventing an act. ⚠️ The paired positive — a rail that DOES carry one —
       // is `a-refusal-carries-its-remedy.test.ts` §1.
       expect(row.remedy).toBeNull()
@@ -663,7 +655,6 @@ describe('405 · a refusal you can see', () => {
   const REFUSAL_BUILDERS = [
     'refuseTool',
     'carryRailRefusal',
-    'carryMessageRefusal',
     'carryReplyRefusal',
     'carryInterruptRefusal',
     'carryQuestionRefusal',
@@ -752,7 +743,7 @@ describe('405 · a refusal you can see', () => {
     it('⛔ the work a caller wrote is in no kept sentence — a brief, a title, a message, a summary, an answer — at four doors', async () => {
       await bringIdentityIntoBeing('worker')
       const pm = await personOpens('pm')
-      grant('pm', { maxDepth: 0 })
+      store.setSpawningEnabled(false)
       const { call } = toolsOf(pm)
       // ⚑ One word, written into every field that carries a caller's own work.
       const WORK = 'Northwind'
@@ -770,7 +761,7 @@ describe('405 · a refusal you can see', () => {
       })
       const rows = refusalsIn(pm)
       expect(rows.map((one) => one.rail)).toEqual([
-        'too-deep',
+        'spawning-disabled',
         'no-such-agent',
         'no-piece-by-that-name',
         'no-question-by-that-name',
@@ -832,7 +823,7 @@ describe('405 · a refusal you can see', () => {
     it('🔴 the kept app sentence is a prefix of the receipt, in its order, at every door sampled', async () => {
       await bringIdentityIntoBeing('worker')
       const pm = await personOpens('pm')
-      grant('pm', { maxDepth: 0 })
+      store.setSpawningEnabled(false)
       const { set } = toolsOf(pm)
       const texts: string[] = []
       const said = async (name: ToolName, args: Record<string, unknown>): Promise<void> => {
@@ -973,13 +964,13 @@ describe('405 · a refusal you can see', () => {
     it('⚑ a refusal whose payload carries no sentence still writes its row, without one', () => {
       const facts = refusalIn('give_work', {
         outcome: 'refused',
-        rail: 'too-deep',
+        rail: 'spawning-disabled',
         permanence: 'while-this-holds',
         retryable: true,
         remedy: null,
       })
       expect(facts).toEqual({
-        rail: 'too-deep',
+        rail: 'spawning-disabled',
         permanence: 'while-this-holds',
         retryable: true,
         remedy: null,
@@ -1049,22 +1040,26 @@ describe('405 · a refusal you can see', () => {
   // §5 · the surface a person reads
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
+  const aGiveRefusedByTheSwitch = async (): Promise<string> => {
+    await bringIdentityIntoBeing('worker')
+    const pm = await personOpens('pm')
+    store.setSpawningEnabled(false)
+    await toolsOf(pm).call('give_work', {
+      definition_of_done: 'The requested result and its checks are recorded.',
+      profile: 'worker',
+      title: 'x',
+      brief: 'x',
+    })
+    return pm
+  }
+
   describe('§5 · a person reading a transcript can see it', () => {
     it('🔴 the refused call draws a notice naming the tool and the rule; the admitted one draws nothing', async () => {
-      await bringIdentityIntoBeing('worker')
-      const pm = await personOpens('pm')
-      grant('pm', { maxDepth: 0 })
-      const { call } = toolsOf(pm)
-      await call('give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'x',
-        brief: 'x',
-      })
+      const pm = await aGiveRefusedByTheSwitch()
 
       const said = theNoticeFor(theRefusalIn(pm)).text
       expect(said).toContain('give_work')
-      expect(said).toContain('too-deep')
+      expect(said).toContain('spawning-disabled')
       // ⛔ **Both halves of what the model was told about coming back.**
       expect(said).toContain('until somebody changes it')
       expect(said).toContain('retrying will not help')
@@ -1167,16 +1162,7 @@ describe('405 · a refusal you can see', () => {
 
   describe('§6 · written by the host that owns the ledger', () => {
     it("🔴 the row takes the host's own ordinal, and everything after it still lands", async () => {
-      await bringIdentityIntoBeing('worker')
-      const pm = await personOpens('pm')
-      grant('pm', { maxDepth: 0 })
-      const { call } = toolsOf(pm)
-      await call('give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'x',
-        brief: 'x',
-      })
+      const pm = await aGiveRefusedByTheSwitch()
       // ⛔ **A durable event AFTER the refusal.** `398` §6 measured that a store-side append into a
       // running ledger collides with `HostedSession.ordinal`, after which `record()` logs the first
       // collision and returns — **every later durable event dropped silently**. So the assertion is

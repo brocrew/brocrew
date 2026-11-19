@@ -7,7 +7,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { CAPABILITY_FIELDS, DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import { NONE_STARTED, theProviderOfAnAgent } from '../src/shared/agent-roster'
 import {
   createAgentStore,
@@ -55,25 +54,6 @@ const identity = (over: Partial<AgentIdentity> = {}): AgentIdentity => ({
   provider: null,
   // ⚑ **516** — presence IS the grant, so an empty list is *granted none*, not *not chosen*.
   externalMcpServerIds: [],
-  capabilities: {
-    // ⚑ **D-014 · the one default set** — six levels below the root.
-    maxDepth: 6,
-    // ⚑ **549** — HO-058 §1's ruled word, and the one that is NOT `same-project` any more.
-    canMessage: 'any',
-    // ⚑ **D-014** — the ruled word, which is *a conversation you started*.
-    canAssignWork: 'any',
-    canCreateAgents: 'any',
-    // ⚑ **582 · the ruled default, which is the narrowest** — an identity nobody has spoken about
-    // may not reach into what another agent is told.
-    canWriteRules: 'none',
-  },
-  chosen: {
-    maxDepth: 'default',
-    canMessage: 'default',
-    canAssignWork: 'default',
-    canCreateAgents: 'default',
-    canWriteRules: 'default',
-  },
   ...over,
 })
 
@@ -216,7 +196,7 @@ describe('§1 · the refusal reaches a person as the app wrote it', () => {
    *
    * `ipcMain.handle` rejections arrive wrapped: Electron prefixes
    * `Error invoking remote method 'runtime:command': Error: `. ⛔ Every refusal this store has ever
-   * surfaced went to the screen with that in front of it — `setCapabilities`' *"who may ask"*, the
+   * surfaced went to the screen with that in front of it — `setExternalMcpServers`' *"who may ask"*, the
    * kill switch's, and now `419`'s collision sentence. ⚠️ **A fake bridge rejects with a plain
    * `Error`**, so the wrapper exists only in the shipped app: the fixture that would have caught it
    * is the one nobody writes. `session-record.ts`'s `readableError` has owned the strip since
@@ -414,24 +394,11 @@ describe('§3 · the identity’s default provider — every writer, measured', 
     expect(
       updates.filter((each) => each.file.endsWith('.sql') && /\bprovider\b/.test(each.sql)),
     ).toEqual([])
-    // ⚠️ **The app's `.ts` UPDATEs are one per question**, which is why `provider` is not a
-    // sixth `?` on the capability writer: that statement's SET list is `CAPABILITY_COLUMNS` and
-    // provider is not one of them, so a shared writer would have had to answer two questions.
-    //
-    // 🔴 **558 · a THIRD one arrived and the rule held**: `display_name` got its own statement for
-    // the same reason `provider` did — it is not a capability, no rail reads it, and it would have
-    // been a seventh `?` on a writer whose column list is derived from the schema. ⛔ The count
-    // moved because the world did; the *one per question* claim is what it measures, so it is
-    // spelled out below rather than left to a length.
-    //
-    // 🔴 **677 · a FOURTH, and the door is `setAgentModelAndEffort`** (`R25`) — a person's model and
-    // effort for an identity, behind `requireAPerson`. ⛔ Its own statement for the reason the two
-    // above have theirs: it is not a capability (it grants nothing; the rail that reads it refuses a
-    // spawner's argument), and it would have been another `?` on a writer whose column list is
-    // derived from the capability schema. ⚑ It writes `model_choice` and never `provider`, which is
-    // what the rest of this section is about.
+    // ⚠️ **The app's `.ts` UPDATEs are one per question**: `provider`, `display_name` and
+    // `model_choice` each have their own statement, and no statement writes the retired grant
+    // columns. ⛔ The *one per question* claim is what this measures, so the set lists are spelled
+    // out below rather than left to a length.
     expect(updates.filter((each) => each.file.endsWith('.ts')).map((each) => each.file)).toEqual([
-      'main/db/session-store.ts',
       'main/db/session-store.ts',
       'main/db/session-store.ts',
       'main/db/session-store.ts',
@@ -443,17 +410,7 @@ describe('§3 · the identity’s default provider — every writer, measured', 
         .map((each) => setList(each.sql).split(' WHERE')[0]?.trim())
         .sort(),
       'an UPDATE on agent_identity answers a question one of the others already answers',
-    ).toEqual([
-      "SET ${CAPABILITY_COLUMNS.map((column) => `${column} = ?`).join(', ')}",
-      'SET display_name = ?',
-      'SET model_choice = ?',
-      'SET provider = ?',
-    ])
-    // …and `provider` is not one of those columns, which is the claim `AgentIdentity.provider`'s
-    // own docblock makes — *"not a capability, and it is on this record rather than inside
-    // capabilities for that reason."* ⚑ The positive control is that the list is real.
-    expect(CAPABILITY_FIELDS.map((field) => field.column)).toContain('max_depth')
-    expect(CAPABILITY_FIELDS.map((field) => field.column)).not.toContain('provider')
+    ).toEqual(['SET display_name = ?', 'SET model_choice = ?', 'SET provider = ?'])
 
     // ⚑ So the only statement in the product that can put a provider on an identity inserts a NEW
     // row — `ensureIdentityRow`, which every creation and every first launch goes through.
@@ -514,11 +471,10 @@ describe('§3 · the identity’s default provider — every writer, measured', 
     expect(providerColumn(DEFAULT_PROFILE_ID)).toBeNull()
   })
 
-  it('⚑ creating `default` mints the SAME row a first launch would — the one default set, nothing chosen', () => {
-    // ⛔ **D-014 · no name carries grants of its own.** A person who names BroBot gets exactly what a
-    // first launch of any name writes: every capability column NULL, which reads as the one default
-    // set with `chosen` saying *nobody has said*.
-    const made = store.createAgentIdentity(
+  it('⚑ creating `default` mints the SAME row a first launch would — the retired grant columns left NULL', () => {
+    // ⛔ **No name carries anything of its own.** A person who names BroBot gets exactly what a
+    // first launch of any name writes, and neither door writes the columns no code reads any more.
+    store.createAgentIdentity(
       { slug: DEFAULT_PROFILE_ID, displayName: 'BroBot', provider: 'claude' },
       { by: 'a-person' },
     )
@@ -529,22 +485,18 @@ describe('§3 · the identity’s default provider — every writer, measured', 
       approvalMode: 'ask',
       profileId: 'worker',
     })
-    const columns = CAPABILITY_FIELDS.map((field) => field.column)
+    const columns = [
+      'max_depth',
+      'can_message',
+      'can_assign_work',
+      'can_create_agents',
+      'can_write_rules',
+    ]
     const rowOf = (slug: string): unknown =>
       db.prepare(`SELECT ${columns.join(', ')} FROM agent_identity WHERE slug = ?`).get(slug)
     const allNull = Object.fromEntries(columns.map((column) => [column, null]))
     expect(rowOf('worker'), 'the launch row').toEqual(allNull)
     expect(rowOf(DEFAULT_PROFILE_ID), 'the created row').toEqual(allNull)
-    expect(made?.capabilities).toEqual(DEFAULT_CAPABILITIES)
-    for (const field of CAPABILITY_FIELDS) {
-      expect(made?.chosen[field.key], field.key).toBe('default')
-    }
-    // ⚑ **The control that makes `chosen` a measurement**: a column a person sets reads `chosen`,
-    // so a reader that stamped `default` on everything fails here.
-    expect(store.setCapabilities(DEFAULT_PROFILE_ID, { canCreateAgents: 'none' })).toBe(true)
-    const edited = store.agentIdentities().find((one) => one.slug === DEFAULT_PROFILE_ID)
-    expect(edited?.chosen.canCreateAgents).toBe('chosen')
-    expect(edited?.capabilities.canCreateAgents).toBe('none')
   })
 })
 

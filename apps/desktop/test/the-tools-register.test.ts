@@ -14,7 +14,6 @@ import {
   registeredWords,
   whatEachProviderDoesWithThem,
 } from '../src/renderer/src/lib/the-servers-this-app-registered'
-import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import { EXTERNAL_MCP_EVERYONE, EXTERNAL_MCP_RESTRICTED } from '../src/shared/external-mcp'
 import type { ExternalMcpServerReach, ExternalMcpServerRow } from '../src/shared/external-mcp'
 import type { AgentIdentities, AgentIdentity } from '../src/shared/runtime-ipc'
@@ -51,14 +50,6 @@ const identity = (slug: string, granted: readonly string[] = []): AgentIdentity 
   createdBy: null,
   provider: null,
   externalMcpServerIds: granted,
-  capabilities: DEFAULT_CAPABILITIES,
-  chosen: {
-    maxDepth: 'default',
-    canMessage: 'default',
-    canAssignWork: 'default',
-    canCreateAgents: 'default',
-    canWriteRules: 'default',
-  },
 })
 
 const world = (

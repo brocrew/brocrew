@@ -84,7 +84,7 @@ describe('own notes belong to an identity and retain exact attributable history'
     expect(write('No', lark, 'missing')).toBeNull()
     expect(write('No', person, 'missing')).toBeNull()
     expect(notes().undoOwnNotes('missing', { expectedVersion: 0 }, person, clock++)).toBeNull()
-    expect(store.capabilitiesOf('missing')).toBeNull()
+    expect(store.agentIdentityOf('missing')).toBeNull()
   })
 
   it('derives the agent author from its conversation and preserves exact text and reason', () => {

@@ -29,7 +29,7 @@ import type {
   RulesBaseline,
 } from '../../../shared/agent-rules'
 import { THE_APP_DID_IT, type ActedBy } from '../../../shared/who-did-it'
-import { DEFAULT_PROFILE_ID } from '../../../shared/profile-name'
+import type { IdentityCreator } from '../../../shared/agent-identity-contracts'
 import type { SessionStore } from '../../db/session-store'
 import { foldProfileName } from '../../db/identity'
 import { newInstructionAskId } from '../../db/ids'
@@ -53,14 +53,12 @@ interface InstructionDecisionOperations {
     | 'ownNotesUnread'
     | 'undoOwnNotes'
     | 'markOwnNotesSeen'
-    | 'capabilitiesOf'
-    | 'parentOf'
+    | 'agentIdentityOf'
     | 'instructionUnread'
     | 'undoOwnInstructions'
     | 'markInstructionsSeen'
   >
   rulesAuthor(me: string, by: Caller): RulesAuthor | null
-  hasUnspawnedSlot(conversation: string): boolean
   /** Capture the current live session; invoke the returned publisher synchronously at the write. */
   instructionPublisher(
     conversation: string,
@@ -73,6 +71,11 @@ interface InstructionDecisionOperations {
   agentInstructions(profile: string): AgentInstructionsReading
   theWorldMoved(what: 'agents'): void
   now(): number
+}
+
+/** The profile that created an identity, the one agent profile that may change its rules. */
+function recruiterOf(createdBy: IdentityCreator | null): string | null {
+  return createdBy?.by === 'an-agent' ? foldProfileName(createdBy.agent) : null
 }
 
 /** Read and version rules and own notes, and settle proposals against their recorded baseline. */
@@ -228,7 +231,7 @@ export class InstructionDecisions {
         detail: { problems: ['rules and why must fit the size limit, and why must say why'] },
       }
     const about = foldProfileName(said.about)
-    if (this.ops.store().capabilitiesOf(about) === null)
+    if (this.ops.store().agentIdentityOf(about) === null)
       return {
         ok: false,
         rail: 'no-such-agent',
@@ -269,7 +272,7 @@ export class InstructionDecisions {
         detail: { you: null },
       }
     const profile = foldProfileName(about)
-    if (this.ops.store().capabilitiesOf(profile) === null)
+    if (this.ops.store().agentIdentityOf(profile) === null)
       return {
         ok: false,
         rail: 'no-such-agent',
@@ -295,31 +298,26 @@ export class InstructionDecisions {
     by: Caller,
   ): AgentRulesOutcome<AgentRulesReceipt> {
     const author = this.ops.rulesAuthor(me, by)
-    if (author === null || author.profile !== DEFAULT_PROFILE_ID)
-      return {
-        ok: false,
-        rail: 'may-not-write-rules',
-        detail: { you: author?.profile ?? null },
-      }
-    // Both the live reservation and recorded parent survive a person's claim of a helper.
-    if (!this.ops.hasUnspawnedSlot(me) || this.ops.store().parentOf(me) !== null)
-      return {
-        ok: false,
-        rail: 'may-not-write-rules',
-        detail: { you: author.profile, helper: true },
-      }
+    if (author === null) return { ok: false, rail: 'may-not-write-rules', detail: { you: null } }
     const profile = foldProfileName(said.about)
-    if (profile === DEFAULT_PROFILE_ID)
-      return {
-        ok: false,
-        rail: 'may-not-write-rules',
-        detail: { you: author.profile, self: true },
-      }
-    if (this.ops.store().capabilitiesOf(profile) === null)
+    const target = this.ops.store().agentIdentityOf(profile)
+    if (target === null)
       return {
         ok: false,
         rail: 'no-such-agent',
         detail: { agent: profile },
+      }
+    const recruiter = recruiterOf(target.createdBy)
+    if (recruiter !== author.profile || profile === author.profile)
+      return {
+        ok: false,
+        rail: 'may-not-write-rules',
+        detail: {
+          you: author.profile,
+          agent: profile,
+          createdBy: recruiter,
+          ...(profile === author.profile ? { self: true } : {}),
+        },
       }
     if (
       !Number.isSafeInteger(said.expectedVersion) ||

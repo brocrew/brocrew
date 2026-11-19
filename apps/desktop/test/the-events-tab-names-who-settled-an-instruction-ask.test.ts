@@ -123,7 +123,6 @@ describe('477 M22 · the Events tab names who settled an instruction ask', () =>
     if (neverRun) host.createAgent({ slug: 'worker', displayName: null, provider: null })
     else await bringIdentityIntoBeing('worker')
     await bringIdentityIntoBeing('asker')
-    expect(store.setCapabilities('asker', { canWriteRules: 'propose' })).toBe(true)
     const asking = await personOpens('asker')
     const asked = host.proposeAgentRules(
       asking,

@@ -38,7 +38,6 @@ import { refuseModel, MODEL_RAILS } from '../src/main/connections/model-rails'
 import { refuseReply, REPLY_RAILS } from '../src/main/runtime/reply-rails'
 import { refuseQuestion, QUESTION_RAILS } from '../src/main/runtime/question-rails'
 import { refuseInterrupt, INTERRUPT_RAILS } from '../src/main/runtime/interrupt-rails'
-import { refuseMessage, MESSAGE_RAILS } from '../src/main/runtime/message-rails'
 import {
   readOfferedResource,
   refuseResource,
@@ -127,7 +126,6 @@ describe('fresh refusal reasons and their composed prefixes', () => {
     ['reply', () => REPLY_RAILS.map((rail) => refuseReply(rail))],
     ['question', () => QUESTION_RAILS.map((rail) => refuseQuestion(rail))],
     ['interrupt', () => INTERRUPT_RAILS.map((rail) => refuseInterrupt(rail))],
-    ['message', () => MESSAGE_RAILS.map((rail) => refuseMessage(rail))],
     ['resource', () => RESOURCE_RAILS.map((rail) => refuseResource(rail))],
   ] as const
 
@@ -260,7 +258,7 @@ describe('permanence, true on every rail of its class', () => {
     expect(permanenceInWords('malformed-request', 'permanent')).toBe(
       `${NEVER} ${FIX_IT_AND_CALL_AGAIN}`,
     )
-    expect(permanenceInWords('may-not-message', 'until-a-person-changes-it')).toBe(UNTIL)
+    expect(permanenceInWords('spawning-disabled', 'until-a-person-changes-it')).toBe(UNTIL)
     expect(permanenceInWords('summary-too-long', 'while-this-holds')).toBe(WHILE)
     expect(FIX_IT_AND_CALL_AGAIN).toBe('Fix it and call again.')
   })
@@ -300,7 +298,6 @@ describe('permanence, true on every rail of its class', () => {
       ),
       // Cancelled by its parent: nobody else acts, and the same call then starts.
       answered(refuseTool('agent-did-not-start', { profile: 'helper', because: 'cancelled' })),
-      answered(refuseMessage('may-not-message')),
     ]
     for (const one of until) {
       const tail = added(one)
@@ -666,9 +663,6 @@ describe('nothing said twice, and nothing the caller sent said back', () => {
   it('adds nothing but permanence where the reason says every fact', () => {
     expect(added(answered(refuse('it-would-wait-on-itself', { profileId: 'helper' })))).toBe(
       ` ${WHILE}`,
-    )
-    expect(added(answered(refuseMessage('may-not-message', { agent: 'sess_typed' })))).toBe(
-      ` ${UNTIL}`,
     )
   })
 

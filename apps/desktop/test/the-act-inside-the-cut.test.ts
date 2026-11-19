@@ -26,7 +26,6 @@ import {
   refuseTool,
 } from '../src/main/runtime/agent-tools'
 import { SPAWN_RAILS, refuse, type SpawnRefusalDetail } from '../src/main/runtime/spawn-rails'
-import { MESSAGE_RAILS, refuseMessage } from '../src/main/runtime/message-rails'
 import { REPLY_RAILS, refuseReply, replyUnkeptFileReason } from '../src/main/runtime/reply-rails'
 import { QUESTION_RAILS, refuseQuestion } from '../src/main/runtime/question-rails'
 import { INTERRUPT_RAILS, refuseInterrupt } from '../src/main/runtime/interrupt-rails'
@@ -227,9 +226,6 @@ const SPAWN_DETAILS: Partial<Record<(typeof SPAWN_RAILS)[number], readonly Spawn
     // names no model, provider or mode. ⚠️ A list of labels has no cap, so the list below is a
     // caller holding its root and two pieces.
     'name-the-piece-you-give-from': [{ held: ['W12', 'W3.4.1', 'W3.4.2'] }],
-    // ⚑ D-014 · the ruled limit is 6, so the first refusal is at depth 7. ⛔ The label is the
-    // SHORTEST a piece at depth 6 can have — seven parts, each one digit.
-    'too-deep': [{ depth: 7, maxDepth: 6, label: 'W1.1.1.1.1.1.1' }],
     'no-free-worker-at-capacity': [{ profileId: LONG_SLUG }],
     'no-room-for-provider-conversation': [{ profileId: LONG_SLUG, provider: 'codex' }],
     'service-provider-is-fixed': [
@@ -338,12 +334,6 @@ const VOCABULARIES: readonly {
       (SPAWN_DETAILS[rail as (typeof SPAWN_RAILS)[number]] ?? [{}]).map(
         (detail) => refuse(rail as never, detail).reason,
       ),
-  },
-  {
-    name: 'MESSAGE_RAILS',
-    module: 'runtime/message-rails.ts',
-    rails: MESSAGE_RAILS,
-    arms: (rail) => [refuseMessage(rail as never).reason],
   },
   {
     name: 'REPLY_RAILS',
@@ -643,6 +633,17 @@ const OVERRIDES: readonly {
       refuseTool('that-agent-is-you', { agent: 'sess_self' }).reason +
       ' W1.2 is your own piece, with no helpers recorded under it. list_agents names conversations; message_agent answers whether one can take your message.',
   },
+  ...Object.entries({
+    'its-own':
+      'An agent never writes its own standing rules. Propose the change with propose_agent_rules, or keep it in your own notes. Nothing was written.',
+    'its-creator': `Propose the change with propose_agent_rules; the person decides, or ${LONG_SLUG} can make it. Only the person and ${LONG_SLUG}, which created ${LONG_SLUG}, can change its standing rules. Nothing was written.`,
+    'a-person-only': `Propose the change with propose_agent_rules; the person decides. Only the person can change ${LONG_SLUG}'s standing rules. Nothing was written.`,
+  }).map(([arm, sentence]) => ({
+    key: `TOOL_REFUSALS|may-not-write-rules/${arm}`,
+    rail: 'may-not-write-rules',
+    spreadAs: 'whoMayWriteTheseRules',
+    sentence,
+  })),
   // ⚠️ **D-039 · `THE_NEW_AGENT_WAS_MADE` is not an override**, and the scan below cannot see it: a
   // give with `new: true` whose launch failed says it AFTER its word's own sentence (or one of the
   // give's two overrides, `A_FOLDER_COULD_NOT_BE_MADE` and `A_PROVIDER_REFUSED_THE_START` — never a
@@ -695,6 +696,7 @@ const ACT: Readonly<Record<string, string>> = {
   'TOOL_REFUSALS|no-such-agent': 'list_agents names the conversations this app can run',
   'TOOL_REFUSALS|that-conversation-takes-no-messages':
     'list_agents names the conversations this app can run',
+  'TOOL_REFUSALS|that-is-a-service': 'Give it the work with give_work',
   'TOOL_REFUSALS|that-agent-has-several-conversations':
     'make the same call with agent set to one of that agent\u2019s conversations',
   'TOOL_REFUSALS|that-agent-has-several-conversations/their-labels':
@@ -738,7 +740,6 @@ const ACT: Readonly<Record<string, string>> = {
   // ⚑ A start refused on the agent's sign-in, or its Codex settings: what a person does, first.
   'TOOL_REFUSALS|agent-did-not-start/its-sign-in-or-settings':
     'Ask a person to save an API key on the Codex card in Providers',
-  'TOOL_REFUSALS|may-not-create-agents': 'ask a person to grant agent creation',
   'TOOL_REFUSALS|agent-name-taken': 'Choose a different name, or use the agent that exists',
   'TOOL_REFUSALS|services-are-off-so-none-is-made': 'A person turns them on in Team',
   // ⚑ **D-016 · commit 3** — the task words became piece words, and a new piece is a give.
@@ -794,9 +795,11 @@ const ACT: Readonly<Record<string, string>> = {
     'ask the person with ask_question (a-person) to grant it to your profile',
   'TOOL_REFUSALS|server-already-asked-for': 'wait for the person to decide',
   'TOOL_REFUSALS|too-many-server-requests': 'wait until one is decided',
-  'TOOL_REFUSALS|may-not-write-rules': 'You can propose a change with propose_agent_rules',
-  'TOOL_REFUSALS|may-not-relay-a-rule':
-    'Ask again without claiming it was already agreed, and a person will decide',
+  'TOOL_REFUSALS|may-not-write-rules': 'Propose the change with propose_agent_rules',
+  'TOOL_REFUSALS|may-not-write-rules/its-own':
+    'Propose the change with propose_agent_rules, or keep it in your own notes',
+  'TOOL_REFUSALS|may-not-write-rules/its-creator': 'Propose the change with propose_agent_rules',
+  'TOOL_REFUSALS|may-not-write-rules/a-person-only': 'Propose the change with propose_agent_rules',
   'TOOL_REFUSALS|that-is-work-you-hold':
     'call ask_question naming that piece; to hand it back finished, call reply_to_parent',
   'TOOL_REFUSALS|that-conversation-is-still-stopping': 'Make the same call again in a moment',
@@ -823,7 +826,6 @@ const ACT: Readonly<Record<string, string>> = {
   // PE-006: a give names no mode the caller can change; the person who can decide is named first.
   'SPAWN_RAILS|name-the-piece-you-give-from': 'give again naming it as piece',
   'SPAWN_RAILS|no-piece-you-hold-by-that-name': 'list_tasks names what you hold',
-  'SPAWN_RAILS|too-deep': 'Do it yourself, or ask whoever gave you your piece',
   'SPAWN_RAILS|parallel-not-for-a-service': 'Leave parallel out to queue the work',
   'SPAWN_RAILS|no-free-worker-at-capacity': 'Give it again when one is free',
   'SPAWN_RAILS|no-room-for-provider-conversation':
@@ -838,7 +840,6 @@ const ACT: Readonly<Record<string, string>> = {
   'SPAWN_RAILS|its-waits-cannot-all-be-checked':
     'Give the work to another agent, or give it again once some of the work',
   'SPAWN_RAILS|its-record-cannot-be-read': 'Give the work to another agent',
-  'SPAWN_RAILS|may-not-create-agents': 'Give to an agent list_profiles names, or ask a person',
   'SPAWN_RAILS|no-such-profile': 'check the spelling',
   'SPAWN_RAILS|folder-unusable': 'only a person can make it right',
   // ⚑ **D-038 · the act moved to the front, and changed**: the work here, or the GIVER's own mode —
@@ -847,12 +848,6 @@ const ACT: Readonly<Record<string, string>> = {
     'Do this work here, or ask a person whether to change your approval mode',
   'SPAWN_RAILS|wider-than-its-parent/2':
     'Do this work here, or ask a person whether to change your approval mode',
-  'MESSAGE_RAILS|may-not-message': 'ask one, or do the work yourself',
-  // ⚑ **D-014** — a note, a follow-up or `ask_question`: since D-010 no message is a question.
-  // ⚑ **D-016 · commit 3** — work is given with `give_work`, so this is `give_work`'s wall;
-  // `assign-work-to-one-you-did-not-start` went with message_agent's `work` kind.
-  'MESSAGE_RAILS|may-not-assign-work':
-    'Send it as a note, ask with ask_question, or do the work yourself',
   'REPLY_RAILS|no-piece-by-that-name': 'list_tasks names the pieces you hold',
   // ⚑ **D-016 · commit 3** — a root is a person's gift, so its answer goes to the person.
   'REPLY_RAILS|a-person-gave-that-piece': 'answer the person here',

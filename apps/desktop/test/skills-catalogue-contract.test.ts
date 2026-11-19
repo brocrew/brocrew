@@ -11,7 +11,7 @@ const draft = {
   sha256: 'a'.repeat(64),
 }
 describe('the shared skill catalogue contract', () => {
-  it('admits a bounded document and all three origins without granting capabilities', () => {
+  it('admits a bounded document and all three origins and nothing it does not declare', () => {
     expect(SkillDraft.parse(draft)).toEqual(draft)
     for (const origin of [
       { kind: 'built-in' },
@@ -19,7 +19,7 @@ describe('the shared skill catalogue contract', () => {
       { kind: 'plugin', pluginId: 'recipe-kit' },
     ])
       expect(SkillOrigin.parse(origin)).toEqual(origin)
-    expect(SkillDraft.safeParse({ ...draft, canCreateAgents: true }).success).toBe(false)
+    expect(SkillDraft.safeParse({ ...draft, notDeclared: true }).success).toBe(false)
     expect(SkillSelection.options).toEqual(['default', 'on', 'off'])
   })
   it.each([

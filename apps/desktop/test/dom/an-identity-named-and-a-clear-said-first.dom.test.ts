@@ -22,18 +22,12 @@ import {
   whatTheProviderPressCleared,
 } from '../../src/renderer/src/lib/agent-model-choice'
 import { instructionAskedSentence } from '../../src/renderer/src/lib/instruction-asked'
-import type { AConversationToReopen } from '../../src/renderer/src/lib/reopening'
 import {
   applyEvent,
   createTranscript,
   type NoticeItem,
   type TranscriptItem,
 } from '../../src/renderer/src/lib/transcript'
-import {
-  CAPABILITY_FIELDS,
-  DEFAULT_CAPABILITIES,
-  type AnyCapabilityField,
-} from '../../src/shared/capabilities'
 import {
   judgeAgainstTheList,
   theDefaultEffortOf,
@@ -101,8 +95,6 @@ const ident = (slug: string, over: Partial<AgentIdentity> = {}): AgentIdentity =
     createdBy: null,
     provider: null,
     externalMcpServerIds: [],
-    capabilities: DEFAULT_CAPABILITIES,
-    chosen: Object.fromEntries(Object.keys(DEFAULT_CAPABILITIES).map((key) => [key, 'default'])),
     ...over,
   }) as unknown as AgentIdentity
 
@@ -254,14 +246,7 @@ interface Sheet extends Mounted {
  * mounts this sheet with no `:key`, so a re-point is an update of the same instance, and that is the
  * path the sheet's reset is for.
  */
-async function theSheet(
-  slug: string,
-  extra: {
-    openAs?: readonly AConversationToReopen[]
-    fields?: readonly AnyCapabilityField[]
-    onReopen?: (sessionId: string) => void
-  } = {},
-): Promise<Sheet> {
+async function theSheet(slug: string): Promise<Sheet> {
   await page.viewport(720, 900)
   const { store, lists } = storeOver()
   await store.load()
@@ -278,7 +263,6 @@ async function theSheet(
           runsOn: 'claude',
           store,
           lists,
-          ...extra,
         })
     },
   })
@@ -711,91 +695,31 @@ describe('712 §2c · R41 — the ask on an identity’s own rules names the age
  * ⚑ **Standing rule 5 — the sheet's sentences, pinned BY NAME for Ada** beside the builders the
  * controls below use; a builder that drifted from the component fails here first.
  */
-const OWNER_ADA =
-  'This is Ada’s own row: every grant below is stored on it and read when a conversation is running as Ada. Any agent may start a conversation as Ada, and that conversation holds these grants.'
 const SERVERS_ADA =
   'A server registered as everyone’s is used by Ada with nothing to tick. Tick a restricted one to give Ada that one; it writes Ada’s row and changes nothing about any other identity.'
-const REOPEN_ADA = 'Open as Ada in this window. Reopening one gives it what this row says now.'
 
-// ⚠️ **D-014 · the owner line's second sentence changed** — the one about *any other identity
-// named among them* was about the grant picker, which is gone; the new one says any agent may start
-// a conversation as this identity and hold these grants.
-const ownerSays = (name: string): string =>
-  `This is ${name}’s own row: every grant below is stored on it and read when a conversation is running as ${name}. Any agent may start a conversation as ${name}, and that conversation holds these grants.`
 const serversSay = (name: string): string =>
   `A server registered as everyone’s is used by ${name} with nothing to tick. Tick a restricted one to give ${name} that one; it writes ${name}’s row and changes nothing about any other identity.`
-const reopenSays = (name: string): string =>
-  `Open as ${name} in this window. Reopening one gives it what this row says now.`
-
-// The real editable message rail gets fixture-only launch metadata to exercise the generic offer.
-// This does not claim that the shipped message control has a Reopen offer.
-const R41_FIELDS = CAPABILITY_FIELDS.map((field) =>
-  field.key === 'canMessage'
-    ? { ...field, whenItTakesEffect: 'Fixture-only launch disclosure for the naming contract.' }
-    : field,
-)
-const LAUNCH_TIME = R41_FIELDS.filter((field) => field.key === 'canMessage')
-const OPEN: readonly AConversationToReopen[] = [
-  { sessionId: 'sess_1', where: '/work', heldBy: null, busy: false },
-]
 
 /** Every sentence §2d reads that names the identity, off one mount. */
 function namedSentences(m: Mounted): Record<string, string> {
-  const out: Record<string, string> = {
+  return {
     title: said(m.q('capabilities-title')),
-    owner: said(m.q('capabilities-owner')),
     servers: said(m.q('external-mcp-direction')),
   }
-  for (const field of LAUNCH_TIME) {
-    out[`${field.key}-open`] = said(
-      m.q(`grant-${field.key}-open-now`).querySelector('.identity-note') as HTMLElement,
-    )
-  }
-  return out
 }
 function sentencesFor(name: string): Record<string, string> {
-  const out: Record<string, string> = {
-    title: name,
-    owner: ownerSays(name),
-    servers: serversSay(name),
-  }
-  for (const field of LAUNCH_TIME) out[`${field.key}-open`] = reopenSays(name)
-  return out
+  return { title: name, servers: serversSay(name) }
 }
 
 describe('712 §2d · R41 — the capabilities sheet names the identity it is about; the KEY stays a slug', () => {
-  it('the shipped message rail stays editable without offering a launch-only Reopen', async () => {
-    reset({ roster: NAMED() })
-    const m = await theSheet('project-manager', { openAs: OPEN })
-    expect(
-      CAPABILITY_FIELDS.find((field) => field.key === 'canMessage')?.whenItTakesEffect,
-    ).toBeNull()
-    expect(visible(m.q('capability-canMessage-select'))).toBe(true)
-    expect(m.all('grant-canMessage-open-now')).toHaveLength(0)
-    expect(m.all('capability-canWriteRules')).toHaveLength(0)
-    await pick(m, 'capability-canMessage-select', 'none')
-    expect((m.q('capability-canMessage-select') as HTMLSelectElement).value).toBe('none')
-    expect(m.all('grant-canMessage-open-now')).toHaveLength(0)
-  })
-
-  it('🔴 project-manager named Ada: title, owner, servers and the reopen offer say Ada — the glyph and the Slug row keep the key', async () => {
-    // ⚑ The builders agree with the words pinned by name.
-    expect(ownerSays('Ada')).toBe(OWNER_ADA)
+  it('🔴 project-manager named Ada: the title and the servers sentence say Ada — the glyph and the Slug row keep the key', async () => {
+    // ⚑ The builder agrees with the words pinned by name.
     expect(serversSay('Ada')).toBe(SERVERS_ADA)
-    expect(reopenSays('Ada')).toBe(REOPEN_ADA)
-    expect(LAUNCH_TIME.length).toBeGreaterThan(0)
-    expect(LAUNCH_TIME.map((field) => field.key)).toEqual(['canMessage'])
 
     reset({ roster: NAMED() })
-    const reopened: string[] = []
-    const m = await theSheet('project-manager', {
-      openAs: OPEN,
-      fields: R41_FIELDS,
-      onReopen: (id) => reopened.push(id),
-    })
+    const m = await theSheet('project-manager')
     expect(visible(m.q('capabilities-title'))).toBe(true)
-    expect(said(m.q('capabilities-owner')).startsWith('This is Ada’s own row:')).toBe(true)
-    expect(said(m.q('capabilities-owner'))).toContain('running as Ada.')
     expect(namedSentences(m)).toEqual(sentencesFor('Ada'))
     // ⛔ The header a person reads first prints no slug at all…
     const header = m.q('capabilities-title').closest('.sheet-header') as HTMLElement
@@ -807,23 +731,11 @@ describe('712 §2d · R41 — the capabilities sheet names the identity it is ab
     expect(said(glyph)).toBe('P')
     expect('Ada'.slice(0, 1)).not.toBe('P')
     expect(said(m.q('capabilities-slug'))).toBe('project-manager')
-    expect(m.all('capability-canWriteRules')).toHaveLength(0)
-    const reopen = m.q('grant-canMessage-reopen-sess_1') as HTMLButtonElement
-    expect(reopen.disabled).toBe(false)
-    await pick(m, 'capability-canMessage-select', 'none')
-    expect(reopen.disabled).toBe(true)
-    reopen.click()
-    expect(reopened).toEqual([])
-    expect(said(m.q('grant-canMessage-cost-sess_1'))).toContain('Save first')
-    await press(m, 'capability-canMessage-use-default')
-    expect(reopen.disabled).toBe(false)
-    reopen.click()
-    expect(reopened).toEqual(['sess_1'])
   })
 
   it('⚑ THE CONTROL, same mount one fact over — the display name taken away: every one of those sentences carries the slug', async () => {
     reset({ roster: NAMED() })
-    const m = await theSheet('project-manager', { openAs: OPEN, fields: R41_FIELDS })
+    const m = await theSheet('project-manager')
     expect(namedSentences(m)).toEqual(sentencesFor('Ada'))
     world.roster = UNNAMED()
     await m.store.load()
@@ -834,12 +746,11 @@ describe('712 §2d · R41 — the capabilities sheet names the identity it is ab
 
   it('⚑ THE CONTROL — re-pointed at `worker`, nobody named it: “worker”; at BroBot’s own row, unnamed: agentName’s label, “BroBot”', async () => {
     reset({ roster: NAMED() })
-    const m = await theSheet('project-manager', { openAs: OPEN, fields: R41_FIELDS })
+    const m = await theSheet('project-manager')
     expect(said(m.q('capabilities-title'))).toBe('Ada')
 
     await m.point('worker')
     expect(namedSentences(m)).toEqual(sentencesFor('worker'))
-    expect(said(m.q('capabilities-owner')).startsWith('This is worker’s own row')).toBe(true)
     expect(said(m.host.querySelector('.sheet-glyph') as HTMLElement)).toBe('W')
 
     await m.point(DEFAULT_PROFILE_ID)
@@ -867,6 +778,6 @@ describe('712 §2d · R41 — the capabilities sheet names the identity it is ab
     )
     expect(said(none.querySelector('code') as HTMLElement)).toBe(DEFAULT_PROFILE_ID)
     expect(said(none)).not.toContain(DEFAULT_PROFILE_LABEL)
-    expect(m.all('capabilities-owner')).toHaveLength(0)
+    expect(m.all('capabilities-identity')).toHaveLength(0)
   })
 })

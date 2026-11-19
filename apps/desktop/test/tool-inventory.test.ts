@@ -459,9 +459,7 @@ describe('what tools this conversation has (358)', () => {
 
   it('⛔ the “why” sentence says what the code decides, not what the brief asked for', () => {
     expect(WHY_EVERY_CONVERSATION).toBe(
-      'Every conversation gets the same tools, except write_agent_rules. ' +
-        'Only a BroBot conversation a person started gets it, to change another agent’s rules. ' +
-        'BroCrew still checks every call against its rules.',
+      'Every conversation gets the same tools. BroCrew still checks every call against its rules.',
     )
   })
 

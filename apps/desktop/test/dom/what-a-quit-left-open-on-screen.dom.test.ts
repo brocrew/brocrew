@@ -31,7 +31,6 @@ import type { QueuedItem } from '../../src/renderer/src/lib/transcript'
 import { foldWindow, type WindowState } from '../../src/renderer/src/lib/transcript-window'
 import { workReading } from '../../src/renderer/src/lib/work-report'
 import { aNoticeALaterFactRetracted } from '../../src/main/runtime/reply-rails'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import {
   chainReading,
   chainSentence,
@@ -150,14 +149,6 @@ const identity = (slug: string, displayName: string | null): AgentIdentity => ({
   createdBy: null,
   provider: null,
   externalMcpServerIds: [],
-  capabilities: { ...DEFAULT_CAPABILITIES },
-  chosen: {
-    maxDepth: 'default',
-    canMessage: 'default',
-    canAssignWork: 'default',
-    canCreateAgents: 'default',
-    canWriteRules: 'default',
-  },
 })
 
 const roster = (): AgentIdentities => ({
@@ -174,7 +165,6 @@ const roster = (): AgentIdentities => ({
     listResumable: () => Promise.resolve(hostRows.resumable),
     listUnresumable: () => Promise.resolve(hostRows.unresumable),
     agentIdentities: async () => roster(),
-    setCapabilities: async () => roster().identities[0],
     setSpawningEnabled: async () => ({ spawningEnabled: true }),
   },
 }

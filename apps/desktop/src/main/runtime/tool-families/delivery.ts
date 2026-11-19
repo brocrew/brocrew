@@ -11,14 +11,13 @@ import { ASKED_TO_STOP, type WhereAnAskLanded } from '../../../shared/how-work-s
 import { AStartThatDidNotHappen, SessionStillStarting, unavailableOf } from '../session-unavailable'
 import { type AgentToolAnswer } from '@brobot2/runtime'
 import { type AgentToolHost } from './host'
-import { MessagingRefused } from '../message-rails'
 import { PROVIDER_DESCRIPTORS, type Provider, providerDescriptor } from '@brobot2/shared'
 import { type ReplyOutcome, theStoppedWork } from '../reply-rails'
-import { TOOL_SENTENCES, carryMessageRefusal, refuseTool } from './refusals'
+import { TOOL_SENTENCES, refuseTool } from './refusals'
 import { type ToolName } from './catalog'
 import { type WhenItWasAskedToStop } from '../agent-tool-answer-words'
 import { aWakeRefused, aWakeThatDidNotHappen } from './launch-failures'
-import { answer, refusalAnswer } from './answers'
+import { refusalAnswer } from './answers'
 import { clockTime, clockTimeFrom } from '../../../shared/clock'
 
 /** Where the last ask to stop landed, as the sentence that says it names the three. */
@@ -529,18 +528,14 @@ export function whatBecameOfTheStop(
  * **D-017 · R12 — an id this caller may not reach, answered in one sentence at every door**
  * (`RuntimeHost.whyItIsOutOfReach`): `no-such-agent` only for an id no conversation has — and for a
  * label that names nothing this caller may reach (D-016 · commit 7 · R1) — its own word for one a
- * message cannot start, and the reach rail `message_agent` meets for one outside the caller's reach
- * — carried as it was built.
+ * message cannot start, and its own word for a service's conversation.
  */
 export const outOfReachAnswer = (out: OutOfReach, agent: string): AgentToolAnswer => {
   if (out.is === 'no-such-agent') return refusalAnswer(refuseTool('no-such-agent', { agent }))
   if (out.is === 'takes-no-messages') {
     return refusalAnswer(refuseTool('that-conversation-takes-no-messages', { agent }))
   }
-  return answer(
-    carryMessageRefusal(out.refusal),
-    `refused (${out.refusal.rail}): ${out.refusal.reason}`,
-  )
+  return refusalAnswer(refuseTool('that-is-a-service', { agent }))
 }
 
 /**
@@ -557,16 +552,6 @@ export function whatADeliveryMet(
   agent: string,
   tool: Extract<ToolName, 'message_agent' | 'give_work'>,
 ): AgentToolAnswer {
-  // **A rule stopped this, and the payload says which one** (374). **Asked before every
-  // host-state answer below**, because it is not one: the conversation is perfectly able to take a
-  // message and the caller is perfectly able to reach it — what happened is that a person has
-  // narrowed what this identity may do, and `agent-cannot-take-a-message` would say something false
-  // about the agent on the other end (340's *a reason answering with another reason's sentence*).
-  // **The payload is `341`'s shape and is carried unchanged.**
-  if (error instanceof MessagingRefused) {
-    const carried = carryMessageRefusal(error.refusal)
-    return answer(carried, `refused (${error.refusal.rail}): ${error.refusal.reason}`)
-  }
   // **692 · the START this delivery asked for did not happen** — **D-017 · R1**: of any
   // conversation that was not running — answered in the WAKE's words, because it was a wake: the
   // reopen's failure classified by {@link aWakeThatDidNotHappen}, with its true reason. Only this

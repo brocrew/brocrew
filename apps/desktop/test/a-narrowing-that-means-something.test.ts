@@ -505,8 +505,8 @@ describe('371 · a narrowing that means something', () => {
       // ⚑ **D-016 · R2** — a give names no provider: the conversation runs on the agent's own
       // (`providerOf`), else the giver's, so an unknown name no longer has to be refused before the
       // comparison can be made. The rail is asked only when the give would START a conversation —
-      // after the switch and `may-not-create-agents`, which decide whether a start happens at all —
-      // and before the profile rule (R3) and the folder.
+      // after the switch, which decides whether a start happens at all — and before the profile rule
+      // (R3) and the folder.
       //
       // ⚠️ **Asserted as an ORDER and not as an index**, which is the stronger claim and the one
       // that survives a rail being inserted anywhere else.
@@ -516,7 +516,6 @@ describe('371 · a narrowing that means something', () => {
       for (const rail of [
         'wider-than-its-parent',
         'spawning-disabled',
-        'may-not-create-agents',
         'no-such-profile',
         'folder-unusable',
       ] as const) {
@@ -524,9 +523,6 @@ describe('371 · a narrowing that means something', () => {
       }
       expect(SPAWN_RAILS.indexOf('wider-than-its-parent')).toBeGreaterThan(
         SPAWN_RAILS.indexOf('spawning-disabled'),
-      )
-      expect(SPAWN_RAILS.indexOf('wider-than-its-parent')).toBeGreaterThan(
-        SPAWN_RAILS.indexOf('may-not-create-agents'),
       )
       expect(SPAWN_RAILS.indexOf('wider-than-its-parent')).toBeLessThan(
         SPAWN_RAILS.indexOf('no-such-profile'),

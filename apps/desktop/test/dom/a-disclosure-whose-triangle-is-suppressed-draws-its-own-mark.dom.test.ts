@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { page } from 'vitest/browser'
 import TeamWorkspace from '../../src/renderer/src/components/TeamWorkspace.vue'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type { AgentStore } from '../../src/renderer/src/lib/agent-store'
 import type { ListedConversation } from '../../src/renderer/src/lib/conversation-list'
 import type { AgentIdentities, AgentIdentity } from '../../src/shared/runtime-ipc'
@@ -40,14 +39,6 @@ const NOW = Date.now()
 const FLOOR = 972
 const ORIGINAL = { width: window.innerWidth, height: window.innerHeight }
 
-const CHOSEN = {
-  maxDepth: 'default',
-  canMessage: 'default',
-  canAssignWork: 'default',
-  canCreateAgents: 'default',
-  canWriteRules: 'default',
-} as unknown as AgentIdentity['chosen']
-
 const ident = (slug: string, over: Partial<AgentIdentity> = {}): AgentIdentity => ({
   id: `aid:${slug}`,
   slug,
@@ -56,8 +47,6 @@ const ident = (slug: string, over: Partial<AgentIdentity> = {}): AgentIdentity =
   createdBy: null,
   provider: null,
   externalMcpServerIds: [],
-  capabilities: { ...DEFAULT_CAPABILITIES },
-  chosen: CHOSEN,
   ...over,
 })
 

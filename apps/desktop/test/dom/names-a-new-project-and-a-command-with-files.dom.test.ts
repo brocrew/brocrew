@@ -25,7 +25,6 @@ import {
   aNoticeALaterFactRetracted,
 } from '../../src/main/runtime/reply-rails'
 import type { IdentityUse } from '../../src/shared/agent-roster'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import {
   DEFAULT_PROFILE_ID,
   DEFAULT_PROFILE_LABEL,
@@ -81,8 +80,6 @@ const ident = (slug: string, over: Partial<AgentIdentity> = {}): AgentIdentity =
     createdBy: null,
     provider: null,
     externalMcpServerIds: [],
-    capabilities: DEFAULT_CAPABILITIES,
-    chosen: Object.fromEntries(Object.keys(DEFAULT_CAPABILITIES).map((key) => [key, 'default'])),
     ...over,
   }) as unknown as AgentIdentity
 

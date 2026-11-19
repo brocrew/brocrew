@@ -9,6 +9,7 @@ import { resolveSessionCwd } from '../../src/main/runtime/scratch-cwd'
 import {
   FakeRuntime,
   type FakeSessionHandle,
+  type AgentToolset,
   type FakeProviderSessions,
   type StartOptions,
   type SessionRef,
@@ -79,6 +80,22 @@ export function fixtureHostPaths(
     providerHomePath: (provider) => join(rootGetter(), 'provider-homes', provider),
     resolveCwd: (sessionId, requested) => resolveSessionCwd(rootGetter(), sessionId, requested),
   }
+}
+
+export function numberedFixtureHostPaths(rootGetter: () => string, now: () => number) {
+  let counter = 0
+  return {
+    ...fixtureHostPaths(rootGetter),
+    newSessionId: () => `sess_${++counter}`,
+    now,
+    readProviderConfig: fixtureProviderConfig,
+  }
+}
+
+export function latestToolset(handed: readonly AgentToolset[]): AgentToolset {
+  const last = handed.at(-1)
+  if (last === undefined) throw new Error('no toolset was handed to that launch')
+  return last
 }
 
 /** Close the fixture host before its database and owned directories. */

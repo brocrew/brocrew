@@ -11,7 +11,6 @@ import NewAgent from '../../src/renderer/src/components/NewAgent.vue'
 import TeamWorkspace from '../../src/renderer/src/components/TeamWorkspace.vue'
 import { useAgentStore } from '../../src/renderer/src/composables/useAgentStore'
 import StartAsAgent from '../../src/renderer/src/components/StartAsAgent.vue'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type {
   AgentIdentities,
   AgentIdentity,
@@ -57,14 +56,6 @@ const identity = (over: Partial<AgentIdentity> = {}): AgentIdentity => ({
   provider: null,
   // ⚑ **516** — presence IS the grant, so an empty list is *granted none*, not *not chosen*.
   externalMcpServerIds: [],
-  capabilities: DEFAULT_CAPABILITIES,
-  chosen: {
-    maxDepth: 'default',
-    canMessage: 'default',
-    canAssignWork: 'default',
-    canCreateAgents: 'default',
-    canWriteRules: 'default',
-  },
   ...over,
 })
 
@@ -101,7 +92,7 @@ let answers: Answers
       answers.list = roster([...answers.list.identities, made], answers.list.foldersWithoutARow)
       return Promise.resolve(made)
     },
-    setCapabilities: () => Promise.resolve(answers.list.identities[0] ?? null),
+    setExternalMcpServers: () => Promise.resolve(answers.list.identities[0] ?? null),
     setSpawningEnabled: () => Promise.resolve({ spawningEnabled: answers.list.spawningEnabled }),
     listResumable: () => Promise.resolve([]),
     listUnresumable: () => Promise.resolve([]),

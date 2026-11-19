@@ -9,12 +9,7 @@ import { FakeRuntime, whatTheChildWouldLack } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
-import {
-  DEFAULT_CAPABILITIES,
-  createSessionStore,
-  type SessionStore,
-} from '../src/main/db/session-store'
-import { CAPABILITY_COLUMNS } from '../src/shared/capabilities'
+import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF, type CallerIdentity } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
@@ -150,18 +145,14 @@ describe('341 · the rails, before anything can reach them', () => {
    * ⛔ **Bring an identity into existence the only way anything can** — by a person running a
    * conversation as it — and then close that conversation so the identity is free.
    *
-   * ⚑ This IS criterion 12 from the inside. `setCapabilities` refuses to create a row, and a give
-   * refuses a name with no row — ⚑ unless it asks for a new agent (D-016 · R3), which is
+   * ⚑ This IS criterion 12 from the inside. `setExternalMcpServers` refuses to create a row, and a
+   * give refuses a name with no row — ⚑ unless it asks for a new agent (D-016 · R3), which is
    * `create_agent`'s door one call over — so **an agent is only ever given work as an identity that
    * a person, or an entitled agent, has deliberately brought into being.**
    */
   const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
     const id = await personOpens(profileId)
     await host.close(id, window)
-  }
-
-  const grant = (profileId: string, edit: Parameters<SessionStore['setCapabilities']>[1]): void => {
-    expect(store.setCapabilities(profileId, edit)).toBe(true)
   }
 
   /**
@@ -230,14 +221,12 @@ describe('341 · the rails, before anything can reach them', () => {
         held: () => [{ piece: 'work_root', label: 'W1', root: true, giver: null, received: true }],
         drivenByTheTurn: () => null,
         isAHelper: () => false,
-        mayGiveWork: () => null,
-        depthOf: () => 0,
-        capabilitiesOf: () => DEFAULT_CAPABILITIES,
+        agentExists: () => true,
         // ⚑ **Nothing found**, so the answer is a START — the only answer that carries a token.
         helperAs: () => null,
         serviceAt: () => ({ is: 'normal' }),
         spawningEnabled: () => true,
-        mayCreateAgents: () => null,
+        creatorOf: () => null,
         // ⚑ **Null — *nobody has said*** (419), and the agent has no default (677; D-042 · R2): the
         // token's provider is then the giver's. ⚑ **D-042 took the model off the token** (its
         // `runsOn` went): the launch names R1's pair, so no token carries one.
@@ -328,7 +317,8 @@ describe('341 · the rails, before anything can reach them', () => {
       expect(sessionIdsOf()).toContain(given.owner)
       // …and it is the giver's child, and the piece sits one below the giver's root.
       expect(store.parentOf(given.owner)).toBe(parent)
-      expect(store.depthOf(given.piece)).toBe(1)
+      const root = store.rootOf(parent)?.piece ?? 'no root'
+      expect(store.childrenOf(root).map((one) => one.piece)).toEqual([given.piece])
     })
 
     it('🔴 criterion 10 · an unrecognised key is REFUSED, not stripped — and no session is created', async () => {
@@ -423,9 +413,9 @@ describe('341 · the rails, before anything can reach them', () => {
       // ⛔ Any agent may give work to any identity that EXISTS (D-014); R3 refuses the rest unless
       // the giver asks for a new one.
       expect(await refusalOf(await give(aPiece('ghost'), as(parent)))).toBe('no-such-profile')
-      // ⚑ **And nothing was created for it** — not a row, not a capability, not a home.
-      expect(store.capabilitiesOf('ghost')).toBeNull()
-      expect(store.setCapabilities('ghost', { maxDepth: 9 })).toBe(false)
+      // ⚑ **And nothing was created for it** — not a row, not a home.
+      expect(store.agentIdentityOf('ghost')).toBeNull()
+      expect(store.setExternalMcpServers('ghost', [])).toBe(false)
       // The paired positive: the same call against a name a PERSON has used.
       await bringIdentityIntoBeing('ghost')
       expect((await give(aPiece('ghost'), as(parent))).ok).toBe(true)
@@ -460,31 +450,19 @@ describe('341 · the rails, before anything can reach them', () => {
           as(chain[depth - 1] as string),
         )
         if (!next.ok) throw new Error(`depth ${depth} was refused: ${next.refusal.rail}`)
-        expect(store.depthOf(next.piece)).toBe(depth)
+        // Each level hangs one below the piece its giver holds.
+        expect(next.label.split('.')).toHaveLength(depth + 1)
         chain.push(next.owner)
       }
       return chain
     }
 
-    it('🔴 HO-005 Q3 · a person’s root is depth 0, the default admits depth 6, and depth 7 is refused', async () => {
-      const [person, ...below] = await chainTo(6)
+    it('⚑ no depth bound · a chain of seven gives below a person’s root is admitted at every level', async () => {
+      const [person, ...below] = await chainTo(7)
       if (person === undefined) throw new Error('no conversation was opened')
-      expect(store.depthOf(store.rootOf(person)?.piece ?? 'no root')).toBe(0)
-      expect(below).toHaveLength(6)
-      // ⛔ The conversation holding depth 6 gives at depth 7, and the default `max_depth` of 6
-      // refuses it.
-      const seven = await give(aPiece('w7'), as(below.at(-1) as string))
-      expect(await refusalOf(seven)).toBe('too-deep')
-      if (seven.ok) throw new Error('unreachable')
-      expect(seven.refusal.detail).toMatchObject({ depth: 7, maxDepth: 6 })
-    })
-
-    it('⚑ `max_depth` is overridable per profile, which is the ruling — an exception you can point at', async () => {
-      const chain = await chainTo(6)
-      // ⛔ **The GIVER's row decides**, and the giver here is `w6` — the same call that was refused
-      // in the test above now passes, and the only thing that changed is one row.
-      grant('w6', { maxDepth: 7 })
-      expect((await give(aPiece('w7'), as(chain[6] as string))).ok).toBe(true)
+      expect(below).toHaveLength(7)
+      // The seventh level sits seven below the person's root, and nothing refused it.
+      expect(store.parentOf(below.at(-1) as string)).toBe(below.at(-2))
     })
 
     it('🔴 HO-036 · a conversation a give starts may never be WIDER than the giver starting it', async () => {
@@ -582,31 +560,25 @@ describe('341 · the rails, before anything can reach them', () => {
       expect(store.find(lax)?.approvalMode).toBe('ask')
     })
 
-    it('⛔ …and the giver and the depth are asked first, whatever the identity runs on — R2’s order', async () => {
-      // 🔴 **The ordering claim, performed** (R2): the giver, its piece, the grant and the depth are
-      // asked before the lookup, and `wider-than-its-parent` only when nothing was found — so each
+    it('⛔ …and the giver is asked first, whatever the identity runs on — R2’s order', async () => {
+      // 🔴 **The ordering claim, performed** (R2): the giver and its piece are asked before the
+      // lookup, and `wider-than-its-parent` only when nothing was found — so each
       // case below answers its OWN rail whichever provider the identity it names runs on.
       // ⚠️ **D-038 took this test's last rail away (F-B)**: a Codex identity under a lax Claude
       // giver is no longer wider (F050), and no give can meet `wider-than-its-parent` at all — the
       // child takes its giver's mode, and a same-mode pair is never wider — so the rail's place
-      // after these two can no longer be performed here. ⏸ What stays performed is that these two
-      // answer before the identity's provider is read, and that the give they stood in front of
-      // now goes through.
+      // after it can no longer be performed here. ⏸ What stays performed is that it answers before
+      // the identity's provider is read, and that the give it stood in front of now goes through.
       await bringIdentityIntoBeing('worker')
       expect(store.setAgentProvider('worker', 'codex')).toBe(true)
       await bringIdentityIntoBeing('plain')
       const lax = await personOpens('pm', { approvalMode: 'auto' })
-      // ⚑ A second lax giver whose own row admits no depth at all — so the controls below land on
-      // DIFFERENT rails rather than one twice.
-      const shallow = await personOpens('shallow', { approvalMode: 'auto' })
-      grant('shallow', { maxDepth: 0 })
       const cases: { name: string; by: CallerIdentity; otherwise: string }[] = [
         {
           name: 'a giver that is not running',
           by: as('sess_nobody'),
           otherwise: 'no-piece-to-give-from',
         },
-        { name: 'a giver already at its deepest', by: as(shallow), otherwise: 'too-deep' },
       ]
       for (const { name, by, otherwise } of cases) {
         // ⛔ **The Codex identity changes NOTHING about which rail answers.**
@@ -621,7 +593,6 @@ describe('341 · the rails, before anything can reach them', () => {
       const given = admitted(await give(aPiece('worker'), as(lax)))
       expect(given.delivery).toBe('sent')
       expect(store.find(given.owner)).toMatchObject({ approvalMode: 'auto', provider: 'codex' })
-      expect(new Set(cases.map((one) => one.otherwise)).size).toBe(cases.length)
     })
 
     it('⛔ the kill switch still answers first, because that is the more important sentence', async () => {
@@ -856,7 +827,7 @@ describe('341 · the rails, before anything can reach them', () => {
       expect(permanenceOf('no-such-profile')).toBe('permanent')
       expect(retryableOf('no-such-profile')).toBe(false)
       expect(sessionIdsOf()).toHaveLength(before)
-      expect(store.capabilitiesOf('ghost')).toBeNull()
+      expect(store.agentIdentityOf('ghost')).toBeNull()
     })
 
     it('⚠️ the request schema is `.strict()`, which is the whole of criterion 10', () => {
@@ -884,8 +855,6 @@ describe('341 · the rails, before anything can reach them', () => {
     it('🔴 criterion 8 · who created this and why is still there after a second host over one ledger', async () => {
       const parent = await personOpens('pm')
       await bringIdentityIntoBeing('worker')
-      // ⚑ A value that is NOT the ruled default, so the row surviving is what the read below measures.
-      grant('pm', { maxDepth: 3 })
       const given = admitted(
         await give(
           {
@@ -911,10 +880,8 @@ describe('341 · the rails, before anything can reach them', () => {
         title: 'Read the ledger',
         brief: 'read the ledger',
       })
-      expect(reborn.depthOf(given.piece)).toBe(1)
-      // ⛔ **And the capability rows survive too**, which is what makes the rails a property of the
+      // ⛔ **And the spawning switch survives too**, which is what makes the rails a property of the
       // app rather than of one run.
-      expect(reborn.capabilitiesOf('pm')?.maxDepth).toBe(3)
       expect(reborn.spawnPolicy()).toEqual({ spawningEnabled: true })
     })
 
@@ -925,76 +892,61 @@ describe('341 · the rails, before anything can reach them', () => {
   })
 
   // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §4 · the capability schema itself
+  // §4 · the work tree a store walks: no depth bound, and a loop is named
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
-  describe('§4 · the capability schema', () => {
-    it('⛔ an unconfigured profile reads the ruled defaults, and none of them is stored', async () => {
-      await bringIdentityIntoBeing('pm')
-      expect(store.capabilitiesOf('pm')).toEqual(DEFAULT_CAPABILITIES)
-      // ⚑ **Nothing was backfilled** — the columns are still null, so changing the default in code
-      // changes every profile that has not chosen. 0016's argument, asserted.
-      const row = db
-        .prepare(
-          // ⚑ **Derived since 374**, so *"none of them is stored"* keeps meaning ALL of them: the
-          // four-column list this used to spell could not see a fifth capability go in with a
-          // backfill behind it.
-          `SELECT ${CAPABILITY_COLUMNS.join(', ')} FROM agent_identity WHERE slug = ?`,
-        )
-        .get('pm') as Record<string, unknown>
-      expect(Object.values(row)).toEqual(CAPABILITY_COLUMNS.map(() => null))
-      expect(CAPABILITY_COLUMNS.length).toBeGreaterThanOrEqual(5)
-    })
-
-    it('⛔ an edit leaves every field it did not name alone, nulls included', async () => {
-      await bringIdentityIntoBeing('pm')
-      grant('pm', { canMessage: 'none' })
-      const row = db
-        .prepare(`SELECT ${CAPABILITY_COLUMNS.join(', ')} FROM agent_identity WHERE slug = ?`)
-        .get('pm') as Record<string, unknown>
-      // ⛔ **The one field written, and every other one still null** — a round trip through the
-      // resolver would have frozen today's defaults into all of them. ⚑ **Derived since 374**: the
-      // list this used to name by hand was the one place a new column could arrive already written.
-      expect(row.can_message).toBe('none')
-      expect(
-        CAPABILITY_COLUMNS.filter((column) => column !== 'can_message').map(
-          (column) => row[column],
-        ),
-      ).toEqual(CAPABILITY_COLUMNS.filter((column) => column !== 'can_message').map(() => null))
-      expect(CAPABILITY_COLUMNS.length).toBeGreaterThanOrEqual(5)
-    })
-
-    it('🔴 a word that is not the right SHAPE never reaches the column — its CHECK refuses it (R6)', async () => {
-      await bringIdentityIntoBeing('pm')
-      const write = (column: string, value: unknown): void => {
-        db.prepare(`UPDATE agent_identity SET ${column} = ? WHERE slug = 'pm'`).run(value)
+  describe('§4 · the work tree a store walks', () => {
+    /** The conversation's root piece, written by SQL when nothing has written one yet. */
+    const theRootOf = (person: string): { piece: string; label: string } => {
+      if (store.rootOf(person) === null) {
+        db.prepare(
+          `INSERT INTO work (id, parent_id, number, owner_session_id, given_by_session_id, created_at)
+           VALUES ('work_walk_root', NULL,
+                   (SELECT coalesce(max(number), 0) + 1 FROM work WHERE parent_id IS NULL), ?, NULL, 1)`,
+        ).run(person)
       }
-      // 🔴 **D-016 · R6 — re-aimed from the fold to the CHECK.** `can_message` was the one column
-      // `schema.ts` could not afford a CHECK for, so the fold WAS the constraint; ⚑ the one migration
-      // builds each column's CHECK from the descriptor the wire's own schema is built from, so a
-      // word outside the vocabulary is refused where it is written, by the constraint named for it.
-      expect(() => write('can_message', 'everyone')).toThrow(/agent_identity_can_message_ck/)
-      // ⛔ …and the row keeps what it said: nothing, which reads the ruled default.
-      expect(store.capabilitiesOf('pm')?.canMessage).toBe(DEFAULT_CAPABILITIES.canMessage)
-      // ⚑ **The pair, and it is what makes the refusal about the WORD**: both words of the
-      // vocabulary land and read as written — `none` is not the default, `any` is not the narrowest.
-      write('can_message', 'none')
-      expect(store.capabilitiesOf('pm')?.canMessage).toBe('none')
-      write('can_message', 'any')
-      expect(store.capabilitiesOf('pm')?.canMessage).toBe('any')
-      // ⛔ **And a SECOND choice column over the same vocabulary** — `can_assign_work` — refused by
-      // its OWN constraint, so a CHECK that named one column for both would fail here.
-      expect(() => write('can_assign_work', 'whenever')).toThrow(
-        /agent_identity_can_assign_work_ck/,
+      const root = store.rootOf(person)
+      if (root === null) throw new Error('no root piece')
+      return root
+    }
+
+    /** Hangs `count` pieces one below another under `from`, and answers their ids top-down. */
+    const hangBelow = (from: string, owner: string, count: number): string[] => {
+      const insert = db.prepare(
+        `INSERT INTO work
+           (id, parent_id, number, owner_session_id, given_by_session_id, title, brief, created_at)
+         VALUES (?, ?, 1, ?, ?, 'a piece', 'its brief', 1)`,
       )
-      write('can_assign_work', 'none')
-      expect(store.capabilitiesOf('pm')?.canAssignWork).toBe('none')
-      // ⚑ **…and the two are INDEPENDENT.** `can_message` is still `any` while `can_assign_work`
-      // is `none`, so a reader that answered one column from the other would disagree with one.
-      expect(store.capabilitiesOf('pm')?.canMessage).toBe('any')
-      expect(store.capabilitiesOf('pm')?.canMessage).not.toBe(
-        store.capabilitiesOf('pm')?.canAssignWork,
+      const ids: string[] = []
+      let parent = from
+      for (let n = 1; n <= count; n += 1) {
+        const id = `work_walk_${n}`
+        insert.run(id, parent, owner, owner)
+        ids.push(id)
+        parent = id
+      }
+      return ids
+    }
+
+    it('⚑ a chain seventy pieces below a root resolves, labelled through every level above it', async () => {
+      const person = await personOpens('pm')
+      const root = theRootOf(person)
+      const chain = hangBelow(root.piece, person, 70)
+      const children = store.childrenOf(chain.at(-2) as string)
+      expect(children.map((one) => one.piece)).toEqual([chain.at(-1)])
+      expect(children[0]?.label).toBe(`${root.label}${'.1'.repeat(70)}`)
+    })
+
+    it('⛔ a parent loop is named rather than walked forever', async () => {
+      const person = await personOpens('pm')
+      const [top, below] = hangBelow(theRootOf(person).piece, person, 2)
+      if (top === undefined || below === undefined) throw new Error('nothing was hung')
+      db.prepare('UPDATE work SET parent_id = ? WHERE id = ?').run(below, top)
+      expect(() => store.childrenOf(below)).toThrow(
+        `the pieces above ${below} do not end in a root`,
       )
+      // The control: the same read over a piece whose chain ends in a root answers.
+      expect(store.childrenOf(theRootOf(person).piece)).toEqual([])
     })
   })
 })

@@ -3,11 +3,7 @@ import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { readProfileExecution, writeProfileExecution } from '../src/main/profile-execution-file'
-import {
-  DEFAULT_CAPABILITIES,
-  skipTheLedger,
-  type SessionStore,
-} from '../src/main/db/session-store'
+import { skipTheLedger, type SessionStore } from '../src/main/db/session-store'
 import { type RowsUnread } from '../src/main/db/rows-unread'
 import { agentCallerId, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { admitGive, type GiveFacts, type ServiceAtAGive } from '../src/main/runtime/spawn-rails'
@@ -812,13 +808,11 @@ describe('a service queues the work it is given', () => {
       held: () => [{ piece: 'work_root', label: 'W1', root: true, giver: null, received: true }],
       drivenByTheTurn: () => null,
       isAHelper: () => false,
-      mayGiveWork: () => null,
-      depthOf: () => 0,
-      capabilitiesOf: () => DEFAULT_CAPABILITIES,
+      agentExists: () => true,
       helperAs: () => null,
       serviceAt: () => service,
       spawningEnabled: () => true,
-      mayCreateAgents: () => null,
+      creatorOf: () => null,
       itsProvider: () => ({ provider: 'claude', from: 'saved' }),
       theNamedModelsProvider: () => null,
       modelChoiceOf: () => null,
@@ -1209,12 +1203,18 @@ describe('a service queues the work it is given', () => {
       const { host, first, second } = await aServiceAndTwoCallers()
       const { owner: service } = await aServiceAtWork(host, first)
       accepted(await world.gives(host, second, 'browser-driver', { title: 'Queued' }))
-      // A grant to reach what it did not start never reaches a service.
-      expect(world.store.setCapabilities('other-caller', { canMessage: 'any' } as never)).toBe(true)
       const before = world.ledger(service).length
       await expect(
         host.queueMessage(service, 'a note', { ownerId: agentCallerId(second) }),
       ).rejects.toThrow()
+      expect(world.ledger(service).length).toBe(before)
+      const tool = agentToolsFor(host, second).tools.find((one) => one.name === 'message_agent')!
+      const said = await tool.call({ agent: service, kind: 'note', text: 'a note' })
+      expect(said.structured, said.text).toMatchObject({
+        outcome: 'refused',
+        rail: 'that-is-a-service',
+        permanence: 'permanent',
+      })
       expect(world.ledger(service).length).toBe(before)
       await expect(
         host.queueMessage(service, 'a note', { ownerId: agentCallerId(first) }),

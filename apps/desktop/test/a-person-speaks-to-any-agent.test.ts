@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { providerSchema } from '@brobot2/shared'
-import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import {
   composeProfileBundle,
   thisConversationSpans,
@@ -33,8 +32,6 @@ describe('PE-002 · a person can speak directly to any agent', () => {
         profileSlug: 'direct-person-test',
         cwd,
         startedBy: theConversationCalled('Gil', THE_GIVERS_PIECE),
-        depth: 1,
-        capabilities: DEFAULT_CAPABILITIES,
         spawningEnabled: true,
         // ⚑ D-016 · a conversation another one started owns no root.
         root: null,

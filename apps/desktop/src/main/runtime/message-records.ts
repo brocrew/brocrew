@@ -9,7 +9,6 @@ import type { WorkReport } from '../../shared/task-contracts'
 import type { GivenFolder } from '../../shared/work-folders'
 import type { GivenInput } from '../db/session-store'
 import type { InterruptRefusal } from './interrupt-rails'
-import type { MessageRefusal } from './message-rails'
 import type { AnswerOutcome } from './question-rails'
 import type { QueuedMessage } from './queued-message'
 
@@ -346,13 +345,12 @@ export type MessageNowOutcome = {
  *    reach arrives here as spelled.
  *  - `takes-no-messages` — this app records it and a message cannot start it (a read-only copy, a
  *    provider's own sub-agent, or one this app did not start), while nothing runs in it.
- *  - `outside-its-reach` — it exists and the caller's reach does not admit it: the reach rail
- *    `message_agent` answers with, carried as it was built.
+ *  - `a-service` — it is a service's conversation, which takes its work through give_work.
  */
 export type OutOfReach =
   | { readonly is: 'no-such-agent' }
   | { readonly is: 'takes-no-messages' }
-  | { readonly is: 'outside-its-reach'; readonly refusal: MessageRefusal }
+  | { readonly is: 'a-service' }
 
 /**
  * 🔴 **D-016 · commit 7 · R1 — the reach a door resolves a label by** — see

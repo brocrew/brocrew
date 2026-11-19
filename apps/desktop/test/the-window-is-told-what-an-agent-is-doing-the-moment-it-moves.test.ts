@@ -18,7 +18,6 @@ import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { conversationList } from '../src/renderer/src/lib/conversation-list'
 import { aWaitIsReadFrom } from '../src/shared/questions'
-import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import {
   type AgentIdentity,
@@ -486,8 +485,6 @@ const identity = (slug: string, displayName: string | null): AgentIdentity => ({
   displayName,
   createdAt: 0,
   createdBy: null,
-  capabilities: DEFAULT_CAPABILITIES,
-  chosen: {} as AgentIdentity['chosen'],
   provider: null,
   externalMcpServerIds: [],
 })

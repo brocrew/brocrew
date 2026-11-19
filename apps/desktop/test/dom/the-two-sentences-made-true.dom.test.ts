@@ -2,144 +2,28 @@ import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
-import CapabilitiesSheet from '../../src/renderer/src/components/CapabilitiesSheet.vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import TranscriptView from '../../src/renderer/src/components/TranscriptView.vue'
-import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
-import { REOPENING_SAYS, type AConversationToReopen } from '../../src/renderer/src/lib/reopening'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
-import { CAPABILITY_FIELDS, DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
-import {
-  DEFAULT_PROFILE_ID,
-  type AgentIdentities,
-  type AgentIdentity,
-  type ResumableSessionInfo,
-  type RuntimeBridge,
-} from '../../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID, type ResumableSessionInfo } from '../../src/shared/runtime-ipc'
 import { assertClippedButTold, assertDrawn, drawnReady } from './drawn'
-import { mount, unmountAll, visible, type Mounted } from './harness'
+import { mount, unmountAll, visible } from './harness'
 
 /**
- * # 🔴 672 §2 · Two sentences nobody had measured, made true on the arm a person reaches
+ * # 🔴 672 §2 · A sentence nobody had measured, made true on the arm a person reaches
  *
  * | | ⛔ it said | ⚑ measured by `672` | ⚑ it says |
  * |---|---|---|---|
- * | **F5** the grant sheet's reopen | *"keeps … whatever you have typed"* on every row | the draft is DELETED for any conversation that is not the selected one — the close takes it out of `store.open` and the draft watcher prunes it | ⚑ **678 · R26 made the promise true instead**: the draft survives every reopen (`sweepDrafts.reopening`), so every row reads the one sentence, *"…whatever you have typed or attached"* — §1 |
  * | **F6** the stale sign-in notice | *"Nothing here is lost — press Resume on it under the closed threads in the sidebar"* | the turn fails; approvals and background work do not come back; and the rail has had no *Resume* since `151` — each row IS the press, under *Closed conversations* | what is kept, where to press **by the rail's own heading**, and the two losses the reopen carries — §2, §3. ⚑ **D-017b** — there is no closed heading and no press to name: a message sent from the conversation's own view carries it on, so that is the remedy it says, and §3 asks that the conversation is still in the rail's one list for a person to open |
  *
  * ⚑ **`NoticeEntry` is reached through `TranscriptView`**, which is how a person meets it — the
  * clipped-text ledger holds this suite to mounting the parent and aiming the sensor at the notice's
  * own hook.
- *
- * ⚠️ **F5's Codex arm was measured TRUE and did not change** — a file change granted *for the
- * session* asked again after a reopen, 3 runs of 3 (`reopening.ts`, the approvals row).
  */
 
 afterEach(async () => {
   unmountAll()
   await page.viewport(1100, 900)
-})
-
-const said = (m: Mounted, cy: string): string =>
-  (m.q(cy).textContent ?? '').replace(/\s+/g, ' ').trim()
-
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-// §1 · F5 — the grant sheet: ONE sentence on every row again (678 · R26)
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-
-describe('§1 · F5 · the grant sheet says what a reopen does to THIS row’s draft', () => {
-  const identity = (slug: string): AgentIdentity =>
-    ({
-      id: `agp:default:${slug}`,
-      slug,
-      displayName: null,
-      createdAt: 1_700_000_000_000,
-      createdBy: null,
-      provider: null,
-      externalMcpServerIds: [],
-      capabilities: DEFAULT_CAPABILITIES,
-      chosen: {},
-    }) as unknown as AgentIdentity
-
-  // Synthetic schema fixture only: the dormant rules grant stays hidden.
-  // The generic offer still draws the same per-conversation draft and work-state sentences.
-  const LAUNCH = 'canFutureLaunch'
-  const launchField = {
-    ...CAPABILITY_FIELDS.find((field) => field.key === 'canWriteRules')!,
-    key: LAUNCH,
-    column: 'can_future_launch',
-    label: 'Synthetic launch-bound grant',
-    help: 'Fixture only. This is not a live grant.',
-  }
-
-  const sheet = async (openAs: readonly AConversationToReopen[]): Promise<Mounted> => {
-    const roster: AgentIdentities = {
-      identities: [identity('pm'), identity('worker')],
-      foldersWithoutARow: [],
-      use: [],
-      spawningEnabled: true,
-      defaultApprovalMode: 'ask',
-      externalMcpServers: [],
-    } as unknown as AgentIdentities
-    const store = createAgentStore({
-      agentIdentities: async () => roster,
-    } as unknown as RuntimeBridge)
-    await store.load()
-    const m = mount(
-      CapabilitiesSheet,
-      {
-        profileSlug: 'pm',
-        runsOn: 'claude',
-        store,
-        openAs,
-        fields: [...CAPABILITY_FIELDS, launchField],
-        onReopen: () => {},
-        onClose: () => {},
-      },
-      { width: 900, height: 1200 },
-    )
-    await nextTick()
-    return m
-  }
-
-  const row = (
-    sessionId: string,
-    over: Partial<AConversationToReopen> = {},
-  ): AConversationToReopen => ({
-    sessionId,
-    where: sessionId.replace('sess_', ''),
-    heldBy: null,
-    busy: false,
-    ...over,
-  })
-
-  /**
-   * ⚠️ **678 · re-aimed, not stripped** (rule 26). ⛔ `672` measured the other rows' drafts DELETED and
-   * made them say so; ⚑ R26 ruled the promise true instead — `sweepDrafts.reopening` holds every
-   * row's draft through its reopen, pinned in `a-reopen-keeps-the-draft.test.ts` — so every idle row
-   * now reads the one sentence, and the planted `turn` row is the control that it is read per row.
-   */
-  it('🔴 678 · synthetic launch-field offer: every idle row keeps its draft and says so', async () => {
-    const m = await sheet([
-      row('sess_selected'),
-      row('sess_other'),
-      // ⚑ **the planted control** — a row that is still working says it is working
-      row('sess_working', { heldBy: 'turn' }),
-    ])
-    expect(m.all('capability-canWriteRules')).toHaveLength(0)
-    for (const id of ['sess_selected', 'sess_other']) {
-      const cost = said(m, `grant-${LAUNCH}-cost-${id}`)
-      expect(cost, id).toContain(REOPENING_SAYS.free)
-      expect(cost, id).toContain('whatever you have typed or attached')
-      // ⛔ the sentence `672` gave every row but the selected one, and R26 made false
-      expect(cost, id).not.toContain('cleared')
-    }
-    expect(said(m, `grant-${LAUNCH}-cost-sess_working`)).toContain(REOPENING_SAYS.turn)
-    expect(said(m, `grant-${LAUNCH}-cost-sess_working`)).not.toContain(REOPENING_SAYS.free)
-    for (const id of ['sess_selected', 'sess_other', 'sess_working']) {
-      expect(visible(m.q(`grant-${LAUNCH}-cost-${id}`)), id).toBe(true)
-    }
-  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────

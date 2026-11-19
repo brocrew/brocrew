@@ -390,9 +390,8 @@ function whatARefusalAdds(
 }
 
 /**
- * The answer a model reads. A refusal's text is appended to, never rebuilt, so its
- * `refused (<rail>): <reason>` prefix stays as the window expects it. `structured` is returned as
- * the same object, and an answer that already ends with these words is returned unchanged.
+ * The answer a model reads. A refusal's text is appended to, never rebuilt.
+ * `structured` is returned as the same object, and already composed answers are unchanged.
  */
 export function answerInWords(
   answered: AgentToolAnswer,
@@ -433,7 +432,10 @@ export function appOnlyRefusalQuote(
   if (finalText === undefined) return reason
   refusalReason(reason)
   const rail = aText(structured?.['rail'])
-  if (rail === undefined || !finalText.startsWith(`refused (${rail}): ${reason}`))
+  const prefix =
+    reason.startsWith('Not sent:') && finalText.startsWith(reason) ? '' : `refused (${rail}): `
+  const base = `${prefix}${reason}`
+  if (rail === undefined || !finalText.startsWith(base))
     throw new Error('A fresh refusal quote must prefix its composed answer.')
   const clauses: string[] =
     problemsAreOurs && rail === 'malformed-request' ? problemsSaid(detailOf(structured)) : []
@@ -442,8 +444,6 @@ export function appOnlyRefusalQuote(
   const permanence = structured?.['permanence']
   if (isRailPermanence(permanence) && rail !== 'result-document-not-returned')
     clauses.push(permanenceInWords(rail, permanence))
-  const prefix = `refused (${rail}): `
-  const base = `${prefix}${reason}`
   const candidate = clauses.length === 0 ? base : `${aSentence(base)} ${clauses.join(' ')}`
   const quote = candidate.slice(prefix.length)
   return finalText === candidate && quote.startsWith(reason) ? quote : reason

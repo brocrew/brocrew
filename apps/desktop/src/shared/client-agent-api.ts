@@ -4,7 +4,7 @@ import type { RuntimeBridge } from './runtime-ipc'
 export type ClientAgentApi = Pick<
   RuntimeBridge,
   | 'agentIdentities'
-  | 'setCapabilities'
+  | 'setExternalMcpServers'
   | 'setAgentProvider'
   | 'setAgentDisplayName'
   | 'agentInstructions'

@@ -8,7 +8,6 @@ import { createSessionStore, type SessionStore } from '../../src/renderer/src/li
 import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
 
 import { useOverlays } from '../../src/renderer/src/lib/overlay-store'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type { AgentIdentities, RuntimeBridge, ResumedSession } from '../../src/shared/runtime-ipc'
 import type { ActivityLine, RecentActivityReading } from '../../src/shared/recent-activity'
 import { applyTheme } from '../../src/renderer/src/lib/apply-theme'
@@ -41,14 +40,6 @@ const agents: AgentIdentities = {
       createdBy: null,
       provider: 'codex',
       externalMcpServerIds: [],
-      capabilities: { ...DEFAULT_CAPABILITIES },
-      chosen: {
-        maxDepth: 'default',
-        canMessage: 'default',
-        canAssignWork: 'default',
-        canCreateAgents: 'default',
-        canWriteRules: 'default',
-      },
     },
   ],
   use: [

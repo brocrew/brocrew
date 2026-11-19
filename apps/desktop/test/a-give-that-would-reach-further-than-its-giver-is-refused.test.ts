@@ -5,13 +5,12 @@ import {
   admitGive,
   describeRail,
   type GiveAdmission,
-  type GiveFacts,
   type GivingConversation,
   type SpawnRefusal,
 } from '../src/main/runtime/spawn-rails'
-import { DEFAULT_CAPABILITIES } from '../src/main/db/session-store'
 import type { CallerIdentity } from '../src/main/runtime/runtime-host'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
+import { giveFactsForTest as factsWith } from './lib/give-facts-fixture'
 
 /**
  * D-038 · the rail that refuses a give which would start a conversation reaching further than its
@@ -70,38 +69,6 @@ const WORK = '/tmp/d038-reach-work'
 
 const CARD: Protection = 'the-card-before-an-act'
 const SANDBOX: Protection = 'the-sandbox-around-an-act'
-
-/**
- * A give's facts with nothing found, so the give asks the rails of a start. The child's provider is
- * forced through `providerOf`; any fact a test varies is spread last.
- */
-function factsWith(
-  giver: GivingConversation,
-  childProvider: Provider | null,
-  override: Partial<GiveFacts> = {},
-): GiveFacts {
-  return {
-    giver: () => giver,
-    held: () => [{ piece: 'work_root', label: 'W1', root: true, giver: null, received: true }],
-    drivenByTheTurn: () => null,
-    isAHelper: () => false,
-    mayGiveWork: () => null,
-    depthOf: () => 0,
-    capabilitiesOf: () => DEFAULT_CAPABILITIES,
-    helperAs: () => null,
-    serviceAt: () => ({ is: 'normal' }),
-    spawningEnabled: () => true,
-    mayCreateAgents: () => null,
-    itsProvider: () =>
-      childProvider === null
-        ? { provider: null, from: 'nothing-yet' }
-        : { provider: childProvider, from: 'saved' },
-    theNamedModelsProvider: () => null,
-    modelChoiceOf: () => null,
-    checkFolder: (path) => ({ ok: true, path }),
-    ...override,
-  }
-}
 
 function aParent(provider: Provider, approvalMode: ApprovalMode): GivingConversation {
   return { sessionId: 'sess_parent', profileId: 'pm', provider, cwd: WORK, approvalMode }
@@ -269,7 +236,7 @@ describe('4 · where the rail sits among the rails of a start', () => {
       title: 'x',
       brief: 'x',
     } as const
-    const onlyThePm = (slug: string) => (slug === 'pm' ? DEFAULT_CAPABILITIES : null)
+    const onlyThePm = (slug: string): boolean => slug === 'pm'
 
     // The paired positive first: with the comparison armed and everything else ordinary, the rail
     // is the one that answers, so each answer below is a statement of order and not of a missing rail.
@@ -282,7 +249,7 @@ describe('4 · where the rail sits among the rails of a start', () => {
     const switchedOff = factsWith(giver, 'claude', { spawningEnabled: () => false })
     expect(refusalOf(admitGive(A_GIVE, asThe(giver), switchedOff)).rail).toBe('spawning-disabled')
     // (b) an unknown agent asked for without `new` reaches the rail before the name rule.
-    const unknown = factsWith(giver, 'claude', { capabilitiesOf: onlyThePm })
+    const unknown = factsWith(giver, 'claude', { agentExists: onlyThePm })
     expect(refusalOf(admitGive(ghost, asThe(giver), unknown)).rail).toBe('wider-than-its-parent')
     // (c) an unusable folder is asked last of all.
     const noFolder = factsWith(giver, 'claude', {

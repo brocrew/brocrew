@@ -7,7 +7,6 @@ import { nextTick } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import CapabilitiesSheet from '../../src/renderer/src/components/CapabilitiesSheet.vue'
 import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type { AgentIdentities, AgentIdentity, RuntimeBridge } from '../../src/shared/runtime-ipc'
 import { mount, paneProps, record, unmountAll, type Mounted } from './harness'
 import { assertDrawn, drawnReady } from './drawn'
@@ -266,8 +265,6 @@ describe('§3 · the sheet names the control, never *the rail*', () => {
       createdBy: null,
       provider: null,
       externalMcpServerIds: [],
-      capabilities: { ...DEFAULT_CAPABILITIES },
-      chosen: {},
     }) as unknown as AgentIdentity
 
   async function sheet(profileSlug: string, spawningEnabled: boolean): Promise<Mounted> {

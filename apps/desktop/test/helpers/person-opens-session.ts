@@ -1,4 +1,5 @@
 import type { RuntimeHost, RuntimeEventSink } from '../../src/main/runtime/runtime-host'
+import { executeRuntimeCommand } from '../../src/main/runtime/ipc'
 
 export function personOpener(
   read: () => { host: RuntimeHost; root: string; window: RuntimeEventSink },
@@ -11,5 +12,21 @@ export function personOpener(
       window,
     )
     return sessionId
+  }
+}
+
+export function personOpenerOverIpc(
+  read: () => { host: RuntimeHost; root: string; window: RuntimeEventSink },
+) {
+  return async (profileId: string): Promise<string> => {
+    const { host, root, window } = read()
+    const opened = (await executeRuntimeCommand(host, window, {
+      kind: 'createSession',
+      provider: 'claude',
+      profileId,
+      approvalMode: 'ask',
+      cwd: root,
+    })) as { sessionId: string }
+    return opened.sessionId
   }
 }

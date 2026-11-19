@@ -174,7 +174,7 @@ describe('services a person turns on and off', () => {
         outcome: 'refused',
         rail: 'services-are-off-so-none-is-made',
       })
-      expect(made.text).toContain('Not created: services are off. A person turns them on in Team.')
+      expect(made.text).toContain('Not sent: services are off. A person turns them on in Team.')
       const slugs = world.store.agentIdentities().map((one) => one.slug)
       expect(slugs).not.toContain('browser-driver')
       expect(slugs).not.toContain('fetcher')

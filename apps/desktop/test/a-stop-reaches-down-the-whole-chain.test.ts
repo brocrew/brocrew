@@ -1,5 +1,6 @@
 import { personOpener } from './helpers/person-opens-session'
 import { callOn } from './helpers/call-agent-tool'
+import { chainAbove } from './helpers/conversation-ancestry'
 import { HandleKeepingRuntime as ProviderDouble } from './helpers/handle-keeping-runtime'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -251,22 +252,21 @@ describe('629 · a stop reaches down the whole chain', () => {
    * IS.** ⚑ Asserted rather than written in prose, so the next dispatch that wonders can run it.
    */
   describe('§0 · the chain and the actor were already recorded', () => {
-    it('⚑ ALREADY BUILT · the chain is DURABLE, and the depth rail already walks it', async () => {
+    it('⚑ ALREADY BUILT · the chain is DURABLE, and the store walks it', async () => {
       const { brobot, ada, ali, aliPiece } = await aChainOfThree()
       // ⛔ **`341` criterion 8's row, written by the rails in the child's own transaction.**
       // ⚑ D-016: the parent is the one provenance fact left (`parentOf`).
       expect(store.parentOf(ali)).toBe(ada)
       expect(store.parentOf(ada)).toBe(brobot)
       expect(store.parentOf(brobot)).toBeNull()
-      // ⚑ **And the WALK existed** — `341` wrote it for the `too-deep` rail. ⚑ **D-016 · the depth
-      // is counted on `work`**: the piece Ali holds sits two below BroBot's root. 🔴 **What `629`
-      // added is the conversations' walk asked for its MEMBERS**, not a new relationship: see
-      // {@link SessionStore.ancestorsOf}.
-      expect(store.depthOf(aliPiece)).toBe(2)
-      expect(store.ancestorsOf(ali)).toEqual([ada, brobot])
-      expect(store.ancestorsOf(ada)).toEqual([brobot])
+      // ⚑ **D-016 · the chain is on `work` too**: the piece Ali holds sits two below BroBot's root,
+      // which its label says. 🔴 **What `629` added is the conversations' walk asked for its
+      // MEMBERS**, not a new relationship: see `chainAbove`.
+      expect(store.workById(aliPiece)?.label.split('.')).toHaveLength(3)
+      expect(chainAbove(store, ali)).toEqual([ada, brobot])
+      expect(chainAbove(store, ada)).toEqual([brobot])
       // ⛔ **`[]` is *nothing above it* and is the top of the chain**, never *we could not look*.
-      expect(store.ancestorsOf(brobot)).toEqual([])
+      expect(chainAbove(store, brobot)).toEqual([])
     })
 
     it('⚑ ALREADY BUILT · the interrupt already records WHO performed it', async () => {
@@ -292,7 +292,7 @@ describe('629 · a stop reaches down the whole chain', () => {
       const { brobot, ali, aliPiece, aliHandle, brobotTools } = await aChainOfThree()
       // Keep the descendant working so the stop measures interruption of active work.
       await makeItWork(aliHandle)
-      expect(store.depthOf(aliPiece)).toBe(2)
+      expect(store.workById(aliPiece)?.label.split('.')).toHaveLength(3)
 
       const said = await callOn(brobotTools, 'interrupt_agent', {
         agent: ali,
@@ -354,7 +354,7 @@ describe('629 · a stop reaches down the whole chain', () => {
       const sibling = (await give(adaTools, siblingProfile, 'the second worker')).agent
       const siblingTools = agentToolsFor(host, sibling)
       expect(store.parentOf(sibling)).toBe(store.parentOf(ali))
-      expect(store.ancestorsOf(ali)).not.toContain(sibling)
+      expect(chainAbove(store, ali)).not.toContain(sibling)
 
       const refused = await callOn(siblingTools, 'interrupt_agent', { agent: ali, reason: 'stop' })
       expect(refused).toMatchObject({ outcome: 'ok', asked: true })
@@ -367,8 +367,8 @@ describe('629 · a stop reaches down the whole chain', () => {
       await makeItWork(aliHandle)
       const other = await aChainOfThree()
       await makeItWork(other.aliHandle)
-      expect(store.ancestorsOf(ali)).not.toContain(other.brobot)
-      expect(store.ancestorsOf(ali)).not.toContain(other.ada)
+      expect(chainAbove(store, ali)).not.toContain(other.brobot)
+      expect(chainAbove(store, ali)).not.toContain(other.ada)
 
       const refused = await callOn(other.brobotTools, 'interrupt_agent', {
         agent: ali,
@@ -385,7 +385,7 @@ describe('629 · a stop reaches down the whole chain', () => {
     it('a conversation cannot interrupt itself, and a colleague can', async () => {
       const { ali, aliHandle, adaTools } = await aChainOfThree()
       await makeItWork(aliHandle)
-      expect(store.ancestorsOf(ali)).not.toContain(ali)
+      expect(chainAbove(store, ali)).not.toContain(ali)
 
       const itself = await callOn(agentToolsFor(host, ali), 'interrupt_agent', {
         agent: ali,

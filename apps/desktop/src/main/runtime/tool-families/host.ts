@@ -49,7 +49,6 @@ import type { GiveOutcome } from '../spawn-rails'
 import type { HandedPath } from '../../../shared/attachment-contracts'
 import type { MadeByItsProfile, PieceBoard, PieceRecord, WhatAPieceIsToIt } from '../work-records'
 import type { MailboxKind } from '../../../shared/conversation-events'
-import type { MessageRefusal, MessagingAct } from '../message-rails'
 import type { ModelRefusal } from '../../connections/model-rails'
 import type { NewAgent, QueueOutcome } from '../../../shared/runtime-ipc'
 import type { PastWorkSearchResult } from '../../../shared/past-work-search'
@@ -199,7 +198,6 @@ export interface AgentToolHost {
     | { readonly ok: false; readonly refusal: ModelRefusal }
   >
   mayCreateAgents(me: string): MayCreateAgents
-  mayReachAtAll(act: MessagingAct, by: Caller): MessageRefusal | null
   raiseAQuestion(
     input: {
       moveTo?: string

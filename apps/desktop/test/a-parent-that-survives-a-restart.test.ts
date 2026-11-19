@@ -22,7 +22,6 @@ import { THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
 import { type Caller, type CallerIdentity } from '../src/main/runtime/runtime-host'
 import { agentCallerId, type ToolName } from '../src/main/runtime/agent-tools'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
-import { CAPABILITY_FIELDS, type ProfileCapabilities } from '../src/shared/capabilities'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
   RecordingSink,
@@ -639,7 +638,6 @@ describe('373 · a parent that survives a restart', () => {
       await restart()
       await reopen(worker, secondWindow)
 
-      expect(store.setCapabilities('pm', { canMessage: 'none' })).toBe(true)
       const admitted: CallerIdentity = { ownerId: agentCallerId(pm) }
       expect(host.agentCard(worker, admitted, null)).not.toBeNull()
       expect(host.withinMessagingReach(worker, admitted)).toBe(true)
@@ -684,7 +682,6 @@ describe('373 · a parent that survives a restart', () => {
       if (parent === undefined) throw new Error('the parent is not running')
       const given = await host.giveWork(request, { ownerId: agentCallerId(parent) })
       if (!given.ok) throw new Error(`the give was refused: ${given.refusal.rail}`)
-      expect(store.setCapabilities('pm', { canMessage: 'none' })).toBe(true)
       expect(host.agentCard(given.owner, { ownerId: agentCallerId(parent) }, null)).not.toBeNull()
       expect(host.withinMessagingReach(given.owner, { ownerId: agentCallerId(parent) })).toBe(true)
       expect(store.parentOf(given.owner)).toBe(parent)
@@ -964,25 +961,6 @@ describe('373 · a parent that survives a restart', () => {
         expect(launch.keys).toContain('agentTools')
         expect(launch.keys.filter((key) => DELEGATION_SWITCH.test(key))).toEqual([])
       }
-    })
-
-    it('⚑ …and a row a person narrowed to its narrowest reaches no launch either', async () => {
-      // ⛔ **One fact over, on one identity**: every grant this row holds is the narrowest a
-      // person can set, and nothing about the launch changes.
-      const { pm } = await aPmAndItsWorker()
-      // ⚑ **D-016** — each field's own `narrowest`, read off the schema now that the set it made
-      // is no longer exported.
-      const narrowest = Object.fromEntries(
-        CAPABILITY_FIELDS.map((field) => [field.key, field.narrowest]),
-      ) as unknown as ProfileCapabilities
-      expect(store.setCapabilities('pm', { ...narrowest })).toBe(true)
-      expect(store.capabilitiesOf('pm')).toEqual(narrowest)
-      await restart()
-      await reopen(pm, window)
-      const last = launches.at(-1)
-      expect(last?.kind).toBe('resume')
-      expect(last?.keys).toContain('agentTools')
-      expect(last?.keys.filter((key) => DELEGATION_SWITCH.test(key))).toEqual([])
     })
   })
 })

@@ -119,18 +119,6 @@ import {
   type NotStartedBecause,
 } from '@brobot2/runtime'
 import type { Provider, SessionStatus, TurnEnding } from '@brobot2/shared'
-import {
-  CAPABILITY_COLUMNS,
-  CAPABILITY_FIELDS,
-  DEFAULT_CAPABILITIES,
-  MAX_CAPABILITY_COUNT,
-  capabilityField,
-  type CapabilityEdit,
-  type CapabilityField,
-  type CapabilityKey,
-  type CapabilityOrigins,
-  type ProfileCapabilities,
-} from '../../shared/capabilities'
 import { AN_ANSWER_HELD_THEN_LOST, theAnswerItCarries } from '../../shared/tasks'
 import {
   externalMcpGrantRowId,
@@ -289,9 +277,6 @@ interface ConversationBinding {
   readonly provider: Provider
   readonly identity: string | null
 }
-
-export type { ProfileCapabilities } from '../../shared/capabilities'
-export { DEFAULT_CAPABILITIES } from '../../shared/capabilities'
 
 export type { OpenTurn, LeftRunning, TurnAsItEnded } from './turn-evidence-read'
 
@@ -603,8 +588,6 @@ const HELD_UNDER = `WITH RECURSIVE held(id) AS (
 
 const KEPT_BEFORE = `rowid < coalesce((SELECT rowid FROM work_resource WHERE id = @from), 9223372036854775807)`
 
-const MAX_WORK_DEPTH_WALKED = MAX_CAPABILITY_COUNT + 2
-
 function inLabelOrder(a: readonly number[], b: readonly number[]): number {
   for (let level = 0; level < Math.min(a.length, b.length); level += 1) {
     const apart = (a[level] ?? 0) - (b[level] ?? 0)
@@ -672,9 +655,10 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   identityOf(sessionId: string): {
     profileSlug: string
   } | null
-  capabilitiesOf(profileSlug: string): ProfileCapabilities | null
+  /** One identity, or null when no agent has that name. */
+  agentIdentityOf(profileSlug: string): AgentIdentity | null
   agentIdentities(): readonly AgentIdentity[]
-  /** The naming columns of one identity, without capabilities or grants. */
+  /** The naming columns of one identity. */
   agentIdentityNameById(id: string): AgentIdentityName | null
   reconciliationNames(
     conversations: readonly string[],
@@ -686,11 +670,8 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   providerOf(profileSlug: string): Provider | null
   startedOnOf(profileSlug: string): StartedOn
   saveProviderIfNoneIsSaved(profileSlug: string, provider: Provider): boolean
-  setCapabilities(
-    profileSlug: string,
-    edit: CapabilityEdit,
-    externalMcpServerIds?: readonly string[],
-  ): boolean
+  /** Replace the external MCP servers one identity is associated with; false: no such identity. */
+  setExternalMcpServers(profileSlug: string, externalMcpServerIds: readonly string[]): boolean
   ownInstructionsOf(profileSlug: string): OwnInstructions
   configuredLayerFor(profileSlug: string): string | null
   writeOwnInstructions(said: OwnInstructionsWrite, at: number): OwnInstructionsVersion | null
@@ -768,7 +749,6 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   defaultApprovalMode(): 'ask' | 'auto'
   setDefaultApprovalMode(mode: 'ask' | 'auto'): void
   parentOf(sessionId: string): string | null
-  ancestorsOf(sessionId: string): readonly string[]
   refreshAdopted(sessionId: string, updatedAt: number, child?: ChildDescent): boolean
   learnDescent(sessionId: string, child?: ChildDescent): boolean
   setApprovalMode(sessionId: string, mode: 'ask' | 'auto'): void
@@ -985,7 +965,6 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   workOnItsChainThatNames(conversation: string, piece: string): WorkThatNamesIt | null
   /** The rows given under one piece, by number — rows, not folded. */
   childrenOf(piece: string): readonly WorkRow[]
-  depthOf(piece: string): number
   pieceOfItsChainHeldBy(piece: string, owner: string): string | null
   turnBlockPiecesOwnedBy(owner: string, unread?: RowsUnread): readonly PieceRow[]
   openPiecesOf(owner: string, unread?: RowsUnread): readonly PieceRow[]
@@ -1155,11 +1134,11 @@ export const NULL_SESSION_STORE: SessionStore = {
   providerOf: () => null,
   startedOnOf: () => NONE_STARTED,
   saveProviderIfNoneIsSaved: () => false,
-  capabilitiesOf: () => null,
+  agentIdentityOf: () => null,
   agentIdentityNameById: () => null,
   reconciliationNames: () => [],
   agentIdentities: () => [],
-  setCapabilities: () => false,
+  setExternalMcpServers: () => false,
   ownNotesOf: () => null,
   currentOwnNotesOf: () => null,
   writeOwnNotes: () => null,
@@ -1215,7 +1194,6 @@ export const NULL_SESSION_STORE: SessionStore = {
   defaultApprovalMode: () => 'ask',
   setDefaultApprovalMode: () => {},
   parentOf: () => null,
-  ancestorsOf: () => [],
   importSnapshot: () => {},
   refreshAdopted: () => false,
   learnDescent: () => false,
@@ -1312,7 +1290,6 @@ export const NULL_SESSION_STORE: SessionStore = {
   workThatNamesUnder: () => null,
   workOnItsChainThatNames: () => null,
   childrenOf: () => [],
-  depthOf: () => 0,
   pieceOfItsChainHeldBy: () => null,
   piecesOwnedBy: () => [],
   piecesWithTheirWaits: () => [],
@@ -1458,26 +1435,6 @@ export interface RecordedTurn {
 
 type TurnEndReason = TurnEnding
 
-function parseBound(stored: number | null, fallback: number): number {
-  if (stored === null) return fallback
-  return Number.isInteger(stored) && stored >= 0 ? stored : 0
-}
-
-interface CapabilityRow {
-  max_depth: number | null
-  can_message: string | null
-  can_assign_work: string | null
-  can_create_agents: string | null
-  can_write_rules: string | null
-}
-
-function parseChoice<K extends ChoiceKey>(key: K, stored: string | null): ProfileCapabilities[K] {
-  const field = capabilityField(key) as unknown as CapabilityField<K>
-  if (stored === null) return field.ruled
-  const words: readonly string[] = field.vocabulary ?? []
-  return words.includes(stored) ? (stored as ProfileCapabilities[K]) : field.narrowest
-}
-
 function parseStrings(stored: string | null): readonly string[] {
   if (stored === null) return []
   try {
@@ -1489,10 +1446,6 @@ function parseStrings(stored: string | null): readonly string[] {
     return []
   }
 }
-
-type ChoiceKey = {
-  [K in CapabilityKey]: ProfileCapabilities[K] extends string ? K : never
-}[CapabilityKey]
 
 /** How many of a conversation's newest turns are read to learn when a person last wrote. */
 export const PERSON_LAST_WROTE_WITHIN_TURNS = 200
@@ -1609,8 +1562,6 @@ export function createSessionStore(
     },
   )
   let spawnStatements: {
-    readCapabilities: AppStatement
-    writeCapabilities: AppStatement
     listIdentities: AppStatement
     ensureIdentityRow: AppStatement
     identityNameById: AppStatement
@@ -1631,19 +1582,11 @@ export function createSessionStore(
     writePolicy: AppStatement
     readParent: AppStatement
     writeParent: AppStatement
-    ancestors: AppStatement
     spawnedBy: AppStatement
     conversationBinding: AppStatement
   } | null = null
   const spawnSql = (): NonNullable<typeof spawnStatements> =>
     (spawnStatements ??= {
-      readCapabilities: db.prepare(
-        `SELECT ${CAPABILITY_COLUMNS.join(', ')} FROM agent_identity WHERE id = ?`,
-      ),
-      writeCapabilities: db.prepare(
-        `UPDATE agent_identity SET ${CAPABILITY_COLUMNS.map((column) => `${column} = ?`).join(', ')}
-          WHERE id = ?`,
-      ),
       listIdentities: db.prepare(`SELECT ${IDENTITY_COLUMNS} FROM agent_identity ORDER BY slug`),
       ensureIdentityRow: db.prepare(
         `INSERT OR IGNORE INTO agent_identity
@@ -1708,16 +1651,6 @@ export function createSessionStore(
           WHERE s.id = ?`,
       ),
       writeParent: db.prepare(`UPDATE provider_session SET parent_session_id = ? WHERE id = ?`),
-      ancestors: db.prepare(
-        `WITH RECURSIVE ancestry(id, parent, depth) AS (
-           SELECT id, parent_session_id, 0 FROM provider_session WHERE id = ?
-           UNION ALL
-           SELECT s.id, s.parent_session_id, a.depth + 1
-             FROM provider_session s JOIN ancestry a ON s.id = a.parent
-            WHERE a.depth < 64
-         )
-         SELECT id FROM ancestry WHERE depth > 0 AND id <> ? ORDER BY depth`,
-      ),
     })
 
   let externalMcpStatements: {
@@ -1796,19 +1729,7 @@ export function createSessionStore(
       (row) => row.server_id,
     )
 
-  const readCapabilities = (rowId: string): ProfileCapabilities | null => {
-    const row = spawnSql().readCapabilities.get(rowId) as CapabilityRow | undefined
-    if (row === undefined) return null
-    return {
-      maxDepth: parseBound(row.max_depth, DEFAULT_CAPABILITIES.maxDepth),
-      canMessage: parseChoice('canMessage', row.can_message),
-      canAssignWork: parseChoice('canAssignWork', row.can_assign_work),
-      canCreateAgents: parseChoice('canCreateAgents', row.can_create_agents),
-      canWriteRules: parseChoice('canWriteRules', row.can_write_rules),
-    }
-  }
-
-  const IDENTITY_COLUMNS = `id, slug, display_name, provider, created_at, created_by, ${CAPABILITY_COLUMNS.join(', ')}`
+  const IDENTITY_COLUMNS = 'id, slug, display_name, provider, created_at, created_by'
 
   type IdentityRow = {
     id: string
@@ -1817,25 +1738,15 @@ export function createSessionStore(
     provider: string | null
     created_at: number
     created_by: string | null
-    [column: string]: string | number | null
   }
 
   const identityFrom = (row: IdentityRow): AgentIdentity => {
-    const capabilities = readCapabilities(row.id) ?? DEFAULT_CAPABILITIES
-    const chosen = Object.fromEntries(
-      CAPABILITY_FIELDS.map((field) => [
-        field.key,
-        row[field.column] === null ? 'default' : 'chosen',
-      ]),
-    ) as CapabilityOrigins
     return {
       id: row.id,
       slug: row.slug,
       displayName: row.display_name,
       createdAt: row.created_at,
       createdBy: readIdentityCreator(row.created_by),
-      capabilities,
-      chosen,
       provider: parseProvider(row.provider),
       externalMcpServerIds: grantedServerIds(row.id),
     }
@@ -4493,11 +4404,11 @@ export function createSessionStore(
 
   const chainUp = (row: WorkDbRow): readonly WorkDbRow[] => {
     const chain = [row]
+    const seen = new Set([row.id])
     let parent = row.parent_id
     while (parent !== null) {
-      if (chain.length >= MAX_WORK_DEPTH_WALKED) {
-        throw new Error(`the pieces above ${row.id} do not end in a root`)
-      }
+      if (seen.has(parent)) throw new Error(`the pieces above ${row.id} do not end in a root`)
+      seen.add(parent)
       const up = workSql().byId.get(parent) as WorkDbRow | undefined
       if (up === undefined) throw new Error(`piece ${row.id} names a parent this database lacks`)
       chain.push(up)
@@ -4921,8 +4832,10 @@ export function createSessionStore(
       return row === undefined ? null : { profileSlug: row.profile_slug }
     },
 
-    capabilitiesOf(profileSlug) {
-      return readCapabilities(agentIdentityRowId(profileSlug))
+    agentIdentityOf(profileSlug) {
+      const row = spawnSql().identityBySlug.get(foldProfileName(profileSlug)) as
+        IdentityRow | undefined
+      return row === undefined ? null : identityFrom(row)
     },
 
     ownInstructionsOf: knowledgeHistory.ownInstructionsOf,
@@ -5176,24 +5089,10 @@ export function createSessionStore(
       })()
     },
 
-    setCapabilities(profileSlug, edit, externalMcpServerIds) {
+    setExternalMcpServers(profileSlug, externalMcpServerIds) {
       const rowId = agentIdentityRowId(profileSlug)
-      const row = spawnSql().readCapabilities.get(rowId) as CapabilityRow | undefined
-      if (row === undefined) return false
-      const written: Record<CapabilityKey, string | number | null> = {
-        maxDepth: edit.maxDepth === undefined ? row.max_depth : edit.maxDepth,
-        canMessage: edit.canMessage === undefined ? row.can_message : edit.canMessage,
-        canAssignWork: edit.canAssignWork === undefined ? row.can_assign_work : edit.canAssignWork,
-        canCreateAgents:
-          edit.canCreateAgents === undefined ? row.can_create_agents : edit.canCreateAgents,
-        canWriteRules: edit.canWriteRules === undefined ? row.can_write_rules : edit.canWriteRules,
-      }
+      if (spawnSql().identityBySlug.get(foldProfileName(profileSlug)) === undefined) return false
       db.transaction(() => {
-        spawnSql().writeCapabilities.run(
-          ...CAPABILITY_FIELDS.map((field) => written[field.key]),
-          rowId,
-        )
-        if (externalMcpServerIds === undefined) return
         externalMcpSql().clearGrantsOf.run(rowId)
         const at = now()
         for (const serverId of new Set(externalMcpServerIds)) {
@@ -5239,11 +5138,6 @@ export function createSessionStore(
       const row = spawnSql().readParent.get(sessionId) as
         { parent_session_id: string | null } | undefined
       return row?.parent_session_id ?? null
-    },
-
-    ancestorsOf(sessionId) {
-      const rows = spawnSql().ancestors.all(sessionId, sessionId) as { id: string }[]
-      return rows.map((row) => row.id)
     },
 
     adopt(record) {
@@ -6116,12 +6010,6 @@ export function createSessionStore(
       return (workSql().children.all(piece) as WorkDbRow[]).map((child) =>
         workRowFrom(child, [...above, child.number]),
       )
-    },
-
-    depthOf(piece) {
-      const row = workSql().byId.get(piece) as WorkDbRow | undefined
-      if (row === undefined) throw new Error(`no piece ${piece} in this database`)
-      return chainUp(row).findIndex((one) => one.given_by_session_id === null)
     },
 
     pieceOfItsChainHeldBy(piece, owner) {

@@ -31,7 +31,6 @@ import {
   questionRetryableOf,
   refuseQuestion,
 } from '../src/main/runtime/question-rails'
-import { MESSAGE_RAILS } from '../src/main/runtime/message-rails'
 import { REPLY_RAILS } from '../src/main/runtime/reply-rails'
 import { SPAWN_RAILS } from '../src/main/runtime/spawn-rails'
 import { resourcesRoot } from '../src/main/resources/resources'
@@ -876,13 +875,7 @@ describe('394 · a question finds a person, and a permission never travels', () 
       }
       // ⛔ **No two entries in the compared roster share a NAME** — `374`'s rule, so `rail` says
       // which rule stopped a call whichever door built the payload.
-      const every = [
-        ...SPAWN_RAILS,
-        ...MESSAGE_RAILS,
-        ...REPLY_RAILS,
-        ...QUESTION_RAILS,
-        ...CHANNEL_REFUSALS,
-      ]
+      const every = [...SPAWN_RAILS, ...REPLY_RAILS, ...QUESTION_RAILS, ...CHANNEL_REFUSALS]
       expect(new Set(every).size).toBe(every.length)
       // ⚠️ **And no SENTENCE is shared between the two audiences of one fact.** The channel's
       // sentences are for a reader of a ledger; the rails' are for a model, and a string that had to
@@ -1150,8 +1143,7 @@ describe('394 · a question finds a person, and a permission never travels', () 
       // ⚑ **D-017 commit 3 · 8 → 7**: `end_agent`, published before it, is gone (nothing ends a
       // conversation); `answer_question` itself did not move relative to its neighbours.
       expect(TOOL_NAMES.indexOf('answer_question')).toBe(7)
-      // Enumerate the full vocabulary explicitly; runtime role lists are checked separately.
-      const offered = agentToolsFor(host, 'sess_x', {}, true).tools.map((tool) => tool.name)
+      const offered = agentToolsFor(host, 'sess_x', {}).tools.map((tool) => tool.name)
       expect(offered).toEqual([...TOOL_NAMES])
     })
 

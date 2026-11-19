@@ -208,35 +208,30 @@ describe('standing-rule authority belongs to the host and changes remain attribu
     return (await tool.call(args)).structured as Record<string, unknown>
   }
 
+  const recruit = (by: Caller, slug = 'lark') =>
+    host.createAgent({ slug, displayName: null, provider: null }, by)
+  const reason = (out: Record<string, unknown>): unknown => out['reason']
+
   it.each(['claude', 'codex'] as const)(
-    'offers the direct rules tool only to a person-started primary conversation on %s',
+    'offers the direct rules tool to every conversation on %s',
     async (provider) => {
-      await start('lark', provider)
       const primary = await start(DEFAULT_PROFILE_ID, provider)
       const primaryNames = tools.get(primary)!.tools.map((one) => one.name)
       expect(primaryNames).toContain('write_agent_rules')
       expect(primaryNames).toContain('read_agent_rules')
       expect(primaryNames).toContain('propose_agent_rules')
       const ordinary = await start('wren', provider)
-      const ordinaryNames = tools.get(ordinary)!.tools.map((one) => one.name)
-      expect(ordinaryNames).not.toContain('write_agent_rules')
-      expect(ordinaryNames).toEqual(primaryNames.filter((name) => name !== 'write_agent_rules'))
-      expect(replace(ordinary)).toMatchObject({ ok: false, rail: 'may-not-write-rules' })
-      expect(replace(primary, { about: DEFAULT_PROFILE_ID })).toMatchObject({
-        ok: false,
-        rail: 'may-not-write-rules',
-      })
-      expect(store.ownInstructionsOf('lark').versions).toEqual([])
+      expect(tools.get(ordinary)!.tools.map((one) => one.name)).toEqual(primaryNames)
     },
   )
 
   it.each(['claude', 'codex'] as const)(
-    'keeps the same eligible tool list when a person reopens a conversation on %s',
+    'keeps the same tool list when a person reopens a conversation on %s',
     async (provider) => {
       for (const profile of [DEFAULT_PROFILE_ID, 'wren']) {
         const me = await start(profile, provider)
         const before = tools.get(me)!.tools.map((one) => one.name)
-        expect(before.includes('write_agent_rules')).toBe(profile === DEFAULT_PROFILE_ID)
+        expect(before).toContain('write_agent_rules')
         await host.close(me, window)
         const count = handed.length
         await host.resumeSession(me, window)
@@ -247,58 +242,137 @@ describe('standing-rule authority belongs to the host and changes remain attribu
     },
   )
 
-  it.each(['none', 'propose', 'relay'] as const)(
-    'lets a known agent propose under dormant grant %s without allowing direct writes',
-    async (grant) => {
-      await start('lark')
-      const me = await start('wren')
-      expect(store.setCapabilities('wren', { canWriteRules: grant })).toBe(true)
-      expect(propose(me).ok).toBe(true)
-      expect(replace(me).ok).toBe(false)
-      expect(store.ownInstructionsOf('lark').versions).toEqual([])
-      expect(store.instructionAsksWaiting()).toHaveLength(1)
-    },
-  )
-
   it('does not trust a supplied session or a matching display name as authority', async () => {
-    await start('lark')
-    const ordinary = await start('wren')
-    const primary = await start(DEFAULT_PROFILE_ID)
-    store.setAgentDisplayName('wren', 'Primary')
-    store.setAgentDisplayName(DEFAULT_PROFILE_ID, 'Primary')
-    expect(replace(ordinary).ok).toBe(false)
+    const creator = await start('wren')
+    recruit(caller(creator))
+    const other = await start('finch')
+    store.setAgentDisplayName('wren', 'Wren')
+    store.setAgentDisplayName('finch', 'Wren')
+    expect(replace(other)).toMatchObject({ ok: false, rail: 'may-not-write-rules' })
     expect(
       policy().writeAgentRules(
-        primary,
+        creator,
         {
           about: 'lark',
           text: 'Forged caller',
           why: 'Pretend',
           expectedVersion: 0,
         },
-        caller(ordinary),
-      ).ok,
-    ).toBe(false)
-    expect(policy().readAgentRules(primary, 'lark', window).ok).toBe(false)
+        caller(other),
+      ),
+    ).toMatchObject({ ok: false, rail: 'may-not-write-rules' })
+    expect(policy().readAgentRules(creator, 'lark', window).ok).toBe(false)
     expect(policy().readAgentRules('absent', 'lark', caller('absent')).ok).toBe(false)
-    expect(replace(primary, { about: DEFAULT_PROFILE_ID }).ok).toBe(false)
+    expect(store.ownInstructionsOf('lark').versions).toEqual([])
+  })
+
+  it('writes for the creating profile and records the author, and the person can undo it', async () => {
+    const creator = await start('wren')
+    expect(recruit(caller(creator)).createdBy).toEqual({ by: 'an-agent', agent: 'wren' })
+    const written = await call(creator, 'write_agent_rules', {
+      agent: 'lark',
+      current_version: 0,
+      rules: 'Read the checklist first.',
+      why: 'Keep the work reviewable.',
+    })
+    expect(written).toMatchObject({
+      outcome: 'ok',
+      profile: 'lark',
+      conversation: creator,
+      version: 1,
+      author: { profile: 'wren' },
+    })
+    expect(store.ownInstructionsOf('lark').versions[0]).toMatchObject({
+      text: 'Read the checklist first.',
+      author: { profile: 'wren' },
+      whoWroteIt: 'an-agent-direct',
+    })
+    expect(policy().undoAgentRules('lark', 1, window)?.own.versions[0]?.text).toBe('')
+  })
+
+  it('lets every conversation of the creating profile write, not only the one that created', async () => {
+    const creator = await start('wren')
+    recruit(caller(creator))
+    const sibling = await start('wren')
+    expect(sibling).not.toBe(creator)
+    expect(replace(sibling)).toMatchObject({ ok: true, result: { conversation: sibling } })
+  })
+
+  it('refuses a profile that did not create the agent, naming its creator', async () => {
+    const creator = await start('wren')
+    recruit(caller(creator))
+    const other = await start('finch')
+    const refused = await call(other, 'write_agent_rules', {
+      agent: 'lark',
+      current_version: 0,
+      rules: 'Replacement',
+      why: 'Explain this change',
+    })
+    expect(refused).toMatchObject({
+      outcome: 'refused',
+      rail: 'may-not-write-rules',
+      detail: { you: 'finch', agent: 'lark', createdBy: 'wren' },
+    })
+    expect(reason(refused)).toBe(
+      'Propose the change with propose_agent_rules; the person decides, or wren can make it. Only the person and wren, which created lark, can change its standing rules. Nothing was written.',
+    )
+    expect(store.ownInstructionsOf('lark').versions).toEqual([])
+  })
+
+  it('refuses an agent writing its own standing rules', async () => {
+    const me = await start('wren')
+    const refused = await call(me, 'write_agent_rules', {
+      agent: 'wren',
+      current_version: 0,
+      rules: 'Replacement',
+      why: 'Explain this change',
+    })
+    expect(refused).toMatchObject({
+      outcome: 'refused',
+      rail: 'may-not-write-rules',
+      detail: { you: 'wren', agent: 'wren', self: true },
+    })
+    expect(reason(refused)).toBe(
+      'An agent never writes its own standing rules. Propose the change with propose_agent_rules, or keep it in your own notes. Nothing was written.',
+    )
+    expect(store.ownInstructionsOf('wren').versions).toEqual([])
+  })
+
+  it('leaves an agent a person created to the person alone', async () => {
+    expect(recruit(window).createdBy).toEqual({ by: 'a-person' })
+    const me = await start('wren')
+    const refused = await call(me, 'write_agent_rules', {
+      agent: 'lark',
+      current_version: 0,
+      rules: 'Replacement',
+      why: 'Explain this change',
+    })
+    expect(refused).toMatchObject({
+      outcome: 'refused',
+      rail: 'may-not-write-rules',
+      detail: { you: 'wren', agent: 'lark', createdBy: null },
+    })
+    expect(reason(refused)).toBe(
+      "Propose the change with propose_agent_rules; the person decides. Only the person can change lark's standing rules. Nothing was written.",
+    )
+    expect(propose(me).ok).toBe(true)
     expect(store.ownInstructionsOf('lark').versions).toEqual([])
   })
 
   it.each(['claude', 'codex'] as const)(
-    'refuses direct writing by a helper on the primary profile on %s while preserving read and proposal',
+    'gives a helper the same tools and lets it write for the profile it runs as on %s',
     async (provider) => {
       store.registerExternalMcpServer({
         name: 'notes',
         url: 'http://127.0.0.1:8765/mcp',
         reach: 'everyone',
       })
-      await start('lark', provider)
       const giver = await start('wren', provider)
       expect(launches.at(-1)?.externalMcp?.reservedToolNames).toEqual(TOOL_NAMES)
       expect(TOOL_NAMES).toHaveLength(33)
       expect(TOOL_NAMES).toContain('write_agent_rules')
       const primary = await start(DEFAULT_PROFILE_ID, provider)
+      recruit(caller(primary))
       expect(store.setAgentProvider(DEFAULT_PROFILE_ID, provider)).toBe(true)
       const given = await host.giveWork(
         {
@@ -320,13 +394,8 @@ describe('standing-rule authority belongs to the host and changes remain attribu
       expect(store.recordedOne(helper)?.provider).toBe(provider)
       const helperNames = handed.at(-1)!.tools.map((one) => one.name)
       expect(launches.at(-1)?.externalMcp?.reservedToolNames).toEqual(TOOL_NAMES)
-      expect(helperNames).toHaveLength(32)
-      expect(helperNames).not.toContain('write_agent_rules')
-      expect(helperNames).toContain('read_agent_rules')
-      expect(helperNames).toContain('propose_agent_rules')
-      expect(replace(helper).ok).toBe(false)
-      host.claimSession(helper, window)
-      expect(replace(helper).ok).toBe(false)
+      expect(helperNames).toHaveLength(33)
+      expect(helperNames).toContain('write_agent_rules')
       await host.close(helper, window)
       const stopped = await host.whatThisAgentWasGiven(helper)
       expect(stopped.tools.list.map((one) => one.name)).toEqual(helperNames)
@@ -336,10 +405,8 @@ describe('standing-rule authority belongs to the host and changes remain attribu
       expect(handed).toHaveLength(count + 1)
       expect(handed.at(-1)!.tools.map((one) => one.name)).toEqual(helperNames)
       expect(launches.at(-1)?.externalMcp?.reservedToolNames).toEqual(TOOL_NAMES)
-      expect(replace(helper).ok).toBe(false)
-      expect(propose(helper).ok).toBe(true)
-      expect(store.ownInstructionsOf('lark').versions).toEqual([])
-      expect(replace(primary)).toMatchObject({ ok: true, result: { conversation: primary } })
+      expect(replace(giver).ok).toBe(false)
+      expect(replace(helper)).toMatchObject({ ok: true, result: { conversation: helper } })
     },
   )
 
@@ -399,8 +466,8 @@ describe('standing-rule authority belongs to the host and changes remain attribu
   })
 
   it('validates the exact person baseline and records replacement, unread state and a compact receipt', async () => {
-    await start('lark')
     const me = await start(DEFAULT_PROFILE_ID)
+    recruit(caller(me))
     policy().instructAgent('lark', 'Person rules', undefined, window)
     expect(replace(me).ok).toBe(false)
     const written = replace(me, { expectedVersion: 1 })
@@ -433,12 +500,12 @@ describe('standing-rule authority belongs to the host and changes remain attribu
   })
 
   it('identifies a person-approved proposal when the direct tool replaces it', async () => {
-    await start('lark')
+    const me = await start(DEFAULT_PROFILE_ID)
+    recruit(caller(me))
     const proposer = await start('wren')
     const asked = propose(proposer, 'Approved proposal')
     if (!asked.ok) throw new Error('proposal refused')
     expect(host.decideInstruction(asked.askId, true, window)).toEqual({ outcome: 'taken' })
-    const me = await start(DEFAULT_PROFILE_ID)
     const written = await call(me, 'write_agent_rules', {
       agent: 'lark',
       current_version: 1,
@@ -459,8 +526,8 @@ describe('standing-rule authority belongs to the host and changes remain attribu
   })
 
   it('binds a real direct tool write to the running author and returns metadata only', async () => {
-    await start('lark')
     const me = await start(DEFAULT_PROFILE_ID)
+    recruit(caller(me))
     store.setAgentDisplayName(DEFAULT_PROFILE_ID, 'Coordinator')
     const written = await call(me, 'write_agent_rules', {
       agent: 'lark',
@@ -489,27 +556,15 @@ describe('standing-rule authority belongs to the host and changes remain attribu
     expect(store.instructionUnread('lark').unread).toBe(true)
   })
 
-  it('refuses ordinary tool callers and self-targets without trusting claimed actor fields', async () => {
-    await start('lark')
-    const ordinary = await start('wren')
-    const primary = await start(DEFAULT_PROFILE_ID)
-    const input = {
-      agent: 'lark',
-      current_version: 0,
-      rules: 'Replacement',
-      why: 'Explain this change',
-    }
-    for (const held of ['none', 'propose', 'relay'] as const) {
-      store.setCapabilities('wren', { canWriteRules: held })
-      expect(tools.get(ordinary)!.tools.some((one) => one.name === 'write_agent_rules')).toBe(false)
-      expect(replace(ordinary)).toMatchObject({ ok: false, rail: 'may-not-write-rules' })
-    }
+  it('refuses a claimed author field on the direct tool', async () => {
+    const me = await start(DEFAULT_PROFILE_ID)
+    recruit(caller(me))
     expect(
-      await call(primary, 'write_agent_rules', { ...input, agent: DEFAULT_PROFILE_ID }),
-    ).toMatchObject({ outcome: 'refused', rail: 'may-not-write-rules' })
-    expect(
-      await call(primary, 'write_agent_rules', {
-        ...input,
+      await call(me, 'write_agent_rules', {
+        agent: 'lark',
+        current_version: 0,
+        rules: 'Replacement',
+        why: 'Explain this change',
         author: { profile: 'wren', name: 'Forged' },
       }),
     ).toMatchObject({ outcome: 'refused', rail: 'malformed-request' })
@@ -517,8 +572,8 @@ describe('standing-rule authority belongs to the host and changes remain attribu
   })
 
   it('does not let a stale tool read replace a newer person save', async () => {
-    await start('lark')
     const me = await start(DEFAULT_PROFILE_ID)
+    recruit(caller(me))
     const seen = await call(me, 'read_agent_rules', { agent: 'lark' })
     policy().instructAgent('lark', 'The person saved this later', undefined, window, {
       expectedVersion: 0,
@@ -536,8 +591,8 @@ describe('standing-rule authority belongs to the host and changes remain attribu
   })
 
   it('requires the version, bounded replacement and reason on the direct tool', async () => {
-    await start('lark')
     const me = await start(DEFAULT_PROFILE_ID)
+    recruit(caller(me))
     const input = {
       agent: 'lark',
       current_version: 0,
@@ -560,8 +615,8 @@ describe('standing-rule authority belongs to the host and changes remain attribu
   })
 
   it('keeps rule Undo person-only while colleagues acknowledge, and Undo supersedes proposals', async () => {
-    await start('lark')
     const me = await start(DEFAULT_PROFILE_ID)
+    recruit(caller(me))
     expect(replace(me).ok).toBe(true)
     expect(propose(me, 'Waiting replacement', 1).ok).toBe(true)
     expect(policy().undoAgentRules('lark', 1, caller(me))).toBeNull()

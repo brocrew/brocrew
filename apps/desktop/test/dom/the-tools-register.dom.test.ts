@@ -6,7 +6,6 @@ import ExternalMcpRegistry from '../../src/renderer/src/components/ExternalMcpRe
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import SettingsScreen from '../../src/renderer/src/components/SettingsScreen.vue'
 import { createAgentStore, type AgentStore } from '../../src/renderer/src/lib/agent-store'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import { EXTERNAL_MCP_NONE_YET, EXTERNAL_MCP_REMOVAL_MEANS } from '../../src/shared/external-mcp'
 import type { ExternalMcpServerReach, ExternalMcpServerRow } from '../../src/shared/external-mcp'
 import { MAX_PATH_CHARS } from '../../src/shared/runtime-ipc'
@@ -70,14 +69,6 @@ const identity = (slug: string, granted: readonly string[] = []): AgentIdentity 
   createdBy: null,
   provider: null,
   externalMcpServerIds: granted,
-  capabilities: DEFAULT_CAPABILITIES,
-  chosen: {
-    maxDepth: 'default',
-    canMessage: 'default',
-    canAssignWork: 'default',
-    canCreateAgents: 'default',
-    canWriteRules: 'default',
-  },
 })
 
 /**

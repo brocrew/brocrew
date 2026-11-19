@@ -13,7 +13,6 @@ import { providerSchema, type Provider } from '@brobot2/shared'
 // against (its `ask` row less its `auto` row is what `auto` takes off), or the rail and the
 // sentence a person read at the moment they chose the mode would be two copies of one fact.
 import { whatTheChildWouldLack, type ApprovalMode, type Protection } from '@brobot2/runtime'
-import { DEFAULT_CAPABILITIES, type ProfileCapabilities } from '../db/session-store'
 import {
   PATH_SEGMENT_RULE,
   PROVIDER_NAME,
@@ -31,7 +30,6 @@ import { undrivenSentence } from '../../shared/tasks'
 // They must stay erased so these contracts add no runtime initialization dependency.
 import type { CallerIdentity } from './conversation-caller'
 import type { TellDelivery } from './message-records'
-import type { MessageRefusal } from './message-rails'
 import type { ResourceRefusal } from '../resources/resources'
 import type { ModelRefusal } from '../connections/model-rails'
 
@@ -61,18 +59,14 @@ import type { ModelRefusal } from '../connections/model-rails'
  *     is an oracle.
  *     ⚠️ A caller that speaks as no conversation holds none: `RuntimeHost.giveWork` answers it
  *     `no-piece-to-give-from` before these are asked.
- *  3. **`may-not-assign-work`** — the grant a person sets on giving (`can_assign_work`), asked of the
- *     caller alone.
- *  4. **Depth** — six below the work a person gave, counted on `work`, or the giver's own
- *     `max_depth`.
- *  5. **The lookup** — the one conversation this giver has with that agent, over reservations in
+ *  3. **The lookup** — the one conversation this giver has with that agent, over reservations in
  *     flight and rows alike ({@link GiveFacts.helperAs}). ⚠️ It is not a rail: it finds, and a give
  *     that finds one goes there, woken if it has stopped.
- *  6. **No stall rule**: a piece of this giver's that stalled there refuses nothing. The host
+ *  4. **No stall rule**: a piece of this giver's that stalled there refuses nothing. The host
  *     names it in the give's answer, read as the answer is formed, with its cause, a follow-up and a
  *     take-back.
- *  7. **Only when nothing was found**, the rails of a START: the spawning switch, `can_create_agents`
- *     for a new agent, `wider-than-its-parent`, the profile rule (D-016 · R3), then the folder — the
+ *  5. **Only when nothing was found**, the rails of a START: the spawning switch,
+ *     `wider-than-its-parent`, the profile rule (D-016 · R3), then the folder — the
  *     one clause that touches the disk, and asked only for a conversation that will work in it.
  *
  * ⛔ **Nothing is written on any path through {@link admitGive}.** A new agent's identity row, the
@@ -114,8 +108,6 @@ export const SPAWN_RAILS = [
    * so no label or id a caller spells tells it which pieces exist.
    */
   'no-piece-you-hold-by-that-name',
-  /** The piece would sit deeper below the work a person gave than the giver's `max_depth` allows. */
-  'too-deep',
   /** The agent is a service, and services don't run in this version. */
   'services-are-off',
   /** Whether the agent is a service can't be told, and a service may be at stake. */
@@ -144,11 +136,6 @@ export const SPAWN_RAILS = [
    * ruling 12). One row, app-wide — `schema.ts`'s `appPolicy`.
    */
   'spawning-disabled',
-  /**
-   * ⚑ **The caller may not bring a new agent into existence** (`can_create_agents`) — asked only of a
-   * give that asked for one with `new`. The same word `create_agent` answers.
-   */
-  'may-not-create-agents',
   /**
    * 🔴 **The conversation this give would start would act past its folder with nobody asked, where
    * the giver is still asked or confined** (499, HO-036; D-038).
@@ -214,11 +201,6 @@ const PERMANENCE: Readonly<Record<SpawnRail, RailPermanence>> = {
   'no-piece-to-give-from': 'permanent',
   'name-the-piece-you-give-from': 'permanent',
   'no-piece-you-hold-by-that-name': 'permanent',
-  // 🔴 **`until-a-person-changes-it`** (486): `max_depth` is a COUNT on the grant sheet, and the
-  // depth is fixed by where the caller sits — every piece it holds is at its chain's depth, work a
-  // person gave counting as 0 wherever it hangs (D-016 · commit 6) — so there is no change to the
-  // call that moves it.
-  'too-deep': 'until-a-person-changes-it',
   'services-are-off': 'until-a-person-changes-it',
   'its-kind-is-unknown': 'until-a-person-changes-it',
   'worker-binding-is-unknown': 'until-a-person-changes-it',
@@ -234,7 +216,6 @@ const PERMANENCE: Readonly<Record<SpawnRail, RailPermanence>> = {
   'its-record-cannot-be-read': 'permanent',
   'that-profile-exists': 'permanent',
   'spawning-disabled': 'until-a-person-changes-it',
-  'may-not-create-agents': 'until-a-person-changes-it',
   // 🔴 **`until-a-person-changes-it`** (499): the giver's own approvals button makes the identical
   // call succeed.
   'wider-than-its-parent': 'until-a-person-changes-it',
@@ -268,7 +249,6 @@ const REMEDY: Readonly<Record<SpawnRail, RefusalRemedy | null>> = {
   'no-piece-to-give-from': null,
   'name-the-piece-you-give-from': null,
   'no-piece-you-hold-by-that-name': null,
-  'too-deep': null,
   'services-are-off': null,
   'its-kind-is-unknown': null,
   'worker-binding-is-unknown': null,
@@ -282,7 +262,6 @@ const REMEDY: Readonly<Record<SpawnRail, RefusalRemedy | null>> = {
   'its-record-cannot-be-read': null,
   'that-profile-exists': null,
   'spawning-disabled': null,
-  'may-not-create-agents': null,
   'wider-than-its-parent': null,
   'no-such-profile': null,
   'its-provider-is-not-chosen': null,
@@ -311,11 +290,6 @@ export interface SpawnRefusalDetail {
    * root left out (D-022 · R4).
    */
   held?: readonly string[]
-  /** `too-deep` — the label of the piece the give would have hung under. */
-  label?: string
-  /** `too-deep` — the depth the piece would have sat at, and the deepest the giver may give to. */
-  depth?: number
-  maxDepth?: number
   /**
    * 🔴 **`wider-than-its-parent`'s three facts** (499; D-038) — the mode the new conversation would
    * start in (the giver's own), the giver's, and **what the giver keeps past its folder that the
@@ -412,12 +386,6 @@ export function describeRail(rail: SpawnRail, detail: SpawnRefusalDetail = {}): 
       return `Say which of your pieces this is for (${labelsSaid(detail.held)}): give again naming it as piece.`
     case 'no-piece-you-hold-by-that-name':
       return 'You hold no open piece by that name, so nothing was given. list_tasks names what you hold.'
-    case 'too-deep':
-      return (
-        `Too deep to give: under ${detail.label ?? '?'} it would sit at depth ${String(detail.depth ?? '?')}, ` +
-        `past the ${String(detail.maxDepth ?? '?')} this agent may give. ` +
-        'Do it yourself, or ask whoever gave you your piece.'
-      )
     case 'services-are-off':
       return `Not given: services are off. Do the work yourself, or give it to another agent; “${detail.profileId ?? '?'}” is a service.`
     case 'its-kind-is-unknown':
@@ -447,8 +415,6 @@ export function describeRail(rail: SpawnRail, detail: SpawnRefusalDetail = {}): 
         'one gives nothing. Only a person can switch it back on. Work can still be given to an ' +
         'agent you already have a conversation with.'
       )
-    case 'may-not-create-agents':
-      return 'You may not bring a new agent into existence, so nothing was given. Give to an agent list_profiles names, or ask a person.'
     // ⚠️ **The act is the giver's own mode** (D-038): an agent has no approval mode of its own, and
     // since the rail compares reach, no provider an agent could be moved to changes the verdict.
     case 'wider-than-its-parent':
@@ -727,9 +693,8 @@ export interface AdmittedSpawn {
 
 /**
  * 🔴 **The conversation giving the work, as much of it as the rails need to see** — its id and its
- * profile for every give (the pieces it holds, the conversation it already has, and the grant sheet
- * the depth is read from), and its provider, folder and approval mode only when a give would START
- * a conversation.
+ * profile for every give (the pieces it holds and the conversation it already has), and its
+ * provider, folder and approval mode only when a give would START a conversation.
  *
  * ⚠️ **Its approval mode is the EFFECTIVE mode and never the requested one** — `RuntimeHost`'s
  * `effectiveApprovalOf`: a giver that has already asked to go back to prompting is giving up its
@@ -737,7 +702,7 @@ export interface AdmittedSpawn {
  */
 export interface GivingConversation {
   readonly sessionId: string
-  /** The profile it is RUNNING as — the identity whose grants are being spent. */
+  /** The profile it is running as. */
   readonly profileId: string
   readonly provider: Provider
   readonly cwd: string
@@ -802,14 +767,8 @@ export interface GiveFacts {
    * what a person asked it directly.
    */
   readonly isAHelper: () => boolean
-  /** ⚑ `can_assign_work` asked of the caller alone — `admitReachAtAll('assign', …)`. */
-  readonly mayGiveWork: () => MessageRefusal | null
-  /**
-   * How far below the work a person gave a piece sits: a root is 0, and so is a piece taken on for
-   * a person (D-016 · commit 6).
-   */
-  readonly depthOf: (piece: string) => number
-  readonly capabilitiesOf: (profileSlug: string) => ProfileCapabilities | null
+  /** Whether an agent by that name exists. */
+  readonly agentExists: (profileSlug: string) => boolean
   /**
    * 🔴 **The conversation this giver has with that agent on the chosen provider, or `null`** (R2 step 5) — over the
    * reservations in flight and the rows, the giver's predecessors included, followed through
@@ -830,11 +789,8 @@ export interface GiveFacts {
   /** Whether a give to `profileSlug` reaches a service, and how ({@link ServiceAtAGive}). */
   readonly serviceAt: (giver: string, profileSlug: string) => ServiceAtAGive
   readonly spawningEnabled: () => boolean
-  /**
-   * ⚑ **Who is creating, when the caller may bring a new agent into existence**, else `null` — the
-   * answer `RuntimeHost.mayCreateAgents` gives `create_agent`.
-   */
-  readonly mayCreateAgents: () => IdentityCreator | null
+  /** Who is creating, for a give that brings a new agent into existence; `null`: not recorded. */
+  readonly creatorOf: () => IdentityCreator | null
   /** The provider the TARGET agent runs on, and what says so (`theProviderOfAnAgent`). */
   readonly itsProvider: (profileSlug: string) => ItsProvider
   /**
@@ -877,7 +833,7 @@ export type ServiceAtAGive =
  * host's first write, made after every rail has answered.
  */
 export type GiveAdmission =
-  | { readonly ok: false; readonly refusal: SpawnRefusal | MessageRefusal }
+  | { readonly ok: false; readonly refusal: SpawnRefusal }
   | {
       readonly ok: true
       readonly asked: GiveRequest
@@ -902,7 +858,7 @@ export type GiveAdmission =
             readonly to: 'a-new-conversation'
             readonly start: AdmittedSpawn
             /** ⚑ The identity to write first, when the give asked for a new agent; else `null`. */
-            readonly creating: { readonly slug: string; readonly by: IdentityCreator } | null
+            readonly creating: { readonly slug: string; readonly by: IdentityCreator | null } | null
           }
         | {
             /** A service: the piece is queued on its one conversation, recorded first if none. */
@@ -979,7 +935,7 @@ export type GiveOutcome =
    */
   | {
       readonly ok: false
-      readonly refusal: SpawnRefusal | MessageRefusal | ResourceRefusal | ModelRefusal
+      readonly refusal: SpawnRefusal | ResourceRefusal | ModelRefusal
     }
 
 /**
@@ -1026,7 +982,7 @@ export function admitAReplacement(replaced: ReplacedConversation): AdmittedSpawn
  */
 export function theProviderAStartRunsOn(
   asked: Pick<GiveRequest, 'profile' | 'provider'>,
-  /** Whether that agent exists — `capabilitiesOf` answered for it. */
+  /** Whether that agent exists. */
   known: boolean,
   giving: Pick<GivingConversation, 'provider'>,
   facts: Pick<GiveFacts, 'modelChoiceOf' | 'itsProvider'>,
@@ -1121,24 +1077,7 @@ export function admitGive(
     under = inferred
   }
 
-  // 3 · the grant on giving, asked of the caller alone.
-  const wall = facts.mayGiveWork()
-  if (wall !== null) return { ok: false, refusal: wall }
-
-  // 4 · depth. ⛔ **`?? DEFAULT_CAPABILITIES` is the one default set every agent holds** — a caller
-  // `may-not-assign-work` admitted has a row, and a row nobody narrowed reads as exactly this.
-  const giver = facts.capabilitiesOf(giving.profileId) ?? DEFAULT_CAPABILITIES
-  const depth = facts.depthOf(under.piece) + 1
-  if (depth > giver.maxDepth) {
-    return no('too-deep', {
-      depth,
-      maxDepth: giver.maxDepth,
-      label: under.label,
-      profileId: asked.profile,
-    })
-  }
-
-  // 5 · the lookup — a lookup, not a rail: whatever state the conversation is in, the work goes there.
+  // 3 · the lookup — a lookup, not a rail: whatever state the conversation is in, the work goes there.
   const service = asked.new === true ? null : facts.serviceAt(giving.sessionId, asked.profile)
   if (service?.is === 'off') return no('services-are-off', { profileId: asked.profile })
   if (service?.is === 'unknown')
@@ -1204,7 +1143,7 @@ export function admitGive(
     }
   }
 
-  const known = facts.capabilitiesOf(asked.profile) !== null
+  const known = facts.agentExists(asked.profile)
   const provider = theProviderAStartRunsOn(
     asked,
     known,
@@ -1232,7 +1171,7 @@ export function admitGive(
       ? worker.conversation
       : facts.helperAs(giving.sessionId, asked.profile, provider ?? undefined)
   if (found !== null) {
-    // 5b · ⚑ a found conversation proves the agent exists, and reusing it would give "a new agent" a
+    // 3b · ⚑ a found conversation proves the agent exists, and reusing it would give "a new agent" a
     // memory — R3's own reason (D-016 spec D1).
     if (asked.new === true) return no('that-profile-exists', { profileId: asked.profile })
     // For an existing conversation, a supplied folder becomes an additional grant for this work. An unusable folder adds no grant and is explained in the receipt; it does not refuse the give. The host reports its location separately.
@@ -1252,14 +1191,11 @@ export function admitGive(
     }
   }
 
-  // 7 · nothing found: the rails of a START.
+  // 4 · nothing found: the rails of a START.
   if (!facts.spawningEnabled()) return no('spawning-disabled', { profileId: asked.profile })
   // ⚑ **Whether the agent exists is a read of its row** — `list_profiles` names every one, so the
   // answer is no secret — and it decides which of the two rails below the name meets.
-  const creator = asked.new === true && !known ? facts.mayCreateAgents() : null
-  if (asked.new === true && !known && creator === null) {
-    return no('may-not-create-agents', { profileId: asked.profile })
-  }
+  const creating = asked.new === true && !known
 
   // ⛔ **INHERITED** (499, HO-036): a conversation a give starts runs in its giver's mode.
   const approvalMode = giving.approvalMode
@@ -1325,7 +1261,7 @@ export function admitGive(
     goes: {
       to: 'a-new-conversation',
       start,
-      creating: creator === null ? null : { slug: foldProfileName(asked.profile), by: creator },
+      creating: creating ? { slug: foldProfileName(asked.profile), by: facts.creatorOf() } : null,
     },
   }
 }

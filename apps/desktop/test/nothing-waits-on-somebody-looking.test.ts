@@ -132,11 +132,6 @@ describe('396 · nothing waits on somebody looking', () => {
   /** ⚑ The caller a PM's own tools present — `agent-tools.ts`'s `agentCallerId`, spelled once. */
   const asPm = (pm: string): { ownerId: string } => ({ ownerId: `agent:${pm}` })
 
-  /** One capability, changed and nothing else. */
-  const reach = (profileId: string, edit: { canMessage?: string }): void => {
-    expect(store.setCapabilities(profileId, edit as never)).toBe(true)
-  }
-
   /** The latest provider status stays idle when later app receipts are written. */
   const quiet = (sessionId: string): boolean => {
     const last = ledger(sessionId)
@@ -258,17 +253,14 @@ describe('396 · nothing waits on somebody looking', () => {
 
   /** Two notes to the child: the first starts a turn that parks on a card, so the second is held. */
   const aNoteHeldBehindAnother = async ({
-    pmProfile,
     worker,
     pmTools,
     workerHandle,
   }: {
-    pmProfile: string
     worker: string
     pmTools: AgentToolset
     workerHandle: FakeSessionHandle
   }): Promise<void> => {
-    reach(pmProfile, { canMessage: 'any' })
     const first = await callOn(pmTools, 'message_agent', {
       agent: worker,
       text: 'first',
@@ -288,8 +280,8 @@ describe('396 · nothing waits on somebody looking', () => {
     it('a message held for a child NOBODY is watching goes out when its turn ends', async () => {
       // No window, a busy child, a held message — and the turn ends through the provider rather
       // than through a person, so no sink is ever attached.
-      const { pm, pmProfile, worker, pmTools, workerHandle } = await aPmAndItsWorker()
-      await aNoteHeldBehindAnother({ pmProfile, worker, pmTools, workerHandle })
+      const { pm, worker, pmTools, workerHandle } = await aPmAndItsWorker()
+      await aNoteHeldBehindAnother({ worker, pmTools, workerHandle })
 
       // Nobody has ever looked at this conversation.
       expect(claimed.has(worker)).toBe(false)
@@ -308,11 +300,11 @@ describe('396 · nothing waits on somebody looking', () => {
     })
 
     it('…and when the window that WAS watching has gone — the other half of the same gate', async () => {
-      const { pmProfile, worker, pmTools, workerHandle } = await aPmAndItsWorker()
+      const { worker, pmTools, workerHandle } = await aPmAndItsWorker()
       const ghost = new RecordingSink('webContents:9')
       host.claimSession(worker, ghost)
       claimed.add(worker)
-      await aNoteHeldBehindAnother({ pmProfile, worker, pmTools, workerHandle })
+      await aNoteHeldBehindAnother({ worker, pmTools, workerHandle })
       const card = await cardOn(worker)
       // The window goes before the turn ends, so every `deliver` after this takes the dead-sink
       // branch.
@@ -330,10 +322,10 @@ describe('396 · nothing waits on somebody looking', () => {
 
     it('the flush does not overtake the status that triggered it', async () => {
       // Measured on the wire, because the ledger takes ordinals in order whatever the send order.
-      const { pmProfile, worker, pmTools, workerHandle } = await aPmAndItsWorker()
+      const { worker, pmTools, workerHandle } = await aPmAndItsWorker()
       host.claimSession(worker, window)
       claimed.add(worker)
-      await aNoteHeldBehindAnother({ pmProfile, worker, pmTools, workerHandle })
+      await aNoteHeldBehindAnother({ worker, pmTools, workerHandle })
       await letTheTurnFinish(worker)
       await waitFor(
         () => mailboxOf(store.events(worker)).some((one) => one.ending === 'sent'),
@@ -705,8 +697,8 @@ describe('396 · nothing waits on somebody looking', () => {
     })
 
     it('a message flushed to an unwatched child is in the ledger the next launch reads', async () => {
-      const { pm, pmProfile, worker, pmTools, workerHandle } = await aPmAndItsWorker()
-      await aNoteHeldBehindAnother({ pmProfile, worker, pmTools, workerHandle })
+      const { pm, worker, pmTools, workerHandle } = await aPmAndItsWorker()
+      await aNoteHeldBehindAnother({ worker, pmTools, workerHandle })
       await host.interrupt(worker, asPm(pm))
       await waitFor(
         () => mailboxOf(store.events(worker)).some((one) => one.ending === 'sent'),

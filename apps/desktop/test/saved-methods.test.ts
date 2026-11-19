@@ -12,7 +12,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { providerSchema, type Provider } from '@brobot2/shared'
-import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import {
   SAVED_METHODS_MOST_INDEX_BYTES,
   SAVED_METHODS_MOST_METHOD_BYTES,
@@ -284,8 +283,6 @@ function context(over: Partial<InstructionContext> = {}): InstructionContext {
     profileSlug: 'fictional-writer',
     cwd: '/tmp/work',
     startedBy: null,
-    depth: 0,
-    capabilities: DEFAULT_CAPABILITIES,
     spawningEnabled: true,
     root: 'not-yet-numbered',
     others: { shown: [], more: 0 },

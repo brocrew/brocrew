@@ -7,7 +7,6 @@ import CapabilitiesSheet from '../../src/renderer/src/components/CapabilitiesShe
 import TeamWorkspace from '../../src/renderer/src/components/TeamWorkspace.vue'
 import WaitingOnYou from '../../src/renderer/src/components/WaitingOnYou.vue'
 import { createAgentStore, type AgentStore } from '../../src/renderer/src/lib/agent-store'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type { ItsProvider } from '../../src/shared/agent-roster'
 import type { AgentIdentities, AgentIdentity, RuntimeBridge } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll } from './harness'
@@ -32,14 +31,6 @@ const identity = (slug: string, over: Partial<AgentIdentity> = {}): AgentIdentit
   createdBy: null,
   provider: null,
   externalMcpServerIds: [],
-  capabilities: DEFAULT_CAPABILITIES,
-  chosen: {
-    maxDepth: 'default',
-    canMessage: 'default',
-    canAssignWork: 'default',
-    canCreateAgents: 'default',
-    canWriteRules: 'default',
-  },
   ...over,
 })
 
@@ -64,7 +55,7 @@ const roster = (runsOn: ItsProvider): AgentIdentities => ({
 const storeOver = (list: AgentIdentities): AgentStore =>
   createAgentStore({
     agentIdentities: async () => list,
-    setCapabilities: async () => list.identities[0] ?? null,
+    setExternalMcpServers: async () => list.identities[0] ?? null,
     setSpawningEnabled: async () => ({ spawningEnabled: true }),
     setAgentProvider: async () => null,
   } as unknown as RuntimeBridge)

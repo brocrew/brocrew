@@ -5,12 +5,6 @@ import {
   interruptRetryableOf,
 } from '../interrupt-rails'
 import {
-  type MessageRefusal,
-  messagePermanenceOf,
-  messageRemedyOf,
-  messageRetryableOf,
-} from '../message-rails'
-import {
   type QuestionRefusal,
   questionPermanenceOf,
   questionRemedyOf,
@@ -64,6 +58,7 @@ export const TOOL_PERMANENCE: Readonly<Record<ToolRefusal, RailPermanence>> = {
   'no-such-agent': 'permanent',
   // **D-017 · R12** — nothing the caller does starts it, and waiting does not either.
   'that-conversation-takes-no-messages': 'permanent',
+  'that-is-a-service': 'permanent',
   'that-agent-has-several-conversations': 'permanent',
   // Permanent for THIS request: the same arguments will be malformed forever.
   'malformed-request': 'permanent',
@@ -96,8 +91,6 @@ export const TOOL_PERMANENCE: Readonly<Record<ToolRefusal, RailPermanence>> = {
   // **710 · R51 — a program this machine cannot run** stays that way until somebody puts it back,
   // makes it runnable or gives the child its folder again — the wake's mirror word's permanence.
   'agent-could-not-be-started': 'until-a-person-changes-it',
-  // **A person has to widen the grant.** Nothing the caller can do changes it, and no retry helps.
-  'may-not-create-agents': 'until-a-person-changes-it',
   // **Permanent: the same arguments name the same taken name forever.** Unlike its two
   // neighbours, this is a fact about the CALL rather than about the world — `malformed-request`'s
   // shape, one rail over.
@@ -117,12 +110,8 @@ export const TOOL_PERMANENCE: Readonly<Record<ToolRefusal, RailPermanence>> = {
   'that-work-is-being-sent': 'while-this-holds',
   'a-conversation-with-its-questions-is-starting': 'while-this-holds',
   'its-questions-could-not-all-be-read': 'while-this-holds',
-  // Direct writing follows a fixed host role; a per-profile grant cannot enable it.
+  // Who created an agent never changes, so the same call is refused for good.
   'may-not-write-rules': 'permanent',
-  // **`until-a-person-changes-it`, and the person could change it two ways** — by widening the
-  // grant, or by answering the proposal this caller may still make. Either way the thing that
-  // moves is a person, which is what this word means.
-  'may-not-relay-a-rule': 'until-a-person-changes-it',
   // **628 · `permanent`, and it is `that-agent-is-you`'s row one object over.** A
   // `message_agent` naming work this caller HOLDS can never become the right call however long
   // anybody waits: the direction is wrong, not the world. *Change the call, not the world* — and
@@ -172,6 +161,7 @@ const TOOL_REMEDY: Readonly<Record<ToolRefusal, RefusalRemedy | null>> = {
   'theme-is-built-in': null,
   'no-such-agent': null,
   'that-conversation-takes-no-messages': null,
+  'that-is-a-service': null,
   'that-agent-has-several-conversations': null,
   'malformed-request': null,
   'agent-cannot-take-a-message': null,
@@ -202,7 +192,6 @@ const TOOL_REMEDY: Readonly<Record<ToolRefusal, RefusalRemedy | null>> = {
   'agent-could-not-start-just-now': 'make-the-same-call-when-this-settles',
   // **710 · nothing this caller can do** — the biconditional's other half, as for the wake's mirror.
   'agent-could-not-be-started': null,
-  'may-not-create-agents': null,
   'agent-name-taken': null,
   'services-are-off-so-none-is-made': null,
   // **429 · three nulls and one word, and the biconditional decided all four before this table
@@ -225,11 +214,6 @@ const TOOL_REMEDY: Readonly<Record<ToolRefusal, RefusalRemedy | null>> = {
   // **Nothing, and the biconditional decided it** — *"a rail carries an act if and only if this
   // app can retry it"*. Neither is `while-this-holds`, and the act that clears both is a person's.
   'may-not-write-rules': null,
-  // **Nothing, and NOT *ask instead***. `REFUSAL_REMEDIES` names acts this app can RETRY, and
-  // asking is a different call with a different outcome — `not-a-piece-you-gave`'s ruling:
-  // *finding another id is not making this id succeed*. The SENTENCE tells the caller it may ask;
-  // the remedy field would promise this call could be replayed, and it cannot.
-  'may-not-relay-a-rule': null,
   // **663 · the biconditional's other half**: retryable, so it carries the act.
   'that-conversation-is-still-stopping': 'make-the-same-call-when-this-settles',
   'that-conversation-could-not-be-resumed': null,
@@ -307,6 +291,8 @@ export const TOOL_SENTENCES: Readonly<Record<ToolRefusal, string>> = {
   // The detail carries every label; the refusal sentence names up to five.
   'that-agent-has-several-conversations':
     'make the same call with agent set to one of that agent\u2019s conversations, by a label the detail lists. It has more than one you can reach, so nothing was done.',
+  'that-is-a-service':
+    'Not sent: that conversation is a service, which takes its work one piece at a time. Give it the work with give_work.',
   'that-conversation-takes-no-messages':
     'that conversation cannot be started by a message, so nothing was sent to it; list_agents names the conversations this app can run. It is a read-only copy, a provider\u2019s own sub-agent, or a conversation this app did not start.',
   'malformed-request':
@@ -360,14 +346,11 @@ export const TOOL_SENTENCES: Readonly<Record<ToolRefusal, string>> = {
   // at this door. It says *may*: Node names the program for a missing folder too.
   'agent-could-not-be-started':
     'that agent\u2019s conversation could not be started, so nothing was sent. Starting it again will not help until a person has looked: this machine could not run its provider\u2019s program \u2014 it may be missing or not runnable, or the folder it runs in may be gone. The detail names the error.',
-  'may-not-create-agents':
-    'ask a person to grant agent creation. You do not have that right, so nothing was created; repeating this call will not grant it.',
   // **It teaches the remedy, which is a different name** — and it says the comparison ignores
   // case, because a model that tried the same name capitalised differently would meet this twice.
   'agent-name-taken':
     'there is already an agent with that name, so nothing was created. Names are compared without case. Choose a different name, or use the agent that exists.',
-  'services-are-off-so-none-is-made':
-    'Not created: services are off. A person turns them on in Team.',
+  'services-are-off-so-none-is-made': 'services are off. A person turns them on in Team.',
   // **It names where the right label is and promises nothing about this one** — the split
   // `reply-rails.ts` made between a sentence that helps and a field that promises. **Two doors
   // say it and only one names an agent** — `message_agent`'s follow-up, not `withdraw_task` — so
@@ -392,13 +375,8 @@ export const TOOL_SENTENCES: Readonly<Record<ToolRefusal, string>> = {
   // Said with the piece's label at each door (`aPieceNotEndedItsQuestionsUnread`).
   'its-questions-could-not-all-be-read':
     "that piece wasn't taken back or closed: its question records could not be read. Check that record, then retry this call.",
-  // Grants do not select the app's direct writer.
   'may-not-write-rules':
-    'Only BroBot writes other agents’ standing rules directly. You can propose a change with propose_agent_rules, and the person decides. Nothing was written.',
-  // **It tells the caller what it MAY do**, because the narrower grant it holds is a real answer
-  // rather than a consolation: the proposal arm is open to it and a person will decide.
-  'may-not-relay-a-rule':
-    'you may ask for these rules but not write them, so nothing was written and nobody asked. Ask again without claiming it was already agreed, and a person will decide: relaying a rule on somebody’s behalf is a separate grant you do not hold.',
+    'Only the person and the profile that created an agent can change its standing rules. Propose the change with propose_agent_rules. Nothing was written.',
   'that-is-work-you-hold':
     'that is a piece you are HOLDING, so nothing was sent. To ask about it, call ask_question naming that piece; to hand it back finished, call reply_to_parent. A follow-up is about a piece you gave to somebody else; with ask_question the work stays yours and stays open, and reply_to_parent ends it.',
   // **D-016 · the act first, inside the cut** — and it names no verb that refuses a root. Said
@@ -495,24 +473,6 @@ export function carryRailRefusal(refusal: SpawnRefusal): PublishedRefusal {
     // **425 · re-derived from the rail for the permanence's reason one line up.** A payload that
     // arrived promising an act its rail does not offer is corrected here rather than published.
     remedy: remedyOf(refusal.rail),
-    detail: refusal.detail,
-  }
-}
-
-/**
- * A messaging rail's refusal, carried over MCP **unchanged** — the same treatment, one door over.
- *
- * **Re-derived through `message-rails.ts`'s own table**, for `carryRailRefusal`'s reason: the
- * payload states the permanence, and a payload is a thing that can be built wrong.
- */
-export function carryMessageRefusal(refusal: MessageRefusal): PublishedRefusal {
-  return {
-    outcome: 'refused',
-    rail: refusal.rail,
-    permanence: messagePermanenceOf(refusal.rail),
-    retryable: messageRetryableOf(refusal.rail),
-    reason: refusal.reason,
-    remedy: messageRemedyOf(refusal.rail),
     detail: refusal.detail,
   }
 }

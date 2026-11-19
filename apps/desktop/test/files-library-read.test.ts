@@ -490,21 +490,39 @@ it('returns honest ancestry/unread coverage failures and remains usable after ca
   ).toMatchObject({ cause: 'metadata', unread: 1, complete: false })
 })
 
+// A deep chain has no depth bound: only a loop or a missing parent makes the ancestry unreadable.
 it.each(['parent-first', 'deepest-first'])(
-  'checks total ancestry depth even with %s metadata memoization',
+  'reads a seventy-deep ancestry whole with %s metadata memoization',
   (order) => {
     const f = fixture()
     f.owner('a')
-    let parent = f.store.rootOf('a')!.piece
-    for (let i = 1; i <= 66; i++) {
+    const root = f.store.rootOf('a')!
+    let parent = root.piece
+    for (let i = 1; i <= 70; i++) {
       const id = `depth-${i}`
       f.task(id, parent, 1, 'a', 'a')
-      if (order === 'parent-first' || i === 66) f.keep(`at-${i}`, id, sha(id))
+      if (order === 'parent-first' || i === 70) f.keep(`at-${i}`, id, sha(id), { at: 71 - i })
       parent = id
     }
-    expect(
-      f.engine.read({ operation: 'query', query: workspaceQuery }, libraryContext),
-    ).toMatchObject({ type: 'unavailable', cause: 'ancestry', complete: false })
+    const result = files(
+      f.engine.read({ operation: 'query', query: workspaceQuery, size: 70 }, libraryContext),
+    )
+    expect(result).toMatchObject({ complete: true, next: null })
+    expect(result.totalFiles).toBe(order === 'parent-first' ? 70 : 1)
+    expect(result.files.at(-1)?.file.label).toBe(`${root.label}${'.1'.repeat(70)}`)
+    const deepest = files(
+      f.engine.read(
+        {
+          operation: 'query',
+          query: {
+            ...workspaceQuery,
+            scope: { type: 'task', id: 'depth-70', includeSubtasks: false },
+          },
+        },
+        libraryContext,
+      ),
+    )
+    expect(deepest.files.map((one) => one.file.label)).toEqual([`${root.label}${'.1'.repeat(70)}`])
   },
 )
 

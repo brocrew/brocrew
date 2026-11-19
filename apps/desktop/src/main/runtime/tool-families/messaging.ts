@@ -26,7 +26,7 @@ import {
 } from './delivery'
 import { agentStateWords } from '../../../shared/agent-state'
 import { answer, refusalAnswer } from './answers'
-import { carryInterruptRefusal, carryMessageRefusal, refuseTool } from './refusals'
+import { carryInterruptRefusal, refuseTool } from './refusals'
 import { type conversationAddressing } from './addressing'
 import { hasSomethingToSend } from '../../../shared/runtime-ipc'
 import { isAgentMessageKind } from '../../../shared/tasks'
@@ -82,7 +82,6 @@ export function createMessageAgentTool(
   host: Pick<
     AgentToolHost,
     | 'addressOf'
-    | 'mayReachAtAll'
     | 'messageAgentNow'
     | 'nameByItsWork'
     | 'queueMessage'
@@ -107,7 +106,7 @@ export function createMessageAgentTool(
      *
      * **It sent work until D-016** — a third kind opened a task — and a description that still
      * offered it would walk a model into a refusal; work is `give_work`'s now, and the sentence
-     * names it. The sentence INSTRUCTS rather than describing `can_message` (standing rule 8).
+     * names it.
      */
     description:
       'Send a message to an agent: a note for its information, or a follow-up on a piece of work you gave it, which you name — say which. To give work, use give_work; to ask something and get the answer back, use ask_question. It is held until that agent is free, then delivered with whatever else is held for it, oldest first (a person\u2019s command goes on its own). With interrupt: true, the turn that agent is running is also asked to stop, so that the message need not wait for its work to finish; the agent is told who asked for the stop. ' +
@@ -117,8 +116,8 @@ export function createMessageAgentTool(
     /**
      * **486 · the rails are the whole gate** (HO-031 §2.4).
      *
-     * **Words into this app's own mailbox.** `can_message` and the reach answer it, and a message
-     * to a busy receiver is HELD rather than pushed.
+     * **Words into this app's own mailbox.** The reach answers it, and a message to a busy
+     * receiver is HELD rather than pushed.
      */
     beyondItsRails: 'nothing-its-rails-do-not-cover',
     // With `interrupt`, a call cuts the receiver's running turn, as `interrupt_agent` does.
@@ -170,15 +169,6 @@ export function createMessageAgentTool(
     ),
     call: (args) =>
       guarded(async () => {
-        // **486 · the standing wall first** (HO-031 §2.5). **`may-not-message` sat behind
-        // both the shape below and `no-such-agent`**, and both of those are `permanent` — so a
-        // caller a person had granted no reach at all was told *change the call* about a wall no
-        // call changes. Argument-independent by construction: {@link RuntimeHost.mayReachAtAll}
-        // asks the caller's own grant and nothing about the target this line has not read.
-        const wall = host.mayReachAtAll('message', by)
-        if (wall !== null) {
-          return answer(carryMessageRefusal(wall), `refused (${wall.rail}): ${wall.reason}`)
-        }
         args = toolArgumentsAtHandler(args)
         const problems: z.core.$ZodIssue[] = []
         const problem = (field: keyof MessageAgentArguments, message: string): void => {

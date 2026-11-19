@@ -9,7 +9,6 @@ import {
   profileLabel,
 } from '../src/shared/runtime-ipc'
 import type { AgentIdentity, ResumableSessionInfo } from '../src/shared/runtime-ipc'
-import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 
 const identity = (slug: string, displayName: string | null): AgentIdentity => ({
   id: `aid:${slug}`,
@@ -17,8 +16,6 @@ const identity = (slug: string, displayName: string | null): AgentIdentity => ({
   displayName,
   createdAt: 0,
   createdBy: null,
-  capabilities: DEFAULT_CAPABILITIES,
-  chosen: {} as AgentIdentity['chosen'],
   provider: null,
   externalMcpServerIds: [],
 })

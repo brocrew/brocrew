@@ -20,11 +20,7 @@ import {
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
-import {
-  DEFAULT_CAPABILITIES,
-  createSessionStore,
-  type SessionStore,
-} from '../src/main/db/session-store'
+import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF, type RuntimeEventSink } from './helpers/giver-notice-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
@@ -707,13 +703,13 @@ describe('682 · a person’s choice holds the whole launch', () => {
       })
     })
 
-    it('⚑ `setCapabilities` announces `agents` too (inbox 10) — and only when it wrote', async () => {
+    it('⚑ `setExternalMcpServers` announces `agents` too (inbox 10) — and only when it wrote', async () => {
       anAgent('builder')
       announced = []
-      expect(host.setCapabilities('builder', DEFAULT_CAPABILITIES)).not.toBeNull()
+      expect(host.setExternalMcpServers('builder', [])).not.toBeNull()
       expect(announced).toEqual(['agents'])
       announced = []
-      expect(host.setCapabilities('nobody', DEFAULT_CAPABILITIES)).toBeNull()
+      expect(host.setExternalMcpServers('nobody', [])).toBeNull()
       expect(announced).toEqual([])
     })
   })

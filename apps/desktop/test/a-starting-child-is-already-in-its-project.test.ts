@@ -18,7 +18,6 @@ import {
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentCallerId, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -30,17 +29,13 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
  * `end_agent` answered a permanent project refusal, because the boundary read the TARGET's project
  * off its committed `agent_profile` row, and a reservation has none yet. ⚠️ **`650` F1, one door
  * over:** `message_agent` answered `that-conversation-has-not-started` ahead of the walls a running
- * target would be refused by, so a caller narrowed only on giving work was told to retry and then
- * met `may-not-assign-work`.
+ * target would be refused by.
  *
  * ⚑ **R30a · the reservation carries the project its spawn will run in**, and every wall reads a
  * starting child as it will read it running. **R30b · the walls answer before the shared word** —
  * entitlement, then boundary, then *not started*. **R30c · `459`'s same-tick narrowing is
  * re-derived**: one identity into two projects in one tick is admitted; into one project twice is
  * still refused.
- *
- * ⛔ **Every arm starts from the parent's RULED grants**, and nothing here widens one; the one arm
- * that narrows a grant (§3's `can_assign_work: none`) is a person's narrowing, set in the test.
  *
  * ⚑ **D-017 — `end_agent` and `resume_agent` are gone** (nothing ends a conversation; a message
  * starts a stopped one), so `657` F-a's own section (§1, ending a starting child) went with the
@@ -134,10 +129,6 @@ describe('681 · a starting child is already in its project', () => {
     return sessionId
   }
 
-  const grant = (profileId: string, edit: Parameters<SessionStore['setCapabilities']>[1]): void => {
-    expect(store.setCapabilities(profileId, edit), profileId).toBe(true)
-  }
-
   const speakingAs = (sessionId: string): CallerIdentity => ({ ownerId: agentCallerId(sessionId) })
 
   const toolsOf = (sessionId: string) => {
@@ -161,8 +152,7 @@ describe('681 · a starting child is already in its project', () => {
   }
 
   /**
-   * 🔴 **A parent on the RULED grants**, with the two identities its children start as. ⛔ Nothing is
-   * widened; the first test says so by reading the grants back. (D-016: it stood in project
+   * 🔴 **A parent**, with the two identities its children start as. (D-016: it stood in project
    * `alpha`, which went with projects.)
    */
   const aParent = async (): Promise<string> => {
@@ -250,18 +240,6 @@ describe('681 · a starting child is already in its project', () => {
   }
 
   // ─────────────────────────────────────────────────────────────────────────────────────────────
-  // §0 · the premise, read back rather than assumed
-  // ─────────────────────────────────────────────────────────────────────────────────────────────
-
-  it('§0 the parent measured below holds the RULED reach — nothing in this file widens it', async () => {
-    const parent = await aParent()
-    const mine = store.identityOf(parent)
-    expect(mine).toMatchObject({ profileSlug: 'lead' })
-    expect(store.capabilitiesOf('lead')).toEqual(DEFAULT_CAPABILITIES)
-    expect(store.capabilitiesOf('lead')).toMatchObject({ canMessage: 'any', canAssignWork: 'any' })
-  })
-
-  // ─────────────────────────────────────────────────────────────────────────────────────────────
   // §1 · end_agent — `657` F-a. ⚑ **D-017 — gone with `end_agent`**: nothing ends a conversation,
   // so *a parent ends its own starting child* has no act left to measure. The same boundary, one act
   // down the hierarchy, is §2's.
@@ -331,38 +309,7 @@ describe('681 · a starting child is already in its project', () => {
         brief: 'do the thing',
       })
 
-    it('🔴 a caller narrowed only on giving work meets `may-not-assign-work` at once — starting or running', async () => {
-      const parent = await aParent()
-      const running = await aRunningChild(parent)
-      const child = await aStartingChild(parent)
-      // ⚑ **Narrowed once both children exist** — a person's narrowing, and D-016's give asks it
-      // of the caller alone, before it looks up the conversation the work would reach.
-      grant('lead', { canAssignWork: 'none' })
-      const call = toolsOf(parent)
-      const toRunning = payload(await giveTo(call, 'worker'))
-      const toStarting = payload(await giveTo(call, 'helper'))
-      // ⚑ **And the retry the first answer could have promised**, once the launch has landed.
-      child.held.release()
-      await child.spawning
-      const retried = payload(await giveTo(call, 'helper'))
-      // ⚠️ **One comparison over all three, so a red names every rail it met.** 🔴 **RED on `main`
-      // @ `5c8dffab`**: the starting child answered `that-conversation-has-not-started`, retryable —
-      // and the retry it promised met `may-not-assign-work`.
-      expect(running).not.toBe(child.id)
-      expect({
-        running: toRunning.rail,
-        starting: toStarting.rail,
-        startingRetryable: toStarting.retryable,
-        retried: retried.rail,
-      }).toEqual({
-        running: 'may-not-assign-work',
-        starting: 'may-not-assign-work',
-        startingRetryable: false,
-        retried: 'may-not-assign-work',
-      })
-    })
-
-    it('⚑ control · the RULED reach: the give waits for the start — and is delivered once it runs', async () => {
+    it('⚑ the give waits for the start — and is delivered once it runs', async () => {
       const parent = await aParent()
       const child = await aStartingChild(parent)
       const call = toolsOf(parent)
@@ -389,8 +336,8 @@ describe('681 · a starting child is already in its project', () => {
       const parent = await aParent()
       const running = await aRunningChild(parent)
       const child = await aStartingChild(parent)
-      // ⚑ **A caller with no relationship to either**: a conversation a person opened, on the ruled
-      // grants — it started neither child.
+      // ⚑ **A caller with no relationship to either**: a conversation a person opened — it started
+      // neither child.
       const outsider = await personOpens('outsider')
       const give = (profile: string) =>
         host.giveWork(

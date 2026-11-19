@@ -208,7 +208,6 @@ describe('D-017 · the instruction-ask ledger', () => {
   it('a torn instruction row is skipped, never the whole read — a healthy ask elsewhere still answers', async () => {
     await bringIdentityIntoBeing('worker')
     await bringIdentityIntoBeing('asker')
-    expect(store.setCapabilities('asker', { canWriteRules: 'propose' })).toBe(true)
     const asking = await personOpens('asker')
     const asked = host.proposeAgentRules(
       asking,
@@ -260,7 +259,6 @@ describe('D-017 · the instruction-ask ledger', () => {
   it('an instruction row with no ask id is skipped, never surfaced as a phantom ask', async () => {
     await bringIdentityIntoBeing('worker')
     await bringIdentityIntoBeing('asker')
-    expect(store.setCapabilities('asker', { canWriteRules: 'propose' })).toBe(true)
     const asking = await personOpens('asker')
     host.proposeAgentRules(
       asking,

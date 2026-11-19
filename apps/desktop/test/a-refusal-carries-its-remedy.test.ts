@@ -20,13 +20,6 @@ import {
   type SpawnRail,
 } from '../src/main/runtime/spawn-rails'
 import {
-  MESSAGE_RAILS,
-  messagePermanenceOf,
-  messageRemedyOf,
-  refuseMessage,
-  type MessageRail,
-} from '../src/main/runtime/message-rails'
-import {
   REPLY_RAILS,
   REPLY_SUMMARY_LIMIT,
   replyPermanenceOf,
@@ -181,13 +174,6 @@ const VOCABULARIES: readonly Vocabulary[] = [
     built: (rail) => refuse(rail as SpawnRail),
   },
   {
-    name: 'MESSAGE_RAILS',
-    rails: MESSAGE_RAILS,
-    permanenceOf: (rail) => messagePermanenceOf(rail as MessageRail),
-    remedyOf: (rail) => messageRemedyOf(rail as MessageRail),
-    built: (rail) => refuseMessage(rail as MessageRail),
-  },
-  {
     name: 'TOOL_REFUSALS',
     rails: TOOL_REFUSALS,
     permanenceOf: (rail) => refuseTool(rail as ToolRefusal).permanence,
@@ -315,10 +301,6 @@ describe('425 · a refusal carries its remedy', () => {
   const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
     const id = await personOpens(profileId)
     await host.close(id, window)
-  }
-
-  const grant = (profileId: string, edit: Parameters<SessionStore['setCapabilities']>[1]): void => {
-    expect(store.setCapabilities(profileId, edit)).toBe(true)
   }
 
   const callerOf = (of: AgentToolHost, sessionId: string) => {
@@ -527,6 +509,8 @@ describe('425 · a refusal carries its remedy', () => {
         // cannot start (`permanent`). ⚠️ Each SENTENCE names what is left, which is a different call.
         ['INTERRUPT_RAILS', 'it-is-waiting-on-an-answer'],
         ['TOOL_REFUSALS', 'that-conversation-takes-no-messages'],
+        // A service's conversation takes work through give_work; no wait changes that.
+        ['TOOL_REFUSALS', 'that-is-a-service'],
         ['TOOL_REFUSALS', 'agent-cannot-take-a-message'],
         // ⚑ **D-016 · the document registry's words are the resource store's** — a store with
         // nowhere to keep, and the reader's `517` word for bytes it cannot read (HO-043 §1), which
@@ -772,7 +756,8 @@ describe('425 · a refusal carries its remedy', () => {
       // service asked for while services are off — its sentence names the person who turns them on.
       // R03 removes the permanent ancestry-only read refusal; a known conversation is readable.
       // Two provider choices cannot be cleared by retrying: a fixed service and a full pool.
-      expect(quiet).toHaveLength(84)
+      // No per-agent grant rail is left; a service's conversation has its own word at the message door.
+      expect(quiet).toHaveLength(79)
       for (const [rail, permanence] of [
         ['service-provider-is-fixed', 'permanent'],
         ['no-room-for-provider-conversation', 'until-a-person-changes-it'],
@@ -1013,7 +998,8 @@ describe('425 · a refusal carries its remedy', () => {
       // ⚑ Four more: a piece that cannot end with the copies of its questions, at two vocabularies.
       // The walk also includes the fixed service provider and a pool with no matching provider.
       // R03 removes the ancestry-only read refusal from the canonical vocabulary.
-      expect(walked).toHaveLength(115)
+      // No per-agent grant rail is left; a service's conversation has its own word at the message door.
+      expect(walked).toHaveLength(110)
       expect(everyRail().some((one) => one.rail === 'not-a-conversation-below-you')).toBe(false)
       expect(walked).toEqual(everyRail().map((one) => `${one.vocabulary} · ${one.rail}`))
     })
@@ -1051,16 +1037,13 @@ describe('425 · a refusal carries its remedy', () => {
     })
 
     it('🔴 nothing a caller wrote reaches the row, and the remedy did not re-open that door', async () => {
-      await bringIdentityIntoBeing('worker')
       const pm = await personOpens('pm')
-      // ⚑ **D-014 · refused by the depth a person set**, since any agent may give to any agent: a
-      // `max_depth` of 0 leaves this conversation no room for a piece below its own.
-      grant('pm', { maxDepth: 0 })
+      // Refused because no agent has that name.
       const call = callerOf(host, pm)
       const secret = 'Northwind: do not write this into a ledger'
       await call('give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
+        profile: 'ghost',
         title: secret,
         brief: secret,
       })
@@ -1069,7 +1052,7 @@ describe('425 · a refusal carries its remedy', () => {
       const written = JSON.stringify(row)
       expect(written).not.toContain('Northwind')
       // ⚑ **The positive control over the same string** — an empty row would pass the negative.
-      expect(written).toContain('too-deep')
+      expect(written).toContain('no-such-profile')
       // ⛔ **And the new field is one of the closed words or `null`, never free text.**
       expect(row.remedy === null || isRefusalRemedy(row.remedy)).toBe(true)
     })

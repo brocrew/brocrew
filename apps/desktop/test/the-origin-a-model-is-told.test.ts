@@ -68,7 +68,7 @@ const PAM_GAVE_W1_3 = (): WhereTheSenderStands => ({
  * ⛔ **A spawned conversation is ALREADY told who started it at launch** — HO-015 §3 accepted the
  * sentence and `factory-text.ts` renders it; it named the parent's session id until D-016 · commit 7,
  * and names it by the piece it owns since. ⚠️ **That says who CAN send. This says
- * who DID**, and `can_message: 'any'` means the sender need not be the parent at all. A model
+ * who DID**, and any agent may message it, so the sender need not be the parent at all. A model
  * holding the first and reading an unframed turn cannot tell its parent's words from the words of
  * the person at the keyboard, which is the whole of `410` F2.
  *
@@ -965,8 +965,8 @@ describe('414 · the origin a model is told', () => {
     it('⚑ the interrupting door asks too — measured where the two readings DIVERGE', async () => {
       // ⛔ **A window alone would measure nothing here** (standing rule 3): `originOf(window)` and
       // a hard-coded `null` produce the same string, so both a fixed door and a derived one pass.
-      // ⚠️ Nothing in the PRODUCT reaches this door as an agent — `message-rails.ts`: *"No agent
-      // tool reaches `interrupt` or `sendInterrupting` today"* — but `RuntimeHost` is a class the
+      // ⚠️ Nothing in the PRODUCT reaches this door as an agent — no agent tool reaches `interrupt`
+      // or `sendInterrupting` today — but `RuntimeHost` is a class the
       // tool layer holds a reference to, and a parent COMMANDS its child, so the method can be
       // driven the way tomorrow would drive it. ⚑ That is where the readings part.
       // ⚑ D-016 · the brief's turn is let end (`auto`), so the worker is idle as a spawn left it.

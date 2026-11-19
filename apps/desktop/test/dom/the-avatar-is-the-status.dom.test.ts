@@ -5,7 +5,6 @@ import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injecti
 import { desktopProviderApi } from '../../src/renderer/src/client-provider/window'
 import { page } from 'vitest/browser'
 import TeamWorkspace from '../../src/renderer/src/components/TeamWorkspace.vue'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import { HOLDING_SAYS, whatHoldsIt, type IdentityUse } from '../../src/shared/agent-roster'
 import {
   platePx,
@@ -56,14 +55,6 @@ const FLOOR = 972
  */
 const NOW = Date.now()
 
-const CHOSEN = {
-  maxDepth: 'default',
-  canMessage: 'default',
-  canAssignWork: 'default',
-  canCreateAgents: 'default',
-  canWriteRules: 'default',
-} as unknown as AgentIdentity['chosen']
-
 const ident = (slug: string, over: Partial<AgentIdentity> = {}): AgentIdentity => ({
   id: `aid:${slug}`,
   slug,
@@ -73,8 +64,6 @@ const ident = (slug: string, over: Partial<AgentIdentity> = {}): AgentIdentity =
   createdBy: null,
   provider: null,
   externalMcpServerIds: [],
-  capabilities: { ...DEFAULT_CAPABILITIES },
-  chosen: CHOSEN,
   ...over,
 })
 

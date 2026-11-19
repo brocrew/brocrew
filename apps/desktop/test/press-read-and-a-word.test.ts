@@ -44,8 +44,8 @@ describe('529 §1 · the two sentences that moved have one home', () => {
     expect(ANOTHER_CALLER_MAY_REACH_IN).not.toMatch(/\bending it\b/)
     // ⚠️ **D-014 · the grant clause is gone, and the reach clause is what carries its job.**
     // Stopping reads no grant now; it reaches the chain below the caller. ⚑ *"It can go as far
-    // as"* is what keeps the verbs from reading as a complete list — sending still asks the
-    // caller's own `can_message` — so it is the clause asserted by name.
+    // as"* is what keeps the verbs from reading as a complete list, so it is the clause asserted by
+    // name.
     expect(ANOTHER_CALLER_MAY_REACH_IN, 'the reach clause').toContain('It can go as far as')
     expect(ANOTHER_CALLER_MAY_REACH_IN, 'the refusal').toContain(
       'cannot answer what this session stops to ask',

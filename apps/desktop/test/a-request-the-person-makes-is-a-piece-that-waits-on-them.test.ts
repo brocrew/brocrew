@@ -42,8 +42,7 @@ import {
  * reads `waiting-on-the-person-who-asked` instead of `stalled`: it raises no notice, is never a
  * conversation's wait, and the next turn that drives it puts it back to `working`. Left open by any
  * other drive — a giver's note, an interruption — it stalls with its cause: the person owes nothing
- * they were not asked. Its reply is delivered nowhere and says so. It sits at depth
- * 0 wherever it hangs. A give with no piece named hangs under the one open piece the caller took on.
+ * they were not asked. Its reply is delivered nowhere and says so. A give with no piece named hangs under the one open piece the caller took on.
  *
  * Three rigs, one file:
  *
@@ -819,41 +818,21 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
     expect(named.label).toBe(`${two.label}.1`)
   })
 
-  it('T5 · a piece taken on sits at depth 0: a give under it is admitted at maxDepth 1 and too-deep at maxDepth 0', async () => {
+  it('T5 · a give under a piece taken on hangs under that piece', async () => {
     await bringIdentityIntoBeing('worker')
-    const { id: pm, tools: pmTools, root: pmRoot } = await aPerson('pm')
-    const grant = (edit: Parameters<SessionStore['setCapabilities']>[1]): void => {
-      expect(store.setCapabilities('pm', edit)).toBe(true)
-    }
+    const { id: pm, tools: pmTools } = await aPerson('pm')
     const taken = await takeOn(pmTools, 'the request')
-    const giveUnder = (): Promise<Record<string, unknown>> =>
-      callOn(pmTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'the errand',
-        brief: 'the errand',
-        piece: taken.label,
-      })
-
-    // The positive: one level of depth is enough for a give under the piece the person asked for.
-    grant({ maxDepth: 1 })
-    const admitted = await giveUnder()
+    const admitted = await callOn(pmTools, 'give_work', {
+      definition_of_done: 'The requested result and its checks are recorded.',
+      profile: 'worker',
+      title: 'the errand',
+      brief: 'the errand',
+      piece: taken.label,
+    })
     expect(admitted.outcome, JSON.stringify(admitted)).toBe('ok')
     const underIt = admitted.piece as string
     expect(store.workById(underIt)?.parent).toBe(taken.piece)
-
-    // The same call one fact over: no depth at all, and the give is refused with its arithmetic.
-    grant({ maxDepth: 0 })
-    const refused = await giveUnder()
-    expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
-    expect(refused.rail).toBe('too-deep')
-    expect(refused.detail).toMatchObject({ label: taken.label, depth: 1, maxDepth: 0 })
     expect(store.childrenOf(taken.piece).map((one) => one.piece)).toEqual([underIt])
-
-    // What the store says of the three: a root and a piece a person gave are 0, a give under it 1.
-    expect(store.depthOf(pmRoot.piece)).toBe(0)
-    expect(store.depthOf(taken.piece)).toBe(0)
-    expect(store.depthOf(underIt)).toBe(1)
     expect(store.workById(taken.piece)?.owner).toBe(pm)
   })
 

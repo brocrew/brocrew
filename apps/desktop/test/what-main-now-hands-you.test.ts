@@ -191,10 +191,10 @@ describe('a refusal names the control by its own label', () => {
   it('both refusals of the agent sheet send a person to New agent on the Team page', async () => {
     const store = createAgentStore({
       agentIdentities: async () => null,
-      setCapabilities: async () => null,
+      setExternalMcpServers: async () => null,
       setAgentProvider: async () => null,
     } as unknown as RuntimeBridge)
-    const saved = await store.save('ghost', {} as never, [])
+    const saved = await store.saveExternalMcpServers('ghost', [])
     const chose = await store.chooseProviderFor('ghost', 'codex')
     expect(chose.ok).toBe(false)
     for (const said of [saved, chose.ok ? null : chose.reason]) {

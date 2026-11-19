@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createAgentStore, type AgentStore } from '../src/renderer/src/lib/agent-store'
-import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import type { AgentIdentities, AgentIdentity, RuntimeBridge } from '../src/shared/runtime-ipc'
 import { WHERE_AGENTS_ARE_CREATED } from '../src/renderer/src/lib/where-agents-are-created'
 
@@ -12,14 +11,6 @@ const identity = (slug: string): AgentIdentity => ({
   createdAt: 1,
   createdBy: null,
   externalMcpServerIds: [],
-  capabilities: DEFAULT_CAPABILITIES,
-  chosen: {
-    maxDepth: 'default',
-    canMessage: 'default',
-    canAssignWork: 'default',
-    canCreateAgents: 'default',
-    canWriteRules: 'default',
-  },
 })
 
 const roster = (identities: AgentIdentity[]): AgentIdentities => ({
@@ -37,7 +28,7 @@ const saved = {
   ...before,
   displayName: 'New name',
   provider: 'codex' as const,
-  capabilities: { ...DEFAULT_CAPABILITIES, maxDepth: 2 },
+  externalMcpServerIds: ['server'],
   modelChoiceCleared: { provider: 'claude' as const, model: 'sonnet', effort: 'high' },
 }
 const initial = roster([neighbour, before])
@@ -54,9 +45,9 @@ interface Action {
 
 const actions: Action[] = [
   {
-    name: 'capabilities',
-    invoke: (store) => store.save('worker', DEFAULT_CAPABILITIES, ['server']),
-    input: { profileId: 'worker', grant: DEFAULT_CAPABILITIES, externalMcpServerIds: ['server'] },
+    name: 'external MCP servers',
+    invoke: (store) => store.saveExternalMcpServers('worker', ['server']),
+    input: { profileId: 'worker', externalMcpServerIds: ['server'] },
     success: null,
     refusal: (reason) => reason,
     missing,
@@ -84,7 +75,7 @@ async function setup(held: AgentIdentities | null = initial) {
   const write = vi.fn<(input: unknown) => Promise<typeof saved | null>>(async () => saved)
   const store = createAgentStore({
     agentIdentities: read,
-    setCapabilities: write,
+    setExternalMcpServers: write,
     setAgentProvider: write,
     setAgentDisplayName: write,
   } as unknown as RuntimeBridge)

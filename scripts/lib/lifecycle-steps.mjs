@@ -3,8 +3,8 @@
  * observations in stage journals, not this declaration. The runner begins with the first
  * give, after project-creation steps that the app does not offer.
  *
- * Cover default grants and shipped identities without changing grants to make the run pass;
- * creates, permissions reserved for a person, app-level questions to a parent, resource
+ * Cover shipped identities without setting up agents to make the run pass;
+ * creates, provider approvals reserved for a person, app-level questions to a parent, resource
  * replies, and restart recovery. App `ask_question` availability is provider-neutral;
  * whether a model discovers and uses it remains a behavioural observation.
  *
@@ -14,12 +14,11 @@
  */
 export const LIFECYCLE_STEPS = [
   {
-    id: '1 the grant BroBot ships with, and nothing a person set up',
+    id: '1 BroBot needs no setup',
     owner: 'stage',
     proves:
-      'tier 1 runs on the one default set every agent holds (D-014): its row stores no grant of its ' +
-      'own and reads back as `DEFAULT_CAPABILITIES`, while no person grants anything in the run ' +
-      '(669 R17)',
+      'BroBot has no identity row before its first conversation, which creates its row without ' +
+      'any other setup',
   },
   {
     id: '1b a fresh install ships BroBot and no other identity',
@@ -29,12 +28,11 @@ export const LIFECYCLE_STEPS = [
       'and `project-manager` has no row',
   },
   {
-    id: '1c every tier holds the same grants and keeps Agent/Task/Workflow',
+    id: '1c every tier keeps the provider’s own sub-agents',
     owner: 'stage',
     proves:
-      'D-014’s one default set: the three identities hold `DEFAULT_CAPABILITIES`, and every launch ' +
-      'keeps the CLI’s own sub-agents — read off each tier’s published tool inventory where the ' +
-      'provider publishes one (Claude) — once all three exist, since two of them are created in the run',
+      'the three identities exist and every launch keeps the CLI’s own sub-agents, read off each ' +
+      'tier’s published tool inventory where the provider publishes one (Claude)',
   },
   {
     id: '2 BroBot gives a new project manager the ticket, at depth 1',
@@ -49,13 +47,13 @@ export const LIFECYCLE_STEPS = [
     owner: 'stage',
     proves:
       'work travels a second hop: the project manager brings the worker into existence and hangs ' +
-      'its piece under the ticket, at depth 2 of 6',
+      'its piece under the ticket, at depth 2',
   },
   {
     id: '6 the worker gives a new helper a piece, at depth 3',
     owner: 'stage',
     proves:
-      'D-014 · the worker holds the grants the tiers above it hold, and depth 3 of 6 is admitted — ' +
+      'the worker creates a helper with its piece at depth 3 — ' +
       'a refusal on the way would be named with its rail, its permanence and its retryability',
   },
   {

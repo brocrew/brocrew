@@ -1,5 +1,4 @@
 import type { Provider } from '@brobot2/shared'
-import type { CapabilityOrigins, ProfileCapabilities } from './capabilities'
 
 /**
  * 🔴 **Who brought one identity into being** (598, `HO-084` §1) — one of {@link IDENTITY_ORIGINS},
@@ -35,12 +34,6 @@ export type IdentityCreator =
  * `HO-063` gap 1 is about**, which is why the correction is here rather than filed: a reader who
  * believed that sentence would have concluded the roster could not have the rows it is asked for.
  * ⚑ What each identity has actually done is {@link AgentIdentities.use}.
- *
- * ⚑ **Two readings of the same columns, and both are needed.** `capabilities` is RESOLVED —
- * exactly what the rails read, with nulls already replaced by the ruled defaults. `chosen` says
- * whether each column is NULL or holds something, which is the only way a sheet can tell *nobody
- * has chosen* from *somebody chose today's default* — and the only way its first Save can avoid
- * writing the second over the first.
  */
 export interface AgentIdentity {
   /**
@@ -101,26 +94,13 @@ export interface AgentIdentity {
    * ⚠️ **NULL is *nobody recorded it*** — every row written before `0041` carries it, and nothing
    * can mint another.
    *
-   * ⛔ **It is not a capability and it is on this record rather than inside
-   * {@link AgentIdentity.capabilities}**, for {@link AgentIdentity.provider}'s reason: every member
-   * of `ProfileCapabilities` is a GRANT a rail reads to refuse an act, and this refuses nothing — it
-   * is a fact about the row's birth.
+   * ⚑ **It decides who besides the person may change this identity's standing rules**: a
+   * conversation of the identity named on the `an-agent` arm.
    */
   readonly createdBy: IdentityCreator | null
-  /** What the rails see. */
-  readonly capabilities: ProfileCapabilities
-  /** Per capability, whether this row has chosen. */
-  readonly chosen: CapabilityOrigins
   /**
    * 🔴 **Which provider this identity's NEXT conversation runs on, or null — nobody has said** (419,
    * HO-023 §3).
-   *
-   * ⛔ **Not a capability, and it is on this record rather than inside
-   * {@link AgentIdentity.capabilities} for that reason.** Every field in there is a GRANT — something
-   * a rail reads to refuse an act — and this refuses nothing: it is a default the resolution order
-   * consults when a caller named no provider. ⚠️ Folding it into the capability schema would have
-   * put a non-grant in front of `CAPABILITY_FIELDS`' `satisfies`, and would have made a rail-shaped
-   * reader of a preference.
    *
    * ⚑ **Null is *nobody has said* and is not `codex`.** The renderer's `DEFAULT_PROVIDER` is the
    * fallback for an identity that has not said; an identity that HAS said is a different fact, and a
@@ -137,16 +117,8 @@ export interface AgentIdentity {
    * identity may use* would now under-report it** — `CapabilitiesSheet` draws the registry and
    * reads this only to decide which rows carry a tick-box.
    *
-   * ⛔ **Not a capability, and it is on this record rather than inside
-   * {@link AgentIdentity.capabilities} for {@link AgentIdentity.provider}'s reason plus one of its
-   * own.** `507` §5: server ids *"are a related capability grant with a different relational
-   * shape"* — every member of `ProfileCapabilities` is one column on one row, and this is a set of
-   * rows in another table. ⚑ Putting it in front of `CAPABILITY_FIELDS`' `satisfies` would have made
-   * `parseChoice`, the sheet's editor switch and the wire's `capabilityValueSchema` each grow an arm
-   * for a shape none of them has.
-   *
    * ⛔ **Presence IS the grant** (`HO-042` §6): a slug appears here or it does not, and there is no
-   * *nobody has chosen* state — which is why this has no companion in {@link AgentIdentity.chosen}.
+   * *nobody has chosen* state.
    *
    * ⚠️ **Empty is the normal answer** and stays so until a person registers a server and ticks a box.
    */

@@ -37,13 +37,13 @@ describe('a model lookup before the first use of another provider', () => {
 
   it('a refused give does not prepare the target agent on another provider', async () => {
     const { host, giver } = await setup()
-    expect(world.store.setCapabilities('review-lead', { canAssignWork: 'none' })).toBe(true)
+    world.store.setSpawningEnabled(false)
     const before = world.preparedIn.filter((path) => path.endsWith('/draft-reader/codex')).length
     const given = await world.gives(host, giver, 'draft-reader', {
       provider: 'codex',
       model: 'fake-codex-a',
     })
-    expect(given).toMatchObject({ ok: false, refusal: { rail: 'may-not-assign-work' } })
+    expect(given).toMatchObject({ ok: false, refusal: { rail: 'spawning-disabled' } })
     expect(world.preparedIn.filter((path) => path.endsWith('/draft-reader/codex'))).toHaveLength(
       before,
     )

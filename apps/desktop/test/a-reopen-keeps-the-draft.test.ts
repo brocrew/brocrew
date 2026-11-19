@@ -41,9 +41,8 @@ import { everythingOverTheWire } from './lib/the-wire'
  * ⚑ **This is `672`'s own harness landed as the pin of the NEW promise** (rule 39): a real
  * `RuntimeHost` over real SQLite and migrations, the real `executeRuntimeCommand`, the REAL renderer
  * session store and draft book — and since `678` the REAL sweep, `sweepDrafts`, which is what
- * `RuntimeScreen` now calls (its source is pinned in `a-grant-that-waits-for-the-next-launch.test.ts`
- * §3). ⛔ **The one replica is the gesture's body** — `closeAndReopen`'s three lines — because nothing
- * mounts `RuntimeScreen`.
+ * `RuntimeScreen` now calls. ⛔ **The one replica is the gesture's body** — `closeAndReopen`'s three
+ * lines — because nothing mounts `RuntimeScreen`.
  *
  * 🔴 **Asserted IN THE GAP**, where the risk sits (`assert-in-the-gap-not-after-the-repair`): after the
  * close and before the resume, B is out of `store.live` — the premise — and its draft is still there.

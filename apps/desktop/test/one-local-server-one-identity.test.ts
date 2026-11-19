@@ -35,7 +35,6 @@ import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
 import { AGENT_TOOL_SERVER, TOOL_NAMES } from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand, noPersonBehindIt } from '../src/main/runtime/ipc'
-import { CAPABILITY_FIELDS, type CapabilityGrant } from '../src/shared/capabilities'
 import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { EXTERNAL_MCP_REMOVAL_MEANS, externalMcpServerRowId } from '../src/shared/external-mcp'
 
@@ -139,16 +138,6 @@ class WatchingRuntime extends FakeRuntime {
   }
 }
 
-/**
- * ⚠️ **A grant that changes NO capability**, so every save in this file is about the servers and
- * nothing else. ⛔ **Derived from `CAPABILITY_FIELDS`** rather than typed out: a tenth capability
- * must not silently drop out of this literal, which would make every save here narrow a field it
- * never meant to touch.
- */
-const NOTHING_CHOSEN = Object.fromEntries(
-  CAPABILITY_FIELDS.map((field) => [field.key, null]),
-) as unknown as CapabilityGrant
-
 describe('one local server, one identity', () => {
   let userData: string
   let work: string
@@ -229,7 +218,7 @@ describe('one local server, one identity', () => {
 
   /** ⛔ Tick a set of servers on one identity, through the door a person's Save goes through. */
   const grant = (slug: string, serverIds: readonly string[]): void => {
-    expect(host.setCapabilities(slug, NOTHING_CHOSEN, serverIds)).not.toBeNull()
+    expect(host.setExternalMcpServers(slug, serverIds)).not.toBeNull()
   }
 
   const registeredNames = (): string[] =>

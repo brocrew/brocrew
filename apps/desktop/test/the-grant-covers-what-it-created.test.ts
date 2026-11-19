@@ -255,7 +255,7 @@ describe('598 · the grant covers what it created', () => {
         .prepare(`SELECT "from" FROM pragma_foreign_key_list('agent_identity')`)
         .all() as { from: string }[]
       expect(foreignKeys.map((one) => one.from)).not.toContain('created_by')
-      // ⚑ **The control**: the same table DOES carry CHECKs — the capability columns' — so the
+      // ⚑ **The control**: the same table DOES carry CHECKs — the retired grant columns' — so the
       // absence above is a fact about this column rather than about how the table is written.
       expect(ddl).toMatch(/CONSTRAINT "agent_identity_can_message_ck" CHECK\(/)
       // ⚑ **The control in the same read**: a row written through a door carries one, so `null`

@@ -8,7 +8,6 @@ import {
   createSessionRecord,
   openWindow,
 } from '../../src/renderer/src/lib/session-record'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import { mount, unmountAll, type Mounted } from './harness'
 import {
   assertDrawn,
@@ -65,14 +64,6 @@ const identity = (slug: string): unknown => ({
   createdAt: NOW,
   provider: null,
   externalMcpServerIds: [],
-  capabilities: { ...DEFAULT_CAPABILITIES },
-  chosen: {
-    maxDepth: 'default',
-    canMessage: 'default',
-    canAssignWork: 'default',
-    canCreateAgents: 'default',
-    canWriteRules: 'default',
-  },
 })
 
 /**

@@ -731,7 +731,7 @@ function fakeBridge() {
       // ⚑ **516** — the global registry, carried on the same read; empty is a real answer.
       externalMcpServers: [],
     }),
-    setCapabilities: async () => null,
+    setExternalMcpServers: async () => null,
     // 516 — `createAgent`'s treatment, and for its reason: this file's store never registers a
     // server, and a stub that answered with a row would be inventing one nothing created.
     registerExternalMcpServer: async () => {

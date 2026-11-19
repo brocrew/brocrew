@@ -616,8 +616,7 @@ describe('393 · a reply, and its absence', () => {
     })
 
     it('⚠️ a PERSON asking gets the ordinary answer, not an exemption and not an error', async () => {
-      // ⛔ **The shape `assertMayReach` uses read from the other end**: a person is not refused by a
-      // rule, they simply hold no tasks. ⚑ And this is the call that would throw if the host reached
+      // ⛔ **A person caller**: a person is not refused by a rule, they simply hold no tasks. ⚑ And this is the call that would throw if the host reached
       // for a session id it had not been given.
       const { worker, task } = await workWasGiven()
       const asPerson = await host.replyToParent(
@@ -1060,14 +1059,14 @@ describe('393 · a reply, and its absence', () => {
     })
 
     /**
-     * ⚑ **710 · `707` F-5 — the replier's own reach is never asked**, which is `deliverReply`'s stated
-     * property: the app delivers the answer, so a child a person narrowed to `can_message: none` is
-     * still heard by the parent that gave it the work. ⛔ Delivered as the child, it would be refused
-     * at the words door and the reply would reach nobody — `not-delivered` about a task already closed.
+     * ⚑ **710 · `707` F-5 — the app delivers the answer**, which is `deliverReply`'s stated
+     * property, so a value left in the retired `can_message` column changes nothing about it.
      */
-    it('⚑ a child a person narrowed to no reach at all is still heard — the app delivers its answer', async () => {
+    it('⚑ a child is heard whatever the retired can_message column holds — the app delivers its answer', async () => {
       const { pm, worker, siblings, task } = await workWasGiven()
-      expect(store.setCapabilities(siblings[0] as string, { canMessage: 'none' })).toBe(true)
+      db.prepare(`UPDATE agent_identity SET can_message = 'none' WHERE slug = ?`).run(
+        siblings[0] as string,
+      )
       const landed = await reply(worker, {
         piece: task,
         outcome: 'done',
@@ -1422,18 +1421,10 @@ describe('393 · a reply, and its absence', () => {
       // ⚑ **`374`'s rule, extended to the reply list.** A model meets the complete roster through
       // one door and must not see one word mean two things.
       const { SPAWN_RAILS, describeRail } = await import('../src/main/runtime/spawn-rails')
-      const { MESSAGE_RAILS, describeMessageRail } =
-        await import('../src/main/runtime/message-rails')
       // ⚑ **D-016 · the resource module's words, where the document registry's were.**
       const { RESOURCE_RAILS, refuseResource } = await import('../src/main/resources/resources')
       const { TOOL_REFUSALS, refuseTool } = await import('../src/main/runtime/agent-tools')
-      const names = [
-        ...SPAWN_RAILS,
-        ...MESSAGE_RAILS,
-        ...RESOURCE_RAILS,
-        ...TOOL_REFUSALS,
-        ...REPLY_RAILS,
-      ]
+      const names = [...SPAWN_RAILS, ...RESOURCE_RAILS, ...TOOL_REFUSALS, ...REPLY_RAILS]
       // ⛔ **`malformed-request` is deliberately shared between the spawn door and the tools** and
       // was so before this dispatch; every OTHER name must be unique, and `393` added none that
       // collides. ⚠️ (`no-task-by-that-name` was spelled so because the document registry owned
@@ -1447,9 +1438,7 @@ describe('393 · a reply, and its absence', () => {
       // to disagree about what the word MEANS**, and that is asserted next door rather than here:
       // `what-an-agent-is-told-about-its-work.test.ts` §3 checks that every vocabulary carrying a
       // shared word answers the same PERMANENCE for it.
-      // ⚑ **D-016 · two more deliberate shares.** `may-not-create-agents` is one grant a person
-      // narrowed, met at `create_agent` and at a give with `new: true`; `no-piece-by-that-name` is
-      // one absence — the caller holds no piece by that name — met at `reply_to_parent` and at the
+      // ⚑ **D-016 · one more deliberate share.** `no-piece-by-that-name` is one absence — the caller holds no piece by that name — met at `reply_to_parent` and at the
       // tools that name a piece (`withdraw_task`, `list_tasks`), each in its own sentence.
       // A piece that cannot end with the copies of its questions is one fact at a take-back, a
       // close and a reply, so its two words are shared too, each in its own sentence.
@@ -1458,16 +1447,14 @@ describe('393 · a reply, and its absence', () => {
         'a-conversation-with-its-questions-is-starting',
         'its-questions-could-not-all-be-read',
         'malformed-request',
-        'may-not-create-agents',
         'no-piece-by-that-name',
         'spawning-disabled',
       ])
-      // ⚠️ **`describeRail` and `describeMessageRail` return the STRING**, not a payload — a
+      // ⚠️ **`describeRail` returns the STRING**, not a payload — a
       // `.reason` on them is `undefined`, which is how `347`'s own version of this census went green
       // measuring nothing until it was found reviewing that diff.
       const sentences = [
         ...SPAWN_RAILS.map((rail) => describeRail(rail)),
-        ...MESSAGE_RAILS.map((rail) => describeMessageRail(rail)),
         ...RESOURCE_RAILS.map((rail) => refuseResource(rail).reason),
         ...TOOL_REFUSALS.map((rail) => refuseTool(rail).reason),
         ...REPLY_RAILS.map((rail) => refuseReply(rail).reason),

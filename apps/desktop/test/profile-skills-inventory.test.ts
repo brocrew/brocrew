@@ -93,23 +93,23 @@ describe('the profile Skills inventory uses the real delivery policy', () => {
     const readAccess = Reflect.get(discoveryModule, 'profileSkillAccess') as
       | undefined
       | ((
-          store: { capabilitiesOf(profile: string): object | null },
+          store: { agentIdentityOf(profile: string): object | null },
           profile: string,
         ) => Access | null)
     expect(readAccess, 'profile Skills access must come from the main-owned store').toBeTypeOf(
       'function',
     )
-    const capabilitiesOf = vi.fn((profile: string) =>
+    const agentIdentityOf = vi.fn((profile: string) =>
       profile === 'quill' || profile === 'brobot' ? {} : null,
     )
-    expect(readAccess!({ capabilitiesOf }, 'QuIll')).toEqual({
+    expect(readAccess!({ agentIdentityOf }, 'QuIll')).toEqual({
       profileId: 'quill',
     })
-    expect(readAccess!({ capabilitiesOf }, 'brobot')).toEqual({
+    expect(readAccess!({ agentIdentityOf }, 'brobot')).toEqual({
       profileId: 'brobot',
     })
-    expect(readAccess!({ capabilitiesOf }, 'missing-agent')).toBeNull()
-    expect(capabilitiesOf.mock.calls).toEqual([['quill'], ['brobot'], ['missing-agent']])
+    expect(readAccess!({ agentIdentityOf }, 'missing-agent')).toBeNull()
+    expect(agentIdentityOf.mock.calls).toEqual([['quill'], ['brobot'], ['missing-agent']])
   })
 
   it('opens a shared header once and keeps valid neighbors beside a broken link', async () => {
@@ -265,7 +265,7 @@ describe('the profile Skills inventory uses the real delivery policy', () => {
     expect(SkillsRequest.safeParse(valid).success).toBe(true)
     expect(runtimeCommandSchema.safeParse({ kind: 'skills', request: valid }).success).toBe(true)
     for (const extra of [
-      { canCreateAgents: true },
+      { notDeclared: true },
       { isCoordinator: true },
       { body: 'forged' },
       { offset: -1 },
@@ -275,7 +275,7 @@ describe('the profile Skills inventory uses the real delivery policy', () => {
     expect(
       runtimeCommandSchema.safeParse({
         kind: 'skills',
-        request: { ...valid, canCreateAgents: true },
+        request: { ...valid, notDeclared: true },
       }).success,
     ).toBe(false)
     const run = vi.fn(service.window)

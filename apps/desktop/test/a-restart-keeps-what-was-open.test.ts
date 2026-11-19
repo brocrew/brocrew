@@ -65,8 +65,8 @@ const ITS_TURN_WAS_STOPPED = undrivenSentence('turn_interrupted')
  * store would measure that exclusion instead (`a-next-launch-test-needs-its-own-store-object`).
  *
  * ⚑ **D-017 — what moved under this file.** R1: every delivery starts its recipient, asking every
- * rail a MESSAGE meets first and no launch rail. R2: a conversation is reachable and listed within
- * the caller's grant however it stopped (`startable`), so the parent-only clause is gone. R3: a
+ * rail a MESSAGE meets first and no launch rail. R2: a conversation is reachable and listed however
+ * it stopped (`startable`), so the parent-only clause is gone. R3: a
  * stop ends nothing, and a message held at a quit waits for the next start. ⚠️ `keptOpenAcrossAQuit`
  * — the window's fact — stays on the quit's own stamp, so the rail rows below are unchanged.
  *
@@ -722,12 +722,10 @@ describe('692 · a restart keeps what was open', () => {
 
     it('⚑ a parent still gives work to its OWN child — as it could the running one', async () => {
       const { lead, children, leadTools } = await theFourOpen()
-      // ⚑ **`any` is the grant** (D-016: `same-project` went with projects) — ⚑ **and a give finds
-      // the giver's OWN conversation with that agent** by the parent its row names, so this is the
-      // state where a start that forgot its parent would reach a NEW conversation and the running
-      // child is not.
-      expect(store.setCapabilities('lead', { canAssignWork: 'any' })).toBe(true)
-      // The control: the running child takes the parent's work under the same grant.
+      // ⚑ **A give finds the giver's OWN conversation with that agent** by the parent its row names,
+      // so this is the state where a start that forgot its parent would reach a NEW conversation
+      // and the running child is not.
+      // The control: the running child takes the parent's work.
       await giveTo(leadTools, children[0], 'the running one')
       await quitAndRelaunch()
       const tools = await personPresses(lead)
@@ -1080,14 +1078,13 @@ describe('692 · a restart keeps what was open', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§5 · the walls come before the start', () => {
-    it('🔴 a caller that is NOT its parent, with a reach to every conversation, is shown it and starts it — the grant decides, as for the running one', async () => {
+    it('🔴 a caller that is NOT its parent is shown it and starts it — as for the running one', async () => {
       const { children } = await theFourOpen()
       const { sessionId: neighbour } = await host.createSession(
         { provider: 'claude', profileId: 'neighbour', approvalMode: 'ask', cwd: root },
         window,
       )
       const neighbourTools = lastToolset()
-      expect(store.setCapabilities('neighbour', { canMessage: 'any' })).toBe(true)
       const listedBy = async (tools: AgentToolset): Promise<string[]> =>
         ((await callOn(tools, 'list_agents', {})).agents as { agent: string }[]).map(
           (card) => card.agent,
@@ -1111,7 +1108,7 @@ describe('692 · a restart keeps what was open', () => {
       expect(launched.length - before).toBe(0)
       expect(listed(children[0])).toEqual({ running: 'not-running' })
 
-      // ⚑ **Its message starts exactly that child** — the grant admits it, as it did while it ran.
+      // ⚑ **Its message starts exactly that child**, as it reached it while it ran.
       const said = await callOn(tools, 'message_agent', {
         agent: children[0],
         kind: 'note',
@@ -1121,24 +1118,18 @@ describe('692 · a restart keeps what was open', () => {
       expect(launched.length - before).toBe(1)
     })
 
-    /**
-     * ⚑ **D-017 · R2 — re-aimed: the wall at the host's door is the GRANT.** ⛔ This granted every
-     * rail but the parent-only one and measured that the door started nothing — the parent-only rail
-     * is gone, and the arm above starts it with that grant. ⚑ So the door is asked by a caller whose
-     * grant does NOT admit the child, past every tool, and the same call one grant over is the
-     * control.
-     */
-    it('⛔ the host door itself starts nothing for a caller its grant does not admit — asked directly, past every tool', async () => {
+    it('⚑ the host door starts it for a caller whose retired `can_message` column holds none — asked directly, past every tool', async () => {
       const { children } = await theFourOpen()
       const { sessionId: neighbour } = await host.createSession(
         { provider: 'claude', profileId: 'neighbour', approvalMode: 'ask', cwd: root },
         window,
       )
-      expect(store.setCapabilities('neighbour', { canMessage: 'none' })).toBe(true)
+      // The column stays in the schema and nothing reads it: 'none' there stops no message.
+      db.prepare("UPDATE agent_identity SET can_message = 'none' WHERE slug = ?").run('neighbour')
       await quitAndRelaunch()
       await personPresses(neighbour)
       const before = launched.length
-      const asTheNeighbour = (): ReturnType<RuntimeHost['queueMessage']> =>
+      await expect(
         host.queueMessage(
           children[0],
           'hello',
@@ -1147,45 +1138,9 @@ describe('692 · a restart keeps what was open', () => {
           'work',
           {},
           'follow-up',
-        )
-
-      await expect(asTheNeighbour()).rejects.toThrow()
-      await letItSettle()
-      expect(launched.length - before, 'a caller its grant does not admit started it').toBe(0)
-      expect(listed(children[0])).toEqual({ running: 'not-running' })
-
-      // ⚑ **The control, one grant over**: the same call, the same caller, and it starts it.
-      expect(store.setCapabilities('neighbour', { canMessage: 'any' })).toBe(true)
-      await expect(asTheNeighbour()).resolves.toMatchObject({ outcome: 'sent' })
+        ),
+      ).resolves.toMatchObject({ outcome: 'sent' })
       expect(launched.length - before).toBe(1)
-    })
-
-    it('⛔ its parent, narrowed to give no work, is refused THAT wall — as by the running child — and starts nothing', async () => {
-      const { lead, children, leadTools } = await theFourOpen()
-      expect(store.setCapabilities('lead', { canAssignWork: 'none' })).toBe(true)
-      // The control: the RUNNING child refuses its own parent's work by this wall.
-      const running = await callOn(leadTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: profileOf(children[0]),
-        title: 'do this',
-        brief: 'do this',
-      })
-      expect(running, JSON.stringify(running)).toMatchObject({
-        outcome: 'refused',
-        rail: 'may-not-assign-work',
-      })
-      await quitAndRelaunch()
-      const tools = await personPresses(lead)
-      const before = launched.length
-
-      const said = await callOn(tools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: profileOf(children[1]),
-        title: 'do this',
-        brief: 'do this',
-      })
-      expect(said, JSON.stringify(said)).toMatchObject({ outcome: 'refused', rail: running.rail })
-      expect(launched.length - before, 'a start was spent on work the wall refuses').toBe(0)
     })
 
     // ⛔ **`its parent re-sending work the child still holds is refused before any start` is gone

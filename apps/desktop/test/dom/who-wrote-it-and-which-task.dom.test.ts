@@ -14,7 +14,6 @@ import type { AttentionRequest } from '../../src/renderer/src/lib/attention'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import { GO_AHEAD_MESSAGE } from '../../src/renderer/src/lib/plan-mode'
 import type { QueuedItem, RelayedItem } from '../../src/renderer/src/lib/transcript'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import { foldProviderLimits, readProviderLimit } from '../../src/shared/provider-limit'
 import type { AgentIdentities, AgentIdentity, RuntimeBridge } from '../../src/shared/runtime-ipc'
 import type { StalledWork } from '../../src/shared/stalled-work'
@@ -519,8 +518,6 @@ describe('688 §7 · O1 — the agent’s own instructions draw in the sheet’s
     createdBy: null,
     provider: 'codex',
     externalMcpServerIds: [],
-    capabilities: { ...DEFAULT_CAPABILITIES },
-    chosen: {},
   } as unknown as AgentIdentity
   const roster = {
     identities: [identity],

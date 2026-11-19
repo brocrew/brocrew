@@ -97,13 +97,11 @@ describe('477 M9 · who decided an agent’s ask', () => {
     return sessionId
   }
 
-  /** ⚑ An agent granted the narrow arm, has proposed rules for `worker`; the ask is waiting. */
   const anAskIsWaiting = async (): Promise<{ asking: string; askId: string }> => {
     const worker = await personOpens('worker')
     await host.close(worker, window)
     const asker = await personOpens('asker')
     await host.close(asker, window)
-    expect(store.setCapabilities('asker', { canWriteRules: 'propose' })).toBe(true)
     const asking = await personOpens('asker')
     const asked = host.proposeAgentRules(
       asking,

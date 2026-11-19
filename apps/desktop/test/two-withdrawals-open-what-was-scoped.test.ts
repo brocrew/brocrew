@@ -18,7 +18,6 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resourcesRoot } from '../src/main/resources/resources'
-import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
@@ -102,17 +101,6 @@ describe('two withdrawals — open what was scoped', () => {
     if (tool === undefined) throw new Error(`no such tool: ${name}`)
     return (await tool.call(args)).structured as Record<string, unknown>
   }
-
-  /** One capability, changed and nothing else — the *"one grant over"* half of every pair below. */
-  const reach = (profileSlug: string, edit: Record<string, unknown>): void => {
-    expect(store.setCapabilities(profileSlug, edit as never)).toBe(true)
-  }
-
-  const rawColumn = (slug: string, column: string): unknown =>
-    (
-      db.prepare(`SELECT ${column} AS held FROM agent_identity WHERE slug = ?`).get(slug) as
-        { held: unknown } | undefined
-    )?.held
 
   const aPieceGiven = async (
     giverTools: AgentToolset,
@@ -233,18 +221,17 @@ describe('two withdrawals — open what was scoped', () => {
     })
   })
 
-  describe('the messaging default, and the narrowing that still refuses', () => {
-    it('a person who narrows it back gets the rail, unchanged', async () => {
+  describe('a retired grant column refuses nothing', () => {
+    it('a message lands whatever the retired can_message column holds', async () => {
       const { readerTools, writer } = await twoConversations()
-      reach('inspector', { canMessage: 'none' })
-      const refused = await callOn(readerTools, 'message_agent', {
+      db.prepare(`UPDATE agent_identity SET can_message = 'none' WHERE slug = 'inspector'`).run()
+      const said = await callOn(readerTools, 'message_agent', {
         agent: writer,
         text: 'what did you find?',
         kind: 'note',
       })
-      expect(refused.outcome).toBe('refused')
-      expect(refused.rail).toBe('may-not-message')
-      expect(reached(writer, 'what did you find?')).toBe(false)
+      expect(said.outcome, JSON.stringify(said)).toBe('ok')
+      expect(reached(writer, 'what did you find?')).toBe(true)
     })
   })
 
@@ -258,7 +245,6 @@ describe('two withdrawals — open what was scoped', () => {
         kind: 'note',
       })
       expect(said.outcome, JSON.stringify(said)).toBe('ok')
-      expect(rawColumn('inspector', 'can_message')).toBeNull()
       expect(reached(writer, 'a question about your notes')).toBe(true)
 
       const waiting = store.routedRequestsOf(writer)
@@ -273,7 +259,7 @@ describe('two withdrawals — open what was scoped', () => {
       expect(host.sessionIds).toContain(writer)
     })
 
-    it('WORK never reaches a stranger on the widest grant, and lands in one the giver started', async () => {
+    it('WORK never reaches a stranger, and lands in one the giver started', async () => {
       const { deskTools, reader, readerTools, writer } = await twoConversations()
       const held = await callOn(deskTools, 'give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
@@ -307,8 +293,6 @@ describe('two withdrawals — open what was scoped', () => {
         await new Promise((resolve) => setTimeout(resolve, 10))
       }
       expect(itsBriefIsATurn(), 'the held give went out as the reader’s turn').toBe(true)
-      expect(rawColumn('inspector', 'can_assign_work')).toBeNull()
-      expect(DEFAULT_CAPABILITIES.canAssignWork).toBe('any')
       expect(store.piecesGivenBy(reader)).toHaveLength(0)
 
       const noted = await callOn(readerTools, 'message_agent', {

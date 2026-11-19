@@ -19,11 +19,11 @@ export interface ProfileSkillAccess {
 
 /** Resolve an existing profile without creating an identity from a window request. */
 export function profileSkillAccess(
-  store: Pick<SessionStore, 'capabilitiesOf'>,
+  store: Pick<SessionStore, 'agentIdentityOf'>,
   profileId: string,
 ): ProfileSkillAccess | null {
   const profile = foldProfileName(profileId)
-  return store.capabilitiesOf(profile) === null ? null : { profileId: profile }
+  return store.agentIdentityOf(profile) === null ? null : { profileId: profile }
 }
 
 const oneLine = (text: string, limit: number): string =>

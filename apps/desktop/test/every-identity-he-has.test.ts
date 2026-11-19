@@ -24,7 +24,6 @@ import {
   type AgentIdentity,
   type RuntimeEventMessage,
 } from '../src/shared/runtime-ipc'
-import { CAPABILITY_FIELDS, type CapabilityGrant } from '../src/shared/capabilities'
 import {
   HOLDING_SAYS,
   WHAT_HOLDS_AN_IDENTITY,
@@ -170,14 +169,6 @@ describe('558 · every identity he has', () => {
     if (one === undefined) throw new Error(`no identity called ${slug}`)
     return one
   }
-
-  /**
-   * ⛔ **Every capability named, because {@link CapabilityGrant} is a whole answer** — *"a surface
-   * says what it means about all of them, every time, and `null` is a real answer"*. ⚑ None is
-   * chosen here; this file is about the roster, not about the sheet.
-   */
-  const everyGrantTheDefault = (): CapabilityGrant =>
-    Object.fromEntries(CAPABILITY_FIELDS.map((field) => [field.key, null])) as CapabilityGrant
 
   const identityOf = (slug: string): AgentIdentity => {
     const one = host.agentIdentities().identities.find((each) => each.slug === slug)
@@ -892,13 +883,13 @@ describe('558 · every identity he has', () => {
       host.createAgent({ slug: 'free', displayName: null, provider: null })
       // ⛔ **The registry row is INSERTed rather than registered.** `registerExternalMcpServer`
       // opens a socket to the address a person typed — that is its whole rail — and this test is
-      // about a foreign key, not about a preflight. ⚠️ The grant beside it still goes through
-      // `setCapabilities`, which is the door a person presses.
+      // about a foreign key, not about a preflight. ⚠️ The association beside it still goes through
+      // `setExternalMcpServers`, which is the door a person presses.
       db.prepare(
         `INSERT INTO external_mcp_server (id, name, url, registered_at, reach)
          VALUES ('ems:notes', 'notes', 'http://127.0.0.1:4310/mcp', 1, 'restricted')`,
       ).run()
-      host.setCapabilities('free', everyGrantTheDefault(), ['ems:notes'])
+      host.setExternalMcpServers('free', ['ems:notes'])
       expect(identityOf('free').externalMcpServerIds).toEqual(['ems:notes'])
       expect(host.removeAgent('free')).toEqual({ ok: true, slug: 'free' })
       expect(db.prepare('SELECT count(*) AS n FROM external_mcp_server_grant').get()).toEqual({
@@ -1093,8 +1084,8 @@ describe('558 · every identity he has', () => {
 
     /**
      * ⚑ **A host with no database answers, rather than throwing** — `NULL_SESSION_STORE`'s own contract.
-     * ⛔ Both writes report that nothing happened, which is `setCapabilities`' `false` in the two
-     * shapes these verbs answer in.
+     * ⛔ Both writes report that nothing happened, which is `setExternalMcpServers`' `false` in the
+     * two shapes these verbs answer in.
      */
     it('⚑ a host with no ledger renames nothing and removes nothing, and says so', () => {
       expect(NULL_SESSION_STORE.setAgentDisplayName('worker', 'Worker')).toBe(false)

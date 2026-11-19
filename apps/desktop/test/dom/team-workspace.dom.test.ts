@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import TeamWorkspace from '../../src/renderer/src/components/TeamWorkspace.vue'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type { AgentIdentities, AgentIdentity } from '../../src/shared/runtime-ipc'
 import type { AgentStore } from '../../src/renderer/src/lib/agent-store'
 import { mount, unmountAll } from './harness'
@@ -15,14 +14,6 @@ const row = (slug: string, over: Partial<AgentIdentity> = {}): AgentIdentity => 
   createdBy: null,
   provider: null,
   externalMcpServerIds: [],
-  capabilities: { ...DEFAULT_CAPABILITIES },
-  chosen: {
-    maxDepth: 'default',
-    canMessage: 'default',
-    canAssignWork: 'default',
-    canCreateAgents: 'default',
-    canWriteRules: 'default',
-  },
   ...over,
 })
 

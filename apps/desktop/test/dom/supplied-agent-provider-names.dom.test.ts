@@ -5,7 +5,6 @@ import type { ClientApi } from '../../src/shared/client-api'
 import type { ClientAgentApi } from '../../src/shared/client-agent-api'
 import type { AgentModelChoice as Choice } from '../../src/shared/model-choice-contracts'
 import type { AgentIdentities, AgentIdentity, Provider } from '../../src/shared/runtime-ipc'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
 import { createDesktopProviderApi } from '../../src/renderer/src/client-provider/desktop'
 import { agentStoreForClient } from '../../src/renderer/src/client-provider/agent-store'
@@ -30,14 +29,6 @@ function identity(provider: Provider | null): AgentIdentity {
     createdBy: null,
     provider,
     externalMcpServerIds: [],
-    capabilities: DEFAULT_CAPABILITIES,
-    chosen: {
-      maxDepth: 'default',
-      canMessage: 'default',
-      canAssignWork: 'default',
-      canCreateAgents: 'default',
-      canWriteRules: 'default',
-    },
   }
 }
 

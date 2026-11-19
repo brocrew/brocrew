@@ -33,7 +33,6 @@ import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { keepResource, resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { CAPABILITY_FIELDS, MAX_CAPABILITY_COUNT } from '../src/shared/capabilities'
 import { MAX_RESOURCES_PER_REPLY, RESOURCE_ROLES } from '../src/shared/documents'
 import { PIECE_EVENT_TYPES } from '../src/shared/tasks'
 import {
@@ -63,10 +62,6 @@ import {
  *  - the order: every file is read before any is kept, so a reply refused on its last file keeps
  *    nothing of the files before it; a file that cannot be kept refuses the reply naming it;
  *  - the writer's own guard: only a lowercase sha-256 and a one-segment name are ever written;
- *  - the schema: `max_depth` admits 0 to the capability count, each capability column admits its
- *    own words and refuses another column's, `events_work_idx` lists the seven piece events, the
- *    resource table refuses a role, a hash and a size this app never writes, and a database the
- *    previous build made is refused untouched by the tree's migrations (one until D-042, two since).
  *
  * Every refusal is paired with the identical call one fact over that lands, so a test that stops
  * reaching its rule goes red rather than green.
@@ -1397,76 +1392,6 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§4 · the schema refuses what this app never writes', () => {
-    it('max_depth admits the whole numbers from 0 to the capability count and refuses the ones either side', async () => {
-      await bringIdentityIntoBeing('pm')
-      const set = (value: number | null) =>
-        db.prepare("UPDATE agent_identity SET max_depth = ? WHERE slug = 'pm'").run(value)
-      const raw = (): number | null =>
-        (
-          db.prepare("SELECT max_depth FROM agent_identity WHERE slug = 'pm'").get() as {
-            max_depth: number | null
-          }
-        ).max_depth
-
-      // Both bounds are inclusive, and the row is known to be writable before any refusal.
-      for (const value of [0, MAX_CAPABILITY_COUNT]) {
-        expect(() => set(value), String(value)).not.toThrow()
-        expect(raw(), String(value)).toBe(value)
-      }
-      // The bound comes from the shared constant, so the static SQL is tied to the wire's.
-      expect(MAX_CAPABILITY_COUNT).toBe(64)
-      for (const value of [-1, MAX_CAPABILITY_COUNT + 1]) {
-        expect(() => set(value), String(value)).toThrow('agent_identity_max_depth_ck')
-        expect(raw(), `${String(value)} moved the row`).toBe(MAX_CAPABILITY_COUNT)
-      }
-      // NULL follows the ruled default, and is admitted.
-      expect(() => set(null)).not.toThrow()
-      expect(raw()).toBeNull()
-    })
-
-    it('each capability column admits its own words and refuses every other column’s words', async () => {
-      await bringIdentityIntoBeing('pm')
-      const fields = CAPABILITY_FIELDS.flatMap((field) =>
-        'vocabulary' in field && field.vocabulary !== undefined
-          ? [{ column: field.column, vocabulary: [...field.vocabulary] as string[] }]
-          : [],
-      )
-      const union = new Set(fields.flatMap((field) => field.vocabulary))
-      const write = (column: string, word: string) =>
-        db.prepare(`UPDATE agent_identity SET ${column} = ? WHERE slug = 'pm'`).run(word)
-      const read = (column: string): string | null =>
-        (
-          db.prepare(`SELECT ${column} AS held FROM agent_identity WHERE slug = 'pm'`).get() as {
-            held: string | null
-          }
-        ).held
-
-      // Vacuity guards: there are enough columns, and every one has a word that is not its own.
-      expect(fields.length).toBeGreaterThanOrEqual(4)
-      for (const field of fields) {
-        const foreign = [...union].filter((word) => !field.vocabulary.includes(word))
-        expect(foreign.length, `${field.column} has no foreign word to be refused`).toBeGreaterThan(
-          0,
-        )
-
-        // Its own words first, from the descriptor (an independent source from the static SQL).
-        for (const word of field.vocabulary) {
-          expect(() => write(field.column, word), `${field.column} = ${word}`).not.toThrow()
-          expect(read(field.column), `${field.column} = ${word}`).toBe(word)
-        }
-        // Then every other column's word, and the column keeps what it held.
-        const held = read(field.column)
-        for (const word of foreign) {
-          expect(() => write(field.column, word), `${field.column} = ${word}`).toThrow(
-            `agent_identity_${field.column}_ck`,
-          )
-          expect(read(field.column), `${field.column} moved on ${word}`).toBe(held)
-        }
-        db.prepare(`UPDATE agent_identity SET ${field.column} = NULL WHERE slug = 'pm'`).run()
-        expect(read(field.column)).toBeNull()
-      }
-    })
-
     it('events_work_idx lists exactly the seven piece events, and the store’s piece read is served by it', () => {
       const indexSql = (name: string): string | undefined =>
         (

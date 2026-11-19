@@ -308,35 +308,17 @@ describe('a profile name reaches its one conversation', () => {
     }
   })
 
-  it('a profile name keeps the reach every address has: out of reach is no agent, and only what is in reach is counted', async () => {
-    const { giver, giverTools, worker } = await aWorld()
+  it('a profile name with two conversations in the caller’s reach names neither and asks for one', async () => {
+    const { giverTools } = await aWorld()
     // A person's own conversation with the same agent, which the giver did not start.
     const personsWorker = await personOpens('worker')
     expect(store.rootOf(personsWorker)?.label).toBe('W3')
 
-    // Before the narrowing both are in the giver's reach.
     const both = await callOn(giverTools, 'ask_question', aQuestion('worker'))
     expect(both, JSON.stringify(both)).toMatchObject({
       outcome: 'refused',
       rail: 'that-agent-has-several-conversations',
     })
-
-    expect(store.setCapabilities(DEFAULT_PROFILE_ID, { canMessage: 'none' })).toBe(true)
-
-    // Only the worker it started is in reach now, so the name names that one.
-    const one = await callOn(giverTools, 'ask_question', aQuestion('worker'))
-    expect(one, JSON.stringify(one)).toMatchObject({ outcome: 'ok', agent: worker })
-
-    // The reviewer's conversation is out of reach: told as a name nobody holds.
-    const strange = await fullCall(giverTools, 'ask_question', aQuestion('reviewer'))
-    const nobody = await fullCall(giverTools, 'ask_question', aQuestion('nobody-by-this-name'))
-    expect(strange.structured.outcome).toBe('refused')
-    expect(strange.structured.rail).toBe(nobody.structured.rail)
-    expect(strange.text.replace('reviewer', 'X')).toBe(
-      nobody.text.replace('nobody-by-this-name', 'X'),
-    )
-    expect(JSON.stringify(strange.structured)).not.toContain('sess_')
-    expect(ledger(giver).filter((event) => event.type === 'request_routed')).toHaveLength(1)
   })
 
   it('a profile name whose only conversation is the caller’s own names the caller', async () => {
@@ -375,16 +357,11 @@ describe('a profile name reaches its one conversation', () => {
     expect(said.text).not.toContain(labels[6])
   })
 
-  it('keeps message and interrupt permissions after resolving a profile name', async () => {
+  it('a profile name resolves for an interrupting message and a plain one alike', async () => {
     const { giverTools, worker, callerTools } = await aWorld()
     expect(
       await callOn(callerTools, 'message_agent', { ...aNote('worker'), interrupt: true }),
     ).toMatchObject({ outcome: 'ok' })
-    expect(store.setCapabilities('reviewer', { canMessage: 'none' })).toBe(true)
-    const denied = await fullCall(callerTools, 'message_agent', aNote('worker'))
-    const unknown = await fullCall(callerTools, 'message_agent', aNote('nobody-by-this-name'))
-    expect(denied.structured.rail).toBe(unknown.structured.rail)
-    expect(denied.structured.outcome).toBe('refused')
     expect(await callOn(giverTools, 'message_agent', aNote('worker'))).toMatchObject({
       outcome: 'ok',
       agent: worker,

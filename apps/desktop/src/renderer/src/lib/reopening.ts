@@ -1,5 +1,3 @@
-import { foldProfileName } from '../../../shared/runtime-ipc'
-import { whereItWorks, type SessionRecord } from './session-record'
 import { sessionPanel } from './session-panel'
 import type { TranscriptState } from './transcript'
 
@@ -303,72 +301,4 @@ export const REOPENING_SAYS: Readonly<Record<'question' | 'turn' | 'free', strin
 /** The sentence for a state — {@link REOPENING_SAYS} with `null` folded onto `free`. */
 export function reopeningSays(heldBy: ReopeningHeldBy): string {
   return REOPENING_SAYS[heldBy ?? 'free']
-}
-
-/**
- * 🔴 **A conversation this window has open, as the grant sheet needs to see it** (470).
- *
- * ⛔ **Resolved by the screen and handed over, never derived in the sheet** — the rule
- * `CapabilitiesSheet`'s own `runsOn` prop is written to: *"there must be ONE derivation of it"*, so
- * the sheet cannot disagree with the rail about which conversations are open or which of them is
- * holding work.
- *
- * ⚠️ **It is a POSITIVE list and an empty one claims nothing.** The renderer's session store holds
- * *"every session this window has open"*, and `running` on the wire is per-HOST — the host itself
- * *"cannot answer"* the per-window question. ⛔ So the surface that reads this may say *here is one
- * you can reopen* and may never say *there is nothing running as this identity*.
- */
-export interface AConversationToReopen {
-  readonly sessionId: string
-  /** The folder it is working in, or `null` — this app holds no path for it. */
-  readonly where: string | null
-  /** {@link reopeningHeldBy} for this one, resolved by the screen. */
-  readonly heldBy: ReopeningHeldBy
-  /**
-   * A command for it is already in flight, inside its bound (739, `A_COMMAND_IS_WAITED_ON_MS`) — the
-   * same double-click guard the sign-in bar uses.
-   */
-  readonly busy: boolean
-}
-
-/**
- * 🔴 **Which of this window's open conversations are running as one identity** (470).
- *
- * ⛔ **A function here rather than a computed in the screen, and the reason is measurement.**
- * `RuntimeScreen` is the component nothing mounts — its own docblocks say so half a dozen times —
- * so a rule written inside it can only ever be pinned by a source census, and
- * `a-source-census-that-pins-a-line-kills-every-row-on-it` is what that costs. ⚑ Out here the rule
- * has a test and a mutation that can express its defect.
- *
- * ⚠️ **`meta === null` is a record this window has made and the host has not answered for yet.**
- * It carries no identity, so it is not offered: a row claiming to run as this identity on the
- * strength of a null would be inventing one, which is the same refusal `SideRail.who` makes.
- *
- * ⛔ **FOLDED on both sides, which is the app's answer everywhere else this question is asked**
- * (`runtime-host.ts`: *"Compared FOLDED… this rail is about the identity, not about the spelling a
- * launch used"*; `spawn-rails.ts` rail 7; `NewAgent.vue`). 🔴 **The two sides come from different
- * namespaces**: the slug is `agent_identity.slug`, written through `foldProfileName`, while
- * `meta.profileId` is the launch's verbatim directory spelling — *"which keeps every spelling
- * verbatim"*. ⚠️ A conversation started as `Worker` would have been dropped from `worker`'s offer,
- * and the module's own rule that an empty list claims nothing makes that miss look exactly like
- * nothing being open. Found by review.
- */
-export function conversationsToReopen(
-  open: readonly SessionRecord[],
-  profileSlug: string,
-): readonly AConversationToReopen[] {
-  const wanted = foldProfileName(profileSlug)
-  return open
-    .filter((record) => {
-      const ran = record.meta?.profileId
-      return ran !== undefined && foldProfileName(ran) === wanted
-    })
-    .map((record) => ({
-      sessionId: record.sessionId,
-      // ⚑ **One owner for *where a conversation is working*** — {@link whereItWorks}. It was a
-      // fourth copy of `basenameOf(record.meta?.cwd ?? '') || null` until review counted them.
-      where: whereItWorks(record),
-      heldBy: reopeningHeldBy(record.control),
-      busy: record.busy,
-    }))
 }

@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { providerSchema, type Provider } from '@brobot2/shared'
-import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import {
   composeProfileBundle,
   NOT_IN_THE_FACTORY_TEXT,
@@ -36,8 +35,6 @@ function context(over: Partial<InstructionContext> = {}): InstructionContext {
     profileSlug: 'reader-test',
     cwd: '/tmp/work',
     startedBy: null,
-    depth: 0,
-    capabilities: DEFAULT_CAPABILITIES,
     spawningEnabled: true,
     root: (over.startedBy ?? null) === null ? 'not-yet-numbered' : null,
     others: { shown: [], more: 0 },
@@ -76,7 +73,7 @@ describe('what reaches a person is short, whatever the provider', () => {
   for (const provider of providerSchema.options) {
     it(`${provider}: person, agent and unknown-reader clauses reach the launch`, () => {
       for (const startedBy of [null, STARTED_BY]) {
-        const text = delivered(provider, context({ startedBy, depth: startedBy === null ? 0 : 1 }))
+        const text = delivered(provider, context({ startedBy }))
         for (const [name, clause] of Object.entries(CLAUSES)) expect(text, name).toContain(clause)
         expect(text).not.toContain(OLD_RULE)
         expect(forbidden(text)).toEqual([])

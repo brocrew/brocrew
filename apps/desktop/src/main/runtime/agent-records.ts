@@ -8,14 +8,6 @@ import type { PieceHeld } from '../db/session-store'
  * 🔴 **One IDENTITY, as an agent that may start a conversation as it reads it** (488,
  * HO-020's `list_profiles`, HO-031 §2.3).
  *
- * ## ⛔ Four fields, and the three that are missing are the ruling
- *
- * ⚠️ **No grant of its own.** What another identity may do is that identity's own business and a
- * person's sheet; `485` renders each agent its OWN grants, and publishing a second agent's here
- * would make one identity's configuration another's reading. ⛔ **The bound is not squeamishness:
- * `maxDepth` already crosses to a caller inside `too-deep`, about ITSELF** — which is what makes the
- * same number about somebody ELSE a widening rather than a restatement.
- *
  * ⚠️ **No conversation facts — not whether it is running, not how many times it has run.** Those
  * are folded through a different grant entirely ({@link RuntimeHost.agentsVisibleTo}), so carrying
  * them here would let a caller read past the fold that door applies. ⚑ *A widening of one
@@ -74,13 +66,10 @@ export interface ProfileReading {
 
 /**
  * ⚑ **F009 · how an agent's standing rules begin, as its record says it** — their first line that
- * holds a word, cut at {@link RULES_BEGIN_CHARS}; that it has none; or nothing at all for a caller
- * that does not reach the agent, which learns neither whether it has rules nor what they say.
+ * holds a word, cut at {@link RULES_BEGIN_CHARS}, or that it has none.
  */
 export type RulesOnARecord =
-  | { readonly is: 'they-begin'; readonly line: string }
-  | { readonly is: 'none' }
-  | { readonly is: 'not-told' }
+  { readonly is: 'they-begin'; readonly line: string } | { readonly is: 'none' }
 
 /**
  * ⚑ **F009 · who started a conversation of an agent's record**: a person — no conversation started

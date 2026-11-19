@@ -29,9 +29,8 @@ import { WORK_FIELD_WORDS } from '../../../shared/work-fields'
 import { type WhatItRunsOn, stalledPiecesSaid } from '../spawn-rails'
 import { aPairInWords } from '../../../shared/model-choice'
 import { answer, itsLabelIsNotUsed, refusalAnswer } from './answers'
-import { carryMessageRefusal, carryRailRefusal, refuseTool } from './refusals'
+import { carryRailRefusal, refuseTool, type PublishedRefusal } from './refusals'
 import { clockTimeFrom } from '../../../shared/clock'
-import { isAMessageRefusal } from '../message-rails'
 import { namedByItsWorkOnce } from './listings'
 import { protectedPlaceSaid } from '../../../shared/work-folders'
 import { resourcesNamed } from '../reply-rails'
@@ -314,12 +313,7 @@ export function createGiveWorkTool(
           // **D-016 · a file that could not be kept** — a `ResourceRefusal` is already
           // `341`-shaped and carries `outcome`, so it is spread unchanged, as `carryReplyRefusal`
           // spreads it.
-          const carried =
-            'outcome' in refusal
-              ? { ...refusal }
-              : isAMessageRefusal(refusal)
-                ? carryMessageRefusal(refusal)
-                : carryRailRefusal(refusal)
+          const carried = 'outcome' in refusal ? { ...refusal } : carryRailRefusal(refusal)
           return answer(carried, `refused (${refusal.rail}): ${refusal.reason}`)
         }
         // **The agent by the name every surface says**, and its conversation by the label it was
@@ -416,6 +410,10 @@ export function createCreateAgentTool(
   theEfforts: string,
   guarded: (run: () => Promise<AgentToolAnswer>) => Promise<AgentToolAnswer>,
 ): AgentToolDefinition & { readonly name: ToolName } {
+  const notCreated = (refusal: PublishedRefusal): AgentToolAnswer => {
+    const reason = `Not sent: ${refusal.reason}`
+    return answer({ ...refusal, reason }, reason)
+  }
   return {
     name: 'create_agent',
 
@@ -425,11 +423,6 @@ export function createCreateAgentTool(
      * **Advertised against a TYPE, so *documented* and *read* cannot drift apart** — `415`'s
      * device, and the `satisfies` below fails to compile if this shape and
      * {@link CreateAgentArguments} stop naming the same set, in either direction.
-     */
-    /**
-     * **486 · the rails are the whole gate** (HO-031 §2.4).
-     *
-     * **A row in this app's own table, and the grant is the gate.** Every agent holds `canCreateAgents` by default (D-014), a person narrows it at the sheet, and the kill switch is asked in front of it. **A card here would be a second answer to a question a person has already answered**, which is 031's approval-fatigue finding in its purest form.
      */
     beyondItsRails: 'nothing-its-rails-do-not-cover',
     input: {
@@ -457,7 +450,7 @@ export function createCreateAgentTool(
           'The standing rules this agent works under — the text it is given at the start of every conversation it runs, for as long as they stand. ' +
             `At most ${String(OWN_INSTRUCTIONS_CHARS)} characters. ` +
             'This is what the agent IS, not the job you are about to give it: a job goes in a piece of work you give it with give_work. ' +
-            'You may write these only here, as you create it — after this they belong to the person, who can change them, put an earlier version back, or take them away. ' +
+            'You write these here, as you create it. After that, you — from any conversation of your profile — and the person can change them; others can propose changes. ' +
             'Leave it out if you have none; an agent created without rules is the ordinary case and works exactly as it always has.',
         )
         .optional(),
@@ -484,7 +477,7 @@ export function createCreateAgentTool(
     call: (args) =>
       guarded(async () => {
         const wall = host.mayCreateAgents(me)
-        if (!wall.ok) return refusalAnswer(refuseTool(wall.rail, wall.detail))
+        if (!wall.ok) return notCreated(refuseTool(wall.rail, wall.detail))
         // **Every problem at once, never the first one** (325). A model that has to discover
         // three malformed arguments one round trip at a time is a model spending three turns on
         // one call, and the refusal is permanent for each of them anyway.
@@ -532,7 +525,7 @@ export function createCreateAgentTool(
           problems.push(`${CREATE_KIND_ARGUMENT} must be one of normal, service, or left out`)
         }
         if (problems.length > 0) {
-          return refusalAnswer(refuseTool('malformed-request', { problems }))
+          return notCreated(refuseTool('malformed-request', { problems }))
         }
         // **D-042 · R4 — the default it names, judged by the one seam** (`model-rails.ts`: the
         // list, then the model's efforts) — above the mint, so a refused default creates nothing.
@@ -546,12 +539,7 @@ export function createCreateAgentTool(
               ...(effort === undefined ? {} : { effort: effort as string }),
             },
           )
-          if (!judged.ok) {
-            return answer(
-              { ...judged.refusal },
-              `refused (${judged.refusal.rail}): ${judged.refusal.reason}`,
-            )
-          }
+          if (!judged.ok) return notCreated(judged.refusal)
           itsDefault = judged.chosen
         }
         const said: NewAgent = {
@@ -566,9 +554,6 @@ export function createCreateAgentTool(
           provider: provider === undefined ? null : (provider as Provider),
           ...(kind === 'service' ? { asAService: true as const } : {}),
         }
-        // **The rails are the HOST's, and this file asks none of them** — the module note's
-        // whole design. `createAgentFor` answers the switch, the grant and the name, in that
-        // order, and hands back the word this layer turns into a payload.
         // **618 · `null` and not `undefined` across the boundary**, so the host's parameter is
         // required and there is no default for a call site to fall through
         // (`a-default-no-call-site-reaches`): *nobody sent any* is a value this door computes,
@@ -580,7 +565,7 @@ export function createCreateAgentTool(
           rules === undefined ? null : (rules as string),
           itsDefault,
         )
-        if (!outcome.ok) return refusalAnswer(refuseTool(outcome.rail, outcome.detail))
+        if (!outcome.ok) return notCreated(refuseTool(outcome.rail, outcome.detail))
         const named = outcome.identity.displayName
         // **618 · what the RULES did, computed from the outcome and said in both halves**
         // (`a-report-must-be-computed-from-the-outcome`, and `489`/HO-031 §2.6's one

@@ -13,8 +13,6 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { admitReachAtAll } from '../src/main/runtime/message-rails'
-import { ASSIGNMENT_REACH_ADMITS, DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { ToolWatchingRuntime } from './lib/provider-double'
 import {
@@ -41,9 +39,7 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
  * > child.*
  *
  * ⚑ **D-014 kept §2.2's first arm and nothing else**: work goes only to a conversation the giver
- * started, and no grant admits one it did not start. `can_assign_work` says whether that reaches —
- * `any`, the ruled default; `none` nowhere. ⚠️ **D-016** took `same-project` and the project half
- * of the composite with it.
+ * started. No per-agent grant narrows it.
  *
  * ## ⚑ D-016 · work is GIVEN, by profile, and a message never carries it
  *
@@ -51,8 +47,7 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
  * the caller did not start (`assign-work-to-one-you-did-not-start`) and `admitAssignment`. ⚑ Work is
  * handed out with `give_work`, which names an AGENT, not a conversation: it goes to the giver's one
  * conversation with that agent, started for it the first time. **So the relationship is how the
- * give finds its conversation** — a conversation a person opened is never one a give reaches — and
- * the grant (`can_assign_work`) is the give's whole wall, asked by `admitReachAtAll('assign', …)`.
+ * give finds its conversation** — a conversation a person opened is never one a give reaches.
  * A message is a note or a follow-up on a piece the sender gave.
  *
  * ## ⛔ Why a GIVE and two strangers are in the fixture
@@ -64,8 +59,8 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
  *
  * ## ⚑ What fails on `main` at `b688a9b2`, and it is every section
  *
- * ⛔ **§1** — there is no `can_assign_work` column, so a `work` message to a conversation the
- * caller did not start is ADMITTED by `can_message: 'any'` and mints a task. ⛔ **§3** — the omitted `kind` defaulted to
+ * ⛔ **§1** — a `work` message to a conversation the caller did not start is ADMITTED and mints a
+ * task. ⛔ **§3** — the omitted `kind` defaulted to
  * `'work'` there, so it opened one. ⚑ Since D-010 there is no default: an omitted kind is refused,
  * and since D-016 no kind of message gives work at all.
  *
@@ -97,7 +92,6 @@ describe('553 · anyone may ask; work needs a relationship', () => {
     root = mkdtempSync(join(tmpdir(), 'brobot2-553-root-'))
     db = openDatabase(join(userData, 'brobot2.sqlite'))
     applyMigrations(db, migrationsFolder)
-    // ⛔ **Past `0013`'s own wall clock** — `a-second-project-and-the-grant.test.ts` argues why.
     clock = Date.UTC(2030, 0, 1)
     store = createSessionStore(db, tick)
     counter = 0
@@ -155,22 +149,6 @@ describe('553 · anyone may ask; work needs a relationship', () => {
     return (await tool.call(args)).structured as Record<string, unknown>
   }
 
-  /** One capability, changed and nothing else — the *"one grant over"* half of every pair below. */
-  const reach = (profileSlug: string, edit: Record<string, unknown>): void => {
-    expect(store.setCapabilities(profileSlug, edit as never)).toBe(true)
-  }
-
-  /**
-   * ⛔ **The RAW column, not `capabilitiesOf`** — a NULL column is *nobody has chosen*, and it is
-   * what makes a refusal below a fact about the ruled DEFAULT rather than about a grant this test
-   * wrote.
-   */
-  const rawColumn = (slug: string, column: string): unknown =>
-    (
-      db.prepare(`SELECT ${column} AS held FROM agent_identity WHERE slug = ?`).get(slug) as
-        { held: unknown } | undefined
-    )?.held
-
   /**
    * 🔴 **The fixture — one caller, and TWO receivers it stands in two different relations to.**
    *
@@ -178,10 +156,6 @@ describe('553 · anyone may ask; work needs a relationship', () => {
    * no relation of any kind to `stranger` or `peer`, which a person opened. ⚑ **So the admitted
    * pair and the refused pair are present in one fixture**, and a gate that admitted everything and
    * one that admitted nothing are told apart by the same test.
-   *
-   * ⚠️ **Every premise is ASSERTED before anything is admitted or refused**: the parent edge exists
-   * on one pair and is absent on the others, and every capability column the ruling touches is
-   * NULL — *nobody has chosen* — on the caller's row.
    */
   const aBossItsChildAndAStranger = async (): Promise<{
     boss: string
@@ -212,13 +186,9 @@ describe('553 · anyone may ask; work needs a relationship', () => {
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const child = given.agent as string
 
-    // ⚠️ **The premises.** ⛔ One parent edge, no parent edge — and the two capability columns this
-    // ruling reads are both NULL on the caller, so every verdict below is the ruled default
-    // answering and not a grant this fixture wrote.
+    // ⚠️ **The premises.** ⛔ One parent edge, no parent edge.
     expect(store.parentOf(child)).toBe(boss)
     expect(store.parentOf(stranger)).toBeNull()
-    expect(rawColumn('lead', 'can_message')).toBeNull()
-    expect(rawColumn('lead', 'can_assign_work')).toBeNull()
     expect(store.parentOf(peer)).toBeNull()
     return { boss, bossTools, child, label: given.label as string, peer, stranger }
   }
@@ -306,143 +276,28 @@ describe('553 · anyone may ask; work needs a relationship', () => {
       expect(mine).toHaveLength(2)
       expect(TASK_IS_OPEN[mine.at(-1)!.state]).toBe(true)
     })
-
-    // ⚑ **D-016** — *a person writing the widest grant does not admit the identical call* went with
-    // its rail: `assign-work-to-one-you-did-not-start` was the `permanent` refusal a grant could not
-    // move, and a give names an agent, so there is no call that reaches a conversation the giver did
-    // not start for any grant to admit.
-
-    /**
-     * ⛔ **`none` refuses a conversation this identity STARTED, and that is the person's act.**
-     *
-     * ⚑ **Standing rule 11 read in the direction it is usually read backwards.** *The app may seed
-     * a default at creation; it never re-grants what a person removed* — so descent is not an
-     * exemption from a column a person set to `none`, and {@link ASSIGNMENT_REACH_ADMITS} says so
-     * in as many words rather than leaving a reader to infer it.
-     *
-     * ⚠️ **Paired with the sibling one fact over**: the same caller can still SPEAK to the same
-     * child, which is what makes this a narrowing of one act rather than of the conversation.
-     */
-    it('⛔ a person who narrows it to `none` stops work to its OWN child, and not the talking', async () => {
-      const { bossTools, child, label } = await aBossItsChildAndAStranger()
-      reach('lead', { canAssignWork: 'none' })
-
-      const given = await callOn(bossTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'hand',
-        title: 'the thing',
-        brief: 'do the thing',
-      })
-      expect(given.outcome, JSON.stringify(given)).toBe('refused')
-      expect(given.rail).toBe('may-not-assign-work')
-      // ⚑ **The grant that WAS read is reported**, which is `MessageRefusalDetail`'s presence rule.
-      expect((given.detail as { reach?: string }).reach).toBe('none')
-
-      const asked = await callOn(bossTools, 'message_agent', {
-        agent: child,
-        text: 'how is it going?',
-        kind: 'follow-up',
-        piece: label,
-      })
-      expect(asked.outcome, JSON.stringify(asked)).toBe('ok')
-    })
-
-    /**
-     * 🔴 **Two columns, two gates — which is HO-060 §2.3 made true rather than aspirational.**
-     *
-     * > ⚑ *"I claimed that sending and assigning were separate acts with separate gates. They were
-     * > separate names under one gate."*
-     *
-     * ⛔ **So the test is that each column moves ONE of the two acts and not the other**, measured
-     * where the two readings diverge: `can_message: 'none'` stops the note and not the give,
-     * `can_assign_work: 'none'` stops only the give, and each refusal comes back under its own rail.
-     */
-    it('🔴 the two gates are two columns — each refusal names its own, on one pair', async () => {
-      const { bossTools, child } = await aBossItsChildAndAStranger()
-      const askIt = { agent: child, text: 'how is it going?', kind: 'note' }
-      const giveIt = {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'hand',
-        title: 'the thing',
-        brief: 'do the thing',
-      }
-
-      reach('lead', { canMessage: 'none', canAssignWork: 'any' })
-      expect((await callOn(bossTools, 'message_agent', askIt)).rail).toBe('may-not-message')
-      // ⛔ **D-016 · a give is not a message**, so `can_message` does not gate it — where a work
-      // message met the message rail first. ⚑ The two acts are two gates all the way down now.
-      expect((await callOn(bossTools, 'give_work', giveIt)).outcome).toBe('ok')
-
-      reach('lead', { canMessage: 'any', canAssignWork: 'none' })
-      expect((await callOn(bossTools, 'message_agent', askIt)).outcome).toBe('ok')
-      expect((await callOn(bossTools, 'give_work', giveIt)).rail).toBe('may-not-assign-work')
-    })
   })
 
   // ─────────────────────────────────────────────────────────────────────────────────────────────
-  // §1b · the gate's own contract, where a product door cannot reach it
+  // §2 · HO-058 §4 · the configuration burden
   // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-  /**
-   * 🔴 **The gate's `none` clause, pinned on the function as well as through the door** (standing
-   * rule 5). ⚠️ **D-016** took the project half of the composite — *a conversation you started
-   * that is not here*, and *a conversation this app cannot place* — with `same-project`, so the two
-   * cases that pressed it with hand-built parties went with it. ⚑ **And it took `admitAssignment`**:
-   * a give has no target the grant could be asked about, so `admitReachAtAll('assign', …)` is the
-   * whole question.
-   */
-  describe('§1b · the grant, asserted on `admitReachAtAll` itself', () => {
-    const caps = (canAssignWork: string) => ({ ...DEFAULT_CAPABILITIES, canAssignWork }) as never
-
-    /**
-     * ⛔ **`none` reaches nothing at all, and the SENTENCE says so in as many words** (standing
-     * rule 5, and `449`'s measured defect: a model read a bare vocabulary word and got the rule
-     * wrong).
-     *
-     * ⚠️ **Asserted against the behaviour and not against the help string**, because the help is
-     * WALKED from this table — so the two move together and an assertion over the help alone is a
-     * comparison tested where both sides agree.
-     */
-    it('⛔ `none` refuses a conversation it started, and the shipped sentence says exactly that', () => {
-      expect(admitReachAtAll('assign', caps('none'))?.rail).toBe('may-not-assign-work')
-      expect(ASSIGNMENT_REACH_ADMITS.none).toContain('not even a conversation it started itself')
-      // ⚑ **And the widest word is not the same claim**, so the table is two answers and not one:
-      // it never drops the relationship (D-014) — the work goes to the giver's own conversation.
-      expect(admitReachAtAll('assign', caps('any'))).toBeNull()
-      expect(ASSIGNMENT_REACH_ADMITS.any).toContain('a conversation it has with that agent')
-      expect(ASSIGNMENT_REACH_ADMITS.any).not.toContain('whoever started it')
-    })
-  })
-
-  // ─────────────────────────────────────────────────────────────────────────────────────────────
-  // §2 · HO-058 §4 · the configuration burden, applied to the new column
-  // ─────────────────────────────────────────────────────────────────────────────────────────────
-
-  describe('§2 · the grant a person never has to open', () => {
+  describe('§2 · a sheet a person never has to open', () => {
     /**
      * > 🔴 **The standing test (HO-058 §4):** *A person should never have to open a capability
      * > sheet to make a newly created agent do the thing its category exists to do.*
      *
-     * ⛔ **A project manager's category exists to STAFF its project**, and one default set is the
-     * same for every agent (D-014): any agent may add an agent, start it, and give it work — so a
-     * project manager an agent created does all three with every column NULL. ⚠️ **Over an identity
-     * `create_agent` MADE**, which writes no grant at all, so this is about the default.
+     * ⛔ **A project manager's category exists to STAFF its project**, and any agent may add an agent, start it, and give it work — so a project
+     * manager an agent created does all three.
      */
-    it('🔴 a created project manager staffs and gives work with every column NULL', async () => {
+    it('🔴 a created project manager staffs and gives work', async () => {
       await personOpens('maker')
       const makerTools = theToolsetJustHandedOut()
-      expect(rawColumn('maker', 'can_create_agents')).toBeNull()
       const made = await callOn(makerTools, 'create_agent', {
         profile_slug: 'fresh-pm',
         display_name: 'Fresh',
       })
       expect(made.outcome, JSON.stringify(made)).toBe('ok')
-
-      // ⛔ **Creation wrote no grant**, which is the assertion: the tier works because of the ruled
-      // DEFAULT and not because anything wrote a word.
-      expect(rawColumn('fresh-pm', 'can_assign_work')).toBeNull()
-      expect(rawColumn('fresh-pm', 'can_message')).toBeNull()
-      expect(rawColumn('fresh-pm', 'can_create_agents')).toBeNull()
 
       const pm = await personOpens('fresh-pm')
       const pmTools = theToolsetJustHandedOut()
@@ -580,10 +435,9 @@ describe('553 · anyone may ask; work needs a relationship', () => {
   // §4 · what the brief said must NOT move, pressed rather than promised
   // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-  describe('§4 · HO-026 §2, against the new grant', () => {
+  describe('§4 · HO-026 §2', () => {
     it('a known colleague waiting on a person keeps its question open', async () => {
       const { bossTools, stranger } = await aBossItsChildAndAStranger()
-      reach('lead', { canMessage: 'any', canAssignWork: 'any' })
 
       // ⚑ **Admitted**, so the refusals below are about the act and not about the pair.
       expect(
@@ -606,9 +460,5 @@ describe('553 · anyone may ask; work needs a relationship', () => {
       expect(store.routedRequestsOf(stranger)).toEqual(waiting)
       expect(host.sessionIds).toContain(stranger)
     })
-
-    // ⚑ **D-016** — *a person queues WORK into a narrowed conversation, and nothing asks them for a
-    // grant* went with its subject: the grant on giving is asked by `give_work` alone, which no
-    // person calls, and no message of any kind — a person's or an agent's — meets it or opens a piece.
   })
 })

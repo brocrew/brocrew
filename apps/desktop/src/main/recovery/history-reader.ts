@@ -1,7 +1,6 @@
 import { headerOf } from './sqlite-header'
 import { providerSchema } from '@brobot2/shared'
 import Database from 'better-sqlite3'
-import { MAX_CAPABILITY_COUNT } from '../../shared/capabilities'
 import { pieceCalled, pieceLine } from '../../shared/piece-called'
 import type { HistoryConversation, HistoryEvent, HistoryReader } from '../../shared/recovery'
 import { agentName } from '../../shared/runtime-ipc'
@@ -26,8 +25,6 @@ const DATA_SIDECARS = SIDECARS.filter((suffix) => suffix !== '-shm')
 
 const SQLITE_MAGIC = 'SQLite format 3\u0000'
 const CLOSED = 'the history reader is closed'
-
-const MAX_PIECE_DEPTH = MAX_CAPABILITY_COUNT + 2
 
 const PIECE_TYPES_SQL = PIECE_EVENT_TYPES.map((type) => `'${type}'`).join(', ')
 
@@ -239,9 +236,12 @@ function titleNow(c: Connection, owner: string, piece: PieceRow): string | null 
 
 function numbersOf(c: Connection, piece: PieceRow): number[] | null {
   const numbers = [piece.number]
+  const seen = new Set([piece.id])
   let parent = piece.parent_id
-  for (let depth = 0; parent !== null; depth += 1) {
-    if (depth >= MAX_PIECE_DEPTH) return null
+  while (parent !== null) {
+    // A repeated id is a cycle: the piece has no label this reader can trust.
+    if (seen.has(parent)) return null
+    seen.add(parent)
     const above = c.piece.get(parent) as PieceRow | undefined
     if (above === undefined) return null
     numbers.unshift(above.number)

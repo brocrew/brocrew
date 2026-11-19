@@ -82,7 +82,7 @@ export function createProposeAgentRulesTool(
   return {
     name: 'propose_agent_rules',
     description:
-      'Propose the complete standing rules another agent should receive. Send the current version, the full replacement text and why it should change. The person decides; nothing is saved until they approve. Send empty text to propose taking the rules away. Saved changes reach the agent at its next start.',
+      'Propose the complete standing rules another agent should receive. Send the current version, the full replacement text and why it should change. The person decides; nothing is saved until they approve. The profile that created that agent can instead save the rules itself with write_agent_rules. Send empty text to propose taking the rules away. Saved changes reach the agent at its next start.',
     input: {
       current_version: z
         .number()
@@ -184,6 +184,17 @@ export function createReadAgentRulesTool(
   }
 }
 
+/** Who may write an agent's standing rules, said to a caller that may not. */
+function whoMayWriteTheseRules(detail: Readonly<Record<string, unknown>>): string {
+  if (detail['self'] === true)
+    return 'An agent never writes its own standing rules. Propose the change with propose_agent_rules, or keep it in your own notes. Nothing was written.'
+  const agent = typeof detail['agent'] === 'string' ? detail['agent'] : 'that agent'
+  const creator = detail['createdBy']
+  return typeof creator === 'string'
+    ? `Propose the change with propose_agent_rules; the person decides, or ${creator} can make it. Only the person and ${creator}, which created ${agent}, can change its standing rules. Nothing was written.`
+    : `Propose the change with propose_agent_rules; the person decides. Only the person can change ${agent}'s standing rules. Nothing was written.`
+}
+
 export function createWriteAgentRulesTool(
   host: Pick<AgentToolHost, 'writeAgentRules'>,
   by: Caller,
@@ -193,7 +204,7 @@ export function createWriteAgentRulesTool(
   return {
     name: 'write_agent_rules' as const,
     description:
-      "Save another agent's complete standing rules. Only the person's own BroBot conversation may do this; helper conversations and self-targets are refused. First read_agent_rules, then supply its exact version, the complete replacement, and why. The host refuses a stale baseline. The saved version names its author and reason, applies from that agent's next start, and the person can undo it.",
+      "Save another agent's complete standing rules. Only the person and the profile that created that agent can save them; any conversation of that profile counts, and an agent never saves its own. Everyone else proposes with propose_agent_rules. First read_agent_rules, then supply its exact version, the complete replacement, and why. The host refuses a stale baseline. A save replaces any open proposal for that agent's rules. The saved version names its author and reason, applies from that agent's next start, and the person can undo it.",
     input: {
       agent: rulesWriteQuery.shape.agent.describe(
         'The profile name of the agent whose standing rules to replace.',
@@ -224,7 +235,14 @@ export function createWriteAgentRulesTool(
           },
           by,
         )
-        if (!outcome.ok) return refusalAnswer(refuseTool(outcome.rail, outcome.detail))
+        if (!outcome.ok) {
+          const refused = refuseTool(outcome.rail, outcome.detail)
+          return refusalAnswer(
+            outcome.rail === 'may-not-write-rules'
+              ? { ...refused, reason: whoMayWriteTheseRules(outcome.detail) }
+              : refused,
+          )
+        }
         const receipt = outcome.result
         return answer(
           { outcome: 'ok', ...receipt },

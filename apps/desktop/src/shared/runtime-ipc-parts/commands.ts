@@ -1,6 +1,5 @@
 import type { MemoryAmendmentAsked, MemoryCheckAsked, MemoryUndoAsked } from '../agent-memory'
 import type { RulesBaseline } from '../agent-rules'
-import type { CapabilityGrant } from '../capabilities'
 import type { ExternalMcpServerReach } from '../external-mcp'
 import type { DecideMoveRequestInput } from '../move-contracts'
 import type { OwnNotesWrite } from '../own-notes'
@@ -500,7 +499,7 @@ export type RuntimeCommand =
    */
   | { kind: 'checkCwd'; path: string }
   /**
-   * 🔴 **Every agent identity, with what it may do** (355, HO-008 §3 · P0b).
+   * 🔴 **Every agent identity** (355, HO-008 §3 · P0b).
    *
    * ⚑ **The read half of the door `341` deliberately left out.** It listed the reasons: *"an agent
    * can only ever be spawned into an identity a person has already brought into being"*, with the
@@ -510,37 +509,17 @@ export type RuntimeCommand =
    */
   | { kind: 'agentIdentities' }
   /**
-   * 🔴 **Grant, narrow, or hand a capability back to the default** (355).
+   * 🔴 **Every RESTRICTED external MCP server one identity is associated with, COMPLETE** (516,
+   * narrowed by 524).
    *
-   * ⛔ **Every field, always, each either a value or `null`** — {@link CapabilityGrant}, and 339's
-   * `.nullable()` ruling is why. A payload that omitted a field would be indistinguishable from one
-   * clearing it, and the difference is whether a row that has chosen NOTHING keeps following the
-   * ruled default. `null` is the person saying *use the default*; the store writes NULL.
-   *
-   * ⚠️ **It cannot create an identity, and that refusal is the store's** (criterion 12). A slug with
-   * no row answers `null` — *there is nothing here to configure* — rather than minting one.
+   * ⛔ **The list is required and never optional**: an empty list is *this person unticked every
+   * box*. ⚑ An id naming no registered row writes nothing — a sheet left open while another window
+   * removed a server must not fail its save. ⚠️ It cannot create an identity: a slug with no row
+   * answers `null`.
    */
   | {
-      kind: 'setCapabilities'
+      kind: 'setExternalMcpServers'
       profileId: string
-      grant: CapabilityGrant
-      /**
-       * 🔴 **516 · every RESTRICTED server this identity is granted, COMPLETE** (`507` §5, narrowed by 524).
-       *
-       * ⛔ **Required, and never optional.** An omitted key and an empty list would be
-       * indistinguishable, and the difference is *this caller does not know about external servers*
-       * versus *this person unticked every box* — 339's `.nullable()` ruling, arriving on a field
-       * whose *nobody has chosen* state does not exist because row presence IS the grant.
-       *
-       * ⛔ **It rides on this command rather than a verb of its own** so the capability columns and
-       * the grants commit in ONE transaction: the sheet has one Save button, and two commands behind
-       * one press can half-succeed. ⚠️ **It is NOT part of {@link CapabilityGrant}** — `507` §5:
-       * server ids *"are a related capability grant with a different relational shape"*, and a set
-       * of rows in another table cannot go into a `Record<CapabilityKey, …>`.
-       *
-       * ⚑ **An id naming no registered row writes nothing**, which is the foreign key rather than a
-       * check — a sheet left open while another window removed a server must not fail its save.
-       */
       externalMcpServerIds: readonly string[]
     }
   /**
@@ -550,8 +529,8 @@ export type RuntimeCommand =
    * ⛔ **Registration decides who it is for, and the default is EVERYONE** (524, `HO-048` §1).
    * HO-040 §4.2 had split the act in two — register, then grant per identity — and the PO withdrew
    * that default: *"an argument about one agent that does not exist yet, applied to every agent that
-   * does."* ⚑ So `reach` rides on this command, and `setCapabilities`' `externalMcpServerIds` is
-   * what reaches a server somebody deliberately restricted.
+   * does."* ⚑ So `reach` rides on this command, and `setExternalMcpServers` is what reaches a
+   * server somebody deliberately restricted.
    *
    * ## 🔴 It is the REFUSAL RAIL, and the refusal is not a validation error
    *
@@ -594,15 +573,6 @@ export type RuntimeCommand =
    * 🔴 **Which provider this identity's NEXT conversation starts on** (433, HO-024 §2.1/§2.2) — the
    * verb that makes *"changeable"* true, and a PERSON's door.
    *
-   * ## ⛔ It is not a capability, and it is deliberately not on {@link CapabilityGrant}
-   *
-   * ⚠️ **A capability is something an identity may DO and a rail reads.** No rail reads `provider`:
-   * it grants nothing, refuses nothing, and `419` §3 put it on its own column for that reason —
-   * which is why `agent_identity.provider` had exactly ONE writer before this verb, and why folding
-   * it into `CAPABILITY_COLUMNS` would make the capability writer answer two questions. ⛔ **So it
-   * is its own verb, with its own payload, saved by its own gesture** — and the sheet's Save still
-   * sends a whole {@link CapabilityGrant} and nothing else.
-   *
    * ## 🔴 It reaches no conversation, running or recorded
    *
    * ⛔ **HO-024 §2.1 reverts HO-023 §3 and restores HO-022 §3:** provider is a property of the
@@ -615,11 +585,11 @@ export type RuntimeCommand =
    * it.** `a-front-door-that-asks-nothing.test.ts` §1 is the census that keeps that true.
    *
    * ⚠️ **`null` is *use the app's fallback*, and it is the gesture that makes the choice
-   * reversible** — the capability sheet's `Use the default`, one column over. A person who cleared
+   * reversible**. A person who cleared
    * a choice has said something different from a person who chose the fallback's value, and the
    * column can hold both.
    *
-   * ⛔ **It cannot create an identity**, which is `setCapabilities`' refusal and criterion 12: a
+   * ⛔ **It cannot create an identity**, which is `setExternalMcpServers`' refusal and criterion 12: a
    * slug with no row answers `null`.
    */
   | { kind: 'setAgentProvider'; profileId: string; provider: Provider | null }
@@ -832,13 +802,11 @@ export type RuntimeCommand =
    * ## ⛔ Why it is not `create_agent` with a different caller
    *
    * ⚠️ **HO-020 §4 licences two doors and this dispatch built both rather than deriving one from the
-   * other.** The tool is gated — a capability, a kill switch, a refusal a model can read — because
-   * an AGENT minting rows is an act this app bounds. ⛔ **No capability applies here.** HO-005:
-   * *"BroBot is global; the human is unrestricted"*, and a person pressing a button in their own app
-   * is not an identity holding a grant. ⚑ What the two DO share is the row they write and the
+   * other.** The tool answers with a refusal a model can read; this door throws for a window to
+   * show. ⚑ What the two DO share is the row they write and the
    * collision that refuses them, which is one store method with one transaction in it.
    *
-   * ⚠️ **It creates a name and nothing else.** No project, no provider home, no capabilities, no
+   * ⚠️ **It creates a name and nothing else.** No project, no provider home, no
    * cwd — `RuntimeHost.createAgent` says what each of those would have cost, and §2 of this
    * dispatch's brief is about the one that would have been most expensive to get wrong.
    *

@@ -3,7 +3,6 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { scratchFolders } from './helpers/scratch-folders'
-import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import { REQUEST_MARKER } from '../src/main/providers/codex/codex-injected'
 import { deriveLedger } from '../src/main/archive/derive-ledger'
 import { importCodexRollout } from '../src/main/providers/codex/import-transcript'
@@ -59,8 +58,6 @@ function context(savedMethods?: SavedMethodsReading): InstructionContext {
     profileSlug: 'fictional-writer',
     cwd: '/tmp/work',
     startedBy: null,
-    depth: 0,
-    capabilities: DEFAULT_CAPABILITIES,
     spawningEnabled: true,
     root: 'not-yet-numbered',
     others: { shown: [], more: 0 },

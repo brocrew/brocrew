@@ -1,5 +1,6 @@
 import { RecordWriteFailed } from './record-write'
 import { InstructionDecisions } from './host-split/instruction-decisions'
+import { AgentCreation } from './agent-creation'
 import type {
   WaitOnAsked,
   TheCopiesRefusal,
@@ -431,7 +432,6 @@ import type {
   AgentIdentities,
   AgentIdentity,
   AgentIdentityName,
-  IdentityCreator,
   CwdVerdict,
   NewAgent,
   ProviderSignInResult,
@@ -449,10 +449,6 @@ import type {
   McpServerRequestSettledEvent,
   TranscriptEvent,
 } from '../../shared/conversation-events'
-import type { CapabilityGrant } from '../../shared/capabilities'
-// ⚑ **A VALUE from that module**: a launch's instructions read the one default set for an identity
-// whose first row is not written yet.
-import { DEFAULT_CAPABILITIES } from '../../shared/capabilities'
 import {
   ABriefThatDidNotArrive,
   AGiveThatGaveNothing,
@@ -895,14 +891,6 @@ import {
 } from '../../shared/external-mcp'
 import type { RefusalFacts } from '../../shared/refusals'
 import type { ToolName, ToolRefusal } from './agent-tools'
-import {
-  MessagingRefused,
-  admitReachAtAll,
-  reachesWhatItDidNotStart,
-  refuseOutOfReach,
-  type MessageRefusal,
-  type MessagingAct,
-} from './message-rails'
 import {
   aTurnOfSeveral,
   messageNamingItsSender,
@@ -2019,8 +2007,7 @@ interface HostedSession {
   readonly providerHome: string
   /**
    * ⚑ **The identity this session is RUNNING as** (341) — the profile slug, resolved once at launch
-   * and never re-derived. It is what the spawn rails spend: `max_depth` and the other grants are
-   * read off the row this names.
+   * and never re-derived.
    *
    * ⚠️ **Not parsed back out of {@link providerHome}.** The path is built FROM this, and a reader
    * that took it apart again would be a second answer to *"which profile"* — free to disagree the
@@ -3543,9 +3530,6 @@ const A_SERVICE_IS_NEVER_REPLACED =
 /** Why the file of which agents are services is not changed: another app may be running on it. */
 const NOT_THE_ONLY_APP = 'Not changed: the app may be open twice.'
 
-/** A person's new service refused: services are off. */
-const NO_SERVICE_IS_MADE_WHILE_OFF = 'Not created: services are off.'
-
 /** A start refused: the agent is a service, whose one conversation no other start may replace. */
 const NOT_STARTED_A_SERVICE = 'Not started: it’s a service.'
 
@@ -4064,20 +4048,6 @@ const NO_INSTRUCTIONS: SessionInstructions = {
   // nothing"* rather than *"we did not say"* — there is no third value here and none is wanted:
   // the empty `injected` beside it is the same fact from the other side.
   composed: null,
-}
-
-/**
- * ⚑ **The one sentence for a name that is already an identity** (419).
- *
- * ⛔ **The FOLDED spelling, because that is the row that exists** — `Worker` and `worker` are one
- * identity (238), and naming a person the spelling they typed would send them looking for a row
- * under a name the database does not hold.
- */
-function nameIsTaken(slug: string): string {
-  return (
-    `There is already an agent called ${foldProfileName(slug)}. An agent's name is its identity, ` +
-    'so it cannot be reused — and names are compared without case, because a profile is its folder.'
-  )
 }
 
 /**
@@ -8664,17 +8634,10 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * Whether `by` reaches `service` through the piece it is on, asked as a message to it is asked,
-   * with the reach floor a message meets: a start it would need is then its own.
+   * Whether `by` reaches `service` through the piece it is on.
    */
-  private itsCallerMessagesAService(
-    service: string,
-    by: Caller,
-    says: AgentMessageKind | null,
-  ): boolean {
-    if (this.thePieceItIsOnFor(service, by) === null) return false
-    if (says !== null) this.assertMayReach('message', service, by)
-    return true
+  private itsCallerMessagesAService(service: string, by: Caller): boolean {
+    return this.thePieceItIsOnFor(service, by) !== null
   }
 
   /** Whether the piece `row` waits, queued, at the service it was given: its brief reached nobody. */
@@ -8803,7 +8766,7 @@ export class RuntimeHost implements LiveHost {
     says: AgentMessageKind,
   ): Promise<QueueOutcome> {
     const to = this.theOneInItsPlace(sessionId)
-    await this.refuseBeforeAStart(to, text, by, attachments, says)
+    await this.refuseBeforeAStart(to, text, by, attachments)
     const from = this.originOf(by)
     const toProfile = from?.who === 'a-caller-with-an-id' ? this.profileOf(to) : null
     const kept = await this.keptUntilItStarts(to, text, facts, kind, { by, says, attachments })
@@ -10846,11 +10809,11 @@ export class RuntimeHost implements LiveHost {
     return this.cardFor(slot, this.cardReads())
   }
 
-  /** Messaging reach for send and command doors; read tools do not use this grant. */
+  /** Whether this caller's words may reach that conversation, at the send and command doors. */
   withinMessagingReach(sessionId: string, by: Caller, me: string | null = null): boolean {
     // ⚑ **D-017 · R2 · …or one this app is not running**, whose two fields are the ones
-    // {@link mayCommand} reads below — see {@link startable}. ⚑ The grant below decides for it as
-    // for a running one: a message starts it ({@link ensureRunning}).
+    // {@link mayCommand} reads below — see {@link startable}. ⚑ It is answered as for a running
+    // one: a message starts it ({@link ensureRunning}).
     const target = this.slots.get(sessionId) ?? this.startable(sessionId)
     if (target === undefined || target === null) return false
     if (target.id === me) return true
@@ -10859,23 +10822,14 @@ export class RuntimeHost implements LiveHost {
     if (mayCommand(this.commandedNow(target), by)) return true
     const speaking = sessionSpeakingAs(by)
     if (speaking === null || speaking === sessionId) return false
-    const mine = this.deps.store.identityOf(speaking)
-    if (mine === null) return false
-    const allowed = this.deps.store.capabilitiesOf(mine.profileSlug)
-    if (allowed === null) return false
-    // ⛔ A grant to reach what it did not start never reaches a service: its work comes through
-    // give_work, one piece at a time.
-    return reachesWhatItDidNotStart(allowed.canMessage) && this.theServiceOf(sessionId) === null
+    // A service's work comes through give_work, one piece at a time.
+    return this.theServiceOf(sessionId) === null
   }
 
   /**
-   * Why this caller may not reach that conversation for messaging, or `null` when it may.
+   * Why this caller's words may not reach that conversation, or `null` when they may.
    *
-   * ⛔ **`no-such-agent` only for an id no conversation has** (`05` rule 6): the fold that answered
-   * *not yours* in the words of *not there* is gone — a conversation a quit left open was
-   * `no-such-agent` to every agent but its starter. ⚠️ **A caller now learns that an id exists**, which
-   * the fold hid; what it learns about it is the rail, and the rail volunteers nothing about the
-   * conversation ({@link MessageRefusalDetail}).
+   * ⛔ **`no-such-agent` only for an id no conversation has** (`05` rule 6).
    */
   whyItIsOutOfReach(
     id: string,
@@ -10893,15 +10847,7 @@ export class RuntimeHost implements LiveHost {
       if (row === null) return { is: 'no-such-agent' }
       if (!aRowADeliveryCanStart(row)) return { is: 'takes-no-messages' }
     }
-    const speaking = sessionSpeakingAs(by)
-    const mine = speaking === null ? null : this.deps.store.identityOf(speaking)
-    const refusal = refuseOutOfReach(
-      mine === null ? null : this.deps.store.capabilitiesOf(mine.profileSlug),
-    )
-    return {
-      is: 'outside-its-reach',
-      refusal: { ...refusal, detail: { ...refusal.detail, agent: sessionId } },
-    }
+    return this.theServiceOf(sessionId) === null ? { is: 'takes-no-messages' } : { is: 'a-service' }
   }
 
   /** A known piece label names its owner for reads; other doors retain their own reach. */
@@ -11081,17 +11027,11 @@ export class RuntimeHost implements LiveHost {
               },
     }))
     const made = this.madeFilesOf(agent.profile, FILES_ON_A_RECORD)
-    // ⚑ **Its rules, to a caller that reaches this agent** — one of its conversations, or (its grant)
-    // any conversation it did not start.
-    const canReadRules =
-      inReach.some((one) =>
-        this.withinMessagingReach(this.theOneInItsPlace(one.conversation), by, me),
-      ) || this.itsGrantReachesWhatItDidNotStart(by)
-    const rules: RulesOnARecord = !canReadRules
-      ? { is: 'not-told' }
-      : ((line) => (line === null ? { is: 'none' } : { is: 'they-begin', line }))(
-          howTheRulesBegin(this.deps.store.configuredLayerFor(agent.profile), RULES_BEGIN_CHARS),
-        )
+    const line = howTheRulesBegin(
+      this.deps.store.configuredLayerFor(agent.profile),
+      RULES_BEGIN_CHARS,
+    )
+    const rules: RulesOnARecord = line === null ? { is: 'none' } : { is: 'they-begin', line }
     return {
       is: 'a-record',
       record: {
@@ -11222,19 +11162,6 @@ export class RuntimeHost implements LiveHost {
     return this.theStarterCalled(starter, conversation, null, agent)
   }
 
-  /**
-   * ⚑ **F009 · does this caller's grant reach conversations it did not start?** — clause 3 of
-   * {@link withinMessagingReach} (`reachesWhatItDidNotStart`, one table), asked of no target: an
-   * agent's record tells how that agent's rules begin to a caller whose grant reaches every
-   * conversation it will ever have. ⛔ An identity with no row is not (that predicate's own rule).
-   */
-  private itsGrantReachesWhatItDidNotStart(by: Caller): boolean {
-    const speaking = sessionSpeakingAs(by)
-    const mine = speaking === null ? null : this.deps.store.identityOf(speaking)
-    const allowed = mine === null ? null : this.deps.store.capabilitiesOf(mine.profileSlug)
-    return allowed !== null && reachesWhatItDidNotStart(allowed.canMessage)
-  }
-
   // ── the pieces a conversation holds and gave, taking one back, and replies (393, S2 + S3) ───────
 
   pieceBoard(sessionId: string): PieceBoard {
@@ -11348,13 +11275,6 @@ export class RuntimeHost implements LiveHost {
    *     wait for: one that could never be reopened can never hear it, and the one that took its
    *     place never held the piece. ⚠️ A tell that fails is logged and undoes nothing: the piece is
    *     taken back either way.
-   *
-   * ## ⛔ No {@link assertMayReach}, and {@link assertMayCommand}'s own docblock is the argument
-   *
-   * ⚑ **`cancelQueuedMessage` deliberately does not have one** — *"taking back words you already put
-   * there is not a new act against the conversation."* ⛔ Taking back WORK is the same sentence about
-   * a bigger object: a giver whose grant was narrowed after it gave would otherwise be left owed a
-   * piece it could never close.
    */
   async takeBackPiece(input: { readonly piece: string }, by: Caller): Promise<TakeBackOutcome> {
     if (this.startupRepairs.size > 0) await this.settlePieceBeforeUse(input.piece)
@@ -11367,10 +11287,6 @@ export class RuntimeHost implements LiveHost {
           : null,
     )
     if (waiting !== null) await waiting
-    // ⚠️ **`asAgent`, not `speaking`, and that is not style.** `374`'s `M13` anchors on
-    // `const speaking = sessionSpeakingAs(by)` followed by `if (speaking === null) return` in
-    // {@link assertMayReach}; a second copy of those two lines anywhere in this file makes that row
-    // match twice and RETIRE.
     const asAgent = sessionSpeakingAs(by)
     const notYours: TakeBackOutcome = { ok: false, refused: { rail: 'not-a-piece-you-gave' } }
     // ⚑ **A person reaches `not-a-piece-you-gave`, and that is the ordinary answer**: a person takes
@@ -11935,7 +11851,7 @@ export class RuntimeHost implements LiveHost {
   /**
    * 🔴 **D-016 · R1 — hand the owner a piece's new brief**, in its giver's words — only to the
    * conversation holding it ({@link toItsHolderAlone}), which wakes it (D-017). ⚑ `says` is `null`,
-   * as for a give: no `can_message` wall and no `message_sent` receipt; {@link TurnFacts.rebriefing}
+   * as for a give: no `message_sent` receipt; {@link TurnFacts.rebriefing}
    * names the piece, so the owner reads the words as its giver's.
    *
    * 🔴 **703 · a new brief that REACHED its holder makes false what its giver still holds about the
@@ -12454,12 +12370,9 @@ export class RuntimeHost implements LiveHost {
     if (queued.piece !== undefined) this.itsGiversWaitMayHaveMoved(queued.piece)
   }
 
-  /** Whether this conversation's identity permits the memory guidance shown at launch. */
+  /** Whether this conversation has a profile whose memory it may save to. */
   maySaveMemory(sessionId: string): boolean {
-    const profile = this.profileOf(sessionId)
-    const capabilities =
-      profile === null ? null : (this.deps.store.capabilitiesOf(profile) ?? DEFAULT_CAPABILITIES)
-    return capabilities === null ? false : true
+    return this.profileOf(sessionId) !== null
   }
 
   /**
@@ -12827,9 +12740,7 @@ export class RuntimeHost implements LiveHost {
    * delivery path would be a second set of answers to *"what happens when the target is busy"*.
    *
    * 🔴 **Called as {@link THE_APP_ITSELF}**, so a reply lands as words and never as a message an
-   * agent sent. ⚠️ It also means `assertMayReach` returns immediately: a capability grant is a fact
-   * about an AGENT reaching another conversation, and this is the runtime completing an edge the
-   * give already created.
+   * agent sent: this is the runtime completing an edge the give already created.
    *
    * ## ⚑ D-017 · R14 — a giver that is not running is STARTED
    *
@@ -13879,9 +13790,8 @@ export class RuntimeHost implements LiveHost {
    * started gains the person route; so does one about work it took on for a person (commit 6).
    *
    * ⛔ **So NOTHING about messaging moves for this verb.** {@link withinMessagingReach} is untouched,
-   * {@link mayCommand} is untouched, and no capability is widened: the words travel as
-   * {@link THE_APP_ITSELF}, which {@link assertMayReach} returns for before it reads a grant, exactly
-   * as a reply and a provider-raised question already do. ⚑ **The negative that follows is
+   * {@link mayCommand} is untouched: the words travel as {@link THE_APP_ITSELF}, exactly as a reply
+   * and a provider-raised question already do. ⚑ **The negative that follows is
    * structural rather than guarded** — a worker still cannot address anything that is not its
    * parent, because there is no argument through which it could name one.
    *
@@ -19962,8 +19872,7 @@ export class RuntimeHost implements LiveHost {
    * SENTENCE about it survive one.
    *
    * ⚠️ **An absence is a real value.** An adopted session with no profile at all renders as *nobody
-   * has said* rather than as a default. ⚑ The one exception is an identity's
-   * grants before its first row is written — see `capabilities` below.
+   * has said* rather than as a default.
    */
   private instructionContext(
     profileId: string | null,
@@ -20014,19 +19923,6 @@ export class RuntimeHost implements LiveHost {
         parentSessionId === null
           ? null
           : this.theStarterCalled(parentSessionId, conversation, startedFrom),
-      // 🔴 **544 · where this conversation SITS** — the chain above it, counted from the parent.
-      //
-      // ⛔ **Counted from the parent and never from this session.** This method runs BEFORE the row
-      // exists on the launch path — the paragraph on `capabilities` says why — so asking about this
-      // conversation's own id would answer `0` for every child there is. ⚑ The parent's row does
-      // exist on both paths.
-      //
-      // ⚑ **D-016 · `give_work`'s rail counts on `work`, and the two agree by construction**: only a
-      // conversation's parent gives it work, and the rail counts from the nearest piece a person gave
-      // — a root, or work its owner took on for them (commit 6) — so every piece a conversation holds
-      // sits at the depth of its chain (spec D23). ⚠️ **`null` is HO-005 §2 Q3's own answer and not
-      // a fallback**: *a conversation a person creates is depth 0*.
-      depth: parentSessionId === null ? 0 : this.deps.store.ancestorsOf(parentSessionId).length + 1,
       // 🔴 **D-016 · its own root, when a person started it** (plan §3.10) — the label, or
       // `'not-yet-numbered'` on a first launch: the root is written with the conversation's row, by
       // `store.create`, which runs after this read. ⚠️ `null` for a conversation another one started:
@@ -20037,19 +19933,6 @@ export class RuntimeHost implements LiveHost {
           : conversation === null
             ? 'not-yet-numbered'
             : (this.deps.store.rootOf(conversation)?.label ?? 'not-yet-numbered'),
-      // ⛔ **`null` survives for an identity this app cannot NAME, and only for that.** An adopted
-      // row carries no profile and no row is coming, so the honest answer is *nobody has said* and
-      // `thisConversationSpans` prints it as one.
-      //
-      // ⚑ **No row yet is the one default set.** An identity row is written by `store.create`, which
-      // runs from `onRegistered` — after this read — so the first conversation ever run as an
-      // identity finds none here. A new row holds no grant of its own, so the default set is what
-      // that row will say. ⚠️ The row is deliberately NOT created early: `341` criterion 12, a
-      // failed launch must leave no durable row.
-      capabilities:
-        profileSlug === null
-          ? null
-          : (this.deps.store.capabilitiesOf(profileSlug) ?? DEFAULT_CAPABILITIES),
       // ⚑ **Read here rather than in the composer**, for the reason every other field on this
       // object is: the bundle is a pure function of what this method hands it, and a compiler that
       // reached into the store would be a second reader of a fact one of them would eventually get
@@ -20073,7 +19956,7 @@ export class RuntimeHost implements LiveHost {
        * reason two fields up: an adopted conversation carries no profile, so there is nobody whose
        * rules these would be.
        *
-       * ⛔ **No fallback here, unlike `capabilities`.** A person's rules cannot exist before the row
+       * ⛔ **No fallback here.** A person's rules cannot exist before the row
        * does — writing one is refused for a slug with no row (`SessionStore.writeOwnInstructions`) —
        * so *no row* and *no rules* are the same answer.
        */
@@ -20388,9 +20271,8 @@ export class RuntimeHost implements LiveHost {
           ...(planMode ? { planMode } : {}),
           ...(systemHint ? { systemHint } : {}),
           ...(ultracode ? { ultracode } : {}),
-          // Shared agent tools, with one role-bound exception: the direct rules writer is
-          // offered only to a person-started BroBot root. The common wrapper builds this list
-          // for start, resume and inventory reads; every call still goes through the host rails.
+          // The same agent tools for every conversation, built by the common wrapper for start,
+          // resume and inventory reads; every call still goes through the host rails.
           agentTools,
           // 🔴 **516 · the external MCP servers this identity may use** (HO-040 §4.2), **which since
           // 524 is *everyone's, plus what it was granted*** (`HO-048` §1).
@@ -22095,11 +21977,6 @@ export class RuntimeHost implements LiveHost {
     // ⚠️ Spelled at both call sites rather than hoisted, because `the-origin-a-model-is-told.test.ts`
     // §6 reads the HANDOVER's origin off its call; the gate's is spelled the same for symmetry.
     const session = this.requireToMessage(sessionId, by)
-    // ⚑ **D-016 · a give's brief meets no `can_message` wall** — see {@link queueAs}, which asked
-    // the gate for it already.
-    if (how.ifItLosesTheRace !== 'pass-it-on' || how.says !== null) {
-      this.assertMayReach('message', sessionId, by)
-    }
     // ⚑ **D-017 · R1** — a stop that lands in the gate's awaits is waited out and the words go after
     // the start ({@link aDeliveryAStopCaught}), never refused *still closing*.
     let handed: Awaited<ReturnType<typeof recheckHandedPaths>>
@@ -22886,13 +22763,6 @@ export class RuntimeHost implements LiveHost {
       return this.send(sessionId, text, by, attachments)
     }
     const session = this.requireToCommand(sessionId, by)
-    // ⛔ **The message capability, because this verb delivers words** (374). The interrupt half
-    // needs no grant: `requireToCommand` above made this caller the conversation's commander, and
-    // what a caller commands it may always stop (D-014).
-    //
-    // ⚑ **Above the latch, which costs nothing and is the same placement `requireToCommand` has.**
-    // A call refused here never raises `holdingQueue`, so it never has to be released.
-    this.assertMayReach('message', sessionId, by)
     // ⚠️ **The queue is held back for the whole of this, and without it the queued message JUMPS
     // THE INTERRUPT** (found in review). `interrupt()` terminalizes the running turn, which emits
     // `status: idle` — the exact signal {@link flushQueued} waits for. That event is delivered on a
@@ -23737,7 +23607,7 @@ export class RuntimeHost implements LiveHost {
     let admission = admitGive(
       input,
       by,
-      this.giveFacts(by, giver, choosing?.theNamedModels ?? null, choosing?.list.rows ?? []),
+      this.giveFacts(giver, choosing?.theNamedModels ?? null, choosing?.list.rows ?? []),
     )
     if (!admission.ok) return admission
     let { asked, under, goes } = admission
@@ -23763,7 +23633,7 @@ export class RuntimeHost implements LiveHost {
       admission = admitGive(
         { ...asked, folder: outputFolder },
         by,
-        this.giveFacts(by, giver, choosing?.theNamedModels ?? null, choosing?.list.rows ?? []),
+        this.giveFacts(giver, choosing?.theNamedModels ?? null, choosing?.list.rows ?? []),
       )
       if (!admission.ok) return admission
       ;({ asked, under, goes } = admission)
@@ -24046,7 +23916,7 @@ export class RuntimeHost implements LiveHost {
     const serviceConflict =
       asked.provider !== undefined && fixed !== null && asked.provider !== fixed
     if (asked.model === undefined && asked.effort === undefined && !serviceConflict) return null
-    const known = this.deps.store.capabilitiesOf(asked.profile) !== null
+    const known = this.deps.store.agentIdentityOf(asked.profile) !== null
     const resolved =
       fixed ?? theProviderAStartRunsOn(asked, known, giving, this.whatAStartsProviderReads, null)
     const legacy = resolved === null ? this.helperAs(speaking, asked.profile) : null
@@ -24552,7 +24422,6 @@ export class RuntimeHost implements LiveHost {
    * The world `give_work`'s rails ask about, as thunks — see {@link GiveFacts} for why it is lazy.
    */
   private giveFacts(
-    by: Caller,
     giving: GivingConversation,
     /** The provider whose list alone holds the model the give names ({@link theListAGiveChoosesFrom}). */
     theNamedModels: Provider | null,
@@ -24569,10 +24438,7 @@ export class RuntimeHost implements LiveHost {
         return session !== null && session.turnOpened ? session.itsTurnDrives : null
       },
       isAHelper: () => this.theParentInItsPlace(giving.sessionId) !== null,
-      // ⚑ **`can_assign_work`, asked of the caller alone** — the give has no conversation yet.
-      mayGiveWork: () => this.mayReachAtAll('assign', by),
-      depthOf: (piece) => this.deps.store.depthOf(piece),
-      capabilitiesOf: (profileSlug) => this.deps.store.capabilitiesOf(profileSlug),
+      agentExists: (profileSlug) => this.deps.store.agentIdentityOf(profileSlug) !== null,
       helperAs: (giver, profileSlug, provider) => this.helperAs(giver, profileSlug, provider),
       workerAt: (giver, profileSlug, parallel, provider) => {
         const selected = this.normalWorkerAt(giver, profileSlug, parallel, provider)
@@ -24589,11 +24455,7 @@ export class RuntimeHost implements LiveHost {
       },
       serviceAt: (giver, profileSlug) => this.theServiceAtAGive(giver, profileSlug),
       spawningEnabled: () => this.deps.store.spawnPolicy().spawningEnabled,
-      // ⚑ **The answer `create_agent` is given** ({@link mayCreateAgents}), with who is creating.
-      mayCreateAgents: () => {
-        const may = this.mayCreateAgents(giving.sessionId)
-        return may.ok ? may.creator : null
-      },
+      creatorOf: () => this.agentCreation.creatorOf(giving.sessionId),
       // ⚑ **Which provider the TARGET agent runs on, and what says so.** ⛔ It refuses nothing: it
       // answers *as what*.
       itsProvider: (profileSlug) => this.itsProvider(profileSlug),
@@ -25754,7 +25616,7 @@ export class RuntimeHost implements LiveHost {
       const arriving = this.theOneInItsPlace(sessionId)
       if (this.startupRepairs.has(arriving)) await this.settleBeforeUse(arriving)
       if (!this.runsNow(arriving)) {
-        await this.refuseBeforeAStart(arriving, text, by, attachments, says)
+        await this.refuseBeforeAStart(arriving, text, by, attachments)
       }
     })()
     const inLine = this.afterWhatArrivedFirst(sessionId, async () => {
@@ -25768,7 +25630,7 @@ export class RuntimeHost implements LiveHost {
         this.aPersonsWindowTakesIt(to, theSurfaceAsking(by))
         return deliver(to)
       }
-      await this.refuseBeforeAStart(to, text, by, attachments, says)
+      await this.refuseBeforeAStart(to, text, by, attachments)
       const waker = sessionSpeakingAs(by)
       this.noteWhatBringsItBack(to, () => {
         const who =
@@ -25965,10 +25827,7 @@ export class RuntimeHost implements LiveHost {
    * the ones {@link queueAs} asks inside its gate, so the conversation its started self would refuse
    * the message to is refused now, and nothing is started to be refused afterwards.
    *
-   * ⚑ **An agent**: its reach ({@link withinMessagingReach}, the grant deciding as for a running
-   * one), and — for a message — the reach floor. ⚑ **A give's brief meets no `can_message` wall**
-   * (`says` is `null`): the give asked `may-not-assign-work`, and it goes to the giver's own
-   * conversation with that agent, which it commands.
+   * ⚑ **An agent**: its reach ({@link withinMessagingReach}, as for a running one).
    * ⚑ **Anyone else**: a conversation this app can start; and for a surface — a person's window —
    * words to send, and what is attached still where it was. ⚑ **This app** is refused nothing more.
    * ⛔ **A caller that is none of those** — a commander — only one it would command as it runs.
@@ -25978,15 +25837,13 @@ export class RuntimeHost implements LiveHost {
     text: string,
     by: Caller,
     attachments: readonly HandedPath[],
-    says: AgentMessageKind | null,
   ): Promise<void> {
     const me = sessionSpeakingAs(by)
     if (me !== null) {
-      if (this.itsCallerMessagesAService(sessionId, by, says)) return
+      if (this.itsCallerMessagesAService(sessionId, by)) return
       if (!this.withinMessagingReach(sessionId, by, me)) {
         throw new Error(`unknown session: ${sessionId}`)
       }
-      if (says !== null) this.assertMayReach('message', sessionId, by)
       return
     }
     // ⚑ **A conversation starting or on its way out is waited on, and whose it is is asked first**
@@ -26470,20 +26327,8 @@ export class RuntimeHost implements LiveHost {
     // the same gate — see its own note for why the pair is the rule — and the three siblings left
     // on {@link requireToCommand} are `sendInterrupting`, `cancelQueuedMessage` and `interrupt`.
     // What this verb asks is {@link withinMessagingReach}, which admits everything `mayCommand` does
-    // and, for an identity a person granted a global reach, one conversation more: the one it did
-    // not start. ⚠️ **The capability rail is asked after the entitlement**, so `may-not-message`
-    // still refuses an identity a person narrowed.
-    //
-    // 🔴 **681 · and the wall is asked INSIDE the gate, so it answers before *not started*** (PM
-    // ruling R30b): the order is entitlement, the wall, then *not started* — and a starting receiver
-    // meets the SAME policy wall a running one does.
-    //
-    // ⚑ **D-016 · a give's brief meets no `can_message` wall** (`says` is `null`): the give asked
-    // `may-not-assign-work` before anything was sent, and a give goes only to the giver's own
-    // conversation with that agent.
-    const session = this.requireToMessage(sessionId, by, () => {
-      if (says !== null) this.assertMayReach('message', sessionId, by)
-    })
+    // and any other conversation that is not a service's.
+    const session = this.requireToMessage(sessionId, by)
     // ⚑ **708 · the same `this.originOf(by)` the held branch records below** — the gate refuses a
     // person's command that carries attachments at the QUEUE, while the composer still holds them.
     // 🔴 **A sign-in that moved on HOLDS the words a reopen carries** ({@link aReopenCarriesIt}): an
@@ -26997,13 +26842,6 @@ export class RuntimeHost implements LiveHost {
    * it is written out here rather than deleted because the TEST that pinned it is still in the
    * tree under a corrected name. ⚑ Its second half survives and is now literal: the person's arm
    * and the ledger's word come out of one function.
-   *
-   * ⚠️ **Named `conversation` and not `speaking`, which is not style.** `374`'s `M13` anchors on
-   * `const speaking = sessionSpeakingAs(by)` followed by `if (speaking === null) return` in
-   * {@link assertMayReach}, and a second copy of those two lines anywhere in this file makes that
-   * row match twice and retire — a row of somebody else's going dark because of a variable name
-   * here. `414` moved the copy that used to sit in the task minting in here, and kept the rule
-   * with it.
    *
    * ⚑ **One query, and only for a conversation.** ⛔ **607 kept that**: a window's turn is still
    * decided before the store is asked, and {@link THE_PERSON_AT_A_WINDOW} is a constant rather
@@ -34819,38 +34657,7 @@ export class RuntimeHost implements LiveHost {
   }
 
   createAgent(said: NewAgent, by?: Caller): AgentIdentity {
-    if (said.asAService === true && !this.servicesAreOn()) {
-      throw new Error(NO_SERVICE_IS_MADE_WHILE_OFF)
-    }
-    const actor = by === undefined ? null : whoDidIt(by)
-    const profile =
-      actor?.who === 'an-agent'
-        ? (this.runningAs(actor.agent)?.profileId ??
-          this.deps.store.recordedOne(actor.agent)?.profileId)
-        : null
-    const creator: IdentityCreator | null =
-      actor?.who === 'a-person'
-        ? { by: 'a-person' }
-        : actor?.who === 'the-app-itself'
-          ? { by: 'this-app' }
-          : actor?.who === 'an-agent' && profile
-            ? { by: 'an-agent', agent: foldProfileName(profile) }
-            : null
-    const created = this.deps.store.createAgentIdentity(said, creator)
-    if (created === null) throw new Error(nameIsTaken(said.slug))
-    if (said.asAService === true) this.keepItAsAService(created)
-    // 🔴 **534 · an identity row exists, so every surface that lists identities is stale.**
-    //
-    // ⛔ **Announced even though THIS door is a person's and the window that pressed it already
-    // re-reads.** ⚠️ The rule is *an identity row was written*, not *an identity row was written by
-    // somebody who cannot be told* — a rule with an exception carved out for the caller it happens
-    // to have today is the rule that produced this dispatch. ⚑ A second read costs one call; the
-    // exception costs the next surface that forgets.
-    //
-    // ⛔ **After the refusal, never before it.** A taken name writes nothing, so there is nothing to
-    // announce — and `a-conversation-born-while-he-watches.test.ts` §3 pins that pair.
-    this.theWorldMoved('agents')
-    return created
+    return this.agentCreation.createAgent(said, by)
   }
 
   /**
@@ -34877,253 +34684,36 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  /**
-   * 🔴 **Bring an identity into existence — an AGENT's door** (419, HO-020 §4, brief §1).
-   *
-   * ⛔ **A second door and not a caller check on the one above, because HO-020 §4 licences both and
-   * they carry different guarantees.** A person is ungated; an agent meets three rails, answers with
-   * a refusal a model can read rather than an exception, and has every refusal written into its own
-   * ledger by the chokepoint that wraps every tool.
-   *
-   * ## ⚠️ The rails, in this order, and the order is argued
-   *
-   *  1. ⛔ **The kill switch** — see {@link RuntimeHost.mayCreateAgents}.
-   *  2. ⛔ **The grant**, `canCreateAgents`.
-   *  3. ⛔ **The name**, last, because *entitlement before existence*: an unentitled caller must not
-   *     be able to learn which identities exist from the shape of the refusal it gets (341's ruling,
-   *     one door over).
-   *
-   * 🔴 **486 · rails 1 and 2 moved into {@link RuntimeHost.mayCreateAgents} and did not change.**
-   * ⛔ **The order here is unchanged; what changed is that the TOOL can now ask them before it reads
-   * an argument** (HO-031 §2.5). ⚠️ They are asked through one function rather than written twice,
-   * so *the wall the tool reports* and *the wall the writer enforces* cannot drift apart — and rail
-   * 3 stays here, behind both, because only this method may create anything.
-   *
-   * ## 🔴 618 · and it now writes the new identity's own rules — `HO-078` §4
-   *
-   * ⛔ **A fourth STEP and deliberately not a fourth rail.** *"`create_agent` takes the new
-   * identity's own instructions"*, and *"the creator writes the initial text; after that it is the
-   * person's"* (`HO-078` §1.1) — so the write happens once, at the end, on the call that minted the
-   * row, and every later call naming that identity is refused by rail 3 before it reads anything.
-   * ⚑ **The step's own note is where the entitlement question is argued**, including what this
-   * widens and the measurement that ruled out gating it on `canWriteRules`.
-   */
   createAgentFor(
     me: string,
     said: NewAgent,
     by: Caller,
     itsOwnRules: string | null,
-    /**
-     * 🔴 **D-042 · R2 — the default model and effort `create_agent` named, judged by the one seam**
-     * ({@link judgeTheDefaultItNames}), or `null` — it named none. ⚑ Required, `itsOwnRules`' idiom:
-     * *it named none* is a value the door computes.
-     */
     itsDefault: AgentModelChoice | null,
   ): CreateAgentOutcome {
-    // ⛔ A service is made only while a person has services on: asked of the arguments, first.
-    if (said.asAService === true && !this.servicesAreOn()) {
-      return { ok: false, rail: 'services-are-off-so-none-is-made', detail: {} }
-    }
-    // 1-2 · ⚑ **486 · the switch and the grant, through the one function that owns them**, so the
-    // door that asks them BEFORE reading an argument and the door that asks them here cannot come
-    // to disagree. See {@link RuntimeHost.mayCreateAgents}.
-    // 🔴 **598 · the CREATOR comes off the grant door's own answer** (`HO-084` §1). ⛔ **Not a
-    // second {@link runningAs} read here**, which is this method's own standing rule one fact over:
-    // *who is asking* is answered once, by the function the grant door asks it with. ⚑ Two reads
-    // could not disagree inside one synchronous
-    // call — and a grant read from one caller and a provenance written from another is exactly the
-    // shape that has no test, so the door answers both at once or neither.
-    const may = this.mayCreateAgents(me)
-    if (!may.ok) return may
-    // 3 · the name, last — and its provider kept from the start: the one it names, else its
-    // default's, else the creator's.
-    const provider = said.provider ?? itsDefault?.provider ?? this.theProviderOfConversation(me)
-    const created = this.deps.store.createAgentIdentity({ ...said, provider }, may.creator)
-    if (created === null) {
-      return { ok: false, rail: 'agent-name-taken', detail: { agent: foldProfileName(said.slug) } }
-    }
-    if (said.asAService === true) this.keepItAsAService(created)
-    // 4 · 🔴 **618 · the rules, AFTER the name and only on the call that minted it** (`HO-078` §4).
-    //
-    // ⛔ **There is no fourth RAIL here and that is the design.** The write is unreachable a second
-    // time because rail 3 is: a caller naming this identity again meets `agent-name-taken` before
-    // anything is read, so *one write, at creation, and never again* (`HO-078` §4.1) is a property
-    // of the order rather than a guard somebody has to keep. ⚑ **And it is a database fact as
-    // well** — `identity_instruction_creator_is_first_ck` refuses `its-creator` on any version but
-    // the first, whatever code runs.
-    //
-    // ⚠️ **It is NOT gated on `canWriteRules`, and that is argued rather than omitted.** That grant
-    // is *may this agent change what ANOTHER agent is told to do* — its own help string's words —
-    // and at this instant there is nothing to change: the identity has no rules, no person has
-    // written anything for it, and it has never run. ⛔ **What it does mean is that `canCreateAgents`
-    // now buys one instruction write per identity it creates**, which is `HO-084` §1's own shape
-    // (*the grant covers what it created*) and is recorded as a widening rather than passed off as
-    // none. 🔴 **The alternative was measured and is worse**: `canWriteRules` is `none` for every
-    // agent by default, so gating here would have shipped `HO-078` §4 DARK on every install, which
-    // is `HO-048` §1's *a form that starts closed* with nobody to open it.
-    //
-    // ⛔ **`null` from the store is unreachable while rail 3 holds** — the identity would have to be
-    // removed between two statements of one synchronous stretch — and it is written down rather
-    // than left looking like a guard (`471`'s note, and `proposeAgentRules`' own line below).
-    const rulesAuthor = this.rulesAuthor(me, by)
-    const rules =
-      itsOwnRules === null
-        ? null
-        : this.deps.store.writeOwnInstructions(
-            {
-              profileSlug: created.slug,
-              text: itsOwnRules,
-              // 🔴 **The fourth word, and `own-instructions.ts` argues why none of the three
-              // existing ones is TRUE of this act.** ⛔ Not `an-agents-proposal`: nobody decided
-              // anything, and an ending of `approved` would be a claim about an act that never
-              // happened. ⛔ Not `relayed-from-user`: the creator claims nothing about a person.
-              whoWroteIt: 'its-creator',
-              ...(rulesAuthor === null ? {} : { author: rulesAuthor }),
-              // ⚑ **`whoDidIt(by)` and NOT `may.creator`**, even though the creator and the writer
-              // are the same act. ⛔ They are two different values: `IdentityCreator.agent` is the
-              // creating IDENTITY's folded slug — what `agent_identity.created_by` is about — and
-              // `ActedBy.agent` is the CONVERSATION that performed the act, which is what every
-              // other settled act in this app records and what `didIt` renders. ⚠️ Writing the slug
-              // into this column would put a profile name where every reader expects a session id.
-              // ⚑ `proposeAgentRules` spells it the same way, one door over, on the same table.
-              by: whoDidIt(by),
-              conversation: me,
-              // ⛔ **No `why`, because there is no argument for one** — see
-              // `OwnInstructionsVersion.said`: the text IS the act, and a second free-shaped
-              // optional beside the name is what `445` measured a model filling with a purpose.
-              said: null,
-              broughtBack: null,
-            },
-            this.now(),
-          )
-    // 🔴 **534 · THE agent door, and the one no window can be told about any other way.**
-    //
-    // ⛔ **Every agent may create one by default** (D-014), so an identity created by an agent is the
-    // ordinary case rather than the exotic one — and the rail's Agents section has no other way to
-    // learn about a single one of them. ⚑ This is the conversation defect's sibling, two hundred
-    // pixels down the same rail.
-    //
-    // 🔴 **618 · and it is announced AFTER the rules are written**, so a window that re-reads on
-    // this signal cannot draw an identity whose own instructions land a statement later. ⚠️ Nothing
-    // asynchronous separates the two today; the ORDER is what keeps that true when something does.
-    // ⚑ **D-042 · R2 — its default, after the name and only on the call that minted it** — what its
-    // new conversations start on. ⛔ Unreachable `false` while rail 3 holds, as the rules' write is.
-    if (itsDefault !== null) this.deps.store.setModelChoice(created.slug, itsDefault)
-    this.theWorldMoved('agents')
-    return {
-      ok: true,
-      identity: created,
-      rules,
-      defaultModel: this.deps.store.modelChoiceOf(created.slug),
-    }
+    return this.agentCreation.createAgentFor(me, said, by, itsOwnRules, itsDefault)
   }
 
-  /**
-   * 🔴 **May this caller create agents AT ALL — asked of nothing it wrote** (486, HO-031 §2.5).
-   *
-   * ## ⛔ Why a door of its own, and not a flag on the one above
-   *
-   * ⚠️ **HO-031 §2.5 measured the PM meeting this very wall as `malformed-request · permanent`.**
-   * The tool validated every argument before anything asked
-   * whether the caller may create an identity at all, so a standing grant answered in the
-   * vocabulary of a typo — and this app's own instruction to its agents, *read it rather than
-   * retrying a permanent one*, pointed at the false conclusion. 🔴 **The real rail was only ever
-   * discovered because the PM disobeyed that instruction.**
-   *
-   * ⛔ **Nothing here reads `said`, and that is the property rather than an accident.** The answer
-   * is byte-identical for a slug that names an existing identity and one that names nothing, which
-   * is `341`'s *entitlement before existence* holding while the order changes around it: moving the
-   * grant in FRONT of the argument check must not turn the refusal into an oracle.
-   *
-   * ⚑ **The admitted arm means *nothing standing stopped it*, never *it is admitted*.** The name is
-   * still asked, last, by {@link RuntimeHost.createAgentFor} — this door cannot answer it and does
-   * not try.
-   *
-   * ⚠️ **598 · it answered `null` on that arm until this dispatch, and the sentence above said so**
-   * (standing rule 19's corollary). ⛔ **It carries the CALLER now** — see {@link MayCreateAgents} —
-   * because `HO-084` §1 records *who created it* on the new row, and the door that resolves who is
-   * asking is the only one that can hand it over without a second read. ⚑ **What it answers is
-   * unchanged in every other way**: nothing here reads `said`, and the answer is still
-   * byte-identical for a slug that names an existing identity and one that names nothing.
-   *
-   * ## ⛔ The switch, and `419` §5 asked for it to be ARGUED rather than assumed
-   *
-   * ⚠️ **The switch says *"spawning is on · press to stop that"*, and creating is not spawning** —
-   * which is the case for leaving this door open. ⛔ **The case against it is what creation
-   * PRODUCES while the switch is off**: an identity nobody can start. HO-020 §4 priced exactly
-   * that — *"a typo there is indistinguishable from an intention, and the cost is a durable empty
-   * identity"* — so with spawning off, this verb can only ever produce the failure mode criterion
-   * 12 exists to prevent, and it would do it silently, in a state a person entered by asking the
-   * app to stop. ⚑ **So it is refused, and the SENTENCE carries the part the switch's label does
-   * not**: the remedy is the switch, and nothing was created.
-   *
-   * ⚠️ **It is asked before the grant** — it is an app-wide fact about the person's own app and says
-   * nothing about the caller. ⚑ `give_work` asks the same switch before it asks this grant.
-   *
-   * ⚑ **An unresolvable caller is refused for lack of a GRANT**, and that is the narrow direction
-   * rather than a lie: a session this host cannot find holds no capabilities at all, and *we cannot
-   * tell who is asking* has exactly one safe reading.
-   */
   mayCreateAgents(me: string): MayCreateAgents {
-    if (!this.deps.store.spawnPolicy().spawningEnabled) {
-      return { ok: false, rail: 'spawning-disabled', detail: {} }
-    }
-    // ⚠️ **{@link runningAs} rather than a second slot read**, so *who is asking* is answered by the
-    // same function `give_work`'s rails ask it with.
-    const caller = this.runningAs(me)
-    const allowed = caller === null ? null : this.deps.store.capabilitiesOf(caller.profileId)
-    if (allowed === null || caller === null || allowed.canCreateAgents === 'none') {
-      return {
-        ok: false,
-        rail: 'may-not-create-agents',
-        detail: { you: caller?.profileId ?? null },
-      }
-    }
-    // 🔴 **598 · the admitted arm NAMES the caller** (`HO-084` §1) — see {@link MayCreateAgents}.
-    // ⛔ **FOLDED**, because `created_by` holds a row id derived from the folded slug, and a creator
-    // is an identity rather than a directory (187/238).
-    return { ok: true, creator: { by: 'an-agent', agent: foldProfileName(caller.profileId) } }
+    return this.agentCreation.mayCreateAgents(me)
   }
 
-  /**
-   * 🔴 **May this caller perform this act on ANY conversation — asked of no target** (486,
-   * HO-031 §2.5).
-   *
-   * ⛔ **{@link admitReachAtAll}'s rails and no others**, so a door may ask *are you allowed to
-   * message anything at all* before it has read the id it was given. ⚑ **For `assign` it is the
-   * whole question** (D-016): `give_work` asks it of the caller alone, because a give has no target
-   * until its lookup has found one.
-   *
-   * ⚑ **A person is not asked** — `sessionSpeakingAs` decodes only `agent:<id>`, and HO-007's
-   * *the human unrestricted* is an ABSENCE of a question here exactly as it is in
-   * {@link RuntimeHost.assertMayReach}.
-   *
-   * ⛔ **It never replaces `assertMayReach`.** For a message the full question is still asked at the
-   * verb, against the target, in the order it always was; this one only moves
-   * the answer a caller was going to get anyway in front of an argument check that cannot change
-   * it.
-   */
-  mayReachAtAll(act: MessagingAct, by: Caller): MessageRefusal | null {
-    const speaking = sessionSpeakingAs(by)
-    if (speaking === null) return null
-    const mine = this.deps.store.identityOf(speaking)
-    return admitReachAtAll(
-      act,
-      mine === null ? null : this.deps.store.capabilitiesOf(mine.profileSlug),
-    )
-  }
+  private readonly agentCreation: AgentCreation = new AgentCreation({
+    store: () => this.deps.store,
+    profileOf: (conversation) =>
+      this.runningAs(conversation)?.profileId ??
+      this.deps.store.recordedOne(conversation)?.profileId ??
+      null,
+    servicesAreOn: () => this.servicesAreOn(),
+    keepItAsAService: (created) => this.keepItAsAService(created),
+    theProviderOfConversation: (conversation) => this.theProviderOfConversation(conversation),
+    rulesAuthor: (me, by) => this.rulesAuthor(me, by),
+    theWorldMoved: (what) => this.theWorldMoved(what),
+    now: () => this.now(),
+  })
 
-  /** Tool visibility uses the conversation's origin, including before its provider has started. */
   private agentToolsForSession(sessionId: string): AgentToolset {
-    const slot = this.slots.get(sessionId)
-    const recorded = slot === undefined ? this.deps.store.recordedOne(sessionId) : null
-    const profileId = slot?.profileId ?? recorded?.profileId ?? null
-    const offersDirectRulesWrite =
-      profileId !== null &&
-      foldProfileName(profileId) === DEFAULT_PROFILE_ID &&
-      (slot === undefined || slot.spawnedBy === null) &&
-      this.deps.store.parentOf(sessionId) === null
-    return agentToolsFor(this, sessionId, this.theListsAsLastRead(), offersDirectRulesWrite)
+    return agentToolsFor(this, sessionId, this.theListsAsLastRead())
   }
 
   /** Bind attribution to the actual running conversation, never a supplied profile or label. */
@@ -35261,7 +34851,7 @@ export class RuntimeHost implements LiveHost {
       return no('too-many-server-requests', { waiting: waiting.length, from: 'every-conversation' })
     }
     const agents = [...new Set(said.agents.map((one) => foldProfileName(one)))]
-    const unknown = agents.filter((one) => this.deps.store.capabilitiesOf(one) === null)
+    const unknown = agents.filter((one) => this.deps.store.agentIdentityOf(one) === null)
     if (unknown.length > 0) return no('no-agent-by-that-name', { agents: unknown })
     let piece: { readonly piece: string; readonly label: string } | null = null
     if (said.piece !== null) {
@@ -35294,7 +34884,7 @@ export class RuntimeHost implements LiveHost {
    *
    * ⚑ **Two lists, and the difference between them is the whole answer.** {@link profiles} is a
    * `readdir` of `provider-homes/`; `store.agentIdentities` is the ROWS. A folder without a row is
-   * an identity nothing has ever run as: `setCapabilities` refuses it and `admitGive` refuses a
+   * an identity nothing has ever run as: `setExternalMcpServers` refuses it and `admitGive` refuses a
    * give to it (`no-such-profile`), so it is reported as what it is rather than offered as
    * something to configure. ⛔ **Nothing here creates a row** — asking what identities exist may not
    * bring one into being, which is criterion 12 read from the reading side.
@@ -35440,36 +35030,17 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * 🔴 **Grant, narrow, or hand one identity's capabilities back to the defaults** (355).
-   *
-   * ⛔ **The refusal to create a row is the STORE's and is not restated here** — 076 §3's rule about
-   * two statements of one rule. `setCapabilities` answers `false` for a slug with no row, and this
-   * turns that into the `null` the wire carries. ⚑ Reading the identity back afterwards, rather
-   * than assuming what was written, is 339's shape: the surface draws what the database now says.
+   * Replace the external MCP servers one identity is associated with, and read the identity back;
+   * `null` when no agent has that name.
    */
-  setCapabilities(
+  setExternalMcpServers(
     profileSlug: string,
-    grant: CapabilityGrant,
-    externalMcpServerIds?: readonly string[],
+    externalMcpServerIds: readonly string[],
   ): AgentIdentity | null {
-    // 🔴 **`assertThePinnedProject` stood here and is DELETED, because the asymmetry it guarded no
-    // longer exists** (369).
-    //
-    // ⛔ **355's review found that the write keyed on `DEFAULT_PROJECT_ID` while this read-back keyed
-    // on the CALLER's slug** — *"a silent write into the wrong row, reported as there is nothing
-    // here"* — and the refusal was the honest interim answer. A grant is now a fact about a global
-    // identity, so there is one key, one row and nothing left for a second project slug to
-    // disagree with. ⚑ **Keeping the guard would have been the worse half of the trade**: a refusal
-    // naming a project on a door that no longer has a project axis is a disclosure claiming a
-    // constraint the app does not have, which is the shape HO-010 §2.1 flags one tool over.
-    if (!this.deps.store.setCapabilities(profileSlug, grant, externalMcpServerIds)) return null
-    // ⚑ **682 · announced on `agents`, as {@link setAgentModelAndEffort} is** (`677`'s inbox 10): a
-    // second window showing this identity's sheet would otherwise go on drawing grants that are no
-    // longer the ones a spawn will read. ⚠️ After the write and only when it landed — a refusal moved
-    // nothing, so there is nothing to tell.
+    if (!this.deps.store.setExternalMcpServers(profileSlug, externalMcpServerIds)) return null
+    // A second window showing this identity's sheet re-reads.
     this.theWorldMoved('agents')
-    const folded = foldProfileName(profileSlug)
-    return this.deps.store.agentIdentities().find(({ slug }) => slug === folded) ?? null
+    return this.deps.store.agentIdentityOf(profileSlug)
   }
 
   /**
@@ -36284,7 +35855,7 @@ export class RuntimeHost implements LiveHost {
    *
    * ⛔ **`false` is *there was no such row*, and it is not an error.** A person pressing Remove twice,
    * or on a row another window has already removed, has asked for a state that already holds —
-   * {@link SessionStore.setCapabilities}' `false` one door over, for its reason.
+   * {@link SessionStore.setExternalMcpServers}' `false` one door over, for its reason.
    *
    * ⚠️ **Nothing running is touched.** A conversation's servers are fixed by the query it was
    * started with (`307`), so this reaches the NEXT launch and the sheet says so.
@@ -37039,10 +36610,6 @@ export class RuntimeHost implements LiveHost {
   private readonly instructionDecisions: InstructionDecisions = new InstructionDecisions({
     store: () => this.deps.store,
     rulesAuthor: (me, by) => this.rulesAuthor(me, by),
-    hasUnspawnedSlot: (conversation) => {
-      const slot = this.slots.get(conversation)
-      return slot !== undefined && slot.spawnedBy === null
-    },
     instructionPublisher: (conversation) => {
       const session = this.slots.get(conversation)?.session ?? null
       return session === null ? null : (event) => this.publishOurs(session, event)
@@ -40422,91 +39989,8 @@ export class RuntimeHost implements LiveHost {
    * in a conversation it could not take back if that verb were published — which is a note for the
    * dispatch that publishes it, not a hole this one opened.
    */
-  private requireToMessage(
-    sessionId: string,
-    by: Caller,
-    /**
-     * 🔴 **681 · the walls a running receiver would be refused by, asked BEFORE *not started***
-     * (PM ruling R30b) — entitlement, then these, then {@link sessionFor}'s not-started throw.
-     *
-     * ⛔ **Inside the gate and not after the call**, because the gate is the one place
-     * {@link sessionFor} asks anything between *is there such a slot* and *has it started*: asked
-     * after this method returned, a caller the walls refuse was first told to RETRY — `650` F1's
-     * narrowed caller, told *not started* and then `may-not-assign-work` when the launch landed.
-     * ⚑ **Empty unless a door asks**, so {@link sendAs} — whose target has already passed these at
-     * {@link queueAs} whenever a model is the caller — meets exactly the gate it always met.
-     */
-    walls: (receiver: SessionSlot) => void = () => {},
-  ): HostedSession {
-    return this.sessionFor(sessionId, (slot) => {
-      this.assertMayMessage(slot, by)
-      walls(slot)
-    })
-  }
-
-  /**
-   * 🔴 **May this caller do THIS to a conversation it already commands?** (374, HO-007 §2.1 P3.)
-   *
-   * ## ⛔ Why it is a fourth question and not a wider {@link mayCommand}
-   *
-   * `mayCommand` answers FOURTEEN questions from FIVE call sites in this file — the five verbs,
-   * {@link interruptAgent} and {@link theConversationAddressed} through {@link mayInterrupt}, {@link takeBackPiece}, {@link updateWork}'s close, {@link agentsVisibleTo}, {@link agentCard},
-   * `replyToParent`'s own resolution and the two answer verbs on {@link requireToAnswer};
-   * `a-reach-you-can-see.test.ts` §3 is where that count is COMPUTED rather than restated — **and
-   * this enumeration had been one short since `441` while the number beside it read *fourteen*,
-   * which is why the count is the test's and not this list's.** ⚠️ **Narrowing it would narrow all
-   * of them**: an identity with `can_message: none` would stop being able to see its own children in
-   * `list_agents` and stop being able to interrupt them — none of which anybody granted or revoked. 340 §5's rule, in the other direction: *"an entitlement widening must be opt-in at the
-   * call site"*, and so must a narrowing.
-   *
-   * ⚑ **So this is a separate line at each verb that delivers words** — `send`, `queueMessage` and
-   * `sendInterrupting` — and `cancelQueuedMessage` deliberately does NOT have it. ⚠️ **Two of those
-   * reach that line through {@link requireToMessage} since `431` rather than through
-   * {@link requireToCommand}**, which changes which callers arrive here and changes nothing about
-   * what this question asks of them. Taking back words you already put there is not a new act
-   * against the conversation, and refusing it would strand a message a caller could no longer
-   * withdraw the moment a person narrowed the grant.
-   *
-   * ⛔ **Stopping is not asked it** (D-014): {@link interruptAgent} reaches the chain below the
-   * caller, whatever it may message.
-   *
-   * ## 🔴 A person is not asked the question at all
-   *
-   * HO-007: *"the human unrestricted."* `sessionSpeakingAs` decodes only `agent:<id>`; a window's
-   * `webContents:<n>` and {@link THE_APP_ITSELF} both give `null`, and this returns immediately.
-   * ⛔ **That is an absence of a question rather than an exemption** — there is no clause here that a
-   * later edit could make say `true` for a caller that is not an agent, because there is no clause.
-   *
-   * ## ⚠️ The SPEAKER comes from the LEDGER, and that is 373's state working
-   *
-   * The speaker's identity is read through `identityOf`, which is a row rather than a slot. ⛔
-   * **Reading the speaker's profile off `this.slots` would have made this gate ask a
-   * liveness question that {@link mayCommand} deliberately does not**: `373` established that a
-   * commander derived from the provenance row admits a parent whose own conversation is not open, and
-   * a capability that could not be looked up for such a parent would have quietly closed that door.
-   *
-   * ⚠️ **An identity with no row refuses**, which is `unknown-profile`'s direction one door over:
-   * falling back to `DEFAULT_CAPABILITIES` would hand the ruled grant to a caller this app cannot
-   * place.
-   */
-  private assertMayReach(
-    /**
-     * ⛔ **Every act but `assign`** — `give_work` asks that one of the caller alone, through
-     * {@link mayReachAtAll}, because a give has no conversation to ask it about until its lookup has
-     * found one (D-016).
-     */
-    act: Exclude<MessagingAct, 'assign'>,
-    sessionId: string,
-    by: Caller,
-  ): void {
-    const speaking = sessionSpeakingAs(by)
-    if (speaking === null) return
-    const refusal = this.mayReachAtAll(act, by)
-    if (refusal === null) return
-    console.warn(
-      `runtime host refused to ${act} ${sessionId}: ${speaking} is refused by ${refusal.rail}`,
-    )
-    throw new MessagingRefused({ ...refusal, detail: { ...refusal.detail, agent: sessionId } })
+  private requireToMessage(sessionId: string, by: Caller): HostedSession {
+    return this.sessionFor(sessionId, (slot) => this.assertMayMessage(slot, by))
   }
 
   /** Read any known conversation's transcript, including an empty one. */
@@ -40544,16 +40028,6 @@ export class RuntimeHost implements LiveHost {
   private ofOneIdentity(one: string, other: string): boolean {
     const profile = this.profileOf(one)
     return profile !== null && profile === this.profileOf(other)
-  }
-
-  private ancestorsAsItWillRun(sessionId: string): readonly string[] {
-    const recorded = this.deps.store.ancestorsOf(sessionId)
-    if (recorded.length > 0) return recorded
-    const slot = this.slots.get(sessionId)
-    if (slot === undefined || slot.session !== null) return recorded
-    const parent = slot.spawnedBy
-    if (parent === null) return recorded
-    return [parent, ...this.ancestorsAsItWillRun(parent)]
   }
 
   /**
@@ -40625,19 +40099,12 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * Refuse words aimed at a conversation this caller neither started nor was granted a reach to
-   * (431).
+   * Refuse words aimed at a conversation this caller may not reach (431).
    *
    * ⛔ **It borrows {@link assertMayControl}'s refusal for {@link assertMayCommand}'s reason, and
    * the borrow is still exact**: {@link withinMessagingReach} admits everything `mayCommand` admits,
    * so a caller that fails the wider question fails both narrower ones and the line below always
    * throws. ⚑ A stranger is told the same thing whether it tried to send, to message or to close.
-   *
-   * ⚠️ **This is the ENTITLEMENT and never the capability.** {@link assertMayReach} is asked on the
-   * line after {@link queueMessage} passes this one, reads `can_message` and refuses under
-   * `may-not-message` — so an identity admitted here by a global
-   * grant is still narrowed by the same rails as everybody else, and `374`'s two-gate shape is
-   * unchanged.
    */
   private assertMayMessage(slot: SessionSlot, by: Caller): void {
     if (this.withinMessagingReach(slot.id, by)) return

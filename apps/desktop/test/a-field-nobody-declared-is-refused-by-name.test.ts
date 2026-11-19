@@ -1,4 +1,5 @@
 import { neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import { agentRosterForWire } from './lib/agent-roster-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -17,12 +18,6 @@ import {
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { executeRuntimeCommand, runtimeCommandSchema } from '../src/main/runtime/ipc'
 import { createAgentStore } from '../src/renderer/src/lib/agent-store'
-import {
-  CAPABILITY_FIELDS,
-  DEFAULT_CAPABILITIES,
-  capabilityField,
-  type CapabilityGrant,
-} from '../src/shared/capabilities'
 import type {
   AgentIdentities,
   AgentIdentity,
@@ -36,27 +31,6 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
 /**
  * 🔴 **D-020 · a field nobody declared is refused by name, on the two commands a person's settings
  * travel by.**
- *
- * `agentIdentities` (the roster read) and `setCapabilities` (the sheet's one Save) are
- * `z.strictObject` on the runtime wire. Before D-020 both were a plain `z.object`, and zod STRIPS
- * what it was not told about: a mistyped field, or a capability sent beside the grant instead of
- * inside it, was dropped without a word while the rest of the command was written — so a person
- * believed two things had been saved and one had. The `grant` inside `setCapabilities` was already
- * refused so (`capabilityGrantSchema`, row `355 M6b`); what this file pins is the ENVELOPE around
- * it, which that row cannot see.
- *
- * ## ⚑ What is asserted, and the pair that keeps each half honest
- *
- *  - **§1 the roster read** — a stray key is a refusal that names the key; the bare command, on
- *    the same host, is answered with the roster, so the refusal is the stray key's.
- *  - **§2 the sheet's Save** — a stray key beside a WHOLE valid grant refuses the whole command and
- *    writes nothing (raw columns, not the resolver, which answers the default either way); the same
- *    payload without the stray lands.
- *  - **§3 the window sends exactly the declared fields** — the payload the real agent store hands
- *    the bridge, framed the way the preload frames it, is accepted by the wire, and one extra field
- *    is not. ⛔ Strictness is the cost of this change: a declared field the schema forgets, or a
- *    field the window adds, is now a loud refusal of the whole Save, not a silent strip.
- *  - **§4 the preload's framing** — read as text, because the preload needs electron.
  *
  * ⚠️ **Every refusal is read off the wire's own sentence**, `describeIssues`' *"path: message"* —
  * an `unrecognized_keys` issue is raised at the command's ROOT, so its path is `(root)` and the
@@ -126,11 +100,6 @@ describe('D-020 · a field nobody declared is refused by name', () => {
     rmSync(work, { recursive: true, force: true })
   })
 
-  /**
-   * ⛔ **The only way an identity comes into being** — a person runs a conversation as it, and then
-   * closes it so the identity is free (`the-grant-nobody-can-give.test.ts`). `setCapabilities`
-   * refuses to create the row, so every Save below needs this first.
-   */
   const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
     const { sessionId } = await host.createSession(
       { provider: 'claude', profileId, cwd: work, approvalMode: 'ask' },
@@ -142,18 +111,6 @@ describe('D-020 · a field nobody declared is refused by name', () => {
 
   /** A command over the real wire, as the real window sink. */
   const overTheWire = (raw: unknown): Promise<unknown> => executeRuntimeCommand(host, window, raw)
-
-  /** Every field of a grant, at whatever the identity currently follows — a sheet with nothing set. */
-  const nothingChosen = (): Record<string, null> =>
-    Object.fromEntries(CAPABILITY_FIELDS.map((field) => [field.key, null]))
-
-  /** The two columns this file reads raw — the resolver answers the default either way. */
-  const heldBy = (slug: string): { depth: unknown; message: unknown } =>
-    db
-      .prepare(
-        `SELECT ${capabilityField('maxDepth').column} AS depth, ${capabilityField('canMessage').column} AS message FROM agent_identity WHERE slug = ?`,
-      )
-      .get(slug) as { depth: unknown; message: unknown }
 
   describe('§1 · the roster read', () => {
     it('🔴 agentIdentities refuses a field nobody declared, naming each one, while the bare command is answered', async () => {
@@ -176,112 +133,54 @@ describe('D-020 · a field nobody declared is refused by name', () => {
 
   describe('§2 · the sheet’s Save', () => {
     it.each([
-      [
-        'a capability sent beside the grant instead of inside it',
-        { canMessage: 'none' },
-        'canMessage',
-      ],
+      ['a grant an older window still sends', { grant: { maxDepth: 4 } }, 'grant'],
       ['a mistyped second ids list', { externalMcpServerId: [] }, 'externalMcpServerId'],
     ] as const)(
-      '🔴 setCapabilities refuses %s beside a whole valid grant, names it and writes nothing',
+      '🔴 setExternalMcpServers refuses %s beside a valid payload, and names it',
       async (_what, stray, key) => {
         await bringIdentityIntoBeing('pm')
-        // ⚑ The premise: both columns start NULL, so "still NULL" below is a fact about the refusal.
-        expect(heldBy('pm')).toEqual({ depth: null, message: null })
-
         await expect(
           overTheWire({
-            kind: 'setCapabilities',
+            kind: 'setExternalMcpServers',
             profileId: 'pm',
             externalMcpServerIds: [],
-            grant: { ...nothingChosen(), maxDepth: 4 },
             ...stray,
           }),
         ).rejects.toThrow(`invalid runtime command: (root): Unrecognized key: "${key}"`)
-
-        // ⛔ **The whole command was refused, not applied with the stray stripped** — the valid
-        // grant beside it did not land, and neither did the stray capability anywhere.
-        expect(heldBy('pm')).toEqual({ depth: null, message: null })
       },
     )
 
     it('⚑ the same call without the stray field lands, so the refusal above was the stray’s', async () => {
       await bringIdentityIntoBeing('pm')
-      expect(heldBy('pm')).toEqual({ depth: null, message: null })
-
       const saved = (await overTheWire({
-        kind: 'setCapabilities',
+        kind: 'setExternalMcpServers',
         profileId: 'pm',
         externalMcpServerIds: [],
-        grant: { ...nothingChosen(), maxDepth: 4 },
       })) as AgentIdentity | null
-
       expect(saved, 'the identity exists, so the write is answered with it').not.toBeNull()
-      expect(saved?.capabilities.maxDepth).toBe(4)
-      // ⚑ Raw columns: 4 is not the ruled default, so this is the write and not the resolver.
-      expect(DEFAULT_CAPABILITIES.maxDepth).not.toBe(4)
-      expect(heldBy('pm')).toEqual({ depth: 4, message: null })
+      expect(saved?.slug).toBe('pm')
     })
   })
 
   describe('§3 · the window sends exactly the declared fields', () => {
-    const PLAIN_GRANT: CapabilityGrant = {
-      maxDepth: 4,
-      canMessage: 'none',
-      canAssignWork: null,
-      canCreateAgents: null,
-      canWriteRules: null,
-    }
-
-    const A_ROW: AgentIdentities = {
-      identities: [
-        {
-          id: 'aid:pm',
-          slug: 'pm',
-          displayName: null,
-          createdAt: 1_700_000_000_000,
-          createdBy: null,
-          provider: null,
-          externalMcpServerIds: [],
-          capabilities: DEFAULT_CAPABILITIES,
-          chosen: {
-            maxDepth: 'default',
-            canMessage: 'default',
-            canAssignWork: 'default',
-            canCreateAgents: 'default',
-            canWriteRules: 'default',
-          },
-        },
-      ],
-      foldersWithoutARow: [],
-      use: [],
-      spawningEnabled: true,
-      defaultApprovalMode: 'ask',
-      externalMcpServers: [],
-    }
-
     it('⚑ what the sheet’s save hands the bridge, as the preload frames it, is accepted by the wire, and one stray field makes it not', async () => {
+      const roster = agentRosterForWire()
       const seen: unknown[] = []
       const bridge = {
-        agentIdentities: async () => A_ROW,
-        setCapabilities: async (input: unknown) => {
+        agentIdentities: async () => roster,
+        setExternalMcpServers: async (input: unknown) => {
           seen.push(input)
-          return A_ROW.identities[0] ?? null
+          return roster.identities[0] ?? null
         },
       } as unknown as RuntimeBridge
       const agents = createAgentStore(bridge)
 
-      expect(await agents.save('pm', PLAIN_GRANT, ['ems:docs'])).toBeNull()
+      expect(await agents.saveExternalMcpServers('pm', ['ems:docs'])).toBeNull()
       expect(seen, 'the save reached the bridge once').toHaveLength(1)
 
-      // ⚑ **Framed as the preload frames it** (`command({ kind: 'setCapabilities', ...input })`).
-      const carried = { kind: 'setCapabilities', ...(seen[0] as object) }
-      expect(Object.keys(carried).sort()).toEqual([
-        'externalMcpServerIds',
-        'grant',
-        'kind',
-        'profileId',
-      ])
+      // ⚑ **Framed as the preload frames it** (`command({ kind: 'setExternalMcpServers', ...input })`).
+      const carried = { kind: 'setExternalMcpServers', ...(seen[0] as object) }
+      expect(Object.keys(carried).sort()).toEqual(['externalMcpServerIds', 'kind', 'profileId'])
       const accepted = runtimeCommandSchema.safeParse(carried)
       expect(accepted.success, accepted.success ? '' : JSON.stringify(accepted.error.issues)).toBe(
         true,

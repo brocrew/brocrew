@@ -32,7 +32,6 @@ function tools() {
     {
       get: (_target, key) => {
         if (key === 'themes') return store
-        if (key === 'mayReachAtAll') return () => null
         if (key === 'whatToCallTheConversation') return () => 'Ada'
         if (key === 'noteRefusal')
           return (_me: string, tool: string, refusal: unknown) => receipts.push({ tool, refusal })

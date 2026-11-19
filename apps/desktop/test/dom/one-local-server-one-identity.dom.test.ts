@@ -4,7 +4,6 @@ import CapabilitiesSheet from '../../src/renderer/src/components/CapabilitiesShe
 import ExternalMcpRegistry from '../../src/renderer/src/components/ExternalMcpRegistry.vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import { createAgentStore, type AgentStore } from '../../src/renderer/src/lib/agent-store'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type {
   AgentIdentities,
   AgentIdentity,
@@ -13,6 +12,7 @@ import type {
 } from '../../src/shared/runtime-ipc'
 import type { ExternalMcpServerReach, ExternalMcpServerRow } from '../../src/shared/external-mcp'
 import { mount, unmountAll, type Mounted } from './harness'
+import { rosterSettingsBridge } from '../lib/agent-roster-fixture'
 
 /**
  * 🔴 **516 · what a person actually sees and presses** (HO-040 §4.2, `HO-042` §3/§6).
@@ -70,14 +70,6 @@ const identity = (over: Partial<AgentIdentity> = {}): AgentIdentity => ({
   createdBy: null,
   provider: null,
   externalMcpServerIds: [],
-  capabilities: DEFAULT_CAPABILITIES,
-  chosen: {
-    maxDepth: 'default',
-    canMessage: 'default',
-    canAssignWork: 'default',
-    canCreateAgents: 'default',
-    canWriteRules: 'default',
-  },
   ...over,
 })
 
@@ -104,16 +96,7 @@ const CAPABILITIES = {
 
 function storeOver(): AgentStore {
   const bridge = {
-    agentIdentities: async () => {
-      if (answers.loadFails !== null) throw new Error(answers.loadFails)
-      return answers.list
-    },
-    setCapabilities: async (input: unknown) => {
-      // ⛔ **Cloned the way the REAL bridge clones** — `a-test-bridge-that-clones-nothing`.
-      structuredClone(input)
-      answers.saved.push(input)
-      return answers.list.identities[0] ?? null
-    },
+    ...rosterSettingsBridge(() => answers),
     // ⚑ **696 · the door's answer since `682`** — the identity AND what it cleared (`AgentProviderSet`).
     setAgentProvider: async () => {
       const one = answers.list.identities[0]
@@ -195,7 +178,7 @@ afterEach(() => {
 })
 
 describe('516 §1 · the grant, on the sheet where every other grant is', () => {
-  it('🔴 a tick puts the server on the wire, and the capability grant beside it is untouched', async () => {
+  it('🔴 a tick puts the server on the wire, and the payload carries nothing else', async () => {
     const m = await openSheet('claude')
     const box = boxIn(m, 'external-mcp-grant-jira')
     expect(box.checked, 'the fixture row holds no grant, so the box starts clear').toBe(false)
@@ -207,14 +190,8 @@ describe('516 §1 · the grant, on the sheet where every other grant is', () => 
     m.q('capabilities-save').click()
     await new Promise((resolve) => setTimeout(resolve, 0))
 
-    const sent = answers.saved.at(-1) as {
-      externalMcpServerIds: string[]
-      grant: Record<string, unknown>
-    }
-    expect(sent.externalMcpServerIds).toEqual(['ems:jira'])
-    // ⛔ **The COMPLETE set and one transaction**: the capability grant rides the same payload, and
-    // every field of it is still `null` — *use the default* — because nothing else was touched.
-    expect(Object.values(sent.grant).every((held) => held === null)).toBe(true)
+    // The COMPLETE set, keyed by the identity, and no other field.
+    expect(answers.saved.at(-1)).toEqual({ profileId: 'pm', externalMcpServerIds: ['ems:jira'] })
   })
 
   it('⚑ …and unticking sends an EMPTY set rather than omitting the field', async () => {

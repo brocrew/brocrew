@@ -70,8 +70,6 @@ const CONTEXT: InstructionContext = {
   profileSlug: 'brobot',
   cwd: '/tmp/where',
   startedBy: null,
-  depth: 0,
-  capabilities: null,
   spawningEnabled: true,
   // ⚑ D-016 · a conversation a person started owns a root, unnumbered on its first launch.
   root: 'not-yet-numbered',

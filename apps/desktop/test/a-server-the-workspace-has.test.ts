@@ -28,7 +28,6 @@ import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
 import { TOOL_NAMES } from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
-import { CAPABILITY_FIELDS, type CapabilityGrant } from '../src/shared/capabilities'
 import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import {
   EXTERNAL_MCP_EVERYONE_MEANS,
@@ -166,11 +165,6 @@ class WatchingRuntime extends FakeRuntime {
   }
 }
 
-/** ⚠️ A grant that changes NO capability — derived, so a tenth capability cannot drop out of it. */
-const NOTHING_CHOSEN = Object.fromEntries(
-  CAPABILITY_FIELDS.map((field) => [field.key, null]),
-) as unknown as CapabilityGrant
-
 describe('524 · a server the workspace has', () => {
   let userData: string
   let work: string
@@ -256,7 +250,7 @@ describe('524 · a server the workspace has', () => {
 
   /** ⛔ Tick a set of servers on one identity, through the door a person's Save goes through. */
   const grant = (slug: string, serverIds: readonly string[]): void => {
-    expect(host.setCapabilities(slug, NOTHING_CHOSEN, serverIds)).not.toBeNull()
+    expect(host.setExternalMcpServers(slug, serverIds)).not.toBeNull()
   }
 
   // ───────────────────────────────────────────────────────────────────────────────────────────
@@ -307,7 +301,7 @@ describe('524 · a server the workspace has', () => {
       }
       // ⛔ **…and a slug no identity has ever run as reaches it too**, which is what *every identity*
       // means and is not an accident: the column is a property of the SERVER, so there is nothing
-      // about an identity for this answer to depend on. ⚠️ Existence is `capabilitiesOf`'s question
+      // about an identity for this answer to depend on. ⚠️ Existence is `agentIdentityOf`'s question
       // (criterion 12) and a second answer here would be a second place for it to be decided.
       expect(store.externalMcpServersFor('nobody-has-this-name').map((one) => one.name)).toEqual([
         'kibana',
@@ -317,14 +311,14 @@ describe('524 · a server the workspace has', () => {
 
   // §2 · an identity BroBot creates and nobody opens
 
-  describe('§2 · an identity an AGENT created, with no capabilities and no provider', () => {
+  describe('§2 · an identity an AGENT created, with no grant row and no provider', () => {
     it('🔴 reaches the server with nobody having ticked anything', async () => {
       const kibana = await localMcpServer(['search_logs'])
       await register('kibana', kibana.url, 'everyone')
 
       // Create the identity through the agent’s door, covering agents that a person never
-      // opens. Using `createAgent` would measure the person’s path instead. With no grant
-      // set, agents may create profiles by default.
+      // opens. Using `createAgent` would measure the person’s path instead. Any agent may
+      // create one.
       const brobot = await personOpens(DEFAULT_PROFILE_ID)
       const made = host.createAgentFor(
         brobot,
@@ -342,7 +336,7 @@ describe('524 · a server the workspace has', () => {
         'the identity was not created, so nothing below measures anything',
       ).toMatchObject({ ok: true })
 
-      // ⚑ **The premise, asserted rather than assumed** — no capabilities chosen, no provider named
+      // ⚑ **The premise, asserted rather than assumed** — no provider named
       // (it keeps its creator's), no grant row, and nobody has opened it.
       const row = host.agentIdentities().identities.find((one) => one.slug === 'archivist')
       expect(row?.provider, 'it keeps the provider of the agent that created it').toBe(

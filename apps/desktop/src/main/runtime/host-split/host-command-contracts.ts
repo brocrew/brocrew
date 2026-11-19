@@ -260,8 +260,8 @@ export type MayCreateAgents =
   | {
       readonly ok: true
 
-      /** Creator read once and carried into identity provenance, rather than read again. */
-      readonly creator: IdentityCreator
+      /** Who is creating, carried into the new identity's `created_by`; `null`: not recorded. */
+      readonly creator: IdentityCreator | null
     }
   | {
       readonly ok: false

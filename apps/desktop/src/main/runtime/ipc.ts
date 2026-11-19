@@ -46,12 +46,6 @@ import { MAX_EXTERNAL_MCP_GRANTS } from '../../shared/external-mcp'
 import { REPLY_SUMMARY_LIMIT } from './reply-rails'
 // ⚑ **D-016 · commit 7 · R4 — a title's bound**, the one `give_work` and `update_work` hold.
 import { PIECE_TITLE_CHARS } from '../../shared/piece-called'
-import {
-  CAPABILITY_FIELDS,
-  MAX_CAPABILITY_COUNT,
-  type AnyCapabilityField,
-  type CapabilityGrant,
-} from '../../shared/capabilities'
 import { MEMORY_EDIT } from '../../shared/agent-memory'
 import { OWN_INSTRUCTIONS_CHARS } from '../../shared/own-instructions'
 import {
@@ -82,59 +76,6 @@ import { isAPageReport, type PageReceipt } from './page-performance'
  * None of them is ever legitimately long, and an unbounded string is a free way to make the main
  * process do work on the renderer's behalf.
  */
-/**
- * Derive capability values from each field's editor and vocabulary, never a separate field list.
- * An unknown editor must be handled explicitly; choices use the whole field's vocabulary.
- * Keep this above `const sessionId`: wire-bounds.test.ts and send-refusals.test.ts census the
- * SEND schemas below it, and capability grants do not belong in those slices.
- */
-function capabilityValueSchema(field: AnyCapabilityField): z.ZodType {
-  const count = z.number().int().min(0).max(MAX_CAPABILITY_COUNT)
-  switch (field.editor) {
-    case 'count':
-      return count
-    case 'choice':
-      // ⚠️ The field's own vocabulary. `z.enum` needs a non-empty tuple, which the descriptor's type
-      // cannot promise, so the emptiness is checked rather than asserted away.
-      if (field.vocabulary === undefined || field.vocabulary.length === 0) {
-        throw new Error(`capability ${field.key} is a choice with no vocabulary`)
-      }
-      return z.enum([...field.vocabulary] as [string, ...string[]])
-  }
-}
-
-/**
- * ⛔ **Every capability, always, each either a value or `null`** (355) — {@link CapabilityGrant}.
- *
- * 339's `.nullable()` ruling, and its exact reason: *"an absent key and an explicit null are the
- * same value to a `Partial`, and they are not the same intent"*. Here `null` is a person saying
- * **use the default**, which the store writes as NULL — the gesture that makes a grant reversible
- * and stops a first Save freezing today's defaults into a row that had chosen nothing.
- *
- * ⛔ **The cast at the end CHECKS NOTHING, and saying so is the point** (355, review — the first
- * version of this comment claimed the opposite). `z.object` over a `fromEntries` infers
- * `Record<string, …>`, and `as unknown as` erases whatever disagreement there might have been; there
- * is no `satisfies` that can hold a computed shape to a declared one.
- *
- * ⚑ **So the totality is asserted at RUN time instead**, in `the-grant-nobody-can-give.test.ts` §3:
- * a grant missing each field in turn is refused, one case per capability, derived from the same
- * list. That is a weaker guarantee than a compile error and it is the one that is actually
- * available — the compile-time half of this dispatch's enumeration lives in `capabilities.ts`,
- * where `KEYS_AGREE` and the `satisfies` on the descriptor are real.
- */
-const capabilityGrantSchema = z
-  .object(
-    Object.fromEntries(
-      CAPABILITY_FIELDS.map((field) => [field.key, capabilityValueSchema(field).nullable()]),
-    ),
-  )
-  // ⛔ **`.strict()`, so a capability nobody declared is a REFUSAL and not a silent strip.** `303` B
-  // measured what stripping costs — eight keys in, seven keys out, and *"the agent it spawned never
-  // started, looking exactly like a slow provider"*. Rail 1 of the spawn door makes the same ruling
-  // for the same reason, and a door that WRITES a rule can afford it least of all: a caller sending
-  // a capability this app does not have must be told so, not quietly granted nothing.
-  .strict() as unknown as z.ZodType<CapabilityGrant>
-
 const sessionId = z.string().min(1).max(200)
 const requestId = z.string().min(1).max(200)
 /**
@@ -1024,26 +965,22 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
   // conversation this app is RUNNING, and the pids are main's own. ⛔ A pid on the wire would be a
   // renderer naming a process for main to read — the one thing this read must never do.
   z.object({ kind: z.literal('processMemory') }),
-  // ⚑ **The capability door** (355, HO-008 §3 · P0b) — the read, the write and the switch.
+  // ⚑ **The identity door** (355, HO-008 §3 · P0b) — the read, the write and the switch.
   // ⚠️ An identity is global, so neither names anything but the identity.
   // ⛔ **D-020 · strict, both** (`z.strictObject`): a field nobody declared is a REFUSAL, not a
-  // silent strip — the `grant` inside is already refused so (`capabilityGrantSchema`), and a
-  // person's settings are the last place a mistyped field should be dropped without a word.
+  // silent strip — a person's settings are the last place a mistyped field should be dropped
+  // without a word.
   z.strictObject({ kind: z.literal('skills'), request: SkillsRequest }),
   z.strictObject({ kind: z.literal('agentIdentities') }),
   z.strictObject({
-    kind: z.literal('setCapabilities'),
+    kind: z.literal('setExternalMcpServers'),
     // ⛔ **REQUIRED here, unlike the shared `profileId`.** This command is about one identity by
     // name; an absent one is not "the default profile", it is a caller that has not said which.
     profileId: profileId.unwrap(),
-    grant: capabilityGrantSchema,
     /**
      * 🔴 **516 · the COMPLETE set of RESTRICTED servers this identity is granted** (narrowed by 524).
      *
-     * ⛔ **Required, not `.optional()`** — 339's rule, and here the two readings are *this caller
-     * does not know about external servers* and *this person unticked every box*, which the store's
-     * third argument distinguishes by `undefined` versus `[]`. A wire that made them one would let
-     * an older renderer silently clear a person's grants.
+     * ⛔ **Required, not `.optional()`** — an empty list is *this person unticked every box*.
      *
      * ⛔ **`externalMcpServerId` and not `profileId` reused.** A registry id is `ems:<name>`, which
      * contains a `:` and is therefore NOT an `isPathSegment` — two names for one bound is how a
@@ -1084,7 +1021,7 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
   /**
    * 🔴 **Which provider this identity's next conversation starts on** (433, HO-024 §2.2).
    *
-   * ⛔ **`profileId.unwrap()`, exactly as `setCapabilities` above**: this command is about one
+   * ⛔ **`profileId.unwrap()`, exactly as `setExternalMcpServers` above**: this command is about one
    * identity by name, and an absent one is not *the default profile*, it is a caller that has not
    * said which. ⚑ **No new `z.string()` declaration** — `wire-bounds.test.ts`'s list is unchanged,
    * because this verb adds no hand-typed field to the wire: a slug that is already declared, and a
@@ -1570,7 +1507,7 @@ const DURING_A_QUIT: Record<RuntimeCommandKind, QuitRuling> = {
   // told it took effect.
   skills: 'refused',
   agentIdentities: 'refused',
-  setCapabilities: 'refused',
+  setExternalMcpServers: 'refused',
   // 🔴 **516 · refused, with the capability door above as the precedent and one reason of its own.**
   // ⛔ The statement is the ledger's, and it writes a row only a later LAUNCH could use — and there
   // are no later launches, because `createSession` is already refused by the host. ⚠️ **The reason
@@ -2681,14 +2618,13 @@ export async function executeRuntimeCommand(
     case 'agentIdentities':
       requireAPerson(sink, command.kind)
       return host.agentIdentities() satisfies Answer<'agentIdentities'>
-    case 'setCapabilities':
-      return host.setCapabilities(
+    case 'setExternalMcpServers':
+      return host.setExternalMcpServers(
         command.profileId,
-        command.grant,
         command.externalMcpServerIds,
-      ) satisfies Answer<'setCapabilities'>
+      ) satisfies Answer<'setExternalMcpServers'>
     case 'registerExternalMcpServer':
-      // ⛔ **`requireAPerson`, with `setCapabilities` as the precedent** (516, 355, 349). ⚠️ **The
+      // ⛔ **`requireAPerson`, with `setExternalMcpServers` as the precedent** (516, 355, 349). ⚠️ **The
       // reason is not that a registry row is a capability — it is not, and it grants nobody** — it
       // is that this door decides what an agent may be given, and HO-005's *"the human is
       // unrestricted"* is a statement about a HUMAN. ⚑ What keeps an AGENT off it is the same thing

@@ -38,9 +38,6 @@ import { useProviderNames } from '../composables/useProviderNames'
  *
  * ## ⛔ What this form does NOT ask for, and each omission is a ruling
  *
- *  - **No capability CONTROLS.** `CapabilitiesSheet` already grants them, and a created identity
- *    holds no grant of its own: every capability column is null, so it follows
- *    `DEFAULT_CAPABILITIES`, the one set every agent holds until a person changes its row there.
  *  - **No folder.** A folder is chosen when a conversation starts. An identity's home is laid down
  *    by the first LAUNCH, which is what keeps `416`'s four `provider-homes` call sites harmless — see
  *    `RuntimeHost.createAgent` for why creation writes no locator at all.
@@ -126,8 +123,8 @@ const adopts = computed(
  *
  * ⛔ **`agent_identity` is EMPTY on a fresh database** — the one migration writes no row but the
  * app-policy one. So on an app where no conversation has ever run, {@link DEFAULT_PROFILE_ID} is a name this form
- * can create, and creating it mints BroBot: the row the first launch would have written, following
- * the default grants like every other agent, plus the two facts this form carries.
+ * can create, and creating it mints BroBot: the row the first launch would have written, plus the
+ * two facts this form carries.
  *
  * ⚑ **Which made it the one gesture that could answer HO-023 §3, and `433` gave it a second.**
  * `RuntimeScreen.frontDoorProvider` resolves *BroBot's identity, then the app frame's constant*.
@@ -311,8 +308,7 @@ const providers = computed<Provider[]>(() => Object.keys(PROVIDER_NAME) as Provi
            imply work it did not do). -->
       <p class="note" data-cy="new-agent-scope">
         This creates the identity and nothing else. No conversation is started, and its folder is
-        laid down the first time one runs as it. What it may do is set on its capabilities, and it
-        starts on this app's defaults.
+        laid down the first time one runs as it.
       </p>
 
       <p v-if="createRefusal" class="note err block" data-cy="new-agent-refusal" role="alert">

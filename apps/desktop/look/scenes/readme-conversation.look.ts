@@ -1,6 +1,5 @@
 import { nextTick } from 'vue'
 import { commands } from 'vitest/browser'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type { AgentIdentities } from '../../src/shared/runtime-ipc'
 import { scene } from '../capture'
 
@@ -15,14 +14,6 @@ const roster: AgentIdentities = {
     createdBy: null,
     provider: i === 1 ? 'codex' : 'claude',
     externalMcpServerIds: [],
-    capabilities: { ...DEFAULT_CAPABILITIES },
-    chosen: {
-      maxDepth: 'default',
-      canMessage: 'default',
-      canAssignWork: 'default',
-      canCreateAgents: 'default',
-      canWriteRules: 'default',
-    },
   })),
   foldersWithoutARow: [],
   use: names.map((name, i) => ({

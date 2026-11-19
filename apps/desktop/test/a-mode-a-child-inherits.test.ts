@@ -21,12 +21,11 @@ import {
   retryableOf,
   SPAWN_RAILS,
   type GiveAdmission,
-  type GiveFacts,
   type GivingConversation,
 } from '../src/main/runtime/spawn-rails'
-import { DEFAULT_CAPABILITIES } from '../src/main/db/session-store'
 import type { CallerIdentity } from '../src/main/runtime/runtime-host'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
+import { giveFactsForTest as factsWith } from './lib/give-facts-fixture'
 import { SPAWN_RAIL_MEANS } from '../src/shared/capabilities'
 import { YOLO_MEANS, YOLO_MEANS_FOR_AGENTS_IT_STARTS } from '../src/renderer/src/lib/approval-mode'
 
@@ -230,29 +229,6 @@ describe('§4 · the sentence the PO ruled owed, and it is derived rather than t
 })
 
 const WORK = '/tmp/499-work'
-
-function factsWith(giver: GivingConversation, childProvider: Provider | null): GiveFacts {
-  return {
-    giver: () => giver,
-    held: () => [{ piece: 'work_root', label: 'W1', root: true, giver: null, received: true }],
-    drivenByTheTurn: () => null,
-    isAHelper: () => false,
-    mayGiveWork: () => null,
-    depthOf: () => 0,
-    capabilitiesOf: () => DEFAULT_CAPABILITIES,
-    helperAs: () => null,
-    serviceAt: () => ({ is: 'normal' }),
-    spawningEnabled: () => true,
-    mayCreateAgents: () => null,
-    itsProvider: () =>
-      childProvider === null
-        ? { provider: null, from: 'nothing-yet' }
-        : { provider: childProvider, from: 'saved' },
-    theNamedModelsProvider: () => null,
-    modelChoiceOf: () => null,
-    checkFolder: (path) => ({ ok: true, path }),
-  }
-}
 
 function aParent(provider: Provider, approvalMode: ApprovalMode): GivingConversation {
   return { sessionId: 'sess_parent', profileId: 'pm', provider, cwd: WORK, approvalMode }

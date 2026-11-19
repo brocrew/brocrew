@@ -27,7 +27,6 @@ import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
 import { toolsToldInTextFor } from '../src/main/runtime/agent-tools'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
-import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { TASK_IS_OPEN, givenByAConversation } from '../src/shared/tasks'
 
@@ -110,8 +109,8 @@ const RESOURCE_MARK = 'BROBOT-402-FINDINGS'
  * 🔴 **The three tiers, and the app ships only the top one** (`584`, `HO-078` §1).
  *
  * ⚑ **Both lower tiers are CREATED, each by the tier above it, by the give that starts them**: every
- * agent holds the same grants (D-014) and one give brings a new agent into existence, starts its
- * conversation and hands it the work (D-016), so no person grants anything. ⛔ The PM's ruling for R17: *never re-grant `project-manager` to make the old story
+ * agent may give work and one give brings a new agent into existence, starts its conversation and
+ * hands it the work (D-016), so no person sets anything up. ⛔ The PM's ruling for R17: *never re-grant `project-manager` to make the old story
  * pass — a smoke measures the product, it does not rebuild the product it remembers.*
  *
  * ⚠️ **Both slugs are this file's**, because the tier above names what it creates; they are the
@@ -124,7 +123,7 @@ const HELPER_PROFILE_ID = 'login-helper'
 
 /**
  * ⚑ **The names Claude's `system/init` lists for the CLI's own sub-agents** (row 1c). ⚠️ Codex
- * publishes no tool inventory, so on Codex row 1c reads the grants alone and says so.
+ * publishes no tool inventory, so on Codex row 1c cannot measure these tools.
  */
 const CLI_SUB_AGENT_TOOLS: readonly string[] = ['Agent', 'Task', 'Workflow']
 
@@ -402,8 +401,8 @@ function personsBrief(): string {
     'BEGIN-WORKER',
     'Find out whether the login flow is flaky on Chromium. Do all of these, in order, then stop:',
     // 🔴 **D-014 · v3's row is `W->>E: spawn_agent helper` → *refused, max_depth*, and that is no
-    // longer the product**: the depth limit is 6 and every tier holds the same grants, so a worker
-    // at depth 2 may give work at depth 3. ⚑ **D-016 · a give is the one act that starts the helper**,
+    // longer the product**: no depth bound refuses a give, so a worker at depth 2 may give work at
+    // depth 3. ⚑ **D-016 · a give is the one act that starts the helper**,
     // so the helper is handed the smallest piece there is — and row 21 counts it as the fourth. The
     // step names no verb.
     'a. Bring one more agent into existence, called `' +
@@ -737,13 +736,17 @@ it('🔴 402 · the agent lifecycle, performed', { timeout: 3_600_000 }, async (
       )
       .at(-1) ?? null
 
+  /** How far below its root a piece sits, read off its label (a root is 0); -1 when unread. */
+  const depthOf = (piece: string): number =>
+    (store.workById(piece)?.label.split('.').length ?? 0) - 1
+
   /**
    * ⚑ **One piece, where it sits and whose it is**, in the words every tier row writes.
    */
   const whereItSits = (piece: PieceRow | null): string =>
     piece === null
       ? 'no piece from its giver'
-      : `${piece.label} from ${piece.giver} at depth ${String(store.depthOf(piece.piece))}, ` +
+      : `${piece.label} from ${piece.giver} at depth ${String(depthOf(piece.piece))}, ` +
         `state ${piece.state}`
 
   /**
@@ -768,7 +771,7 @@ it('🔴 402 · the agent lifecycle, performed', { timeout: 3_600_000 }, async (
       first !== null &&
       ticket !== null &&
       first.parent === ticket.piece &&
-      store.depthOf(first.piece) === 2 &&
+      depthOf(first.piece) === 2 &&
       isDeepStrictEqual(workerCreatedBy, { by: 'an-agent', agent: PROJECT_MANAGER_PROFILE_ID })
     return {
       verdict: shaped ? 'PASS' : explorer !== null ? 'FAIL' : 'NOT PERFORMED',
@@ -803,7 +806,7 @@ it('🔴 402 · the agent lifecycle, performed', { timeout: 3_600_000 }, async (
       helper !== null &&
       parent === explorer &&
       itsPiece !== null &&
-      store.depthOf(itsPiece.piece) === 3 &&
+      depthOf(itsPiece.piece) === 3 &&
       isDeepStrictEqual(createdBy, { by: 'an-agent', agent: WORKER_PROFILE_ID })
     return {
       verdict: shaped ? 'PASS' : helper !== null ? 'FAIL' : 'NOT PERFORMED',
@@ -914,21 +917,21 @@ it('🔴 402 · the agent lifecycle, performed', { timeout: 3_600_000 }, async (
   async function phaseA(): Promise<void> {
     writeFileSync(join(ROOT, 'journal.jsonl'), '')
 
-    // ── 1 · the grant BroBot SHIPS with, and nothing a person set up ─────────────────────────
+    // ── 1 · BroBot ships with nothing a person set up ───────────────────────────────────────
     //
-    // 🔴 **Tier 1 runs on the one default set every agent holds, and nothing here touches it**
-    // (D-014; HO-016 §2 — *"a person granting it by hand is a setup step nobody should have to know
-    // about"*).
+    // 🔴 **Tier 1 needs no setup** (HO-016 §2 — *"a person granting it by hand is a setup step
+    // nobody should have to know about"*): no identity row exists before BroBot's first
+    // conversation, and that conversation is the whole of what the app requires.
     //
     // ⛔ **669 · R17: and there is no tier-2 setup either.** Every tier may give any agent work and
     // bring a new one into existence to take it (D-016), so each tier gives the one below it its
-    // piece, which rows 2, 4 and 6 perform, and this run grants nothing to anybody.
-    const shippedWithNothing = store.capabilitiesOf(DEFAULT_PROFILE_ID)
+    // piece, which rows 2, 4 and 6 perform, and this run sets up nothing for anybody.
+    const beforeFirstConversation = store.agentIdentityOf(DEFAULT_PROFILE_ID)
 
-    // ⛔ **BroBot's first conversation, and it is NOT a grant** — it is how BroBot's identity row
+    // ⛔ **BroBot's first conversation, and it is NOT a setup step** — it is how BroBot's identity row
     // comes into being at all, which on a fresh `userData` has never happened: the one migration
     // seeds the app's policy row and no `agent_identity` row. ⚑ **The row rides in on
-    // `store.create`** and holds no grant of its own, so opening BroBot once is the whole of what
+    // `store.create`**, so opening BroBot once is the whole of what
     // the app requires, and a person who has ever talked to BroBot has already done it.
     const firstBroBot = await host.createSession(
       {
@@ -944,23 +947,16 @@ it('🔴 402 · the agent lifecycle, performed', { timeout: 3_600_000 }, async (
     // ⚠️ Every agent may create an identity, so read after the ticket's first turn a correct install
     // could read as shipping two.
     const shippedIdentities = store.agentIdentities().map((one) => one.slug)
-    const projectManagerShipped = store.capabilitiesOf(PROJECT_MANAGER_PROFILE_ID) !== null
+    const projectManagerShipped = store.agentIdentityOf(PROJECT_MANAGER_PROFILE_ID) !== null
 
-    // ⚑ **D-014 · the one default set, read back rather than restated**: BroBot's row stores no grant
-    // of its own and reads back as `DEFAULT_CAPABILITIES`, which is what every identity holds.
-    const held = store.capabilitiesOf(DEFAULT_PROFILE_ID)
+    // ⚑ BroBot's row exists only because its first conversation ran, and no person wrote anything.
     const brobotRow = identityRow(DEFAULT_PROFILE_ID)
-    const choseNothing =
-      brobotRow !== null && Object.values(brobotRow.chosen).every((origin) => origin === 'default')
-    const theOneDefaultSet = isDeepStrictEqual(held, DEFAULT_CAPABILITIES)
     note(
-      '1 the grant BroBot ships with, and nothing a person set up',
-      shippedWithNothing === null && choseNothing && theOneDefaultSet ? 'PASS' : 'FAIL',
-      `${DEFAULT_PROFILE_ID} holds ${JSON.stringify(held)} — ` +
-        `${theOneDefaultSet ? 'the one default set' : 'NOT the one default set'}, with ` +
-        `${choseNothing ? 'no grant' : 'A GRANT'} stored on its row (it held ` +
-        `${JSON.stringify(shippedWithNothing)} before its first conversation). No person granted ` +
-        `anything in this run`,
+      '1 BroBot needs no setup',
+      beforeFirstConversation === null && brobotRow !== null ? 'PASS' : 'FAIL',
+      `${DEFAULT_PROFILE_ID} had ${beforeFirstConversation === null ? 'no row' : 'A ROW'} before its ` +
+        `first conversation and ${brobotRow === null ? 'NO ROW' : 'a row'} after it. No person ` +
+        `set anything up in this run`,
     )
 
     // ── 1b · a fresh install ships BroBot and no other identity ──────────────────────────────
@@ -1014,9 +1010,9 @@ it('🔴 402 · the agent lifecycle, performed', { timeout: 3_600_000 }, async (
 
     // ── 1c · the three tiers, read once all three exist ─────────────────────────────────────
     //
-    // ⚑ **D-014 · one default set for every agent, and every launch keeps the CLI's own sub-agents.**
-    // It reads the three identities' grants out of this run's own database, and each tier's newest
-    // published tool inventory for {@link CLI_SUB_AGENT_TOOLS}. ⚠️ Codex publishes no inventory, so
+    // ⚑ **Every launch keeps the CLI's own sub-agents.** It reads that the three identities exist in
+    // this run's own database, and each tier's newest published tool inventory for
+    // {@link CLI_SUB_AGENT_TOOLS}. ⚠️ Codex publishes no inventory, so
     // there the second half reads `null`, and the row is NOT PERFORMED rather than a PASS over nothing.
     //
     // 🔴 **669 · R17: read AFTER the tiers are created, not before the ticket**, because two of the
@@ -1026,11 +1022,7 @@ it('🔴 402 · the agent lifecycle, performed', { timeout: 3_600_000 }, async (
     const noteTheTiers = (): void => {
       const slugs = [DEFAULT_PROFILE_ID, PROJECT_MANAGER_PROFILE_ID, WORKER_PROFILE_ID]
       const rows = slugs.map((slug) => identityRow(slug))
-      const tiers = slugs.map((slug, at) => ({
-        slug,
-        oneDefaultSet: isDeepStrictEqual(rows[at]?.capabilities, DEFAULT_CAPABILITIES),
-        subAgents: subAgentToolsOf(slug),
-      }))
+      const tiers = slugs.map((slug) => ({ slug, subAgents: subAgentToolsOf(slug) }))
       const evidence =
         JSON.stringify(tiers) +
         (tiers.some((tier) => tier.subAgents === null)
@@ -1039,20 +1031,20 @@ it('🔴 402 · the agent lifecycle, performed', { timeout: 3_600_000 }, async (
           : '')
       if (rows.some((row) => row === null)) {
         noteChoice(
-          '1c every tier holds the same grants and keeps Agent/Task/Workflow',
+          '1c every tier keeps the provider’s own sub-agents',
           `a tier was never created: ${evidence}`,
         )
         return
       }
       // ⛔ **A tier whose tools could not be read is not a PASS of the tools half**: a Codex launch
-      // publishes no inventory, so there the row is NOT PERFORMED unless the grants alone fail it.
-      // A tier that published some but not all three is a FAIL.
+      // publishes no inventory, so there the row is NOT PERFORMED. A tier that published some but
+      // not all three is a FAIL.
       const keepsThem = (tier: (typeof tiers)[number]): boolean =>
         tier.subAgents !== null &&
         CLI_SUB_AGENT_TOOLS.every((name) => tier.subAgents?.includes(name))
       note(
-        '1c every tier holds the same grants and keeps Agent/Task/Workflow',
-        tiers.some((tier) => !tier.oneDefaultSet || (tier.subAgents !== null && !keepsThem(tier)))
+        '1c every tier keeps the provider’s own sub-agents',
+        tiers.some((tier) => tier.subAgents !== null && !keepsThem(tier))
           ? 'FAIL'
           : tiers.every(keepsThem)
             ? 'PASS'
@@ -1094,7 +1086,7 @@ it('🔴 402 · the agent lifecycle, performed', { timeout: 3_600_000 }, async (
       pm !== null &&
       pmParent === brobot.sessionId &&
       ticket !== null &&
-      store.depthOf(ticket.piece) === 1 &&
+      depthOf(ticket.piece) === 1 &&
       createdByBroBot
     note(
       '2 BroBot gives a new project manager the ticket, at depth 1',
@@ -1198,8 +1190,7 @@ it('🔴 402 · the agent lifecycle, performed', { timeout: 3_600_000 }, async (
 
     // ── 6 · the worker gives a new helper a piece, one level below its own ─────────────────────
     //
-    // ⚑ **D-014 · the depth limit is 6 and every tier holds the same grants**, so the worker at
-    // depth 2 may give work at depth 3. ⛔ v3's `W->>E: spawn_agent helper` → *refused, max_depth*
+    // ⚑ **No depth bound refuses a give**, so the worker at depth 2 may give work at depth 3. ⛔ v3's `W->>E: spawn_agent helper` → *refused, max_depth*
     // is no longer the product, and this row measures what is.
     //
     // ⚠️ **A refusal on the way is still read off the app's own row** — `tool_refused` (`405`), with

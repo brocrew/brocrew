@@ -10,7 +10,6 @@ import {
 import type { HistoryWindow, RuntimeEventMessage } from '../../src/shared/runtime-ipc'
 import { drawnReady } from './drawn'
 import { mount, unmountAll, type Mounted } from './harness'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import { DEFAULT_PROFILE_ID, DEFAULT_PROFILE_LABEL } from '../../src/shared/runtime-ipc'
 
 /**
@@ -105,8 +104,6 @@ const roster = (...slugs: [string, string | null][]): unknown => ({
     slug,
     displayName,
     createdAt: NOW,
-    capabilities: DEFAULT_CAPABILITIES,
-    chosen: {},
     provider: null,
   })),
   foldersWithoutARow: [],

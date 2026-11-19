@@ -1,5 +1,4 @@
 import TeamWorkspace from '../../src/renderer/src/components/TeamWorkspace.vue'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type { AgentIdentities, AgentIdentity } from '../../src/shared/runtime-ipc'
 import { scene } from '../capture'
 
@@ -27,14 +26,6 @@ const row = (one: (typeof AGENTS)[number]): AgentIdentity => ({
   createdBy: null,
   provider: one.provider,
   externalMcpServerIds: [],
-  capabilities: { ...DEFAULT_CAPABILITIES },
-  chosen: {
-    maxDepth: 'default',
-    canMessage: 'default',
-    canAssignWork: 'default',
-    canCreateAgents: 'default',
-    canWriteRules: 'default',
-  },
 })
 
 const IDENTITIES: AgentIdentities = {

@@ -59,10 +59,10 @@ it('refuses writes and imports during quit before calling the service', async ()
   expect(run).not.toHaveBeenCalled()
 })
 
-it('strictly refuses forged grants and oversized editor payloads at the wire', async () => {
+it('strictly refuses undeclared fields and oversized editor payloads at the wire', async () => {
   const run = vi.fn<SkillsWindow>()
   for (const request of [
-    { operation: 'choices', identityId: 'aid:recipe-reviewer', canCreateAgents: true },
+    { operation: 'choices', identityId: 'aid:recipe-reviewer', notDeclared: true },
     {
       operation: 'save',
       draft: { ...draft, body: 'x'.repeat(65537) },

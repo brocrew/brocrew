@@ -3,12 +3,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { readProviderConfig } from '../src/main/runtime/provider-config'
-import { CAPABILITY_FIELDS, DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import { profileBundleSpans, type ProfileBundleContext } from '../src/main/runtime/factory-text'
 import { WHOSE_WORDS } from '../src/shared/whose-text'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { BROBOTS_ADDITION } from './lib/the-core'
-import { PROFILE_IS_NOT, PROFILE_OWNS } from '../src/renderer/src/lib/profile-words'
 
 /**
  * 🔴 **The two sentences `382 §9.2` filed `unsourced`, now with a constant and a test each**
@@ -21,7 +19,8 @@ import { PROFILE_IS_NOT, PROFILE_OWNS } from '../src/renderer/src/lib/profile-wo
  * *"Neither mode limits what it can read."*
  *
  * 🔴 **`733` · one of the two went false, and its constant went with it** — the credential promise.
- * Its block below says what is left of it; `PROFILE_IS_NOT` is unchanged.
+ * Its block below says what is left of it. The other, what a profile is not, went with the
+ * per-agent grants it described.
  *
  * ## ⛔ Why a clause check and a derivation check, and not either alone
  *
@@ -31,8 +30,7 @@ import { PROFILE_IS_NOT, PROFILE_OWNS } from '../src/renderer/src/lib/profile-wo
  *
  *  1. **the clause**, by name, so a quiet trim cannot remove the half that carries the promise; and
  *  2. **the fact**, from the code that makes the sentence true — `readProviderConfig` really
- *     handing back no content, and the capability schema really ruling the same defaults for every
- *     identity.
+ *     handing back no content.
  *
  * 🔴 **The second is the one that matters**, because it is the half that can go false without
  * anybody touching the string.
@@ -42,65 +40,6 @@ import { PROFILE_IS_NOT, PROFILE_OWNS } from '../src/renderer/src/lib/profile-wo
  * will draw it, which is the order standing rule 5 asks for and the reverse of how the eight false
  * sentences in `370` arrived.
  */
-describe('what a profile is NOT (PROFILE_IS_NOT)', () => {
-  it('⛔ says it is not a rank, and says where the answer actually comes from', () => {
-    // The clause a person most needs, and the one v2.3 asserts with nothing behind it.
-    expect(PROFILE_IS_NOT, 'the rank clause').toContain('not a rank')
-    expect(PROFILE_IS_NOT, 'where a capability is read from').toContain('capability grants')
-    // ⛔ **Both of the things a rail may NOT key on**, named, because HO-016 §3's failure mode is
-    // that deriving reach from either looks like a tidy simplification.
-    for (const forbidden of ['its name', 'the profile it runs in']) {
-      expect(PROFILE_IS_NOT, forbidden).toContain(forbidden)
-    }
-    // ⚑ **D-014 · there are no roles**, so the sentence names none.
-    expect(PROFILE_IS_NOT).not.toMatch(/\brole\b/)
-  })
-
-  it('🔴 …and does NOT claim a profile grants nothing, because that is false', () => {
-    // ⚠️ **The overstatement this sentence had to avoid.** Four ruled defaults are not the narrowest
-    // value, so a new identity starts with real reach nobody granted it — which makes "a profile
-    // grants nothing" `086` in the reassuring direction.
-    expect(PROFILE_IS_NOT).not.toMatch(/grants? nothing/i)
-    const wider = CAPABILITY_FIELDS.filter(
-      (field) => JSON.stringify(field.ruled) !== JSON.stringify(field.narrowest),
-    ).map((field) => field.key)
-    expect(wider, 'the fields whose ruled default is wider than the narrowest value').toEqual([
-      'maxDepth',
-      'canMessage',
-      // ⚑ **553** — `any` ruled (D-014), `none` narrowest, so `parseChoice`'s narrow-on-unreadable
-      // direction is observable on this column too (HO-060 §2).
-      'canAssignWork',
-      // ⚑ **D-014** — every agent may create a profile unless a person narrows it.
-      'canCreateAgents',
-    ])
-  })
-
-  it('⛔ …and the defaults it promises are the same really are one object, not a per-identity one', () => {
-    // The sentence's last clause — *"the defaults are the same for every agent until somebody
-    // changes them"*. It is true because there is exactly ONE default object, frozen, taking no
-    // slug and no project. A per-identity default would be a function; a function is what
-    // this asserts is absent.
-    expect(PROFILE_IS_NOT).toContain('the same for')
-    expect(typeof DEFAULT_CAPABILITIES).toBe('object')
-    expect(Object.isFrozen(DEFAULT_CAPABILITIES)).toBe(true)
-    expect(Object.keys(DEFAULT_CAPABILITIES).sort()).toEqual(
-      CAPABILITY_FIELDS.map((field) => field.key).sort(),
-    )
-    for (const field of CAPABILITY_FIELDS) {
-      expect(DEFAULT_CAPABILITIES[field.key], field.key).toEqual(field.ruled)
-    }
-  })
-
-  it('⚑ …and it is a sibling of what a profile IS, not a second copy of it', () => {
-    // 031/167 §3 hold `PROFILE_OWNS` to one line; this is a different question in a different
-    // register, so it must not restate the three things.
-    for (const owned of ['its own instruction file', 'every folder it works in']) {
-      expect(PROFILE_IS_NOT, owned).not.toContain(owned)
-    }
-    expect(PROFILE_OWNS).not.toContain('rank')
-  })
-})
-
 /**
  * 🔴 **733 · the promise went; the LIST's half of it stays true, and is held here.**
  *
@@ -168,8 +107,8 @@ describe('the config LIST carries no content — a file is read only when its Op
  * ⛔ **`WHOSE_WORDS.factory.says` says how far the factory half is the same for every agent.** ⚠️ **It
  * is DRAWN** — `whose-groups.ts` maps a layer to `WHOSE_WORDS[whose].says` and
  * `SessionInstructions.vue` renders it beside the group — so the sentence is a claim about bytes.
- * The factory half reads no grant (grants reach only the dynamic "What you may do"): every agent
- * reads the same text, except BroBot, whose copy has a part of its own after it.
+ * The factory half reads nothing per agent: every agent reads the same text, except BroBot, whose
+ * copy has a part of its own after it.
  *
  * ⚑ **This file's own standard is why the third test exists**: *“the fact, from the code that makes
  * the sentence true … the half that can go false without anybody touching the string.”*

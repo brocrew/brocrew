@@ -223,8 +223,8 @@ describe('the roster and the observations are one list (402 §3)', () => {
  * 🔴 **669 · R17 — the lifecycle stage measures the product as it ships, and never rebuilds an old
  * one.**
  *
- * ⛔ A fresh install ships `brobot` alone and every agent holds one default set of grants (D-014), so
- * a stage that granted a tier anything, brought the worker into being by a handshake, or asked
+ * ⛔ A fresh install ships `brobot` alone, so a stage that set up a tier by hand,
+ * brought the worker into being by a handshake, or asked
  * BroBot to give work to a name nobody created would describe a product that does not exist. ⚑ Each check
  * below fails on such a story. {@link r17Findings} is run on planted copies of it — a person's grant,
  * the worker's handshake, the old brief — and of the review's defects — a late read, a misplaced
@@ -251,8 +251,8 @@ describe('669 · R17 — the lifecycle stage performs the product as it ships', 
     if (/running as `' \+ (?:PROJECT_MANAGER|WORKER)_PROFILE_ID/.test(code)) {
       found.push('a brief asks to give work to a name nobody created')
     }
-    if (!/isDeepStrictEqual\(held, DEFAULT_CAPABILITIES\)/.test(code))
-      found.push('row 1 does not read BroBot against the one default set')
+    if (!/beforeFirstConversation === null && brobotRow !== null/.test(code))
+      found.push('row 1 does not require the first conversation to create BroBot’s identity')
     if (
       !/isDeepStrictEqual\(pmCreatedBy, \{\s*by: 'an-agent',\s*agent: DEFAULT_PROFILE_ID,?\s*\}\)/.test(
         code,
@@ -272,14 +272,11 @@ describe('669 · R17 — the lifecycle stage performs the product as it ships', 
     ) {
       found.push('row 6 does not require the worker to have created what it started')
     }
-    if (!/isDeepStrictEqual\(rows\[at\]\?\.capabilities, DEFAULT_CAPABILITIES\)/.test(code)) {
-      found.push('row 1c does not read each tier against the one default set')
-    }
     if (!/subAgents: subAgentToolsOf\(slug\)/.test(code)) {
       found.push('row 1c does not read the CLI sub-agents each launch published')
     }
     if (!/if \(rows\.some\(\(row\) => row === null\)\) \{\s*noteChoice\(\s*'1c/.test(code)) {
-      found.push('row 1c scores a tier the run never created as FAIL')
+      found.push('row 1c lets a missing tier count as measured')
     }
     // ⚠️ Where, not how many: each call sits right before the park on its path (the third round).
     if (
@@ -302,18 +299,18 @@ describe('669 · R17 — the lifecycle stage performs the product as it ships', 
     }
     // ⛔ …and every other fact it reports is read in the same window (the third round).
     const pmRead = code.indexOf(
-      'const projectManagerShipped = store.capabilitiesOf(PROJECT_MANAGER_PROFILE_ID) !== null',
+      'const projectManagerShipped = store.agentIdentityOf(PROJECT_MANAGER_PROFILE_ID) !== null',
     )
     if (
       !(pmRead > firstClose && firstTurn > pmRead) ||
-      (code.match(/store\.capabilitiesOf\(PROJECT_MANAGER_PROFILE_ID\)/g) ?? []).length !== 1
+      (code.match(/store\.agentIdentityOf\(PROJECT_MANAGER_PROFILE_ID\)/g) ?? []).length !== 1
     ) {
       found.push('row 1b reads the project manager’s row after a model has had a turn')
     }
     return found
   }
 
-  it('⛔ the stage grants nothing, starts only what a tier created, and reads the one default set', () => {
+  it('starts only what a tier created, without setting up identities by hand', () => {
     expect(r17Findings(stage)).toEqual([])
     // ⚑ The two briefs name what to CREATE and what it is — and no tool (347's rule). ⚑ D-016: the
     // verbs a brief could name instead are the two that bring an agent into being.
@@ -364,7 +361,7 @@ describe('669 · R17 — the lifecycle stage performs the product as it ships', 
     // ⛔ The project manager's row read in the verdict again — a second read of it.
     const latePmRead = stage.replace(
       '&& !projectManagerShipped',
-      '&& store.capabilitiesOf(PROJECT_MANAGER_PROFILE_ID) === null',
+      '&& store.agentIdentityOf(PROJECT_MANAGER_PROFILE_ID) === null',
     )
     expect(latePmRead).not.toBe(stage)
     expect(r17Findings(latePmRead)).toEqual([

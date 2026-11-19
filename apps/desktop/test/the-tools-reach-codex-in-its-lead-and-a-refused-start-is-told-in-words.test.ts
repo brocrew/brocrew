@@ -72,7 +72,6 @@ import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import { A_PERSON_SENT_IT } from '../src/main/runtime/turn-origin'
 import { toldView } from '../src/renderer/src/lib/told'
 import { whoseGroups } from '../src/renderer/src/lib/whose-groups'
-import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ProviderDouble as GatedDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
@@ -415,8 +414,6 @@ function context(over: Partial<InstructionContext> = {}): InstructionContext {
     profileSlug: 'ali',
     cwd: '/tmp/work',
     startedBy: null,
-    depth: 0,
-    capabilities: DEFAULT_CAPABILITIES,
     spawningEnabled: true,
     root: null,
     others: { shown: [], more: 0 },

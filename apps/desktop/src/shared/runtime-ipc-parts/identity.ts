@@ -37,7 +37,7 @@ export interface NewAgent {
  *
  * ⚠️ **`foldersWithoutARow` is a real state and this is where it is said out loud** (§4 of the
  * dispatch). A person who typed a name into the launcher and whose launch was refused has a
- * directory and no identity; `setCapabilities` answers `false` for it, and a list that silently
+ * directory and no identity; `setExternalMcpServers` answers `false` for it, and a list that silently
  * omitted it would leave them looking for an agent they can see on disk. ⛔ It is REPORTED and not
  * repaired: viewing a profile may not bring its row into being.
  */
@@ -51,7 +51,7 @@ export interface AgentIdentities {
    * ⛔ **Beside the rows rather than on them**, which is {@link foldersWithoutARow}'s own placement
    * one field up: every field of {@link AgentIdentity} is a COLUMN of `agent_identity`, and these
    * are counts over two other tables plus a fold over the whole population. ⚑ Folding them onto
-   * the row would make `createAgent`'s and `setCapabilities`' read-backs answer a question about
+   * the row would make `createAgent`'s and `setExternalMcpServers`' read-backs answer a question about
    * conversations, which neither door asks.
    *
    * ⚠️ **It is what `HO-063` gap 1 asks for twice.** *"What it has done"* is

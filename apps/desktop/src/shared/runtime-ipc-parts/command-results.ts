@@ -426,7 +426,7 @@ export interface RuntimeCommandResults {
    * run as is asking to configure something that does not exist; the honest answer is *there is
    * nothing here*, not a new durable agent with an empty memory and its own provider home.
    */
-  setCapabilities: AgentIdentity | null
+  setExternalMcpServers: AgentIdentity | null
   /**
    * ⚑ **The registry row that now exists** (516) — read back out of the database, `createAgent`'s
    * shape one table over.
@@ -444,7 +444,7 @@ export interface RuntimeCommandResults {
   removeExternalMcpServer: boolean
   /**
    * The identity as it now stands, or **null when there was no row to write to** (433) —
-   * {@link RuntimeCommandResults.setCapabilities}' rule, and criterion 12 for its reason.
+   * {@link RuntimeCommandResults.setExternalMcpServers}' rule, and criterion 12 for its reason.
    *
    * ⚑ **Read back rather than echoed**, which is 339's shape: a surface draws what the database now
    * says, so a fold that refused an unreadable word is visible instead of assumed away.

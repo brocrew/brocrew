@@ -190,12 +190,9 @@ export function awaitItsReceipt(
 /**
  * 🔴 **685 · a receipt that IS a refusal hands its words to the notice** (`675` F-d).
  *
- * ⚑ **Every app refusal's receipt begins `refused (<rail>): `** — `agent-tools.ts` writes the
- * model's text that way, and each provider's normalizer keeps the head of it (the first 200
- * characters, where `675` put the act). ⛔ **The join is by content and by count**: the call must
- * be one of this app's own declared tools (a foreign server sharing a tool's name is not enough),
- * the receipt must begin with the waiting rail's prefix, and exactly ONE refusal may match — two of
- * one tool on one rail in flight draw nothing, the refusal to guess `landOutgoing` makes.
+ * Join one refusal to a receipt from this app's own tool. Older receipts carry the rail in their
+ * prefix. A `Not sent:` receipt must contain the recorded quote or agree through the provider's
+ * summary cutoff. Leave the notice alone if more than one refusal matches.
  *
  * ⚠️ **An outgoing card already prints this receipt** (`outgoing-card.ts`), so the refusal is
  * claimed and nothing is added — one account of one call.
@@ -212,9 +209,19 @@ export function tellItsRefusal(
   if (typeof name !== 'string' || set === null || set.declared === null) return null
   const split = splitQualified(set.naming, name)
   if (split === null || split.server !== set.declared.server) return null
-  const matching = state.refusalsAwaitingReceipt.filter(
-    (waiting) => waiting.tool === split.tool && summary.startsWith(`refused (${waiting.rail}): `),
-  )
+  const notSent = summary.startsWith('Not sent: ')
+  const clipped = notSent && RECEIPT_CUT.exec(summary)?.index === TOOL_RECEIPT_CUTOFF
+  const head = clipped ? summary.slice(0, TOOL_RECEIPT_CUTOFF) : summary
+  const matching = state.refusalsAwaitingReceipt.filter((waiting) => {
+    if (waiting.tool !== split.tool) return false
+    if (!notSent) return summary.startsWith(`refused (${waiting.rail}): `)
+    const quote = waiting.told?.text
+    return (
+      quote !== undefined &&
+      quote.startsWith('Not sent: ') &&
+      (head.startsWith(quote) || (clipped && quote.startsWith(head)))
+    )
+  })
   const only = matching.length === 1 ? matching[0] : undefined
   if (only === undefined) return null
   matched?.(only.rail)
@@ -240,6 +247,7 @@ export function tellItsRefusal(
  * mark would leave the mark inside the quotation — the old drawing — rather than cut a word.
  */
 const RECEIPT_CUT = /…(?: \(\d+ of \d+ characters\))?$/
+const TOOL_RECEIPT_CUTOFF = 200
 
 /**
  * ⚑ **685 · the short form a call's own row kept** — its receipt as the ledger has it, wherever the

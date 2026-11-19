@@ -552,19 +552,17 @@ describe('a successful answer says in words what its payload held', () => {
   // ─────────────────────────────────────────────────────────────────────────────────────────────
 
   describe('each arm a write ends on is said, and none of what it was sent', () => {
-    /** Another agent whose rules the PM may ask for, once a person has granted it `grant`. */
-    const aGrantedPm = async (grant: 'propose' | 'relay'): Promise<AgentToolset> => {
+    /** The PM and another agent whose rules it may ask for. */
+    const aPmWithAnArchivist = async (): Promise<AgentToolset> => {
       const { pmTools } = await aPm()
       await ok(pmTools, 'create_agent', { profile_slug: 'archivist', rules: 'Mine.' })
-      // A person at the sheet: the one thing that moves this column.
-      expect(store.setCapabilities('pm', { canWriteRules: grant })).toBe(true)
       return pmTools
     }
     const versionsOfTheArchivist = (): string[] =>
       store.ownInstructionsOf('archivist').versions.map((version) => version.text)
 
     it('propose_agent_rules put before a person: says nothing is written, and echoes neither rules nor reason', async () => {
-      const pmTools = await aGrantedPm('propose')
+      const pmTools = await aPmWithAnArchivist()
       const asked = await ok(pmTools, 'propose_agent_rules', {
         agent: 'archivist',
         current_version: 1,
@@ -580,7 +578,7 @@ describe('a successful answer says in words what its payload held', () => {
     })
 
     it('propose_agent_rules refuses the old shortcut and leaves the saved version intact', async () => {
-      const pmTools = await aGrantedPm('relay')
+      const pmTools = await aPmWithAnArchivist()
       const written = await call(pmTools, 'propose_agent_rules', {
         agent: 'archivist',
         current_version: 1,

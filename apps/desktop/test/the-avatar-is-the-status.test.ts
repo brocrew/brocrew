@@ -28,7 +28,6 @@ import {
   type ConversationAtWork,
   type WhatIsBeingDone,
 } from '../src/shared/what-is-being-done'
-import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import type { IdentityUse } from '../src/shared/agent-roster'
 import type { AgentIdentities, AgentIdentity } from '../src/shared/runtime-ipc'
 import { BeingDoneTracker } from '../src/main/runtime/being-done'
@@ -76,8 +75,6 @@ const identity = (over: Partial<AgentIdentity> & { slug: string }): AgentIdentit
   createdAt: AT - 86_400_000,
   // ⚑ **598 · who brought it into being** — null is *nobody recorded it*; see `AgentIdentity.createdBy`.
   createdBy: null,
-  capabilities: DEFAULT_CAPABILITIES,
-  chosen: {} as AgentIdentity['chosen'],
   provider: null,
   externalMcpServerIds: [],
   ...over,

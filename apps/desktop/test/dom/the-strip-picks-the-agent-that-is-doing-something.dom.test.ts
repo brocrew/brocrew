@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it } from 'vitest'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
 import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { DRAWER_W_MAX, DRAWER_W_MIN } from '../../src/renderer/src/lib/drawer'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 
 import type { AgentIdentity } from '../../src/shared/runtime-ipc'
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../../src/shared/who-called-whom'
@@ -48,14 +47,6 @@ const identity = (slug: string, displayName: string | null = null): AgentIdentit
   externalMcpServerIds: [],
   // ⚑ **The shipped defaults**, because nothing on this band reads a capability — a grant invented
   // here would be a fact about this file rather than about the app.
-  capabilities: { ...DEFAULT_CAPABILITIES },
-  chosen: {
-    maxDepth: 'default',
-    canMessage: 'default',
-    canAssignWork: 'default',
-    canCreateAgents: 'default',
-    canWriteRules: 'default',
-  },
 })
 
 const spawn = (over: Partial<SpawnEdge> = {}): SpawnEdge => ({

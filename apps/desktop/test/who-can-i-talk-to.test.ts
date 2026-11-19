@@ -285,8 +285,8 @@ describe('642 · who can I talk to', () => {
 
     // ⚑ **Its own child, open and running nothing** — its message starts it. ⚑ **And `other`**, a
     // person's conversation the quit also left open, and `seeded`, which a person closed before it:
-    // BroBot's message starts them too, and its grant reaches them (a caller may see exactly what it
-    // may send to). ⚠️ Asked of `agentsVisibleTo` — the reader `list_agents` IS — because this file's
+    // BroBot's message starts them too, and it reaches them (a caller may see exactly what it may
+    // send to). ⚠️ Asked of `agentsVisibleTo` — the reader `list_agents` IS — because this file's
     // provider double keeps the toolsets of starts only, and the reopened BroBot's is a resume's.
     const visible = host
       .agentsVisibleTo(speakingAs(brobot), brobot)
@@ -298,10 +298,6 @@ describe('642 · who can I talk to', () => {
         is: 'idle',
       })
     }
-    // The grant still decides message delivery; the card remains readable.
-    expect(store.setCapabilities(DEFAULT_PROFILE_ID, { canMessage: 'none' })).toBe(true)
-    expect(host.agentCard(other, speakingAs(brobot), brobot)?.state).toEqual({ is: 'idle' })
-    expect(host.agentCard(child, speakingAs(brobot), brobot)?.state).toEqual({ is: 'idle' })
   })
 
   // ───────────────────────────────────────────────────────────────────────────────

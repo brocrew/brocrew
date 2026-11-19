@@ -4,8 +4,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import CapabilitiesSheet from '../../src/renderer/src/components/CapabilitiesSheet.vue'
 import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
-
-import { DEFAULT_CAPABILITIES, MAX_CAPABILITY_COUNT } from '../../src/shared/capabilities'
 import type {
   AgentIdentities,
   AgentIdentity,
@@ -36,14 +34,6 @@ const person = (): AgentIdentity => ({
   createdBy: null,
   provider: 'codex',
   externalMcpServerIds: [],
-  capabilities: { ...DEFAULT_CAPABILITIES },
-  chosen: {
-    maxDepth: 'default',
-    canMessage: 'default',
-    canAssignWork: 'default',
-    canCreateAgents: 'default',
-    canWriteRules: 'default',
-  },
 })
 
 function sheetHost() {
@@ -57,17 +47,13 @@ function sheetHost() {
       defaultApprovalMode: 'ask',
       externalMcpServers: [],
     })),
-    setCapabilities: vi.fn(async (input: Parameters<RuntimeBridge['setCapabilities']>[0]) => {
-      structuredClone(input)
-      identity = {
-        ...identity,
-        capabilities: {
-          ...identity.capabilities,
-          canWriteRules: input.grant.canWriteRules ?? 'none',
-        },
-      }
-      return identity
-    }),
+    setExternalMcpServers: vi.fn(
+      async (input: Parameters<RuntimeBridge['setExternalMcpServers']>[0]) => {
+        structuredClone(input)
+        identity = { ...identity, externalMcpServerIds: [...input.externalMcpServerIds] }
+        return identity
+      },
+    ),
     setAgentProvider: vi.fn(
       async (
         input: Parameters<RuntimeBridge['setAgentProvider']>[0],
@@ -143,7 +129,7 @@ describe('capabilities sheet pending actions', () => {
     expect(words(m.q('capabilities-title'))).toBe('Fictional Worker')
     expect(button(m, 'capabilities-save').disabled).toBe(false)
     expect(m.all('capabilities-load-error')).toHaveLength(0)
-    expect(host.setCapabilities).not.toHaveBeenCalled()
+    expect(host.setExternalMcpServers).not.toHaveBeenCalled()
   })
 
   it.each(['ctrlKey', 'metaKey'] as const)(
@@ -153,81 +139,37 @@ describe('capabilities sheet pending actions', () => {
       await store.load()
       await nextTick()
       const pending = deferred<AgentIdentity>()
-      host.setCapabilities.mockImplementationOnce((input) => {
+      host.setExternalMcpServers.mockImplementationOnce((input) => {
         structuredClone(input)
         return pending.promise
       })
-      await pick(m, 'capability-canMessage-select', 'any')
       enter(m, null)
-      expect(host.setCapabilities).not.toHaveBeenCalled()
+      expect(host.setExternalMcpServers).not.toHaveBeenCalled()
       enter(m, modifier)
       await nextTick()
       expect(words(m.q('capabilities-save'))).toBe('Saving…')
       expect(button(m, 'capabilities-save').disabled).toBe(true)
       button(m, 'capabilities-save').click()
       enter(m, modifier)
-      expect(host.setCapabilities).toHaveBeenCalledTimes(1)
-      expect(host.setCapabilities).toHaveBeenLastCalledWith({
+      expect(host.setExternalMcpServers).toHaveBeenCalledTimes(1)
+      expect(host.setExternalMcpServers).toHaveBeenLastCalledWith({
         profileId: 'fictional-worker',
         externalMcpServerIds: [],
-        grant: {
-          maxDepth: null,
-          canMessage: 'any',
-          canAssignWork: null,
-          canCreateAgents: null,
-          canWriteRules: null,
-        },
       })
-      pending.reject(new Error('The fictional host did not save this grant.'))
+      pending.reject(new Error('The fictional host did not save these servers.'))
       await expect.poll(() => m.all('capabilities-save-refusal').length).toBe(1)
       expect(words(m.q('capabilities-save-refusal'))).toBe(
-        'The fictional host did not save this grant.',
+        'The fictional host did not save these servers.',
       )
       expect(words(m.q('capabilities-save'))).toBe('Save')
       expect(button(m, 'capabilities-save').disabled).toBe(false)
       expect(close).not.toHaveBeenCalled()
       enter(m, modifier)
       await expect.poll(() => close.mock.calls.length).toBe(1)
-      expect(host.setCapabilities).toHaveBeenCalledTimes(2)
+      expect(host.setExternalMcpServers).toHaveBeenCalledTimes(2)
       expect(m.all('capabilities-save-refusal')).toHaveLength(0)
     },
   )
-
-  it.each([
-    { typed: '-1', expected: 0 },
-    { typed: String(MAX_CAPABILITY_COUNT + 1), expected: MAX_CAPABILITY_COUNT },
-  ])(
-    'corrects a count of $typed on screen and sends the corrected value',
-    async ({ typed, expected }) => {
-      const { m, host, store, close } = sheetHost()
-      await store.load()
-      await nextTick()
-      const input = m.q('capability-maxDepth-input') as HTMLInputElement
-      input.value = typed
-      input.dispatchEvent(new Event('input', { bubbles: true }))
-      await nextTick()
-      expect(input.value).toBe(String(expected))
-      expect(words(m.q('capability-maxDepth-state'))).toBe('Set on this identity')
-      button(m, 'capabilities-save').click()
-      await expect.poll(() => close.mock.calls.length).toBe(1)
-      expect(host.setCapabilities.mock.calls[0]![0].grant.maxDepth).toBe(expected)
-    },
-  )
-
-  it('keeps the last count when its input is cleared partway through editing', async () => {
-    const { m, host, store, close } = sheetHost()
-    await store.load()
-    await nextTick()
-    const input = m.q('capability-maxDepth-input') as HTMLInputElement
-    for (const value of ['7', '']) {
-      input.value = value
-      input.dispatchEvent(new Event('input', { bubbles: true }))
-      await nextTick()
-    }
-    button(m, 'capabilities-save').click()
-    await expect.poll(() => close.mock.calls.length).toBe(1)
-    expect(host.setCapabilities.mock.calls[0]![0].grant.maxDepth).toBe(7)
-  })
 
   it('disables the provider control while writing and restores the saved provider after a refusal', async () => {
     const { m, host, store } = sheetHost()
@@ -246,7 +188,7 @@ describe('capabilities sheet pending actions', () => {
       profileId: 'fictional-worker',
       provider: 'claude',
     })
-    expect(host.setCapabilities).not.toHaveBeenCalled()
+    expect(host.setExternalMcpServers).not.toHaveBeenCalled()
     pending.reject(new Error('The fictional host kept the previous provider.'))
     await expect.poll(() => m.all('capabilities-provider-error').length).toBe(1)
     expect(words(m.q('capabilities-provider-error'))).toBe(
@@ -259,6 +201,6 @@ describe('capabilities sheet pending actions', () => {
     expect(select.disabled).toBe(false)
     expect(select.value).toBe('claude')
     expect(host.setAgentProvider).toHaveBeenCalledTimes(2)
-    expect(host.setCapabilities).not.toHaveBeenCalled()
+    expect(host.setExternalMcpServers).not.toHaveBeenCalled()
   })
 })

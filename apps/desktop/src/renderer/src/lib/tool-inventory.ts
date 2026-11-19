@@ -176,16 +176,9 @@ export interface InventoryReading {
   readonly dropped: number
 }
 
-/**
- * Tool declarations share one vocabulary, with a role-bound exception for the direct rules
- * writer. The host builds the offered set for start, resume and inventory reads from the
- * conversation's origin. All calls still pass the host's authority and capability rails.
- * Having a declaration is not permission to use it.
- */
+/** Every conversation is offered the same tools; the host still answers each call. */
 export const WHY_EVERY_CONVERSATION =
-  'Every conversation gets the same tools, except write_agent_rules. ' +
-  'Only a BroBot conversation a person started gets it, to change another agent’s rules. ' +
-  'BroCrew still checks every call against its rules.'
+  'Every conversation gets the same tools. BroCrew still checks every call against its rules.'
 
 /**
  * 🔴 **A count that does not say WHEN it was true** (444 relay 1).

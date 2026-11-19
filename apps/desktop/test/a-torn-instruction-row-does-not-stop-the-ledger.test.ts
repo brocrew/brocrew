@@ -235,7 +235,6 @@ describe('a torn instruction row does not stop the ledger · §3 nothing withdra
   it('🚩 an ask whose conversation is gone is never withdrawn by the next launch (F021, D-017) — nothing settles it automatically', async () => {
     await bringIdentityIntoBeing('worker', hostA)
     await bringIdentityIntoBeing('asker', hostA)
-    expect(store.setCapabilities('asker', { canWriteRules: 'propose' })).toBe(true)
 
     const asking = await personOpens('asker', hostA)
     const asked = hostA.proposeAgentRules(

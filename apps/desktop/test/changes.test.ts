@@ -666,7 +666,7 @@ const APP_EVENTS: Record<
   tool_refused: {
     type: 'tool_refused',
     tool: 'give_work',
-    rail: 'too-deep',
+    rail: 'spawning-disabled',
     permanence: 'until-a-person-changes-it',
     retryable: false,
   },

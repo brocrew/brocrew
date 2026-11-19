@@ -308,9 +308,7 @@ function agentRecordText(record: AgentRecord, me: string | null): string {
   const rules =
     record.rules.is === 'they-begin'
       ? `Its standing rules begin: “${record.rules.line}”`
-      : record.rules.is === 'none'
-        ? 'It has no standing rules.'
-        : 'How its standing rules begin is told only to a caller that can reach its conversations.'
+      : 'It has no standing rules.'
   const blocks: string[] = [[profileText(record.agent), rules].join('\n')]
   if (record.conversations.length === 0) {
     blocks.push('It has no conversations.')
@@ -413,7 +411,6 @@ function agentRecordPayload(record: AgentRecord): Readonly<Record<string, unknow
     ...(record.agent.displayName === null ? {} : { display_name: record.agent.displayName }),
     ...(record.agent.provider === null ? {} : { provider: record.agent.provider }),
     ...(record.agent.defaultModel === null ? {} : { default_model: record.agent.defaultModel }),
-    rules_told: record.rules.is !== 'not-told',
     rules_begin: record.rules.is === 'they-begin' ? record.rules.line : null,
     conversations: record.conversations.map((one) => ({
       agent: one.conversation,

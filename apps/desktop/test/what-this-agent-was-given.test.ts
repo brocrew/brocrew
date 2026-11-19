@@ -250,7 +250,7 @@ describe('what an agent was given', () => {
   }
 
   it.each(['claude', 'codex'] as const)(
-    'keeps role-specific tool counts and fingerprints on %s, including stopped reads',
+    'keeps tool counts and fingerprints for every profile on %s, including stopped reads',
     async (provider) => {
       const host = buildHost()
       const primary = await open(host, provider, DEFAULT_PROFILE_ID)
@@ -259,7 +259,7 @@ describe('what an agent was given', () => {
       const ordinaryTools = runtimes.at(-1)?.handed.at(-1)
       for (const [id, expected, count] of [
         [primary, primaryTools, 33],
-        [ordinary, ordinaryTools, 32],
+        [ordinary, ordinaryTools, 33],
       ] as const) {
         if (expected === undefined) throw new Error('no runtime toolset captured')
         expect(expected.tools).toHaveLength(count)
@@ -291,13 +291,13 @@ describe('what an agent was given', () => {
     },
   )
 
-  it('preserves a full pre-filter launch record while showing the current ordinary toolset', async () => {
+  it('preserves an older launch record while showing the current toolset', async () => {
     const host = buildHost()
     const ordinary = await open(host, 'claude', 'wren')
     await host.close(ordinary, window)
     const given = launchesOf(ordinary)[0]?.given
     if (given === undefined) throw new Error('the launch kept no record')
-    const currentFull = agentToolsFor(host, ordinary, {}, true)
+    const currentFull = agentToolsFor(host, ordinary, {})
     // Keep the old full vocabulary in the historical launch, before own-notes tools existed.
     const full = {
       ...currentFull,
@@ -316,13 +316,13 @@ describe('what an agent was given', () => {
       Date.now(),
     )
     const read = await host.whatThisAgentWasGiven(ordinary)
-    expect(read.tools.list).toHaveLength(32)
-    expect(read.tools.list.map((tool) => tool.name)).not.toContain('write_agent_rules')
+    expect(read.tools.list).toHaveLength(33)
+    expect(read.tools.list.map((tool) => tool.name)).toContain('write_agent_rules')
     expect(read.tools.changedSinceLaunch).toBe(true)
     expect(launchesOf(ordinary).at(-1)?.given).toEqual(historical)
   })
 
-  it('omits the direct writer for stopped adopted or unknown profiles and an unrecorded id', async () => {
+  it('offers the whole toolset for stopped adopted or unknown profiles, and refuses an unrecorded id', async () => {
     const host = buildHost()
     const id = await open(host, 'claude', 'wren')
     await host.close(id, window)
@@ -334,23 +334,14 @@ describe('what an agent was given', () => {
         .mockImplementation((asked) => (asked === id ? { ...row, profileId } : null))
       try {
         const read = await host.whatThisAgentWasGiven(id)
-        expect(read.tools.list).toHaveLength(32)
-        expect(read.tools.list.map((tool) => tool.name)).not.toContain('write_agent_rules')
+        expect(read.tools.list).toHaveLength(33)
         expect(read.tools.list.map((tool) => tool.name)).toEqual(
-          expect.arrayContaining(['read_agent_rules', 'propose_agent_rules']),
+          expect.arrayContaining(['read_agent_rules', 'propose_agent_rules', 'write_agent_rules']),
         )
       } finally {
         recorded.mockRestore()
       }
     }
-    // The read API refuses unknown ids. Pin the private construction boundary as well: no
-    // slot and no recorded owner must never become a privileged declaration.
-    const boundary = host as unknown as {
-      agentToolsForSession(id: string): ReturnType<typeof agentToolsFor>
-    }
-    expect(boundary.agentToolsForSession('missing').tools.map((tool) => tool.name)).not.toContain(
-      'write_agent_rules',
-    )
     await expect(host.whatThisAgentWasGiven('missing')).rejects.toThrow()
   })
 

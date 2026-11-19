@@ -31,7 +31,6 @@ import CanonicalDocumentViewer from '../../src/renderer/src/components/Canonical
 import WorkflowOutputViewer from '../../src/renderer/src/components/WorkflowOutputViewer.vue'
 import { useSpawnSafety } from '../../src/renderer/src/lib/spawn-safety'
 import type { ToolRegistry } from '../../src/renderer/src/lib/transcript'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type {
   AgentIdentities,
   ChildWorkResult,
@@ -94,14 +93,6 @@ const identities = (over: Partial<AgentIdentities> = {}): AgentIdentities => ({
       provider: null,
       // ⚑ **516** — presence IS the grant, so an empty list is *granted none*, not *not chosen*.
       externalMcpServerIds: [],
-      capabilities: { ...DEFAULT_CAPABILITIES },
-      chosen: {
-        maxDepth: 'default',
-        canMessage: 'default',
-        canAssignWork: 'default',
-        canCreateAgents: 'default',
-        canWriteRules: 'default',
-      },
     },
   ],
   foldersWithoutARow: [],
@@ -170,7 +161,7 @@ const TOOLS: ToolRegistry = { set: null, dropped: 0, at: null }
     }),
     keptRules: async () => ({ claude: [], codex: [] }),
     agentIdentities: async () => identities(),
-    setCapabilities: async () => identities().identities[0],
+    setExternalMcpServers: async () => identities().identities[0],
     setSpawningEnabled: async () => ({ spawningEnabled: true }),
     listResumable: async () => [],
     listUnresumable: async () => [],

@@ -1,14 +1,11 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { thisConversationSpans, type InstructionContext } from '../src/main/runtime/factory-text'
-import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import { readLocalTimeFrom } from '../src/shared/local-time'
 
 const context = (over: Partial<InstructionContext> = {}): InstructionContext => ({
   profileSlug: 'fictional-agent',
   cwd: '/tmp/fictional-work',
   startedBy: null,
-  depth: 0,
-  capabilities: DEFAULT_CAPABILITIES,
   spawningEnabled: true,
   root: null,
   others: { shown: [], more: 0 },
@@ -44,22 +41,6 @@ describe('the conversation block at this launch', () => {
     )
     expect(said({ root: null })).not.toContain("Your conversation's work")
     expect(said({ root: null })).not.toContain('Your conversation has its own work')
-  })
-
-  it('shows chain limits only near the bound and only when giving work is allowed', () => {
-    const capabilities = { ...DEFAULT_CAPABILITIES, canAssignWork: 'any' as const, maxDepth: 3 }
-    expect(said({ capabilities, depth: 0 })).not.toContain('delegation limit')
-    expect(said({ capabilities, depth: 0 })).not.toContain('level below')
-    expect(said({ capabilities, depth: 2 })).toContain(
-      "- You may give work one level below this conversation; the helper's own limit decides what it may give.",
-    )
-    for (const depth of [3, 4])
-      expect(said({ capabilities, depth })).toContain(
-        '- You have reached your delegation limit and cannot give work from this conversation.',
-      )
-    expect(
-      said({ capabilities: { ...capabilities, canAssignWork: 'none' }, depth: 4 }),
-    ).not.toContain('delegation limit')
   })
 
   it('dates activity through the same local clock as the window, including midnight', () => {

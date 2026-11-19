@@ -17,7 +17,6 @@ import {
   composeProfileBundle,
   type InstructionContext,
 } from '../src/main/runtime/factory-text'
-import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { openDatabase } from '../src/main/db/connection'
@@ -108,8 +107,6 @@ function context(plugins: readonly PluginInstructionEntry[] | null): Instruction
     profileSlug: 'fictional-writer',
     cwd: '/fictional/work',
     startedBy: null,
-    depth: 0,
-    capabilities: DEFAULT_CAPABILITIES,
     spawningEnabled: true,
     root: 'not-yet-numbered',
     others: { shown: [], more: 0 },

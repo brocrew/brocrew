@@ -109,7 +109,6 @@ describe('441 M20 · a No is written down as a No', () => {
     await bringIdentityIntoBeing('worker-a')
     await bringIdentityIntoBeing('worker-b')
     await bringIdentityIntoBeing('asker')
-    expect(store.setCapabilities('asker', { canWriteRules: 'propose' })).toBe(true)
     return personOpens('asker')
   }
 

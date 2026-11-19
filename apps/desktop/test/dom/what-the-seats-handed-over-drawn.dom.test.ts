@@ -18,7 +18,6 @@ import { stalledWorkLead, usePersonsQueue } from '../../src/renderer/src/lib/per
 import { absenceUnreadSays } from '../../src/renderer/src/lib/rows-unread'
 import { useSpawnSafety } from '../../src/renderer/src/lib/spawn-safety'
 import { workReading } from '../../src/renderer/src/lib/work-report'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 
 import {
   type AgentIdentities,
@@ -98,8 +97,6 @@ const ident = (slug: string, over: Partial<AgentIdentity> = {}): AgentIdentity =
     createdBy: null,
     provider: null,
     externalMcpServerIds: [],
-    capabilities: DEFAULT_CAPABILITIES,
-    chosen: Object.fromEntries(Object.keys(DEFAULT_CAPABILITIES).map((key) => [key, 'default'])),
     ...over,
   }) as unknown as AgentIdentity
 
@@ -128,7 +125,6 @@ const roster = (): AgentIdentities =>
     listResumable: () => Promise.resolve(hostRows.resumable),
     listUnresumable: () => Promise.resolve([]),
     agentIdentities: async () => roster(),
-    setCapabilities: async () => roster().identities[0],
     setSpawningEnabled: async () => ({ spawningEnabled: true }),
   },
 }

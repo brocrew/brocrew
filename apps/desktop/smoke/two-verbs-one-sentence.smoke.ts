@@ -15,7 +15,6 @@ import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
-import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 
 /**
  * ⚑ **584 · a LOCAL constant** (`HO-078` §1). ⛔ `PROJECT_MANAGER_PROFILE_ID` named the one other
@@ -182,18 +181,17 @@ const drive = async (arm: Arm): Promise<void> => {
 
   try {
     // ── 1 · the handshake that writes the identity row, and is then closed ────────────────────
-    // ⚑ The row is what the grants are read back from; the measurement belongs on the second one.
+    // ⚑ The measurement belongs on the second conversation.
     const first = new Recorder('webContents:1')
     const handshake = await host.createSession(
       { provider: arm.provider, profileId: DEFAULT_PROFILE_ID, cwd: work, model: arm.model },
       first,
     )
     await host.close(handshake.sessionId, first)
-    const held = store.capabilitiesOf(DEFAULT_PROFILE_ID)
-    say(`1 · ${arm.provider}: BroBot's grants · ${JSON.stringify(held)}`)
-    // ⚠️ The premise this whole measurement rests on: BroBot holds the one default set, so both
-    // verbs are open to it and a model that picks the wrong one is choosing rather than being pushed.
-    expect(held, 'BroBot holds the one default set').toEqual(DEFAULT_CAPABILITIES)
+    // ⚠️ Both verbs are open to every agent, so a model that picks the wrong one is choosing
+    // rather than being pushed.
+    expect(store.agentIdentityOf(DEFAULT_PROFILE_ID), 'BroBot exists').not.toBeNull()
+    say(`1 · ${arm.provider}: BroBot's identity is written`)
 
     // ── 2 · the conversation the measurement is on ────────────────────────────────────────────
     const sink = new Recorder('webContents:2')

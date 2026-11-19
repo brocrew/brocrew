@@ -19,7 +19,6 @@ import {
   OPEN_THE_CONVERSATION,
 } from '../../src/renderer/src/lib/taking-over'
 import { forestView, type ForestRow } from '../../src/renderer/src/lib/the-forest'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type { IdentityUse } from '../../src/shared/agent-roster'
 
 import type { AgentIdentities, AgentIdentity } from '../../src/shared/runtime-ipc'
@@ -100,14 +99,6 @@ const WALL = Date.now()
 /** ⛔ **The pane floor** — `--app-min-w` 1180 less `--rail-w` 208. */
 const FLOOR = 972
 
-const CHOSEN: AgentIdentity['chosen'] = {
-  maxDepth: 'default',
-  canMessage: 'default',
-  canAssignWork: 'default',
-  canCreateAgents: 'default',
-  canWriteRules: 'default',
-}
-
 const ADA: AgentIdentity = {
   id: 'aid:ada',
   slug: 'ada',
@@ -116,8 +107,6 @@ const ADA: AgentIdentity = {
   createdBy: null,
   provider: 'claude',
   externalMcpServerIds: [],
-  capabilities: { ...DEFAULT_CAPABILITIES },
-  chosen: CHOSEN,
 }
 
 const ADA_USE: IdentityUse = {

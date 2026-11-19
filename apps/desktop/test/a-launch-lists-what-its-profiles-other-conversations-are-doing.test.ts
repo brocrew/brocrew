@@ -32,7 +32,6 @@ import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { A_PERSON_SENT_IT } from '../src/main/runtime/turn-origin'
 import { GO_AHEAD_MESSAGE } from '../src/renderer/src/lib/plan-mode'
-import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import { WHAT_CHANGED_HEADER } from '../src/main/runtime/codex-lead'
 import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
@@ -86,8 +85,6 @@ function context(over: Partial<InstructionContext> = {}): InstructionContext {
     profileSlug: 'ali',
     cwd: '/tmp/work',
     startedBy: null,
-    depth: 0,
-    capabilities: DEFAULT_CAPABILITIES,
     spawningEnabled: true,
     root: null,
     others: { shown: [], more: 0 },

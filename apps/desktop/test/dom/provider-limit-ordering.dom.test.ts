@@ -12,7 +12,6 @@ import { listenProviderStates } from '../../src/renderer/src/lib/provider-limit-
 import type { ProviderBlockFacts } from '../../src/renderer/src/lib/provider-limit-status'
 import type { AgentStore } from '../../src/renderer/src/lib/agent-store'
 import type { ListedConversation } from '../../src/renderer/src/lib/conversation-list'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type {
   AgentIdentities,
   ResumableSessionInfo,
@@ -99,14 +98,6 @@ const agents: AgentIdentities = {
       createdBy: null,
       provider: 'claude',
       externalMcpServerIds: [],
-      capabilities: { ...DEFAULT_CAPABILITIES },
-      chosen: {
-        maxDepth: 'default',
-        canMessage: 'default',
-        canAssignWork: 'default',
-        canCreateAgents: 'default',
-        canWriteRules: 'default',
-      },
     },
   ],
   foldersWithoutARow: [],

@@ -22,7 +22,6 @@ import {
 import { OPEN_THE_CONVERSATION } from '../../src/renderer/src/lib/taking-over'
 import type { ForestView } from '../../src/renderer/src/lib/the-forest'
 import { agentStateWords } from '../../src/shared/agent-state'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type { AgentIdentity } from '../../src/shared/runtime-ipc'
 import type { ForestNode } from '../../src/shared/the-whole-forest'
 import { assertClippedButTold, assertDrawn, drawnReady } from './drawn'
@@ -109,14 +108,6 @@ const identity = (slug: string, displayName: string): AgentIdentity => ({
   createdBy: null,
   provider: null,
   externalMcpServerIds: [],
-  capabilities: { ...DEFAULT_CAPABILITIES },
-  chosen: {
-    maxDepth: 'default',
-    canMessage: 'default',
-    canAssignWork: 'default',
-    canCreateAgents: 'default',
-    canWriteRules: 'default',
-  },
 })
 
 const LONG_NAME = 'Bartholomew Maximilian Featherstonehaugh-Cholmondeley the Third'

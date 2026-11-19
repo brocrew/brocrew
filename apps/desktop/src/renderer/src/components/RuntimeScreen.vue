@@ -1807,27 +1807,8 @@ function deletedFromTheSheet(conversations: readonly string[]): void {
 }
 
 /**
- * 🔴 **The grant sheet's reopen: do not move the window, and SAY it if it fails** (470, review).
- *
- * ⚑ **`overlays.notify` is the one lane that paints above the host** (`ToastStack`) — every other
- * lane paints UNDER `OverlayHost`'s dimmed, `aria-modal` scrim, where a person cannot see it. ⛔ **No
- * new sentence**: it carries the store's own refusal.
- */
-async function reopenForGrant(sessionId: string): Promise<void> {
-  if (await closeAndReopen(sessionId, false)) return
-  // ⚠️ **`resumeError` OR the record's own** — a close that failed put its sentence on the record,
-  // and a cancelled launch deliberately sets neither, which is a gesture the person made.
-  const said = store.resumeError.value ?? store.get(sessionId)?.error ?? null
-  if (said !== null) overlays.notify(said)
-}
-
-/**
  * Move this conversation onto the machine's current Claude sign-in (147) — close the child holding
  * the superseded credential, then reopen, which re-reads the Keychain.
- *
- * ⚑ **A named caller over {@link closeAndReopen} rather than the gesture itself**, because the two
- * callers differ in WHY: this one is the Keychain, and the grant sheet's is the row `admitGive`
- * reads. ⛔ The reasoning for doing both halves as one gesture moved with the body.
  *
  * The reopen reports through the same `resumeError` every other reopen does, so a machine login that
  * has since expired says so in the place the user is already looking.
@@ -1837,38 +1818,22 @@ async function reopenSignIn(sessionId: string): Promise<void> {
 }
 
 /**
- * 🔴 **Close one conversation and open it again, as one gesture** — {@link reopenSignIn}'s body,
- * lifted at `470` because HO-028 §3 gave it a second caller.
+ * 🔴 **Close one conversation and open it again, as one gesture.**
  *
  * ⚑ **Close AND resume, as one gesture, because half of it is a worse state than either end.** A
  * close alone leaves the user with an ended conversation and a Resume they now have to find; a
  * resume alone is refused, since `resumeSession` hands back the session already running rather than
  * spawning a second child onto the same transcript.
  *
- * ⚠️ **That paragraph was DELETED rather than lifted when this body was**, and `470 · relay 1`
- * found two live pointers still aimed at it — {@link reopenSignIn} saying the reasoning *"moved
- * with the body"* and `CapabilitiesSheet`'s `reopen` emit quoting it as something `RuntimeScreen`
- * says. ⛔ **Both were true of no file**, which is `a-pointer-clause-is-a-claim` with the claim
- * pointing at a sentence the same commit removed.
- *
  * ⛔ **A close that failed leaves the old child alive**; reopening on top of it would attach to
  * that very session and report success. Its sentence is already on the record, so there is nothing
  * to add here.
- *
- * ⚠️ **The two callers want the same thing for different reasons** — `147` the machine's current
- * credential, HO-028 §3 the grant this app now holds; both are facts a provider is handed at
- * launch and never again, and both are *"their press, never ours"*.
- *
- * ⛔ **They differ in one thing and review is what found it: WHERE THE PERSON IS STANDING.** The
- * sign-in bar is inside the conversation it reopens, so the move is a self-assignment and the
- * refusal lands on the surface being looked at. ⚑ The grant sheet is a modal over anything, so it
- * passes `show: false` and says the refusal itself — see the mount.
  *
  * @returns whether the conversation is open again. ⚠️ `false` covers both halves: a close that
  *   failed (whose sentence is on the record) and a resume that was refused (whose sentence is
  *   `store.resumeError`).
  */
-async function closeAndReopen(sessionId: string, show = true): Promise<boolean> {
+async function closeAndReopen(sessionId: string): Promise<boolean> {
   // ⚠️ **`from` is read BEFORE the awaits** (095): a close and a start take as long as a provider
   // takes, and a person who moved meanwhile is not moved back.
   const from = view()
@@ -1878,9 +1843,7 @@ async function closeAndReopen(sessionId: string, show = true): Promise<boolean> 
     const closed = await store.close(sessionId)
     if (!closed) return false
     const opened = await store.resume(sessionId)
-    // 🔴 **470 · `show` is FALSE for the grant sheet's caller**: it can be opened over any surface,
-    // and a press on a row for another conversation must not walk the window there behind a modal.
-    if (opened !== null && show) showConversation(opened, from)
+    if (opened !== null) showConversation(opened, from)
     return opened !== null
   })
 }
@@ -4123,7 +4086,6 @@ onUnmounted(() => {
         :start="startFromSheet"
         :drafts="drafts"
         @settings="openSettings"
-        @reopen="(sessionId) => void reopenForGrant(sessionId)"
         @archived="archivedFromTheSheet"
         @deleted="deletedFromTheSheet"
       />

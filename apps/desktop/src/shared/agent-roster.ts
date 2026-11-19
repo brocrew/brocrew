@@ -23,7 +23,7 @@ import type { AgentIdentity } from './agent-identity-contracts'
  *
  * ⛔ **Every field of `AgentIdentity` is a COLUMN of `agent_identity`.** These are neither: they are
  * counts over two other tables and a fold over the whole population. ⚑ Putting them on the row
- * would make `createAgent`'s and `setCapabilities`' read-backs answer a question about
+ * would make `createAgent`'s and `setExternalMcpServers`' read-backs answer a question about
  * conversations, which neither of those doors asks and neither of them could answer cheaply — and
  * it is `foldersWithoutARow`'s own placement, one field over on {@link AgentIdentities}: *a fact
  * about the population is not a column on a row*.

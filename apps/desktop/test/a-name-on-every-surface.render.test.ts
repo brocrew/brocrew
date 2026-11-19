@@ -6,7 +6,6 @@ import SessionDrawer from '../src/renderer/src/components/SessionDrawer.vue'
 import SideRail from '../src/renderer/src/components/SideRail.vue'
 import TeamWorkspace from '../src/renderer/src/components/TeamWorkspace.vue'
 import { createAttachmentBook, draftKey } from '../src/renderer/src/lib/drafts'
-import { CAPABILITY_FIELDS, type ProfileCapabilities } from '../src/shared/capabilities'
 import { createSessionRecord, type SessionRecord } from '../src/renderer/src/lib/session-record'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import { createWindow } from '../src/renderer/src/lib/transcript-window'
@@ -75,20 +74,6 @@ const identity = (displayName: string | null): AgentIdentity => ({
   // ⚑ **598 · who brought it into being** — null is *nobody recorded it*; see `AgentIdentity.createdBy`.
   createdBy: null,
   externalMcpServerIds: [],
-  // ⚠️ **A whole grant, because the rail DRAWS one** — `530`'s pair of lines is rendered under
-  // every roster row, and a partial fixture is a `TypeError` in `grantSays` rather than a missing
-  // sentence. ⛔ The narrowest values, so nothing here is a claim about capability — ⚑ D-016:
-  // each field's own `narrowest`, read off the schema now that the set it made is gone.
-  capabilities: Object.fromEntries(
-    CAPABILITY_FIELDS.map((field) => [field.key, field.narrowest]),
-  ) as unknown as ProfileCapabilities,
-  chosen: {
-    maxDepth: 'default',
-    canMessage: 'default',
-    canAssignWork: 'default',
-    canCreateAgents: 'default',
-    canWriteRules: 'default',
-  },
 })
 
 const roster = (displayName: string | null): AgentIdentities => ({

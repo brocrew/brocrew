@@ -13,11 +13,6 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentCallerId, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
-import {
-  MESSAGE_RAILS,
-  messagePermanenceOf,
-  messageRetryableOf,
-} from '../src/main/runtime/message-rails'
 import { SPAWN_RAILS, permanenceOf, retryableOf } from '../src/main/runtime/spawn-rails'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
@@ -41,17 +36,6 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
  * standing rule 8. `BEYOND_ITS_RAILS` is required on every `AgentToolDefinition`, so a verb added
  * later cannot arrive un-classified, and §1 below reads the table off the real toolset rather than
  * off a list somebody typed twice.
- *
- * ## ⛔ §2.5 · a policy wall arrived dressed as a typo
- *
- * ⚑ **The same report, §7.2**: *"Argument validation runs before the permission check, so the first
- * attempt returned `malformed-request` with `permanence: "permanent"` — when the truth was
- * `may-not-create-agents`."* 🔴 *"The only reason the real rail was discovered is that the PM
- * disobeyed"* this app's own instruction to read a permanent refusal rather than retry it.
- *
- * ⚠️ **Two halves, and §3 and §4 below are one each**: the wall answers first, and answering first
- * discloses nothing — `341`'s *entitlement before existence* has to survive the reordering that
- * happens around it.
  */
 
 class RecordingSink implements RuntimeEventSink {
@@ -90,7 +74,7 @@ const THE_SPLIT: Readonly<Record<ToolName, BeyondItsRails>> = {
   list_profiles: 'nothing-its-rails-do-not-cover',
   read_document: 'nothing-its-rails-do-not-cover',
   // ⚑ **D-016** — `549`'s `list_documents` row is gone with the document registry.
-  // Known agents can propose; direct writes are limited to a person-started BroBot conversation.
+  // Any agent can propose; direct writes are limited to the person and the creating profile.
   // The host checks caller, target and exact baseline, and keeps attribution and person-only Undo.
   propose_agent_rules: 'nothing-its-rails-do-not-cover',
   read_agent_rules: 'nothing-its-rails-do-not-cover',
@@ -195,10 +179,6 @@ describe('486 · the doors our own verbs do not need', () => {
     await host.close(id, window)
   }
 
-  const grant = (profileId: string, edit: Parameters<SessionStore['setCapabilities']>[1]): void => {
-    expect(store.setCapabilities(profileId, edit)).toBe(true)
-  }
-
   /** The toolset one session is offered, called the way a provider would call it. */
   const toolsOf = (sessionId: string) => {
     const set = agentToolsFor(host, sessionId)
@@ -216,7 +196,7 @@ describe('486 · the doors our own verbs do not need', () => {
 
   /**
    * ⛔ **An agent's own conversation, started by a parent's give** — so `sessionSpeakingAs` decodes
-   * an `agent:<id>` caller and the grants below are actually read. ⚠️ A person's session would be
+   * an `agent:<id>` caller and the agent's own door is the one measured. ⚠️ A person's session would be
    * turned away from every question in this file by HO-007's *the human unrestricted*, which would
    * make every assertion vacuous. ⚑ **D-016** — `give_work` starts it, and its brief is its first
    * turn.
@@ -239,7 +219,7 @@ describe('486 · the doors our own verbs do not need', () => {
     it('🔴 every verb says what it does beyond its rails, and the verbs that keep a card are named', () => {
       // ⛔ **The real toolset, not a fixture.** `agentToolsFor` is what both adapters are handed, so
       // a verb added to the app arrives here; the explicit eligible role enumerates its full vocabulary.
-      const declared = agentToolsFor(host, 'sess_nobody', {}, true).tools
+      const declared = agentToolsFor(host, 'sess_nobody', {}).tools
       const said = Object.fromEntries(declared.map((one) => [one.name, one.beyondItsRails]))
       expect(said).toEqual(THE_SPLIT)
       // ⚑ **Named, so a verb cannot change rows in silence** — and the negative is the same list
@@ -262,7 +242,7 @@ describe('486 · the doors our own verbs do not need', () => {
       // ⛔ **A closed vocabulary guards what a member SAYS** — a word no verb uses is a word nothing
       // measures. All three are reached, which is what makes the split a partition rather than a
       // list with a dead entry.
-      const declared = agentToolsFor(host, 'sess_nobody', {}, true).tools
+      const declared = agentToolsFor(host, 'sess_nobody', {}).tools
       const reached = new Set(declared.map((one) => one.beyondItsRails))
       expect([...reached].sort()).toEqual([...BEYOND_ITS_RAILS].sort())
       // ⚠️ **And every word describes the VERB, never what an app should ask.** The policy lives in
@@ -273,28 +253,9 @@ describe('486 · the doors our own verbs do not need', () => {
     })
   })
 
-  describe('§2 · entitlement before argument shape', () => {
-    it('🔴 create_agent · a caller with no grant is told the WALL, not that its arguments are malformed', async () => {
-      // ⛔ **HO-031 §7.2's call, re-aimed** (D-014): `role` is no longer an argument, so the call is
-      // malformed by a `provider` that is not a provider. The old order answered
-      // `malformed-request · permanent`, and the app's own advice — *read a permanent refusal
-      // rather than retrying one* — then pointed at the false conclusion.
+  describe('§2 · a malformed call is told its shape', () => {
+    it('🔴 create_agent · a provider that is not a provider is refused as malformed, naming the field', async () => {
       const worker = await anAgentRunning('worker')
-      // ⚠️ **D-014 · the ruled default is `any`**, so *a caller with no grant* is one a person set to
-      // `none` — the wall is kept for exactly that caller.
-      grant('worker', { canCreateAgents: 'none' })
-      const refused = await toolsOf(worker).call('create_agent', {
-        profile_slug: 'helper',
-        provider: 'DEV-75297',
-      })
-      expect(refused['rail']).toBe('may-not-create-agents')
-      expect(refused['permanence']).toBe('until-a-person-changes-it')
-      // ⚠️ **And the sentence a model reads is about the wall**, not about the argument.
-      expect(refused['reason']).not.toContain('provider')
-
-      // ⚑ **The paired positive, one fact over** (standing rule 3): the SAME malformed call from a
-      // caller a person HAS granted still meets the shape check, so the wall did not eat it.
-      grant('worker', { canCreateAgents: 'any' })
       const shaped = await toolsOf(worker).call('create_agent', {
         profile_slug: 'helper',
         provider: 'DEV-75297',
@@ -303,135 +264,56 @@ describe('486 · the doors our own verbs do not need', () => {
       expect(JSON.stringify(shaped['detail'])).toContain('provider')
     })
 
-    // ⚑ **D-016** — `list_projects`, the second door on the same reach, is gone with projects.
-    it('⛔ message_agent · the same order, on the reach a person granted', async () => {
+    it('⛔ message_agent · a call with no target and no text is refused as malformed', async () => {
       const worker = await anAgentRunning('worker')
-      grant('worker', { canMessage: 'none' })
-      const tools = toolsOf(worker)
-      expect((await tools.call('message_agent', { kind: 'follow-up' }))['rail']).toBe(
-        'may-not-message',
-      )
-      grant('worker', { canMessage: 'any' })
-      const widened = toolsOf(worker)
-      expect((await widened.call('message_agent', { kind: 'follow-up' }))['rail']).toBe(
+      expect((await toolsOf(worker).call('message_agent', { kind: 'follow-up' }))['rail']).toBe(
         'malformed-request',
       )
     })
   })
 
-  describe('§3 · nothing leaks', () => {
-    it('🔴 an unentitled caller is told the SAME thing about a name that exists and one that does not', async () => {
-      // ⛔ **This is the property the reorder had to preserve.** `341`'s ruling is that an
-      // unentitled caller must not learn which identities exist from the shape of its refusal —
-      // and moving the grant IN FRONT of the argument check is exactly the change that could have
-      // turned the refusal into an oracle.
+  describe('§3 · creating an agent', () => {
+    it('🔴 the tool tells a taken name from a free one, and a stored can_create_agents stops nothing', async () => {
       await bringIdentityIntoBeing('taken')
       const worker = await anAgentRunning('worker')
-      // ⚠️ **D-014 · the default is `any`**, so the unentitled caller is one a person set to `none`.
-      grant('worker', { canCreateAgents: 'none' })
+      // The retired column is no longer read.
+      db.prepare(`UPDATE agent_identity SET can_create_agents = 'none' WHERE slug = 'worker'`).run()
       const tools = toolsOf(worker)
-      const existing = await tools.call('create_agent', { profile_slug: 'taken' })
-      const absent = await tools.call('create_agent', { profile_slug: 'nobody-has-this-name' })
-      // ⚑ **Byte for byte**, so a difference in any field — rail, sentence, detail — is red.
-      expect(JSON.stringify(existing)).toEqual(JSON.stringify(absent))
-      expect(existing['rail']).toBe('may-not-create-agents')
-      // ⛔ …and the same for a malformed one, which is the arm this dispatch moved.
-      const malformed = await tools.call('create_agent', { profile_slug: 42 })
-      expect(JSON.stringify(malformed)).toEqual(JSON.stringify(absent))
-
-      // 🔴 **The control, and without it every line above passes over an app that answers nothing.**
-      // ⚠️ An ENTITLED caller can tell the two names apart — so the fold above is a fold and not an
-      // absence of information.
-      grant('worker', { canCreateAgents: 'any' })
-      const entitled = toolsOf(worker)
-      expect((await entitled.call('create_agent', { profile_slug: 'taken' }))['rail']).toBe(
+      expect((await tools.call('create_agent', { profile_slug: 'taken' }))['rail']).toBe(
         'agent-name-taken',
       )
       expect(
-        (await entitled.call('create_agent', { profile_slug: 'nobody-has-this-name' }))['outcome'],
+        (await tools.call('create_agent', { profile_slug: 'nobody-has-this-name' }))['outcome'],
       ).toBe('ok')
+      expect(store.agentIdentityOf('nobody-has-this-name')?.createdBy).toEqual({
+        by: 'an-agent',
+        agent: 'worker',
+      })
     })
 
-    it('🔴 …and the HOST door folds them too — the tool’s wall is not the only thing standing there', async () => {
-      // ⛔ **A mutation swapping the grant and the name inside `createAgentFor` SURVIVED the test
-      // above**, and it survived honestly: the tool asks its own wall first, so the host door's
-      // internal order never showed through the door a model meets. ⚠️ **A census that asserts a
-      // BOUNDARY and not its callers proves nothing** (HO-029 §3's test half) — this is the same
-      // shape from the other side, so the property is asserted at BOTH layers.
-      //
-      // ⚑ **Why the host door has to hold it on its own**: it is the only thing in this app that
-      // writes an identity, and a caller that reaches it without going through the tool — a future
-      // verb, a window path, a second tool — would meet whatever order is written there.
+    it('🔴 …and the HOST door tells them apart too, writing nothing for a taken name', async () => {
       await bringIdentityIntoBeing('taken')
       const worker = await anAgentRunning('worker')
-      // ⚠️ **D-014 · the default is `any`**, so the unentitled caller is one a person set to `none`.
-      grant('worker', { canCreateAgents: 'none' })
       const by = { ownerId: agentCallerId(worker) }
       const said = (slug: string) => ({
         slug,
         displayName: null,
         provider: null,
       })
-      // ⚑ **D-042 · R2** — the 5th argument is the default model `create_agent` named: none here,
-      // so the two calls differ in the name they ask for and in nothing else.
-      const existing = host.createAgentFor(worker, said('taken'), by, null, null)
-      const absent = host.createAgentFor(worker, said('nobody-has-this-name'), by, null, null)
-      expect(JSON.stringify(existing)).toEqual(JSON.stringify(absent))
-      expect(existing).toMatchObject({ ok: false, rail: 'may-not-create-agents' })
-      // ⛔ **…and nothing was written on the way**, which is the half a refusal alone would not say:
-      // a door that minted the row and then refused would satisfy every line above.
-      expect(store.agentIdentities().map((one) => one.slug)).not.toContain('nobody-has-this-name')
-
-      // 🔴 **The control**: entitled, the same door tells the two names apart.
-      grant('worker', { canCreateAgents: 'any' })
+      const before = store.agentIdentities().length
       expect(host.createAgentFor(worker, said('taken'), by, null, null)).toMatchObject({
         ok: false,
         rail: 'agent-name-taken',
       })
+      expect(store.agentIdentities()).toHaveLength(before)
       expect(host.createAgentFor(worker, said('nobody-has-this-name'), by, null, null).ok).toBe(
         true,
       )
     })
-
-    it('⛔ …and the wall names only the CALLER, never the thing it asked about', async () => {
-      const worker = await anAgentRunning('worker')
-      grant('worker', { canCreateAgents: 'none' })
-      const refused = await toolsOf(worker).call('create_agent', { profile_slug: 'somebody' })
-      const detail = JSON.stringify(refused['detail'])
-      expect(detail).not.toContain('somebody')
-      // ⚑ The positive beside it: it does carry who was asking, which is what the sheet needs.
-      expect(detail).toContain('worker')
-    })
   })
 
   describe('§4 · the permanence that describes the wall it came from', () => {
-    it('🔴 every messaging rail is one a column decides, and each is `until-a-person-changes-it`', () => {
-      // ⛔ **HO-031 §2.5:** *a permanence that describes the wrong thing is a promise about the world
-      // that is false.* ⚠️ The `-outside-your-project` rails read `permanent`, and
-      // `admitMessaging` reached one only while that column resolved to `same-project` — by the
-      // ruled default or an explicit choice — so widening it to `any` made the IDENTICAL call
-      // succeed, which is what `permanent` denies. ⚑ D-016 deleted them with `same-project`.
-      // ⚑ **D-016 · the one rail no column decided is gone**: D-014's
-      // `assign-work-to-one-you-did-not-start` — no person could change who started a conversation,
-      // so it was `permanent` — went with work sent as a message; a give reaches only the giver's own
-      // conversation with that agent, by the shape of the act.
-      for (const rail of MESSAGE_RAILS) {
-        expect(messagePermanenceOf(rail), rail).toBe('until-a-person-changes-it')
-        // ⚑ `retryable` is DERIVED, and the repricing must not have moved it: neither word is one a
-        // caller should spin on.
-        expect(messageRetryableOf(rail), rail).toBe(false)
-      }
-      expect([...MESSAGE_RAILS].sort()).toEqual(['may-not-assign-work', 'may-not-message'])
-      // ⚑ **D-016** — the sibling pair (`may-not-assign-work` beside
-      // `assign-work-outside-your-project`, one value of the same column narrower) went with
-      // `same-project`; the column has one value that refuses now, and one rail for it.
-    })
-
-    it('⛔ `too-deep` is a capability a person sets, and the piece rail beside it is still `permanent`', () => {
-      // ⚑ `max_depth` is a count on the grant sheet, and the caller cannot choose a shallower
-      // parent — ⚑ D-016: the depth is fixed by the piece the caller holds.
-      expect(permanenceOf('too-deep')).toBe('until-a-person-changes-it')
-      expect(retryableOf('too-deep')).toBe(false)
+    it('⛔ the piece rail is `permanent`, and the rail a person can clear is not', () => {
       // 🔴 **The paired negative, and it is what makes this a repricing rather than a sweep.**
       // `not-your-parent` is not a column on anybody's sheet — who may command a conversation is
       // `mayCommand`'s, which no switch, capability or card changes — so no person-facing control
@@ -445,8 +327,8 @@ describe('486 · the doors our own verbs do not need', () => {
       // 🔴 **`499` · this line read `spawn-must-prompt` → `permanent`, and BOTH halves moved.**
       // ⛔ `366` priced it `permanent` because *"there is no switch, capability, card or setting
       // anywhere in this app that makes a spawned `auto` legal"* — and HO-036 is that switch: the
-      // parent's own approvals button makes the identical call succeed. ⚑ So the successor rail
-      // takes the word this test's own subject (`too-deep`) carries, for the same reason.
+      // parent's own approvals button makes the identical call succeed, so it reads
+      // `until-a-person-changes-it`.
       expect(permanenceOf('wider-than-its-parent')).toBe('until-a-person-changes-it')
       expect(retryableOf('wider-than-its-parent')).toBe(false)
       // ⚠️ …and the vocabulary is still partitioned rather than collapsed: the spawn table uses

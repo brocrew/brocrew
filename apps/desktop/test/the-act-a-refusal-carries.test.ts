@@ -60,7 +60,7 @@ const inventory = (naming: { prefix: string; separator: string }, server = 'brob
     naming,
     declared: {
       server,
-      tools: ['give_work', 'message_agent', 'answer_question'].map((name) => ({
+      tools: ['create_agent', 'give_work', 'message_agent', 'answer_question'].map((name) => ({
         name,
         description: '',
         parameters: [],
@@ -254,6 +254,66 @@ describe('685 §2.1 · the act a refusal carries, on its notice', () => {
       expect(toldClause(notice.told, notice.toldInPart === true)).toBe(` · it was told: “${whole}”`)
     }
   })
+
+  it('quotes a create refusal through both provider receipts', async () => {
+    const pm = await opens('pm')
+    const { text, json, row } = await refusedCall(pm, 'create_agent', { profile_slug: 'pm' })
+    expect(row.rail).toBe('agent-name-taken')
+    expect(text).toMatch(/^Not sent: /)
+    expect(row.told).toEqual({ text, dropped: 0 })
+    for (const [naming, name, receipt] of [
+      [CLAUDE_NAMING, 'mcp__brobot__create_agent', claudeReceipt('c1', text, json)],
+      [CODEX_NAMING, 'brobot__create_agent', codexReceipt('c1', 'create_agent', text, json)],
+    ] as const) {
+      const state = createTranscript()
+      for (const event of [
+        inventory(naming),
+        ev({ type: 'tool_call', id: 'c1', name, summary: '{}' }),
+        row,
+        receipt,
+      ])
+        applyEvent(state, event)
+      expect(theNotice(state).told).toBe(text)
+      expect(theNotice(state).toldInPart).toBeUndefined()
+    }
+  })
+
+  it.each(['create_agent', 'give_work'] as const)(
+    'matches a clipped %s refusal by the recorded text and leaves ambiguous receipts unclaimed',
+    async (tool) => {
+      const { kept } = await aRefusedAnswer()
+      const quote = 'Not sent: ' + 'The supplied argument cannot be used. '.repeat(6) + 'Try again.'
+      const row = { ...kept, tool, told: { text: quote, dropped: 0 } }
+      const wrongQuote = {
+        ...row,
+        told: { text: quote.replace('supplied', 'missing'), dropped: 0 },
+      }
+      for (const [stored, pending] of [
+        [[row, wrongQuote], [wrongQuote.told]],
+        [[wrongQuote], [wrongQuote.told]],
+        [
+          [row, row],
+          [row.told, row.told],
+        ],
+      ] as const) {
+        const state = createTranscript()
+        const receipt = codexReceipt('c1', tool, quote, undefined)
+        expect(receipt).toMatchObject({
+          summary: `${quote.slice(0, 200)}… (200 of ${quote.length} characters)`,
+        })
+        for (const event of [
+          inventory(CODEX_NAMING),
+          ev({ type: 'tool_call', id: 'c1', name: `brobot__${tool}`, summary: '{}' }),
+          ...stored,
+          receipt,
+        ])
+          applyEvent(state, event)
+        expect(state.refusalsAwaitingReceipt.map((one) => one.told)).toEqual(pending)
+        if (tool === 'create_agent' && stored[0] === row && stored[1] === wrongQuote)
+          expect(notices(state)[0]?.told).toBe(quote)
+      }
+    },
+  )
 
   it('⚑ a kept sentence the host had to cut is called a part, and a handle in it is read aloud', async () => {
     const { text, json, kept } = await aRefusedAnswer()

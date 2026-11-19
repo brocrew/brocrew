@@ -5,11 +5,7 @@ import {
   PLUGINS_HEADING,
   type PluginInstructionEntry,
 } from '../plugins/instructions'
-import {
-  RULE_WRITING_POLICY,
-  type ConversationAtLaunch,
-  type ProfileCapabilities,
-} from '../../shared/capabilities'
+import { RULE_WRITING_POLICY } from '../../shared/capabilities'
 import { providerDescriptor, DEFAULT_IDENTITY_PROVIDER } from '@brobot2/shared'
 // ⚑ **583 · the axis the instructions sheet is grouped on** — see {@link profileBundleSpans}.
 import type { InstructionSpan, WhoseText } from '../../shared/whose-text'
@@ -50,12 +46,8 @@ import { savedMethodsParagraphs, type SavedMethodsReading } from '../saved-metho
  * > ⛔ **Factory text INSTRUCTS. It does not DESCRIBE.** Where an agent must know a fact about the
  * > system, that fact comes from the dynamic layer, rendered from data — never asserted as prose.
  *
- * ⚑ **HO-015 §2 names why this is worth more than the eight fixes it came from:** *"You may message
- * any agent in any project"* was true when it was written, false when `374` landed `can_message`,
- * and would go false again the first time somebody narrows a grant. **A sentence that describes a
- * capability drifts every time the capability changes; a sentence rendered from the capability
- * cannot.** The launch text resolves the approved words from the same permission values the
- * rails read. The grant sheet retains its own descriptors and help.
+ * ⚑ **A sentence that describes a fact drifts every time the fact changes; a sentence rendered
+ * from it cannot.** The launch text resolves its words from the values the tools read.
  *
  * ## 🔴 555 · WHAT THIS LAYER GUARANTEES, WHAT IT COSTS WHEN IT IS DROPPED, AND WHEN TO MEASURE
  *
@@ -65,8 +57,8 @@ import { savedMethodsParagraphs, type SavedMethodsReading } from '../saved-metho
  * > ⚑ **`HO-062` §2, replacing it: *The factory layer carries BEHAVIOUR. Safety lives in the
  * > rails.***
  *
- * ⚠️ **Everything that must not be circumvented is enforced at a chokepoint in code** — depth, the
- * approval mode, who may give work, who may interrupt, who may end — and none of it is prose,
+ * ⚠️ **Everything that must not be circumvented is enforced at a chokepoint in code** — the
+ * approval mode, who may change standing rules — and none of it is prose,
  * so no provider mode transition reaches any of it. ⛔ **The guarantee this layer really has is
  * about the HAND-OFF and no further**: one composition, handed to one adapter, written into the
  * provider's own additive field. 🔴 **The limit, on one provider, is stated where the hand-off is**
@@ -441,13 +433,6 @@ const COORDINATOR_TEXT = [
     'arrive; confirm a new project plainly.',
 ] as const
 
-// Permissions are a launch snapshot; tools still check current rules.
-const GRANTS_AS_THEY_STOOD = `As of this launch, for ${PRODUCT_NAME}'s agent tools (the tools always check the current rules):`
-
-// No permission is invented for an unknown profile.
-const NO_IDENTITY_SO_NO_GRANTS =
-  "The app cannot identify this conversation's profile, so it cannot list its permissions. Read each tool's response."
-
 // Every profile's memory and saved methods are its own to write.
 export const MAY_SAVE_MEMORY = "You may save lessons to your profile's memory and saved methods."
 
@@ -455,34 +440,9 @@ export const MAY_SAVE_MEMORY = "You may save lessons to your profile's memory an
 export const MAY_NOT_SAVE_MEMORY =
   'Do not save memory or saved methods: this app cannot tell which profile this conversation belongs to.'
 
-// The app-wide switch is disclosed independently of profile permissions.
+// The app-wide switch, said while it is off.
 const SPAWNING_IS_OFF =
-  '- This app currently blocks creating agents and starting new agent conversations. Giving work to an existing conversation still depends on your permissions.'
-
-// Resolve the approved permission sentences from the launch facts.
-function capabilityLines(allowed: ProfileCapabilities, at: ConversationAtLaunch): string[] {
-  const lines = [
-    allowed.canMessage === 'any'
-      ? '- You may message any conversation.'
-      : '- You may not send messages to other conversations.',
-    allowed.canAssignWork === 'any'
-      ? '- You may give work to any agent, through your own conversation with it.'
-      : '- You may not give work to other agents.',
-    allowed.canCreateAgents === 'any'
-      ? '- You may create agents and give them their initial rules.'
-      : '- You may not create agents.',
-    `- ${RULE_WRITING_POLICY}`,
-  ]
-  const remaining = allowed.maxDepth - at.depth
-  if (allowed.canAssignWork === 'any' && remaining <= 1) {
-    lines.push(
-      remaining > 0
-        ? "- You may give work one level below this conversation; the helper's own limit decides what it may give."
-        : '- You have reached your delegation limit and cannot give work from this conversation.',
-    )
-  }
-  return lines
-}
+  '- This app currently blocks creating agents and starting new agent conversations.'
 
 /**
  * 🔴 **Everything the dynamic layer is rendered FROM** — every field typed, and every absence a real
@@ -528,42 +488,11 @@ export interface InstructionContext {
    */
   readonly startedBy: string | null
   /**
-   * 🔴 **How deep this conversation sits — HO-005 §2 Q3, and the number the rail will spend**
-   * (544).
-   *
-   * ⛔ **A conversation a person created is `0`**, which is the ruling's own counting and not this
-   * file's reading of it. ⚑ `RuntimeHost.instructionContext` computes it as the length of the chain
-   * above it — `ancestorsOf(<its parent>).length + 1` — and `give_work`'s rail counts the same
-   * depth on `work` (D-016): the two agree because only a conversation's parent gives it work, and
-   * work a person gave — a root, or a piece taken on for them (commit 6) — counts as 0 wherever it
-   * hangs, so every piece it holds sits at its chain's depth.
-   *
-   * ⚠️ **Not nullable, and the state that would have wanted a `null` is already answered one
-   * section down.** An adopted row carries no profile, so {@link InstructionContext.capabilities}
-   * is `null` for it and no grant line is drawn at all — see {@link NO_IDENTITY_SO_NO_GRANTS}.
-   * ⛔ A conversation this app CAN place always has an answer here, and a bound the reader has to
-   * position itself within is the one thing this field exists to stop shipping.
-   */
-  readonly depth: number
-  /**
-   * The resolved grants — exactly what the rails read.
-   *
-   * 🔴 **`null` means this app cannot NAME the identity, and no longer means *the row is not
-   * written yet*** (485). ⛔ {@link RuntimeHost.instructionContext} used to pass the store's `null`
-   * straight through on a first launch, so the one conversation that most needs its grants — a
-   * fresh install's first — was told nothing about them and branched as though it held none. ⚠️
-   * Before that launch writes its row, the one default set answers, which is what the new row will
-   * say; see that method.
-   */
-  readonly capabilities: ProfileCapabilities | null
-  /**
    * 🔴 **Whether this app will start a new conversation at all, for anybody** (485) —
    * `app_policy.spawning_enabled`, read at launch.
    *
-   * ⛔ **Not a grant, and it is on this object rather than inside `capabilities` for that reason.**
-   * It is one row for the whole app; a grant is a column on an identity. ⚑ It is here because a
-   * grant it makes inert is a sentence this app cannot keep — see {@link SPAWNING_IS_OFF}, which is
-   * the only thing that reads it.
+   * ⚑ It is one row for the whole app — see {@link SPAWNING_IS_OFF}, which is the only thing that
+   * reads it.
    */
   readonly spawningEnabled: boolean
   /** It is a service's profile while services are on: it gets the service text after the core. */
@@ -834,13 +763,12 @@ export interface ToolsToldInText {
 }
 
 /**
- * 🔴 **D-024 · R1 — what is true of THIS conversation, and what it has been granted, as SECTIONS**
+ * 🔴 **D-024 · R1 — what is true of THIS conversation, as SECTIONS**
  * (HO-009 §2's dynamic layer).
  *
  * ⛔ **Its own composition, sent with this conversation's launch and written into no file.** The
  * profile's file is one per profile and every launch of the profile rewrites it, so a conversation
- * that read its facts from there could read a sibling's. ⚑ The grants are here and not in the file
- * because one of them is said for this conversation's depth.
+ * that read its facts from there could read a sibling's.
  *
  * 🔴 **D-039 · and, first, how to use the tools — when `tools` is given**: on Codex, whose catalogue
  * is one namespace with a capped description, so the instructions Claude is handed with its
@@ -866,27 +794,16 @@ function thisConversationSections(
       blocks: [tools.instructions],
     })
   }
-  // 3 · DYNAMIC — what is true of this conversation, and what it has been granted.
+  // 3 · DYNAMIC — what is true of this conversation.
   sections.push({
     whose: 'dynamic',
     heading: '## This conversation',
     blocks: [dynamicLayer(context).join('\n')],
   })
-  // 🔴 **The heading is UNCONDITIONAL now** (485). ⛔ The question *what am I allowed to do* has an
-  // answer in every state, and omitting the section was the one state that answered it with
-  // nothing — see {@link NO_IDENTITY_SO_NO_GRANTS}.
-  const granted: string[] = [
-    context.capabilities === null ? NO_IDENTITY_SO_NO_GRANTS : GRANTS_AS_THEY_STOOD,
-  ]
-  if (context.capabilities !== null) {
-    granted.push(capabilityLines(context.capabilities, { depth: context.depth }).join('\n'))
-  }
-  // ⛔ **Inside the section and after the lines, because it is the bound on them** — and in the
-  // no-identity branch too, since a switch that is off is off for a conversation this app cannot
-  // place as much as for one it can.
-  if (!context.spawningEnabled) granted.push(SPAWNING_IS_OFF)
-  granted.push(context.capabilities === null ? MAY_NOT_SAVE_MEMORY : MAY_SAVE_MEMORY)
-  sections.push({ whose: 'dynamic', heading: '## What you may do', blocks: granted })
+  const lines = [`- ${RULE_WRITING_POLICY}`]
+  if (!context.spawningEnabled) lines.push(SPAWNING_IS_OFF)
+  lines.push(`- ${context.profileSlug == null ? MAY_NOT_SAVE_MEMORY : MAY_SAVE_MEMORY}`)
+  sections.push({ whose: 'dynamic', heading: '## What you may do', blocks: [lines.join('\n')] })
   // The index is composed here from the fields of its well-formed lines, never sent as written.
   if (context.savedMethods !== undefined) {
     sections.push({

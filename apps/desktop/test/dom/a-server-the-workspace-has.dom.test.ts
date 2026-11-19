@@ -3,7 +3,6 @@ import { nextTick } from 'vue'
 import CapabilitiesSheet from '../../src/renderer/src/components/CapabilitiesSheet.vue'
 import ExternalMcpRegistry from '../../src/renderer/src/components/ExternalMcpRegistry.vue'
 import { createAgentStore, type AgentStore } from '../../src/renderer/src/lib/agent-store'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type {
   AgentIdentities,
   AgentIdentity,
@@ -66,14 +65,6 @@ const identity = (over: Partial<AgentIdentity> = {}): AgentIdentity => ({
   createdBy: null,
   provider: null,
   externalMcpServerIds: [],
-  capabilities: DEFAULT_CAPABILITIES,
-  chosen: {
-    maxDepth: 'default',
-    canMessage: 'default',
-    canAssignWork: 'default',
-    canCreateAgents: 'default',
-    canWriteRules: 'default',
-  },
   ...over,
 })
 
@@ -104,7 +95,7 @@ function storeOver(): AgentStore {
       return row
     },
     removeExternalMcpServer: async () => true,
-    setCapabilities: async () => answers.list.identities[0] ?? null,
+    setExternalMcpServers: async () => answers.list.identities[0] ?? null,
     // ⚑ **696 · the door's answer since `682`** — the identity AND what it cleared (`AgentProviderSet`).
     setAgentProvider: async () => {
       const one = answers.list.identities[0]

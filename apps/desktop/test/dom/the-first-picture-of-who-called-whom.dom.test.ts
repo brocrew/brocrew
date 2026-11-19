@@ -14,7 +14,6 @@ import {
   OPEN_IN_ANOTHER_WINDOW,
   OPEN_THE_CONVERSATION,
 } from '../../src/renderer/src/lib/taking-over'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 
 import type { AgentIdentity } from '../../src/shared/runtime-ipc'
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../../src/shared/who-called-whom'
@@ -73,14 +72,6 @@ const identity = (slug: string, displayName: string | null = null): AgentIdentit
   externalMcpServerIds: [],
   // ⚑ **The shipped defaults**, because nothing on this band reads a capability — a grant invented
   // here would be a fact about this file rather than about the app.
-  capabilities: { ...DEFAULT_CAPABILITIES },
-  chosen: {
-    maxDepth: 'default',
-    canMessage: 'default',
-    canAssignWork: 'default',
-    canCreateAgents: 'default',
-    canWriteRules: 'default',
-  },
 })
 
 const spawn = (over: Partial<SpawnEdge> = {}): SpawnEdge => ({

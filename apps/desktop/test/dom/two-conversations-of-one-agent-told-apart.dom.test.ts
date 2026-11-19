@@ -10,7 +10,6 @@ import WaitingOnYou from '../../src/renderer/src/components/WaitingOnYou.vue'
 import * as persons from '../../src/renderer/src/lib/persons-queue'
 import { useOverlays } from '../../src/renderer/src/lib/overlay-store'
 import { decisionReading, readingSentence } from '../../src/shared/questions'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import { agentName, type AgentIdentity } from '../../src/shared/runtime-ipc'
 import { assertDrawn, drawnReady } from './drawn'
 import { mount, unmountAll, visible, type Mounted } from './harness'
@@ -61,8 +60,6 @@ function identity(slug: string, displayName: string): AgentIdentity {
     displayName,
     createdAt: NOW - 86_400_000,
     createdBy: null,
-    capabilities: DEFAULT_CAPABILITIES,
-    chosen: {} as AgentIdentity['chosen'],
     provider: null,
     externalMcpServerIds: [],
   }

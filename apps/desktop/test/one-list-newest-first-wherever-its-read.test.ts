@@ -61,7 +61,6 @@ describe('D-017 · one list, newest activity first, wherever it is read', () => 
     root = mkdtempSync(join(tmpdir(), 'brobot2-onelist-root-'))
     db = openDatabase(join(userData, 'brobot2.sqlite'))
     applyMigrations(db, migrationsFolder)
-    // ⛔ **Past `0013`'s own wall clock** — `a-second-project-and-the-grant.test.ts` argues why.
     clock = Date.UTC(2030, 0, 1)
     store = createSessionStore(db, tick)
     counter = 0
@@ -134,8 +133,7 @@ describe('D-017 · one list, newest activity first, wherever it is read', () => 
      * assertion the sort could satisfy by coincidence would have to coincide twice.
      */
     it("list_agents orders newest activity first, and closing an older conversation moves it back to the front of a running one's", async () => {
-      // ⚑ **BroBot opens first** — `canMessage: 'any'` is the ruled default (549), so nothing here
-      // narrows or widens a grant; the whole test is about ORDER.
+      // ⚑ **BroBot opens first**; the whole test is about ORDER.
       const brobot = await personOpens(DEFAULT_PROFILE_ID)
       const brobotTools = theToolsetJustHandedOut()
       // ⛔ **Strict sequence.** Each `personOpens` call advances the shared clock (`tick`), so
@@ -160,57 +158,28 @@ describe('D-017 · one list, newest activity first, wherever it is read', () => 
   })
 
   // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §3 · a stopped conversation is refused by REACH, never folded into no-such-agent
+  // §3 · a stopped conversation stays readable and listed, never folded into no-such-agent
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
-  /** Two callers differ in message reach; both may read the stopped target. */
-  const twoCallersAndOneTarget = async (): Promise<{
-    brobot: string
-    brobotTools: AgentToolset
-    explorer: string
-    explorerTools: AgentToolset
-    manager: string
-  }> => {
-    const manager = await personOpens('pm')
-    const brobot = await personOpens(DEFAULT_PROFILE_ID)
-    const brobotTools = theToolsetJustHandedOut()
-    const explorer = await personOpens('explorer')
-    const explorerTools = theToolsetJustHandedOut()
-    // Narrow messaging without narrowing the readers.
-    expect(store.setCapabilities('explorer', { canMessage: 'none' })).toBe(true)
-    expect(store.capabilitiesOf(DEFAULT_PROFILE_ID)?.canMessage).toBe('any')
-    expect(store.capabilitiesOf('explorer')?.canMessage).toBe('none')
-    expect(store.parentOf(manager)).toBeNull()
-    return { brobot, brobotTools, explorer, explorerTools, manager }
-  }
-
   describe('§3 · stopped conversations remain readable', () => {
-    it('a stopped conversation remains readable when messaging is narrowed', async () => {
-      const { brobotTools, explorerTools, manager } = await twoCallersAndOneTarget()
+    it('a stopped conversation remains readable and listed for every other caller', async () => {
+      const manager = await personOpens('pm')
+      await personOpens(DEFAULT_PROFILE_ID)
+      const brobotTools = theToolsetJustHandedOut()
+      await personOpens('explorer')
+      const explorerTools = theToolsetJustHandedOut()
+      expect(store.parentOf(manager)).toBeNull()
 
       // 🔴 **The target stops.**
       await host.close(manager, window)
 
-      expect(await callOn(explorerTools, 'get_agent_status', { agent: manager })).toMatchObject({
-        outcome: 'ok',
-        agent: { state: 'idle' },
-      })
-      const said = await callOn(explorerTools, 'message_agent', {
-        agent: manager,
-        text: 'anything at all',
-        // ⚑ **D-016 · a note** — a follow-up names a piece the sender gave, and this caller gave none.
-        kind: 'note',
-      })
-      expect(said).toMatchObject({ outcome: 'refused', rail: 'may-not-message' })
-      expect(said['detail']).toStrictEqual({ reach: 'none' })
-      expect(await idsListedBy(explorerTools)).toContain(manager)
-
-      // ⚑ **THE PAIRED POSITIVE — the granted caller, over the identical stopped id.**
-      expect(await callOn(brobotTools, 'get_agent_status', { agent: manager })).toMatchObject({
-        outcome: 'ok',
-        agent: { state: 'idle' },
-      })
-      expect(await idsListedBy(brobotTools)).toContain(manager)
+      for (const tools of [explorerTools, brobotTools]) {
+        expect(await callOn(tools, 'get_agent_status', { agent: manager })).toMatchObject({
+          outcome: 'ok',
+          agent: { state: 'idle' },
+        })
+        expect(await idsListedBy(tools)).toContain(manager)
+      }
     })
   })
 })

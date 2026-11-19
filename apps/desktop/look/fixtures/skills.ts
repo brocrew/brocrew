@@ -1,4 +1,3 @@
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type { AgentIdentities, RuntimeBridge } from '../../src/shared/runtime-ipc'
 import type { SkillDetail, SkillSelection } from '../../src/shared/skills-catalogue'
 import type { SkillsWindow } from '../../src/shared/skills-window'
@@ -14,14 +13,6 @@ export const SKILLS_CAST: AgentIdentities = {
       createdBy: null,
       provider: 'codex',
       externalMcpServerIds: [],
-      capabilities: { ...DEFAULT_CAPABILITIES },
-      chosen: {
-        maxDepth: 'default',
-        canMessage: 'default',
-        canAssignWork: 'default',
-        canCreateAgents: 'default',
-        canWriteRules: 'default',
-      },
     },
     {
       id: 'aid:recipe-writer',
@@ -31,14 +22,6 @@ export const SKILLS_CAST: AgentIdentities = {
       createdBy: null,
       provider: 'claude',
       externalMcpServerIds: [],
-      capabilities: { ...DEFAULT_CAPABILITIES },
-      chosen: {
-        maxDepth: 'default',
-        canMessage: 'default',
-        canAssignWork: 'default',
-        canCreateAgents: 'default',
-        canWriteRules: 'default',
-      },
     },
   ],
   use: [],

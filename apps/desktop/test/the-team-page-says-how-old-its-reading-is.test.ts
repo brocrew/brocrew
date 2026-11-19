@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { agoWords } from '../src/renderer/src/lib/clock'
 import { teamRoster, type TeamRosterInput } from '../src/renderer/src/lib/team-roster'
 import type { WhatIsBeingDone } from '../src/shared/what-is-being-done'
-import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import type { AgentIdentities } from '../src/shared/runtime-ipc'
 
 /**
@@ -29,8 +28,6 @@ const source: AgentIdentities = {
       displayName: 'Ada',
       createdAt: AT - 86_400_000,
       createdBy: null,
-      capabilities: DEFAULT_CAPABILITIES,
-      chosen: {} as AgentIdentities['identities'][number]['chosen'],
       provider: null,
       externalMcpServerIds: [],
     },

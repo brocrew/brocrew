@@ -114,7 +114,6 @@ describe('439 · BroBot asks a PM, and both conversations hold both halves', () 
     root = mkdtempSync(join(tmpdir(), 'brobot2-projects-root-'))
     db = openDatabase(join(userData, 'brobot2.sqlite'))
     applyMigrations(db, migrationsFolder)
-    // ⛔ **Past `0013`'s own wall clock**, which `a-second-project-and-the-grant.test.ts` argues.
     clock = Date.UTC(2030, 0, 1)
     store = createSessionStore(db, tick)
     counter = 0
@@ -248,7 +247,7 @@ describe('439 · BroBot asks a PM, and both conversations hold both halves', () 
     const brobot = await personOpens(DEFAULT_PROFILE_ID)
     const brobotTools = theToolsetJustHandedOut()
     // ⚠️ **The premise, asserted rather than assumed.**
-    expect(store.capabilitiesOf(DEFAULT_PROFILE_ID)?.canMessage).toBe('any')
+    expect(store.agentIdentityOf(DEFAULT_PROFILE_ID)).not.toBeNull()
     expect(store.parentOf(manager)).toBeNull()
     return { brobot, brobotTools, manager, managerTools }
   }

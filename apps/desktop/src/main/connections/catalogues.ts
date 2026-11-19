@@ -53,7 +53,7 @@ export class ModelCatalogues {
       | 'modelChoiceOf'
       | 'setAgentProvider'
       | 'aPersonPicked'
-      | 'capabilitiesOf'
+      | 'agentIdentityOf'
       | 'setModelChoice'
       | 'lastPicked'
       | 'addHandAddedModel'
@@ -114,7 +114,7 @@ export class ModelCatalogues {
    * ⛔ A `@link` across the main/renderer boundary cannot be resolved by the compiler either way,
    * which is why it is now a path a reader can open.
    *
-   * ⚑ **Read back rather than echoed**, which is {@link setCapabilities}' shape and 339's rule: the
+   * ⚑ **Read back rather than echoed**, which is 339's rule: the
    * store's own fold decides what the column now says, so a word this app cannot read comes back as
    * *nobody has said* instead of as the thing that was asked for.
    *
@@ -149,7 +149,7 @@ export class ModelCatalogues {
    *
    * ## ⛔ The order, and why each question is where it is
    *
-   *  1. **Existence first** — `capabilitiesOf`, criterion 12's reader. ⛔ Asked before the provider
+   *  1. **Existence first** — `agentIdentityOf`, criterion 12's reader. ⛔ Asked before the provider
    *     is, because a probe is a LAUNCH (`070`): a typo must not cost a provider child.
    *  2. **A clear is not validated** — there is nothing to check a default of nothing against, and a
    *     person must be able to take one back while the provider cannot be reached.
@@ -162,7 +162,7 @@ export class ModelCatalogues {
    *  4. **The write**, read back rather than echoed — and ⚑ **R2 · it is the person's last pick on
    *     that provider too**.
    *
-   * ⚠️ **Announced on `agents`**, as `setAgentProvider` and `setCapabilities` are: a second window
+   * ⚠️ **Announced on `agents`**, as `setAgentProvider` and `setExternalMcpServers` are: a second window
    * showing this sheet would otherwise go on drawing a default its new conversations no longer start
    * on. ⛔ **A conversation already open keeps its own** (`whatAModelChoiceReaches` says so).
    */
@@ -171,7 +171,7 @@ export class ModelCatalogues {
     choice: AgentModelChoice | null,
   ): Promise<ModelChoiceSaved> {
     const said = { profileId: profileSlug }
-    if (this.store.capabilitiesOf(profileSlug) === null) {
+    if (this.store.agentIdentityOf(profileSlug) === null) {
       return refuseModelChoice('no-such-agent', said)
     }
     if (choice === null) {
@@ -352,7 +352,7 @@ export class ModelCatalogues {
    * only that provider's homes count.
    */
   private hasNeverRun(profileSlug: string, provider?: Provider): boolean {
-    if (this.store.capabilitiesOf(profileSlug) === null) return false
+    if (this.store.agentIdentityOf(profileSlug) === null) return false
     const folded = foldProfileName(profileSlug)
     return !this.profiles(provider).some((named) => foldProfileName(named) === folded)
   }

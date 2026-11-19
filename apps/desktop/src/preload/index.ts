@@ -57,7 +57,6 @@ import {
   type SnapshotAnswer,
   type SnapshotCatalogue,
 } from '../shared/provider-snapshots'
-import type { CapabilityGrant } from '../shared/capabilities'
 import {
   PAGE_RECEIPT_KIND,
   type PagePerformanceReport,
@@ -704,11 +703,10 @@ const runtime: RuntimeBridge = Object.freeze({
     command({ kind: 'decideInstruction', ...input }),
   decideMcpServerRequest: (input: { requestId: string; approve: boolean }) =>
     command({ kind: 'decideMcpServerRequest', ...input }),
-  setCapabilities: (input: {
+  setExternalMcpServers: (input: {
     profileId: string
-    grant: CapabilityGrant
     externalMcpServerIds: readonly string[]
-  }): Promise<AgentIdentity | null> => command({ kind: 'setCapabilities', ...input }),
+  }): Promise<AgentIdentity | null> => command({ kind: 'setExternalMcpServers', ...input }),
   // ⚑ **516 · the registry's two writes** (HO-040 §4.2). `{ kind, ...input }` like every
   // configuration verb beside them, and both payloads are strings — so
   // `the-bridge-that-clones-nothing.test.ts` files them as `plain-by-construction` on both halves of

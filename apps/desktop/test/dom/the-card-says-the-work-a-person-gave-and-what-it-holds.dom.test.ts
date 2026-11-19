@@ -6,7 +6,6 @@ import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
 import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import type { AgentFacets } from '../../src/renderer/src/lib/agent-state'
 import { DRAWER_W_MIN } from '../../src/renderer/src/lib/drawer'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type { WorkThatNamesIt } from '../../src/shared/piece-called'
 
 import type { AgentIdentity } from '../../src/shared/runtime-ipc'
@@ -127,14 +126,6 @@ const identity = (slug: string, displayName: string | null = null): AgentIdentit
   createdBy: null,
   provider: null,
   externalMcpServerIds: [],
-  capabilities: { ...DEFAULT_CAPABILITIES },
-  chosen: {
-    maxDepth: 'default',
-    canMessage: 'default',
-    canAssignWork: 'default',
-    canCreateAgents: 'default',
-    canWriteRules: 'default',
-  },
 })
 
 interface Shown {

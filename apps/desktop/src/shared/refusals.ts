@@ -7,11 +7,9 @@
  * `341` fixed the refusal payload's common base as
  * `{rail, permanence, retryable, reason, detail}` at the session-creation door; `425` later added
  * `remedy` beside those policy facts. The rail doors carry that common grammar —
- * {@link SPAWN_RAILS}, `TOOL_REFUSALS`, `MESSAGE_RAILS`, `REPLY_RAILS`, `QUESTION_RAILS`,
- * `INTERRUPT_RAILS` and the document reader's. ⚑ **Every one of them imports `RailPermanence`
- * rather than restating it**, and `message-rails.ts` says why on the import line: *"`RailPermanence`
- * is IMPORTED and not restated, which is what makes the shared closed words a fact rather than a
- * coincidence."*
+ * {@link SPAWN_RAILS}, `TOOL_REFUSALS`, `REPLY_RAILS`, `QUESTION_RAILS`, `INTERRUPT_RAILS` and the
+ * document reader's. ⚑ **Every one of them imports `RailPermanence` rather than restating it**,
+ * which is what makes the shared closed words a fact rather than a coincidence.
  *
  * ## ⛔ `DOCUMENT_RAILS` was the exception for three dispatches, and `424` closed it
  *
@@ -418,6 +416,8 @@ export const TOOL_REFUSALS = [
   // A recorded conversation cannot be started for messages: a read-only copy, provider child,
   // or adopted conversation. An already-running one can still receive messages.
   'that-conversation-takes-no-messages',
+  // The conversation is a service's, which takes its work one piece at a time through give_work.
+  'that-is-a-service',
   // The profile names several reachable conversations; the call must name one.
   'that-agent-has-several-conversations',
   'malformed-request',
@@ -443,8 +443,6 @@ export const TOOL_REFUSALS = [
   // The program or folder cannot be used, or the provider refuses the start.
   // The detail names the cause; temporary shortages and timeouts use separate words.
   'agent-could-not-be-started',
-  // The caller lacks the creation capability; this is checked before the requested name.
-  'may-not-create-agents',
   // The folded name already exists. Creation refuses rather than adopting that identity;
   // the caller needs a different name.
   'agent-name-taken',
@@ -466,10 +464,8 @@ export const TOOL_REFUSALS = [
   // The questions or passed-up copies could not all be read, so the piece is not ended alone.
   // A later read may succeed; ask a person if it keeps failing.
   'its-questions-could-not-all-be-read',
-  // The host could not establish the fixed authority required for the rule operation.
+  // Only the person and the profile that created the agent write its standing rules directly.
   'may-not-write-rules',
-  // The claimed rule-relay shortcut is refused as a call, not silently converted to a proposal.
-  'may-not-relay-a-rule',
   // A follow-up named open work the caller holds. Use a tracked question or hand the work back;
   // ended work falls back to the giver lookup’s refusal.
   'that-is-work-you-hold',

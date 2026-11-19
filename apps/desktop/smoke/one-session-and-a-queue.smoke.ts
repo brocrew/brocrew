@@ -238,7 +238,7 @@ const drive = async (arm: Arm): Promise<void> => {
       },
       secondSink,
     )
-    expect(store.capabilitiesOf('archivist')?.canMessage).toBe('any')
+    expect(store.agentIdentityOf('archivist')).not.toBeNull()
     say(`4 · ${arm.provider}: second caller ${second.sessionId}`)
 
     const askIt = async (text: string): Promise<void> => {

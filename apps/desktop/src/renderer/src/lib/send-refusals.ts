@@ -108,14 +108,6 @@ export interface SendRefusal {
     | 'whatTheseWordsAre'
     | 'assertAcceptsMessages'
     | 'assertSignInCurrent'
-    /**
-     * ⛔ **374's messaging capability, and the only member on this list a window can never meet.**
-     * The gate asks `sessionSpeakingAs(by)` first and a `webContents:<n>` decodes to `null`, so it
-     * returns before it can refuse anybody with a surface. It is here because this table's census
-     * raises an alarm when a refusal is ADDED to the send chain, not when one fires — and without
-     * the member the chain stopped being the one the table describes.
-     */
-    | 'assertMayReach'
   /**
    * A fragment of the throw site, verbatim, long enough that the census can find it in that
    * method's body — the pin that makes this row about a real line rather than about a memory of one.
@@ -127,36 +119,10 @@ export interface SendRefusal {
 }
 
 /**
- * ⚠️ **Twelve rows, and the census asserts it is exactly twelve** — one per refusal reachable in the
- * chain, a throw that repeats a row's refusal at another door named in the census instead. Ordered
- * as a send meets them. (It said *"Eight"* over nine rows from `374` until `708` counted; `713`
- * added `R59`'s two.)
+ * One row per refusal reachable in the send chain, a throw that repeats a row's refusal at another door named in the census instead.
+ * Ordered as a send meets them.
  */
 export const SEND_REFUSALS: readonly SendRefusal[] = [
-  {
-    /**
-     * 🔴 **374's messaging capability, on the send path and unreachable from this window.**
-     *
-     * ⛔ **A row rather than an exemption**, because the census this table feeds exists to raise an
-     * alarm when a refusal is ADDED to the chain — not when one fires. `374` inserted
-     * `RuntimeHost.assertMayReach` between the entitlement gate and `assertCanTakeTurn` on `send`,
-     * `queueMessage` and `sendInterrupting`; `send`'s own body gained a call and not a `throw`, so
-     * without these two rows and the method beside them the table stayed "complete" over a chain it
-     * no longer described.
-     */
-    id: 'a-capability-refused-it',
-    thrownBy: 'assertMayReach',
-    hostSays: 'throw new MessagingRefused(',
-    knowable: 'never',
-    gate:
-      'Nothing, and nothing ever will — which is a different “never” from every other row here. ' +
-      'This gate asks `sessionSpeakingAs(by)` first, and a window’s `webContents:<n>` decodes to ' +
-      '`null`, so the question is not asked of a person at all. ⚠️ **It is an absence of a question ' +
-      'rather than an exemption**: there is no clause a later edit could make say `true` for a ' +
-      'caller that is not an agent, because there is no clause. ⛔ **The capability is ' +
-      '`can_message`**, and which of its rails refused the call is carried in the payload’s `rail`, ' +
-      'in `341`’s shape, and read by the tool layer.',
-  },
   {
     id: 'unknown-session',
     thrownBy: 'sessionFor',

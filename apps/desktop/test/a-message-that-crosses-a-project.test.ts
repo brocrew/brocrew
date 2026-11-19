@@ -1,26 +1,25 @@
+import { callOn } from './helpers/call-agent-tool'
+import { personOpenerOverIpc } from './helpers/person-opens-session'
 import { ToolWatchingRuntime } from './lib/provider-double'
 import {
-  fixtureProviderConfig,
-  neutralHostDeps,
+  fixtureDatabase,
+  fixtureFolder,
+  numberedFixtureHostPaths,
+  closeHostFixture,
   RecordingSink,
-  syntheticProviderHome,
+  latestToolset,
+  waitFor,
 } from './lib/host-fixture'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions } from '@brobot2/runtime'
 import type { AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import type { AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { CallerIdentity } from '../src/main/runtime/runtime-host'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 
 /**
@@ -31,13 +30,11 @@ import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
  *
  * ⛔ **`D-016` took projects out** — the rooms, `create_project`, project placement, the
  * `same-project` reach and every `-outside-your-project` rail. ⚠️ **The cases that were about the
- * project boundary went with it** (§1's *same project, allowed* and *foreign target* rows, and §3's
- * project-rail pair); every other pair's narrow half is `none` now. ⚑ **What stays is the message
- * reach with no project in it**: `any` admits a conversation its holder did not start, `none` admits
- * nothing, the verbs that cut into a conversation still ask for a relationship, work goes only to a
- * conversation you started, a reply asks no grant, and a caller this app cannot place reaches
- * nothing. ⚠️ Where the history below says *another project*, read *a conversation a person
- * opened*.
+ * project boundary went with it**. ⚑ **What stays is the message reach with no project in it**:
+ * any agent's words reach a conversation it did not start, the verbs that cut into a conversation
+ * still ask for a relationship, work goes only to a conversation you started, and a reply lands
+ * back in its giver's conversation. ⚠️ Where the history below says *another project*, read *a
+ * conversation a person opened*.
  *
  * ## ⛔ The criterion, and the two halves it has
  *
@@ -64,15 +61,9 @@ import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
  * `agent_identity` row is written by hand and no identity is moved there**, which is the whole
  * difference between this file and `the-rails-a-message-passes.test.ts` §4.
  *
- * ⚠️ **§2's last two tests DO edit the database, and they say so in their own docblocks.** They are
- * about the two absences the predicate refuses — a conversation with no `agent_identity_id`, and a
- * placed one whose `agent_identity` row cannot be read — and no product door produces either. ⛔ A
- * clause that refuses a state the product cannot reach is still a clause, and a safety sentence with
- * no test is a comment.
- *
  * 🔴 **The widening is one word at TWO call sites, and the pair is the rule rather than a second
  * exception.** `RuntimeHost.send` and `RuntimeHost.queueMessage` ask `requireToMessage`; they are
- * the two spellings of one act and the only two whose single capability question is `'message'`, and
+ * the two spellings of one act, and
  * `queueMessage` delegates to `send` on the idle path, so a gate at one of them alone refuses the
  * caller the other just admitted. ⛔ `sendInterrupting`, `cancelQueuedMessage` and `interrupt` still
  * ask `requireToCommand`, and §2 is as much of this dispatch as §1: a reach that also ended,
@@ -83,9 +74,6 @@ import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
  * provider.
  */
 
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
-
 /** Keeps the toolsets the HOST handed out, so an agent's calls go through the real one. */
 describe('431 · the message that crosses a project', () => {
   let userData: string
@@ -94,98 +82,43 @@ describe('431 · the message that crosses a project', () => {
   let db: AppDatabase
   let store: SessionStore
   let host: RuntimeHost
-  let hosts: RuntimeHost[]
   let handed: AgentToolset[]
-  let issued: FakeProviderSessions
-  let counter: number
-  let clock: number
   let window: RecordingSink
-  const tick = (): number => clock++
-
-  const buildHost = (): RuntimeHost => {
-    const built = new RuntimeHost({
-      store,
-      ...neutralHostDeps(() => userData),
-      createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, handed, issued),
-      prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
-      newSessionId: () => `sess_${++counter}`,
-      now: tick,
-      readProviderConfig: fixtureProviderConfig,
-    })
-    hosts.push(built)
-    return built
-  }
 
   beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-crossing-'))
-    root = mkdtempSync(join(tmpdir(), 'brobot2-crossing-root-'))
-    elsewhere = mkdtempSync(join(tmpdir(), 'brobot2-crossing-elsewhere-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
-    // ⛔ **Past `0013`'s own wall clock** — `a-second-project-and-the-grant.test.ts` argues why.
-    clock = Date.UTC(2030, 0, 1)
+    userData = fixtureFolder('brobot2-crossing-')
+    root = fixtureFolder('brobot2-crossing-root-')
+    elsewhere = fixtureFolder('brobot2-crossing-elsewhere-')
+    db = fixtureDatabase(userData)
+    let clock = Date.UTC(2030, 0, 1)
+    const tick = (): number => clock++
     store = createSessionStore(db, tick)
-    counter = 0
-    hosts = []
     handed = []
-    issued = new FakeProviderSessions()
-    host = buildHost()
+    const issued = new FakeProviderSessions()
+    host = new RuntimeHost({
+      store,
+      ...numberedFixtureHostPaths(() => userData, tick),
+      createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, handed, issued),
+    })
     window = new RecordingSink('webContents:1')
   })
 
   afterEach(async () => {
-    for (const built of hosts) await built.closeAll()
-    db.close()
-    for (const dir of [userData, root, elsewhere]) rmSync(dir, { recursive: true, force: true })
+    await closeHostFixture(host, db, userData, root, elsewhere)
   })
 
   /** ⛔ Through the real boundary, so nothing here reaches a host method a window cannot. */
   const ask = (command: Parameters<typeof executeRuntimeCommand>[2]): Promise<unknown> =>
     executeRuntimeCommand(host, window, command)
 
-  /** `423`'s *New conversation as …* — a person opens a conversation as an identity. */
-  const personOpens = async (profileId: string): Promise<string> => {
-    const opened = (await ask({
-      kind: 'createSession',
-      provider: 'claude',
-      profileId,
-      approvalMode: 'ask',
-      cwd: root,
-    })) as { sessionId: string }
-    return opened.sessionId
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: string,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
-
-  const theToolsetJustHandedOut = (): AgentToolset => {
-    const last = handed.at(-1)
-    if (last === undefined) throw new Error('no toolset was handed to that launch')
-    return last
-  }
+  const personOpens = personOpenerOverIpc(() => ({ host, root, window }))
+  const theToolsetJustHandedOut = (): AgentToolset => latestToolset(handed)
 
   /** What an agent's own calls look like from outside the toolset — `agent:<its session>`. */
   const speakingAs = (sessionId: string): CallerIdentity => ({ ownerId: agentCallerId(sessionId) })
 
   const eventKinds = (sessionId: string): string[] =>
     store.events(sessionId).map((one) => one.event.type)
-
-  /** One capability, changed and nothing else — the *"one grant over"* half of every pair below. */
-  const reach = (
-    profileSlug: string,
-    edit: { canMessage?: string; canAssignWork?: string },
-  ): void => {
-    expect(store.setCapabilities(profileSlug, edit as never)).toBe(true)
-  }
 
   /**
    * 🔴 **The fixture the whole file rests on, and every step is a door a person presses.**
@@ -241,153 +174,60 @@ describe('431 · the message that crosses a project', () => {
   // §1 · criterion 6, through the product — the four cases 430 named
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
-  describe('§1 · the four cases, and not one hand-written binding', () => {
-    /**
-     * 🔴 **The criterion, both halves, one target, one call, one column apart.**
-     *
-     * ⛔ **The same conversation, the same words, two callers** — so what
-     * differs is the identity and, with it, the grant. ⚠️ **The test three below isolates the grant
-     * ALONE**, by moving one column on one identity and asking again; this one is the pair a
-     * reader meets first, and the two together are what make `can_message` mean something at the
-     * message door for the first time.
-     */
-    it('🔴 BroBot reaches a manager a person opened, and a `none` identity does not', async () => {
+  describe('§1 · a conversation a person opened, reached by an agent that did not start it', () => {
+    it('🔴 BroBot reaches a manager a person opened, and so does any other agent', async () => {
       const { brobot, brobotTools, manager } = await aManagerInAnotherProject()
-
-      // ⚑ **The capability** — HO-022 §3, held here as the ruled default.
-      expect(store.capabilitiesOf(DEFAULT_PROFILE_ID)?.canMessage).toBe('any')
       const reached = await callOn(brobotTools, 'message_agent', {
         agent: manager,
         text: 'what is this project up to?',
         kind: 'note',
       })
-      expect(reached, JSON.stringify(reached)).toMatchObject({ outcome: 'ok', agent: manager })
+      expect(reached, JSON.stringify(reached)).toMatchObject({
+        outcome: 'ok',
+        delivery: 'sent',
+        agent: manager,
+      })
       // ⛔ **And the words really landed in the manager's conversation**, which is the half a
       // refusal-shaped assertion could never prove.
       expect(eventKinds(manager)).toContain('user_turn')
 
-      // 🔴 **The rail** — a second identity, narrowed to `none`.
+      const permission = () =>
+        store.events(manager).find(({ event }) => event.type === 'permission_request')?.event
+      await waitFor(() => permission() !== undefined, 'the first turn’s permission request')
+
+      // A second identity, not BroBot: reach reads no slug and no grant.
       const other = await personOpens('explorer')
       const otherTools = theToolsetJustHandedOut()
-      // 🔴 **549 · the unentitled caller is one a PERSON narrowed** (HO-058 §1) — the ruled
-      // default is `any`, so an identity left alone reaches everything. ⚑ **D-016 · narrowed to
-      // `none`**, the one narrower word left now `same-project` is gone; the pair is still one
-      // column, one word apart.
-      reach('explorer', { canMessage: 'none' })
-      expect(store.capabilitiesOf('explorer')?.canMessage).toBe('none')
-      const refused = await callOn(otherTools, 'message_agent', {
+      const alsoReached = await callOn(otherTools, 'message_agent', {
         agent: manager,
-        text: 'what is this project up to?',
+        text: 'and from me?',
         kind: 'note',
       })
-      // ⚑ **D-017 · R12 — the reach rail, not `no-such-agent`**: that word is said only about an id
-      // no conversation has, and this one exists — so the answer is the boundary itself, which a
-      // person can move (`05` rule 6).
-      expect(refused, JSON.stringify(refused)).toMatchObject({
-        outcome: 'refused',
-        rail: 'may-not-message',
-        permanence: 'until-a-person-changes-it',
-        retryable: false,
-      })
-      // ⚠️ **Nothing was delivered by the refused call**, and the count is what says so: the one
-      // turn above is still the only one.
-      expect(eventKinds(manager).filter((kind) => kind === 'user_turn')).toHaveLength(1)
-      expect(brobot).not.toBe(other)
-    })
-
-    // ⚑ **D-016 · Row 1 (*same project, allowed*) went with projects** — its pair was the
-    // `same-project` reach, and the positive half is the first half of the test above.
-
-    // ⚑ **D-016 · Row 4 (*a foreign target, two callers*) went with `same-project`.** It measured
-    // that a caller whose grant admitted the VERB but not the target was told the boundary about a
-    // real id and `no-such-agent` about a ghost. ⛔ With `none` and `any` left, no grant admits the
-    // verb and refuses a target: `none` meets the standing wall before any id is read (486 — the
-    // same word for every id, which discloses nothing; the narrowed-identity test below), and `any`
-    // admits every conversation there is.
-
-    /**
-     * 🔴 **A person's decision is what moves it, in both directions** — HO-016 §2's rule at the one
-     * door this dispatch opened. ⛔ The app never re-grants; a narrowing takes the reach away, and
-     * granting it to somebody else hands it over.
-     */
-    it('🔴 the reach follows the grant, not the identity — narrowed it refuses, granted it admits', async () => {
-      const { brobotTools, manager } = await aManagerInAnotherProject()
-      // ⚠️ **Every call below is a NOTE** — ⚑ D-016: a message hands no work over, and a note names
-      // no piece — so the only thing that can refuse the second, third and fourth is the gate this
-      // test is about.
-      const asking = { agent: manager, text: 'how is it going?', kind: 'note' }
-      reach(DEFAULT_PROFILE_ID, { canMessage: 'none' })
-      // ⚑ **D-017 · R12** — the reach rail for a conversation that exists, not `no-such-agent`.
-      expect(await callOn(brobotTools, 'message_agent', asking)).toMatchObject({
-        outcome: 'refused',
-        rail: 'may-not-message',
-      })
-      reach(DEFAULT_PROFILE_ID, { canMessage: 'any' })
-      expect(await callOn(brobotTools, 'message_agent', asking)).toMatchObject({ outcome: 'ok' })
-
-      // ⛔ **And it is not about BEING BroBot.** The same word granted to an ordinary identity
-      // reaches the same conversation — so the gate reads a column and never a slug.
-      await personOpens('explorer')
-      const otherTools = theToolsetJustHandedOut()
-      // 🔴 **549 · the unentitled caller is one a PERSON narrowed** (HO-058 §1) — the ruled
-      // default is `any`, so an identity left alone reaches everything. ⚑ **D-016 · narrowed to
-      // `none`**, the one narrower word left now `same-project` is gone; the pair is still one
-      // column, one word apart.
-      reach('explorer', { canMessage: 'none' })
-      expect(await callOn(otherTools, 'message_agent', asking)).toMatchObject({
-        outcome: 'refused',
-        rail: 'may-not-message',
-      })
-      reach('explorer', { canMessage: 'any' })
-      expect(await callOn(otherTools, 'message_agent', asking)).toMatchObject({ outcome: 'ok' })
-    })
-
-    /**
-     * 🔴 **The entitlement is asked BEFORE the capability, and the two refusals are about two
-     * different things** — `refuse-on-entitlement-before-refusing-on-existence`, at the message
-     * door.
-     *
-     * ⛔ **`none` reaches nothing it did not start, so a conversation elsewhere is `no-such-agent`
-     * and NOT `may-not-message`** — and that is the non-leak rather than a lost sentence: a rail
-     * naming the caller's own grant would tell it the id was real. ⚑ **The capability sentence is
-     * still exactly where it always was**: over a conversation this identity DID start, which is
-     * the set `374`'s rails were built to narrow, and the second half here is what says so.
-     */
-    it('🔴 a narrowed identity is told two different things, and which one depends on what it started', async () => {
-      const { brobotTools, manager } = await aManagerInAnotherProject()
-      const asking = { agent: manager, text: 'how is it going?', kind: 'note' }
-      expect(await callOn(brobotTools, 'message_agent', asking)).toMatchObject({ outcome: 'ok' })
-
-      // ⛔ **Its own child, through the give door** — the one conversation `mayCommand` admits.
-      // ⚑ **D-016 · `give_work` where `spawn_agent` was**: it starts BroBot's one conversation with
-      // that agent, and no message grant is asked for it.
-      const { child } = await aChildOfBroBot(brobotTools)
-
-      reach(DEFAULT_PROFILE_ID, { canMessage: 'none' })
-      // 🔴 **`486` collapsed these two answers into ONE, and that is `341`'s own ordering arriving
-      // here** (HO-031 §2.5). ⛔ **This asserted `no-such-agent · permanent` for the conversation
-      // elsewhere and `may-not-message · until-a-person-changes-it` for its own child** — a policy
-      // wall sitting BEHIND an existence answer, which is *entitlement before existence* read
-      // backwards. ⚠️ A caller a person has granted no reach at all was told *this call can never
-      // succeed* about a conversation that becomes reachable the moment somebody widens a column.
-      //
-      // ⚑ **So the messaging door now asks the grant first, and both arms answer the same word** —
-      // which discloses nothing, because it is the same word for every id including one that names
-      // nothing.
-      for (const args of [asking, { agent: child, text: 'do the thing' }]) {
-        const refused = await callOn(brobotTools, 'message_agent', args)
-        expect(refused, JSON.stringify(refused)).toMatchObject({
-          outcome: 'refused',
-          rail: 'may-not-message',
-          permanence: 'until-a-person-changes-it',
-        })
-      }
-      // The read door still identifies both conversations after the message grant narrows.
-      expect((await callOn(brobotTools, 'get_agent_status', { agent: child })).outcome).toBe('ok')
-      expect(await callOn(brobotTools, 'get_agent_status', { agent: manager })).toMatchObject({
+      expect(alsoReached, JSON.stringify(alsoReached)).toMatchObject({
         outcome: 'ok',
-        agent: { agent: manager },
+        delivery: 'queued',
+        agent: manager,
       })
+      expect(eventKinds(manager).filter((kind) => kind === 'user_turn')).toHaveLength(1)
+      const request = permission()
+      if (request?.type !== 'permission_request')
+        throw new Error('the first request was not recorded')
+      await ask({
+        kind: 'respondPermission',
+        sessionId: manager,
+        requestId: request.id,
+        decision: { outcome: 'allow' },
+      })
+      const delivered = () =>
+        store
+          .events(manager)
+          .flatMap(({ event }) => (event.type === 'user_turn' ? [event.text] : []))
+      await waitFor(() => delivered().length === 2, 'delivery of the second message')
+      expect(delivered()).toEqual([
+        expect.stringContaining('what is this project up to?'),
+        expect.stringContaining('and from me?'),
+      ])
+      expect(brobot).not.toBe(other)
     })
   })
 
@@ -398,7 +238,6 @@ describe('431 · the message that crosses a project', () => {
   describe('§2 · what the reach did NOT widen', () => {
     it('interrupt_agent accepts a known conversation in another project', async () => {
       const { brobotTools, manager } = await aManagerInAnotherProject()
-      reach(DEFAULT_PROFILE_ID, { canMessage: 'any' })
       expect(store.routedRequestsOf(manager)).toEqual([])
       await ask({ kind: 'setApprovalMode', sessionId: manager, mode: 'auto' })
       expect(store.findLive(manager)?.approvalMode).toBe('auto')
@@ -436,7 +275,6 @@ describe('431 · the message that crosses a project', () => {
      */
     it('⚑ `list_agents` and `get_agent_status` now name exactly what the send admits', async () => {
       const { brobot, brobotTools, manager } = await aManagerInAnotherProject()
-      reach(DEFAULT_PROFILE_ID, { canMessage: 'any' })
       const listed = (await callOn(brobotTools, 'list_agents', {})) as {
         agents: { agent: string }[]
       }
@@ -464,8 +302,7 @@ describe('431 · the message that crosses a project', () => {
      * message that minted a task there, and took the receiver's one work slot; the message kind and
      * the one-open-task rail are gone, and `give_work` is the one verb that hands work over.
      *
-     * 🔴 **D-014 · work goes only to a conversation the giver started** — the ruled
-     * `can_assign_work: 'any'` widens nothing past that. ⚑ **D-016 · by the lookup rather than a
+     * 🔴 **D-014 · work goes only to a conversation the giver started.** ⚑ **D-016 · by the lookup rather than a
      * rail**: a give names a profile and reaches the giver's own conversation with it, so a give to
      * the manager's profile STARTS BroBot's own `pm` conversation and the manager a person opened
      * holds no piece. ⚠️ A second caller never reaches BroBot's child for the same reason: its give
@@ -473,8 +310,6 @@ describe('431 · the message that crosses a project', () => {
      */
     it('🔴 a give files a piece in the RECEIVER’s ledger, and only in a conversation the giver started', async () => {
       const { brobot, brobotTools, manager } = await aManagerInAnotherProject()
-      // ⛔ **The premise, asserted before the act** — the ruled default, and the widest word.
-      expect(store.capabilitiesOf(DEFAULT_PROFILE_ID)?.canAssignWork).toBe('any')
       const toTheManagersProfile = await callOn(brobotTools, 'give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'pm',
@@ -500,10 +335,9 @@ describe('431 · the message that crosses a project', () => {
       // the assertion above is about where the work was filed and not about a row existing at all.
       expect(workGivenIn(brobot)).toHaveLength(0)
 
-      // ⚑ **A second caller, holding the widest word, never reaches the child** — it did not start
-      // it, so its give to the same profile starts a conversation of its own.
+      // ⚑ **A second caller never reaches the child** — it did not start it, so its give to the
+      // same profile starts a conversation of its own.
       await personOpens('explorer')
-      expect(store.capabilitiesOf('explorer')?.canAssignWork).toBe('any')
       const second = await callOn(theToolsetJustHandedOut(), 'give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
@@ -527,18 +361,11 @@ describe('431 · the message that crosses a project', () => {
     })
 
     /**
-     * ⚠️ **The RETURN leg crosses back, and it asks no capability at all** — measured here because
-     * `431` is what made it reachable across a project.
-     *
-     * ⛔ **`reply_to_parent` resolves its destination from the piece's giver and delivers as
-     * {@link THE_APP_ITSELF}**, which passes the entitlement unconditionally and is never asked a
-     * grant (`sessionSpeakingAs` answers `null` for the app). ⚑ **That is `393`'s design and not a
-     * hole this dispatch opened**: refusing a reply would strand the work its own parent asked for.
-     * ⚠️ **The replier's own `can_message` is not consulted even when a person set it to `none`**
-     * (D-016: the parent is no longer in another project, and the property never needed it to be).
-     * 🔴 **Asserted rather than left to be re-found.**
+     * ⚠️ **The RETURN leg crosses back** — `reply_to_parent` resolves its destination from the
+     * piece's giver and delivers as {@link THE_APP_ITSELF}: refusing a reply would strand the work
+     * its own parent asked for.
      */
-    it('⚠️ the reply to cross-project work lands back, from an identity granted no reach at all', async () => {
+    it('⚠️ the reply to cross-project work lands back in the giver’s conversation', async () => {
       const { brobot, brobotTools } = await aManagerInAnotherProject()
       // ⚑ **D-016 · the give is the work** — no second message hands it over.
       const { childTools, label } = await aChildOfBroBot(brobotTools)
@@ -547,8 +374,6 @@ describe('431 · the message that crosses a project', () => {
       }
       expect(mine.you_hold.map((one) => one.label)).toEqual([label])
 
-      // ⛔ **A person has granted this identity NOTHING**, and the reply still goes out.
-      reach('worker', { canMessage: 'none' })
       const replied = await callOn(childTools, 'reply_to_parent', {
         piece: mine.you_hold[0]?.piece,
         outcome: 'done',
@@ -564,14 +389,13 @@ describe('431 · the message that crosses a project', () => {
     })
 
     /**
-     * ⛔ **A conversation cannot reach ITSELF through the grant**, and the host is where that is
+     * ⛔ **A conversation cannot reach ITSELF through the reach**, and the host is where that is
      * closed. ⚠️ The tool answers `that-agent-is-you` one line after the reach admits `me`; the
      * gate has no `me`, so the clause has to be in the predicate rather than in the door.
      */
     it('⛔ the widest reach does not let a conversation queue words into itself', async () => {
       const brobot = await personOpens(DEFAULT_PROFILE_ID)
       const brobotTools = theToolsetJustHandedOut()
-      expect(store.capabilitiesOf(DEFAULT_PROFILE_ID)?.canMessage).toBe('any')
       expect(host.withinMessagingReach(brobot, speakingAs(brobot))).toBe(false)
       // ⛔ **The sentence, not merely a throw.** `rejects.toThrow()` with no matcher accepts a type
       // error from a renamed method as readily as the refusal, which is a green test over a broken
@@ -593,50 +417,6 @@ describe('431 · the message that crosses a project', () => {
       // and not about a reader that found nothing.
       expect(eventKinds(brobot).length).toBeGreaterThan(0)
       expect(eventKinds(brobot)).not.toContain('user_turn')
-    })
-
-    /**
-     * ⚠️ **An identity this app cannot place is refused rather than defaulted** — `admitMessaging`'s
-     * own direction, and `unknown-profile`'s one door over. ⛔ Handing the ruled grant to a caller
-     * with no row is the widening the whole capability system exists to refuse.
-     */
-    it('⛔ a caller with no identity row reaches nothing, and the same call from a placed one does', async () => {
-      const { brobot, manager } = await aManagerInAnotherProject()
-      expect(host.withinMessagingReach(manager, speakingAs(brobot))).toBe(true)
-      // ⛔ **The user's own home row** — `agent_identity_id` is null, which `identityOf` documents as
-      // the conversation swept out of `~/.claude` and attributed to no identity of ours.
-      db.prepare('UPDATE provider_session SET agent_identity_id = NULL WHERE id = ?').run(brobot)
-      expect(store.identityOf(brobot)).toBeNull()
-      expect(host.withinMessagingReach(manager, speakingAs(brobot))).toBe(false)
-    })
-
-    /**
-     * ⚠️ **The OTHER absence, and it is a different row** — the conversation is placed, so
-     * `identityOf` answers, and the identity that answer names has no `agent_identity` row for a
-     * grant to be read from. ⛔ **Falling back to the ruled defaults there is the widening
-     * `unknown-profile` exists to refuse one door over**, and until this test that clause had no
-     * assertion on it at all.
-     *
-     * ⛔ **Constructed, and named as constructed**: the identity's slug is moved off the name its
-     * `aid:` row id is derived from, so the lookup by that name misses it. No product door produces that state today — it is an upgrade that dropped a
-     * row, or an adopted session pointing at one — which is exactly why the clause is there and why
-     * a test has to build it. `374` §4's honesty, one clause over.
-     */
-    it('⛔ a placed caller whose IDENTITY row cannot be read is refused, not given the defaults', async () => {
-      const { brobot, manager } = await aManagerInAnotherProject()
-      // ⚑ **The paired positive, first**: with the row readable, this caller reaches the manager.
-      expect(store.capabilitiesOf(DEFAULT_PROFILE_ID)?.canMessage).toBe('any')
-      expect(host.withinMessagingReach(manager, speakingAs(brobot))).toBe(true)
-
-      db.prepare(
-        `UPDATE agent_identity SET slug = 'no-such-identity'
-           WHERE id = (SELECT agent_identity_id FROM provider_session WHERE id = ?)`,
-      ).run(brobot)
-      // ⚠️ **The premise, asserted**: the conversation is still placed, so what changed is only
-      // whether a grant can be looked up for it.
-      expect(store.identityOf(brobot)?.profileSlug).toBe('no-such-identity')
-      expect(store.capabilitiesOf('no-such-identity')).toBeNull()
-      expect(host.withinMessagingReach(manager, speakingAs(brobot))).toBe(false)
     })
   })
 })

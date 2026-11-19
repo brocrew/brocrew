@@ -56,8 +56,6 @@ interface PiecePayload {
   readonly ended_at?: number
 }
 const RULES = 'You are a careful tester of web pages.\nReport what fails.'
-const NOT_TOLD =
-  'How its standing rules begin is told only to a caller that can reach its conversations.'
 
 describe('an agent’s record — the cases beyond what-an-agent-has-done', () => {
   let userData: string
@@ -348,8 +346,8 @@ describe('an agent’s record — the cases beyond what-an-agent-has-done', () =
     })
   })
 
-  describe('5 · how its rules begin, to a caller that reaches it — paired under one grant', () => {
-    it('with can_message none, the caller that started its conversation is told and the one that did not is not — and counts nothing out of reach', async () => {
+  describe('5 · how its rules begin, told to every caller', () => {
+    it('the caller that started its conversation and one that did not are told the same, and nothing is counted out', async () => {
       const starter = await personOpens(DEFAULT_PROFILE_ID)
       const outsider = await personOpens(DEFAULT_PROFILE_ID)
       const starterTools = agentToolsFor(host, starter)
@@ -368,49 +366,23 @@ describe('an agent’s record — the cases beyond what-an-agent-has-done', () =
       expect(replied.structured, replied.text).toMatchObject({ outcome: 'ok' })
       await gives(starterTools, 'Test the clock page')
 
-      const before = await theRecordOf(outsiderTools, 'tester')
-      expect(before.structured, before.text).toMatchObject({
-        outcome: 'ok',
-        rules_told: true,
-        rules_begin: 'You are a careful tester of web pages.',
-      })
-
-      expect(store.setCapabilities(DEFAULT_PROFILE_ID, { canMessage: 'none' } as never)).toBe(true)
-
-      const told = await theRecordOf(starterTools, 'tester')
-      expect(told.structured, told.text).toMatchObject({
-        outcome: 'ok',
-        rules_told: true,
-        rules_begin: 'You are a careful tester of web pages.',
-        conversations_not_listed: 0,
-        pieces_not_listed: 0,
-      })
-      expect(
-        (told.structured.conversations as ConversationPayload[]).map((one) => one.agent),
-      ).toEqual([holder])
-      expect((told.structured.pieces as PiecePayload[]).length).toBe(2)
-      expect(told.text).toContain(
-        'Its standing rules begin: “You are a careful tester of web pages.”',
-      )
-      expect(told.text).not.toContain(NOT_TOLD)
-
-      const notTold = await theRecordOf(outsiderTools, 'tester')
-      expect(notTold.structured, notTold.text).toMatchObject({
-        outcome: 'ok',
-        rules_told: false,
-        rules_begin: null,
-        conversations_not_listed: 0,
-        pieces_not_listed: 0,
-      })
-      expect(notTold.structured).not.toHaveProperty('pieces_unread')
-      expect(
-        (notTold.structured.conversations as ConversationPayload[]).map((one) => one.agent),
-      ).toEqual([holder])
-      expect((notTold.structured.pieces as PiecePayload[]).length).toBe(2)
-      expect(notTold.text).toContain(NOT_TOLD)
-      expect(notTold.text).toContain('clock page')
-      expect(notTold.text).not.toContain('careful tester')
-      expect(notTold.text).not.toContain('It has no standing rules.')
+      for (const tools of [starterTools, outsiderTools]) {
+        const record = await theRecordOf(tools, 'tester')
+        expect(record.structured, record.text).toMatchObject({
+          outcome: 'ok',
+          rules_begin: 'You are a careful tester of web pages.',
+          conversations_not_listed: 0,
+          pieces_not_listed: 0,
+        })
+        expect(record.structured).not.toHaveProperty('rules_told')
+        expect(
+          (record.structured.conversations as ConversationPayload[]).map((one) => one.agent),
+        ).toEqual([holder])
+        expect((record.structured.pieces as PiecePayload[]).length).toBe(2)
+        expect(record.text).toContain(
+          'Its standing rules begin: “You are a careful tester of web pages.”',
+        )
+      }
     })
   })
 

@@ -7,7 +7,6 @@ import { providerSchema } from '@brobot2/shared'
 import { bundledCodexTransportFactory } from '../../../packages/runtime/smoke/bundled-codex'
 import { runEvidence, runScratch } from '../../../packages/runtime/smoke/run-paths'
 import { probeRunDeadline } from '../../../packages/runtime/smoke/probe-run-deadline'
-import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import {
   composeProfileBundle,
   thisConversationSpans,
@@ -92,8 +91,6 @@ it(
         cwd: work,
         // ⚑ D-016 · commit 7 · R3 · the parent, named by the root it owns (the sender below).
         startedBy: audience === 'agent' ? 'Parent (the owner of W1)' : null,
-        depth: audience === 'agent' ? 1 : 0,
-        capabilities: DEFAULT_CAPABILITIES,
         spawningEnabled: true,
         // ⚑ D-016 · a conversation a person starts owns a root; one another conversation started
         // owns none.

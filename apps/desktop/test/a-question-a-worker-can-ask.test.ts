@@ -102,6 +102,21 @@ describe('437 · a question a worker can ask its parent', () => {
   let root: string
   let db: AppDatabase
   let store: SessionStore
+
+  async function answerAsParent(parent: string, text: string): Promise<string> {
+    const { requestId, part } = theQuestionWaitingOn(parent)
+    const answered = await host.answerQuestion(
+      { questionId: requestId, answers: [{ part, answer: [text] }] },
+      asAgent(parent),
+    )
+    expect(answered.ok, JSON.stringify(answered)).toBe(true)
+    return requestId
+  }
+
+  function expectQuestionAnswered(worker: string, requestId: string): void {
+    const row = store.routedRequestsOf(worker).find((one) => one.requestId === requestId)
+    expect(row?.state).toBe('answered')
+  }
   let host: RuntimeHost
   let hosts: RuntimeHost[]
   let handed: AgentToolset[]
@@ -344,12 +359,7 @@ describe('437 · a question a worker can ask its parent', () => {
       // the half `437`'s hold used to carry.
       expect(onTheGiversBoard(pm, piece)).toBe('waiting-on-an-answer')
 
-      const { requestId, part } = theQuestionWaitingOn(pm)
-      const answered = await host.answerQuestion(
-        { questionId: requestId, answers: [{ part, answer: ['postgres'] }] },
-        asAgent(pm),
-      )
-      expect(answered.ok, JSON.stringify(answered)).toBe(true)
+      await answerAsParent(pm, 'postgres')
       // ⛔ **The question is CLOSED, by the same row a person's answer writes.** ⚠️ Without it the
       // request would derive `open` for ever: `list_questions` would go on naming a question nobody
       // is waiting for, and the escalation sweep would eventually tell a person about it.
@@ -472,57 +482,28 @@ describe('437 · a question a worker can ask its parent', () => {
   })
 
   /**
-   * 🔴 **§2 · what did NOT move — and the negative is the point of the section.**
+   * 🔴 **§2 · the reach did not move `mayCommand`, and the question travels as the app.**
    *
-   * ⛔ **No capability was widened, no clause was added to any reach, and `mayCommand` did not
-   * move.** ⚑ The question travels as {@link THE_APP_ITSELF}, which `assertMayReach` returns for
-   * before it reads a grant — the same route a reply and a provider-raised question already take.
-   * ⚠️ **So the negative and the positive are the SAME caller one verb apart**, which is what makes
-   * it a measurement of the REACH rather than of the worker.
+   * ⚑ The question travels as {@link THE_APP_ITSELF} — the same route a reply and a
+   * provider-raised question already take. A note to the parent goes out too, as any agent's words
+   * reach any conversation; what only `ask_question` does is block and come back with an answer.
    */
   describe('§2 · the reach did not move', () => {
-    it('⛔ a worker still cannot address its parent with message_agent — and CAN ask it', async () => {
+    it('⛔ a worker may send its parent a note, and only ask_question comes back with an answer', async () => {
       const { pm, worker, workerTools, piece } = await aWorkerHoldingWork()
-      // 🔴 **549 · the worker is NARROWED here, and that is a change worth reading** (HO-058 §1).
-      // ⛔ **The ruled default is `any` now, so a worker CAN address its parent with
-      // `message_agent`** — which is the sentence this test's own title denies, and `437` built
-      // `ask_parent` in a world where it could not. ⚑ **What `437` built is untouched and is still
-      // the only verb that BLOCKS and comes back with an answer**; what moved is whether plain
-      // words can go upward at all. ⚠️ **The rail below is kept measurable by a person's
-      // narrowing** — to `none` since D-016 took `same-project` away — and the widening is
-      // measured in `two-withdrawals-open-what-was-scoped.test.ts` §4.
-      const workerProfile = store.identityOf(worker)?.profileSlug ?? ''
-      expect(store.setCapabilities(workerProfile, { canMessage: 'none' })).toBe(true)
-      // ⛔ **The negative.** The worker names the exact conversation that gave it the work.
-      // ⚑ **D-016 · a `note`**: a follow-up names a piece the SENDER gave, and the worker gave none.
-      const refused = await callOn(workerTools, 'message_agent', {
-        agent: pm,
-        text: 'postgres or sqlite?',
-        kind: 'note',
-      })
-      expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
-      // ⚑ **D-017 · R12 — the reach rail, and no longer `no-such-agent`**: the parent exists, and
-      // `no-such-agent` is said only about an id no conversation has (`05` rule 6).
-      expect(refused.rail).toBe('may-not-message')
-      // ⚑ **The positive, one verb over, same caller, same target.** The reach did not admit it;
-      // the task edge did.
       const said = await startAsking(workerTools, {
         piece,
         question: 'postgres or sqlite?',
       })
       expect(said.outcome, JSON.stringify(said)).toBe('ok')
-      const { requestId, part } = theQuestionWaitingOn(pm)
-      const answered = await host.answerQuestion(
-        { questionId: requestId, answers: [{ part, answer: ['postgres'] }] },
-        asAgent(pm),
-      )
-      // ⚑ **608 · the ANSWER is what proves the edge, and it is read off the row** (HO-084 §4).
-      // ⛔ It used to be read off the call's own `answered: true`, which only existed while the
-      // call was parked on the answer.
-      expect(answered.ok, JSON.stringify(answered)).toBe(true)
-      expect(store.routedRequestsOf(worker).find((one) => one.requestId === requestId)?.state).toBe(
-        'answered',
-      )
+      const requestId = await answerAsParent(pm, 'postgres')
+      expectQuestionAnswered(worker, requestId)
+      const noted = await callOn(workerTools, 'message_agent', {
+        agent: pm,
+        text: 'postgres or sqlite?',
+        kind: 'note',
+      })
+      expect(noted.outcome, JSON.stringify(noted)).toBe('ok')
       // The parent is readable; the question answer route above is asserted separately.
       // Ask for agent ids: the worker's own card also carries the parent's id.
       const listed = await callOn(workerTools, 'list_agents', {})
@@ -691,9 +672,7 @@ describe('437 · a question a worker can ask its parent', () => {
       )
       // ⚑ **608 · read off the ROW** — the call no longer waits to carry an answer back.
       expect(answered.ok, JSON.stringify(answered)).toBe(true)
-      expect(store.routedRequestsOf(worker).find((one) => one.requestId === requestId)?.state).toBe(
-        'answered',
-      )
+      expectQuestionAnswered(worker, requestId)
     })
   })
 
@@ -1015,9 +994,7 @@ describe('437 · a question a worker can ask its parent', () => {
       // ⚑ **608 · read off the ROW** — admission is what this cause-and-control pair is about, and
       // the call's own `answered` went with the wait.
       expect(answered.ok, JSON.stringify(answered)).toBe(true)
-      expect(store.routedRequestsOf(worker).find((one) => one.requestId === requestId)?.state).toBe(
-        'answered',
-      )
+      expectQuestionAnswered(worker, requestId)
 
       // ⛔ **Cause 3 — work that is no longer open**, which is the same id that worked a line ago.
       await callOn(workerTools, 'reply_to_parent', {

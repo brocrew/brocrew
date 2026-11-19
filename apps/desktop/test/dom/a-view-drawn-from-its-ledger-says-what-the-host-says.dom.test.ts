@@ -11,7 +11,6 @@ import {
   ANSWERED_ONCE_A_WINDOW_TAKES_IT,
   TAKE_IT_OVER_TO_ANSWER_HERE,
 } from '../../src/renderer/src/lib/taking-over'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import {
   HELD_ELSEWHERE,
   type AgentIdentity,
@@ -76,14 +75,6 @@ const identity = (slug: string, displayName: string | null): AgentIdentity => ({
   createdBy: null,
   provider: null,
   externalMcpServerIds: [],
-  capabilities: { ...DEFAULT_CAPABILITIES },
-  chosen: {
-    maxDepth: 'default',
-    canMessage: 'default',
-    canAssignWork: 'default',
-    canCreateAgents: 'default',
-    canWriteRules: 'default',
-  },
 })
 const IDS: AgentIdentity[] = [identity('ada', ADA)]
 

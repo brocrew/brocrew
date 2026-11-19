@@ -23,7 +23,6 @@ import {
   escalationChain,
   readingSentence,
 } from '../src/shared/questions'
-import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import { agentName, type AgentIdentity } from '../src/shared/runtime-ipc'
 
 // Rows are built by the real fold (personsQueueView) over host-shaped doubles named by the real
@@ -38,8 +37,6 @@ function identity(slug: string, displayName: string | null): AgentIdentity {
     displayName,
     createdAt: AT,
     createdBy: null,
-    capabilities: DEFAULT_CAPABILITIES,
-    chosen: {} as AgentIdentity['chosen'],
     provider: null,
     externalMcpServerIds: [],
   }

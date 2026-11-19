@@ -3542,7 +3542,7 @@ async function main() {
   }
 
   /**
-   * 🔴 **722 · a WORKER — an identity this run made and granted nothing** (`717` F-3).
+   * 🔴 **722 · a WORKER — an identity this run made** (`717` F-3).
    *
    * ⛔ **Why a step needs one.** A step whose subject is a file the conversation itself writes, or
    * its provider's own sub-agents, runs as this rather than as BroBot: `717`'s and `738`'s batches
@@ -3556,9 +3556,7 @@ async function main() {
    * provider, and a Claude launch closed before `system/init` is `717` F-1 itself (R79: one
    * conversation listed twice) — an instrument must not plant the defect this dispatch fixes.
    *
-   * ⚑ **Read back on every call, never assumed**: every agent holds one default set (D-014), so the
-   * worker must have chosen nothing and hold exactly what BroBot holds once BroBot has a row — or
-   * the step fails HERE, naming both, rather than minutes later as a provider that "chose" something.
+   * ⚑ **Read back on every call, never assumed**: the worker's identity must still exist.
    */
   let workerIdentity = null
   async function aWorkerIdentity(cdp2) {
@@ -3588,24 +3586,9 @@ async function main() {
     }
     const held = await cdp2.evaluate(`
       const read = await window.api.runtime.agentIdentities()
-      const find = (slug) => read.identities.find((one) => one.slug === slug)
-      const worker = find(${JSON.stringify(workerIdentity)})
-      const brobot = find(${JSON.stringify(BROBOT_PROFILE_ID)})
-      return {
-        worker: worker ? { capabilities: worker.capabilities, chosen: worker.chosen } : null,
-        brobot: brobot ? brobot.capabilities : null,
-      }`)
-    // ⚠️ BroBot has no row until a conversation has run as it, and then holds the default set too.
-    if (
-      held.worker === null ||
-      Object.values(held.worker.chosen).some((origin) => origin !== 'default') ||
-      (held.brobot !== null && !isDeepStrictEqual(held.worker.capabilities, held.brobot))
-    ) {
-      throw new Error(
-        `"${workerIdentity}" does not hold what BroBot holds after its no-turn launch: ` +
-          `${JSON.stringify(held)} — every agent holds the one default set (D-014)`,
-      )
-    }
+      return read.identities.some((one) => one.slug === ${JSON.stringify(workerIdentity)})`)
+    if (held !== true)
+      throw new Error(`"${workerIdentity}" has no identity row after its no-turn launch`)
     return workerIdentity
   }
 

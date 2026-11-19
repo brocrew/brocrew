@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { page } from 'vitest/browser'
 import TeamWorkspace from '../../src/renderer/src/components/TeamWorkspace.vue'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type { IdentityUse } from '../../src/shared/agent-roster'
 import type { AgentStore } from '../../src/renderer/src/lib/agent-store'
 import type { AgentIdentities, AgentIdentity } from '../../src/shared/runtime-ipc'
@@ -43,14 +42,6 @@ const FLOOR = 972
 /** ⚑ Anchored to the wall clock: the page measures every age it draws from the live minute. */
 const NOW = Date.now()
 
-const CHOSEN = {
-  maxDepth: 'default',
-  canMessage: 'default',
-  canAssignWork: 'default',
-  canCreateAgents: 'default',
-  canWriteRules: 'default',
-} as unknown as AgentIdentity['chosen']
-
 const ADA: AgentIdentity = {
   id: 'aid:ada',
   slug: 'ada',
@@ -59,8 +50,6 @@ const ADA: AgentIdentity = {
   createdBy: null,
   provider: 'claude',
   externalMcpServerIds: [],
-  capabilities: { ...DEFAULT_CAPABILITIES },
-  chosen: CHOSEN,
 }
 
 const ADA_USE: IdentityUse = {

@@ -41,7 +41,7 @@ describe('an agent a person reads is named', () => {
     root = mkdtempSync(join(tmpdir(), 'brobot2-707-r41-root-'))
     db = openDatabase(join(userData, 'brobot2.sqlite'))
     applyMigrations(db, migrationsFolder)
-    // ⛔ **Past `0013`'s own wall clock** — `a-second-project-and-the-grant.test.ts` argues why.
+    // ⛔ **Past `0013`'s own wall clock**: its policy row is stamped with the real time.
     clock = START
     store = createSessionStore(db, tick)
     counter = 0

@@ -18,7 +18,6 @@ import PersonsQueue from '../../src/renderer/src/components/PersonsQueue.vue'
 import { usePersonsQueue, type PersonsQueueRow } from '../../src/renderer/src/lib/persons-queue'
 import type { AttentionDecision, AttentionRequest } from '../../src/renderer/src/lib/attention'
 import { useSpawnSafety } from '../../src/renderer/src/lib/spawn-safety'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import {
   NOTHING_NAMED_THE_WORK,
   chainReading,
@@ -80,14 +79,6 @@ const identities = (): AgentIdentities => ({
       provider: null,
       // ⚑ **516** — presence IS the grant, so an empty list is *granted none*, not *not chosen*.
       externalMcpServerIds: [],
-      capabilities: { ...DEFAULT_CAPABILITIES },
-      chosen: {
-        maxDepth: 'default',
-        canMessage: 'default',
-        canAssignWork: 'default',
-        canCreateAgents: 'default',
-        canWriteRules: 'default',
-      },
     },
   ],
   foldersWithoutARow: [],
@@ -207,7 +198,7 @@ function walked<Row>(
 ;(window as unknown as { api?: unknown }).api = {
   runtime: {
     agentIdentities: async () => identities(),
-    setCapabilities: async () => identities().identities[0],
+    setExternalMcpServers: async () => identities().identities[0],
     setSpawningEnabled: async () => ({ spawningEnabled: true }),
   },
 }

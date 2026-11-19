@@ -13,7 +13,7 @@ import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { SPAWN_RAILS } from '../src/main/runtime/spawn-rails'
-import { CAPABILITY_FIELDS, EVERY_AGENT_THIS_APP_HOLDS } from '../src/shared/capabilities'
+import { EVERY_AGENT_THIS_APP_HOLDS } from '../src/shared/capabilities'
 import { composeProfileBundle } from '../src/main/runtime/factory-text'
 import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
@@ -126,10 +126,6 @@ describe('488 · who exists, and what they were told', () => {
   const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
     const id = await personOpens(profileId)
     await host.close(id, window)
-  }
-
-  const grant = (profileId: string, edit: Parameters<SessionStore['setCapabilities']>[1]): void => {
-    expect(store.setCapabilities(profileId, edit)).toBe(true)
   }
 
   const toolsOf = (sessionId: string) => {
@@ -303,13 +299,12 @@ describe('488 · who exists, and what they were told', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§4 · the disclosure, bounded', () => {
-    it('🔴 a row carries four facts and no grant of its own', async () => {
+    it('🔴 a row carries at most these facts', async () => {
       // ⛔ **The entitlement ruling, asserted on the PAYLOAD and not on the type** — *a payload
       // census must read call sites, not types*: the object is built field by field at the door, so
       // this is the only place that can see what actually crossed.
       await bringIdentityIntoBeing('builder')
       expect(store.setAgentProvider('builder', 'codex')).toBe(true)
-      grant('builder', { maxDepth: 9, canMessage: 'any' })
       const me = await anAgentRunning('lead')
 
       const said = await toolsOf(me).call('list_profiles')
@@ -333,19 +328,6 @@ describe('488 · who exists, and what they were told', () => {
       // assignment and not a value some fixture left behind — the difference between a fold and a
       // coincidence, asked one field over from where it is claimed.
       expect(HUMAN_NAMES as readonly string[]).toContain(String(row?.['display_name']))
-      const whole = JSON.stringify(said)
-      // ⛔ **No capability crosses, spelled either way** — derived from the schema so a capability
-      // added later is banned the day it exists rather than the next time somebody remembers.
-      for (const forbidden of [
-        ...CAPABILITY_FIELDS.map((field) => field.key),
-        ...CAPABILITY_FIELDS.map((field) => field.column),
-      ]) {
-        expect(whole, `${forbidden} crossed`).not.toContain(forbidden)
-      }
-      // 🔴 **Non-vacuity**: the values above are real on the target, so the absence is a fold and
-      // not an empty database.
-      expect(store.capabilitiesOf('builder')?.maxDepth).toBe(9)
-      expect(store.capabilitiesOf('builder')?.canMessage).toBe('any')
     })
 
     it('🔴 the HOST’s reading is bounded too, and not only the payload built from it', async () => {
@@ -354,14 +336,13 @@ describe('488 · who exists, and what they were told', () => {
       // leak the day anybody widened the door. ⚑ **Measured here it is a defect now**, which is the
       // difference between a bound and a coincidence.
       await bringIdentityIntoBeing('builder')
-      grant('builder', { maxDepth: 9, canMessage: 'any' })
       await anAgentRunning('lead')
 
       // ⚑ **D-014 · the reading takes no caller** — every agent sees every identity.
       const reading = host.profilesVisibleTo()
       // ⚑ **682 · the agent's model is a field by ruling** (`677`'s inbox 8: *a spawner knows before
       // it calls*) — the choice in force, which the caller meets at the rail anyway. ⛔ Still no
-      // capability: the loop below holds that. ⚠️ D-014 took `role` off the report.
+      // ⚠️ D-014 took `role` off the report.
       // ⚑ **D-042 · R6 moved it: `modelChoice` is now `defaultModel`** — the agent's DEFAULT, what
       // its new conversations start on (`ProfileReport.defaultModel`). Still four fields.
       expect(reading.profiles.length).toBeGreaterThan(0)
@@ -373,19 +354,10 @@ describe('488 · who exists, and what they were told', () => {
           'provider',
         ])
       }
-      const rows = JSON.stringify(reading.profiles)
-      for (const forbidden of [
-        ...CAPABILITY_FIELDS.map((field) => field.key),
-        ...CAPABILITY_FIELDS.map((field) => field.column),
-      ]) {
-        expect(rows, `${forbidden} reached the reading`).not.toContain(forbidden)
-      }
-      // ⚠️ **Non-vacuity**: the row this was folded from really does carry them.
-      expect(Object.keys(store.agentIdentities()[0] ?? {})).toContain('capabilities')
     })
 
     it('⛔ no conversation of another identity crosses this door', async () => {
-      // 🔴 **`agentsVisibleTo` folds conversations through a DIFFERENT grant**, so carrying one here
+      // 🔴 **`agentsVisibleTo` is a DIFFERENT door for conversations**, so carrying one here
       // would let a caller read past the fold that door applies — *widening a predicate widens every
       // question its field answers*.
       await bringIdentityIntoBeing('builder')

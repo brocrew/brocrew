@@ -42,7 +42,7 @@ describe('an identity that outlives a project', () => {
     return db
   }
 
-  describe('a grant belongs to the identity', () => {
+  describe('what a person sets belongs to the identity', () => {
     let userData: string
     let store: SessionStore
     let host: RuntimeHost
@@ -77,7 +77,7 @@ describe('an identity that outlives a project', () => {
       rmSync(userData, { recursive: true, force: true })
     })
 
-    it('a grant made while working one ticket is what the door reads on the next', async () => {
+    it('a server association made while working one ticket is what the next conversation reads', async () => {
       store.create({
         id: 'sess_a',
         provider: 'claude',
@@ -85,21 +85,14 @@ describe('an identity that outlives a project', () => {
         approvalMode: 'ask',
         profileId: 'explorer',
       })
-      const saved = host.setCapabilities('explorer', {
-        maxDepth: 3,
-        canCreateAgents: null,
-        canWriteRules: null,
-        canMessage: null,
-        canAssignWork: null,
+      const server = store.registerExternalMcpServer({
+        name: 'notes',
+        url: 'http://127.0.0.1:9/mcp',
+        reach: 'restricted',
       })
-      expect(saved?.capabilities.maxDepth).toBe(3)
-      expect(saved?.chosen).toEqual({
-        maxDepth: 'chosen',
-        canMessage: 'default',
-        canAssignWork: 'default',
-        canCreateAgents: 'default',
-        canWriteRules: 'default',
-      })
+      if (server === null) throw new Error('the server was not registered')
+      const saved = host.setExternalMcpServers('explorer', [server.id])
+      expect(saved?.externalMcpServerIds).toEqual([server.id])
 
       store.create({
         id: 'sess_b',
@@ -108,19 +101,11 @@ describe('an identity that outlives a project', () => {
         approvalMode: 'ask',
         profileId: 'explorer',
       })
-      expect(store.capabilitiesOf('explorer')?.maxDepth).toBe(3)
+      expect(store.agentIdentityOf('explorer')?.externalMcpServerIds).toEqual([server.id])
     })
 
     it('still refuses to configure an identity that does not exist, and creates nothing', () => {
-      expect(
-        host.setCapabilities('nobody', {
-          maxDepth: 3,
-          canCreateAgents: null,
-          canWriteRules: null,
-          canMessage: null,
-          canAssignWork: null,
-        }),
-      ).toBeNull()
+      expect(host.setExternalMcpServers('nobody', [])).toBeNull()
       expect(db.prepare('SELECT count(*) AS n FROM agent_identity').get()).toEqual({ n: 0 })
     })
 

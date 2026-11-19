@@ -102,8 +102,6 @@ export function agentToolsFor(
   sessionId: string,
   /** Each provider's list as the app last read it, named in give_work's and create_agent's fields. */
   lists: ListsAsLastRead = {},
-  /** The host supplies this launch-role snapshot; call-time authority remains at the host. */
-  offersDirectRulesWrite = false,
 ): AgentToolset {
   const by: Caller = { ownerId: agentCallerId(sessionId) }
   const me = sessionId
@@ -244,8 +242,6 @@ export function agentToolsFor(
       createWriteAgentRulesTool(host, by, me, guarded),
       createReadOwnNotesTool(host, by, me, guarded),
       createWriteOwnNotesTool(host, by, me, guarded),
-    ]
-      .filter((one) => one.name !== 'write_agent_rules' || offersDirectRulesWrite)
-      .map(recordsWhatItRefused),
+    ].map(recordsWhatItRefused),
   }
 }

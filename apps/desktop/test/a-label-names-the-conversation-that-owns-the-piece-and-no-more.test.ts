@@ -251,13 +251,6 @@ describe('a label names the conversation that owns the piece, and no more', () =
     }
   }
 
-  /** ⚑ The person narrows BroBot's message grant to `none`, and the store says it took. */
-  const narrowBroBot = (): void => {
-    expect(store.capabilitiesOf(DEFAULT_PROFILE_ID)?.canMessage).toBe('any')
-    expect(store.setCapabilities(DEFAULT_PROFILE_ID, { canMessage: 'none' })).toBe(true)
-    expect(store.capabilitiesOf(DEFAULT_PROFILE_ID)?.canMessage).toBe('none')
-  }
-
   it('🔴 a piece’s label names the conversation that owns it: the status, interrupt and read doors take it exactly as they take the id', async () => {
     const { brobotTools, ada, ali } = await aFamily()
     const owners: [string, string, string][] = [
@@ -318,20 +311,16 @@ describe('a label names the conversation that owns the piece, and no more', () =
     }
   })
 
-  it('a caller with narrow messaging still reads the same foreign card by label and id', async () => {
+  it('a caller reads a card it did not start by label and id', async () => {
     const { brobotTools, ada, stranger } = await aFamily()
 
-    // ⚑ The paired positive, BEFORE the narrowing: the default caller reaches the stranger by its
-    // label. So the refusal below is the narrowing, and not a label the door cannot resolve.
     const reachedByLabel = await callOn(brobotTools, 'get_agent_status', { agent: 'W2' })
     expect(reachedByLabel, JSON.stringify(reachedByLabel)).toMatchObject({ outcome: 'ok' })
     expect((reachedByLabel.agent as { agent: string }).agent).toBe(stranger)
     expect((reachedByLabel.agent as { whose: { name: string } }).whose.name).toBe('Amara')
 
-    narrowBroBot()
     const rowsBefore = ledger(stranger).length
 
-    // Reading remains independent of message reach.
     const byId = await callOn(brobotTools, 'get_agent_status', { agent: stranger })
     expect(byId, JSON.stringify(byId)).toMatchObject({
       outcome: 'ok',
@@ -355,11 +344,9 @@ describe('a label names the conversation that owns the piece, and no more', () =
     expect((child.agent as { agent: string }).agent).toBe(ada)
   })
 
-  it('🔴 a caller that may not message still interrupts, by label, the conversation it may interrupt, and not a stranger’s', async () => {
+  it('🔴 a caller interrupts by label the conversation below it, and a stranger’s', async () => {
     const { brobot, brobotTools, ali, aliHandle, stranger, strangerHandle } = await aFamily()
-    narrowBroBot()
 
-    // The grandchild remains readable while messaging is narrowed.
     const premise = await callOn(brobotTools, 'get_agent_status', { agent: ali })
     expect(premise, JSON.stringify(premise)).toMatchObject({ outcome: 'ok' })
 
@@ -419,9 +406,8 @@ describe('a label names the conversation that owns the piece, and no more', () =
     })
   })
 
-  it('a caller that may not message reads an unrelated conversation by label and id', async () => {
+  it('a caller reads an unrelated conversation by label and id', async () => {
     const { brobotTools, ali, stranger } = await aFamily()
-    narrowBroBot()
 
     const status = await callOn(brobotTools, 'get_agent_status', { agent: ali })
     expect(status).toMatchObject({ outcome: 'ok' })
@@ -921,13 +907,11 @@ describe('a label names the conversation that owns the piece, and no more', () =
       }
       it(`${tool} does not disclose the caller's helpers when addressing a stranger`, async () => {
         const { brobotTools, stranger } = await settledFamily()
-        narrowBroBot()
         const said = await fullCall(brobotTools, tool, argsFor('W2'))
         if (tool === 'interrupt_agent') {
           expect(said.structured).toMatchObject({ outcome: 'ok', agent: stranger })
         } else {
-          expect(said.structured.outcome).toBe('refused')
-          expect(said.text).not.toContain('Amara')
+          expect(said.structured.outcome, said.text).toBe('ok')
         }
         expect(said.text).not.toContain('Its helpers:')
         expect(said.text).not.toContain('Ada (worker) on W1.1')

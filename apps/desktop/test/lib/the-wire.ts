@@ -20,7 +20,7 @@
  *    at the wire and the surface reported a read error, having never asked. Fixed by spreading.
  *  - `218` — `send({ attachments })` sent members of a `reactive(new Map())`. *"The attachment never
  *    reached the host. From either surface. Since `3151a36`."* Fixed by {@link overTheWire}.
- *  - `355` — `setCapabilities({ grant })` sent the sheet's own edit objects. Fixed by a deep copy.
+ *  - `355` — the identity sheet's save sent its own edit objects. Fixed by a deep copy.
  *
  * ⛔ **Three fixes, no guard, and the fourth arrived anyway.** That is the shape `361` is about: a
  * convention nothing enforces decays, and this one decayed silently three times.
