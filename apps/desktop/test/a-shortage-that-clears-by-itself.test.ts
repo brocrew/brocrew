@@ -73,12 +73,6 @@ vi.mock('node:child_process', async (importOriginal) => {
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
-/** ⚑ The new word — spelled here as a string, so `main` (which has no such word) can run this file. */
-const shortageReason = (code: string): RegExp =>
-  code === 'EMFILE'
-    ? /BroCrew had too many files open/
-    : /ran short of open files, processes or memory/
-
 describe('705 · R39 — a shortage that clears by itself', () => {
   let userData: string
   let root: string
@@ -272,26 +266,31 @@ describe('705 · R39 — a shortage that clears by itself', () => {
   // §1 · the word, its price, and the retry it asks for
   // ───────────────────────────────────────────────────────────────────────────────
 
+  const shortageReason = (code: string): RegExp =>
+    code === 'EMFILE'
+      ? /BroCrew had too many files open/
+      : /ran short of open files, processes or memory/
+
+  const failedWake = async (failure: Error, reason: RegExp) => {
+    const { pm, worker, piece } = await aWorkerOver()
+    gate.resumeFails = () => failure
+    const id = recordedMessageWakeFailure(
+      store,
+      worker,
+      await wake(pm, worker, piece),
+      'could-not-start',
+      reason,
+    )
+    return { pm, worker, piece, id }
+  }
+
   describe.each(SHORTAGES)('§1 · $name', ({ code, make }) => {
-    it('🔴 the wake answers the retryable word — while this holds, retryable, the same call again', async () => {
-      const produced = await make()
-      const { pm, worker, piece } = await aWorkerOver()
-      gate.resumeFails = () => produced
-      const refused = await wake(pm, worker, piece)
-      recordedMessageWakeFailure(store, worker, refused, 'could-not-start', shortageReason(code))
+    it('keeps the Message recorded when the machine runs short', async () => {
+      await failedWake(await make(), shortageReason(code))
     })
 
-    it('⚑ standing rule 3 — the same call, once the shortage has cleared, wakes it', async () => {
-      const produced = await make()
-      const { pm, worker, piece } = await aWorkerOver()
-      gate.resumeFails = () => produced
-      const id = recordedMessageWakeFailure(
-        store,
-        worker,
-        await wake(pm, worker, piece),
-        'could-not-start',
-        shortageReason(code),
-      )
+    it('delivers the original Message once a fresh call can wake its recipient', async () => {
+      const { pm, worker, piece, id } = await failedWake(await make(), shortageReason(code))
       gate.resumeFails = undefined
       expect(await wake(pm, worker, piece, 'try continuing now')).toMatchObject({
         outcome: 'ok',
@@ -396,42 +395,19 @@ describe('705 · R39 — a shortage that clears by itself', () => {
         .map((item) => item.text)
     }
 
-    it('records a send receipt without a REFUSED row when a shortage blocks the wake', async () => {
-      const { code, make } = SHORTAGES[1]
-      const produced = await make()
-      const { pm, worker, piece } = await aWorkerOver()
-      gate.resumeFails = () => produced
-      const id = recordedMessageWakeFailure(
-        store,
-        worker,
-        await wake(pm, worker, piece),
-        'could-not-start',
-        shortageReason(code),
-      )
-      expect(events(pm)).toContainEqual(
-        expect.objectContaining({
-          type: 'message_sent',
-          to: worker,
-          messageId: id,
-          delivery: 'queued',
-        }),
-      )
-      expect(noticesOf(pm).some((text) => text.startsWith('refused: message_agent'))).toBe(false)
-    })
-
-    it('keeps the same send record when the provider cannot reopen the conversation', async () => {
-      const produced = await claudeResumeOver(
-        () => aSpawnRefusedAfterItsPipes('ENOENT', '/x/claude').child,
-      )
-      const { pm, worker, piece } = await aWorkerOver()
-      gate.resumeFails = () => produced
-      const id = recordedMessageWakeFailure(
-        store,
-        worker,
-        await wake(pm, worker, piece),
-        'could-not-start',
-        /its provider could not bring it back/,
-      )
+    it.each([
+      {
+        scenario: 'a shortage',
+        make: SHORTAGES[1].make,
+        reason: shortageReason(SHORTAGES[1].code),
+      },
+      {
+        scenario: 'an unavailable provider',
+        make: () => claudeResumeOver(() => aSpawnRefusedAfterItsPipes('ENOENT', '/x/claude').child),
+        reason: /its provider could not bring it back/,
+      },
+    ])('keeps a send receipt without a refusal row for $scenario', async ({ make, reason }) => {
+      const { pm, worker, id } = await failedWake(await make(), reason)
       expect(events(pm)).toContainEqual(
         expect.objectContaining({
           type: 'message_sent',

@@ -509,7 +509,7 @@ describe('D-012 · a giver looks closer', () => {
         .filter((text) => isGiverStallNotice(text))
         .at(-1) ?? ''
 
-    it('a serial stall notice names the unresolved reminder and gives the giver its next actions', async () => {
+    const aWorkerWithALongFollowUp = async () => {
       const long = `build it ${'with care '.repeat(150)}`
       const { pm, worker, label } = await aPmItsWorkerAndAPeer()
       // ⚑ D-016 · the follow-up is held behind the brief's turn, so the turn that ends with the
@@ -525,6 +525,11 @@ describe('D-012 · a giver looks closer', () => {
       await letTheTurnFinish(worker)
       await waitFor(() => echoes(worker) === 2, 'the worker to answer')
       await waitFor(() => cards(worker).length === 2, 'the follow-up’s card')
+      return { pm, worker, label }
+    }
+
+    it('a serial stall notice names the unresolved reminder and gives the giver its next actions', async () => {
+      const { pm, worker, label } = await aWorkerWithALongFollowUp()
       await letTheTurnFinish(worker)
       await waitFor(() => noticeTo(pm.id).includes('still needs attention:'), 'the notice')
       const notice = noticeTo(pm.id)
@@ -538,21 +543,7 @@ describe('D-012 · a giver looks closer', () => {
     })
 
     it('🔴 who sent the last message and the start of it, then the start of the answer — and read_transcript', async () => {
-      const long = `build it ${'with care '.repeat(150)}`
-      const { pm, worker, label } = await aPmItsWorkerAndAPeer()
-      // ⚑ D-016 · the follow-up is held behind the brief's turn, so the turn that ends with the
-      // piece still open is the one that answered it — see {@link theGiverFollowsItUp}.
-      await waitFor(() => cards(worker).length === 1, 'the brief’s card')
-      const sent = await callOn(pm.tools, 'message_agent', {
-        kind: 'follow-up',
-        agent: worker,
-        piece: label,
-        text: long,
-      })
-      expect(sent.outcome, JSON.stringify(sent)).toBe('ok')
-      await letTheTurnFinish(worker)
-      await waitFor(() => echoes(worker) === 2, 'the worker to answer')
-      await waitFor(() => cards(worker).length === 2, 'the follow-up’s card')
+      const { pm, worker } = await aWorkerWithALongFollowUp()
       const live = (
         host as unknown as { slots: Map<string, { session: { handle: unknown } }> }
       ).slots.get(worker)!.session

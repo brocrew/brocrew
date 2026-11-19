@@ -576,10 +576,6 @@ describe('414 · the origin a model is told', () => {
       )
       const heard =
         providerHeard(pair.worker).find((said) => said.includes('second, which has to wait')) ?? ''
-      // ⛔ **Identical framing to the idle branch**, which is the whole assertion: a fix that
-      // reached only the idle child would look like the model being unreliable. ⚑ D-016: the PM
-      // stands as the giver of the open piece this follows up — 🔴 F088 · and the line says the
-      // words are about it, from the held entry.
       expect(heard.split('\n')[0]).toBe(
         'From Amara (conversation W3 · Amara), about task W3.1 · The work, in your conversation W3.1 · The work.',
       )

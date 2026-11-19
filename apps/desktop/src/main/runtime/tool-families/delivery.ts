@@ -65,72 +65,9 @@ export function anEndedPieceSaid(detail: EndedPieceDetail, readAt: number): stri
   return `${act} ${ended}, so nothing was changed.`
 }
 
-/**
- * **F087 · a follow-up naming a piece the caller HOLDS, said as what it is** — it is not one the
- * caller gave, so `not-a-piece-you-gave` is true; that word's own sentence then guesses *"the name may
- * belong to another conversation, or to nothing at all"*, which is false of the caller's own piece.
- * **The act first, inside the cut**: the same call as a note, which may name a piece the caller
- * holds, open or ended (F086). An OPEN piece it holds is `that-is-work-you-hold`'s, whose acts — ask
- * about it, hand it back — take open work; this is said of the rest, which a note may still name.
- */
-export function aFollowUpOnAPieceYouHold(label: string): string {
-  return (
-    `make the same call with kind note: ${label} is a piece you hold, not one you gave, so nothing ` +
-    `was sent. A follow-up names a piece you gave that agent; a note may name a piece you hold or ` +
-    `gave, open or ended.`
-  )
-}
-
 /** `that-piece-is-still-queued`'s sentence, naming the piece by its label. */
 export function aMessageAboutAQueuedPiece(label: string): string {
   return `Not sent: ${label} is still queued. Change its brief with update_work.`
-}
-
-/**
- * **F087 · a follow-up naming a piece the caller gave ANOTHER agent, said as what it is** — the
- * guess in `not-a-piece-you-gave`'s own sentence is false here too: the caller gave it, to another
- * conversation. **The act first, inside the cut**: the same call to the agent holding it, which the
- * piece's label names (D-016 · commit 7 · R1) — or a note to this one, which may name any piece the
- * caller gave.
- */
-export function aFollowUpOnAPieceYouGaveAnother(label: string): string {
-  return (
-    `make the same call with agent ${label}, which names the agent you gave it to: ${label} is a ` +
-    `piece you gave, but not to that agent, so nothing was sent. A follow-up goes to the agent ` +
-    `holding its piece; a note to that agent may still name it.`
-  )
-}
-
-/**
- * A follow-up naming a piece the caller neither gave nor holds, to an agent it may message: the same
- * words reach that agent as a note, which leaves the piece out because a note names only a piece
- * the caller holds or gave. It never says whether the piece exists.
- */
-export function aFollowUpOnAPieceYouDidNotGive(agent: string): string {
-  return (
-    `send it as kind note to ${agent}, leaving out piece: that is not a piece you gave that agent, ` +
-    `so nothing was sent.`
-  )
-}
-
-/** How many labels a sentence names; the detail carries them all. */
-const LABELS_NAMED = 5
-
-/** An agent's profile name that names several conversations in reach, with their labels. */
-export function anAgentWithSeveralConversations(
-  profile: string,
-  labels: readonly string[],
-): string {
-  const named = labels.slice(0, LABELS_NAMED)
-  const more = labels.length - named.length
-  const which =
-    more > 0
-      ? `${named.join(', ')} and ${more} more, all in the detail`
-      : `${named.slice(0, -1).join(', ')} or ${named.at(-1)}`
-  return (
-    `make the same call with agent set to one of ${profile}’s conversations: ${which}. ` +
-    `It has more than one you can reach, so nothing was done.`
-  )
 }
 
 /**
