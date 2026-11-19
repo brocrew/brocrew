@@ -1242,6 +1242,9 @@ const platform = platformHere()
                       : null,
                     row.detail,
                     identities.get(row.sessionId)?.address,
+                    !row.worker && row.named && identities.get(row.sessionId)
+                      ? conversationTitle(row.label, row.named)
+                      : null,
                     identities.get(row.sessionId)?.author?.kind === 'person'
                       ? 'Named by you'
                       : null,
@@ -1357,6 +1360,11 @@ const platform = platformHere()
                       · Named by you</template
                     >
                   </small>
+                  <small
+                    v-if="!row.worker && row.named && identities.get(row.sessionId)"
+                    :title="conversationTitle(row.label, row.named)"
+                    >{{ conversationTitle(row.label, row.named) }}</small
+                  >
                   <template v-if="row.worker">
                     <small
                       v-for="piece in workerSubtitles(

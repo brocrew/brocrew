@@ -160,7 +160,7 @@ it('reads canonical identity on selection, refreshes on work, and rereads on reo
     sessionIds.map((id) => (id === sessionId ? primary : serviceReading)),
   )
   window.api.runtime.readConversationIdentities = readRail
-  const m = await mountWith([row(serviceId, null), row(sessionId, null)])
+  const m = await mountWith([row(serviceId, null), row(sessionId, task)])
   const title = () => m.all('conversation-title-rename')[0]?.textContent?.trim()
   const shownAddress = () => m.all('conversation-address')[0]?.textContent?.trim()
 
@@ -170,6 +170,7 @@ it('reads canonical identity on selection, refreshes on work, and rereads on reo
   expect(m.q('conversation-title').parentElement?.textContent).not.toContain('Named by you')
   await expect.poll(() => m.q(`rail-address-${sessionId}`).textContent).toBe(sessionId)
   expect(readRail).toHaveBeenLastCalledWith({ sessionIds: [sessionId, serviceId] })
+  expect(m.q(`open-session-${sessionId}`).textContent).toContain(task.title)
 
   primary = { ...primary, title: 'Renamed profile fallback' }
   changed({ what: 'agents' })
