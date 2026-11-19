@@ -192,31 +192,45 @@ describe('663 M33 · a store that failed is not dressed as a word', () => {
     })
   })
 
-  it('surfaces the store error reading the receipt after a recorded Message wakes its recipient', async () => {
-    const { pm, worker, piece } = await aWorkerThatStopped()
-    const fault = new Error('the post-wake message receipt read failed')
-    const read = store.messagesWaitingIn.bind(store)
-    const lookup = vi.spyOn(store, 'messagesWaitingIn').mockImplementation((id) => {
-      if (id === worker && new Error().stack?.includes('.stateOfARecordedMessage (')) throw fault
-      return read(id)
-    })
-    try {
-      await expect(wakeByMessage(pm, worker, piece)).rejects.toBe(fault)
-    } finally {
-      lookup.mockRestore()
-    }
-    expect(host.sessionIds).toContain(worker)
-    const events = store.events(worker).map(({ event }) => event)
-    const queued = events
-      .filter((event) => event.type === 'message_queued')
-      .filter((event) => event.text === 'carry on')
-    expect(queued).toEqual([expect.objectContaining({ messageId: expect.any(String) })])
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        type: 'message_unqueued',
-        messageId: queued[0]?.messageId,
-        reason: 'sent',
-      }),
-    )
-  })
+  it.each([false, true])(
+    'surfaces the post-wake receipt read error, even if recording the sender receipt also fails: %s',
+    async (failReceiptWrite) => {
+      const { pm, worker, piece } = await aWorkerThatStopped()
+      const fault = new Error('the post-wake message receipt read failed')
+      const read = store.messagesWaitingIn.bind(store)
+      const lookup = vi.spyOn(store, 'messagesWaitingIn').mockImplementation((id) => {
+        if (id === worker && new Error().stack?.includes('.stateOfARecordedMessage (')) throw fault
+        return read(id)
+      })
+      const append = store.append.bind(store)
+      const writeFault = new Error('the sender receipt write failed too')
+      const write = vi.spyOn(store, 'append').mockImplementation((...args) => {
+        const [id, , event] = args
+        if (failReceiptWrite && id === pm && event.type === 'message_sent') throw writeFault
+        return append(...args)
+      })
+      try {
+        await expect(wakeByMessage(pm, worker, piece)).rejects.toBe(fault)
+        expect(
+          write.mock.calls.filter(([id, , event]) => id === pm && event.type === 'message_sent'),
+        ).toHaveLength(1)
+      } finally {
+        lookup.mockRestore()
+        write.mockRestore()
+      }
+      expect(host.sessionIds).toContain(worker)
+      const events = store.events(worker).map(({ event }) => event)
+      const queued = events
+        .filter((event) => event.type === 'message_queued')
+        .filter((event) => event.text === 'carry on')
+      expect(queued).toEqual([expect.objectContaining({ messageId: expect.any(String) })])
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: 'message_unqueued',
+          messageId: queued[0]?.messageId,
+          reason: 'sent',
+        }),
+      )
+    },
+  )
 })

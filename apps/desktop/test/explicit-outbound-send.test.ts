@@ -739,6 +739,62 @@ describe('explicit outbound sends', () => {
     expect(host.whenItWasArchived(target)).toBe(archivedAt)
   })
 
+  it.each([false, true])(
+    'shows the same Message disposition after waking a stopped recipient, sender closes: %s',
+    async (senderCloses) => {
+      await host.close(target, world.window)
+      const gate = deferred()
+      const resume = host.resumeSession.bind(host)
+      const wake = vi.spyOn(host, 'resumeSession').mockImplementationOnce(async (...args) => {
+        await gate.promise
+        return resume(...args)
+      })
+      const text = 'Continue with these notes.'
+      const sending = send('message_agent', { agent: target, text })
+      let queuedId: string | undefined
+      try {
+        await waitFor(() => wake.mock.calls.length === 1, 'the recipient wake to be requested')
+        expect(wake.mock.calls[0]?.[0]).toBe(target)
+        const [queued] = world.store.messagesWaitingIn(target)
+        expect(queued).toMatchObject({ text, messageId: expect.any(String) })
+        queuedId = queued?.messageId
+        if (senderCloses) {
+          await host.close(sender, world.window)
+          expect(host.sessionIds).not.toContain(sender)
+        }
+      } finally {
+        gate.resolve()
+        wake.mockRestore()
+      }
+      const sent = await sending
+      const receipt = sent.structured?.receipt as SendReceipt
+      const act = sent.structured?.messageAct
+      expect(act).toEqual(expect.any(String))
+      expect(receipt.recorded.id).toBe(queuedId)
+      expect(receipt.recipient).toMatchObject({ id: target, state: { kind: 'started' } })
+      expect(sent.text).toContain('Delivered to conversation')
+      expect(world.ledger(target)).toContainEqual(
+        expect.objectContaining({
+          type: 'message_unqueued',
+          messageId: queuedId,
+          reason: 'sent',
+        }),
+      )
+      expect(
+        world
+          .ledger(sender)
+          .filter((event) => event.type === 'message_sent' && event.messageAct === act),
+      ).toEqual([
+        expect.objectContaining({
+          delivery: 'sent',
+          to: target,
+          messageId: queuedId,
+          onBehalfOfAPerson: true,
+        }),
+      ])
+    },
+  )
+
   it('keeps the same Message record after a failed wake and delivers it once on reopen', async () => {
     await host.close(target, world.window)
     const ref = world.store.find(target)?.ref
@@ -757,6 +813,14 @@ describe('explicit outbound sends', () => {
     expect(world.store.messagesWaitingIn(target)).toEqual([
       expect.objectContaining({ messageId: id, text }),
     ])
+    expect(
+      world
+        .ledger(sender)
+        .filter(
+          (event) =>
+            event.type === 'message_sent' && event.messageAct === sent.structured?.messageAct,
+        ),
+    ).toEqual([expect.objectContaining({ delivery: 'queued', to: target, messageId: id })])
     wake.mockRestore()
     await host.resumeSession(target, world.window)
     await waitFor(

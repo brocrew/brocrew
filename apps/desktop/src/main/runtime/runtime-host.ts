@@ -3302,6 +3302,7 @@ type IntoItsLedger =
   | WorkClosedEvent
   // ⚑ **D-047** — what a conversation gave, in its own ledger: a call can answer inside its stop.
   | WorkSentEvent
+  | MessageSentEvent
   | UnqueuedMessageEvent
   // ⚑ **D-017 · R1** — a message held for a conversation's next start ({@link
   // RuntimeHost.holdUntilItStarts}).
@@ -8722,10 +8723,8 @@ export class RuntimeHost implements LiveHost {
     return this.itIsAService(this.theOneInItsPlace(sessionId))
   }
 
-  /**
-   * Keep the message and its sender receipt before the recipient's next start.
-   */
-  private async leaveForTheNextStart(
+  /** Keep the recipient's message and prepare the sender's single receipt. */
+  private async keepMessageForTheNextStart(
     sessionId: string,
     text: string,
     by: Caller,
@@ -8734,28 +8733,24 @@ export class RuntimeHost implements LiveHost {
     facts: FactsAQueueCarries,
     says: AgentMessageKind,
     onRecipient?: (recipient: string) => void,
-  ): Promise<QueueOutcome> {
+  ) {
     const to = this.theOneInItsPlace(sessionId)
     onRecipient?.(to)
     await this.refuseBeforeAStart(to, text, by, attachments, facts.messageAct)
     const from = this.originOf(by)
     const toProfile = from?.who === 'a-caller-with-an-id' ? this.profileOf(to) : null
     const kept = await this.keptUntilItStarts(to, text, facts, kind, { by, says, attachments })
-    // ⚑ The sender's receipt, as for words a running conversation holds.
-    if (kept.outcome === 'queued') {
-      this.noteTheSending(
-        from,
-        { id: to },
-        says,
-        'queued',
-        facts.aboutPiece ?? null,
-        kept.messageId,
-        toProfile,
-        text,
-        this.theReceiverOf(to, facts),
-      )
-    }
-    return kept
+    const noteSending = this.noteTheSending(
+      from,
+      { id: to },
+      says,
+      facts.aboutPiece ?? null,
+      kept.messageId,
+      toProfile,
+      text,
+      this.theReceiverOf(to, facts),
+    )
+    return { to, kept, noteSending }
   }
 
   /**
@@ -8790,8 +8785,8 @@ export class RuntimeHost implements LiveHost {
     facts: FactsAQueueCarries,
     kind: MailboxKind,
     left?: WordsForTheNextStart,
-  ): Promise<QueueOutcome> {
-    return new Promise<QueueOutcome>((kept, failed) => {
+  ): Promise<Extract<QueueOutcome, { outcome: 'queued' }>> {
+    return new Promise<Extract<QueueOutcome, { outcome: 'queued' }>>((kept, failed) => {
       this.holdUntilItStarts(
         to,
         text,
@@ -23412,7 +23407,7 @@ export class RuntimeHost implements LiveHost {
     }
     // ⛔ While services are off, an agent's words start no service: they wait for its next start.
     if (heldForServices) {
-      return this.leaveForTheNextStart(
+      return this.keepMessageForTheNextStart(
         sessionId,
         text,
         by,
@@ -23421,7 +23416,10 @@ export class RuntimeHost implements LiveHost {
         facts,
         says,
         onRecipient,
-      )
+      ).then(({ kept, noteSending }) => {
+        noteSending?.('queued')
+        return kept
+      })
     }
     if (now) {
       // ⚑ **D-017 · R1** — straight in; a stop under it is waited out and it is started again.
@@ -23453,30 +23451,55 @@ export class RuntimeHost implements LiveHost {
       return null
     }
     return this.afterWhatArrivedFirst(destination, async () => {
-      const to = this.theOneInItsPlace(destination)
-      if (this.runsNow(to)) return null
-      const heldForService = this.servicesHoldItBack(to, by)
-      const kept = await this.leaveForTheNextStart(to, text, by, [], 'work', facts, says)
-      if (kept.outcome !== 'queued') return null
+      const next = this.theOneInItsPlace(destination)
+      if (this.runsNow(next)) return null
+      const heldForService = this.servicesHoldItBack(next, by)
+      const { to, kept, noteSending } = await this.keepMessageForTheNextStart(
+        next,
+        text,
+        by,
+        [],
+        'work',
+        facts,
+        says,
+      )
       const id = kept.messageId
-      if (heldForService) return { id, to, state: this.stateOfARecordedMessage(to, id) }
+      let state: SendRecipientState | null = null
       try {
-        await this.ensureRunning(to, null)
-      } catch (error) {
-        const unavailable =
-          unavailableOf(error) ?? unavailableOf(error instanceof Error ? error.cause : undefined)
-        if (
-          unavailable === null &&
-          !(error instanceof ServicesAreOff) &&
-          aWakeThatDidNotHappen(error) === null
-        ) {
-          throw error
+        if (!heldForService) {
+          try {
+            await this.ensureRunning(to, null)
+          } catch (error) {
+            const unavailable =
+              unavailableOf(error) ??
+              unavailableOf(error instanceof Error ? error.cause : undefined)
+            if (
+              unavailable === null &&
+              !(error instanceof ServicesAreOff) &&
+              aWakeThatDidNotHappen(error) === null
+            ) {
+              throw error
+            }
+            console.warn(
+              `message_agent: the start did not happen for ${to}: ${errorMessage(error)}`,
+            )
+            state = this.sendFailedAfterRecording(error)
+          }
+          if (state === null) await this.slots.get(to)?.session?.flushing
         }
-        console.warn(`message_agent: the start did not happen for ${to}: ${errorMessage(error)}`)
-        return { id, to, state: this.sendFailedAfterRecording(error) }
+        state ??= this.stateOfARecordedMessage(to, id)
+      } catch (error) {
+        try {
+          noteSending?.('queued')
+        } catch (receiptError) {
+          console.warn(
+            `message_agent: could not keep the sender receipt: ${errorMessage(receiptError)}`,
+          )
+        }
+        throw error
       }
-      await this.slots.get(to)?.session?.flushing
-      return { id, to, state: this.stateOfARecordedMessage(to, id) }
+      noteSending?.(state.kind === 'started' ? 'sent' : 'queued')
+      return { id, to, state }
     })
   }
 
@@ -25790,13 +25813,12 @@ export class RuntimeHost implements LiveHost {
           from,
           session,
           says,
-          'sent',
           facts.aboutPiece ?? null,
           null,
           toProfile,
           text,
           receiver,
-        )
+        )?.('sent')
       }
       return { outcome: 'sent' }
     }
@@ -25886,13 +25908,12 @@ export class RuntimeHost implements LiveHost {
         from,
         session,
         says,
-        'queued',
         facts.aboutPiece ?? null,
         id,
         toProfile,
         text,
         receiver,
-      )
+      )?.('queued')
     }
     this.publishStateIfChanged(session)
     // 🔴 **657 · and if the conversation is already free, it goes now.** ⛔ A held message is
@@ -26039,47 +26060,7 @@ export class RuntimeHost implements LiveHost {
     })
   }
 
-  /**
-   * 🔴 **The SENDER's own receipt for a message it sent** (439 · criterion 23) — see
-   * {@link MessageSentEvent}.
-   *
-   * ## ⛔ ONE helper and two call sites, because the two branches are where this shape rots
-   *
-   * ⚠️ **`414` left the same defect twice in this method and said so**: a fact listed by hand on the
-   * idle branch is a fact the held branch silently stops carrying, which is *"a fix that works
-   * intermittently"*. ⛔ Both call sites hand this the same values and the row is built once, so a
-   * field added later cannot reach a busy recipient and miss an idle one. ⚑ **671 · the eighth, the
-   * WORDS, arrived exactly that way** — one parameter, one spread, both branches (`658` G1).
-   *
-   * ## ⚠️ Only a caller with an ID writes anything, and that is the rail rather than an optimisation
-   *
-   * ⛔ **A reply the app delivered, a routed question and a stall notice decode to `null` at
-   * {@link originOf}; a person's turn decodes to {@link THE_PERSON_AT_A_WINDOW}** — by a POSITIVE
-   * test at each, `413`'s rule — **and none of the four mints a receipt.** ⚑ That is right twice
-   * over: the app is not a conversation and has no ledger to be visible in, and a person's own
-   * words are already in the transcript they were typed into.
-   *
-   * 🔴 **607 · this rail was `origin === null` and the dispatch that split that value found it as a
-   * COMPILE ERROR, not as a row in somebody's transcript.** ⛔ Before 607 a person's turn arrived
-   * here as `null` and left on the first line; after it the person has a value of their own, and a
-   * guard still written the old way would have minted a `message_sent` receipt in the person's own
-   * conversation for every message they typed — ⚠️ **the receipt this docblock says must not
-   * exist, in the one conversation that least needs telling.** ⚑ **The union is what caught it**:
-   * `origin.caller` does not type-check on {@link ThePersonAtAWindow}, so the reader had to be
-   * re-asked rather than silently re-interpreted — `prove-a-field-is-read-with-a-type-error`.
-   *
-   * ⚠️ **And the guard is a POSITIVE test for the arm that HAS a conversation**, not *"null or a
-   * person"*: a fourth arm added tomorrow lands outside it, which is `413` §3 pointed at this
-   * method instead of at the door.
-   *
-   * ## ⛔ And a sender whose conversation is gone gets no row
-   *
-   * ⚠️ **`originOf` names a conversation; the slot map may not hold it** — a caller whose session
-   * ended between composing and delivering. ⛔ **Reported rather than forced**: this app appends to
-   * a LIVE slot, and manufacturing one to carry a receipt would be a second way for a session to
-   * exist. ⚑ The recipient's half is unaffected, so the exchange is still recorded once; what is
-   * lost is the sender's copy, in the one case where there is no sender left to read it.
-   */
+  /** Capture the sender's attribution now and publish once the delivery is known. */
   private noteTheSending(
     // ⚠️ **`origin` and not `from`** — `messageWithHandedPaths` one method up takes `from:
     // TurnOrigin | null,` and `414 M21` anchors on that line ALONE, so a second identically spelled
@@ -26088,7 +26069,6 @@ export class RuntimeHost implements LiveHost {
     origin: TurnOrigin | null,
     target: Pick<HostedSession, 'id'>,
     kind: AgentMessageKind,
-    delivery: 'sent' | 'queued',
     /**
      * ⚑ **D-016 · the piece the message named, with its label** — see
      * {@link MessageSentEvent.piece}. ⛔ `null` when it named none.
@@ -26113,40 +26093,25 @@ export class RuntimeHost implements LiveHost {
       readonly addressedAs?: string
       readonly toLabel?: string
     },
-  ): void {
+  ): ((delivery: 'sent' | 'queued') => void) | undefined {
     if (origin?.who !== 'a-caller-with-an-id') return
-    // ⚠️ **`phase === 'live'`, which is the shape every other reader of this map uses** — a slot
-    // that is still `starting` has no session to append to, and {@link tellOneParent} takes the
-    // identical guard two methods up rather than reaching past it.
     const slot = this.slots.get(origin.caller)
-    const sender = slot?.phase === 'live' ? slot.session : null
-    if (slot === undefined || sender === null) return
-    this.publishOurs(sender, {
-      type: 'message_sent',
-      ...receiver,
-      to: target.id,
-      toProfile,
-      kind,
-      delivery,
-      ...(messageId === null ? {} : { messageId }),
-      ...(about === null ? {} : { piece: about.piece, label: about.label }),
-      // 🔴 **Off the SLOT and never off the caller** — see {@link MessageSentEvent.onBehalfOfAPerson}.
-      // ⛔ A model cannot spell this: there is no argument for it on any tool, and the value is the
-      // one `claimSession` copied from the sink that owns the conversation.
-      onBehalfOfAPerson: slot.ownerIsAPerson,
-      // ⛔ **The SLOT carries it and the `HostedSession` does not**, which is the shape rather than
-      // an inconvenience: {@link SessionSlot.ownerIsAPerson} moves when a surface claims or
-      // releases a conversation, and a copy on the session would be a second answer free to
-      // disagree with the one every gate in this file reads.
-      //
-      // 🔴 **671 · the words, cut at the family's bound and SAID when cut** — see
-      // {@link MessageSentEvent.text}. ⛔ `REPLY_SUMMARY_LIMIT` and not a new number: the bound on
-      // every other string one agent writes into another conversation.
-      // ⚠️ **Never between the two halves of one character** — {@link headOf}: a cut inside a
-      // surrogate pair stores a lone half this ledger can never repair.
-      text: words.slice(0, headOf(words, REPLY_SUMMARY_LIMIT)),
-      ...(words.length > REPLY_SUMMARY_LIMIT ? { clipped: true as const } : {}),
-    })
+    if (slot?.phase !== 'live') return
+    const onBehalfOfAPerson = slot.ownerIsAPerson
+    return (delivery) =>
+      this.writeIntoItsLedger(origin.caller, {
+        type: 'message_sent',
+        ...receiver,
+        to: target.id,
+        toProfile,
+        kind,
+        delivery,
+        ...(messageId === null ? {} : { messageId }),
+        ...(about === null ? {} : { piece: about.piece, label: about.label }),
+        onBehalfOfAPerson,
+        text: words.slice(0, headOf(words, REPLY_SUMMARY_LIMIT)),
+        ...(words.length > REPLY_SUMMARY_LIMIT ? { clipped: true as const } : {}),
+      })
   }
 
   /**
