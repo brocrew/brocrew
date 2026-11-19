@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { h, nextTick, ref } from 'vue'
 import type {
   ConversationRenameInput,
+  ConversationTitleAuthor,
   ConversationRenameResult,
 } from '../../src/shared/conversation-title'
 import SessionHeader from '../../src/renderer/src/components/SessionHeader.vue'
@@ -173,13 +174,17 @@ describe('F033 · the name says what is true of its work', () => {
 })
 
 describe('The conversation title is its own record', () => {
-  it('sends the stable conversation ID and shows only the identity returned by the rename', async () => {
+  const authors: ConversationTitleAuthor[] = [
+    { kind: 'person' },
+    { kind: 'agent', conversation: 'sess_namer' },
+  ]
+  it.each(authors)('shows the returned identity for a title set by $kind', async (author) => {
     const rename = vi.fn(async (): Promise<ConversationRenameResult> => ({
       ok: true,
       conversation: 'sess_1',
       address: 'W1.1',
       title: 'Ship the new page',
-      author: { kind: 'person' },
+      author,
       previousTitle: 'Ship the page',
       previousAuthor: null,
     }))
@@ -198,7 +203,10 @@ describe('The conversation title is its own record', () => {
     })
     expect(text(m.q('conversation-address'))).toBe('Conversation W1.1')
     expect(text(m.q('conversation-linked-task'))).toBe('Task W1.4 · Ship the page (and 2 more)')
-    expect(text(m.q('conversation-address').parentElement)).toContain('Named by you')
+    const attributedToPerson = text(m.q('conversation-address').parentElement).includes(
+      'Named by you',
+    )
+    expect(attributedToPerson).toBe(author.kind === 'person')
     expect(m.all('conversation-title-input')).toHaveLength(0)
   })
 
@@ -222,48 +230,68 @@ describe('The conversation title is its own record', () => {
     expect(m.all('conversation-title-input')).toHaveLength(0)
     const next = await openTitle(m)
     expect(next.value).toBe('checkout')
+    next.value = 'Unsaved on blur'
+    next.dispatchEvent(new Event('input', { bubbles: true }))
     next.blur()
     await nextTick()
     expect(m.all('conversation-title-input')).toHaveLength(0)
+    expect((await openTitle(m)).value).toBe('checkout')
     expect(rename).toHaveBeenCalledTimes(1)
   })
 
-  it('leaves another conversation’s draft alone when a previous save settles', async () => {
-    const session = ref(CLAIMED)
-    let settle!: (result: ConversationRenameResult) => void
-    const pending = new Promise<ConversationRenameResult>((resolve) => {
-      settle = resolve
-    })
-    const rename = vi.fn(() => pending)
-    const m = mount(
-      {
-        setup: () => () =>
-          h(SessionHeader, {
-            session: session.value,
-            status: 'idle',
-            facets: { doing: 'idle', being: 'live' },
-            rename,
-          }),
-      },
-      {},
-    )
+  const late: ConversationRenameResult[] = [
+    { ok: false, code: 'bad-title', reason: 'Previous title refused' },
+    {
+      ok: true,
+      conversation: 'sess_1',
+      address: 'W2.1',
+      title: 'First title',
+      author: { kind: 'person' },
+      previousTitle: 'First draft',
+      previousAuthor: null,
+    },
+  ]
+  it.each(late)(
+    'leaves another conversation’s draft alone after a late reply (ok=$ok)',
+    async (reply) => {
+      const session = ref(CLAIMED)
+      let settle!: (result: ConversationRenameResult) => void
+      const pending = new Promise<ConversationRenameResult>((resolve) => {
+        settle = resolve
+      })
+      const rename = vi.fn(() => pending)
+      const m = mount(
+        {
+          setup: () => () =>
+            h(SessionHeader, {
+              session: session.value,
+              status: 'idle',
+              facets: { doing: 'idle', being: 'live' },
+              rename,
+            }),
+        },
+        {},
+      )
 
-    const first = await openTitle(m)
-    enterTitle(first, 'First title')
-    await nextTick()
-    expect(first.disabled).toBe(true)
-    session.value = { ...CLAIMED, sessionId: 'sess_second', cwd: '/second' }
-    await nextTick()
-    const second = await openTitle(m)
-    second.value = 'Second draft'
-    second.dispatchEvent(new Event('input', { bubbles: true }))
-    settle({ ok: false, code: 'bad-title', reason: 'Previous title refused' })
-    await pending
-    await nextTick()
+      const first = await openTitle(m)
+      enterTitle(first, 'First title')
+      await nextTick()
+      expect(first.disabled).toBe(true)
+      session.value = { ...CLAIMED, sessionId: 'sess_second', cwd: '/second' }
+      await nextTick()
+      const second = await openTitle(m)
+      second.value = 'Second draft'
+      second.dispatchEvent(new Event('input', { bubbles: true }))
+      settle(reply)
+      await pending
+      await nextTick()
 
-    expect(second.value).toBe('Second draft')
-    expect(second.disabled).toBe(false)
-    expect(document.activeElement).toBe(second)
-    expect(m.all('conversation-title-refused')).toHaveLength(0)
-  })
+      expect(m.q('conversation-title-input')).toBe(second)
+      expect(second.value).toBe('Second draft')
+      expect(second.disabled).toBe(false)
+      expect(document.activeElement).toBe(second)
+      expect(m.all('conversation-title-refused')).toHaveLength(0)
+      expect(m.all('conversation-address')).toHaveLength(0)
+    },
+  )
 })

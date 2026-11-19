@@ -15,7 +15,37 @@ beforeEach(installRuntimeScreenFixture)
 afterEach(disposeRuntimeScreenFixture)
 
 it('renames the open conversation through the conversation command without retitling work', async () => {
-  const sessionId = 'fictional-service'
+  const sessionId = 'fictional-conversation'
+  const address = 'W1.1'
+  const task = { label: 'W1.4', title: 'Review the launch list', more: 2 }
+  window.api.runtime.listResumable = async () => [
+    {
+      sessionId,
+      provider: 'claude',
+      ref: {
+        provider: 'claude',
+        sessionId: 'fictional-provider-record',
+        cwd: META.cwd,
+        rotation: 0,
+      },
+      cwd: META.cwd,
+      status: 'idle',
+      running: 'unwatched',
+      state: { is: 'idle' },
+      named: task,
+      approvalMode: 'ask',
+      profileId: META.profileId,
+      reasoningEffort: null,
+      model: null,
+      planMode: null,
+      adoptedAt: null,
+      hasTranscript: true,
+      lastEnding: null,
+      child: null,
+      resumeRefusal: null,
+      updatedAt: 1,
+    },
+  ]
   runtime.attachOpen.mockResolvedValueOnce([
     {
       ...META,
@@ -27,10 +57,10 @@ it('renames the open conversation through the conversation command without retit
   const rename = vi.fn<RuntimeBridge['renameConversation']>(async (input) => ({
     ok: true,
     conversation: input.conversation,
-    address: sessionId,
+    address,
     title: input.title.trim(),
     author: { kind: 'person' },
-    previousTitle: 'Editorial service',
+    previousTitle: task.title,
     previousAuthor: null,
   }))
   const retitle = vi.fn<RuntimeBridge['retitleWork']>()
@@ -39,7 +69,9 @@ it('renames the open conversation through the conversation command without retit
   await sessions.attachOpen()
 
   const m = mount(RuntimeScreen, {})
-  await expect.poll(() => m.all('conversation-title-rename').length).toBe(1)
+  await expect
+    .poll(() => m.all('conversation-title-rename')[0]?.textContent?.trim())
+    .toBe('W1.4 · Review the launch list (and 2 more)')
   m.q('conversation-title-rename').click()
   await expect.poll(() => m.all('conversation-title-input').length).toBe(1)
   const input = m.q('conversation-title-input') as HTMLInputElement
@@ -53,5 +85,8 @@ it('renames the open conversation through the conversation command without retit
     title: ' Edit launch notes ',
   })
   expect(retitle).not.toHaveBeenCalled()
-  expect(m.q('conversation-address').textContent?.trim()).toBe('Conversation fictional-service')
+  expect(m.q('conversation-address').textContent?.trim()).toBe('Conversation W1.1')
+  expect(m.q('conversation-linked-task').textContent?.trim()).toBe(
+    'Task W1.4 · Review the launch list (and 2 more)',
+  )
 })
