@@ -639,6 +639,12 @@ describe('611 · a question names who it is for', () => {
       })
       expect(asked.outcome, JSON.stringify(asked)).toBe('ok')
 
+      const nativeCard = routedIn(worker, 'the-person-the-channel-left-it-with')
+      expect(nativeCard.state).toBe('open')
+      const pendingApproval = () => ledger(pm).find((event) => event.type === 'permission_request')
+      await waitFor(() => pendingApproval() !== undefined, 'the Ask turn to park on approval')
+      const card = pendingApproval()
+      if (card?.type !== 'permission_request') throw new Error('the Ask turn has no approval')
       const passed = await callOn(pmTools, 'pass_question_up', {
         question: asked.question,
         who_answers: 'a-person',
@@ -667,6 +673,32 @@ describe('611 · a question names who it is for', () => {
       // up raises a question, it does not settle one.
       const child = store.routedRequestsOf(worker).find((one) => one.requestId === asked.question)
       expect(REQUEST_IS_OPEN[child?.state ?? 'answered']).toBe(true)
+      expect(child?.escalatedAt).not.toBeNull()
+
+      // Let the answerer's turn actually end with both routes still open.
+      const beforeDecision = ledger(pm).length
+      await host.respondPermission(pm, card.id, { outcome: 'allow' }, window)
+      await waitFor(
+        () =>
+          ledger(pm).slice(beforeDecision).some(
+            (event) => event.type === 'status' && event.state === 'idle',
+          ) && store.lastEndedTurn(pm)?.how === 'it-finished',
+        'the passer to finish the Ask turn',
+      )
+      expect(routedIn(worker, 'the-person-the-channel-left-it-with').requestId).toBe(
+        nativeCard.requestId,
+      )
+      expect(routedIn(worker, 'the-person-the-channel-left-it-with').state).toBe('open')
+      for (const conversation of [pm, worker]) {
+        expect(
+          ledger(conversation).filter(
+            (event) =>
+              event.type === 'message_queued' &&
+              (event.appNotice === 'an-answer-is-still-owed' ||
+                event.appNotice === 'a-question-stayed-unanswered'),
+          ),
+        ).toEqual([])
+      }
     })
 
     it('⛔ there is no field to reword the question in, and that is the whole ruling', async () => {

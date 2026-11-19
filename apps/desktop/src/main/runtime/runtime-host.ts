@@ -13264,17 +13264,15 @@ export class RuntimeHost implements LiveHost {
 
   private outboundQuestionWords(
     asker: string,
+    receiver: string,
     request: Parameters<typeof questionText>[1] & { readonly piece?: string | null },
   ): string {
-    const { address, line } = describeConversation(
-      this.deps.store,
-      asker,
-      this.theServiceOf(asker) !== null,
-    )
+    const { address, line } = this.questionConversation(asker)
     const task = request.piece == null ? null : this.onePieceAsItStandsNow(request.piece)
     return questionText(
       { called: this.whatToCallTheConversation(asker), address, line },
       { ...request, label: request.label ?? task?.label, taskTitle: task?.title },
+      this.questionConversation(receiver).line,
     )
   }
 
@@ -13332,16 +13330,16 @@ export class RuntimeHost implements LiveHost {
     const facts = { carriedFor: asked, ...about }
     let to = this.theOneInItsPlace(parent)
     try {
-      const text =
+      const wordsFor = (recipient: string): string =>
         verdict.outbound === true
-          ? this.outboundQuestionWords(asked, verdict)
+          ? this.outboundQuestionWords(asked, recipient, verdict)
           : questionText(this.calledUnder(asked, piece), verdict)
       const deliveryState = (outcome: QueueOutcome): SendRecipientState =>
         outcome.outcome === 'sent'
           ? { kind: 'started' }
           : this.stateOfARecordedMessage(to, outcome.messageId)
       const deliverNow = async (): Promise<SendRecipientState> => {
-        const outcome = await this.queueMessage(to, text, THE_APP_ITSELF, [], 'question', facts)
+        const outcome = await this.queueMessage(to, wordsFor(to), THE_APP_ITSELF, [], 'question', facts)
         to = this.theOneInItsPlace(to)
         return deliveryState(outcome)
       }
@@ -13349,7 +13347,7 @@ export class RuntimeHost implements LiveHost {
         const state = await this.afterWhatArrivedFirst<SendRecipientState | null>(to, async () => {
           to = this.theOneInItsPlace(to)
           if (this.takesADeliveryNow(to)) return null
-          const kept = await this.keptUntilItStarts(to, text, facts, 'question')
+          const kept = await this.keptUntilItStarts(to, wordsFor(to), facts, 'question')
           await this.ensureRunning(to, null)
           await this.slots.get(to)?.session?.flushing
           return deliveryState(kept)
@@ -21910,11 +21908,10 @@ export class RuntimeHost implements LiveHost {
     const messageSender =
       says === undefined
         ? undefined
-        : describeConversation(
-            this.deps.store,
-            sender.caller,
-            this.theServiceOf(sender.caller) !== null,
-          )
+        : {
+            ...this.questionConversation(sender.caller),
+            receiverLine: this.questionConversation(receiver).line,
+          }
     return {
       ...(messageSender === undefined ? {} : { messageSender }),
       name:

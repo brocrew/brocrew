@@ -1630,10 +1630,12 @@ describe('D-027 · the work a turn of several drives', () => {
     const firstSender = `(conversation ${root} · Ship the clock)`
     expect(heard.split(firstSender), heard).toHaveLength(2)
     expect(heard.split(`about task ${label} · the index`), heard).toHaveLength(2)
+    expect(heard.split(`in your conversation ${label} · the index.`), heard).toHaveLength(2)
     const name = /^From (.+?) \(conversation /m.exec(heard)?.[1] ?? ''
     expect(name).not.toBe('')
     const second = heard.slice(heard.indexOf('Message 2 of 2.'))
     expect(second).toContain(`From ${name} (conversation ${root}), about task ${label}`)
+    expect(second).not.toContain('in your conversation')
     expect(second).toContain(`This conversation gave you ${label}.`)
     expect(second).toContain(`Your reply here doesn't reach ${name}:`)
   })

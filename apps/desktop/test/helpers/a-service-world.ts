@@ -93,6 +93,8 @@ export interface AServiceWorld {
   startsWait: Promise<void> | null
   /** While set, every provider resume waits for it before it goes on, and counts as asked. */
   resumesWait: Promise<void> | null
+  /** Configure a resumed double before the host sees its handle. */
+  onResumed: ((profile: string, handle: SessionHandle) => void) | null
   /** How many resumes this world's providers have been asked for. */
   resumesAsked: number
   /** Every provider handle this world started or resumed, in order, by the profile it runs as. */
@@ -226,6 +228,7 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
     resumesAreGoneFor: null,
     startsWait: null,
     resumesWait: null,
+    onResumed: null,
     resumesAsked: 0,
     handles: [],
     turnsWait: null,
@@ -339,7 +342,10 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
           }
           world.resumesAsked++
           if (world.resumesWait !== null) await world.resumesWait
-          return itsTurnsKept(await super.resume(ref, options), profileOf(options.providerHome))
+          const profile = profileOf(options.providerHome)
+          const handle = itsTurnsKept(await super.resume(ref, options), profile)
+          world.onResumed?.(profile, handle)
+          return handle
         }
         override async listModels(
           context: ProviderRuntimeContext,
