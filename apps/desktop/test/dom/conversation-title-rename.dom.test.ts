@@ -392,7 +392,10 @@ it('pages Other tasks, then rereads Current task when its saved cursor no longer
   openTaskDrawer()
   const m = await mountWith([row(sessionId, task)])
   const currentText = () => m.all('cast-taken')[0]?.textContent
-  const otherRows = () => m.q('cast-other').querySelectorAll('[data-cy="cast-taken-work"]')
+  const otherTitles = () =>
+    [...m.q('cast-other').querySelectorAll('[data-cy="cast-work-said"]')].map(
+      (element) => element.textContent?.trim(),
+    )
   await expect.poll(currentText).toContain('Newest open invoice task')
   expect(read).toHaveBeenCalledExactlyOnceWith({ sessionId })
   expect(currentText()).toContain('Reconcile the final amounts.')
@@ -400,7 +403,7 @@ it('pages Other tasks, then rereads Current task when its saved cursor no longer
   expect(currentText()).not.toContain('Person’s original request')
   expect(m.q('card-task-status').textContent).toContain('Waiting for the archived copy.')
   expect(m.q('card-task-status').querySelector('time')?.textContent).toBe(fullTime(taskStatusAt))
-  expect(otherRows()).toHaveLength(5)
+  expect(otherTitles()).toEqual(others.slice(0, 5).map((item) => item.title))
   expect(m.q('card-task-counts').textContent?.trim()).toBe('0 active · 1 open · 8 closed')
   expect(m.q('card-other-tasks-more').textContent?.trim()).toBe('Show 5 more · 5 of 8')
   expect(m.q('card-tasks-all').textContent).toContain('All tasks')
@@ -410,7 +413,7 @@ it('pages Other tasks, then rereads Current task when its saved cursor no longer
   await nextTick()
 
   m.q('card-other-tasks-more').click()
-  await expect.poll(() => otherRows().length).toBe(7)
+  await expect.poll(otherTitles).toEqual(others.slice(0, 7).map((item) => item.title))
   expect(read).toHaveBeenNthCalledWith(2, { sessionId, cursor: 'more-five' })
   expect(m.q('card-other-tasks-more').textContent?.trim()).toBe('Show 5 more · 7 of 8')
   m.q('card-other-tasks-more').click()
@@ -422,7 +425,7 @@ it('pages Other tasks, then rereads Current task when its saved cursor no longer
     [{ sessionId }],
   ])
   expect(currentText()).not.toContain('Newest open invoice task')
-  expect(otherRows()).toHaveLength(1)
+  expect(otherTitles()).toEqual([others[0]!.title])
   expect(m.all('card-task-counts')).toHaveLength(0)
   expect(m.q('card-tasks-all').textContent).not.toContain('(')
   expect(m.q('cast-taken-short').textContent).toContain('1 row of this app’s record')
@@ -446,8 +449,7 @@ it('ignores a former selection’s task page and refreshes the selected task on 
     )
   window.api.runtime.readConversationTasks = read
   openTaskDrawer()
-  const m = await mountWith([row(sessionId, task), row(serviceId, null)])
-  m.q(`open-session-${sessionId}`).click()
+  const m = await mountWith([row(serviceId, null), row(sessionId, task)])
   await expect.poll(() => read.mock.calls.length).toBe(1)
   expect(read).toHaveBeenCalledExactlyOnceWith({ sessionId })
   m.q(`open-session-${serviceId}`).click()
