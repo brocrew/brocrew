@@ -1,4 +1,4 @@
-import { callNewConversationGive } from './lib/give-fixture'
+import { giveToALaunchedWorker } from './lib/give-fixture'
 import {
   fixtureProviderConfig,
   RecordingSink,
@@ -250,15 +250,13 @@ describe('659 · the question every teardown asks', () => {
   const aPmAndItsWorker = async (
     approvalMode: 'auto' | 'ask' = 'auto',
   ): Promise<{ pm: string; pmLaunch: Launch; worker: string; workerLaunch: Launch }> => {
-    const { pm, pmLaunch } = await aPmWithAGrant(approvalMode)
-    const given = await callNewConversationGive(pmLaunch.toolset, 'worker', 'The work', 'the work')
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    const worker = given.agent as string
-    const workerLaunch = launches.at(-1)!
-    if (approvalMode === 'auto') {
-      await waitFor(() => turnsIn(worker) > 0, 'the brief’s turn to end')
-    }
-    return { pm, pmLaunch, worker, workerLaunch }
+    return giveToALaunchedWorker(
+      () => aPmWithAGrant(approvalMode),
+      () => launches.at(-1)!,
+      approvalMode,
+      turnsIn,
+      waitFor,
+    )
   }
 
   /**

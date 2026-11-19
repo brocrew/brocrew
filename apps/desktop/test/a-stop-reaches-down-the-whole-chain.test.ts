@@ -1,4 +1,4 @@
-import { giveAndWaitForBriefTurn, giveTheFrontEndChain } from './lib/give-fixture'
+import { giveAndWaitForBriefTurn, openFrontEndChain } from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { callOn } from './helpers/call-agent-tool'
 import { chainAbove } from './helpers/conversation-ancestry'
@@ -26,7 +26,6 @@ import {
 } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { permanenceInWords } from '../src/main/runtime/agent-tool-answer-words'
 import {
   syntheticProviderHome,
@@ -196,39 +195,16 @@ describe('629 · a stop reaches down the whole chain', () => {
      * give to the same one reaches it (D-016's lookup). A sibling needs an identity of its own. */
     siblingProfile: string
   }> => {
-    const nth = ++chains
-    const pmProfile = `pm-${String(nth)}`
-    const workerProfile = `worker-${String(nth)}`
-    const siblingProfile = `sibling-${String(nth)}`
-    await bringIdentityIntoBeing(pmProfile)
-    await bringIdentityIntoBeing(workerProfile)
-    await bringIdentityIntoBeing(siblingProfile)
-    const brobot = await personOpens(DEFAULT_PROFILE_ID, 'auto')
-    const brobotTools = agentToolsFor(host, brobot)
-    const { ada, adaHandle, adaTools, toAli } = await giveTheFrontEndChain({
+    return openFrontEndChain({
       host,
-      brobotTools,
-      pmProfile,
-      workerProfile,
+      nth: ++chains,
+      includeSibling: true,
+      bringIdentityIntoBeing,
+      personOpens,
       ledger,
       firstHandle: latestHandle,
+      finalHandle: latestHandle,
     })
-    const ali = toAli.agent
-    const aliHandle = latestHandle()
-    return {
-      brobot,
-      ada,
-      ali,
-      aliPiece: toAli.piece,
-      aliLabel: toAli.label,
-      aliHandle,
-      adaHandle,
-      brobotTools,
-      adaTools,
-      pmProfile,
-      workerProfile,
-      siblingProfile,
-    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────────────────────
