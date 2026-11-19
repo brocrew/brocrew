@@ -538,7 +538,9 @@ const runtime: RuntimeBridge = Object.freeze({
       kind: 'readConversationTitleHistory',
       sessionId,
       before:
-        before === undefined ? undefined : { generation: before.generation, ordinal: before.ordinal },
+        before === undefined
+          ? undefined
+          : { generation: before.generation, ordinal: before.ordinal },
     }),
   renameConversation: (input: { conversation: string; title: string }) =>
     command({ kind: 'renameConversation', ...input }),

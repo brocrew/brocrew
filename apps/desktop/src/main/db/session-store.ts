@@ -2944,7 +2944,9 @@ export function createSessionStore(
         titles,
         rowsUnread: page.length - titles.length,
         next:
-          rows.length > titlePageSize ? { generation, ordinal: page[titlePageSize - 1]!.ordinal } : null,
+          rows.length > titlePageSize
+            ? { generation, ordinal: page[titlePageSize - 1]!.ordinal }
+            : null,
       }
     },
   )
