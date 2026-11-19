@@ -17,7 +17,7 @@ import { RuntimeHost } from './helpers/giver-notice-host'
 import type { Caller } from './helpers/giver-notice-host'
 import { agentCallerId, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
-import { composeProfileBundle } from '../src/main/runtime/factory-text'
+import { thisConversationSpans } from '../src/main/runtime/factory-text'
 import {
   A_PERSON_SENT_IT,
   aTurnThatHasSaidNothing,
@@ -455,7 +455,7 @@ describe('414 · the origin a model is told', () => {
           folder: string,
           parent: string,
           conversation: string,
-        ): Parameters<typeof composeProfileBundle>[0]
+        ): Parameters<typeof thisConversationSpans>[0]
       }
       const context = launch.instructionContext(
         store.recordedOne(made.worker)?.profileId ?? null,
@@ -464,7 +464,7 @@ describe('414 · the origin a model is told', () => {
         made.worker,
       )
       const starter = agentName(made.pmProfile, store.agentIdentities())
-      expect(composeProfileBundle(context)).toContain(
+      expect(thisConversationSpans(context).text).toContain(
         `This conversation was started by ${starter}, conversation ${parent.label} ·`,
       )
       // The separate delivery frame still names the actual sender by the task it gave from.
