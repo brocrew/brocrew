@@ -64,7 +64,7 @@ function panel() {
       state,
       identities: scene.identities,
     }),
-    { width: 400, height: 1000 },
+    { width: 400, height: 1400 },
   )
 }
 
@@ -96,7 +96,7 @@ it('keeps the running count on a saved fold and leaves agent information visible
 })
 
 it('matches neighboring cards and keeps the instructions-to-first-card spacing', async () => {
-  await page.viewport(1180, 1000)
+  await page.viewport(1180, 1400)
   const view = panel()
   await nextTick()
   await drawnReady()
@@ -127,6 +127,9 @@ it('matches neighboring cards and keeps the instructions-to-first-card spacing',
     parseFloat(getComputedStyle(inputs).marginBottom),
   )
   expect(view.host.querySelector('[data-cy="card-agent"]')).toBeNull()
+  expect(started.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+    view.host.getBoundingClientRect().bottom,
+  )
   if (import.meta.env.VITE_RUNNING_SECTION_CAPTURE)
     await page.screenshot({
       element: view.host,
