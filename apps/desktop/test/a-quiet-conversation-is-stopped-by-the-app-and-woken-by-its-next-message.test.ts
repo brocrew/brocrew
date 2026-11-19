@@ -618,9 +618,16 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
     await waitFor(() => lastSaid(a)?.is === 'idle', 'the emptied schedule to be pushed')
     await settle()
     expect(live()).toHaveLength(1)
+    const successor = theOneLive()
+    expect(successor.timer).not.toBe(first.timer)
+
+    await fire(first)
+    expect(handleOf(0).status()).toBe('idle')
+    expect(stopLines()).toEqual([])
+    expect(countdownOf(a).timer).toBe(successor.timer)
 
     // Without the schedule it is stopped; with it, the cron jobs inside the process would have gone.
-    await fire(theOneLive())
+    await fire(successor)
     await waitFor(() => stopped(0), 'A to be stopped without its schedule')
   })
 
@@ -1018,18 +1025,18 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
     }
   })
 
-  it.each(['rejecting', 'parked'] as const)('stops while window publication is %s', async (mode) => {
+  const publicationModes = ['rejecting', 'parked', 'parked with a schedule'] as const
+  it.each(publicationModes)('stops while window publication is %s', async (mode) => {
     let release!: () => void
     const parked = new Promise<void>((resolve) => {
       release = resolve
     })
     const read = vi.fn<WindowStoreReader['read']>(async () => {
-      if (mode === 'parked') await parked
+      if (mode !== 'rejecting') await parked
       throw new Error('window read failed')
     })
-    host = buildHost(IDLE, { read, close: async () => {} })
-
     try {
+      host = buildHost(IDLE, { read, close: async () => {} })
       const a = await opens('agent-a')
       await waitFor(
         () => read.mock.calls.some(([query]) => query.kind === 'routes'),
@@ -1037,11 +1044,26 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
       )
       await settle()
       expect(saidOf(a)).toEqual([])
+      if (mode === 'parked with a schedule') {
+        const first = theOneLive()
+        handleOf(0).simulateScheduledWork()
+        await waitFor(() => cleared().has(first.timer), 'the schedule to cancel the countdown')
+        expect(live()).toEqual([])
+        handleOf(0).simulateScheduledWork({ jobs: [] })
+        await waitFor(() => live().length === 1, 'the schedule release to arm a countdown')
+        expect(theOneLive().timer).not.toBe(first.timer)
+        expect(saidOf(a)).toEqual([])
+      }
       const countdown = theOneLive()
       await fire(countdown)
       await waitFor(() => stopped(0), 'A to stop without a publication answer')
     } finally {
       release()
+      try {
+        await host.closeAll()
+      } finally {
+        await Promise.allSettled(read.mock.results.map(({ value }) => value))
+      }
     }
   })
 })

@@ -7429,8 +7429,7 @@ export class RuntimeHost implements LiveHost {
     this.moveTheListing()
     this.moveThePersons()
     this.aServiceMayTakeItsNext(conversation)
-    if (this.idleEnoughToStop(conversation)) this.conversationIdle.countTheIdleMinutes(conversation)
-    else this.conversationIdle.cancel(conversation)
+    this.conversationIdle.countTheIdleMinutes(conversation)
     if (this.deps.statesMoved === undefined) return
     this.statesToAsk.add(conversation)
     this.askTheFlush()
@@ -41161,7 +41160,10 @@ export class RuntimeHost implements LiveHost {
       !this.itsEvidence(session.id).readALevel
     if (plan === null || !plan.currentListing.publishable || partOnly) {
       // ⚑ With no plan, what its provider stated stands.
-      if (stated !== null) session.scheduled = stated
+      if (stated !== null) {
+        session.scheduled = stated
+        this.conversationIdle.countTheIdleMinutes(session.id)
+      }
       return null
     }
     // ⚑ A job that left the listing while this life watched needs no word later.
@@ -41169,6 +41171,7 @@ export class RuntimeHost implements LiveHost {
     const { notStarted } = this.whatItsJobsAreOwed(session.id, plan, at)
     const level = this.theLevelItPlans(session.id, plan, at, undefined, notStarted)
     session.scheduled = level
+    this.conversationIdle.countTheIdleMinutes(session.id)
     // ⚑ No row when the newest level in its ledger already says this.
     if (session.levelWritten !== null && theSameLevel(level, session.levelWritten)) {
       this.noteWhatItsNewestLevelSays(session.id, session.levelWritten, at)

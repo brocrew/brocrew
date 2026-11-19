@@ -28,8 +28,12 @@ export class ConversationIdle {
     this.idleStopAfterMs = idleStopAfterMs ?? DEFAULT_IDLE_STOP_AFTER_MS
   }
 
-  /** Arm a new deadline when the conversation first becomes eligible. */
+  /** Start the countdown on eligibility and end it when eligibility is lost. */
   countTheIdleMinutes(conversation: string): void {
+    if (!this.operations.isStillIdle(conversation)) {
+      this.cancel(conversation)
+      return
+    }
     if (this.idleCountdowns.has(conversation)) return
     const countdown = setTimeout(
       () => void this.stopItIfStillIdle(conversation, countdown),
