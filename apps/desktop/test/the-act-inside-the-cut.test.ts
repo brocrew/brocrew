@@ -810,6 +810,7 @@ const ACT: Readonly<Record<string, string>> = {
     'Put the rest in a Markdown file, a page, an image, a PDF or any other file and name its path in resource_paths',
   'QUESTION_RAILS|no-question-by-that-name': 'list_questions names the requests you can answer',
   'QUESTION_RAILS|a-person-answers-this-one': 'that one is a person’s to settle',
+  'QUESTION_RAILS|person-addressed-request': 'withdraw it',
   'QUESTION_RAILS|that-answer-cannot-be-sent':
     'Answer every part it asks about, choosing one of its options unless it takes an answer of your own',
   // ⚑ **679 · a new word chose an act** — the same call, with the field that tells two askers apart.
@@ -821,6 +822,7 @@ const ACT: Readonly<Record<string, string>> = {
   // ⚑ **D-016 · commit 3** — a question names the piece it is about.
   'QUESTION_RAILS|name-the-piece-you-ask-about': 'ask again naming it as piece',
   'QUESTION_RAILS|no-piece-to-ask-about': 'A question to another agent needs no piece',
+  'QUESTION_RAILS|no-conversation-gave-this-work': 'use who_answers: a-person',
   'QUESTION_RAILS|nobody-to-pass-it-up-to': 'Pass it to a person with a-person instead',
   // ⚑ **D-009 · F012's three**, each with its act inside the cut.
   'QUESTION_RAILS|no-agent-you-can-ask-by-that-name': 'list_agents names the agents you can ask',
