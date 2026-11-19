@@ -147,17 +147,93 @@ function importEndpoint(file, source) {
     : 'non-import syntax or trivia only'
 }
 
-export function classifyCloneFindings(report, readSource = (file) => fs.readFileSync(file)) {
+export function changedLineOverlap(base, cwd = root) {
+  const git = (...args) => execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 1 << 28 })
+  const patch = git(
+    '-c',
+    'core.quotePath=false',
+    'diff',
+    '--no-color',
+    '--no-ext-diff',
+    '--no-textconv',
+    '--no-relative',
+    '--find-renames',
+    '--unified=0',
+    '--inter-hunk-context=0',
+    '--src-prefix=a/',
+    '--dst-prefix=b/',
+    base,
+    '--',
+  )
+  const untracked = new Set(git('ls-files', '-z', '--others', '--exclude-standard').split('\0'))
+  const ranges = new Map()
+  let file
+  for (const line of patch.split('\n')) {
+    if (line.startsWith('diff --git ')) file = undefined
+    if (file === undefined && line.startsWith('+++ ')) {
+      const header = line.slice(4).replace(/\t$/, '')
+      // Git quotes paths containing special characters even with core.quotePath=false.
+      const escapes = { a: '\x07', b: '\b', f: '\f', n: '\n', r: '\r', t: '\t', v: '\v' }
+      const name = header.startsWith('"')
+        ? header
+            .slice(1, -1)
+            .replace(/\\([0-7]{3}|.)/g, (_, escaped) =>
+              escaped.length === 3
+                ? String.fromCharCode(parseInt(escaped, 8))
+                : (escapes[escaped] ?? escaped),
+            )
+        : header
+      file = name.startsWith('b/') ? name.slice(2) : null
+    }
+    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line)
+    if (file && hunk) {
+      const start = Number(hunk[1])
+      const count = Number(hunk[2] ?? 1)
+      if (count === 0) continue
+      if (!ranges.has(file)) ranges.set(file, [])
+      ranges.get(file).push([start, start + count - 1])
+    }
+  }
+  return (file) => {
+    const name = path.relative(cwd, path.resolve(cwd, file.name)).split(path.sep).join('/')
+    // A half-open native span ending at column zero stops before that line.
+    const end =
+      file.endLoc?.line === file.end && file.endLoc.column === 0 && file.end > file.start
+        ? file.end - 1
+        : file.end
+    return (
+      untracked.has(name) ||
+      (ranges.get(name)?.some(([start, last]) => file.start <= last && end >= start) ?? false)
+    )
+  }
+}
+
+export function classifyCloneFindings(
+  report,
+  overlapsChangedLines,
+  readSource = (file) => fs.readFileSync(file),
+) {
   const nativeFindings = cloneFindings(report)
   const sources = new Map()
   const countedFindings = []
+  const untouchedRecords = []
   const importOnlyRecords = []
   const classifications = []
   let next = 0
   for (const clone of report.duplicates) {
     if (!clone.isNew) continue
     const finding = nativeFindings[next++]
-    const endpoints = [clone.firstFile, clone.secondFile].map((file) => {
+    const files = [clone.firstFile, clone.secondFile]
+    if (!files.some(overlapsChangedLines)) {
+      untouchedRecords.push(finding)
+      classifications.push({
+        finding,
+        kind: 'untouched',
+        endpoints: ['unchanged lines', 'unchanged lines'],
+      })
+      continue
+    }
+    const endpoints = files.map((file) => {
       if (!sources.has(file.name)) sources.set(file.name, importSource(file.name, readSource))
       return importEndpoint(file, sources.get(file.name))
     })
@@ -169,9 +245,10 @@ export function classifyCloneFindings(report, readSource = (file) => fs.readFile
   return {
     nativeFindings,
     countedFindings,
+    untouchedRecords,
     importOnlyRecords,
     classifications,
-    summary: `${nativeFindings.length} native NEW; ${importOnlyRecords.length} import-only; ${countedFindings.length} counted NEW`,
+    summary: `${nativeFindings.length} native NEW; ${untouchedRecords.length} untouched; ${importOnlyRecords.length} import-only; ${countedFindings.length} counted NEW`,
   }
 }
 
@@ -328,7 +405,7 @@ const TOOLS = {
         Array.isArray(r.runs[0].results) &&
         r.runs[0].results.length === report.duplicates.length,
     )
-    const classification = classifyCloneFindings(report)
+    const classification = classifyCloneFindings(report, changedLineOverlap(reference.base))
     return {
       native: true,
       now: report.duplicates.length,
@@ -471,7 +548,7 @@ function main(argv) {
       r.classifications?.length
         ? [
             '',
-            '## Native NEW clone statement classifications',
+            '## Native NEW clone classifications',
             ...r.classifications.map(
               (c) => `- ${c.kind}: \`${c.finding}\` (${c.endpoints.join('; ')})`,
             ),

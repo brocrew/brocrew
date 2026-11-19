@@ -13,6 +13,7 @@ import {
   depcruiseKeys,
   cloneBaseArgument,
   cloneFindings,
+  changedLineOverlap,
   classifyCloneFindings,
   knipKeys,
 } from './gate.mjs'
@@ -66,6 +67,8 @@ test('missing markers/counts, malformed endpoints and inconsistent reports are e
   for (const value of bad) assert.throws(() => cloneFindings(value))
 })
 
+const assumeChanged = () => true
+
 function statementCase(first, second = first, options = {}) {
   const names = options.names ?? ['a.ts', 'b.ts']
   const endpoint = (name, text, [start, end]) => {
@@ -90,7 +93,7 @@ function statementCase(first, second = first, options = {}) {
     },
   ])
   const readSource = (name) => (name === names[0] ? first : second)
-  return { value, result: classifyCloneFindings(value, readSource), readSource }
+  return { value, result: classifyCloneFindings(value, assumeChanged, readSource), readSource }
 }
 
 test('both static import spans are visible non-logic matches without changing native data', () => {
@@ -107,11 +110,13 @@ test('both static import spans are visible non-logic matches without changing na
   assert.equal(result.nativeFindings.length, 1)
   assert.deepEqual(result.importOnlyRecords, result.nativeFindings)
   assert.deepEqual(result.countedFindings, [])
-  assert.equal(result.summary, '1 native NEW; 1 import-only; 0 counted NEW')
+  assert.equal(result.summary, '1 native NEW; 0 untouched; 1 import-only; 0 counted NEW')
   assert.equal(result.classifications[0].kind, 'import-only')
-  classifyCloneFindings(value, readSource)
+  classifyCloneFindings(value, assumeChanged, readSource)
   assert.equal(JSON.stringify(value), original)
-  assert.throws(() => classifyCloneFindings({ ...value, statistics: {} }, readSource))
+  assert.throws(() =>
+    classifyCloneFindings({ ...value, statistics: {} }, assumeChanged, readSource),
+  )
 })
 
 test('complete source identifies windows beginning or ending inside multiline imports', () => {
@@ -194,7 +199,7 @@ test('UTF8 byte coordinates map to UTF16 syntax boundaries across Unicode and CR
   value.duplicates[0].firstFile.startLoc.line = 1
   value.duplicates[0].firstFile.startLoc.column = insideEmoji
   value.duplicates[0].firstFile.start = 1
-  assert.equal(classifyCloneFindings(value, readSource).countedFindings.length, 1)
+  assert.equal(classifyCloneFindings(value, assumeChanged, readSource).countedFindings.length, 1)
 })
 
 test('dynamic imports, import.meta, require, exports and import-looking text remain counted', () => {
@@ -228,7 +233,7 @@ test('unsupported formats, parse errors and uncertain native coordinates are nev
   ]) {
     const { value, readSource } = statementCase(text)
     mutation(value.duplicates[0].firstFile)
-    assert.equal(classifyCloneFindings(value, readSource).countedFindings.length, 1)
+    assert.equal(classifyCloneFindings(value, assumeChanged, readSource).countedFindings.length, 1)
   }
 })
 
@@ -242,20 +247,101 @@ test('classification conserves multiplicity and reports empty NEW without readin
     body.value.duplicates[0],
   ])
   let read = 0
-  const result = classifyCloneFindings(value, (file) => {
+  const result = classifyCloneFindings(value, assumeChanged, (file) => {
     read++
     return file === 'a.ts' || file === 'b.ts' ? "import { x } from './module'" : bodyText
   })
   assert.equal(result.nativeFindings.length, 3)
   assert.equal(result.importOnlyRecords.length, 2)
   assert.equal(result.countedFindings.length, 1)
-  assert.equal(result.summary, '3 native NEW; 2 import-only; 1 counted NEW')
+  assert.equal(result.summary, '3 native NEW; 0 untouched; 2 import-only; 1 counted NEW')
   assert.equal(read, 4)
   const empty = statementCase("import { x } from './module'", undefined, { isNew: false }).value
   assert.deepEqual(
-    classifyCloneFindings(empty, () => assert.fail('no NEW source read')).classifications,
+    classifyCloneFindings(
+      empty,
+      () => assert.fail('no NEW overlap check'),
+      () => assert.fail('no NEW source read'),
+    ).classifications,
     [],
   )
+})
+
+test('a re-paired native NEW record counts only when either endpoint overlaps an edit', () => {
+  const first = clone(true)
+  const second = clone(true, 100)
+  const untouched = clone(true, 200)
+  const inherited = clone(false, 300)
+  const value = report([first, second, untouched, inherited])
+  const original = JSON.stringify(value)
+  const result = classifyCloneFindings(
+    value,
+    (file) =>
+      file === first.firstFile || file === second.secondFile || file === inherited.firstFile,
+    () => 'const value = 1',
+  )
+  assert.deepEqual(
+    result.classifications.map(({ kind }) => kind),
+    ['counted', 'counted', 'untouched'],
+  )
+  assert.deepEqual(result.countedFindings, result.nativeFindings.slice(0, 2))
+  assert.equal(result.summary, '3 native NEW; 1 untouched; 0 import-only; 2 counted NEW')
+  assert.equal(JSON.stringify(value), original)
+})
+
+test('Git overlap uses candidate line boundaries, including moves and new paths', () => {
+  const source = fs.mkdtempSync(path.join(os.tmpdir(), 'code-health-diff-'))
+  const git = (...args) => execFileSync('git', args, { cwd: source, encoding: 'utf8' }).trim()
+  const original = Array.from({ length: 20 }, (_, n) => `line ${n + 1}\n`).join('')
+  const renamed = 'renamed "é".ts'
+  const write = (file, text) => fs.writeFileSync(path.join(source, file), text)
+  try {
+    git('init', '--template=')
+    write('original.ts', original)
+    write('deleted-line.ts', original)
+    git('add', '.')
+    git(
+      '-c',
+      'user.name=Gate fixture',
+      '-c',
+      'user.email=gate-fixture@example.invalid',
+      '-c',
+      'core.hooksPath=' + os.devNull,
+      'commit',
+      '-m',
+      'Diff fixture base',
+    )
+    const base = git('rev-parse', 'HEAD')
+    git('mv', 'original.ts', renamed)
+    write(
+      renamed,
+      original.replace('line 3\n', 'line 3\ninserted\n').replace('line 6\n', 'replacement\n'),
+    )
+    write('deleted-line.ts', original.replace('line 2\n', ''))
+    write('new file.ts', 'added\n')
+    git('add', 'new file.ts')
+    write('untracked.ts', 'added\n')
+    const overlaps = changedLineOverlap(base, source)
+    const span = (name, start, end = start, endLoc) => ({
+      name: path.join(source, name),
+      start,
+      end,
+      endLoc,
+    })
+
+    assert.equal(overlaps(span(renamed, 1, 3)), false)
+    assert.equal(overlaps(span(renamed, 2, 4)), true)
+    assert.equal(overlaps(span(renamed, 2, 4, { line: 4, column: 0 })), false)
+    assert.equal(overlaps(span(renamed, 4, 5)), true)
+    assert.equal(overlaps(span(renamed, 5, 6)), false)
+    assert.equal(overlaps(span(renamed, 7)), true)
+    assert.equal(overlaps(span(renamed, 8, 20)), false)
+    assert.equal(overlaps(span('deleted-line.ts', 1, 19)), false)
+    assert.equal(overlaps(span('new file.ts', 1)), true)
+    assert.equal(overlaps(span('untracked.ts', 1)), true)
+  } finally {
+    fs.rmSync(source, { recursive: true, force: true })
+  }
 })
 
 test('a cycle gives the same keys whichever module it is reported from', () => {
@@ -463,7 +549,11 @@ function nativeCase(change) {
     assert.ok(before.duplicates.length > 0)
     change({ source, write })
     const after = scan(base, 'after')
-    return { before, after, classification: classifyCloneFindings(after) }
+    return {
+      before,
+      after,
+      classification: classifyCloneFindings(after, changedLineOverlap(base, source)),
+    }
   } finally {
     const captureRoot = process.env.CODE_HEALTH_NATIVE_EVIDENCE
     if (captureRoot) {
