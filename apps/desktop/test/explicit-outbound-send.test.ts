@@ -48,11 +48,15 @@ describe('explicit outbound sends', () => {
     expect(receipt.recipient).toMatchObject({ id: sender, state: { kind: 'started' } })
     expect(receipt.recorded.id).toBe(sent.structured?.messageAct)
     expect(world.ledger(sender)).toContainEqual(
-      expect.objectContaining({ type: 'message_sent', to: sender, messageAct: receipt.recorded.id }),
+      expect.objectContaining({
+        type: 'message_sent',
+        to: sender,
+        messageAct: receipt.recorded.id,
+      }),
     )
-    const parts = world.ledger(sender).flatMap((row) =>
-      row.type === 'user_turn' ? theMessagesOf(row) : [],
-    )
+    const parts = world
+      .ledger(sender)
+      .flatMap((row) => (row.type === 'user_turn' ? theMessagesOf(row) : []))
     expect(parts).toContainEqual(expect.objectContaining({ text, relayedFrom: sender }))
   })
 
@@ -61,7 +65,7 @@ describe('explicit outbound sends', () => {
     const attachment = join(world.folder, 'appendix.txt')
     writeFileSync(attachment, 'The appendix.')
     const tree = resourcesRoot(world.folder)
-    const kept = () => existsSync(tree) ? readdirSync(tree).sort() : []
+    const kept = () => (existsSync(tree) ? readdirSync(tree).sort() : [])
     const before = kept()
     const text = 'Details '.repeat(300) + 'last line'
     const sent = await send('message_agent', { agent: target, text, resources: [attachment] })
@@ -172,7 +176,9 @@ describe('explicit outbound sends', () => {
     const received = () =>
       world.sent.filter((one) => one.as === 'outbound-target' && one.words.includes(id))
     await waitFor(() => received().length >= 2, 'the unanswered question to start the next turn')
-    expect(received()[1]?.words).toContain(`using asked_by ${sender}, or give cannot_answer with your reason.`)
+    expect(received()[1]?.words).toContain(
+      `using asked_by ${sender}, or give cannot_answer with your reason.`,
+    )
     expect(world.store.routedRequestsOf(sender)).toEqual(
       expect.arrayContaining([expect.objectContaining({ requestId: id, state: 'open' })]),
     )
@@ -205,7 +211,9 @@ describe('explicit outbound sends', () => {
       const receipt = result.structured?.receipt as SendReceipt
       expect(receipt.recipient).toMatchObject({ id: target, state: { kind: 'queued' } })
       const id = receipt.recorded.id
-      const original = world.store.messagesWaitingIn(target).find((row) => row.asks?.requestId === id)
+      const original = world.store
+        .messagesWaitingIn(target)
+        .find((row) => row.asks?.requestId === id)
       if (original === undefined) throw new Error('The queued Ask is missing.')
       await host.closeAll()
       world.turnsWait = null
@@ -217,9 +225,10 @@ describe('explicit outbound sends', () => {
         startForADelivery(id: string, window: null): Promise<string>
       }
       expect(await starting.startForADelivery(target, null)).toBe(successor)
-      const delivered = () => world.ledger(successor).find(
-        (event) => event.type === 'user_turn' && event.text.includes(prompt),
-      )
+      const delivered = () =>
+        world
+          .ledger(successor)
+          .find((event) => event.type === 'user_turn' && event.text.includes(prompt))
       await waitFor(() => delivered() !== undefined, 'the moved Ask to reach the successor')
       const line = describeConversation(world.store, successor, false).line
       expect(delivered()).toMatchObject({
@@ -250,13 +259,19 @@ describe('explicit outbound sends', () => {
     const id = asked.structured?.question
     if (typeof id !== 'string') throw new Error('The question has no recorded id.')
     const reminders = () =>
-      world.ledger(target).filter(
-        (event) => event.type === 'message_queued' && event.appNotice === 'an-answer-is-still-owed',
-      )
+      world
+        .ledger(target)
+        .filter(
+          (event) =>
+            event.type === 'message_queued' && event.appNotice === 'an-answer-is-still-owed',
+        )
     const notices = () =>
-      world.ledger(sender).filter(
-        (event) => event.type === 'user_turn' && event.appNotice === 'a-question-stayed-unanswered',
-      )
+      world
+        .ledger(sender)
+        .filter(
+          (event) =>
+            event.type === 'user_turn' && event.appNotice === 'a-question-stayed-unanswered',
+        )
     await waitFor(() => notices().length === 1, 'the asker to receive the unanswered notice')
     expect(notices()[0]).toMatchObject({
       text: expect.stringContaining(`didn't answer question ${id} after a reminder.`),
@@ -271,7 +286,11 @@ describe('explicit outbound sends', () => {
     if (list === undefined) throw new Error('The question list tool is missing.')
     const listed = await list.call({})
     expect(listed.structured?.questions).toContainEqual(
-      expect.objectContaining({ question: id, state: 'open', delivery: 'stalled after a reminder' }),
+      expect.objectContaining({
+        question: id,
+        state: 'open',
+        delivery: 'stalled after a reminder',
+      }),
     )
 
     await host.closeAll()
@@ -329,7 +348,10 @@ describe('explicit outbound sends', () => {
         handover.mockRejectedValueOnce(new Error('The provider did not take the batch.'))
         world.turnsWait = null
         initial.resolve()
-        await waitFor(() => handover.mock.calls.length === 2, 'the first batch to reach the handover')
+        await waitFor(
+          () => handover.mock.calls.length === 2,
+          'the first batch to reach the handover',
+        )
         expect(handover.mock.calls[1]?.[0]).toContain(note)
         expect(handover.mock.calls[1]?.[0]).toContain(`Question ${id} from conversation`)
         const waiting = () => world.store.messagesWaitingIn(sessionId)
@@ -341,11 +363,7 @@ describe('explicit outbound sends', () => {
           authorship: { appNotice: 'an-answer-is-still-owed' },
         })
         const progress = () =>
-          world.store.queuedPromptProgress(
-            sessionId,
-            reminder.messageId,
-            'an-answer-is-still-owed',
-          )
+          world.store.queuedPromptProgress(sessionId, reminder.messageId, 'an-answer-is-still-owed')
         expect(progress()).toBe('pending')
         await host.closeAll()
         expect(progress()).toBe('pending')
@@ -362,9 +380,10 @@ describe('explicit outbound sends', () => {
         await waitFor(() => progress() === 'running', 'the reopened batch to have a recorded turn')
         expect(world.handleOf(profile)).not.toBe(handle)
         expect(world.store.recordedOne(sessionId)?.provider).toBe(provider)
-        const firstTurn = world.ledger(sessionId).slice(beforeReopen).find(
-          (event) => event.type === 'user_turn',
-        )
+        const firstTurn = world
+          .ledger(sessionId)
+          .slice(beforeReopen)
+          .find((event) => event.type === 'user_turn')
         expect(firstTurn).toMatchObject({
           parts: [
             expect.objectContaining({ text: note }),
@@ -372,9 +391,12 @@ describe('explicit outbound sends', () => {
           ],
         })
         const notices = () =>
-          world.ledger(sender).filter(
-            (event) => event.type === 'user_turn' && event.appNotice === 'a-question-stayed-unanswered',
-          )
+          world
+            .ledger(sender)
+            .filter(
+              (event) =>
+                event.type === 'user_turn' && event.appNotice === 'a-question-stayed-unanswered',
+            )
         expect(notices()).toHaveLength(0)
         world.turnsWait = null
         replay.resolve()
@@ -384,9 +406,12 @@ describe('explicit outbound sends', () => {
           text: expect.stringContaining(`didn't answer question ${id} after a reminder.`),
         })
         expect(
-          world.ledger(sessionId).filter(
-            (event) => event.type === 'message_queued' && event.appNotice === 'an-answer-is-still-owed',
-          ),
+          world
+            .ledger(sessionId)
+            .filter(
+              (event) =>
+                event.type === 'message_queued' && event.appNotice === 'an-answer-is-still-owed',
+            ),
         ).toHaveLength(1)
         const question = world.store.routedRequestsOf(sender).find((row) => row.requestId === id)
         expect(question?.state).toBe('open')
@@ -431,9 +456,9 @@ describe('explicit outbound sends', () => {
       await waitFor(() => handle.status() === 'idle', 'the held message’s turn to finish')
       await host.send(target, next, world.window)
       expect(world.handleOf('outbound-target')).toBe(handle)
-      expect(world.sent.some((one) => one.as === 'outbound-target' && one.words.includes(next))).toBe(
-        true,
-      )
+      expect(
+        world.sent.some((one) => one.as === 'outbound-target' && one.words.includes(next)),
+      ).toBe(true)
     } finally {
       world.turnsWait = null
       gate.resolve()
@@ -494,25 +519,33 @@ describe('explicit outbound sends', () => {
           ]),
         )
         expect(world.store.lastEndedTurn(sessionId)?.who).toBe('a-person')
-        expect(world.store.routedRequestsOf(sender).find((one) => one.requestId === id)?.state).toBe(
-          'open',
-        )
+        expect(
+          world.store.routedRequestsOf(sender).find((one) => one.requestId === id)?.state,
+        ).toBe('open')
         const reminders = () =>
-          world.ledger(sessionId).filter(
-            (event) => event.type === 'message_queued' && event.appNotice === 'an-answer-is-still-owed',
-          )
+          world
+            .ledger(sessionId)
+            .filter(
+              (event) =>
+                event.type === 'message_queued' && event.appNotice === 'an-answer-is-still-owed',
+            )
         expect(reminders()).toHaveLength(0)
-        expect(world.sent.filter((one) => one.as === profile && one.words.includes(id))).toHaveLength(1)
+        expect(
+          world.sent.filter((one) => one.as === profile && one.words.includes(id)),
+        ).toHaveLength(1)
         await waitFor(
-          () => stopRows().some(
-            (event) =>
-              event.type === 'message_unqueued' &&
-              event.messageId === receipt.recorded.id &&
-              event.reason === 'sent',
-          ),
+          () =>
+            stopRows().some(
+              (event) =>
+                event.type === 'message_unqueued' &&
+                event.messageId === receipt.recorded.id &&
+                event.reason === 'sent',
+            ),
           'the ordinary queued message to flush after Stop',
         )
-        expect(world.sent.filter((one) => one.as === profile && one.words.includes(mail))).toHaveLength(1)
+        expect(
+          world.sent.filter((one) => one.as === profile && one.words.includes(mail)),
+        ).toHaveLength(1)
         expect(reminders()).toHaveLength(0)
         providerTurn.machine.completeTurn('completed')
         await waitFor(() => reminders().length === 1, 'a reminder after the next ordinary turn')
@@ -541,9 +574,9 @@ describe('explicit outbound sends', () => {
         const id = asked.structured?.question
         if (typeof id !== 'string') throw new Error('The question has no recorded id.')
         const pendingNotice = () =>
-          world.store.messagesWaitingIn(receiver).find(
-            (one) => one.authorship.appNotice === 'a-question-stayed-unanswered',
-          )
+          world.store
+            .messagesWaitingIn(receiver)
+            .find((one) => one.authorship.appNotice === 'a-question-stayed-unanswered')
         await waitFor(() => pendingNotice() !== undefined, 'the asker note to queue')
         const queued = pendingNotice()
         if (queued === undefined) throw new Error('The notice is absent from the mailbox.')
@@ -556,7 +589,8 @@ describe('explicit outbound sends', () => {
         }
         await host.closeAll()
         gate.resolve()
-        if (receiver !== sender) recordHistoricalReplacement(world.store, sender, receiver, world.clock++)
+        if (receiver !== sender)
+          recordHistoricalReplacement(world.store, sender, receiver, world.clock++)
         host = world.aHost()
         await host.resumeSession(target, world.window)
         world.onResumed = (profile, handle) => {
@@ -582,15 +616,17 @@ describe('explicit outbound sends', () => {
         await host.resumeSession(receiver, world.window)
         expect(world.handleOf('outbound-sender')).not.toBe(firstAsker)
         expect(pendingNotice()?.messageId).toBe(noticeId)
-        expect(world.store.routedRequestsOf(sender).find((one) => one.requestId === id)?.state).toBe(
-          'open',
-        )
+        expect(
+          world.store.routedRequestsOf(sender).find((one) => one.requestId === id)?.state,
+        ).toBe('open')
 
         if (ended === 'withdrawn') {
           const withdrawn = await send('withdraw_question', { question: id })
           expect(withdrawn.structured?.outcome).toBe('ok')
         } else {
-          const answer = agentToolsFor(host, target).tools.find((one) => one.name === 'answer_question')
+          const answer = agentToolsFor(host, target).tools.find(
+            (one) => one.name === 'answer_question',
+          )
           if (answer === undefined) throw new Error('The answer tool is missing.')
           const answered = await answer.call({
             asked_by: sender,
@@ -600,15 +636,16 @@ describe('explicit outbound sends', () => {
           })
           expect(answered.structured?.outcome).toBe('ok')
         }
-        expect(world.store.routedRequestsOf(sender).find((one) => one.requestId === id)?.state).toBe(
-          ended === 'withdrawn' ? 'withdrawn' : 'answered',
-        )
+        expect(
+          world.store.routedRequestsOf(sender).find((one) => one.requestId === id)?.state,
+        ).toBe(ended === 'withdrawn' ? 'withdrawn' : 'answered')
         keepBusy.pop()?.()
         await host.send(receiver, 'A new turn after the settlement.', world.window)
         await waitFor(
-          () => world.ledger(receiver).some(
-            (event) => event.type === 'message_unqueued' && event.messageId === noticeId,
-          ),
+          () =>
+            world
+              .ledger(receiver)
+              .some((event) => event.type === 'message_unqueued' && event.messageId === noticeId),
           'settlement to retract the held notice',
         )
         expect(world.ledger(receiver)).toEqual(
@@ -620,9 +657,9 @@ describe('explicit outbound sends', () => {
             }),
           ]),
         )
-        const delivered = world.ledger(receiver).flatMap(
-          (event) => event.type === 'user_turn' ? theMessagesOf(event) : [],
-        )
+        const delivered = world
+          .ledger(receiver)
+          .flatMap((event) => (event.type === 'user_turn' ? theMessagesOf(event) : []))
         expect(delivered.some((part) => part.appNotice === 'a-question-stayed-unanswered')).toBe(
           false,
         )
@@ -653,9 +690,9 @@ describe('explicit outbound sends', () => {
       world.turnsWait = null
       gate.resolve()
       const notice = () =>
-        world.store.messagesWaitingIn(sender).find(
-          (one) => one.authorship.appNotice === 'a-question-stayed-unanswered',
-        )
+        world.store
+          .messagesWaitingIn(sender)
+          .find((one) => one.authorship.appNotice === 'a-question-stayed-unanswered')
       await waitFor(() => notice() !== undefined, 'the unanswered notice to be kept')
       const queued = notice()
       expect(queued?.unansweredQuestion).toEqual({ asker: sender, requestId: id })
@@ -715,13 +752,21 @@ describe('explicit outbound sends', () => {
     world.resumesFailFor = null
     await host.resumeSession(target, world.window)
     await waitFor(
-      () => world.ledger(target).some(
-        (event) => event.type === 'message_unqueued' && event.messageId === id && event.reason === 'sent',
-      ),
+      () =>
+        world
+          .ledger(target)
+          .some(
+            (event) =>
+              event.type === 'message_unqueued' &&
+              event.messageId === id &&
+              event.reason === 'sent',
+          ),
       'the recorded message to go after reopen',
     )
     expect(world.store.messagesWaitingIn(target)).toEqual([])
-    expect(world.sent.filter((one) => one.as === 'outbound-target' && one.words.includes(text))).toHaveLength(1)
+    expect(
+      world.sent.filter((one) => one.as === 'outbound-target' && one.words.includes(text)),
+    ).toHaveLength(1)
   })
 
   it('returns a short receipt for a question put in front of the person', async () => {
@@ -735,7 +780,9 @@ describe('explicit outbound sends', () => {
     })
     const id = asked.structured?.question
     expect(typeof id).toBe('string')
-    expect(asked.text).toBe(`Question ${id} recorded for the person. The answer arrives as a message.`)
+    expect(asked.text).toBe(
+      `Question ${id} recorded for the person. The answer arrives as a message.`,
+    )
     const fullAction = 'Check the name. '.repeat(150)
     const action = await send('request_action', { piece: task.label, action: fullAction })
     expect(action.text).toContain('The to-do is under Waiting on you')
@@ -743,6 +790,5 @@ describe('explicit outbound sends', () => {
     expect(action.structured?.attachments).toEqual([
       expect.objectContaining({ resource: expect.any(String), name: 'action.txt' }),
     ])
-
   })
 })

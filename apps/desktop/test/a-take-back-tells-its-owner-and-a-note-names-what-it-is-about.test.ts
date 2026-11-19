@@ -681,7 +681,12 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
       text: 'and the tests',
       piece: other.label,
     })
-    expect(followed).toMatchObject({ outcome: 'ok', kind: 'follow-up', agent: other.agent, ...task })
+    expect(followed).toMatchObject({
+      outcome: 'ok',
+      kind: 'follow-up',
+      agent: other.agent,
+      ...task,
+    })
     expect(sentBy(pm).at(-1)).toMatchObject({ kind: 'follow-up', to: other.agent, ...task })
 
     for (const [tools, from, to, spelled] of [
@@ -778,7 +783,11 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     )
   })
 
-  const holdAMessage = async (tools: AgentToolset, worker: string, label: string): Promise<void> => {
+  const holdAMessage = async (
+    tools: AgentToolset,
+    worker: string,
+    label: string,
+  ): Promise<void> => {
     const held = await callOn(tools, 'message_agent', {
       agent: worker,
       text: 'noted for later',

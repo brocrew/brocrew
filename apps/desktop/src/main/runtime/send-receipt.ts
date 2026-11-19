@@ -93,8 +93,11 @@ function outboundReceiptSaid(
         : ''
       return `${subject} is recorded for ${conversation}, but that conversation can't run: its session file is missing. Its record is still readable with read_transcript.${recovery}`
     }
-    const cause = state.cause.reason.replace(/^This conversation did not start: /, '').replace(/\.$/, '')
-    const person = state.needsPerson === true ? ' Ask the person to fix it, with request_action.' : ''
+    const cause = state.cause.reason
+      .replace(/^This conversation did not start: /, '')
+      .replace(/\.$/, '')
+    const person =
+      state.needsPerson === true ? ' Ask the person to fix it, with request_action.' : ''
     return `${subject} is recorded for ${conversation}, but it could not start: ${cause}. Once the cause is fixed, send a message to ${address} to try starting it again.${person}`
   }
   if (isQuestion) {
@@ -104,5 +107,7 @@ function outboundReceiptSaid(
   if (state.kind === 'started') return `Delivered to ${conversation}.`
   const held = `Held for ${conversation}`
   if (waitsFor != null) return `${held}. ${waitsFor}`
-  return heldBehindTurn === true ? `${held}: it is working; it goes out when it is free.` : `${held}.`
+  return heldBehindTurn === true
+    ? `${held}: it is working; it goes out when it is free.`
+    : `${held}.`
 }

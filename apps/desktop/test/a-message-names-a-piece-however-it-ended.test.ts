@@ -567,7 +567,9 @@ describe('F086 · F087 · F088 · a message names a piece however it ended', () 
     const turn = await driveUntilHeard(worker, 'the launch is what this is all for')
     const section = theSectionOf(turn, 'the launch is what this is all for', [])
     // A root has no ending mark between its title and the receiver name.
-    expect(section, section).toContain(`${ABOUT} ${rootPiece.label} · Plan the launch, in your conversation `)
+    expect(section, section).toContain(
+      `${ABOUT} ${rootPiece.label} · Plan the launch, in your conversation `,
+    )
     expect(section, section).not.toContain(`${ABOUT} ${rootPiece.label}.`)
   })
 

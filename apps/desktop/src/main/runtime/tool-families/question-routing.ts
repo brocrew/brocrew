@@ -62,10 +62,7 @@ const ROUTED_TO: Readonly<Record<PassUpRecipient, string>> = {
 }
 
 export function createAskQuestionTool(
-  host: Pick<
-    AgentToolHost,
-    'raiseAQuestion' | 'tookItsPlace' | 'whyItIsOutOfReach'
-  >,
+  host: Pick<AgentToolHost, 'raiseAQuestion' | 'tookItsPlace' | 'whyItIsOutOfReach'>,
   by: Caller,
   me: string,
   selfRefusal: ReturnType<typeof conversationAddressing>['selfRefusal'],
@@ -293,7 +290,9 @@ export function createAskQuestionTool(
             outcome: 'ok',
             question: asked.question,
             went_to: asked.went,
-            ...(asked.went === 'an-agent' ? { agent: delivery?.receipt.recipient.id ?? addressed } : {}),
+            ...(asked.went === 'an-agent'
+              ? { agent: delivery?.receipt.recipient.id ?? addressed }
+              : {}),
             ...(delivery === undefined ? { attachments } : { receipt: delivery.receipt }),
           },
           (delivery?.said ??

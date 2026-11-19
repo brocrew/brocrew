@@ -807,9 +807,7 @@ it('a Give receipt says held and carries its place in line and the task folder',
       },
     })
     expect(failedReads).toEqual([given.structured.agent])
-    expect(world.store.workById(String(given.structured.piece))?.owner).toBe(
-      given.structured.agent,
-    )
+    expect(world.store.workById(String(given.structured.piece))?.owner).toBe(given.structured.agent)
     const label = String(given.structured.label)
     expect(given.text.split('\n')[0]).toContain(
       `Task ${label} held for browser-driver in a new conversation ${String(given.structured.agent)} · `,

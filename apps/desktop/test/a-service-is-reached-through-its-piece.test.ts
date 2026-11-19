@@ -106,7 +106,9 @@ describe('a service is reached through the piece it is on', () => {
   const rows = (conversation: string, type: TranscriptEvent['type']): TranscriptEvent[] =>
     world.ledger(conversation).filter((row) => row.type === type)
   const deliveredParts = (conversation: string) =>
-    world.ledger(conversation).flatMap((row) => (row.type === 'user_turn' ? theMessagesOf(row) : []))
+    world
+      .ledger(conversation)
+      .flatMap((row) => (row.type === 'user_turn' ? theMessagesOf(row) : []))
   /** The routing rows of `service`'s questions, by request id. */
   const routed = (
     service: string,
@@ -126,7 +128,10 @@ describe('a service is reached through the piece it is on', () => {
   }
 
   const holdFollowUpAtSignIn = async (
-    host: RuntimeHost, caller: string, one: Given, releaseTheTurn: () => void,
+    host: RuntimeHost,
+    caller: string,
+    one: Given,
+    releaseTheTurn: () => void,
   ) => {
     const followed = await queueServiceFollowUp(host, caller, one, 'the room on the third floor')
     expect(followed.outcome).toBe('queued')
@@ -437,7 +442,8 @@ describe('a service is reached through the piece it is on', () => {
         const receipt = sent.structured.receipt as SendReceipt
         const messageAct = sent.structured['messageAct']
         expect(typeof messageAct).toBe('string')
-        const waiting = () => world.store.messagesWaitingIn(service).find((row) => row.text === text)
+        const waiting = () =>
+          world.store.messagesWaitingIn(service).find((row) => row.text === text)
         expect(receipt.recipient.id).toBe(service)
         const messageId = receipt.recorded.id
         const recorded = { messageAct, messageId, authorship: { relayedFrom: stranger } }

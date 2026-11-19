@@ -665,7 +665,8 @@ export function messageNamingItsSender(
     const receiver = repeated ? '' : `, in your ${receiverLine}`
     soFar?.senders.set(from.caller, name)
     const about = stands.about
-    const title = about === null || soFar?.titled.get(about.label) === about.title ? null : about.title
+    const title =
+      about === null || soFar?.titled.get(about.label) === about.title ? null : about.title
     if (about !== null && title !== null) soFar?.titled.set(about.label, title)
     const task = about === null ? '' : `, about task ${theWorkThatNamesItSaid({ ...about, title })}`
     const stop = interrupting === undefined ? '' : `\n\n${theStopBehindIt(name)}`

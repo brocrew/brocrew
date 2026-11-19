@@ -263,7 +263,8 @@ export function createRequestActionTool(
         if (!asked.ok) return refusedAsk(asked)
         return answer(
           { outcome: 'ok', question: asked.question, attachments: asked.attachments },
-          `The to-do is under Waiting on you as ${asked.question}. The person answers Done or Can’t do it, and the answer reaches you as a message; they may not be looking now. Carry on from here.` + asked.overflowSaid,
+          `The to-do is under Waiting on you as ${asked.question}. The person answers Done or Can’t do it, and the answer reaches you as a message; they may not be looking now. Carry on from here.` +
+            asked.overflowSaid,
         )
       }).then(sendAnswer),
   }

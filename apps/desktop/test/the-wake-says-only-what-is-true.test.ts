@@ -225,7 +225,11 @@ describe('690 · the wake says only what is true', () => {
     it('returns the self-addressed Message receipt', async () => {
       const { pm, piece } = await aPmAndItsRunningWorker()
       const message = await callOn(pm, 'message_agent', aQuestionTo(pm, piece))
-      expect(message).toMatchObject({ outcome: 'ok', agent: pm, receipt: { recipient: { id: pm } } })
+      expect(message).toMatchObject({
+        outcome: 'ok',
+        agent: pm,
+        receipt: { recipient: { id: pm } },
+      })
     })
   })
 })

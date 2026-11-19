@@ -736,7 +736,9 @@ describe('a label names the conversation that owns the piece, and no more', () =
       piece: 'W1.1',
       text: 'hello',
     })
-    expect(message.text).toMatch(/^(Delivered to|Held for) conversation W1\.1 · Build the pages[.:]/)
+    expect(message.text).toMatch(
+      /^(Delivered to|Held for) conversation W1\.1 · Build the pages[.:]/,
+    )
     await waitFor(
       () => ledger(ada).filter((event) => event.type === 'turn').length >= 3,
       'Ada to answer the follow-up',
@@ -882,7 +884,9 @@ describe('a label names the conversation that owns the piece, and no more', () =
           expect(asked).not.toHaveBeenCalled()
           expect(stopped).not.toHaveBeenCalled()
           const told = `${said.structured.reason} This exact call can never succeed.`
-          expect(said.text).toBe(tool === 'ask_question' ? told : `refused (that-agent-is-you): ${told}`)
+          expect(said.text).toBe(
+            tool === 'ask_question' ? told : `refused (that-agent-is-you): ${told}`,
+          )
           expect(refusalWritten).toHaveBeenCalledTimes(1)
           expect(refusalWritten).toHaveBeenCalledWith(brobot, tool, {
             rail: 'that-agent-is-you',

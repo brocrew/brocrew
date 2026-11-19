@@ -665,9 +665,10 @@ describe('611 · a question names who it is for', () => {
       await host.respondPermission(pm, card.id, { outcome: 'allow' }, window)
       await waitFor(
         () =>
-          ledger(pm).slice(beforeDecision).some(
-            (event) => event.type === 'status' && event.state === 'idle',
-          ) && store.lastEndedTurn(pm)?.how === 'it-finished',
+          ledger(pm)
+            .slice(beforeDecision)
+            .some((event) => event.type === 'status' && event.state === 'idle') &&
+          store.lastEndedTurn(pm)?.how === 'it-finished',
         'the passer to finish the Ask turn',
       )
       expect(routedIn(worker, 'the-person-the-channel-left-it-with').requestId).toBe(

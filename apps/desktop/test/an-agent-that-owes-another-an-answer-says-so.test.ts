@@ -269,11 +269,7 @@ describe('the host says who a conversation owes an answer to, and moves the word
     seeded.mockClear()
 
     const id = await adaAsksHerParent(adaTools)
-    await untilPushed(
-      brobot,
-      owesAdaAfterReminder(id),
-      'the parent to be pushed as owing',
-    )
+    await untilPushed(brobot, owesAdaAfterReminder(id), 'the parent to be pushed as owing')
     expect(stateOf(brobot)).toEqual(owesAdaAfterReminder(id))
     const asked = store.routedRequestsOf(ada).find((one) => one.requestId === id)?.at
     expect(asked).toEqual(expect.any(Number))
@@ -315,11 +311,7 @@ describe('the host says who a conversation owes an answer to, and moves the word
     const { brobot, ada, adaTools } = await aGiverWaitingOnAHelper()
     // First a question to the parent and its answer, so Ada is in the index.
     const first = await adaAsksHerParent(adaTools)
-    await untilPushed(
-      brobot,
-      owesAdaAfterReminder(first),
-      'the parent to owe the first',
-    )
+    await untilPushed(brobot, owesAdaAfterReminder(first), 'the parent to owe the first')
     const answered = await callOn(agentToolsFor(host, brobot), 'answer_question', {
       question: first,
       asked_by: ada,
@@ -410,11 +402,7 @@ describe('the host says who a conversation owes an answer to, and moves the word
         .at(-1),
     ).toMatchObject({ state: 'open', parent: brobot, went: { is: 'the-parent' } })
 
-    await untilPushed(
-      brobot,
-      owesAdaAfterReminder(raised.id),
-      'the parent to owe the card',
-    )
+    await untilPushed(brobot, owesAdaAfterReminder(raised.id), 'the parent to owe the card')
 
     // Only the child's status moves; that re-asks the parent.
     const before = saidOf(brobot).length
@@ -443,11 +431,7 @@ describe('the host says who a conversation owes an answer to, and moves the word
   it('a stand-in owes what the conversation it replaced owed, and the replaced one owes nothing', async () => {
     const { brobot, ada, adaTools } = await aGiverWaitingOnAHelper()
     const id = await adaAsksHerParent(adaTools)
-    await untilPushed(
-      brobot,
-      owesAdaAfterReminder(id),
-      'the parent to owe it',
-    )
+    await untilPushed(brobot, owesAdaAfterReminder(id), 'the parent to owe it')
 
     await host.closeAll()
     const standIn = seedHistoricalSuccessor(store, brobot, `sess_${++counter}`, tick(), {
@@ -507,11 +491,7 @@ describe('the host says who a conversation owes an answer to, and moves the word
     // Its owed questions are folded and kept: none.
     expect(stateOf(reviewer)?.is).not.toBe('owes-an-answer')
     const id = await adaAsksHerParent(adaTools)
-    await untilPushed(
-      brobot,
-      owesAdaAfterReminder(id),
-      'the parent to be pushed as owing',
-    )
+    await untilPushed(brobot, owesAdaAfterReminder(id), 'the parent to be pushed as owing')
     // Ada's question, as another machine exported it, now put to the reviewer by a conversation
     // nothing here has seen.
     const ledger = store
@@ -555,11 +535,7 @@ describe('the host says who a conversation owes an answer to, and moves the word
     it('the parent that owes its child an answer is stopped by its countdown, and still says it owes', async () => {
       const { brobot, ada, adaTools } = await aGiverWaitingOnAHelper()
       const id = await adaAsksHerParent(adaTools)
-      await untilPushed(
-        brobot,
-        owesAdaAfterReminder(id),
-        'the parent to owe it',
-      )
+      await untilPushed(brobot, owesAdaAfterReminder(id), 'the parent to owe it')
       expect(runningOf(brobot)).toBe('in-a-window')
 
       // Run every live countdown out by hand, again after each, since a stop re-arms the parent's.
