@@ -238,19 +238,29 @@ it('settles another profile when ordinary forget disowns its pending catalogue r
   expect(lists.readiness('claude', 'beta').state).toBe('settled')
 })
 
-
 it('settles retained refresh ownership when another profile supplied an unavailable catalogue', async () => {
   let read = () => Promise.resolve(ACCOUNT_A)
   let calls = 0
-  const lists = holderOver(() => { calls++; return read() })
-  await lists.read('claude', 'alpha')
-  read = () => Promise.resolve({
-    ...ACCOUNT_B,
-    models: [],
-    notAsked: { ok: false as const, reason: 'refused' as const, detail: 'Fictional catalogue unavailable.' },
+  const lists = holderOver(() => {
+    calls++
+    return read()
   })
+  await lists.read('claude', 'alpha')
+  read = () =>
+    Promise.resolve({
+      ...ACCOUNT_B,
+      models: [],
+      notAsked: {
+        ok: false as const,
+        reason: 'refused' as const,
+        detail: 'Fictional catalogue unavailable.',
+      },
+    })
   await lists.read('claude', 'beta')
-  expect(lists.held('claude', 'alpha')).toMatchObject({ state: 'answered', list: { notAsked: { reason: 'refused' } } })
+  expect(lists.held('claude', 'alpha')).toMatchObject({
+    state: 'answered',
+    list: { notAsked: { reason: 'refused' } },
+  })
   lists.forget('alpha', { retainAnswered: true })
   read = () => Promise.resolve(ACCOUNT_B)
   await lists.reread()
@@ -258,7 +268,6 @@ it('settles retained refresh ownership when another profile supplied an unavaila
   expect(lists.readiness('claude', 'alpha').state).toBe('settled')
   expect(calls).toBeGreaterThan(2)
 })
-
 
 it('does not retire a different provider while refreshing a provider-scoped login', async () => {
   const other = deferred()
@@ -273,7 +282,10 @@ it('does not retire a different provider while refreshing a provider-scoped logi
   expect(lists.readiness('codex', 'work').state).toBe('pending')
   other.resolve({ ...ACCOUNT_A, provider: 'codex' })
   await pending
-  expect(lists.held('codex', 'work')).toMatchObject({ state: 'answered', list: { provider: 'codex' } })
+  expect(lists.held('codex', 'work')).toMatchObject({
+    state: 'answered',
+    list: { provider: 'codex' },
+  })
   expect(lists.readiness('codex', 'work').state).toBe('settled')
   expect(shownIn(lists)).toEqual(ACCOUNT_B)
 })

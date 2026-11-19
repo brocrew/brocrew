@@ -158,7 +158,6 @@ it('isolates distinct clients, out-of-order generations and refusals without cha
   expect(right.held().value).toBe(recovered)
 })
 
-
 it('coalesces login notices received during one usage read and settles the last answer', async () => {
   const f = usageClient()
   const previous = answer(8)

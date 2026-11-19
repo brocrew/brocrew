@@ -93,7 +93,10 @@ export interface ModelLists {
    * Retire outstanding catalogue reads after a credential gesture. A forced reread can retain
    * successful rows for display while launch readiness waits for the current account's answer.
    */
-  forget(profileId: string, options?: { readonly retainAnswered?: boolean; readonly provider?: Provider }): void
+  forget(
+    profileId: string,
+    options?: { readonly retainAnswered?: boolean; readonly provider?: Provider },
+  ): void
   /** ⚑ Add a model to a provider's list by hand — `null`, or the door's words. */
   add(provider: Provider, model: string): Promise<string | null>
   /** ⚑ Take a hand-added model off a provider's list — `null`, or the door's words. */
@@ -262,7 +265,8 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
           tickets.set(provider, (tickets.get(provider) ?? 0) + 1)
       }
       for (const [key, parts] of asked)
-        if (options?.provider === undefined || options.provider === parts.provider) inFlight.delete(key)
+        if (options?.provider === undefined || options.provider === parts.provider)
+          inFlight.delete(key)
       const next = { ...lists.value }
       for (const [key, parts] of asked) {
         if (options?.provider !== undefined && options.provider !== parts.provider) continue

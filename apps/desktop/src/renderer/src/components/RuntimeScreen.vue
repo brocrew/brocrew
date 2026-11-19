@@ -1316,6 +1316,7 @@ function authChangedFor(profileId: string, changedProvider?: Provider): void {
     let refresh = authRefreshes.get(key)
     if (!refresh) {
       refresh = oneReadAtATime(async () => {
+        if (actionableReadsClosed) return
         modelLists.forget(profileId, { retainAnswered: true, provider })
         await Promise.all([
           readPrograms(),

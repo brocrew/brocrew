@@ -120,14 +120,23 @@ describe('the list and provider controls share one serialized login reading', ()
   })
 })
 
-
 it('settles a rejected auth read and its queued notice burst without leaving Checking', async () => {
   const { runtime, access } = fixture()
   let fail!: (error: Error) => void
   let finish!: (value: Awaited<ReturnType<RuntimeBridge['checkProviderAuth']>>) => void
-  runtime.checkProviderAuth.mockImplementationOnce(() => new Promise((_resolve, reject) => {
-    fail = reject
-  })).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }))
+  runtime.checkProviderAuth
+    .mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject
+        }),
+    )
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        }),
+    )
   const first = access.check()
   await Promise.all(Array.from({ length: 50 }, () => access.check()))
   expect(runtime.checkProviderAuth).toHaveBeenCalledTimes(1)
@@ -146,11 +155,21 @@ it('settles one provider while another provider check remains pending', async ()
   let finish!: (value: Awaited<ReturnType<RuntimeBridge['checkProviderAuth']>>) => void
   runtime.checkProviderAuth.mockImplementation(async ({ provider }) =>
     provider === 'claude'
-      ? new Promise((resolve) => { finish = resolve })
+      ? new Promise((resolve) => {
+          finish = resolve
+        })
       : { state: 'usable', login: 'account', expiresAt: null },
   )
-  const claude = createProviderAccess(() => 'claude', () => {}, () => runtime)
-  const codex = createProviderAccess(() => 'codex', () => {}, () => runtime)
+  const claude = createProviderAccess(
+    () => 'claude',
+    () => {},
+    () => runtime,
+  )
+  const codex = createProviderAccess(
+    () => 'codex',
+    () => {},
+    () => runtime,
+  )
   const pending = claude.check()
   await codex.check()
   expect(codex.authBusy.value).toBe('idle')
