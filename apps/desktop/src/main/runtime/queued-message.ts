@@ -136,6 +136,7 @@ export interface QueuedMessage {
    */
   // A work reminder also keeps its incident piece here for the last delivery check.
   readonly about?: string
+  readonly providerFailureHolder?: string
   /**
    * ⚑ **The question these words ask, when they are a question's notice** — see
    * {@link TheQuestionItAsks}. ⚑ Held so a notice whose question has stopped waiting is taken back

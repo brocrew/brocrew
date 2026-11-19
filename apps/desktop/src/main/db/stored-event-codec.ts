@@ -143,6 +143,11 @@ function boundCardFacts(event: TranscriptEvent): TranscriptEvent {
     const told = storedRefusalTold(stored)
     return { ...kept, ...(told === undefined ? {} : { told }) }
   }
+  if (event.type === 'message_queued' && event.providerFailureHolder !== undefined) {
+    const { providerFailureHolder: stored, ...kept } = event
+    const holder = providerFailureHolderStoredOn(event.kind, event.appNotice, stored)
+    event = holder === undefined ? kept : { ...kept, providerFailureHolder: holder }
+  }
   if (
     event.type !== 'user_turn' &&
     event.type !== 'message_queued' &&
@@ -208,6 +213,16 @@ export function theQuestionItAsks(stored: unknown): { readonly asks: TheQuestion
   if (typeof asker !== 'string' || asker.length === 0) return null
   if (typeof requestId !== 'string' || requestId.length === 0) return null
   return { asks: { asker, requestId } }
+}
+
+export function providerFailureHolderStoredOn(
+  kind: unknown,
+  notice: unknown,
+  holder: unknown,
+): string | undefined {
+  return kind === 'notice' && notice === 'a-provider-turn-failed' && isAStoredId(holder)
+    ? holder
+    : undefined
 }
 
 export function aStoredObject(payload: string | null): Record<string, unknown> | null {

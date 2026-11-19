@@ -311,6 +311,8 @@ export interface QueuedMessageEvent {
    * before it.
    */
   about?: string
+  /** The ledger holding the failure notice's receipt. */
+  providerFailureHolder?: string
   /**
    * ⚑ **The question a held question's notice asks** — see {@link TheQuestionItAsks}. ⚑ On the row
    * so a held notice rebuilt after a quit still names it: one whose question has stopped waiting is

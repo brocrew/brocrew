@@ -13141,6 +13141,12 @@ export class RuntimeHost implements LiveHost {
         : null
     const rebriefs =
       left?.rebriefs === undefined ? {} : { ...left.rebriefs, rebrief: true as const }
+    const providerFailure =
+      kind === 'notice' &&
+      facts.appNotice === 'a-provider-turn-failed' &&
+      facts.providerFailureHolder !== undefined
+        ? { providerFailureHolder: facts.providerFailureHolder }
+        : {}
     const held: QueuedMessage = {
       id: id ?? newQueuedMessageId(),
       kind,
@@ -13154,6 +13160,7 @@ export class RuntimeHost implements LiveHost {
         left === undefined ? WHAT_A_MESSAGE_NOBODY_DECLARED_SAYS : left.says,
       ),
       ...rebriefs,
+      ...providerFailure,
       ...(drives === null ? {} : { drives }),
       ...(from === null ? {} : { origin: from }),
       ...(facts.asks === undefined ? {} : { asks: facts.asks }),
@@ -13171,6 +13178,7 @@ export class RuntimeHost implements LiveHost {
       ...(held.attachments.length > 0 ? { attachments: [...held.attachments] } : {}),
       ...held.authorship,
       ...rebriefs,
+      ...providerFailure,
       ...(drives === null ? {} : { drives }),
       ...(itNames === null ? {} : { about: itNames }),
       ...(held.asks === undefined ? {} : { asks: held.asks }),
@@ -16901,8 +16909,74 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
+  private providerFailureNoticeStillGoes(
+    target: string,
+    messageId: string,
+    holder: string,
+  ): boolean {
+    try {
+      if (!this.reconciliationMayWake(target)) return false
+      const episode = this.deps.store.providerFailureEpisode(holder)
+      if (typeof episode === 'string') return false
+      const receipt = this.deps.store
+        .reconciliationReceiptsForOwner(holder)
+        .findLast(
+          (one) =>
+            one.kind === 'provider-turn-failed' &&
+            one.messageId === messageId &&
+            this.theOneInItsPlace(one.target) === target &&
+            one.episode.generation === episode.generation &&
+            one.episode.terminalOrdinal === episode.terminalOrdinal,
+        )
+      if (receipt === undefined || receipt.outcome === 'failed') return false
+
+      const workUnread = rowsUnreadOnce()
+      const pieces = this.deps.store.openPiecesOf(holder, workUnread)
+      if (
+        workUnread.count === 0 &&
+        workUnread.ledgersSkipped === 0 &&
+        pieces.some(
+          (piece) =>
+            piece.giver !== null &&
+            this.theOneInItsPlace(piece.giver) === target &&
+            piece.providerTurnFailure?.turnOrdinal === episode.terminalOrdinal,
+        )
+      )
+        return true
+
+      const askerReads = new Map<string, readonly RoutedRequest[]>()
+      return episode.asks.some(({ asker, requestId }) => {
+        if (this.theOneInItsPlace(asker) !== target) return false
+        let routes = askerReads.get(asker)
+        if (routes === undefined) {
+          const unread = rowsUnreadOnce()
+          const read = this.deps.store.routedRequestsOf(asker, unread)
+          routes = unread.count === 0 && unread.ledgersSkipped === 0 ? read : []
+          askerReads.set(asker, routes)
+        }
+        return routes.some(
+          (route) =>
+            route.requestId === requestId &&
+            route.askedBy === asker &&
+            route.parent !== null &&
+            this.theOneInItsPlace(route.parent) === this.theOneInItsPlace(holder) &&
+            route.went.to !== 'a-person' &&
+            route.escalatedAt === null &&
+            REQUEST_IS_OPEN[route.state],
+        )
+      })
+    } catch {
+      return false
+    }
+  }
+
   private dropObsoleteReconciliationNotices(session: HostedSession): void {
     for (const queued of [...session.mailbox]) {
+      if (queued.authorship.appNotice === 'a-provider-turn-failed') {
+        const gone = this.whyItNoLongerGoes(session.id, queued)
+        if (gone !== null) this.takeQueuedBack(session, queued, gone)
+        continue
+      }
       if (queued.authorship.appNotice !== 'a-work-wait-needs-attention') continue
       if (!this.reconciliationNoticeStillGoes(session.id, queued.id, queued.about))
         this.takeQueuedBack(session, queued, {
@@ -25509,7 +25583,8 @@ export class RuntimeHost implements LiveHost {
       if (work || itsJobs) continue
       const held: QueuedMessage = {
         ...queued,
-        id: newQueuedMessageId(),
+        // Failure receipts refer to the original queue ID across a historical move.
+        id: queued.providerFailureHolder === undefined ? newQueuedMessageId() : queued.id,
         since: this.now(),
         text: this.wordsMovedTo(queued, next.id),
       }
@@ -25533,6 +25608,9 @@ export class RuntimeHost implements LiveHost {
           : { unansweredQuestion: held.unansweredQuestion }),
         ...(held.asks === undefined ? {} : { asks: held.asks }),
         ...(held.messageAct === undefined ? {} : { messageAct: held.messageAct }),
+        ...(held.providerFailureHolder === undefined
+          ? {}
+          : { providerFailureHolder: held.providerFailureHolder }),
       })
       moved += 1
     }
@@ -28011,6 +28089,16 @@ export class RuntimeHost implements LiveHost {
     queued: QueuedMessage,
   ): { readonly reason: 'retracted' | 'abandoned'; readonly detail: string } | null {
     try {
+      if (queued.authorship.appNotice === 'a-provider-turn-failed') {
+        const holder = queued.providerFailureHolder
+        return holder !== undefined &&
+          this.providerFailureNoticeStillGoes(sessionId, queued.id, holder)
+          ? null
+          : {
+              reason: 'retracted',
+              detail: 'The app could no longer confirm this failed turn still needs a notice.',
+            }
+      }
       if (queued.piece !== undefined) {
         const piece = this.deps.store
           .piecesOwnedBy(sessionId)
@@ -28108,6 +28196,9 @@ export class RuntimeHost implements LiveHost {
       ...(row.drives === undefined ? {} : { drives: row.drives }),
       // ⚑ **F088 · and the piece they name**, so its sender line still says which.
       ...(row.about === undefined ? {} : { about: row.about }),
+      ...(row.providerFailureHolder === undefined
+        ? {}
+        : { providerFailureHolder: row.providerFailureHolder }),
       ...(row.asks === undefined ? {} : { asks: row.asks }),
       ...(row.unansweredQuestion === undefined
         ? {}

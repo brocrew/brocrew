@@ -451,6 +451,50 @@ it('reads a taskless failure notice beside a legacy piece receipt after reopenin
   expect(read.reconciliationReceiptsForOwner('beta')).toEqual([])
 })
 
+it('keeps a provider failure notice holder on the queued notice across a cold read', () => {
+  const { store, file } = world()
+  const append = (event: TranscriptEvent, at: number) =>
+    store.append('beta', store.nextOrdinal('beta'), event, at)
+  append(
+    {
+      type: 'message_queued',
+      kind: 'notice',
+      messageId: 'provider-failure-notice',
+      text: 'The provider could not run the selected model.',
+      appNotice: 'a-provider-turn-failed',
+      attribution: 'app_authored',
+      providerFailureHolder: 'alpha',
+    },
+    20,
+  )
+  append(
+    {
+      type: 'message_queued',
+      kind: 'notice',
+      messageId: 'legacy-notice',
+      text: 'A piece needs attention.',
+      appNotice: 'a-work-wait-needs-attention',
+      attribution: 'app_authored',
+    },
+    21,
+  )
+  const reopened = openDatabase(file)
+  cleanup.push(() => {
+    reopened.close()
+  })
+  const read = createSessionStore(reopened)
+  const pending = read.messagesWaitingIn('beta')
+  expect(pending).toHaveLength(2)
+  expect(pending[0]).toMatchObject({
+    messageId: 'provider-failure-notice',
+    providerFailureHolder: 'alpha',
+    authorship: { attribution: 'app_authored', appNotice: 'a-provider-turn-failed' },
+  })
+  expect(pending[0]?.authorship).not.toHaveProperty('relayedFrom')
+  expect(pending[1]?.messageId).toBe('legacy-notice')
+  expect(pending[1]).not.toHaveProperty('providerFailureHolder')
+})
+
 it('reads an ordinary holder failure through wakes, stopped completions and reopen', () => {
   const { store, file } = world()
   const append = (event: TranscriptEvent) => {

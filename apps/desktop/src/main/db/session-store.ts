@@ -31,6 +31,7 @@ import {
   aStoredObject,
   isAStoredId,
   isMailboxKind,
+  providerFailureHolderStoredOn,
   theQuestionItAsks,
 } from './stored-event-codec'
 export { toPersistedEvents } from './stored-event-codec'
@@ -391,6 +392,7 @@ export interface WaitingMessage {
   readonly rebrief?: true
   readonly drives?: string
   readonly about?: string
+  readonly providerFailureHolder?: string
   readonly asks?: TheQuestionItAsks
   readonly unansweredQuestion?: TheQuestionItAsks
   readonly messageAct?: string
@@ -5968,6 +5970,11 @@ export function createSessionStore(
           pieceNumbersOf(stored.label) !== null
             ? stored.label
             : null
+        const holder = providerFailureHolderStoredOn(
+          stored.kind,
+          stored.appNotice,
+          stored.providerFailureHolder,
+        )
         return [
           {
             messageId,
@@ -5981,6 +5988,7 @@ export function createSessionStore(
             ...(piece !== null && stored.rebrief === true ? { rebrief: true as const } : {}),
             ...(isAStoredId(stored.drives) ? { drives: stored.drives } : {}),
             ...(isAStoredId(stored.about) ? { about: stored.about } : {}),
+            ...(holder === undefined ? {} : { providerFailureHolder: holder }),
             ...(theQuestionItAsks(stored.asks) ?? {}),
             ...(unansweredQuestion === undefined ? {} : { unansweredQuestion }),
             ...(isAStoredId(stored.messageAct) ? { messageAct: stored.messageAct } : {}),
