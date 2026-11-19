@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs'
-import { isAbsolute } from 'node:path'
+import { readFileSync, writeFileSync } from 'node:fs'
+import { isAbsolute, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
@@ -48,6 +48,33 @@ describe('explicit outbound sends', () => {
     expect(world.sent.find((one) => one.as === 'outbound-target')?.words).toContain(
       `The full text is saved at ${file.path}: read the file.`,
     )
+  })
+
+  it('makes ordinary attachments and the full text readable by the recipient', async () => {
+    const task = await world.gives(host, target, 'outbound-sender')
+    if (!task.ok) throw new Error(task.refusal.reason)
+    sender = task.owner
+    const attachment = join(world.folder, 'reference.md')
+    writeFileSync(attachment, '# Reference\nA fictional test file.\n')
+    const text = 'The attachment is important. '.repeat(85)
+    const message = await send('message_agent', {
+      agent: target,
+      piece: task.label,
+      text,
+      resources: [attachment],
+    })
+    const receipt = message.structured?.receipt as SendReceipt
+    expect(receipt.recorded).toMatchObject({ kind: 'message', taskLabel: task.label })
+    expect(receipt.attachments.map((file) => file.name)).toEqual(['reference.md', 'text.txt'])
+    const read = agentToolsFor(host, target).tools.find((one) => one.name === 'read_document')
+    if (read === undefined) throw new Error('The document tool is missing.')
+    const bodies: string[] = []
+    for (const item of receipt.attachments) {
+      if (!('resource' in item)) throw new Error('The task attachment has no resource ID.')
+      bodies.push((await read.call({ resource: item.resource })).text)
+    }
+    expect(bodies[0]).toContain('A fictional test file.')
+    expect(bodies[1]).toContain(text.trimEnd())
   })
 
   it('records a busy Message and an Ask in order before either is delivered', async () => {
