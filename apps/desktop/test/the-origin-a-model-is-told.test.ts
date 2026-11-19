@@ -17,6 +17,7 @@ import { RuntimeHost } from './helpers/giver-notice-host'
 import type { Caller } from './helpers/giver-notice-host'
 import { agentCallerId, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
+import { composeProfileBundle } from '../src/main/runtime/factory-text'
 import {
   A_PERSON_SENT_IT,
   aTurnThatHasSaidNothing,
@@ -440,42 +441,33 @@ describe('414 · the origin a model is told', () => {
     })
 
     it('⚑ the address in the frame is the piece the LAUNCH layer already named the parent by', async () => {
-      // ⛔ **The two sentences are about different questions.** The dynamic layer says *"This
-      // conversation was started by <its name> (the owner of W<n>). That conversation can send you
-      // messages"* — who CAN. This says who DID. ⚑ **D-016 · commit 7 · R3 — both name the parent
-      // by the piece it owns**, where both spelled its full `sess_<uuid>` (HO-015 §3). ⚠️ They agree
-      // on one label here because this parent owns a ROOT, which names it however much work it
-      // gives later; one that owns none can be named by a newer piece by the time it writes, which
-      // is why `turn-origin.ts` never asks a model to compare the two.
       const made = await workWasGiven('deploy the branch')
       const status = await callOn(agentToolsFor(host, made.pm), 'get_agent_status', {
         agent: made.worker,
       })
       expect((status.agent as { parent: string }).parent).toBe(made.pm)
 
-      const factory = codeOnly(readFileSync(join(mainRoot, 'runtime/factory-text.ts'), 'utf8'))
-      expect(factory).toContain('This conversation was started by ')
-      expect(factory).toContain('context.startedBy')
-
-      // ⚑ The piece that names the parent is the root it owns …
-      const named = store.workThatNames(made.pm)
-      if (named === null) throw new Error('the parent holds no piece — nothing below is measured')
-      expect(named.label).toBe(store.rootOf(made.pm)?.label)
-      // … the launch line names the parent the way every sentence names another conversation — its
-      // name and a piece: ⚑ W4.175, the piece it started this one from, which for a root owner
-      // giving from its root is that root (⚠️ the launch's own call, asked of the host: this host
-      // is handed no instruction reader, so no launch text reaches the double) …
-      expect(hostSource()).toContain('conversationLine(this.deps.store, parentSessionId)')
-      const launchSays = (
-        host as unknown as {
-          theStarterCalled(starter: string, conversation: string | null, from: null): string
-        }
-      ).theStarterCalled(made.pm, made.worker, null)
-      expect(launchSays).toBe(
-        `${agentName(made.pmProfile, store.agentIdentities())} (${theOwnerOf(named)})`,
+      const parent = store.rootOf(made.pm)
+      if (parent === null) throw new Error('the parent has no root')
+      const launch = host as unknown as {
+        instructionContext(
+          profile: string | null,
+          folder: string,
+          parent: string,
+          conversation: string,
+        ): Parameters<typeof composeProfileBundle>[0]
+      }
+      const context = launch.instructionContext(
+        store.recordedOne(made.worker)?.profileId ?? null,
+        root,
+        made.pm,
+        made.worker,
       )
-      expect(host.nameByItsWork(made.pm)).toContain(`conversation ${named.label} ·`)
-      // … and the frame addresses the sender by the same piece, and no longer by its id.
+      const starter = agentName(made.pmProfile, store.agentIdentities())
+      expect(composeProfileBundle(context)).toContain(
+        `This conversation was started by ${starter}, conversation ${parent.label} ·`,
+      )
+      // The separate delivery frame still names the actual sender by the task it gave from.
       await waitFor(() => providerHeard(made.worker).length > 0, 'the provider to answer')
       const framed = providerHeard(made.worker)[0] ?? ''
       expect(framed).toContain(answering(made.pm, made.pmProfile))

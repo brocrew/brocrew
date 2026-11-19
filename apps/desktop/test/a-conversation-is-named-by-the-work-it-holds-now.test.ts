@@ -222,9 +222,7 @@ describe('F033 · a conversation is named by the work it holds now', () => {
     adaTools: AgentToolset
   }> => {
     const { parent, child: ada, tools } = await aChildHolding(2)
-    expect(host.nameByItsWork(ada)).toBe(
-      'Ada (the owner of W1.2 · Test the clock page (and 1 more))',
-    )
+    expect(host.nameByItsWork(ada)).toBe('conversation W1.1 · Build the world clock page')
     return { parent, ada, tools, adaTools: agentToolsFor(host, ada) }
   }
 
@@ -263,21 +261,21 @@ describe('F033 · a conversation is named by the work it holds now', () => {
       event.type === 'assistant_message' && event.text.startsWith('echo: ') ? [event.text] : [],
     )
 
-  describe('1 · open pieces name it: the newest, and how many more', () => {
+  describe('1 · stable conversation identity and the open-task summary', () => {
     it('⚑ one open piece: its label and title, and nothing beside them', async () => {
       const { child, tools } = await aChildWithOnePiece()
       expect(store.workThatNames(child)).toEqual({
         label: 'W1.1',
         title: 'Receipt check: a long step',
       })
-      expect(host.nameByItsWork(child)).toBe('Ada (the owner of W1.1 · Receipt check: a long step)')
+      expect(host.nameByItsWork(child)).toBe('conversation W1.1 · Receipt check: a long step')
       expect(host.addressOf(child)).toBe('W1.1')
       expect(windowNamed(child)).toEqual({ label: 'W1.1', title: 'Receipt check: a long step' })
       const status = await fullCall(tools, 'get_agent_status', { agent: 'W1.1' })
-      expect(status.text).toContain('the owner of W1.1 · Receipt check: a long step · Ada (worker)')
+      expect(status.text).toContain('conversation W1.1 · Receipt check: a long step · Ada (worker)')
     })
 
-    it('🔴 three open pieces: the newest, and "(and 2 more)" — in every sentence and in what the window is handed', async () => {
+    it('a later task label reaches the same conversation while the window retains its newest-task summary', async () => {
       const { child, tools } = await aChildHolding(3)
       expect(store.openPiecesOf(child).map((one) => one.label)).toEqual(['W1.1', 'W1.2', 'W1.3'])
       expect(store.workThatNames(child)).toEqual({
@@ -285,15 +283,12 @@ describe('F033 · a conversation is named by the work it holds now', () => {
         title: 'Ship the clock page',
         more: 2,
       })
-      expect(host.nameByItsWork(child)).toBe(
-        'Ada (the owner of W1.3 · Ship the clock page (and 2 more))',
-      )
-      expect(host.addressOf(child)).toBe('W1.3')
+      expect(host.nameByItsWork(child)).toBe('conversation W1.1 · Build the world clock page')
+      expect(host.addressOf(child)).toBe('W1.1')
       expect(windowNamed(child)).toEqual({ label: 'W1.3', title: 'Ship the clock page', more: 2 })
       const status = await fullCall(tools, 'get_agent_status', { agent: 'W1.3' })
-      expect(status.text).toContain(
-        'the owner of W1.3 · Ship the clock page (and 2 more) · Ada (worker)',
-      )
+      expect(status.structured).toMatchObject({ outcome: 'ok', agent: { agent: child } })
+      expect(status.text).toContain('conversation W1.1 · Build the world clock page · Ada (worker)')
     })
   })
 
@@ -312,9 +307,7 @@ describe('F033 · a conversation is named by the work it holds now', () => {
         title: 'Receipt check: a long step',
         ended: 'answered',
       })
-      expect(host.nameByItsWork(child)).toBe(
-        'Ada (the owner of W1.1 · Receipt check: a long step (answered))',
-      )
+      expect(host.nameByItsWork(child)).toBe('conversation W1.1 · Receipt check: a long step')
       expect(windowNamed(child)).toEqual({
         label: 'W1.1',
         title: 'Receipt check: a long step',
@@ -325,7 +318,7 @@ describe('F033 · a conversation is named by the work it holds now', () => {
       const status = await fullCall(tools, 'get_agent_status', { agent: 'W1.1' })
       expect(status.structured, status.text).toMatchObject({ outcome: 'ok' })
       expect(status.text).toContain(
-        'the owner of W1.1 · Receipt check: a long step (answered) · Ada (worker) · Claude · idle',
+        'conversation W1.1 · Receipt check: a long step · Ada (worker) · Claude · idle',
       )
     })
 
@@ -339,12 +332,10 @@ describe('F033 · a conversation is named by the work it holds now', () => {
         title: 'Receipt check: a long step',
         ended: 'withdrawn',
       })
-      expect(host.nameByItsWork(child)).toBe(
-        'Ada (the owner of W1.1 · Receipt check: a long step (taken back))',
-      )
+      expect(host.nameByItsWork(child)).toBe('conversation W1.1 · Receipt check: a long step')
       const status = await fullCall(tools, 'get_agent_status', { agent: 'W1.1' })
       expect(status.text).toContain(
-        'the owner of W1.1 · Receipt check: a long step (taken back) · Ada (worker) · Claude · idle',
+        'conversation W1.1 · Receipt check: a long step · Ada (worker) · Claude · idle',
       )
     })
   })
@@ -390,7 +381,7 @@ describe('F033 · a conversation is named by the work it holds now', () => {
         summary: 'all done',
       })
       expect(replied.structured, replied.text).toMatchObject({ outcome: 'ok' })
-      expect(host.nameByItsWork(child)).toBe('Ada (the owner of W1.2 · Second piece)')
+      expect(host.nameByItsWork(child)).toBe('conversation W1.1 · Receipt check: a long step')
       // ⛔ The question is still the first piece's: never "from Ada (the owner of W1.2 …)" — and
       // with no "(answered)" beside the piece: the line's own state word says what became of it.
       const listed = await fullCall(tools, 'list_questions', { state: 'all' })
@@ -402,9 +393,7 @@ describe('F033 · a conversation is named by the work it holds now', () => {
 
     it('🔴 the answer’s receipt names the asker by the piece it asked under, beside a newer open one', async () => {
       const { child, tools } = await aChildHolding(2)
-      expect(host.nameByItsWork(child)).toBe(
-        'Ada (the owner of W1.2 · Test the clock page (and 1 more))',
-      )
+      expect(host.nameByItsWork(child)).toBe('conversation W1.1 · Build the world clock page')
       const asked = await fullCall(agentToolsFor(host, child), 'ask_question', {
         who_answers: 'the-parent',
         piece: 'W1.1',
@@ -469,7 +458,7 @@ describe('F033 · a conversation is named by the work it holds now', () => {
       const answer = theAnswer() ?? ''
       expect(answer).toContain('Ada (the owner of W1.1 · Build the world clock page)')
       expect(withoutWhatThisAppAdds(answer)).not.toContain('W1.2')
-      expect(host.nameByItsWork(ada)).toContain('W1.2')
+      expect(host.nameByItsWork(ada)).toBe('conversation W1.1 · Build the world clock page')
     })
 
     it('🔴 a note names its sender by the piece it is about, and so does its record read back', async () => {
@@ -550,8 +539,7 @@ describe('F033 · a conversation is named by the work it holds now', () => {
         summary: 'planned',
       })
       expect(replied.structured, replied.text).toMatchObject({ outcome: 'ok' })
-      // Named by its root, as always: a root never ends, so it carries no mark.
-      expect(host.nameByItsWork(brobot)).toBe('BroBot (the owner of W1)')
+      expect(host.nameByItsWork(brobot)).toBe('conversation W1 · Plan the trip')
       const rowOf = (conversation: string) =>
         host
           .whatEachConversationIsWaitingOn()
