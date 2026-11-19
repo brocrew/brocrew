@@ -98,6 +98,7 @@ import {
   isAutoApprove,
   type ReasoningEffort,
   type SessionSettingsState,
+  type TurnProvenance,
 } from '../runtime'
 import type { SessionRef } from '../session-ref'
 import { AuthUnavailableError, type AuthHealth } from '../internal/auth'
@@ -809,7 +810,7 @@ export class CodexSessionHandle implements SessionHandle {
   }
 
   // A delayed response for an earlier local turn must not bind the current one.
-  private onTurnStartResult(localId: number, result: unknown): void {
+  private onTurnStartResult(localId: number, result: unknown, onInputAccepted?: () => void): void {
     if (this.terminated) return
     if (this.currentTurn?.localId !== localId) return
     const providerTurnId = readString(isRecord(result) ? result['turn'] : undefined, 'id')
@@ -821,6 +822,7 @@ export class CodexSessionHandle implements SessionHandle {
       return
     }
     this.bindProviderTurn(providerTurnId)
+    onInputAccepted?.()
   }
 
   // Only an unbound compaction can bind from a new started id; reject the previously bound id.
@@ -1334,8 +1336,8 @@ export class CodexSessionHandle implements SessionHandle {
     }
   }
 
-  send(text: string): Promise<void> {
-    return this.startATurn(text)
+  send(text: string, _origin?: TurnProvenance, onInputAccepted?: () => void): Promise<void> {
+    return this.startATurn(text, onInputAccepted)
   }
 
   // Send no new input: the provider can answer the message already retained after a refused turn.
@@ -1344,7 +1346,7 @@ export class CodexSessionHandle implements SessionHandle {
   }
 
   // Adopt settings together, roll back only this attempt on rejection, and bind only its response.
-  private async startATurn(text: string | null): Promise<void> {
+  private async startATurn(text: string | null, onInputAccepted?: () => void): Promise<void> {
     const plannedPhase = this.plan.requested
     if (
       plannedPhase !== 'never' &&
@@ -1417,7 +1419,7 @@ export class CodexSessionHandle implements SessionHandle {
             })
         : send()
       void Promise.resolve(request).then(
-        (result) => this.onTurnStartResult(localId, result),
+        (result) => this.onTurnStartResult(localId, result, onInputAccepted),
         (error: unknown) => {
           if (this.currentTurn?.localId === localId) {
             this.currentTurn = null
