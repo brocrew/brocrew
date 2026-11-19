@@ -66,6 +66,8 @@ export const APP_NOTICES = [
   'a-work-wait-needs-attention',
   'a-person-gave-new-work',
   'an-answer-to-a-question',
+  'an-answer-is-still-owed',
+  'a-question-stayed-unanswered',
   // 🔴 **D-016** — the conversation that gave this one a piece of work took it back, and this app
   // tells the owner so it stops working on it (`withdraw_task`).
   'a-piece-taken-back',
@@ -158,6 +160,10 @@ export const NOTICE_MEANS: Readonly<Record<AppNotice, string>> = {
   'an-answer-to-a-question':
     'This app put these words here because a question this conversation had asked was answered. ' +
     'You did not write them, and they were not sent on anybody’s behalf.',
+  'an-answer-is-still-owed':
+    'This app reminded you about an open question another conversation asked you.',
+  'a-question-stayed-unanswered':
+    'This app added this note because a conversation still owes an answer after a reminder.',
   'a-piece-taken-back':
     'This app put these words here because the conversation that gave this conversation a piece of ' +
     'work took it back. You did not write them, and they were not sent on anybody’s behalf.',

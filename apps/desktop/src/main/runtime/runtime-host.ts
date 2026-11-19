@@ -2252,6 +2252,7 @@ interface HostedSession {
    * this count holds.
    */
   turnsEnded: number
+  questionWakeDue?: true
   /**
    * ⚑ **When a person last wrote in it**, as far as this life knows: noted as a turn their own
    * words opened is recorded, and read off its ledger as a life that continues a recording begins
@@ -13339,6 +13340,90 @@ export class RuntimeHost implements LiveHost {
       )
       return { to, state: this.sendFailedAfterRecording(error) }
     }
+  }
+
+  private wakeForOwedQuestions(session: HostedSession): void {
+    const ledgerOf = this.oneLedgerReadPerAnswer()
+    const owed = this.oneOwedReadPerAnswer(ledgerOf)(session.id)
+    if (owed.length === 0) return
+
+    const waiting = new Set(
+      [...session.mailbox, ...session.handingOver].flatMap(({ asks }) =>
+        asks === undefined ? [] : [questionKey(asks.asker, asks.requestId)],
+      ),
+    )
+    const answererIds = this.theIdsItStandsFor(session.id)
+    for (const { askedBy, requestId, piece } of owed) {
+      const key = questionKey(askedBy, requestId)
+      if (waiting.has(key)) continue
+      const claim = Buffer.from(key).toString('base64url')
+      const id = `msg_owed_${claim}`
+      const reminder = answererIds
+        .map((target) => this.deps.store.queuedPromptProgress(target, id, 'an-answer-is-still-owed'))
+        .find((progress) => progress !== 'missing')
+
+      if (reminder === 'turn-ended') {
+        void this.tellTheAskerItWentUnanswered(
+          session.id,
+          askedBy,
+          requestId,
+          `msg_unanswered_${claim}`,
+        ).catch((error: unknown) => {
+          console.warn(`The unanswered-question notice could not reach ${askedBy}: ${errorMessage(error)}`)
+        })
+        continue
+      }
+      if (reminder !== undefined) continue
+      const raised = ledgerOf(askedBy).raised.get(requestId)
+      if (raised === undefined) continue
+      this.holdUntilItStarts(
+        session.id,
+        this.outboundQuestionWords(askedBy, {
+          id: requestId,
+          prompt: raised.prompt,
+          questions: raised.questions,
+          piece,
+        }),
+        {
+          carriedFor: askedBy,
+          asks: { asker: askedBy, requestId },
+          appNotice: 'an-answer-is-still-owed',
+        },
+        'question',
+        undefined,
+        id,
+      )
+    }
+  }
+
+  private async tellTheAskerItWentUnanswered(
+    answerer: string,
+    asker: string,
+    question: string,
+    id: string,
+  ): Promise<void> {
+    await this.afterWhatArrivedFirst(this.theOneInItsPlace(asker), async () => {
+      if (this.howItsQuestionEnded(asker, question) !== null) return
+      const to = this.theOneInItsPlace(asker)
+      const notice = 'a-question-stayed-unanswered'
+      const kept = this.theIdsItStandsFor(to).some(
+        (thread) => this.deps.store.queuedPromptProgress(thread, id, notice) !== 'missing',
+      )
+      if (kept) return
+      const where = await new Promise<WhereHeldWordsWait>((resolve) =>
+        this.holdUntilItStarts(
+          to,
+          `${this.nameByItsWork(answerer)} didn’t answer after a reminder. Question ${question} is still open.`,
+          { appNotice: notice },
+          'notice',
+          resolve,
+          id,
+        ),
+      )
+      if (where === 'its-ledger' && !this.servicesHoldItBack(to, THE_APP_ITSELF)) {
+        await this.ensureRunning(to, null)
+      }
+    })
   }
 
   /**
@@ -40756,7 +40841,18 @@ export class RuntimeHost implements LiveHost {
     // wire is still unsent, so a flush that published synchronously could not overtake it — the
     // ordering holds by POSITION rather than by the fact that {@link runFlush} happens to await
     // first, which is a fact a later edit is free to change.
-    if (event.type === 'status' && event.state === 'idle') this.flushQueued(session)
+    if (event.type === 'turn') {
+      if (event.state === 'completed') session.questionWakeDue = true
+      else delete session.questionWakeDue
+    }
+    if (event.type === 'status' && TURN_ENDINGS.has(event.state)) {
+      const wake = session.questionWakeDue === true
+      delete session.questionWakeDue
+      if (event.state === 'idle') {
+        if (wake) keepGoing(() => this.wakeForOwedQuestions(session), undefined)
+        this.flushQueued(session)
+      }
+    }
     // ⚑ **Work that ran in the background is one thing a reopen on the current sign-in waits for**
     // — so a level that moved asks again ({@link reopenForWhatWaits}).
     if (event.type === 'background_work') {

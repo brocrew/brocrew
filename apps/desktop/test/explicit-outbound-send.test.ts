@@ -134,6 +134,55 @@ describe('explicit outbound sends', () => {
     )
   })
 
+  it('sends one reminder and one notice to the asker while the original question stays open', async () => {
+    const asked = await send('ask_question', {
+      who_answers: 'an-agent',
+      agent: target,
+      question: 'Which checklist applies?',
+    })
+    const id = asked.structured?.question
+    if (typeof id !== 'string') throw new Error('The question has no recorded id.')
+    const reminders = () =>
+      world.ledger(target).filter(
+        (event) => event.type === 'message_queued' && event.appNotice === 'an-answer-is-still-owed',
+      )
+    const notices = () =>
+      world.ledger(sender).filter(
+        (event) => event.type === 'user_turn' && event.appNotice === 'a-question-stayed-unanswered',
+      )
+    await waitFor(() => notices().length === 1, 'the asker to receive the unanswered notice')
+    expect(notices()[0]).toMatchObject({
+      text: expect.stringContaining(`didn’t answer after a reminder. Question ${id} is still open.`),
+    })
+    expect(reminders()).toHaveLength(1)
+    expect(storeQuestionState()).toBe('open')
+    expect(host.agentCard(target, world.window, null)?.state).toMatchObject({
+      is: 'owes-an-answer',
+      stalled: true,
+    })
+
+    await host.closeAll()
+    host = world.aHost()
+    await host.resumeSession(sender, world.window)
+    await host.resumeSession(target, world.window)
+    const barrier = 'A new real turn after the reminder and restart.'
+    await host.send(target, barrier, world.window)
+    await waitFor(
+      () => host.agentCard(target, world.window, null)?.state.is === 'owes-an-answer',
+      'the answerer to finish another turn',
+    )
+    expect(world.ledger(target)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: 'user_turn', text: barrier })]),
+    )
+    expect(reminders()).toHaveLength(1)
+    expect(notices()).toHaveLength(1)
+    expect(storeQuestionState()).toBe('open')
+
+    function storeQuestionState() {
+      return world.store.routedRequestsOf(sender).find((one) => one.requestId === id)?.state
+    }
+  })
+
   it('keeps an archived recipient archived and reports the first failed wake of a recorded question', async () => {
     expect(await host.archiveConversation(target)).toMatchObject({ done: true })
     const archivedAt = host.whenItWasArchived(target)
