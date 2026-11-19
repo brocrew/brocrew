@@ -122,7 +122,10 @@ describe('window reader owns its native connection until confirmed exit', () => 
     const port = Object.assign(new EventEmitter(), { postMessage: vi.fn(), close: vi.fn() })
     const read = vi.fn(() => result)
     vi.resetModules()
-    vi.doMock('node:worker_threads', () => ({ parentPort: port, workerData: { file: 'fictional' } }))
+    vi.doMock('node:worker_threads', () => ({
+      parentPort: port,
+      workerData: { file: 'fictional' },
+    }))
     vi.doMock('../src/main/db/window-read-engine', () => ({
       WindowReadEngine: class {
         read = read
@@ -145,7 +148,14 @@ describe('window reader owns its native connection until confirmed exit', () => 
         ...(debug ? [phase(1, 'start'), phase(1, 'end')] : []),
         [{ type: 'read', id: 1, result }],
         ...(debug ? [phase(2, 'start'), phase(2, 'end')] : []),
-        [{ type: 'failed', id: 2, cause: 'fictional worker failure', reason: 'worker-read-failed' }],
+        [
+          {
+            type: 'failed',
+            id: 2,
+            cause: 'fictional worker failure',
+            reason: 'worker-read-failed',
+          },
+        ],
       ])
       expect(read).toHaveBeenCalledTimes(2)
     } finally {
