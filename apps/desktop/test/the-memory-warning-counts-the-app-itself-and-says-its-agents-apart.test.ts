@@ -1,9 +1,10 @@
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   startMemoryWatch,
+  theAppItselfHeadline,
   whatItsAgentsHoldApart,
   whatTheAppItselfHolds,
   type OwnProcess,
@@ -374,9 +375,18 @@ describe("§4 · the app's own line counts the app itself, and says its agents a
 })
 
 it('rechecks footprint at unchanged RSS and reports each warning step once', async () => {
+  using memoryUsage = vi.spyOn(process, 'memoryUsage').mockReturnValue({
+    rss: 101,
+    heapUsed: 202,
+    heapTotal: 303,
+    external: 404,
+    arrayBuffers: 505,
+  })
   const gib = 1024 ** 3
   const warnings: string[] = []
   let rss = 6.4 * gib
+  let backlog = 2
+  const footprintCounts = vi.fn(() => `filesToSayEntries=${backlog}`)
   let calls = 0
   let tick: () => void = () => {}
   let finish: (sample: { bytes: number; detail: string } | null) => void = () => {}
@@ -386,6 +396,7 @@ it('rechecks footprint at unchanged RSS and reports each warning step once', asy
   }
   startMemoryWatch({
     sample: () => rss,
+    footprintCounts,
     confirm: () => {
       calls++
       return new Promise((resolve, reject) => {
@@ -403,6 +414,8 @@ it('rechecks footprint at unchanged RSS and reports each warning step once', asy
   tick()
   tick()
   expect(calls).toBe(1)
+  expect(memoryUsage).not.toHaveBeenCalled()
+  expect(footprintCounts).not.toHaveBeenCalled()
   finish({ bytes: 1.5 * gib, detail: '[below floor]' })
   await flush()
   expect(warnings).toEqual([])
@@ -412,22 +425,33 @@ it('rechecks footprint at unchanged RSS and reports each warning step once', asy
   tick()
   expect(calls).toBe(2)
   rss = 6.4 * gib
+  expect(memoryUsage).not.toHaveBeenCalled()
+  expect(footprintCounts).not.toHaveBeenCalled()
   finish({ bytes: 4.5 * gib, detail: '[physical breakdown]' })
   await flush()
   expect(warnings).toHaveLength(1)
-  expect(warnings[0]).toContain('4.50 GB of physical footprint')
-  expect(warnings[0]).toContain('[physical breakdown]')
+  expect(warnings[0]).toBe(
+    theAppItselfHeadline(4.5 * gib, 'footprint') +
+      ' [physical breakdown] [main-thread memory bytes: heapUsed=202 heapTotal=303 external=404 arrayBuffers=505]' +
+      ' [held root counts: filesToSayEntries=2]',
+  )
+  expect(memoryUsage).toHaveBeenCalledTimes(1)
+  expect(footprintCounts).toHaveBeenCalledTimes(1)
   tick()
   expect(calls).toBe(3)
   finish({ bytes: 4.75 * gib, detail: '[same footprint step]' })
   await flush()
   expect(warnings).toHaveLength(1)
+  expect(memoryUsage).toHaveBeenCalledTimes(1)
   tick()
   expect(calls).toBe(4)
+  backlog = 7
   finish({ bytes: 5 * gib, detail: '[next footprint step]' })
   await flush()
   expect(warnings).toHaveLength(2)
   expect(warnings[1]).toContain('5.00 GB of physical footprint')
+  expect(warnings[1]).toContain('[held root counts: filesToSayEntries=7]')
+  expect(memoryUsage).toHaveBeenCalledTimes(2)
   tick()
   expect(calls).toBe(5)
   finish({ bytes: 5.25 * gib, detail: '[same footprint step]' })
@@ -447,6 +471,8 @@ it('rechecks footprint at unchanged RSS and reports each warning step once', asy
   finish(null)
   await flush()
   expect(warnings).toHaveLength(3)
+  expect(memoryUsage).toHaveBeenCalledTimes(2)
+  expect(footprintCounts).toHaveBeenCalledTimes(2)
 })
 
 it('uses complete per-process footprint records and rejects invalid totals', () => {
@@ -470,6 +496,8 @@ it('uses complete per-process footprint records and rejects invalid totals', () 
 })
 
 it('falls back after a synchronous confirmation failure and ignores a pending result after stop', async () => {
+  using memoryUsage = vi.spyOn(process, 'memoryUsage')
+  const footprintCounts = vi.fn(() => 'filesToSayEntries=2')
   const gib = 1024 ** 3
   const warnings: string[] = []
   let rss = 2 * gib
@@ -478,6 +506,7 @@ it('falls back after a synchronous confirmation failure and ignores a pending re
   let finish: (result: { bytes: number; detail: string }) => void = () => {}
   const watch = startMemoryWatch({
     sample: () => rss,
+    footprintCounts,
     confirm: () => {
       confirmations++
       if (rss === 2 * gib) throw new Error('could not start footprint')
@@ -502,4 +531,6 @@ it('falls back after a synchronous confirmation failure and ignores a pending re
   finish({ bytes: 3 * gib, detail: '[late footprint]' })
   await new Promise<void>((resolve) => setImmediate(resolve))
   expect(warnings).toHaveLength(1)
+  expect(memoryUsage).not.toHaveBeenCalled()
+  expect(footprintCounts).not.toHaveBeenCalled()
 })

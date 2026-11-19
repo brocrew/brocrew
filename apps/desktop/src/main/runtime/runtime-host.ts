@@ -38955,6 +38955,26 @@ export class RuntimeHost implements LiveHost {
     return this.launches.closed
   }
 
+  heldRootCounts(): string {
+    const incidents = this.windowIncidentsKept?.result
+    const routes = this.windowRoutesKept?.result
+    const pendingWindowReads =
+      Number(this.windowRoutesPending !== undefined) +
+      Number(this.windowListingPending !== undefined) +
+      Number(this.windowIncidentsPending !== undefined)
+    return (
+      `filesToSayEntries=${this.filesToSay.length} stateSaidEntries=${this.stateSaid.size} ` +
+      `waitEntries=${this.waitAsLastRead.size} workOutEntries=${this.workOutAsLastRead.size} ` +
+      `contextEntries=${this.contextAsLastRead.size} heldEntries=${this.heldAsLastRead.size} ` +
+      `incidentOwnerRows=${incidents?.kind === 'incidents' ? incidents.owners.length : 0} ` +
+      `routeRows=${routes?.kind === 'routes' ? routes.routes.length : 0} ` +
+      `routedToKeys=${this.routedTo?.size ?? 0} ` +
+      `listingResumableRows=${this.listingKept?.resumable.length ?? 0} ` +
+      `listingUnresumableRows=${this.listingKept?.unresumable.length ?? 0} ` +
+      `listingAnswerEntries=${this.listingAnswersKept.size} pendingWindowReads=${pendingWindowReads}`
+    )
+  }
+
   /**
    * Close everything — the app is quitting and no provider child may outlive it.
    *

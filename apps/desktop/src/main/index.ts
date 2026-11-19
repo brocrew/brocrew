@@ -2165,6 +2165,7 @@ function start(ownership: HostGateVerdict): void {
       const stopInterval = (handle: unknown): void =>
         clearInterval(handle as ReturnType<typeof setInterval>)
       startMemoryWatch({
+        footprintCounts: () => host?.heldRootCounts(),
         sample: () => {
           spawnedReader.refresh()
           appMetrics = app.getAppMetrics()

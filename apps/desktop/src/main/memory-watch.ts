@@ -58,6 +58,7 @@ export interface MemoryWatchOptions {
    */
   detail?: () => string
   confirm?: () => Promise<{ bytes: number; detail: string } | null>
+  footprintCounts?: () => string | undefined
   log: (message: string) => void
   /**
    * ⚑ **What the line says the figure is** — the app itself, by default
@@ -166,7 +167,14 @@ export function startMemoryWatch(options: MemoryWatchOptions): MemoryWatch {
           const stepReached = floor + Math.floor((result.bytes - floor) / step) * step
           if (stepReached <= confirmedStep) return
           confirmedStep = stepReached
-          options.log(theAppItselfHeadline(result.bytes, 'footprint') + ` ${result.detail}`)
+          const { heapUsed, heapTotal, external, arrayBuffers } = process.memoryUsage()
+          const counts = options.footprintCounts?.()
+          options.log(
+            theAppItselfHeadline(result.bytes, 'footprint') +
+              ` ${result.detail} [main-thread memory bytes: heapUsed=${heapUsed} heapTotal=${heapTotal}` +
+              ` external=${external} arrayBuffers=${arrayBuffers}]` +
+              (counts === undefined ? '' : ` [held root counts: ${counts}]`),
+          )
         })
         .finally(() => {
           confirming = false
