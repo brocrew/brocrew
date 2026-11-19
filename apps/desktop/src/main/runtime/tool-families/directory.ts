@@ -628,8 +628,9 @@ export function createGetAgentStatusTool(
         const agent = host.theConversationAddressed(args.agent, by, me, 'reading')
         const status = host.agentStatus(agent, by, me)
         if (status === null) return refusalAnswer(refuseTool('no-such-agent', { agent }))
-        const { card, failures } = status
+        const { card, failures, questionFailure } = status
         const conversation = host.nameByItsWork(card.agent)
+        const diagnosisConversation = conversation.replace(/^conversation /, 'Conversation ')
         let newest: (typeof failures)[number] | undefined
         for (const one of failures) {
           if (newest === undefined || one.failure.turnOrdinal > newest.failure.turnOrdinal)
@@ -638,10 +639,7 @@ export function createGetAgentStatusTool(
         const diagnosis =
           newest === undefined
             ? undefined
-            : providerFailureDiagnosis(
-                conversation.replace(/^conversation /, 'Conversation '),
-                newest.failure.message,
-              )
+            : providerFailureDiagnosis(diagnosisConversation, newest.failure.message)
         // **When its last turn ran, and what opened it** — so a giver reading *nothing has
         // started since* can tell whether its own held words were what that turn took.
         const last = host.whatOpenedItsLastTurn(card.agent)
@@ -665,6 +663,7 @@ export function createGetAgentStatusTool(
             outcome: 'ok',
             agent: cardPayload(card),
             ...(failures.length === 0 ? {} : { provider_turn_failures: failures }),
+            ...(questionFailure === null ? {} : { provider_question_failure: questionFailure }),
             ...(archivedAt === null
               ? {}
               : {
@@ -678,6 +677,9 @@ export function createGetAgentStatusTool(
               pieceOnTheCardText(piece, piece.piece === newest?.piece ? diagnosis : undefined),
             ) +
               (archivedAt === null ? '' : archivedSaid(archivedAt, last.readAt)),
+            ...(questionFailure === null
+              ? []
+              : [providerFailureDiagnosis(diagnosisConversation, questionFailure.message, false)]),
             ...theLastTurnSaid(card.lastEndedTurn, last, named, askedBy, card.lastAskToStop),
           ].join('\n\n'),
         )

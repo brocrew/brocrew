@@ -283,10 +283,26 @@ describe('what a replacement carries, and what it leaves behind', () => {
       'planned',
       'delivered',
     ])
+    store.setModel(holder, 'fictional-selected')
+    store.setReportedModel(holder, 'fictional-reported', null)
+    const status = () => callOn(asker, 'get_agent_status', { agent: holder })
+    expect(await status()).toMatchObject({
+      outcome: 'ok',
+      agent: {
+        agent: holder,
+        provider: 'codex',
+        runsOn: {
+          selected: { model: 'fictional-selected' },
+          reported: { model: 'fictional-reported' },
+        },
+      },
+      provider_question_failure: { message, turnOrdinal: terminalOrdinal },
+    })
     expect(await callOn(asker, 'withdraw_question', { question: requestId })).toMatchObject({
       outcome: 'ok',
     })
     expect(host.providerFailureForItsAsker(holder, asker)).toBeNull()
+    expect(await status()).not.toHaveProperty('provider_question_failure')
   })
 
   it('a lost session leaves the work and its successful automatic holder reminder recorded', async () => {

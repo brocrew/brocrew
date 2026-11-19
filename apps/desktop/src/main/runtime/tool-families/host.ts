@@ -88,6 +88,7 @@ export interface AgentStatusRead {
     readonly piece: PieceRow['piece']
     readonly failure: NonNullable<PieceRow['providerTurnFailure']>
   }[]
+  readonly questionFailure: NonNullable<PieceRow['providerTurnFailure']> | null
 }
 
 export interface AgentToolHost {

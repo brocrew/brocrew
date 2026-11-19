@@ -10822,7 +10822,10 @@ export class RuntimeHost implements LiveHost {
       const failure = piece.providerTurnFailure
       if (piece.giver === me && failure !== undefined) failures.push({ piece: piece.piece, failure })
     })
-    return card === null ? null : { card, failures }
+    if (card === null) return null
+    const questionFailure =
+      failures.length === 0 ? this.providerFailureForItsAsker(card.agent, me) : null
+    return { card, failures, questionFailure }
   }
 
   private readAgentCard(
