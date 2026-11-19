@@ -172,7 +172,6 @@ describe('F033 · the name says what is true of its work', () => {
   })
 })
 
-
 describe('The conversation title is its own record', () => {
   it('sends the stable conversation ID and shows only the identity returned by the rename', async () => {
     const rename = vi.fn(async (): Promise<ConversationRenameResult> => ({

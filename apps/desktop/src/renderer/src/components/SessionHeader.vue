@@ -255,7 +255,9 @@ const task = computed(() => (props.named === null ? null : theWorkThatNamesItSai
 const title = computed(() => {
   if (!props.session) return 'New conversation'
   return (
-    identity.value?.title ?? task.value ?? (basenameOf(props.session.cwd) || props.session.sessionId)
+    identity.value?.title ??
+    task.value ??
+    (basenameOf(props.session.cwd) || props.session.sessionId)
   )
 })
 
