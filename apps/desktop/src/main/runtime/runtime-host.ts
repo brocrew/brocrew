@@ -11,7 +11,6 @@ import type {
   UpdateWorkOutcome,
   TakeOnWorkOutcome,
   CreateAgentOutcome,
-  MayCreateAgents,
   ProposeRulesOutcome,
   AgentOwnNotesOutcome,
   AgentRulesOutcome,
@@ -27,7 +26,6 @@ export type {
   UpdateWorkOutcome,
   TakeOnWorkOutcome,
   CreateAgentOutcome,
-  MayCreateAgents,
   ProposeRulesOutcome,
   AgentOwnNotesOutcome,
   AgentRulesOutcome,
@@ -19906,15 +19904,7 @@ export class RuntimeHost implements LiveHost {
           : conversation === null
             ? 'not-yet-numbered'
             : (this.deps.store.rootOf(conversation)?.label ?? 'not-yet-numbered'),
-      // ⚑ **Read here rather than in the composer**, for the reason every other field on this
-      // object is: the bundle is a pure function of what this method hands it, and a compiler that
-      // reached into the store would be a second reader of a fact one of them would eventually get
-      // from a different moment.
-      spawningEnabled: this.deps.store.spawnPolicy().spawningEnabled,
-      // ⚑ A service's profile, while services are on, gets the service text after the core.
-      ...(profileSlug !== null &&
-      this.servicesAreOn() &&
-      this.theServiceAgent(profileSlug).is === 'service'
+      ...(profileSlug !== null && this.theServiceAgent(profileSlug).is === 'service'
         ? { isAService: true as const }
         : {}),
       /**
@@ -33552,17 +33542,12 @@ export class RuntimeHost implements LiveHost {
     return this.agentCreation.createAgentFor(me, said, by, itsOwnRules, itsDefault)
   }
 
-  mayCreateAgents(me: string): MayCreateAgents {
-    return this.agentCreation.mayCreateAgents(me)
-  }
-
   private readonly agentCreation: AgentCreation = new AgentCreation({
     store: () => this.deps.store,
     profileOf: (conversation) =>
       this.runningAs(conversation)?.profileId ??
       this.deps.store.recordedOne(conversation)?.profileId ??
       null,
-    servicesAreOn: () => this.servicesAreOn(),
     keepItAsAService: (created) => this.keepItAsAService(created),
     theProviderOfConversation: (conversation) => this.theProviderOfConversation(conversation),
     rulesAuthor: (me, by) => this.rulesAuthor(me, by),
