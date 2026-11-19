@@ -33,7 +33,7 @@ describe('a person moves the stored request', () => {
     world = aServiceWorld()
     world.anAgent('source', 'normal')
     world.anAgent('target', 'normal')
-    host = world.aHost({ servicesOn: false })
+    host = world.aHost()
     source = await world.aPersonOpens(host, 'source')
     target = await world.aPersonOpens(host, 'target')
     await host.send(source, ORIGINAL, world.window)

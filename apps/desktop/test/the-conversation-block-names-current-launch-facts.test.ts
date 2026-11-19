@@ -6,7 +6,6 @@ const context = (over: Partial<InstructionContext> = {}): InstructionContext => 
   profileSlug: 'fictional-agent',
   cwd: '/tmp/fictional-work',
   startedBy: null,
-  spawningEnabled: true,
   root: null,
   others: { shown: [], more: 0 },
   ...over,
