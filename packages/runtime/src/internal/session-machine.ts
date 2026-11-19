@@ -2,6 +2,7 @@ import type { SessionStatus } from '@brobot2/shared'
 import type { ProviderTurnFailure, RuntimeEvent, TurnLimit } from '../events'
 import type { SessionRef } from '../session-ref'
 import { TURN_REFUSED, TurnInProgress } from '../turn-in-progress'
+import { providerTurnEnding } from './provider-turn-ending'
 
 /**
  * The single session/turn state machine shared by Fake + both adapters (008,
@@ -585,14 +586,15 @@ export class SessionMachine {
       // provider drew this boundary with its own `result`. ⛔ Until F080 it wrote none, so a burst
       // had no turn in the ledger at all.
       this.endBurst()
-      this.sayTheEnding(
+      for (const event of providerTurnEnding(
         providerOutcome,
         errorMessage,
         limit,
         { startedBy: 'the-provider' },
         refused,
         providerFailure,
-      )
+      ))
+        this.say(event)
       this.sync()
       return
     }
@@ -611,45 +613,16 @@ export class SessionMachine {
       return
     }
     const ended = this.takeTurn()
-    this.sayTheEnding(
+    for (const event of providerTurnEnding(
       providerOutcome,
       errorMessage,
       limit,
       endingMarksOf(ended),
       refused,
       providerFailure,
-    )
+    ))
+      this.say(event)
     this.sync()
-  }
-
-  /** A provider terminal, said: a failure's reason first, then the `turn` row. */
-  private sayTheEnding(
-    outcome: TurnOutcome,
-    errorMessage: string | undefined,
-    limit: TurnLimit | undefined,
-    marks: ReturnType<typeof endingMarksOf>,
-    /** ⚑ **F076** — on a `failed` row only, as {@link terminalizeErrored} says it. */
-    refused: RefusedLoginSaid = {},
-    providerFailure?: ProviderTurnFailure,
-  ): void {
-    if (outcome === 'failed') {
-      this.say({ type: 'error', message: errorMessage ?? 'turn failed', fatal: false })
-      this.say({
-        type: 'turn',
-        state: 'failed',
-        ...(providerFailure === undefined ? {} : { providerFailure }),
-        ...(limit === undefined ? {} : { limit }),
-        ...(refused.loginRefused === true ? { loginRefused: true } : {}),
-        ...(refused.billingRefused === true ? { billingRefused: true } : {}),
-        ...((refused.loginRefused === true || refused.billingRefused === true) &&
-        refused.onAKey === true
-          ? { onAKey: true }
-          : {}),
-        ...marks,
-      })
-    } else {
-      this.say({ type: 'turn', state: outcome, ...marks })
-    }
   }
 
   /**
