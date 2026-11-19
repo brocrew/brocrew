@@ -268,8 +268,11 @@ export interface SessionHandle {
   /** Ask the provider for its account: undefined is unreported and null is no named account. */
   account?(): SessionAccount | null | undefined
 
-  /** Start a turn with known authorship; adapters map only provenance fields their provider supports. */
-  send(text: string, origin?: TurnProvenance): Promise<void>
+  /**
+   * Start a turn with known authorship. The optional observer runs once when this input reaches
+   * the provider's input queue or the provider accepts its request, even if send resolved earlier.
+   */
+  send(text: string, origin?: TurnProvenance, onInputAccepted?: () => void): Promise<void>
 
   /** Retry a repaired empty-input turn without inserting its already-recorded message a second time. */
   carryOn?(): Promise<void>

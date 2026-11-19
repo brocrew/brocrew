@@ -1727,7 +1727,7 @@ export class ClaudeSessionHandle implements SessionHandle {
     return this._signInSuperseded
   }
 
-  async send(text: string, origin?: TurnProvenance): Promise<void> {
+  async send(text: string, origin?: TurnProvenance, onInputAccepted?: () => void): Promise<void> {
     const turnId = this.machine.beginTurn()
 
     if (turnId === null) throw this.machine.refusedTurn()
@@ -1756,6 +1756,7 @@ export class ClaudeSessionHandle implements SessionHandle {
       uuid,
       ...(stamped === undefined ? {} : { origin: stamped }),
     })
+    onInputAccepted?.()
   }
 
   private async settled(call: Promise<void> | undefined, what: string): Promise<void> {

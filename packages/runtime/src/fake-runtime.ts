@@ -435,7 +435,7 @@ export class FakeSessionHandle implements SessionHandle {
     }
   }
 
-  async send(text: string, origin?: TurnProvenance): Promise<void> {
+  async send(text: string, origin?: TurnProvenance, onInputAccepted?: () => void): Promise<void> {
     const turnId = this.machine.beginTurn()
     // ⚑ **Which half of the `null` it was, as a type** (650) — the double refuses the way both
     // real adapters do, because it is what the host's classification is tested against.
@@ -451,6 +451,7 @@ export class FakeSessionHandle implements SessionHandle {
     this.efforts.adopt()
     this.plan.adopt()
     this.folders.adopt()
+    onInputAccepted?.()
     void this.driveTurn(text, turnId).catch((error: unknown) => this.fatal(String(error)))
   }
 

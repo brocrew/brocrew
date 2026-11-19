@@ -1208,6 +1208,12 @@ import {
 } from './question-rails'
 import { admitInterrupt } from './interrupt-rails'
 import { explicitStopWords, stopTurn, type ExplicitStopNotice } from './stop-turn'
+import {
+  compactConversation,
+  type CompactConversationInput,
+  type CompactConversationOutcome,
+  type CompactionRequest,
+} from './compact-conversation'
 import { distilSkipping } from './digest'
 import { MAX_DIGEST_SPAN_MS, WINDOW_WAS_CHOSEN, type DigestReading } from '../../shared/digest'
 import { newQueuedMessageId, queuedDisclosure } from './queued-message'
@@ -1974,6 +1980,15 @@ interface WhoseTurnItIs {
   readonly names: readonly string[]
 }
 
+interface ProviderHandover {
+  readonly accepted: Promise<void>
+  noteInputRecorded?(): void
+}
+
+function isRunnableHeldMessage(message: Pick<QueuedMessage, 'authorship'>): boolean {
+  return message.authorship.appNotice !== 'a-conversation-was-compacted'
+}
+
 interface HostedSession {
   readonly workAncestry: WorkAncestryRead
   workAncestryAfter: number
@@ -2176,9 +2191,12 @@ interface HostedSession {
    * `RuntimeHost.deliver`. ⚑ On Codex the tools' instructions ride it alone — its catalogue cannot
    * hold them — so a life that lost it would run on without them. ⚠️ A send the adapter refuses
    * before it begins a turn still takes it unless the adapter proves top-level StoppedBeforeSend;
-   * that exact handover restores its consumed lead through keepLeadWhenUnsent.
+   * that exact handover restores its consumed lead through sendOrdinaryInput.
    */
   firstTurnLead: string | null
+  explicitCompaction?: CompactionRequest
+  /** Confirmed notices that ride ordinary input instead of driving their own turn. */
+  readonly confirmedCompactionNotices: QueuedMessage[]
   /**
    * ⚑ **W4.179 — what {@link firstTurnLead} is**: the whole of this conversation's text, or only the
    * sections that changed since its Codex thread got it (`codex-lead.ts`).
@@ -8665,7 +8683,7 @@ export class RuntimeHost implements LiveHost {
       const kind = this.theServiceOf(service)
       if (kind === null || kind === 'unknown') return
       if (this.theQueueOf(service)?.blocking.length !== 1) return
-      if (this.deps.store.messagesWaitingIn(service).length === 0) return
+      if (!this.deps.store.messagesWaitingIn(service).some(isRunnableHeldMessage)) return
     } catch (error) {
       console.warn(`runtime host could not read what waits for ${service}: ${errorMessage(error)}`)
       return
@@ -19921,7 +19939,7 @@ export class RuntimeHost implements LiveHost {
     const unread = answer === undefined ? own : notedInBoth(own, answer)
     try {
       const waiting = this.deps.store.messagesWaitingIn(holder, unread)
-      return waiting.length === 0 && own.count === 0 && own.ledgersSkipped === 0
+      return !waiting.some(isRunnableHeldMessage) && own.count === 0 && own.ledgersSkipped === 0
     } catch (error) {
       skipTheLedger(holder, error, unread.in(holder))
       return false
@@ -21286,6 +21304,23 @@ export class RuntimeHost implements LiveHost {
     return this.deps.readProviderConfig(session.provider, session.providerHome)
   }
 
+  private beginImmediateMoveHandoff(
+    session: HostedSession,
+    by: Caller,
+    turn: UserTurnEvent,
+  ): object {
+    if (
+      aPersonIsAsking(by) &&
+      sessionSpeakingAs(by) === null &&
+      TURN_ATTRIBUTION_KEYS.every((key) => turn[key] === undefined)
+    )
+      this.declineMoveOffersFromText(session.id, by)
+    return this.beginMoveHandoff(
+      session,
+      TURN_ATTRIBUTION_KEYS.every((key) => key === 'movedFrom' || turn[key] === undefined),
+    )
+  }
+
   private beginMoveHandoff(session: HostedSession, person: boolean): object {
     const handoff = {}
     session.moveRequestHandoff = handoff
@@ -21396,7 +21431,7 @@ export class RuntimeHost implements LiveHost {
     decided?: WhatTheGateDecided,
     /** Set when somebody asked for this conversation's running turn to be stopped to read these words now. */
     interrupting?: AStopAskedFor,
-  ): Promise<void> {
+  ): ProviderHandover {
     // ⚑ Whose words open the turn, from the moment they are handed over, before its row lands.
     session.aPersonsWordsOpenedIt = from?.who === 'a-person'
     // ⚑ Whose turn these words are, for the stops that read it: written just before
@@ -21425,7 +21460,7 @@ export class RuntimeHost implements LiveHost {
     // ordering reason below: the person's `/compact` row lands before the compaction does.
     if (session.handle.compact !== undefined && aPersonsCompaction(text, from) !== null) {
       this.aTurnIsHandedOver(session, whose, askedForTheStop)
-      return session.handle.compact()
+      return { accepted: session.handle.compact() }
     }
     // 🔴 **708 · `R42` — a person's command goes to the provider exactly as typed.** See
     // `a-command-goes-as-typed.ts`, which holds the ruling whole.
@@ -21463,7 +21498,7 @@ export class RuntimeHost implements LiveHost {
       session.handle.setWorkFolders(this.theWorkFoldersFor(session, []))
       const kept = this.aTurnIsHandedOver(session, whose, askedForTheStop)
       try {
-        return session.handle.send(text, this.stampFor(from, handed))
+        return { accepted: session.handle.send(text, this.stampFor(from, handed)) }
       } catch (error) {
         session.itsTurnIs = kept
         throw error
@@ -21493,7 +21528,14 @@ export class RuntimeHost implements LiveHost {
     // (it goes as typed, above), so a person's command on a fresh life leaves it for the next turn.
     const owedLead = session.firstTurnLead
     const owedLeadIs = session.firstTurnLeadIs
-    const words = this.withWhatThisLifeOwes(session, framed, drives ?? handing?.piece ?? null)
+    const compactionNotices =
+      authorship.appNotice === undefined ? session.confirmedCompactionNotices.slice() : []
+    const words = this.withWhatThisLifeOwes(
+      session,
+      framed,
+      drives ?? handing?.piece ?? null,
+      compactionNotices,
+    )
     // 🔴 **W4.189** — the folders this turn may also work in, the piece it hands over among them.
     session.handle.setWorkFolders(
       this.theWorkFoldersFor(session, handing === null ? [] : [handing]),
@@ -21510,9 +21552,11 @@ export class RuntimeHost implements LiveHost {
     // promise keeps the timing every caller had before `662`.
     const kept = this.aTurnIsHandedOver(session, whose, askedForTheStop)
     try {
-      return this.keepLeadWhenUnsent(session, owedLead, owedLeadIs, () =>
-        session.handle.send(words, this.stampFor(from, handed)),
-      )
+      return this.sendOrdinaryInput(session, owedLead, owedLeadIs, {
+        words,
+        stamp: this.stampFor(from, handed),
+        compactionNotices,
+      })
     } catch (error) {
       session.itsTurnIs = kept
       throw error
@@ -21561,7 +21605,7 @@ export class RuntimeHost implements LiveHost {
   private handTogetherToProvider(
     session: HostedSession,
     messages: readonly OneMessageOfATurn[],
-  ): Promise<void> {
+  ): ProviderHandover {
     // ⚑ Whose words open the turn, from the moment they are handed over, before its row lands.
     session.aPersonsWordsOpenedIt = messages.some(({ queued }) => queued.origin?.who === 'a-person')
     // ⚑ **F093 · R2** — the words this turn frames ({@link HostedSession.wordsItWasHandedFor}).
@@ -21612,10 +21656,17 @@ export class RuntimeHost implements LiveHost {
     const nothingRuns = session.handle.status() === 'idle'
     const owedLead = session.firstTurnLead
     const owedLeadIs = session.firstTurnLeadIs
-    const words = this.withWhatThisLifeOwes(session, turn, currentPiece)
-    const sent = this.keepLeadWhenUnsent(session, owedLead, owedLeadIs, () =>
-      session.handle.send(words, this.stampForATurnOf(messages)),
+    const compactionNotices = messages.some(
+      ({ queued }) => queued.authorship.appNotice === undefined,
     )
+      ? session.confirmedCompactionNotices.slice()
+      : []
+    const words = this.withWhatThisLifeOwes(session, turn, currentPiece, compactionNotices)
+    const handover = this.sendOrdinaryInput(session, owedLead, owedLeadIs, {
+      words,
+      stamp: this.stampForATurnOf(messages),
+      compactionNotices,
+    })
     this.aTurnIsHandedOver(
       session,
       {
@@ -21625,7 +21676,7 @@ export class RuntimeHost implements LiveHost {
       messages.some(({ queued }) => queued.interrupting !== undefined),
       nothingRuns,
     )
-    return sent
+    return handover
   }
 
   /**
@@ -21710,7 +21761,8 @@ export class RuntimeHost implements LiveHost {
   private withWhatThisLifeOwes(
     session: HostedSession,
     said: string,
-    currentPiece: string | null = null,
+    currentPiece: string | null,
+    compactionNotices: readonly QueuedMessage[],
   ): string {
     // ⚑ …and this app's own block last, after the message ({@link whatThisAppAddsAtItsEnd}).
     const plugins = pluginInstructionSection(readPluginInstructions(this.deps.plugins))
@@ -21720,7 +21772,7 @@ export class RuntimeHost implements LiveHost {
       !session.firstTurnLead?.includes(plugins)
         ? `\n\n${whatChangedBlock([plugins])}`
         : ''
-    const words = `${this.withWhatThisLifeStillOwes(session, said)}${refresh}\n\n${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
+    const words = `${this.withWhatThisLifeStillOwes(session, said, compactionNotices)}${refresh}\n\n${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     // ⚑ **F093 · R2 — the whole text, kept for the turn's row** ({@link HostedSession.wordsJustHandedOver}):
     // both doors that frame words compose their last step here, just before the hand-over.
     session.wordsJustHandedOver = words
@@ -21827,13 +21879,17 @@ export class RuntimeHost implements LiveHost {
     return framed.every((one, at) => one === words[at]) ? { sent } : {}
   }
 
-  /** Restore only this handover's consumed lead when the adapter proves no input was sent. */
-  private keepLeadWhenUnsent(
+  /** Keep the adapter's own send promise and tie the notice receipt to this input. */
+  private sendOrdinaryInput(
     session: HostedSession,
     lead: string | null,
     is: LeadInFront['is'],
-    send: () => Promise<void>,
-  ): Promise<void> {
+    input: {
+      words: string
+      stamp: TurnProvenance | undefined
+      compactionNotices: readonly QueuedMessage[]
+    },
+  ): ProviderHandover {
     const consumed = session.leadJustHandedOver
     const restore = (error: unknown) => {
       if (
@@ -21848,19 +21904,42 @@ export class RuntimeHost implements LiveHost {
         session.leadJustHandedOver = null
       }
     }
+    const { words, stamp, compactionNotices } = input
+    let inputAccepted = false
+    let inputRecorded = false
+    const noteNotices = () => {
+      if (inputAccepted && inputRecorded) this.noteCompactionNoticesSent(session, compactionNotices)
+    }
     try {
-      const sent = send()
+      const accepted =
+        compactionNotices.length === 0
+          ? session.handle.send(words, stamp)
+          : session.handle.send(words, stamp, () => {
+              inputAccepted = true
+              noteNotices()
+            })
       // Observe refusal without adding an await or replacing the original success promise.
-      void sent.catch(restore)
-      return sent
+      void accepted.catch(restore)
+      return {
+        accepted,
+        noteInputRecorded() {
+          inputRecorded = true
+          noteNotices()
+        },
+      }
     } catch (error) {
       restore(error)
       throw error
     }
   }
 
-  private withWhatThisLifeStillOwes(session: HostedSession, said: string): string {
+  private withWhatThisLifeStillOwes(
+    session: HostedSession,
+    said: string,
+    notices: readonly QueuedMessage[],
+  ): string {
     let words = this.withWhatItsLastStopEnded(session, said)
+    if (notices.length > 0) words = `${notices.map((one) => one.text).join('\n\n')}\n\n${words}`
     const stop = session.explicitStopNotice
     if (stop !== null) {
       session.explicitStopSaid = stop
@@ -22302,18 +22381,10 @@ export class RuntimeHost implements LiveHost {
     // {@link queueAs}, whose held branch keeps the same.
     const about =
       this.originOf(by)?.who === 'a-caller-with-an-id' ? (facts.aboutPiece?.piece ?? null) : null
-    if (
-      aPersonIsAsking(by) &&
-      sessionSpeakingAs(by) === null &&
-      TURN_ATTRIBUTION_KEYS.every((key) => turn[key] === undefined)
-    )
-      this.declineMoveOffersFromText(session.id, by)
-    const moveHandoff = this.beginMoveHandoff(
-      session,
-      TURN_ATTRIBUTION_KEYS.every((key) => key === 'movedFrom' || turn[key] === undefined),
-    )
+    const moveHandoff = this.beginImmediateMoveHandoff(session, by, turn)
     const personalWorkTurnBefore = session.personalWorkTurn
     const personalHandover = session.personalHandover + 1
+    let handover: ProviderHandover
     try {
       // ⛔ A caller's words go straight in to a service only while it is still on that caller's
       // piece, asked again after the gate's waits, in the tick they are handed over: else they lose
@@ -22321,7 +22392,7 @@ export class RuntimeHost implements LiveHost {
       if (facts.messageAct === undefined && this.aCallersWordsNoLongerGoStraightIn(sessionId, by)) {
         throw new TurnInProgress()
       }
-      await this.handToProvider(
+      handover = this.handToProvider(
         session,
         text,
         handed.paths,
@@ -22331,6 +22402,7 @@ export class RuntimeHost implements LiveHost {
         this.originOf(by),
         turn,
       )
+      await handover.accepted
     } catch (error) {
       if (error instanceof TurnInProgress && session.personalHandover === personalHandover)
         session.personalWorkTurn = personalWorkTurnBefore
@@ -22377,6 +22449,7 @@ export class RuntimeHost implements LiveHost {
     // saying "from your next message" and start saying what the session is now doing.
     this.publishStateIfChanged(session)
     this.publishOurs(session, turn, undefined, moveHandoff, personalHandover)
+    handover.noteInputRecorded?.()
   }
 
   /**
@@ -23242,20 +23315,12 @@ export class RuntimeHost implements LiveHost {
       // being the reason.
       ...whoseWordsTheseAre(by, this.profileOf),
     }
-    if (
-      aPersonIsAsking(by) &&
-      sessionSpeakingAs(by) === null &&
-      TURN_ATTRIBUTION_KEYS.every((key) => turn[key] === undefined)
-    )
-      this.declineMoveOffersFromText(session.id, by)
-    const moveHandoff = this.beginMoveHandoff(
-      session,
-      TURN_ATTRIBUTION_KEYS.every((key) => key === 'movedFrom' || turn[key] === undefined),
-    )
+    const moveHandoff = this.beginImmediateMoveHandoff(session, by, turn)
     const personalWorkTurnBefore = session.personalWorkTurn
     const personalHandover = session.personalHandover + 1
+    let handover: ProviderHandover
     try {
-      await this.handToProvider(
+      handover = this.handToProvider(
         session,
         text,
         handed.paths,
@@ -23266,6 +23331,7 @@ export class RuntimeHost implements LiveHost {
         turn,
         decided,
       )
+      await handover.accepted
     } catch (error) {
       if (error instanceof TurnInProgress && session.personalHandover === personalHandover)
         session.personalWorkTurn = personalWorkTurnBefore
@@ -23308,6 +23374,7 @@ export class RuntimeHost implements LiveHost {
     // refused to send while a turn ran — so no user could reach it, and nobody noticed.
     this.publishStateIfChanged(session)
     this.publishOurs(session, turn, undefined, moveHandoff, personalHandover)
+    handover.noteInputRecorded?.()
   }
 
   /**
@@ -27581,6 +27648,7 @@ export class RuntimeHost implements LiveHost {
     const personalWorkTurnBefore = session.personalWorkTurn
     let personalHandover: number | undefined
     let moveHandoff: object | undefined
+    let handover: ProviderHandover
     try {
       // ⚠️ **The one turn that starts without anybody pressing anything, and therefore the one that
       // most needs the gate** (147). A message queued before the machine credential moved would
@@ -27708,20 +27776,22 @@ export class RuntimeHost implements LiveHost {
               (key) => key === 'movedFrom' || one.queued.authorship[key] === undefined,
             ),
         )
-        if (sending.length === 1 && one !== undefined) {
-          await this.handToProvider(
-            session,
-            one.words,
-            one.handed.paths,
-            one.handing,
-            one.queued.drives ?? null,
-            one.queued.about ?? null,
-            one.queued.origin ?? null,
-            one.queued.authorship,
-            undefined,
-            one.queued.interrupting,
-          )
-        } else await this.handTogetherToProvider(session, sending)
+        handover =
+          sending.length === 1 && one !== undefined
+            ? this.handToProvider(
+                session,
+                one.words,
+                one.handed.paths,
+                one.handing,
+                one.queued.drives ?? null,
+                one.queued.about ?? null,
+                one.queued.origin ?? null,
+                one.queued.authorship,
+                undefined,
+                one.queued.interrupting,
+              )
+            : this.handTogetherToProvider(session, sending)
+        await handover.accepted
       } finally {
         session.handingOver = []
       }
@@ -27847,6 +27917,7 @@ export class RuntimeHost implements LiveHost {
         moveHandoff,
         personalHandover,
       )
+      handover.noteInputRecorded?.()
       return false
     }
     const { queued, words, handed } = alone
@@ -27889,6 +27960,7 @@ export class RuntimeHost implements LiveHost {
       moveHandoff,
       personalHandover,
     )
+    handover.noteInputRecorded?.()
     return false
   }
 
@@ -28014,6 +28086,10 @@ export class RuntimeHost implements LiveHost {
     const waiting: QueuedMessage[] = []
     for (const row of open) {
       const queued = inThisRun.get(row.messageId) ?? this.rebuiltFromItsRow(row)
+      if (queued.authorship.appNotice === 'a-conversation-was-compacted') {
+        session.confirmedCompactionNotices.push(queued)
+        continue
+      }
       const gone = this.whyItNoLongerGoes(session.id, queued)
       if (gone === null) {
         waiting.push(queued)
@@ -29273,6 +29349,93 @@ export class RuntimeHost implements LiveHost {
         stillRunningIn: (conversation) => this.whatStillRunsIn(conversation),
       },
     )
+  }
+
+  compactConversation(input: CompactConversationInput): Promise<CompactConversationOutcome> {
+    return compactConversation<HostedSession>(input, {
+      currentConversation: (id) => this.theOneInItsPlace(id),
+      running: (id) => (this.runsNow(id) ? (this.slots.get(id)?.session ?? null) : null),
+      recorded: (id) => this.deps.store.recordedOne(id) !== null,
+      display: (id) => describeConversation(this.deps.store, id, this.itIsAService(id)).line,
+      idle: (session) =>
+        session.handle.status() === 'idle' &&
+        !session.turnOpened &&
+        !this.stopsOnTheirWay.has(session) &&
+        session.flushing === null &&
+        session.handingOver.length === 0 &&
+        session.mailbox.length === 0 &&
+        session.explicitCompaction === undefined,
+      checkSignIn: (session) => this.assertSignInCurrent(session, 'send'),
+      providerCommands: (session) => this.theCommandsItAnswersTo(session),
+      request: (session, requestedBy, run) =>
+        this.requestNativeCompaction(session, requestedBy, run),
+      reportFailure: (id, error) => {
+        console.warn(`runtime host could not request compaction in ${id}: ${errorMessage(error)}`)
+      },
+    })
+  }
+
+  private async requestNativeCompaction(
+    session: HostedSession,
+    requestedBy: CompactionRequest,
+    run: () => Promise<void>,
+  ): Promise<void> {
+    session.explicitCompaction = requestedBy
+    const previous = this.aTurnIsHandedOver(session, { aPersons: false, names: [] }, false)
+    session.wordsItWasHandedFor = []
+    session.wordsJustHandedOver = null
+    try {
+      await run()
+    } catch (error) {
+      if (session.explicitCompaction === requestedBy) {
+        delete session.explicitCompaction
+        session.itsTurnIs = previous
+      }
+      throw error
+    }
+  }
+
+  private tellItWhatCompactedIt(session: HostedSession, request: CompactionRequest): void {
+    const actor = this.whatToCallTheConversation(request.agent)
+    const { line: address } = describeConversation(
+      this.deps.store,
+      request.agent,
+      this.itIsAService(request.agent),
+    )
+    const text = `${actor}, ${address}, compacted this conversation: ${request.reason}.`
+    const { held, row } = this.wordsThisAppHolds(
+      session.id,
+      text,
+      { appNotice: 'a-conversation-was-compacted' },
+      'notice',
+    )
+    // Keep the caption and reason in the ledger without opening the runnable mailbox.
+    this.publishOurs(session, row)
+    session.confirmedCompactionNotices.push(held)
+  }
+
+  private noteCompactionNoticesSent(
+    session: HostedSession,
+    notices: readonly QueuedMessage[],
+  ): void {
+    for (const notice of notices) {
+      const index = session.confirmedCompactionNotices.indexOf(notice)
+      if (index < 0) continue
+      try {
+        this.publishOurs(session, {
+          type: 'message_unqueued',
+          messageId: notice.id,
+          reason: 'sent',
+          text: notice.text,
+          ...notice.authorship,
+        })
+        session.confirmedCompactionNotices.splice(index, 1)
+      } catch (error) {
+        console.warn(
+          `runtime host could not record a sent compaction notice for ${session.id}: ${errorMessage(error)}`,
+        )
+      }
+    }
   }
 
   /**
@@ -38613,6 +38776,7 @@ export class RuntimeHost implements LiveHost {
         ? this.explicitNoticeFromItsLastTurn(id)
         : null,
       explicitStopSaid: null,
+      confirmedCompactionNotices: [],
       askedSinceItsLastTurnEnded: new Set<string>(),
       questionsAStopEndedUntold: options.continuesARecording
         ? this.theQuestionsTheStopOfItsLastTurnEnded(id)
@@ -40222,7 +40386,8 @@ export class RuntimeHost implements LiveHost {
       const slot = this.slots.get(id)
       const starting = slot !== undefined && slot.session === null && !onItsWayOut(slot)
       if (starting || this.runsNow(id) || !this.itIsAService(id)) return null
-      return this.deps.store.messagesWaitingIn(id).length > 0 ? THEY_WAIT_FOR_SERVICES : null
+      const waits = this.deps.store.messagesWaitingIn(id).some(isRunnableHeldMessage)
+      return waits ? THEY_WAIT_FOR_SERVICES : null
     } catch (error) {
       console.warn(`runtime host could not read what waits for ${id}: ${errorMessage(error)}`)
       return null
@@ -41069,6 +41234,19 @@ export class RuntimeHost implements LiveHost {
       // hole in the ledger of every unattended child. ⛔ Sending it from up there would put ordinal
       // `N+1` on the wire before `N`, which is the disorder `320` measured and closed.
       if (routed !== null) this.emit(session, routed)
+    }
+    if (session.explicitCompaction !== undefined) {
+      if (
+        event.type === 'compaction' &&
+        event.trigger === 'manual' &&
+        event.parentToolCallId === undefined
+      ) {
+        const request = session.explicitCompaction
+        delete session.explicitCompaction
+        keepGoing(() => this.tellItWhatCompactedIt(session, request), undefined)
+      } else if (event.type === 'turn') {
+        delete session.explicitCompaction
+      }
     }
     for (const error of failures.splice(0)) this.showWriteFailure(session, error)
     // A queued message goes when the turn it was waiting behind ends (077).

@@ -189,6 +189,7 @@ export const TOOL_NAMES = [
   'write_agent_rules',
   'read_own_notes',
   'write_own_notes',
+  'compact_agent',
   'rename_conversation',
 ] as const
 

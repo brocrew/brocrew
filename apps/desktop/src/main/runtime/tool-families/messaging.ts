@@ -7,7 +7,7 @@ import {
 } from '@brobot2/runtime'
 import { type AgentToolHost } from './host'
 import { type Caller } from '../conversation-caller'
-import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
+import { providerDescriptor, PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import type { ToolName } from './catalog'
 import {
   aMessageAboutAQueuedPiece,
@@ -26,6 +26,77 @@ import { randomUUID } from 'node:crypto'
 import { theStoppedWork } from '../reply-rails'
 import { workRequestRefused } from '../spawn-rails'
 import { z } from 'zod'
+
+export function createCompactAgentTool(
+  host: Pick<AgentToolHost, 'compactConversation' | 'theConversationAddressed'>,
+  by: Caller,
+  me: string,
+  guarded: (run: () => Promise<AgentToolAnswer>) => Promise<AgentToolAnswer>,
+): AgentToolDefinition & { readonly name: 'compact_agent' } {
+  return {
+    name: 'compact_agent',
+    handlerOwnsMissingInput: true,
+    description:
+      "Request compaction of a conversation's context with its provider's own compaction, by any of its labels. Any conversation may; give the reason. The first answer acknowledges the request. When the provider confirms manual compaction, the notice of who requested it and why waits for the conversation's next ordinary input. Use it when get_agent_status shows a high context size and more work is coming.",
+    beyondItsRails: 'nothing-its-rails-do-not-cover',
+    input: {
+      agent: agentToolHandlerInput(z.string().describe('The conversation, by any of its labels.')),
+      reason: agentToolHandlerInput(z.string().describe('Why you are asking for compaction.')),
+    },
+    call: (args) =>
+      guarded(async () => {
+        const { agent, reason } = toolArgumentsAtHandler(args)
+        if (
+          typeof agent !== 'string' ||
+          typeof reason !== 'string' ||
+          !agent.trim() ||
+          !reason.trim()
+        ) {
+          return refusalAnswer(
+            refuseTool('malformed-request', { problems: ['agent and reason are both required'] }),
+          )
+        }
+        const conversation = host.theConversationAddressed(agent, by, me, 'interrupting')
+        const result = await host.compactConversation({ conversation, agent: me, reason })
+        if (result.ok) {
+          return answer(
+            { outcome: 'ok', agent: result.conversation, requested: true },
+            `Compaction requested for ${result.display}.`,
+          )
+        }
+        if (result.refusal === 'no-such-agent') {
+          return refusalAnswer(refuseTool('no-such-agent', { agent }))
+        }
+        let text: string
+        switch (result.refusal) {
+          case 'compaction-target-busy':
+            text = `Not compacted: ${result.display} is busy. Wait until it is idle, then try again.`
+            break
+          case 'compaction-target-not-running':
+            text = `Not compacted: ${result.display} has no running provider to compact. Open it and wait until it is idle, then try again.`
+            break
+          case 'compaction-unavailable':
+            text = `Not compacted: ${providerDescriptor(result.provider).displayName} offers no compaction for this conversation: its current commands do not include compaction.`
+            break
+          case 'compaction-request-failed':
+            text = `Not compacted: ${result.display} could not start compaction. See its status and try again when it is idle.`
+            break
+        }
+        return answer(
+          {
+            outcome: 'refused',
+            rail: result.refusal,
+            reason: text,
+            permanence: 'while-this-holds',
+            retryable: true,
+            remedy: null,
+            detail: { agent },
+          },
+          text,
+        )
+      }),
+  }
+}
 
 interface MessageAgentArguments {
   /** The receiving agent. */
