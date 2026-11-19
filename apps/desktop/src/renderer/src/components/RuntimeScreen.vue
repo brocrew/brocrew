@@ -217,6 +217,7 @@ import { THE_COMPACT_COMMAND } from '../lib/compaction-offer'
 import { type WorkGivenOutReading } from '../lib/work-given-out'
 import type {
   ConversationIdentity,
+  ConversationIdentityBatchInput,
   ConversationRenameInput,
 } from '../../../shared/conversation-title'
 import { filesReadFor } from '../lib/files-kept'
@@ -720,6 +721,12 @@ async function openMessageDestination(answer: ResolvedMessageLink): Promise<bool
 
 function searchConversations(conversation: string, query: WorkSearchQuery) {
   return window.api.runtime.searchWork({ conversation, query })
+}
+
+function readRailIdentities(input: ConversationIdentityBatchInput) {
+  return appClosing.value
+    ? Promise.resolve([])
+    : window.api.runtime.readConversationIdentities(input)
 }
 
 async function openFoundConversation(id: string): Promise<void> {
@@ -3847,6 +3854,8 @@ onUnmounted(() => {
           @fold="railFold.toggle()"
           @new-conversation="place = 'new'"
           @select="select"
+          :read-identities="readRailIdentities"
+          :identity-revision="workRevision"
           :search-conversations="searchConversations"
           @read-conversation="openFoundConversation"
           @go="

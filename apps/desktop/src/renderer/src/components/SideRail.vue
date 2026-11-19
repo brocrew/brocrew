@@ -35,6 +35,12 @@ import {
   type ListedConversation,
 } from '../lib/conversation-list'
 import { OPEN_IN_ANOTHER_WINDOW } from '../lib/taking-over'
+import { agoWords, fullTime } from '../lib/clock'
+import {
+  CONVERSATION_IDENTITY_BATCH_SIZE,
+  type ConversationIdentity,
+  type ConversationIdentityBatchInput,
+} from '../../../shared/conversation-title'
 import type { WorkSearchQuery, WorkSearchResult } from '../../../shared/work-search'
 import type { PaletteAgent, PaletteNavigation, PaletteOpenRow } from '../lib/command-palette'
 import type { AgentIdentities } from '../../../shared/runtime-ipc'
@@ -191,6 +197,10 @@ const props = withDefaults(
     waiting?: WhatEachConversationIsWaitingOn | null
     /** Collapsed to its icons, and each conversation to its avatar and work label. */
     collapsed?: boolean
+    readIdentities?: (
+      input: ConversationIdentityBatchInput,
+    ) => Promise<readonly ConversationIdentity[]>
+    identityRevision?: number
     searchConversations?: (
       conversation: string,
       query: WorkSearchQuery,
@@ -498,6 +508,7 @@ function placeOf(record: SessionRecord): string | null {
 
 /** ⚑ **D-017b · one row of the one list** — the same markup and the same press, whatever it is doing. */
 interface RailRow extends PaletteOpenRow {
+  readonly activityAt?: number
   readonly worker?: ListedConversation['worker']
   readonly facets: AgentFacets
   readonly detail?: string
@@ -506,21 +517,7 @@ interface RailRow extends PaletteOpenRow {
   readonly elsewhere: boolean
 }
 
-/**
- * ⚑ **D-017b · every conversation, described ONCE per render, newest first** — the ones this window
- * is fed from their own records, every other from the host's list (the one on screen included,
- * when it is drawn from its ledger: the host's row is what the list admits).
- *
- * ⚠️ **A row held here keeps its record's derivation** (099): the mark and the word come from ONE
- * `facets` call — the mark takes the object, the word takes {@link standingWord} of it — so the row
- * is one answer in two registers. ⚑ **Every other row draws the one state the host says of it**
- * ({@link facetsOfState}, {@link agentStateWords}) — the same state `list_agents` says. ⛔ No row
- * says whether a process runs (`05` rule 5); ⚑ it says `open in another window` where that is true,
- * because a message from here is refused there.
- *
- * ⚑ **Order**: newest activity first, by the host's row; a conversation the host has not listed yet
- * (a launch whose row is being written) goes first.
- */
+/** Local records supply live state. Other rows and activity order come from the host listing. */
 const rows = computed<RailRow[]>(() => {
   const byHost = new Map(listed.value.map((row) => [row.sessionId, row]))
   const shown = props.onScreen
@@ -562,12 +559,10 @@ const rows = computed<RailRow[]>(() => {
       row: {
         ...(worker ? { worker } : {}),
         sessionId: record.sessionId,
+        activityAt: host?.updatedAt,
         provider: record.meta?.provider ?? null,
         facets,
         standing,
-        // ⛔ **The word the row SHOWS** (203) — ⚑ D-017 · R11: in the ONE state's words
-        // (`stateHere`), whose answer it waits on (R19) and who holds the work it gave out
-        // (D-036) — the plate's own.
         ...(limit ? { detail: limit.detail } : purpose ? { detail: purpose.detail } : {}),
         word: limit?.short ?? purpose?.word ?? standingWord(facets, currentState),
         label: workerLabel(who(record), worker, host?.named),
@@ -599,6 +594,7 @@ const rows = computed<RailRow[]>(() => {
       row: {
         ...(host.worker ? { worker: host.worker } : {}),
         sessionId: host.sessionId,
+        activityAt: host.updatedAt,
         provider: host.provider,
         facets,
         standing: standingOf(facets),
@@ -728,6 +724,58 @@ const sections = computed(() => {
 const moreRecent = computed(() =>
   Math.min(RAIL_PAGE_SIZE, recentRows.value.length - recentLimit.value),
 )
+
+const identityIds = computed((previous?: string[]) => {
+  const ids = sections.value
+    .filter((section) => section.open)
+    .flatMap((section) => section.rows.map((row) => row.sessionId))
+    .sort()
+  return previous?.length === ids.length && previous.every((id, i) => id === ids[i])
+    ? previous
+    : ids
+})
+const identities = ref(new Map<string, ConversationIdentity | null>())
+let acceptedIdentityRevision: number | undefined
+watch(
+  [identityIds, () => props.workspaceFolder?.path, () => props.identityRevision],
+  async ([ids, workspace, revision], [, previousWorkspace], invalidate) => {
+    if (workspace !== previousWorkspace) identities.value = new Map()
+    const read = props.readIdentities
+    if (!read) return
+    let current = true
+    invalidate(() => (current = false))
+    const before = identities.value
+    const unread = revision !== acceptedIdentityRevision ? ids : ids.filter((id) => !before.has(id))
+    const batches: ConversationIdentityBatchInput[] = []
+    for (let i = 0; i < unread.length; i += CONVERSATION_IDENTITY_BATCH_SIZE) {
+      const sessionIds = unread.slice(i, i + CONVERSATION_IDENTITY_BATCH_SIZE)
+      batches.push({ sessionIds })
+    }
+    try {
+      const answers = await Promise.all(batches.map((batch) => read(batch)))
+      if (current) {
+        const merged = new Map(ids.map((id) => [id, before.get(id) ?? null]))
+        for (const id of unread) merged.set(id, null)
+        for (const [i, batch] of answers.entries()) {
+          for (const item of batch) {
+            if (batches[i]?.sessionIds.includes(item.conversation)) {
+              merged.set(item.conversation, item)
+            }
+          }
+        }
+        acceptedIdentityRevision = revision
+        identities.value = merged
+      }
+    } catch {
+      // Keep the last identities for this workspace when a read fails.
+    }
+  },
+  { immediate: true },
+)
+
+function rowTitle(row: RailRow): string {
+  return identities.value.get(row.sessionId)?.title ?? conversationTitle(row.label, row.named)
+}
 
 function fold(key: RailSectionKey): void {
   sectionOpen[key].value = !sectionOpen[key].value
@@ -1186,13 +1234,17 @@ const platform = platformHere()
                 :data-cy="`open-session-${row.sessionId}`"
                 :data-session-id="row.sessionId"
                 :data-active="row.sessionId === onScreenId"
-                :aria-label="conversationTitle(row.label, row.named)"
+                :aria-label="rowTitle(row)"
                 :aria-description="
                   [
                     row.worker
                       ? workerDescription(row.worker, props.agents?.identities ?? null)
                       : null,
                     row.detail,
+                    identities.get(row.sessionId)?.address,
+                    identities.get(row.sessionId)?.author?.kind === 'person'
+                      ? 'Named by you'
+                      : null,
                   ]
                     .filter(Boolean)
                     .join(' ') || undefined
@@ -1206,7 +1258,8 @@ const platform = platformHere()
                   props.collapsed
                     ? [
                         row.worker && row.named ? row.label : null,
-                        conversationTitle(row.label, row.named),
+                        rowTitle(row),
+                        identities.get(row.sessionId)?.address,
                         row.worker
                           ? workerDescription(row.worker, props.agents?.identities ?? null)
                           : null,
@@ -1232,51 +1285,21 @@ const platform = platformHere()
                   <strong
                     :data-cy="row.worker ? `rail-worker-name-${row.sessionId}` : undefined"
                     :title="
-                      row.worker
+                      row.worker && !identities.get(row.sessionId)
                         ? [row.label, row.named?.title].filter(Boolean).join(' · ')
-                        : conversationTitle(row.label, row.named)
+                        : rowTitle(row)
                     "
-                    >{{ row.worker ? row.label : conversationTitle(row.label, row.named) }}</strong
+                    >{{
+                      row.worker && !identities.get(row.sessionId) ? row.label : rowTitle(row)
+                    }}</strong
                   >
                   <span
-                    v-if="row.worker"
+                    v-if="row.worker && !identities.get(row.sessionId)"
                     class="rail-worker-state"
                     :title="row.detail ?? workerState(row.word, row.named)"
                     :data-cy="`rail-state-word-${row.sessionId}`"
                     >{{ workerState(row.word, row.named) }}</span
                   >
-                  <template v-if="row.worker">
-                    <small
-                      v-for="piece in workerSubtitles(
-                        row.sessionId,
-                        row.named,
-                        workByHolder.get(row.sessionId) ?? [],
-                      )"
-                      :key="piece.key"
-                      class="rail-worker-piece"
-                      :title="piece.text"
-                      >{{ piece.text }}</small
-                    >
-                  </template>
-                  <!-- ⛔ **What this conversation was opened with** (211 §3, from 210 finding 4). ⚠️
-                     **Absent, not blank, when the app does not know it** — a row that made one up
-                     out of the oldest message it happens to hold would look exactly like a row that
-                     knows. -->
-                  <small
-                    v-if="row.opening"
-                    :id="`rail-opening-${row.sessionId}`"
-                    class="opening"
-                    :title="row.opening"
-                    :data-cy="`session-opening-${row.sessionId}`"
-                    >{{ row.opening }}</small
-                  >
-                  <!-- ⛔ **`row.word`, not `row.standing`** (203, from 195 H3): the word names WHICH
-                     wait, and `data-standing` keeps the coarse word cross-surface tests read (099).
-                     ⛔ **449 · WHERE it is working, last**: the rail is a 200px column, so whatever
-                     is last is what ellipsizes, and a folder a person can recover from the hover is
-                     a better thing to lose than the word that says whether the conversation is
-                     waiting on them. ⚑ **D-016 · commit 7 · R2 — the agent's name, first, when the
-                     work titles the row.** -->
                   <small
                     :id="`rail-state-${row.sessionId}`"
                     :data-standing="row.standing"
@@ -1294,16 +1317,63 @@ const platform = platformHere()
                         .filter(Boolean)
                         .join(' · ')
                     "
-                    ><template v-if="row.named && !row.worker"
-                      ><span>{{ row.label }}</span> · </template
-                    >{{ row.provider
-                    }}<template v-if="!row.worker">
-                      ·
-                      <span :data-cy="`rail-state-word-${row.sessionId}`">{{
-                        row.word
-                      }}</span></template
+                    ><template v-if="identities.get(row.sessionId) || (row.named && !row.worker)"
+                      ><span>{{ row.label }}</span></template
+                    ><template v-if="!identities.get(row.sessionId) && row.provider">
+                      <template v-if="row.named && !row.worker"> · </template
+                      >{{ row.provider }} </template
+                    ><template v-if="!row.worker || identities.get(row.sessionId)">
+                      <template v-if="row.provider || row.named || identities.get(row.sessionId)">
+                        ·
+                      </template>
+                      <span :data-cy="`rail-state-word-${row.sessionId}`">
+                        {{ row.worker ? workerState(row.word, row.named) : row.word }}
+                      </span></template
                     ><template v-if="row.elsewhere"> · {{ OPEN_IN_ANOTHER_WINDOW }}</template
-                    ><template v-if="row.place"> · {{ row.place }}</template></small
+                    ><template v-if="row.place"> · {{ row.place }}</template
+                    ><template v-if="row.activityAt !== undefined">
+                      ·
+                      <time :title="fullTime(row.activityAt)">{{
+                        agoWords(row.activityAt, railMinute)
+                      }}</time>
+                    </template></small
+                  >
+                  <small
+                    v-if="identities.get(row.sessionId)"
+                    :title="
+                      [identities.get(row.sessionId)?.address, row.provider]
+                        .filter(Boolean)
+                        .join(' · ')
+                    "
+                  >
+                    <span :data-cy="`rail-address-${row.sessionId}`">{{
+                      identities.get(row.sessionId)?.address
+                    }}</span>
+                    <template v-if="row.provider"> · {{ row.provider }}</template>
+                    <template v-if="identities.get(row.sessionId)?.author?.kind === 'person'">
+                      · Named by you</template
+                    >
+                  </small>
+                  <template v-if="row.worker">
+                    <small
+                      v-for="piece in workerSubtitles(
+                        row.sessionId,
+                        row.named,
+                        workByHolder.get(row.sessionId) ?? [],
+                      )"
+                      :key="piece.key"
+                      class="rail-worker-piece"
+                      :title="piece.text"
+                      >{{ piece.text }}</small
+                    >
+                  </template>
+                  <small
+                    v-if="row.opening"
+                    :id="`rail-opening-${row.sessionId}`"
+                    class="opening"
+                    :title="row.opening"
+                    :data-cy="`session-opening-${row.sessionId}`"
+                    >{{ row.opening }}</small
                   >
                 </span>
               </button>

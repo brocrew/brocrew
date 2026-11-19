@@ -156,6 +156,10 @@ it('reads canonical identity on selection, refreshes on work, and rereads on reo
     id === sessionId ? primary : serviceReading,
   )
   window.api.runtime.readConversationIdentity = read
+  const readRail = vi.fn<RuntimeBridge['readConversationIdentities']>(async ({ sessionIds }) =>
+    sessionIds.map((id) => (id === sessionId ? primary : serviceReading)),
+  )
+  window.api.runtime.readConversationIdentities = readRail
   const m = await mountWith([row(serviceId, null), row(sessionId, null)])
   const title = () => m.all('conversation-title-rename')[0]?.textContent?.trim()
   const shownAddress = () => m.all('conversation-address')[0]?.textContent?.trim()
@@ -164,6 +168,8 @@ it('reads canonical identity on selection, refreshes on work, and rereads on reo
   expect(read).toHaveBeenCalledWith({ sessionId })
   expect(shownAddress()).toBe('Conversation fictional-conversation')
   expect(m.q('conversation-title').parentElement?.textContent).not.toContain('Named by you')
+  await expect.poll(() => m.q(`rail-address-${sessionId}`).textContent).toBe(sessionId)
+  expect(readRail).toHaveBeenLastCalledWith({ sessionIds: [sessionId, serviceId] })
 
   primary = { ...primary, address, title: 'First task title' }
   changed({ what: 'work' })
@@ -175,6 +181,10 @@ it('reads canonical identity on selection, refreshes on work, and rereads on reo
   changed({ what: 'work' })
   await expect.poll(title).toBe('Title from another window')
   expect(m.q('conversation-title').parentElement?.textContent).toContain('Named by you')
+  await expect.poll(() => m.q(`rail-address-${sessionId}`).textContent).toBe(address)
+  await expect
+    .poll(() => m.q(`open-session-${sessionId}`).getAttribute('aria-label'))
+    .toBe('Title from another window')
 
   let settle!: (identity: ConversationIdentity | null) => void
   const stale = new Promise<ConversationIdentity | null>((resolve) => {

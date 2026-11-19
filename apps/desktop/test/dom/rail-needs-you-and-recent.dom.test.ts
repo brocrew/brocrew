@@ -2,8 +2,9 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import type { AgentState } from '../../src/shared/agent-state-contracts'
+import type { ConversationIdentity } from '../../src/shared/conversation-title'
 import type { ListingAnswer } from '../../src/shared/listing-published'
-import type { ResumableSessionInfo } from '../../src/shared/runtime-ipc'
+import type { ResumableSessionInfo, RuntimeBridge } from '../../src/shared/runtime-ipc'
 import { mount, parseColor, record, unmountAll, type Mounted } from './harness'
 import { memoryStorage } from './memory-storage'
 
@@ -140,6 +141,59 @@ it('pages eligible Recent at fifteen, keeps older rows, and counts the live/list
   expect(m.q('open-session-older-17').dataset.active).toBe('true')
   expect(m.all('rail-show-more')).toHaveLength(0)
   expect(ids(m, 'needs-you')).toEqual(['recent-approval', 'older-approval'])
+})
+
+it('joins identities only for visible rows in bounded raw-ID batches and discards folded replies', async () => {
+  const older = Array.from({ length: 18 }, (_, i) => row(`story-${i}`, 'brobot', i + 3))
+  const identity = (
+    conversation: string,
+    title = 'Resolved ' + conversation,
+  ): ConversationIdentity => ({
+    conversation,
+    title,
+    address: 'address/' + conversation,
+    author: conversation === 'story-0' ? { kind: 'person' } : null,
+  })
+  let finish!: (items: readonly ConversationIdentity[]) => void
+  const first = new Promise<readonly ConversationIdentity[]>((resolve) => {
+    finish = resolve
+  })
+  const read = vi
+    .fn<RuntimeBridge['readConversationIdentities']>()
+    .mockImplementation(({ sessionIds }) =>
+      Promise.resolve(sessionIds.filter((id) => id !== 'story-1').map((id) => identity(id))),
+    )
+    .mockReturnValueOnce(first)
+  const m = await rail([...waiting, ...older], { readIdentities: read })
+  expect(read.mock.calls.map(([batch]) => batch.sessionIds.length)).toEqual([15, 2])
+  expect(read.mock.calls.flatMap(([batch]) => batch.sessionIds).sort()).toEqual(
+    [...waiting, ...older.slice(0, 15)].map(({ sessionId }) => sessionId).sort(),
+  )
+  m.q('rail-toggle-recent').click()
+  await expect.poll(() => m.all('rail-address-recent-approval').length).toBe(1)
+  expect(read).toHaveBeenLastCalledWith({
+    sessionIds: ['older-approval', 'recent-approval'],
+  })
+  finish([identity('recent-approval', 'Obsolete waiting title'), identity('story-0')])
+  await first
+  await nextTick()
+  expect(m.q('open-session-recent-approval').getAttribute('aria-label')).toBe(
+    'Resolved recent-approval',
+  )
+  m.q('rail-toggle-recent').click()
+  await expect.poll(() => m.all('rail-address-story-0').length).toBe(1)
+  expect(m.q('open-session-story-0').getAttribute('aria-label')).toBe('Resolved story-0')
+  expect(count(m, 'rail-address-story-0')).toBe('address/story-0')
+  expect(m.q('open-session-story-0').textContent).toContain('Named by you')
+  expect(m.q('open-session-story-1').textContent).not.toContain('Named by you')
+  expect(m.all('rail-address-story-1')).toHaveLength(0)
+  expect(m.all('rail-address-story-17')).toHaveLength(0)
+  m.q('rail-show-more').click()
+  await expect.poll(() => m.all('rail-address-story-17').length).toBe(1)
+  expect(count(m, 'rail-address-story-17')).toBe('address/story-17')
+  m.q('open-session-story-17').click()
+  expect(m.selected).toEqual(['story-17'])
+  expect(count(m, 'rail-count-recent')).toBe('18 of 18')
 })
 
 it('keeps the count and painted selection on a folded section, without folding the other', async () => {
