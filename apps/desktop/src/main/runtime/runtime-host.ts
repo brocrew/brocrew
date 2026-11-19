@@ -2946,6 +2946,7 @@ interface WhoOwesIt {
   readonly owesAnAnswerTo: readonly string[]
   /** When the oldest question it owes an answer to was put to it, epoch ms, or `null`. */
   readonly owesAnAnswerSince: number | null
+  readonly owedQuestions: readonly OwedQuestion[]
 }
 
 /** ⚑ **F009 · the most of an agent's conversations its record lists**, newest activity first. */
@@ -13361,9 +13362,39 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
+  private questionWakeIds(asker: string, question: string) {
+    const key = Buffer.from(questionKey(asker, question)).toString('base64url')
+    return { reminder: `msg_owed_${key}`, notice: `msg_unanswered_${key}` }
+  }
+
+  private questionReminderProgress(answererIds: readonly string[], id: string) {
+    for (const target of answererIds) {
+      const progress = this.deps.store.queuedPromptProgress(target, id, 'an-answer-is-still-owed')
+      if (progress !== 'missing') return progress
+    }
+    return 'missing'
+  }
+
+  private stalledQuestionRecipient(request: RoutedRequest) {
+    if (
+      request.parent === null ||
+      !REQUEST_IS_OPEN[request.state] ||
+      request.escalatedAt !== null ||
+      (request.went.is !== 'the-parent' && request.went.is !== 'the-agent-the-asker-named')
+    ) {
+      return undefined
+    }
+    const answerer = this.theOneInItsPlace(request.parent)
+    const { reminder } = this.questionWakeIds(request.askedBy, request.requestId)
+    if (this.questionReminderProgress(this.theIdsItStandsFor(answerer), reminder) !== 'turn-ended') {
+      return undefined
+    }
+    const { address, title } = this.questionConversation(answerer)
+    return { address, title }
+  }
+
   private wakeForOwedQuestions(session: HostedSession): void {
-    const ledgerOf = this.oneLedgerReadPerAnswer()
-    const owed = this.oneOwedReadPerAnswer(ledgerOf)(session.id)
+    const owed = this.oneOwedReadPerAnswer(this.oneLedgerReadPerAnswer())(session.id)
     if (owed.length === 0) return
 
     const waiting = new Set(
@@ -13372,47 +13403,36 @@ export class RuntimeHost implements LiveHost {
       ),
     )
     const answererIds = this.theIdsItStandsFor(session.id)
-    for (const { askedBy, requestId, piece } of owed) {
-      const key = questionKey(askedBy, requestId)
-      if (waiting.has(key)) continue
-      const claim = Buffer.from(key).toString('base64url')
-      const id = `msg_owed_${claim}`
-      const reminder = answererIds
-        .map((target) => this.deps.store.queuedPromptProgress(target, id, 'an-answer-is-still-owed'))
-        .find((progress) => progress !== 'missing')
-
-      if (reminder === 'turn-ended') {
-        void this.tellTheAskerItWentUnanswered(
+    for (const { askedBy, requestId } of owed) {
+      if (waiting.has(questionKey(askedBy, requestId))) continue
+      const { reminder, notice } = this.questionWakeIds(askedBy, requestId)
+      const progress = this.questionReminderProgress(answererIds, reminder)
+      if (progress === 'turn-ended') {
+        void this.tellTheAskerItWentUnanswered(session.id, askedBy, requestId, notice).catch(
+          (error: unknown) => {
+            console.warn(`The unanswered-question notice could not reach ${askedBy}: ${errorMessage(error)}`)
+          },
+        )
+      } else if (progress === 'missing') {
+        const { address, title } = this.questionConversation(askedBy)
+        this.holdUntilItStarts(
           session.id,
-          askedBy,
-          requestId,
-          `msg_unanswered_${claim}`,
-        ).catch((error: unknown) => {
-          console.warn(`The unanswered-question notice could not reach ${askedBy}: ${errorMessage(error)}`)
-        })
-        continue
+          `Question ${requestId} from conversation ${address} · ${title} is still open. Answer it with answer_question, using asked_by ${address}, or give cannot_answer with your reason.`,
+          {
+            carriedFor: askedBy,
+            asks: { asker: askedBy, requestId },
+            appNotice: 'an-answer-is-still-owed',
+          },
+          'question',
+          undefined,
+          reminder,
+        )
       }
-      if (reminder !== undefined) continue
-      const raised = ledgerOf(askedBy).raised.get(requestId)
-      if (raised === undefined) continue
-      this.holdUntilItStarts(
-        session.id,
-        this.outboundQuestionWords(askedBy, {
-          id: requestId,
-          prompt: raised.prompt,
-          questions: raised.questions,
-          piece,
-        }),
-        {
-          carriedFor: askedBy,
-          asks: { asker: askedBy, requestId },
-          appNotice: 'an-answer-is-still-owed',
-        },
-        'question',
-        undefined,
-        id,
-      )
     }
+  }
+
+  private questionConversation(conversation: string) {
+    return describeConversation(this.deps.store, conversation, this.theServiceOf(conversation) !== null)
   }
 
   private async tellTheAskerItWentUnanswered(
@@ -13429,11 +13449,12 @@ export class RuntimeHost implements LiveHost {
         (thread) => this.deps.store.queuedPromptProgress(thread, id, notice) !== 'missing',
       )
       if (kept) return
+      const { address, title } = this.questionConversation(answerer)
       const where = await new Promise<WhereHeldWordsWait>((resolve) =>
         this.holdUntilItStarts(
           to,
-          `${this.nameByItsWork(answerer)} didn’t answer after a reminder. Question ${question} is still open.`,
-          { appNotice: notice },
+          `Conversation ${address} · ${title} didn't answer question ${question} after a reminder.`,
+          { asks: { asker, requestId: question }, appNotice: notice },
           'notice',
           resolve,
           id,
@@ -18748,10 +18769,12 @@ export class RuntimeHost implements LiveHost {
         const asked = raised(request.askedBy).get(request.requestId)
         if (asked === undefined) return null
         const asker = askerOf(request.askedBy, asked.piece)
+        const stalledRecipient = this.stalledQuestionRecipient(request)
         return {
           request,
           words: questionText(asker, { ...asked, id: request.requestId }),
           askerCalled: asker.called,
+          ...(stalledRecipient === undefined ? {} : { stalledRecipient }),
         }
       })
       // 🔴 **D-017 · R8 — the outer net**: words the asker's record cannot give are absent, and a
@@ -19457,17 +19480,27 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **F036 · and whose questions it owes an answer to**, for the same reason.
     if (owed.owedTo.length === 0) this.owesTheAnswersOf.delete(sessionId)
     else this.owesTheAnswersOf.set(sessionId, owed.owedTo)
+    const active =
+      this.startsInFlight.has(sessionId) ||
+      this.arrivals.has(sessionId) ||
+      (slot !== undefined && !going && (slot.session === null || status === 'working'))
+    const answererIds =
+      active || owed.owedQuestions.length === 0 ? [] : this.theIdsItStandsFor(sessionId)
+    const stalled = answererIds.length === 0
+      ? undefined
+      : owed.owedQuestions.find(({ askedBy, requestId }) => {
+          const { reminder } = this.questionWakeIds(askedBy, requestId)
+          return this.questionReminderProgress(answererIds, reminder) === 'turn-ended'
+        })
     return agentStateOf(
       {
         needsYou: owed.needsYou,
-        active:
-          this.startsInFlight.has(sessionId) ||
-          this.arrivals.has(sessionId) ||
-          (slot !== undefined && !going && (slot.session === null || status === 'working')),
+        active,
         waitingOnTheAnswerOf: owed.waitingOnTheAnswerOf,
         waitingOnTheAnswerSince: owed.waitingOnTheAnswerSince,
         owesAnAnswerTo: owed.owesAnAnswerTo,
         owesAnAnswerSince: owed.owesAnAnswerSince,
+        ...(stalled === undefined ? {} : { stalledQuestion: stalled.requestId }),
         background: session?.background ?? NOTHING_IN_THE_BACKGROUND,
         scheduled:
           slot?.session?.scheduled ?? this.wakeUps.get(sessionId)?.level ?? NOTHING_SCHEDULED,
@@ -19600,6 +19633,7 @@ export class RuntimeHost implements LiveHost {
         called(asker, this.theWorkThatNamesUnder(asker, piece)),
       ),
       owesAnAnswerSince: earliest(owedNow.map((one) => one.at)),
+      owedQuestions: owedNow,
     }
   }
 
@@ -27830,7 +27864,10 @@ export class RuntimeHost implements LiveHost {
       // ({@link aCallersWordsWaitForItsQueue}), asked in the same stretch as this, with nothing
       // awaited between.
       if (this.theReachOfACallersWords(sessionId, queued) === 'outlived') return ITS_PIECE_HAD_ENDED
-      if (queued.kind === 'question' && queued.asks !== undefined) {
+      if (
+        queued.asks !== undefined &&
+        (queued.kind === 'question' || queued.authorship.appNotice === 'a-question-stayed-unanswered')
+      ) {
         const { asker, requestId } = queued.asks
         const ended = this.howItsQuestionEnded(asker, requestId)
         if (ended === null) return null
