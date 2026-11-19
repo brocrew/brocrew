@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { rmSync } from 'node:fs'
@@ -428,13 +429,8 @@ describe('F033 · a conversation is named by the work it holds now', () => {
       const adaTools = agentToolsFor(host, ada)
       await callOn(adaTools, 'create_agent', { profile_slug: 'tester' })
       const given = await callOn(adaTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'tester',
-        to: 'new',
-        conversation_title: 'Wire the routes',
+        ...newConversationGive('tester', 'Wire the routes', 'wire the routes'),
         under: 'W1.1',
-        title: 'Wire the routes',
-        brief: 'wire the routes',
       })
       expect(given, JSON.stringify(given)).toMatchObject({ outcome: 'ok', label: 'W1.1.1' })
       const ali = given.agent as string
@@ -449,13 +445,8 @@ describe('F033 · a conversation is named by the work it holds now', () => {
       const { ada, adaTools } = await aHelperHoldingTwo()
       await callOn(adaTools, 'create_agent', { profile_slug: 'tester' })
       const given = await callOn(adaTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'tester',
-        to: 'new',
-        conversation_title: 'Wire the routes',
+        ...newConversationGive('tester', 'Wire the routes', 'wire the routes'),
         under: 'W1.1',
-        title: 'Wire the routes',
-        brief: 'wire the routes',
       })
       expect(given, JSON.stringify(given)).toMatchObject({ outcome: 'ok', label: 'W1.1.1' })
       const ali = given.agent as string

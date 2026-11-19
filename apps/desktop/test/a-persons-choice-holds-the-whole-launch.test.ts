@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { MODEL_CHOICE_RAILS } from '../src/shared/model-choice-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
@@ -348,6 +349,15 @@ describe('682 · a person’s choice holds the whole launch', () => {
       expect(own.codex).toEqual({ ok: true, models: [WIDE, NARROW] })
     })
 
+    const expectFreshCodexChoice = (answered: Parameters<typeof structured>[0]) => {
+      expect(structured(answered).runs_on).toEqual({ model: 'wide', effort: 'high' })
+      expect(store.modelChoiceOf('fresh')).toEqual({
+        provider: 'codex',
+        model: 'wide',
+        effort: 'high',
+      })
+    }
+
     it('🔴 given a choice, then its FIRST SPAWN runs on it — judged once, at the door: the launch asks no list of its own', async () => {
       anAgent('fresh')
       world.lists['fresh/codex'] = [WIDE, NARROW]
@@ -359,14 +369,7 @@ describe('682 · a person’s choice holds the whole launch', () => {
       })
       expect(existsSync(join(homes(), 'fresh'))).toBe(false)
       const pm = await aPm()
-      const answered = await callOn(pm, 'give_work', {
-        to: 'new',
-        conversation_title: 'work',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'fresh',
-        title: 'work',
-        brief: 'work',
-      })
+      const answered = await callOn(pm, 'give_work', newConversationGive('fresh', 'work', 'work'))
       expect(structured(answered).outcome, answered.text).toBe('ok')
       // ⚑ The launch carried the person's model and effort to the provider…
       const start = startOf('fresh', 'codex')
@@ -391,14 +394,7 @@ describe('682 · a person’s choice holds the whole launch', () => {
         await choose('fresh', { provider: 'codex', model: 'wide', effort: 'high' }),
       ).toMatchObject({ ok: true })
       const pm = await aPm()
-      const answered = await callOn(pm, 'give_work', {
-        to: 'new',
-        conversation_title: 'work',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'fresh',
-        title: 'work',
-        brief: 'work',
-      })
+      const answered = await callOn(pm, 'give_work', newConversationGive('fresh', 'work', 'work'))
       expect(structured(answered).outcome, answered.text).toBe('ok')
       // 🔴 **D-042 — `682`'s re-judging at the first launch is gone** (`confirmModelChoice`,
       // `model_choice_set_aside`): the default is a person's, judged once at the door, and R3 leaves
@@ -408,13 +404,7 @@ describe('682 · a person’s choice holds the whole launch', () => {
       expect(start.model).toBe('wide')
       expect(start.reasoningEffort).toBe('high')
       expect(world.listed).not.toContain('fresh/codex')
-      expect(structured(answered).runs_on).toEqual({ model: 'wide', effort: 'high' })
-      // ⚑ The choice is the person's: kept as saved.
-      expect(store.modelChoiceOf('fresh')).toEqual({
-        provider: 'codex',
-        model: 'wide',
-        effort: 'high',
-      })
+      expectFreshCodexChoice(answered)
     })
 
     // ⚑ **D-042 · `702`'s `696` G1 control is retired**: the one sentence that named the STAND-IN —
@@ -460,14 +450,7 @@ describe('682 · a person’s choice holds the whole launch', () => {
       })
       world.listed = []
       const pm = await aPm()
-      const answered = await callOn(pm, 'give_work', {
-        to: 'new',
-        conversation_title: 'work',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'ran',
-        title: 'work',
-        brief: 'work',
-      })
+      const answered = await callOn(pm, 'give_work', newConversationGive('ran', 'work', 'work'))
       expect(structured(answered).outcome, answered.text).toBe('ok')
       expect(startOf('ran', 'codex').model).toBe('narrow')
       expect(startOf('ran', 'codex').reasoningEffort).toBe('medium')
@@ -481,25 +464,13 @@ describe('682 · a person’s choice holds the whole launch', () => {
       ).toMatchObject({ ok: true })
       world.lists['fresh/codex'] = new Error('network is down')
       const pm = await aPm()
-      const answered = await callOn(pm, 'give_work', {
-        to: 'new',
-        conversation_title: 'work',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'fresh',
-        title: 'work',
-        brief: 'work',
-      })
+      const answered = await callOn(pm, 'give_work', newConversationGive('fresh', 'work', 'work'))
       expect(structured(answered).outcome, answered.text).toBe('ok')
       expect(startOf('fresh', 'codex').model).toBe('wide')
       // ⚑ **D-042** — `682`'s *"checked again the next time something starts it"* is gone with the
       // provisional verdict: an outage of its own list costs a launch that names its pair nothing.
       expect(world.listed).not.toContain('fresh/codex')
-      expect(structured(answered).runs_on).toEqual({ model: 'wide', effort: 'high' })
-      expect(store.modelChoiceOf('fresh')).toEqual({
-        provider: 'codex',
-        model: 'wide',
-        effort: 'high',
-      })
+      expectFreshCodexChoice(answered)
     })
 
     // ⚑ **D-042 · retired — *"a confirmation never writes over a choice a person changed since"***:
@@ -534,14 +505,7 @@ describe('682 · a person’s choice holds the whole launch', () => {
       })
       // ⚑ The PM runs on Claude, so a start on Codex is the choice's and nobody else's.
       const pm = await aPm()
-      const admitted = await callOn(pm, 'give_work', {
-        to: 'new',
-        conversation_title: 'work',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'builder',
-        title: 'work',
-        brief: 'work',
-      })
+      const admitted = await callOn(pm, 'give_work', newConversationGive('builder', 'work', 'work'))
       expect(structured(admitted).outcome, admitted.text).toBe('ok')
       expect(startOf('builder', 'codex').model).toBe('narrow')
       expect(
@@ -552,14 +516,7 @@ describe('682 · a person’s choice holds the whole launch', () => {
     it('⛔ CONTROL (`419`) · the identical give for an identity nobody chose for starts on the giver’s provider', async () => {
       anAgent('builder')
       const pm = await aPm()
-      const admitted = await callOn(pm, 'give_work', {
-        to: 'new',
-        conversation_title: 'work',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'builder',
-        title: 'work',
-        brief: 'work',
-      })
+      const admitted = await callOn(pm, 'give_work', newConversationGive('builder', 'work', 'work'))
       expect(structured(admitted).outcome, admitted.text).toBe('ok')
       // ⚑ **D-042 · R1** — on the giver's provider, and on its own default BY NAME: Claude's
       // `default` at `medium` (W4.28) (`677`'s *"names nothing"* is reversed — nothing runs unnamed).
@@ -688,14 +645,7 @@ describe('682 · a person’s choice holds the whole launch', () => {
         store.setModelChoice('builder', { provider: 'claude', model: 'opus', effort: null }),
       ).toBe(true)
       const pm = await aPm()
-      const answered = await callOn(pm, 'give_work', {
-        to: 'new',
-        conversation_title: 'work',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'builder',
-        title: 'work',
-        brief: 'work',
-      })
+      const answered = await callOn(pm, 'give_work', newConversationGive('builder', 'work', 'work'))
       expect(structured(answered).outcome, answered.text).toBe('ok')
       // ⚑ **D-042** — read by nothing, so the start resolves R1 as though it had none: Codex's own
       // default, the row its list marks, by name. ⛔ Nothing of the Claude choice is sent.
@@ -1036,14 +986,7 @@ describe('682 · a person’s choice holds the whole launch', () => {
       world.lists['worker/codex'] = new Error('network is down')
       const pm = await aPmOn('codex', 'auto')
       // ⚑ **D-016 · the give starts it, and its brief is its first turn.**
-      const given = await callOn(pm, 'give_work', {
-        to: 'new',
-        conversation_title: 'work',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'work',
-        brief: 'go',
-      })
+      const given = await callOn(pm, 'give_work', newConversationGive('worker', 'work', 'go'))
       expect(structured(given).outcome, given.text).toBe('ok')
       const worker = structured(given).agent as string
       expect(rowOf(worker)).toMatchObject({ model: 'wide', reasoning_effort: 'high' })

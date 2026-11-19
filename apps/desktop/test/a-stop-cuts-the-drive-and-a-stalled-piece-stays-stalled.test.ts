@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { expectRecordedCannotRun, expectTaskKept } from './lib/recorded-send'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import type { PieceRow } from '../src/shared/task-contracts'
@@ -690,14 +691,7 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
       window,
     )
     const pmLaunch = launches.at(-1)!
-    const given = await callOn(pmLaunch.toolset, 'give_work', {
-      to: 'new',
-      conversation_title: 'The work',
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'The work',
-      brief: 'the work',
-    })
+    const given = await callOn(pmLaunch.toolset, 'give_work', newConversationGive('worker', 'The work', 'the work'))
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     const workerLaunch = launches.at(-1)!
@@ -1139,14 +1133,7 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
       // ⚑ **The paired negative (b) · the arm does not answer ok to everything.** A caller that
       // speaks as no conversation at all is told it has no piece to give from.
       const fromTheApp = await host.giveWork(
-        {
-          to: 'new',
-          conversation_title: 'x',
-          definition_of_done: 'The requested result and its checks are recorded.',
-          profile: 'worker',
-          title: 'x',
-          brief: 'x',
-        },
+        newConversationGive('worker', 'x', 'x'),
         THE_APP_ITSELF,
       )
       expect(fromTheApp.ok).toBe(false)

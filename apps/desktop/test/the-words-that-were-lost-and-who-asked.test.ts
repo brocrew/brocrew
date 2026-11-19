@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -257,14 +258,7 @@ describe('729 · the words that were lost, and who asked', () => {
     const pm = await personOpens('pm')
     const pmHandle = handles[before]
     if (pmHandle === undefined) throw new Error('the giver has no handle')
-    const given = await callOn(pm, 'give_work', {
-      to: 'new',
-      conversation_title: 'The migration',
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'The migration',
-      brief: 'migrate',
-    })
+    const given = await callOn(pm, 'give_work', newConversationGive('worker', 'The migration', 'migrate'))
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     host.claimSession(worker, window)
@@ -404,14 +398,7 @@ describe('729 · the words that were lost, and who asked', () => {
       expect(givenPm.outcome, JSON.stringify(givenPm)).toBe('ok')
       expect(decorateNext).toBeNull()
       const pm = givenPm.agent as string
-      const given = await callOn(pm, 'give_work', {
-        to: 'new',
-        conversation_title: 'The migration',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'The migration',
-        brief: 'migrate',
-      })
+      const given = await callOn(pm, 'give_work', newConversationGive('worker', 'The migration', 'migrate'))
       expect(given.outcome, JSON.stringify(given)).toBe('ok')
       const worker = given.agent as string
       host.claimSession(worker, window)

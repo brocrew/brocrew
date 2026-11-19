@@ -1,3 +1,4 @@
+import { giveToConversation, openGiverAndGivePages } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { PieceRow } from '../src/shared/task-contracts'
 import { rmSync } from 'node:fs'
@@ -120,29 +121,23 @@ describe('a listed row says which piece its conversation waits on on purpose', (
   ): Promise<{ ada: string; piece: string; label: string }> => {
     const tools = agentToolsFor(host, brobot)
     if (to === 'new') await callOn(tools, 'create_agent', { profile_slug: 'worker' })
-    const given = await callOn(tools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      to,
-      ...(to === 'new' ? { conversation_title: title } : {}),
-      title,
-      brief: title.toLowerCase(),
-    })
+    const given = await callOn(tools, 'give_work', giveToConversation(to, 'worker', title, title.toLowerCase()))
     const ada = given.agent as string
     const piece = given.piece as string
     await waitFor(() => pieceOf(ada, piece)?.state === 'stalled', `the brief of ${title} to end`)
     await settle()
     return { ada, piece, label: given.label as string }
   }
-  const aHelperWithAPiece = async (): Promise<{ brobot: string; ada: string; piece: string }> => {
-    const { sessionId: brobot } = await host.createSession(
-      { provider: 'claude', profileId: DEFAULT_PROFILE_ID, approvalMode: 'auto', cwd: root },
-      window,
+  const aHelperWithAPiece = () =>
+    openGiverAndGivePages(
+      () =>
+        host.createSession(
+          { provider: 'claude', profileId: DEFAULT_PROFILE_ID, approvalMode: 'auto', cwd: root },
+          window,
+        ),
+      settle,
+      aPieceGiven,
     )
-    await settle()
-    const { ada, piece } = await aPieceGiven(brobot, 'Build the pages', 'new')
-    return { brobot, ada, piece }
-  }
   const statusOf = async (
     ada: string,
     label: string,

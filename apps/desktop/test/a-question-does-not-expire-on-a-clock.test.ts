@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { callOn } from './helpers/call-agent-tool'
 import { waitFor } from './lib/f093-host'
@@ -198,14 +199,7 @@ describe('591 · a question does not expire on a clock', () => {
     await host.close(seeded, window)
     const pm = await personOpens('pm')
     const pmTools = theToolsetJustHandedOut()
-    const given = await callOn(pmTools, 'give_work', {
-      to: 'new',
-      conversation_title: 'the work this dispatch is about',
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'the work this dispatch is about',
-      brief: 'migrate the schema',
-    })
+    const given = await callOn(pmTools, 'give_work', newConversationGive('worker', 'the work this dispatch is about', 'migrate the schema'))
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     const workerTools = theToolsetJustHandedOut()

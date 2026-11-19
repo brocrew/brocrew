@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { callOn } from './helpers/call-agent-tool'
 import { waitFor } from './lib/f093-host'
@@ -222,14 +223,7 @@ describe('415 · a question is not work', () => {
     const pm = await personOpens('pm')
     const pmTools = theToolsetJustHandedOut()
     // ⛔ No grant is set for the give (D-014: any agent may give work to any agent).
-    const given = await callOn(pmTools, 'give_work', {
-      to: 'new',
-      conversation_title: 'the work this dispatch is about',
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'the work this dispatch is about',
-      brief: 'the first piece',
-    })
+    const given = await callOn(pmTools, 'give_work', newConversationGive('worker', 'the work this dispatch is about', 'the first piece'))
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     return {
       pm,

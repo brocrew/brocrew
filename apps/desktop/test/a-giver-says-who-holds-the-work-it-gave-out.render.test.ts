@@ -1,3 +1,4 @@
+import { addressedGive, newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { AgentState, AgentStateFacts } from '../src/shared/agent-state-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -845,27 +846,14 @@ describe('D-036 · the host says who holds the work a conversation gave out', ()
     const parent = await personOpens(DEFAULT_PROFILE_ID, 'ask')
     const parentTools = agentToolsFor(host, parent)
     await callOn(parentTools, 'create_agent', { profile_slug: 'worker' })
-    const first = await callOn(parentTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      to: 'new',
-      conversation_title: 'Build the world clock page',
-      title: 'Build the world clock page',
-      brief: 'build the world clock page',
-    })
+    const first = await callOn(parentTools, 'give_work', newConversationGive('worker', 'Build the world clock page', 'build the world clock page'))
     expect(first, JSON.stringify(first)).toMatchObject({ outcome: 'ok', label: 'W1.1' })
     const ada = first.agent as string
     await waitFor(
       () => ledger(ada).some((event) => event.type === 'permission_request'),
       'the card Ada’s brief raised',
     )
-    const second = await callOn(parentTools, 'give_work', {
-      to: first.label,
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'Test the clock page',
-      brief: 'test the clock page',
-    })
+    const second = await callOn(parentTools, 'give_work', addressedGive(first.label, 'worker', 'Test the clock page', 'test the clock page'))
     expect(second, JSON.stringify(second)).toMatchObject({
       outcome: 'ok',
       agent: ada,
@@ -1046,8 +1034,7 @@ describe('D-036 · the host says who holds the work a conversation gave out', ()
     )
   })
 
-  it('🔴 §13 · a stand-in counts what the conversation it replaced gave, and the replaced one counts nothing', async () => {
-    // ⚑ A parent in `ask` mode, its helper parked on a card, so the piece stays open throughout.
+  const aParentWithAParkedWorker = async () => {
     const parent = await personOpens(DEFAULT_PROFILE_ID, 'ask')
     const given = await givenW11(agentToolsFor(host, parent))
     expect(given, JSON.stringify(given)).toMatchObject({ outcome: 'ok', label: 'W1.1' })
@@ -1056,6 +1043,12 @@ describe('D-036 · the host says who holds the work a conversation gave out', ()
       () => ledger(ada).some((event) => event.type === 'permission_request'),
       'the card Ada’s brief raised',
     )
+    return { parent, ada }
+  }
+
+  it('🔴 §13 · a stand-in counts what the conversation it replaced gave, and the replaced one counts nothing', async () => {
+    // ⚑ A parent in `ask` mode, its helper parked on a card, so the piece stays open throughout.
+    const { parent, ada } = await aParentWithAParkedWorker()
     // The premises: before the replacement the parent said it waited on Ada, and her piece is open,
     // so neither word below is idle for want of work.
     expect(stateOf(parent)).toEqual({
@@ -1128,14 +1121,7 @@ describe('D-036 · the host says who holds the work a conversation gave out', ()
   })
 
   it('🔴 §14 · a torn row in a helper’s ledger is the helper’s own record’s: the giver’s card says the work and counts nothing', async () => {
-    const parent = await personOpens(DEFAULT_PROFILE_ID, 'ask')
-    const given = await givenW11(agentToolsFor(host, parent))
-    expect(given, JSON.stringify(given)).toMatchObject({ outcome: 'ok', label: 'W1.1' })
-    const ada = given.agent as string
-    await waitFor(
-      () => ledger(ada).some((event) => event.type === 'permission_request'),
-      'the card Ada’s brief raised',
-    )
+    const { parent, ada } = await aParentWithAParkedWorker()
 
     // ⛔ The hazard is put where the fold walks: a row of a type the piece reads, whose payload is
     // not the shape it says it is. Its ordinal is far above Ada's own, so her next rows do not meet it.
@@ -1347,14 +1333,7 @@ describe('D-018 · D-036 · a giver waiting on its helpers is counted and stoppe
     const pmTools = handed.at(-1)
     if (pmTools === undefined) throw new Error('no toolset was handed to the pm')
     const give = async (slug: string, brief: string): Promise<string> => {
-      const made = await callOn(pmTools, 'give_work', {
-        to: 'new',
-        conversation_title: brief,
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: slug,
-        title: brief,
-        brief,
-      })
+      const made = await callOn(pmTools, 'give_work', newConversationGive(slug, brief, brief))
       expect(made.outcome, JSON.stringify(made)).toBe('ok')
       return made.agent as string
     }

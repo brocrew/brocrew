@@ -366,7 +366,7 @@ const DETAIL_SAID: Readonly<Record<string, DetailSaid>> = {
 }
 
 /** For a give that used up a piece label and gave nothing. */
-export function theLabelWasUsedUp(label: string): string {
+function theLabelWasUsedUp(label: string): string {
   return `The label ${label} was used up by this failed give and names no piece.`
 }
 

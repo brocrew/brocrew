@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -117,14 +118,7 @@ describe('663 M50 · a wake refused logs the host’s own words and keeps them o
   const aPmAndItsIdleWorker = async (): Promise<{ pm: string; worker: string; label: string }> => {
     await host.close(await personOpens('worker'), window)
     const pm = await personOpens('pm')
-    const given = await callOn(pm, 'give_work', {
-      to: 'new',
-      conversation_title: 'The schema',
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'The schema',
-      brief: 'migrate the schema',
-    })
+    const given = await callOn(pm, 'give_work', newConversationGive('worker', 'The schema', 'migrate the schema'))
     expect(given.structured.outcome, JSON.stringify(given.structured)).toBe('ok')
     const worker = given.structured.agent as string
     await waitFor(() => turnsIn(worker) > 0, 'the turn the brief opened to end')

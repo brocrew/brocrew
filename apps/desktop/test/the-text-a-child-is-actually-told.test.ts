@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { ToolWatchingResumeRuntime } from './lib/provider-double'
 import type { InjectedInstructionKind } from '../src/shared/instruction-contracts'
 import { legacyWorkspaceFiles } from './helpers/legacy-workspace-files'
@@ -938,24 +939,12 @@ describe('§8 · what the host tells the reader, at a launch and at a reopen', (
     await host.close(await personOpens(DEFAULT_PROFILE_ID), window)
     const pm = await personOpens(DEFAULT_PROFILE_ID)
     const pmTools = handed.at(-1) as AgentToolset
-    const first = await callOn(pmTools, 'give_work', {
-      to: 'new',
-      conversation_title: 'Build the pages',
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'Build the pages',
-      brief: 'build the pages',
-    })
+    const first = await callOn(pmTools, 'give_work', newConversationGive('worker', 'Build the pages', 'build the pages'))
     expect(first.outcome, JSON.stringify(first)).toBe('ok')
     const worker = first.agent as string
     const workerTools = handed.at(-1) as AgentToolset
     const second = await callOn(workerTools, 'give_work', {
-      to: 'new',
-      conversation_title: 'Check the pages',
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'helper',
-      title: 'Check the pages',
-      brief: 'check the pages',
+      ...newConversationGive('helper', 'Check the pages', 'check the pages'),
       under: first.label,
     })
     expect(second.outcome, JSON.stringify(second)).toBe('ok')

@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
 import {
   neutralHostDeps,
@@ -159,14 +160,7 @@ describe('374 · the rails a message passes', () => {
     await bringIdentityIntoBeing(workerProfile)
     const pm = await personOpens(pmProfile, root, pmMode)
     const pmTools = theToolsetJustHandedOut()
-    const given = await callOn(pmTools, 'give_work', {
-      to: 'new',
-      conversation_title: 'the work this dispatch is about',
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: workerProfile,
-      title: 'the work this dispatch is about',
-      brief: 'the work this dispatch is about',
-    })
+    const given = await callOn(pmTools, 'give_work', newConversationGive(workerProfile, 'the work this dispatch is about', 'the work this dispatch is about'))
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     expect(given.started, JSON.stringify(given)).toBe(true)
     return { pm, worker: given.agent as string, pmTools }

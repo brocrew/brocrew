@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { callOn } from './helpers/call-agent-tool'
 import { HandleKeepingRuntime as ProviderDouble } from './helpers/handle-keeping-runtime'
@@ -125,14 +126,7 @@ describe('F020 · a withdraw of a question already answered says so, and where i
     profile: string,
     title: string,
   ): Promise<{ agent: string; piece: string; label: string }> => {
-    const given = await callOn(tools, 'give_work', {
-      to: 'new',
-      conversation_title: title,
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile,
-      title,
-      brief: title,
-    })
+    const given = await callOn(tools, 'give_work', newConversationGive(profile, title, title))
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     expect(given.started, JSON.stringify(given)).toBe(true)
     const agent = given.agent as string

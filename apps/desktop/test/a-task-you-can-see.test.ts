@@ -1,3 +1,5 @@
+import { giveToConversation } from './lib/give-fixture'
+import { expectRecordedBriefBeforeFirstTurn, newestNamedHold } from './lib/recorded-send'
 import { callOn } from './helpers/call-agent-tool'
 import { waitFor } from './lib/f093-host'
 import { TASK_STATES } from '../src/shared/task-contracts'
@@ -222,14 +224,7 @@ describe('379 · a task you can see', () => {
 
   const typesIn = (sessionId: string): string[] => ledger(sessionId).map((event) => event.type)
 
-  /** The app-internal handle on the newest held row; model-facing tool answers do not expose it. */
-  const lastQueuedMessageId = (sessionId: string): string => {
-    const queued = [...ledger(sessionId)].reverse().find((event) => event.type === 'message_queued')
-    if (queued?.type !== 'message_queued' || queued.messageId === undefined) {
-      throw new Error(`${sessionId} has no named queued message`)
-    }
-    return queued.messageId
-  }
+  const lastQueuedMessageId = (sessionId: string) => newestNamedHold(ledger(sessionId))
 
   /** ⚑ **D-016 · a PM in a window, and the agent it gives work to brought into being.** */
   const aPm = async (): Promise<{ pm: string; pmTools: AgentToolset }> => {
@@ -239,19 +234,8 @@ describe('379 · a task you can see', () => {
   }
 
   /** ⚑ **D-016 · a give to the worker, through the real tool** — the one door that gives work. */
-  const give = (
-    pmTools: AgentToolset,
-    brief: string,
-    to: string,
-  ): Promise<Record<string, unknown>> =>
-    callOn(pmTools, 'give_work', {
-      to,
-      ...(to === 'new' ? { conversation_title: brief } : {}),
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: brief,
-      brief,
-    })
+  const give = (pmTools: AgentToolset, brief: string, to: string) =>
+    callOn(pmTools, 'give_work', giveToConversation(to, 'worker', brief, brief))
 
   /**
    * `373`'s helper: a PM in a window with one child of its own, through the real door.
@@ -261,15 +245,7 @@ describe('379 · a task you can see', () => {
    * returned beside it. ⚑ **415 · the child's own toolset** is the one its launch was handed, which is
    * the last one out.
    */
-  const aPmAndItsWorker = async (
-    brief: string,
-  ): Promise<{
-    pm: string
-    worker: string
-    pmTools: AgentToolset
-    workerTools: AgentToolset
-    first: Record<string, unknown>
-  }> => {
+  const aPmAndItsWorker = async (brief: string) => {
     const { pm, pmTools } = await aPm()
     const first = await give(pmTools, brief, 'new')
     expect(first.outcome, JSON.stringify(first)).toBe('ok')
@@ -444,13 +420,7 @@ describe('379 · a task you can see', () => {
     it('records each task with its queued brief before the brief reaches the provider', async () => {
       const { worker, pmTools, workerTools } = await aPmAndItsWorker('first')
       const straightOut = typesIn(worker)
-      expect(straightOut.filter((type) => type === 'user_turn')).toHaveLength(1)
-      expect(straightOut.filter((type) => type === 'work_given')).toHaveLength(1)
-      const recorded = straightOut.indexOf('work_given')
-      const queued = straightOut.indexOf('message_queued')
-      expect(queued).toBeGreaterThan(-1)
-      expect(queued).toBeLessThan(recorded)
-      expect(recorded).toBeLessThan(straightOut.indexOf('user_turn'))
+      expectRecordedBriefBeforeFirstTurn(straightOut)
 
       await cardOn(worker)
       await theWorkIsFinished(worker, workerTools)

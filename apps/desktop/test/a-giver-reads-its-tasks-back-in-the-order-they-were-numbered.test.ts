@@ -1,3 +1,4 @@
+import { giveToConversation } from './lib/give-fixture'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
 import { neutralHostDeps, syntheticProviderHome, fixtureProviderConfig } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -147,14 +148,7 @@ describe('D-016a · a giver reads its pieces back in the order they were numbere
     brief: string,
     to: string,
   ): Promise<{ owner: string; label: string }> => {
-    const given = await callOn(pmTools, 'give_work', {
-      to,
-      ...(to === 'new' ? { conversation_title: brief } : {}),
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile,
-      title: brief,
-      brief,
-    })
+    const given = await callOn(pmTools, 'give_work', giveToConversation(to, profile, brief, brief))
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     return { owner: given.agent as string, label: given.label as string }
   }

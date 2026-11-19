@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -238,14 +239,7 @@ function asThe(giver: GivingConversation): CallerIdentity {
   return { ownerId: agentCallerId(giver.sessionId) }
 }
 
-const A_GIVE = {
-  definition_of_done: 'The requested result and its checks are recorded.',
-  profile: 'worker',
-  title: 'x',
-  brief: 'x',
-  to: 'new',
-  conversation_title: 'x',
-} as const
+const A_GIVE = newConversationGive('worker', 'x', 'x') as const
 
 function startOf(out: GiveAdmission): { provider: Provider; approvalMode: ApprovalMode } | null {
   if (!out.ok) return null

@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { HandleKeepingRuntime as ProviderDouble } from './helpers/handle-keeping-runtime'
 import { waitFor } from './lib/f093-host'
@@ -455,14 +456,7 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
   }> => {
     await bringIdentityIntoBeing(workerProfile)
     const { id: pm, tools: pmTools } = await aPerson(pmProfile)
-    const given = await callOn(pmTools, 'give_work', {
-      to: 'new',
-      conversation_title: brief,
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: workerProfile,
-      title: brief,
-      brief,
-    })
+    const given = await callOn(pmTools, 'give_work', newConversationGive(workerProfile, brief, brief))
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     return {

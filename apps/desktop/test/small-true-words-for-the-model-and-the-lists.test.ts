@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -144,14 +145,7 @@ describe('724 · small true words, for the model and the lists', () => {
   }> => {
     await host.close(await personOpens('worker'), window)
     const pm = await personOpens('pm')
-    const given = await callOn(pm, 'give_work', {
-      to: 'new',
-      conversation_title: 'the work',
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'the work',
-      brief: 'migrate',
-    })
+    const given = await callOn(pm, 'give_work', newConversationGive('worker', 'the work', 'migrate'))
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     host.claimSession(worker, window)

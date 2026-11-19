@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import { personOpener } from './helpers/person-opens-session'
 import { callOn } from './helpers/call-agent-tool'
@@ -339,14 +340,7 @@ describe('545 §2 · the door writes the identity beside the conversation', () =
     const pm = await personOpens(pmProfile)
     const pmTools = agentToolsFor(host, pm)
     // ⚑ D-016 · the give starts the worker, and its brief is the relayed turn.
-    const given = await callOn(pmTools, 'give_work', {
-      to: 'new',
-      conversation_title: 'the work this dispatch is about',
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: workerProfile,
-      title: 'the work this dispatch is about',
-      brief: 'Deliver the migration, then report back.',
-    })
+    const given = await callOn(pmTools, 'give_work', newConversationGive(workerProfile, 'the work this dispatch is about', 'Deliver the migration, then report back.'))
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
 
@@ -380,14 +374,7 @@ describe('545 §2 · the door writes the identity beside the conversation', () =
     const pm = await personOpens(pmProfile)
     const pmTools = agentToolsFor(host, pm)
     // ⚑ D-016 · the give starts the worker, and its brief is the relayed turn.
-    const given = await callOn(pmTools, 'give_work', {
-      to: 'new',
-      conversation_title: 'the work this dispatch is about',
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: workerProfile,
-      title: 'the work this dispatch is about',
-      brief: 'write the migration',
-    })
+    const given = await callOn(pmTools, 'give_work', newConversationGive(workerProfile, 'the work this dispatch is about', 'write the migration'))
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     // ⚑ **What the PROVIDER received, read off the double's echo** — the fake answers every turn

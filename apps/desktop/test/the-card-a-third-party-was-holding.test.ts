@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { rmSync } from 'node:fs'
@@ -206,14 +207,7 @@ describe('496 · the card a third party was holding', () => {
     await bringIdentityIntoBeing(workerProfile)
     const pm = await personOpens(pmProfile)
     const pmTools = agentToolsFor(host, pm)
-    const given = await callOn(pmTools, 'give_work', {
-      to: 'new',
-      conversation_title: 'the work this dispatch is about',
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: workerProfile,
-      title: 'the work this dispatch is about',
-      brief: 'a long piece of work',
-    })
+    const given = await callOn(pmTools, 'give_work', newConversationGive(workerProfile, 'the work this dispatch is about', 'a long piece of work'))
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     return {
       pm,

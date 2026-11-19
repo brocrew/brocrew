@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { callOn } from './helpers/call-agent-tool'
 import { waitFor } from './lib/f093-host'
 import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
@@ -262,14 +263,7 @@ describe('D-033 · a turn that moves a piece of work is heard by every window at
     const pm = await personOpens('pm')
     const pmTools = agentToolsFor(host, pm)
     decorateNextHandle = holdingAWorkingTurn
-    const given = await callOn(pmTools, 'give_work', {
-      to: 'new',
-      conversation_title: 'the work',
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'the work',
-      brief: 'do the work',
-    })
+    const given = await callOn(pmTools, 'give_work', newConversationGive('worker', 'the work', 'do the work'))
     decorateNextHandle = null
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
@@ -555,14 +549,7 @@ describe('D-033 · a turn that moves a piece of work is heard by every window at
       watched = `sess_${String(counter + 1)}`
       announced = []
       decorateNextHandle = holdingAWorkingTurn
-      const given = await callOn(agentToolsFor(host, pm), 'give_work', {
-        to: 'new',
-        conversation_title: 'the work',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'the work',
-        brief: 'do the work',
-      })
+      const given = await callOn(agentToolsFor(host, pm), 'give_work', newConversationGive('worker', 'the work', 'do the work'))
       decorateNextHandle = null
       expect(given.outcome, JSON.stringify(given)).toBe('ok')
       const worker = given.agent as string

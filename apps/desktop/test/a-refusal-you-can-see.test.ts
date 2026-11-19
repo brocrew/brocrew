@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import type { ToolRefusedEvent, TranscriptEvent } from '../src/shared/conversation-events'
 import { navigationReply } from './helpers/navigation-reply'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -300,14 +301,7 @@ describe('405 · a refusal you can see', () => {
       // give to any agent this app holds (D-014), and nobody has run a conversation as `worker`.
       const { call } = toolsOf(pm)
 
-      const refused = await call('give_work', {
-        to: 'new',
-        conversation_title: 'do the thing',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'do the thing',
-        brief: 'do the thing',
-      })
+      const refused = await call('give_work', newConversationGive('worker', 'do the thing', 'do the thing'))
       expect(refused.outcome).toBe('refused')
       expect(refused.rail).toBe('no-such-profile')
 
@@ -332,14 +326,7 @@ describe('405 · a refusal you can see', () => {
       const pm = await personOpens('pm')
       const { call } = toolsOf(pm)
 
-      const admitted = await call('give_work', {
-        to: 'new',
-        conversation_title: 'do the thing',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'do the thing',
-        brief: 'do the thing',
-      })
+      const admitted = await call('give_work', newConversationGive('worker', 'do the thing', 'do the thing'))
       expect(admitted.outcome).toBe('ok')
       expect(host.sessionIds).toContain(admitted.agent as string)
 
@@ -356,14 +343,7 @@ describe('405 · a refusal you can see', () => {
       store.setSpawningEnabled(false)
       const { call } = toolsOf(pm)
 
-      const refused = await call('give_work', {
-        to: 'new',
-        conversation_title: 'deeper',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'deeper',
-        brief: 'deeper',
-      })
+      const refused = await call('give_work', newConversationGive('worker', 'deeper', 'deeper'))
       expect(refused.rail).toBe('spawning-disabled')
 
       const row = theRefusalIn(pm)
@@ -387,14 +367,7 @@ describe('405 · a refusal you can see', () => {
       // The one fact that differs from the test above.
       store.setSpawningEnabled(true)
       const { call } = toolsOf(pm)
-      const admitted = await call('give_work', {
-        to: 'new',
-        conversation_title: 'deeper',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'deeper',
-        brief: 'deeper',
-      })
+      const admitted = await call('give_work', newConversationGive('worker', 'deeper', 'deeper'))
       expect(admitted.outcome).toBe('ok')
       expect(events(pm).length).toBeGreaterThan(0)
       expect(refusalsIn(pm)).toEqual([])
@@ -415,14 +388,7 @@ describe('405 · a refusal you can see', () => {
 
       // 1 · `SPAWN_RAILS` — refused by the spawning switch, a start rail that waits on a person.
       store.setSpawningEnabled(false)
-      await call('give_work', {
-        to: 'new',
-        conversation_title: 'x',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'x',
-        brief: 'x',
-      })
+      await call('give_work', newConversationGive('worker', 'x', 'x'))
       // 2 · `TOOL_REFUSALS` — this file's own vocabulary. ⚑ D-016: a note, since a follow-up names
       // a piece and this one only needs an agent that is not there.
       await call('message_agent', { agent: 'sess_nobody', text: 'hello', kind: 'note' })
@@ -441,14 +407,7 @@ describe('405 · a refusal you can see', () => {
       // transient one** (a give is no longer refused over a stall): the same call with shorter words
       // lands, and nobody else has to decide anything.
       store.setSpawningEnabled(true)
-      const given = await call('give_work', {
-        to: 'new',
-        conversation_title: 'a piece',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'a piece',
-        brief: 'go',
-      })
+      const given = await call('give_work', newConversationGive('worker', 'a piece', 'go'))
       const asked = await toolsOf(given.agent as string).call('ask_question', {
         who_answers: 'the-parent',
         piece: given.label,
@@ -498,26 +457,12 @@ describe('405 · a refusal you can see', () => {
       await bringIdentityIntoBeing('worker')
       const pm = await personOpens('pm')
       const { call } = toolsOf(pm)
-      const spawned = await call('give_work', {
-        to: 'new',
-        conversation_title: 'work',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'work',
-        brief: 'work',
-      })
+      const spawned = await call('give_work', newConversationGive('worker', 'work', 'work'))
       const child = spawned.agent as string
 
       // ⚑ **The CHILD asks for something that cannot be** — an agent nobody has made.
       const childTools = toolsOf(child)
-      const refused = await childTools.call('give_work', {
-        to: 'new',
-        conversation_title: 'a helper of my own',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'nobody-by-that-name',
-        title: 'a helper of my own',
-        brief: 'a helper of my own',
-      })
+      const refused = await childTools.call('give_work', newConversationGive('nobody-by-that-name', 'a helper of my own', 'a helper of my own'))
       expect(refused.rail).toBe('no-such-profile')
 
       // ⛔ **The child's ledger, because the child is who tried.** ⚠️ Not the parent's: the parent
@@ -542,12 +487,7 @@ describe('405 · a refusal you can see', () => {
       const { set } = toolsOf(pm)
       const give = set.tools.find((one) => one.name === 'give_work')!
       const answered = await give.call({
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        to: 'new',
-        conversation_title: 'Read the fictional input',
-        title: 'Read the fictional input',
-        brief: 'Read the fictional input',
+        ...newConversationGive('worker', 'Read the fictional input', 'Read the fictional input'),
         inputs: [file],
       })
       expect(answered.structured).toMatchObject({ outcome: 'refused', rail: 'resource-too-large' })
@@ -574,12 +514,7 @@ describe('405 · a refusal you can see', () => {
       const secretFolder = join(work, 'northwind-acquisition')
       mkdirSync(secretFolder, { recursive: true })
       const refused = await call('give_work', {
-        to: 'new',
-        conversation_title: secretPurpose,
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: secretPurpose,
-        brief: secretPurpose,
+        ...newConversationGive('worker', secretPurpose, secretPurpose),
         folder: secretFolder,
       })
       expect(refused.outcome).toBe('refused')
@@ -785,14 +720,7 @@ describe('405 · a refusal you can see', () => {
       const { call } = toolsOf(pm)
       // ⚑ One word, written into every field that carries a caller's own work.
       const WORK = 'Northwind'
-      await call('give_work', {
-        to: 'new',
-        conversation_title: `${WORK} memo`,
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: `${WORK} memo`,
-        brief: `ship ${WORK}`,
-      })
+      await call('give_work', newConversationGive('worker', `${WORK} memo`, `ship ${WORK}`))
       await call('message_agent', { agent: 'sess_nobody', text: `about ${WORK}`, kind: 'note' })
       await call('reply_to_parent', { piece: 'W99.9', outcome: 'done', summary: `${WORK} is done` })
       await call('answer_question', {
@@ -874,29 +802,10 @@ describe('405 · a refusal you can see', () => {
         if (tool === undefined) throw new Error(`no such tool: ${name}`)
         texts.push((await tool.call(args)).text)
       }
+      await said('give_work', newConversationGive('worker', 'x', 'x'))
+      await said('give_work', newConversationGive('ghost', 'x', 'x'))
       await said('give_work', {
-        to: 'new',
-        conversation_title: 'x',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'x',
-        brief: 'x',
-      })
-      await said('give_work', {
-        to: 'new',
-        conversation_title: 'x',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'ghost',
-        title: 'x',
-        brief: 'x',
-      })
-      await said('give_work', {
-        to: 'new',
-        conversation_title: 'x',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'x',
-        brief: 'x',
+        ...newConversationGive('worker', 'x', 'x'),
         unasked: 1,
       })
       await said('message_agent', { agent: 'sess_nobody', text: 'hello', kind: 'note' })
@@ -1099,14 +1008,7 @@ describe('405 · a refusal you can see', () => {
     await bringIdentityIntoBeing('worker')
     const pm = await personOpens('pm')
     store.setSpawningEnabled(false)
-    await toolsOf(pm).call('give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      to: 'new',
-      conversation_title: 'x',
-      profile: 'worker',
-      title: 'x',
-      brief: 'x',
-    })
+    await toolsOf(pm).call('give_work', newConversationGive('worker', 'x', 'x'))
     return pm
   }
 
@@ -1200,14 +1102,7 @@ describe('405 · a refusal you can see', () => {
     it('⚑ the raw event log gives it a line of its own', async () => {
       const pm = await personOpens('pm')
       const { call } = toolsOf(pm)
-      await call('give_work', {
-        to: 'new',
-        conversation_title: 'x',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'nobody',
-        title: 'x',
-        brief: 'x',
-      })
+      await call('give_work', newConversationGive('nobody', 'x', 'x'))
       const line = describeEvent(theRefusalIn(pm))
       expect(line).toContain('give_work')
       expect(line).toContain('no-such-profile')
@@ -1247,14 +1142,7 @@ describe('405 · a refusal you can see', () => {
       // call sites do exactly that.** ⛔ It is asserted anyway because a defect that throws here
       // would reach a model as a broken tool, which is the one shape `307` says a refusal must never
       // wear.
-      const refused = await call('give_work', {
-        to: 'new',
-        conversation_title: 'x',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'nobody',
-        title: 'x',
-        brief: 'x',
-      })
+      const refused = await call('give_work', newConversationGive('nobody', 'x', 'x'))
       expect(refused.outcome).toBe('refused')
       expect(refusalsIn(pm)).toEqual([])
     })

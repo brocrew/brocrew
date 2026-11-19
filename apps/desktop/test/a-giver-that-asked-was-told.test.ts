@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -211,14 +212,7 @@ describe('719 · a giver that asked was told', () => {
   }> => {
     await host.close(await personOpens('worker'), window)
     const pm = await personOpens('pm')
-    const given = await callOn(pm, 'give_work', {
-      to: 'new',
-      conversation_title: 'the migration',
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'the migration',
-      brief: 'migrate',
-    })
+    const given = await callOn(pm, 'give_work', newConversationGive('worker', 'the migration', 'migrate'))
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     host.claimSession(worker, window)

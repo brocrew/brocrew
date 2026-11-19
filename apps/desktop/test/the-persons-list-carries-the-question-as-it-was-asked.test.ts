@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { PersonsQuestion } from '../src/shared/question-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -356,14 +357,7 @@ describe('D-046 · the person’s list carries each question as it was asked', (
       const pm = await personOpens('pm')
       const pmTools = agentToolsFor(host, pm)
       decorateNextHandle = holdingAWorkingTurn
-      const given = await callOn(pmTools, 'give_work', {
-        to: 'new',
-        conversation_title: 'the work',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'the work',
-        brief: 'the work',
-      })
+      const given = await callOn(pmTools, 'give_work', newConversationGive('worker', 'the work', 'the work'))
       decorateNextHandle = null
       expect(given.outcome, JSON.stringify(given)).toBe('ok')
       const worker = given.agent as string

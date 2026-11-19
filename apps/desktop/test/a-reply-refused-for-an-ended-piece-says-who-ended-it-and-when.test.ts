@@ -1,3 +1,4 @@
+import { addressedGive, giveToConversation } from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { callOn } from './helpers/call-agent-tool'
 import { waitFor } from './lib/f093-host'
@@ -442,14 +443,7 @@ describe('D-025 · §3-§6 · a refused reply through the real host', () => {
     text: string,
     to = 'new',
   ): Promise<{ agent: string; piece: string; label: string }> => {
-    const given = await callOn(tools, 'give_work', {
-      to,
-      ...(to === 'new' ? { conversation_title: text } : {}),
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile,
-      title: text,
-      brief: text,
-    })
+    const given = await callOn(tools, 'give_work', giveToConversation(to, profile, text, text))
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     return {
       agent: given.agent as string,
@@ -590,13 +584,7 @@ describe('D-025 · §3-§6 · a refused reply through the real host', () => {
 
     // A second give is HELD behind the running turn's card. Called directly so the raw result is
     // read: a held give carries no message property.
-    const held = await callOn(pmTools, 'give_work', {
-      to: worker,
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: siblings[0] as string,
-      title: 'the held one',
-      brief: 'the held one',
-    })
+    const held = await callOn(pmTools, 'give_work', addressedGive(worker, siblings[0] as string, 'the held one', 'the held one'))
     expect(held.outcome, JSON.stringify(held)).toBe('ok')
     expect(held.agent).toBe(worker)
     expect(held).not.toHaveProperty('message')

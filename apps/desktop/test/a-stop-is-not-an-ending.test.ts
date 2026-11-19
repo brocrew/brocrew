@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
@@ -110,14 +111,7 @@ describe('D-017 · a stop is not an ending', () => {
     const aPmAndAChild = async (): Promise<{ pm: string; child: string }> => {
       await host.close(await personOpens('worker'), window)
       const pm = await personOpens(DEFAULT_PROFILE_ID)
-      const spawned = await callOn(pm, 'give_work', {
-        to: 'new',
-        conversation_title: 'The notes',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'The notes',
-        brief: 'the notes',
-      })
+      const spawned = await callOn(pm, 'give_work', newConversationGive('worker', 'The notes', 'the notes'))
       expect(spawned.outcome, JSON.stringify(spawned)).toBe('ok')
       return { pm, child: spawned.agent as string }
     }
