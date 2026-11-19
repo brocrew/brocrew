@@ -550,9 +550,6 @@ const panelToggleName = computed(() =>
         </button>
         <template v-else>{{ title }}</template>
       </h1>
-      <small v-if="renaming" id="conversation-title-help" class="title-detail">
-        Name it after the job. Renaming keeps its address.
-      </small>
       <small v-if="identity || (renaming && task)" class="title-detail">
         <template v-if="identity">
           <template v-if="identity.author?.kind === 'person'">Named by you · </template>
@@ -571,6 +568,9 @@ const panelToggleName = computed(() =>
           </button>
           <span v-else data-cy="conversation-linked-task">Task {{ task }}</span>
         </template>
+      </small>
+      <small v-if="renaming" id="conversation-title-help" class="title-detail title-help">
+        Name it after the job. Renaming keeps its address.
       </small>
       <small
         v-if="renaming && refused"
@@ -888,13 +888,19 @@ const panelToggleName = computed(() =>
 }
 
 .header-title {
+  display: flex;
   min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--space-6);
   grid-column: 1 / 3;
   grid-row: 1;
 }
 
 h1 {
   overflow: visible;
+  min-width: 0;
+  max-width: 100%;
   margin: 0;
   color: var(--text);
   font-family: var(--font-display);
@@ -944,20 +950,29 @@ h1 {
 
 .title-detail {
   display: block;
+  min-width: 0;
+  max-width: 100%;
   color: var(--muted);
   font-size: var(--type-caption);
   overflow-wrap: anywhere;
 }
 
 .title-task {
+  max-width: 100%;
   padding: 0;
   border: 0;
   background: none;
   color: var(--accent-text);
   cursor: pointer;
   font: inherit;
+  overflow-wrap: anywhere;
   text-align: start;
   text-decoration: underline;
+}
+
+.title-help,
+.title-refused {
+  flex-basis: 100%;
 }
 
 .title-refused {

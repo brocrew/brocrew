@@ -97,6 +97,9 @@ it('renames the open conversation through the conversation command without retit
     .toBe('Resolved conversation name')
   expect(m.q('conversation-title').parentElement?.textContent).not.toContain('Named by you')
   expect(read).toHaveBeenCalledExactlyOnceWith({ sessionId })
+  expect(m.q('conversation-address').getBoundingClientRect().top).toBeLessThan(
+    m.q('conversation-title').getBoundingClientRect().bottom,
+  )
   read.mockClear()
   m.q('conversation-title-rename').click()
   await expect.poll(() => m.all('conversation-title-input').length).toBe(1)
