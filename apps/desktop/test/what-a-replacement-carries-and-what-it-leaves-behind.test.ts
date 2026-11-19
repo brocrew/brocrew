@@ -13,6 +13,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import { RuntimeHost as ProductRuntimeHost } from '../src/main/runtime/runtime-host'
+import type { WorkReconciler } from '../src/main/runtime/work-reconciliation'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
@@ -154,6 +155,113 @@ describe('what a replacement carries, and what it leaves behind', () => {
     host = buildHost()
     return next
   }
+
+  it('replans a retracted failure notice after a restart for an answerer with no work', async () => {
+    const asker = await personOpens('pm')
+    await host.closeAll()
+    const holder = 'answerer-without-work'
+    store.create({
+      id: holder,
+      provider: 'codex',
+      cwd: root,
+      approvalMode: 'auto',
+      profileId: 'worker',
+      parentSessionId: asker,
+    })
+    expect(store.rootOf(holder)).toBeNull()
+    const append = (owner: string, event: TranscriptEvent) => {
+      const ordinal = store.nextOrdinal(owner)
+      store.append(owner, ordinal, event, tick())
+      return ordinal
+    }
+    const requestId = 'req_failed_peer'
+    const prompt = 'Which clock face should be kept?'
+    append(asker, {
+      type: 'question_asked',
+      requestId,
+      prompt,
+      questions: [{ id: 'answer', prompt, options: [] }],
+    })
+    append(asker, { type: 'request_routed', requestId, to: 'an-agent', parent: holder })
+    append(holder, {
+      type: 'message_queued',
+      messageId: requestId,
+      kind: 'question',
+      text: prompt,
+      relayedFrom: asker,
+      asks: { asker, requestId },
+    })
+    append(holder, { type: 'message_unqueued', messageId: requestId, reason: 'sent', text: prompt })
+    append(holder, { type: 'user_turn', text: prompt, relayedFrom: asker })
+    const message = 'The provider could not run the selected model.'
+    const terminalOrdinal = append(holder, {
+      type: 'turn',
+      state: 'failed',
+      wordOf: 'this-app',
+      providerFailure: { message },
+    })
+    const messageId = 'retained-failure-notice'
+    append(holder, {
+      type: 'work_reconciliation',
+      incident: 'retained-failure-incident',
+      kind: 'provider-turn-failed',
+      episode: { generation: 0, terminalOrdinal },
+      since: tick(),
+      step: 'giver',
+      outcome: 'planned',
+      target: asker,
+      messageId,
+    })
+    const held = {
+      messageId,
+      text: message,
+      attribution: 'app_authored',
+      appNotice: 'a-provider-turn-failed',
+    } as const
+    append(asker, {
+      ...held,
+      type: 'message_queued',
+      kind: 'notice',
+      providerFailureHolder: holder,
+    })
+    append(asker, { ...held, type: 'message_unqueued', reason: 'retracted' })
+    expect(store.reconciliationOwners()).not.toContain(holder)
+    expect(store.reconciliationOwners(true)).toContain(holder)
+    expect(store.providerFailureEpisode(holder)).toMatchObject({ terminalOrdinal })
+
+    db.close()
+    db = openDatabase(join(userData, 'brobot2.sqlite'))
+    store = createSessionStore(db, tick)
+    host = buildHost(ProductRuntimeHost)
+    await waitFor(
+      () =>
+        ledger(asker).some(
+          (event) =>
+            event.type === 'message_unqueued' &&
+            event.messageId === messageId &&
+            event.reason === 'sent',
+        ),
+      'the original notice to reach the asker after the restart',
+    )
+    const runner = (host as unknown as { workReconciler: WorkReconciler }).workReconciler
+    await runner.run()
+    await runner.run()
+
+    const notices = ledger(asker).filter(
+      (event) => event.type === 'message_queued' && event.appNotice === 'a-provider-turn-failed',
+    )
+    expect(notices).toHaveLength(2)
+    expect(notices[1]).toMatchObject({ messageId, providerFailureHolder: holder })
+    expect(notices[1]).toHaveProperty(
+      'text',
+      expect.stringContaining(`Unanswered questions: ${requestId}.`),
+    )
+    expect(store.reconciliationReceiptsForOwner(holder).map(({ outcome }) => outcome)).toEqual([
+      'planned',
+      'planned',
+      'delivered',
+    ])
+  })
 
   it('a lost session leaves the work and its successful automatic holder reminder recorded', async () => {
     await host.closeAll()

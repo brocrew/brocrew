@@ -105,6 +105,11 @@ export function holderReconciliationReceipt(
   }
 }
 
+export function providerFailureDiagnosis(conversation: string, cause: string): string {
+  const reason = cause.replace(/[.]$/, '')
+  return `${conversation} couldn't run: ${reason}. Check its status and settings before choosing how to continue.`
+}
+
 export function workRecoveryEvent(said: unknown): WorkRecoveryEvent | null {
   if (typeof said !== 'object' || said === null) return null
   const r = said as Record<string, unknown>

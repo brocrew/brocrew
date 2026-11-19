@@ -330,9 +330,13 @@ export function stalledWithACause<T extends Pick<PieceRow, 'state' | 'stalledBec
  * of the same ledgers.
  */
 export function aStallItsGiverCanBeToldOf<
-  T extends Pick<PieceRow, 'state' | 'stalledBecause' | 'giver'>,
+  T extends Pick<PieceRow, 'state' | 'stalledBecause' | 'giver' | 'providerTurnFailure'>,
 >(piece: T): piece is T & { readonly giver: string; readonly stalledBecause: TaskStallCause } {
-  return stalledWithACause(piece) && givenByAConversation(piece)
+  return (
+    piece.providerTurnFailure === undefined &&
+    stalledWithACause(piece) &&
+    givenByAConversation(piece)
+  )
 }
 
 /**

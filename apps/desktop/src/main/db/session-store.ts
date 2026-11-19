@@ -960,7 +960,7 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   numberUnder(parent: string): number
   recordGive(given: GivenPiece, ordinal: number, event: WorkGivenEvent, at: number): void
   /** Every saved work row, including roots, for incident reconciliation. */
-  reconciliationOwners(): readonly string[]
+  reconciliationOwners(includeProviderFailureNotices?: boolean): readonly string[]
   reconciliationWork(holders?: ReadonlySet<string>, unread?: RowsUnread): readonly WorkRow[]
   reconciliationReceiptsForOwner(owner: string): readonly HolderReconciliationReceipt[]
   reconciliationRecovery(owner: string): WorkRecoveryEvent | null
@@ -2300,6 +2300,14 @@ export function createSessionStore(
       ORDER BY created_at, id LIMIT ?`,
   )
   const selectReconciliationOwners = db.prepare('SELECT DISTINCT owner_session_id AS id FROM work')
+  const selectReconciliationOwnersWithFailures = db.prepare(
+    `SELECT owner_session_id AS id FROM work
+      UNION
+      SELECT session_id AS id FROM events INDEXED BY events_kind_owner_idx
+      WHERE type = 'work_reconciliation'
+        AND CASE WHEN json_valid(payload)
+          THEN json_extract(payload, '$.kind') = 'provider-turn-failed' ELSE 0 END`,
+  )
   const selectReconciliationOwnerReceipts = db.prepare(`SELECT payload, created_at FROM events
     WHERE type = 'work_reconciliation' AND session_id = ? ORDER BY generation, ordinal`)
   const selectReconciliationReceipts = db.prepare(
@@ -6124,8 +6132,11 @@ export function createSessionStore(
       recordGiveTx(given, ordinal, event, at)
     },
 
-    reconciliationOwners() {
-      return (selectReconciliationOwners.all() as { id: string }[]).map((one) => one.id)
+    reconciliationOwners(includeProviderFailureNotices = false) {
+      const owners = includeProviderFailureNotices
+        ? selectReconciliationOwnersWithFailures
+        : selectReconciliationOwners
+      return (owners.all() as { id: string }[]).map((one) => one.id)
     },
     reconciliationWork(holders, unread) {
       const owners =

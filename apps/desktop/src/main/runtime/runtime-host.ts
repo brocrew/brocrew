@@ -141,7 +141,7 @@ import {
   type SendOverflow,
 } from './send-overflow'
 import type { SendReceipt, SendRecipientState } from '../../shared/tool-outcome'
-import type { NewSessionRecord } from '../db/session-store'
+import type { NewSessionRecord, ProviderFailureEpisode } from '../db/session-store'
 import type {
   ItsLedger,
   StateLedger,
@@ -289,10 +289,13 @@ import {
   type ReconciliationPiece,
 } from './work-reconciliation'
 import type {
+  HolderReconciliationReceipt,
+  ProviderFailureReconciliationEvent,
   WorkRecoveryEvent,
   ReconciliationReceipt,
   WorkReconciliationEvent,
 } from '../../shared/reconciliation-contracts'
+import { providerFailureDiagnosis } from '../../shared/work-reconciliation'
 import { indexWorkerReadings } from '../worker-readings'
 import type { WorkerBindingReading } from '../../shared/worker-reading'
 import type { StartAttemptLine, StartAttemptOutcome } from '../start-attempt-line'
@@ -1965,6 +1968,13 @@ interface WordsForTheNextStart {
   readonly rebriefs?: { readonly piece: string; readonly label: string }
 }
 
+type RecordedProviderFailure = Exclude<ProviderFailureEpisode, string>
+
+interface ProviderFailureRecipient {
+  readonly pieces: Set<string>
+  readonly questions: Set<string>
+}
+
 /** A service's turn working on a piece: the life it runs in, and how many of its turns had ended. */
 interface TheTurnOnAPiece {
   readonly life: HostedSession
@@ -3290,6 +3300,7 @@ interface TheWordsOfAQuestion {
  */
 type IntoItsLedger =
   | WorkReconciliationEvent
+  | ProviderFailureReconciliationEvent
   | WorkRecoveryEvent
   | ReplyUndeliveredEvent
   | UserDecisionEvent
@@ -5509,7 +5520,8 @@ export class RuntimeHost implements LiveHost {
       }
     }
     this.workReconciler = new WorkReconciler({
-      holders: () => this.deps.store.reconciliationOwners(),
+      holders: () => this.deps.store.reconciliationOwners(true),
+      providerFailures: (holders) => this.reconcileProviderFailureNotices(holders),
       pieces: (holders) => this.reconciliationReading(undefined, holders).rows,
       receiptsFor: (pieces) => this.reconciliationReceiptsFor(pieces),
       receipts: (piece) => {
@@ -16514,6 +16526,10 @@ export class RuntimeHost implements LiveHost {
             rows.push({ ...one, disposition: 'ended' })
             continue
           }
+          if (folded?.providerTurnFailure !== undefined) {
+            rows.push({ ...one, disposition: 'waiting' })
+            continue
+          }
           // The upgrade cut covers only already-told stalls from the old holder ledger.
           if (
             folded?.state === 'stalled' &&
@@ -16728,10 +16744,21 @@ export class RuntimeHost implements LiveHost {
     )
   }
 
-  private keepReconciliation(owner: string, event: WorkReconciliationEvent): boolean {
+  private keepReconciliation(
+    owner: string,
+    event: WorkReconciliationEvent | ProviderFailureReconciliationEvent,
+  ): boolean {
     try {
       const slot = this.slots.get(owner)
       if (slot !== undefined && slot.session === null) return false
+      if (event.kind === 'provider-turn-failed') {
+        if (this.startupRepairs.has(owner)) return false
+        let landed = false
+        this.writeIntoItsLedger(owner, event, () => {
+          landed = true
+        })
+        return landed
+      }
       this.writeIntoItsLedger(owner, event)
       return this.deps.store
         .reconciliationReceipts(owner, event.piece)
@@ -16819,6 +16846,21 @@ export class RuntimeHost implements LiveHost {
     )
     if (!kept) return false
     if (this.runsNow(target) && !this.startsInFlight.has(target)) return true
+    const accepted = await this.wakeReconciliationRecipient(target, () =>
+      this.reconciliationNoticeStillGoes(target, receipt.messageId!, piece.piece),
+    )
+    if (!accepted) {
+      const progress = this.deps.store.reconciliationDelivery(target, receipt.messageId)
+      if (progress === 'running' || progress === 'turn-ended') return true
+      this.retractReconciliationNotice(target, receipt.messageId)
+    }
+    return accepted
+  }
+
+  private async wakeReconciliationRecipient(
+    target: string,
+    stillGoes: () => boolean,
+  ): Promise<boolean> {
     // The same paced start chain as restart wakes admits one provider at a time.
     const wake = this.restartWakes.then(async () => {
       const wait = this.lastPacedStart + AT_ONCE_START_GAPS * this.startGapMs - performance.now()
@@ -16828,7 +16870,7 @@ export class RuntimeHost implements LiveHost {
           timer.unref?.()
         })
       if (!this.reconciliationMayWake(target)) return false
-      if (!this.reconciliationNoticeStillGoes(target, receipt.messageId!, piece.piece)) return false
+      if (!stillGoes()) return false
       this.wakingForStoppedWork.add(target)
       try {
         await this.ensureRunning(target, null)
@@ -16842,18 +16884,11 @@ export class RuntimeHost implements LiveHost {
       () => undefined,
       () => undefined,
     )
-    let accepted = false
     try {
-      accepted = await wake
+      return await wake
     } catch {
-      /* An observed start failure ends this attempt. */
+      return false
     }
-    if (!accepted) {
-      const progress = this.deps.store.reconciliationDelivery(target, receipt.messageId)
-      if (progress === 'running' || progress === 'turn-ended') return true
-      this.retractReconciliationNotice(target, receipt.messageId)
-    }
-    return accepted
   }
 
   private retractReconciliationNotice(target: string, messageId: string): void {
@@ -16919,60 +16954,176 @@ export class RuntimeHost implements LiveHost {
       const episode = this.deps.store.providerFailureEpisode(holder)
       if (typeof episode === 'string') return false
       const receipts = this.deps.store.reconciliationReceiptsForOwner(holder)
-      let activeReceipt = false
-      for (let at = receipts.length - 1; at >= 0; at--) {
-        const receipt = receipts[at]
-        if (
-          receipt?.kind !== 'provider-turn-failed' ||
-          receipt.messageId !== messageId ||
-          this.theOneInItsPlace(receipt.target) !== target ||
-          receipt.episode.generation !== episode.generation ||
-          receipt.episode.terminalOrdinal !== episode.terminalOrdinal
-        )
-          continue
-        activeReceipt = receipt.outcome !== 'failed'
-        break
-      }
-      if (!activeReceipt) return false
+      const receipt = this.providerFailureReceipt(receipts, target, episode)
+      if (receipt?.messageId !== messageId || receipt.outcome !== 'planned') return false
+      const audience = this.providerFailureRecipients(holder, episode)
+      return audience.complete && audience.recipients.has(target)
+    } catch {
+      return false
+    }
+  }
 
-      const workUnread = rowsUnreadOnce()
-      const pieces = this.deps.store.openPiecesOf(holder, workUnread)
+  private providerFailureReceipt(
+    receipts: readonly HolderReconciliationReceipt[],
+    target: string,
+    episode: RecordedProviderFailure,
+  ): ProviderFailureReconciliationEvent | undefined {
+    for (let at = receipts.length - 1; at >= 0; at--) {
+      const receipt = receipts[at]
       if (
-        workUnread.count === 0 &&
-        workUnread.ledgersSkipped === 0 &&
-        pieces.some(
-          (piece) =>
-            piece.giver !== null &&
-            this.theOneInItsPlace(piece.giver) === target &&
-            piece.providerTurnFailure?.turnOrdinal === episode.terminalOrdinal,
-        )
+        receipt?.kind === 'provider-turn-failed' &&
+        this.theOneInItsPlace(receipt.target) === target &&
+        receipt.episode.generation === episode.generation &&
+        receipt.episode.terminalOrdinal === episode.terminalOrdinal
       )
-        return true
+        return receipt
+    }
+    return undefined
+  }
 
-      const askerReads = new Map<string, readonly RoutedRequest[]>()
-      return episode.asks.some(({ asker, requestId }) => {
-        if (this.theOneInItsPlace(asker) !== target) return false
-        let routes = askerReads.get(asker)
-        if (routes === undefined) {
-          const unread = rowsUnreadOnce()
-          const read = this.deps.store.routedRequestsOf(asker, unread)
-          routes = unread.count === 0 && unread.ledgersSkipped === 0 ? read : []
-          askerReads.set(asker, routes)
-        }
-        return routes.some(
+  private providerFailureRecipients(holder: string, episode: RecordedProviderFailure) {
+    const recipients = new Map<string, ProviderFailureRecipient>()
+    const forRecipient = (id: string): ProviderFailureRecipient => {
+      const target = this.theOneInItsPlace(id)
+      const found = recipients.get(target)
+      if (found !== undefined) return found
+      const recipient = { pieces: new Set<string>(), questions: new Set<string>() }
+      recipients.set(target, recipient)
+      return recipient
+    }
+    const unread = rowsUnreadOnce()
+    const pieces = this.deps.store.openPiecesOf(holder, unread)
+    if (unread.count === 0 && unread.ledgersSkipped === 0) {
+      for (const piece of pieces) {
+        if (
+          piece.giver !== null &&
+          piece.providerTurnFailure?.turnOrdinal === episode.terminalOrdinal
+        )
+          forRecipient(piece.giver).pieces.add(`${piece.label} · ${piece.title}`)
+      }
+    }
+
+    const currentHolder = this.theOneInItsPlace(holder)
+    const askerReads = new Map<string, readonly RoutedRequest[]>()
+    for (const { asker, requestId } of episode.asks) {
+      let routes = askerReads.get(asker)
+      if (routes === undefined) {
+        const before = unread.count + unread.ledgersSkipped
+        const read = this.deps.store.routedRequestsOf(asker, unread)
+        routes = before === unread.count + unread.ledgersSkipped ? read : []
+        askerReads.set(asker, routes)
+      }
+      if (
+        routes.some(
           (route) =>
             route.requestId === requestId &&
             route.askedBy === asker &&
             route.parent !== null &&
-            this.theOneInItsPlace(route.parent) === this.theOneInItsPlace(holder) &&
+            this.theOneInItsPlace(route.parent) === currentHolder &&
             route.went.to !== 'a-person' &&
             route.escalatedAt === null &&
             REQUEST_IS_OPEN[route.state],
         )
-      })
-    } catch {
-      return false
+      )
+        forRecipient(asker).questions.add(requestId)
     }
+    return { recipients, complete: unread.count === 0 && unread.ledgersSkipped === 0 }
+  }
+
+  private reconcileProviderFailureNotices(holders: ReadonlySet<string>): void {
+    for (const holder of holders) {
+      try {
+        const episode = this.deps.store.providerFailureEpisode(holder)
+        if (typeof episode === 'string') continue
+        const audience = this.providerFailureRecipients(holder, episode)
+        if (!audience.complete || audience.recipients.size === 0) continue
+        const receipts = this.deps.store.reconciliationReceiptsForOwner(holder)
+        for (const target of audience.recipients.keys()) {
+          const prior = this.providerFailureReceipt(receipts, target, episode)
+          if (prior !== undefined) {
+            if (prior.outcome !== 'planned') continue
+            const progress = this.deps.store.providerFailureNoticeProgress(target, prior.messageId)
+            if (progress === 'running' || progress === 'turn-ended') {
+              this.keepReconciliation(holder, { ...prior, outcome: 'delivered' })
+              continue
+            }
+            if (progress !== 'retracted') continue
+          }
+          if (!this.reconciliationMayWake(target)) continue
+          void this.afterWhatArrivedFirst(target, () =>
+            this.deliverProviderFailureNotice(holder, target, episode),
+          ).catch((error) =>
+            console.warn(
+              `runtime host could not tell ${target} about a failed turn: ${errorMessage(error)}`,
+            ),
+          )
+        }
+      } catch (error) {
+        console.warn(`runtime host could not read ${holder}'s failed turn: ${errorMessage(error)}`)
+      }
+    }
+  }
+
+  private async deliverProviderFailureNotice(
+    holder: string,
+    target: string,
+    expected: RecordedProviderFailure,
+  ): Promise<void> {
+    if (!this.reconciliationMayWake(target) || this.theOneInItsPlace(target) !== target) return
+    const episode = this.deps.store.providerFailureEpisode(holder)
+    if (
+      typeof episode === 'string' ||
+      episode.generation !== expected.generation ||
+      episode.terminalOrdinal !== expected.terminalOrdinal
+    )
+      return
+    const audience = this.providerFailureRecipients(holder, episode)
+    const recipient = audience.recipients.get(target)
+    if (!audience.complete || recipient === undefined) return
+    const receipts = this.deps.store.reconciliationReceiptsForOwner(holder)
+    const prior = this.providerFailureReceipt(receipts, target, episode)
+    if (
+      prior !== undefined &&
+      (prior.outcome !== 'planned' ||
+        this.deps.store.providerFailureNoticeProgress(target, prior.messageId) !== 'retracted')
+    )
+      return
+
+    const { address, title } = this.questionConversation(holder)
+    const pieces = [...recipient.pieces].join(', ')
+    const questions = [...recipient.questions].join(', ')
+    const text =
+      providerFailureDiagnosis(`Conversation ${address} · ${title}`, episode.cause.message) +
+      (pieces === '' ? '' : `\n\nAffected tasks: ${pieces}.`) +
+      (questions === '' ? '' : `\n\nUnanswered questions: ${questions}.`)
+    const prepared = this.prepareTextForSend(holder, 'provider failure notice', text)
+    if (!prepared.ok) return
+    const notice: ProviderFailureReconciliationEvent = prior ?? {
+      type: 'work_reconciliation',
+      incident: randomUUID(),
+      kind: 'provider-turn-failed',
+      episode: { generation: episode.generation, terminalOrdinal: episode.terminalOrdinal },
+      since: this.now(),
+      step: 'giver',
+      outcome: 'planned',
+      target,
+      messageId: randomUUID(),
+    }
+    if (!this.keepReconciliation(holder, notice)) return
+    const where = await new Promise<WhereHeldWordsWait>((resolve) =>
+      this.holdUntilItStarts(
+        target,
+        prepared.text,
+        { appNotice: 'a-provider-turn-failed', providerFailureHolder: holder },
+        'notice',
+        resolve,
+        notice.messageId,
+      ),
+    )
+    if (where === 'its-ledger')
+      await this.wakeReconciliationRecipient(target, () =>
+        this.providerFailureNoticeStillGoes(target, notice.messageId, holder),
+      )
   }
 
   private dropObsoleteReconciliationNotices(session: HostedSession): void {
@@ -22666,6 +22817,7 @@ export class RuntimeHost implements LiveHost {
     session: HostedSession,
     event:
       | WorkReconciliationEvent
+      | ProviderFailureReconciliationEvent
       | WorkRecoveryEvent
       // ⚑ **439's sender-side receipt** — see {@link MessageSentEvent}.
       | MessageSentEvent
