@@ -110,6 +110,7 @@ function holdingAWorkingTurn(
   // the stop honoured; `completed` is the turn a provider finished anyway, which Codex does
   // (`probe:codex-early-interrupt`, `709`).
   itsWord: 'interrupted' | 'completed' = 'interrupted',
+  onSend?: (text: string) => void,
 ): FakeSessionHandle {
   const queue = new AsyncQueue<RuntimeEvent>()
   let status = handle.status()
@@ -137,10 +138,11 @@ function holdingAWorkingTurn(
         }
       }
       if (property === 'send') {
-        return async (): Promise<void> => {
+        return async (text: string): Promise<void> => {
           if (machine.beginTurn() === null) {
             throw new Error('cannot send: session is not active or a turn is in progress')
           }
+          onSend?.(text)
         }
       }
       if (property === 'interrupt') {
@@ -1084,35 +1086,34 @@ describe('484 · state a supervisor can trust', () => {
   // §5 · what `interrupt_agent.reason` actually is
   // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-  describe('§5 · `reason` reaches no agent and no row, and the description says so', () => {
-    it('🔴 a distinctive reason reaches NEITHER the ledger NOR the child’s next turn', async () => {
-      // ⛔ **A held working turn, for `INTERRUPT_RAILS`' reason** — see §1's agent arm.
-      const { pm, pmTools, worker, workerHandle } = await aPmAndItsWorker(holdingAWorkingTurn)
-      await waitFor(() => workerHandle.status() === 'working', 'the child to be working')
-      const distinctive = 'zzq-the-reason-nobody-keeps-9137'
-      const said = await callOn(pmTools, 'interrupt_agent', {
-        agent: worker,
-        reason: distinctive,
-      })
-      expect(said.outcome, JSON.stringify(said)).toBe('ok')
-
-      // ⛔ **The search shape is BOTH ledgers and every event type**, which is what makes this a
-      // negative rather than a guess: the words could only reach the child through its own ledger
-      // (a `user_turn`, a `message_queued`) or be kept in the asker's.
-      for (const session of [worker, pm]) {
-        expect(JSON.stringify(ledger(session)), `${session} kept the reason`).not.toContain(
-          distinctive,
-        )
-      }
-      // ⚑ **The control that plants TWO** (standing rule 12): the same search finds words that ARE
-      // written, so a matcher that could never fire is not what produced the negative above.
-      await host.send(worker, `${distinctive}-but-spoken`, asPm(pm))
-      await waitFor(
-        () => JSON.stringify(ledger(worker)).includes(`${distinctive}-but-spoken`),
-        'the spoken words to reach the ledger',
+  describe('§5 · an explicit agent Stop records its reason and tells it on the next delivery', () => {
+    it('keeps the reason on the worker’s ask and tells the provider on its next input', async () => {
+      const delivered: string[] = []
+      const { pm, pmProfile, pmTools, worker, workerHandle } = await aPmAndItsWorker((handle) =>
+        holdingAWorkingTurn(handle, 'interrupted', (text) => delivered.push(text)),
       )
-      expect(JSON.stringify(ledger(worker))).toContain(`${distinctive}-but-spoken`)
-      expect(JSON.stringify(ledger(worker))).not.toContain(`"${distinctive}"`)
+      await waitFor(() => workerHandle.status() === 'working', 'the child to be working')
+      const reason = 'zzq-the-recorded-stop-reason-9137'
+      const said = await callOn(pmTools, 'interrupt_agent', { agent: worker, reason })
+      expect(said.outcome, JSON.stringify(said)).toBe('ok')
+      const workerRows = ledger(worker)
+      expect(workerRows.filter((event) => event.type === 'work_interrupted')).toEqual([
+        { type: 'work_interrupted', by: 'an-agent', agent: pm, agentProfile: pmProfile, reason },
+      ])
+      const otherRows = workerRows.filter((event) => event.type !== 'work_interrupted')
+      const recordedElsewhere = [...ledger(pm), ...otherRows]
+      expect(JSON.stringify(recordedElsewhere)).not.toContain(reason)
+      expect(delivered).toHaveLength(1)
+      expect(delivered[0]).not.toContain(reason)
+
+      const followUp = `${reason}-but-spoken`
+      await host.send(worker, followUp, asPm(pm))
+      await waitFor(() => JSON.stringify(ledger(worker)).includes(followUp), 'the spoken ledger row')
+      expect(delivered).toHaveLength(2)
+      expect(delivered[1]).toContain(
+        `stopped your turn: ${reason}. Read what was recorded before continuing instead of redoing it.`,
+      )
+      expect(delivered[1]).toContain(followUp)
     })
 
     it('⚠️ the UI half of the evidence, measured — interrupting and speaking really are two acts', async () => {
@@ -1123,9 +1124,7 @@ describe('484 · state a supervisor can trust', () => {
       await turnsEnded(quiet)
       const asks = ledger(quiet).filter((event) => event.type === 'work_interrupted')
       expect(asks).toHaveLength(1)
-      // ⛔ **The row carries `by` and `agent` and NOTHING ELSE that could be words.** ⚑ BroBot
-      // inferred this from *"of 31 event types observed… no interrupt-shaped event"* and called the
-      // inference weak; it is a measurement now.
+      // A person's Stop records the actor kind without a reason or conversation id.
       expect(Object.keys(asks[0] ?? {}).sort()).toEqual(['by', 'type'])
       await host.send(quiet, 'continue', window)
       await waitFor(

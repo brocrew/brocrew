@@ -85,14 +85,14 @@ describe('695 · R35 — what interrupt_agent tells the model about background w
     (tool) => tool.name === 'interrupt_agent',
   )!.description
 
-  it('says the turn’s work is thrown away and the background work keeps running', () => {
+  it('says a turn can finish anyway and names which background commands keep running', () => {
     // ⚑ **720 · `709` F-9 — the sentence now ASKS, and says where to read what happened.** Since R43
     // the ledger records the provider's word, and a turn asked to stop can be finished anyway —
     // so *"is cut short"* promised an outcome the ledger could contradict. ⚑ F084 — the background
     // clause (695's R35) now says, per provider, what the stop ends: on Claude, work sent to the
     // background still keeps running.
     expect(source).toContain(
-      'It asks the turn it is in to stop: that turn may end there, throwing away whatever it was part-way through, or it may be finished anyway — once the agent is no longer working, get_agent_status says which, so read it there before you rely on either. The stop also ends commands that turn started: on Claude, the command it is waiting on, while work it sent to the background keeps running; on Codex, every command that turn started, even one it left running. A command an earlier turn left running keeps running.',
+      'That turn may end there, throwing away what it was part-way through, or may finish anyway; get_agent_status says which once it has stopped working. Work it already recorded and what it already did stay as they were. The stop also ends commands that turn started: on Claude, the command it is waiting on, while work it sent to the background keeps running; on Codex, every command that turn started, even one it left running. A command an earlier turn left running keeps running.',
     )
   })
 
