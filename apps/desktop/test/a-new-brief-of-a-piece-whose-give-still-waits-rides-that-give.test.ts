@@ -1,3 +1,4 @@
+import { giveToConversation, readGivenTask, giveWorkerAndClaimItsBrief, ownedFixturePiece } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -212,49 +213,15 @@ describe('D-022 · a giver’s correction reaches the owner, and the verbs say w
       (event): event is Extract<TranscriptEvent, { type: T }> => event.type === type,
     )
 
-  const pieceOf = (owner: string, piece: string) => {
-    const found = store.piecesOwnedBy(owner).find((one) => one.piece === piece)
-    if (found === undefined) throw new Error(`${owner} owns no piece ${piece}`)
-    return found
-  }
+  const pieceOf = (owner: string, piece: string) => ownedFixturePiece(store, owner, piece)
 
   /** A give, answered `ok`. */
-  const aGive = async (
-    giver: string,
-    profile: string,
-    title: string,
-    brief: string,
-    to: string,
-  ): Promise<{ agent: string; piece: string; label: string; answer: Record<string, unknown> }> => {
-    const answer = await callOn(giver, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile,
-      title,
-      brief,
-      to,
-      ...(to === 'new' ? { conversation_title: title } : {}),
-    })
-    expect(answer.outcome, JSON.stringify(answer)).toBe('ok')
-    return {
-      agent: answer.agent as string,
-      piece: answer.piece as string,
-      label: answer.label as string,
-      answer,
-    }
-  }
+  const aGive = (giver: string, profile: string, title: string, brief: string, to: string) =>
+    readGivenTask(() => callOn(giver, 'give_work', giveToConversation(to, profile, title, brief)))
 
-  /** A PM a person opened, and a worker it gave one piece, whose first turn parks on a card. */
-  const aPmAndItsWorker = async (
-    suffix = '',
-    title = 'the first piece',
-  ): Promise<{ pm: string; worker: string; piece: string; label: string; title: string }> => {
-    await bringIdentityIntoBeing(`worker${suffix}`)
-    const pm = await personOpens(`pm${suffix}`)
-    const given = await aGive(pm, `worker${suffix}`, title, FIRST_BRIEF, 'new')
-    host.claimSession(given.agent, window)
-    await waitFor(() => cardsOn(given.agent) > 0, 'the worker to park on its first turn')
-    return { pm, worker: given.agent, piece: given.piece, label: given.label, title }
-  }
+  /** A PM a person opened and a worker parked on the card its first brief raised. */
+  const aPmAndItsWorker = (suffix = '', title = 'the first piece') =>
+    giveWorkerAndClaimItsBrief({ host, store, window, personOpens }, suffix, title, FIRST_BRIEF)
 
   /** The same, with the worker's first turn let end: it holds the piece and is idle. */
   const anIdleWorker = async (suffix = '') => {

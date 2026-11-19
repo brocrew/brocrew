@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -200,14 +201,7 @@ describe('608 · the turn that no longer waits', () => {
     await host.close(seeded, window)
     const pm = await personOpens('pm')
     const pmTools = theToolsetJustHandedOut()
-    const given = await callOn(pmTools, 'give_work', {
-      to: 'new',
-      conversation_title: 'The schema',
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'The schema',
-      brief: 'migrate the schema',
-    })
+    const given = await callOn(pmTools, 'give_work', newConversationGive('worker', 'The schema', 'migrate the schema'))
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     const workerTools = theToolsetJustHandedOut()

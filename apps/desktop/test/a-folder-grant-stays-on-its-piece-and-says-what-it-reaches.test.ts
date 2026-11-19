@@ -1,3 +1,4 @@
+import { addressedGive, newConversationGive } from './lib/give-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
@@ -323,12 +324,7 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
       const giver = await aGiver('ask')
       const first = await host.giveWork(
         {
-          to: 'new',
-          conversation_title: 'the first piece',
-          definition_of_done: 'The requested result and its checks are recorded.',
-          profile: 'pm',
-          title: 'the first piece',
-          brief: 'start here',
+          ...newConversationGive('pm', 'the first piece', 'start here'),
           folder: repoA,
         },
         speakingAs(giver),
@@ -339,11 +335,7 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
       await waitFor('the first turn to park on its card', () => cardsOf(helper).length === 1)
       const second = await host.giveWork(
         {
-          to: first.label,
-          definition_of_done: 'The requested result and its checks are recorded.',
-          profile: 'pm',
-          title: 'B',
-          brief: 'work in B',
+          ...addressedGive(first.label, 'pm', 'B', 'work in B'),
           folder: repoB,
         },
         speakingAs(giver),
@@ -379,11 +371,7 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
       const giver = await aGiver()
       const helper = await aHelperAtWork(giver)
       const given = await callAs(giver, 'give_work', {
-        to: helper,
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'pm',
-        title: 'B',
-        brief: 'B',
+        ...addressedGive(helper, 'pm', 'B', 'B'),
         folder: repoB,
       })
       const data = given.structured as GiveAnswer
@@ -396,12 +384,7 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
       const giver = await aGiver('ask', 'codex')
       const first = await host.giveWork(
         {
-          to: 'new',
-          conversation_title: 'the first piece',
-          definition_of_done: 'The requested result and its checks are recorded.',
-          profile: 'pm',
-          title: 'the first piece',
-          brief: 'start here',
+          ...newConversationGive('pm', 'the first piece', 'start here'),
           folder: repoA,
         },
         speakingAs(giver),
@@ -409,11 +392,7 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
       if (!first.ok) throw new Error(`refused: ${first.refusal.rail}`)
       await waitFor('the first turn to park on its card', () => cardsOf(first.owner).length === 1)
       const given = await callAs(giver, 'give_work', {
-        to: first.label,
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'pm',
-        title: 'B',
-        brief: 'B',
+        ...addressedGive(first.label, 'pm', 'B', 'B'),
         folder: repoB,
       })
       const data = given.structured as GiveAnswer
@@ -426,12 +405,7 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
       const giver = await aGiver('ask', 'claude')
       const first = await host.giveWork(
         {
-          to: 'new',
-          conversation_title: 'the first piece',
-          definition_of_done: 'The requested result and its checks are recorded.',
-          profile: 'pm',
-          title: 'the first piece',
-          brief: 'start here',
+          ...newConversationGive('pm', 'the first piece', 'start here'),
           folder: repoA,
         },
         speakingAs(giver),
@@ -440,11 +414,7 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
       expect(store.find(first.owner)?.provider).toBe('claude')
       await waitFor('the first turn to park on its card', () => cardsOf(first.owner).length === 1)
       const given = await callAs(giver, 'give_work', {
-        to: first.label,
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'pm',
-        title: 'B',
-        brief: 'B',
+        ...addressedGive(first.label, 'pm', 'B', 'B'),
         folder: repoB,
       })
       const data = given.structured as GiveAnswer
@@ -605,11 +575,7 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
         throw new Error('the places could not be read')
       }
       const given = await callAs(giver, 'give_work', {
-        to: helper,
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'pm',
-        title: 'B',
-        brief: 'B',
+        ...addressedGive(helper, 'pm', 'B', 'B'),
         folder: repoB,
       })
       const data = given.structured as GiveAnswer

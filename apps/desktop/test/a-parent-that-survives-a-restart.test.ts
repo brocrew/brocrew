@@ -1,3 +1,4 @@
+import { addressedGive, newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
@@ -268,14 +269,7 @@ describe('373 · a parent that survives a restart', () => {
     // ⚑ **D-016 · the child is started by a GIVE** — `spawn_agent` is gone — and the brief is its
     // first turn: in `ask` mode that turn parks on the card it raises, and the piece it hands the
     // child is the one every follow-up below names.
-    const given = await callOn(pmTools, 'give_work', {
-      to: 'new',
-      conversation_title: 'the work this dispatch is about',
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: workerProfile,
-      title: 'the work this dispatch is about',
-      brief: 'the work this dispatch is about',
-    })
+    const given = await callOn(pmTools, 'give_work', newConversationGive(workerProfile, 'the work this dispatch is about', 'the work this dispatch is about'))
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     expect(given.started, JSON.stringify(given)).toBe(true)
     return { pm, worker: given.agent as string, pmTools, piece: given.label as string }
@@ -324,13 +318,7 @@ describe('373 · a parent that survives a restart', () => {
       // through, and its answer names that piece.
       const status = await callOn(toolset, 'get_agent_status', { agent: worker })
       expect((status.agent as { state: string }).state).toBe('idle')
-      const blocked = await callOn(toolset, 'give_work', {
-        to: piece,
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'the parent forgot the reopened child',
-        brief: 'the parent forgot the reopened child',
-      })
+      const blocked = await callOn(toolset, 'give_work', addressedGive(piece, 'worker', 'the parent forgot the reopened child', 'the parent forgot the reopened child'))
       expect(blocked).toMatchObject({ outcome: 'ok', agent: worker, stalled: [piece] })
 
       // ⚑ **The give's brief is the child's turn now**, so the follow-up its answer names is held
@@ -361,13 +349,7 @@ describe('373 · a parent that survives a restart', () => {
       const status = await callOn(toolset, 'get_agent_status', { agent: worker })
       expect((status.agent as { state: string }).state).toBe('idle')
       // ⚑ The give finds the reopened child, and its answer names the piece.
-      const blocked = await callOn(toolset, 'give_work', {
-        to: piece,
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'the parent forgot the reopened child',
-        brief: 'the parent forgot the reopened child',
-      })
+      const blocked = await callOn(toolset, 'give_work', addressedGive(piece, 'worker', 'the parent forgot the reopened child', 'the parent forgot the reopened child'))
       expect(blocked).toMatchObject({ outcome: 'ok', agent: worker, stalled: [piece] })
 
       // ⛔ **No piece is substituted between the two doors.**
@@ -794,12 +776,7 @@ describe('373 · a parent that survives a restart', () => {
       const pm = await personOpens('pm', root)
       // ⚑ **D-016** — a child is started by a give, and `folder` is where it starts.
       const spawned = await callOn(theToolsetJustHandedOut(), 'give_work', {
-        to: 'new',
-        conversation_title: 'work in one package',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'mid',
-        title: 'work in one package',
-        brief: 'work in one package',
+        ...newConversationGive('mid', 'work in one package', 'work in one package'),
         folder: join(root, 'pkg'),
       })
       expect(spawned.outcome, JSON.stringify(spawned)).toBe('ok')
@@ -850,12 +827,7 @@ describe('373 · a parent that survives a restart', () => {
       await bringIdentityIntoBeing('deep')
       await personOpens('pm', root)
       const spawned = await callOn(theToolsetJustHandedOut(), 'give_work', {
-        to: 'new',
-        conversation_title: 'work in one package',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'mid',
-        title: 'work in one package',
-        brief: 'work in one package',
+        ...newConversationGive('mid', 'work in one package', 'work in one package'),
         folder: join(root, 'pkg'),
       })
       const mid = (spawned as { agent: string }).agent

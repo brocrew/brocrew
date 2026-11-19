@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -139,14 +140,7 @@ describe('510 · the id this app hands a person', () => {
   ): Promise<readonly string[]> => {
     const giver = await personOpens()
     const given = await host.giveWork(
-      {
-        to: 'new',
-        conversation_title: 'Write the answer',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'default',
-        title: 'Write the answer',
-        brief: 'write the answer',
-      },
+      newConversationGive('default', 'Write the answer', 'write the answer'),
       { ownerId: agentCallerId(giver) },
     )
     if (!given.ok) throw new Error(`expected a give, got ${given.refusal.rail}`)

@@ -1,3 +1,4 @@
+import { giveToConversation, readGivenTask } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import { TASK_STALL_CAUSES } from '../src/shared/task-contracts'
 import type { TaskStallCause } from '../src/shared/task-contracts'
@@ -290,24 +291,13 @@ describe('484 · state a supervisor can trust', () => {
     to = 'new',
   ): Promise<{ agent: string; piece: string; label: string }> => {
     decorateNextHandle = decorate ?? null
-    let given: Record<string, unknown>
     try {
-      given = await callOn(tools, 'give_work', {
-        to,
-        ...(to === 'new' ? { conversation_title: brief } : {}),
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile,
-        title: brief,
-        brief,
-      })
+      const { agent, piece, label } = await readGivenTask(() =>
+        callOn(tools, 'give_work', giveToConversation(to, profile, brief, brief)),
+      )
+      return { agent, piece, label }
     } finally {
       decorateNextHandle = null
-    }
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    return {
-      agent: given.agent as string,
-      piece: given.piece as string,
-      label: given.label as string,
     }
   }
 

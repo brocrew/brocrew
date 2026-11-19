@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { forestOf } from './lib/forest-of-host'
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
@@ -205,14 +206,7 @@ describe('711 · a notice that cannot be true is replaced', () => {
   }> => {
     await host.close(await personOpens('worker'), window)
     const pm = await personOpens('pm')
-    const given = await callOn(pm, 'give_work', {
-      to: 'new',
-      conversation_title: 'the migration',
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'the migration',
-      brief: 'migrate',
-    })
+    const given = await callOn(pm, 'give_work', newConversationGive('worker', 'the migration', 'migrate'))
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     host.claimSession(worker, window)

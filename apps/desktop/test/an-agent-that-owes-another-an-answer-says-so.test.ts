@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { AgentState } from '../src/shared/agent-state-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -223,14 +224,7 @@ describe('the host says who a conversation owes an answer to, and moves the word
     await settle()
     const brobotTools = agentToolsFor(host, brobot)
     await callOn(brobotTools, 'create_agent', { profile_slug: 'worker' })
-    const given = await callOn(brobotTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      to: 'new',
-      conversation_title: 'Build the pages',
-      title: 'Build the pages',
-      brief: 'build the pages',
-    })
+    const given = await callOn(brobotTools, 'give_work', newConversationGive('worker', 'Build the pages', 'build the pages'))
     expect(given, JSON.stringify(given)).toMatchObject({ outcome: 'ok', label: 'W1.1' })
     const ada = given.agent as string
     await waitFor(() => turnsIn(ada) >= 1 && turnsIn(brobot) >= 1, 'the stall notice’s turn')

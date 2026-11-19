@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { launchSkillSelections } from '../src/main/skills/launch-selection'
 import { SqliteSkillCatalogue } from '../src/main/skills/catalogue-store'
@@ -276,14 +277,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
     await host.close(seeded, window)
     const pm = await personOpens('pm', provider, approvalMode)
     const pmTools = theToolsetJustHandedOut()
-    const given = await callOn(pmTools, 'give_work', {
-      to: 'new',
-      conversation_title: 'the work this dispatch is about',
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'the work this dispatch is about',
-      brief: 'gather the requirements',
-    })
+    const given = await callOn(pmTools, 'give_work', newConversationGive('worker', 'the work this dispatch is about', 'gather the requirements'))
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     const workerTools = theToolsetJustHandedOut()

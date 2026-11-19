@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions } from '@brobot2/runtime'
 import { waitFor } from './lib/f093-host'
@@ -163,14 +164,7 @@ describe('396 · nothing waits on somebody looking', () => {
     await bringIdentityIntoBeing(workerProfile)
     const pm = await personOpens(pmProfile, host, 'auto')
     const pmTools = agentToolsFor(host, pm)
-    const given = await callOn(pmTools, 'give_work', {
-      to: 'new',
-      conversation_title: 'the work this dispatch is about',
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: workerProfile,
-      title: 'the work this dispatch is about',
-      brief: 'the work this dispatch is about',
-    })
+    const given = await callOn(pmTools, 'give_work', newConversationGive(workerProfile, 'the work this dispatch is about', 'the work this dispatch is about'))
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     const workerHandle = latestHandle()

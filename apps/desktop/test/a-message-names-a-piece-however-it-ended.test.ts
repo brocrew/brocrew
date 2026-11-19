@@ -1,3 +1,4 @@
+import { giveToConversation } from './lib/give-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { recordHistoricallyMovedNote, seedHistoricalSuccessor } from './lib/historical-replacement'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -257,14 +258,7 @@ describe('F086 · F087 · F088 · a message names a piece however it ended', () 
     title: string,
     to = 'new',
   ): Promise<{ agent: string; piece: string; label: string }> => {
-    const given = await callOn(tools, 'give_work', {
-      to,
-      ...(to === 'new' ? { conversation_title: title } : {}),
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile,
-      title,
-      brief: title,
-    })
+    const given = await callOn(tools, 'give_work', giveToConversation(to, profile, title, title))
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     return {
       agent: given.agent as string,

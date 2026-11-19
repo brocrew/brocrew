@@ -1,3 +1,5 @@
+import { expectDistinctSentGiveAndPersonMessage } from './lib/recorded-send'
+import { newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { HandedPath } from '../src/shared/attachment-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -420,14 +422,7 @@ describe('670 · the hold at every door — the real Claude adapter', () => {
     await host.close(warmUp, window)
     const pm = await personOpens('pm')
     const pmTools = agentToolsFor(host, pm)
-    const given = await callOn(pmTools, 'give_work', {
-      to: 'new',
-      conversation_title: 'The work',
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker-a',
-      title: 'The work',
-      brief: 'the work this dispatch is about',
-    })
+    const given = await callOn(pmTools, 'give_work', newConversationGive('worker-a', 'The work', 'the work this dispatch is about'))
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     await waitFor(
@@ -494,18 +489,7 @@ describe('670 · the hold at every door — the real Claude adapter', () => {
       expect(heardCarrying('worker-a', 'the agent’s words')?.origin?.kind).toBe('peer')
       await waitFor(() => idle(worker), 'the flushed turn to end')
       const endings = everyHoldEndedOnce(ledger(worker))
-      const heldRows = ledger(worker).filter((event) => event.type === 'message_queued')
-      const opening = heldRows.find((event) => event.kind === 'work')
-      const heldWords = heldRows.find((event) => event.text === 'ultracode: the person’s own words')
-      expect(opening?.messageId).toMatch(/^msg_/)
-      expect(heldWords?.messageId).toMatch(/^msg_/)
-      expect(opening?.messageId).not.toBe(heldWords?.messageId)
-      expect(endings).toEqual(
-        new Map([
-          [opening?.messageId, ['sent']],
-          [heldWords?.messageId, ['sent']],
-        ]),
-      )
+      expectDistinctSentGiveAndPersonMessage(endings, ledger(worker), 'ultracode: the person’s own words')
       // ⚑ The ledger's turn is the person's own — no attribution key at all.
       expect(turnsCarrying(worker, 'the person’s own words')[0]).not.toHaveProperty('attribution')
     })

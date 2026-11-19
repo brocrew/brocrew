@@ -18,7 +18,7 @@ import { type ToolName } from './catalog'
 import { type WhenItWasAskedToStop } from '../agent-tool-answer-words'
 import { aWakeRefused, aWakeThatDidNotHappen } from './launch-failures'
 import { refusalAnswer } from './answers'
-import { clockTime, clockTimeFrom } from '../../../shared/clock'
+import { clockTimeFrom } from '../../../shared/clock'
 
 /** Where the last ask to stop landed, as the sentence that says it names the three. */
 export const WHEN_THE_ASK_LANDED: Readonly<
@@ -323,15 +323,6 @@ export function whatReachedItsHolder(
     case 'not-delivered':
       return `${owner} could not be told. ${told.whyNotTold}`
   }
-}
-
-/** A piece's place at the service it is queued on, as a sentence after the one that gave it. */
-export function queuedSaid(ahead: number | undefined, stalledAt: number | undefined): string {
-  if (ahead === undefined) return ''
-  if (ahead === 0) return ' Queued; next in line.'
-  return stalledAt === undefined
-    ? ` Queued behind ${String(ahead)}.`
-    : ` Queued behind ${String(ahead)}; the active piece stalled at ${clockTime(stalledAt)}.`
 }
 
 /**

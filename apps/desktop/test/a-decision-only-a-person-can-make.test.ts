@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
@@ -236,14 +237,7 @@ describe('403 · a decision only a person can make', () => {
     const workers: string[] = []
     const handlesOf = new Map<string, FakeSessionHandle>()
     for (let index = 0; index < count; index++) {
-      const spawned = await callOn(pmTools, 'give_work', {
-        to: 'new',
-        conversation_title: 'the work this dispatch is about',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: siblings[index],
-        title: 'the work this dispatch is about',
-        brief: 'do the thing',
-      })
+      const spawned = await callOn(pmTools, 'give_work', newConversationGive(siblings[index], 'the work this dispatch is about', 'do the thing'))
       expect(spawned.outcome, JSON.stringify(spawned)).toBe('ok')
       workers.push(spawned.agent as string)
       handlesOf.set(spawned.agent as string, latestHandle())

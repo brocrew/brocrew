@@ -1068,6 +1068,28 @@ describe('a work wait is reconciled without a window', () => {
     }
   })
 
+  type LegacyReconciliation = {
+    reconcileWork(holders?: ReadonlySet<string>): void
+    reconciliationReading(piece: string): { rows: { issue: { cause?: string } | null }[] }
+  }
+
+  const afterLegacyTurnWithoutReconciliation = async (
+    holder: string,
+    recordLegacyFacts: (engine: LegacyReconciliation) => Promise<void>,
+  ) => {
+    await waitFor(() => store.theOpenTurn(holder) !== null, 'the old holder turn')
+    const engine = host as unknown as LegacyReconciliation
+    const paused = vi.spyOn(engine, 'reconcileWork').mockImplementation(() => {})
+    try {
+      const handle = handles[1] as unknown as { machine: { completeTurn(state: 'completed'): void } }
+      handle.machine.completeTurn('completed')
+      await waitFor(() => store.theOpenTurn(holder) === null, 'the old ordinary ending')
+      await recordLegacyFacts(engine)
+    } finally {
+      paused.mockRestore()
+    }
+  }
+
   it.each([1, 2])(
     'a legacy receipt in replacement giver 1 survives a %s-hop lineage and restart',
     async (hops) => {
@@ -1082,14 +1104,7 @@ describe('a work wait is reconciled without a window', () => {
         })
       ).structured as { agent: string; piece: string }
       const { agent: holder, piece } = given
-      await waitFor(() => store.theOpenTurn(holder) !== null, 'the old holder turn')
-      const engine = host as unknown as { reconcileWork(holders?: ReadonlySet<string>): void }
-      const paused = vi.spyOn(engine, 'reconcileWork').mockImplementation(() => {})
-      try {
-        ;(
-          handles[1] as unknown as { machine: { completeTurn(state: 'completed'): void } }
-        ).machine.completeTurn('completed')
-        await waitFor(() => store.theOpenTurn(holder) === null, 'the old ordinary ending')
+      await afterLegacyTurnWithoutReconciliation(holder, async () => {
         let previous = owner
         for (let hop = 1; hop <= hops; hop++) {
           const { sessionId: next } = await host.createSession(
@@ -1108,9 +1123,7 @@ describe('a work wait is reconciled without a window', () => {
           previous = next
         }
         captureLegacyCut()
-      } finally {
-        paused.mockRestore()
-      }
+      })
       expect(store.workById(piece)?.givenBy).toBe(owner)
       expect(store.workReportedTo(owner).has(piece)).toBe(false)
       expect(store.legacyOrdinaryStallWasReported(holder, piece, owner)).toBe(true)
@@ -1129,31 +1142,27 @@ describe('a work wait is reconciled without a window', () => {
     },
   )
 
+  const giveLegacyHolderWork = async (owner: string, profile: string, title: string) => {
+    const given = await giveToNewWorker(owner, {
+      profile,
+      title,
+      brief: 'Check the result.',
+      definition_of_done: 'A checked result.',
+    })
+    return given.structured as { agent: string; piece: string }
+  }
+
   it.each(['receipt-giver', 'later-giver'] as const)(
     'an incomplete legacy giver read in the %s still reminds the holder',
     async (where) => {
       keepTurnsOpen = true
       const { owner } = await create()
-      const given = (
-        await giveToNewWorker(owner, {
-          profile: 'fictional-incomplete-proof-worker',
-          title: 'Fictional legacy work',
-          brief: 'Check the result.',
-          definition_of_done: 'A checked result.',
-        })
-      ).structured as { agent: string; piece: string }
-      const { agent: holder, piece } = given
-      await waitFor(() => store.theOpenTurn(holder) !== null, 'the old holder turn')
-      const engine = host as unknown as {
-        reconcileWork(holders?: ReadonlySet<string>): void
-        reconciliationReading(piece: string): { rows: { issue: { cause?: string } | null }[] }
-      }
-      const paused = vi.spyOn(engine, 'reconcileWork').mockImplementation(() => {})
-      try {
-        ;(
-          handles[1] as unknown as { machine: { completeTurn(state: 'completed'): void } }
-        ).machine.completeTurn('completed')
-        await waitFor(() => store.theOpenTurn(holder) === null, 'the old ordinary ending')
+      const { agent: holder, piece } = await giveLegacyHolderWork(
+        owner,
+        'fictional-incomplete-proof-worker',
+        'Fictional legacy work',
+      )
+      await afterLegacyTurnWithoutReconciliation(holder, async (engine) => {
         const receiptGiver = await host.createSession(
           {
             provider: 'claude',
@@ -1226,9 +1235,7 @@ describe('a work wait is reconciled without a window', () => {
         expect(engine.reconciliationReading(piece).rows[0]?.issue).toMatchObject({
           cause: 'turn_ended',
         })
-      } finally {
-        paused.mockRestore()
-      }
+      })
       await cycle()
       expect([...new Set(receipts(holder, piece).map((one) => one.step))]).toEqual(['holder'])
       expect(notices(holder)).toHaveLength(1)
@@ -1243,29 +1250,16 @@ describe('a work wait is reconciled without a window', () => {
   it('a generation rebuilt after the legacy cut rejects old proof and reminds its next stalled turn', async () => {
     keepTurnsOpen = true
     const { owner } = await create()
-    const given = (
-      await giveToNewWorker(owner, {
-        profile: 'fictional-rebuilt-worker',
-        title: 'Fictional rebuilt work',
-        brief: 'Check the result.',
-        definition_of_done: 'A checked result.',
-      })
-    ).structured as { agent: string; piece: string }
-    const { agent: holder, piece } = given
-    await waitFor(() => store.theOpenTurn(holder) !== null, 'the old holder turn')
-    const engine = host as unknown as { reconcileWork(holders?: ReadonlySet<string>): void }
-    const paused = vi.spyOn(engine, 'reconcileWork').mockImplementation(() => {})
-    try {
-      ;(
-        handles[1] as unknown as { machine: { completeTurn(state: 'completed'): void } }
-      ).machine.completeTurn('completed')
-      await waitFor(() => store.theOpenTurn(holder) === null, 'the old ordinary ending')
+    const { agent: holder, piece } = await giveLegacyHolderWork(
+      owner,
+      'fictional-rebuilt-worker',
+      'Fictional rebuilt work',
+    )
+    await afterLegacyTurnWithoutReconciliation(holder, async () => {
       record(owner, { type: 'work_stall_told', piece, cause: 'turn_ended', how: 'pushed' })
       captureLegacyCut()
       expect(store.legacyOrdinaryStallWasReported(holder, piece, owner)).toBe(true)
-    } finally {
-      paused.mockRestore()
-    }
+    })
     await host.closeAll()
     const oldGeneration = store.theActiveGeneration(holder)
     const source = store

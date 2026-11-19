@@ -89,7 +89,6 @@ export { A_CONVERSATION_CANNOT_ASK_ITSELF } from './tool-families/launch-failure
 export { A_WAKE_WHOSE_FOLDER_COULD_NOT_BE_MADE } from './tool-families/launch-failures'
 export { A_REFUSED_ROW_SHOWS } from './tool-families/launch-failures'
 export { aStartItsLoginOrSettingsRefused } from './tool-families/launch-failures'
-export { THE_NEW_AGENT_WAS_MADE } from './tool-families/launch-failures'
 export { REPLY_ADDRESSING_KEYS } from './tool-families/catalog'
 export { ENDED_LISTED } from './tool-families/listings'
 export { ENDED_LISTED_AT_MOST } from './tool-families/listings'
@@ -132,10 +131,8 @@ export function agentToolsFor(
           error instanceof Error ? error.message : String(error)
         }`,
       )
-      // **D-039 · and whether the give made a new agent before its launch failed** — a give
-      // with `new: true` did ({@link THE_NEW_AGENT_WAS_MADE}).
       return refusalAnswer(
-        aLaunchRefused(failed, args['new'] === true, {
+        aLaunchRefused(failed, {
           ...(typeof args['profile'] === 'string' ? { profile: args['profile'] } : {}),
           because: failed.because,
         }),

@@ -1,3 +1,4 @@
+import { giveLateServiceTask } from './lib/give-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -312,20 +313,9 @@ describe('a service queues the work it is given', () => {
       )
       const next = world.aHost()
       const caller = await next.resumeSession(first, world.window, null)
-      expect(
-        refusedAs(
-          await next.giveWork(
-            {
-              profile: 'browser-driver',
-              title: 'Late',
-              brief: 'late',
-              under: root.label,
-              definition_of_done: 'The requested result and its checks are recorded.',
-            },
-            { ownerId: agentCallerId(caller.sessionId) },
-          ),
-        ),
-      ).toBe('it-would-wait-on-itself')
+      expect(refusedAs(await giveLateServiceTask(next, caller.sessionId, root.label))).toBe(
+        'it-would-wait-on-itself',
+      )
     })
 
     it('that would close a wait through a conversation that took another’s place', async () => {
@@ -384,20 +374,9 @@ describe('a service queues the work it is given', () => {
       const caller = await next.resumeSession(first, world.window, null)
       const root = world.store.rootOf(first)
       if (root === null) throw new Error('the caller owns no root')
-      expect(
-        refusedAs(
-          await next.giveWork(
-            {
-              profile: 'browser-driver',
-              title: 'Late',
-              brief: 'late',
-              under: root.label,
-              definition_of_done: 'The requested result and its checks are recorded.',
-            },
-            { ownerId: agentCallerId(caller.sessionId) },
-          ),
-        ),
-      ).toBe('it-would-wait-on-itself')
+      expect(refusedAs(await giveLateServiceTask(next, caller.sessionId, root.label))).toBe(
+        'it-would-wait-on-itself',
+      )
     })
 
     describe('where the service’s open work reaches more conversations than the check reads', () => {

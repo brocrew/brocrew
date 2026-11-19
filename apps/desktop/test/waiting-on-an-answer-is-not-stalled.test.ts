@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { REQUEST_STATES } from '../src/shared/question-contracts'
 import type { RaisedQuestion, RoutedRequest } from '../src/shared/question-contracts'
 import { TASK_STATES } from '../src/shared/task-contracts'
@@ -213,14 +214,7 @@ describe('603 · waiting on an answer is not stalled', () => {
     const pm = await personOpens('pm')
     const pmTools = theToolsetJustHandedOut()
     const give = async (slug: string, brief: string): Promise<string> => {
-      const made = await callOn(pmTools, 'give_work', {
-        to: 'new',
-        conversation_title: brief,
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: slug,
-        title: brief,
-        brief,
-      })
+      const made = await callOn(pmTools, 'give_work', newConversationGive(slug, brief, brief))
       expect(made.outcome, JSON.stringify(made)).toBe('ok')
       return made.agent as string
     }

@@ -1,3 +1,4 @@
+import { giveToConversation } from './lib/give-fixture'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
 import {
   RecordingSink,
@@ -159,14 +160,7 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
     title: string,
     to = 'new',
   ): Promise<{ agent: string; piece: string; label: string }> => {
-    const given = await callOn(tools, 'give_work', {
-      to,
-      ...(to === 'new' ? { conversation_title: title } : {}),
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile,
-      title,
-      brief: title,
-    })
+    const given = await callOn(tools, 'give_work', giveToConversation(to, profile, title, title))
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     return {
       agent: given.agent as string,

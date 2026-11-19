@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { StartHandleKeepingRuntime as ProviderDouble } from './helpers/handle-keeping-runtime'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -111,14 +112,7 @@ describe('a helper stopped on a person’s approval', () => {
     await host.close(await personOpens('worker', 'ask'), window)
     const pm = await personOpens('pm', 'ask')
     const pmTools = agentToolsFor(host, pm)
-    const given = await callOn(pmTools, 'give_work', {
-      to: 'new',
-      conversation_title: 'The tests',
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'The tests',
-      brief: THE_BRIEF,
-    })
+    const given = await callOn(pmTools, 'give_work', newConversationGive('worker', 'The tests', THE_BRIEF))
     expect(given.structured['outcome'], given.text).toBe('ok')
     const worker = String(given.structured['agent'])
     const handle = handles.at(-1)
@@ -372,14 +366,7 @@ describe('a helper stopped on a person’s approval', () => {
       const pm = await personOpens('pm', 'auto')
       const pmHandle = handles.at(-1)
       const pmTools = agentToolsFor(host, pm)
-      const given = await callOn(pmTools, 'give_work', {
-        to: 'new',
-        conversation_title: 'The tests',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'The tests',
-        brief: THE_BRIEF,
-      })
+      const given = await callOn(pmTools, 'give_work', newConversationGive('worker', 'The tests', THE_BRIEF))
       expect(given.structured['outcome'], given.text).toBe('ok')
       const worker = String(given.structured['agent'])
       const label = String(given.structured['label'])

@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { format } from 'node:util'
 import { expectRecordedCannotRun, expectTaskKept } from './lib/recorded-send'
 import { waitFor } from './lib/f093-host'
@@ -181,14 +182,7 @@ describe('what a person must fix, said once', () => {
    * is the same stop. ⚑ **D-016** — the give starts it and gives it the work in one act.
    */
   const aWorkerThatStopped = async (pm: string): Promise<{ worker: string; label: string }> => {
-    const given = await callOn(pm, 'give_work', {
-      to: 'new',
-      conversation_title: 'The schema',
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'The schema',
-      brief: 'migrate the schema',
-    })
+    const given = await callOn(pm, 'give_work', newConversationGive('worker', 'The schema', 'migrate the schema'))
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     await waitFor(

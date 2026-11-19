@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { rmSync } from 'node:fs'
@@ -287,14 +288,7 @@ describe('D-016 · a new agent is asked for by name, and a give names the piece 
       expect(createdByOf('ghost')).toBeUndefined()
 
       await callOn(pm.tools, 'create_agent', { profile_slug: 'archivist' })
-      const given = await callOn(pm.tools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'archivist',
-        title: 'Index the ledger',
-        brief: 'index it',
-        to: 'new',
-        conversation_title: 'Index the ledger',
-      })
+      const given = await callOn(pm.tools, 'give_work', newConversationGive('archivist', 'Index the ledger', 'index it'))
       expect(given.outcome, JSON.stringify(given)).toBe('ok')
       expect(given.started).toBe(true)
       expect(createdByOf('archivist')).toEqual(by('pm'))
@@ -307,14 +301,7 @@ describe('D-016 · a new agent is asked for by name, and a give names the piece 
       const pm = await personOpens('pm')
 
       await callOn(pm.tools, 'create_agent', { profile_slug: 'Archivist' })
-      const given = await callOn(pm.tools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'archivist',
-        title: 'Index the ledger',
-        brief: 'index it',
-        to: 'new',
-        conversation_title: 'Index the ledger',
-      })
+      const given = await callOn(pm.tools, 'give_work', newConversationGive('archivist', 'Index the ledger', 'index it'))
       expect(given.outcome, JSON.stringify(given)).toBe('ok')
       const identities = store
         .agentIdentities()
@@ -413,14 +400,7 @@ describe('D-016 · a new agent is asked for by name, and a give names the piece 
       await bothPiecesReach(worker)
       const sessionsBefore = host.sessionIds.length
       const launchesBefore = order.length
-      const ask = {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'helper',
-        to: 'new',
-        conversation_title: 'Sub',
-        title: 'Sub',
-        brief: 'sub',
-      }
+      const ask = newConversationGive('helper', 'Sub', 'sub')
 
       const refused = await callOn(workerTools, 'give_work', ask)
       expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
@@ -480,14 +460,7 @@ describe('D-016 · a new agent is asked for by name, and a give names the piece 
       expect(replied.outcome, JSON.stringify(replied)).toBe('ok')
       expect(store.openPiecesOf(first.agent as string)).toEqual([])
       const sessionsBefore = host.sessionIds.length
-      const ask = {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'helper',
-        to: 'new',
-        conversation_title: 'Sub',
-        title: 'Sub',
-        brief: 'sub',
-      }
+      const ask = newConversationGive('helper', 'Sub', 'sub')
 
       const refused = await callOn(workerTools, 'give_work', ask)
       expect(refused.outcome, JSON.stringify(refused)).toBe('refused')

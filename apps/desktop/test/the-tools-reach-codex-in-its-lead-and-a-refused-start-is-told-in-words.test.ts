@@ -1,4 +1,5 @@
-import { logKeepsFailure } from './lib/recorded-send'
+import { openPmWithSeededWorker } from './lib/give-fixture'
+import { expectRecordedCannotRun, expectTaskKept, logKeepsFailure } from './lib/recorded-send'
 import { waitFor } from './lib/f093-host'
 import type { SessionInstructions } from '../src/shared/instruction-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -1102,10 +1103,8 @@ describe('§6 to §8 · what a failed start says at each door', () => {
     return (await tool.call(args)).structured as Record<string, unknown>
   }
 
-  const aPmThatMaySpawn = async (): Promise<string> => {
-    await host.close(await personOpens('worker'), window)
-    return personOpens('pm')
-  }
+  const aPmThatMaySpawn = () =>
+    openPmWithSeededWorker(personOpens, (id) => host.close(id, window))
 
   const giveWork = (
     pm: string,
@@ -1175,22 +1174,13 @@ describe('§6 to §8 · what a failed start says at each door', () => {
       const failure = refusedStart(SAID)
       gate.startFails = () => failure
       const given = await giveWork(pm)
-      expect(given).toMatchObject({
-        outcome: 'ok',
-        started: false,
-        receipt: {
-          recorded: { kind: 'task', id: given.piece },
-          recipient: {
-            id: given.agent,
-            state: {
-              kind: 'cannot-run',
-              cause: {
-                code: 'could-not-start',
-                reason: 'This conversation did not start: its provider refused to start it.',
-              },
-            },
-          },
-        },
+      const kept = expectRecordedCannotRun(given, 'task', 'its provider refused to start it.', false)
+      expect(given.started).toBe(false)
+      expectTaskKept(store, kept)
+      expect(kept.recorded.id).toBe(given.piece)
+      expect(kept.recipient.id).toBe(given.agent)
+      expect(kept.recipient.state).toMatchObject({
+        cause: { reason: 'This conversation did not start: its provider refused to start it.' },
       })
       expect(JSON.stringify(given)).not.toContain(SAID)
       expect(JSON.stringify(given)).not.toContain('-32600')

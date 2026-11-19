@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { MessageSentEvent, TranscriptEvent } from '../src/shared/conversation-events'
 import { forestOf } from './lib/forest-of-host'
@@ -174,14 +175,7 @@ describe('671 · what main hands the cards', () => {
     await host.close(seeded, window)
     const pm = await personOpens('pm')
     const pmTools = theToolsetJustHandedOut()
-    const given = await call(pmTools, 'give_work', {
-      to: 'new',
-      conversation_title: 'The work this dispatch is about',
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'The work this dispatch is about',
-      brief: 'build it',
-    })
+    const given = await call(pmTools, 'give_work', newConversationGive('worker', 'The work this dispatch is about', 'build it'))
     expect(given.structured.outcome, JSON.stringify(given.structured)).toBe('ok')
     return {
       pm,

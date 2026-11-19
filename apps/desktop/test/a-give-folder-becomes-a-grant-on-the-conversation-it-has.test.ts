@@ -1,3 +1,4 @@
+import { addressedGive, newConversationGive } from './lib/give-fixture'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -175,12 +176,7 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
   async function aHelperAtWork(giver: string): Promise<string> {
     const first = await host.giveWork(
       {
-        to: 'new',
-        conversation_title: 'the first piece',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'pm',
-        title: 'the first piece',
-        brief: 'start here',
+        ...newConversationGive('pm', 'the first piece', 'start here'),
         folder: repoA,
       },
       speakingAs(giver),
@@ -200,12 +196,7 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
     const giver = await aGiver()
     const first = await host.giveWork(
       {
-        to: 'new',
-        conversation_title: 'the first piece',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'pm',
-        title: 'the first piece',
-        brief: 'start here',
+        ...newConversationGive('pm', 'the first piece', 'start here'),
         folder: repoA,
       },
       speakingAs(giver),
@@ -271,12 +262,7 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
     const giver = await aGiver('ask')
     const first = await host.giveWork(
       {
-        to: 'new',
-        conversation_title: 'the first piece',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'pm',
-        title: 'the first piece',
-        brief: 'start here',
+        ...newConversationGive('pm', 'the first piece', 'start here'),
         folder: repoA,
       },
       speakingAs(giver),
@@ -333,12 +319,7 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
     const giver = await aGiver('ask')
     const first = await host.giveWork(
       {
-        to: 'new',
-        conversation_title: 'the first piece',
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'pm',
-        title: 'the first piece',
-        brief: 'start here',
+        ...newConversationGive('pm', 'the first piece', 'start here'),
         folder: repoA,
       },
       speakingAs(giver),
@@ -353,11 +334,7 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
     await waitFor('the first turn to park on its card', () => cards().length === 1)
     const second = await host.giveWork(
       {
-        to: first.label,
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'pm',
-        title: 'B',
-        brief: 'work in B',
+        ...addressedGive(first.label, 'pm', 'B', 'work in B'),
         folder: repoB,
       },
       speakingAs(giver),

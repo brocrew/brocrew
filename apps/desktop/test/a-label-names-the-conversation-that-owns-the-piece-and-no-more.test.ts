@@ -1,3 +1,4 @@
+import { addressedGive, newConversationGive } from './lib/give-fixture'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
 import { didIt, type ActedBy } from '../src/shared/who-did-it'
@@ -613,27 +614,14 @@ describe('a label names the conversation that owns the piece, and no more', () =
       const parent = await personOpens(DEFAULT_PROFILE_ID, 'ask')
       const parentTools = agentToolsFor(host, parent)
       await callOn(parentTools, 'create_agent', { profile_slug: 'worker' })
-      const first = await callOn(parentTools, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        to: 'new',
-        conversation_title: 'Build the world clock page',
-        title: 'Build the world clock page',
-        brief: 'build the world clock page',
-      })
+      const first = await callOn(parentTools, 'give_work', newConversationGive('worker', 'Build the world clock page', 'build the world clock page'))
       expect(first, JSON.stringify(first)).toMatchObject({ outcome: 'ok', label: 'W1.1' })
       const child = first.agent as string
       await waitFor(
         () => ledger(child).some((event) => event.type === 'permission_request'),
         'the card the brief’s turn raised',
       )
-      const second = await callOn(parentTools, 'give_work', {
-        to: first.label,
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'Test the clock page',
-        brief: 'test the clock page',
-      })
+      const second = await callOn(parentTools, 'give_work', addressedGive(first.label, 'worker', 'Test the clock page', 'test the clock page'))
       expect(second, JSON.stringify(second)).toMatchObject({
         outcome: 'ok',
         agent: child,

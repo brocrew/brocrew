@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -188,14 +189,7 @@ describe('676 · the rest of R18, and the answer with no bound', () => {
     await host.close(seeded, window)
     const pm = await personOpens('pm')
     const pmTools = theToolsetJustHandedOut()
-    const given = await call(pmTools, 'give_work', {
-      to: 'new',
-      conversation_title: brief,
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: brief,
-      brief,
-    })
+    const given = await call(pmTools, 'give_work', newConversationGive('worker', brief, brief))
     expect(given.structured.outcome, JSON.stringify(given.structured)).toBe('ok')
     return {
       pm,

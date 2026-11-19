@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { TASK_OUTCOMES, TASK_STALL_CAUSES } from '../src/shared/task-contracts'
@@ -417,14 +418,7 @@ describe("463 · a night's backlog, rehearsed", () => {
       window,
     )
     // ⚑ D-016 · the give starts the worker, and its brief is its first turn.
-    const given = await callOn(agentToolsFor(host, opened.sessionId), 'give_work', {
-      to: 'new',
-      conversation_title: 'raise the question',
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'rumour-worker',
-      title: 'raise the question',
-      brief: 'raise the question whose answer provenance is under test',
-    })
+    const given = await callOn(agentToolsFor(host, opened.sessionId), 'give_work', newConversationGive('rumour-worker', 'raise the question', 'raise the question whose answer provenance is under test'))
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     const workerHandle = handles.at(-1)

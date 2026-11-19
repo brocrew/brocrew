@@ -1,11 +1,7 @@
 import { callOn as callAgentTool } from './helpers/call-agent-tool'
 import { format } from 'node:util'
 import { expectRecordedCannotRun, expectTaskKept, recordedSendNotices } from './lib/recorded-send'
-import {
-  newConversationGive,
-  giveWorkBeforeProviderStart,
-  openPmWithSeededWorker,
-} from './lib/give-fixture'
+import { spawnFailureFixture } from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -151,12 +147,11 @@ describe('707 · R39, extended — a spawn that ran short', () => {
     args: Record<string, unknown> = {},
   ): Promise<Record<string, unknown>> => callAgentTool(agentToolsFor(host, caller), name, args)
 
-  /** ⚑ A PM a person opened, which may start `worker` — an identity a person opened once, so it exists. */
-  const aPmThatMaySpawn = () => openPmWithSeededWorker(personOpens, (id) => host.close(id, window))
-
-  /** ⚑ **D-016 · `give_work` is the door that starts a conversation now** — `worker` has none with the PM. */
-  const spawnWorker = (pm: string): Promise<Record<string, unknown>> =>
-    giveWorkBeforeProviderStart((name, args) => callOn(pm, name, args))
+  const { aPmThatMaySpawn, spawnWorker } = spawnFailureFixture(
+    personOpens,
+    (id) => host.close(id, window),
+    callOn,
+  )
 
   const aKeptGive = (result: Record<string, unknown>, reason: string, needsPerson = false) => {
     const receipt = expectRecordedCannotRun(result, 'task', reason, needsPerson)

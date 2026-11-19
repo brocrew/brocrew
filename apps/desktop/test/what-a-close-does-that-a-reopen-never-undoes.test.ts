@@ -1,3 +1,4 @@
+import { addressedGive } from './lib/give-fixture'
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -472,13 +473,7 @@ describe('what a close does that a reopen never undoes', () => {
       const handle = handles.at(-1)
       if (handle === undefined) throw new Error('no provider handle was issued')
       await waitFor(() => cardsOn(worker) > 0, 'the worker to be busy')
-      const given = await callOn(agentToolsFor(host, pm), 'give_work', {
-        to: worker,
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'The held one',
-        brief: 'the held one',
-      })
+      const given = await callOn(agentToolsFor(host, pm), 'give_work', addressedGive(worker, 'worker', 'The held one', 'the held one'))
       expect(given).toMatchObject({ outcome: 'ok', agent: worker, delivery: 'held' })
       const label = given.label as string
 
@@ -505,13 +500,7 @@ describe('what a close does that a reopen never undoes', () => {
       const handle = handles.at(-1)
       if (handle === undefined) throw new Error('no provider handle was issued')
       await waitFor(() => cardsOn(worker) > 0, 'the worker to be busy')
-      const given = await callOn(agentToolsFor(host, pm), 'give_work', {
-        to: worker,
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'The held one',
-        brief: 'the held one',
-      })
+      const given = await callOn(agentToolsFor(host, pm), 'give_work', addressedGive(worker, 'worker', 'The held one', 'the held one'))
       expect(given).toMatchObject({ outcome: 'ok', agent: worker, delivery: 'held' })
       const label = given.label as string
 

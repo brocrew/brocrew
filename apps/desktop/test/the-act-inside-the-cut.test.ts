@@ -220,11 +220,6 @@ const NOT_ASKED = 'Not logged in · Please run /login'
  */
 const SPAWN_DETAILS: Partial<Record<(typeof SPAWN_RAILS)[number], readonly SpawnRefusalDetail[]>> =
   {
-    // ⚑ **D-016** — `not-your-project`'s two arms were planted here; the rail went with projects.
-    // ⚑ **D-016 · commit 3** — the rails are `give_work`'s now: `unknown-profile`,
-    // `profile-already-live` and `not-the-model-a-person-chose` went with `spawn_agent`, and a give
-    // names no model, provider or mode. ⚠️ A list of labels has no cap, so the list below is a
-    // caller holding its root and two pieces.
     'name-the-piece-you-give-from': [{ held: ['W12', 'W3.4.1', 'W3.4.2'] }],
     'name-the-conversation': [
       {

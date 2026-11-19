@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import type { TaskState, WorkRetitledEvent, WorkStatusSetEvent } from '../src/shared/task-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -163,14 +164,7 @@ describe('D-016 · a root is titled, and a piece says where it stands', () => {
   }> => {
     await host.close(await personOpens('worker'), window)
     const pm = await personOpens('pm')
-    const given = await callOn(pm, 'give_work', {
-      to: 'new',
-      conversation_title: 'the work',
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'the work',
-      brief: 'migrate',
-    })
+    const given = await callOn(pm, 'give_work', newConversationGive('worker', 'the work', 'migrate'))
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     host.claimSession(worker, window)

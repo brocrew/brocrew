@@ -1,3 +1,4 @@
+import { addressedGive, newConversationGive } from './lib/give-fixture'
 import type { MessageSentEvent, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -371,14 +372,7 @@ describe('688 · draw who wrote it, and which task', () => {
     claimed.add(pm)
     const pmTools = theToolsetJustHandedOut()
     const next = burnNumbers(pm, burn)
-    const given = await call(pmTools, 'give_work', {
-      to: 'new',
-      conversation_title: 'the work this dispatch is about',
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'the work this dispatch is about',
-      brief: 'the work this dispatch is about',
-    })
+    const given = await call(pmTools, 'give_work', newConversationGive('worker', 'the work this dispatch is about', 'the work this dispatch is about'))
     expect(given.structured.outcome, JSON.stringify(given.structured)).toBe('ok')
     expect(given.structured.label).toBe(next)
     return { pm, worker: given.structured.agent as string, pmTools, label: next }
@@ -1112,13 +1106,7 @@ describe('688 · draw who wrote it, and which task', () => {
       // ⚑ D-016 · the worker is busy from the start: its first brief is its turn, parked on a card
       await waitFor(() => rowsOf(worker, 'permission_request').length > 0, 'the worker to be busy')
       const next = burnNumbers(pm, 2)
-      const second = await call(pmTools, 'give_work', {
-        to: worker,
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'worker',
-        title: 'now build it',
-        brief: 'now build it',
-      })
+      const second = await call(pmTools, 'give_work', addressedGive(worker, 'worker', 'now build it', 'now build it'))
       expect(second.structured.outcome, JSON.stringify(second.structured)).toBe('ok')
       expect(second.structured.delivery).toBe('held')
       expect(second.structured.label).toBe(next)

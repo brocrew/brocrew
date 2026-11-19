@@ -1,6 +1,6 @@
 import type { RefusalFacts } from './refusals'
 
-export type Refusal = Omit<RefusalFacts, 'told'> & { readonly reason: string }
+type Refusal = Omit<RefusalFacts, 'told'> & { readonly reason: string }
 
 export type ToolOutcome<T, R extends Refusal = Refusal> =
   ({ readonly ok: true } & T) | { readonly ok: false; readonly refusal: R }

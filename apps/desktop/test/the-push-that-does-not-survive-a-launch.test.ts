@@ -1,3 +1,4 @@
+import { newConversationGive, giveToConversation } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import { TASK_STATES } from '../src/shared/task-contracts'
 import type { PieceRow, TaskState, WorkStallTold } from '../src/shared/task-contracts'
@@ -223,14 +224,7 @@ describe('404 · the push that does not survive a launch', () => {
     for (const one of [workerProfile, `${workerProfile}-b`]) await bringIdentityIntoBeing(one)
     const pm = await personOpens(pmProfile)
     const pmTools = agentToolsFor(host, pm)
-    const given = await callOn(pmTools, 'give_work', {
-      to: 'new',
-      conversation_title: brief,
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: workerProfile,
-      title: brief,
-      brief,
-    })
+    const given = await callOn(pmTools, 'give_work', newConversationGive(workerProfile, brief, brief))
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     return {
       pm,
@@ -249,14 +243,7 @@ describe('404 · the push that does not survive a launch', () => {
     brief: string,
     to = 'new',
   ): Promise<Record<string, unknown>> => {
-    const given = await callOn(pmTools, 'give_work', {
-      to,
-      ...(to === 'new' ? { conversation_title: brief } : {}),
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile,
-      title: brief,
-      brief,
-    })
+    const given = await callOn(pmTools, 'give_work', giveToConversation(to, profile, brief, brief))
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     return given
   }

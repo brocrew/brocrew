@@ -1,3 +1,4 @@
+import { newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import {
   fixtureProviderConfig,
@@ -117,14 +118,7 @@ describe('663 M33 · a store that failed is not dressed as a word', () => {
         window,
       )
     ).sessionId
-    const given = await callOn(pm, 'give_work', {
-      to: 'new',
-      conversation_title: 'The schema',
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'The schema',
-      brief: 'migrate the schema',
-    })
+    const given = await callOn(pm, 'give_work', newConversationGive('worker', 'The schema', 'migrate the schema'))
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     await waitFor(
