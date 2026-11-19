@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SessionStore } from '../src/main/db/session-store'
 import { readProfileExecution, writeProfileExecution } from '../src/main/profile-execution-file'
+import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { THE_APP_ITSELF, type RuntimeHost } from '../src/main/runtime/runtime-host'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
@@ -192,9 +193,9 @@ describe('a service’s one conversation', () => {
         approvalMode: 'ask',
         profileId: 'caller',
       })
-      await expect(
-        host.reopenForAPerson('sess_persons_row', world.window, null),
-      ).rejects.toMatchObject({ cause: { unavailable: 'never-started' } })
+      await expect(host.reopenForAPerson('sess_persons_row', world.window, null)).resolves.toMatchObject({
+        sessionId: 'sess_persons_row',
+      })
       expect(world.conversationsRecorded()).toBe(before + 1)
       expect(world.store.replacements()).toEqual([])
     })
@@ -245,6 +246,80 @@ describe('a service’s one conversation', () => {
       )
     })
   })
+
+  it.each(['message', 'person reopens'] as const)(
+    'starts a recorded normal give under the same id after its first provider launch fails: %s',
+    async (retry) => {
+      world.anAgent('caller', 'nothing kept')
+      world.anAgent('worker', 'normal')
+      const host = world.aHost()
+      const caller = await world.aPersonOpens(host, 'caller')
+      const parent = world.store.rootOf(caller)
+      if (parent === null) throw new Error('the caller has no root')
+      const conversation = 'sess_recorded_worker'
+      const piece = 'work_recorded_first_give'
+      const title = 'Finish the recorded task'
+      const brief = 'Finish the recorded task once the provider can start.'
+      const label = `${parent.label}.1`
+      // The sender records this give before asking the provider to start.
+      world.store.atomically(() => {
+        world.store.create({
+          id: conversation,
+          provider: 'claude',
+          cwd: world.folder,
+          approvalMode: 'auto',
+          profileId: 'worker',
+          parentSessionId: caller,
+        })
+        world.store.recordGive(
+          {
+            piece,
+            parent: parent.piece,
+            number: 1,
+            owner: conversation,
+            givenBy: caller,
+            title,
+            brief,
+            folder: null,
+            inputs: [],
+          },
+          world.store.nextOrdinal(conversation),
+          { type: 'work_given', piece, label, parent: parent.piece, givenBy: caller, title, brief },
+          100,
+        )
+      })
+      const count = world.conversationsRecorded()
+      world.startsFail = true
+      await expect(host.reopenForAPerson(conversation, world.window, null)).rejects.toThrow(
+        'the provider could not start',
+      )
+      expect(world.store.recordedOne(conversation)?.neverStarted).toBe(true)
+      expect(world.store.workByLabel(label)).toMatchObject({ piece, owner: conversation })
+      const recorded = await host.look(conversation, world.window, false)
+      expect(recorded.cannotTakeAMessage).toBeNull()
+      world.startsFail = false
+      if (retry === 'message') {
+        const message = agentToolsFor(host, caller).tools.find((one) => one.name === 'message_agent')
+        if (message === undefined) throw new Error('message_agent is unavailable')
+        const result = await message.call({ agent: label, kind: 'note', text: 'Continue this task.' })
+        expect(result.structured).toMatchObject({ outcome: 'ok', delivery: 'sent' })
+        expect(
+          world.sent.some(({ as, words }) => as === 'worker' && words.includes('Continue this task.')),
+        ).toBe(true)
+      } else {
+        const resumed = await host.reopenForAPerson(conversation, world.window, null)
+        expect(resumed).toMatchObject({ sessionId: conversation, hasACommander: true })
+        expect(resumed.history.entries.map(({ event }) => event)).toContainEqual(
+          expect.objectContaining({ type: 'work_given', piece }),
+        )
+      }
+      expect(world.conversationsRecorded()).toBe(count)
+      expect(world.startedAs).toEqual(['caller', 'worker', 'worker'])
+      expect(world.resumesAsked).toBe(0)
+      expect(world.store.workByLabel(label)).toMatchObject({ piece, owner: conversation })
+      expect(world.store.replacements()).toEqual([])
+    },
+  )
 
   describe('its delete', () => {
     /**

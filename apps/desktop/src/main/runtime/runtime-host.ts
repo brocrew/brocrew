@@ -3574,11 +3574,12 @@ const NOT_REMOVED_NOT_SAVED = 'Not removed: services list not saved.'
 function whyNoSettingForItsNextStart(
   row: RecordedSession,
   replacedBy: ReadonlyMap<string, string>,
+  canFirstStart: boolean,
 ): string | null {
   if (replacedBy.has(row.sessionId)) {
     return 'its next message starts a new conversation in its place, so a setting changed here would not reach it'
   }
-  if (row.unresumableReason !== null) {
+  if (!canFirstStart && row.unresumableReason !== null) {
     return 'no message continues this conversation, so a setting changed here would not reach it'
   }
   return null
@@ -20092,13 +20093,12 @@ export class RuntimeHost implements LiveHost {
     namedBefore: readonly string[],
     spawn: AdmittedSpawn | null,
     /**
-     * A service's one conversation, recorded with nothing launched: this launch is its first, under
-     * its own id. Its row is updated rather than made, and its ledger, which holds the work queued
-     * for it, is continued.
+     * A conversation recorded before its first launch. Update its row and continue its ledger.
      */
     recorded = false,
   ): Promise<CreatedSession> {
     const id = slot.id
+    const parent = recorded ? slot.spawnedBy : spawn?.parentSessionId ?? null
     // ⛔ **The cwd BEFORE the home** (203, from 195 H4). Both of these can refuse a launch and only
     // one of them writes to disk, so the refusal that costs nothing goes first — the same rule the
     // uniqueness check above already follows, and `profile-uniqueness.test.ts` already pins for the
@@ -20180,18 +20180,8 @@ export class RuntimeHost implements LiveHost {
       // 🔴 **What this child is told about itself** (377) — built HERE, where the profile and the
       // spawn token are resolved, and never derived downstream.
       //
-      // ⛔ **`spawn?.parentSessionId` and not `slot.spawnedBy`**, even though they hold the same
-      // value on this path. The slot's copy is the LIVE half, kept for the liveness rail
-      // (`341`); the token is the fact this launch was admitted on. ⚠️ They diverge on resume by
-      // design — see {@link SessionSlot.spawnedBy} — so reading the one that means *who asked for
-      // this conversation* is what keeps the sentence true on both paths.
-      this.instructionContext(
-        profileId,
-        cwd,
-        spawn?.parentSessionId ?? null,
-        null,
-        slot.startedFrom,
-      ),
+      // A first launch uses the parent in the spawn admission or in the already recorded row.
+      this.instructionContext(profileId, cwd, parent, null, slot.startedFrom),
       pack,
     )
     const systemHint = instructions?.systemHint
@@ -20285,14 +20275,7 @@ export class RuntimeHost implements LiveHost {
       agentTools,
       handle.instructionSources ?? [],
       instructions,
-      () =>
-        this.instructionContext(
-          profileId,
-          cwd,
-          spawn?.parentSessionId ?? null,
-          null,
-          slot.startedFrom,
-        ),
+      () => this.instructionContext(profileId, cwd, parent, null, slot.startedFrom),
       handle.launchSettings,
       builtInSkills,
     )
@@ -20399,8 +20382,13 @@ export class RuntimeHost implements LiveHost {
           type: 'launched',
           ...this.renewalNotice(registered.provider, loginRenewed),
         })
-        // ⚑ A recorded service's first launch: the brief held for it goes first, as at a reopen.
-        if (recorded) this.putBackWhatWaitedForThisStart(registered)
+        if (recorded) {
+          const broughtBack = this.finishItsReturnFromTheArchive(id)
+          if (broughtBack !== undefined) {
+            this.publishOurs(registered, { type: 'reopened', broughtBack })
+          }
+          this.putBackWhatWaitedForThisStart(registered)
+        }
       },
     })
 
@@ -20817,7 +20805,11 @@ export class RuntimeHost implements LiveHost {
     if (!aPersonIsAsking(by)) {
       throw new Error('only a person changes how another conversation will start')
     }
-    const refused = whyNoSettingForItsNextStart(row, this.replacedBy)
+    const refused = whyNoSettingForItsNextStart(
+      row,
+      this.replacedBy,
+      this.canFirstStartAsANormalConversation(row),
+    )
     if (refused !== null) throw new Error(refused)
     return row
   }
@@ -25917,7 +25909,7 @@ export class RuntimeHost implements LiveHost {
     if (marked) this.startingForADelivery.add(sessionId)
     try {
       if (this.aServiceThatNeverStarted(sessionId)) {
-        await this.startTheRecordedService(sessionId, window)
+        await this.startTheRecordedConversation(sessionId, window)
       } else await this.resumeSession(sessionId, window, null, undefined, 'not-read')
       return sessionId
     } catch (error) {
@@ -25940,13 +25932,13 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * The first launch of a service's one conversation, recorded with nothing launched: under its own
-   * id, in the folder and mode and on the pair its row records, never in another's place.
+   * Launch a recorded conversation for the first time, under its own id and with its saved settings.
    */
-  private async startTheRecordedService(
+  private async startTheRecordedConversation(
     conversation: string,
     window: RuntimeEventSink | null,
-  ): Promise<void> {
+    launchKey: string | null = null,
+  ): Promise<CreatedSession> {
     const recorded = this.deps.store.recordedOne(conversation)
     const row = this.deps.store.findLive(conversation)
     if (recorded === null || row === null) throw new Error(`unknown session: ${conversation}`)
@@ -25956,22 +25948,23 @@ export class RuntimeHost implements LiveHost {
       throw new Error(`${conversation}'s first launch was cut before its provider named it`)
     }
     const profileId = row.profileId ?? DEFAULT_PROFILE_ID
+    const parent = this.deps.store.parentOf(conversation)
     const slot = this.refusalsTranslated(() =>
       this.reserve(
         conversation,
         {
           ownerId: window?.ownerId ?? null,
           ownerIsAPerson: window?.aPersonIsBehindIt ?? false,
-          commandedBy: null,
-          spawnedBy: null,
-          anAgentAskedForIt: false,
+          commandedBy: parent === null ? null : agentCallerId(parent),
+          spawnedBy: parent,
+          anAgentAskedForIt: parent !== null,
           profileId,
         },
-        null,
+        launchKey,
       ),
     )
     try {
-      await this.startSessionInProfile(
+      return await this.startSessionInProfile(
         slot,
         {
           provider: recorded.provider,
@@ -25993,6 +25986,15 @@ export class RuntimeHost implements LiveHost {
     } finally {
       slot.settle()
     }
+  }
+
+  private canFirstStartAsANormalConversation(row: RecordedSession): boolean {
+    return (
+      row.neverStarted &&
+      aRowADeliveryCanStart(row) &&
+      this.theServiceOf(row.sessionId) === null &&
+      !this.deps.store.aLaunchWentUnnamed(row.sessionId)
+    )
   }
 
   /**
@@ -32239,6 +32241,14 @@ export class RuntimeHost implements LiveHost {
     this.theWorldMoved('conversations')
   }
 
+  private finishItsReturnFromTheArchive(sessionId: string): string | undefined {
+    const back = this.bringingBack.get(sessionId)
+    if (back === undefined) return undefined
+    this.bringingBack.delete(sessionId)
+    this.carryOnAfterTheStop(back.others, NEWER_WORDS_AFTER_THE_ARCHIVE)
+    return back.saying
+  }
+
   /** What a delivery about to start `sessionId` is, said if the start brings it back. */
   private noteWhatBringsItBack(sessionId: string, cause: () => string): void {
     if (this.archived.has(sessionId)) this.whatBringsItBack.set(sessionId, cause())
@@ -37510,6 +37520,24 @@ export class RuntimeHost implements LiveHost {
           'The plan of this conversation’s scheduled jobs asks no start now, so it was not started.',
         )
       }
+      const recorded = this.deps.store.recordedOne(sessionId)
+      if (recorded !== null && this.canFirstStartAsANormalConversation(recorded)) {
+        const started = await this.startTheRecordedConversation(sessionId, sink, launchKey)
+        const attached =
+          page === 'handed-on' && sink !== null
+            ? this.attachHeldSession(sessionId, sink, 'attach')
+            : null
+        return (
+          attached ?? {
+            ...started,
+            handover: 'attached',
+            history:
+              page === 'not-read'
+                ? noPageBefore(this.deps.store.nextOrdinal(sessionId))
+                : this.historyWindow(sessionId, {}),
+          }
+        )
+      }
       // 🔴 **The commanding relationship, RE-DERIVED — and this is 340 §0's deferred question
       // answered** (373, HO-015 §4). 340 measured that a restart ends it and declined to rule on it:
       // *"That is a fact to state, not a thing I fixed… which is the tools dispatch's problem if it
@@ -38086,10 +38114,7 @@ export class RuntimeHost implements LiveHost {
     const why = because ?? (answeredWhatWaited ? 'the-sign-in-moved-on' : undefined)
     // A start that brought it back from the archive says so, and what brought it; the rest of its
     // tree carries on now that it has started.
-    const back = this.bringingBack.get(sessionId)
-    this.bringingBack.delete(sessionId)
-    if (back !== undefined) this.carryOnAfterTheStop(back.others, NEWER_WORDS_AFTER_THE_ARCHIVE)
-    const broughtBack = back?.saying
+    const broughtBack = this.finishItsReturnFromTheArchive(sessionId)
     const onAReplacedCopy = this.reopenedOnAReplacedCopy.delete(sessionId)
     this.publishOurs(session, {
       type: 'reopened',
@@ -38646,6 +38671,7 @@ export class RuntimeHost implements LiveHost {
         )
       : undefined
     const ranAsNobody = row.restoredFromBundle ? 'bundle' : row.foundInUserHome ? 'user-home' : null
+    const canFirstStart = this.canFirstStartAsANormalConversation(row)
     this.prepareInitialProviderLimitFacts()
     return {
       sessionId,
@@ -38687,13 +38713,13 @@ export class RuntimeHost implements LiveHost {
       cannotTakeAMessage:
         heldElsewhere && !sink.aPersonIsBehindIt
           ? HELD_ELSEWHERE
-          : row.unresumableReason === null
+          : canFirstStart || row.unresumableReason === null
             ? null
             : describeUnavailable('cannot-be-reopened', {
                 refusal: row.unresumableReason ?? undefined,
               }),
       settingsFixed:
-        slot !== undefined || whyNoSettingForItsNextStart(row, this.replacedBy) !== null,
+        slot !== undefined || whyNoSettingForItsNextStart(row, this.replacedBy, canFirstStart) !== null,
     }
   }
 

@@ -168,7 +168,7 @@ export function aWakeThatDidNotHappen(error: unknown): {
   // **D-039 · R2 — the provider ANSWERED the start again, and refused it** — by TYPE, anywhere on
   // the chain: a reopen's `ResumeError` carries it as its cause, and the host's person-read refusal
   // carries that. **Before the `ResumeError` arm**, which would call it a sign-in or a lost
-  // conversation; a thread its provider no longer has carries none (D-017 R10 replaces it).
+  // conversation; a thread its provider no longer has carries no provider refusal.
   const refused = startRefusalOf(error)
   if (refused !== null) {
     return {
