@@ -313,8 +313,8 @@ export interface OutgoingQuestion {
   toProfile?: string
   /** ⛔ The conversation that answers it — `request_routed.parent`, for the card's press; never printed. */
   toConversation?: string
-  /** ⚑ How it closed without an answer — `question_withdrawn`, `question_recipient_ended`. */
-  closed?: 'withdrawn' | 'recipient-ended'
+  /** How it closed without an answer. */
+  closed?: 'withdrawn' | 'recipient-ended' | 'piece-ended'
   /** ⚑ **UI-009 · how it was settled** — `user_decision`, in this conversation's own ledger. */
   answered?: 'answered' | 'rejected'
   /** ⚑ Who settled it — `user_decision.by`, beside {@link answered}. */
