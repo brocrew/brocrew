@@ -41,6 +41,7 @@ import SessionChanges from './SessionChanges.vue'
 import SessionInfo from './SessionInfo.vue'
 import { keptInThisConversation } from '../lib/standing-grants'
 import SessionPanel from './SessionPanel.vue'
+import type { TitleHistorySource } from './ConversationTitleHistory.vue'
 import SessionWork from './SessionWork.vue'
 
 /**
@@ -51,6 +52,7 @@ import SessionWork from './SessionWork.vue'
  * The drawer shares the conversation body's light scope so adjacent panels, overlays and image chrome use a coherent surface. Documents inside a tab retain their own paper body and Markdown/Raw views.
  */
 const props = defineProps<{
+  titleHistory?: TitleHistorySource
   approvalSaving?: boolean
   session: CreatedSession
   /** What is OPEN — the session's control projection (064), never the fold on screen. */
@@ -448,6 +450,7 @@ function steer(event: KeyboardEvent, at: number): DrawerTab | null {
       <SessionPanel
         :approval-saving="props.approvalSaving"
         v-if="props.tab === 'open'"
+        :title-history="props.titleHistory"
         :state="props.state"
         :shown="props.shown"
         :facets="props.facets"

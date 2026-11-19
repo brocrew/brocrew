@@ -247,6 +247,7 @@ import type { FirstMessageCameTo, LaunchDoor, SendIntent } from '../lib/session-
 import { createWindow, openAt, prependPage, type WindowState } from '../lib/transcript-window'
 import AppTitleBar from './AppTitleBar.vue'
 import ConversationPane from './ConversationPane.vue'
+import type { TitleHistorySource } from './ConversationTitleHistory.vue'
 import MessageLinks from './MessageLinks.vue'
 import LinkedHistory from './LinkedHistory.vue'
 import { linkFailureReason, type ResolvedMessageLink } from '../lib/message-links'
@@ -3047,6 +3048,9 @@ const selectedForIdentity = computed(() =>
   surface.value === 'conversation' && active.value?.meta ? active.value : null,
 )
 const conversationIdentity = ref<ConversationIdentity | null>(null)
+const titleHistoryRevision = ref(0)
+const readTitleHistory: TitleHistorySource['read'] = (input) =>
+  appClosing.value ? Promise.resolve(null) : window.api.runtime.readConversationTitleHistory(input)
 let identityRead = 0
 let identitySelection = 0
 
@@ -3175,6 +3179,7 @@ onMounted(() => {
     // answer — which is this channel's contract rather than an economy.
     work: () => {
       void readSelectedIdentity()
+      titleHistoryRevision.value += 1
       teamProfileGraph.markStale()
       filesLibrary.markStale()
       void readTheCast()
@@ -3974,6 +3979,7 @@ onUnmounted(() => {
             :provider-block="active ? store.providerBlocks.get(active.sessionId) : null"
             :named="listedNamedOfActive"
             :identity="conversationIdentity"
+            :title-history="{ read: readTitleHistory, revision: titleHistoryRevision }"
             :rename="renameConversation"
             :archive="archiveOfActive"
             :identities="agentStore.identities.value?.identities ?? null"

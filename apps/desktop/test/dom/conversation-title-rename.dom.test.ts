@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
-import type { ConversationIdentity } from '../../src/shared/conversation-title'
+import type {
+  ConversationIdentity,
+  ConversationTitleHistory,
+} from '../../src/shared/conversation-title'
 import type { ResumableSessionInfo, RuntimeBridge } from '../../src/shared/runtime-ipc'
 import { META, mount } from './harness'
 import {
@@ -214,4 +217,109 @@ it('opens the selected conversation’s task section and focuses it', async () =
   expect(m.q('drawer-tab-open').getAttribute('aria-selected')).toBe('true')
   expect(document.activeElement).toBe(m.q('card-task'))
   expect(m.q('conversation-pane').getAttribute('data-session-id')).toBe(sessionId)
+})
+
+const savedAt = Date.UTC(2026, 10, 10, 14, 30)
+
+function savedTitles(
+  title: string,
+  ordinal: number,
+  next: { generation: number; ordinal: number } | null = null,
+  rowsUnread = 0,
+): ConversationTitleHistory {
+  return {
+    kind: 'titles',
+    titles: [{ title, ordinal, author: { kind: 'person' }, at: savedAt }],
+    next,
+    rowsUnread,
+  }
+}
+
+it('reads saved titles only on demand, follows the cursor and restarts after a rebuild', async () => {
+  const before = { generation: 4, ordinal: 19 }
+  const beforeRebuild = { generation: 4, ordinal: 3 }
+  const read = vi
+    .fn<RuntimeBridge['readConversationTitleHistory']>()
+    .mockResolvedValueOnce(savedTitles('Current saved title', 21, before))
+    .mockResolvedValueOnce(savedTitles('Earlier saved title', 5, beforeRebuild, 1))
+    .mockResolvedValueOnce({ kind: 'generation-changed' })
+    .mockResolvedValueOnce(savedTitles('Title carried across rebuild', 2))
+    .mockResolvedValueOnce(savedTitles('Title from the other window', 3))
+  window.api.runtime.readConversationTitleHistory = read
+  window.api.runtime.readConversationIdentity = vi.fn(async () => ({
+    conversation: sessionId,
+    address,
+    title: 'Current reader title',
+    author: null,
+  }))
+  const m = await mountWith([row(sessionId, task)])
+  await expect.poll(() => m.all('conversation-linked-task').length).toBe(1)
+  m.q('conversation-linked-task').click()
+  await expect.poll(() => m.all('conversation-title-history').length).toBe(1)
+  expect(read).not.toHaveBeenCalled()
+
+  const history = m.q('conversation-title-history')
+  history.querySelector('summary')!.click()
+  await expect.poll(() => m.all('conversation-saved-title').length).toBe(1)
+  expect(read).toHaveBeenCalledExactlyOnceWith({ sessionId })
+  expect(history.textContent).toContain('Current saved title')
+  expect(history.textContent).toContain('Named by you')
+  expect(history.querySelector('time')?.textContent).toContain('2026')
+
+  m.q('conversation-title-history-more').click()
+  await expect.poll(() => m.all('conversation-saved-title').length).toBe(2)
+  expect(read).toHaveBeenNthCalledWith(2, { sessionId, before })
+  expect(
+    m.all('conversation-saved-title').map((title) => title.querySelector('strong')?.textContent),
+  ).toEqual(['Current saved title', 'Earlier saved title'])
+  expect(history.textContent).toContain('1 saved title could not be read.')
+
+  m.q('conversation-title-history-more').click()
+  await expect.poll(() => history.textContent).toContain('Title carried across rebuild')
+  expect(read).toHaveBeenNthCalledWith(3, { sessionId, before: beforeRebuild })
+  expect(read).toHaveBeenNthCalledWith(4, { sessionId })
+  expect(history.textContent).not.toContain('Earlier saved title')
+  expect(m.q('conversation-title').textContent?.trim()).toBe('Current reader title')
+
+  changed({ what: 'work' })
+  await expect.poll(() => history.textContent).toContain('Title from the other window')
+  expect(read).toHaveBeenNthCalledWith(5, { sessionId })
+  expect(history.textContent).not.toContain('Title carried across rebuild')
+})
+
+it('keeps a delayed saved-title reply out of the next conversation', async () => {
+  let finish!: (history: ConversationTitleHistory) => void
+  const first = new Promise<ConversationTitleHistory>((resolve) => {
+    finish = resolve
+  })
+  const read = vi.fn<RuntimeBridge['readConversationTitleHistory']>(({ sessionId: id }) =>
+    id === sessionId ? first : Promise.resolve(savedTitles('Service saved title', 1)),
+  )
+  window.api.runtime.readConversationTitleHistory = read
+  window.api.runtime.readConversationIdentity = vi.fn(async ({ sessionId: conversation }) => ({
+    conversation,
+    address: conversation,
+    title: conversation,
+    author: null,
+  }))
+  const m = await mountWith([row(serviceId, task), row(sessionId, task)])
+  m.q(`open-session-${sessionId}`).click()
+  await expect.poll(() => m.all('conversation-linked-task').length).toBe(1)
+  m.q('conversation-linked-task').click()
+  await expect.poll(() => m.all('conversation-title-history').length).toBe(1)
+  m.q('conversation-title-history').querySelector('summary')!.click()
+  await expect.poll(() => read.mock.calls.length).toBe(1)
+
+  m.q(`open-session-${serviceId}`).click()
+  await expect.poll(() => m.q('conversation-pane').dataset.sessionId).toBe(serviceId)
+  m.q('conversation-linked-task').click()
+  await expect.poll(() => m.all('conversation-title-history').length).toBe(1)
+  const history = m.q('conversation-title-history') as HTMLDetailsElement
+  if (!history.open) history.querySelector('summary')!.click()
+  await expect.poll(() => history.textContent).toContain('Service saved title')
+  expect(read.mock.calls).toEqual([[{ sessionId }], [{ sessionId: serviceId }]])
+  finish(savedTitles('Late title for the old conversation', 4))
+  await first
+  await nextTick()
+  expect(history.textContent).not.toContain('Late title for the old conversation')
 })

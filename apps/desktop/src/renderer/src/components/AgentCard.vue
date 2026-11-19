@@ -46,6 +46,7 @@ import CardEmpty from './CardEmpty.vue'
 import CardSection from './CardSection.vue'
 import SessionBot from './SessionBot.vue'
 import TaskList from './TaskList.vue'
+import ConversationTitleHistory, { type TitleHistorySource } from './ConversationTitleHistory.vue'
 import CardCompactDoor from './CardCompactDoor.vue'
 import SignInPanel from './SignInPanel.vue'
 import type { ProfileSignIn } from '../composables/useProfileSignIn'
@@ -84,6 +85,7 @@ const props = defineProps<{
   root?: WorkThatNamesIt | null
   /** ⚑ `rows-unread.ts`' sentence for the walk behind {@link tasks}, when it could not read rows. */
   tasksShort?: string | null
+  titleHistory?: TitleHistorySource
   /** ⚑ `false` where no caller can act on a press, so the task lines draw none (`118`). */
   canOpen: boolean
   /** ⚑ What this window's transcript of the agent says is open. */
@@ -660,6 +662,12 @@ const fileManager = fileManagerHere()
           <strong>{{ ROWS_UNREAD_LEAD }}</strong>
           {{ props.tasksShort }}
         </p>
+        <ConversationTitleHistory
+          v-if="props.titleHistory && props.conversation"
+          :source="props.titleHistory"
+          :conversation="props.conversation"
+          :who="props.who"
+        />
       </CardSection>
 
       <component

@@ -116,6 +116,7 @@ import { READ_WHAT_THE_MODEL_GOT } from '../lib/agent-inputs'
 import PromptComposer, { type ComposerState } from './PromptComposer.vue'
 import ConversationMain from './ConversationMain.vue'
 import SessionDrawer from './SessionDrawer.vue'
+import type { TitleHistorySource } from './ConversationTitleHistory.vue'
 import SignInPanel from './SignInPanel.vue'
 import ProviderSetupProgress from './ProviderSetupProgress.vue'
 import { providerLimitDisplay, type ProviderBlockFacts } from '../lib/provider-limit-status'
@@ -238,6 +239,7 @@ const props = defineProps<{
    */
   named?: WorkThatNamesIt | null
   identity?: ConversationIdentity | null
+  titleHistory?: TitleHistorySource
   /** Rename this conversation through the host. */
   rename?: (input: ConversationRenameInput) => Promise<ConversationRenameResult>
   /** Archive this conversation: the header's press. Handed through; the screen owns the bridge. */
@@ -2237,6 +2239,7 @@ onUnmounted(() => {
            through two dispatches that changed it. -->
       <SessionDrawer
         v-if="props.drawerOpen && props.record.meta"
+        :title-history="props.titleHistory"
         :can-open-document="mayOpenADocument"
         @open-document="(resourceId) => void openResource(resourceId)"
         :session="props.record.meta"
