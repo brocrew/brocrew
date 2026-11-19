@@ -91,6 +91,7 @@ const THE_SPLIT: Readonly<Record<ToolName, BeyondItsRails>> = {
   pass_question_up: 'nothing-its-rails-do-not-cover',
   answer_question: 'nothing-its-rails-do-not-cover',
   message_agent: 'nothing-its-rails-do-not-cover',
+  compact_agent: 'nothing-its-rails-do-not-cover',
   withdraw_task: 'nothing-its-rails-do-not-cover',
   create_agent: 'nothing-its-rails-do-not-cover',
   // ⚑ **D-016 · `give_work` took `spawn_agent`'s row** — it can start a conversation, as the spawn did.

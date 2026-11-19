@@ -316,7 +316,7 @@ describe('557 · work that stalls with nobody left to tell', () => {
       expect(made.ownerName).not.toBe(made.giverName)
     })
 
-    it('⛔ a giver that is LIVE and has NOT been told is a person’s — the failure path, planted', async () => {
+    it.each([false, true])('a stall is visible with a compaction notice: %s', async (notice) => {
       const giver = await personOpens('a-live-giver')
       const holder = 'sess_never_run'
       store.create({
@@ -356,12 +356,36 @@ describe('557 · work that stalls with nobody left to tell', () => {
         clock++,
       )
       store.append(holder, 1, { type: 'turn', state: 'interrupted' }, clock++)
+      if (notice) {
+        store.append(
+          holder,
+          2,
+          {
+            type: 'message_queued',
+            messageId: 'msg_confirmed_compaction',
+            kind: 'notice',
+            text: 'The conversation was compacted.',
+            appNotice: 'a-conversation-was-compacted',
+          },
+          clock++,
+        )
+        expect(store.messagesWaitingIn(holder)).toHaveLength(1)
+      }
 
       expect(
         host.agentsVisibleTo({ ownerId: `agent:${giver}` }, giver).agents.map((one) => one.agent),
       ).toContain(giver)
       expect(store.workReportedTo(giver).size).toBe(0)
       expect(idsNamedToAPerson()).toEqual(['work_planted'])
+      expect(
+        host
+          .whatEachConversationIsWaitingOn()
+          .conversations.find((entry) => entry.conversation === giver),
+      ).toMatchObject({
+        stoppedWork: [
+          expect.objectContaining({ piece: 'work_planted', holderConversation: holder }),
+        ],
+      })
       expect(await host.closeForAPerson('work_planted', window)).toMatchObject({
         ok: true,
         piece: 'work_planted',

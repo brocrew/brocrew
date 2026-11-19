@@ -298,11 +298,14 @@ describe('what an agent was given', () => {
     const given = launchesOf(ordinary)[0]?.given
     if (given === undefined) throw new Error('the launch kept no record')
     const currentFull = agentToolsFor(host, ordinary, {})
-    // Keep the old full vocabulary in the historical launch, before own-notes tools existed.
+    // Keep the old full vocabulary before own-notes tools and compaction existed.
     const full = {
       ...currentFull,
       tools: currentFull.tools.filter(
-        (one) => one.name !== 'read_own_notes' && one.name !== 'write_own_notes',
+        (one) =>
+          one.name !== 'read_own_notes' &&
+          one.name !== 'write_own_notes' &&
+          one.name !== 'compact_agent',
       ),
     }
     const historical = {
@@ -316,7 +319,7 @@ describe('what an agent was given', () => {
       Date.now(),
     )
     const read = await host.whatThisAgentWasGiven(ordinary)
-    expect(read.tools.list).toHaveLength(33)
+    expect(read.tools.list).toHaveLength(34)
     expect(read.tools.list.map((tool) => tool.name)).toContain('write_agent_rules')
     expect(read.tools.changedSinceLaunch).toBe(true)
     expect(launchesOf(ordinary).at(-1)?.given).toEqual(historical)
@@ -334,7 +337,7 @@ describe('what an agent was given', () => {
         .mockImplementation((asked) => (asked === id ? { ...row, profileId } : null))
       try {
         const read = await host.whatThisAgentWasGiven(id)
-        expect(read.tools.list).toHaveLength(33)
+        expect(read.tools.list).toHaveLength(34)
         expect(read.tools.list.map((tool) => tool.name)).toEqual(
           expect.arrayContaining(['read_agent_rules', 'propose_agent_rules', 'write_agent_rules']),
         )

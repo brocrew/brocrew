@@ -32,7 +32,11 @@ import {
   createListAgentsTool,
   createListProfilesTool,
 } from './tool-families/directory'
-import { createInterruptAgentTool, createMessageAgentTool } from './tool-families/messaging'
+import {
+  createCompactAgentTool,
+  createInterruptAgentTool,
+  createMessageAgentTool,
+} from './tool-families/messaging'
 import {
   createSearchWorkTool,
   createTakeOnWorkTool,
@@ -238,6 +242,7 @@ export function agentToolsFor(
       createWriteAgentRulesTool(host, by, me, guarded),
       createReadOwnNotesTool(host, by, me, guarded),
       createWriteOwnNotesTool(host, by, me, guarded),
+      createCompactAgentTool(host, by, me, guarded),
     ].map(recordsWhatItRefused),
   }
 }

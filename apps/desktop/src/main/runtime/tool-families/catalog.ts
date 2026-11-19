@@ -194,6 +194,7 @@ export const TOOL_NAMES = [
   'write_agent_rules',
   'read_own_notes',
   'write_own_notes',
+  'compact_agent',
 ] as const
 
 export type ToolName = (typeof TOOL_NAMES)[number]
