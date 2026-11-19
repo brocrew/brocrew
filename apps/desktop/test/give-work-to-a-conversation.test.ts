@@ -137,7 +137,7 @@ describe('give_work goes to the conversation the giver names', () => {
     const text = turn.sent ?? turn.text
     expect(text).toContain('Book the hotel, in a sentence')
     expect(store.piecesOwnedBy(given.owner)).toContainEqual(
-      expect.objectContaining({ piece: given.piece, title: 'Book the hotel', givenBy: lead }),
+      expect.objectContaining({ piece: given.piece, title: 'Book the hotel', giver: lead }),
     )
   })
 
@@ -291,7 +291,12 @@ describe('give_work goes to the conversation the giver names', () => {
     const give = (args: Record<string, unknown>) =>
       answerOn(agentToolsFor(host, lead), 'give_work', args)
     const make = async (job: string) => {
-      const given = await give({ ...task(job), to: 'new', conversation_title: job })
+      const given = await give({
+        ...task(job),
+        to: 'new',
+        conversation_title: job,
+        model: 'fake-claude-b',
+      })
       const { agent, label } = given.structured ?? {}
       if (typeof agent !== 'string' || typeof label !== 'string') {
         throw new Error(given.text)
@@ -308,7 +313,7 @@ describe('give_work goes to the conversation the giver names', () => {
     const result = await give({
       ...task('Book the named hotel'),
       to: named.label,
-      model: 'opus',
+      model: 'fake-claude-a',
       effort: 'high',
     })
     const { piece, label, delivery } = result.structured ?? {}
@@ -316,11 +321,11 @@ describe('give_work goes to the conversation the giver names', () => {
     expect(result.structured).toMatchObject({
       outcome: 'ok',
       agent: named.agent,
-      runs_on: { model: 'opus', effort: 'high' },
+      runs_on: { model: 'fake-claude-a', effort: 'high' },
       receipt: { recipient: { id: named.agent, address: named.label, title: 'Lisbon trip' } },
     })
     expect(store.workById(piece)?.owner).toBe(named.agent)
-    expect(store.findLive(named.agent)).toMatchObject({ model: 'opus', reasoningEffort: 'high' })
+    expect(store.findLive(named.agent)).toMatchObject({ model: 'fake-claude-a', reasoningEffort: 'high' })
     expect(store.whatItRunsOn(newer.agent)).toEqual(otherBefore)
     expect(delivery === 'sent' || delivery === 'held').toBe(true)
     const action = delivery === 'sent' ? 'sent to' : 'held for'
