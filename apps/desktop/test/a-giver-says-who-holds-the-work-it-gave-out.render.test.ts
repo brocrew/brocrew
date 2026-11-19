@@ -1095,13 +1095,15 @@ describe('D-036 · the host says who holds the work a conversation gave out', ()
       sessions: issued,
       home: syntheticProviderHome(() => userData)('claude', DEFAULT_PROFILE_ID),
     })
+    // Give the stand-in an auto mode so recovered notices do not park it on its own cards.
+    store.setApprovalMode(standIn, 'auto')
     host = buildHost()
     await host.resumeSession(ada, window)
     startGate.hold = new Promise<void>((resolve) => {
       startGate.release = resolve
     })
     const entered = startGate.entered
-    const sending = host.startAndSend(parent, 'are you there', window)
+    const reopening = host.reopenForAPerson(parent, window, null)
     await waitFor(
       () => startGate.entered === entered + 1,
       'the historical stand-in to reach the provider',
@@ -1109,24 +1111,12 @@ describe('D-036 · the host says who holds the work a conversation gave out', ()
     await settle()
     expect(saidOf(standIn).map((one) => one.state.is)).toEqual(['active'])
     startGate.release()
-    const answer = await sending
-    if (!('sent' in answer)) throw new Error(`nothing was sent: ${JSON.stringify(answer)}`)
-    const next = answer.sent.sessionId
+    const { sessionId: next } = await reopening
     startGate.hold = null
     // The premise: a new conversation stands in the parent's place.
     expect(next).toBe(standIn)
     expect(next).not.toBe(parent)
     expect(ledger(parent).some((event) => event.type === 'replaced_by')).toBe(true)
-
-    // Its own turn parks on a card in `ask` mode; the card is cleared so the turn ends.
-    await waitFor(
-      () => ledger(next).some((event) => event.type === 'permission_request'),
-      'the stand-in’s card',
-    )
-    const card = ledger(next).find((event) => event.type === 'permission_request')
-    if (card?.type !== 'permission_request') throw new Error('the stand-in raised no card')
-    await host.respondPermission(next, card.id, { outcome: 'allow' }, window)
-    await waitFor(() => turnsIn(next) >= 1, 'the stand-in’s turn to end')
 
     const cardsBefore = ledger(ada).filter((event) => event.type === 'permission_request').length
     expect(
@@ -1141,9 +1131,6 @@ describe('D-036 · the host says who holds the work a conversation gave out', ()
       () => ledger(ada).filter((event) => event.type === 'permission_request').length > cardsBefore,
       'the helper to drive the original task again',
     )
-    await settle()
-    expect(stateOf(next)).toMatchObject({ is: 'waiting-on-a-worker' })
-
     // The stand-in counts what the conversation it replaced gave.
     await waitFor(
       () => lastSaid(next)?.is === 'waiting-on-a-worker',
