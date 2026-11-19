@@ -208,7 +208,8 @@ export class WindowIncidentReads {
               ? store.workReportedTo(giver)
               : new Set(valueOf(this.context.getStore()?.reported?.get(giver)))
         if (key === 'reconciliationOwners')
-          return () => {
+          return (includeProviderFailureNotices = false) => {
+            if (includeProviderFailureNotices) return store.reconciliationOwners(true)
             const owners = current()
             return owners === undefined ? store.reconciliationOwners() : [...owners.keys()]
           }
