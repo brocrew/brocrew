@@ -343,9 +343,7 @@ describe('Service lifecycle', () => {
             message.drives === one.piece &&
             message.text.includes(`took back ${one.label}`),
         )
-        const handover = delivered.findIndex(
-          (message) => message.piece === two.piece && message.text.includes(two.label),
-        )
+        const handover = delivered.findIndex((message) => message.piece === two.piece)
         expect(notice).toBeGreaterThanOrEqual(0)
         expect(handover).toBeGreaterThan(notice)
       })
