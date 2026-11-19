@@ -194,9 +194,10 @@ export function usePaletteSearch(
         : null,
     ].filter(Boolean)
     const total = page.grouped?.matched
+    const groupCount = searchGroups.value.length
     const count = page.grouped
       ? total == null
-        ? `${searchGroups.value.length} profile groups shown.`
+        ? `${groupCount} profile ${groupCount === 1 ? 'group' : 'groups'} shown.`
         : `${total} matching ${total === 1 ? 'conversation' : 'conversations'}.`
       : `${searchHits.value.length} shown.`
     return [

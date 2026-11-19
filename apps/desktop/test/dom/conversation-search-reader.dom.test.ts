@@ -236,8 +236,9 @@ it('keeps partial group counts unknown and discards a late grouped reply after m
     'Search Editor',
   )
   expect(insidePalette('palette-search-more')).toBeNull()
-  expect(insidePalette('palette-searched')?.textContent).toContain('1 unread row.')
-  expect(insidePalette('palette-searched')?.textContent).not.toContain('640')
+  expect(insidePalette('palette-searched')?.textContent).toBe(
+    '1 profile group shown. 1 unread row. Results may be incomplete.',
+  )
 
   typeQuery('revised words')
   await expect.poll(() => search.mock.calls.length).toBe(2)
