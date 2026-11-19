@@ -33796,7 +33796,6 @@ export class RuntimeHost implements LiveHost {
       foldersWithoutARow: this.profiles()
         .filter((folder) => !withRows.has(foldProfileName(folder)))
         .sort(),
-      spawningEnabled: this.deps.store.spawnPolicy().spawningEnabled,
       ...(this.servicesAreOn() ? { servicesOn: true as const } : {}),
       ...this.theServicesAmong(identities),
       // 🔴 **The second thing on `app_policy`, carried on the read the window already makes**
@@ -35578,22 +35577,6 @@ export class RuntimeHost implements LiveHost {
     return { ok: true, slug: folded }
   }
 
-  /**
-   * **Throw the global spawning switch** (355, criterion 7), and answer with where it now stands.
-   *
-   * ⛔ **Read back rather than echoed.** `spawnPolicy` answers `false` for a database with no row —
-   * *"a kill switch whose broken state is on is not a kill switch"* — so a store that could not
-   * write must not have this method reply *"on"* because *"on"* is what was asked for.
-   *
-   * ⚠️ **Nothing running is stopped, and the surface has to say so.** This is a rail on CREATING a
-   * conversation, asked by `admitGive` only of a give that would start one; the agents already
-   * alive stay alive, and work still goes to them.
-   */
-  setSpawningEnabled(enabled: boolean): { spawningEnabled: boolean } {
-    this.deps.store.setSpawningEnabled(enabled)
-    return this.deps.store.spawnPolicy()
-  }
-
   /** The agents among `identities` that are services, by slug, for the window; nothing when none is. */
   private theServicesAmong(identities: readonly AgentIdentity[]): { services?: readonly string[] } {
     const read = this.profileExecution
@@ -35642,8 +35625,7 @@ export class RuntimeHost implements LiveHost {
    * **Set the mode a person's next conversation begins in** (500, HO-036 §3.1), and answer with
    * where it now stands.
    *
-   * ⛔ **Read back rather than echoed**, which is `setSpawningEnabled`'s rule one method up and is
-   * load-bearing for the same reason: `defaultApprovalMode` answers `'ask'` for a store that could
+   * Read back the saved value. `defaultApprovalMode` answers `'ask'` for a store that could
    * not write, so replying with what was ASKED FOR would draw a control that says yolo over a row
    * that says nothing.
    *
