@@ -1,5 +1,4 @@
-// The approved plain words replace the former labels; the state and gesture checks remain.
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import { page } from 'vitest/browser'
 import { assertDrawn, drawnReady } from './drawn'
@@ -26,10 +25,8 @@ import WorkSearchDialog from '../../src/renderer/src/components/WorkSearchDialog
 import FilesTaskPicker from '../../src/renderer/src/components/FilesTaskPicker.vue'
 import ScheduledJobDialog from '../../src/renderer/src/components/ScheduledJobDialog.vue'
 import SessionTools from '../../src/renderer/src/components/SessionTools.vue'
-import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import CanonicalDocumentViewer from '../../src/renderer/src/components/CanonicalDocumentViewer.vue'
 import WorkflowOutputViewer from '../../src/renderer/src/components/WorkflowOutputViewer.vue'
-import { useSpawnSafety } from '../../src/renderer/src/lib/spawn-safety'
 import type { ToolRegistry } from '../../src/renderer/src/lib/transcript'
 import type {
   AgentIdentities,
@@ -37,47 +34,6 @@ import type {
   WorkflowOutputResult,
 } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, type Mounted } from './harness'
-
-/**
- * 🔴 **390 · a stop a modal cannot cover.**
- *
- * ## ⛔ The defect, and it is not the one 385 fixed
- *
- * `385 §3` moved the global spawn stop out of the rail's scroller so a long list could not carry it
- * off the bottom of the screen. ✅ **That fix is real and `rail-rhythm.dom.test.ts` proves it.**
- * ⛔ **It is not the whole invariant.** `388` measured `529649c`:
- *
- * > Every `OverlayHost` is a fixed `inset: 0` `aria-modal` layer with a focus trap; **it
- * > deliberately covers the rail.** `rail-spawning` remains beneath that layer in `SideRail`'s
- * > anchored rail-bottom, **so it cannot be clicked or tabbed to while a modal is open. No current
- * > test exercises that cross-layer state.**
- *
- * ⚠️ **The modal is not broken.** Its isolation and its focus trap are correct and every assertion
- * in §5 exists to keep them that way. ⚑ **What was missing is a safety decision**, and the PM made
- * it: *the emergency stop for new spawns stays reachable while a modal is open* — because a person
- * reaches for an emergency stop at the worst moment, not at a convenient one.
- *
- * ## ⚑ Where the control lives, and why that is the shape of the census
- *
- * ⛔ **`OverlayHost` draws it, once, for every overlay in the app.** The alternative — a copy in
- * each panel's header, which is where the v2.5 standalone puts it — is a rule eleven components
- * have to remember, and HO-013 §3 is at the head of this project's standing rules for that exact
- * failure: *"a rule that must be remembered each time is a rule that will eventually be
- * forgotten."*
- *
- * ⚠️ **So the census below is not decoration.** Hosting it makes the control PRESENT everywhere; it
- * does not make it REACHABLE everywhere, because reachability is a question about the panel in
- * front of it. §2 opens every path with its real panel and asks the question a person asks: is the
- * thing I am pointing at the thing that gets the click.
- *
- * ## ⚠️ In the DOM project, and there is no SSR version of any of this
- *
- * `elementFromPoint` needs a real compositor, a focus trap needs real key events, and *"the rail is
- * covered"* is a statement about two layers of a real layout. ⛔ **The viewport is shared across
- * this whole directory**, so it is captured before the first resize and restored after every test.
- */
-
-/* ------------------------------------------------------------------------------ the fixtures */
 
 const NOW = 1_700_000_000_000
 
@@ -97,7 +53,6 @@ const identities = (over: Partial<AgentIdentities> = {}): AgentIdentities => ({
   ],
   foldersWithoutARow: [],
   use: [],
-  spawningEnabled: true,
   // 500 · required on `AgentIdentities`; none of these fixtures is about the launch default.
   defaultApprovalMode: 'ask',
   // ⚑ **516** — the global registry, carried on the same read; empty is a real answer.
@@ -162,7 +117,6 @@ const TOOLS: ToolRegistry = { set: null, dropped: 0, at: null }
     keptRules: async () => ({ claude: [], codex: [] }),
     agentIdentities: async () => identities(),
     setExternalMcpServers: async () => identities().identities[0],
-    setSpawningEnabled: async () => ({ spawningEnabled: true }),
     listResumable: async () => [],
     listUnresumable: async () => [],
     // The delete sheet reads its list as it opens: a path with no break in it is its widest state.
@@ -200,30 +154,6 @@ const TOOLS: ToolRegistry = { set: null, dropped: 0, at: null }
 /* ------------------------------------------------------------------------------- the harness */
 
 const ORIGINAL = { width: window.innerWidth, height: window.innerHeight }
-const safety = useSpawnSafety()
-/** Every press either surface makes, in order, so a test can see WHICH state was written. */
-let pressed: boolean[] = []
-
-/**
- * 🔴 **THE CENSUS — every `OverlayHost` path in the app, with the panel it really opens.**
- *
- * ⛔ **Not a representative one.** Whether the safety lane can be clicked depends on the size and
- * the paint order of what is in front of it, and that is a different answer per panel. The paths
- * are grouped by the component that raises the host, which is how §3's source census counts them.
- *
- * ⚠️ **`RuntimeScreen` switches panels in its main host and opens linked history in another**; `ConversationPane` and
- * `ReadingPane` raise their own, and the `ReadingPane` panels are the same components
- * `ConversationPane` opens — which is why the panel count is larger than the mount-site count.
- *
- * 🔴 **No count is written here** (444). This docblock said *"eleven different answers"* and
- * *"seven branches"* while the list below held fifteen entries and §3's own assertion derived
- * nine; `423` added `NewAgent` and `StartAsAgent` and the prose did not follow.
- * ⚠️ **`PATHS.length` is NOT asserted anywhere in this file and this sentence does not pretend it
- * is** — what §3 checks is the `RuntimeScreen` SLICE of it, against a branch count read out of
- * that component's own source, plus a mount-site count. ⛔ So the honest statement is: the numbers
- * that are checked live where they are checked, and no number lives in this paragraph.
- * `a-number-can-survive-the-death-of-its-derivation`.
- */
 const PATHS = [
   {
     host: 'HumanAnswerDialog',
@@ -603,69 +533,12 @@ function tab(shiftKey = false): void {
   window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey, bubbles: true }))
 }
 
-beforeEach(() => {
-  pressed = []
-  safety.supply(identities(), (enabled) => pressed.push(enabled))
-})
-
 afterEach(async () => {
   unmountAll()
-  safety.forget()
   await page.viewport(ORIGINAL.width, ORIGINAL.height)
 })
 
-/* ---------------------------------------------------- §1 · the defect, with the app's own material */
-
-describe('§1 · what the overlay layer does to the rail (388 §3)', () => {
-  /**
-   * 🔴 **The control for everything below, and it is the defect itself.** With a modal open, the
-   * rail's own switch is not the element a click at its coordinates reaches — so `385 §3`'s
-   * anchoring, which is real, is a guarantee about SCROLLING and about nothing else.
-   */
-  it('🔴 the rail’s own switch is covered by an open overlay', async () => {
-    const Shell = defineComponent({
-      name: 'RailUnderAnOverlay',
-      props: { modal: { type: Boolean, required: true } },
-      setup: (props) => () =>
-        h('div', { style: 'display:flex;width:100%;height:100%' }, [
-          h(SideRail, { open: [], activeId: null, place: null, agents: identities() }),
-          props.modal
-            ? h(OverlayHost, { label: 'A sheet' }, { default: () => [h(NewAgent)] })
-            : null,
-        ]),
-    })
-    await page.viewport(1180, 808)
-
-    // ⚑ **The pair first**: with nothing open, the rail's switch really is reachable — otherwise the
-    // assertion below is about a control that was never clickable in this fixture at all.
-    const bare = mount(Shell, { modal: false }, { width: 1180, height: 808 })
-    await nextTick()
-    expect(reachable(bare.q('rail-spawning'))).toBe(true)
-    bare.unmount()
-
-    const covered = mount(Shell, { modal: true }, { width: 1180, height: 808 })
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    await nextTick()
-    const railSwitch = covered.q('rail-spawning')
-    expect(
-      railSwitch.getBoundingClientRect().height,
-      'the rail switch is not drawn',
-    ).toBeGreaterThan(0)
-    expect(reachable(railSwitch), 'the overlay no longer covers the rail').toBe(false)
-
-    // ⛔ …and what IS at that point is the overlay layer, rather than nothing at all.
-    const box = railSwitch.getBoundingClientRect()
-    const at = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)
-    expect(covered.q('overlay-host').contains(at)).toBe(true)
-
-    // 🔴 **And the answer to it, in the same fixture**: the stop is reachable anyway.
-    expect(reachable(covered.q('overlay-spawning'))).toBe(true)
-  })
-})
-
-/* ------------------------------------------------------------------- §2 · the census of the paths */
-
-describe('§2 · every OverlayHost path carries a reachable stop (390 §3)', () => {
+describe('Overlay dialogs', () => {
   it('keeps the long human answer scrollable, its close button reachable, and Tab inside the dialog', async () => {
     const path = PATHS.find((one) => one.host === 'HumanAnswerDialog')!
     const m = await overlay(path.open, 1180, 808, true)
@@ -674,10 +547,10 @@ describe('§2 · every OverlayHost path carries a reachable stop (390 §3)', () 
     expect(document.activeElement).toBe(close)
     tab(true)
     await nextTick()
-    expect(m.q('overlay-spawning').contains(document.activeElement)).toBe(true)
+    expect(dialog.contains(document.activeElement)).toBe(true)
     tab()
     await nextTick()
-    expect(document.activeElement).toBe(close)
+    expect(dialog.contains(document.activeElement)).toBe(true)
     const scroll = dialog.querySelector<HTMLElement>('.answer-scroll')!
     expect(getComputedStyle(scroll).overflowY).toBe('auto')
     scroll.scrollTop = 0
@@ -692,7 +565,6 @@ describe('§2 · every OverlayHost path carries a reachable stop (390 §3)', () 
     expect(m.q('human-answer-final').querySelector('table')).not.toBeNull()
     expect(m.q('human-answer-final').querySelector('pre code')).not.toBeNull()
     expect(reachable(close)).toBe(true)
-    expect(reachable(m.q('overlay-spawning'))).toBe(true)
     const originalStyle = last.getAttribute('style')
     try {
       last.style.height = '0px'
@@ -708,228 +580,24 @@ describe('§2 · every OverlayHost path carries a reachable stop (390 §3)', () 
   })
 
   for (const path of PATHS) {
-    it(`⛔ ${path.host} → ${path.panel}`, async () => {
+    it(`${path.host} → ${path.panel} opens inside its overlay`, async () => {
       const m = await overlay(path.open, 1180, 808, 'selfHosted' in path)
-      // The panel really opened — a census over overlays that failed to render would pass every
-      // assertion below and measure nothing.
-      expect(m.all(path.cy).length, `${path.panel} did not render`).toBeGreaterThan(0)
-
-      const lane = m.q('overlay-spawning')
-      expect(reachable(lane), `${path.panel} covers the stop`).toBe(true)
-      expect(lane.textContent).toContain('Agents can start new conversations')
-
-      // ⛔ **Inside the host**, which is what puts it inside the trap and inside the light scope.
-      expect(m.q('overlay-host').contains(lane)).toBe(true)
-
-      // …and it is the control, not a label: one press writes the state.
-      lane.click()
-      await nextTick()
-      expect(pressed).toEqual([false])
+      expect(m.q('overlay-host').contains(m.q(path.cy))).toBe(true)
     })
   }
 
-  /**
-   * ⚑ **At 1440 × 1000 as well as at the app's own floor**, because the widest panels sit in the
-   * gutter the lane occupies and the gutter is a function of the window. ⚠️ The two widths are the
-   * two this project photographs.
-   */
-  it('⚠️ …and at the other size anybody photographs', async () => {
+  it.each([
+    [1440, 1000],
+    [840, 760],
+    [460, 760],
+  ])('opens each overlay at %s × %s', async (width, height) => {
     for (const path of PATHS) {
       unmountAll()
-      const m = await overlay(path.open, 1440, 1000, 'selfHosted' in path)
-      expect(reachable(m.q('overlay-spawning')), `${path.panel} covers the stop at 1440`).toBe(true)
+      const m = await overlay(path.open, width, height, 'selfHosted' in path)
+      expect(m.all(path.cy).length, path.panel).toBeGreaterThan(0)
     }
   })
-})
 
-/* ------------------------------------------------------------------- §4 · the paired negative */
-
-describe('§4 · the assertion fails when the stop is absent (390 §3)', () => {
-  /**
-   * 🔴 **An assertion no mutation can kill is not carrying its rule.**
-   *
-   * ⛔ **The planted control is the app one line back**: a fixed `inset: 0` `aria-modal` layer with
-   * a panel on it and NO safety lane, which is what every path in §2 was until this dispatch. The
-   * same two questions are asked of it, and both answer the other way.
-   */
-  it('🔴 a modal layer with no lane in it fails the same two questions', async () => {
-    await page.viewport(1180, 808)
-    const Bare = defineComponent({
-      name: 'AModalThatForgotTheStop',
-      setup: () => () =>
-        h(
-          'div',
-          {
-            'data-cy': 'bare-host',
-            'aria-modal': 'true',
-            role: 'dialog',
-            style:
-              'position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:rgba(3,5,8,0.58)',
-          },
-          [h(NewAgent)],
-        ),
-    })
-    const m = mount(Bare, {}, { width: 10, height: 10 })
-    await nextTick()
-
-    // ⛔ It is a real modal — it renders its panel and it covers the window.
-    expect(m.all('new-agent').length).toBeGreaterThan(0)
-    expect(m.q('bare-host').getBoundingClientRect().width).toBe(1180)
-
-    // …and the stop is nowhere in it.
-    expect(m.all('overlay-spawning')).toHaveLength(0)
-
-    // ⚑ **The pair, in the same test**: the SAME panel inside the real host answers the other way.
-    m.unmount()
-    const hosted = await overlay(() => h(NewAgent))
-    expect(hosted.all('overlay-spawning')).toHaveLength(1)
-    expect(reachable(hosted.q('overlay-spawning'))).toBe(true)
-  })
-
-  /**
-   * ⚠️ **And the lane really is what `reachable()` is measuring.** A panel drawn ON TOP of the lane
-   * fails the check — so a green §2 is a statement about paint order, not a statement about the
-   * lane merely existing in the markup.
-   */
-  it('⛔ a panel painted over the lane is reported unreachable', async () => {
-    const m = await overlay(() =>
-      h('div', {
-        'data-cy': 'a-panel-over-the-lane',
-        style: 'position:fixed;inset:0;z-index:3;background:#fff',
-      }),
-    )
-    expect(m.all('overlay-spawning')).toHaveLength(1)
-    expect(m.q('overlay-spawning').getBoundingClientRect().height).toBeGreaterThan(0)
-    expect(reachable(m.q('overlay-spawning'))).toBe(false)
-  })
-
-  /**
-   * ⛔ **And the lane's `z-index` is a rule rather than a decoration**, so the hazard it defends
-   * against is put on the path (`put-the-hazard-on-the-path-the-code-walks`).
-   *
-   * ⚠️ **The shape was `AllDocumentsSheet`'s, in the app until D-016 deleted it**: a `position:
-   * sticky` table header with `z-index: 1`, inside a panel that is not itself positioned — so it
-   * paints in the HOST's stacking context at level 1, which is where a lane at `auto` would also
-   * be. A number no mutation could make observable would be a line carrying nothing.
-   */
-  it('⚠️ a z-index-1 element inside the panel does NOT cover it', async () => {
-    const m = await overlay(() =>
-      h('div', { 'data-cy': 'a-sticky-shaped-panel', style: 'position:relative' }, [
-        h('div', {
-          'data-cy': 'the-sticky-header',
-          style:
-            'position:absolute;left:-600px;top:-380px;width:1200px;height:800px;z-index:1;background:#fff',
-        }),
-      ]),
-    )
-    // The control: the planted element really does sit over the lane's corner.
-    const lane = m.q('overlay-spawning').getBoundingClientRect()
-    const planted = m.q('the-sticky-header').getBoundingClientRect()
-    expect(planted.left, 'the plant does not reach the lane').toBeLessThan(lane.left)
-    expect(planted.bottom).toBeGreaterThan(lane.bottom)
-    expect(reachable(m.q('overlay-spawning'))).toBe(true)
-  })
-})
-
-/* -------------------------------------------------------------- §5 · one state, drawn on two layers */
-
-describe('§5 · the rail and the lane are two views of ONE state (390 §2)', () => {
-  const Both = defineComponent({
-    name: 'RailAndOverlay',
-    setup: () => () =>
-      h('div', { style: 'display:flex;width:100%;height:100%' }, [
-        h(SideRail, { open: [], activeId: null, place: null, agents: identities() }),
-        h(OverlayHost, { label: 'A sheet' }, { default: () => [h(NewAgent)] }),
-      ]),
-  })
-
-  async function both(): Promise<Mounted> {
-    await page.viewport(1180, 808)
-    const m = mount(Both, {}, { width: 1180, height: 808 })
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    await nextTick()
-    return m
-  }
-
-  /**
-   * 🔴 **The state moves once and both surfaces move with it** — including the armed confirm, which
-   * is the state a person could most plausibly be shown twice with two different answers.
-   */
-  it('🔴 every state the switch has reads the same on both layers', async () => {
-    const m = await both()
-    const rail = (): string => m.q('rail-spawning-state').textContent!.trim()
-    const lane = (): string => m.q('overlay-spawning-state').textContent!.trim()
-    const railLine = (): string => m.q('rail-spawning-line').textContent!.trim()
-    const laneLine = (): string => m.q('overlay-spawning-line').textContent!.trim()
-
-    expect(rail()).toBe('Agents can start new conversations')
-    expect(lane()).toBe(rail())
-    expect(laneLine()).toBe(railLine())
-
-    safety.supply(identities({ spawningEnabled: false }), (enabled) => pressed.push(enabled))
-    await nextTick()
-    expect(rail()).toBe('Agents cannot start new conversations')
-    expect(lane()).toBe(rail())
-    expect(laneLine()).toBe(railLine())
-
-    // ⛔ The armed confirm, pressed on the LANE and read on the RAIL.
-    m.q('overlay-spawning').click()
-    await nextTick()
-    expect(lane()).toBe('Allow agents to start new conversations?')
-    expect(rail()).toBe(lane())
-    expect(railLine()).toBe(laneLine())
-    expect(pressed, 'a single press widened what agents may do').toEqual([])
-
-    // ⚑ …and the confirm is one switch, so the SECOND press can be made on the other surface.
-    m.q('rail-spawning').click()
-    await nextTick()
-    expect(pressed).toEqual([true])
-  })
-
-  /**
-   * ⛔ **The asymmetry survives the second surface** (355, `340`'s ruling applied to a gesture). Off
-   * is one press from either layer; on is a press and a press, whichever layer they are made on.
-   */
-  it('⛔ one press stops spawning from the lane, exactly as from the rail', async () => {
-    const m = await both()
-    m.q('overlay-spawning').click()
-    await nextTick()
-    expect(pressed).toEqual([false])
-  })
-
-  /** ⚠️ …and the lane is honest about what the stop does NOT do. */
-  it('⚠️ the lane says that nothing running was stopped', async () => {
-    safety.supply(identities({ spawningEnabled: false }), (enabled) => pressed.push(enabled))
-    const m = await both()
-    expect(m.q('overlay-spawning-line').textContent).toContain('Current work can continue')
-  })
-
-  /**
-   * ⚠️ **Before the identities read lands there is no stop on either layer** — `355`'s `v-if`,
-   * which the module answers for now. A kill switch drawn before anybody knows the answer is a
-   * claim neither surface has earned.
-   */
-  it('⚠️ neither layer draws a stop before anything has been supplied', async () => {
-    safety.forget()
-    const m = await both()
-    expect(m.all('rail-spawning')).toHaveLength(0)
-    expect(m.all('overlay-spawning')).toHaveLength(0)
-    // ⚑ The pair: with an answer, both are drawn.
-    safety.supply(identities(), (enabled) => pressed.push(enabled))
-    await nextTick()
-    expect(m.all('rail-spawning')).toHaveLength(1)
-    expect(m.all('overlay-spawning')).toHaveLength(1)
-  })
-})
-
-/* ------------------------------------------------------------------ §6 · the trap is not weakened */
-
-describe('§6 · modal isolation is exactly as correct as it was (390 §2)', () => {
-  /**
-   * ⛔ **The host still lays out exactly ONE thing**, which is the whole reason the lane is out of
-   * flow. `.overlay-host` is a centring flex container; a second IN-FLOW child would make the panel
-   * one of two flex items and shift every sheet in the app sideways.
-   */
   it('🔴 the panel is still centred in the window', async () => {
     const m = await overlay(() => h(CapabilitiesSheet, { profileSlug: 'pm', runsOn: 'codex' }))
     const sheet = m.q('capabilities-sheet').getBoundingClientRect()
@@ -937,87 +605,17 @@ describe('§6 · modal isolation is exactly as correct as it was (390 §2)', () 
     expect(sheet.width, 'the sheet did not render').toBeGreaterThan(100)
     expect(
       Math.abs(sheet.left + sheet.width / 2 - (host.left + host.width / 2)),
-      'the safety lane pushed the panel off centre',
+      'the panel is off centre',
     ).toBeLessThan(1)
   })
 
-  it('🔴 the lane does not take the focus a dialog opens with', async () => {
+  it('🔴 opening a dialog focuses its panel', async () => {
     const m = await overlay(() => h(CapabilitiesSheet, { profileSlug: 'pm', runsOn: 'codex' }))
     const active = document.activeElement as HTMLElement | null
     expect(active, 'nothing was focused when the dialog opened').not.toBe(null)
-    expect(
-      m.q('overlay-spawning').contains(active),
-      'the safety lane stole the dialog’s opening focus',
-    ).toBe(false)
     expect(m.q('capabilities-sheet').contains(active)).toBe(true)
   })
 
-  /**
-   * ⚑ **One Shift+Tab from where a dialog opens.** The trap wraps at the ends, and the lane is the
-   * last focusable inside the host — so a keyboard-only person reaches the stop in one keystroke
-   * without the control ever having taken the focus in the first place.
-   */
-  it('🔴 one Shift+Tab from the opening focus lands on the stop', async () => {
-    const m = await overlay(() => h(CapabilitiesSheet, { profileSlug: 'pm', runsOn: 'codex' }))
-    tab(true)
-    await nextTick()
-    expect(m.q('overlay-spawning').contains(document.activeElement)).toBe(true)
-  })
-
-  /**
-   * ⛔ **And Tab off the end of it goes back INTO the dialog, not out of it.** This is the trap's
-   * own wrap, measured from the element this dispatch added — the one place a new last-focusable
-   * could have punched a hole in it.
-   */
-  it('🔴 Tab from the stop wraps back into the dialog', async () => {
-    const m = await overlay(() => h(CapabilitiesSheet, { profileSlug: 'pm', runsOn: 'codex' }))
-    tab(true)
-    await nextTick()
-    expect(m.q('overlay-spawning').contains(document.activeElement)).toBe(true)
-
-    tab()
-    await nextTick()
-    expect(
-      m.q('overlay-host').contains(document.activeElement),
-      'Tab walked out of the overlay',
-    ).toBe(true)
-    expect(m.q('capabilities-sheet').contains(document.activeElement)).toBe(true)
-  })
-
-  /**
-   * ⚠️ **Pressing the stop does not dismiss what a person was doing.** `OverlayHost` closes on a
-   * mousedown that STARTED on the backdrop; the lane is a child of the backdrop, so this is the
-   * assertion that it is a child and not the backdrop itself.
-   */
-  it('⛔ pressing the stop does not close the overlay', async () => {
-    let closes = 0
-    const Watched = defineComponent({
-      name: 'OverlayThatCounts',
-      setup: () => () =>
-        h(
-          OverlayHost,
-          { label: 'A sheet', onClose: () => (closes += 1) },
-          { default: () => [h(NewAgent)] },
-        ),
-    })
-    await page.viewport(1180, 808)
-    const m = mount(Watched, {}, { width: 10, height: 10 })
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    await nextTick()
-
-    m.q('overlay-spawning').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
-    m.q('overlay-spawning').click()
-    await nextTick()
-    expect(closes, 'the stop closed the dialog it was pressed in').toBe(0)
-    expect(pressed).toEqual([false])
-
-    // ⚑ The pair: a mousedown that really did start on the backdrop still closes it.
-    m.q('overlay-host').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
-    await nextTick()
-    expect(closes).toBe(1)
-  })
-
-  /** ⚠️ …and Escape still belongs to the dialog. */
   it('⚠️ Escape still closes', async () => {
     let closes = 0
     const Watched = defineComponent({
@@ -1035,192 +633,5 @@ describe('§6 · modal isolation is exactly as correct as it was (390 §2)', () 
     await nextTick()
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
     expect(closes).toBe(1)
-  })
-})
-
-/* ------------------------------------------------- §7 · the same claims at a window under 840 */
-
-/**
- * 🔴 **`411` §6 item 2, closed** (444) — *"a ≤840 physical-window/DOM geometry case covering a
- * sheet/modal, the lane, focus order, occlusion and the direct stop action, BEFORE changing
- * layout."*
- *
- * ⚑ **Three of the five already existed and two did not.** `session-tools.dom.test.ts` has had a
- * 460 × 760 case since before `411` measured — sheet, lane and occlusion — and it demonstrates the
- * conflict rather than a non-overlap policy: below the 1000px breakpoint the sheet reaches INTO the
- * lane's band. ⛔ **Focus order and the direct stop press had no case at any width under 1180.**
- *
- * 🔴 **What keeps the stop pressable under an overlapping panel is `position: absolute`, NOT
- * `z-index: 2`** — measured while reviewing this dispatch's own diff, and it corrects a claim an
- * earlier draft of this block made. ⛔ **No panel root in the app is positioned**: all fifteen are
- * static flex children of the host, so the lane paints in the positioned step and wins at any
- * `z-index`. ⚠️ **Deleting `z-index: 2` leaves every assertion in this section GREEN** — verified
- * by applying it — and what kills that edit is §4's PLANTED `position: absolute; z-index: 1`
- * control at 1180, which predates this dispatch. ⚑ So the rule §7 carries is the lane's
- * POSITIONING, and `390` was right that the `z-index` row is a phantom against real panels.
- *
- * ⚠️ **Two widths, and they are the two ends of the band item 2 names**: 840 is its boundary and
- * 460 is `378`'s overlay fit floor — the width at which v2.6 argued two 210px bands leave 40px and
- * proposed a bottom band instead. ⛔ **This dispatch changes no layout.** It measures what the
- * shipped one does at those widths, which is what item 2 asked to happen first.
- *
- * 🔴 **What it does NOT measure, and the honest limit of the whole file**: nothing here is a
- * PHYSICAL window. `app-frame-window.test.ts` asserts the app never resizes itself and no script
- * in this repository drives a window narrower than the 1200 × 840 it opens at, so the physical half
- * of item 2's wording has no instrument. `--app-min-w` is 1180 and `#app` scrolls, so a person at a
- * 460px window sees a 1180px app with a horizontal bar — a different layout from the one measured
- * here, and one nothing in this repository mounts.
- */
-describe('§7 · at a window under 840 (444, 411 §6 item 2)', () => {
-  const NARROW = [840, 460] as const
-
-  /** Do the two rects share any area — the BAND question, which is what `411` §2.1 is about. */
-  function meets(a: DOMRect, b: DOMRect): boolean {
-    return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
-  }
-
-  /**
-   * ⛔ **Does this panel cover the exact point `reachable()` probes** — a different question from
-   * `meets`, and the only one that decides a click.
-   *
-   * ⚠️ **A first draft of this section used `meets` as the guard for a reachability assertion and
-   * that was wrong.** A panel can clip the lane's band by a pixel at the top and sit entirely
-   * above the card's centre; the guard fills, the assertion passes, and `reachable()` has answered
-   * about clear air. `an-assertion-can-be-satisfied-by-a-neighbouring-element`.
-   */
-  function coversTheProbe(panel: DOMRect, lane: DOMRect): boolean {
-    const x = lane.left + lane.width / 2
-    const y = lane.top + lane.height / 2
-    return panel.left <= x && x <= panel.right && panel.top <= y && y <= panel.bottom
-  }
-
-  for (const width of NARROW) {
-    it(`⛔ at ${String(width)}px every path still carries a reachable stop`, async () => {
-      for (const path of PATHS) {
-        unmountAll()
-        const m = await overlay(path.open, width, 760, 'selfHosted' in path)
-        expect(
-          m.all(path.cy).length,
-          `${path.panel} did not render at ${String(width)}`,
-        ).toBeGreaterThan(0)
-        expect(
-          reachable(m.q('overlay-spawning')),
-          `${path.panel} covers the stop at ${String(width)}px`,
-        ).toBe(true)
-      }
-    })
-  }
-
-  /** Record which panels share the stop's coordinates, alongside the actual hit-test for each. */
-  it('🔴 at 460px overlapping panels keep the stop reachable', async () => {
-    const inBand: string[] = []
-    const onThePoint: string[] = []
-    for (const path of PATHS) {
-      unmountAll()
-      const m = await overlay(path.open, 460, 760, 'selfHosted' in path)
-      const lane = m.q('overlay-spawning').getBoundingClientRect()
-      const panel = m.q(path.cy).getBoundingClientRect()
-      if (meets(panel, lane)) inBand.push(path.panel)
-      if (coversTheProbe(panel, lane)) onThePoint.push(path.panel)
-      expect(reachable(m.q('overlay-spawning')), `${path.panel} covers the stop`).toBe(true)
-    }
-    // ⛔ **The conflict is real at the band level** — this is `411` §2.1's subject, and without it
-    // the line below would be a statement about panels that are simply somewhere else.
-    expect(
-      inBand.length,
-      'no panel even reaches the lane’s band at 460px, so this width measures nothing',
-    ).toBeGreaterThan(0)
-    // Both panels reach behind the stop at this width. The hit-tests above must still pick the stop.
-    expect(onThePoint, 'another panel now covers the stop’s own centre').toEqual([
-      'ProviderCard',
-      'SessionTools',
-    ])
-  })
-
-  /**
-   * ⚑ **Focus order, at the narrow end** — §6 asks this at 1180 and `411` §6 item 2 asks it here.
-   *
-   * ⚠️ **Said plainly: the trap is width-invariant and this test cannot answer differently from
-   * §6.** `OverlayHost`'s `FOCUSABLE` selector and its wrap have no geometry in them, so a defect
-   * that showed here would show at 1180 too. ⛔ **It is kept because item 2 names focus order at
-   * ≤840 as something that must be MEASURED there**, and because *"it cannot differ"* is a claim
-   * about the trap that nothing had checked at a width where the lane is under a sheet — not
-   * because it is a second instrument.
-   */
-  it('🔴 at 460px one Shift+Tab still lands on the stop, and Tab goes back into the dialog', async () => {
-    const m = await overlay(
-      () => h(CapabilitiesSheet, { profileSlug: 'pm', runsOn: 'codex' }),
-      460,
-      760,
-    )
-    // The control: the dialog opened with the focus, and it was not the lane that took it.
-    expect(m.q('overlay-spawning').contains(document.activeElement)).toBe(false)
-    expect(m.q('capabilities-sheet').contains(document.activeElement)).toBe(true)
-
-    tab(true)
-    await nextTick()
-    expect(m.q('overlay-spawning').contains(document.activeElement)).toBe(true)
-
-    tab()
-    await nextTick()
-    expect(
-      m.q('overlay-host').contains(document.activeElement),
-      'Tab walked out of the overlay',
-    ).toBe(true)
-    expect(m.q('capabilities-sheet').contains(document.activeElement)).toBe(true)
-  })
-
-  /**
-   * ⛔ **The direct stop action, at the narrow end.** One press writes the state, and it does not
-   * dismiss what the person was doing — the lane is a child of the backdrop rather than the
-   * backdrop itself. ⚠️ **Width-invariant for the same reason as the focus test above**, and kept
-   * for the same reason: item 2 asks for the press at ≤840, and a narrow window not changing the
-   * answer is itself the thing nobody had measured.
-   */
-  it('🔴 at 460px one press stops spawning and does not close the overlay', async () => {
-    let closes = 0
-    const Watched = defineComponent({
-      name: 'ANarrowOverlayThatCounts',
-      setup: () => () =>
-        h(
-          OverlayHost,
-          { label: 'A sheet', onClose: () => (closes += 1) },
-          { default: () => [h(NewAgent)] },
-        ),
-    })
-    await page.viewport(460, 760)
-    const m = mount(Watched, {}, { width: 10, height: 10 })
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    await nextTick()
-
-    m.q('overlay-spawning').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
-    m.q('overlay-spawning').click()
-    await nextTick()
-    expect(pressed, 'the press at 460px wrote nothing').toEqual([false])
-    expect(closes, 'the stop closed the dialog it was pressed in').toBe(0)
-
-    // ⚑ The pair: a mousedown that really did start on the backdrop still closes it here too.
-    m.q('overlay-host').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
-    await nextTick()
-    expect(closes).toBe(1)
-  })
-
-  /**
-   * ⚠️ **The paired negative, re-run at this width** — §4's planted cover, so a green §7 is a
-   * statement about paint order at 460 and not about `reachable()` having gone blind there.
-   */
-  it('⛔ …and a panel painted over the lane is still reported unreachable at 460px', async () => {
-    const m = await overlay(
-      () =>
-        h('div', {
-          'data-cy': 'a-panel-over-the-lane',
-          style: 'position:fixed;inset:0;z-index:3;background:#fff',
-        }),
-      460,
-      760,
-    )
-    expect(m.all('overlay-spawning')).toHaveLength(1)
-    expect(m.q('overlay-spawning').getBoundingClientRect().height).toBeGreaterThan(0)
-    expect(reachable(m.q('overlay-spawning'))).toBe(false)
   })
 })

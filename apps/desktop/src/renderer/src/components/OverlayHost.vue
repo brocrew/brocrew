@@ -50,7 +50,6 @@ import { inject, nextTick, onMounted, onUnmounted, ref as aRef, watch } from 'vu
 import { usePersonsQueue } from '../lib/persons-queue'
 import { TAB_STOPS, isLaidOut, tabStopsIn } from '../lib/tab-stops'
 import PersonsQueue from './PersonsQueue.vue'
-import SpawnStopLane from './SpawnStopLane.vue'
 
 /**
  * The layer an overlay opens on: a dimmed, blurred backdrop with exactly one thing on it.
@@ -261,22 +260,7 @@ onUnmounted(() => {
       </div>
 
       <div class="overlay-corner">
-        <!-- 🔴 **The queue that ends at a person, on the layer that covers everything else** (401,
-             criterion 11).
-
-             ⛔ **Here for the stop's reason, one subject over.** A question is exactly what a person
-             opens a sheet to answer, so a queue reachable only with everything closed is `390` with
-             the subject changed — and hosted once, an overlay added tomorrow carries the summons
-             because it was hosted rather than because somebody remembered.
-
-             ⚠️ **BEFORE the stop in the DOM, and that is the whole of "it does not move the
-             emergency control."** The trap wraps at the ends and the stop is the LAST focusable in
-             this host, which is what makes it one Shift+Tab from wherever a dialog opens. Drawn
-             after it, this would take that keystroke whenever anything was waiting — that is, at
-             exactly the moment somebody is most likely to want the stop. ⚑ Still after the
-             `<slot>`, so it cannot take the opening focus either. -->
         <PersonsQueue floating @leave="emit('close')" />
-        <SpawnStopLane />
       </div>
     </div>
   </Teleport>
@@ -285,31 +269,6 @@ onUnmounted(() => {
 <style scoped>
 /* The host IS the backdrop and the layout box: an overlay child centres itself here, and a drawer
    pushes itself flush right with `margin-left: auto`. */
-/* 🔴 **ONE band, and the overlay layer reserves exactly one** (401).
- *
- * ⛔ **Out of flow, for the reason `SpawnStopLane` used to carry on its own rule**: `.overlay-host`
- * is `display: flex` with the panel centred in it, and a second IN-FLOW child would make the panel
- * one of two flex items and move every sheet in the app sideways. Absolute leaves the host with
- * exactly one thing to lay out, which is what it had before either card existed.
- *
- * ⛔ **A column rather than two corners, and `401` learned that from a drawer.** The first shape
- * mirrored the stop into the bottom RIGHT — clear of it at every width by arithmetic — and the
- * right-hand drawer of the time was `width: min(640px, 56vw); height: 100%; margin-left: auto`, so
- * the mirrored card sat inside the drawer's own footer and took its one door. ⚑ A right-hand panel
- * is the shape this app's overlays take. Stacked here, the layer occupies ONE band — the same
- * `10px`–`210px` the app has reserved since `390` and that `392`'s sheet already keeps a gutter
- * for — and two cards can never overlap each other, because one box lays them both out.
- *
- * ⚠️ **`z-index: 2`, which is the number both cards used to carry and for the same panel.** A
- * sheet's `position: sticky` header at `z-index: 1`, as a sticky descendant of a non-positioned
- * panel, paints in the HOST's stacking context — at the same level
- * this would be. Above it by a number rather than by DOM order, which is a rule about markup a
- * later edit can quietly break.
- *
- * ⚑ **Bounded, and it grows upward.** The stop is last so it keeps the bottom corner a hand goes
- * to; the summons stacks above it and its own list scrolls, so a person with nine questions cannot
- * push the emergency control off the screen.
- */
 /* ⛔ **Off-screen without being hidden.** `display: none` and `visibility: hidden` take an element
    out of the accessibility tree, which would make the region above announce nothing at all; the
    clip-rect pattern leaves it in the tree and out of the picture. ⚠️ `white-space: nowrap` so a

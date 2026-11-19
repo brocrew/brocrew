@@ -1409,14 +1409,6 @@ describe('393 · a reply, and its absence', () => {
       // collides. ⚠️ (`no-task-by-that-name` was spelled so because the document registry owned
       // `no-such-task`; D-016 took both, and the reply's word is `no-piece-by-that-name`.)
       //
-      // 🔴 **`spawning-disabled` is the SECOND deliberate share, added at 419.** ⛔ Two doors stand
-      // in front of ONE switch a person threw — `give_work` (it was `spawn_agent`'s) and
-      // `create_agent` — and a second
-      // spelling would be a second thing for a model to learn about it, which is `374`'s rule
-      // broken rather than kept. ⚠️ **What sharing a name costs is that the two tables could come
-      // to disagree about what the word MEANS**, and that is asserted next door rather than here:
-      // `what-an-agent-is-told-about-its-work.test.ts` §3 checks that every vocabulary carrying a
-      // shared word answers the same PERMANENCE for it.
       // ⚑ **D-016 · one more deliberate share.** `no-piece-by-that-name` is one absence — the caller holds no piece by that name — met at `reply_to_parent` and at the
       // tools that name a piece (`withdraw_task`, `list_tasks`), each in its own sentence.
       // A piece that cannot end with the copies of its questions is one fact at a take-back, a
@@ -1427,7 +1419,6 @@ describe('393 · a reply, and its absence', () => {
         'its-questions-could-not-all-be-read',
         'malformed-request',
         'no-piece-by-that-name',
-        'spawning-disabled',
       ])
       // ⚠️ **`describeRail` returns the STRING**, not a payload — a
       // `.reason` on them is `undefined`, which is how `347`'s own version of this census went green

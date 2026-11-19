@@ -16,7 +16,7 @@ describe('filling question copies leaves the archive lane to others', () => {
 
   beforeEach(() => {
     world = aServiceWorld()
-    host = world.aHost({ servicesOn: false })
+    host = world.aHost()
   })
   afterEach(async () => {
     vi.restoreAllMocks()

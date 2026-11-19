@@ -15,7 +15,6 @@ export function giveFactsForTest(
     conversationAt: () => null,
     recentWith: () => ({ rows: [], more: false }),
     serviceAt: () => ({ is: 'normal' }),
-    spawningEnabled: () => true,
     itsProvider: () =>
       childProvider === null
         ? { provider: null, from: 'nothing-yet' }

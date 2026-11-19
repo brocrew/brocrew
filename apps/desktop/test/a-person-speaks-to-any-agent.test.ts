@@ -32,7 +32,6 @@ describe('PE-002 · a person can speak directly to any agent', () => {
         profileSlug: 'direct-person-test',
         cwd,
         startedBy: theConversationCalled('Gil', THE_GIVERS_PIECE),
-        spawningEnabled: true,
         // ⚑ D-016 · a conversation another one started owns no root.
         root: null,
         // ⚑ D-024 · R1 · no other conversation of the profile.

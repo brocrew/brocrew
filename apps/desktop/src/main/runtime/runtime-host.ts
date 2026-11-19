@@ -11,7 +11,6 @@ import type {
   UpdateWorkOutcome,
   TakeOnWorkOutcome,
   CreateAgentOutcome,
-  MayCreateAgents,
   ProposeRulesOutcome,
   AgentOwnNotesOutcome,
   AgentRulesOutcome,
@@ -27,7 +26,6 @@ export type {
   UpdateWorkOutcome,
   TakeOnWorkOutcome,
   CreateAgentOutcome,
-  MayCreateAgents,
   ProposeRulesOutcome,
   AgentOwnNotesOutcome,
   AgentRulesOutcome,
@@ -3347,13 +3345,6 @@ class ItEndedBeforeItsNewBrief extends Error {
   }
 }
 
-/** A start of a service's conversation no person's window asked for, while services are off. */
-class ServicesAreOff extends Error {
-  constructor() {
-    super(NO_SERVICE_STARTS_WHILE_OFF)
-  }
-}
-
 /**
  * ⚑ **D-017 · R3 — what a giver still holds, as the 703 take-back reads it**: a running one's
  * session, or — for one on its way out or stopped — what waits for its next start.
@@ -3407,7 +3398,6 @@ const REFUSALS_IN_THIS_APPS_OWN_WORDS: ReadonlySet<Unavailable> = new Set<Unavai
  */
 function whyItWasNotDelivered(error: unknown): string {
   const cause = error instanceof AStartThatDidNotHappen ? error.cause : error
-  if (cause instanceof ServicesAreOff) return SERVICES_ARE_OFF_SO_IT_DID_NOT_START
   const reason = unavailableOf(cause)
   if (reason !== null) {
     return describeUnavailable(reason, { ...unavailableContextOf(cause), reopening: true })
@@ -3557,16 +3547,6 @@ const A_SERVICE_IT_MAY_BE =
 
 /** A service's conversation whose delete could not be noted first, so nothing was deleted. */
 const A_SERVICE_IT_STAYS = 'Not deleted: the services list could not be saved.'
-
-/** Why held words wait when a service is off. */
-const THEY_WAIT_FOR_SERVICES = 'It waits until services are on.'
-
-/** Why a start of a service's conversation that no person's window asks for is not made. */
-const NO_SERVICE_STARTS_WHILE_OFF = 'services are off, so a service’s conversation is not started'
-
-/** {@link NO_SERVICE_STARTS_WHILE_OFF}, as the sentence a delivery that did not happen says. */
-const SERVICES_ARE_OFF_SO_IT_DID_NOT_START =
-  'Services are off, so a service’s conversation is not started.'
 
 /** An agent not removed: which agents are services can't be read. Why goes to the log. */
 const NOT_REMOVED_UNREADABLE = 'Not removed: services list unreadable.'
@@ -5478,18 +5458,16 @@ export class RuntimeHost implements LiveHost {
           foreign,
         )
       }
-      if (this.servicesAreOn()) {
-        try {
-          for (const one of this.deps.store.servicesBorn()) {
-            if (running.has(one.conversation)) continue
-            this.aServiceMayTakeItsNext(one.conversation)
-            this.startForWhatWaits(one.conversation)
-          }
-        } catch (error) {
-          console.warn(
-            `runtime host could not read which conversations serve: ${errorMessage(error)}`,
-          )
+      try {
+        for (const one of this.deps.store.servicesBorn()) {
+          if (running.has(one.conversation)) continue
+          this.aServiceMayTakeItsNext(one.conversation)
+          this.startForWhatWaits(one.conversation)
         }
+      } catch (error) {
+        console.warn(
+          `runtime host could not read which conversations serve: ${errorMessage(error)}`,
+        )
       }
     }
     this.workReconciler = new WorkReconciler({
@@ -5741,12 +5719,6 @@ export class RuntimeHost implements LiveHost {
       const aCutGoesNow = itsCut !== undefined && itsCut.kind !== 'limit'
       if (this.keptStopped(conversation)) {
         if (aCutGoesNow) this.notContinued(conversation, 'kept-stopped')
-        return
-      }
-      // ⛔ While services are off, a service is not started: what it was told waits for its next
-      // start, and a turn of it the restart cut is not continued.
-      if (!this.servicesAreOn() && this.itIsAService(conversation)) {
-        if (aCutGoesNow) this.notContinued(conversation, 'a-service')
         return
       }
       console.info(
@@ -6142,10 +6114,6 @@ export class RuntimeHost implements LiveHost {
       if (this.launches.closed) return
       if (this.keptStopped(conversation)) {
         this.notContinued(conversation, 'kept-stopped')
-        return
-      }
-      if (!this.servicesAreOn() && this.itIsAService(conversation)) {
-        this.notContinued(conversation, 'a-service')
         return
       }
       const record = this.cutsKept.cuts[conversation]
@@ -6621,8 +6589,7 @@ export class RuntimeHost implements LiveHost {
   ): string | false | null {
     const service = this.theServiceOf(conversation)
     if (service === null) return null
-    const on =
-      service === 'unknown' || !this.servicesAreOn() ? null : this.thePieceItIsOn(conversation)
+    const on = service === 'unknown' ? null : this.thePieceItIsOn(conversation)
     if (on === null || piecesItNamed.some((one) => one !== on.piece)) return false
     return on.piece
   }
@@ -8224,8 +8191,8 @@ export class RuntimeHost implements LiveHost {
   private theServiceAtAGive(giver: string, profile: string): ServiceAtAGive {
     const agent = this.theServiceAgent(profile)
     if (agent.is !== 'service') return agent
-    if (!this.servicesAreOn() || this.deps.profileExecution?.owned !== true) {
-      return { is: 'off' }
+    if (this.deps.profileExecution?.owned !== true) {
+      return { is: 'queue-not-owned' }
     }
     const { conversation } = agent
     const givers = this.theIdsItStandsFor(giver)
@@ -8289,7 +8256,6 @@ export class RuntimeHost implements LiveHost {
     if (agent.is !== 'service' || agent.conversation !== null) {
       throw new Error(`${foldProfileName(profile)} is not a service without a conversation`)
     }
-    if (!this.servicesAreOn()) throw new ServicesAreOff()
     const read = this.profileExecution
     const entry = read.readable ? read.kept.profiles[agent.identity] : undefined
     if (entry === undefined) throw new Error(`${foldProfileName(profile)} is not a service`)
@@ -8342,7 +8308,7 @@ export class RuntimeHost implements LiveHost {
    * whether it is free for its next piece ({@link advanceTheService}).
    */
   private aServiceMayTakeItsNext(conversation: string): void {
-    if (!this.servicesAreOn() || this.servicesToAdvance.has(conversation)) return
+    if (this.servicesToAdvance.has(conversation)) return
     this.servicesToAdvance.add(conversation)
     queueMicrotask(async () => {
       try {
@@ -8366,7 +8332,7 @@ export class RuntimeHost implements LiveHost {
    * is started for it ({@link startTheServiceFor}).
    */
   private advanceTheService(conversation: string): void {
-    if (!this.servicesAreOn() || this.deps.profileExecution?.owned !== true) return
+    if (this.deps.profileExecution?.owned !== true) return
     if (this.launches.closed) return
     // ⛔ Only a service whose kind is known: where it can't be told, nothing moves its queue.
     const service = this.theServiceOf(conversation)
@@ -8395,6 +8361,8 @@ export class RuntimeHost implements LiveHost {
       }
       return
     }
+    // An earlier delivery wakes a stopped service before its next queued piece is handed over.
+    if (slot === undefined && this.arrivals.has(conversation)) return
     const head = queue.waiting[0]
     if (head === undefined || head.messageId === null) return
     if (slot !== undefined && (session === null || !this.freeForItsNextPiece(session))) return
@@ -8549,7 +8517,6 @@ export class RuntimeHost implements LiveHost {
    * starting; `null` for any other give.
    */
   private theServiceStartAGiveMeets(input: unknown): Promise<void> | null {
-    if (!this.servicesAreOn()) return null
     const named =
       typeof input === 'object' && input !== null ? (input as { profile?: unknown }).profile : null
     if (typeof named !== 'string') return null
@@ -8646,18 +8613,8 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * Whether services are on in this workspace: on unless a person turned them off, as the services
-   * list says. ⚑ On where it says nothing, and where it can't be read: the launch logs why.
-   */
-  private servicesAreOn(): boolean {
-    const read = this.profileExecution
-    return !read.readable || read.kept.servicesOff !== true
-  }
-
-  /**
-   * A service on a piece, running nothing, that holds words kept for its next start while services
-   * were off: started for them now. ⚑ A service on no piece takes its next one from its queue
-   * instead ({@link advanceTheService}).
+   * Start an idle service for held messages on its active piece. A service with no active piece
+   * takes its next one from the work queue.
    */
   private startForWhatWaits(service: string): void {
     if (this.startupRepairs.has(service)) {
@@ -8669,7 +8626,7 @@ export class RuntimeHost implements LiveHost {
       )
       return
     }
-    if (!this.servicesAreOn() || this.deps.profileExecution?.owned !== true) return
+    if (this.deps.profileExecution?.owned !== true) return
     if (this.slots.has(service) || this.startsInFlight.has(service)) return
     if (this.launches.closed || this.keptStopped(service)) return
     // ⚑ A start already coming takes what waits with it: the restart's, a cut turn's, or a wake-up's.
@@ -8687,48 +8644,6 @@ export class RuntimeHost implements LiveHost {
     this.ensureRunning(service, null).catch((error: unknown) => {
       console.warn(`runtime host did not start ${service} for what waits: ${errorMessage(error)}`)
     })
-  }
-
-  /**
-   * Whether a start of `sessionId` that no person's window asks for is held back: it is a service,
-   * and services are off. ⚑ Not this app's own reopen of it ({@link anAppOwnedReopenOf}).
-   */
-  private servicesHoldItsStartBack(sessionId: string, window: RuntimeEventSink | null): boolean {
-    if (window !== null || this.servicesAreOn() || !this.itIsAService(sessionId)) return false
-    return !this.anAppOwnedReopenOf(sessionId)
-  }
-
-  /**
-   * Whether the words `sessionId` held at its stop wait until services are on, and nothing starts
-   * it for them: it is a service, services are off, none of them is a person's own, and this is
-   * not this app's own reopen of it ({@link anAppOwnedReopenOf}).
-   */
-  private servicesHoldWhatItHeld(sessionId: string): boolean {
-    if (this.servicesAreOn() || !this.itIsAService(sessionId)) return false
-    if (this.anAppOwnedReopenOf(sessionId)) return false
-    return !(this.heldAtAStop.get(sessionId) ?? []).some(aPersonsOwn)
-  }
-
-  /**
-   * Whether the stop of `sessionId` was this app's own reopen, which is no new work and goes while
-   * services are off: on the current sign-in ({@link reopeningForWhatWaited}), or for the tools a
-   * person approved ({@link reopeningForApprovedTools}). ⛔ Each is marked only where this app
-   * closes a running conversation to reopen it; a notice about a request, however it ended, is no
-   * such mark.
-   */
-  private anAppOwnedReopenOf(sessionId: string): boolean {
-    return (
-      this.reopeningForWhatWaited.has(sessionId) || this.reopeningForApprovedTools.has(sessionId)
-    )
-  }
-
-  /**
-   * Whether `sessionId` is a service that is not running and services are off, so words `by` sends
-   * start nothing: a person's own still start it.
-   */
-  private servicesHoldItBack(sessionId: string, by: Caller): boolean {
-    if (this.servicesAreOn() || aPersonIsAsking(by)) return false
-    return this.itIsAService(this.theOneInItsPlace(sessionId))
   }
 
   /**
@@ -8816,8 +8731,7 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * Whether `conversation` is a service's: its rules hold whether services are on or off, since off
-   * only holds back new work.
+   * Whether `conversation` belongs to a service.
    */
   private itIsAService(conversation: string): boolean {
     return this.theServiceOf(conversation) !== null
@@ -8867,15 +8781,6 @@ export class RuntimeHost implements LiveHost {
 
   private theReachOfHeldWords(sessionId: string, queued: QueuedMessage) {
     return queued.messageAct === undefined ? this.theReachOfACallersWords(sessionId, queued) : null
-  }
-
-  /**
-   * Whether a service's next brief, placed while services were on, is held in `session` because they
-   * are off now: only a person's own words go meanwhile, and the brief goes once they are on.
-   */
-  private aBriefWaitsForServices(session: HostedSession): boolean {
-    if (this.servicesAreOn()) return false
-    return session.mailbox.some((queued) => this.aServiceBrief(session, queued))
   }
 
   /**
@@ -8996,7 +8901,6 @@ export class RuntimeHost implements LiveHost {
           ? (this.queuedAhead(row.piece, row.owner) ?? 0)
           : Math.max(0, open?.findIndex((one) => one.piece === row.piece) ?? 0),
       ...(stalledAt === null ? {} : { queueStalledAt: stalledAt }),
-      ...(this.servicesAreOn() ? {} : { queueWaitsForServices: true as const }),
     }
   }
 
@@ -9877,7 +9781,6 @@ export class RuntimeHost implements LiveHost {
    *    for has gone: it is armed again, for that start;
    *  - ⚑ **running, or starting** — it holds its own jobs: that start takes the wake-up
    *    ({@link register}) and its stop arms the next; looked at again, in case that start fails;
-   *  - ⛔ **a service, while services are off** — not started: looked at again later;
    *  - ⛔ **replaced, or no longer one a delivery can start** — the wake-up goes;
    *  - ⚠️ **its last life's provider not gone** — waited for as long as a close drains, and no longer:
    *    a start it still refuses fails, and is tried again;
@@ -9890,11 +9793,6 @@ export class RuntimeHost implements LiveHost {
     if (this.launches.closed || this.wakeUps.get(conversation) !== wakeUp) return
     try {
       if (this.slots.has(conversation) || this.startsInFlight.has(conversation)) {
-        this.setItsWakeUpTimer(conversation, wakeUp, WAKE_CHECK_MS)
-        return
-      }
-      // ⛔ While services are off, a service is not started for its jobs: it looks again later.
-      if (!this.servicesAreOn() && this.itIsAService(conversation)) {
         this.setItsWakeUpTimer(conversation, wakeUp, WAKE_CHECK_MS)
         return
       }
@@ -11482,7 +11380,7 @@ export class RuntimeHost implements LiveHost {
 
   /**
    * Whether a person may take back `piece`, which `owner` holds: the piece a service of known kind
-   * is on, given it by a conversation, while services are on.
+   * is on, given it by a conversation.
    */
   private aPersonMayTakeBack(
     owner: string,
@@ -11490,7 +11388,7 @@ export class RuntimeHost implements LiveHost {
     givenBy: string | null,
     onAt: (owner: string) => string | null = (one) => this.thePieceAServiceIsOn(one),
   ): boolean {
-    if (!this.servicesAreOn() || givenBy === null) return false
+    if (givenBy === null) return false
     return onAt(owner) === piece
   }
 
@@ -11512,7 +11410,6 @@ export class RuntimeHost implements LiveHost {
    * holder read once.
    */
   private markedForAPerson(edges: LedgerWalk<WorkEdge>): LedgerWalk<WorkEdge> {
-    if (!this.servicesAreOn()) return edges
     const read = new Map<string, string | null>()
     const onAt = (owner: string): string | null => {
       if (!read.has(owner)) read.set(owner, this.thePieceAServiceIsOn(owner))
@@ -11669,7 +11566,6 @@ export class RuntimeHost implements LiveHost {
    * A service's next piece waits until a stop asked of `session` is answered, or until the bound a
    * stop is waited for passes: a provider that answers a stop late ends whatever turn is open then.
    * ⚑ Claude's own wait for that answer has the same bound, and begins first, as the stop is asked.
-   * ⚑ Counted while services are off too, so turning them on meanwhile still waits for it.
    */
   private itsNextPieceWaitsForTheStop(session: HostedSession, stop: Promise<void>): void {
     try {
@@ -11874,27 +11770,8 @@ export class RuntimeHost implements LiveHost {
         onAStop,
       )
     }
-    // ⛔ While services are off, a service that is not running keeps the new brief for its next start.
-    const whileServicesAreOff = (): Promise<QueueOutcome> => {
-      if (withItsGive) return this.whereTheGiveItRidesStands(piece.owner, piece)
-      if (this.itHasEnded(piece.owner, piece.piece)) {
-        return Promise.reject(new ItEndedBeforeItsNewBrief())
-      }
-      return this.keptUntilItStarts(piece.owner, brief, {}, 'work', {
-        by,
-        attachments: [],
-        rebriefs: { piece: piece.piece, label: piece.label },
-      })
-    }
     try {
-      const delivered = await this.toItsHolderAlone(
-        piece,
-        brief,
-        by,
-        null,
-        atTheHolder,
-        whileServicesAreOff,
-      )
+      const delivered = await this.toItsHolderAlone(piece, brief, by, null, atTheHolder)
       if (delivered === null) return deliveryOf(null)
       if (delivered.outcome === 'sent') {
         this.takeBackWhatALaterFactMadeFalse(piece, 'rebriefed')
@@ -11994,7 +11871,6 @@ export class RuntimeHost implements LiveHost {
           'as-it-finds-it',
           onAStop,
         ),
-      () => this.keptUntilItStarts(piece.owner, text, facts, 'notice'),
     )
   }
 
@@ -12027,11 +11903,6 @@ export class RuntimeHost implements LiveHost {
       holder: string,
       onAStop?: (to: string) => Promise<QueueOutcome>,
     ) => Promise<QueueOutcome>,
-    /**
-     * What reaching a service that is not running does while services are off, when nothing may
-     * start it: the words kept for its next start. Absent, the delivery starts it as any other.
-     */
-    whileServicesAreOff?: () => Promise<QueueOutcome>,
   ): Promise<QueueOutcome | null> {
     const holder = piece.owner
     if (this.theOneInItsPlace(holder) !== holder) return null
@@ -12043,9 +11914,6 @@ export class RuntimeHost implements LiveHost {
         ? atTheHolder(to, onAStop)
         : Promise.reject(new ItsPlaceWasTaken(to, holder, piece.label))
     if (this.takesADeliveryNow(holder)) return deliver(holder, (to) => deliver(to))
-    if (whileServicesAreOff !== undefined && this.servicesHoldItBack(holder, by)) {
-      return whileServicesAreOff()
-    }
     return this.deliverWhenItRuns(holder, text, by, [], says, deliver)
   }
 
@@ -13573,11 +13441,7 @@ export class RuntimeHost implements LiveHost {
           id,
         ),
       )
-      if (
-        where === 'its-ledger' &&
-        !this.keptStopped(to) &&
-        !this.servicesHoldItBack(to, THE_APP_ITSELF)
-      ) {
+      if (where === 'its-ledger' && !this.keptStopped(to)) {
         await this.ensureRunning(to, null)
       }
     })
@@ -16823,12 +16687,7 @@ export class RuntimeHost implements LiveHost {
 
   /** A person's Stop stays in force until newer words from a person arrive. */
   private reconciliationMayWake(target: string): boolean {
-    if (
-      this.launches.closed ||
-      this.keptStopped(target) ||
-      workRunningElsewhere(this).has(target) ||
-      (!this.servicesAreOn() && this.itIsAService(target))
-    )
+    if (this.launches.closed || this.keptStopped(target) || workRunningElsewhere(this).has(target))
       return false
     if (this.deps.store.recordedOne(target) === null) return false
     return !this.reconciliationStoppedByPerson(target)
@@ -20209,15 +20068,7 @@ export class RuntimeHost implements LiveHost {
           : conversation === null
             ? 'not-yet-numbered'
             : (this.deps.store.rootOf(conversation)?.label ?? 'not-yet-numbered'),
-      // ⚑ **Read here rather than in the composer**, for the reason every other field on this
-      // object is: the bundle is a pure function of what this method hands it, and a compiler that
-      // reached into the store would be a second reader of a fact one of them would eventually get
-      // from a different moment.
-      spawningEnabled: this.deps.store.spawnPolicy().spawningEnabled,
-      // ⚑ A service's profile, while services are on, gets the service text after the core.
-      ...(profileSlug !== null &&
-      this.servicesAreOn() &&
-      this.theServiceAgent(profileSlug).is === 'service'
+      ...(profileSlug !== null && this.theServiceAgent(profileSlug).is === 'service'
         ? { isAService: true as const }
         : {}),
       /**
@@ -23409,19 +23260,13 @@ export class RuntimeHost implements LiveHost {
     // ⚠️ The question is asked inside a `try`, so a store that fails to answer it is a REJECTION
     // like every other refusal here, and never a throw out of this non-`async` method.
     let now: boolean
-    let heldForServices: boolean
     try {
       now = this.takesADeliveryNow(sessionId)
-      heldForServices = !now && this.servicesHoldItBack(sessionId, by)
     } catch (error) {
       return Promise.reject(error)
     }
     const deliver = (to: string): Promise<QueueOutcome> =>
       this.queueAs(to, text, by, attachments, kind, facts, says, 'as-it-finds-it')
-    // ⛔ While services are off, an agent's words start no service: they wait for its next start.
-    if (heldForServices) {
-      return this.leaveForTheNextStart(sessionId, text, by, attachments, kind, facts, says)
-    }
     if (now) {
       // ⚑ **D-017 · R1** — straight in; a stop under it is waited out and it is started again.
       return this.queueAs(
@@ -23454,21 +23299,15 @@ export class RuntimeHost implements LiveHost {
     return this.afterWhatArrivedFirst(destination, async () => {
       const to = this.theOneInItsPlace(destination)
       if (this.runsNow(to)) return null
-      const heldForService = this.servicesHoldItBack(to, by)
       const kept = await this.leaveForTheNextStart(to, text, by, [], 'work', facts, says)
       if (kept.outcome !== 'queued') return null
       const id = kept.messageId
-      if (heldForService) return { id, to, state: this.stateOfARecordedMessage(to, id) }
       try {
         await this.ensureRunning(to, null)
       } catch (error) {
         const unavailable =
           unavailableOf(error) ?? unavailableOf(error instanceof Error ? error.cause : undefined)
-        if (
-          unavailable === null &&
-          !(error instanceof ServicesAreOff) &&
-          aWakeThatDidNotHappen(error) === null
-        ) {
+        if (unavailable === null && aWakeThatDidNotHappen(error) === null) {
           throw error
         }
         console.warn(`message_agent: the start did not happen for ${to}: ${errorMessage(error)}`)
@@ -25323,8 +25162,7 @@ export class RuntimeHost implements LiveHost {
    *
    * ⛔ **It asks no rail**: every rail a message meets is asked before this is called
    * ({@link refuseBeforeAStart}). A start that fails rejects with what the reopen threw — its true
-   * reason, never *not running*. ⛔ While services are off, no service's conversation is started
-   * but by a person's own window: an agent's words to one were kept for its next start before this.
+   * reason, never *not running*.
    */
   private ensureRunning(sessionId: string, window: RuntimeEventSink | null): Promise<string> {
     if (this.startupRepairs.has(sessionId)) {
@@ -25335,14 +25173,6 @@ export class RuntimeHost implements LiveHost {
       this.aPersonsWindowTakesIt(sessionId, window)
       return Promise.resolve(sessionId)
     }
-    // ⚠️ Asked inside a `try`: a store that can't answer is a rejection, never a throw from here.
-    let heldBack: boolean
-    try {
-      heldBack = inFlight === undefined && this.servicesHoldItsStartBack(sessionId, window)
-    } catch (error) {
-      return Promise.reject(error)
-    }
-    if (heldBack) return Promise.reject(new ServicesAreOff())
     // A delivery that joins a wake-up's start carries words, so the scheduled plan is no longer
     // the only reason to start.
     if (inFlight !== undefined) {
@@ -26953,9 +26783,7 @@ export class RuntimeHost implements LiveHost {
     if (session.handle.status() !== 'idle') return
     // ⛔ A caller's words held for a service whose queue can't be read wait, and what is held with
     // them, but a person's own words, which go: whether those words still reach it can't be told.
-    // ⛔ So does a service's next brief while services are off, until they are on.
-    const itsQueueIsUnread =
-      this.aCallersWordsWaitForItsQueue(session) || this.aBriefWaitsForServices(session)
+    const itsQueueIsUnread = this.aCallersWordsWaitForItsQueue(session)
     if (atItsLimit && !session.mailbox.some(aPersonsOwn)) {
       // ⚑ **W4.172 · a sign-in that moved on is reopened all the same**, when nothing is in its
       // way ({@link reopenForWhatWaits}): what is held then waits for the limit on the current one,
@@ -27672,12 +27500,6 @@ export class RuntimeHost implements LiveHost {
           this.aCallersWordsGoNow(session, queued) && (!someWait || aPersonsOwn(queued)),
       )
       if (going.length === 0) return true
-      // ⛔ …and a service's next brief is not handed over once services are off: it stays held, and
-      // goes once they are on ({@link aBriefWaitsForServices}).
-      if (!this.servicesAreOn()) {
-        going = going.filter(({ queued }) => !this.aServiceBrief(session, queued))
-        if (going.length === 0) return true
-      }
       // ⛔ **The one window where "it may have reached the agent" is true** (234 §1) — see
       // {@link HostedSession.handingOver}. Cleared in the `finally` so a throw cannot leave the
       // marker standing over a message that never left.
@@ -31566,8 +31388,6 @@ export class RuntimeHost implements LiveHost {
       if (!this.heldAtAStop.has(sessionId) || this.launches.closed) return
       // An archived conversation keeps what it held until it is brought back.
       if (this.keptStopped(sessionId)) return
-      // A service keeps what it held while services are off, until they are on.
-      if (this.servicesHoldWhatItHeld(sessionId)) return
       await this.ensureRunning(sessionId, watching)
     } catch (error) {
       console.warn(
@@ -34080,17 +33900,12 @@ export class RuntimeHost implements LiveHost {
     return this.agentCreation.createAgentFor(me, said, by, itsOwnRules, itsDefault)
   }
 
-  mayCreateAgents(me: string): MayCreateAgents {
-    return this.agentCreation.mayCreateAgents(me)
-  }
-
   private readonly agentCreation: AgentCreation = new AgentCreation({
     store: () => this.deps.store,
     profileOf: (conversation) =>
       this.runningAs(conversation)?.profileId ??
       this.deps.store.recordedOne(conversation)?.profileId ??
       null,
-    servicesAreOn: () => this.servicesAreOn(),
     keepItAsAService: (created) => this.keepItAsAService(created),
     theProviderOfConversation: (conversation) => this.theProviderOfConversation(conversation),
     rulesAuthor: (me, by) => this.rulesAuthor(me, by),
@@ -34395,8 +34210,6 @@ export class RuntimeHost implements LiveHost {
       foldersWithoutARow: this.profiles()
         .filter((folder) => !withRows.has(foldProfileName(folder)))
         .sort(),
-      spawningEnabled: this.deps.store.spawnPolicy().spawningEnabled,
-      ...(this.servicesAreOn() ? { servicesOn: true as const } : {}),
       ...this.theServicesAmong(identities),
       // 🔴 **The second thing on `app_policy`, carried on the read the window already makes**
       // (500). ⛔ **Not a second read door**: this window asks for the roster once at mount and
@@ -36170,22 +35983,6 @@ export class RuntimeHost implements LiveHost {
     return { ok: true, slug: folded }
   }
 
-  /**
-   * **Throw the global spawning switch** (355, criterion 7), and answer with where it now stands.
-   *
-   * ⛔ **Read back rather than echoed.** `spawnPolicy` answers `false` for a database with no row —
-   * *"a kill switch whose broken state is on is not a kill switch"* — so a store that could not
-   * write must not have this method reply *"on"* because *"on"* is what was asked for.
-   *
-   * ⚠️ **Nothing running is stopped, and the surface has to say so.** This is a rail on CREATING a
-   * conversation, asked by `admitGive` only of a give that would start one; the agents already
-   * alive stay alive, and work still goes to them.
-   */
-  setSpawningEnabled(enabled: boolean): { spawningEnabled: boolean } {
-    this.deps.store.setSpawningEnabled(enabled)
-    return this.deps.store.spawnPolicy()
-  }
-
   /** The agents among `identities` that are services, by slug, for the window; nothing when none is. */
   private theServicesAmong(identities: readonly AgentIdentity[]): { services?: readonly string[] } {
     const read = this.profileExecution
@@ -36198,45 +35995,10 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * A person turns services on or off in this workspace, kept in the services list, and is answered
-   * with where they now stand, read back. ⚑ Off stops nothing that runs. ⚑ On lets each service take
-   * its next piece. ⛔ Only the one app running on this data changes it, as it does the rest of that
-   * list.
-   */
-  setServicesOn(on: boolean): { servicesOn: boolean } {
-    const read = this.profileExecution
-    if (!read.readable) throw new Error(`which agents are services can’t be read: ${read.why}`)
-    const kept = this.deps.profileExecution
-    if (kept?.owned !== true) throw new Error(NOT_THE_ONLY_APP)
-    const { profiles } = read.kept
-    const next = on ? { profiles } : { servicesOff: true as const, profiles }
-    kept.write(next)
-    this.profileExecution = { readable: true, kept: next }
-    this.theWorldMoved('agents')
-    // ⚑ Each queued piece says whether it waits for services.
-    this.theWorldMoved('work')
-    if (on) {
-      try {
-        for (const one of this.deps.store.servicesBorn()) {
-          this.aServiceMayTakeItsNext(one.conversation)
-          this.startForWhatWaits(one.conversation)
-          // ⚑ A brief held while services were off goes now ({@link aBriefWaitsForServices}).
-          const running = this.slots.get(one.conversation)?.session ?? null
-          if (running !== null) this.flushQueued(running)
-        }
-      } catch (error) {
-        console.warn(`runtime host could not set the services going: ${errorMessage(error)}`)
-      }
-    }
-    return { servicesOn: this.servicesAreOn() }
-  }
-
-  /**
    * **Set the mode a person's next conversation begins in** (500, HO-036 §3.1), and answer with
    * where it now stands.
    *
-   * ⛔ **Read back rather than echoed**, which is `setSpawningEnabled`'s rule one method up and is
-   * load-bearing for the same reason: `defaultApprovalMode` answers `'ask'` for a store that could
+   * Read back the saved value. `defaultApprovalMode` answers `'ask'` for a store that could
    * not write, so replying with what was ASKED FOR would draw a control that says yolo over a row
    * that says nothing.
    *
@@ -40340,33 +40102,16 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * Why held words wait for services, sign-in, a person's answer or a provider usage reset.
+   * Why held words wait for sign-in, a person's answer or a provider usage reset.
    * Null means the conversation only needs to become free. `itsStopIsSaid` avoids repeating
    * a stop already shown beside the holder's card in `list_tasks`.
    */
   whyWhatIsHeldWaits(sessionId: string, itsStopIsSaid = false): string | null {
     return (
-      this.whyItWaitsForServices(sessionId) ??
       this.whyItWaitsForItsSignIn(sessionId) ??
       this.whyItWaitsForAPerson(sessionId, itsStopIsSaid) ??
       this.whyItWaitsForItsLimit(sessionId)
     )
-  }
-
-  /** Explain held words for an off service that is neither running nor starting. */
-  private whyItWaitsForServices(sessionId: string): string | null {
-    const id = this.theOneInItsPlace(sessionId)
-    if (this.servicesAreOn()) return null
-    try {
-      const slot = this.slots.get(id)
-      const starting = slot !== undefined && slot.session === null && !onItsWayOut(slot)
-      if (starting || this.runsNow(id) || !this.itIsAService(id)) return null
-      const waits = this.deps.store.messagesWaitingIn(id).some(isRunnableHeldMessage)
-      return waits ? THEY_WAIT_FOR_SERVICES : null
-    } catch (error) {
-      console.warn(`runtime host could not read what waits for ${id}: ${errorMessage(error)}`)
-      return null
-    }
   }
 
   /**

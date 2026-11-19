@@ -248,7 +248,6 @@ describe('668 · who called whom, as generations', () => {
       identities: [],
       foldersWithoutARow: [],
       use: [],
-      spawningEnabled: true,
       defaultApprovalMode: 'ask',
       externalMcpServers: [],
     } as unknown as AgentIdentities

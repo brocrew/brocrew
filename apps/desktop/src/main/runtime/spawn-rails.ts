@@ -7,12 +7,7 @@ import { isAbsolute, join } from 'node:path'
 import type { GivenFolder } from '../../shared/work-folders'
 import { z } from 'zod'
 import { providerSchema, type Provider } from '@brobot2/shared'
-// 🔴 **D-038 · the one derivation `wider-than-its-parent` is** — see
-// {@link WHAT_STANDS_PAST_ITS_FOLDER}. ⚑ A VALUE import, and the only one this module takes from
-// `@brobot2/runtime`; the comparison has to read the table the disclosure's sentence is censused
-// against (its `ask` row less its `auto` row is what `auto` takes off), or the rail and the
-// sentence a person read at the moment they chose the mode would be two copies of one fact.
-import { whatTheChildWouldLack, type ApprovalMode, type Protection } from '@brobot2/runtime'
+import type { ApprovalMode } from '@brobot2/runtime'
 import {
   PATH_SEGMENT_RULE,
   PROVIDER_NAME,
@@ -62,17 +57,11 @@ import type { SendOverflow } from './send-overflow'
  *     `no-piece-to-give-from` before these are asked.
  *  3. The giver names a conversation by address, or uses "new" to start one. A service is named by its profile.
  *  4. Stalled work is reported in the receipt with its cause and the available actions.
- *  5. A new conversation checks the spawning switch, its reach and the working folder, the
- *     one clause that touches the disk, and asked only for a conversation that will work in it.
+ *  5. A new conversation checks the working folder. This check touches the disk.
  *
  * ⛔ **Nothing is written on any path through {@link admitGive}.** A new agent's identity row, the
  * number the piece takes and the conversation's reservation all come after it, in the host's one
  * synchronous stretch — so a give refused by any rail leaves no row behind (R2).
- *
- * ⚠️ **The spawning switch is asked late, and that is ruling 12**: it refuses a give only when the
- * give would START a conversation, so work to an agent this giver already has goes on while a person
- * has switched starting off. ⚑ It is still asked before anything about the agent's row, so what it
- * answers is a fact about the app and not about the name.
  */
 
 /**
@@ -104,8 +93,8 @@ export const SPAWN_RAILS = [
    * so no label or id a caller spells tells it which pieces exist.
    */
   'no-piece-you-hold-by-that-name',
-  /** The agent is a service, and services don't run in this version. */
-  'services-are-off',
+  /** This app does not own the queue for the requested service. */
+  'service-queue-not-owned',
   /** Whether the agent is a service can't be told, and a service may be at stake. */
   'its-kind-is-unknown',
   'service-provider-is-fixed',
@@ -129,31 +118,6 @@ export const SPAWN_RAILS = [
   'its-waits-cannot-all-be-checked',
   /** Whether the service waits on the giver can't be checked: a record it reaches can't be read. */
   'its-record-cannot-be-read',
-  /**
-   * ⛔ **The global switch is off, and this give would have started a conversation** (criterion 7;
-   * ruling 12). One row, app-wide — `schema.ts`'s `appPolicy`.
-   */
-  'spawning-disabled',
-  /**
-   * 🔴 **The conversation this give would start would act past its folder with nobody asked, where
-   * the giver is still asked or confined** (499, HO-036; D-038).
-   *
-   * ⛔ **It is a COMPARISON of REACH**: what each conversation keeps between a write or a command
-   * past its folder and that act running unasked — the card on Claude `ask`, the card AND an OS
-   * sandbox on Codex `ask`, nothing in `auto` on either — {@link whatTheChildWouldLack}, one
-   * derivation; a read and a server's tool are not compared, and `approval-mode.ts` says what each
-   * `ask` does with them. 🔴 **Not what each mode REMOVES** (F050): Claude never had a sandbox to
-   * take off, so a Claude `auto` giver's Codex `auto` helper reaches no further than its giver, and
-   * is given.
-   *
-   * ⚠️ **No give meets it today.** A conversation a give starts runs in its giver's mode, and a
-   * same-mode pair is never wider: `ask` keeps something past its folder on both providers, `auto`
-   * nothing on either. ⏸ It stands as the guard on that inheritance; whether it stays, and whether
-   * a Claude `ask` giver's Codex `ask` helper becomes its one pair, are held for a ruling (D-038
-   * F-A, F-B): that helper writes and runs commands in its folder, reads outside it and runs a
-   * server tool its server marks read-only, all with nobody asked.
-   */
-  'wider-than-its-parent',
   /**
    * No agent by that name. ⛔ A typo is not a new agent; the sentence names `list_profiles` and
    * `create_agent`.
@@ -198,7 +162,7 @@ const PERMANENCE: Readonly<Record<SpawnRail, RailPermanence>> = {
   'no-piece-to-give-from': 'permanent',
   'name-the-piece-you-give-from': 'permanent',
   'no-piece-you-hold-by-that-name': 'permanent',
-  'services-are-off': 'until-a-person-changes-it',
+  'service-queue-not-owned': 'until-a-person-changes-it',
   'its-kind-is-unknown': 'until-a-person-changes-it',
   'service-provider-is-fixed': 'permanent',
   'name-the-conversation': 'permanent',
@@ -213,10 +177,6 @@ const PERMANENCE: Readonly<Record<SpawnRail, RailPermanence>> = {
   // ⚑ **`permanent`**: a row that can't be read stays so, and the ledgers the check reads include
   // those of work that has ended, so no give to that service can clear it.
   'its-record-cannot-be-read': 'permanent',
-  'spawning-disabled': 'until-a-person-changes-it',
-  // 🔴 **`until-a-person-changes-it`** (499): the giver's own approvals button makes the identical
-  // call succeed.
-  'wider-than-its-parent': 'until-a-person-changes-it',
   'no-such-profile': 'permanent',
   'its-provider-is-not-chosen': 'until-a-person-changes-it',
   'folder-unusable': 'until-a-person-changes-it',
@@ -247,7 +207,7 @@ const REMEDY: Readonly<Record<SpawnRail, RefusalRemedy | null>> = {
   'no-piece-to-give-from': null,
   'name-the-piece-you-give-from': null,
   'no-piece-you-hold-by-that-name': null,
-  'services-are-off': null,
+  'service-queue-not-owned': null,
   'its-kind-is-unknown': null,
   'service-provider-is-fixed': null,
   'name-the-conversation': null,
@@ -260,8 +220,6 @@ const REMEDY: Readonly<Record<SpawnRail, RefusalRemedy | null>> = {
   'it-would-wait-on-itself': 'make-the-same-call-when-this-settles',
   'its-waits-cannot-all-be-checked': 'make-the-same-call-when-this-settles',
   'its-record-cannot-be-read': null,
-  'spawning-disabled': null,
-  'wider-than-its-parent': null,
   'no-such-profile': null,
   'its-provider-is-not-chosen': null,
   'folder-unusable': null,
@@ -289,15 +247,6 @@ export interface SpawnRefusalDetail {
    * root left out (D-022 · R4).
    */
   held?: readonly string[]
-  /**
-   * 🔴 **`wider-than-its-parent`'s three facts** (499; D-038) — the mode the new conversation would
-   * start in (the giver's own), the giver's, and **what the giver keeps past its folder that the
-   * new one would not**. ⚑ Words from `PROTECTIONS`, so the payload carries no sentence a test
-   * cannot reach.
-   */
-  asked?: ApprovalMode
-  spawnerRunsAs?: ApprovalMode
-  wouldLack?: readonly Protection[]
   /** The service's fixed provider and its current model list, for a different-provider refusal. */
   provider?: Provider
   requestedProvider?: Provider
@@ -336,17 +285,6 @@ export interface SpawnRefusal {
   /** ⛔ **425 · the same thing as a WORD, or `null`** — one of `REFUSAL_REMEDIES`. */
   readonly remedy: RefusalRemedy | null
   readonly detail: SpawnRefusalDetail
-}
-
-/**
- * ⛔ **Each protection, as the clause a giver reads about ITSELF inside `wider-than-its-parent`'s
- * sentence** (499; D-038). ⚑ The VOCABULARY is shared and the WORDING is this door's.
- * 🔴 **Exhaustive over the type**, so a third protection cannot be added without somebody deciding
- * what a caller is told about it.
- */
-const PROTECTION_SAID: Readonly<Record<Protection, string>> = {
-  'the-card-before-an-act': 'the card before you act',
-  'the-sandbox-around-an-act': 'the sandbox around what you run',
 }
 
 /** ⚑ `W1.2, W1.3 and W1.5` — the labels a sentence names, in the order it was handed them. */
@@ -394,8 +332,8 @@ export function describeRail(rail: SpawnRail, detail: SpawnRefusalDetail = {}): 
       return `Say which of your pieces this is for (${labelsSaid(detail.held)}): give again naming it as under.`
     case 'no-piece-you-hold-by-that-name':
       return 'You hold no open piece by that name, so nothing was given. list_tasks names what you hold.'
-    case 'services-are-off':
-      return `Not given: services are off. Do the work yourself, or give it to another agent; “${detail.profileId ?? '?'}” is a service.`
+    case 'service-queue-not-owned':
+      return 'this app may be open twice. Ask the person with request_action to close any other BroCrew instance using this workspace and reopen this one, or give the work to another agent.'
     case 'its-kind-is-unknown':
       if (detail.executionProblem) return `Not given: ${detail.executionProblem}`
       return `Not given: the services list can’t be read. Give the work to another agent, or ask a person; this app can’t tell whether “${detail.profileId ?? '?'}” is a service.`
@@ -427,24 +365,6 @@ export function describeRail(rail: SpawnRail, detail: SpawnRefusalDetail = {}): 
       return `Not given: its waits can’t all be checked. Give the work to another agent, or give it again once some of the work “${detail.profileId ?? '?'}” waits on has ended.`
     case 'its-record-cannot-be-read':
       return `Not given: part of this app’s record of what “${detail.profileId ?? '?'}” gave can’t be read. Give the work to another agent.`
-    // ⚠️ **True at a refusal AND at a launch**: `factory-text.ts` renders this very string into the
-    // instructions while the switch is off (`SPAWNING_IS_OFF`), where nothing has been attempted.
-    case 'spawning-disabled':
-      return (
-        'Agents may not start new conversations in this app right now, so a give that would start ' +
-        'one gives nothing. Only a person can switch it back on. Work can still be given to an ' +
-        'agent you already have a conversation with.'
-      )
-    // ⚠️ **The act is the giver's own mode** (D-038): an agent has no approval mode of its own, and
-    // since the rail compares reach, no provider an agent could be moved to changes the verdict.
-    case 'wider-than-its-parent':
-      return (
-        'Do this work here, or ask a person whether to change your approval mode. ' +
-        `Nothing was given: you run in “${detail.spawnerRunsAs ?? '?'}”, with ` +
-        `${(detail.wouldLack ?? []).map((kept) => PROTECTION_SAID[kept]).join(' and ') || 'a protection'}, ` +
-        `and the conversation it would start would run in “${detail.asked ?? '?'}”, writing outside its ` +
-        'folder and reaching the network with nobody asked.'
-      )
     case 'no-such-profile':
       return `Not sent: no agent is called ${detail.profileId ?? '?'}. list_profiles names them; create_agent makes one.`
     case 'service-provider-is-fixed':
@@ -794,7 +714,6 @@ export interface GiveFacts {
   }
   /** Whether a give to `profileSlug` reaches a service, and how ({@link ServiceAtAGive}). */
   readonly serviceAt: (giver: string, profileSlug: string) => ServiceAtAGive
-  readonly spawningEnabled: () => boolean
   /** The provider the TARGET agent runs on, and what says so (`theProviderOfAnAgent`). */
   readonly itsProvider: (profileSlug: string) => ItsProvider
   /**
@@ -824,13 +743,13 @@ interface RecentConversation {
 }
 
 /**
- * A give's target as a service: `normal` for an agent that is not one; `off` while services don't
- * run; `unknown` where its kind can't be told and a service may be at stake; else its one
+ * A give's target: `normal` for an agent that is not a service, `queue-not-owned` when this app
+ * does not own the service queue, `unknown` if its kind can't be told; else its one
  * conversation (`null` before its first give), whether that is the giver itself, whether it already
  * waits on the giver through work it gave, and the provider its first give records it on.
  */
 export type ServiceAtAGive =
-  | { readonly is: 'normal' | 'off' | 'unknown'; readonly why?: string }
+  | { readonly is: 'normal' | 'queue-not-owned' | 'unknown'; readonly why?: string }
   | {
       readonly is: 'service'
       readonly conversation: string | null
@@ -1057,7 +976,8 @@ export function admitGive(
   }
 
   const service = facts.serviceAt(giving.sessionId, asked.profile)
-  if (service?.is === 'off') return no('services-are-off', { profileId: asked.profile })
+  if (service?.is === 'queue-not-owned')
+    return no('service-queue-not-owned', { profileId: asked.profile })
   if (service?.is === 'unknown')
     return no('its-kind-is-unknown', {
       profileId: asked.profile,
@@ -1088,17 +1008,12 @@ export function admitGive(
     if (service.waitsOnTheGiver === 'unread') {
       return no('its-record-cannot-be-read', { profileId: asked.profile })
     }
-    if (service.conversation === null) {
-      // Recording its first conversation is a start, for the switch that stops agents' starts.
-      const mayStart = facts.spawningEnabled()
-      if (!mayStart) return no('spawning-disabled', { profileId: asked.profile })
-      if (service.provider === null) {
-        const its = facts.itsProvider(asked.profile)
-        return no('its-provider-is-not-chosen', {
-          profileId: asked.profile,
-          ...(its.from === 'its-conversations-differ' ? { startedOn: its.startedOn } : {}),
-        })
-      }
+    if (service.conversation === null && service.provider === null) {
+      const its = facts.itsProvider(asked.profile)
+      return no('its-provider-is-not-chosen', {
+        profileId: asked.profile,
+        ...(its.from === 'its-conversations-differ' ? { startedOn: its.startedOn } : {}),
+      })
     }
     // The folder a give names is the piece's to work in, granted when it is used.
     const named = asked.folder?.trim() ?? ''
@@ -1175,28 +1090,8 @@ export function admitGive(
     facts.theNamedModelsProvider(),
   )
 
-  // 7 · "new": the rails of a START.
-  if (!facts.spawningEnabled()) return no('spawning-disabled', { profileId: asked.profile })
-
   // ⛔ **INHERITED** (499, HO-036): a conversation a give starts runs in its giver's mode.
   const approvalMode = giving.approvalMode
-
-  // ⚑ never wider than the giver — see the rail for why it compares what each keeps past its folder.
-  const wouldLack =
-    provider === null
-      ? []
-      : whatTheChildWouldLack(
-          { provider, approvalMode },
-          { provider: giving.provider, approvalMode: giving.approvalMode },
-        )
-  if (wouldLack.length > 0) {
-    return no('wider-than-its-parent', {
-      asked: approvalMode,
-      spawnerRunsAs: giving.approvalMode,
-      wouldLack,
-      profileId: asked.profile,
-    })
-  }
 
   // ⚑ After the name, so a give a person's choice would not let through is never told to wait for it.
   if (provider === null) {
