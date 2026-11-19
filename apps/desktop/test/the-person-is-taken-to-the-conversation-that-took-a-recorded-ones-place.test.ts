@@ -1,4 +1,9 @@
-import { fixtureProviderConfig, neutralHostDeps, syntheticProviderHome, waitFor } from './lib/host-fixture'
+import {
+  fixtureProviderConfig,
+  neutralHostDeps,
+  syntheticProviderHome,
+  waitFor,
+} from './lib/host-fixture'
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -74,23 +79,9 @@ class AWindow implements RuntimeEventSink {
   bridge(): RuntimeBridge {
     const run = async <T>(command: RuntimeCommand): Promise<T> =>
       (await executeRuntimeCommand(this.host(), this, command)) as T
-    return fixtureRuntimeBridge(run, {
-      onEvent: (fn) => {
-        this.events.push(fn)
-        return () => void this.events.splice(this.events.indexOf(fn), 1)
-      },
-      onLiveness: (fn) => {
-        this.liveness.push(fn)
-        return () => void this.liveness.splice(this.liveness.indexOf(fn), 1)
-      },
-      onChanged: (fn) => {
-        this.changed.push(fn)
-        return () => void this.changed.splice(this.changed.indexOf(fn), 1)
-      },
-    })
+    return fixtureRuntimeBridge(run, this.events, this.liveness, this.changed)
   }
 }
-
 
 describe('the person is taken to the conversation that took a recorded one’s place', () => {
   let userData: string

@@ -2011,6 +2011,12 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
     const ids = () => store.recorded().map((row) => row.sessionId)
     const idsBefore = ids()
     const handlesBefore = handles.length
+    const onlyTheOriginal = () => {
+      expect(wakeUpsOf(host).has(conversation)).toBe(false)
+      expect(ids()).toEqual(idsBefore)
+      expect(store.replacements()).toEqual([])
+      expect(handles.length).toBe(handlesBefore)
+    }
     const detail =
       'This conversation could not wake: its provider session file is missing. Nothing ran.'
     restartsAt(local(9, 28, hadNotice ? 15 : 14, hadNotice ? 0 : 40))
@@ -2020,14 +2026,11 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
         () => ledger(conversation).some((event) => event.type === 'message_unqueued'),
         'the held notice to be ended',
       )
-      expect(ledger(conversation)).toContainEqual(
-        expect.objectContaining({ type: 'message_unqueued', reason: 'abandoned', detail, text: theHeldNotice(DUE) }),
-      )
+      const ended = ledger(conversation).find((event) => event.type === 'message_unqueued')
+      expect(ended).toMatchObject({ reason: 'abandoned', detail, text: theHeldNotice(DUE) })
       await settle()
       expect(stateOf(host, conversation)).toEqual({ is: 'idle' })
-      expect(ids()).toEqual(idsBefore)
-      expect(store.replacements()).toEqual([])
-      expect(handles.length).toBe(handlesBefore)
+      onlyTheOriginal()
       expect(await host.startAndSend(conversation, 'are you there', window)).toMatchObject({
         notSent: { refusedBy: 'the-start', running: null },
       })
@@ -2045,10 +2048,7 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
       expect(ledger(conversation)).toContainEqual({ type: 'error', message: detail, fatal: false })
     }
 
-    expect(wakeUpsOf(host).has(conversation)).toBe(false)
-    expect(ids()).toEqual(idsBefore)
-    expect(store.replacements()).toEqual([])
-    expect(handles.length).toBe(handlesBefore)
+    onlyTheOriginal()
   })
 
   it('a message that starts a stopped conversation plans its jobs again first, so a one-shot that passed since the wake-up was armed is told', async () => {

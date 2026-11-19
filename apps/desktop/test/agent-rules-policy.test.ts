@@ -117,10 +117,11 @@ describe('standing-rule authority belongs to the host and changes remain attribu
     host = new RuntimeHost({
       store,
       ...neutralHostDeps(() => root),
-      createRuntime: (provider) => new ObservedProviderLaunches(provider, providerSessions, (_kind, options) => {
-        launches.push(options)
-        if (options.agentTools !== undefined) handed.push(options.agentTools)
-      }),
+      createRuntime: (provider) =>
+        new ObservedProviderLaunches(provider, providerSessions, (_kind, options) => {
+          launches.push(options)
+          if (options.agentTools !== undefined) handed.push(options.agentTools)
+        }),
       prepareProviderHome: (provider, profile) => {
         const path = home(provider, profile)
         mkdirSync(path, { recursive: true })

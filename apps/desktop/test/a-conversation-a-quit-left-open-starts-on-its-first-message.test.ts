@@ -138,23 +138,9 @@ class AWindow {
       this.commands.push(command.kind)
       return (await executeRuntimeCommand(this.host, this.sink, command)) as T
     }
-    return fixtureRuntimeBridge(run, {
-      onEvent: (fn) => {
-        this.events.push(fn)
-        return () => void this.events.splice(this.events.indexOf(fn), 1)
-      },
-      onLiveness: (fn) => {
-        this.liveness.push(fn)
-        return () => void this.liveness.splice(this.liveness.indexOf(fn), 1)
-      },
-      onChanged: (fn) => {
-        this.changed.push(fn)
-        return () => void this.changed.splice(this.changed.indexOf(fn), 1)
-      },
-    })
+    return fixtureRuntimeBridge(run, this.events, this.liveness, this.changed)
   }
 }
-
 
 /** ⚑ Let every timer a launch armed fire before a count is taken (`692`'s `letItSettle`). */
 const letItSettle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 60))

@@ -8,10 +8,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 import { FakeProviderSessions } from '@brobot2/runtime'
-import type {
-  AgentToolset,
-  FakeSessionHandle,
-} from '@brobot2/runtime'
+import type { AgentToolset, FakeSessionHandle } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'

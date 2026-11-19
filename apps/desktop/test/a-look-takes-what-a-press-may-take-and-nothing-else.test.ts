@@ -27,7 +27,8 @@ import {
   type RuntimeEventMessage,
   type SessionLivenessMessage,
 } from '../src/shared/runtime-ipc'
-import { asTheWireWouldCarry, everythingOverTheWire } from './lib/the-wire'
+import { asTheWireWouldCarry } from './lib/the-wire'
+import { fixtureRuntimeBridge } from './lib/runtime-command-bridge'
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
@@ -137,29 +138,7 @@ class AWindow {
       }
       return (await executeRuntimeCommand(this.host, this.sink, command)) as T
     }
-    const bridge: Partial<RuntimeBridge> = {
-      createSession: (input) => run({ kind: 'createSession', ...input }),
-      resume: (input) => run({ kind: 'resume', ...input }),
-      startAndSend: (input) => run({ kind: 'startAndSend', ...input }),
-      cancelLaunch: (input) => run({ kind: 'cancelLaunch', ...input }),
-      attachOpen: () => run({ kind: 'attachOpen' }),
-      send: (input) => run({ kind: 'send', ...input }),
-      close: (input) => run({ kind: 'close', ...input }),
-      look: (input) => run({ kind: 'look', ...input }),
-      release: (input) => run({ kind: 'release', ...input }),
-      listResumable: () => run({ kind: 'listResumable' }),
-      listUnresumable: () => run({ kind: 'listUnresumable' }),
-      onEvent: (fn) => {
-        this.events.push(fn)
-        return () => void this.events.splice(this.events.indexOf(fn), 1)
-      },
-      onLiveness: (fn) => {
-        this.liveness.push(fn)
-        return () => void this.liveness.splice(this.liveness.indexOf(fn), 1)
-      },
-      onChanged: () => () => {},
-    }
-    return everythingOverTheWire(bridge) as RuntimeBridge
+    return fixtureRuntimeBridge(run, this.events, this.liveness)
   }
 }
 
