@@ -21,7 +21,6 @@ let open = true
 
 async function read(): Promise<void> {
   const mine = ++ticket
-  reading.value = null
   failed.value = false
   try {
     const rows = await client.providerConnections()
@@ -34,14 +33,22 @@ async function read(): Promise<void> {
 watch(
   [
     () => props.provider,
-    () => props.loginMoved,
     () => props.keyStatus?.set,
     () => props.keyStatus?.setAt,
+    () => (props.auth?.state === 'usable' ? props.auth.login : undefined),
+    () => (props.auth?.state === 'usable' ? props.auth.account : undefined),
   ],
   () => {
+    reading.value = null
     void read()
   },
   { immediate: true },
+)
+watch(
+  () => props.loginMoved,
+  () => {
+    void read()
+  },
 )
 onBeforeUnmount(() => {
   open = false

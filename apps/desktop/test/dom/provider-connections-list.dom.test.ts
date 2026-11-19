@@ -258,6 +258,33 @@ it('clears known connections immediately when switching provider during a read',
   expect(m.q('provider-connection').textContent).toContain('Codex · Next provider')
 })
 
+it('clears the previous metadata when the recheck identifies a different account', async () => {
+  const pending = held<ProviderConnection[]>()
+  let refreshing = false
+  let account = 'first@example.test'
+  window.api.runtime.checkProviderAuth = async () => ({
+    state: 'usable',
+    login: 'account',
+    account,
+    expiresAt: null,
+  })
+  const { m, props } = card(() =>
+    refreshing ? pending.promise : Promise.resolve(rows('claude', 'Previous account')),
+  )
+  await settle()
+  expect(m.q('provider-connection').textContent).toContain('Previous account')
+  refreshing = true
+  account = 'second@example.test'
+  props.loginMoved++
+  await settle()
+  expect(m.all('provider-connection')).toHaveLength(0)
+  expect(m.q('provider-connections').textContent).not.toContain('Previous account')
+  pending.answer(rows('claude', 'Next account'))
+  await settle()
+  expect(m.q('provider-connection').textContent).toContain('Next account')
+  expect(m.q('provider-connections').getAttribute('aria-busy')).toBe('false')
+})
+
 for (const state of ['absent', 'unknown'] as const) {
   it(`does not label an ${state} sign-in route as In use`, async () => {
     window.api.runtime.checkProviderAuth = async () => ({ state, reason: 'Fictional status' })
