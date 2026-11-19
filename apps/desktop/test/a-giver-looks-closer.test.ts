@@ -543,7 +543,7 @@ describe('D-012 · a giver looks closer', () => {
     })
 
     it('🔴 who sent the last message and the start of it, then the start of the answer — and read_transcript', async () => {
-      const { pm, worker } = await aWorkerWithALongFollowUp()
+      const { pm, worker, label } = await aWorkerWithALongFollowUp()
       const live = (
         host as unknown as { slots: Map<string, { session: { handle: unknown } }> }
       ).slots.get(worker)!.session
