@@ -993,7 +993,6 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   /** The rows given under one piece, by number — rows, not folded. */
   childrenOf(piece: string, after?: number, limit?: number): readonly WorkRow[]
   countChildrenAfter(piece: string, after: number): number
-  depthOf(piece: string): number
   pieceOfItsChainHeldBy(piece: string, owner: string): string | null
   turnBlockPiecesOwnedBy(owner: string, unread?: RowsUnread): readonly PieceRow[]
   openPiecesOf(owner: string, unread?: RowsUnread): readonly PieceRow[]
@@ -1336,7 +1335,6 @@ export const NULL_SESSION_STORE: SessionStore = {
   workOnItsChainThatNames: () => null,
   childrenOf: () => [],
   countChildrenAfter: () => 0,
-  depthOf: () => 0,
   pieceOfItsChainHeldBy: () => null,
   piecesOwnedBy: () => [],
   piecesWithTheirWaits: () => [],
@@ -6194,12 +6192,6 @@ export function createSessionStore(
 
     countChildrenAfter(piece, after) {
       return (workSql().countChildrenAfter.get(piece, after) as { total: number }).total
-    },
-
-    depthOf(piece) {
-      const row = workSql().byId.get(piece) as WorkDbRow | undefined
-      if (row === undefined) throw new Error(`no piece ${piece} in this database`)
-      return chainUp(row).findIndex((one) => one.given_by_session_id === null)
     },
 
     pieceOfItsChainHeldBy(piece, owner) {
