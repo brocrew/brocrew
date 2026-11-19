@@ -269,6 +269,33 @@ describe('598 · the grant covers what it created', () => {
   // §7 · the encoding, and one hazard only a hand-edit can plant
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
+  it.each([
+    ['max_depth', [0, 64], [-1, 65, 0.5, 'none']],
+    ['can_message', ['none', 'any'], ['propose', 'relay', 'invalid-grant']],
+    ['can_assign_work', ['none', 'any'], ['propose', 'relay', 'invalid-grant']],
+    ['can_create_agents', ['none', 'any'], ['propose', 'relay', 'invalid-grant']],
+    ['can_write_rules', ['none', 'propose', 'relay'], ['any', 'invalid-grant']],
+  ] as const)('keeps the stored SQLite constraint on %s', (column, accepted, rejected) => {
+    host.createAgent({ slug: 'legacy-row', displayName: null, provider: null }, window)
+    const write = db.prepare(`UPDATE agent_identity SET ${column} = ? WHERE slug = 'legacy-row'`)
+    const select = db.prepare<[], { value: number | string | null }>(
+      `SELECT ${column} AS value FROM agent_identity WHERE slug = 'legacy-row'`,
+    )
+    const stored = () => select.get()?.value
+
+    for (const value of accepted) {
+      expect(write.run(value).changes).toBe(1)
+      expect(stored()).toBe(value)
+    }
+    const before = stored()
+    for (const value of rejected) {
+      expect(() => write.run(value)).toThrow(`agent_identity_${column}_ck`)
+      expect(stored()).toBe(before)
+    }
+    expect(write.run(null).changes).toBe(1)
+    expect(stored()).toBeNull()
+  })
+
   describe('§7 · the column, read back', () => {
     it('⚑ every origin round-trips, and the three shapes cannot collide', () => {
       // ⛔ **`db/identity.ts` owns both halves**, so the prefix is derived once — and `:` cannot

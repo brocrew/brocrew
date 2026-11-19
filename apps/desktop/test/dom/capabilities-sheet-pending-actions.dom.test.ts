@@ -36,7 +36,7 @@ const person = (): AgentIdentity => ({
   externalMcpServerIds: [],
 })
 
-function sheetHost() {
+function sheetHost(externalMcpServers: AgentIdentities['externalMcpServers'] = []) {
   let identity = person()
   const host = {
     agentIdentities: vi.fn(async (): Promise<AgentIdentities> => ({
@@ -45,7 +45,7 @@ function sheetHost() {
       use: [],
       spawningEnabled: true,
       defaultApprovalMode: 'ask',
-      externalMcpServers: [],
+      externalMcpServers,
     })),
     setExternalMcpServers: vi.fn(
       async (input: Parameters<RuntimeBridge['setExternalMcpServers']>[0]) => {
@@ -85,6 +85,7 @@ function sheetHost() {
   const m = mount(CapabilitiesSheet, {
     profileSlug: 'fictional-worker',
     runsOn: 'codex',
+    capabilities: { codex: { externalMcpServers: { state: 'available' } } },
     store,
     lists: createModelLists(() => host),
     onClose: close,
@@ -170,6 +171,59 @@ describe('capabilities sheet pending actions', () => {
       expect(m.all('capabilities-save-refusal')).toHaveLength(0)
     },
   )
+
+  it('keeps a server checkbox edit made during a save visible and unsaved', async () => {
+    const { m, host, store, close } = sheetHost([
+      {
+        id: 'ems:reference',
+        name: 'reference',
+        url: 'http://127.0.0.1:4010/mcp',
+        registeredAt: 1,
+        reach: 'restricted',
+      },
+    ])
+    await store.load()
+    await nextTick()
+    const pending = deferred<void>()
+    const write = host.setExternalMcpServers.getMockImplementation()!
+    host.setExternalMcpServers.mockImplementationOnce(async (input) => {
+      await pending.promise
+      return write(input)
+    })
+    const checkbox = m.q('external-mcp-grant-reference').querySelector('input')!
+    const save = button(m, 'capabilities-save')
+    expect(checkbox.checked).toBe(false)
+    checkbox.click()
+    await nextTick()
+    expect(checkbox.checked).toBe(true)
+    save.click()
+    await nextTick()
+    expect(save.disabled).toBe(true)
+    expect(checkbox.disabled).toBe(false)
+    expect(host.setExternalMcpServers).toHaveBeenCalledExactlyOnceWith({
+      profileId: 'fictional-worker',
+      externalMcpServerIds: ['ems:reference'],
+    })
+
+    checkbox.click()
+    await nextTick()
+    expect(checkbox.checked).toBe(false)
+    pending.resolve()
+    await expect.poll(() => save.disabled).toBe(false)
+    expect(host.setExternalMcpServers).toHaveBeenCalledTimes(1)
+    expect(store.identities.value?.identities[0]?.externalMcpServerIds).toEqual(['ems:reference'])
+    expect(checkbox.checked).toBe(false)
+    expect(close).not.toHaveBeenCalled()
+
+    save.click()
+    await expect.poll(() => close.mock.calls.length).toBe(1)
+    expect(host.setExternalMcpServers).toHaveBeenCalledTimes(2)
+    expect(host.setExternalMcpServers).toHaveBeenLastCalledWith({
+      profileId: 'fictional-worker',
+      externalMcpServerIds: [],
+    })
+    expect(store.identities.value?.identities[0]?.externalMcpServerIds).toEqual([])
+  })
 
   it('disables the provider control while writing and restores the saved provider after a refusal', async () => {
     const { m, host, store } = sheetHost()

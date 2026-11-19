@@ -490,6 +490,30 @@ it('returns honest ancestry/unread coverage failures and remains usable after ca
   ).toMatchObject({ cause: 'metadata', unread: 1, complete: false })
 })
 
+it('reports incomplete ancestry for a known task with a dangling parent', () => {
+  const f = fixture()
+  f.example()
+  // Plant a damaged relationship in the fixture without relaxing its constraints for the read.
+  f.db.exec('PRAGMA foreign_keys = OFF')
+  try {
+    const updated = f.db
+      .prepare("UPDATE work SET parent_id = 'missing-parent' WHERE id = 't16'")
+      .run()
+    expect(updated.changes).toBe(1)
+  } finally {
+    f.db.exec('PRAGMA foreign_keys = ON')
+  }
+  const query: FilesLibraryQuery = {
+    ...workspaceQuery,
+    scope: { type: 'task', id: 't16', includeSubtasks: false },
+  }
+  expect(f.engine.read({ operation: 'query', query }, libraryContext)).toMatchObject({
+    type: 'unavailable',
+    cause: 'ancestry',
+    complete: false,
+  })
+})
+
 // A deep chain has no depth bound: only a loop or a missing parent makes the ancestry unreadable.
 it.each(['parent-first', 'deepest-first'])(
   'reads a seventy-deep ancestry whole with %s metadata memoization',
