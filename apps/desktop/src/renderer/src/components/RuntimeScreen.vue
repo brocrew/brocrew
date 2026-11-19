@@ -1305,28 +1305,15 @@ function pickModelForActive(pick: PickedModel): Promise<WhatAPickBecame | null |
   return id === null ? Promise.resolve(undefined) : pickInAConversation(store, id, pick)
 }
 
-/**
- * 🔴 **A credential gesture settled for this profile, so what we hold about it is no longer news.**
- *
- * ⛔ **Found reviewing 257's own diff, and without it §2's invalidation reaches nobody.** The host
- * drops that home's memoized catalogue when a sign-in or a re-copy finishes — but this screen
- * remembers which profiles it has already asked about, so the menu on the page would go on showing
- * the account the person just signed OUT of, for the rest of the app run. The host forgetting and
- * the surface never re-asking is a fix that works perfectly and changes nothing anyone can see.
- *
- * ⚠️ Re-asked immediately rather than on the next mount, because the gesture IS the moment: somebody
- * has just signed this profile in and is looking at the menu it should have changed. One provider
- * child per gesture, and nothing on a timer.
- */
+/** Refresh the profile's provider facts after a credential gesture settles. */
 function authChangedFor(profileId: string, changedProvider?: Provider): void {
   void readPrograms()
   for (const provider of changedProvider
     ? [changedProvider]
     : (Object.keys(PROVIDER_NAME) as Provider[]))
     void useProfileSignIn(provider, profileId, providerClient).check()
-  // ⛔ **This DISOWNS the read in flight as well as forgetting the answer** (293 §5). Without the
-  // ticket, a read started under the previous account was free to land after the replacement.
-  modelLists.forget(profileId)
+  // Retire old-account requests while keeping previous rows visible during the new read.
+  modelLists.forget(profileId, { retainAnswered: true })
   void modelLists.reread()
   for (const shown of listsShown.value) {
     void modelLists.read(shown.provider, shown.profileId)
