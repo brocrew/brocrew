@@ -17,7 +17,7 @@ import { prepareBuiltInSkills, readBuiltInSkills } from '../src/main/skills/prep
 import { sweepSkillViews } from '../src/main/skills/sweep-skill-views'
 
 // Pause only the cleanup's event-loop yields, leaving real installation I/O and launches running.
-const scheduling = vi.hoisted(() => ({ wait: undefined as (() => Promise<void>) | undefined }))
+const scheduling = vi.hoisted(() => ({ wait: undefined as (() => Promise<void> | void) | undefined }))
 vi.mock('node:timers/promises', async (original) => {
   const actual = await original<typeof import('node:timers/promises')>()
   return {
@@ -31,16 +31,28 @@ vi.mock('node:timers/promises', async (original) => {
 
 const bundle = readBuiltInSkills(resolve(import.meta.dirname, '../resources/built-in-skills'))
 let root: string, home: string
-beforeEach(() => {
+let mark: ((stage: string, count?: number) => void) | undefined
+beforeEach(({ task }) => {
+  const started = performance.now()
+  mark = task.name.startsWith('starts a claude launch with 1,786 old copies')
+    ? (stage, count) =>
+        console.log('skill-sweep-timing', stage, Math.round(performance.now() - started), count ?? 0)
+    : undefined
+  mark?.('setup-start')
   root = mkdtempSync(join(realpathSync(tmpdir()), 'fictional-cedar-sweep-'))
   home = join(root, 'homes', 'cedar-writer', 'provider')
   mkdirSync(home, { recursive: true, mode: 0o700 })
+  mark?.('setup-end')
 })
 afterEach(async () => {
   scheduling.wait = undefined
   vi.restoreAllMocks()
+  mark?.('after-each-sweep-start')
   await sweepSkillViews(root, home, '')
+  mark?.('after-each-remove-start')
   rmSync(root, { recursive: true, force: true })
+  mark?.('after-each-remove-end')
+  mark = undefined
 })
 function deferred() {
   let resolve!: () => void
@@ -73,11 +85,19 @@ const readable = (view: Awaited<ReturnType<typeof launch>>) =>
 it.each(['claude', 'codex'] as const)(
   'starts a %s launch with 1,786 old copies while the sweep is paused',
   async (provider) => {
-    const old = Array.from({ length: 1786 }, (_, index) => legacy(index))
+    mark?.('create-start')
+    const old = Array.from({ length: 1786 }, (_, index) => {
+      const path = legacy(index)
+      if ((index + 1) % 512 === 0) mark?.('create-progress', index + 1)
+      return path
+    })
+    mark?.('create-end', old.length)
     const paused = deferred()
     scheduling.wait = () => paused.promise
     try {
+      mark?.('publication-start')
       const prepared = await launch(provider)
+      mark?.('publication-end')
       // This promise cannot settle until the test releases cleanup. Publication is independent.
       const cleaning = sweepSkillViews(root, home, '')
       let cleaned = false
@@ -87,9 +107,18 @@ it.each(['claude', 'codex'] as const)(
       expect(cleaned).toBe(false)
       expect(readable(prepared)).toBe(true)
       expect(old.every((path) => existsSync(path))).toBe(true)
-      scheduling.wait = undefined
+      let yields = 0
+      scheduling.wait = mark
+        ? () => {
+            yields++
+            if (yields === 1 || yields === 256 || yields === 1024 || yields === 2048)
+              mark?.('drain-progress', yields)
+          }
+        : undefined
+      mark?.('pause-release')
       paused.resolve()
       await cleaning
+      mark?.('drain-end', yields)
       expect(old.some((path) => existsSync(path))).toBe(false)
       expect(readable(prepared)).toBe(true)
     } finally {
