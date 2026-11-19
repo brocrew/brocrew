@@ -211,7 +211,6 @@ describe('405 · a refusal you can see', () => {
     raiseAQuestion: (...args) => host.raiseAQuestion(...args),
     requestAnAction: (...args) => host.requestAnAction(...args),
     // ⚑ **611 · delegated like every other member** — see this helper's own note.
-    passQuestionUp: (...args) => host.passQuestionUp(...args),
     withdrawQuestion: (...args) => host.withdrawQuestion(...args),
     // ⚑ **D-012's reader, delegated like every other member.**
     readTranscript: (...args) => host.readTranscript(...args),
@@ -238,7 +237,6 @@ describe('405 · a refusal you can see', () => {
     nameByItsWorkUnder: (...args) => host.nameByItsWorkUnder(...args),
     addressOf: (...args) => host.addressOf(...args),
     renameConversation: (...args) => host.renameConversation(...args),
-    addressOfUnder: (...args) => host.addressOfUnder(...args),
     // ⚑ **429's verb** — added because the interface gained it, which is what this seam is for.
     takeBackPiece: (...args) => host.takeBackPiece(...args),
     // ⚑ **703 · delegated like every other member** — see this helper's own note.
@@ -413,13 +411,7 @@ describe('405 · a refusal you can see', () => {
         question: 'req_nobody',
         answers: [{ part: 'p', answer: ['yes'] }],
       })
-      // 5 · 🔴 **The sample's only RETRYABLE row** (424). ⛔ **The four above were `{true, false}`
-      // between them until `424` turned three of them over**: `no-such-agent`, the reply's unknown
-      // piece and `no-question-by-that-name` are all `permanent` now, and `spawning-disabled` waits
-      // on a person — so without a fifth door the set assertion below would have become *"they are all
-      // false"*, which a hardcoded field satisfies. ⚑ **An answer over the bound is the real
-      // transient one** (a give is no longer refused over a stall): the same call with shorter words
-      // lands, and nobody else has to decide anything.
+      // Omitting a part of the question gives the same answerer a chance to retry.
       store.setSpawningEnabled(true)
       const given = await call('give_work', newConversationGive('worker', 'a piece', 'go'))
       const asked = await toolsOf(given.agent as string).call('ask_question', {
@@ -430,7 +422,7 @@ describe('405 · a refusal you can see', () => {
       expect(asked.outcome, JSON.stringify(asked)).toBe('ok')
       await call('answer_question', {
         question: asked.question,
-        answers: [{ part: 'answer', answer: ['y'.repeat(1281)] }],
+        answers: [{ part: 'not-asked', answer: ['yes'] }],
       })
 
       const rows = refusalsIn(pm)
@@ -446,7 +438,7 @@ describe('405 · a refusal you can see', () => {
         'no-such-agent',
         'no-piece-by-that-name',
         'no-question-by-that-name',
-        'answer-too-long',
+        'that-answer-cannot-be-sent',
       ])
       // 🔴 **The complete permanence and retryability vocabularies are present in this sample.** ⛔ A row
       // that hardcoded either field would pass a suite that only ever refused one door.

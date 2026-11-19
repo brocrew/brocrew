@@ -210,12 +210,12 @@ export function tellItsRefusal(
   if (typeof name !== 'string' || set === null || set.declared === null) return null
   const split = splitQualified(set.naming, name)
   if (split === null || split.server !== set.declared.server) return null
-  const notSent = hasDirectRefusalOpening(summary)
-  const clipped = notSent && RECEIPT_CUT.exec(summary)?.index === TOOL_RECEIPT_CUTOFF
+  const direct = hasDirectRefusalOpening(summary)
+  const clipped = direct && RECEIPT_CUT.exec(summary)?.index === TOOL_RECEIPT_CUTOFF
   const head = clipped ? summary.slice(0, TOOL_RECEIPT_CUTOFF) : summary
   const matching = state.refusalsAwaitingReceipt.filter((waiting) => {
     if (waiting.tool !== split.tool) return false
-    if (!notSent) return summary.startsWith(`refused (${waiting.rail}): `)
+    if (!direct) return summary.startsWith(`refused (${waiting.rail}): `)
     const quote = waiting.told?.text
     return (
       quote !== undefined &&

@@ -7,10 +7,12 @@ import {
 } from '@brobot2/runtime'
 import { type AgentToolHost } from './host'
 import { type Caller } from '../conversation-caller'
+import { conversationLine } from '../conversation-address'
 import { type RequestState, type VisibleQuestion } from '../../../shared/question-contracts'
 import { REQUEST_IS_OPEN, theChannelRefusalIn } from '../../../shared/questions'
 import { type ToolName } from './catalog'
-import { REPLY_SUMMARY_LIMIT } from '../reply-rails'
+import { outboundOverflowSaid, sendOverflowAttachment } from '../send-overflow'
+import { sendResourcesInput, sendResourcesProblem } from './send-resources'
 import { answer, refusalAnswer } from './answers'
 import { carryQuestionRefusal, refuseTool } from './refusals'
 import {
@@ -167,7 +169,7 @@ export function createAnswerQuestionTool(
     description:
       // **679 · *the id and the asker*** — what the question's own words hand the caller since
       // `679` (`questionText`); *"the id to quote"* was the whole of it while an id named one question.
-      `Answer a question you are asked — by a conversation you started, or by an agent that asked you by name — or say you cannot, with cannot_answer and why. The app sends you the question, the id to quote and the asked_by beside it; a request that is a person’s to settle is refused by name and no retry will pass. Your own words in one answer, or your reason, may be at most ${String(REPLY_SUMMARY_LIMIT)} units: put anything longer in a file and name its full path. By default an asker you started, or one started under it, reads your answer — or your reason — at once: if it is in the middle of a turn, that turn is ${ASKED_TO_STOP} for it, and no person is asked to approve that. ${theRuleOfAStopForWords(undefined, 'it')} Its other questions stay open. A turn that waits on someone's answer, or that a person's own words started, is not interrupted. Give interrupt: false to let it finish that turn first. Any other asker reads your answer when its running turn ends.`,
+      `Answer a question addressed to your conversation, or say you can't, with cannot_answer: why, and who might know. Find the answer however you need — yourself, by asking others, by reading transcripts or by giving work — and answer in your own words. The app sends you the question, the id to quote and the asked_by beside it. A request that is a person’s to settle is refused by name. Hand files with resources. Anything over 2,000 characters arrives as a file the reader is pointed to. By default an asker you started, or one started under it, reads your answer — or your reason — at once: if it is in the middle of a turn, that turn is ${ASKED_TO_STOP} for it, and no person is asked to approve that. ${theRuleOfAStopForWords(undefined, 'it')} Its other questions stay open. A turn that waits on someone's answer, or that a person's own words started, is not interrupted. Give interrupt: false to let it finish that turn first. Any other asker reads your answer when its running turn ends.`,
     /**
      * **486 · the rails are the whole gate** (HO-031 §2.4).
      *
@@ -211,8 +213,9 @@ export function createAnswerQuestionTool(
           .string()
           .optional()
           .describe(
-            'You cannot answer it: say why, in your own words, and the one who asked is told. Give this or answers, not both.',
+            "You can't answer it: say why, and who might know if you can. The one who asked is told.",
           ),
+        resources: sendResourcesInput,
         [ANSWER_INTERRUPT_ARGUMENT]: z
           .boolean()
           .optional()
@@ -272,9 +275,9 @@ export function createAnswerQuestionTool(
         const answers: { part: string; answer: string[] }[] = []
         // **D-009 · an answer, or a reason there is none — one of the two.**
         const cannot = args[ANSWER_CANNOT_ARGUMENT]
+        const resources = sendResourcesInput.safeParse(args.resources)
+        if (!resources.success) problem('resources', sendResourcesProblem)
         if (cannot !== undefined) {
-          // Its length is the host's to refuse (`answer-too-long`), on the bound an answer's
-          // own words share, so both are refused in one sentence that says what to do.
           if (typeof cannot !== 'string' || cannot.length === 0) {
             problem('cannot_answer', 'send a non-empty text reason, or leave it out')
           }
@@ -312,12 +315,13 @@ export function createAnswerQuestionTool(
         if (interruptAsked !== undefined && typeof interruptAsked !== 'boolean') {
           problem('interrupt', 'send true or false, or leave it out')
         }
-        if (problems.length > 0) {
+        if (!resources.success || problems.length > 0) {
           const fields = [
             ANSWER_QUESTION_ARGUMENT,
             ASKED_BY_ARGUMENT,
             ANSWER_ANSWERS_ARGUMENT,
             ANSWER_CANNOT_ARGUMENT,
+            'resources',
             ANSWER_INTERRUPT_ARGUMENT,
           ]
           const detail = workRequestRefused(problems, args, fields)
@@ -348,23 +352,33 @@ export function createAnswerQuestionTool(
                 ? host.theConversationAddressed(askedBy, by, me, 'answering')
                 : null,
             cannot: typeof cannot === 'string' ? cannot : null,
+            ...(resources.data === undefined ? {} : { resources: resources.data }),
             // An answer stops the asker's running turn unless the answerer said not to.
             interrupt: interruptAsked !== false,
           },
           by,
         )
         if (!answered.ok) {
+          if ('outcome' in answered.refusal) {
+            const reason = `Not answered: ${answered.refusal.reason}`
+            return answer({ ...answered.refusal, reason }, reason)
+          }
           const carried = carryQuestionRefusal(answered.refusal)
           return answer(carried, `refused (${answered.refusal.rail}): ${answered.refusal.reason}`)
         }
         // **D-016 · commit 7 · R3 — the asker by the piece it owns**; the payload keeps its id.
         // F033 · the one it asked the question under.
-        const asker = host.nameByItsWorkUnder(answered.asked, answered.piece)
+        const recipient = answered.receipt?.recipient
+        const deliveredTo = answered.deliveredTo ?? answered.asked
+        const asker =
+          recipient === undefined
+            ? host.nameByItsWorkUnder(deliveredTo, answered.piece)
+            : conversationLine(recipient.address, recipient.title)
         // **Held for the asker's reopen on the current sign-in, for a person's answer its turn is
         // stopped on, or (F074) for its provider's usage limit** — it does not have it yet, and
         // `why` says what it waits for. W4.172 · never *"once it is reopened"* alone: a hold for
         // the limit alone reopens nothing.
-        const why = host.whyWhatIsHeldWaits(answered.asked)
+        const why = host.whyWhatIsHeldWaits(deliveredTo)
         // What became of the stop, said when one was asked or when the answer waits behind a
         // turn that was not stopped — never of an asker that had no turn to stop. By its name
         // alone: the sentence before it named the asker in full.
@@ -373,7 +387,7 @@ export function createAnswerQuestionTool(
             ? null
             : whatBecameOfTheStop(
                 answered.stop,
-                host.whatToCallTheConversation(answered.asked),
+                host.whatToCallTheConversation(deliveredTo),
                 typeof cannot === 'string' ? 'your reason' : 'your answer',
                 (conversation) => conversation === me,
                 (conversation) => host.nameByItsWork(conversation),
@@ -382,20 +396,20 @@ export function createAnswerQuestionTool(
         // Held behind the asker's running turn, and that turn was not asked to stop.
         const waitsForItsTurn = answered.held === true && answered.stop?.stop !== 'asked'
         const waits = why === null ? '' : ` ${why}`
-        const hasIt =
-          why !== null
-            ? `Your answer is held for ${asker}`
-            : !waitsForItsTurn
-              ? `${asker} has your answer and can go on`
-              : stopped === null
-                ? `${asker} reads your answer when the turn it is running ends`
-                : `Your answer is held for ${asker}`
-        const toldWhen =
-          why !== null
-            ? ', when what is held for it goes in,'
-            : waitsForItsTurn
-              ? ', when the turn it is running ends,'
-              : ''
+        const keptForLater =
+          why !== null || (recipient?.state.kind === 'queued' && !waitsForItsTurn)
+        const hasIt = keptForLater
+          ? `Your answer is held for ${asker}`
+          : !waitsForItsTurn
+            ? `${asker} has your answer and can go on`
+            : stopped === null
+              ? `${asker} reads your answer when the turn it is running ends`
+              : `Your answer is held for ${asker}`
+        const toldWhen = keptForLater
+          ? ', when what is held for it goes in,'
+          : waitsForItsTurn
+            ? ', when the turn it is running ends,'
+            : ''
         const said =
           answered.kept !== undefined
             ? `The question is closed. ${answered.kept}`
@@ -408,6 +422,11 @@ export function createAnswerQuestionTool(
                     ? 'its question does not ask about that part, so it was not sent.'
                     : 'its question does not ask about those parts, so they were not sent.') +
                   waits
+        const files = answered.files ?? []
+        const attachments =
+          answered.overflow === undefined
+            ? files
+            : [...files, sendOverflowAttachment(answered.overflow)]
         return answer(
           {
             outcome: 'ok',
@@ -417,6 +436,8 @@ export function createAnswerQuestionTool(
             // (`AnswerOutcome.notAsked`). Always present, so an empty list is a measurement —
             // `list_tasks`' `rows_unread` rule. Nothing is cut: a long answer is refused.
             not_asked: answered.notAsked,
+            ...(answered.receipt === undefined ? {} : { receipt: answered.receipt }),
+            ...(attachments.length === 0 ? {} : { resources: attachments }),
             // **D-017 · R1 — the asker could not be started now**: the answer waits for its next
             // start, and the sentence says why. Present only then.
             ...(answered.kept === undefined ? {} : { kept: answered.kept }),
@@ -426,7 +447,8 @@ export function createAnswerQuestionTool(
           // parts (standing rule 8.2).
           // **D-017 · R1** — and one that has not reached the asker yet says that instead of
           // *"has your answer"*: the question is closed, and the words wait for its next start.
-          stopped === null ? said : `${said} ${stopped.said}`,
+          (stopped === null ? said : `${said} ${stopped.said}`) +
+            (answered.overflow === undefined ? '' : outboundOverflowSaid(answered.overflow)),
         )
       }),
   }

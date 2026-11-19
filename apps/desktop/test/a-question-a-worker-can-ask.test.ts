@@ -588,8 +588,9 @@ describe('437 · a question a worker can ask its parent', () => {
       // two readings of one question cannot drift — see `questionText`.
       expect(words).toContain('answer_question')
       expect(words).toContain(requestId)
-      expect(words).toContain('postgres')
-      expect(words).toContain('sqlite')
+      expect(words).toContain('Part id "answer": choose one:')
+      expect(words).toContain('    - postgres\n    - sqlite')
+      expect(words.match(/postgres or sqlite\?/g)).toHaveLength(1)
       // ⚠️ **And it minted nothing**: only a give opens a piece (D-016), and the app gives nothing.
       // ⛔ **Read AFTER the delivery has landed** — the verb does not await it, so a synchronous read
       // here would pass against a verb that DOES mint.

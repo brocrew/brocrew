@@ -1,10 +1,6 @@
 import { TASK_OUTCOMES } from '../../../shared/task-contracts'
 import { MCP_SERVER_REQUEST_WHO } from '../../../shared/mcp-server-requests'
-import {
-  PASS_UP_RECIPIENTS,
-  type PassUpRecipient,
-  type QuestionRecipient,
-} from '../../../shared/question-contracts'
+import type { QuestionRecipient } from '../../../shared/question-contracts'
 import { type Provider, providerDescriptor, providerRecord, providerSchema } from '@brobot2/shared'
 import { QUESTION_RECIPIENTS, RECIPIENT_MEANS } from '../../../shared/questions'
 import { THEME_TOOL_NAMES } from '../../themes/tool-words'
@@ -128,7 +124,6 @@ export const TOOL_NAMES = [
 
   'propose_agent_rules',
 
-  'pass_question_up',
   // **D-009 · F012** — the asker takes back a question it asked (ruling 5). Appended: the
   // roster's order is pinned by index.
   'withdraw_question',
@@ -250,12 +245,6 @@ const QUESTION_RECIPIENT_INPUT = toolInputVocabulary(
   RECIPIENT_MEANS,
 )
 
-// sentences `RECIPIENT_MEANS` already says for those two.
-const PASS_UP_RECIPIENT_INPUT = toolInputVocabulary(
-  PASS_UP_RECIPIENTS as unknown as [PassUpRecipient, ...PassUpRecipient[]],
-  { 'the-parent': RECIPIENT_MEANS['the-parent'], 'a-person': RECIPIENT_MEANS['a-person'] },
-)
-
 // Who a requested MCP server would be for.
 const MCP_REQUEST_WHO_INPUT = toolInputVocabulary(MCP_SERVER_REQUEST_WHO, {
   everyone: "'everyone': every agent in this app may use it.",
@@ -280,12 +269,7 @@ export const TOOL_INPUT_ENUMS = {
   'create_agent:provider': PROVIDER_INPUT,
   'give_work:provider': PROVIDER_INPUT,
   'create_agent:kind': AGENT_KIND_INPUT,
-  // **611 · ONE vocabulary, advertised on BOTH question verbs** (HO-088 §2.1, §3.2). Two
-  // entries and not one shared name, because `TOOL_INPUT_ENUMS` is keyed by `verb:argument` and a
-  // reader asking *what may this verb be sent* must find its own row.
   'ask_question:who_answers': QUESTION_RECIPIENT_INPUT,
-  // **D-009 · no longer the same vocabulary**: a question is never passed to an agent by name.
-  'pass_question_up:who_answers': PASS_UP_RECIPIENT_INPUT,
   'find_files:where': FIND_WHERE_INPUT,
   'list_tasks:more': TASK_RECORD_SECTION_INPUT,
   'list_tasks:state': LISTING_INPUT,

@@ -13,6 +13,7 @@ import {
 import type { GiveOutcome, RuntimeHost } from '../src/main/runtime/runtime-host'
 import { createAgentStore } from '../src/renderer/src/lib/agent-store'
 import type { AgentIdentity, RuntimeBridge } from '../src/shared/runtime-ipc'
+import { theMessagesOf } from '../src/shared/runtime-ipc'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
 type Given = Extract<GiveOutcome, { ok: true }>
@@ -587,16 +588,62 @@ describe('services a person turns on and off', () => {
         question: String(asked.structured['question']),
         answers: [{ part: 'answer', answer: ['the third'] }],
       })
-      expect(answered.structured).toMatchObject({ outcome: 'ok' })
-      expect(answered.text).toContain(
-        'It could not be started now — Services are off, so a service’s conversation is not started.',
-      )
+      expect(answered.structured).toMatchObject({
+        outcome: 'ok',
+        receipt: { recipient: { id: service, address: service, state: { kind: 'queued' } } },
+      })
+      expect(answered.text).toContain(`Your answer is held for conversation ${service} · `)
+      expect(answered.text).toContain('It waits until services are on.')
       await new Promise((settled) => setTimeout(settled, 100))
       expect(wentIn(service, 'the third')).toBe(false)
       after.setServicesOn(true)
       await vi.waitFor(() => {
         expect(wentIn(service, 'the third')).toBe(true)
       })
+    })
+
+    it('opens a stopped service while off when a person answers its question card', async () => {
+      const { host, service, one, releaseTheTurn } = await aServiceWithWorkQueued()
+      const asked = await call(host, service, 'ask_question', {
+        piece: one.label,
+        question: 'Which floor should the work cover?',
+        who_answers: 'a-person',
+      })
+      expect(asked.structured).toMatchObject({ outcome: 'ok', question: expect.any(String) })
+      const question = String(asked.structured?.question)
+      releaseTheTurn()
+      await host.closeAll()
+      const after = world.aHost({ servicesOn: false })
+      expect(after.sessionIds).not.toContain(service)
+
+      await expect(
+        after.respondUserInput(
+          service,
+          question,
+          { kind: 'answer', answers: { answer: 'the third floor' } },
+          world.window,
+        ),
+      ).resolves.toEqual({ outcome: 'taken' })
+      await vi.waitFor(() => {
+        expect(after.sessionIds).toContain(service)
+        expect(
+          world
+            .ledger(service)
+            .flatMap((event) => (event.type === 'user_turn' ? theMessagesOf(event) : []))
+            .filter((part) => part.answeredQuestion?.requestId === question),
+        ).toEqual([
+          expect.objectContaining({
+            appNotice: 'an-answer-to-a-question',
+            text: expect.stringContaining('the third floor'),
+          }),
+        ])
+      })
+      expect(after.agentIdentities().servicesOn).toBeUndefined()
+      expect(
+        world
+          .ledger(service)
+          .filter((event) => event.type === 'user_decision' && event.requestId === question),
+      ).toHaveLength(1)
     })
 
     it.each([false, true])(

@@ -21,9 +21,6 @@ export type RequestState = (typeof REQUEST_STATES)[number]
  */
 export type QuestionRecipient = RequestRoutedEvent['to']
 
-/** One of {@link PASS_UP_RECIPIENTS}. */
-export type PassUpRecipient = (typeof PASS_UP_RECIPIENTS)[number]
-
 /**
  * 🔴 **Where a request went, and what put it there** (611, HO-088 §2) — one field, three arms, and
  * {@link ChannelRefusal} on the only arm that has one.
@@ -1515,16 +1512,6 @@ export const REQUEST_STATES = [
    */
   'recipient-ended',
 ] as const
-
-/**
- * 🔴 **D-009 · F012 — where a question may be PASSED: the parent, or a person** (ruling 2: *only a
- * question to your parent can be passed further up*, and the next hop is the chain's). ⛔ Never an
- * agent by name — passing on is climbing the chain, not choosing a peer.
- */
-export const PASS_UP_RECIPIENTS = [
-  'the-parent',
-  'a-person',
-] as const satisfies readonly QuestionRecipient[]
 
 /**
  * 🔴 **What NARROWED one walk over ledgers — the fact `434-relay-1` does not carry** (453,

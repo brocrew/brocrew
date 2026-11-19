@@ -1,7 +1,7 @@
 import { giveNotesToAWorkerOnItsCard } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { rmSync } from 'node:fs'
+import { readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
@@ -11,15 +11,12 @@ import { type AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { REQUEST_IS_OPEN } from '../src/shared/questions'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import {
   fixtureFolder,
   fixtureDatabase,
-  syntheticProviderHome,
-  neutralHostDeps,
-  fixtureProviderConfig,
+  numberedFixtureHostPaths,
   RecordingSink,
 } from './lib/host-fixture'
 
@@ -80,7 +77,7 @@ describe('D-009 · agents ask each other, and the answer comes back', () => {
   let hosts: RuntimeHost[]
   let order: AgentToolset[]
   let issued: FakeProviderSessions
-  let counter: number
+  let hostPaths: ReturnType<typeof numberedFixtureHostPaths>
   let clock: number
   let window: RecordingSink
   const tick = (): number => clock++
@@ -88,15 +85,9 @@ describe('D-009 · agents ask each other, and the answer comes back', () => {
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      ...neutralHostDeps(() => userData),
+      ...hostPaths,
       createRuntime: (provider: Provider) =>
         new ToolWatchingRuntime(provider, new Map(), order, issued),
-      prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
-      newSessionId: () => `sess_${++counter}`,
-      now: tick,
-      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built
@@ -108,7 +99,7 @@ describe('D-009 · agents ask each other, and the answer comes back', () => {
     db = fixtureDatabase(userData)
     clock = 9_000_000
     store = createSessionStore(db, tick)
-    counter = 0
+    hostPaths = numberedFixtureHostPaths(() => userData, tick)
     hosts = []
     order = []
     issued = new FakeProviderSessions()
@@ -259,16 +250,46 @@ describe('D-009 · agents ask each other, and the answer comes back', () => {
       const listed = await callOn(bo.tools, 'list_questions', {})
       expect(JSON.stringify(listed)).toContain(id)
 
-      const answered = await callOn(bo.tools, 'answer_question', {
+      const args = {
         question: id,
         asked_by: ada.id,
         answers: [{ part: 'answer', answer: ['the one in schema.sql'] }],
+      }
+      const refused = await callOn(bo.tools, 'answer_question', {
+        ...args,
+        resources: ['missing-answer.txt'],
+      })
+      expect(refused).toMatchObject({ outcome: 'refused', rail: 'resource-unreadable' })
+      expect(questionOf(ada.id, id)?.state).toBe('open')
+      const cwd = store.recordedOne(bo.id)?.cwd
+      if (cwd == null) throw new Error('the answerer has no working folder')
+      const body = 'The selected schema uses SQLite.\n'
+      writeFileSync(join(cwd, 'answer.txt'), body)
+      const answered = await callOn(bo.tools, 'answer_question', {
+        ...args,
+        resources: ['answer.txt'],
       })
       expect(answered.outcome, JSON.stringify(answered)).toBe('ok')
       // 🔴 **The way back, which F012 found missing**: Ada is sent Bo's answer, and the question is over.
       await waitFor(
         () => toldIn(ada.id).some((text) => text.includes('the one in schema.sql')),
         'the answer to reach Ada',
+      )
+      const task = store.rootOf(bo.id)
+      if (task === null) throw new Error('the answerer has no task')
+      const [resource] = store.resourcesOf(task.piece)
+      if (resource === undefined) throw new Error('the answer file was not recorded')
+      expect(answered.resources).toEqual([{ resource: resource.resource, name: 'answer.txt' }])
+      expect(answered.receipt).toMatchObject({
+        recorded: { kind: 'reply', id, taskLabel: null },
+        recipient: { id: ada.id, address: store.rootOf(ada.id)?.label },
+        attachments: answered.resources,
+      })
+      const read = host.readResource(resource.resource)
+      if (!read.ok || read.content.as !== 'file') throw new Error('the answer file is unreadable')
+      expect(readFileSync(read.content.path, 'utf8')).toBe(body)
+      expect(toldIn(ada.id).find((text) => text.includes('the one in schema.sql'))).toContain(
+        `Read answer.txt with read_document using ${resource.resource}.`,
       )
       // ⚑ **D-016 · commit 7 · R3 — Bo named by the piece it owns**, where the words printed its id.
       expect(toldIn(ada.id).find((text) => text.includes('the one in schema.sql'))).toContain(
@@ -354,65 +375,50 @@ describe('D-009 · agents ask each other, and the answer comes back', () => {
       expect(toldIn(ada.id).some((text) => text.includes('declined to answer'))).toBe(false)
     })
 
-    it('⛔ a decline’s reason is bounded like every reply: one unit over is refused, and nothing reaches the asker', async () => {
-      // ⚠️ `cannot_answer` is agent-written text that lands in ANOTHER conversation's turn — the
-      // hole `437` and `676` closed for answers, at the new field. ⚑ Literals, not the constant
-      // plus one (`reply-rails.ts`: a test that writes `REPLY_SUMMARY_LIMIT + 1` pins nothing).
+    it.each([2_000, 2_001])('delivers a declined reason of %i characters', async (length) => {
       const { ada, bo } = await adaAndBo()
-      // ⚑ **D-016 · about Ada's own root** (plan R14: a question about no piece holds nothing), so
-      // the wait below has something to say.
       const id = await askBo(ada, bo, { piece: rootOf(ada.id) })
-      const tooLong = 'x'.repeat(1281)
-      const refused = await callOn(bo.tools, 'answer_question', {
-        question: id,
-        asked_by: ada.id,
-        cannot_answer: tooLong,
-      })
-      expect(refused.outcome, JSON.stringify(refused).slice(0, 400)).toBe('refused')
-      // ⚑ The rail a long answer meets too, saying the length, the limit and what to do.
-      expect(refused.rail).toBe('answer-too-long')
-      expect(refused.detail).toMatchObject({ argument: 'cannot_answer', limit: 1280, was: 1281 })
-      expect(refused.reason).toContain('It is 1281 units long and a reason may be at most 1280')
-      expect(refused.reason).toContain('name its full path in cannot_answer')
-      // ⛔ **And nothing happened**: the question is still Bo's, and Ada still waits on it.
       expect(questionOf(ada.id, id)?.state).toBe('open')
       expect(waitOf(ada.id)).toBe('waiting-on-an-answer')
-
-      // ⚑ **THE PAIR**: a reason AT the limit is taken, and reaches Ada whole — so the bound is the
-      // limit, not a shorter one — and the refused one never reached her.
-      const atTheLimit = 'y'.repeat(1280)
+      const reason = 'x'.repeat(length - 1) + 'z'
       const declined = await callOn(bo.tools, 'answer_question', {
         question: id,
         asked_by: ada.id,
-        cannot_answer: atTheLimit,
+        cannot_answer: reason,
       })
-      expect(declined.outcome, JSON.stringify(declined).slice(0, 400)).toBe('ok')
-      await waitFor(
-        () => toldIn(ada.id).some((text) => text.includes(`It said: ${atTheLimit}`)),
-        'the decline at the limit to reach Ada',
-      )
+      expect(declined.outcome).toBe('ok')
       expect(questionOf(ada.id, id)?.state).toBe('rejected')
-      expect(toldIn(ada.id).some((text) => text.includes('x'.repeat(1281)))).toBe(false)
+      if (length === 2_000) {
+        expect(declined).not.toHaveProperty('resources')
+        await waitFor(
+          () => toldIn(ada.id).some((text) => text.includes(`It said: ${reason}`)),
+          'the full decline to reach Ada inline',
+        )
+        return
+      }
+      const hold = store.rootOf(bo.id)
+      if (hold === null) throw new Error('the answerer has no task')
+      const [file] = store.resourcesOf(hold.piece)
+      if (file === undefined) throw new Error('the full reason was not recorded as a file')
+      expect(declined.resources).toEqual([
+        { resource: file.resource, name: 'cannot-answer.txt', overflowField: 'cannot_answer' },
+      ])
+      const read = host.readResource(file.resource)
+      if (!read.ok || read.content.as !== 'file')
+        throw new Error('the declined reason is unreadable')
+      expect(readFileSync(read.content.path, 'utf8')).toBe(reason)
+      await waitFor(
+        () => toldIn(ada.id).some((text) => text.includes(`attached as ${file.resource}`)),
+        'the declined reason pointer to reach Ada',
+      )
+      expect(toldIn(ada.id).some((text) => text.includes(reason))).toBe(false)
     })
 
-    it('⛔ ruling 2: a question asked of you by name cannot be passed up', async () => {
+    it('keeps a question addressed to a peer open for that peer to answer', async () => {
       const { ada, bo } = await adaAndBo()
       const id = await askBo(ada, bo)
-      const passed = await callOn(bo.tools, 'pass_question_up', {
-        question: id,
-        asked_by: ada.id,
-        who_answers: 'a-person',
-      })
-      expect(passed.rail, JSON.stringify(passed)).toBe('a-question-asked-of-you-by-name-is-yours')
+      expect(bo.tools.tools.map((tool) => tool.name)).not.toContain('pass_question_up')
       expect(questionOf(ada.id, id)?.state).toBe('open')
-      // ⛔ …and the pass-up door never offers an agent by name.
-      const toAgent = await callOn(bo.tools, 'pass_question_up', {
-        question: id,
-        asked_by: ada.id,
-        who_answers: 'an-agent',
-      })
-      expect(toAgent.outcome).toBe('refused')
-      expect(JSON.stringify(toAgent)).toContain('the-parent, a-person')
     })
 
     it('⛔ only an agent the asker may name, and never itself', async () => {

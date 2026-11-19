@@ -1,7 +1,7 @@
 import { newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -34,7 +34,7 @@ import {
  * | § | finding | what this file pins |
  * |---|---|---|
  * | 1 | **F2** | ⛔ gone with D-016: document registration and the per-project task number it read |
- * | 2 | **F4** | `answer_question`'s free text over `REPLY_SUMMARY_LIMIT` is refused before anything is recorded; a label and an answer at the bound are untouched |
+ * | 2 | **F4** | Long answers keep their complete text in a file. A chosen label and an answer at the inline limit arrive whole. |
  * | 3 | **F1** | `list_tasks` and the wait read behind the Team plates and the rail ANSWER over a torn row and carry the count; a notice push still fires |
  * | 4 | **F3** | an agent's card counts the rows its two ledger reads passed over, and only those |
  * | 5 | **the wider search** | four more statements that RAISED on one torn row — the next launch, a reopen, every agent's question doors, the limit band — now answer |
@@ -177,6 +177,7 @@ describe('676 · the rest of R18, and the answer with no bound', () => {
    */
   const aPmAndItsWorker = async (
     brief = 'build it',
+    provider?: Provider,
   ): Promise<{
     pm: string
     worker: string
@@ -189,7 +190,10 @@ describe('676 · the rest of R18, and the answer with no bound', () => {
     await host.close(seeded, window)
     const pm = await personOpens('pm')
     const pmTools = theToolsetJustHandedOut()
-    const given = await call(pmTools, 'give_work', newConversationGive('worker', brief, brief))
+    const given = await call(pmTools, 'give_work', {
+      ...newConversationGive('worker', brief, brief),
+      ...(provider === undefined ? {} : { provider }),
+    })
     expect(given.structured.outcome, JSON.stringify(given.structured)).toBe('ok')
     return {
       pm,
@@ -243,7 +247,7 @@ describe('676 · the rest of R18, and the answer with no bound', () => {
 
   /* ═══════════════════ §2 · F4 — the answer is bounded: refused over it, never cut ═══════════════ */
 
-  describe('§2 · F4 — `answer_question`’s own words over the family’s bound are refused before anything is recorded', () => {
+  describe('§2 · F4 — long answers retain their full text', () => {
     /** ⚑ The worker's own question about its own piece — the HELD branch (`437`/`591`). */
     const workerAsks = async (workerTools: AgentToolset, piece: string): Promise<string> => {
       const asked = await call(workerTools, 'ask_question', {
@@ -269,10 +273,23 @@ describe('676 · the rest of R18, and the answer with no bound', () => {
         (event) => event.type === 'user_decision' && event.requestId === question,
       ).length
 
+    const attachmentOf = (answerer: string, full: string): string => {
+      const root = store.rootOf(answerer)
+      if (root === null) throw new Error('the answerer has no task')
+      const files = store.resourcesOf(root.piece)
+      expect(files).toHaveLength(1)
+      const file = files[0]
+      if (file === undefined) throw new Error('the answer has no attachment')
+      const read = host.readResource(file.resource)
+      if (!read.ok || read.content.as !== 'file') throw new Error('the answer is unreadable')
+      expect(readFileSync(read.content.path, 'utf8')).toBe(full)
+      return `The full text is attached as ${file.resource}: read it with read_document.`
+    }
+
     it('⚑ THE CONTROL: an answer AT the bound is taken and arrives whole, and no part is reported unsent', async () => {
       const { worker, pmTools, workerTools, task } = await aPmAndItsWorker()
       const question = await workerAsks(workerTools, task.piece)
-      const words = 'y'.repeat(1280)
+      const words = 'y'.repeat(2_000)
       const answered = await call(pmTools, 'answer_question', {
         question,
         answers: [{ part: 'answer', answer: [words] }],
@@ -281,7 +298,7 @@ describe('676 · the rest of R18, and the answer with no bound', () => {
       expect(answered.structured.not_asked).toEqual([])
       // ⚑ **D-016 · commit 7 · R3** — the asker named by the piece it owns, where it printed its id.
       // ⚑ Held behind a turn parked on a person's card, which an answer's stop never cuts.
-      const asker = `Ada (the owner of ${task.label} · build it)`
+      const asker = `conversation ${task.label} · build it`
       // ⚑ W4.134 — in full once, then by its name alone.
       const again = host.whatToCallTheConversation(worker)
       // ⚑ What it waits for is said once: the person's answer its turn is stopped on, then why the
@@ -297,60 +314,50 @@ describe('676 · the rest of R18, and the answer with no bound', () => {
       expect(answerTurns(worker)[0]).toContain(`answer: ${words}`)
     })
 
-    it('🔴 HELD branch: ONE unit over is refused with the length, the limit and what to do — nothing is recorded, and the same caller answers again', async () => {
-      const { worker, pmTools, workerTools, task } = await aPmAndItsWorker()
+    it('keeps a held answer one unit over the inline limit and settles the question once', async () => {
+      const { pm, worker, pmTools, workerTools, task } = await aPmAndItsWorker()
       const question = await workerAsks(workerTools, task.piece)
-      // ⛔ **The literal 1281**, never `REPLY_SUMMARY_LIMIT + 1` — a test that spells the constant
-      // moves with it and pins nothing (`a-bound-written-as-the-constant-cannot-pin-it`).
-      const refused = await call(pmTools, 'answer_question', {
-        question,
-        answers: [{ part: 'answer', answer: ['e'.repeat(1281)] }],
-      })
-      expect(refused.structured.outcome, JSON.stringify(refused.structured)).toBe('refused')
-      expect(refused.structured).toMatchObject({
-        rail: 'answer-too-long',
-        retryable: true,
-        remedy: 'shorten-the-answer-or-put-the-long-form-in-a-file',
-        detail: { question, argument: 'answers', limit: 1280, was: 1281 },
-      })
-      expect(refused.text).toContain(
-        'shorten your answer, or put the long form in a file and name its full path in your answer',
-      )
-      expect(refused.text).toContain('1281 units long and an answer may carry at most 1280')
-      expect(refused.text).toContain('the question is still waiting for your answer')
-      expect(decisionsOn(worker, question)).toBe(0)
-
-      // ⚑ **THE PAIR**: the same question, answered again within the bound, is taken whole.
-      const answered = await call(pmTools, 'answer_question', {
-        question,
-        answers: [{ part: 'answer', answer: ['see /tmp/the-long-form.md'] }],
-      })
-      expect(answered.structured.outcome, JSON.stringify(answered.structured)).toBe('ok')
+      const preview = 'e'.repeat(2_000)
+      const full = `${preview}z`
+      const args = { question, answers: [{ part: 'answer', answer: [full] }] }
+      const answered = await call(pmTools, 'answer_question', args)
+      expect(answered.structured.outcome).toBe('ok')
+      expect(answered.text).toContain('Your answer was 2,001 characters')
+      const pointer = attachmentOf(pm, full)
+      expect(decisionsOn(worker, question)).toBe(1)
+      const duplicate = await call(pmTools, 'answer_question', args)
+      expect(duplicate.structured.rail).toBe('question-has-already-ended')
       expect(decisionsOn(worker, question)).toBe(1)
       await letTheTurnFinish(worker)
       await waitFor(() => answerTurns(worker).length > 0, 'the answer to reach the worker')
       expect(answerTurns(worker)).toHaveLength(1)
-      expect(answerTurns(worker)[0]).toContain('answer: see /tmp/the-long-form.md')
-      expect(answerTurns(worker)[0]).not.toContain('e'.repeat(1280))
+      expect(answerTurns(worker)[0]).toContain(`answer: ${preview} ${pointer}`)
+      expect(answerTurns(worker)[0]).not.toContain(full)
     })
 
-    it('⚠️ units are UTF-16 units: a character of TWO counts as two', async () => {
-      const { pmTools, workerTools, task } = await aPmAndItsWorker()
+    it('keeps both halves of a character at the UTF-16 preview boundary', async () => {
+      const { pm, worker, pmTools, workerTools, task } = await aPmAndItsWorker()
       const question = await workerAsks(workerTools, task.piece)
-      const words = `${'w'.repeat(1279)}😀`
-      expect(words.length).toBe(1281)
-      const refused = await call(pmTools, 'answer_question', {
+      const preview = 'w'.repeat(1_999)
+      const full = `${preview}😀`
+      expect(full.length).toBe(2_001)
+      const answered = await call(pmTools, 'answer_question', {
         question,
-        answers: [{ part: 'answer', answer: [words] }],
+        answers: [{ part: 'answer', answer: [full] }],
       })
-      expect(refused.structured).toMatchObject({ rail: 'answer-too-long', detail: { was: 1281 } })
+      expect(answered.structured.outcome).toBe('ok')
+      const pointer = attachmentOf(pm, full)
+      await letTheTurnFinish(worker)
+      await waitFor(() => answerTurns(worker).length > 0, 'the answer to reach the worker')
+      expect(answerTurns(worker)[0]).toContain(`${preview} ${pointer}`)
+      expect(answerTurns(worker)[0]).not.toContain('😀')
     })
 
-    it('🔴 PROVIDER branch: a long typed answer is refused and the provider is handed nothing; a chosen LABEL is not counted', async () => {
-      const { worker, pmTools, workerHandle } = await aPmAndItsWorker()
+    it('gives a provider an inline preview of a long answer and keeps its offered label intact', async () => {
+      const { pm, worker, pmTools, workerHandle } = await aPmAndItsWorker()
       // ⚑ **A label longer than the bound**, which only a provider can offer — `ask_question`
       // refuses offered options past it. ⛔ It is the asker's words and must match by exact string.
-      const long = 'L'.repeat(1400)
+      const long = 'L'.repeat(2_400)
       const raise = async (): Promise<{ id: string; answered: Promise<unknown> }> => {
         const raised = workerHandle.simulateUserInput('which?', [long, 'short'], false, {
           allowOther: true,
@@ -366,28 +373,26 @@ describe('676 · the rest of R18, and the answer with no bound', () => {
       }
 
       const typed = await raise()
-      let handed = false
-      void typed.answered.then(() => (handed = true))
+      const full = 'v'.repeat(3_000)
       const free = await call(pmTools, 'answer_question', {
         question: typed.id,
-        answers: [{ part: 'q0', answer: ['v'.repeat(3000)] }],
+        answers: [{ part: 'q0', answer: [full] }],
       })
-      expect(free.structured).toMatchObject({
-        outcome: 'refused',
-        rail: 'answer-too-long',
-        detail: { argument: 'answers', limit: 1280, was: 3000 },
-      })
-      await new Promise((resolve) => setTimeout(resolve, 20))
-      expect(handed).toBe(false)
-      expect(decisionsOn(worker, typed.id)).toBe(0)
-      // ⚑ …and the same request takes a shorter answer, whole.
-      const short = await call(pmTools, 'answer_question', {
-        question: typed.id,
-        answers: [{ part: 'q0', answer: ['v'.repeat(1280)] }],
-      })
-      expect(short.structured.outcome, JSON.stringify(short.structured)).toBe('ok')
+      expect(free.structured.outcome).toBe('ok')
+      const pointer = attachmentOf(pm, full)
+      expect(decisionsOn(worker, typed.id)).toBe(1)
       const given = (await typed.answered) as { answers: Record<string, string[]> }
-      expect(given.answers.q0).toEqual(['v'.repeat(1280)])
+      expect(given.answers.q0).toEqual([`${full.slice(0, 2_000)} ${pointer}`])
+
+      const inline = await raise()
+      const atTheLimit = 'v'.repeat(2_000)
+      const short = await call(pmTools, 'answer_question', {
+        question: inline.id,
+        answers: [{ part: 'q0', answer: [atTheLimit] }],
+      })
+      expect(short.structured.outcome).toBe('ok')
+      const uncut = (await inline.answered) as { answers: Record<string, string[]> }
+      expect(uncut.answers.q0).toEqual([atTheLimit])
 
       const chose = await raise()
       const label = await call(pmTools, 'answer_question', {
@@ -400,23 +405,110 @@ describe('676 · the rest of R18, and the answer with no bound', () => {
       expect(chosen.answers.q0).toEqual([long])
     })
 
-    it('🔴 the bound is on the WHOLE answer: ten strings of 1,280 are refused as 12,800 (`676` review)', async () => {
-      const { worker, pmTools, workerTools, task } = await aPmAndItsWorker()
+    it.each(['claude', 'codex'] as const)(
+      '%s keeps the native card open for invalid long values and preserves its padded choice',
+      async (provider) => {
+        const { pm, worker, pmTools, workerHandle } = await aPmAndItsWorker('build it', provider)
+        expect(workerHandle.ref.provider).toBe(provider)
+        const padded = '  Exact choice  '
+        const long = 'v'.repeat(2_001)
+        const raise = async (multiSelect: boolean) => {
+          const card = workerHandle.simulateUserInput('which?', [padded], multiSelect, {
+            allowOther: true,
+          })
+          await waitFor(
+            () => store.routedRequestsOf(worker).some((row) => row.requestId === card.id),
+            'the native question to be routed',
+          )
+          return card
+        }
+        const single = await raise(false)
+        const invalid = await call(pmTools, 'answer_question', {
+          question: single.id,
+          answers: [{ part: 'q0', answer: [long, 'extra'] }],
+        })
+        expect(invalid.structured).toMatchObject({
+          outcome: 'refused',
+          rail: 'that-answer-cannot-be-sent',
+        })
+        expect(
+          store.routedRequestsOf(worker).find((row) => row.requestId === single.id)?.state,
+        ).toBe('open')
+        expect(decisionsOn(worker, single.id)).toBe(0)
+        const root = store.rootOf(pm)
+        if (root === null) throw new Error('the answerer has no task')
+        expect(store.resourcesOf(root.piece)).toEqual([])
+        const corrected = await call(pmTools, 'answer_question', {
+          question: single.id,
+          answers: [{ part: 'q0', answer: [padded] }],
+        })
+        expect(corrected.structured.outcome).toBe('ok')
+        expect(await single.answered).toMatchObject({ answers: { q0: [padded] } })
+
+        const multiple = provider === 'claude'
+        const longAnswer = await raise(multiple)
+        const original = multiple ? [long, padded] : [long]
+        const valid = await call(pmTools, 'answer_question', {
+          question: longAnswer.id,
+          answers: [{ part: 'q0', answer: original }],
+        })
+        expect(valid.structured.outcome).toBe('ok')
+        const pointer = attachmentOf(pm, multiple ? `q0: ${original.join(', ')}` : long)
+        const preview = `${long.slice(0, 2_000)} ${pointer}`
+        expect(await longAnswer.answered).toMatchObject({
+          answers: { q0: multiple ? [preview, padded] : [preview] },
+        })
+        expect(decisionsOn(worker, longAnswer.id)).toBe(1)
+      },
+    )
+
+    it('delivers the readable long reason after declining a native Codex question', async () => {
+      const { pm, worker, pmTools, workerHandle } = await aPmAndItsWorker('build it', 'codex')
+      expect(workerHandle.ref.provider).toBe('codex')
+      const card = workerHandle.simulateUserInput('which?', ['one'])
+      await waitFor(
+        () => store.routedRequestsOf(worker).some((row) => row.requestId === card.id),
+        'the native Codex question to be routed',
+      )
+      const reason = 'r'.repeat(2_001)
+      const declined = await call(pmTools, 'answer_question', {
+        question: card.id,
+        cannot_answer: reason,
+        interrupt: false,
+      })
+      expect(declined.structured).toMatchObject({ outcome: 'ok', question: card.id })
+      expect(await card.answered).toMatchObject({ kind: 'reject' })
+      const pointer = attachmentOf(pm, reason)
+      expect(decisionsOn(worker, card.id)).toBe(1)
+      await letTheTurnFinish(worker)
+      await waitFor(
+        () =>
+          ledger(worker).some(
+            (row) =>
+              row.type === 'user_turn' &&
+              row.text.includes(`Reason for declining question ${card.id}`) &&
+              row.text.includes(pointer),
+          ),
+        'the declined reason to reach Codex in a readable notice',
+      )
+    })
+
+    it('attaches the whole answer when its short values exceed the limit together', async () => {
+      const { pm, worker, pmTools, workerTools, task } = await aPmAndItsWorker()
       const question = await workerAsks(workerTools, task.piece)
-      // ⛔ **Bounding each string** let this through as a 12,800-unit turn — `ask_question`'s
-      // *"an unbounded list defeats the one bound this door applies"*.
-      const refused = await call(pmTools, 'answer_question', {
+      const values = Array.from({ length: 10 }, (_, i) => String(i).repeat(1_280))
+      const answered = await call(pmTools, 'answer_question', {
         question,
-        answers: [
-          { part: 'answer', answer: Array.from({ length: 10 }, (_, i) => String(i).repeat(1280)) },
-        ],
+        answers: [{ part: 'answer', answer: values }],
       })
-      expect(refused.structured).toMatchObject({
-        outcome: 'refused',
-        rail: 'answer-too-long',
-        detail: { was: 12800, limit: 1280 },
-      })
-      expect(decisionsOn(worker, question)).toBe(0)
+      expect(answered.structured.outcome).toBe('ok')
+      expect(answered.text).toContain('Your answer was 12,800 characters')
+      const pointer = attachmentOf(pm, `answer: ${values.join(', ')}`)
+      expect(decisionsOn(worker, question)).toBe(1)
+      await letTheTurnFinish(worker)
+      await waitFor(() => answerTurns(worker).length > 0, 'the answer to reach the worker')
+      expect(answerTurns(worker)[0]).toContain(`${values[0]}, ${'1'.repeat(720)} ${pointer}`)
+      expect(answerTurns(worker)[0]).not.toContain(values[2])
     })
 
     it('⛔ a part the question never asked does not reach the asker, is not counted, and is named in `not_asked`', async () => {
@@ -426,7 +518,7 @@ describe('676 · the rest of R18, and the answer with no bound', () => {
         question,
         answers: [
           { part: 'answer', answer: ['yes'] },
-          { part: 'bogus', answer: ['b'.repeat(1281)] },
+          { part: 'bogus', answer: ['b'.repeat(2_001)] },
         ],
       })
       expect(answered.structured.outcome, JSON.stringify(answered.structured)).toBe('ok')

@@ -561,6 +561,21 @@ export async function aGiverAndHelper() {
   return { world, host, giver }
 }
 
+export async function openServiceAndTwoCallers(
+  world: AServiceWorld,
+  opts: { servicesOn?: boolean } = {},
+): Promise<{ host: RuntimeHost; first: string; second: string }> {
+  world.anAgent('browser-driver')
+  world.anAgent('caller', 'nothing kept')
+  world.anAgent('other-caller', 'nothing kept')
+  const host = world.aHost(opts)
+  return {
+    host,
+    first: await world.aPersonOpens(host, 'caller'),
+    second: await world.aPersonOpens(host, 'other-caller'),
+  }
+}
+
 export function acceptedGive(outcome: GiveOutcome): Extract<GiveOutcome, { ok: true }> {
   if (!outcome.ok) throw new Error(`refused (${outcome.refusal.rail}): ${outcome.refusal.reason}`)
   return outcome

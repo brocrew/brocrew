@@ -88,7 +88,6 @@ const THE_SPLIT: Readonly<Record<ToolName, BeyondItsRails>> = {
   // question it carries stays open and stays the caller's. ⚑ Its entitlement is the LOOKUP — the
   // requests routed to this caller — so a question raised inside a family it did not start is an
   // id that finds nothing rather than a rail it can trip.
-  pass_question_up: 'nothing-its-rails-do-not-cover',
   answer_question: 'nothing-its-rails-do-not-cover',
   message_agent: 'nothing-its-rails-do-not-cover',
   compact_agent: 'nothing-its-rails-do-not-cover',

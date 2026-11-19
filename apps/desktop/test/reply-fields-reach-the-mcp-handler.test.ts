@@ -30,6 +30,7 @@ describe('reply field failures travel through the real MCP server', () => {
   let otherTool: typeof tool
   let updateTool: typeof tool
   let closes: (() => Promise<void>)[]
+  let parent: string
   let calls: AgentToolAnswer[]
 
   beforeEach(async () => {
@@ -37,7 +38,7 @@ describe('reply field failures travel through the real MCP server', () => {
     world.anAgent('parent', 'normal')
     world.anAgent('worker', 'normal')
     host = world.aHost()
-    const parent = await world.aPersonOpens(host, 'parent')
+    parent = await world.aPersonOpens(host, 'parent')
     const given = await world.gives(host, parent, 'worker')
     if (!given.ok) throw new Error('fixture work was refused')
     worker = given.owner
@@ -365,18 +366,41 @@ describe('reply field failures travel through the real MCP server', () => {
       })
     }
 
-    it(`${adapter}: an overlong alias names the exact cut without echoing its words`, async () => {
-      const text = await handBack(adapter, {
-        piece,
-        outcome: 'done',
-        message: 'PRIVATE_SUMMARY'.padEnd(1306, 'x'),
+    it(`${adapter}: a long alias saves a readable file and echoes only its receipt`, async () => {
+      const message = 'PRIVATE_SUMMARY'.padEnd(2_306, 'x')
+      const text = await handBack(adapter, { piece, outcome: 'done', message })
+      expect(calls.at(-1)?.structured).toMatchObject({ outcome: 'ok' })
+      const [file] = world.store.resourcesOf(piece)
+      expect(file).toMatchObject({ name: 'summary.txt', bytes: 2_306 })
+      if (file === undefined) throw new Error('the reply attachment was not recorded')
+      expect(text).toContain(`the full text is attached as summary.txt (${file.resource})`)
+      expect(text).not.toContain('PRIVATE_SUMMARY')
+      expect(reportedMethod()).toMatchObject({ piece, outcome: 'done', resources: [file.resource] })
+      expect(reportedMethod()).not.toHaveProperty('savedMethod')
+      const read = host.readResource(file.resource)
+      if (!read.ok || read.content.as !== 'file')
+        throw new Error('the reply attachment is unreadable')
+      expect(readFileSync(read.content.path, 'utf8')).toBe(message)
+      expect(calls.at(-1)?.structured?.receipt).toMatchObject({
+        recorded: { kind: 'reply', id: piece },
+        recipient: { id: parent },
+        attachments: [{ resource: file.resource, name: 'summary.txt', overflowField: 'summary' }],
       })
-      replyIsRefused()
-      expect(text).toContain(
-        'the summary is 1,306 characters; the most is 1,280, so cut at least 26.',
+      const readDocument = agentToolsFor(host, parent).tools.find(
+        (one) => one.name === 'read_document',
       )
-      expect(JSON.stringify(recorded())).not.toContain('PRIVATE_SUMMARY')
-      expect(reportedMethod()).toBeUndefined()
+      if (readDocument === undefined) throw new Error('the giver cannot read a document')
+      const actual = await readDocument.call({ resource: file.resource })
+      expect(actual.text).toContain(read.content.path)
+      expect(
+        world.sent.some(
+          ({ as, words }) =>
+            as === 'parent' &&
+            words.includes(
+              `The full text is attached as ${file.resource}: read it with read_document.`,
+            ),
+        ),
+      ).toBe(true)
     })
 
     for (const ownRequest of [false, true]) {
@@ -412,7 +436,7 @@ describe('reply field failures travel through the real MCP server', () => {
       })
     }
 
-    for (const args of [{ summary: '' }, { summary: 'x'.repeat(1281) }]) {
+    for (const args of [{ summary: '' }, { summary: 'Valid words', piece: 'W999999' }]) {
       it(`${adapter}: ${args.summary === '' ? 'malformed' : 'host-refused'} replies never invite saving`, async () => {
         const memory = vi.spyOn(host, 'maySaveMemory')
         const text = await handBack(adapter, { piece, outcome: 'done', ...args })
@@ -595,12 +619,8 @@ describe('reply field failures travel through the real MCP server', () => {
     expect(recorded()[0]!.told?.text).toBe(calls[0]!.structured!.reason)
   })
 
-  it('retains host length and result-document rails after transport admission', async () => {
+  it('retains the host result-document rail after transport admission', async () => {
     const wire = await server()
-    expect(words(await wire.call({ piece, outcome: 'done', summary: 'x'.repeat(1281) }))).toContain(
-      'the most is 1,280',
-    )
-    expect(calls.at(-1)!.structured?.rail).toBe('summary-too-long')
     words(await wire.call({ piece, outcome: 'done', summary: 'result', result_document: [] }))
     expect(calls.at(-1)!.structured?.rail).toBe('result-document-not-returned')
     expect(world.store.piecesOwnedBy(worker).map((one) => one.piece)).toEqual([piece])

@@ -1,6 +1,5 @@
 import type { PersistedEventInfo, TranscriptEvent } from './conversation-events'
 import type { QuestionEndedWithItsPieceEvent, RequestRoutedEvent } from './question-contracts'
-import { PASS_UP_RECIPIENTS } from './question-contracts'
 import type {
   AboutWork,
   AboutWorkIs,
@@ -12,7 +11,6 @@ import type {
   EscalationLink,
   LedgerWalkKind,
   OfferedAnswer,
-  PassUpRecipient,
   QuestionRecipient,
   RaisedQuestion,
   RequestOnlyAPersonCanSettle,
@@ -100,11 +98,6 @@ export function theChannelRefusalIn(request: RoutedRequest): ChannelRefusal | nu
  */
 export function isQuestionRecipient(value: unknown): value is QuestionRecipient {
   return typeof value === 'string' && (QUESTION_RECIPIENTS as readonly string[]).includes(value)
-}
-
-/** ⛔ {@link isQuestionRecipient}'s rule, for the pass-up door's narrower list. */
-export function isPassUpRecipient(value: unknown): value is PassUpRecipient {
-  return typeof value === 'string' && (PASS_UP_RECIPIENTS as readonly string[]).includes(value)
 }
 
 /**

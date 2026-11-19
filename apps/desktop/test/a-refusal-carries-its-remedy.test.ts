@@ -1148,15 +1148,20 @@ describe('425 · a refusal carries its remedy', () => {
         'the brief’s turn to end',
       )
 
-      const refused = await callerOf(host, child)('reply_to_parent', {
-        piece: first.label,
-        outcome: 'done',
-        summary: 'x'.repeat(REPLY_SUMMARY_LIMIT + 1),
-      })
-      expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
-      expect(refused.rail).toBe('summary-too-long')
-      // **The model**, which already had the sentence and now has the word beside it.
-      expect(refused.remedy).toBe('shorten-the-summary-and-attach-the-long-form')
+      const historical = refuseReply('summary-too-long', { was: REPLY_SUMMARY_LIMIT + 1 })
+      store.append(
+        child,
+        store.nextOrdinal(child),
+        {
+          type: 'tool_refused',
+          tool: 'reply_to_parent',
+          rail: historical.rail,
+          permanence: historical.permanence,
+          retryable: historical.retryable,
+          remedy: historical.remedy,
+        },
+        tick(),
+      )
 
       // **The ledger**, which had neither.
       const row = theRefusalIn(child)

@@ -1,3 +1,4 @@
+import { recordForwardedQuestion } from './lib/forwarded-question-fixture'
 import { newConversationGive } from './lib/give-fixture'
 import { askParentWhichSchema } from './helpers/ask-parent-which-schema'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -14,7 +15,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from './helpers/giver-notice-host'
 import type { RuntimeEventSink } from './helpers/giver-notice-host'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { REQUEST_IS_OPEN } from '../src/shared/questions'
@@ -346,7 +347,7 @@ describe('608 · the turn that no longer waits', () => {
      * real arm, with nothing in the test driving a sweep: a question a parent will not answer
      * still reaches a person. 🔴 **What moved is that the last step is an ACT.**
      */
-    it('🔴 the ask reaches a PERSON when the parent says so, with no clock in between', async () => {
+    it('a recorded forward reaches the person without an escalation', async () => {
       const { pm, worker, workerTools, piece } = await aWorkerHoldingWork()
       expect(host.questionsForAPerson().rows).toEqual([])
       const said = await callOn(workerTools, 'ask_question', {
@@ -365,14 +366,17 @@ describe('608 · the turn that no longer waits', () => {
       expect(host.questionsForAPerson().rows).toEqual([])
       expect(ledger(worker).some((event) => event.type === 'request_escalated')).toBe(false)
 
-      // ⚑ **And the ACT, which is what carries it now.**
-      const passed = await callOn(agentToolsFor(host, pm), 'pass_question_up', {
-        question: said.question,
-        who_answers: 'a-person',
+      if (typeof said.question !== 'string')
+        throw new Error('the original question was not recorded')
+      const forwarded = recordForwardedQuestion(store, tick, {
+        asker: worker,
+        original: said.question,
+        forwarder: pm,
+        to: 'a-person',
       })
-      expect(passed.outcome, JSON.stringify(passed)).toBe('ok')
+      expect(forwarded).not.toBe(said.question)
       expect(host.questionsForAPerson().rows.map((one) => one.request.requestId)).toEqual([
-        passed.question,
+        forwarded,
       ])
       // ⛔ **Still no escalation row anywhere**, which is the whole of `HO-088` §3.1.
       expect(ledger(pm).some((event) => event.type === 'request_escalated')).toBe(false)

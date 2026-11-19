@@ -18,7 +18,7 @@ export type SendRecipientState =
 
 export interface SendReceipt {
   readonly recorded: {
-    readonly kind: 'task' | 'message' | 'question'
+    readonly kind: 'task' | 'message' | 'question' | 'reply'
     readonly id: string
     readonly taskLabel: string | null
   }
@@ -36,5 +36,5 @@ export interface SendReceipt {
 
 /** Refusals whose published text starts directly with the app's reason. */
 export function hasDirectRefusalOpening(text: string): boolean {
-  return text.startsWith('Not sent: ')
+  return text.startsWith('Not sent: ') || text.startsWith('Not answered: ')
 }

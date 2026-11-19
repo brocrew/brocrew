@@ -1036,7 +1036,7 @@ describe('347 · the five tools', () => {
       // or everywhere.
       // ⚑ `request_mcp_server` asks the person to register an outside MCP server.
       // ⚑ `request_action` asks the person to do something, as a to-do.
-      expect(offered).toHaveLength(35)
+      expect(offered).toHaveLength(34)
       expect(offered.at(-2)).toBe('compact_agent')
       expect(offered.at(-1)).toBe('rename_conversation')
     })
@@ -1068,11 +1068,6 @@ describe('347 · the five tools', () => {
         // than the one above stretched, because `update_work` still reaches only the caller's own.
         | 'a piece it or its profile holds or gave'
         | 'a question it was sent'
-        | 'a question it was asked'
-        // 🔴 **611 · a question this app ROUTED TO this caller** (HO-088 §3.2) — the subject
-        // `pass_question_up` names. ⛔ Not `'a question it was sent'`, which is
-        // `answer_question`'s: that one SETTLES the request and this one carries it further, and a
-        // table whose job is to say what a verb names may not fold two acts into one word.
         // ⚑ **D-009 · a question the caller ITSELF asked** — the subject `withdraw_question` names.
         | 'a question it asked'
         | 'an agent that does not exist yet'
@@ -1146,12 +1141,6 @@ describe('347 · the five tools', () => {
         // that hands work to somebody not yet named is the shape this census is about, and naming
         // the work you already hold is the opposite of it.
         ask_question: 'a piece it was given',
-        // 🔴 **611 · it names a QUESTION, which is a subject this table already has** (HO-088
-        // §3.2). ⛔ It does not name an agent and cannot: the next hop is one of two ends, and
-        // every spelling of an addressee is refused by the same list `reply_to_parent` refuses.
-        // ⚑ And the question it names is one this app ROUTED TO IT, which is the opposite of
-        // handing work to somebody not yet named.
-        pass_question_up: 'a question it was asked',
         // 🔴 **488 · it was `'nothing at all'`, the strongest form of that word on this list**
         // (HO-020's `list_profiles`): it advertised NO argument. ⚑ **F009 · it names an agent, by its
         // profile, now** — whose record to read: what that agent has done, before a caller chooses
@@ -1226,15 +1215,6 @@ describe('347 · the five tools', () => {
         if (names === 'a piece it or its profile holds or gave') {
           expect(shape, tool.name).toContain('piece')
         }
-        // ⛔ **611 · the subject is named, and the addressee list is refused here too** (HO-088
-        // §3.2). ⚑ `who_answers` is NOT one of `REPLY_ADDRESSING_KEYS` — it is a two-member
-        // vocabulary rather than a destination — which is exactly what the loop below measures.
-        if (names === 'a question it was asked') {
-          expect(shape, tool.name).toContain('question')
-          for (const aimed of REPLY_ADDRESSING_KEYS) {
-            expect(shape, `${tool.name} advertises ${aimed}`).not.toContain(aimed)
-          }
-        }
         if (names === 'a piece it was given') {
           expect(shape, tool.name).toContain('piece')
           // ⛔ **And it advertises no spelling of a destination** — §2's ruling, asserted against the
@@ -1305,6 +1285,7 @@ describe('347 · the five tools', () => {
             'asked_by',
             'answers',
             'cannot_answer',
+            'resources',
             'interrupt',
           ])
           for (const aimed of REPLY_ADDRESSING_KEYS) {

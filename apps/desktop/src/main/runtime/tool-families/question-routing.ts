@@ -1,10 +1,6 @@
 import { toolFieldProblems } from './field-problems'
 import { A_CONVERSATION_CANNOT_ASK_ITSELF } from './launch-failures'
-import {
-  A_PERSON,
-  DONE,
-  THE_CONVERSATION_THAT_GAVE_YOU_THIS_WORK,
-} from '../agent-tool-answer-words'
+import { DONE } from '../agent-tool-answer-words'
 import {
   type AgentToolAnswer,
   type AgentToolDefinition,
@@ -14,23 +10,14 @@ import {
 import { type AgentToolHost } from './host'
 import { type Caller } from '../conversation-caller'
 import { DO_IT_HERE, MOVE_IT } from '../../../shared/move-request'
-import {
-  PASS_UP_RECIPIENTS,
-  type PassUpRecipient,
-  type QuestionRecipient,
-} from '../../../shared/question-contracts'
-import {
-  QUESTION_RECIPIENTS,
-  isPassUpRecipient,
-  isQuestionRecipient,
-} from '../../../shared/questions'
+import type { QuestionRecipient } from '../../../shared/question-contracts'
+import { QUESTION_RECIPIENTS, isQuestionRecipient } from '../../../shared/questions'
 import {
   REPLY_ADDRESSING_KEYS,
   TOOL_INPUT_ENUMS,
   type ToolName,
   documentedToolEnum,
 } from './catalog'
-import { REPLY_SUMMARY_LIMIT } from '../reply-rails'
 import { answer, refusalAnswer, refusedAsk, sendAnswer } from './answers'
 import { THE_ANSWER_ARRIVES_AS_A_MESSAGE } from '../send-receipt'
 import { INLINE_TEXT_LIMIT } from '../send-overflow'
@@ -41,25 +28,13 @@ import { outOfReachAnswer } from './delivery'
 import { workRequestRefused } from '../spawn-rails'
 import { z } from 'zod'
 import {
-  ASKED_BY_ARGUMENT,
-  ASKED_BY_SAYS,
   ASK_AGENT_ARGUMENT,
   ASK_OPTIONS_ARGUMENT,
   ASK_PIECE_ARGUMENT,
   ASK_QUESTION_ARGUMENT,
   ASK_WHO_ARGUMENT,
   type AskQuestionArguments,
-  PASS_CONTEXT_ARGUMENT,
-  PASS_QUESTION_ARGUMENT,
-  PASS_WHO_ARGUMENT,
-  type PassQuestionUpArguments,
 } from './question-arguments'
-
-/** Where a question goes, in words rather than the recipient's internal name. */
-const ROUTED_TO: Readonly<Record<PassUpRecipient, string>> = {
-  'the-parent': THE_CONVERSATION_THAT_GAVE_YOU_THIS_WORK,
-  'a-person': A_PERSON,
-}
 
 export function createAskQuestionTool(
   host: Pick<AgentToolHost, 'raiseAQuestion' | 'tookItsPlace' | 'whyItIsOutOfReach'>,
@@ -102,7 +77,7 @@ export function createAskQuestionTool(
           .string()
           .optional()
           .describe(
-            'The piece this question is about, by its label (W1.2) or id. The message that gave it to you names it, and list_tasks lists what you hold. Leave it out when you hold only one piece — one whose brief has not reached you yet does not count; with an-agent, leave it out when the question is about none of your work.',
+            'The task this question is about, by its label (W1.2) or id. The message that gave it to you names it, and list_tasks lists what you hold. Leave it out when you hold only one task — one whose brief has not reached you yet does not count; with an-agent, leave it out when the question is about none of your work.',
           ),
         agent: z
           .string()
@@ -300,142 +275,6 @@ export function createAskQuestionTool(
             overflowSaid,
         )
       }).then(sendAnswer),
-  }
-}
-
-export function createPassQuestionUpTool(
-  host: Pick<AgentToolHost, 'addressOfUnder' | 'passQuestionUp' | 'theConversationAddressed'>,
-  by: Caller,
-  me: string,
-  guarded: (run: () => Promise<AgentToolAnswer>) => Promise<AgentToolAnswer>,
-): AgentToolDefinition & { readonly name: ToolName } {
-  return {
-    name: 'pass_question_up',
-
-    description:
-      'Pass a question you were asked on to somebody else, exactly as it was asked. Use it when the question is not yours to answer: the words travel unchanged — you cannot reword them — and you may add context beside them. Say who the next hop is: your own parent, or a person. The question you were asked stays open and stays yours: the answer comes back to you, and answer_question is how you then give it to whoever asked. This call does not wait.',
-    /**
-     * **Advertised against a TYPE** — see {@link PassQuestionUpArguments}, including why there
-     * is no field for the question's words.
-     */
-    /**
-     * **486 · the rails are the whole gate** (HO-031 §2.4).
-     *
-     * **Its entitlement is the LOOKUP**, exactly as `answer_question`'s is: the requests this
-     * caller can name are the ones routed to it, so a question raised inside a family it did not
-     * start is not a refusal it can trip — it is an id that finds nothing.
-     */
-    beyondItsRails: 'nothing-its-rails-do-not-cover',
-    input: {
-      question: z
-        .string()
-        .describe(
-          'The question being carried, by the id the app gave it. list_questions names the ones you were asked.',
-        ),
-      // **679** — `answer_question`'s field, for its reason: see {@link PassQuestionUpArguments}.
-      [ASKED_BY_ARGUMENT]: z.string().optional().describe(ASKED_BY_SAYS),
-      who_answers: documentedToolEnum(
-        TOOL_INPUT_ENUMS['pass_question_up:who_answers'],
-        'Who the next hop is.',
-        'There is no default: say which. If nothing started this conversation there is no parent, and you are told so rather than quietly redirected.',
-      ),
-      context: z
-        .string()
-        .optional()
-        .describe(
-          'Anything worth knowing that the original words do not say — what you already tried, what you think turns on it. It is shown beside the question, never instead of it. Leave it out to add nothing.',
-        ),
-    } satisfies Readonly<Record<keyof PassQuestionUpArguments, z.ZodType>>,
-    call: (args) =>
-      guarded(async () => {
-        // **The SAME list both other question verbs refuse** (437, 611). A conversation is
-        // not a destination here either: the two ends are `who_answers`, and a model that tried
-        // to name one is told what the argument is.
-        const aimed = REPLY_ADDRESSING_KEYS.filter((key) => Object.hasOwn(args, key))
-        if (aimed.length > 0) {
-          return refusalAnswer(
-            refuseTool('malformed-request', {
-              problems: aimed.map(
-                (key) =>
-                  `${key} is not an argument of this tool: ${PASS_WHO_ARGUMENT} says where it goes next and it takes ${PASS_UP_RECIPIENTS.join(' or ')}`,
-              ),
-            }),
-          )
-        }
-        const requestId = args[PASS_QUESTION_ARGUMENT]
-        const askedBy = args[ASKED_BY_ARGUMENT]
-        const who = args[PASS_WHO_ARGUMENT]
-        const context = args[PASS_CONTEXT_ARGUMENT]
-        const problems: string[] = []
-        if (typeof requestId !== 'string' || requestId.length === 0) {
-          problems.push(`${PASS_QUESTION_ARGUMENT} is required`)
-        }
-        // **679** — the answer door's own check, for its reason.
-        if (askedBy !== undefined && (typeof askedBy !== 'string' || askedBy.length === 0)) {
-          problems.push(
-            `${ASKED_BY_ARGUMENT} must name the conversation that asked, or be left out`,
-          )
-        }
-        if (!isPassUpRecipient(who)) {
-          problems.push(
-            `${PASS_WHO_ARGUMENT} is required and must be one of ${PASS_UP_RECIPIENTS.join(', ')}`,
-          )
-        }
-        // **The SAME bound the question itself carries** (437's constant, not a second one).
-        // Context is rendered verbatim into the words the next hop receives — `questionText`
-        // never trims — so an unbounded field would put caller-authored text of any size into
-        // another conversation's turn through the one verb whose whole promise is that the words
-        // are somebody else's.
-        if (context !== undefined && typeof context !== 'string') {
-          problems.push(`${PASS_CONTEXT_ARGUMENT} must be words, or left out`)
-        }
-        if (typeof context === 'string' && context.length > REPLY_SUMMARY_LIMIT) {
-          problems.push(
-            `${PASS_CONTEXT_ARGUMENT} is ${context.length} units long and the limit is ${REPLY_SUMMARY_LIMIT}`,
-          )
-        }
-        if (problems.length > 0) {
-          return refusalAnswer(refuseTool('malformed-request', { problems }))
-        }
-        // **Not one rail is asked here** — whose question it is, whether it exists, whether it
-        // has ended and whether it is a person's are all the host's, through the same
-        // `admitAnswer` the answer door uses. **D-016 · commit 7 · R1 — `asked_by` read as the
-        // answer door reads it** ({@link ASKED_BY_SAYS} is both doors'): a label names its piece's
-        // owner, matched only against the askers of questions routed to this caller.
-        const passed = await host.passQuestionUp(
-          {
-            requestId: requestId as string,
-            who: who as PassUpRecipient,
-            context: typeof context === 'string' ? context : null,
-            askedBy:
-              typeof askedBy === 'string'
-                ? host.theConversationAddressed(askedBy, by, me, 'answering')
-                : null,
-          },
-          by,
-        )
-        if (!passed.ok) {
-          const carried = carryQuestionRefusal(passed.refusal)
-          return answer(carried, `refused (${passed.refusal.rail}): ${passed.refusal.reason}`)
-        }
-        // **Two ids, because there are two questions now** — the one this caller was asked, and
-        // the one it raised carrying those words. Reporting one would make a model guess which
-        // it is holding, and it is holding both: the first is still open and still its to answer.
-        return answer(
-          // **679 · and the asker of the one carried** — {@link PassUpOutcome}: a sibling asked
-          // later can share its session-local id, and this is the record the passer quotes from.
-          {
-            outcome: 'ok',
-            question: passed.question,
-            passed_up: passed.carried.question,
-            asked_by: passed.carried.askedBy,
-          },
-          // **D-016 · commit 7 · R3 — `asked_by` quotes the asker's address**: the label of the
-          // piece that names it, which `answer_question` takes, or its id when it holds none —
-          // F033 · the label the question's own words gave it, by the piece it was asked under.
-          `That question is now recorded as ${passed.question}, addressed to ${ROUTED_TO[who as PassUpRecipient]}, in the words it was asked in. ${passed.carried.question} is still open and still yours: when the answer reaches you, answer_question with asked_by ${host.addressOfUnder(passed.carried.askedBy, passed.carried.piece)} is how it gets back to whoever asked. Carry on from here.`,
-        )
-      }),
   }
 }
 

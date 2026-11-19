@@ -1,3 +1,4 @@
+import { recordForwardedQuestion } from './lib/forwarded-question-fixture'
 import { newConversationGive, giveToConversation, openGiverAndGivePages } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { PieceRow } from '../src/shared/task-contracts'
@@ -422,12 +423,13 @@ describe('a to-do for a person', () => {
     }> => {
       const { brobot, ada } = await aHelperWithAPiece()
       const asked = await asks(ada, 'the-parent')
-      const passed = await ok(agentToolsFor(host, brobot), 'pass_question_up', {
-        question: asked,
-        asked_by: ada,
-        who_answers: 'a-person',
+      const passedUp = recordForwardedQuestion(store, tick, {
+        asker: ada,
+        original: asked,
+        forwarder: brobot,
+        to: 'a-person',
       })
-      const passedUp = passed.question as string
+      expect(passedUp).not.toBe(asked)
       expect(host.questionsForAPerson().rows.map((one) => one.request.requestId)).toContain(
         passedUp,
       )
@@ -564,6 +566,29 @@ describe('a to-do for a person', () => {
      * Ada gives part of W1.1 to Bea; Bea asks Ada about it, Ada passes it up to BroBot, and BroBot
      * to the person.
      */
+    function seedTwoForwardedCopies({
+      brobot,
+      ada,
+      bea,
+      original,
+    }: Record<'brobot' | 'ada' | 'bea' | 'original', string>) {
+      const copy = recordForwardedQuestion(store, tick, {
+        asker: bea,
+        original,
+        forwarder: ada,
+        to: 'the-parent',
+        parent: brobot,
+      })
+      const copyOfTheCopy = recordForwardedQuestion(store, tick, {
+        asker: ada,
+        original: copy,
+        forwarder: brobot,
+        to: 'a-person',
+      })
+      expect(new Set([original, copy, copyOfTheCopy]).size).toBe(3)
+      return { copy, copyOfTheCopy }
+    }
+
     const aChainOfTwoPassers = async (): Promise<{
       brobot: string
       ada: string
@@ -580,18 +605,7 @@ describe('a to-do for a person', () => {
         who_answers: 'the-parent',
       })
       const original = asked.question as string
-      const once = await ok(agentToolsFor(host, ada), 'pass_question_up', {
-        question: original,
-        asked_by: bea,
-        who_answers: 'the-parent',
-      })
-      const copy = once.question as string
-      const twice = await ok(agentToolsFor(host, brobot), 'pass_question_up', {
-        question: copy,
-        asked_by: ada,
-        who_answers: 'a-person',
-      })
-      const copyOfTheCopy = twice.question as string
+      const { copy, copyOfTheCopy } = seedTwoForwardedCopies({ brobot, ada, bea, original })
       expect(host.questionsForAPerson().rows.map((one) => one.request.requestId)).toContain(
         copyOfTheCopy,
       )
@@ -892,18 +906,7 @@ describe('a to-do for a person', () => {
         who_answers: 'a-person',
       })
       const original = asked.question as string
-      const once = await ok(agentToolsFor(host, ada), 'pass_question_up', {
-        question: original,
-        asked_by: bea,
-        who_answers: 'the-parent',
-      })
-      const copy = once.question as string
-      const twice = await ok(agentToolsFor(host, brobot), 'pass_question_up', {
-        question: copy,
-        asked_by: ada,
-        who_answers: 'a-person',
-      })
-      const copyOfTheCopy = twice.question as string
+      const { copy, copyOfTheCopy } = seedTwoForwardedCopies({ brobot, ada, bea, original })
       // Bea's routing loses who gave the work. Still a well-formed routing to a person: a question
       // raised where nobody gave the work names nobody.
       db.prepare(

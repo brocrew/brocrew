@@ -12,7 +12,8 @@ import type {
   StartOptions,
 } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase } from '../src/main/db/connection'
+import { openDatabase, type AppDatabase } from '../src/main/db/connection'
+import { recordForwardedQuestion } from './lib/forwarded-question-fixture'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { giverStallReceipts, RuntimeHost } from './helpers/giver-notice-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
@@ -372,18 +373,23 @@ describe('what a close does that a reopen never undoes', () => {
       expect(runningOf(worker)).not.toBe('not-running')
     })
 
-    it('the pass-up door takes the one open question while its asker is stopped', async () => {
+    it('a stored forwarded question does not end or wake its stopped original asker', async () => {
       const { pm, worker, requestId } = await aWorkerAskingItsParent()
       await host.close(worker, window)
       expect(
         store.routedRequestsOf(worker).filter((one) => one.requestId === requestId),
       ).toHaveLength(1)
 
-      const passed = await callOn(agentToolsFor(host, pm), 'pass_question_up', {
-        question: requestId,
-        who_answers: 'a-person',
+      const forwarded = recordForwardedQuestion(store, tick, {
+        asker: worker,
+        original: requestId,
+        forwarder: pm,
+        to: 'a-person',
       })
-      expect(passed.outcome, JSON.stringify(passed)).toBe('ok')
+      expect(forwarded).not.toBe(requestId)
+      expect(store.questionsRaisedIn(pm).get(forwarded)?.passedUpFrom).toBe(requestId)
+      expect(theQuestionOf(worker)).toMatchObject({ requestId, state: 'open' })
+      expect(runningOf(worker)).toBe('not-running')
     })
 
     it('…and after a RESTART it is still open, and the answer starts the asker', async () => {
@@ -397,6 +403,87 @@ describe('what a close does that a reopen never undoes', () => {
       expect(answered.outcome, JSON.stringify(answered)).toBe('ok')
       await waitFor(() => theAnswerReached(worker), 'the answer to start the worker and reach it')
     })
+
+    it.each(['answered', 'work-closed'] as const)(
+      'a forwarded question already in a copied ledger settles once: %s',
+      async (ending) => {
+        const { pm, worker, label, requestId } = await aWorkerAskingItsParent()
+        const historicalCall = {
+          type: 'tool_call' as const,
+          id: 'historical-forward',
+          name: 'mcp__brobot__pass_question_up',
+          summary: 'pass the database question to a person',
+        }
+        store.append(pm, store.nextOrdinal(pm), historicalCall, tick())
+        const forwarded = recordForwardedQuestion(store, tick, {
+          asker: worker,
+          original: requestId,
+          forwarder: pm,
+          to: 'a-person',
+        })
+        expect(forwarded).not.toBe(requestId)
+
+        await host.closeAll()
+        const snapshot = join(userData, 'forwarded-cutover.sqlite')
+        db.prepare('VACUUM INTO ?').run(snapshot)
+        db.close()
+        db = openDatabase(snapshot)
+        store = createSessionStore(db, tick)
+        host = buildHost()
+
+        const read = await host.look(pm, window, false)
+        expect(read.history.entries.map(({ event }) => event)).toContainEqual(historicalCall)
+        expect(theQuestionOf(worker)).toMatchObject({ requestId, state: 'open' })
+        const copyState = () =>
+          store.routedRequestsOf(pm).find((one) => one.requestId === forwarded)?.state
+        expect(copyState()).toBe('open')
+        await host.resumeSession(pm, window)
+        const personAnswers = () =>
+          host.respondUserInput(
+            pm,
+            forwarded,
+            { kind: 'answer', answers: { answer: ['sqlite'] } },
+            window,
+          )
+        if (ending === 'answered') {
+          expect(await personAnswers()).toMatchObject({ outcome: 'taken' })
+          expect(await answerTo(pm, requestId)).toMatchObject({ outcome: 'ok' })
+          expect(await answerTo(pm, requestId)).toMatchObject({
+            outcome: 'refused',
+            rail: 'question-has-already-ended',
+          })
+          expect(theQuestionOf(worker).state).toBe('answered')
+          expect(store.theDecisionOn(pm, forwarded)).toMatchObject({
+            by: { who: 'a-person' },
+            outcome: 'answered',
+          })
+          for (const [session, questionId] of [
+            [pm, forwarded],
+            [worker, requestId],
+          ] as const) {
+            expect(
+              events(session).filter(
+                (event) => event.type === 'user_decision' && event.requestId === questionId,
+              ),
+            ).toHaveLength(1)
+          }
+        } else {
+          const close = () =>
+            callOn(agentToolsFor(host, pm), 'update_work', { piece: label, close: true })
+          expect(await close()).toMatchObject({ outcome: 'ok' })
+          expect(await close()).toMatchObject({ outcome: 'refused' })
+          expect(theQuestionOf(worker).state).toBe('work-closed')
+          expect(
+            events(pm).filter(
+              (event) =>
+                event.type === 'question_ended_with_its_piece' && event.requestId === forwarded,
+            ),
+          ).toEqual([{ type: 'question_ended_with_its_piece', requestId: forwarded, ending }])
+        }
+        expect(copyState()).toBe(ending)
+        expect(await personAnswers()).toMatchObject({ outcome: 'refused', stillOpen: false })
+      },
+    )
   })
 
   describe('a parent told the conversation had stopped', () => {

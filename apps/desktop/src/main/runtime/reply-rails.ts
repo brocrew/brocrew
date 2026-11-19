@@ -1,3 +1,5 @@
+import type { SendReceipt } from '../../shared/tool-outcome'
+import type { SendOverflow } from './send-overflow'
 import type {
   PieceRow,
   StoppedOnALogin,
@@ -442,7 +444,6 @@ export function admitReply(
   named: string,
   piece: PieceRow | undefined,
   root: boolean,
-  summary: string,
   /**
    * 🔴 **D-025 · what the host calls the one that ended the caller's piece** —
    * `RuntimeHost.whatToCallTheConversation`, PASSED: this module has no store. ⚑ The piece already
@@ -472,14 +473,6 @@ export function admitReply(
       ...(piece.endedBy === null || piece.endedBy === piece.owner
         ? {}
         : { called: whatToCall(piece.endedBy) }),
-    })
-  }
-  if (summary.length > REPLY_SUMMARY_LIMIT) {
-    return refuseReply('summary-too-long', {
-      piece: named,
-      label: piece.label,
-      limit: REPLY_SUMMARY_LIMIT,
-      was: summary.length,
     })
   }
   return null
@@ -577,6 +570,7 @@ export type ReplyOutcome =
       /** The `work_resource` ids kept with the reply, in the order the files were handed in. */
       readonly resources: readonly string[]
       readonly resultDocument?: string
+      readonly overflow?: SendOverflow
       /**
        * ⚑ A person gave the piece, so there was no conversation to deliver it to, and nothing was
        * queued, told or woken (D-016 · commit 6 · R5).
@@ -590,11 +584,13 @@ export type ReplyOutcome =
       /** The `work_resource` ids kept with the reply, in the order the files were handed in. */
       readonly resources: readonly string[]
       readonly resultDocument?: string
+      readonly overflow?: SendOverflow
       /**
        * ⚑ **D-030 · the conversation the words went to, by the name every surface says** — its
        * giver, or the one in its place (D-017 · R10) — ⛔ never its id.
        */
       readonly giver: string
+      readonly receipt?: SendReceipt
       /**
        * ⚑ **D-030 · D-017 · R10 — the conversation that gave the piece could never be reopened**, so
        * {@link giver} is the one that took its place, and the answer says so.

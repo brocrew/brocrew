@@ -19,6 +19,7 @@ import {
 import {
   aServiceWorld,
   acceptedGive as accepted,
+  openServiceAndTwoCallers,
   type AServiceWorld,
 } from './helpers/a-service-world'
 
@@ -41,20 +42,8 @@ describe('a service queues the work it is given', () => {
     if (outcome.ok) throw new Error(`given, to ${outcome.owner}`)
     return outcome.refusal.rail
   }
-  /** Agents for a service and two callers, and a host. */
-  const aServiceAndTwoCallers = async (
-    opts: { servicesOn?: boolean } = {},
-  ): Promise<{ host: RuntimeHost; first: string; second: string }> => {
-    world.anAgent('browser-driver')
-    world.anAgent('caller', 'nothing kept')
-    world.anAgent('other-caller', 'nothing kept')
-    const host = world.aHost(opts)
-    return {
-      host,
-      first: await world.aPersonOpens(host, 'caller'),
-      second: await world.aPersonOpens(host, 'other-caller'),
-    }
-  }
+  const aServiceAndTwoCallers = (opts: { servicesOn?: boolean } = {}) =>
+    openServiceAndTwoCallers(world, opts)
 
   /** Until `piece` at `service` has been handed over: open, and no longer waiting. */
   const handedOver = async (service: string, piece: string): Promise<void> => {

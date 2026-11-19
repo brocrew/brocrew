@@ -1,3 +1,5 @@
+import { raiseRegionQuestion } from './lib/routed-region-question'
+import { recordForwardedQuestion } from './lib/forwarded-question-fixture'
 import { newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
@@ -336,26 +338,6 @@ describe('403 · a decision only a person can make', () => {
     publish.publishOurs(session, event, at)
   }
 
-  /**
-   * 🔴 **612 · `lookForEscalations` stood here and is GONE with the deadline** (HO-088 §3.1).
-   *
-   * ⛔ **It drove `store.escalationsDue` and wrote what it named through the host's own door.**
-   * ⚑ **There is no sweep to drive**: a question reaches a person because an agent put it there,
-   * which is `611`'s `pass_question_up` — so this helper performs the ACT instead of advancing a
-   * clock, and every test below puts the real hazard on the real path.
-   *
-   * ⚠️ **It answers the PASSER's new request id**, because that is what the person's queue holds:
-   * passing up raises the passer's OWN question carrying the original words.
-   */
-  const thePmPassesItUp = async (pmTools: AgentToolset, questionId: string): Promise<string> => {
-    const passed = await callOn(pmTools, 'pass_question_up', {
-      question: questionId,
-      who_answers: 'a-person',
-    })
-    expect(passed.outcome, JSON.stringify(passed)).toBe('ok')
-    return passed.question as string
-  }
-
   const idsIn = (rows: readonly { request: { requestId: string } }[]): string[] =>
     rows.map((one) => one.request.requestId)
 
@@ -606,19 +588,17 @@ describe('403 · a decision only a person can make', () => {
 
   describe('§2 · the strict reader stays strict', () => {
     it('🔴 one world, both populations, and neither reader returns the other’s row', async () => {
-      const { pm, worker, pmTools, workerHandle } = await aPmAndItsWorker()
+      const { pm, worker, workerHandle } = await aPmAndItsWorker()
       const card = await aChildParksOnAPermission(worker)
-      const question = workerHandle.simulateUserInput('which region?', ['eu', 'us'], false)
-      await waitFor(
-        () =>
-          ledger(worker).some(
-            (event) => event.type === 'request_routed' && event.requestId === question.id,
-          ),
-        'the routing of the question',
-      )
+      const question = await raiseRegionQuestion(workerHandle, () => ledger(worker))
       // ⚑ **612 · the PM passes it up, because no clock does it any more** (HO-088 §3.1). ⛔ The
       // row in the person's queue is then the PM's own, carrying the worker's words.
-      const passed = await thePmPassesItUp(pmTools, question.id)
+      const passed = recordForwardedQuestion(store, tick, {
+        asker: worker,
+        original: question.id,
+        forwarder: pm,
+        to: 'a-person',
+      })
       // ⚑ **D-017 · R19 — and the PM's own card is a person's decision too.** The routed question
       // opened a turn in the PM, which the double parks on a card, and the PM has no parent: its
       // card is routed to a person, so the strict reader lists it beside the worker's.
@@ -685,19 +665,12 @@ describe('403 · a decision only a person can make', () => {
       const { worker, pmTools } = await aPmAndItsWorker()
       const card = await aChildParksOnAPermission(worker)
 
-      // ⚠️ **612 · this drove twenty escalation windows and asserted the sweep found nothing**
-      // (HO-088 §3.1, standing rule 26: strip AND re-aim). ⛔ **There is no sweep and no window**,
-      // so the old assertion could only ever pass — and what it was FOR survives: a permission is
-      // not the question queue's, whatever anybody does to it.
-      //
-      // ⚑ **So the act that CAN put a question in front of a person is tried instead**, which is
-      // `611`'s verb, and it is refused by name.
-      const passed = await callOn(pmTools, 'pass_question_up', {
+      const refused = await callOn(pmTools, 'answer_question', {
         question: card,
-        who_answers: 'a-person',
+        cannot_answer: 'The person who owns the permission decision must answer.',
       })
-      expect(passed.outcome, JSON.stringify(passed)).toBe('refused')
-      expect(passed.rail).toBe('a-person-answers-this-one')
+      expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
+      expect(refused.rail).toBe('a-person-answers-this-one')
       expect(
         store.routedRequestsOf(worker).find((one) => one.requestId === card)?.escalatedAt,
       ).toBeNull()
@@ -730,19 +703,17 @@ describe('403 · a decision only a person can make', () => {
      * `persons-queue.test.ts` §8 still measures it over a fixture (`worker → you`).
      */
     it('🔴 one hop ending at you, where the SAME relationship gives a question two', async () => {
-      const { pm, worker, pmTools, workerHandle } = await aPmAndItsWorker()
+      const { pm, worker, workerHandle } = await aPmAndItsWorker()
       await aChildParksOnAPermission(worker)
-      const question = workerHandle.simulateUserInput('which region?', ['eu', 'us'], false)
-      await waitFor(
-        () =>
-          ledger(worker).some(
-            (event) => event.type === 'request_routed' && event.requestId === question.id,
-          ),
-        'the routing of the question',
-      )
+      const question = await raiseRegionQuestion(workerHandle, () => ledger(worker))
       // ⚑ **612 · the PM passes it up** — one row in each population, which is what this section
       // needs and what a deadline used to arrange.
-      await thePmPassesItUp(pmTools, question.id)
+      recordForwardedQuestion(store, tick, {
+        asker: worker,
+        original: question.id,
+        forwarder: pm,
+        to: 'a-person',
+      })
 
       const [only] = host.decisionsForAPerson().rows
       expect(only?.reading.hops).toHaveLength(1)
@@ -917,14 +888,7 @@ describe('403 · a decision only a person can make', () => {
     it('🔴 `list_questions` no longer counts a permission as waiting on the caller', async () => {
       const { worker, pmTools, workerHandle } = await aPmAndItsWorker()
       await aChildParksOnAPermission(worker)
-      const question = workerHandle.simulateUserInput('which region?', ['eu', 'us'], false)
-      await waitFor(
-        () =>
-          ledger(worker).some(
-            (event) => event.type === 'request_routed' && event.requestId === question.id,
-          ),
-        'the routing of the question',
-      )
+      await raiseRegionQuestion(workerHandle, () => ledger(worker))
 
       // ⛔ **Two open rows, and exactly one of them is this caller's.** Until `403` the line read
       // *"2 waiting on you"* — about a row `answer_question` refuses it by name.
@@ -940,14 +904,7 @@ describe('403 · a decision only a person can make', () => {
       // ⚑ D-016 · an `auto` PM, so its worker runs its brief with no card: nothing is
       // permission-shaped.
       const { worker, pmTools, workerHandle } = await aPmAndItsWorker('auto')
-      const question = workerHandle.simulateUserInput('which region?', ['eu', 'us'], false)
-      await waitFor(
-        () =>
-          ledger(worker).some(
-            (event) => event.type === 'request_routed' && event.requestId === question.id,
-          ),
-        'the routing of the question',
-      )
+      await raiseRegionQuestion(workerHandle, () => ledger(worker))
       const line = await said(pmTools, 'list_questions')
       expect(line).toContain('1 waiting on you:')
       expect(line).not.toContain('waiting on a person')

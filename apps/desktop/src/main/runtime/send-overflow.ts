@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { isOfferedLabel, type UserInputQuestion } from '@brobot2/runtime'
 import { newResourceId } from '../db/ids'
 import type { GivenInput } from '../../shared/documents'
 import { refuseResource, type OfferedFileBytes, type ResourceRefusal } from '../resources/resources'
@@ -105,6 +106,46 @@ function overflowPreview(text: string): string {
 
 function previewOf(text: string, limit: number): string {
   return text.slice(0, limit).replace(/[\uD800-\uDBFF]$/, '')
+}
+
+interface AnswerPart {
+  readonly part: string
+  readonly answer: readonly string[]
+}
+
+export function answerTextForFile(parts: readonly AnswerPart[]): string {
+  const first = parts[0]
+  if (parts.length === 1 && first?.answer.length === 1) return first.answer[0] ?? ''
+  return parts.map(({ part, answer }) => `${part}: ${answer.join(', ')}`).join('\n')
+}
+
+export function answerPreview(
+  parts: readonly AnswerPart[],
+  questions: readonly UserInputQuestion[] | undefined,
+  overflow: ReadableSendOverflow,
+): readonly AnswerPart[] {
+  const pointer = sendOverflowPointer(overflow)
+  let remaining = INLINE_TEXT_LIMIT
+  return parts.map(({ part, answer }) => {
+    const question = questions?.find((one) => one.id === part)
+    let pointed = false
+    const shown: string[] = []
+    for (const value of answer) {
+      if (value === '' || (question !== undefined && isOfferedLabel(question, value))) {
+        shown.push(value)
+        continue
+      }
+      const preview = previewOf(value, remaining)
+      remaining -= preview.length
+      if (preview.length === value.length) shown.push(preview)
+      else if (!pointed) {
+        remaining = 0
+        shown.push(preview === '' ? pointer : `${preview} ${pointer}`)
+        pointed = true
+      }
+    }
+    return { part, answer: shown }
+  })
 }
 
 export function keepTasklessSendText(cwd: string, field: string, text: string): PreparedSendText {

@@ -1,10 +1,6 @@
 import { createListTasksTool } from './tool-families/work-board'
 import { createReplyToParentTool, replyFields } from './tool-families/work-reply'
-import {
-  createAskQuestionTool,
-  createPassQuestionUpTool,
-  createWithdrawQuestionTool,
-} from './tool-families/question-routing'
+import { createAskQuestionTool, createWithdrawQuestionTool } from './tool-families/question-routing'
 import { AGENT_TOOL_INSTRUCTIONS, AGENT_TOOL_SERVER, type ToolName } from './tool-families/catalog'
 import { type AgentToolAnswer, type AgentToolDefinition, type AgentToolset } from '@brobot2/runtime'
 import { type AgentToolHost } from './tool-families/host'
@@ -167,7 +163,6 @@ export function agentToolsFor(
     createAskQuestionTool(host, by, me, selfRefusal, theConversationToReach, guarded),
     createListProfilesTool(host, by, me, guarded),
     createProposeAgentRulesTool(host, by, me, guarded),
-    createPassQuestionUpTool(host, by, me, guarded),
     createWithdrawQuestionTool(host, by, guarded),
     createReadTranscriptTool(host, by, me, readerInputs, readerFieldRefusal, guarded),
     createUpdateWorkTool(host, by, guarded),

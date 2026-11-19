@@ -1,3 +1,4 @@
+import { recordForwardedQuestion } from './lib/forwarded-question-fixture'
 import { givePagesToNewWorker } from './lib/give-fixture'
 import { expectNoQuestionWake } from './lib/question-wake'
 import { waitFor } from './lib/f093-host'
@@ -286,20 +287,15 @@ describe('the host says who a conversation owes an answer to, and moves the word
     expect(seeded).not.toHaveBeenCalled()
 
     const parentTools = agentToolsFor(host, brobot)
-    const passed = await callOn(parentTools, 'pass_question_up', {
-      asked_by: ada,
-      question: id,
-      who_answers: 'a-person',
+    const forwarded = recordForwardedQuestion(store, tick, {
+      asker: ada,
+      original: id,
+      forwarder: brobot,
+      to: 'a-person',
     })
-    if (typeof passed.question !== 'string') throw new Error(JSON.stringify(passed))
-    expect(passed.outcome).toBe('ok')
-    expect(store.questionsRaisedIn(brobot).get(passed.question)?.passedUpFrom).toBe(id)
-    const declined = await host.respondUserInput(
-      brobot,
-      passed.question,
-      { kind: 'reject' },
-      window,
-    )
+    expect(forwarded).not.toBe(id)
+    expect(store.questionsRaisedIn(brobot).get(forwarded)?.passedUpFrom).toBe(id)
+    const declined = await host.respondUserInput(brobot, forwarded, { kind: 'reject' }, window)
     expect(declined.outcome).toBe('taken')
     expect(store.routedRequestsOf(ada).find((row) => row.requestId === id)?.state).toBe('open')
     await untilPushed(brobot, owesAda, 'the parent to owe the passed-up question without a stall')

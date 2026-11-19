@@ -6263,23 +6263,38 @@ describe('CodexRuntime — user-input requests (007 P2-1)', () => {
     autoResolutionMs: null,
   }
 
-  it('requestUserInput with MULTIPLE questions answers EVERY questionId (033, fixing 023 P2 #1)', async () => {
+  it('keeps one exact padded choice and one overflow preview in separate native parts', async () => {
     const { transport, handle, events, consumer } = await startCodexInTurn()
-    transport.serverRequest(85, 'item/tool/requestUserInput', multiQuestionParams)
-    await vi.waitFor(has(events, (e) => e.type === 'user_input_request'))
+    const padded = '  Keep these spaces  '
+    const long = 'v'.repeat(2_001)
+    const preview = `${long.slice(0, 2_000)} Read res_fictional for the full answer.`
+    const [first, second] = multiQuestionParams.questions
+    transport.serverRequest(85, 'item/tool/requestUserInput', {
+      ...multiQuestionParams,
+      questions: [
+        { ...first, options: [{ label: padded, description: '' }] },
+        { ...second, isOther: true },
+      ],
+    })
+    await vi.waitFor(has(events, (event) => event.type === 'user_input_request'))
+    await expect(
+      handle.respondUserInput('number:85', {
+        kind: 'answer',
+        answers: { q_a: padded, q_b: [long, 'one value too many'] },
+      }),
+    ).rejects.toThrow(/cannot be forwarded/)
+    expect(transport.responses.some((row) => row.id === 85)).toBe(false)
+    expect(transport.errors.some((row) => row.id === 85)).toBe(false)
+
     await handle.respondUserInput('number:85', {
       kind: 'answer',
-      answers: { q_a: 'x', q_b: ['y'] },
+      answers: { q_a: padded, q_b: [preview] },
     })
-    await vi.waitFor(() => expect(transport.responses.some((r) => r.id === 85)).toBe(true))
-    // ⛔ **`q_b` used to send `['y','z']` here, and this line called it "a multi-select value"**
-    // (142 §2, correcting rather than deleting it). The same commit asserts a few hundred lines up
-    // that every Codex question is published `multiSelect:false` — *"the test suite actively
-    // blesses the contradiction"* (141). One value per question is what the provider's own shape
-    // means; the array wrapper is `ToolRequestUserInputAnswer`'s, not evidence of several.
-    expect(resultFor(transport, 85)).toEqual({
-      answers: { q_a: { answers: ['x'] }, q_b: { answers: ['y'] } },
-    })
+    await vi.waitFor(() =>
+      expect(resultFor(transport, 85)).toEqual({
+        answers: { q_a: { answers: [padded] }, q_b: { answers: [preview] } },
+      }),
+    )
     await handle.close()
     await consumer
   })

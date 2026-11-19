@@ -18,6 +18,7 @@ import { type WhenItWasAskedToStop } from '../agent-tool-answer-words'
 import { aWakeRefused, aWakeThatDidNotHappen } from './launch-failures'
 import { refusalAnswer } from './answers'
 import { clockTimeFrom } from '../../../shared/clock'
+import { conversationLine } from '../conversation-address'
 
 /** Where the last ask to stop landed, as the sentence that says it names the three. */
 export const WHEN_THE_ASK_LANDED: Readonly<
@@ -246,8 +247,8 @@ export function whatReachedItsHolder(
 }
 
 /**
- * **D-030 · where a reply went, in the words `reply_to_parent` answers with** — the giver by its
- * name (the piece names its conversation), never an id. `sent` and `held` in `give_work`'s words;
+ * Where a reply went, using the actual recipient from its receipt when available.
+ * `sent` and `held` use `give_work`'s words;
  * `kept` in the words D-030 ruled; `not-delivered` says why, where the answer stays
  * ({@link PieceRow.answerReachedNobody}) and what to do, since nothing tells the giver to look.
  * **D-017 · R10 — and a giver that could never be reopened is said**, in `give_work`'s words, for
@@ -256,7 +257,10 @@ export function whatReachedItsHolder(
 export function whereTheReplyWent(
   replied: Extract<ReplyOutcome, { readonly giver: string }>,
 ): string {
-  const { label, giver } = replied
+  const { label } = replied
+  const recipient = replied.receipt?.recipient
+  const giver =
+    recipient === undefined ? replied.giver : conversationLine(recipient.address, recipient.title)
   const inItsPlace = replied.tookItsPlace
     ? ` The conversation that gave ${label} could never be reopened, so your answer went to the conversation that took its place.`
     : ''

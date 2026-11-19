@@ -52,7 +52,6 @@ export function createTurnEvidenceRead(
         readonly aTurn: AppStatement
         readonly turnBefore: AppStatement
         readonly itsRows: AppStatement
-        readonly lastRouting: AppStatement
         readonly itsMessage: AppStatement
       }
     | undefined
@@ -93,12 +92,6 @@ export function createTurnEvidenceRead(
         `SELECT type, payload FROM events INDEXED BY events_turn_idx
           WHERE session_id = ? AND turn_id = ? AND generation = ?
             AND type IN ('turn', 'work_interrupted', 'user_decision', 'user_turn')`,
-      ),
-      lastRouting: db.prepare(
-        `SELECT ordinal FROM events
-          WHERE session_id = ? AND generation = ? AND type = 'request_routed'
-            AND CASE WHEN json_valid(payload) THEN json_extract(payload, '$.requestId') END = ?
-          ORDER BY ordinal DESC LIMIT 1`,
       ),
       itsMessage: db.prepare(
         `SELECT type, payload FROM events
@@ -253,22 +246,6 @@ export function createTurnEvidenceRead(
     }
   }
 
-  function whereItWasRouted(sessionId: string, requestId: string): number | null {
-    try {
-      const row = cutTurnSql().lastRouting.get(
-        sessionId,
-        activeGeneration(sessionId),
-        requestId,
-      ) as { ordinal: number } | undefined
-      return row?.ordinal ?? null
-    } catch (error) {
-      console.warn(
-        `session store could not find where ${requestId} was routed in ${sessionId}: ${error instanceof Error ? error.message : String(error)}`,
-      )
-      return null
-    }
-  }
-
   function whatBecameOfAMessage(
     sessionId: string,
     messageId: string,
@@ -300,7 +277,6 @@ export function createTurnEvidenceRead(
     theNewestTurn,
     aLifeOpenedTheTurn,
     howATurnEnded,
-    whereItWasRouted,
     whatBecameOfAMessage,
   }
 }
