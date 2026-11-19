@@ -156,8 +156,7 @@ describe('D-016 · a root is titled, and a piece says where it stands', () => {
    * window on it — `724`'s rig. The give starts the worker's conversation, and its brief is that
    * conversation's first turn, which parks on its card, so the piece is open while the tests run.
    */
-  const aPmAndItsWorker = () =>
-    giveParkedWorker({ host, store, window, personOpens }, 'the work')
+  const aPmAndItsWorker = () => giveParkedWorker({ host, store, window, personOpens }, 'the work')
 
   const theRootOf = (conversation: string): { piece: string; label: string } => {
     const found = store.rootOf(conversation)

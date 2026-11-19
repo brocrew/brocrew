@@ -157,10 +157,17 @@ export async function giveWorkerThroughRawTool(
   title: string,
   brief: string,
 ) {
-  const given = await readGivenTask(async () =>
-    (await send(pmTools, 'give_work', newConversationGive('worker', title, brief))).structured,
+  const given = await readGivenTask(
+    async () =>
+      (await send(pmTools, 'give_work', newConversationGive('worker', title, brief))).structured,
   )
-  return { worker: given.agent, pmTools, workerTools: lastToolset(), piece: given.piece, label: given.label }
+  return {
+    worker: given.agent,
+    pmTools,
+    workerTools: lastToolset(),
+    piece: given.piece,
+    label: given.label,
+  }
 }
 
 export async function giveWorkWithTitleAsBrief(
@@ -200,7 +207,8 @@ export function spawnFailureFixture(
     callOn(agentToolsFor(world().host, caller), name, args)
   return {
     callOn: call,
-    aPmThatMaySpawn: () => openPmWithSeededWorker(open, (id) => world().host.close(id, world().window)),
+    aPmThatMaySpawn: () =>
+      openPmWithSeededWorker(open, (id) => world().host.close(id, world().window)),
     spawnWorker: (pm: string) =>
       call(pm, 'give_work', newConversationGive('worker', 'The work', 'the work')),
   }

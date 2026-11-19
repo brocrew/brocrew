@@ -553,7 +553,12 @@ describe('414 · the origin a model is told', () => {
       // about the CALLER — so both branches carry it whichever act opened the turn, and that
       // independence is now covered by this test rather than assumed by it.
       const made = await aPm()
-      const given = await callNewConversationGive(made.pmTools, made.workerProfile, 'The work', 'first, which goes straight out')
+      const given = await callNewConversationGive(
+        made.pmTools,
+        made.workerProfile,
+        'The work',
+        'first, which goes straight out',
+      )
       expect(given.delivery, JSON.stringify(given)).toBe('sent')
       const pair: APair = {
         ...made,
@@ -1069,7 +1074,12 @@ describe('414 · the origin a model is told', () => {
       // PROFILE and reaches the giver's OWN conversation with it — so the worker giving work as its
       // parent's profile starts one below itself, and never reaches the parent whatever id the frame
       // handed over.
-      const upward = await callNewConversationGive(workerTools, made.pmProfile, 'Up the tree', 'up the tree')
+      const upward = await callNewConversationGive(
+        workerTools,
+        made.pmProfile,
+        'Up the tree',
+        'up the tree',
+      )
       expect(upward.outcome, JSON.stringify(upward)).toBe('ok')
       expect(upward.agent).not.toBe(made.pm)
       expect(store.parentOf(upward.agent as string)).toBe(made.worker)
