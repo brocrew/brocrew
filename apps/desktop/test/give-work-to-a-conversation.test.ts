@@ -342,6 +342,105 @@ describe('give_work goes to the conversation the giver names', () => {
     )
   })
 
+  it('records a Give to a replaced address on its successor before resuming it', async () => {
+    const world = aServiceWorld()
+    const hosts: RuntimeHost[] = []
+    try {
+      world.anAgent('pm', 'normal')
+      const firstHost = world.aHost()
+      hosts.push(firstHost)
+      const lead = await world.aPersonOpens(firstHost, 'lead')
+      const original = await world.gives(firstHost, lead, 'pm', {
+        conversation_title: 'Lisbon trip',
+        model: 'fake-claude-b',
+      })
+      if (!original.ok) throw new Error(original.refusal.reason)
+      await firstHost.closeAll()
+
+      const successor = world.seedHistoricalSuccessor(original.owner, 'sess_continued_lisbon')
+      const title = 'Continued Lisbon trip'
+      const { store } = world
+      store.titleConversation(
+        successor,
+        store.nextOrdinal(successor),
+        { type: 'titled', title, author: { kind: 'person' } },
+        world.clock++,
+      )
+      const nextHost = world.aHost()
+      hosts.push(nextHost)
+      await nextHost.reopenForAPerson(lead, world.window, null)
+      expect(nextHost.tookItsPlace(original.owner)).toBe(successor)
+      expect(await nextHost.archiveConversation(original.owner)).toMatchObject({ done: true })
+      expect(await nextHost.archiveConversation(successor)).toMatchObject({ done: true })
+      const originalArchive = nextHost.whenItWasArchived(original.owner)
+      const successorArchive = nextHost.whenItWasArchived(successor)
+      const originalModel = store.whatItRunsOn(original.owner)
+      const successorModel = store.whatItRunsOn(successor)
+      const workBefore = store.piecesGivenBy(lead).map((one) => one.piece)
+      const originalLedger = world.ledger(original.owner)
+      const successorLedger = world.ledger(successor)
+      const resumes = world.resumesAsked
+      const nextTask = task('Book the flights for Lisbon')
+      const give = () =>
+        answerOn(agentToolsFor(nextHost, lead), 'give_work', {
+          ...nextTask,
+          to: original.label,
+          model: 'fake-claude-a',
+          effort: 'high',
+        })
+
+      world.db.exec(`
+        CREATE TEMP TRIGGER reject_replacement_give BEFORE INSERT ON events
+        WHEN NEW.type = 'work_given'
+        BEGIN SELECT RAISE(ABORT, 'fixture refused the replacement task'); END
+      `)
+      const refused = await give()
+      expect(refused.structured).toMatchObject({ outcome: 'refused' })
+      expect(refused.structured).not.toHaveProperty('receipt')
+      expect(world.resumesAsked).toBe(resumes)
+      expect(store.piecesGivenBy(lead).map((one) => one.piece)).toEqual(workBefore)
+      expect(world.ledger(original.owner)).toEqual(originalLedger)
+      expect(world.ledger(successor)).toEqual(successorLedger)
+      expect(store.whatItRunsOn(successor)).toEqual(successorModel)
+      expect(nextHost.whenItWasArchived(successor)).toBe(successorArchive)
+      world.db.exec('DROP TRIGGER reject_replacement_give')
+
+      let allowResume!: () => void
+      world.resumesWait = new Promise<void>((resolve) => {
+        allowResume = resolve
+      })
+      const pending = give()
+      try {
+        await waitFor(() => world.resumesAsked > resumes, 'the replacement provider to resume')
+        const recorded = store.piecesOwnedBy(successor).find((one) => one.title === nextTask.title)
+        if (recorded === undefined) throw new Error('the task was absent at provider resume')
+        expect(store.messagesWaitingIn(successor)).toContainEqual(
+          expect.objectContaining({ piece: recorded.piece, text: nextTask.brief }),
+        )
+        expect(nextHost.whenItWasArchived(successor)).toBeNull()
+        allowResume()
+
+        const result = await pending
+        expect(result.structured).toMatchObject({
+          outcome: 'ok',
+          agent: successor,
+          piece: recorded.piece,
+          runs_on: { model: 'fake-claude-a', effort: 'high' },
+          receipt: { recipient: { id: successor, address: recorded.label, title } },
+        })
+        expect(world.ledger(original.owner)).toEqual(originalLedger)
+        expect(nextHost.whenItWasArchived(original.owner)).toBe(originalArchive)
+        expect(store.whatItRunsOn(original.owner)).toEqual(originalModel)
+        expect(world.resumesAsked).toBe(resumes + 1)
+      } finally {
+        allowResume()
+        await Promise.allSettled([pending])
+      }
+    } finally {
+      await closeHostFixture(hosts, world.db, world.folder)
+    }
+  })
+
   it('a give that names no conversation records nothing and lists the recent ones', async () => {
     await anAgentCalledPm()
     const lead = await personOpens('lead')

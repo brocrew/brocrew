@@ -23895,15 +23895,6 @@ export class RuntimeHost implements LiveHost {
       const queued = this.briefForTheNextStart(giving, by)
       this.recordTheGive(live ?? to, giving, queued.messageId, null, { queued })
       onRecorded(to)
-      if (this.theOneInItsPlace(to) !== to) {
-        throw new SessionUnavailable(
-          'cannot-be-reopened',
-          'The addressed conversation was replaced.',
-          {
-            refusal: 'another conversation took its place',
-          },
-        )
-      }
       await this.ensureRunning(to, null)
       return (await this.aRecordedBriefWasDelivered(to, giving.piece))
         ? { outcome: 'sent' }
@@ -23911,7 +23902,7 @@ export class RuntimeHost implements LiveHost {
     }
     const inArrivalOrder = (address: string): Promise<QueueOutcome> =>
       this.afterWhatArrivedFirst(address, async () => {
-        const to = address
+        const to = this.theOneInItsPlace(address)
         if (this.startupRepairs.has(to)) await this.settleBeforeUse(to)
         return this.runsNow(to) ? deliver(to, recordAndStart) : recordAndStart(to)
       })
