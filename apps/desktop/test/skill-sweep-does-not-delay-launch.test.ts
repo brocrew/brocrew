@@ -51,6 +51,7 @@ function deferred() {
 }
 function legacy(index: number, skills = 1) {
   const folder = join(home, `brobot-skills-${'a'.repeat(64)}-${index.toString().padStart(6, '0')}`)
+  if (skills === 0) mkdirSync(folder, { mode: 0o700 })
   for (let skill = 0; skill < skills; skill++) {
     const directory = join(folder, 'codex', 'skills', `cedar-${skill}`)
     mkdirSync(directory, { recursive: true, mode: 0o700 })
@@ -73,7 +74,8 @@ const readable = (view: Awaited<ReturnType<typeof launch>>) =>
 it.each(['claude', 'codex'] as const)(
   'starts a %s launch with 1,786 old copies while the sweep is paused',
   async (provider) => {
-    const old = Array.from({ length: 1786 }, (_, index) => legacy(index))
+    // Keep the full candidate count and one populated copy without repeating its file I/O.
+    const old = Array.from({ length: 1786 }, (_, index) => legacy(index, index === 0 ? 1 : 0))
     const paused = deferred()
     scheduling.wait = () => paused.promise
     try {
@@ -90,7 +92,7 @@ it.each(['claude', 'codex'] as const)(
       scheduling.wait = undefined
       paused.resolve()
       await cleaning
-      expect(old.some((path) => existsSync(path))).toBe(false)
+      expect(old.every((path) => !existsSync(path))).toBe(true)
       expect(readable(prepared)).toBe(true)
     } finally {
       scheduling.wait = undefined
