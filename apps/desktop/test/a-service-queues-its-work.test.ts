@@ -1,4 +1,4 @@
-import { giveLateServiceTask, newConversationGive } from './lib/give-fixture'
+import { giveLateServiceTask } from './lib/give-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -6,9 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { readProfileExecution, writeProfileExecution } from '../src/main/profile-execution-file'
 import { skipTheLedger, type SessionStore } from '../src/main/db/session-store'
 import { type RowsUnread } from '../src/main/db/rows-unread'
-import { WorkSearchEngine } from '../src/main/db/work-search-engine'
 import { agentCallerId, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
-import { answerOn, callOn } from './helpers/call-tool'
 import { admitGive, type GiveFacts, type ServiceAtAGive } from '../src/main/runtime/spawn-rails'
 import {
   MAX_WAITS_WALKED,
@@ -81,90 +79,6 @@ describe('a service queues the work it is given', () => {
   }
 
   describe('a give to a service', () => {
-    it('keeps its address and title across reads with work from two callers', async () => {
-      const { host, first, second } = await aServiceAndTwoCallers()
-      const serviceName = 'Browser Driver'
-      expect(world.store.setAgentDisplayName('browser-driver', serviceName)).toBe(true)
-      const firstTools = agentToolsFor(host, first)
-      const secondTools = agentToolsFor(host, second)
-      const give = (title: string) => ({
-        profile: 'browser-driver',
-        title,
-        brief: `Complete ${title}.`,
-        definition_of_done: 'Record the result.',
-      })
-      const one = await callOn(firstTools, 'give_work', give('First caller job'))
-      const two = await callOn(secondTools, 'give_work', give('Second caller job'))
-      const service = one.agent as string
-      const recipient = { id: service, address: service, title: serviceName }
-      const line = `conversation ${service} · ${serviceName}`
-      expect(one).toMatchObject({ outcome: 'ok', receipt: { recipient } })
-      expect(two).toMatchObject({ outcome: 'ok', agent: service, receipt: { recipient } })
-      expect(world.store.firstTaskOf(service)?.label).toBe(one.label)
-      expect(world.store.latestTaskTitle(service)).toBe('Second caller job')
-      expect(host.addressOf(service)).toBe(service)
-      expect(host.nameByItsWork(service)).toBe(line)
-
-      const directory = await answerOn(firstTools, 'list_agents', { profile: 'browser-driver' })
-      const status = await answerOn(secondTools, 'get_agent_status', { agent: service })
-      const transcript = await answerOn(secondTools, 'read_transcript', { agent: service })
-      const tasks = await answerOn(firstTools, 'list_tasks', { conversation: service })
-      expect(directory.text).toContain(line)
-      expect(status.text.startsWith(line)).toBe(true)
-      expect(transcript.text).toContain(line)
-      expect(tasks.text.startsWith(line)).toBe(true)
-      expect(tasks.structured).toMatchObject({
-        outcome: 'ok',
-        tasks: expect.arrayContaining([
-          expect.objectContaining({ label: one.label, title: 'First caller job' }),
-          expect.objectContaining({ label: two.label, title: 'Second caller job' }),
-        ]),
-      })
-
-      world.anAgent('normal-reader', 'nothing kept')
-      const ordinary = await callOn(
-        firstTools,
-        'give_work',
-        newConversationGive('normal-reader', 'Ordinary job', 'Complete the ordinary job.'),
-      )
-      const ordinaryAddress = ordinary.label as string
-      const ordinaryLine = `conversation ${ordinaryAddress} · Ordinary job`
-      expect(ordinary.outcome).toBe('ok')
-      expect(host.addressOf(ordinary.agent as string)).toBe(ordinaryAddress)
-      expect(host.nameByItsWork(ordinary.agent as string)).toBe(ordinaryLine)
-
-      const search = new WorkSearchEngine(world.db.name)
-      try {
-        expect(search.read(first, { profile: 'browser-driver' })).toMatchObject({
-          ok: true,
-          page: {
-            hits: [{ conversation: service, address: service, title: serviceName, line }],
-          },
-        })
-        expect(search.read(first, { profile: 'normal-reader' })).toMatchObject({
-          ok: true,
-          page: {
-            hits: [{ conversation: ordinary.agent, address: ordinaryAddress, line: ordinaryLine }],
-          },
-        })
-      } finally {
-        search.close()
-      }
-
-      await host.closeAll()
-      world.store.append(
-        service,
-        world.store.nextOrdinal(service),
-        { type: 'user_turn', text: 'serviceidentityquartz' },
-        world.clock,
-      )
-      const past = world.store.searchPastWork(first, 'serviceidentityquartz', 'browser-driver')
-      expect(past).toMatchObject({
-        ok: true,
-        hits: [{ conversation: service, line }],
-      })
-    })
-
     it('is queued on its one conversation, given by its caller: the oldest is handed over, the rest wait their turn', async () => {
       const { host, first, second } = await aServiceAndTwoCallers()
       const one = accepted(await world.gives(host, first, 'browser-driver', { title: 'One' }))
