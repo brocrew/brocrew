@@ -41,3 +41,26 @@ for (const accepted of [false, true]) {
     expect(book.paths.handing(key).staged).toEqual(accepted ? [] : original)
   })
 }
+
+it('a same-path acquisition at capacity remains a newer attachment without duplicating saved paths', async () => {
+  const book = createDraftBook()
+  const key = draftKey('full')
+  const files = Array.from({ length: MAX_HANDED_PATHS }, (_, index) => ({
+    path: `/fictional/${index}.md`, kind: 'file' as const, outsideCwd: false,
+  }))
+  book.write(key, 'First message')
+  book.paths.write(key, files)
+  let reply!: (accepted: boolean) => void
+  const pending = book.send(key, () => new Promise<boolean>((resolve) => { reply = resolve }), true)
+  await book.paths.handing(key).acquire(async () => [{ handed: { ...files[0]! } }])
+  expect(book.paths.handing(key).staged).toEqual([files[0]])
+  const snapshot = draftsToSave(book)
+  expect(savedDraftsFrom(snapshot)).toEqual(snapshot)
+  expect(snapshot.drafts[0]!.attached).toHaveLength(MAX_HANDED_PATHS)
+  book.paths.handing(key).stage([])
+  expect(book.paths.handing(key).staged).toEqual([])
+  expect(draftsToSave(book).drafts[0]!.attached).toHaveLength(MAX_HANDED_PATHS)
+  reply(true)
+  await pending
+  expect(book.paths.read(key)).toEqual([])
+})

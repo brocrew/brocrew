@@ -179,6 +179,33 @@ for (const accepted of [true, false]) {
   })
 }
 
+for (const accepted of [true, false]) {
+  it(`keeps an explicit same-file acquisition for the newer draft, accepted=${accepted}`, async () => {
+    const q = openQueue()
+    try {
+      q.view.q('queue-prompt').click()
+      await nextTick()
+      const input = q.view.q('prompt-input') as HTMLTextAreaElement
+      input.value = 'Use that file again'
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+      await q.book.paths.handing(q.key).acquire(async () => [{ handed: { ...FILE } }])
+      await nextTick()
+      expect(q.book.paths.handing(q.key).staged).toEqual([FILE])
+      expect(q.view.all('composer-attachments')).toHaveLength(1)
+      expect(draftsToSave(q.book).drafts[0]!.attached).toEqual([FILE])
+      if (accepted) q.accept()
+      else q.refuse(new Error('Fictional queue refusal'))
+      await q.settled()
+      expect(q.book.paths.handing(q.key).staged).toEqual([FILE])
+      expect(q.book.read(q.key)).toContain('Use that file again')
+    } finally {
+      q.accept()
+      await q.settled()
+      q.stop()
+    }
+  })
+}
+
 it('retains the submitted files within the existing attachment capacity while their chips are hidden', async () => {
   const q = openQueue()
   const files = Array.from({ length: 10 }, (_, index) => ({
