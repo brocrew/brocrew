@@ -352,13 +352,8 @@ describe('adopting existing sessions', () => {
     await expect(host.resumeSession(idOf('child-3'), new NullSink(), null)).rejects.toThrow(
       /sub-agent conversation/,
     )
-    // ⚠️ **The paired positive, and it is the one that matters**: the guard must refuse the child
-    // and nothing else, or this is "resume is broken" wearing a green tick.
-    //
-    // ⚠️ **It asserts the parent gets PAST the guard rather than that it resumes.** `FakeRuntime`
-    // refuses a ref it never issued, so an adopted conversation cannot complete a resume in this
-    // suite at all — and reaching that refusal is itself the proof, because it lives downstream of
-    // the check. Asserting a resolve here would be asserting the fake, not the rule.
+    // FakeRuntime cannot reopen a thread it did not issue. The missing-session cause shows
+    // that the adopted parent reached the provider.
     await expect(host.resumeSession(idOf('parent-3'), new NullSink(), null)).rejects.toMatchObject({
       message: expect.stringContaining('its provider session file is missing'),
       cause: { unavailable: 'its-session-is-gone' },
