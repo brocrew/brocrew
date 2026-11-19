@@ -1,4 +1,5 @@
 import type { Worker } from 'node:worker_threads'
+import { isRecord } from '../archive/turn-reading'
 import {
   WINDOW_READ_BOUNDS,
   WindowReadUnavailable,
@@ -55,7 +56,10 @@ export class WindowWorkerReader implements WindowStoreReader {
   private terminating = false
   private readonly reportTiming?: TimingReport
 
-  constructor(private readonly worker: WindowReadWorker, reportTiming?: TimingReport) {
+  constructor(
+    private readonly worker: WindowReadWorker,
+    reportTiming?: TimingReport,
+  ) {
     if (reportTiming !== undefined) {
       this.reportTiming = (phase, facts) => {
         try {
@@ -146,7 +150,14 @@ export class WindowWorkerReader implements WindowStoreReader {
       }
     }
     const result = new Promise<WindowReadResult>((resolve, reject) => {
-      this.pending.set(id, { kind: query.kind, resolve, reject, cleanUp, cancel: abandoned, timing })
+      this.pending.set(id, {
+        kind: query.kind,
+        resolve,
+        reject,
+        cleanUp,
+        cancel: abandoned,
+        timing,
+      })
     })
     if (timing !== undefined)
       this.reportTiming?.('enqueue', { id, kind: query.kind, atUs: timing.enqueuedUs })
@@ -188,11 +199,11 @@ export class WindowWorkerReader implements WindowStoreReader {
   }
 
   private receive(incoming: unknown): void {
-    if (incoming === null || typeof incoming !== 'object' || Array.isArray(incoming)) {
+    if (!isRecord(incoming)) {
       this.fail()
       return
     }
-    const message = incoming as Record<string, unknown>
+    const message = incoming
     if (this.reportTiming !== undefined && message.type === 'debug-window-read-timing') {
       const { id, phase, atUs } = message
       if (
