@@ -810,6 +810,31 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       expect(handedOver()).toEqual([MESSAGE])
     })
 
+    it('uses a newer Mac account for the first send in an older conversation', async () => {
+      aHelperHolding(DEAD)
+      accept(DEAD)
+      const { sessionId: id } = await start()
+      const other = signIn('acct-fictional-b', 'NEW-MAC-ACCOUNT', '2026-10-10T23:00:00Z')
+      writeFileSync(machine, other)
+      accepted.clear()
+      accept(other)
+      codex.asItResumes = () => {
+        expect(codex.sent).toEqual([])
+        expect(held()).toBe(digestOf(other))
+      }
+
+      await host.send(id, MESSAGE, watching)
+
+      await vi.waitFor(() => expect(codex.answeredInputs).toHaveLength(1))
+      expect(starts).toEqual(digests(DEAD, other))
+      expect(handedOver()).toEqual([MESSAGE])
+      expect(endingsOf(id)).toEqual(['completed'])
+      expect(turnsOf(id)).toHaveLength(1)
+      expect(codex.carriedOn).toBe(0)
+      expect(watching.errors).toEqual([])
+      expect(signInAt(machine)).toBe(digestOf(other))
+    })
+
     it('copies a newer different Mac account after refusal but waits for the person to resume', async () => {
       aHelperHolding(DEAD)
       const other = signIn('acct-fictional-b', 'NEW-MAC-ACCOUNT', '2026-10-10T23:00:00Z')
