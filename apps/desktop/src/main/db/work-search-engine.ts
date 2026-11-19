@@ -87,13 +87,14 @@ class SearchGroups {
 
   add({ hit, taskLabels }: ConversationMatch): void {
     if (this.wantsPreview(hit.profile)) {
-      const { conversation, address, title, last_active_at, metadata } = hit
+      const { conversation, address, title, last_active_at, status, metadata } = hit
       const page = this.previews.get(hit.profile) ?? []
       page.push({
         conversation,
         address,
         title,
         last_active_at,
+        status,
         metadata,
         matched_task_labels: taskLabels,
         tasks_omitted: hit.tasks_omitted - taskLabels.length,
