@@ -6,32 +6,23 @@ import { waitFor } from './lib/f093-host'
 import { TASK_STATES } from '../src/shared/task-contracts'
 import type { PieceRow } from '../src/shared/task-contracts'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
-import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
+import { FakeRuntime } from '@brobot2/runtime'
 import type { AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase } from '../src/main/db/connection'
-import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import type { SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import {
   AN_AGENT_THIS_APP_CANNOT_NAME,
   admitReply,
   type ReplyRefusal,
 } from '../src/main/runtime/reply-rails'
-import { resourcesRoot } from '../src/main/resources/resources'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { clockTime } from '../src/shared/clock'
 import { TASK_IS_OPEN, derivePieces } from '../src/shared/tasks'
 import {
   closeHostFixture,
   RecordingSink,
-  syntheticProviderHome,
-  neutralHostDeps,
-  fixtureProviderConfig,
-  fixtureDatabase,
-  fixtureFolder,
+  numberedFixtureStorage,
 } from './lib/host-fixture'
 
 /**
@@ -351,14 +342,10 @@ describe('D-025 · §2 · admitReply, over a literal piece', () => {
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 describe('D-025 · §3-§6 · a refused reply through the real host', () => {
-  let userData: string
-  let root: string
-  let db: AppDatabase
+  let fixture: ReturnType<typeof numberedFixtureStorage>
   let store: SessionStore
   let host: RuntimeHost
   let hosts: RuntimeHost[]
-  let issued: FakeProviderSessions
-  let counter: number
   let clock: number
   let window: RecordingSink
   /** A fresh identity per pair, so no pair can read another pair's conversations. */
@@ -368,42 +355,28 @@ describe('D-025 · §3-§6 · a refused reply through the real host', () => {
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      ...neutralHostDeps(() => userData),
-      resourcesRoot: () => resourcesRoot(userData),
-      createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions: issued }),
-      prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
-      newSessionId: () => `sess_${++counter}`,
-      now: tick,
-      readProviderConfig: fixtureProviderConfig,
+      ...fixture.paths,
+      createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions: fixture.issued }),
     })
     hosts.push(built)
     return built
   }
 
   beforeEach(() => {
-    userData = fixtureFolder('brobot2-ended-piece-')
-    root = fixtureFolder('brobot2-ended-piece-root-')
-    db = fixtureDatabase(userData)
     clock = 7_000_000
-    store = createSessionStore(db, tick)
-    counter = 0
+    fixture = numberedFixtureStorage('ended-piece', tick)
+    store = fixture.store
     hosts = []
-    issued = new FakeProviderSessions()
     host = buildHost()
     window = new RecordingSink('webContents:1')
     pairs = 0
   })
 
-  afterEach(() => closeHostFixture(hosts, db, userData, root))
+  afterEach(() => closeHostFixture(hosts, fixture.db, fixture.userData, fixture.root))
 
-  const { open: personOpens, seed: bringIdentityIntoBeing } = fixturePersonEntry(
-    () => ({ host, root, window }),
+  const { open: personOpens, seed: bringIdentityIntoBeing, toolsOf } = fixturePersonEntry(
+    () => ({ host, root: fixture.root, window }),
   )
-
-  /** The toolset a session's calls are driven through, built the way the launch builds it. */
-  const toolsOf = (sessionId: string): AgentToolset => agentToolsFor(host, sessionId)
 
   const ledger = (sessionId: string): TranscriptEvent[] =>
     store.events(sessionId).map((entry) => entry.event)

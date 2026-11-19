@@ -1,3 +1,7 @@
+import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
+import { type RuntimeHost, type RuntimeEventSink } from '../../src/main/runtime/runtime-host'
+import { agentToolsFor } from '../../src/main/runtime/agent-tools'
+import { personOpener } from '../helpers/person-opens-session'
 import { expect } from 'vitest'
 import type { AgentToolset } from '@brobot2/runtime'
 import { callOn } from '../helpers/call-agent-tool'
@@ -79,20 +83,64 @@ export async function giveOpenWorkerTask(
   return { pm, worker, pmTools, workerTools, piece: open.piece }
 }
 
-export async function openAndGiveToNewChild(
-  personOpens: (profile: string) => Promise<string>,
+export async function openPmWithSeededWorker(
+  open: (profile: string) => Promise<string>,
   close: (conversation: string) => Promise<unknown>,
-  toolsFor: (conversation: string) => AgentToolset,
-  giverProfile: string,
-  childProfile: string,
+) {
+  await close(await open('worker'))
+  return open('pm')
+}
+
+export async function openPmAndGiveToWorker(
+  open: (profile: string) => Promise<string>,
+  close: (conversation: string) => Promise<unknown>,
+  give: (
+    pm: string,
+    name: 'give_work',
+    args: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>>,
   title: string,
   brief: string,
 ) {
-  await close(await personOpens(childProfile))
-  const parent = await personOpens(giverProfile)
-  const given = await callNewConversationGive(toolsFor(parent), childProfile, title, brief)
+  const pm = await openPmWithSeededWorker(open, close)
+  const given = await readSuccessfulGive(() =>
+    give(pm, 'give_work', newConversationGive('worker', title, brief)),
+  )
+  return { pm, given }
+}
+
+export async function openAndGiveToNewChild(
+  fixture: { host: RuntimeHost; root: string; window: RuntimeEventSink },
+  title: string,
+  brief: string,
+) {
+  const { host, window } = fixture
+  const open = personOpener(() => fixture, 'ask')
+  await host.close(await open('worker'), window)
+  const pm = await open(DEFAULT_PROFILE_ID)
+  const given = await callNewConversationGive(agentToolsFor(host, pm), 'worker', title, brief)
   expect(given.outcome, JSON.stringify(given)).toBe('ok')
-  return { parent, child: given.agent as string }
+  return { pm, child: given.agent as string }
+}
+
+export function ownedFixturePiece(
+  store: Pick<SessionStore, 'piecesOwnedBy'>,
+  owner: string,
+  piece: string,
+) {
+  const found = store.piecesOwnedBy(owner).find((one) => one.piece === piece)
+  if (found === undefined) throw new Error(`${owner} owns no piece ${piece}`)
+  return found
+}
+
+export async function createFirstWorkerTask(
+  tools: AgentToolset,
+  title: string,
+  brief: string,
+) {
+  const given = await createWorkerAndGive(tools, title, brief)
+  expect(given, JSON.stringify(given)).toMatchObject({ outcome: 'ok', label: 'W1.1' })
+  return given
 }
 
 export async function giveAndReadItsTask(
@@ -175,10 +223,64 @@ export function giveWorkBeforeProviderStart(
   return send('give_work', newConversationGive('worker', 'The work', 'the work'))
 }
 
-export async function readSuccessfulRawGive(
+async function readSuccessfulRawGive(
   send: () => Promise<{ structured: Record<string, unknown> }>,
 ) {
   const given = await send()
   expect(given.structured.outcome, JSON.stringify(given.structured)).toBe('ok')
   return given
+}
+
+export async function giveChildWithProfileTitle(
+  send: (name: 'give_work', args: Record<string, unknown>) => Promise<Record<string, unknown>>,
+  profile: string,
+  brief: string,
+) {
+  const given = await readSuccessfulGive(() =>
+    send('give_work', newConversationGive(profile, `The ${profile}`, brief)),
+  )
+  return {
+    child: given.agent as string,
+    piece: given.piece as string,
+    label: given.label as string,
+  }
+}
+
+export async function giveWorkerThroughRawTool(
+  send: (
+    toolset: AgentToolset,
+    name: 'give_work',
+    args: Record<string, unknown>,
+  ) => Promise<{ structured: Record<string, unknown> }>,
+  pmTools: AgentToolset,
+  lastToolset: () => AgentToolset,
+) {
+  const given = await readSuccessfulRawGive(() =>
+    send(
+      pmTools,
+      'give_work',
+      newConversationGive('worker', 'The work this dispatch is about', 'build it'),
+    ),
+  )
+  return {
+    worker: given.structured.agent as string,
+    pmTools,
+    workerTools: lastToolset(),
+    piece: given.structured.piece as string,
+    label: given.structured.label as string,
+  }
+}
+
+export async function openWorldClockParent(
+  host: RuntimeHost,
+  open: (profile: string, mode: 'ask') => Promise<string>,
+) {
+  const parent = await open(DEFAULT_PROFILE_ID, 'ask')
+  const parentTools = agentToolsFor(host, parent)
+  const first = await createFirstWorkerTask(
+    parentTools,
+    'Build the world clock page',
+    'build the world clock page',
+  )
+  return { parent, parentTools, first }
 }

@@ -1,3 +1,4 @@
+import { callOn as callAgentTool } from './helpers/call-agent-tool'
 import { personOpener } from './helpers/person-opens-session'
 import { addressedGive, openAndGiveToNewChild, newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
@@ -16,7 +17,6 @@ import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
-import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { fixtureProviderConfig, RecordingSink, neutralHostDeps } from './lib/host-fixture'
 
 /**
@@ -90,31 +90,14 @@ describe('D-017 · a stop is not an ending', () => {
       for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
     })
 
-    const callOn = async (
-      sessionId: string,
-      name: ToolName,
-      args: Record<string, unknown>,
-    ): Promise<Record<string, unknown>> => {
-      const tool = agentToolsFor(host, sessionId).tools.find((one) => one.name === name)
-      if (tool === undefined) throw new Error(`no such tool: ${name}`)
-      return (await tool.call(args)).structured as Record<string, unknown>
-    }
+    const callOn = (sessionId: string, name: ToolName, args: Record<string, unknown>) =>
+      callAgentTool(agentToolsFor(host, sessionId), name, args)
 
     const personOpens = personOpener(() => ({ host, root, window }), 'ask')
 
     /** ⚑ A PM in a window, and one child its give started through the real door (D-016). */
-    const aPmAndAChild = async (): Promise<{ pm: string; child: string }> => {
-      const { parent: pm, child } = await openAndGiveToNewChild(
-        personOpens,
-        (id) => host.close(id, window),
-        (id) => agentToolsFor(host, id),
-        DEFAULT_PROFILE_ID,
-        'worker',
-        'The notes',
-        'the notes',
-      )
-      return { pm, child }
-    }
+    const aPmAndAChild = () =>
+      openAndGiveToNewChild({ host, root, window }, 'The notes', 'the notes')
 
     const questionOf = (asker: string, requestId: string) =>
       store

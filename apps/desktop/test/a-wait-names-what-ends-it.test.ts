@@ -1,4 +1,4 @@
-import { stalledWorkFixture } from './lib/running-worker-fixture'
+import { stalledWorkFixture, waitingWorkTools } from './lib/running-worker-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { newConversationGive } from './lib/give-fixture'
 import { HandleKeepingRuntime as ProviderDouble } from './helpers/handle-keeping-runtime'
@@ -134,20 +134,7 @@ describe('a wait names what will end it', () => {
     () => settle(),
   )
   /** Ada asks about W1.1, of her giver or of a person; the question's id. */
-  const asks = async (ada: string, whoAnswers: 'the-parent' | 'a-person'): Promise<string> => {
-    const asked = await ok(agentToolsFor(host, ada), 'ask_question', {
-      piece: 'W1.1',
-      question: 'which pages first?',
-      who_answers: whoAnswers,
-    })
-    await settle()
-    return asked.question as string
-  }
-  const waitsOn = async (
-    ada: string,
-    on: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> =>
-    call(agentToolsFor(host, ada), 'update_work', { piece: 'W1.1', status: 'waiting', on })
+  const { asks, waitsOn } = waitingWorkTools(() => host, settle, ok)
 
   describe('a wait on each kind is kept on the line', () => {
     it('another agent’s piece, by its label', async () => {

@@ -1,26 +1,15 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { openPoolReviewLead, useDocumentReaderPool } from './lib/worker-pool-fixture'
+import { describe, expect, it, vi } from 'vitest'
 import { agentCallerId, agentToolsFor } from '../src/main/runtime/agent-tools'
-import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
+import type { AServiceWorld } from './helpers/a-service-world'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 
 describe('giving work to conversations from saved worker pools', () => {
   let world: AServiceWorld
   let identity: string
-  beforeEach(() => {
-    world = aServiceWorld()
-    identity = world.anAgent('document-reader', 'normal').id
-  })
-  afterEach(async () => {
-    await world.cleanUp()
-  })
+  useDocumentReaderPool((fixture) => ({ world, identity } = fixture))
   async function setup() {
-    const host = world.aHost()
-    const caller = (
-      await host.createSession(
-        { provider: 'claude', profileId: 'review-lead', cwd: world.folder, approvalMode: 'auto' },
-        world.window,
-      )
-    ).sessionId
+    const { host, sessionId: caller } = await openPoolReviewLead(world)
     return { host, caller }
   }
   const giveTool = (host: RuntimeHost, caller: string) => {

@@ -1,4 +1,9 @@
-import { stalledWorkFixture } from './lib/running-worker-fixture'
+import { callOn as call } from './helpers/call-agent-tool'
+import {
+  stalledWorkFixture,
+  waitingWorkTools,
+  callFixtureToolOk as ok,
+} from './lib/running-worker-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { newConversationGive } from './lib/give-fixture'
 import { recordForwardedQuestion } from './lib/forwarded-question-fixture'
@@ -11,7 +16,6 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type {
-  AgentToolset,
   FakeSessionHandle,
   ResumeOptions,
   SessionRef,
@@ -22,7 +26,7 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
@@ -131,24 +135,6 @@ describe('a to-do for a person', () => {
     for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
   })
 
-  const call = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
-  const ok = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const answer = await call(toolset, name, args)
-    expect(answer, JSON.stringify(answer)).toMatchObject({ outcome: 'ok' })
-    return answer
-  }
   const pieceOf = (owner: string, piece: string): PieceRow | undefined =>
     store.piecesOwnedBy(owner).find((one) => one.piece === piece)
 
@@ -158,20 +144,7 @@ describe('a to-do for a person', () => {
     () => settle(),
   )
   /** Ada asks about W1.1, of her giver or of a person; the question's id. */
-  const asks = async (ada: string, whoAnswers: 'the-parent' | 'a-person'): Promise<string> => {
-    const asked = await ok(agentToolsFor(host, ada), 'ask_question', {
-      piece: 'W1.1',
-      question: 'which pages first?',
-      who_answers: whoAnswers,
-    })
-    await settle()
-    return asked.question as string
-  }
-  const waitsOn = async (
-    ada: string,
-    on: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> =>
-    call(agentToolsFor(host, ada), 'update_work', { piece: 'W1.1', status: 'waiting', on })
+  const { asks, waitsOn } = waitingWorkTools(() => host, settle, ok)
 
   /** Words this app put in front of Ada: delivered, or held for her next turn. */
   const toldAda = (ada: string): string[] =>

@@ -1,27 +1,22 @@
 import { recordForwardedQuestion } from './lib/forwarded-question-fixture'
 import { waitFor } from './lib/f093-host'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions } from '@brobot2/runtime'
 import type { AgentToolset, FakeSessionHandle } from '@brobot2/runtime'
 import { CHANNEL_REFUSALS, CHANNEL_REFUSAL_SENTENCES } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import type { SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { REQUEST_IS_OPEN, permissionShaped, theChannelRefusalIn } from '../src/shared/questions'
 import { agentName } from '../src/shared/runtime-ipc'
 import {
   RecordingSink,
-  fixtureProviderConfig,
-  fixtureHostPaths,
   ObservedProviderLaunches,
+  numberedFixtureStorage,
 } from './lib/host-fixture'
 
 /**
@@ -66,20 +61,15 @@ import {
  */
 
 const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 const mainRoot = join(here, '../src/main')
 const sharedRoot = join(here, '../src/shared')
 
 describe('403 · a decision only a person can make', () => {
-  let userData: string
-  let root: string
-  let db: AppDatabase
+  let fixture: ReturnType<typeof numberedFixtureStorage>
   let store: SessionStore
   let host: RuntimeHost
   let hosts: RuntimeHost[]
   let handles: FakeSessionHandle[]
-  let issued: FakeProviderSessions
-  let counter: number
   let clock: number
   let window: RecordingSink
   let claimed: Set<string>
@@ -89,30 +79,22 @@ describe('403 · a decision only a person can make', () => {
   const buildHost = (over: SessionStore = store): RuntimeHost => {
     const built = new RuntimeHost({
       store: over,
-      ...fixtureHostPaths(() => userData),
+      ...fixture.paths,
       createRuntime: (provider: Provider) =>
-        new ObservedProviderLaunches(provider, issued, (_kind, _options, handle) => {
+        new ObservedProviderLaunches(provider, fixture.issued, (_kind, _options, handle) => {
           handles.push(handle)
         }),
-      newSessionId: () => `sess_${++counter}`,
-      now: tick,
-      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built
   }
 
   beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-decision-'))
-    root = mkdtempSync(join(tmpdir(), 'brobot2-decision-root-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
     clock = 8_000_000
-    store = createSessionStore(db, tick)
-    counter = 0
+    fixture = numberedFixtureStorage('decision', tick)
+    store = fixture.store
     hosts = []
     handles = []
-    issued = new FakeProviderSessions()
     host = buildHost()
     window = new RecordingSink('webContents:1')
     claimed = new Set<string>()
@@ -121,8 +103,8 @@ describe('403 · a decision only a person can make', () => {
 
   afterEach(async () => {
     for (const built of hosts) await built.closeAll()
-    db.close()
-    for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
+    fixture.db.close()
+    for (const dir of [fixture.userData, fixture.root]) rmSync(dir, { recursive: true, force: true })
   })
 
   const personOpens = async (
@@ -130,7 +112,7 @@ describe('403 · a decision only a person can make', () => {
     approvalMode: 'ask' | 'auto' = 'ask',
   ): Promise<string> => {
     const { sessionId } = await host.createSession(
-      { provider: 'claude', profileId, approvalMode, cwd: root },
+      { provider: 'claude', profileId, approvalMode, cwd: fixture.root },
       window,
     )
     return sessionId

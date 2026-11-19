@@ -7,7 +7,6 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeProviderSessions, type FakeSessionHandle } from '@brobot2/runtime'
 import type { AgentToolset } from '@brobot2/runtime'
-import type { Provider } from '@brobot2/shared'
 import type { AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from './helpers/giver-notice-host'
@@ -20,7 +19,7 @@ import {
   latestToolset,
   numberedFixtureHostPaths,
   RecordingSink,
-  ObservedProviderLaunches,
+  openObservedFixtureHost,
 } from './lib/host-fixture'
 
 /**
@@ -64,19 +63,8 @@ describe('676 · the rest of R18, and the answer with no bound', () => {
   let window: RecordingSink
   const tick = (): number => clock++
 
-  const buildHost = (): RuntimeHost => {
-    const built = new RuntimeHost({
-      store,
-      ...hostPaths,
-      createRuntime: (provider: Provider) =>
-        new ObservedProviderLaunches(provider, issued, (_kind, options, handle) => {
-          if (options.agentTools) handed.push(options.agentTools)
-          handles.push(handle)
-        }),
-    })
-    hosts.push(built)
-    return built
-  }
+  const buildHost = (): RuntimeHost =>
+    openObservedFixtureHost(RuntimeHost, store, hostPaths, issued, handed, handles, hosts)
 
   beforeEach(() => {
     userData = fixtureFolder('brobot2-676-')

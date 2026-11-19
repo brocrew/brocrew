@@ -1,5 +1,5 @@
 import { answerOn } from './helpers/call-tool'
-import { StartRecordingRuntime } from './lib/provider-double'
+import { recordFixtureStarts } from './lib/provider-double'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -23,6 +23,7 @@ import {
   RecordingSink,
   syntheticProviderHome,
   neutralHostDeps,
+  fixtureHostPaths,
 } from './lib/host-fixture'
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -45,6 +46,8 @@ describe('messages and questions use conversation addresses', () => {
   let window: RecordingSink
   const tick = (): number => clock++
 
+  const fixturePaths = () => fixtureHostPaths(() => userData)
+
   beforeEach(() => {
     userData = mkdtempSync(join(tmpdir(), 'brobot2-profile-name-'))
     root = mkdtempSync(join(tmpdir(), 'brobot2-profile-name-root-'))
@@ -58,8 +61,8 @@ describe('messages and questions use conversation addresses', () => {
     host = new RuntimeHost({
       store,
       ...neutralHostDeps(() => userData),
-      resourcesRoot: () => resourcesRoot(userData),
-      createRuntime: (provider: Provider) => new StartRecordingRuntime(provider, handles, issued),
+      resourcesRoot: fixturePaths().resourcesRoot,
+      createRuntime: recordFixtureStarts(handles, issued),
       prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),

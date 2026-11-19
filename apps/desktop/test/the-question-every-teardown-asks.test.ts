@@ -1,4 +1,5 @@
-import { newConversationGive, readSuccessfulGive } from './lib/give-fixture'
+import { openPmAndGiveToObservedWorker } from './lib/running-worker-fixture'
+import { newConversationGive } from './lib/give-fixture'
 import {
   fixtureProviderConfig,
   RecordingSink,
@@ -255,20 +256,13 @@ describe('659 · the question every teardown asks', () => {
       window,
     )
     await host.close(first.sessionId, window)
-    const { sessionId: pm } = await host.createSession(
-      { provider: 'claude', profileId: 'pm', approvalMode, cwd: root },
-      window,
+    return openPmAndGiveToObservedWorker(
+      { host, root, window },
+      approvalMode,
+      () => launches.at(-1)!,
+      turnsIn,
+      callOn,
     )
-    const pmLaunch = launches.at(-1)!
-    const given = await readSuccessfulGive(() =>
-      callOn(pmLaunch.toolset, 'give_work', newConversationGive('worker', 'The work', 'the work')),
-    )
-    const worker = given.agent as string
-    const workerLaunch = launches.at(-1)!
-    if (approvalMode === 'auto') {
-      await waitFor(() => turnsIn(worker) > 0, 'the brief’s turn to end')
-    }
-    return { pm, pmLaunch, worker, workerLaunch }
   }
 
   /**

@@ -2,7 +2,7 @@ import { tmpdir } from 'node:os'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { openDatabase } from '../../src/main/db/connection'
-import { createSessionStore } from '../../src/main/db/session-store'
+import { createSessionStore, type SessionStore } from '../../src/main/db/session-store'
 import { applyMigrations } from '../../src/main/db/migrate'
 import { resourcesRoot } from '../../src/main/resources/resources'
 import { resolveSessionCwd } from '../../src/main/runtime/scratch-cwd'
@@ -10,7 +10,7 @@ import {
   FakeRuntime,
   type FakeSessionHandle,
   type AgentToolset,
-  type FakeProviderSessions,
+  FakeProviderSessions,
   type StartOptions,
   type SessionRef,
   type ResumeOptions,
@@ -249,4 +249,40 @@ export async function waitForFixtureMessage(
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
   throw new Error(`timed out waiting for ${what}`)
+}
+
+export function numberedFixtureStorage(prefix: string, now: () => number) {
+  const userData = fixtureFolder(`brobot2-${prefix}-`)
+  const root = fixtureFolder(`brobot2-${prefix}-root-`)
+  const db = fixtureDatabase(userData)
+  return {
+    userData,
+    root,
+    db,
+    store: createSessionStore(db, now),
+    paths: numberedFixtureHostPaths(() => userData, now),
+    issued: new FakeProviderSessions(),
+  }
+}
+
+export function openObservedFixtureHost<T extends RuntimeHost>(
+  Host: new (deps: RuntimeHostDeps) => T,
+  store: SessionStore,
+  paths: ReturnType<typeof numberedFixtureHostPaths>,
+  issued: FakeProviderSessions,
+  handed: AgentToolset[],
+  handles: FakeSessionHandle[],
+  hosts: T[],
+): T {
+  const built = new Host({
+    store,
+    ...paths,
+    createRuntime: (provider) =>
+      new ObservedProviderLaunches(provider, issued, (_kind, options, handle) => {
+        if (options.agentTools) handed.push(options.agentTools)
+        handles.push(handle)
+      }),
+  })
+  hosts.push(built)
+  return built
 }

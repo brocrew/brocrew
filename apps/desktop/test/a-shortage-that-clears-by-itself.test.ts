@@ -3,7 +3,9 @@ import {
   recordedSendNotices,
   expectRecordedMessageDelivered,
 } from './lib/recorded-send'
-import { newConversationGive, readSuccessfulGive } from './lib/give-fixture'
+import {
+  openPmAndGiveToWorker,
+} from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -156,10 +158,12 @@ describe('705 · R39 — a shortage that clears by itself', () => {
    * one call.
    */
   const aWorkerOver = async (): Promise<{ pm: string; worker: string; piece: string }> => {
-    await host.close(await personOpens('worker'), window)
-    const pm = await personOpens('pm')
-    const given = await readSuccessfulGive(() =>
-      callOn(pm, 'give_work', newConversationGive('worker', 'the work', 'migrate the schema')),
+    const { pm, given } = await openPmAndGiveToWorker(
+      personOpens,
+      (id) => host.close(id, window),
+      callOn,
+      'the work',
+      'migrate the schema',
     )
     const worker = given.agent as string
     const piece = given.piece as string

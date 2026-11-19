@@ -1,5 +1,8 @@
 import { expectRecordedMessageWithMissingProviderFile } from './lib/recorded-send'
-import { newConversationGive, readSuccessfulGive } from './lib/give-fixture'
+import {
+  newConversationGive,
+  openPmAndGiveToWorker,
+} from './lib/give-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -115,10 +118,12 @@ describe('what a replacement carries, and what it leaves behind', () => {
 
   /** A PM a person opened, and one worker it gave work to and then stopped. */
   const aWorkerOver = async (): Promise<{ pm: string; worker: string; label: string }> => {
-    await host.close(await personOpens('worker'), window)
-    const pm = await personOpens('pm')
-    const given = await readSuccessfulGive(() =>
-      callOn(pm, 'give_work', newConversationGive('worker', 'The schema', 'migrate the schema')),
+    const { pm, given } = await openPmAndGiveToWorker(
+      personOpens,
+      (id) => host.close(id, window),
+      callOn,
+      'The schema',
+      'migrate the schema',
     )
     const worker = given.agent as string
     await waitFor(() => turnsIn(worker) > 0, 'the turn the brief opened to end')

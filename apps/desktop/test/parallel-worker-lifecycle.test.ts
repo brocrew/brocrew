@@ -1,28 +1,17 @@
+import { openPoolReviewLead, useDocumentReaderPool } from './lib/worker-pool-fixture'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { claudeProjectDirName } from '@brobot2/runtime/claude'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { readProfileExecution } from '../src/main/profile-execution-file'
-import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
+import type { AServiceWorld } from './helpers/a-service-world'
 
 describe('worker pools follow whole-tree lifecycle decisions', () => {
   let world: AServiceWorld
   let identity: string
-  beforeEach(() => {
-    world = aServiceWorld()
-    identity = world.anAgent('document-reader', 'normal').id
-  })
-  afterEach(async () => {
-    await world.cleanUp()
-  })
+  useDocumentReaderPool((fixture) => ({ world, identity } = fixture))
   async function setup() {
-    const host = world.aHost()
-    const giver = (
-      await host.createSession(
-        { provider: 'claude', profileId: 'review-lead', cwd: world.folder, approvalMode: 'auto' },
-        world.window,
-      )
-    ).sessionId
+    const { host, sessionId: giver } = await openPoolReviewLead(world)
     await host.closeAll()
     const worker = await world.aRecordedWorker(giver, 'document-reader')
     const restarted = world.aHost()

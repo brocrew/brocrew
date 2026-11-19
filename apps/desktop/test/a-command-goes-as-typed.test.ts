@@ -1,19 +1,17 @@
-import { StartRecordingRuntime } from './lib/provider-double'
+import { recordFixtureStarts } from './lib/provider-double'
 import { newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { HandedPath } from '../src/shared/attachment-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { FakeProviderSessions, FakeSessionHandle } from '@brobot2/runtime'
+import { FakeSessionHandle } from '@brobot2/runtime'
 import type { AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import type { AppDatabase } from '../src/main/db/connection'
+import type { SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
@@ -35,7 +33,7 @@ import {
 } from '../src/main/runtime/a-command-goes-as-typed'
 import { agentName, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
-import { fixtureHostPaths, fixtureProviderConfig } from './lib/host-fixture'
+import { numberedFixtureStorage } from './lib/host-fixture'
 
 /**
  * 🔴 **708 · `R42` — a person's command goes to the provider exactly as typed.**
@@ -59,7 +57,6 @@ import { fixtureHostPaths, fixtureProviderConfig } from './lib/host-fixture'
  */
 
 const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 
 /**
  * ⚑ **The one await between the gate and the handover, given a hook** — so the race the handover's
@@ -98,32 +95,22 @@ describe('708 · R42 — a person’s command goes to the provider exactly as ty
   let db: AppDatabase
   let store: SessionStore
   let host: RuntimeHost
-  let issued: FakeProviderSessions
-  let counter: number
   let clock: number
   let window: RecordingSink
   const tick = (): number => clock++
 
   beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-708-'))
-    root = mkdtempSync(join(tmpdir(), 'brobot2-708-root-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
     clock = 9_000_000
-    store = createSessionStore(db, tick)
-    counter = 0
+    const fixture = numberedFixtureStorage('708', tick)
+    ;({ root, userData, db, store } = fixture)
     handles = []
-    issued = new FakeProviderSessions()
     host = new RuntimeHost({
+      ...fixture.paths,
       store,
-      ...fixtureHostPaths(() => userData),
-      createRuntime: (provider: Provider) => new StartRecordingRuntime(provider, handles, issued),
-      newSessionId: () => `sess_${++counter}`,
-      now: tick,
+      createRuntime: recordFixtureStarts(handles, fixture.issued),
       // ⚑ Short, so the arm whose provider never answers ends in this test's time and not in five
       // seconds — the bound is what is under test there, not its length.
       commandListWaitMs: 60,
-      readProviderConfig: fixtureProviderConfig,
     })
     window = new RecordingSink(sinkOwnerId({ id: 1 }))
   })

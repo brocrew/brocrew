@@ -72,28 +72,15 @@ describe('608 · the turn that no longer waits', () => {
   const personOpens = (profile: string) => fixture.personOpens(profile)
   const theToolsetJustHandedOut = () => fixture.latestToolset()
 
-  const ledger = (sessionId: string): TranscriptEvent[] =>
-    store.events(sessionId).map((entry) => entry.event)
+  const ledger = (sessionId: string) => fixture.ledger(sessionId)
 
   /**
    * ⛔ **Every way words can reach a conversation, read as ONE population** (591's reader). ⚠️
    * `queueMessage` SENDS when the receiver is idle and HOLDS when it is busy, so a reader that
    * asked only for `user_turn` would report *the answer never arrived* about one in a mailbox.
    */
-  const wordsIn = (sessionId: string): readonly { type: string; text: string }[] =>
-    ledger(sessionId).filter(
-      (event): event is TranscriptEvent & { type: 'user_turn' | 'message_queued'; text: string } =>
-        event.type === 'user_turn' || event.type === 'message_queued',
-    )
-
-  const openRequestOf = (sessionId: string): { requestId: string; state: string } => {
-    const row = store
-      .routedRequestsOf(sessionId)
-      .filter((one) => one.went.is === 'the-parent')
-      .at(-1)
-    if (row === undefined) throw new Error(`no routed question in ${sessionId}`)
-    return row
-  }
+  const wordsIn = (sessionId: string) => fixture.wordsIn(sessionId)
+  const openRequestOf = (sessionId: string) => fixture.openRequestOf(sessionId)
 
   /**
    * ⚑ A PM in a window, and a worker holding one piece of work it gave through the door.

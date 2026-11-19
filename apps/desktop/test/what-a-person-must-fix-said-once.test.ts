@@ -1,3 +1,4 @@
+import { closeFixtureWorkerAfterGive } from './lib/running-worker-fixture'
 import { format } from 'node:util'
 import {
   expectRecordedCannotRun,
@@ -5,7 +6,6 @@ import {
   expectRecordedMessageWithMissingProviderFile,
 } from './lib/recorded-send'
 import { newConversationGive, readSuccessfulGive } from './lib/give-fixture'
-import { waitFor } from './lib/f093-host'
 import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import { chmodSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -19,7 +19,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, THE_APP_ITSELF, type RuntimeEventSink } from './helpers/giver-notice-host'
+import { RuntimeHost, type RuntimeEventSink } from './helpers/giver-notice-host'
 import * as tools from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { CodexUnavailableError } from '../src/main/providers/codex/program'
@@ -180,14 +180,7 @@ describe('what a person must fix, said once', () => {
     const given = await readSuccessfulGive(() =>
       callOn(pm, 'give_work', newConversationGive('worker', 'The schema', 'migrate the schema')),
     )
-    const worker = given.agent as string
-    await waitFor(
-      () => store.piecesOwnedBy(worker).some((piece) => piece.giver === pm),
-      'the give to open a piece',
-    )
-    await host.close(worker, THE_APP_ITSELF)
-    await waitFor(() => !host.sessionIds.includes(worker), 'the worker to be over')
-    return { worker, label: given.label as string }
+    return closeFixtureWorkerAfterGive(host, store, pm, given)
   }
 
   /**

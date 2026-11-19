@@ -1,4 +1,4 @@
-import { giveAndReadItsTask } from './lib/give-fixture'
+import { giveAndReadItsTask, ownedFixturePiece } from './lib/give-fixture'
 import { giveWorkerAndClaimItsBrief } from './lib/running-worker-fixture'
 import { waitFor } from './lib/f093-host'
 import { REQUEST_STATES } from '../src/shared/question-contracts'
@@ -248,11 +248,7 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
       ]),
     )
 
-  const pieceOf = (owner: string, piece: string) => {
-    const found = store.piecesOwnedBy(owner).find((one) => one.piece === piece)
-    if (found === undefined) throw new Error(`${owner} owns no piece ${piece}`)
-    return found
-  }
+  const pieceOf = (owner: string, piece: string) => ownedFixturePiece(store, owner, piece)
 
   /** A give, answered `ok`. `under` names the giver's own piece. */
   const aGive = (

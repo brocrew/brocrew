@@ -13,7 +13,6 @@ import type {
   UserInputResponse,
 } from '@brobot2/runtime'
 import { CHANNEL_REFUSALS, CHANNEL_REFUSAL_SENTENCES } from '@brobot2/runtime'
-import type { Provider } from '@brobot2/shared'
 import type { AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
@@ -37,7 +36,7 @@ import {
   fixtureFolder,
   numberedFixtureHostPaths,
   RecordingSink,
-  ObservedProviderLaunches,
+  openObservedFixtureHost,
 } from './lib/host-fixture'
 
 /**
@@ -104,19 +103,8 @@ describe('394 · a question finds a person, and a permission never travels', () 
    * find every session in `workRunningElsewhere` and exclude it from the startup repair — which is
    * an exclusion, not a crash. A crash leaves nothing alive.
    */
-  const buildHost = (over: SessionStore = store): RuntimeHost => {
-    const built = new RuntimeHost({
-      store: over,
-      ...hostPaths,
-      createRuntime: (provider: Provider) =>
-        new ObservedProviderLaunches(provider, issued, (_kind, options, handle) => {
-          if (options.agentTools) handed.push(options.agentTools)
-          handles.push(handle)
-        }),
-    })
-    hosts.push(built)
-    return built
-  }
+  const buildHost = (over: SessionStore = store): RuntimeHost =>
+    openObservedFixtureHost(RuntimeHost, over, hostPaths, issued, handed, handles, hosts)
 
   beforeEach(() => {
     userData = fixtureFolder('brobot2-question-')
@@ -137,12 +125,9 @@ describe('394 · a question finds a person, and a permission never travels', () 
 
   afterEach(() => closeHostFixture(hosts, db, userData, root))
 
-  const { open: personOpens, seed: bringIdentityIntoBeing } = fixturePersonEntry(
+  const { open: personOpens, seed: bringIdentityIntoBeing, toolsOf } = fixturePersonEntry(
     () => ({ host, root, window }),
   )
-
-  /** ⛔ Built the way a launch builds it, against the CURRENT host — `393`'s rule, and §5 needs it. */
-  const toolsOf = (sessionId: string): AgentToolset => agentToolsFor(host, sessionId)
 
   const ledger = (sessionId: string): TranscriptEvent[] =>
     store.events(sessionId).map((entry) => entry.event)

@@ -244,6 +244,10 @@ export class StartRecordingRuntime extends StartObservingRuntime {
   }
 }
 
+export function recordFixtureStarts(handles: FakeSessionHandle[], sessions: FakeProviderSessions) {
+  return (provider: Provider) => new StartRecordingRuntime(provider, handles, sessions)
+}
+
 /**
  * `394`'s double, with the handles kept — a test has to BE the provider to emit a status row. A test
  * that never holds a resume can leave the gate out.

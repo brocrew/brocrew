@@ -161,23 +161,7 @@ describe('629 · a stop reaches down the whole chain', () => {
    * ⚠️ **Every tier holds the RULED grants** — nothing here grants anything, so the reach measured
    * is the one every install ships with.
    */
-  const aChainOfThree = async (): Promise<{
-    brobot: string
-    ada: string
-    ali: string
-    /** ⚑ The piece Ada gave Ali — its id and its label. */
-    aliPiece: string
-    aliLabel: string
-    aliHandle: FakeSessionHandle
-    adaHandle: FakeSessionHandle
-    brobotTools: AgentToolset
-    adaTools: AgentToolset
-    pmProfile: string
-    workerProfile: string
-    /** ⚑ A SECOND worker identity, because a parent has ONE conversation with an identity — a
-     * give to the same one reaches it (D-016's lookup). A sibling needs an identity of its own. */
-    siblingProfile: string
-  }> => {
+  const aChainOfThree = async () => {
     const nth = ++chains
     const pmProfile = `pm-${String(nth)}`
     const workerProfile = `worker-${String(nth)}`

@@ -1,5 +1,5 @@
 import { giveWorkerAndClaimItsBrief } from './lib/running-worker-fixture'
-import { newConversationGive, giveAndReadItsTask } from './lib/give-fixture'
+import { newConversationGive, giveAndReadItsTask, ownedFixturePiece } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -214,11 +214,7 @@ describe('D-022 · a giver’s correction reaches the owner, and the verbs say w
       (event): event is Extract<TranscriptEvent, { type: T }> => event.type === type,
     )
 
-  const pieceOf = (owner: string, piece: string) => {
-    const found = store.piecesOwnedBy(owner).find((one) => one.piece === piece)
-    if (found === undefined) throw new Error(`${owner} owns no piece ${piece}`)
-    return found
-  }
+  const pieceOf = (owner: string, piece: string) => ownedFixturePiece(store, owner, piece)
 
   /** A give, answered `ok`. */
   const aGive = (

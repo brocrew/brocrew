@@ -1,11 +1,22 @@
+import {
+  THE_APP_ITSELF,
+  type RuntimeEventSink,
+  type RuntimeHost,
+} from '../../src/main/runtime/runtime-host'
+import { createFixtureConversation } from './send-person-fixture'
 import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
 import { expect } from 'vitest'
 import type { AgentToolset, FakeSessionHandle } from '@brobot2/runtime'
 import type { SessionStore } from '../../src/main/db/session-store'
-import { addressedGive, callNewConversationGive, newConversationGive } from './give-fixture'
+import {
+  addressedGive,
+  callNewConversationGive,
+  newConversationGive,
+  createFirstWorkerTask,
+  readSuccessfulGive,
+} from './give-fixture'
 import { callOn } from '../helpers/call-agent-tool'
-import { agentToolsFor } from '../../src/main/runtime/agent-tools'
-import type { RuntimeEventSink, RuntimeHost } from '../../src/main/runtime/runtime-host'
+import { agentToolsFor, type ToolName } from '../../src/main/runtime/agent-tools'
 import { RecordingSink, waitFor } from './host-fixture'
 
 export async function startThinking(handle: FakeSessionHandle): Promise<void> {
@@ -45,7 +56,7 @@ export async function giveParkedWorker(fixture: WorkerFixture, title: string) {
   return given
 }
 
-export async function giveStalledWorker(
+async function giveStalledWorker(
   store: Pick<SessionStore, 'piecesOwnedBy'>,
   tools: AgentToolset,
   title: string,
@@ -186,4 +197,135 @@ export async function giveWorkerAndObserveItsParkedCard<
     'the worker to park on its card',
   )
   return { pm, worker, workerTools, piece: given.label as string, surface }
+}
+
+export async function giveAndWaitForStallNotice(
+  { host, root, window }: { host: RuntimeHost; root: string; window: RuntimeEventSink },
+  settle: () => Promise<void>,
+  stallNoticesIn: (conversation: string) => readonly unknown[],
+  turnsIn: (conversation: string) => number,
+) {
+  const { sessionId: brobot } = await createFixtureConversation(
+    host,
+    window,
+    root,
+    DEFAULT_PROFILE_ID,
+    'claude',
+    'auto',
+  )
+  await settle()
+  const brobotTools = agentToolsFor(host, brobot)
+  const given = await createFirstWorkerTask(brobotTools, 'Build the pages', 'build the pages')
+  const ada = given.agent as string
+  await waitFor(() => stallNoticesIn(brobot).length === 1, 'the giver to be told of the stall')
+  await waitFor(() => turnsIn(brobot) >= 1, 'the turn the notice opened')
+  await settle()
+  return {
+    brobot,
+    brobotTools,
+    ada,
+    piece: given.piece as string,
+  }
+}
+
+export async function parkGiverBeforeWorkerFinishes(
+  { host, window }: Pick<WorkerFixture, 'host' | 'window'>,
+  prepare: () => Promise<{ pm: string; worker: string; label: string; piece: string }>,
+  setResumeShape: () => void,
+  cardsOn: (conversation: string) => number,
+  finish: (conversation: string) => Promise<void>,
+  stallNoticeHeld: (conversation: string) => boolean,
+) {
+  const { pm, worker, label, piece } = await prepare()
+  setResumeShape()
+  await host.send(pm, 'keep an eye on the migration', window)
+  await waitFor(() => cardsOn(pm) > 0, 'the parent to park mid-turn')
+  await finish(worker)
+  await waitFor(() => stallNoticeHeld(pm), 'the push to be held for the busy parent')
+  return { pm, worker, piece, label }
+}
+
+export async function openPmAndGiveToObservedWorker<Launch extends { toolset: AgentToolset }>(
+  { host, root, window }: { host: RuntimeHost; root: string; window: RuntimeEventSink },
+  approvalMode: 'auto' | 'ask',
+  latestLaunch: () => Launch,
+  turnsIn: (conversation: string) => number,
+  give: (
+    toolset: AgentToolset,
+    name: 'give_work',
+    args: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>>,
+) {
+  const { sessionId: pm } = await createFixtureConversation(
+    host,
+    window,
+    root,
+    'pm',
+    'claude',
+    approvalMode,
+  )
+  const pmLaunch = latestLaunch()
+  const given = await readSuccessfulGive(() =>
+    give(pmLaunch.toolset, 'give_work', newConversationGive('worker', 'The work', 'the work')),
+  )
+  const worker = given.agent as string
+  const workerLaunch = latestLaunch()
+  if (approvalMode === 'auto') {
+    await waitFor(() => turnsIn(worker) > 0, 'the brief’s turn to end')
+  }
+  return { pm, pmLaunch, worker, workerLaunch }
+}
+
+export function waitingWorkTools(
+  currentHost: () => RuntimeHost,
+  settle: () => Promise<void>,
+  ok: (
+    tools: AgentToolset,
+    name: ToolName,
+    args: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>>,
+) {
+  return {
+    asks: async (ada: string, whoAnswers: 'the-parent' | 'a-person') => {
+      const asked = await ok(agentToolsFor(currentHost(), ada), 'ask_question', {
+        piece: 'W1.1',
+        question: 'which pages first?',
+        who_answers: whoAnswers,
+      })
+      await settle()
+      return asked.question as string
+    },
+    waitsOn: (ada: string, on: Record<string, unknown>) =>
+      callOn(agentToolsFor(currentHost(), ada), 'update_work', {
+        piece: 'W1.1',
+        status: 'waiting',
+        on,
+      }),
+  }
+}
+
+export async function closeFixtureWorkerAfterGive(
+  host: RuntimeHost,
+  store: Pick<SessionStore, 'piecesOwnedBy'>,
+  giver: string,
+  given: Record<string, unknown>,
+) {
+  const worker = given.agent as string
+  await waitFor(
+    () => store.piecesOwnedBy(worker).some((piece) => piece.giver === giver),
+    'the give to open a piece',
+  )
+  await host.close(worker, THE_APP_ITSELF)
+  await waitFor(() => !host.sessionIds.includes(worker), 'the worker to be over')
+  return { worker, label: given.label as string }
+}
+
+export async function callFixtureToolOk(
+  toolset: AgentToolset,
+  name: ToolName,
+  args: Record<string, unknown>,
+) {
+  const answer = await callOn(toolset, name, args)
+  expect(answer, JSON.stringify(answer)).toMatchObject({ outcome: 'ok' })
+  return answer
 }

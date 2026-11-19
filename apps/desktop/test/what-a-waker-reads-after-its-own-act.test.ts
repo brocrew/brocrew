@@ -1,4 +1,4 @@
-import { newConversationGive } from './lib/give-fixture'
+import { giveChildWithProfileTitle } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -164,21 +164,8 @@ describe('what a waker reads after its own act', () => {
    * ⚑ **D-016 · a child given a piece** — `give_work` starts it, and its brief (`go`, or `migrate`)
    * is its first turn; a person's window is put on it. Returns the child, its piece's id and label.
    */
-  const giveAChild = async (
-    pm: string,
-    profile: string,
-    brief: string,
-  ): Promise<{ child: string; piece: string; label: string }> => {
-    const given = await callOn(
-      pm,
-      'give_work',
-      newConversationGive(profile, `The ${profile}`, brief),
-    )
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    const child = given.agent as string
-    host.claimSession(child, window)
-    return { child, piece: given.piece as string, label: given.label as string }
-  }
+  const giveAChild = (pm: string, profile: string, brief: string) =>
+    giveChildWithProfileTitle((name, args) => callOn(pm, name, args), profile, brief)
 
   /**
    * ⚑ **In ONE app run, a worker parked mid-turn on the work its parent gave it**, with a person's

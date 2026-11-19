@@ -87,8 +87,7 @@ describe('591 · a question does not expire on a clock', () => {
   const personOpens = (profile: string) => fixture.personOpens(profile)
   const theToolsetJustHandedOut = () => fixture.latestToolset()
 
-  const ledger = (sessionId: string): TranscriptEvent[] =>
-    store.events(sessionId).map((entry) => entry.event)
+  const ledger = (sessionId: string) => fixture.ledger(sessionId)
 
   /**
    * ⛔ **Every way words can reach a conversation, read as ONE population** (591).
@@ -98,20 +97,8 @@ describe('591 · a question does not expire on a clock', () => {
    * in the mailbox — which is the state a worker that carried on working is always in.
    * ⚑ §1 asserts the flush separately, because *queued* and *read* are two facts.
    */
-  const wordsIn = (sessionId: string): readonly { type: string; text: string; kind?: string }[] =>
-    ledger(sessionId).filter(
-      (event): event is TranscriptEvent & { type: 'user_turn' | 'message_queued'; text: string } =>
-        event.type === 'user_turn' || event.type === 'message_queued',
-    )
-
-  const openRequestOf = (sessionId: string): { requestId: string; state: string } => {
-    const row = store
-      .routedRequestsOf(sessionId)
-      .filter((one) => one.went.is === 'the-parent')
-      .at(-1)
-    if (row === undefined) throw new Error(`no routed question in ${sessionId}`)
-    return row
-  }
+  const wordsIn = (sessionId: string) => fixture.wordsIn(sessionId)
+  const openRequestOf = (sessionId: string) => fixture.openRequestOf(sessionId)
 
   const stateOfRequest = (sessionId: string, requestId: string): string => {
     const row = store.routedRequestsOf(sessionId).find((one) => one.requestId === requestId)

@@ -1,6 +1,11 @@
+import { callOn as callAgentTool } from './helpers/call-agent-tool'
 import { format } from 'node:util'
 import { expectRecordedCannotRun, expectTaskKept, recordedSendNotices } from './lib/recorded-send'
-import { newConversationGive, giveWorkBeforeProviderStart } from './lib/give-fixture'
+import {
+  newConversationGive,
+  giveWorkBeforeProviderStart,
+  openPmWithSeededWorker,
+} from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { spawn } from 'node:child_process'
@@ -143,21 +148,16 @@ describe('710 · R51 — a spawn a person must fix', () => {
 
   const personOpens = personOpener(() => ({ host, root, window }), 'auto')
 
-  const callOn = async (
+  const callOn = (
     caller: string,
     name: ToolName,
     args: Record<string, unknown> = {},
-  ): Promise<Record<string, unknown>> => {
-    const tool = agentToolsFor(host, caller).tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
+  ): Promise<Record<string, unknown>> =>
+    callAgentTool(agentToolsFor(host, caller), name, args)
 
   /** ⚑ A PM a person opened, which may start `worker` — an identity a person opened once, so it exists. */
-  const aPmThatMaySpawn = async (): Promise<string> => {
-    await host.close(await personOpens('worker'), window)
-    return personOpens('pm')
-  }
+  const aPmThatMaySpawn = () =>
+    openPmWithSeededWorker(personOpens, (id) => host.close(id, window))
 
   /** ⚑ **D-016 · `give_work` is the door that starts a conversation now** — `worker` has none with the PM. */
   const spawnWorker = (pm: string): Promise<Record<string, unknown>> =>

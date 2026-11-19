@@ -1,4 +1,8 @@
-import { giveParkedWorker, testResumeShapes } from './lib/running-worker-fixture'
+import {
+  giveParkedWorker,
+  testResumeShapes,
+  parkGiverBeforeWorkerFinishes,
+} from './lib/running-worker-fixture'
 import { forestOf } from './lib/forest-of-host'
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
@@ -201,23 +205,17 @@ describe('711 · a notice that cannot be true is replaced', () => {
      * ⚑ **A parent MID-TURN when its child's turn ends with the work open**, so *"…is not being
      * worked on"* is HELD for it (`698` §3.2's rig).
      */
-    const aBusyParentHoldingThePush = async (): Promise<{
-      pm: string
-      worker: string
-      piece: string
-      label: string
-    }> => {
-      const { pm, worker, piece, label } = await aPmAndItsParkedWorker()
-      gate.silentUntilItsFirstTurn = silent
-      await host.send(pm, 'keep an eye on the migration', window)
-      await waitFor(() => cardsOn(pm) > 0, 'the parent to park mid-turn')
-      await letTheTurnEnd(worker)
-      await waitFor(
-        () => held(pm).some((text) => isGiverStallNotice(text)),
-        'the push to be held for the busy parent',
+    const aBusyParentHoldingThePush = () =>
+      parkGiverBeforeWorkerFinishes(
+        { host, window },
+        aPmAndItsParkedWorker,
+        () => {
+          gate.silentUntilItsFirstTurn = silent
+        },
+        cardsOn,
+        letTheTurnEnd,
+        (pm) => held(pm).some((text) => isGiverStallNotice(text)),
       )
-      return { pm, worker, piece, label }
-    }
 
     /**
      * ⚑ **D-010 · an answer that could not be delivered, made so at the one door left.** Until

@@ -1,5 +1,10 @@
 import { waitForGiverToBeToldAboutStalledWork } from './lib/running-worker-fixture'
-import { addressedGive, newConversationGive, createWorkerAndGive } from './lib/give-fixture'
+import {
+  addressedGive,
+  newConversationGive,
+  createWorkerAndGive,
+  openWorldClockParent,
+} from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { AgentState, AgentStateFacts } from '../src/shared/agent-state-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -833,14 +838,7 @@ describe('D-036 · the host says who holds the work a conversation gave out', ()
   it('🔴 §9 · each holder is named once, the oldest give first, and " +N" counts the other agents', async () => {
     // ⚑ A parent in `ask` mode, so the first helper stays parked on its card and a second give to
     // it is admitted held, as `a-label-names-the-conversation-that-owns-the-piece-and-no-more` does.
-    const parent = await personOpens(DEFAULT_PROFILE_ID, 'ask')
-    const parentTools = agentToolsFor(host, parent)
-    const first = await createWorkerAndGive(
-      parentTools,
-      'Build the world clock page',
-      'build the world clock page',
-    )
-    expect(first, JSON.stringify(first)).toMatchObject({ outcome: 'ok', label: 'W1.1' })
+    const { parent, parentTools, first } = await openWorldClockParent(host, personOpens)
     const ada = first.agent as string
     await waitFor(
       () => ledger(ada).some((event) => event.type === 'permission_request'),

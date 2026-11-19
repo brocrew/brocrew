@@ -1,4 +1,4 @@
-import { createWorkerAndGive } from './lib/give-fixture'
+import { giveAndWaitForStallNotice } from './lib/running-worker-fixture'
 import type { AgentState } from '../src/shared/agent-state-contracts'
 import type { PieceRow } from '../src/shared/task-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -25,7 +25,7 @@ import { giverStallNotices, RuntimeHost, THE_APP_ITSELF } from './helpers/giver-
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { DEFAULT_PROFILE_ID, type RuntimeStatesMessage } from '../src/shared/runtime-ipc'
+import type { RuntimeStatesMessage } from '../src/shared/runtime-ipc'
 import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
@@ -233,26 +233,8 @@ describe('F097 · a person owes the agent that answered them', () => {
     store.piecesOwnedBy(owner).find((one) => one.piece === piece)
 
   /** ⚑ BroBot gives W1.1 to a new worker, minted Ada; the brief's turn ends with it open. */
-  const aGiverAndItsHelper = async (): Promise<{
-    brobot: string
-    brobotTools: AgentToolset
-    ada: string
-    piece: string
-  }> => {
-    const { sessionId: brobot } = await host.createSession(
-      { provider: 'claude', profileId: DEFAULT_PROFILE_ID, approvalMode: 'auto', cwd: root },
-      window,
-    )
-    await settle()
-    const brobotTools = agentToolsFor(host, brobot)
-    const given = await createWorkerAndGive(brobotTools, 'Build the pages', 'build the pages')
-    expect(given, JSON.stringify(given)).toMatchObject({ outcome: 'ok', label: 'W1.1' })
-    const ada = given.agent as string
-    await waitFor(() => stallNoticesIn(brobot).length === 1, 'the giver to be told of the stall')
-    await waitFor(() => turnsIn(brobot) >= 1, 'the turn the notice opened')
-    await settle()
-    return { brobot, brobotTools, ada, piece: given.piece as string }
-  }
+  const aGiverAndItsHelper = () =>
+    giveAndWaitForStallNotice({ host, root, window }, settle, stallNoticesIn, turnsIn)
 
   /** ⚑ A person writes to Ada through the window, and her turn runs to its end. */
   const aPersonWritesTo = async (ada: string, text: string): Promise<void> => {

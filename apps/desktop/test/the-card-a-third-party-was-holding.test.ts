@@ -1,3 +1,4 @@
+import { answerOn, callOn } from './helpers/call-tool'
 import { openNumberedPmAndGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -157,24 +158,12 @@ describe('496 · the card a third party was holding', () => {
     await host.close(id, window)
   }
 
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown> = {},
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
-
   const textOf = async (
     toolset: AgentToolset,
     name: ToolName,
     args: Record<string, unknown> = {},
   ): Promise<string> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).text
+    return (await answerOn(toolset, name, args)).text
   }
 
   const ledger = (sessionId: string): TranscriptEvent[] =>

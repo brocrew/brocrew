@@ -1,5 +1,6 @@
+import { openPmAndGiveToObservedWorker } from './lib/running-worker-fixture'
 import { expectRecordedCannotRun, expectTaskKept } from './lib/recorded-send'
-import { addressedGive, newConversationGive, readSuccessfulGive } from './lib/give-fixture'
+import { addressedGive, newConversationGive } from './lib/give-fixture'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import type { PieceRow } from '../src/shared/task-contracts'
 import { performance } from 'node:perf_hooks'
@@ -686,20 +687,13 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
     )
     launches.at(-1)!.letCloseFinish()
     await host.close(first.sessionId, window)
-    const { sessionId: pm } = await host.createSession(
-      { provider: 'claude', profileId: 'pm', approvalMode, cwd: root },
-      window,
+    return openPmAndGiveToObservedWorker(
+      { host, root, window },
+      approvalMode,
+      () => launches.at(-1)!,
+      turnsIn,
+      callOn,
     )
-    const pmLaunch = launches.at(-1)!
-    const given = await readSuccessfulGive(() =>
-      callOn(pmLaunch.toolset, 'give_work', newConversationGive('worker', 'The work', 'the work')),
-    )
-    const worker = given.agent as string
-    const workerLaunch = launches.at(-1)!
-    if (approvalMode === 'auto') {
-      await waitFor(() => turnsIn(worker) > 0, 'the brief’s turn to end')
-    }
-    return { pm, pmLaunch, worker, workerLaunch }
   }
 
   /** ⛔ A PM with no child yet, and the identity `worker` in being — so a give starts one. */

@@ -167,15 +167,7 @@ describe('D-009 · a model’s own question stays the model’s', () => {
    * starts the child, and its brief is the child's first turn).
    */
   const aPmAndAChild = async (): Promise<{ pm: string; child: Child }> => {
-    const { parent: pm, child } = await openAndGiveToNewChild(
-      personOpens,
-      (id) => host.close(id, window),
-      (id) => agentToolsFor(host, id),
-      DEFAULT_PROFILE_ID,
-      'worker',
-      'the notes',
-      'the notes',
-    )
+    const { pm, child } = await openAndGiveToNewChild({ host, root, window }, 'the notes', 'the notes')
     const handle = handles.at(-1)
     if (handle === undefined) throw new Error('no provider handle was issued to the child')
     return { pm, child: { id: child, handle } }
