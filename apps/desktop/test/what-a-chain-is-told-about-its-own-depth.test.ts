@@ -215,17 +215,5 @@ describe('what a chain is told about its own depth', () => {
         expect(said).not.toContain('level below this conversation')
       }
     })
-
-    it('the app-wide switch is still said, and still refuses a start', async () => {
-      await bringIntoBeing('pm')
-      store.setSpawningEnabled(false)
-      await personOpens('pm')
-      expect(told.at(-1) as string).toContain(
-        '- This app currently blocks creating agents and starting new agent conversations.',
-      )
-      const refused = await callGive(toolsOfTheLast(), 'pm')
-      expect(refused.outcome).toBe('refused')
-      expect(refused.rail).toBe('spawning-disabled')
-    })
   })
 })

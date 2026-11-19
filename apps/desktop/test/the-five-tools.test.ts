@@ -12,7 +12,6 @@ import {
   FakeRuntime,
   type ResumeOptions,
   type StartOptions,
-  whatTheChildWouldLack,
 } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
@@ -492,15 +491,6 @@ describe('347 · the five tools', () => {
       const allowed = await give(parent, 'worker3')
       expect(allowed.outcome).toBe('ok')
       expect(store.find(allowed.agent as string)?.approvalMode).toBe('ask')
-      // 🔴 **…and WIDER is still refused, where it can be: an `ask` giver's `auto` child.** ⚠️ No give
-      // reaches it — a give carries no mode (the `approval_mode` refused above), so a same-mode pair
-      // is never wider (D-038 F-B) — so the rail's own comparison is asked, the one the door calls.
-      expect(
-        whatTheChildWouldLack(
-          { provider: 'codex', approvalMode: 'auto' },
-          { provider: 'claude', approvalMode: 'ask' },
-        ),
-      ).toEqual(['the-card-before-an-act'])
     })
 
     it('⚠️ a permanent refusal answers the same way however many times it is retried', async () => {

@@ -156,7 +156,7 @@ export interface AServiceWorld {
    */
   aHost(opts?: {
     owned?: boolean
-    servicesOn?: boolean
+    retiredServicesOff?: true
     deferStartupUntilListPaint?: boolean
     store?: SessionStore
     interruptWaitMs?: number
@@ -352,12 +352,8 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
         }
       }
       const switched = readProfileExecution(db)
-      if (switched.readable && !keptLost) {
-        const { profiles } = switched.kept
-        writeProfileExecution(
-          db,
-          (opts.servicesOn ?? true) ? { profiles } : { servicesOff: true, profiles },
-        )
+      if (opts.retiredServicesOff === true && switched.readable && !keptLost) {
+        writeProfileExecution(db, { ...switched.kept, servicesOff: true })
       }
       const Host = fixture.holderReminders === 'declined' ? GiverNoticeHost : RuntimeHost
       const host = new Host({
@@ -550,7 +546,7 @@ export async function aGiverAndHelper() {
   const world = aServiceWorld()
   world.anAgent('giver', 'normal')
   world.anAgent('helper', 'normal')
-  const host = world.aHost({ servicesOn: false })
+  const host = world.aHost()
   const giver = await world.aPersonOpens(host, 'giver')
   return { world, host, giver }
 }
