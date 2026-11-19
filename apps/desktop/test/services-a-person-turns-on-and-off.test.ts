@@ -329,14 +329,24 @@ describe('Service lifecycle', () => {
 
     it('delivers a take-back notice and advances the next piece after restart', async () => {
       const { after, caller, service, one, two } = await aStoppedService()
+      expect(stateOf(service, two.piece)).toBe('waiting')
+      const before = rows(service, 'user_turn').length
       const taken = await call(after, caller, 'withdraw_task', { piece: one.label })
-      expect(taken.structured).toMatchObject({ outcome: 'ok' })
+      expect(taken.structured).toMatchObject({ outcome: 'ok', state: 'withdrawn' })
       await vi.waitFor(() => {
-        const notice = rows(service, 'user_turn').find(
-          (row) => row.type === 'user_turn' && row.text.includes(one.label),
+        const delivered = rows(service, 'user_turn').slice(before)
+        const notice = delivered.findIndex(
+          (row) =>
+            row.type === 'user_turn' &&
+            row.appNotice === 'a-piece-taken-back' &&
+            row.piece === one.piece &&
+            row.text.includes(`took back ${one.label}`),
         )
-        expect(notice).toBeDefined()
-        expect(stateOf(service, two.piece)).not.toBe('waiting')
+        const handover = delivered.findIndex(
+          (row) => row.type === 'user_turn' && row.piece === two.piece && row.text.includes(two.label),
+        )
+        expect(notice).toBeGreaterThanOrEqual(0)
+        expect(handover).toBeGreaterThan(notice)
       })
     })
 
