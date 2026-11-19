@@ -224,7 +224,11 @@ describe('the host says who a conversation owes an answer to, and moves the word
     await settle()
     const brobotTools = agentToolsFor(host, brobot)
     await callOn(brobotTools, 'create_agent', { profile_slug: 'worker' })
-    const given = await callOn(brobotTools, 'give_work', newConversationGive('worker', 'Build the pages', 'build the pages'))
+    const given = await callOn(
+      brobotTools,
+      'give_work',
+      newConversationGive('worker', 'Build the pages', 'build the pages'),
+    )
     expect(given, JSON.stringify(given)).toMatchObject({ outcome: 'ok', label: 'W1.1' })
     const ada = given.agent as string
     await waitFor(() => turnsIn(ada) >= 1 && turnsIn(brobot) >= 1, 'the stall notice’s turn')

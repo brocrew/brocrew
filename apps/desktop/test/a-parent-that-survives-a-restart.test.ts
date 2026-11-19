@@ -269,7 +269,15 @@ describe('373 · a parent that survives a restart', () => {
     // ⚑ **D-016 · the child is started by a GIVE** — `spawn_agent` is gone — and the brief is its
     // first turn: in `ask` mode that turn parks on the card it raises, and the piece it hands the
     // child is the one every follow-up below names.
-    const given = await callOn(pmTools, 'give_work', newConversationGive(workerProfile, 'the work this dispatch is about', 'the work this dispatch is about'))
+    const given = await callOn(
+      pmTools,
+      'give_work',
+      newConversationGive(
+        workerProfile,
+        'the work this dispatch is about',
+        'the work this dispatch is about',
+      ),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     expect(given.started, JSON.stringify(given)).toBe(true)
     return { pm, worker: given.agent as string, pmTools, piece: given.label as string }
@@ -318,7 +326,16 @@ describe('373 · a parent that survives a restart', () => {
       // through, and its answer names that piece.
       const status = await callOn(toolset, 'get_agent_status', { agent: worker })
       expect((status.agent as { state: string }).state).toBe('idle')
-      const blocked = await callOn(toolset, 'give_work', addressedGive(piece, 'worker', 'the parent forgot the reopened child', 'the parent forgot the reopened child'))
+      const blocked = await callOn(
+        toolset,
+        'give_work',
+        addressedGive(
+          piece,
+          'worker',
+          'the parent forgot the reopened child',
+          'the parent forgot the reopened child',
+        ),
+      )
       expect(blocked).toMatchObject({ outcome: 'ok', agent: worker, stalled: [piece] })
 
       // ⚑ **The give's brief is the child's turn now**, so the follow-up its answer names is held
@@ -349,7 +366,16 @@ describe('373 · a parent that survives a restart', () => {
       const status = await callOn(toolset, 'get_agent_status', { agent: worker })
       expect((status.agent as { state: string }).state).toBe('idle')
       // ⚑ The give finds the reopened child, and its answer names the piece.
-      const blocked = await callOn(toolset, 'give_work', addressedGive(piece, 'worker', 'the parent forgot the reopened child', 'the parent forgot the reopened child'))
+      const blocked = await callOn(
+        toolset,
+        'give_work',
+        addressedGive(
+          piece,
+          'worker',
+          'the parent forgot the reopened child',
+          'the parent forgot the reopened child',
+        ),
+      )
       expect(blocked).toMatchObject({ outcome: 'ok', agent: worker, stalled: [piece] })
 
       // ⛔ **No piece is substituted between the two doors.**

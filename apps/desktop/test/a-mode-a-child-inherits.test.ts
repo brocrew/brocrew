@@ -239,7 +239,7 @@ function asThe(giver: GivingConversation): CallerIdentity {
   return { ownerId: agentCallerId(giver.sessionId) }
 }
 
-const A_GIVE = newConversationGive('worker', 'x', 'x') as const
+const A_GIVE = newConversationGive('worker', 'x', 'x')
 
 function startOf(out: GiveAdmission): { provider: Provider; approvalMode: ApprovalMode } | null {
   if (!out.ok) return null

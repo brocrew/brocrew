@@ -199,7 +199,11 @@ describe('591 · a question does not expire on a clock', () => {
     await host.close(seeded, window)
     const pm = await personOpens('pm')
     const pmTools = theToolsetJustHandedOut()
-    const given = await callOn(pmTools, 'give_work', newConversationGive('worker', 'the work this dispatch is about', 'migrate the schema'))
+    const given = await callOn(
+      pmTools,
+      'give_work',
+      newConversationGive('worker', 'the work this dispatch is about', 'migrate the schema'),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     const workerTools = theToolsetJustHandedOut()

@@ -280,7 +280,11 @@ describe('437 · a question a worker can ask its parent', () => {
     await bringIdentityIntoBeing('worker')
     const pm = await personOpens('pm')
     const pmTools = theToolsetJustHandedOut()
-    const given = await callOn(pmTools, 'give_work', newConversationGive('worker', 'the work this dispatch is about', 'migrate the schema'))
+    const given = await callOn(
+      pmTools,
+      'give_work',
+      newConversationGive('worker', 'the work this dispatch is about', 'migrate the schema'),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     const workerTools = theToolsetJustHandedOut()

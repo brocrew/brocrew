@@ -691,7 +691,11 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
       window,
     )
     const pmLaunch = launches.at(-1)!
-    const given = await callOn(pmLaunch.toolset, 'give_work', newConversationGive('worker', 'The work', 'the work'))
+    const given = await callOn(
+      pmLaunch.toolset,
+      'give_work',
+      newConversationGive('worker', 'The work', 'the work'),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     const workerLaunch = launches.at(-1)!

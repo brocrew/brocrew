@@ -216,7 +216,11 @@ describe('397 · the word for a question nobody stopped', () => {
     for (const one of siblings) await bringIdentityIntoBeing(one, provider)
     const pm = await personOpens(pmProfile, host, provider, 'auto')
     const pmTools = agentToolsFor(host, pm)
-    const given = await callOn(pmTools, 'give_work', newConversationGive(workerProfile, 'The work', 'the work this dispatch is about'))
+    const given = await callOn(
+      pmTools,
+      'give_work',
+      newConversationGive(workerProfile, 'The work', 'the work this dispatch is about'),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     await waitFor(

@@ -112,7 +112,11 @@ describe('a helper stopped on a person’s approval', () => {
     await host.close(await personOpens('worker', 'ask'), window)
     const pm = await personOpens('pm', 'ask')
     const pmTools = agentToolsFor(host, pm)
-    const given = await callOn(pmTools, 'give_work', newConversationGive('worker', 'The tests', THE_BRIEF))
+    const given = await callOn(
+      pmTools,
+      'give_work',
+      newConversationGive('worker', 'The tests', THE_BRIEF),
+    )
     expect(given.structured['outcome'], given.text).toBe('ok')
     const worker = String(given.structured['agent'])
     const handle = handles.at(-1)
@@ -366,7 +370,11 @@ describe('a helper stopped on a person’s approval', () => {
       const pm = await personOpens('pm', 'auto')
       const pmHandle = handles.at(-1)
       const pmTools = agentToolsFor(host, pm)
-      const given = await callOn(pmTools, 'give_work', newConversationGive('worker', 'The tests', THE_BRIEF))
+      const given = await callOn(
+        pmTools,
+        'give_work',
+        newConversationGive('worker', 'The tests', THE_BRIEF),
+      )
       expect(given.structured['outcome'], given.text).toBe('ok')
       const worker = String(given.structured['agent'])
       const label = String(given.structured['label'])

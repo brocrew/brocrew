@@ -223,7 +223,11 @@ describe('415 · a question is not work', () => {
     const pm = await personOpens('pm')
     const pmTools = theToolsetJustHandedOut()
     // ⛔ No grant is set for the give (D-014: any agent may give work to any agent).
-    const given = await callOn(pmTools, 'give_work', newConversationGive('worker', 'the work this dispatch is about', 'the first piece'))
+    const given = await callOn(
+      pmTools,
+      'give_work',
+      newConversationGive('worker', 'the work this dispatch is about', 'the first piece'),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     return {
       pm,

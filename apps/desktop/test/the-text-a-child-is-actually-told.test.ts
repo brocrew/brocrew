@@ -939,7 +939,11 @@ describe('§8 · what the host tells the reader, at a launch and at a reopen', (
     await host.close(await personOpens(DEFAULT_PROFILE_ID), window)
     const pm = await personOpens(DEFAULT_PROFILE_ID)
     const pmTools = handed.at(-1) as AgentToolset
-    const first = await callOn(pmTools, 'give_work', newConversationGive('worker', 'Build the pages', 'build the pages'))
+    const first = await callOn(
+      pmTools,
+      'give_work',
+      newConversationGive('worker', 'Build the pages', 'build the pages'),
+    )
     expect(first.outcome, JSON.stringify(first)).toBe('ok')
     const worker = first.agent as string
     const workerTools = handed.at(-1) as AgentToolset

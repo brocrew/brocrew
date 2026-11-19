@@ -1,3 +1,4 @@
+import type { AgentToolset } from '@brobot2/runtime'
 import { agentCallerId } from '../../src/main/runtime/conversation-caller'
 import { expect } from 'vitest'
 import type { SessionStore } from '../../src/main/db/session-store'
@@ -17,6 +18,15 @@ export function newConversationGive(profile: string, title: string, brief: strin
     title,
     brief,
   }
+}
+
+export function callNewConversationGive(
+  tools: AgentToolset,
+  profile: string,
+  title: string,
+  brief: string,
+) {
+  return callOn(tools, 'give_work', newConversationGive(profile, title, brief))
 }
 
 export function addressedGive<To, Profile>(to: To, profile: Profile, title: string, brief: string) {
@@ -66,7 +76,7 @@ export async function giveWorkerAndClaimItsBrief(
   await host.close(await personOpens(profile), window)
   const pm = await personOpens(`pm${suffix}`)
   const given = await readGivenTask(() =>
-    callOn(agentToolsFor(host, pm), 'give_work', newConversationGive(profile, title, brief)),
+    callNewConversationGive(agentToolsFor(host, pm), profile, title, brief),
   )
   const worker = given.agent
   host.claimSession(worker, window)
@@ -91,7 +101,11 @@ export async function openGiverAndGivePages(
 export function spawnFailureFixture(
   open: (profile: string) => Promise<string>,
   close: (conversation: string) => Promise<unknown>,
-  send: (caller: string, name: 'give_work', args: Record<string, unknown>) => Promise<Record<string, unknown>>,
+  send: (
+    caller: string,
+    name: 'give_work',
+    args: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>>,
 ) {
   return {
     aPmThatMaySpawn: () => openPmWithSeededWorker(open, close),

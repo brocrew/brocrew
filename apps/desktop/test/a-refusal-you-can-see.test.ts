@@ -301,7 +301,10 @@ describe('405 · a refusal you can see', () => {
       // give to any agent this app holds (D-014), and nobody has run a conversation as `worker`.
       const { call } = toolsOf(pm)
 
-      const refused = await call('give_work', newConversationGive('worker', 'do the thing', 'do the thing'))
+      const refused = await call(
+        'give_work',
+        newConversationGive('worker', 'do the thing', 'do the thing'),
+      )
       expect(refused.outcome).toBe('refused')
       expect(refused.rail).toBe('no-such-profile')
 
@@ -326,7 +329,10 @@ describe('405 · a refusal you can see', () => {
       const pm = await personOpens('pm')
       const { call } = toolsOf(pm)
 
-      const admitted = await call('give_work', newConversationGive('worker', 'do the thing', 'do the thing'))
+      const admitted = await call(
+        'give_work',
+        newConversationGive('worker', 'do the thing', 'do the thing'),
+      )
       expect(admitted.outcome).toBe('ok')
       expect(host.sessionIds).toContain(admitted.agent as string)
 
@@ -462,7 +468,10 @@ describe('405 · a refusal you can see', () => {
 
       // ⚑ **The CHILD asks for something that cannot be** — an agent nobody has made.
       const childTools = toolsOf(child)
-      const refused = await childTools.call('give_work', newConversationGive('nobody-by-that-name', 'a helper of my own', 'a helper of my own'))
+      const refused = await childTools.call(
+        'give_work',
+        newConversationGive('nobody-by-that-name', 'a helper of my own', 'a helper of my own'),
+      )
       expect(refused.rail).toBe('no-such-profile')
 
       // ⛔ **The child's ledger, because the child is who tried.** ⚠️ Not the parent's: the parent

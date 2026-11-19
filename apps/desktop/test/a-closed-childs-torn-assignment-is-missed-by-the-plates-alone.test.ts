@@ -162,7 +162,11 @@ describe('676 M13 · a closed child’s torn assignment is missed by the plates 
     await host.close(seeded, window)
     const pm = await personOpens('pm')
     const pmTools = theToolsetJustHandedOut()
-    const given = await call(pmTools, 'give_work', newConversationGive('worker', 'the work this dispatch is about', brief))
+    const given = await call(
+      pmTools,
+      'give_work',
+      newConversationGive('worker', 'the work this dispatch is about', brief),
+    )
     expect(given.structured.outcome, JSON.stringify(given.structured)).toBe('ok')
     const worker = given.structured.agent as string
     if (store.piecesOwnedBy(worker).at(-1) === undefined) throw new Error('the give wrote no piece')

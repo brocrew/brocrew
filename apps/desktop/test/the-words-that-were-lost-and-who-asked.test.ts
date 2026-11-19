@@ -258,7 +258,11 @@ describe('729 · the words that were lost, and who asked', () => {
     const pm = await personOpens('pm')
     const pmHandle = handles[before]
     if (pmHandle === undefined) throw new Error('the giver has no handle')
-    const given = await callOn(pm, 'give_work', newConversationGive('worker', 'The migration', 'migrate'))
+    const given = await callOn(
+      pm,
+      'give_work',
+      newConversationGive('worker', 'The migration', 'migrate'),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     host.claimSession(worker, window)
@@ -398,7 +402,11 @@ describe('729 · the words that were lost, and who asked', () => {
       expect(givenPm.outcome, JSON.stringify(givenPm)).toBe('ok')
       expect(decorateNext).toBeNull()
       const pm = givenPm.agent as string
-      const given = await callOn(pm, 'give_work', newConversationGive('worker', 'The migration', 'migrate'))
+      const given = await callOn(
+        pm,
+        'give_work',
+        newConversationGive('worker', 'The migration', 'migrate'),
+      )
       expect(given.outcome, JSON.stringify(given)).toBe('ok')
       const worker = given.agent as string
       host.claimSession(worker, window)

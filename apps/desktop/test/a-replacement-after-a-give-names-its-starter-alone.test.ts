@@ -148,7 +148,11 @@ describe('3d1eb064 · a replacement after a give names its starter alone', () =>
     await host.close(await personOpens('worker'), window)
     await host.close(await personOpens('helper'), window)
     const pm = await personOpens('pm')
-    const first = await callOn(pm, 'give_work', newConversationGive('worker', 'Build the pages', 'build the pages'))
+    const first = await callOn(
+      pm,
+      'give_work',
+      newConversationGive('worker', 'Build the pages', 'build the pages'),
+    )
     expect(first.outcome, JSON.stringify(first)).toBe('ok')
     const worker = first.agent as string
     const second = await callOn(worker, 'give_work', {

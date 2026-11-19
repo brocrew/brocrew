@@ -164,7 +164,15 @@ describe('396 · nothing waits on somebody looking', () => {
     await bringIdentityIntoBeing(workerProfile)
     const pm = await personOpens(pmProfile, host, 'auto')
     const pmTools = agentToolsFor(host, pm)
-    const given = await callOn(pmTools, 'give_work', newConversationGive(workerProfile, 'the work this dispatch is about', 'the work this dispatch is about'))
+    const given = await callOn(
+      pmTools,
+      'give_work',
+      newConversationGive(
+        workerProfile,
+        'the work this dispatch is about',
+        'the work this dispatch is about',
+      ),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     const workerHandle = latestHandle()

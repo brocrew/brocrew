@@ -1103,8 +1103,7 @@ describe('§6 to §8 · what a failed start says at each door', () => {
     return (await tool.call(args)).structured as Record<string, unknown>
   }
 
-  const aPmThatMaySpawn = () =>
-    openPmWithSeededWorker(personOpens, (id) => host.close(id, window))
+  const aPmThatMaySpawn = () => openPmWithSeededWorker(personOpens, (id) => host.close(id, window))
 
   const giveWork = (
     pm: string,
@@ -1167,6 +1166,7 @@ describe('§6 to §8 · what a failed start says at each door', () => {
 
   describe('§6 · a giver’s give', () => {
     const SAID = 'dynamic tool namespace description must be at most 1024 characters'
+    const refused = 'This conversation did not start: its provider refused to start it.'
 
     it('reports a recorded task and a closed reason when its provider refuses to start', async () => {
       const pm = await aPmThatMaySpawn()
@@ -1174,14 +1174,17 @@ describe('§6 to §8 · what a failed start says at each door', () => {
       const failure = refusedStart(SAID)
       gate.startFails = () => failure
       const given = await giveWork(pm)
-      const kept = expectRecordedCannotRun(given, 'task', 'its provider refused to start it.', false)
+      const kept = expectRecordedCannotRun(
+        given,
+        'task',
+        'its provider refused to start it.',
+        false,
+      )
       expect(given.started).toBe(false)
       expectTaskKept(store, kept)
       expect(kept.recorded.id).toBe(given.piece)
       expect(kept.recipient.id).toBe(given.agent)
-      expect(kept.recipient.state).toMatchObject({
-        cause: { reason: 'This conversation did not start: its provider refused to start it.' },
-      })
+      expect(kept.recipient.state).toMatchObject({ cause: { reason: refused } })
       expect(JSON.stringify(given)).not.toContain(SAID)
       expect(JSON.stringify(given)).not.toContain('-32600')
       expect(logKeepsFailure(logged.mock.calls, failure)).toBe(true)
@@ -1189,18 +1192,9 @@ describe('§6 to §8 · what a failed start says at each door', () => {
 
       gate.startFails = () => refusedStart(null)
       const silent = await giveWork(pm, { title: 'Another piece' })
-      expect(silent).toMatchObject({ outcome: 'ok', started: false })
-      expect(silent.receipt).toMatchObject({
-        recipient: {
-          state: {
-            kind: 'cannot-run',
-            cause: {
-              code: 'could-not-start',
-              reason: 'This conversation did not start: its provider refused to start it.',
-            },
-          },
-        },
-      })
+      const silentReceipt = expectRecordedCannotRun(silent, 'task', refused, false)
+      expect(silent.started).toBe(false)
+      expect(silentReceipt.recipient.state).toMatchObject({ cause: { reason: refused } })
       gate.startFails = undefined
       const retry = await giveWork(pm, { to: silent.label, title: 'Continue the work' })
       expect(retry).toMatchObject({ outcome: 'ok', agent: silent.agent })

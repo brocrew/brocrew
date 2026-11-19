@@ -1,7 +1,7 @@
 import { callOn as callAgentTool } from './helpers/call-agent-tool'
 import { format } from 'node:util'
 import { expectRecordedCannotRun, expectTaskKept, recordedSendNotices } from './lib/recorded-send'
-import { spawnFailureFixture } from './lib/give-fixture'
+import { newConversationGive, spawnFailureFixture } from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { spawn } from 'node:child_process'

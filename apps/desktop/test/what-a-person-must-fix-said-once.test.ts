@@ -182,7 +182,11 @@ describe('what a person must fix, said once', () => {
    * is the same stop. ⚑ **D-016** — the give starts it and gives it the work in one act.
    */
   const aWorkerThatStopped = async (pm: string): Promise<{ worker: string; label: string }> => {
-    const given = await callOn(pm, 'give_work', newConversationGive('worker', 'The schema', 'migrate the schema'))
+    const given = await callOn(
+      pm,
+      'give_work',
+      newConversationGive('worker', 'The schema', 'migrate the schema'),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     await waitFor(

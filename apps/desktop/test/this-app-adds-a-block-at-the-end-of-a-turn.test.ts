@@ -277,7 +277,11 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
     await host.close(seeded, window)
     const pm = await personOpens('pm', provider, approvalMode)
     const pmTools = theToolsetJustHandedOut()
-    const given = await callOn(pmTools, 'give_work', newConversationGive('worker', 'the work this dispatch is about', 'gather the requirements'))
+    const given = await callOn(
+      pmTools,
+      'give_work',
+      newConversationGive('worker', 'the work this dispatch is about', 'gather the requirements'),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     const workerTools = theToolsetJustHandedOut()

@@ -1,4 +1,4 @@
-import { addressedGive, newConversationGive } from './lib/give-fixture'
+import { addressedGive, callNewConversationGive } from './lib/give-fixture'
 import { fixtureProviderConfig, neutralHostDeps, RecordingSink } from './lib/host-fixture'
 import { waitFor } from './lib/f093-host'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
@@ -299,7 +299,7 @@ describe('414 · the origin a model is told', () => {
     approvalMode: 'ask' | 'auto' = 'ask',
   ): Promise<APair> => {
     const title = 'The work'
-    const given = await callOn(made.pmTools, 'give_work', newConversationGive(made.workerProfile, title, brief))
+    const given = await callNewConversationGive(made.pmTools, made.workerProfile, title, brief)
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     if (approvalMode === 'auto') {
@@ -553,7 +553,7 @@ describe('414 · the origin a model is told', () => {
       // about the CALLER — so both branches carry it whichever act opened the turn, and that
       // independence is now covered by this test rather than assumed by it.
       const made = await aPm()
-      const given = await callOn(made.pmTools, 'give_work', newConversationGive(made.workerProfile, 'The work', 'first, which goes straight out'))
+      const given = await callNewConversationGive(made.pmTools, made.workerProfile, 'The work', 'first, which goes straight out')
       expect(given.delivery, JSON.stringify(given)).toBe('sent')
       const pair: APair = {
         ...made,
@@ -1069,7 +1069,7 @@ describe('414 · the origin a model is told', () => {
       // PROFILE and reaches the giver's OWN conversation with it — so the worker giving work as its
       // parent's profile starts one below itself, and never reaches the parent whatever id the frame
       // handed over.
-      const upward = await callOn(workerTools, 'give_work', newConversationGive(made.pmProfile, 'Up the tree', 'up the tree'))
+      const upward = await callNewConversationGive(workerTools, made.pmProfile, 'Up the tree', 'up the tree')
       expect(upward.outcome, JSON.stringify(upward)).toBe('ok')
       expect(upward.agent).not.toBe(made.pm)
       expect(store.parentOf(upward.agent as string)).toBe(made.worker)
@@ -1084,7 +1084,16 @@ describe('414 · the origin a model is told', () => {
       // ⚑ **The same call one fact over** (standing rule 3) — the PARENT giving as its child's
       // profile reaches that very child, which is the conversation it started. ⚑ D-016: no reply
       // first — the one-open-task rail it was answered around is gone, and the busy child takes it.
-      const downward = await callOn(made.pmTools, 'give_work', addressedGive(made.worker, store.identityOf(made.worker)?.profileSlug, 'Down the tree', 'down the tree'))
+      const downward = await callOn(
+        made.pmTools,
+        'give_work',
+        addressedGive(
+          made.worker,
+          store.identityOf(made.worker)?.profileSlug,
+          'Down the tree',
+          'down the tree',
+        ),
+      )
       expect(downward.outcome, JSON.stringify(downward)).toBe('ok')
       expect(downward.agent).toBe(made.worker)
     })

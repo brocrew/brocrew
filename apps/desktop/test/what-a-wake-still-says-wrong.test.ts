@@ -126,7 +126,11 @@ describe('what a wake still says wrong', () => {
     profile: string,
     brief: string,
   ): Promise<{ child: string; piece: string; label: string }> => {
-    const given = await callOn(pm, 'give_work', newConversationGive(profile, `The ${profile}`, brief))
+    const given = await callOn(
+      pm,
+      'give_work',
+      newConversationGive(profile, `The ${profile}`, brief),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     return {
       child: given.agent as string,

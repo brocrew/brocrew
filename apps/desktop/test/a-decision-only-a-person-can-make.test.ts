@@ -237,7 +237,11 @@ describe('403 · a decision only a person can make', () => {
     const workers: string[] = []
     const handlesOf = new Map<string, FakeSessionHandle>()
     for (let index = 0; index < count; index++) {
-      const spawned = await callOn(pmTools, 'give_work', newConversationGive(siblings[index], 'the work this dispatch is about', 'do the thing'))
+      const spawned = await callOn(
+        pmTools,
+        'give_work',
+        newConversationGive(siblings[index]!, 'the work this dispatch is about', 'do the thing'),
+      )
       expect(spawned.outcome, JSON.stringify(spawned)).toBe('ok')
       workers.push(spawned.agent as string)
       handlesOf.set(spawned.agent as string, latestHandle())

@@ -64,7 +64,7 @@ export function recordedSendNotices(events: readonly TranscriptEvent[]): string[
 }
 
 export function newestNamedHold(events: readonly TranscriptEvent[]): string {
-  const queued = events.findLast((event) => event.type === 'message_queued')
+  const queued = [...events].reverse().find((event) => event.type === 'message_queued')
   if (queued?.type !== 'message_queued' || queued.messageId === undefined) {
     throw new Error('The conversation has no named queued message.')
   }

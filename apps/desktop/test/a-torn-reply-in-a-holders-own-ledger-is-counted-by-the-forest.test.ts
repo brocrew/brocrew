@@ -118,7 +118,11 @@ describe('a torn reply in a holder’s own ledger is counted by the forest', () 
     await host.close(seeded, window)
     const pm = await personOpens('pm')
     const pmTools = theToolsetJustHandedOut()
-    const given = await call(pmTools, 'give_work', newConversationGive('worker', 'Build it', 'build it'))
+    const given = await call(
+      pmTools,
+      'give_work',
+      newConversationGive('worker', 'Build it', 'build it'),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     expect(store.openPiecesOf(worker).map((piece) => piece.label)).toEqual([given.label])

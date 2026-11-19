@@ -224,7 +224,11 @@ describe('404 · the push that does not survive a launch', () => {
     for (const one of [workerProfile, `${workerProfile}-b`]) await bringIdentityIntoBeing(one)
     const pm = await personOpens(pmProfile)
     const pmTools = agentToolsFor(host, pm)
-    const given = await callOn(pmTools, 'give_work', newConversationGive(workerProfile, brief, brief))
+    const given = await callOn(
+      pmTools,
+      'give_work',
+      newConversationGive(workerProfile, brief, brief),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     return {
       pm,

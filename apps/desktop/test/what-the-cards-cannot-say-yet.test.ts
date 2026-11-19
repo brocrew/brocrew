@@ -313,7 +313,11 @@ describe('687 · what the cards cannot say yet', () => {
     const root = store.rootOf(pm)
     if (root === null) throw new Error('the PM owns no root')
     for (let once = 0; once < burn; once++) store.numberUnder(root.piece)
-    const given = await call(pmTools, 'give_work', newConversationGive('worker', 'The work this dispatch is about', 'build it'))
+    const given = await call(
+      pmTools,
+      'give_work',
+      newConversationGive('worker', 'The work this dispatch is about', 'build it'),
+    )
     expect(given.structured.outcome, JSON.stringify(given.structured)).toBe('ok')
     return {
       pm,
@@ -718,7 +722,11 @@ describe('687 · what the cards cannot say yet', () => {
       )
       // ⚑ **D-016** — a second give from the same giver reaches the SAME conversation, and is held
       // behind the first brief's turn.
-      const again = await call(pmTools, 'give_work', addressedGive(worker, 'worker', 'Now build it', 'now build it'))
+      const again = await call(
+        pmTools,
+        'give_work',
+        addressedGive(worker, 'worker', 'Now build it', 'now build it'),
+      )
       expect(again.structured.agent).toBe(worker)
       expect(again.structured.delivery).toBe('held')
       const next = `${String(store.rootOf(pm)?.label)}.5`
@@ -784,7 +792,11 @@ describe('687 · what the cards cannot say yet', () => {
         () => ledger(worker).some((event) => event.type === 'permission_request'),
         'the worker to be busy',
       )
-      const again = await call(pmTools, 'give_work', addressedGive(worker, 'worker', 'Now build it', 'now build it'))
+      const again = await call(
+        pmTools,
+        'give_work',
+        addressedGive(worker, 'worker', 'Now build it', 'now build it'),
+      )
       expect(again.structured.delivery).toBe('held')
       await host.send(pm, 'keep the PM busy', window)
       expect((await host.queueMessage(pm, 'mine, held', window)).outcome).toBe('queued')

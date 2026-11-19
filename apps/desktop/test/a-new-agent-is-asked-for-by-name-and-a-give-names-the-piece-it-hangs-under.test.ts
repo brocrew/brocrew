@@ -288,7 +288,11 @@ describe('D-016 · a new agent is asked for by name, and a give names the piece 
       expect(createdByOf('ghost')).toBeUndefined()
 
       await callOn(pm.tools, 'create_agent', { profile_slug: 'archivist' })
-      const given = await callOn(pm.tools, 'give_work', newConversationGive('archivist', 'Index the ledger', 'index it'))
+      const given = await callOn(
+        pm.tools,
+        'give_work',
+        newConversationGive('archivist', 'Index the ledger', 'index it'),
+      )
       expect(given.outcome, JSON.stringify(given)).toBe('ok')
       expect(given.started).toBe(true)
       expect(createdByOf('archivist')).toEqual(by('pm'))
@@ -301,7 +305,11 @@ describe('D-016 · a new agent is asked for by name, and a give names the piece 
       const pm = await personOpens('pm')
 
       await callOn(pm.tools, 'create_agent', { profile_slug: 'Archivist' })
-      const given = await callOn(pm.tools, 'give_work', newConversationGive('archivist', 'Index the ledger', 'index it'))
+      const given = await callOn(
+        pm.tools,
+        'give_work',
+        newConversationGive('archivist', 'Index the ledger', 'index it'),
+      )
       expect(given.outcome, JSON.stringify(given)).toBe('ok')
       const identities = store
         .agentIdentities()

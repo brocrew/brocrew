@@ -665,7 +665,11 @@ class TheApp {
   async aPmItsWorkerAndAPeer(brief = 'build it') {
     await this.host.close((await this.personOpens('worker')).id, this.window)
     const pm = await this.personOpens('pm')
-    const given = await callOn(pm.tools, 'give_work', newConversationGive('worker', 'the index', brief))
+    const given = await callOn(
+      pm.tools,
+      'give_work',
+      newConversationGive('worker', 'the index', brief),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     return { pm, worker, label: given.label as string }
@@ -1453,7 +1457,11 @@ describe('D-027 · the work a turn of several drives', () => {
     if (pmHandle === undefined) throw new Error('the parent has no provider handle')
     const gave: { child: string; piece: string; label: string }[] = []
     for (const profile of ['worker', 'builder']) {
-      const given = await callOn(pm.tools, 'give_work', newConversationGive(profile, `The ${profile}`, 'go'))
+      const given = await callOn(
+        pm.tools,
+        'give_work',
+        newConversationGive(profile, `The ${profile}`, 'go'),
+      )
       expect(given.outcome, JSON.stringify(given)).toBe('ok')
       const child = given.agent as string
       app.host.claimSession(child, app.window)
@@ -1551,7 +1559,11 @@ describe('D-027 · the work a turn of several drives', () => {
     await waitFor(() => app.cards(worker).length >= 3, 'that turn to park')
 
     // ⚑ Every message of the running turn drives the second piece, so an unnamed give hangs under it.
-    const unnamed = await callOn(app.toolsFor(worker), 'give_work', newConversationGive('helper', 'a smaller piece', 'do the small part'))
+    const unnamed = await callOn(
+      app.toolsFor(worker),
+      'give_work',
+      newConversationGive('helper', 'a smaller piece', 'do the small part'),
+    )
     expect(unnamed.outcome, JSON.stringify(unnamed)).toBe('ok')
     expect(app.store.workById(unnamed.piece as string)?.parent).toBe(second.piece)
 
@@ -1581,7 +1593,11 @@ describe('D-027 · the work a turn of several drives', () => {
         .sort(),
     ).toEqual([first.piece, second.piece].sort())
     await waitFor(() => app.cards(worker).length >= 5, 'that turn to park')
-    const refused = await callOn(app.toolsFor(worker), 'give_work', newConversationGive('helper', 'never begun', 'never sent'))
+    const refused = await callOn(
+      app.toolsFor(worker),
+      'give_work',
+      newConversationGive('helper', 'never begun', 'never sent'),
+    )
     expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
     expect(refused.rail).toBe('name-the-piece-you-give-from')
     expect([...((refused.detail as { held?: string[] }).held ?? [])].sort()).toEqual(

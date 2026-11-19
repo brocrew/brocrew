@@ -846,14 +846,22 @@ describe('D-036 · the host says who holds the work a conversation gave out', ()
     const parent = await personOpens(DEFAULT_PROFILE_ID, 'ask')
     const parentTools = agentToolsFor(host, parent)
     await callOn(parentTools, 'create_agent', { profile_slug: 'worker' })
-    const first = await callOn(parentTools, 'give_work', newConversationGive('worker', 'Build the world clock page', 'build the world clock page'))
+    const first = await callOn(
+      parentTools,
+      'give_work',
+      newConversationGive('worker', 'Build the world clock page', 'build the world clock page'),
+    )
     expect(first, JSON.stringify(first)).toMatchObject({ outcome: 'ok', label: 'W1.1' })
     const ada = first.agent as string
     await waitFor(
       () => ledger(ada).some((event) => event.type === 'permission_request'),
       'the card Ada’s brief raised',
     )
-    const second = await callOn(parentTools, 'give_work', addressedGive(first.label, 'worker', 'Test the clock page', 'test the clock page'))
+    const second = await callOn(
+      parentTools,
+      'give_work',
+      addressedGive(first.label, 'worker', 'Test the clock page', 'test the clock page'),
+    )
     expect(second, JSON.stringify(second)).toMatchObject({
       outcome: 'ok',
       agent: ada,

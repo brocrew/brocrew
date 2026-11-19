@@ -116,7 +116,11 @@ describe('what a replacement carries, and what it leaves behind', () => {
   const aWorkerOver = async (): Promise<{ pm: string; worker: string; label: string }> => {
     await host.close(await personOpens('worker'), window)
     const pm = await personOpens('pm')
-    const given = await callOn(pm, 'give_work', newConversationGive('worker', 'The schema', 'migrate the schema'))
+    const given = await callOn(
+      pm,
+      'give_work',
+      newConversationGive('worker', 'The schema', 'migrate the schema'),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     await waitFor(() => turnsIn(worker) > 0, 'the turn the brief opened to end')
@@ -156,7 +160,11 @@ describe('what a replacement carries, and what it leaves behind', () => {
     host = buildHost(ProductRuntimeHost)
     await host.close(await personOpens('worker'), window)
     const pm = await personOpens('pm')
-    const given = await callOn(pm, 'give_work', newConversationGive('worker', 'The schema', 'migrate the schema'))
+    const given = await callOn(
+      pm,
+      'give_work',
+      newConversationGive('worker', 'The schema', 'migrate the schema'),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     const label = given.label as string

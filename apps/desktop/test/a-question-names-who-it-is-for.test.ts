@@ -218,7 +218,11 @@ describe('611 · a question names who it is for', () => {
     await host.close(seeded, window)
     const pm = await personOpens('pm')
     const pmTools = theToolsetJustHandedOut()
-    const given = await callOn(pmTools, 'give_work', newConversationGive('worker', 'the work this dispatch is about', 'gather the requirements'))
+    const given = await callOn(
+      pmTools,
+      'give_work',
+      newConversationGive('worker', 'the work this dispatch is about', 'gather the requirements'),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     const workerTools = theToolsetJustHandedOut()

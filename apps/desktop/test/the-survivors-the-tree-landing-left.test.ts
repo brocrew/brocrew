@@ -378,7 +378,11 @@ describe('the survivors the tree landing left', () => {
     it("1016:M9 · a replaced giver is told of its predecessor's stalled piece when it gives the worker more", async () => {
       await host.close(await personOpens('worker', 'auto'), window)
       const pm = await personOpens('pm', 'auto')
-      const given = await callOn(pm, 'give_work', newConversationGive('worker', 'The schema', 'migrate the schema'))
+      const given = await callOn(
+        pm,
+        'give_work',
+        newConversationGive('worker', 'The schema', 'migrate the schema'),
+      )
       expect(given.outcome, JSON.stringify(given)).toBe('ok')
       const worker = given.agent as string
       const label = given.label as string

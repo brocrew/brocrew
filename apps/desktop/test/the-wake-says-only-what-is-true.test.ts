@@ -125,7 +125,11 @@ describe('690 · the wake says only what is true', () => {
       { provider: 'claude', profileId: 'pm', approvalMode: 'auto', cwd: root },
       window,
     )
-    const given = await callOn(pm, 'give_work', newConversationGive('worker', 'The schema', 'migrate the schema'))
+    const given = await callOn(
+      pm,
+      'give_work',
+      newConversationGive('worker', 'The schema', 'migrate the schema'),
+    )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     const workerHandle = handles.at(-1)

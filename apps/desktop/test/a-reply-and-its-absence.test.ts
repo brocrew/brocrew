@@ -453,7 +453,11 @@ describe('393 · a reply, and its absence', () => {
       // ⚑ **D-016** — the held one is a second give, its brief held behind the running turn's card.
       // ⛔ **Called directly, not through `giveTo`**, so the raw result is read: a held give carries
       // no `message` property (`650` F3 — *reported as not queued*).
-      const held = await callOn(pmTools, 'give_work', addressedGive(worker, siblings[0] as string, 'the held one', 'the held one'))
+      const held = await callOn(
+        pmTools,
+        'give_work',
+        addressedGive(worker, siblings[0] as string, 'the held one', 'the held one'),
+      )
       expect(held.outcome, JSON.stringify(held)).toBe('ok')
       expect(held.agent).toBe(worker)
       expect(held).not.toHaveProperty('message')
