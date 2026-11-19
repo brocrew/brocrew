@@ -36,6 +36,7 @@ describe('worker metadata after a later replacement with an unread ordinary cach
         )
       ).sessionId
       await first.closeAll()
+      const birth = await world.aRecordedWorker(caller, 'document-reader')
       const terminal = world.seedHistoricalSuccessor(birth, 'sess_historical_middle')
       const middle = hostWithOrdinaryHistory(unreadHistory)
       expect(

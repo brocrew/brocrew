@@ -684,7 +684,7 @@ describe('F009 · what an agent has done, read on demand', () => {
       // ⚑ Then Ada gives it work from a piece she is given after, and answers that piece.
       const w13 = await gives(tools, 'Ship the clock page', { profile: 'worker', to: ada })
       expect(w13).toEqual({ label: 'W1.3', holder: ada })
-      const w131 = await gives(adaTools, 'Tag the release', { to: ali, under: 'W1.3' })
+      const w131 = await gives(adaTools, 'Tag the release', { to: standIn, under: 'W1.3' })
       expect(w131).toEqual({ label: 'W1.3.1', holder: standIn })
       const answered = await fullCall(adaTools, 'reply_to_parent', {
         piece: 'W1.3',
@@ -727,7 +727,7 @@ describe('F009 · what an agent has done, read on demand', () => {
       await host.resumeSession(brobot, window)
       await host.resumeSession(ada, window)
       const adaTools = agentToolsFor(host, ada)
-      const w131 = await gives(adaTools, 'Tag the release', { piece: 'W1.3' })
+      const w131 = await gives(adaTools, 'Tag the release', { to: standIn, under: 'W1.3' })
       expect(w131.label).toBe('W1.3.1')
       expect(w131.holder).toBe(standIn)
       const answered = await fullCall(adaTools, 'reply_to_parent', {

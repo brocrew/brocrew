@@ -839,8 +839,6 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
         under: taken.label,
       })
 
-    // The positive: one level of depth is enough for a give under the piece the person asked for.
-    grant({ maxDepth: 1 })
     const admitted = await giveUnder()
     expect(admitted.outcome, JSON.stringify(admitted)).toBe('ok')
     const underIt = admitted.piece as string

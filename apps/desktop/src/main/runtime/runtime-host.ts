@@ -23911,7 +23911,9 @@ export class RuntimeHost implements LiveHost {
       this.recordTheGive(live ?? to, giving, queued.messageId, null, { queued })
       onRecorded(to)
       if (this.theOneInItsPlace(to) !== to) {
-        throw new SessionUnavailable('its-session-is-gone', 'The addressed conversation was replaced.')
+        throw new SessionUnavailable('cannot-be-reopened', 'The addressed conversation was replaced.', {
+          refusal: 'another conversation took its place',
+        })
       }
       await this.ensureRunning(to, null)
       return (await this.aRecordedBriefWasDelivered(to, giving.piece))
