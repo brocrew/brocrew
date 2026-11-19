@@ -532,7 +532,7 @@ describe('F086 · F087 · F088 · a message names a piece however it ended', () 
     const { pm, worker, helper, other } = await aPmAWorkerAndAHelper()
     const next = await restartWithHistoricalHelper(helper)
     await host.resumeSession(pm, window)
-    const pmTools = agentToolsFor(host, pm)
+    const pmTools = theToolsetJustHandedOut()
 
     // ⚑ Read through the one in its place, on both sides: each of these names the agent holding it.
     for (const to of [helper, other.label, next]) {

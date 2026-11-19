@@ -95,7 +95,8 @@ describe('341 · the rails, before anything can reach them', () => {
     new RuntimeHost({
       store,
       ...neutralHostDeps(() => userData),
-      createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions: providerSessions }),
+      createRuntime: (provider: Provider) =>
+        new FakeRuntime(provider, { sessions: providerSessions }),
       prepareProviderHome: (provider, profileId) => {
         const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
         mkdirSync(home, { recursive: true })

@@ -500,7 +500,10 @@ describe('the host says who a conversation owes an answer to, and moves the word
     })
     const entered = startGate.entered
     const sending = host.startAndSend(brobot, 'are you there', window)
-    await waitFor(() => startGate.entered === entered + 1, 'the historical stand-in to reach the provider')
+    await waitFor(
+      () => startGate.entered === entered + 1,
+      'the historical stand-in to reach the provider',
+    )
     // The stand-in derives its first word while still starting.
     await settle()
     expect(saidOf(standIn).map((one) => one.is)).toEqual(['active'])

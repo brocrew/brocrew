@@ -249,7 +249,12 @@ describe('an agent’s record — the cases beyond what-an-agent-has-done', () =
 
       await host.closeAll()
       const firstStandIn = seedHistoricalSuccessor(store, holder, `sess_${++counter}`, tick())
-      const secondStandIn = seedHistoricalSuccessor(store, firstStandIn, `sess_${++counter}`, tick())
+      const secondStandIn = seedHistoricalSuccessor(
+        store,
+        firstStandIn,
+        `sess_${++counter}`,
+        tick(),
+      )
       host = buildHost()
       await host.resumeSession(giver, window)
 

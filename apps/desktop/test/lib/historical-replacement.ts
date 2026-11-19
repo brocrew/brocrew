@@ -1,5 +1,6 @@
 import type { FakeProviderSessions, SessionRef } from '@brobot2/runtime'
 import type { SessionStore } from '../../src/main/db/session-store'
+import { newQueuedMessageId } from '../../src/main/runtime/queued-message'
 
 type HistoryStore = Pick<
   SessionStore,
@@ -77,7 +78,7 @@ export function recordHistoricallyMovedNote(
   const note = store
     .events(previous)
     .map(({ event }) => event)
-    .find((event) => event.type === 'message_queued' && event.text === text)
+    .findLast((event) => event.type === 'message_queued' && event.text === text)
   if (note?.type !== 'message_queued') throw new Error(`no recorded note: ${text}`)
   store.append(
     previous,
@@ -88,7 +89,7 @@ export function recordHistoricallyMovedNote(
   store.append(
     successor,
     store.nextOrdinal(successor),
-    { ...note, messageId: `${note.messageId}_moved` },
+    { ...note, messageId: newQueuedMessageId(), forItsNextStart: true },
     at,
   )
 }

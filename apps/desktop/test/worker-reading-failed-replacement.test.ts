@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
+import type { SessionStore } from '../src/main/db/session-store'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
 describe('worker metadata after a later replacement with an unread ordinary cache', () => {
@@ -12,15 +13,17 @@ describe('worker metadata after a later replacement with an unread ordinary cach
     await world.cleanUp()
   })
 
-  function hostWithoutOrdinaryHistory() {
-    const cacheFailure = vi.spyOn(world.store, 'replacements').mockImplementation(() => {
-      throw new Error('fictional ordinary cache unavailable')
-    })
+  function hostWithOrdinaryHistory(read: SessionStore['replacements']) {
+    const cache = vi.spyOn(world.store, 'replacements').mockImplementation(read)
     try {
       return world.aHost()
     } finally {
-      cacheFailure.mockRestore()
+      cache.mockRestore()
     }
+  }
+
+  function unreadHistory(): never {
+    throw new Error('fictional ordinary cache unavailable')
   }
 
   for (const fails of [false, true]) {
@@ -38,7 +41,7 @@ describe('worker metadata after a later replacement with an unread ordinary cach
       const birth = given.owner
       await first.closeAll()
       const terminal = world.seedHistoricalSuccessor(birth, 'sess_historical_middle')
-      const middle = hostWithoutOrdinaryHistory()
+      const middle = hostWithOrdinaryHistory(unreadHistory)
       expect(
         middle.resumableSessions().find((row) => row.sessionId === terminal)?.worker,
       ).toMatchObject({ number: 1, bornAs: birth })
@@ -58,7 +61,9 @@ describe('worker metadata after a later replacement with an unread ordinary cach
         'sess_historical_final',
         fails ? 'reverse-only' : 'complete',
       )
-      const next = hostWithoutOrdinaryHistory()
+      const next = hostWithOrdinaryHistory(
+        fails ? () => [{ replaced: terminal, by: current }] : unreadHistory,
+      )
       await next.reopenForAPerson(caller, world.window, null)
       expect(
         await next.messageAgentNow(
@@ -68,39 +73,39 @@ describe('worker metadata after a later replacement with an unread ordinary cach
           'note',
         ),
       ).toMatchObject({ ok: true, delivery: { outcome: 'sent' } })
-        expect(world.store.workerInItsPlace(birth)).toBe(fails ? terminal : current)
-        const rows = [...next.resumableSessions(), ...next.unresumableSessions()]
-        const old = rows.find((row) => row.sessionId === terminal)
-        expect(old).toBeDefined()
-        if (!old) throw new Error('fictional former terminal absent')
-        expect(Object.hasOwn(old, 'worker')).toBe(false)
-        const latest = rows.find((row) => row.sessionId === current)
-        expect(latest).toBeDefined()
-        if (!latest) throw new Error('fictional later replacement absent')
-        if (fails) {
-          expect(Object.hasOwn(latest, 'worker')).toBe(false)
-          const born = world.store.workersBorn().length
-          const sent = world.sent.length
-          const conversations = world.conversationsRecorded()
-          for (const parallel of [false, true]) {
-            expect(await world.gives(next, caller, 'document-reader', { parallel })).toMatchObject({
-              ok: false,
-              refusal: {
-                rail: 'worker-binding-is-unknown',
-                reason:
-                  "Not given: 'document-reader' has no known conversation. Tell a person, and give it again once that is fixed.",
-              },
-            })
-          }
-          expect(world.store.workersBorn()).toHaveLength(born)
-          expect(world.sent).toHaveLength(sent)
-          expect(world.conversationsRecorded()).toBe(conversations)
-        } else {
-          expect(latest.worker).toMatchObject({ number: 1, bornAs: birth })
-          expect(
-            next.agentCard(current, { ownerId: agentCallerId(caller) }, caller)?.worker,
-          ).toMatchObject({ number: 1, bornAs: birth })
+      expect(world.store.workerInItsPlace(birth)).toBe(fails ? terminal : current)
+      const rows = [...next.resumableSessions(), ...next.unresumableSessions()]
+      const old = rows.find((row) => row.sessionId === terminal)
+      expect(old).toBeDefined()
+      if (!old) throw new Error('fictional former terminal absent')
+      expect(Object.hasOwn(old, 'worker')).toBe(false)
+      const latest = rows.find((row) => row.sessionId === current)
+      expect(latest).toBeDefined()
+      if (!latest) throw new Error('fictional later replacement absent')
+      if (fails) {
+        expect(Object.hasOwn(latest, 'worker')).toBe(false)
+        const born = world.store.workersBorn().length
+        const sent = world.sent.length
+        const conversations = world.conversationsRecorded()
+        for (const parallel of [false, true]) {
+          expect(await world.gives(next, caller, 'document-reader', { parallel })).toMatchObject({
+            ok: false,
+            refusal: {
+              rail: 'worker-binding-is-unknown',
+              reason:
+                "Not given: 'document-reader' has no known conversation. Tell a person, and give it again once that is fixed.",
+            },
+          })
         }
+        expect(world.store.workersBorn()).toHaveLength(born)
+        expect(world.sent).toHaveLength(sent)
+        expect(world.conversationsRecorded()).toBe(conversations)
+      } else {
+        expect(latest.worker).toMatchObject({ number: 1, bornAs: birth })
+        expect(
+          next.agentCard(current, { ownerId: agentCallerId(caller) }, caller)?.worker,
+        ).toMatchObject({ number: 1, bornAs: birth })
+      }
     })
   }
 })

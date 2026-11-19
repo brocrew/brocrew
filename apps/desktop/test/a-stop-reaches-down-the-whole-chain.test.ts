@@ -16,7 +16,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
+import { RuntimeHost } from './helpers/giver-notice-host'
 import {
   A_CONVERSATION_CANNOT_INTERRUPT_ITSELF,
   agentToolsFor,
@@ -604,7 +604,8 @@ describe('629 · a stop reaches down the whole chain', () => {
       })
       host = buildHost()
       await host.resumeSession(ada, window)
-      const woken = await callOn(agentToolsFor(host, ada), 'message_agent', {
+      const adaTools = agentToolsFor(host, ada)
+      const woken = await callOn(adaTools, 'message_agent', {
         agent: ali,
         kind: 'follow-up',
         piece: aliLabel,

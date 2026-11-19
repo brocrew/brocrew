@@ -200,8 +200,10 @@ describe('3d1eb064 · a replacement after a give names its starter alone', () =>
     expect(sent, JSON.stringify(sent)).toMatchObject({ outcome: 'ok', went_to: next })
     expect(ledger(helper)).toContainEqual({ type: 'replaced_by', sessionId: next })
 
-    expect(launchesOf('helper').slice(launchesBefore).map((launch) => launch.startedBy)).toEqual([
-      alone,
-    ])
+    expect(
+      launchesOf('helper')
+        .slice(launchesBefore)
+        .map((launch) => launch.startedBy),
+    ).toEqual([alone])
   })
 })

@@ -9987,10 +9987,12 @@ export class RuntimeHost implements LiveHost {
           `scheduled jobs: ${errorMessage(error)}`,
       )
       this.forgetItsWakeUp(conversation)
-      this.letGoOfItsMissedJobs(
+      const missing = theProviderLostIt(error)
+      const endedANotice = this.letGoOfItsMissedJobs(
         conversation,
-        theProviderLostIt(error) ? IT_COULD_NOT_WAKE : ITS_JOBS_WENT_WITH_ITS_HISTORY,
+        missing ? IT_COULD_NOT_WAKE : ITS_JOBS_WENT_WITH_ITS_HISTORY,
       )
+      if (missing && !endedANotice) this.recordItsMissingSessionWake(conversation)
       this.wordsHeld.delete(conversation)
       this.stallWhatItsJobWouldHaveDriven(conversation)
       this.stateMayHaveMoved(conversation)
@@ -10034,7 +10036,7 @@ export class RuntimeHost implements LiveHost {
     conversation: string,
     why: string,
     notice: AppNotice = 'a-scheduled-job-that-will-not-run',
-  ): void {
+  ): boolean {
     let open: readonly WaitingMessage[]
     try {
       open = this.deps.store.messagesWaitingIn(conversation)
@@ -10042,7 +10044,7 @@ export class RuntimeHost implements LiveHost {
       console.warn(
         `runtime host could not read what waited for ${conversation}: ${errorMessage(error)}`,
       )
-      return
+      return false
     }
     const ended = new Set<string>()
     for (const row of open) {
@@ -10057,11 +10059,20 @@ export class RuntimeHost implements LiveHost {
       })
       ended.add(row.messageId)
     }
-    if (ended.size === 0) return
+    if (ended.size === 0) return false
     const left = (this.heldAtAStop.get(conversation) ?? []).filter((one) => !ended.has(one.id))
     if (left.length > 0) this.heldAtAStop.set(conversation, left)
     else this.heldAtAStop.delete(conversation)
     this.theWorldMoved('work')
+    return true
+  }
+
+  private recordItsMissingSessionWake(conversation: string): void {
+    this.writeWhileNothingRunsIt(conversation, {
+      type: 'error',
+      message: IT_COULD_NOT_WAKE,
+      fatal: false,
+    })
   }
 
   /**
@@ -32014,13 +32025,7 @@ export class RuntimeHost implements LiveHost {
       console.warn(
         `runtime host could not start ${sessionId} for the messages it held: ${errorMessage(error)}`,
       )
-      if (theProviderLostIt(error)) {
-        this.appendIntoItsLedger(sessionId, {
-          type: 'error',
-          message: IT_COULD_NOT_WAKE,
-          fatal: false,
-        })
-      }
+      if (theProviderLostIt(error)) this.recordItsMissingSessionWake(sessionId)
     } finally {
       // ⚑ A reopen on the current sign-in is said by the start that answers it, or by none
       // ({@link reopeningForWhatWaited}).

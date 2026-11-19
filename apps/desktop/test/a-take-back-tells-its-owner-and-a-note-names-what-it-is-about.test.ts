@@ -939,16 +939,21 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
   it('a missing session leaves a held note recorded and says why its wake ran nothing', async () => {
     const { pmTools, worker, piece, label } = await aPmAndItsWorker('the piece')
     await holdANote(pmTools, worker, label)
-    const before = store.recorded().map(({ sessionId }) => sessionId).sort()
+    const before = store
+      .recorded()
+      .map(({ sessionId }) => sessionId)
+      .sort()
     const wakeFailure = {
       type: 'error',
-      message: 'This conversation could not wake: its provider session file is missing. Nothing ran.',
+      message:
+        'This conversation could not wake: its provider session file is missing. Nothing ran.',
       fatal: false,
     }
     issued.forgetAll()
     await stop(worker)
     await waitFor(
-      () => ledger(worker).some((row) => row.type === 'error' && row.message === wakeFailure.message),
+      () =>
+        ledger(worker).some((row) => row.type === 'error' && row.message === wakeFailure.message),
       'the missing session wake failure',
     )
     expect(ledger(worker)).toContainEqual(wakeFailure)
@@ -956,7 +961,12 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
       expect.objectContaining({ text: 'noted for later', about: piece }),
     )
     expect(store.replacements()).toEqual([])
-    expect(store.recorded().map(({ sessionId }) => sessionId).sort()).toEqual(before)
+    expect(
+      store
+        .recorded()
+        .map(({ sessionId }) => sessionId)
+        .sort(),
+    ).toEqual(before)
   })
 
   it('🔴 held messages that go as one turn each say what they are about, and only the one that names a piece', async () => {

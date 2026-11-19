@@ -1102,7 +1102,10 @@ describe('D-036 · the host says who holds the work a conversation gave out', ()
     })
     const entered = startGate.entered
     const sending = host.startAndSend(parent, 'are you there', window)
-    await waitFor(() => startGate.entered === entered + 1, 'the historical stand-in to reach the provider')
+    await waitFor(
+      () => startGate.entered === entered + 1,
+      'the historical stand-in to reach the provider',
+    )
     await settle()
     expect(saidOf(standIn).map((one) => one.state.is)).toEqual(['active'])
     startGate.release()
@@ -1124,6 +1127,20 @@ describe('D-036 · the host says who holds the work a conversation gave out', ()
     if (card?.type !== 'permission_request') throw new Error('the stand-in raised no card')
     await host.respondPermission(next, card.id, { outcome: 'allow' }, window)
     await waitFor(() => turnsIn(next) >= 1, 'the stand-in’s turn to end')
+
+    const cardsBefore = ledger(ada).filter((event) => event.type === 'permission_request').length
+    expect(
+      await callOn(agentToolsFor(host, next), 'message_agent', {
+        agent: ada,
+        kind: 'follow-up',
+        piece: 'W1.1',
+        text: 'Continue the same task.',
+      }),
+    ).toMatchObject({ outcome: 'ok' })
+    await waitFor(
+      () => ledger(ada).filter((event) => event.type === 'permission_request').length > cardsBefore,
+      'the helper to drive the original task again',
+    )
 
     // The stand-in counts what the conversation it replaced gave.
     await waitFor(

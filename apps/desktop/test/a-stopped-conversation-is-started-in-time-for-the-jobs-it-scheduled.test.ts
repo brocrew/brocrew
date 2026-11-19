@@ -2049,6 +2049,33 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
     expect(handles.length).toBe(handlesBefore)
   })
 
+  it('a scheduled wake records the missing file even when it held no missed-job notice', async () => {
+    const [conversation] = await aFirstLife(
+      async ([first]) => makes(first!, ONE_SHOT_A),
+      'agent-a',
+    )
+    if (conversation === undefined) throw new Error('no conversation was opened')
+    const handlesBefore = handles.length
+    issued.forgetAll()
+    restartsAt(local(9, 28, 14, 40))
+    expect(heldNotices(conversation)).toEqual([])
+    const wake = wakeUpsOf(host).get(conversation)
+    expect(wake?.startAt).toBe(DUE - LEAD)
+
+    clock = DUE - LEAD
+    timerCall(wake?.timer ?? null).fn()
+    const detail =
+      'This conversation could not wake: its provider session file is missing. Nothing ran.'
+    await waitFor(
+      () => ledger(conversation).some((row) => row.type === 'error' && row.message === detail),
+      'the missing session wake row',
+    )
+    expect(ledger(conversation)).toContainEqual({ type: 'error', message: detail, fatal: false })
+    expect(wakeUpsOf(host).has(conversation)).toBe(false)
+    expect(store.replacements()).toEqual([])
+    expect(handles.length).toBe(handlesBefore)
+  })
+
   it('a message that starts a stopped conversation plans its jobs again first, so a one-shot that passed since the wake-up was armed is told', async () => {
     const jobB: Job = { id: 'job-b', schedule: '15 16 28 9 *', recurring: false, prompt: 'ship it' }
     const [a, b] = await aFirstLife(

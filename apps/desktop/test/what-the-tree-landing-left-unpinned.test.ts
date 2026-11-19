@@ -72,21 +72,22 @@ const mount = (
   const store = createSessionStore(db, tick)
   let counter = 0
   const issued = new FakeProviderSessions()
-  const buildHost = () => new RuntimeHost({
-    store,
-    ...neutralHostDeps(() => userData),
-    createRuntime: (provider: Provider) => makeRuntime(provider, issued),
-    prepareProviderHome: (provider: Provider, profileId?: string) => {
-      const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-      mkdirSync(home, { recursive: true })
-      return home
-    },
-    providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-    resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
-    newSessionId: () => `sess_${++counter}`,
-    now: tick,
-    readProviderConfig: fixtureProviderConfig,
-  })
+  const buildHost = () =>
+    new RuntimeHost({
+      store,
+      ...neutralHostDeps(() => userData),
+      createRuntime: (provider: Provider) => makeRuntime(provider, issued),
+      prepareProviderHome: (provider: Provider, profileId?: string) => {
+        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
+        mkdirSync(home, { recursive: true })
+        return home
+      },
+      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
+      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
+      newSessionId: () => `sess_${++counter}`,
+      now: tick,
+      readProviderConfig: fixtureProviderConfig,
+    })
   let host = buildHost()
   const window = new RecordingSink('webContents:1')
   const events = (sessionId: string): TranscriptEvent[] =>
