@@ -128,6 +128,29 @@ describe('turn block changes', () => {
     expect(block(ordinarySecond.extra)).toContain('and 3 more: list_tasks')
   })
 
+  it('retains the diagnosis for the visible task until rotation shows a newer failure', () => {
+    const helpers = [
+      { ...helper(1), providerTurnFailure: { turnOrdinal: 3, message: 'Visible provider error.' } },
+      helper(2),
+      helper(3),
+      helper(4),
+      helper(5),
+      {
+        ...helper(6),
+        owner: 'worker-1',
+        conversation: 'conversation W1.1 · Fictional job',
+        providerTurnFailure: { turnOrdinal: 7, message: 'Rotated provider error.' },
+      },
+    ]
+    const first = turnBlockChanges({ ...input, helpers }, EMPTY_TURN_BLOCK)
+    const second = turnBlockChanges({ ...input, helpers }, first.next)
+    expect(first.extra.helpers?.rows).toHaveLength(5)
+    expect(block(first.extra)).toContain('Visible provider error.')
+    expect(block(first.extra)).not.toContain('Rotated provider error.')
+    expect(block(second.extra)).toContain('Rotated provider error.')
+    expect(block(second.extra)).not.toContain('Visible provider error.')
+  })
+
   it('shows five open rows and the count even when one status could not be read', () => {
     const rows = Array.from({ length: 7 }, (_, i) => helper(i + 1))
     rows[1] = { ...rows[1]!, state: null }

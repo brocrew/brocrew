@@ -52,9 +52,11 @@ it('reads each giver’s recorded error and the current provider and model, live
 
   const firstLabel = give(giver, 'work_first')
   const secondLabel = give(other, 'work_second')
+  give(giver, 'work_later')
   give(other, 'work_unrelated')
   const first = fail('work_first', 'First provider error.')
   const second = fail('work_second', 'Second provider error.')
+  const later = fail('work_later', 'Later provider error.')
   append({ type: 'user_turn', text: 'Do unrelated work.', drives: 'work_unrelated' })
   append({ type: 'turn', state: 'completed' })
 
@@ -63,9 +65,9 @@ it('reads each giver’s recorded error and the current provider and model, live
   const check = async () => {
     const one = await read(giver, firstLabel)
     const two = await read(other, secondLabel)
-    for (const [answer, mine, elsewhere] of [
-      [one, first, second],
-      [two, second, first],
+    for (const [answer, newest, mine, elsewhere] of [
+      [one, later, [first, later], [first, second]],
+      [two, second, [second], [first, later]],
     ] as const) {
       expect(answer.structured).toMatchObject({
         outcome: 'ok',
@@ -77,11 +79,13 @@ it('reads each giver’s recorded error and the current provider and model, live
             reported: { model: expect.any(String) },
           },
         },
-        provider_turn_failures: [mine],
+        provider_turn_failures: expect.arrayContaining([...mine]),
       })
-      expect(answer.text).toContain(mine.failure.message)
-      expect(answer.text).toContain(`Recorded failed turn ${String(mine.failure.turnOrdinal)}.`)
-      expect(answer.text).not.toContain(elsewhere.failure.message)
+      const structured = answer.structured as { provider_turn_failures: unknown[] }
+      expect(structured.provider_turn_failures).toHaveLength(mine.length)
+      expect(answer.text).toContain(newest.failure.message)
+      expect(answer.text).toContain(`Recorded failed turn ${String(newest.failure.turnOrdinal)}.`)
+      for (const hidden of elsewhere) expect(answer.text).not.toContain(hidden.failure.message)
     }
     const listed = await answerOn(agentToolsFor(host, giver), 'list_agents', { archived: false })
     expect(listed.structured).toMatchObject({
@@ -89,7 +93,8 @@ it('reads each giver’s recorded error and the current provider and model, live
       agents: expect.arrayContaining([expect.objectContaining({ agent: holder })]),
     })
     expect(listed.structured).not.toHaveProperty('provider_turn_failures')
-    expect(listed.text).not.toContain(first.failure.message)
+    for (const hidden of [first, second, later])
+      expect(listed.text).not.toContain(hidden.failure.message)
   }
   await check()
   host.claimSession(holder, w.window)
