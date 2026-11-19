@@ -13437,6 +13437,19 @@ export class RuntimeHost implements LiveHost {
     )
   }
 
+  private questionHasStalled(
+    asker: string,
+    id: string,
+    answererIds: readonly string[],
+    ledgerOf: (conversation: string) => ItsLedger = this.oneLedgerReadPerAnswer(),
+  ): boolean {
+    return (
+      this.questionCanBeReminded(asker, id, answererIds, ledgerOf) &&
+      this.questionReminderProgress(answererIds, this.questionWakeIds(asker, id).reminder) ===
+        'turn-ended'
+    )
+  }
+
   private stalledQuestionRecipient(request: RoutedRequest) {
     if (
       request.parent === null ||
@@ -13448,10 +13461,7 @@ export class RuntimeHost implements LiveHost {
     }
     const answerer = this.theOneInItsPlace(request.parent)
     const answererIds = this.theIdsItStandsFor(answerer)
-    if (!this.questionCanBeReminded(request.askedBy, request.requestId, answererIds))
-      return undefined
-    const { reminder } = this.questionWakeIds(request.askedBy, request.requestId)
-    if (this.questionReminderProgress(answererIds, reminder) !== 'turn-ended') {
+    if (!this.questionHasStalled(request.askedBy, request.requestId, answererIds)) {
       return undefined
     }
     const { address, title } = this.questionConversation(answerer)
@@ -19601,13 +19611,13 @@ export class RuntimeHost implements LiveHost {
       (slot !== undefined && !going && (slot.session === null || status === 'working'))
     const answererIds =
       active || owed.owedQuestions.length === 0 ? [] : this.theIdsItStandsFor(sessionId)
-    const stalled =
-      answererIds.length === 0
-        ? undefined
-        : owed.owedQuestions.find(({ askedBy, requestId }) => {
-            const { reminder } = this.questionWakeIds(askedBy, requestId)
-            return this.questionReminderProgress(answererIds, reminder) === 'turn-ended'
-          })
+    let stalled: (typeof owed.owedQuestions)[number] | undefined
+    if (answererIds.length > 0) {
+      const questionLedger = this.oneLedgerReadPerAnswer(unread)
+      stalled = owed.owedQuestions.find(({ askedBy, requestId }) =>
+        this.questionHasStalled(askedBy, requestId, answererIds, questionLedger),
+      )
+    }
     return agentStateOf(
       {
         needsYou: owed.needsYou,
