@@ -1244,7 +1244,9 @@ describe('347 · the five tools', () => {
             expect(shape, `${tool.name} advertises ${aimed}`).not.toContain(aimed)
         }
         if (names === 'the agent') expect(shape, tool.name).toContain('agent')
-        if (names === 'the conversation') expect(shape, tool.name).toEqual(['conversation', 'title'])
+        if (names === 'the conversation') {
+          expect(shape, tool.name).toEqual(['conversation', 'title'])
+        }
         if (names === 'an agent, by its profile') {
           expect(shape, tool.name).toContain('profile')
           expect(shape, tool.name).not.toContain('agent')
@@ -1345,16 +1347,11 @@ describe('347 · the five tools', () => {
           }
         }
       }
-      // ⚑ **The readers name no WHO**, and that is the property rather than an exemption: a tool with
-      // no way to say who, and no way to say what, cannot queue work for anybody. ⚑ **D-016** —
-      // `list_tasks` takes one argument, the piece whose record it reads. ⚑ **D-024 · R3 — and
-      // `made`, a yes-or-no that turns the reader to the files its profile made**: it names nobody
-      // and carries no words, which the `CARRIES_THE_WORK` loop below measures of it by name.
-      // ⚑ **And `state` and `limit`**: which of its own board it lists, and how much — they name
-      // nobody either.
+      // `list_tasks` selects a conversation, a task record or the caller's board or files. Its
+      // remaining fields filter or page the read. The loop below checks for work payloads.
       expect(
         Object.keys(offered.tools.find((one) => one.name === 'list_tasks')?.input ?? {}),
-      ).toEqual(['piece', 'made', 'state', 'limit'])
+      ).toEqual(['conversation', 'cursor', 'piece', 'more', 'after', 'made', 'state', 'limit'])
       const words = ['dispatch', 'assign', 'delegate', 'hand_off', 'handoff', 'enqueue', 'task']
       // 🔴 **Every spelling of *here are the words of the work*, as the thing a dispatch tool cannot
       // do without** (429). ⛔ A verb that hands work over has to carry the work: `message_agent`
