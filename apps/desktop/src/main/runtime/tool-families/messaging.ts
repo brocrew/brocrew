@@ -54,6 +54,7 @@ export function createMessageAgentTool(
   host: Pick<
     AgentToolHost,
     | 'holdAgentMessageForStart'
+    | 'messageDestination'
     | 'messageAgentNow'
     | 'nameByItsWork'
     | 'prepareTextForSend'
@@ -65,13 +66,10 @@ export function createMessageAgentTool(
     | 'tookItsPlace'
     | 'whatAPieceIsTo'
     | 'whatToCallTheConversation'
-    | 'whyItIsOutOfReach'
     | 'whyWhatIsHeldWaits'
   >,
   by: Caller,
   me: string,
-  selfRefusal: ReturnType<typeof conversationAddressing>['selfRefusal'],
-  theConversationToReach: ReturnType<typeof conversationAddressing>['theConversationToReach'],
   guarded: (run: () => Promise<AgentToolAnswer>) => Promise<AgentToolAnswer>,
 ): AgentToolDefinition & { readonly name: ToolName } {
   return {
@@ -179,10 +177,8 @@ export function createMessageAgentTool(
         const resources = sendResourcesInput.safeParse(args.resources)
         if (!resources.success) problem('resources', sendResourcesProblem)
         if (!resources.success || problems.length > 0) return malformed()
-        // **D-016 · commit 7 · R1 — a label names its piece's owner**, after the call's own shape
-        // and before the first rail that reads the target: one that names nothing this caller may
-        // reach is handed back as spelled, and meets `no-such-agent` below as an unknown id does.
-        const agent = theConversationToReach(spelled)
+        const destination = host.messageDestination(spelled)
+        const agent = destination ?? spelled
         // A piece the caller gave that waits, queued, at a service has reached nobody: nothing is
         // sent about it, whether the message names it or is addressed by its label. Asked before
         // reach, which a caller whose piece is only queued does not have.
@@ -198,11 +194,7 @@ export function createMessageAgentTool(
             reason: aMessageAboutAQueuedPiece(it.label),
           })
         }
-        const out = host.whyItIsOutOfReach(agent, by, me, true)
-        if (out !== null) return outOfReachAnswer(out, agent)
-        if (agent === me || host.tookItsPlace(agent) === me) {
-          return selfRefusal(spelled, agent)
-        }
+        if (destination === null) return outOfReachAnswer({ is: 'no-such-agent' }, agent)
         let about: { readonly piece: string; readonly label: string } | null = null
         if (typeof named === 'string') {
           if (it.is === 'none') {

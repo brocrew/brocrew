@@ -18,7 +18,7 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from './helpers/giver-notice-host'
-import { agentToolsFor, refuseTool, type ToolName } from '../src/main/runtime/agent-tools'
+import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
 
@@ -222,18 +222,10 @@ describe('690 · the wake says only what is true', () => {
   // ───────────────────────────────────────────────────────────────────────────────
 
   describe('§2 · F-h — a message to itself', () => {
-    /**
-     * ⚑ **`message_agent` to itself keeps the table's sentence**, which is true there. ⛔ §2.1, a
-     * WAKE of itself and its own sentence, and this test's second control (a wake of another agent
-     * said *running*) went with `resume_agent` (D-017, commit 3).
-     */
-    it('§2.2 message_agent to itself keeps its own sentence', async () => {
+    it('returns the self-addressed Message receipt', async () => {
       const { pm, piece } = await aPmAndItsRunningWorker()
-      const message = await callOn(pm, 'message_agent', { ...aQuestionTo(pm, piece) })
-      expect(message.rail).toBe('that-agent-is-you')
-      expect(message.reason).toBe(refuseTool('that-agent-is-you').reason)
-      // ⚑ **D-016 · a message gives no work**, so the sentence says what a message to itself is.
-      expect(String(message.reason)).toContain('cannot send itself a message')
+      const message = await callOn(pm, 'message_agent', aQuestionTo(pm, piece))
+      expect(message).toMatchObject({ outcome: 'ok', agent: pm, receipt: { recipient: { id: pm } } })
     })
   })
 })

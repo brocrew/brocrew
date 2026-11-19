@@ -149,6 +149,7 @@ export interface AgentToolHost {
     me: string | null,
     forAMessage?: boolean,
   ): OutOfReach | null
+  messageDestination(address: string): string | null
   theConversationAddressed(
     address: string,
     by: Caller,

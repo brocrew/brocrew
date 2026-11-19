@@ -288,7 +288,7 @@ describe('a profile name reaches its one conversation', () => {
       expect(message).toMatchObject({ outcome: 'refused', rail: 'no-such-agent' })
     }
     const self = await callOn(callerTools, 'message_agent', aNote(caller))
-    expect(self).toMatchObject({ outcome: 'refused', rail: 'that-agent-is-you' })
+    expect(self).toMatchObject({ outcome: 'ok', agent: caller })
   })
 
   it('reaches the chosen archived conversation by its label and keeps both archived', async () => {
