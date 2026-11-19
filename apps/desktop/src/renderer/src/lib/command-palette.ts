@@ -84,6 +84,7 @@ export type PaletteAction =
    * view, whether or not anything runs it.
    */
   | { readonly kind: 'select'; readonly sessionId: string }
+  | { readonly kind: 'read-conversation'; readonly sessionId: string }
   /**
    * The rail's `go`. ⚑ `566` added `'tools'` and `570` `'team'`; the literal union is what makes
    * the four sites move together, and it must stay a SUBSET of `SideRail`'s own `go` emit —

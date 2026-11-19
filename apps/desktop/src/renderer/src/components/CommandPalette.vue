@@ -1,4 +1,12 @@
 <script setup lang="ts">
+import { agentName, type AgentIdentity } from '../../../shared/runtime-ipc'
+import type {
+  ConversationSearchHit,
+  WorkSearchPage,
+  WorkSearchQuery,
+  WorkSearchResult,
+} from '../../../shared/work-search'
+import { fullTime } from '../lib/clock'
 import { useClientApi } from '../client-provider/injection'
 import { chordSaid, platformHere } from '../lib/this-computer'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
@@ -104,6 +112,9 @@ const props = defineProps<{
    * is "the" one, a question `RuntimeScreen` already owns.
    */
   agent: PaletteAgent | null
+  searchCaller?: string | null
+  profiles?: readonly AgentIdentity[]
+  searchConversations?: (caller: string, query: WorkSearchQuery) => Promise<WorkSearchResult>
 }>()
 
 /**
@@ -189,7 +200,113 @@ const commands = computed(() =>
  * the cursor walks and what the eye reads are the same list by construction; they cannot come to
  * disagree about which row Enter is about.
  */
-const bands = computed(() => bandedResults(commands.value, query.value))
+const profile = ref('')
+const profilePicker = ref<HTMLSelectElement | null>(null)
+const searchMore = ref<HTMLButtonElement | null>(null)
+const searchAvailable = computed(() => !!props.searchCaller && !!props.searchConversations)
+const useReader = computed(
+  () => searchAvailable.value && (query.value.trim() !== '' || profile.value !== ''),
+)
+const searchPage = ref<WorkSearchPage | null>(null)
+const searchHits = ref<readonly ConversationSearchHit[]>([])
+const searchGaps = ref({ unread: 0, skipped: 0 })
+const searchBusy = ref(false)
+const searchFailed = ref<string | null>(null)
+let searchRequest = 0
+
+async function readConversations(more = false): Promise<void> {
+  const caller = props.searchCaller
+  const search = props.searchConversations
+  const cursor = more ? searchPage.value?.next_cursor : null
+  if (!caller || !search || searchBusy.value || (more && !cursor)) return
+  const reading = ++searchRequest
+  searchBusy.value = true
+  searchFailed.value = null
+  try {
+    const result = await search(caller, {
+      words: query.value.trim(),
+      ...(profile.value ? { profile: profile.value } : {}),
+      ...(cursor ? { cursor } : {}),
+      limit: 20,
+    })
+    if (reading !== searchRequest) return
+    if (!result.ok) {
+      searchFailed.value = 'Could not search conversations.'
+      return
+    }
+    searchHits.value = [...searchHits.value, ...result.page.hits]
+    searchPage.value = result.page
+    searchGaps.value = {
+      unread: searchGaps.value.unread + result.page.rows_unread,
+      skipped: searchGaps.value.skipped + result.page.ledgers_skipped,
+    }
+  } catch (cause) {
+    if (reading === searchRequest) searchFailed.value = readableError(cause)
+  } finally {
+    if (reading === searchRequest) searchBusy.value = false
+  }
+}
+
+watch(
+  [query, profile, showing, () => props.searchCaller, searchAvailable],
+  (_selected, _old, cleanUp) => {
+    searchRequest += 1
+    searchHits.value = []
+    searchPage.value = null
+    searchGaps.value = { unread: 0, skipped: 0 }
+    searchBusy.value = false
+    searchFailed.value = null
+    if (!showing.value) {
+      profile.value = ''
+      return
+    }
+    if (!useReader.value) return
+    const timer = window.setTimeout(() => void readConversations(), 180)
+    cleanUp(() => window.clearTimeout(timer))
+  },
+)
+onUnmounted(() => {
+  searchRequest += 1
+})
+
+const readerCommands = computed<PaletteCommand[]>(() => {
+  const loaded = new Map(props.conversations.map((row) => [row.sessionId, row]))
+  return searchHits.value.map((hit) => {
+    const row = loaded.get(hit.conversation)
+    const name = hit.profile ? agentName(hit.profile, props.profiles ?? null) : null
+    return {
+      id: `open-${hit.conversation}`,
+      title: hit.title,
+      detail: [
+        name,
+        row?.provider,
+        row?.word,
+        fullTime(hit.last_active_at),
+        `Conversation ${hit.address}`,
+        ...hit.matched_tasks.map((task) => task.label),
+        hit.tasks_omitted ? `${hit.tasks_omitted} more matching tasks` : null,
+        row?.place,
+        row?.opening,
+      ]
+        .filter(Boolean)
+        .join(' · '),
+      group: 'conversations',
+      keywords: [],
+      action: { kind: 'read-conversation', sessionId: hit.conversation },
+    }
+  })
+})
+
+const bands = computed(() => {
+  if (!useReader.value) return bandedResults(commands.value, query.value)
+  const other = bandedResults(
+    commands.value.filter((row) => row.group !== 'conversations'),
+    query.value,
+  )
+  return readerCommands.value.length === 0
+    ? other
+    : [{ group: 'conversations' as const, rows: readerCommands.value }, ...other]
+})
 
 /**
  * ⛔ **The rows the CURSOR may land on — which is not every row drawn, since 279.**
@@ -232,6 +349,20 @@ const note = computed(() =>
     failed: props.listError,
   }),
 )
+
+const searchNote = computed(() => {
+  const page = searchPage.value
+  if (!page) return searchFailed.value ? '' : 'Searching conversations…'
+  const gaps = [
+    searchGaps.value.unread ? `${searchGaps.value.unread} unread rows` : null,
+    searchGaps.value.skipped ? `${searchGaps.value.skipped} skipped ledgers` : null,
+  ].filter(Boolean)
+  return [
+    `${searchHits.value.length} shown.`,
+    ...(gaps.length ? [`${gaps.join(' · ')}.`] : []),
+    ...(!page.complete || gaps.length ? ['Results may be incomplete.'] : []),
+  ].join(' ')
+})
 
 /**
  * The row Enter runs, or `null` when nothing matched.
@@ -416,8 +547,9 @@ function onKey(event: KeyboardEvent): void {
     return
   }
   if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-    event.preventDefault()
     event.stopImmediatePropagation()
+    if (event.target === profilePicker.value) return
+    event.preventDefault()
     move(event.key === 'ArrowDown' ? 1 : -1)
     return
   }
@@ -439,8 +571,9 @@ function onKey(event: KeyboardEvent): void {
       chordRefusal.value = SEND_CHORD_REFUSED
       return
     }
-    event.preventDefault()
     event.stopImmediatePropagation()
+    if (event.target === profilePicker.value || event.target === searchMore.value) return
+    event.preventDefault()
     if (current.value) run(current.value)
     // ⛔ **On a miss, Enter takes the ONE thing the miss offers** (found in this dispatch's own
     // review). It is not "run whatever was selected before" — there is no row, and `current` is
@@ -453,7 +586,11 @@ function onKey(event: KeyboardEvent): void {
     // is nothing to run, the button is not on screen, and firing the escape hatch would navigate
     // away from a palette that had just found what was asked for. Enter does nothing there, which
     // is the honest answer to a key pressed over rows that are not actions.
-    else if (!drawn.value) escapeToLibrary()
+    else if (
+      !drawn.value &&
+      (!useReader.value || (searchPage.value && !searchPage.value.next_cursor))
+    )
+      escapeToLibrary()
     return
   }
   if (event.key === 'Tab') {
@@ -563,12 +700,23 @@ defineExpose({
             :aria-expanded="drawn"
             :aria-controls="drawn ? 'palette-rows' : undefined"
             :aria-activedescendant="current ? current.id : undefined"
+            maxlength="200"
             placeholder="Jump to a conversation, or go somewhere…"
             autocomplete="off"
             spellcheck="false"
           />
           <span class="palette-chord">esc</span>
         </div>
+
+        <label v-if="searchAvailable" class="palette-profile">
+          Profile
+          <select ref="profilePicker" v-model="profile" data-cy="palette-profile-filter">
+            <option value="">All conversations</option>
+            <option v-for="one in props.profiles" :key="one.id" :value="one.slug">
+              {{ one.displayName ?? one.slug }}
+            </option>
+          </select>
+        </label>
 
         <ul
           v-if="drawn"
@@ -594,7 +742,11 @@ defineExpose({
               :data-cy="`palette-row-${row.id}`"
               :data-current="current?.id === row.id"
               :data-listed="!runnable(row)"
-              :title="row.group === 'agent' ? (row.detail ?? undefined) : undefined"
+              :title="
+                row.group === 'agent' || (useReader && row.group === 'conversations')
+                  ? (row.detail ?? undefined)
+                  : undefined
+              "
               @mousedown.prevent="run(row)"
             >
               <strong>{{ row.title }}</strong>
@@ -620,9 +772,13 @@ defineExpose({
              never-checks`); `command-palette.test.ts` holds the roster and this says the rule. That is
              `104`'s "first-run distinct from no-match", settled by construction rather than by a
              branch that could get the two the wrong way round. -->
-        <div v-else class="palette-miss" data-cy="palette-no-match">
+        <div
+          v-else-if="!useReader || (searchPage && !searchPage.next_cursor)"
+          class="palette-miss"
+          data-cy="palette-no-match"
+        >
           <strong>{{ noMatchHeading(query) }}</strong>
-          <p>{{ NO_MATCH_BODY }}</p>
+          <p v-if="!useReader">{{ NO_MATCH_BODY }}</p>
           <button
             type="button"
             class="palette-escape"
@@ -656,7 +812,19 @@ defineExpose({
 
         <!-- ⛔ **What this palette actually looked at.** The sentence `249` §2 asks for, and the
              difference between a search and a claim about one. -->
-        <p class="palette-foot" data-cy="palette-searched">{{ note }}</p>
+        <p v-if="searchFailed" class="palette-refused" role="alert">{{ searchFailed }}</p>
+        <button
+          v-if="useReader && searchPage?.next_cursor"
+          ref="searchMore"
+          type="button"
+          class="palette-escape palette-more"
+          data-cy="palette-search-more"
+          :disabled="searchBusy"
+          @click="readConversations(true)"
+        >
+          Show more
+        </button>
+        <p class="palette-foot" data-cy="palette-searched">{{ useReader ? searchNote : note }}</p>
       </div>
     </div>
   </Teleport>
@@ -668,6 +836,26 @@ defineExpose({
    first version of this comment said the two "never coexist by construction", which `show`'s guard
    makes true only at the moment of opening — an overlay raised afterwards is a state neither of
    them prevents, and the z-index is what keeps it survivable. */
+.palette-profile,
+.palette-more {
+  align-self: start;
+  margin: var(--space-3) var(--space-8);
+}
+
+.palette-profile {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  color: var(--muted);
+  font-size: var(--type-caption);
+}
+
+.palette-profile select {
+  min-width: 0;
+  max-width: 100%;
+  font: inherit;
+}
+
 .palette-scrim {
   position: fixed;
   z-index: 60;

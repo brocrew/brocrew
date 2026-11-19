@@ -249,7 +249,8 @@ import AppTitleBar from './AppTitleBar.vue'
 import ConversationPane from './ConversationPane.vue'
 import MessageLinks from './MessageLinks.vue'
 import LinkedHistory from './LinkedHistory.vue'
-import type { ResolvedMessageLink } from '../lib/message-links'
+import { linkFailureReason, type ResolvedMessageLink } from '../lib/message-links'
+import type { WorkSearchQuery } from '../../../shared/work-search'
 import { createMessageLinkResolver } from '../lib/runtime-message-links'
 import IconSprite from './IconSprite.vue'
 import NewConversation from './NewConversation.vue'
@@ -712,6 +713,22 @@ async function openMessageDestination(answer: ResolvedMessageLink): Promise<bool
   linkedIdentity.value = null
   await focusBack()
   return true
+}
+
+function searchConversations(conversation: string, query: WorkSearchQuery) {
+  return window.api.runtime.searchWork({ conversation, query })
+}
+
+async function openFoundConversation(id: string): Promise<void> {
+  const from = messageLinkPlace()
+  try {
+    const result = await resolveMessageLink(`brocrew://conversation/${encodeURIComponent(id)}`)
+    if (!stillAtLinkPlace(from)) return
+    if (!(await openMessageDestination(result)) && stillAtLinkPlace(from))
+      say(linkFailureReason(result))
+  } catch (cause) {
+    if (stillAtLinkPlace(from)) say(readableError(cause))
+  }
 }
 
 /**
@@ -3819,6 +3836,8 @@ onUnmounted(() => {
           @fold="railFold.toggle()"
           @new-conversation="place = 'new'"
           @select="select"
+          :search-conversations="searchConversations"
+          @read-conversation="openFoundConversation"
           @go="
             (destination) => {
               linkedIdentity = null

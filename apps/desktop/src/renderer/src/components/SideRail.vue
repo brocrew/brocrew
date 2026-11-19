@@ -45,6 +45,7 @@ import {
   type ListedConversation,
 } from '../lib/conversation-list'
 import { OPEN_IN_ANOTHER_WINDOW } from '../lib/taking-over'
+import type { WorkSearchQuery, WorkSearchResult } from '../../../shared/work-search'
 import type { PaletteAgent, PaletteNavigation, PaletteOpenRow } from '../lib/command-palette'
 import type { AgentIdentities } from '../../../shared/runtime-ipc'
 import { liveSignalView } from '../lib/live-signal'
@@ -207,6 +208,10 @@ const props = withDefaults(
     waiting?: WhatEachConversationIsWaitingOn | null
     /** Collapsed to its icons, and each conversation to its avatar and work label. */
     collapsed?: boolean
+    searchConversations?: (
+      conversation: string,
+      query: WorkSearchQuery,
+    ) => Promise<WorkSearchResult>
   }>(),
   {
     collapsed: false,
@@ -227,6 +232,7 @@ const emit = defineEmits<{
    * conversation is doing. The screen owns which surface is showing, so it owns the look too.
    */
   select: [sessionId: string]
+  readConversation: [sessionId: string]
   /** Show the new-conversation surface. Starting it happens there, where the thread begins. */
   newConversation: []
   /**
@@ -683,6 +689,12 @@ const palette = ref<InstanceType<typeof CommandPalette> | null>(null)
  * about which conversation "this" is.
  */
 const onScreenId = computed(() => (props.place === null ? props.activeId : null))
+const paletteSearchCaller = computed(
+  () =>
+    listed.value.find((row) => row.sessionId === onScreenId.value)?.sessionId ??
+    listed.value[0]?.sessionId ??
+    null,
+)
 
 /* ---------------------------------------------------------------------------
    ⚑ 2026-10-01 · the one list in two sections — BroBot's, then the other agents'.
@@ -808,6 +820,7 @@ const paletteAgent = computed<PaletteAgent | null>(() => {
  */
 function fromPalette(action: PaletteNavigation): void {
   if (action.kind === 'select') return emit('select', action.sessionId)
+  if (action.kind === 'read-conversation') return emit('readConversation', action.sessionId)
   if (action.kind === 'go') return emit('go', action.place)
   emit('newConversation')
 }
@@ -933,6 +946,9 @@ const platform = platformHere()
       :list-error="listError"
       :active-id="onScreenId"
       :agent="paletteAgent"
+      :search-caller="paletteSearchCaller"
+      :search-conversations="props.searchConversations"
+      :profiles="props.agents?.identities"
       @navigate="fromPalette"
     />
 
