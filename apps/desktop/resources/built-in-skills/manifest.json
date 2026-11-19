@@ -13,8 +13,8 @@
       "name": "hand-back",
       "description": "During work or before completion, keep evidence findable, resolve required results and questions, and hand back once.",
       "reminder": "hand-back — Before returning: resolve dependencies, keep evidence and report once.",
-      "sha256": "17fd7d89242f92d1d84324f79a29997d62235dc153d60ec5fdeb47ff5e167e85",
-      "bytes": 3475
+      "sha256": "45a161158deeb24d1c71f71f997b291ac9dabf49f19af5a61893be656a60b644",
+      "bytes": 3478
     },
     {
       "name": "split-work",
@@ -27,8 +27,8 @@
       "name": "ask-and-wait",
       "description": "When the person must answer or act, track the question or task, name what ends the wait, and manage the follow-up.",
       "reminder": "ask-and-wait — When the person must answer or act: track it and name the wait.",
-      "sha256": "75f8dcd302e95031dee1f811b96a25789c087ad423657f009f18a42ea626d93b",
-      "bytes": 4120
+      "sha256": "74aa1e860dfce1a947495b30dd855e48b0c339fd219d1ef9d32c50fd66541b05",
+      "bytes": 4123
     },
     {
       "name": "remember",

@@ -1,5 +1,4 @@
 import {
-  AGENT_MESSAGE_KINDS,
   TASK_OUTCOMES,
   TASK_STATES as WORK_SEARCH_TASK_STATES,
 } from '../../../shared/task-contracts'
@@ -241,12 +240,6 @@ export const LISTING_INPUT = toolInputVocabulary(['open', 'ended', 'all'] as con
   all: "'all' is what is open, then what is over, a line each, newest first.",
 })
 
-// whose answer comes back.
-const MESSAGE_KIND_INPUT = toolInputVocabulary(AGENT_MESSAGE_KINDS, {
-  note: "'note' tells it something for its information; no reply is expected.",
-  'follow-up': "'follow-up' adds to a piece of work you gave it, which you name.",
-})
-
 // `request_routed.to` has no room for.
 const QUESTION_RECIPIENT_INPUT = toolInputVocabulary(
   QUESTION_RECIPIENTS as unknown as [QuestionRecipient, ...QuestionRecipient[]],
@@ -294,7 +287,6 @@ const WORK_SEARCH_STATE_INPUT = toolInputVocabulary(
 export const TOOL_INPUT_ENUMS = {
   'search_work:scope': WORK_SEARCH_SCOPE_INPUT,
   'search_work:state': WORK_SEARCH_STATE_INPUT,
-  'message_agent:kind': MESSAGE_KIND_INPUT,
   'reply_to_parent:outcome': TASK_OUTCOME_INPUT,
   'create_agent:provider': PROVIDER_INPUT,
   'give_work:provider': PROVIDER_INPUT,

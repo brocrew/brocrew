@@ -18,7 +18,7 @@ export type SendRecipientState =
 
 export interface SendReceipt {
   readonly recorded: {
-    readonly kind: 'task'
+    readonly kind: 'task' | 'message' | 'question'
     readonly id: string
     readonly taskLabel: string | null
   }
@@ -28,11 +28,10 @@ export interface SendReceipt {
     readonly title: string
     readonly state: SendRecipientState
   }
-  readonly attachments: readonly {
-    readonly resource: string
-    readonly name: string
-    readonly overflowField?: string
-  }[]
+  readonly attachments: readonly (
+    | { readonly resource: string; readonly name: string; readonly overflowField?: string }
+    | { readonly path: string; readonly name?: string; readonly overflowField?: string }
+  )[]
 }
 
 /** Refusals whose published text starts directly with the app's reason. */
