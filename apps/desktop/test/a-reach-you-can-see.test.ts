@@ -192,13 +192,11 @@ describe('433 §B · the agents a reach can see', () => {
       // ⛔ **The warning, by name** — without it the sentence over-promises for every caller.
       // ⚑ **D-017 · R13 — rewritten true, and the warning kept**: *listed* is not *admitted*.
       expect(saidBy('list_agents')).toContain(
-        'Being listed is not a promise that every message to it is admitted — message_agent answers that separately.',
+        "Being listed doesn't promise that a message will be taken: message_agent's answer says what happened.",
       )
       expect(saidBy('list_agents')).toContain('message_agent')
-      // ⛔ …and `get_agent_status` promises the LISTING's own answer, which is the other half of
-      // §B.2 and is true because it is literally the same predicate.
-      expect(saidBy('get_agent_status')).toContain('list_agents')
-      expect(saidBy('get_agent_status')).toContain('any conversation')
+      expect(saidBy('get_agent_status')).toContain('by any of its labels or its id')
+      expect(saidBy('get_agent_status')).toContain('conversation <address> · <title>')
       // ⚑ **Non-vacuity**: the reader really reads a description, and a tool that promises neither
       // is what the assertions above would otherwise be satisfied by. ⚑ **D-017** — `end_agent`
       // stood here and is gone; `interrupt_agent` is the verb that took its place below a caller.

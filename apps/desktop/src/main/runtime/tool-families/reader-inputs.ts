@@ -6,7 +6,6 @@ import { TURNS_BACK_DEFAULT, TURNS_BACK_MAX } from '../../../shared/last-exchang
 import { refusalAnswer } from './answers'
 import { refuseTool } from './refusals'
 import { workRequestRefused } from '../spawn-rails'
-import { TASK_RECORD_SECTIONS } from '../task-record-pages'
 import { z } from 'zod'
 
 // Reader schemas are created once per toolset, as are their handler diagnostics.
@@ -73,12 +72,10 @@ export function readerFields() {
         .describe(
           'One task, by its label (W1.2) or id: reads that task’s record, not its conversation’s.',
         ),
-      more: z
-        .enum(TASK_RECORD_SECTIONS)
-        .optional()
-        .describe(
-          'Which list in a record to page: children, files, or the rest of the last exchange.',
-        ),
+      more: documentedToolEnum(
+        TOOL_INPUT_ENUMS['list_tasks:more'],
+        'Which section to page.',
+      ).optional(),
       after: z
         .string()
         .max(2048)

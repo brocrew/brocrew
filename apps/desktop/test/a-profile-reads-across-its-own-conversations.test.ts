@@ -630,7 +630,16 @@ describe('D-024 · a profile reads across its own conversations', () => {
     expect(record.structured, record.text).toMatchObject({ outcome: 'ok', root: true })
     const recorded = namesOf(record.structured.resources)
     expect(recorded).toContain('f01.md')
-    expect(recorded).toEqual(['f01.md', 'f03.md', 'f05.md', 'f07.md', 'f09.md', 'f11.md'])
+    expect(recorded).toEqual(['f01.md', 'f03.md', 'f05.md', 'f07.md', 'f09.md'])
+    const pages = record.structured.pages as { files: { remaining: number; next: string } }
+    expect(pages.files).toEqual({ remaining: 1, next: expect.any(String) })
+    const rest = await callFull(ali3, 'list_tasks', {
+      piece: aliRoot1,
+      more: 'files',
+      after: pages.files.next,
+    })
+    expect(rest.structured, rest.text).toMatchObject({ outcome: 'ok', remaining: 0, next: null })
+    expect(namesOf(rest.structured.files)).toEqual(['f11.md'])
   })
 
   // ───────────────────────────────────────────────────────────────────────────────────────────
