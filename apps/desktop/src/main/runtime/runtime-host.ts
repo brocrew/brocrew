@@ -21279,6 +21279,23 @@ export class RuntimeHost implements LiveHost {
     return this.deps.readProviderConfig(session.provider, session.providerHome)
   }
 
+  private beginImmediateMoveHandoff(
+    session: HostedSession,
+    by: Caller,
+    turn: UserTurnEvent,
+  ): object {
+    if (
+      aPersonIsAsking(by) &&
+      sessionSpeakingAs(by) === null &&
+      TURN_ATTRIBUTION_KEYS.every((key) => turn[key] === undefined)
+    )
+      this.declineMoveOffersFromText(session.id, by)
+    return this.beginMoveHandoff(
+      session,
+      TURN_ATTRIBUTION_KEYS.every((key) => key === 'movedFrom' || turn[key] === undefined),
+    )
+  }
+
   private beginMoveHandoff(session: HostedSession, person: boolean): object {
     const handoff = {}
     session.moveRequestHandoff = handoff
@@ -22339,16 +22356,7 @@ export class RuntimeHost implements LiveHost {
     // {@link queueAs}, whose held branch keeps the same.
     const about =
       this.originOf(by)?.who === 'a-caller-with-an-id' ? (facts.aboutPiece?.piece ?? null) : null
-    if (
-      aPersonIsAsking(by) &&
-      sessionSpeakingAs(by) === null &&
-      TURN_ATTRIBUTION_KEYS.every((key) => turn[key] === undefined)
-    )
-      this.declineMoveOffersFromText(session.id, by)
-    const moveHandoff = this.beginMoveHandoff(
-      session,
-      TURN_ATTRIBUTION_KEYS.every((key) => key === 'movedFrom' || turn[key] === undefined),
-    )
+    const moveHandoff = this.beginImmediateMoveHandoff(session, by, turn)
     const personalWorkTurnBefore = session.personalWorkTurn
     const personalHandover = session.personalHandover + 1
     let handover: ProviderHandover
@@ -23282,16 +23290,7 @@ export class RuntimeHost implements LiveHost {
       // being the reason.
       ...whoseWordsTheseAre(by, this.profileOf),
     }
-    if (
-      aPersonIsAsking(by) &&
-      sessionSpeakingAs(by) === null &&
-      TURN_ATTRIBUTION_KEYS.every((key) => turn[key] === undefined)
-    )
-      this.declineMoveOffersFromText(session.id, by)
-    const moveHandoff = this.beginMoveHandoff(
-      session,
-      TURN_ATTRIBUTION_KEYS.every((key) => key === 'movedFrom' || turn[key] === undefined),
-    )
+    const moveHandoff = this.beginImmediateMoveHandoff(session, by, turn)
     const personalWorkTurnBefore = session.personalWorkTurn
     const personalHandover = session.personalHandover + 1
     let handover: ProviderHandover
