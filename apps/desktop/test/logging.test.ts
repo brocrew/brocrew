@@ -359,7 +359,7 @@ it.each([true, false])('colours live terminal warnings/errors only (TTY %s)', as
 it('rotates a full file to one older copy, so the two never pass twice the cap', async () => {
   const root = await folder()
   const file = join(root, 'logs', 'brocrew.log')
-  // Finish each append before offering the next line to the rotation check.
+  // Sync credits each append before rotation; async scheduling is not covered here.
   openLog(file, { console: false, maxBytes: 2000, sync: true })
   for (let index = 0; index < 48; index++) logInfo('fill', `line ${index} ${'x'.repeat(20)}`)
   expect(await text(file)).toContain('line 47 ')
