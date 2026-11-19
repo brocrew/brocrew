@@ -1,4 +1,5 @@
 import { answerOn } from './helpers/call-tool'
+import { navigationReply } from './helpers/navigation-reply'
 import { aServiceWorld } from './helpers/a-service-world'
 import {
   closeHostFixture,
@@ -329,7 +330,9 @@ describe('give_work goes to the conversation the giver names', () => {
     expect(store.whatItRunsOn(newer.agent)).toEqual(otherBefore)
     expect(delivery === 'sent' || delivery === 'held').toBe(true)
     const action = delivery === 'sent' ? 'sent to' : 'held for'
-    expect(result.text).toBe(`Task ${label} ${action} pm at conversation ${named.label} · Lisbon trip.`)
+    expect(navigationReply(result.text).prose).toBe(
+      `Task ${label} ${action} pm at conversation ${named.label} · Lisbon trip.`,
+    )
   })
 
   it('a give that names no conversation records nothing and lists the recent ones', async () => {
