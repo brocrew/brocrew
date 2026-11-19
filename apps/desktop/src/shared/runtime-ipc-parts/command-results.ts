@@ -3,6 +3,7 @@ import type { AgentMemoryAmended, AgentMemoryReading, MemoryChecked } from '../a
 import type { AgentRemoved } from '../agent-roster'
 import type { ArchiveOutcome, DeleteOutcome, DeleteVerdict } from '../conversation-archive'
 import type { McpServerRequestForAPerson } from '../conversation-events'
+import type { ConversationRenameResult } from '../conversation-title'
 import type {
   ResumableSessionInfo,
   UnresumableSessionInfo,
@@ -467,6 +468,7 @@ export interface RuntimeCommandResults {
    * `requireAPerson` still throws (a caller no person is behind).
    */
   retitleWork: WorkRetitled
+  renameConversation: ConversationRenameResult
   /** The piece a person took back, or the rail that refused it ({@link WorkTakenBackByAPerson}). */
   takeBackWork: WorkTakenBackByAPerson
   /** The piece a person closed, or the rail that refused it ({@link WorkClosedByAPerson}). */

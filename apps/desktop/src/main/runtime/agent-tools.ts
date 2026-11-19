@@ -32,6 +32,7 @@ import {
   createListAgentsTool,
   createListProfilesTool,
 } from './tool-families/directory'
+import { createRenameConversationTool } from './tool-families/rename-conversation'
 import { createInterruptAgentTool, createMessageAgentTool } from './tool-families/messaging'
 import {
   createSearchWorkTool,
@@ -203,7 +204,7 @@ export function agentToolsFor(
           conversationProfile: (id) => host.navigationProfileForConversation?.(id) ?? null,
           identity: (profile) => host.navigationIdentity?.(profile) ?? null,
           piece: (spelled) => {
-            const read = host.pieceRecord(me, spelled)
+            const read = host.pieceRecord(me, spelled, { exchange: false, limit: 0 })
             if (read.is === 'no-piece-by-that-name') return null
             const row = read.is === 'a-root' ? read.root : read.piece
             return { id: row.piece, label: row.label, title: row.title }
@@ -238,6 +239,7 @@ export function agentToolsFor(
       createWriteAgentRulesTool(host, by, me, guarded),
       createReadOwnNotesTool(host, by, me, guarded),
       createWriteOwnNotesTool(host, by, me, guarded),
+      createRenameConversationTool(host, me),
     ].map(recordsWhatItRefused),
   }
 }

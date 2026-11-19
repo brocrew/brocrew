@@ -34,7 +34,6 @@ import {
   howLongAgo,
   OPEN_QUESTIONS_NAMED,
   THE_BLOCK_BEGINS,
-  WHAT_IS_OPEN_IS_SAID_AGAIN_AFTER_MS,
   whatThisAppAddsToATurn,
 } from '../src/main/runtime/what-this-app-adds-to-a-turn'
 import { whatThisAppAdded, withoutWhatThisAppAdds } from './lib/what-this-app-adds'
@@ -707,7 +706,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
           session: { id: string; turnBlockSnapshot: TurnBlockSnapshot },
           piece: null,
         ): {
-          helpers: readonly AHelperInTheTurn[] | null
+          helpers: readonly AHelperInTheTurn[]
           personWait: string | null
           nobodyWaiting: boolean
           replyQuestionTurn: string | null
@@ -740,9 +739,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         expect(pages).toEqual([257, 257, 23])
         expect(ownersRead.size).toBe(16)
         expect([...ownersRead.values()].every((count) => count === 1)).toBe(true)
-        expect(facts.helpers?.filter((row) => row.open).map((row) => row.piece)).toEqual(
-          open.map((row) => row.piece),
-        )
+        expect(facts.helpers.map((row) => row.piece)).toEqual(open.map((row) => row.piece))
         const changed = turnBlockChanges(
           { ...facts, person: true, now: tick() },
           session.turnBlockSnapshot,
@@ -759,16 +756,18 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       }
       expect(store.turnBlockCandidates(pm, 257)).toHaveLength(257)
       const first = render()
-      expect(first).toContain('Work you gave:')
+      expect(first).toContain('Work you gave, still open:')
       expect(first).toContain('and 7 more: list_tasks')
       const second = render()
-      expect(second).toContain('and 2 more: list_tasks')
+      expect(second).toContain('and 7 more: list_tasks')
       const third = render()
-      for (const row of open)
-        expect(
-          [first, second, third].filter((block) => block.includes(`${row.label} · `)),
-        ).toHaveLength(1)
-      expect(render()).toContain('Work you gave: 12 pieces out, no change.')
+      for (const row of open) {
+        const shown = [first, second, third].some((block) =>
+          block.includes('task ' + row.label + ' · '),
+        )
+        expect(shown).toBe(true)
+      }
+      expect(render()).toContain('and 7 more: list_tasks')
 
       const stalled = open[0]!
       const person = open[1]!
@@ -794,7 +793,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         const urgent = render()
         expect(urgent).toContain(`${stalled.label} · Ali · not being worked on`)
         expect(urgent).toContain(`${person.label} · Ali · waiting on the person`)
-        expect(urgent).not.toContain(TURN_BLOCK_WORDS.helpersUnavailable)
+        expect(urgent).not.toContain("Helpers' status is not fully available")
       }
       const ended = open.pop()!
       store.append(
@@ -809,11 +808,12 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         },
         tick(),
       )
-      expect(render()).toContain(`${ended.label} · Ali · ended: done`)
-      expect(render()).not.toContain(`${ended.label} · `)
+      const after = render()
+      expect(after).toContain('and 6 more: list_tasks')
+      expect(after).not.toContain('task ' + ended.label + ' · ')
     })
 
-    it('still reports unavailable helpers when a real helper ledger row cannot be read', async () => {
+    it('names the unreadable given task without inferring its state', async () => {
       const { pm, worker } = await aWorkerHoldingWork()
       db.prepare(
         'INSERT INTO events(id,session_id,generation,ordinal,type,payload,created_at) VALUES(?,?,0,?,?,?,?)',
@@ -824,7 +824,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
             session: { id: string },
             piece: null,
           ): {
-            helpers: readonly AHelperInTheTurn[] | null
+            helpers: readonly AHelperInTheTurn[]
             nobodyWaiting: boolean
             personWait: string | null
             replyQuestionTurn: string | null
@@ -832,7 +832,8 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
           }
         }
       ).factsForTheTurnBlock({ id: pm }, null)
-      expect(facts.helpers).toBeNull()
+      const [unread] = facts.helpers
+      expect(unread).toMatchObject({ owner: worker, state: null })
       expect(facts.nobodyWaiting).toBe(false)
       const changed = turnBlockChanges({ ...facts, person: true, now: tick() }, EMPTY_TURN_BLOCK)
       const block = whatThisAppAddsToATurn({
@@ -843,7 +844,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         waiting: null,
         extra: changed.extra,
       })
-      expect(block).toContain(TURN_BLOCK_WORDS.helpersUnavailable)
+      expect(block).toContain(unread!.label + ' · status unknown: list_tasks reads it')
       expect(block).not.toContain(TURN_BLOCK_WORDS.nobody)
       expect(block).not.toContain('no change')
     })
@@ -868,7 +869,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       const held = store.piecesOwnedBy(worker).find((row) => row.piece === piece)
       expect(held?.state).toBe('waiting-on-the-person-who-wrote')
       const block = await theBlockOfATurn(pm, 'Fictional request to the giver.', window, window)
-      const row = block.split('\n').find((line) => line.startsWith(`${held!.label} · `))
+      const row = block.split('\n').find((line) => line.includes(` · task ${held!.label} · `))
       expect(row).toContain(' · waiting on the person')
       expect(row).not.toContain(' · waiting on you')
     })
@@ -915,7 +916,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         "DELETE FROM events WHERE session_id = ? AND type IN ('work_retitled','work_status_set')",
       ).run(pm)
       expect(composed()).toContain(
-        `Your current work: ${rootWork.label} · untitled · status: none.`,
+        `Your current work: task ${rootWork.label} · untitled · status: none,`,
       )
       const append = (type: string, payload: string) => {
         const id = `root-line-${counter++}`
@@ -938,7 +939,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         }),
       )
       expect(composed()).toContain(
-        `Your current work: ${rootWork.label} · Known work · status: Known status.`,
+        `Your current work: task ${rootWork.label} · Known work · status: Known status,`,
       )
       for (const [type, payload] of [
         [
@@ -959,11 +960,11 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         expect(words).not.toContain('status: none')
         expect(words).not.toContain('Known work')
         db.prepare('DELETE FROM events WHERE id = ?').run(id)
-        expect(composed()).toContain('Known work · status: Known status.')
+        expect(composed()).toContain('Known work · status: Known status,')
       }
     })
 
-    it('acknowledges closing facts only after a matching actual host handover', async () => {
+    it('acknowledges a turn hint only after a matching actual host handover', async () => {
       const pm = await personOpens('pm', 'claude', 'auto')
       type ControlledSession = {
         id: string
@@ -976,24 +977,13 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
           {
             piece: 'open-helper',
             label: 'W1.1',
+            owner: 'open-owner',
+            conversation: 'conversation W1.1 · Work',
             name: 'Lena',
             state: 'being worked on',
             givenAt: 1,
             changedAt: null,
-            open: true,
             urgent: false,
-            revision: 'working',
-          },
-          {
-            piece: 'ended-helper',
-            label: 'W1.2',
-            name: 'Ali',
-            state: 'ended: done',
-            givenAt: 1,
-            changedAt: null,
-            open: false,
-            urgent: false,
-            revision: 'done',
           },
         ],
         questions: [],
@@ -1021,10 +1011,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         ): void
       }
       const session = reader.slots.get(pm)!.session!
-      const before: TurnBlockSnapshot = {
-        ...EMPTY_TURN_BLOCK,
-        awaitingEnd: new Set(['ended-helper']),
-      }
+      const before = EMPTY_TURN_BLOCK
       session.turnBlockSnapshot = before
       const factsBefore = reader.factsForTheTurnBlock
       const sendBefore = session.handle.send
@@ -1037,7 +1024,6 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         expect(session.turnBlockSnapshot).toBe(before)
         const words = session.pendingTurnBlock!.words
         expect(words).toContain('W1.1 · Lena')
-        expect(words).toContain('W1.2 · Ali · ended: done')
         expect(words).toContain(TURN_BLOCK_WORDS.nobody)
         expect(words).toContain(TURN_BLOCK_WORDS.replyQuestion)
       }
@@ -1072,12 +1058,11 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         })
         expect(session.turnBlockSnapshot).toBe(expected)
         expect(session.pendingTurnBlock).toBeNull()
-        expect(session.turnBlockSnapshot.awaitingEnd.has('ended-helper')).toBe(false)
         expect(session.turnBlockSnapshot.hintedTurn).toBe(inputFacts.replyQuestionTurn)
         const next = send()
         release()
         await next
-        expect(session.pendingTurnBlock!.words).not.toContain('W1.2 · Ali')
+        expect(session.pendingTurnBlock!.words).toContain('task W1.1 · Lena')
         expect(session.pendingTurnBlock!.words).not.toContain(TURN_BLOCK_WORDS.nobody)
         expect(session.pendingTurnBlock!.words).not.toContain(TURN_BLOCK_WORDS.replyQuestion)
       } finally {
@@ -1105,7 +1090,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         Array.from({ length: 257 }, (_, i) => ({ piece: `fiction-${i}`, owner: worker }))
       try {
         const overflow = facts.factsForTheTurnBlock({ id: pm }, null)
-        expect(overflow.helpers).toBeNull()
+        expect(overflow.helpers).toHaveLength(256)
         expect(overflow.nobodyWaiting).toBe(false)
         expect(overflow.personWait).toBeNull()
         expect(overflow.questions?.map((row) => row.id)).toContain(question)
@@ -1145,7 +1130,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
           }
         ).factsForTheTurnBlock({ id: pm }, null)
         expect(touched).toEqual(candidates.slice(0, 32).map((row) => row.owner))
-        expect(facts.helpers).toBeNull()
+        expect(facts.helpers).toHaveLength(33)
         expect(facts.nobodyWaiting).toBe(false)
       } finally {
         store.turnBlockCandidates = candidatesBefore
@@ -1153,7 +1138,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       }
     })
 
-    it('keeps names private while separately retaining a known empty person queue', async () => {
+    it('reads helper names without changing the independently known person queue', async () => {
       const { pm, worker } = await aWorkerHoldingWork('claude', 'auto')
       await waitFor(
         () => store.piecesOwnedBy(worker).some((row) => row.state === 'stalled'),
@@ -1189,9 +1174,9 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
             ): { helpers: unknown; nobodyWaiting: boolean; replyQuestionTurn: string | null }
           }
         ).factsForTheTurnBlock({ id: pm }, null)
-        expect(facts.helpers).toBeNull()
+        expect(facts.helpers).toHaveLength(1)
         expect(facts.nobodyWaiting).toBe(true)
-        expect(named).toEqual([])
+        expect(named).toContain(worker)
         expect(facts.replyQuestionTurn).toBe('fictional-ended-person-question')
       } finally {
         host.withinMessagingReach = reachBefore
@@ -1388,10 +1373,10 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         waiting: null,
       }).split('\n')
       expect(two.slice(3)).toEqual([
-        'You have 2 questions open with the person:',
-        `- req_1, asked 3 hours ago: “${QUESTION_ONE}”`,
-        `- req_2, asked 20 minutes ago: “${QUESTION_TWO}”`,
-        'If one is answered or no longer needed, take it back with withdraw_question.',
+        "Questions you're waiting on:",
+        `- req_1 to the person, asked 3 hours ago: “${QUESTION_ONE}”`,
+        `- req_2 to the person, asked 20 minutes ago: “${QUESTION_TWO}”`,
+        "Withdraw one you don't need with withdraw_question; withdraw your questions about a task when it ends.",
       ])
       const seven = whatThisAppAddsToATurn({
         now: NOW,
@@ -1401,14 +1386,14 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         waiting: null,
       }).split('\n')
       expect(seven.slice(3)).toEqual([
-        'You have 7 questions open with the person:',
-        '- req_1, asked just now',
-        '- req_2, asked just now',
-        `- req_3, asked just now: “${'x'.repeat(80)}…”`,
-        '- req_4, asked just now',
-        '- req_5, asked just now',
-        'and 2 more. list_questions shows them all.',
-        'If one is answered or no longer needed, take it back with withdraw_question.',
+        "Questions you're waiting on:",
+        '- req_1 to the person, asked just now',
+        '- req_2 to the person, asked just now',
+        `- req_3 to the person, asked just now: “${'x'.repeat(80)}…”`,
+        '- req_4 to the person, asked just now',
+        '- req_5 to the person, asked just now',
+        'and 2 more: list_questions',
+        "Withdraw one you don't need with withdraw_question; withdraw your questions about a task when it ends.",
       ])
       expect(OPEN_QUESTIONS_NAMED).toBe(5)
       const single = whatThisAppAddsToATurn({
@@ -1419,7 +1404,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         waiting: null,
       })
       expect(single).toContain(
-        'You have 1 question open with the person:\n- req_1, asked 1 minute ago: “q”',
+        "Questions you're waiting on:\n- req_1 to the person, asked 1 minute ago: “q”",
       )
     })
 
@@ -1436,7 +1421,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       }).split('\n')
       expect(block.slice(3)).toEqual([
         'Waiting on you:',
-        '- Ada (the owner of W1 · Bake) gave you W1.2 · Build the pages, and is waiting for it.',
+        '- Ada (the owner of W1 · Bake) gave you task W1.2 · Build the pages and is waiting for it.',
         '- Ali asked you req_9 2 days ago. Answer it with answer_question.',
       ])
     })
@@ -1632,26 +1617,24 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       // The reconciler's read also makes the two-line giver notice available.
       expect(before.split('\n')).toHaveLength(10)
       expect(before).toContain('Waiting on you:')
-      expect(before).toContain('You have 2 questions open with the person:')
-      expect(before).toContain(`- ${one}, asked just now: “${QUESTION_ONE}”`)
-      expect(before).toContain(`- ${two}, asked just now: “${QUESTION_TWO}”`)
+      expect(before).toContain("Questions you're waiting on:")
+      expect(before).toContain(`- ${one} to the person, asked just now: “${QUESTION_ONE}”`)
+      expect(before).toContain(`- ${two} to the person, asked just now: “${QUESTION_TWO}”`)
       expect(before).not.toContain('Nothing of yours is waiting on the person.')
 
       theWindowLooks()
       const after = await theBlockOfATurn(worker, 'and now?', surface, surface)
       const lines = after.split('\n')
       expect(lines.slice(3, 7)).toEqual([
-        'You have 2 questions open with the person:',
-        `- ${one}, asked just now: “${QUESTION_ONE}”`,
-        `- ${two}, asked just now: “${QUESTION_TWO}”`,
-        'If one is answered or no longer needed, take it back with withdraw_question.',
+        "Questions you're waiting on:",
+        `- ${one} to the person, asked just now: “${QUESTION_ONE}”`,
+        `- ${two} to the person, asked just now: “${QUESTION_TWO}”`,
+        "Withdraw one you don't need with withdraw_question; withdraw your questions about a task when it ends.",
       ])
       expect(lines[7]).toBe('Waiting on you:')
-      expect(lines[8]).toMatch(
-        /^- .+ gave you W\S+ · the work this dispatch is about, and is waiting for it\.$/,
-      )
+      expect(lines[8]).toMatch(/^- .+ gave you task W\S+ and is waiting for it\.$/)
       expect(lines[9]).toMatch(
-        /^Your current work: W\S+ · the work this dispatch is about · status: none\./,
+        /^Your current work: task W\S+ · the work this dispatch is about · status: none,/,
       )
       expect(lines).toHaveLength(10)
     })
@@ -1662,7 +1645,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       await itsTurnEnds(worker, surface)
       theWindowLooks()
       const kept = await theBlockOfATurn(worker, 'first', surface, surface)
-      expect(kept).toContain(`- ${one}, asked just now`)
+      expect(kept).toContain(`- ${one} to the person, asked just now`)
 
       // It asks again in a turn: its ledger grows, and what was kept is no longer current.
       const before = handedOver(worker).length
@@ -1671,14 +1654,14 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       const two = await asks(workerTools, piece, QUESTION_TWO)
       await itsTurnEnds(worker, surface)
       const stale = await theBlockOfATurn(worker, 'third', surface, surface)
-      expect(stale).toContain('You have 2 questions open with the person:')
+      expect(stale).toContain("Questions you're waiting on:")
       expect(stale).toContain(one)
       expect(stale).toContain(two)
 
       theWindowLooks()
       const current = await theBlockOfATurn(worker, 'fourth', surface, surface)
-      expect(current).toContain('You have 2 questions open with the person:')
-      expect(current).toContain(`- ${two}, asked just now`)
+      expect(current).toContain("Questions you're waiting on:")
+      expect(current).toContain(`- ${two} to the person, asked just now`)
 
       // ⛔ Current by construction: a row its folds read, written past this store, is noticed as
       // the lists are asked for, though nothing told the store to forget them.
@@ -1694,7 +1677,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       const shownQuestions = [one, two].filter((id) => afterExternalWrite.includes(id))
       expect([0, 2]).toContain(shownQuestions.length)
       if (shownQuestions.length === 2)
-        expect(afterExternalWrite).toContain('You have 2 questions open with the person:')
+        expect(afterExternalWrite).toContain("Questions you're waiting on:")
       else expect(afterExternalWrite).not.toContain('open with the person')
       expect(afterExternalWrite).not.toContain(TURN_BLOCK_WORDS.nobody)
     })
@@ -1769,8 +1752,8 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       theWindowLooks()
       // The app-authored arrival already said this wait. A person's turn repeats current facts.
       const known = await theBlockOfATurn(pm, 'after the look', window, window)
-      expect(known).toContain('Work you gave:')
-      expect(known).toContain('Work you gave: 1 piece out, no change.')
+      expect(known).toContain('Work you gave, still open:')
+      expect(known).not.toContain('no change')
       expect(known).toContain('Waiting on you:')
       expect(known).toContain(forItsGiver)
       expect(known).not.toContain(forThePerson)
@@ -1778,7 +1761,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       expect(known).toContain(TURN_BLOCK_WORDS.nobody)
     })
 
-    it('⛔ a giver the work table places nowhere above the piece is named by its name alone, and no ledger is folded to name it', async () => {
+    it('names a giver by its conversation address and title without folding its ledger', async () => {
       const { worker, surface, pmTools } = await aWorkerBetweenTurns()
       await itsTurnEnds(worker, surface)
       // A conversation that owns no root — a give started it — and a give in the worker's ledger
@@ -1813,17 +1796,15 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       expect(store.piecesAtHand(stranger)).toBeNull()
       const block = await theBlockOfATurn(worker, 'who waits on me?', surface, surface)
       expect(block).toContain(
-        `- ${host.whatToCallTheConversation(stranger)} gave you W9.9 · the work this dispatch is about, and is waiting for it.`,
+        `- ${host.nameByItsWork(stranger)} gave you task W9.9 and is waiting for it.`,
       )
       // ⚑ Its real giver, which the table does place above its piece, is still named by its work.
-      expect(block).toMatch(
-        /- .+ \(the owner of W\S+\) gave you W\S+ · the work this dispatch is about/,
-      )
+      expect(block).toMatch(/- .+ gave you task W\S+ and is waiting for it/)
       // ⛔ Nothing folded the stranger's ledger for a name.
       expect(store.piecesAtHand(stranger)).toBeNull()
     })
 
-    it('⚑ a turn this app starts says a list only once it changed, or after two hours; a person’s turn says it every time', async () => {
+    it('⚑ every turn repeats current waits and shows new questions immediately', async () => {
       const { worker, surface, workerTools, piece } = await aWorkerBetweenTurns()
       const one = await asks(workerTools, piece, QUESTION_ONE)
       await itsTurnEnds(worker, surface)
@@ -1832,16 +1813,12 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         return theBlockOfATurn(worker, words, THE_APP_ITSELF, surface)
       }
       expect(await anAppTurn('one')).toContain(one)
-      // Unchanged: this app's next turn does not say it again…
       const second = await anAppTurn('two')
-      expect(second).not.toContain('open with the person')
-      expect(second).not.toContain('Waiting on you')
-      // …a person's turn does…
+      expect(second).toContain(one)
+      expect(second).toContain('Waiting on you')
       theWindowLooks()
       expect(await theBlockOfATurn(worker, 'three', surface, surface)).toContain(one)
-      expect(await anAppTurn('four')).not.toContain(one)
-      // …and so does this app's, more than two hours on.
-      clock += WHAT_IS_OPEN_IS_SAID_AGAIN_AFTER_MS + 1
+      expect(await anAppTurn('four')).toContain(one)
       const later = await anAppTurn('five')
       expect(later).toContain(one)
       expect(later).toContain('Waiting on you')

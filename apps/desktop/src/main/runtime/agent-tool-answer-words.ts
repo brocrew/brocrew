@@ -393,6 +393,7 @@ function whatARefusalAdds(
 
 /**
  * The answer a model reads. A refusal's text is appended to, never rebuilt.
+ * A complete rename refusal keeps its approved wording.
  * `structured` is returned as the same object, and already composed answers are unchanged.
  */
 export function answerInWords(
@@ -401,7 +402,10 @@ export function answerInWords(
 ): AgentToolAnswer {
   if (answered.structured?.['outcome'] === 'refused') {
     const reason = answered.structured['reason']
-    if (typeof reason === 'string') refusalReason(reason)
+    if (typeof reason === 'string') {
+      refusalReason(reason)
+      if (answered.text === reason && reason.startsWith('Not changed:')) return answered
+    }
   }
   const adds = whatARefusalAdds(answered.structured, context)
   if (adds === '') return answered
@@ -441,6 +445,7 @@ export function appOnlyRefusalQuote(
   ) {
     return reason
   }
+  if (rail !== undefined && finalText === reason && reason.startsWith('Not changed:')) return reason
   const prefix =
     hasDirectRefusalOpening(reason) && finalText.startsWith(reason) ? '' : `refused (${rail}): `
   const base = `${prefix}${reason}`

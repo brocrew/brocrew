@@ -5,7 +5,10 @@ import type { WorkThatNamesIt } from '../../shared/piece-called'
 import type { AskToStop, LastEndedTurn } from '../../shared/how-work-stopped'
 import type { TaskState } from '../../shared/task-contracts'
 import type { ModelAndEffort } from '../../shared/model-choice-contracts'
-import type { ArchivedConversations } from '../archived-file'
+import type { SessionStore } from '../db/session-store'
+import type { RecordedSession } from '../db/session-catalogue-read'
+import { agentIdentityRowId } from '../db/identity'
+import { z } from 'zod'
 
 /**
  * ⚑ **D-017 · R12 — how many conversations `list_agents` names**, the most recently active first,
@@ -89,44 +92,56 @@ export type WhoseConversation =
       readonly is: 'an-identity-this-app-cannot-name'
     }
 
-/**
- * ⚑ **D-017 · R12 — what `list_agents` is handed**: the conversations a caller may reach, newest
- * activity first and cut at {@link CONVERSATIONS_LISTED}, and how many more there are.
- */
-export interface AgentsListed {
-  readonly agents: readonly AgentCard[]
-  readonly notListed: number
+const directoryPoint = z.object({ at: z.number().finite(), id: z.string() })
+const directoryCursor = z.object({ filter: z.string(), after: directoryPoint })
+type DirectoryPoint = z.infer<typeof directoryPoint>
+
+export interface DirectoryPageInput {
+  readonly profile?: string
+  readonly from?: string
+  readonly to?: string
+  readonly after?: DirectoryPoint
 }
 
-/** ⚑ **D-017 · R12** — one conversation a caller may reach, before it is cut into a list. */
-export interface VisibleConversation {
-  readonly id: string
-  /** Its newest activity — what every list of agents is ordered by. */
-  readonly at: number
-  /** Its card, read only if it makes the cut. */
-  readonly card: () => AgentCard
+function directoryFilter(input: DirectoryPageInput, archived: boolean): string {
+  return JSON.stringify([archived, input.profile, input.from, input.to])
 }
 
-/** One archived conversation a caller may reach: its card, and when it was archived (epoch ms). */
-interface ArchivedAgent {
-  readonly card: AgentCard
-  readonly archivedAt: number
-}
-
-/** The archived conversations a caller may reach, cut as every list of agents is. */
-export interface ArchivedListed {
-  readonly archived: readonly ArchivedAgent[]
-  readonly notListed: number
-  /** When this was read, to place each `archivedAt` on a day. */
-  readonly readAt: number
-}
-
-/** ⚑ **D-017 · R12** — the cut every list of agents takes, and how many it left out. */
-function listedFrom(reachable: readonly VisibleConversation[]): AgentsListed {
-  return {
-    agents: reachable.slice(0, CONVERSATIONS_LISTED).map((one) => one.card()),
-    notListed: Math.max(0, reachable.length - CONVERSATIONS_LISTED),
+export function readDirectoryCursor(
+  value: string,
+  input: DirectoryPageInput,
+  archived: boolean,
+): DirectoryPoint | null {
+  try {
+    const cursor = directoryCursor.parse(JSON.parse(Buffer.from(value, 'base64url').toString()))
+    return cursor.filter === directoryFilter(input, archived) ? cursor.after : null
+  } catch {
+    return null
   }
+}
+
+function nextDirectoryPage(
+  after: DirectoryPoint,
+  input: DirectoryPageInput,
+  archived: boolean,
+): string {
+  return Buffer.from(JSON.stringify({ filter: directoryFilter(input, archived), after })).toString(
+    'base64url',
+  )
+}
+
+interface DirectoryContinuation {
+  readonly notListed: number | null
+  readonly next?: string
+}
+
+export interface AgentsListed extends DirectoryContinuation {
+  readonly agents: readonly AgentCard[]
+}
+
+export interface ArchivedListed extends DirectoryContinuation {
+  readonly archived: readonly { readonly card: AgentCard; readonly archivedAt: number }[]
+  readonly readAt: number
 }
 
 /** ⚑ **D-016 · one piece on an agent's card** — see {@link AgentCard.pieces}. */
@@ -165,6 +180,8 @@ export interface AgentCard {
    */
   readonly whose: WhoseConversation
   readonly provider: Provider | null
+  readonly lastActiveAt?: number | null
+  readonly context?: { readonly window: number; readonly percentUsed: number } | null
   /**
    * ⚑ **D-017 · R11 — what the agent is doing, in the ONE derivation every reader asks**
    * ({@link agentStateOf}): needs you, active, waiting on another conversation's answer, running in
@@ -307,37 +324,66 @@ export interface AgentCard {
   readonly ledgersSkipped: number
 }
 
-export function agentsVisibleTo(
-  reachable: readonly VisibleConversation[],
-  me: string | null,
-  archived: Pick<ArchivedConversations, 'has'>,
-): AgentsListed {
-  // An archived conversation is out of sight here, as in a person's lists; it is still reached
-  // by its label or id, and {@link archivedVisibleTo} lists it.
-  return listedFrom(
-    reachable.filter(
-      // The caller's own is always listed.
-      (one) => one.id === me || !archived.has(one.id),
-    ),
-  )
+interface DirectoryReads {
+  readonly store: Pick<SessionStore, 'recordedPage' | 'recordedOne'>
+  readonly slots: Iterable<{ readonly id: string; readonly profileId: string | null }>
+  readonly now: number
+  visible(row: RecordedSession): boolean
+  archivedAt(id: string): number | null
+  card(id: string): AgentCard | null
 }
 
-export function archivedVisibleTo(
-  reachable: readonly VisibleConversation[],
-  archive: Pick<ArchivedConversations, 'archivedAt'>,
-  now: () => number,
-): ArchivedListed {
-  const archived = reachable
-    .flatMap((one) => {
-      const archivedAt = archive.archivedAt(one.id)
-      return archivedAt === null ? [] : [{ card: one.card, archivedAt }]
-    })
-    .sort((one, other) => other.archivedAt - one.archivedAt)
+export function conversationDirectoryPage(
+  input: DirectoryPageInput,
+  archived: boolean,
+  reads: DirectoryReads,
+) {
+  const scanLimit = CONVERSATIONS_LISTED * 4
+  const from = input.from === undefined ? Number.MIN_SAFE_INTEGER : Date.parse(input.from)
+  const to = input.to === undefined ? Number.MAX_SAFE_INTEGER : Date.parse(input.to) + 86_399_999
+  const records = reads.store.recordedPage({
+    identity: input.profile === undefined ? null : agentIdentityRowId(input.profile),
+    from,
+    to,
+    after: input.after ?? null,
+    limit: scanLimit + 1,
+  })
+  const examined = records.slice(0, scanLimit).map((row) => ({
+    id: row.sessionId,
+    at: row.updatedAt,
+    visible: reads.visible(row),
+  }))
+  const now = reads.now
+  const reserved =
+    input.after !== undefined || now < from || now > to
+      ? []
+      : Array.from(reads.slots).flatMap((slot) =>
+          (input.profile === undefined || slot.profileId === input.profile) &&
+          reads.store.recordedOne(slot.id) === null
+            ? [{ id: slot.id, at: now, visible: true }]
+            : [],
+        )
+  const ordered = [...examined, ...reserved].sort(
+    (left, right) => right.at - left.at || (left.id < right.id ? 1 : left.id === right.id ? 0 : -1),
+  )
+  const visible = ordered.flatMap((row) => {
+    if (!row.visible) return []
+    const archivedAt = reads.archivedAt(row.id)
+    return archived === (archivedAt !== null) ? [{ ...row, archivedAt }] : []
+  })
+  const page = visible.slice(0, CONVERSATIONS_LISTED)
+  const rows = page.flatMap(({ id, archivedAt }) => {
+    const card = reads.card(id)
+    return card === null ? [] : [{ card, archivedAt }]
+  })
+  const hasUnexamined = records.length > scanLimit
+  const more = visible.length - page.length
+  const through = more > 0 ? page.at(-1) : examined.at(-1)
   return {
-    archived: archived
-      .slice(0, CONVERSATIONS_LISTED)
-      .map(({ card, archivedAt }) => ({ card: card(), archivedAt })),
-    notListed: Math.max(0, archived.length - CONVERSATIONS_LISTED),
-    readAt: now(),
+    rows,
+    notListed: hasUnexamined ? null : more,
+    ...(through === undefined || (!hasUnexamined && more === 0)
+      ? {}
+      : { next: nextDirectoryPage({ id: through.id, at: through.at }, input, archived) }),
   }
 }

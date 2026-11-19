@@ -1472,6 +1472,8 @@ describe('395 · the interruption that looks like a provider fault', () => {
         // ⚑ **D-016** · `project` went with projects.
         whose: true,
         provider: true,
+        lastActiveAt: true,
+        context: true,
         state: true,
         // ⚑ What its turn is stopped on until a person answers it.
         stoppedOnAPerson: true,

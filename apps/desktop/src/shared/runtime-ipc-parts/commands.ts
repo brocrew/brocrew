@@ -620,6 +620,7 @@ export type RuntimeCommand =
    * ⚑ `piece` is its label (`W1`) or its id; `title` is what the person typed, trimmed main-side.
    */
   | { kind: 'retitleWork'; piece: string; title: string }
+  | { kind: 'renameConversation'; conversation: string; title: string }
   /**
    * A person takes back the piece a service is on, by its label or its id: the service is told to
    * stop working on it and its turn on it is asked to stop, the conversation that gave it is told

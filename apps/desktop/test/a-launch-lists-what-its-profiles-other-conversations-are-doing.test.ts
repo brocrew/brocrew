@@ -76,7 +76,7 @@ const SRC = join(here, '../src')
 
 /** ⚑ The heading of the list, as `thisConversationSpans` writes it. */
 const LIST_HEADING =
-  '- Other conversations of this profile, as of this launch. Point the person to the right conversation:'
+  '- Other conversations of this profile, most recent first (list_agents shows more):'
 
 /** ⚑ The header the reader puts above this conversation's own text — see `composeSystemHint`. */
 const THIS_CONVERSATION_HEADER = 'Composed by BroCrew for this conversation at this launch:'
@@ -125,24 +125,24 @@ describe('the other conversations in the launch text', () => {
       context({
         others: {
           shown: [
-            { label: 'W1.2', title: 'Compare the flights', lastActiveAt: null },
-            { label: 'sess_unplaced', title: '', lastActiveAt: null },
+            { line: 'conversation W1.2 · Compare the flights', lastActiveAt: null },
+            { line: 'conversation sess_unplaced · untitled', lastActiveAt: null },
           ],
           more: 0,
         },
       }),
     ).text
     expect(listLinesIn(beside)).toEqual([
-      '  - W1.2 · Compare the flights — last activity unknown.',
-      '  - sess_unplaced · Untitled conversation — last activity unknown.',
+      '  - conversation W1.2 · Compare the flights — last activity unknown.',
+      '  - conversation sess_unplaced · untitled — last activity unknown.',
     ])
   })
   it('counts overflow without inventing dates', () => {
-    const shown = [{ label: 'W1', title: 'Trip', lastActiveAt: null }]
+    const shown = [{ line: 'conversation W1 · Trip', lastActiveAt: null }]
     for (const more of [0, 1, 3]) {
       const text = thisConversationSpans(context({ others: { shown, more } })).text
       expect(listLinesIn(text)).toEqual([
-        '  - W1 · Trip — last activity unknown.',
+        '  - conversation W1 · Trip — last activity unknown.',
         ...(more > 0 ? [`  - and ${more} more.`] : []),
       ])
     }
@@ -409,8 +409,7 @@ describe('§3 · a launch lists the profile’s other conversations', () => {
     return record.lastActiveAt
   }
   const addressed = (conversation: string, label: string, title: string) => ({
-    label,
-    title,
+    line: `conversation ${label} · ${title}`,
     lastActiveAt: activityOf(conversation),
   })
   const aPersonOn = (conversation: string): OtherConversations['shown'][number] => {
@@ -419,7 +418,7 @@ describe('§3 · a launch lists the profile’s other conversations', () => {
     return addressed(
       conversation,
       root.label,
-      store.rootLines(root.piece).title || 'Untitled conversation',
+      store.rootLines(root.piece).title || host.whatToCallTheConversation(conversation),
     )
   }
   const lineFor = (other: OtherConversations['shown'][number]): string => {
@@ -577,7 +576,7 @@ describe('§3 · a launch lists the profile’s other conversations', () => {
     let ali = ''
     for (const title of titles) {
       const given = await callOn(bro.tools, 'give_work', {
-        ...(ali === '' ? { to: 'new', conversation_title: title } : { to: ali }),
+        ...(ali === '' ? { to: 'new', conversation_title: 'Review the itinerary' } : { to: ali }),
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'ali',
         title,
@@ -594,13 +593,13 @@ describe('§3 · a launch lists the profile’s other conversations', () => {
     const next = (await personOpens('ali')).id
     expect(next).not.toBe(ali)
     const expected = [
-      addressed(ali, labels[3] ?? '', 'Piece four'),
+      addressed(ali, labels[0] ?? '', 'Review the itinerary'),
       ...[5, 4, 3, 2].map((k) => aPersonOn(fillers[k] ?? '')),
     ]
     expect(lastContext().others).toEqual({ shown: expected, more: 2 })
     const lines = listLinesIn(toldAt(-1) ?? '')
     expect(lines).toEqual([...expected.map(lineFor), '  - and 2 more.'])
-    for (const title of titles.slice(0, -1)) expect(lines.join('\n')).not.toContain(title)
+    for (const title of titles) expect(lines.join('\n')).not.toContain(title)
     for (let k = 0; k < 2; k++) {
       const id = `sess_bea_${k}`
       store.create({ id, provider: 'claude', cwd: root, approvalMode: 'ask', profileId: 'bea' })
@@ -615,7 +614,7 @@ describe('§3 · a launch lists the profile’s other conversations', () => {
 
   it('excludes replaced conversations while retaining the replacement address', async () => {
     const { bro, ali1, ali2, label1, label2, atAli2 } = await twoAlisOfTwoGivers()
-    expect(atAli2.others.shown[0]?.label).toBe(label1)
+    expect(atAli2.others.shown[0]?.line).toContain(`conversation ${label1} ·`)
     const replacement = `sess_${++counter}`
     await quitAndRelaunch(() => {
       seedHistoricalSuccessor(store, ali1, replacement, tick(), {
@@ -642,8 +641,9 @@ describe('§3 · a launch lists the profile’s other conversations', () => {
     })
     await host.resumeSession(ali2, window)
     expect(lastContext().others.shown).toHaveLength(1)
-    expect(lastContext().others.shown[0]?.label).toBe(replacement)
-    expect(lastContext().others.shown[0]?.title).toBe('Untitled conversation')
+    expect(lastContext().others.shown[0]?.line).toBe(
+      `conversation ${replacement} · ${host.whatToCallTheConversation(replacement)}`,
+    )
     expect(lastContext().others.shown[0]?.lastActiveAt).toBe(activityOf(replacement))
   })
 

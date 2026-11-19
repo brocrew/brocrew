@@ -7,12 +7,23 @@ import type {
   OutOfReach,
   TheDoorsReach,
 } from '../message-records'
+import type { ConversationTasksInput, ConversationTasksResult } from '../conversation-tasks'
 import type {
   ActionAsked,
   QuestionRecipient,
   VisibleQuestion,
 } from '../../../shared/question-contracts'
-import type { AgentCard, AgentsListed, ArchivedListed } from '../agent-directory'
+import type {
+  AgentCard,
+  AgentsListed,
+  ArchivedListed,
+  DirectoryPageInput,
+} from '../agent-directory'
+import type {
+  ConversationRenameInput,
+  ConversationRenameResult,
+  ConversationTitleAuthor,
+} from '../../../shared/conversation-title'
 import type { AgentMessageKind, TaskOutcome } from '../../../shared/task-contracts'
 import type { AgentModelChoice } from '../../../shared/model-choice-contracts'
 import type {
@@ -47,7 +58,13 @@ import type { Exchange, ReceivedInATurn, TranscriptTurn } from '../../../shared/
 import type { FindFilesAsked, FoundFiles } from '../kept-file-search'
 import type { GiveOutcome } from '../spawn-rails'
 import type { HandedPath } from '../../../shared/attachment-contracts'
-import type { MadeByItsProfile, PieceBoard, PieceRecord, WhatAPieceIsToIt } from '../work-records'
+import type {
+  MadeByItsProfile,
+  PieceBoard,
+  PieceRecord,
+  TaskRecordSelection,
+  WhatAPieceIsToIt,
+} from '../work-records'
 import type { MailboxKind } from '../../../shared/conversation-events'
 import type { ModelRefusal } from '../../connections/model-rails'
 import type { NewAgent, QueueOutcome } from '../../../shared/runtime-ipc'
@@ -104,9 +121,9 @@ export interface AgentToolHost {
     says: AgentMessageKind,
     facts?: FactsAQueueCarries,
   ): Promise<MessageNowOutcome>
-  agentsVisibleTo(by: Caller, me: string | null): AgentsListed
+  agentsVisibleTo(by: Caller, me: string | null, input?: DirectoryPageInput): AgentsListed
   restoreAsAnAgent(address: string, by: Caller, me: string): RestoredByAnAgent
-  archivedVisibleTo(by: Caller, me: string | null): ArchivedListed
+  archivedVisibleTo(by: Caller, me: string | null, input?: DirectoryPageInput): ArchivedListed
   whenItWasArchived(id: string): number | null
   agentCard(id: string, by: Caller, me: string | null): AgentCard | null
   servicePieceForStatus(owner: string): string | null | undefined
@@ -153,15 +170,26 @@ export interface AgentToolHost {
   maySaveMemory(sessionId: string): boolean
   pieceBoard(sessionId: string): PieceBoard
   answersHeldFor(sessionId: string): ReadonlySet<string>
-  pieceRecord(sessionId: string, spelled: string): PieceRecord
+  pieceRecord(sessionId: string, spelled: string, selection?: TaskRecordSelection): PieceRecord
+  pieceIdForAddress(spelled: string): string | null
+  listConversationTasks(input: ConversationTasksInput): ConversationTasksResult
   madeByItsProfile(sessionId: string): MadeByItsProfile
   findKeptFiles(asAgent: string, asked: FindFilesAsked): Promise<FoundFiles>
   searchWork?(asAgent: string, input: WorkSearchQuery): Promise<WorkSearchResult>
-  searchPastWork?(asAgent: string, words: string): Promise<PastWorkSearchResult>
+  searchPastWork?(
+    asAgent: string,
+    words: string,
+    profile?: string,
+    cursor?: string,
+  ): Promise<PastWorkSearchResult>
   whatToCallTheConversation(conversation: string): string
   nameByItsWork(conversation: string): string
   nameByItsWorkUnder(conversation: string, piece: string | null): string
   addressOf(conversation: string): string
+  renameConversation(
+    input: ConversationRenameInput,
+    author: ConversationTitleAuthor,
+  ): Promise<ConversationRenameResult>
   addressOfUnder(conversation: string, piece: string | null): string
   takeBackPiece(input: { readonly piece: string }, by: Caller): Promise<TakeBackOutcome>
   takeBackWhatItsQuestionMadeFalse(

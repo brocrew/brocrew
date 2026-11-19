@@ -1121,6 +1121,7 @@ describe('347 · the five tools', () => {
         set_theme: 'a theme',
         list_agents: 'nothing at all',
         get_agent_status: 'the agent',
+        rename_conversation: 'the agent',
         // 🔴 **D-016 · it hands work over, and it NAMES who** — by profile, which is why it is not a
         // dispatch tool under the rule above. ⚠️ `new: true` brings that named agent into existence in
         // the same call; the name is still the caller's to give.

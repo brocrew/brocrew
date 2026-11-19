@@ -512,7 +512,7 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
   })
 
   describe('work search reads current small facts without changing the ledger', () => {
-    it('matches title and result, never brief or status, and uses the recorded profile across conversations', async () => {
+    it('matches brief, status, title and result while using the recorded profile across conversations', async () => {
       const { worker, task, pmTools } = await workWasGiven('searchable title')
       const landed = await reply(worker, {
         piece: task,
@@ -540,7 +540,7 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
         const answer = engine.read(caller, { scope, words })
         expect(answer.ok, JSON.stringify(answer)).toBe(true)
         if (!answer.ok) throw new Error('no search page')
-        return answer.page
+        return { ...answer.page, hits: answer.page.hits.flatMap((row) => row.matched_tasks) }
       }
       try {
         const mine = read(worker, 'mine', 'SEARCHABLE')
@@ -553,8 +553,12 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
         expect(
           read(worker, 'this-conversation', 'searchable').hits.map((hit) => hit.piece),
         ).toEqual([task])
-        expect(read(worker, 'all', 'brief-only-canary').hits).toEqual([])
-        expect(read(worker, 'all', 'status-only-canary').hits).toEqual([])
+        expect(read(worker, 'all', 'brief-only-canary').hits.map((hit) => hit.piece)).toContain(
+          taken.piece,
+        )
+        expect(read(worker, 'all', 'status-only-canary').hits.map((hit) => hit.piece)).toContain(
+          unrelated.task,
+        )
         expect(read(worker, 'all', 'Body-only').hits).toEqual([])
         const replyHit = read(worker, 'all', 'title result').hits.find((hit) => hit.piece === task)
         expect(replyHit).toMatchObject({
@@ -578,23 +582,36 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
         const page: WorkSearchPage = {
           hits: [
             {
-              kind: 'piece',
-              piece: 'work_fictional',
-              label: 'W9.1',
-              title: 'Matched',
-              state: 'answered',
-              owner: { conversation: worker, name: 'Lena', profile: 'worker-1' },
-              giver: null,
-              result: { outcome: 'done', summary: 'Result sentence' },
+              conversation: worker,
+              address: 'W9.1',
+              title: 'Fictional job',
+              line: 'conversation W9.1 · Fictional job',
+              profile: 'worker-1',
+              last_active_at: 0,
               status: 'Status sentence',
-              resource_ids: {
-                brief: ['res_brief'],
-                result: ['res_result'],
-                attachments: ['res_attachment'],
-                working: ['res_working'],
-              },
-              clipped: { title: true, result: true, status: true },
-              resources_omitted: 2,
+              tasks_omitted: 0,
+              matched_tasks: [
+                {
+                  kind: 'piece',
+                  piece: 'work_fictional',
+                  label: 'W9.1',
+                  title: 'Matched',
+                  given_at: 0,
+                  state: 'answered',
+                  owner: { conversation: worker, name: 'Lena', profile: 'worker-1' },
+                  giver: null,
+                  result: { outcome: 'done', summary: 'Result sentence' },
+                  status: 'Status sentence',
+                  resource_ids: {
+                    brief: ['res_brief'],
+                    result: ['res_result'],
+                    attachments: ['res_attachment'],
+                    working: ['res_working'],
+                  },
+                  clipped: { title: true, result: true, status: true },
+                  resources_omitted: 2,
+                },
+              ],
             },
           ],
           searched: 17,
@@ -612,15 +629,14 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
         const tool = agentToolsFor(withSearch, worker).tools.find(
           (one) => one.name === 'search_work',
         )!
-        const answer = await tool.call({ scope: 'all', words: 'PRIVATE_QUERY_CANARY', limit: 1 })
+        const answer = await tool.call({ words: 'PRIVATE_QUERY_CANARY', limit: 1 })
         expect(reader.read).toHaveBeenCalledExactlyOnceWith(worker, {
-          scope: 'all',
           words: 'PRIVATE_QUERY_CANARY',
           limit: 1,
         })
         expect(answer.structured).toEqual({ outcome: 'ok', ...page })
         const hit =
-          'W9.1 · Matched (clipped) · answered · Lena\nStatus: Status sentence (clipped)\nResult: done · Result sentence (clipped)\nBrief: res_brief\nResult: res_result\nAttachments: res_attachment\nWorking files: res_working\n2 more file references omitted.'
+          'conversation W9.1 · Fictional job · worker-1 · last active 1970-01-01T00:00:00.000Z\nStatus: Status sentence\nTask W9.1 · Matched'
         const facts = `Searched: 17; rows_unread: ${partial ? 2 : 0}; ledgers_skipped: ${partial ? 1 : 0}; complete: ${!partial}.`
         const paragraphs = partial
           ? [
@@ -636,9 +652,9 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
         const identity = store.agentIdentities().find((one) => one.slug === 'worker-1')
         if (identity === undefined) throw new Error('fictional worker identity missing')
         expect(reply.links).toEqual([
-          pieceLink('work_fictional', 'W9.1', 'Matched'),
-          conversationLink(worker, 'Ada (the owner of W2.1 · the work)'),
+          conversationLink(worker, 'conversation W2.1 · the work'),
           agentLink(identity.id, 'Ada'),
+          pieceLink('work_fictional', 'W9.1', 'Matched'),
         ])
         expect(answer.text).not.toContain('PRIVATE_QUERY_CANARY')
         expect(db.prepare('SELECT total_changes() AS count').get()).toEqual(before)
@@ -699,9 +715,12 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
           const good = engine.read(first.worker, { scope: 'all', words: 'shared dependency' })
           expect(good.ok).toBe(true)
           if (!good.ok) throw new Error('no complete page')
-          expect(good.page.hits.map((hit) => hit.piece).sort()).toEqual(
-            [first.task, second.task].sort(),
-          )
+          expect(
+            good.page.hits
+              .flatMap((row) => row.matched_tasks)
+              .map((hit) => hit.piece)
+              .sort(),
+          ).toEqual([first.task, second.task].sort())
           expect(good.page.rows_unread + good.page.ledgers_skipped).toBe(0)
           expect(good.page.complete).toBe(true)
         }
@@ -788,65 +807,27 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
         if (!head.ok) throw new Error('no partial head')
         expect(consumed).toBe(true)
         expect(sawBudgetOverflow).toBe(true)
-        expect(head.page.hits.map((hit) => hit.piece)).toEqual([first.task])
+        expect(head.page.hits.flatMap((row) => row.matched_tasks).map((hit) => hit.piece)).toEqual([
+          first.task,
+        ])
         expect(head.page.complete).toBe(false)
         expect(head.page.next_cursor).not.toBeNull()
         const cursor = JSON.parse(
           Buffer.from(head.page.next_cursor!, 'base64url').toString('utf8'),
         ) as { after: { id: string } }
-        expect(cursor.after.id).not.toBe(pending.task)
+        expect(cursor.after.id).not.toBe(pending.worker)
         const tail = engine.read(first.worker, { ...query, cursor: head.page.next_cursor! })
         expect(tail.ok).toBe(true)
         if (!tail.ok) throw new Error('no continuation')
-        expect(tail.page.hits.map((hit) => hit.piece)).toEqual([pending.task])
+        expect(tail.page.hits.flatMap((row) => row.matched_tasks).map((hit) => hit.piece)).toEqual([
+          pending.task,
+        ])
         expect(tail.page.rows_unread + tail.page.ledgers_skipped).toBe(0)
         expect(tail.page.complete).toBe(true)
         expect(tail.page.next_cursor).toBeNull()
         expect(db.prepare('SELECT total_changes() AS count').get()).toEqual(before)
       } finally {
         hook.mockRestore()
-        engine.close()
-      }
-    })
-
-    it('stops at 1000 candidates and continues without repeating the first page', async () => {
-      const one = await workWasGiven()
-      const actual = db.prepare('SELECT parent_id FROM work WHERE id = ?').get(one.task) as {
-        parent_id: string
-      }
-      const insert = db.prepare(
-        'INSERT INTO work (id,parent_id,number,owner_session_id,given_by_session_id,title,brief,created_at) VALUES (?,?,?,?,?,?,?,?)',
-      )
-      for (let index = 0; index < 1005; index++)
-        insert.run(
-          `work_candidate_${index}`,
-          actual.parent_id,
-          index + 100,
-          one.worker,
-          one.pm,
-          'candidate',
-          'candidate',
-          100 + index,
-        )
-      const before = db.prepare('SELECT total_changes() AS count').get()
-      const engine = new WorkSearchEngine(join(userData, 'brobot2.sqlite'), () => 1)
-      try {
-        const query = { scope: 'this-conversation' as const, words: 'no-match-canary' }
-        const first = engine.read(one.worker, query)
-        expect(first.ok).toBe(true)
-        if (!first.ok) throw new Error('no first page')
-        expect(first.page.hits).toEqual([])
-        expect(first.page.searched).toBe(1000)
-        expect(first.page.next_cursor).not.toBeNull()
-        expect(first.page.complete).toBe(false)
-        const next = engine.read(one.worker, { ...query, cursor: first.page.next_cursor! })
-        expect(next.ok).toBe(true)
-        if (!next.ok) throw new Error('no continuation')
-        expect(next.page.searched).toBe(6)
-        expect(next.page.hits).toEqual([])
-        expect(next.page.next_cursor).toBeNull()
-        expect(db.prepare('SELECT total_changes() AS count').get()).toEqual(before)
-      } finally {
         engine.close()
       }
     })
@@ -858,20 +839,20 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
         {
           kind: 'invalid' as const,
           args: { scope: 'caller-private-scope' },
-          reason: 'Use a listed scope and state, at most 20 words, and a limit from 1 to 50.',
+          reason: 'Use at most 20 words, a known profile, valid dates and a limit from 1 to 50.',
           permanence: 'permanent',
           clause: 'This exact call can never succeed.',
         },
         {
           kind: 'cursor-invalid' as const,
-          args: { scope: 'all', cursor: 'caller-private-cursor' },
+          args: { cursor: 'caller-private-cursor' },
           reason: 'That search cursor does not match this query. Start the search again.',
           permanence: 'permanent',
           clause: 'This exact call can never succeed.',
         },
         {
           kind: 'unavailable' as const,
-          args: { scope: 'all', words: 'caller-private-text' },
+          args: { words: 'caller-private-text' },
           reason: 'Work search failed to read the work. Try again.',
           permanence: 'while-this-holds',
           clause: 'This refusal holds only while the reason lasts.',
@@ -934,7 +915,9 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
         expect(found.ok).toBe(true)
         if (!found.ok) throw new Error('no page')
         expect(
-          found.page.hits.find((hit) => hit.piece === producer.task)?.resource_ids.result,
+          found.page.hits
+            .flatMap((row) => row.matched_tasks)
+            .find((hit) => hit.piece === producer.task)?.resource_ids.result,
         ).toEqual([resource])
         expect(await callOn(toolsOf(caller), 'read_document', { resource })).toEqual(before)
         expect(
@@ -977,7 +960,9 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
         const head = engine.read(first.worker, query)
         expect(head.ok).toBe(true)
         if (!head.ok) throw new Error('no head')
-        expect(head.page.hits.map((hit) => hit.piece)).toEqual([second.task])
+        expect(head.page.hits.flatMap((row) => row.matched_tasks).map((hit) => hit.piece)).toEqual([
+          second.task,
+        ])
         expect(head.page.next_cursor).not.toBeNull()
         const added = await workWasGiven('searchable newer')
         expect(
@@ -1001,9 +986,17 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
         const tail = engine.read(first.worker, { ...query, cursor })
         expect(tail.ok).toBe(true)
         if (!tail.ok) throw new Error('no tail')
-        expect(tail.page.hits.map((hit) => hit.piece)).toEqual([first.task])
-        expect(tail.page.hits.some((hit) => hit.kind === 'root')).toBe(false)
-        expect(tail.page.hits.some((hit) => hit.piece === added.task)).toBe(false)
+        expect(tail.page.hits.flatMap((row) => row.matched_tasks).map((hit) => hit.piece)).toEqual([
+          first.task,
+        ])
+        expect(
+          tail.page.hits.flatMap((row) => row.matched_tasks).some((hit) => hit.kind === 'root'),
+        ).toBe(false)
+        expect(
+          tail.page.hits
+            .flatMap((row) => row.matched_tasks)
+            .some((hit) => hit.piece === added.task),
+        ).toBe(false)
       } finally {
         engine.close()
       }
@@ -1030,8 +1023,8 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
         expect(first.ok).toBe(true)
         if (!first.ok) throw new Error('no clipped page')
         expect(first.page.hits).toHaveLength(1)
-        expect(first.page.hits[0]?.result?.summary).toHaveLength(320)
-        expect(first.page.hits[0]?.clipped.result).toBe(true)
+        expect(first.page.hits[0]?.matched_tasks[0]?.result?.summary).toHaveLength(320)
+        expect(first.page.hits[0]?.matched_tasks[0]?.clipped.result).toBe(true)
         expect(first.page.rows_unread + first.page.ledgers_skipped).toBe(0)
         const row = db
           .prepare("SELECT payload FROM events WHERE session_id = ? AND type = 'work_replied'")
@@ -1085,7 +1078,9 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
         })
         expect(read.ok).toBe(true)
         if (!read.ok) throw new Error('no page')
-        expect(read.page.hits.map((hit) => hit.piece)).toEqual([good.task])
+        expect(read.page.hits.flatMap((row) => row.matched_tasks).map((hit) => hit.piece)).toEqual([
+          good.task,
+        ])
         expect(read.page.rows_unread + read.page.ledgers_skipped).toBeGreaterThan(0)
         expect(read.page.complete).toBe(false)
         expect(db.prepare('SELECT total_changes() AS count').get()).toEqual(before)

@@ -15,6 +15,7 @@ import {
   type LiveSessionRow,
   type UnresumableSession,
   type RecordedSession,
+  type RecordedPageInput,
 } from './session-catalogue-read'
 export type { ResumableSession, LiveSessionRow, RecordedSession } from './session-catalogue-read'
 import type { DigestRow, EventRow, PersistedEvent } from './ledger-row-types'
@@ -250,6 +251,7 @@ import {
   whatATurnDelivered,
   type Exchange,
   type ReceivedInATurn,
+  type TaskRecordExchange,
   type TranscriptTurn,
   type Words,
 } from '../../shared/last-exchange'
@@ -302,6 +304,8 @@ export interface ResourceRow {
   readonly addedBy: string | null
   readonly createdAt: number
 }
+
+export type ResourcePosition = Pick<ResourceRow, 'createdAt' | 'resource'>
 
 export interface KeptFileRow {
   readonly group?: import('../../shared/work-file-groups').WorkFileGroup
@@ -794,10 +798,20 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   /** The recorded sessions that cannot be reopened, each with the reason it cannot. */
   unresumable(): UnresumableSession[]
   recorded(): RecordedSession[]
+  recordedPage(input: RecordedPageInput): RecordedSession[]
   recordedOne(sessionId: string): RecordedSession | null
-  searchPastWork(caller: string, words: string): PastWorkSearchResult
+  searchPastWork(
+    caller: string,
+    words: string,
+    profile?: string,
+    cursor?: string,
+  ): PastWorkSearchResult
   closePastWorkSearch(): void
-  pastWorkSearchSource(caller: string): PastWorkSource | null
+  pastWorkSearchSource(
+    caller: string,
+    profile?: string,
+    after?: string | null,
+  ): PastWorkSource | null
   replacements(): readonly { readonly replaced: string; readonly by: string }[]
   newestScheduleLevels(owners?: ReadonlySet<string>): readonly {
     readonly conversation: string
@@ -977,7 +991,9 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   ): WorkThatNamesIt | null
   workOnItsChainThatNames(conversation: string, piece: string): WorkThatNamesIt | null
   /** The rows given under one piece, by number — rows, not folded. */
-  childrenOf(piece: string): readonly WorkRow[]
+  childrenOf(piece: string, after?: number, limit?: number): readonly WorkRow[]
+  countChildrenAfter(piece: string, after: number): number
+  depthOf(piece: string): number
   pieceOfItsChainHeldBy(piece: string, owner: string): string | null
   turnBlockPiecesOwnedBy(owner: string, unread?: RowsUnread): readonly PieceRow[]
   openPiecesOf(owner: string, unread?: RowsUnread): readonly PieceRow[]
@@ -1018,7 +1034,12 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
     at: number,
   ): ResourceRow
   /** The resources kept for one piece, oldest first. */
-  resourcesOf(piece: string): readonly ResourceRow[]
+  resourcesOf(
+    piece: string,
+    after?: ResourcePosition | null,
+    limit?: number,
+  ): readonly ResourceRow[]
+  countResourcesAfter(piece: string, after: ResourcePosition | null): number
   filesKept(asked: KeptFilesAsked): readonly KeptFileRow[]
   /** Both opening lists, named in one pass over their union. */
   filesKeptTogether(asked: Extract<KeptFilesAsked, { scope: 'tree' }>): {
@@ -1099,6 +1120,7 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   requestsItsLastEndedTurnInterrupted(sessionId: string): readonly string[]
   lastEndedTurn(sessionId: string, unread?: RowsUnread): LastEndedTurn | null
   lastExchange(sessionId: string): Exchange
+  lastExchangeForTaskRecord(sessionId: string): TaskRecordExchange
   whatOpenedTheLastEndedTurn(sessionId: string): ReceivedInATurn | null
   transcript(
     sessionId: string,
@@ -1313,6 +1335,8 @@ export const NULL_SESSION_STORE: SessionStore = {
   workThatNamesUnder: () => null,
   workOnItsChainThatNames: () => null,
   childrenOf: () => [],
+  countChildrenAfter: () => 0,
+  depthOf: () => 0,
   pieceOfItsChainHeldBy: () => null,
   piecesOwnedBy: () => [],
   piecesWithTheirWaits: () => [],
@@ -1326,6 +1350,7 @@ export const NULL_SESSION_STORE: SessionStore = {
     throw new Error('no database: a resource cannot be kept')
   },
   resourcesOf: () => [],
+  countResourcesAfter: () => 0,
   untitledResources: () => [],
   titleResource: () => false,
   titledResources: () => [],
@@ -1371,6 +1396,7 @@ export const NULL_SESSION_STORE: SessionStore = {
   whenAPersonLastWrote: () => null,
   requestsItsLastEndedTurnInterrupted: () => [],
   lastExchange: () => ({ received: null, answer: null }),
+  lastExchangeForTaskRecord: () => ({ exchange: { received: null, answer: null }, revision: '' }),
   whatOpenedTheLastEndedTurn: () => null,
   transcript: () => ({ turns: [], older: false }),
   lastAskToStop: () => null,
@@ -1392,6 +1418,7 @@ export const NULL_SESSION_STORE: SessionStore = {
   resumable: () => [],
   unresumable: () => [],
   recorded: () => [],
+  recordedPage: () => [],
   recordedOne: () => null,
   searchPastWork: () => ({ ok: false, reason: 'unavailable' }),
   closePastWorkSearch: () => {},
@@ -2108,7 +2135,15 @@ export function createSessionStore(
     `SELECT ${SESSION_COLUMNS}, ${GENERATION_COLUMNS}, ${LAST_ENDING_COLUMN}
        FROM provider_session ${GENERATION_JOIN} WHERE provider_session.id = ?`,
   )
-  const sessionCatalogueRead = createSessionCatalogueRead(selectAll, selectOne)
+  const selectCataloguePage = db.prepare(
+    `SELECT ${SESSION_COLUMNS}, ${GENERATION_COLUMNS}, ${LAST_ENDING_COLUMN}
+       FROM provider_session ${GENERATION_JOIN}
+      WHERE (@identity IS NULL OR agent_identity_id = @identity)
+        AND provider_session.updated_at BETWEEN @from AND @to
+        AND (@afterId IS NULL OR (provider_session.updated_at, provider_session.id) < (@afterAt, @afterId))
+      ORDER BY provider_session.updated_at DESC, provider_session.id DESC LIMIT @limit`,
+  )
+  const sessionCatalogueRead = createSessionCatalogueRead(selectAll, selectOne, selectCataloguePage)
   const selectEvents = db.prepare(
     `SELECT ordinal, payload, created_at FROM events
       WHERE session_id = ? AND generation = ? ORDER BY ordinal`,
@@ -3710,14 +3745,14 @@ export function createSessionStore(
     return tail?.readable === 1 && tail.question === 1 ? closed.id : null
   }
 
-  function wordsOf(sessionId: string, row: ExchangeRow): Words {
+  function wordsOf(sessionId: string, row: ExchangeRow, cap = WORDS_CAP): Words {
     if (row.payload === null) {
       noteUnreadRow(sessionId, row.ordinal, undefined)
       return { unreadable: true }
     }
     // ⚠️ Cast to `unknown`-shaped and CHECKED — a ledger written by another build can hold anything.
     const said = JSON.parse(row.payload) as { text?: unknown }
-    return capped(typeof said.text === 'string' ? said.text : '', WORDS_CAP)
+    return capped(typeof said.text === 'string' ? said.text : '', cap)
   }
 
   function receivedOn(sessionId: string, row: ExchangeRow, cap = WORDS_CAP): ReceivedInATurn {
@@ -3728,17 +3763,20 @@ export function createSessionStore(
     return whatATurnDelivered(JSON.parse(row.payload) as UserTurnEvent, cap)
   }
 
-  function lastExchangeIn(sessionId: string): Exchange {
+  function lastExchangeIn(sessionId: string, cap = WORDS_CAP): TaskRecordExchange {
     const generation = activeGeneration(sessionId)
     const got = selectNewestReceived.get(sessionId, generation) as ExchangeRow | undefined
-    if (got === undefined) return { received: null, answer: null }
+    if (got === undefined) return { exchange: { received: null, answer: null }, revision: '' }
     const back = selectNewestAnswerAfter.get(sessionId, generation, got.ordinal) as
       ExchangeRow | undefined
     const sinceThen = selectAProviderTurnAfter.get(sessionId, generation, got.ordinal) !== undefined
     return {
-      received: receivedOn(sessionId, got),
-      answer: back === undefined ? null : wordsOf(sessionId, back),
-      ...(sinceThen ? { sinceThenItsProviderStartedATurn: true as const } : {}),
+      revision: JSON.stringify([generation, got.ordinal, back?.ordinal, sinceThen]),
+      exchange: {
+        received: receivedOn(sessionId, got, cap),
+        answer: back === undefined ? null : wordsOf(sessionId, back, cap),
+        ...(sinceThen ? { sinceThenItsProviderStartedATurn: true as const } : {}),
+      },
     }
   }
 
@@ -4269,6 +4307,7 @@ export function createSessionStore(
     firstOwnedBy: AppStatement
     latestOwnedBy: AppStatement
     children: AppStatement
+    countChildrenAfter: AppStatement
     doneCondition: AppStatement
     newestLine: AppStatement
     turnRootLine: AppStatement
@@ -4279,6 +4318,7 @@ export function createSessionStore(
     heldInCount: AppStatement
     insertResource: AppStatement
     resourcesOf: AppStatement
+    countResourcesAfter: AppStatement
     filesOnPiece: AppStatement
     filesAddedBy: AppStatement
     filesUnder: AppStatement
@@ -4326,7 +4366,13 @@ export function createSessionStore(
         `SELECT ${WORK_COLUMNS} FROM work INDEXED BY work_owner_idx
           WHERE owner_session_id = ? ORDER BY rowid DESC LIMIT 1`,
       ),
-      children: db.prepare(`SELECT ${WORK_COLUMNS} FROM work WHERE parent_id = ? ORDER BY number`),
+      children: db.prepare(
+        `SELECT ${WORK_COLUMNS} FROM work
+          WHERE parent_id = ? AND number > ? ORDER BY number LIMIT ?`,
+      ),
+      countChildrenAfter: db.prepare(
+        `SELECT count(*) AS total FROM work WHERE parent_id = ? AND number > ?`,
+      ),
       doneCondition: db.prepare(
         `SELECT payload FROM events
           WHERE session_id = ? AND +generation = ?
@@ -4404,7 +4450,13 @@ export function createSessionStore(
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ),
       resourcesOf: db.prepare(
-        `SELECT ${RESOURCE_COLUMNS} FROM work_resource WHERE work_id = ? ORDER BY created_at, id`,
+        `SELECT ${RESOURCE_COLUMNS} FROM work_resource
+          WHERE work_id = @piece AND (@at IS NULL OR (created_at, id) > (@at, @id))
+          ORDER BY created_at, id LIMIT @limit`,
+      ),
+      countResourcesAfter: db.prepare(
+        `SELECT count(*) AS total FROM work_resource
+          WHERE work_id = @piece AND (@at IS NULL OR (created_at, id) > (@at, @id))`,
       ),
       filesOnPiece: db.prepare(`SELECT ${KEPT_FILE_COLUMNS} FROM work_resource WHERE work_id = ?`),
       filesAddedBy: db.prepare(
@@ -6131,13 +6183,23 @@ export function createSessionStore(
       return { label: workRowWalked(mine).label, title: titleNow(mine, generation) }
     },
 
-    childrenOf(piece) {
+    childrenOf(piece, after = 0, limit = -1) {
       const row = workSql().byId.get(piece) as WorkDbRow | undefined
       if (row === undefined) return []
       const above = [...chainUp(row)].reverse().map((each) => each.number)
-      return (workSql().children.all(piece) as WorkDbRow[]).map((child) =>
+      return (workSql().children.all(piece, after, limit) as WorkDbRow[]).map((child) =>
         workRowFrom(child, [...above, child.number]),
       )
+    },
+
+    countChildrenAfter(piece, after) {
+      return (workSql().countChildrenAfter.get(piece, after) as { total: number }).total
+    },
+
+    depthOf(piece) {
+      const row = workSql().byId.get(piece) as WorkDbRow | undefined
+      if (row === undefined) throw new Error(`no piece ${piece} in this database`)
+      return chainUp(row).findIndex((one) => one.given_by_session_id === null)
     },
 
     pieceOfItsChainHeldBy(piece, owner) {
@@ -6186,12 +6248,12 @@ export function createSessionStore(
 
     replyQuestionWithoutARequest,
 
-    searchPastWork(caller, words) {
-      return searchPastWork(connection, this, caller, words)
+    searchPastWork(caller, words, profile, cursor) {
+      return searchPastWork(connection, this, caller, words, undefined, profile, cursor)
     },
 
-    pastWorkSearchSource(caller) {
-      return pastWorkSource(connection, caller)
+    pastWorkSearchSource(caller, profile, after) {
+      return pastWorkSource(connection, caller, profile, after)
     },
 
     closePastWorkSearch() {
@@ -6308,8 +6370,25 @@ export function createSessionStore(
       return { ...input, resource: id, createdAt: at }
     },
 
-    resourcesOf(piece) {
-      return (workSql().resourcesOf.all(piece) as ResourceDbRow[]).map(resourceFrom)
+    resourcesOf(piece, after = null, limit = -1) {
+      return (
+        workSql().resourcesOf.all({
+          piece,
+          at: after?.createdAt ?? null,
+          id: after?.resource ?? null,
+          limit,
+        }) as ResourceDbRow[]
+      ).map(resourceFrom)
+    },
+
+    countResourcesAfter(piece, after) {
+      return (
+        workSql().countResourcesAfter.get({
+          piece,
+          at: after?.createdAt ?? null,
+          id: after?.resource ?? null,
+        }) as { total: number }
+      ).total
     },
 
     filesKept(asked) {
@@ -6482,7 +6561,11 @@ export function createSessionStore(
       )
     },
     lastExchange(sessionId) {
-      return lastExchangeIn(sessionId)
+      return lastExchangeIn(sessionId).exchange
+    },
+
+    lastExchangeForTaskRecord(sessionId) {
+      return lastExchangeIn(sessionId, Infinity)
     },
     whatOpenedTheLastEndedTurn(sessionId) {
       return whatOpenedTheLastEndedTurn(sessionId)
@@ -6844,6 +6927,10 @@ export function createSessionStore(
 
     recorded() {
       return sessionCatalogueRead.recorded()
+    },
+
+    recordedPage(input) {
+      return sessionCatalogueRead.recordedPage(input)
     },
 
     replacements() {

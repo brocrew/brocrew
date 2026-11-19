@@ -530,6 +530,8 @@ const runtime: RuntimeBridge = Object.freeze({
   // so it is `plain-by-construction` on both halves of `363`'s question, as its neighbour above is.
   retitleWork: (input: { piece: string; title: string }) =>
     command({ kind: 'retitleWork', ...input }),
+  renameConversation: (input: { conversation: string; title: string }) =>
+    command({ kind: 'renameConversation', ...input }),
   takeBackWork: (input: { piece: string }) => command({ kind: 'takeBackWork', ...input }),
   closeWork: (input: { piece: string }) => command({ kind: 'closeWork', ...input }),
   // 677 · ⚑ `{ kind, ...input }` and the payload is four primitives — a slug, a provider word or null,

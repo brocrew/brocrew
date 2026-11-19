@@ -1,8 +1,4 @@
-import {
-  AGENT_MESSAGE_KINDS,
-  TASK_OUTCOMES,
-  TASK_STATES as WORK_SEARCH_TASK_STATES,
-} from '../../../shared/task-contracts'
+import { AGENT_MESSAGE_KINDS, TASK_OUTCOMES } from '../../../shared/task-contracts'
 import { MCP_SERVER_REQUEST_WHO } from '../../../shared/mcp-server-requests'
 import {
   PASS_UP_RECIPIENTS,
@@ -13,8 +9,6 @@ import { type Provider, providerDescriptor, providerRecord, providerSchema } fro
 import { QUESTION_RECIPIENTS, RECIPIENT_MEANS } from '../../../shared/questions'
 import { THEME_TOOL_NAMES } from '../../themes/tool-words'
 import { type ToolsToldInText } from '../factory-text'
-import { WORK_SEARCH_SCOPES } from '../../../shared/work-search'
-import { WORK_STATE_WORD } from '../../../shared/work-state-words'
 import { agentToolStringEnum } from '@brobot2/runtime'
 import { z } from 'zod'
 
@@ -194,6 +188,7 @@ export const TOOL_NAMES = [
   'write_agent_rules',
   'read_own_notes',
   'write_own_notes',
+  'rename_conversation',
 ] as const
 
 export type ToolName = (typeof TOOL_NAMES)[number]
@@ -271,19 +266,6 @@ const TASK_OUTCOME_INPUT = toolInputVocabulary(TASK_OUTCOMES, {
   failed: "'failed' says the work is not complete and the agent has nothing further to try.",
 })
 
-const WORK_SEARCH_SCOPE_INPUT = toolInputVocabulary(WORK_SEARCH_SCOPES, {
-  mine: "'mine' covers your profile's conversations.",
-  'this-conversation': "'this-conversation' covers work you own or gave here.",
-  all: "'all' covers this app's work.",
-})
-
-const WORK_SEARCH_STATE_INPUT = toolInputVocabulary(
-  WORK_SEARCH_TASK_STATES,
-  Object.fromEntries(
-    WORK_SEARCH_TASK_STATES.map((state) => [state, `'${state}' means ${WORK_STATE_WORD[state]}.`]),
-  ) as Readonly<Record<(typeof WORK_SEARCH_TASK_STATES)[number], string>>,
-)
-
 /**
  * Every enum-valued argument in the published toolset, as an addressable census.
  *
@@ -292,8 +274,6 @@ const WORK_SEARCH_STATE_INPUT = toolInputVocabulary(
  * documented by merely importing a vocabulary and never using it.
  */
 export const TOOL_INPUT_ENUMS = {
-  'search_work:scope': WORK_SEARCH_SCOPE_INPUT,
-  'search_work:state': WORK_SEARCH_STATE_INPUT,
   'message_agent:kind': MESSAGE_KIND_INPUT,
   'reply_to_parent:outcome': TASK_OUTCOME_INPUT,
   'create_agent:provider': PROVIDER_INPUT,

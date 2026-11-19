@@ -307,7 +307,19 @@ function whyNoDirectInput(row: ReopenFacts): string | null {
   return 'a sub-agent conversation — another agent drove it, so it takes no message of its own'
 }
 
-export function createSessionCatalogueRead(selectAll: AppStatement, selectOne: AppStatement) {
+export interface RecordedPageInput {
+  readonly identity: string | null
+  readonly from: number
+  readonly to: number
+  readonly after: { readonly at: number; readonly id: string } | null
+  readonly limit: number
+}
+
+export function createSessionCatalogueRead(
+  selectAll: AppStatement,
+  selectOne: AppStatement,
+  selectPage: AppStatement,
+) {
   function find(sessionId: string): ResumableSession | null {
     const row = selectOne.get(sessionId) as SessionRow | undefined
     return row ? (toResumable(row) ?? null) : null
@@ -346,10 +358,29 @@ export function createSessionCatalogueRead(selectAll: AppStatement, selectOne: A
     return (selectAll.all() as SessionRow[]).map(recordedOf)
   }
 
+  function recordedPage({
+    identity,
+    from,
+    to,
+    after,
+    limit,
+  }: RecordedPageInput): RecordedSession[] {
+    return (
+      selectPage.all({
+        identity,
+        from,
+        to,
+        afterAt: after?.at ?? null,
+        afterId: after?.id ?? null,
+        limit,
+      }) as SessionRow[]
+    ).map(recordedOf)
+  }
+
   function recordedOne(sessionId: string): RecordedSession | null {
     const row = selectOne.get(sessionId) as SessionRow | undefined
     return row === undefined ? null : recordedOf(row)
   }
 
-  return { find, findLive, resumable, unresumable, recorded, recordedOne }
+  return { find, findLive, resumable, unresumable, recorded, recordedOne, recordedPage }
 }

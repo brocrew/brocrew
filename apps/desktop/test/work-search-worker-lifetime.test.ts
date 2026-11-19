@@ -95,30 +95,43 @@ describe('the work search owns its worker until exit', () => {
         ...empty.page,
         hits: [
           {
-            kind: 'piece',
-            piece: 'work_first',
-            label: 'W1.1',
-            title: null,
-            state: 'answered',
-            owner: { conversation: 'sess_1', name: null, profile: null },
-            giver: null,
-            result: null,
+            conversation: 'sess_1',
+            address: 'W1.1',
+            title: 'Fictional job',
+            line: 'conversation W1.1 · Fictional job',
+            profile: null,
+            last_active_at: 1,
             status: null,
-            resource_ids: {
-              brief: Array.from({ length: 10 }, (_, index) => `res_${index}`),
-              result: ['res_extra'],
-              attachments: [],
-              working: [],
-            },
-            clipped: { title: false, result: false, status: false },
-            resources_omitted: 0,
+            tasks_omitted: 0,
+            matched_tasks: [
+              {
+                kind: 'piece',
+                piece: 'work_first',
+                label: 'W1.1',
+                title: null,
+                given_at: 1,
+                state: 'answered',
+                owner: { conversation: 'sess_1', name: null, profile: null },
+                giver: null,
+                result: null,
+                status: null,
+                resource_ids: {
+                  brief: Array.from({ length: 10 }, (_, index) => `res_${index}`),
+                  result: ['res_extra'],
+                  attachments: [],
+                  working: [],
+                },
+                clipped: { title: false, result: false, status: false },
+                resources_omitted: 0,
+              },
+            ],
           },
         ],
       },
     }
     expect(
-      oversizedReferences.page.hits[0]!.resource_ids.brief.length +
-        oversizedReferences.page.hits[0]!.resource_ids.result.length,
+      oversizedReferences.page.hits[0]!.matched_tasks[0]!.resource_ids.brief.length +
+        oversizedReferences.page.hits[0]!.matched_tasks[0]!.resource_ids.result.length,
     ).toBe(11)
     for (const messages of [
       [{ ...empty, extra: 'unexpected' }],

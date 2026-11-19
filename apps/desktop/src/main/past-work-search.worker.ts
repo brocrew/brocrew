@@ -3,6 +3,7 @@ import { parentPort, workerData } from 'node:worker_threads'
 import { z } from 'zod'
 import { createSessionStore } from './db/session-store'
 import { searchPastWork } from './db/past-work-search'
+import { WORK_SEARCH_BOUNDS } from '../shared/work-search'
 
 const request = z
   .object({
@@ -12,9 +13,12 @@ const request = z
     source: z
       .object({
         file: z.string().min(1),
-        profile: z.string().min(1).max(200),
+        profile: z.string().min(1).max(200).nullable(),
         externalVersion: z.number().int(),
-        versions: z.array(z.tuple([z.string().max(200), z.number().int()])).max(10000),
+        versions: z
+          .array(z.tuple([z.string().max(200), z.number().int()]))
+          .max(WORK_SEARCH_BOUNDS.candidates),
+        next: z.string().min(1).max(200).nullable(),
       })
       .strict(),
   })

@@ -3,13 +3,6 @@ import type { DocumentForm, ResourceRole } from './documents'
 export const WORK_FILE_GROUPS = ['brief', 'result', 'attachments', 'working'] as const
 export type WorkFileGroup = (typeof WORK_FILE_GROUPS)[number]
 
-export const WORK_FILE_GROUP_WORDS: Readonly<Record<WorkFileGroup, string>> = {
-  brief: 'Brief',
-  result: 'Result',
-  attachments: 'Attachments',
-  working: 'Working files',
-}
-
 export function workFileGroup(
   file: { readonly role: ResourceRole; readonly form: DocumentForm | null },
   returned: boolean | null,

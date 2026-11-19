@@ -2,11 +2,16 @@ import type { UserTurnEvent } from '../../shared/human-answer-contracts'
 import Database from 'better-sqlite3'
 import type { AppDatabase } from './connection'
 import type { WorkLedgerRead } from './work-ledger-read'
+import { agentIdentityRowId } from './identity'
+import { conversationLine } from '../runtime/conversation-address'
 import { rowsUnreadOnce } from './rows-unread'
 import { conversationLink, pieceLink } from '../../shared/links'
 import { aPersonsOwnWords } from '../../shared/a-persons-own-words'
 import { theMessagesOf } from '../../shared/runtime-ipc'
+import { WORK_SEARCH_BOUNDS } from '../../shared/work-search'
 import {
+  pastWorkNext,
+  pastWorkStart,
   pastWorkSearchQuery,
   type PastWorkField,
   type PastWorkHit,
@@ -18,22 +23,25 @@ const CELL_LIMIT = 1024 * 1024
 const DOCUMENT_LIMIT = 1_000_000
 const PROFILE_LIMIT = 1
 const PAST_WORK_MESSAGE_LIMIT = 4096
-type Source = { id: string; updated_at: number; version: number }
+type Source = { id: string; version: number }
 type Document = {
   conversation: string
   piece: string | null
   field: PastWorkField
   snippet: string
 }
+type SearchReads = WorkLedgerRead & Parameters<typeof conversationLine>[0]
 type Index = { db: Database.Database; versions: Map<string, number> }
 const searches = new WeakMap<AppDatabase, ProfilePastWorkSearch>()
 
 export function searchPastWork(
   db: AppDatabase,
-  store: WorkLedgerRead,
+  store: SearchReads,
   caller: string,
   words: string,
   revision?: PastWorkSource,
+  profile?: string,
+  cursor?: string,
 ): PastWorkSearchResult {
   if (db.inTransaction) return { ok: false, reason: 'unavailable' }
   try {
@@ -42,14 +50,19 @@ export function searchPastWork(
       search = new ProfilePastWorkSearch(db)
       searches.set(db, search)
     }
-    return search.read(store, caller, words, revision)
+    return search.read(store, caller, words, revision, profile, cursor)
   } catch {
     closePastWorkSearch(db)
     return { ok: false, reason: 'unavailable' }
   }
 }
 
-export function pastWorkSource(db: AppDatabase, caller: string): PastWorkSource | null {
+export function pastWorkSource(
+  db: AppDatabase,
+  caller: string,
+  profile?: string,
+  after?: string | null,
+): PastWorkSource | null {
   if (db.inTransaction || db.name === ':memory:') return null
   try {
     let search = searches.get(db)
@@ -57,7 +70,7 @@ export function pastWorkSource(db: AppDatabase, caller: string): PastWorkSource 
       search = new ProfilePastWorkSearch(db)
       searches.set(db, search)
     }
-    return search.sourceRevision(caller)
+    return search.sourceRevision(caller, profile, after)
   } catch {
     return null
   }
@@ -69,7 +82,7 @@ export function closePastWorkSearch(db: AppDatabase): void {
 }
 
 class ProfilePastWorkSearch {
-  private readonly profiles = new Map<string, Index>()
+  private readonly profiles = new Map<string | null, Index>()
   private dataVersion: unknown
 
   constructor(private readonly source: AppDatabase) {
@@ -101,35 +114,58 @@ class ProfilePastWorkSearch {
     this.profiles.clear()
   }
 
-  sourceRevision(caller: string): PastWorkSource | null {
-    const profile = this.source
-      .prepare('SELECT agent_identity_id AS profile FROM provider_session WHERE id = ?')
-      .get(caller) as { profile: string | null } | undefined
-    if (!profile?.profile) return null
+  private sessionPage(profile: string | null, after: string | null) {
     const rows = this.source
       .prepare(
         `SELECT s.id, coalesce(d.version, 0) AS version
-      FROM provider_session s LEFT JOIN temp.past_work_dirty d ON d.session = s.id
-      WHERE s.agent_identity_id = ? LIMIT 10001`,
+        FROM provider_session s LEFT JOIN temp.past_work_dirty d ON d.session = s.id
+        WHERE s.id > @after ${profile === null ? '' : 'AND s.agent_identity_id = @profile'}
+        ORDER BY s.id LIMIT @limit`,
       )
-      .all(profile.profile) as { id: string; version: number }[]
-    if (rows.length > 10000) return null
+      .all({ after: after ?? '', profile, limit: WORK_SEARCH_BOUNDS.candidates + 1 }) as Source[]
+    const sessions = rows.slice(0, WORK_SEARCH_BOUNDS.candidates)
+    return {
+      sessions,
+      next: rows.length > sessions.length ? (sessions.at(-1)?.id ?? null) : null,
+    }
+  }
+
+  sourceRevision(
+    caller: string,
+    profile?: string,
+    after: string | null = null,
+  ): PastWorkSource | null {
+    if (!this.source.prepare('SELECT 1 FROM provider_session WHERE id = ?').get(caller)) return null
+    const identity = profile === undefined ? null : agentIdentityRowId(profile)
+    const { sessions, next } = this.sessionPage(identity, after)
     return {
       file: this.source.name,
-      profile: profile.profile,
+      profile: identity,
       externalVersion: Number(this.source.pragma('data_version', { simple: true })),
-      versions: rows.map((row) => [row.id, row.version] as const),
+      versions: sessions.map((row) => [row.id, row.version] as const),
+      next,
     }
   }
 
   read(
-    store: WorkLedgerRead,
+    store: SearchReads,
     caller: string,
     words: string,
     revision?: PastWorkSource,
+    chosenProfile?: string,
+    cursor?: string,
   ): PastWorkSearchResult {
-    const query = pastWorkSearchQuery.safeParse({ words })
+    const query = pastWorkSearchQuery.safeParse({ words, profile: chosenProfile, cursor })
     if (!query.success) return { ok: false, reason: 'invalid' }
+    const wanted = query.data.profile
+    const profile =
+      revision === undefined
+        ? wanted === undefined
+          ? null
+          : agentIdentityRowId(wanted)
+        : revision.profile
+    const after = pastWorkStart(query.data.words, profile, cursor)
+    if (after === undefined) return { ok: false, reason: 'invalid' }
     const match = query.data.words
       .split(/\s+/u)
       .map((word) => `"${word.replaceAll('"', '""')}"`)
@@ -137,16 +173,11 @@ class ProfilePastWorkSearch {
     const db = this.source
     db.exec('BEGIN')
     try {
-      const callerRow = db
-        .prepare('SELECT agent_identity_id AS profile FROM provider_session WHERE id = ?')
-        .get(caller) as { profile: string | null } | undefined
-      if (!callerRow?.profile) throw new Error('no recorded profile')
-      if (revision !== undefined && revision.profile !== callerRow.profile)
-        throw new Error('profile changed')
+      if (!db.prepare('SELECT 1 FROM provider_session WHERE id = ?').get(caller))
+        throw new Error('no recorded conversation')
       const version = revision?.externalVersion ?? db.pragma('data_version', { simple: true })
       if (version !== this.dataVersion) this.close()
       this.dataVersion = version
-      const profile = callerRow.profile
       let index = this.profiles.get(profile)
       if (index === undefined) {
         if (this.profiles.size >= PROFILE_LIMIT) {
@@ -168,17 +199,23 @@ class ProfilePastWorkSearch {
       }
       this.profiles.delete(profile)
       this.profiles.set(profile, index)
-      const sessions = db
-        .prepare(
-          `SELECT s.id, s.updated_at, coalesce(d.version, 0) AS version
-        FROM provider_session s LEFT JOIN temp.past_work_dirty d ON d.session = s.id
-        WHERE s.agent_identity_id = ?`,
-        )
-        .all(profile) as Source[]
-      if (revision !== undefined) {
-        const versions = new Map(revision.versions)
-        for (const session of sessions) session.version = versions.get(session.id) ?? -1
-      }
+      const page =
+        revision === undefined
+          ? this.sessionPage(profile, after)
+          : {
+              next: revision.next,
+              sessions: db
+                .prepare(
+                  `
+          SELECT s.id, json_extract(page.value, '$[1]') AS version
+          FROM json_each(@versions) page
+          JOIN provider_session s ON s.id = json_extract(page.value, '$[0]')
+          WHERE (@profile IS NULL OR s.agent_identity_id = @profile)
+        `,
+                )
+                .all({ versions: JSON.stringify(revision.versions), profile }) as Source[],
+            }
+      const { sessions, next: nextPage } = page
       const current = new Set(sessions.map((session) => session.id))
       const next = new Map(index.versions)
       index.db.transaction(() => {
@@ -226,9 +263,10 @@ class ProfilePastWorkSearch {
         seen.add(key)
         const live = db
           .prepare(
-            'SELECT status, updated_at FROM provider_session WHERE id = ? AND agent_identity_id = ?',
+            'SELECT status, updated_at FROM provider_session WHERE id = @id AND (@profile IS NULL OR agent_identity_id = @profile)',
           )
-          .get(doc.conversation, profile) as { status: string; updated_at: number } | undefined
+          .get({ id: doc.conversation, profile }) as
+          { status: string; updated_at: number } | undefined
         if (live === undefined) continue
         const work = doc.piece === null ? null : store.workById(doc.piece)
         if (doc.piece !== null && (work === null || work.owner !== doc.conversation)) continue
@@ -253,6 +291,7 @@ class ProfilePastWorkSearch {
           conversation: doc.conversation,
           piece: doc.piece,
           label,
+          line: conversationLine(store, doc.conversation),
           title,
           link:
             work === null
@@ -268,7 +307,12 @@ class ProfilePastWorkSearch {
       }
       db.exec('COMMIT')
       index.versions = next
-      return { ok: true, hits }
+      return {
+        ok: true,
+        hits,
+        complete: nextPage === null,
+        next_cursor: nextPage === null ? null : pastWorkNext(query.data.words, profile, nextPage),
+      }
     } catch (error) {
       if (db.inTransaction) db.exec('ROLLBACK')
       this.close()
@@ -291,17 +335,12 @@ class ProfilePastWorkSearch {
       const written = insert.run(session.id, piece, field, text)
       source.run(written.lastInsertRowid, session.id)
     }
-    const rows = this.source
-      .prepare('SELECT id, parent_id FROM work WHERE owner_session_id = ?')
-      .all(session.id) as { id: string; parent_id: string | null }[]
-    const unread = rowsUnreadOnce()
-    const pieces = rows.some((row) => row.parent_id !== null)
-      ? store.piecesOwnedBy(session.id, unread)
-      : []
-    const byPiece = new Map(pieces.map((piece) => [piece.piece, piece]))
-    if (unread.count || unread.ledgersSkipped) throw new Error('unread pieces')
-    const root = rows.find((row) => row.parent_id === null)
-    const conversationPiece = root?.id ?? pieces[0]?.piece ?? null
+    const conversationPiece =
+      (
+        this.source
+          .prepare('SELECT id FROM work WHERE owner_session_id = ? ORDER BY rowid LIMIT 1')
+          .get(session.id) as { id: string } | undefined
+      )?.id ?? null
     const buffers = new Map<PastWorkField, { parts: string[]; length: number }>()
     const collect = (field: PastWorkField, value: unknown) => {
       if (typeof value !== 'string') {
@@ -321,20 +360,6 @@ class ProfilePastWorkSearch {
       }
       buffer.parts.push(text)
       buffer.length += text.length + 1
-    }
-    for (const row of rows) {
-      const piece = byPiece.get(row.id)
-      const lines = row.parent_id === null ? store.turnBlockRootLines(row.id) : null
-      if (row.parent_id === null ? lines === null : piece === undefined)
-        throw new Error('unread piece')
-      add(row.id, 'title', lines?.title ?? piece?.title)
-      add(
-        row.id,
-        'done condition',
-        row.parent_id === null ? store.rootDoneCondition(row.id) : piece?.definitionOfDone,
-      )
-      add(row.id, 'result', piece?.summary)
-      add(row.id, 'status', (lines?.statusLine ?? piece?.statusLine)?.text)
     }
     const events = this.source
       .prepare(

@@ -177,6 +177,9 @@ describe("a conversation's title", () => {
     store.titleConversation('sess_adopted', next(), byPerson('DEV-100012 and DEV-100013'), AT + 11)
 
     expect(await derive(true)).toBe('imported')
+    const afterFirstRebuild = store.events('sess_adopted')
+    expect(await derive(true)).toBe('imported')
+    expect(store.events('sess_adopted')).toEqual(afterFirstRebuild)
     expect(store.conversationTitle('sess_adopted')).toEqual({
       title: 'DEV-100012 and DEV-100013',
       author: { kind: 'person' },

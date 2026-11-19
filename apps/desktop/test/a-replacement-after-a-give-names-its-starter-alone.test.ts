@@ -29,21 +29,6 @@ import {
   neutralHostDeps,
 } from './lib/host-fixture'
 
-/**
- * # ⛔ 3d1eb064 · the piece a give starts a conversation from is lowered after that launch
- *
- * ⚑ `giveWork` raises `reservingAStartFrom` to the giver's own piece for its create's synchronous
- * stretch, so the new conversation's first launch names its starter by that piece, and lowers it
- * after. ⚠️ Every other launch of a conversation an agent started reads the same slot field —
- * a replacement's among them, which names its starter ALONE (`theStarterCalled`: it composes before
- * a delivery brings its first words). ⛔ Left raised, the replacement's launch would name its starter
- * by the last give's piece. The devs' own case (`the-text-a-child-is-actually-told.test.ts` §8) asks
- * `theStarterCalled` directly, so it cannot see a slot that kept the give's piece.
- *
- * ⚑ The pm/worker/wake fixture is `what-a-replacement-carries-and-what-it-leaves-behind.test.ts`'s;
- * the instruction capture is `the-text-a-child-is-actually-told.test.ts` §8's.
- */
-
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
@@ -144,7 +129,7 @@ describe('3d1eb064 · a replacement after a give names its starter alone', () =>
   const launchesOf = (profileSlug: string): InstructionContext[] =>
     seen.filter((one) => one.profileSlug === profileSlug).map((one) => one.context)
 
-  it('⛔ the helper a worker gave work to, replaced: its launch names the worker alone — not by the piece the give started it from', async () => {
+  it('names the helper’s starter by conversation through give, reopen and replacement', async () => {
     await host.close(await personOpens('worker'), window)
     await host.close(await personOpens('helper'), window)
     const pm = await personOpens('pm')
@@ -163,12 +148,9 @@ describe('3d1eb064 · a replacement after a give names its starter alone', () =>
     const helper = second.agent as string
     await waitFor(() => turnsIn(helper) > 0, 'the turn the brief opened to end')
 
-    const alone = host.whatToCallTheConversation(worker)
-    const byTheGivesPiece = host.nameByItsWorkUnder(worker, first.label as string)
-    // ⚑ Premise: the two namings differ, so the replacement's line tells them apart.
-    expect(byTheGivesPiece).not.toBe(alone)
-    // ⚑ The control: the give's own first launch names the worker by that piece.
-    expect(launchesOf('helper').at(-1)?.startedBy).toBe(byTheGivesPiece)
+    const starter = `${host.whatToCallTheConversation(worker)}, ${host.nameByItsWork(worker)}`
+    expect(starter).toContain(`conversation ${first.label as string} · Build the pages`)
+    expect(launchesOf('helper').at(-1)?.startedBy).toBe(starter)
 
     await host.close(helper, THE_APP_ITSELF)
     await waitFor(
@@ -179,7 +161,7 @@ describe('3d1eb064 · a replacement after a give names its starter alone', () =>
       'the helper to be over',
     )
     await host.resumeSession(helper, window)
-    expect(launchesOf('helper').at(-1)?.startedBy).toBe(byTheGivesPiece)
+    expect(launchesOf('helper').at(-1)?.startedBy).toBe(starter)
     await host.closeAll()
     const next = seedHistoricalSuccessor(store, helper, `sess_${++counter}`, tick(), {
       sessions: issued,
@@ -201,6 +183,6 @@ describe('3d1eb064 · a replacement after a give names its starter alone', () =>
       launchesOf('helper')
         .slice(launchesBefore)
         .map((launch) => launch.startedBy),
-    ).toEqual([alone])
+    ).toEqual([starter])
   })
 })

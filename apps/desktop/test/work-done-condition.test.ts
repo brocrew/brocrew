@@ -227,13 +227,13 @@ describe('done conditions replay without changing old work or its state', () => 
       })
       expect(result.ok).toBe(true)
       if (!result.ok) throw new Error('fictional search failed')
-      expect(result.page.hits.map((hit) => hit.piece)).toEqual([piece])
-      expect(result.page.hits[0]?.definition_of_done).toBe(
+      expect(
+        result.page.hits.flatMap((hit) => hit.matched_tasks.map((task) => task.piece)),
+      ).toEqual([piece])
+      expect(result.page.hits[0]?.matched_tasks[0]?.definition_of_done).toBe(
         'Only the condition contains ambercheck.',
       )
-      expect(workSearchInWords(result.page)).toContain(
-        'Done when: Only the condition contains ambercheck.',
-      )
+      expect(workSearchInWords(result.page)).toContain('Task W1.1 · Fictional work')
       const absent = engine.read('fictional-parent', {
         scope: 'this-conversation',
         words: 'not_in_any_field',

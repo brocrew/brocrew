@@ -1,31 +1,24 @@
+import { callOn, lastToolset, listedAgentIds } from './helpers/call-tool'
 import { waitFor } from './lib/f093-host'
 import {
   fixtureProviderConfig,
+  closeHostFixture,
+  fixtureDatabase,
+  fixtureFolder,
   RecordingSink,
-  syntheticProviderHome,
-  neutralHostDeps,
+  fixtureHostPaths,
 } from './lib/host-fixture'
 import { forestOf } from './lib/forest-of-host'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type { AgentToolset, StartOptions } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import type { AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import type { AgentCard, CallerIdentity } from './helpers/giver-notice-host'
 import { CONVERSATIONS_LISTED, agentCallerId } from '../src/main/runtime/agent-tools'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
-import { theOwnerOf } from '../src/shared/piece-called'
-
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 
 class ToolWatchingRuntime extends FakeRuntime {
   constructor(
@@ -75,8 +68,7 @@ describe('642 · who can I talk to', () => {
   let store: SessionStore
   let host: RuntimeHost
   let hosts: RuntimeHost[]
-  let handed: AgentToolset[]
-  let issued: FakeProviderSessions
+  let providerFixture: { toolsets: AgentToolset[]; sessions: FakeProviderSessions }
   let counter: number
   let clock: number
   let window: RecordingSink
@@ -85,11 +77,9 @@ describe('642 · who can I talk to', () => {
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      ...neutralHostDeps(() => userData),
-      createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, handed, issued),
-      prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
+      ...fixtureHostPaths(() => userData),
+      createRuntime: (provider: Provider) =>
+        new ToolWatchingRuntime(provider, providerFixture.toolsets, providerFixture.sessions),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       readProviderConfig: fixtureProviderConfig,
@@ -99,26 +89,31 @@ describe('642 · who can I talk to', () => {
   }
 
   beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-talk-'))
-    root = mkdtempSync(join(tmpdir(), 'brobot2-talk-root-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    userData = fixtureFolder('brobot2-talk-')
+    root = fixtureFolder('brobot2-talk-root-')
+    db = fixtureDatabase(userData)
     clock = Date.UTC(2030, 0, 1)
     store = createSessionStore(db, tick)
     counter = 0
     hosts = []
-    handed = []
-    issued = new FakeProviderSessions()
+    providerFixture = { toolsets: [], sessions: new FakeProviderSessions() }
     STARTED.length = 0
     host = buildHost()
     window = new RecordingSink('webContents:1')
   })
 
-  afterEach(async () => {
-    for (const built of hosts) await built.closeAll()
-    db.close()
-    for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
-  })
+  afterEach(async () =>
+    closeHostFixture(
+      {
+        closeAll: async () => {
+          for (const built of hosts) await built.closeAll()
+        },
+      },
+      db,
+      userData,
+      root,
+    ),
+  )
 
   const personOpens = async (
     profileId: string,
@@ -131,26 +126,8 @@ describe('642 · who can I talk to', () => {
     return sessionId
   }
 
-  const theToolsetJustHandedOut = (): AgentToolset => {
-    const last = handed.at(-1)
-    if (last === undefined) throw new Error('no toolset was handed to that launch')
-    return last
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: string,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
-
-  const idsListedBy = async (toolset: AgentToolset): Promise<string[]> => {
-    const listed = (await callOn(toolset, 'list_agents', {})) as { agents: { agent: string }[] }
-    return listed.agents.map((one) => one.agent).sort()
-  }
+  const idsListedBy = async (toolset: AgentToolset): Promise<string[]> =>
+    (await listedAgentIds(toolset)).sort()
 
   const ledgerOf = (sessionId: string): { type: string }[] =>
     store.events(sessionId).map((entry) => entry.event)
@@ -172,7 +149,7 @@ describe('642 · who can I talk to', () => {
 
   it('§1.1 a conversation whose TURN has ended is still listed', async () => {
     const brobot = await personOpens(DEFAULT_PROFILE_ID)
-    const tools = theToolsetJustHandedOut()
+    const tools = lastToolset(providerFixture.toolsets)
     const worker = await personOpens('worker')
 
     expect(await idsListedBy(tools)).toEqual([brobot, worker].sort())
@@ -196,7 +173,7 @@ describe('642 · who can I talk to', () => {
    */
   it('§1.2 a conversation a person CLOSED stays listed, and the doors that take an id answer it as a stopped one', async () => {
     const brobot = await personOpens(DEFAULT_PROFILE_ID)
-    const tools = theToolsetJustHandedOut()
+    const tools = lastToolset(providerFixture.toolsets)
     const worker = await personOpens('worker')
     expect(await idsListedBy(tools)).toContain(worker)
 
@@ -232,7 +209,7 @@ describe('642 · who can I talk to', () => {
   it('§1.3 a CRASH no longer empties it — what it stopped is listed, and the ledger still holds it', async () => {
     const brobot = await personOpens(DEFAULT_PROFILE_ID)
     const worker = await personOpens('worker')
-    expect(await idsListedBy(theToolsetJustHandedOut())).toContain(worker)
+    expect(await idsListedBy(lastToolset(providerFixture.toolsets))).toContain(worker)
 
     // ⛔ No `closeAll`: the quit never ran, so nothing was recorded. ⚠️ **Its own store object** —
     // `a-next-launch-test-needs-its-own-store-object`: a launch sharing the live host's store
@@ -241,7 +218,7 @@ describe('642 · who can I talk to', () => {
     const next = buildHost()
     host = next
     const brobotAgain = await personOpens(DEFAULT_PROFILE_ID)
-    const tools = theToolsetJustHandedOut()
+    const tools = lastToolset(providerFixture.toolsets)
 
     expect(await idsListedBy(tools)).toEqual([brobot, worker, brobotAgain].sort())
     for (const stopped of [brobot, worker]) {
@@ -263,7 +240,7 @@ describe('642 · who can I talk to', () => {
     const seeded = await personOpens('worker')
     await host.close(seeded, window)
     const brobot = await personOpens(DEFAULT_PROFILE_ID)
-    const brobotTools = theToolsetJustHandedOut()
+    const brobotTools = lastToolset(providerFixture.toolsets)
     const other = await personOpens('other')
     // ⚑ **D-014** — any agent may start a conversation as any existing identity, so no grant is set.
     // ⚑ **D-016** — the give starts the conversation BroBot does not have with `worker` yet.
@@ -308,7 +285,7 @@ describe('642 · who can I talk to', () => {
 
   it('§2.1 list_profiles still names an identity whose only conversation has ended', async () => {
     const brobot = await personOpens(DEFAULT_PROFILE_ID)
-    const tools = theToolsetJustHandedOut()
+    const tools = lastToolset(providerFixture.toolsets)
     const worker = await personOpens('worker')
     // ⚑ **D-014** — `list_profiles` lists every identity this app holds, so no grant puts `worker`
     // in it: the ended conversation is the only thing this case turns on.
@@ -342,7 +319,7 @@ describe('642 · who can I talk to', () => {
     // ⚑ **D-016** — the give IS the work: it starts that child, and its brief is the child's turn.
     await host.close(await personOpens('worker'), window)
     await personOpens(DEFAULT_PROFILE_ID)
-    const tools = theToolsetJustHandedOut()
+    const tools = lastToolset(providerFixture.toolsets)
     const gave = await callOn(tools, 'give_work', {
       to: 'new',
       conversation_title: 'The work it hands off',
@@ -376,22 +353,17 @@ describe('642 · who can I talk to', () => {
   // ───────────────────────────────────────────────────────────────────────────────
 
   // A status read takes any listed id; messaging has its own reach.
-  const SAYS_STATUS_ADDRESSING =
-    'get_agent_status takes any of them by the label of a piece it owns (W1.2) or by its id'
-
-  it('§4.1 the description names global status reads and separate message reach', async () => {
+  it('§4.1 discovery names the address and tells callers where to check delivery', async () => {
     await personOpens(DEFAULT_PROFILE_ID)
-    const tools = theToolsetJustHandedOut()
+    const tools = lastToolset(providerFixture.toolsets)
     const listing = tools.tools.find((one) => one.name === 'list_agents')
-    expect(listing).toBeDefined()
+    const status = tools.tools.find((one) => one.name === 'get_agent_status')
 
-    expect(listing?.description).toContain(SAYS_STATUS_ADDRESSING)
-    expect(listing?.description).toContain('message_agent answers that separately')
+    expect(listing?.description).toContain('conversation <address> · <title>')
+    expect(listing?.description).toContain('message_agent')
     expect(listing?.description).toContain('list_profiles')
-    // One list: nothing is listed apart.
-    expect(listing?.description).not.toContain('Listed apart')
-    expect(listing?.description).toContain(
-      'Each is named by the piece of work it owns (the owner of W1.2 · its title), or by its id when it holds none, then who it is — the name a person gave that agent, and the profile slug give_work takes — its state, the conversation that started it, named the same way, and the work it holds',
+    expect(status?.description).toContain(
+      "One conversation's status, by any of its labels or its id",
     )
   })
 
@@ -411,7 +383,7 @@ describe('642 · who can I talk to', () => {
     }> => {
       await host.close(await personOpens('worker'), window)
       const parent = await personOpens(DEFAULT_PROFILE_ID)
-      const tools = theToolsetJustHandedOut()
+      const tools = lastToolset(providerFixture.toolsets)
       // ⚑ **D-016** — the give starts the child; its brief is the child's first turn.
       const spawned = await callOn(tools, 'give_work', {
         to: 'new',
@@ -497,7 +469,7 @@ describe('642 · who can I talk to', () => {
       // · R3 — the line leads with the piece the child owns** (the one it was given), not its id.
       const named = store.workThatNames(child)
       if (named === null) throw new Error('the child holds no piece')
-      const head = `${theOwnerOf(named)} · `
+      const head = `conversation ${named.label} · ${named.title} · `
       expect(after.text).toContain(head)
       expect(after.text.split('\n').find((line) => line.startsWith(head))).toMatch(/ · idle( · |$)/)
     })
@@ -565,7 +537,7 @@ describe('642 · who can I talk to', () => {
     it('⛔ its PARENT and another conversation with a reach see it alike once it stops — as a card, the grant deciding', async () => {
       const { tools, child } = await aParentAndItsChild()
       await personOpens(DEFAULT_PROFILE_ID)
-      const other = theToolsetJustHandedOut()
+      const other = lastToolset(providerFixture.toolsets)
       // ⚑ The premise: the other one can see the child while it runs.
       expect((await listed(other)).agents).toContain(child)
       host.claimSession(child, window)
@@ -589,13 +561,13 @@ describe('642 · who can I talk to', () => {
         ...real,
         agent: `sess_old_${String(i)}`,
       }))
-      host.agentsVisibleTo = () => ({ agents: many, notListed: 5 })
+      host.agentsVisibleTo = () => ({ agents: many, notListed: 5, next: 'next-page' })
       const page = await listed(tools)
       expect(page.agents).toHaveLength(CONVERSATIONS_LISTED)
       expect(page.notListed).toBe(5)
       // ⚑ **D-016 · commit 7 · R1 — by the label of a piece it owns, or its id.**
       expect(page.text).toContain(
-        '…and 5 more, not listed here; get_agent_status takes the label of a piece one owns (W1.2), or its id.',
+        '5 more conversations: list_agents with the same filters and cursor next-page.',
       )
     })
   })

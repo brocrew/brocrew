@@ -42,6 +42,8 @@ const CONTAINERS = new Set([
   'you_gave',
   'children',
   'hits',
+  'matched_tasks',
+  'tasks',
   'piece',
   'agent',
   'owner',

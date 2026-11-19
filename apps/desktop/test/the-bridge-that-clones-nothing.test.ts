@@ -623,6 +623,7 @@ const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
   // in place — writes `{ piece: named.label, title }` itself, a label read off the row and the title
   // the field held: two strings.
   retitleWork: { how: 'plain-by-construction' },
+  renameConversation: { how: 'plain-by-construction' },
   takeBackWork: { how: 'plain-by-construction' },
   closeWork: { how: 'plain-by-construction' },
 }

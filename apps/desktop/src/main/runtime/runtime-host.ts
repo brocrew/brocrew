@@ -106,9 +106,20 @@ export type {
 import type { FindFilesAsked, FoundFiles } from './kept-file-search'
 import { KeptFiles } from './kept-files'
 import { WorkReads } from './work-reads'
+import { listConversationTasks, type ConversationTasksInput } from './conversation-tasks'
 import { GiveWork } from './give-work'
-import type { ConversationTitledEvent } from '../../shared/conversation-title'
-import { canonicalAddressOf, resolveConversationAddress } from './conversation-address'
+import type {
+  ConversationRenameInput,
+  ConversationRenameResult,
+  ConversationTitleAuthor,
+  ConversationTitledEvent,
+} from '../../shared/conversation-title'
+import {
+  canonicalAddressOf,
+  conversationLine,
+  resolveConversationAddress,
+} from './conversation-address'
+import { renameConversation } from './rename-conversation'
 import { sendReceipt, type SendFacts } from './send-receipt'
 import type { SendRecipientState } from '../../shared/tool-outcome'
 import type { NewSessionRecord } from '../db/session-store'
@@ -119,6 +130,7 @@ import type {
   APieceItHolds,
   PieceBoard,
   PieceRecord,
+  TaskRecordSelection,
   MadeByItsProfile,
   WhatAPieceIsToIt,
 } from './work-records'
@@ -169,11 +181,10 @@ import {
 export { scheduleNoticesText, type NoticeAboutAJob } from './schedule-notices'
 
 import {
-  agentsVisibleTo,
-  archivedVisibleTo,
+  conversationDirectoryPage,
   type WhoseConversation,
   type AgentsListed,
-  type VisibleConversation,
+  type DirectoryPageInput,
   type ArchivedListed,
   type PieceOnTheCard,
   type StoppedOnAPerson,
@@ -385,7 +396,6 @@ import {
   OTHER_CONVERSATIONS_SHOWN,
   type InstructionContext,
   type TheBuildRunning,
-  type OtherConversation,
   type OtherConversations,
 } from './factory-text'
 import { memoryNoteDir, noteNamesIn, notesThatAppeared } from './memory-notes'
@@ -879,10 +889,7 @@ import {
   type WhereTheSenderStands,
 } from './turn-origin'
 import {
-  itsQuestionsInOneWord,
-  WHAT_IS_OPEN_IS_SAID_AGAIN_AFTER_MS,
   whatThisAppAddsToATurn,
-  whoWaitsInOneWord,
   type AQuestionItHasOpen,
   type AHelperInTheTurn,
   type CurrentWorkInTheTurn,
@@ -2237,15 +2244,6 @@ interface HostedSession {
    * (`SessionStore.whenAPersonLastWrote`). `null` is *not that this app knows of*.
    */
   aPersonLastWroteAt: number | null
-  /**
-   * ⚑ **Its open questions, and who waited on it, as the block at the end of a turn last said
-   * each** ({@link itsQuestionsInOneWord}, {@link whoWaitsInOneWord}), and when: a turn this app
-   * starts says a list again only once it changed, or after
-   * {@link WHAT_IS_OPEN_IS_SAID_AGAIN_AFTER_MS}. `null` while it has not been said, or was last
-   * read as empty.
-   */
-  itsQuestionsAsLastSaid: { readonly said: string; readonly at: number } | null
-  whoWaitedAsLastSaid: { readonly said: string; readonly at: number } | null
   /** Last accepted plugin section; staged updates commit with their user_turn. */
   pluginsAsLastSaid: string | null
   turnBlockSnapshot: TurnBlockSnapshot
@@ -2253,8 +2251,6 @@ interface HostedSession {
     plugins: string | null
     readonly next: TurnBlockSnapshot
     readonly words: string
-    readonly questions: HostedSession['itsQuestionsAsLastSaid']
-    readonly waiting: HostedSession['whoWaitedAsLastSaid']
   } | null
   /**
    * 🔴 **The highest ordinal this session has actually PUT ON THE WIRE**, or null before the first
@@ -5016,8 +5012,7 @@ export class RuntimeHost implements LiveHost {
       waitForTurnRead: (unread, ledger, workOut) =>
         this.oneWaitReadPerAnswer(unread, ledger, workOut),
       queueForTurnRead: (row, bounded) => this.withItsPlaceInTheQueue(row, bounded),
-      withinMessagingReach: (id, by, me) => this.withinMessagingReach(id, by, me),
-      theOneInItsPlace: (id) => this.theOneInItsPlace(id),
+      conversationLine: (id) => this.nameByItsWork(id),
       whatToCallTheConversation: (id) => this.whatToCallTheConversation(id),
       store: this.deps.store,
       oneWaitReadPerAnswer: (unread) => this.oneWaitReadPerAnswer(unread),
@@ -5025,9 +5020,11 @@ export class RuntimeHost implements LiveHost {
       withItsPlaceInTheQueue: (row) => this.withItsPlaceInTheQueue(row),
       pieceNamed: (spelled) => this.pieceNamed(spelled),
       ofOneIdentity: (one, other) => this.ofOneIdentity(one, other),
-      childrenOnTheRecord: (piece, waiting, unread) =>
-        this.childrenOnTheRecord(piece, waiting, unread),
       theExchangeShownWith: (piece) => this.theExchangeShownWith(piece),
+      taskRecordExchange: (piece) =>
+        this.ownsTheExchangeShownWith(piece)
+          ? this.deps.store.lastExchangeForTaskRecord(piece.owner)
+          : { exchange: { received: null, answer: null }, revision: '' },
       spawnEdge: (conversation) => this.spawnEdge(conversation),
       runningStateOf: (sessionId) => this.runningStateOf(sessionId),
       markedForAPerson: (edges) => this.markedForAPerson(edges),
@@ -8972,13 +8969,15 @@ export class RuntimeHost implements LiveHost {
    * for any other, that exchange is another caller's, and nothing of this piece was received.
    */
   private theExchangeShownWith(piece: PieceRow): Exchange {
-    if (this.theServiceOf(piece.owner) !== null) {
-      const active = this.theQueueOf(piece.owner)?.blocking
-      if (active?.length !== 1 || active[0]?.piece !== piece.piece) {
-        return { received: null, answer: null }
-      }
-    }
-    return this.deps.store.lastExchange(piece.owner)
+    return this.ownsTheExchangeShownWith(piece)
+      ? this.deps.store.lastExchange(piece.owner)
+      : { received: null, answer: null }
+  }
+
+  private ownsTheExchangeShownWith(piece: PieceRow): boolean {
+    if (this.theServiceOf(piece.owner) === null) return true
+    const active = this.theQueueOf(piece.owner)?.blocking
+    return active?.length === 1 && active[0]?.piece === piece.piece
   }
 
   /** When the piece being worked on at `service` stalled, while it stays stalled; else `null`. */
@@ -10721,39 +10720,47 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  /** List running and restartable conversations, newest activity first. */
-  agentsVisibleTo(by: Caller, me: string | null): AgentsListed {
-    return agentsVisibleTo(this.conversationsVisibleTo(by, me), me, this.archived)
+  agentsVisibleTo(_by: Caller, _me: string | null, input: DirectoryPageInput = {}): AgentsListed {
+    const { rows, ...continuation } = this.conversationDirectoryPage(input, false)
+    return { agents: rows.map((row) => row.card), ...continuation }
   }
 
-  /** Archived conversations under the same list limit. */
-  archivedVisibleTo(by: Caller, me: string | null): ArchivedListed {
-    return archivedVisibleTo(this.conversationsVisibleTo(by, me), this.archived, () => this.now())
+  archivedVisibleTo(
+    _by: Caller,
+    _me: string | null,
+    input: DirectoryPageInput = {},
+  ): ArchivedListed {
+    const { rows, ...continuation } = this.conversationDirectoryPage(input, true)
+    return {
+      archived: rows.flatMap(({ card, archivedAt }) =>
+        archivedAt === null ? [] : [{ card, archivedAt }],
+      ),
+      readAt: this.now(),
+      ...continuation,
+    }
   }
 
-  /** When a person archived `id`, epoch ms, or `null` when it is not archived. */
   whenItWasArchived(id: string): number | null {
     return this.archived.archivedAt(this.theOneInItsPlace(id))
   }
 
-  /** Read cards only for conversations that fit the list limit. */
-  private conversationsVisibleTo(_by: Caller, me: string | null): readonly VisibleConversation[] {
+  private conversationDirectoryPage(input: DirectoryPageInput, archived: boolean) {
     const reads = this.cardReads()
-    return [
-      ...[...this.slots.values()].map((slot) => ({
-        id: slot.id,
-        // ⚑ A reservation with no row yet is the newest activity there is.
-        at: this.deps.store.recordedOne(slot.id)?.updatedAt ?? this.now(),
-        card: () => this.cardFor(slot, reads),
-      })),
-      ...this.everythingStartable().map(({ startable, at }) => ({
-        id: startable.id,
-        at,
-        card: () => this.stoppedCard(startable, reads),
-      })),
-      // ⚑ The caller's own conversation first, whatever its activity, so the cap never cuts the
-      // one `list_agents` promises ("including your own"); then the newest activity first.
-    ].sort((one, other) => (one.id === me ? -1 : other.id === me ? 1 : other.at - one.at))
+    return conversationDirectoryPage(input, archived, {
+      store: this.deps.store,
+      slots: this.slots.values(),
+      now: this.now(),
+      archivedAt: (id) => this.archived.archivedAt(id),
+      visible: (row) =>
+        this.slots.has(row.sessionId) ||
+        (!this.replacedBy.has(row.sessionId) && aRowADeliveryCanStart(row)),
+      card: (id) => {
+        const slot = this.slots.get(id)
+        if (slot !== undefined) return this.cardFor(slot, reads)
+        const stopped = this.startable(id)
+        return stopped === null ? null : this.stoppedCard(stopped, reads)
+      },
+    })
   }
 
   /** What opened the last ended turn, if its ledger has one. */
@@ -11131,8 +11138,16 @@ export class RuntimeHost implements LiveHost {
     return this.workReads.pieceBoard(sessionId)
   }
 
-  pieceRecord(sessionId: string, spelled: string): PieceRecord {
-    return this.workReads.pieceRecord(sessionId, spelled)
+  pieceRecord(sessionId: string, spelled: string, selection?: TaskRecordSelection): PieceRecord {
+    return this.workReads.pieceRecord(sessionId, spelled, selection)
+  }
+
+  pieceIdForAddress(spelled: string): string | null {
+    return this.pieceNamed(spelled)?.piece ?? null
+  }
+
+  listConversationTasks(input: ConversationTasksInput) {
+    return listConversationTasks(input, this.deps.store)
   }
 
   /**
@@ -11170,30 +11185,6 @@ export class RuntimeHost implements LiveHost {
 
   findKeptFiles(asAgent: string, asked: FindFilesAsked): Promise<FoundFiles> {
     return this.keptFiles.findKeptFiles(asAgent, asked)
-  }
-
-  /**
-   * ⚑ **D-016 · the pieces given under one piece, each as its owner's ledger folds it** — rows from
-   * `work`, states from the fold, so a child the fold cannot read is left out rather than guessed.
-   */
-  private childrenOnTheRecord(
-    piece: string,
-    waiting: (id: string) => WhatAConversationIsWaitingOn,
-    unread: RowsUnread,
-  ): readonly PieceRow[] {
-    const owned = new Map<string, readonly PieceRow[]>()
-    return this.deps.store.childrenOf(piece).flatMap((child) => {
-      let folded = owned.get(child.owner)
-      if (folded === undefined) {
-        folded = composeWhatEachPieceIsWaitingOn(
-          this.deps.store.piecesOwnedBy(child.owner, unread),
-          waiting,
-        )
-        owned.set(child.owner, folded)
-      }
-      const one = folded.find((row) => row.piece === child.piece)
-      return one === undefined ? [] : [one]
-    })
   }
 
   /**
@@ -12053,7 +12044,11 @@ export class RuntimeHost implements LiveHost {
    */
   private itsOpenPiecesAreStillYours(piece: PieceRow): readonly string[] {
     const stillOpen = openWorkOf(
-      this.childrenOnTheRecord(piece.piece, this.oneWaitReadPerAnswer(), rowsUnreadOnce()),
+      this.workReads.childrenOnTheRecord(
+        piece.piece,
+        this.oneWaitReadPerAnswer(),
+        rowsUnreadOnce(),
+      ),
     ).map((child) => child.label)
     return stillOpen.length === 0
       ? []
@@ -15034,9 +15029,7 @@ export class RuntimeHost implements LiveHost {
             // said as its own act — `parent.id`, the conversation the words go to.
             parent.id,
           ),
-          // ⚑ **D-012** — the sender of the child's last message — ⚑ **D-016 · commit 7 · R3 — by
-          // the piece it owns**, as the asker is: ⚑ F033 · the one its message was sent under.
-          (who) => this.nameByItsWorkUnder(who.conversation, who.about ?? null),
+          (who) => this.nameByItsWork(who.conversation),
           // ⚑ **D-012** — `read_transcript` is named only to a parent it would admit.
           this.mayReadTheTranscriptOf(piece.owner),
           // ⚑ Whether the app's restart ended that conversation: the launch's own sweep, or a quit's
@@ -17324,6 +17317,17 @@ export class RuntimeHost implements LiveHost {
     return context
   }
 
+  private contextSizeOf(conversation: string): AgentCard['context'] {
+    try {
+      const reading = this.lastContextOf(conversation)?.reading
+      return reading?.kind === 'proportional'
+        ? { window: reading.window, percentUsed: Math.round((100 * reading.used) / reading.window) }
+        : null
+    } catch {
+      return null
+    }
+  }
+
   /** `walk` without the rows of archived conversations, which a person's lists leave out. */
   private shown<Row>(walk: LedgerWalk<Row>, conversationOf: (row: Row) => string): LedgerWalk<Row> {
     return { ...walk, rows: walk.rows.filter((row) => !this.archived.has(conversationOf(row))) }
@@ -18386,30 +18390,32 @@ export class RuntimeHost implements LiveHost {
     )
   }
 
-  /**
-   * 🔴 **D-016 · commit 7 · R3 — what a sentence calls another conversation** — its agent's name
-   * ({@link whatToCallTheConversation}) and the work that names it (`SessionStore.workThatNames`):
-   * `Ada (the owner of W1.2 · Build the pages)`, or the name alone when it holds no piece. ⛔ **Not
-   * for a durable row**, for {@link whatToCallTheConversation}'s reason: a title is renamed.
-   */
   nameByItsWork(conversation: string): string {
-    // ⚑ A service holds its callers' pieces, so it is called by its agent's name and what it is.
-    if (this.itIsAService(conversation)) {
-      return `${this.whatToCallTheConversation(conversation)} (a service)`
-    }
-    return theConversationCalled(
-      this.whatToCallTheConversation(conversation),
-      this.deps.store.workThatNames(conversation),
-    )
+    return conversationLine(this.deps.store, conversation)
   }
 
-  /**
-   * ⚑ **D-016 · commit 7 · R3 — what a reader passes back to name a conversation** — the label of
-   * the piece that names it, which every door that takes an agent takes
-   * ({@link theConversationAddressed}), or its id when it holds no piece and has no label.
-   */
   addressOf(conversation: string): string {
-    return anAddressOf(this.workThatNames(conversation), conversation)
+    return canonicalAddressOf(this.deps.store, conversation)
+  }
+
+  renameConversation(
+    input: ConversationRenameInput,
+    author: ConversationTitleAuthor,
+  ): Promise<ConversationRenameResult> {
+    return renameConversation(input, author, {
+      store: this.deps.store,
+      beforeWriting: async (conversation) => {
+        await this.settleBeforeUse(conversation)
+        const slot = this.slots.get(conversation)
+        if (slot?.session === null) await slot.arrived
+      },
+      record: (conversation, titled) => {
+        const session = this.slots.get(conversation)?.session
+        if (session != null) this.publishOurs(session, titled)
+        else if (!this.writeWhileNothingRunsIt(conversation, titled))
+          throw new Error('Could not record the conversation title.')
+      },
+    })
   }
 
   /**
@@ -19185,8 +19191,13 @@ export class RuntimeHost implements LiveHost {
     return this.workSearch.searchWork(asAgent, input)
   }
 
-  searchPastWork(asAgent: string, words: string): Promise<PastWorkSearchResult> {
-    return this.workSearch.searchPastWork(asAgent, words)
+  searchPastWork(
+    asAgent: string,
+    words: string,
+    profile?: string,
+    cursor?: string,
+  ): Promise<PastWorkSearchResult> {
+    return this.workSearch.searchPastWork(asAgent, words, profile, cursor)
   }
 
   /**
@@ -19633,6 +19644,8 @@ export class RuntimeHost implements LiveHost {
     return {
       agent: stopped.id,
       ...this.workerFields(stopped.id),
+      lastActiveAt: this.deps.store.recordedOne(stopped.id)?.updatedAt ?? null,
+      context: this.contextSizeOf(stopped.id),
       whose: whoseConversationIs(stopped.profileId, reads.roster),
       provider: stopped.provider,
       state: this.stateOf(stopped.id, reads, unread, ledger(stopped.id), workOut),
@@ -19667,6 +19680,8 @@ export class RuntimeHost implements LiveHost {
     return {
       agent: slot.id,
       ...this.workerFields(slot.id),
+      lastActiveAt: this.deps.store.recordedOne(slot.id)?.updatedAt ?? null,
+      context: this.contextSizeOf(slot.id),
       // The reservation's claim while the launch is in flight, the launch's own answer after it
       // lands — the same pair, in the same order, that `give_work`'s lookup reads.
       //
@@ -19852,12 +19867,6 @@ export class RuntimeHost implements LiveHost {
      * launch, whose row (and root) is written after these instructions.
      */
     conversation: string | null,
-    /**
-     * ⚑ **W4.175 — on a first launch from a give, the piece its starter starts it from**
-     * ({@link SessionSlot.startedFrom}). ⚠️ Absent on every other launch, which reads it off the
-     * conversation's own first words ({@link theStarterCalled}).
-     */
-    startedFrom: string | null = null,
   ): InstructionContext {
     // ⚠️ **Folded, because the identity's own name is folded** (238). `profileId` keeps the exact
     // directory spelling a launch used, and telling an agent it is `Developer` while every surface
@@ -19879,12 +19888,10 @@ export class RuntimeHost implements LiveHost {
           : (this.deps.store.agentIdentities().find((one) => one.slug === profileSlug)
               ?.displayName ?? null),
       cwd,
-      // ⚑ **D-016 · commit 7 · R3 — who started it, named by a piece**, never by its id; ⚑ W4.175 —
-      // by its own piece it started this one from, never by its work now.
       startedBy:
         parentSessionId === null
           ? null
-          : this.theStarterCalled(parentSessionId, conversation, startedFrom),
+          : `${this.whatToCallTheConversation(parentSessionId)}, ${this.nameByItsWork(parentSessionId)}`,
       // 🔴 **D-016 · its own root, when a person started it** (plan §3.10) — the label, or
       // `'not-yet-numbered'` on a first launch: the root is written with the conversation's row, by
       // `store.create`, which runs after this read. ⚠️ `null` for a conversation another one started:
@@ -19954,15 +19961,10 @@ export class RuntimeHost implements LiveHost {
     const others = this.deps.store
       .conversationsOf(profileSlug)
       .filter((one) => !itself.includes(one.conversation) && !this.replacedBy.has(one.conversation))
-    const unread = rowsUnreadOnce()
-    const shown = others.slice(0, OTHER_CONVERSATIONS_SHOWN).map((one): OtherConversation => {
-      const named = this.workThatNames(one.conversation, unread)
-      return {
-        label: named?.label ?? one.conversation,
-        title: named?.title || 'Untitled conversation',
-        lastActiveAt: one.lastActiveAt,
-      }
-    })
+    const shown = others.slice(0, OTHER_CONVERSATIONS_SHOWN).map((one) => ({
+      line: conversationLine(this.deps.store, one.conversation),
+      lastActiveAt: one.lastActiveAt,
+    }))
     return { shown, more: others.length - shown.length }
   }
 
@@ -20165,7 +20167,7 @@ export class RuntimeHost implements LiveHost {
       // spawn token are resolved, and never derived downstream.
       //
       // A first launch uses the parent in the spawn admission or in the already recorded row.
-      this.instructionContext(profileId, cwd, parent, instructionConversation, slot.startedFrom),
+      this.instructionContext(profileId, cwd, parent, instructionConversation),
       pack,
     )
     const systemHint = instructions?.systemHint
@@ -20259,8 +20261,7 @@ export class RuntimeHost implements LiveHost {
       agentTools,
       handle.instructionSources ?? [],
       instructions,
-      () =>
-        this.instructionContext(profileId, cwd, parent, instructionConversation, slot.startedFrom),
+      () => this.instructionContext(profileId, cwd, parent, instructionConversation),
       handle.launchSettings,
       builtInSkills,
     )
@@ -21420,53 +21421,28 @@ export class RuntimeHost implements LiveHost {
   private whatThisAppAddsAtItsEnd(session: HostedSession, currentPiece: string | null): string {
     const now = this.now()
     const aPersonStartedIt = session.aPersonsWordsOpenedIt
-    const due = (
-      inOneWord: string,
-      before: { readonly said: string; readonly at: number } | null,
-    ): boolean =>
-      aPersonStartedIt ||
-      before === null ||
-      before.said !== inOneWord ||
-      now - before.at > WHAT_IS_OPEN_IS_SAID_AGAIN_AFTER_MS
     const facts = this.factsForTheTurnBlock(session, currentPiece)
     const changed = turnBlockChanges(
       { ...facts, person: aPersonStartedIt, now },
       session.turnBlockSnapshot,
     )
-    const previousQuestions = session.itsQuestionsAsLastSaid
-    const previousWaiting = session.whoWaitedAsLastSaid
-    let questions = facts.questions
-    if (questions !== null) {
-      const inOneWord = itsQuestionsInOneWord(questions)
-      if (due(inOneWord, session.itsQuestionsAsLastSaid)) {
-        session.itsQuestionsAsLastSaid = { said: inOneWord, at: now }
-      } else questions = null
-    }
-    let waiting = this.whoWaitsOnItAtHand(session)
-    if (waiting !== null && waiting.givers.length + waiting.askers.length === 0) {
-      session.whoWaitedAsLastSaid = null
-    } else if (waiting !== null) {
-      const inOneWord = whoWaitsInOneWord(waiting)
-      if (due(inOneWord, session.whoWaitedAsLastSaid)) {
-        session.whoWaitedAsLastSaid = { said: inOneWord, at: now }
-      } else waiting = null
-    }
     session.pendingTurnBlock = {
       plugins: session.pluginsAsLastSaid,
       next: changed.next,
       words: '',
-      questions: session.itsQuestionsAsLastSaid,
-      waiting: session.whoWaitedAsLastSaid,
     }
-    session.itsQuestionsAsLastSaid = previousQuestions
-    session.whoWaitedAsLastSaid = previousWaiting
     const added = whatThisAppAddsToATurn({
       now,
       aPersonStartedIt,
       thePersonLastWroteAt: session.aPersonLastWroteAt,
-      questions,
-      waiting,
-      extra: changed.extra,
+      questions: facts.questions,
+      waiting: this.whoWaitsOnItAtHand(session),
+      extra: {
+        ...changed.extra,
+        conversation: this.nameByItsWork(session.id),
+        currentContext: this.contextSizeOf(session.id)?.percentUsed ?? null,
+        contextOf: (id) => this.contextSizeOf(id)?.percentUsed ?? null,
+      },
     })
     const sharedRoot = session.builtInSkills?.sharedRoot
     const context = sharedRoot
@@ -21487,18 +21463,15 @@ export class RuntimeHost implements LiveHost {
     session: HostedSession,
     currentPiece: string | null,
   ): {
-    readonly helpers: readonly AHelperInTheTurn[] | null
+    readonly helpers: readonly AHelperInTheTurn[]
+    readonly helpersIncomplete: boolean
     readonly questions: readonly AQuestionItHasOpen[] | null
     readonly personWait: string | null
     readonly nobodyWaiting: boolean
     readonly replyQuestionTurn: string | null
     readonly current: CurrentWorkInTheTurn
   } {
-    return this.workReads.factsForTheTurnBlock(
-      session.id,
-      currentPiece,
-      () => session.turnBlockSnapshot,
-    )
+    return this.workReads.factsForTheTurnBlock(session.id, currentPiece)
   }
 
   /** Read only existing at-hand folds; unknown facts remain null. */
@@ -22267,6 +22240,7 @@ export class RuntimeHost implements LiveHost {
       | WorkTakenBackEvent
       // ⚑ **D-016 · `update_work`'s rows**, into the owner's ledger when it is running.
       | WorkRetitledEvent
+      | ConversationTitledEvent
       | WorkStatusSetEvent
       | WorkRebriefedEvent
       | WorkClosedEvent
@@ -22370,8 +22344,6 @@ export class RuntimeHost implements LiveHost {
       if (sent !== undefined && session.pendingTurnBlock?.words === sent) {
         session.pluginsAsLastSaid = session.pendingTurnBlock.plugins
         session.turnBlockSnapshot = session.pendingTurnBlock.next
-        session.itsQuestionsAsLastSaid = session.pendingTurnBlock.questions
-        session.whoWaitedAsLastSaid = session.pendingTurnBlock.waiting
         session.pendingTurnBlock = null
       }
       if (sent !== undefined && event.sent === undefined) {
@@ -22515,6 +22487,7 @@ export class RuntimeHost implements LiveHost {
       | WorkTakenBackEvent
       // ⚑ **D-016 · `update_work`'s rows** — see {@link RuntimeHost.publishOurs}.
       | WorkRetitledEvent
+      | ConversationTitledEvent
       | WorkStatusSetEvent
       | WorkRebriefedEvent
       | WorkClosedEvent
@@ -38131,8 +38104,6 @@ export class RuntimeHost implements LiveHost {
       moveRequestRowPending: false,
       moveRequestHandoff: null,
       aPersonLastWroteAt: options.continuesARecording ? this.whenAPersonLastWroteIn(id) : null,
-      itsQuestionsAsLastSaid: null,
-      whoWaitedAsLastSaid: null,
       pluginsAsLastSaid: (() => {
         // Claude receives the current section in its freshly rendered system prompt.
         // Codex must replace any live metadata updates retained in its thread.
@@ -38659,19 +38630,6 @@ export class RuntimeHost implements LiveHost {
       profileId: row.profileId,
       provider: row.provider,
     }
-  }
-
-  /**
-   * ⚑ **D-017 · R12 — every conversation {@link startable} answers for**, with when its record last
-   * moved — a row with no provider id among them (a message to one reaches the conversation that
-   * replaces it). ⚠️ One whole-table read per call ({@link SessionStore.recorded}), then
-   * `startable`'s reads per row.
-   */
-  private everythingStartable(): { readonly startable: Startable; readonly at: number }[] {
-    return this.deps.store.recorded().flatMap((row) => {
-      const startable = this.startable(row.sessionId)
-      return startable === null ? [] : [{ startable, at: row.updatedAt }]
-    })
   }
 
   /**

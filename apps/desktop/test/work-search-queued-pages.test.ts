@@ -62,11 +62,182 @@ afterAll(() => {
   rmSync(directory, { recursive: true, force: true })
 })
 
+it('returns a single conversation row for matching ended and open tasks', () => {
+  const owner = 'fictional_0'
+  const giver = 'fictional_2'
+  const parent = store.rootOf(giver)!
+  const address = store.rootOf(owner)!.label
+  const at = Date.now()
+  for (const [index, title] of ['Indexed ended task', 'Indexed open task'].entries()) {
+    const piece = `work_indexed_${String(index)}`
+    const number = store.numberUnder(parent.piece)
+    const given = {
+      type: 'work_given' as const,
+      piece,
+      label: `${parent.label}.${String(number)}`,
+      parent: parent.piece,
+      givenBy: giver,
+      title,
+      brief: 'Archive details',
+      definitionOfDone: 'Document the sources',
+    }
+    store.recordGive(
+      { ...given, number, owner, folder: null, inputs: [] },
+      store.nextOrdinal(owner),
+      given,
+      at + index,
+    )
+  }
+  store.append(
+    owner,
+    store.nextOrdinal(owner),
+    {
+      type: 'work_replied',
+      piece: 'work_indexed_0',
+      outcome: 'done',
+      summary: 'Completed that task',
+      resources: [],
+    },
+    at + 2,
+  )
+  store.append(
+    owner,
+    store.nextOrdinal(owner),
+    { type: 'work_status_set', piece: 'work_indexed_1', line: 'Consult the librarian', by: owner },
+    at + 3,
+  )
+  store.titleConversation(
+    owner,
+    store.nextOrdinal(owner),
+    {
+      type: 'titled',
+      title: 'Catalogue rebuild',
+      author: { kind: 'person' },
+    },
+    at + 4,
+  )
+  const engine = new WorkSearchEngine(file)
+  try {
+    const result = engine.read(giver, { profile: 'profile_0', words: 'Archive details' })
+    expect(result).toMatchObject({
+      ok: true,
+      page: {
+        hits: [
+          {
+            conversation: owner,
+            address,
+            title: 'Catalogue rebuild',
+            profile: 'profile_0',
+            matched_tasks: [
+              { title: 'Indexed open task' },
+              { title: 'Indexed ended task', state: 'answered' },
+            ],
+          },
+        ],
+      },
+    })
+    expect(engine.read(giver, { words: address, profile: 'profile_0' })).toMatchObject({
+      ok: true,
+      page: { hits: [{ conversation: owner }] },
+    })
+    const palette = { scope: 'all' as const, profile: 'profile_0' }
+    for (const words of [address, 'Archive details', 'Consult the librarian']) {
+      expect(engine.read(giver, { ...palette, words })).toMatchObject({
+        ok: true,
+        page: { hits: [] },
+      })
+    }
+    for (const words of ['Indexed ended', 'Document the sources', 'Completed that task']) {
+      expect(engine.read(giver, { ...palette, words })).toMatchObject({
+        ok: true,
+        page: {
+          hits: [
+            {
+              conversation: owner,
+              matched_tasks: expect.arrayContaining([
+                expect.objectContaining({ title: 'Indexed ended task' }),
+              ]),
+            },
+          ],
+        },
+      })
+    }
+    expect(engine.read(giver, { words: 'Catalogue rebuild', profile: 'profile_0' })).toMatchObject({
+      ok: true,
+      page: { hits: [{ conversation: owner, matched_tasks: [] }] },
+    })
+    expect(engine.read(giver, { profile: 'profile_0', from: '2100-01-01' })).toMatchObject({
+      ok: true,
+      page: { hits: [] },
+    })
+  } finally {
+    engine.close()
+  }
+})
+
+it('continues all matching tasks for the existing task palette through the same conversation search', () => {
+  const owner = 'fictional_3'
+  const giver = 'fictional_2'
+  const parent = store.rootOf(giver)!
+  const at = Date.now()
+  const expected: string[] = []
+  for (let i = 0; i < 55; i++) {
+    const piece = `work_palette_${i}`
+    const number = store.numberUnder(parent.piece)
+    const given = {
+      type: 'work_given' as const,
+      piece,
+      label: `${parent.label}.${number}`,
+      parent: parent.piece,
+      givenBy: giver,
+      title: `Fictional lift task ${i}`,
+      brief: 'Inspect the work area',
+      definitionOfDone: 'Palette window placement',
+    }
+    store.recordGive(
+      { ...given, number, owner, folder: null, inputs: [] },
+      store.nextOrdinal(owner),
+      given,
+      at + i,
+    )
+    expected.unshift(piece)
+  }
+  const engine = new WorkSearchEngine(file)
+  try {
+    const agent = engine.read(giver, { profile: 'profile_3', words: 'Palette window placement' })
+    expect(agent).toMatchObject({
+      ok: true,
+      page: {
+        hits: [{ conversation: owner, tasks_omitted: expect.any(Number) }],
+        next_cursor: null,
+      },
+    })
+
+    const query = { scope: 'all' as const, profile: 'profile_3', words: 'Palette window placement' }
+    const found: string[] = []
+    let cursor: string | undefined
+    for (let page = 0; page < 5; page++) {
+      const result = engine.read(giver, { ...query, cursor })
+      expect(result.ok).toBe(true)
+      if (!result.ok) throw new Error('fictional palette page failed')
+      expect(result.page.hits).toHaveLength(1)
+      expect(result.page.hits[0]?.conversation).toBe(owner)
+      found.push(...result.page.hits.flatMap((row) => row.matched_tasks.map((task) => task.piece)))
+      cursor = result.page.next_cursor ?? undefined
+      if (cursor === undefined) break
+    }
+    expect(cursor).toBeUndefined()
+    expect(found).toEqual(expected)
+  } finally {
+    engine.close()
+  }
+})
+
 it('returns a partial page on a slow large ledger and continues without losing or repeating work', () => {
   let clock = 0
   let slow = true
   const engine = new WorkSearchEngine(file, () => (clock += slow ? 1 : 0))
-  const query = { scope: 'all' as const, limit: 50 }
+  const query = { limit: 50 }
   const checkpoints: WorkSearchResult[] = []
   try {
     const first = engine.read('fictional_0', query, (result) => checkpoints.push(result))
@@ -81,22 +252,26 @@ it('returns a partial page on a slow large ledger and continues without losing o
     const initial = checkpoints[0]
     if (!initial?.ok || initial.page.next_cursor === null) throw new Error('no initial checkpoint')
     slow = false
-    const all = new Set(first.page.hits.map((hit) => hit.piece))
+    const all = new Set(first.page.hits.map((hit) => hit.conversation))
     let cursor = first.page.next_cursor
     for (let page = 0; cursor !== null && page < 10; page++) {
       const next = engine.read('fictional_0', { ...query, cursor })
       if (!next.ok) throw new Error('fictional continuation failed')
       for (const hit of next.page.hits) {
-        expect(all.has(hit.piece)).toBe(false)
-        all.add(hit.piece)
+        expect(all.has(hit.conversation)).toBe(false)
+        all.add(hit.conversation)
       }
       cursor = next.page.next_cursor
     }
     expect(cursor).toBeNull()
-    expect(all.size).toBe(160)
+    expect(all.size).toBe(162)
     // Even a deadline before the first candidate carries a usable, query-bound cursor.
     const restart = engine.read('fictional_0', { ...query, cursor: initial.page.next_cursor })
-    expect(restart.ok && restart.page.hits.length).toBe(50)
+    expect(restart.ok).toBe(true)
+    if (!restart.ok) throw new Error('restart failed')
+    expect(restart.page.hits.length).toBeGreaterThan(0)
+    expect(restart.page.hits.length).toBeLessThanOrEqual(query.limit)
+    expect(restart.page.next_cursor).not.toBeNull()
     expect(
       engine.read('fictional_0', { ...query, words: 'changed', cursor: initial.page.next_cursor }),
     ).toEqual({ ok: false, reason: 'cursor-invalid' })
@@ -113,7 +288,7 @@ it('returns a partial page on a slow large ledger and continues without losing o
       reason: 'cursor-invalid',
     })
     expect(JSON.parse(Buffer.from(initial.page.next_cursor, 'base64url').toString()).query).toBe(
-      JSON.stringify(['fictional_0', query.scope, null, [], query.limit]),
+      JSON.stringify(['fictional_0', null, null, null, null, null, [], query.limit]),
     )
   } finally {
     engine.close()
@@ -146,8 +321,8 @@ it('the shipped worker publishes checkpoints and answers five queued callers inc
       ),
     )
     expect(pages.every((page) => page.ok)).toBe(true)
-    expect(pages.map((page) => page.ok && page.page.hits.map((hit) => hit.piece))).toEqual(
-      pages.map(() => pages[0]?.ok && pages[0].page.hits.map((hit) => hit.piece)),
+    expect(pages.map((page) => page.ok && page.page.hits.map((hit) => hit.conversation))).toEqual(
+      pages.map(() => pages[0]?.ok && pages[0].page.hits.map((hit) => hit.conversation)),
     )
     expect(progress.length).toBeGreaterThanOrEqual(5)
     expect(progress).toContainEqual(
@@ -155,7 +330,9 @@ it('the shipped worker publishes checkpoints and answers five queued callers inc
         kind: 'progress',
         result: expect.objectContaining({
           page: expect.objectContaining({
-            hits: expect.arrayContaining([expect.objectContaining({ piece: expect.any(String) })]),
+            hits: expect.arrayContaining([
+              expect.objectContaining({ conversation: expect.any(String) }),
+            ]),
           }),
         }),
       }),
@@ -179,5 +356,43 @@ it('a real worker read failure refuses instead of inventing an empty page', asyn
     })
   } finally {
     await reader.close()
+  }
+})
+
+it('stops at 1000 conversation candidates and continues without repeating a page', () => {
+  store.atomically(() => {
+    for (let index = 0; index < 1005; index++)
+      store.create({
+        id: `fictional_candidate_${String(index)}`,
+        parentSessionId: 'fictional_0',
+        profileId: 'profile_0',
+        provider: 'claude',
+        approvalMode: 'auto',
+        cwd: directory,
+      })
+  })
+  const { count: total } = db.prepare('SELECT count(*) AS count FROM provider_session').get() as {
+    count: number
+  }
+  const before = db.prepare('SELECT total_changes() AS count').get()
+  const engine = new WorkSearchEngine(file, () => 1)
+  try {
+    const query = { words: 'no-match-canary' }
+    const first = engine.read('fictional_0', query)
+    expect(first.ok).toBe(true)
+    if (!first.ok) throw new Error('no first page')
+    expect(first.page.hits).toEqual([])
+    expect(first.page.searched).toBe(1000)
+    expect(first.page.next_cursor).not.toBeNull()
+    expect(first.page.complete).toBe(false)
+    const next = engine.read('fictional_0', { ...query, cursor: first.page.next_cursor! })
+    expect(next.ok).toBe(true)
+    if (!next.ok) throw new Error('no continuation')
+    expect(next.page.searched).toBe(total - 1000)
+    expect(next.page.hits).toEqual([])
+    expect(next.page.next_cursor).toBeNull()
+    expect(db.prepare('SELECT total_changes() AS count').get()).toEqual(before)
+  } finally {
+    engine.close()
   }
 })
