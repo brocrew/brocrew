@@ -176,6 +176,8 @@ export interface AttachmentBook {
    * per render would make the prop change on every render of a component that had not changed.
    */
   handing(key: string): DraftHanding
+  /** Hide submitted chips while their paths remain kept and count toward the draft's capacity. */
+  hideSubmitted(key: string): (accepted: boolean) => void
 }
 
 export function createAttachmentBook(): AttachmentBook {
@@ -190,6 +192,7 @@ export function createAttachmentBook(): AttachmentBook {
   const refusals = reactive(new Map<string, string>())
   /** ⚠️ Not reactive: handles are identities, not data. See {@link AttachmentBook.handing}. */
   const handles = new Map<string, DraftHanding>()
+  const hidden = shallowReactive(new Map<string, HandedPath[]>())
 
   const read = (key: string): HandedPath[] => [...(attached.get(key) ?? [])]
   const write = (key: string, handed: readonly HandedPath[]): void => {
@@ -207,9 +210,13 @@ export function createAttachmentBook(): AttachmentBook {
     const handle: DraftHanding = {
       key,
       get staged() {
-        return read(key)
+        const submitted = hidden.get(key) ?? []
+        return read(key).filter((path) => !submitted.includes(path))
       },
-      stage: (next) => write(key, next),
+      stage: (next) => {
+        const submitted = hidden.get(key) ?? []
+        write(key, [...submitted, ...next.filter((path) => !submitted.some((old) => old.path === path.path))])
+      },
       get refusal() {
         return refusals.get(key) ?? null
       },
@@ -255,6 +262,15 @@ export function createAttachmentBook(): AttachmentBook {
     // the book behind its own back, and the reactive Map would not see a key change. The empty case
     // has to be fresh too, or every conversation with nothing attached would share one array.
     read,
+
+    hideSubmitted(key) {
+      const submitted = read(key)
+      hidden.set(key, submitted)
+      return (accepted) => {
+        if (accepted) write(key, read(key).filter((path) => !submitted.includes(path)))
+        hidden.delete(key)
+      }
+    },
 
     write,
 
@@ -506,12 +522,7 @@ export function createDraftBook(): DraftBook {
     return {
       slot: key,
       text: held ? puttingItBack(held.text, book.read(key)) : book.read(key),
-      attached: held
-        ? [
-            ...held.attached,
-            ...attached.filter((path) => !held.attached.some((old) => old.path === path.path)),
-          ]
-        : attached,
+      attached,
     }
   }
 
@@ -589,7 +600,7 @@ export function createDraftBook(): DraftBook {
   async function sendQueuedDraft(key: string, send: () => Promise<boolean>): Promise<void> {
     queued.set(key, savedSlot(key))
     book.write(key, '')
-    paths.write(key, [])
+    const revealPaths = paths.hideSubmitted(key)
     const handing = paths.handing(key)
     const refusal = handing.refusal
     let accepted = false
@@ -600,8 +611,8 @@ export function createDraftBook(): DraftBook {
       queued.delete(key)
       if (!accepted) {
         book.write(key, retained.text)
-        paths.write(key, retained.attached)
       } else if (handing.refusal === refusal) handing.refuse(null)
+      revealPaths(accepted)
     }
   }
 }

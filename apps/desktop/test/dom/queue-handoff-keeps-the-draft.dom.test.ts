@@ -178,3 +178,28 @@ for (const accepted of [true, false]) {
     }
   })
 }
+
+it('retains the submitted files within the existing attachment capacity while their chips are hidden', async () => {
+  const q = openQueue()
+  const files = Array.from({ length: 10 }, (_, index) => ({ ...FILE, path: `/fictional/${index}.md` }))
+  q.book.paths.write(q.key, files)
+  await nextTick()
+  try {
+    q.view.q('queue-prompt').click()
+    await nextTick()
+    expect(q.view.all('composer-attachments')).toHaveLength(0)
+    await q.book.paths.handing(q.key).acquire(async () => [{ handed: { ...FILE, path: '/fictional/extra.md' } }])
+    expect(q.book.paths.handing(q.key).refusal).toContain('10 attachments')
+    expect(draftsToSave(q.book).drafts[0]!.attached).toEqual(files)
+    const restarted = createDraftBook()
+    restoreDrafts(restarted, draftsToSave(q.book))
+    expect(restarted.paths.read(q.key)).toEqual(files)
+    q.refuse(new Error('Fictional queue refusal'))
+    await q.settled()
+    expect(q.book.paths.handing(q.key).staged).toEqual(files)
+  } finally {
+    q.accept()
+    await q.settled()
+    q.stop()
+  }
+})
