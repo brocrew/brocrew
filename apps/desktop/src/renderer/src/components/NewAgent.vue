@@ -150,8 +150,6 @@ const namingBroBot = computed(
     identityIn(store.identities.value, DEFAULT_PROFILE_ID) === null,
 )
 
-/** Normal or service: offered only while a person has services on in this workspace. */
-const servicesOn = computed(() => store.identities.value?.servicesOn === true)
 const kind = ref<'normal' | 'service'>('normal')
 
 const creating = ref(false)
@@ -290,7 +288,7 @@ const providers = computed<Provider[]>(() => Object.keys(PROVIDER_NAME) as Provi
         </p>
       </label>
 
-      <fieldset v-if="servicesOn && !namingBroBot" class="field kind" data-cy="new-agent-kind">
+      <fieldset v-if="!namingBroBot" class="field kind" data-cy="new-agent-kind">
         <legend class="lbl">Kind</legend>
         <label class="kind-choice">
           <input v-model="kind" type="radio" value="normal" data-cy="new-agent-kind-normal" />

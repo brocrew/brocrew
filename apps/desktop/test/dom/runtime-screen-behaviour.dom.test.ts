@@ -14,7 +14,6 @@ import {
 import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
-import { useSpawnSafety } from '../../src/renderer/src/lib/spawn-safety'
 import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
 import { screenFacts, useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { useOverlays } from '../../src/renderer/src/lib/overlay-store'
@@ -522,21 +521,6 @@ it('keeps the launcher open when a Team read finishes after the person leaves', 
   expect(m.q('prompt-input')).toBeTruthy()
   expect(m.all('team-workspace')).toHaveLength(0)
   expect(m.all('forest-outside')).toHaveLength(0)
-})
-
-it('keeps the stop-spawning switch usable while an agent form is open', async () => {
-  const m = mount(RuntimeScreen, {})
-  m.q('rail-team').click()
-  await expect.poll(() => m.all('team-open-editor').length).toBe(1)
-  m.q('team-create').click()
-  await nextTick()
-  expect(m.q('overlay-spawning').getAttribute('aria-pressed')).toBe('true')
-  m.q('overlay-spawning').click()
-  await expect.poll(() => m.q('overlay-spawning').getAttribute('aria-pressed')).toBe('false')
-  expect(runtime.setSpawningEnabled).toHaveBeenCalledWith({ enabled: false })
-  expect(m.q('new-agent')).toBeTruthy()
-  m.q('new-agent-cancel').click()
-  await nextTick()
 })
 
 it('preserves an unsent draft when the new-conversation shortcut returns from Team', async () => {
@@ -1128,16 +1112,13 @@ it('replies that land after the screen is gone write nothing the next screen wou
   runtime.processMemory.mockImplementation(() => memory.promise)
   runtime.filesKept.mockImplementation(() => files.promise)
   const cast = useWhoCalledWhom()
-  const safety = useSpawnSafety()
   try {
     // Opening a conversation reads its band, and the process memory with it, and its files.
     const screen = await panelScreen()
     await expect.poll(() => runtime.processMemory.mock.calls.length).toBeGreaterThan(0)
     await expect.poll(() => runtime.filesKept.mock.calls.length).toBeGreaterThan(0)
-    await expect.poll(() => safety.view.value).not.toBeNull()
 
     screen.unmount()
-    expect(safety.view.value).toBeNull()
     memory.resolve({ conversations: [{ conversation: 'fictional-source', bytes: 1024 }] })
     files.resolve({ ok: true, files: [], added: [] })
     await new Promise((done) => setTimeout(done, 0))

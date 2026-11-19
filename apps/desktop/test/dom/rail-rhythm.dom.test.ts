@@ -3,7 +3,6 @@ import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import { createSessionRecord } from '../../src/renderer/src/lib/session-record'
-import { useSpawnSafety } from '../../src/renderer/src/lib/spawn-safety'
 import type { AgentIdentities } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, type Mounted } from './harness'
 
@@ -16,7 +15,6 @@ const NOW = Date.now()
 
 /** The viewport is shared across this whole directory, so it is captured once and put back. */
 const ORIGINAL = { width: window.innerWidth, height: window.innerHeight }
-const safety = useSpawnSafety()
 
 /** An open conversation the rail can draw. Only the shape the rail reads is filled in. */
 function conversation(sessionId: string): unknown {
@@ -49,7 +47,6 @@ const agents = (over: Partial<AgentIdentities> = {}): AgentIdentities => ({
   ],
   foldersWithoutARow: [],
   use: [],
-  spawningEnabled: true,
   // 500 · required on `AgentIdentities`; none of these fixtures is about the launch default.
   defaultApprovalMode: 'ask',
   // ⚑ **516** — the global registry, carried on the same read; empty is a real answer.
@@ -80,10 +77,6 @@ async function rail(
       listUnresumable: () => Promise.resolve([]),
     },
   }
-  // ⚠️ **390 · the switch is supplied, not passed.** It is drawn on two layers now, so its state
-  // lives in `lib/spawn-safety.ts` and `RuntimeScreen` hands it over; the `agents` prop below is
-  // still the identities SECTION's, which is this rail's alone.
-  safety.supply(('agents' in props ? props.agents : agents()) as AgentIdentities | null, () => {})
   const m = mount(
     SideRail,
     { open, activeId: null, place: null, agents: agents(), ...props },
@@ -111,7 +104,6 @@ function onScreen(element: Element, within: Element): boolean {
 afterEach(async () => {
   unmountAll()
   delete (window as unknown as { api?: unknown }).api
-  safety.forget()
   await page.viewport(ORIGINAL.width, ORIGINAL.height)
 })
 
@@ -175,8 +167,8 @@ describe('§1 · v2.3’s rhythm, measured where it lands (385 §3)', () => {
 
 /* ------------------------------------------------ §2 · the anchored end, and what anchoring fixed */
 
-describe('§2 · the kill switch is anchored, and it was not (385 §3)', () => {
-  it('🔴 with the rail overflowing, the switch is on screen and a row in the scroller is not', async () => {
+describe('§2 · the workspace footer stays anchored', () => {
+  it('🔴 with the rail overflowing, the workspace footer is on screen and a row in the scroller is not', async () => {
     const m = await rail([...Array(14).keys()].map((n) => conversation(`sess_${String(n)}`)))
     const aside = m.host.firstElementChild as HTMLElement
     const scroller = m.host.querySelector<HTMLElement>('.rail-scroll')
@@ -189,8 +181,7 @@ describe('§2 · the kill switch is anchored, and it was not (385 §3)', () => {
       100,
     )
 
-    // ⚑ The switch, always.
-    expect(onScreen(m.q('rail-spawning'), aside)).toBe(true)
+    expect(onScreen(m.q('rail-workspace'), aside)).toBe(true)
 
     // ⚠️ **And the control is the app's own material, from inside the scroller.** Until `385` §3
     // the switch was the FIRST row of the identities section, inside the scroller, and a section
@@ -225,42 +216,22 @@ describe('§2 · the kill switch is anchored, and it was not (385 §3)', () => {
     const m = await rail([...Array(14).keys()].map((n) => conversation(`sess_${String(n)}`)))
     const aside = m.host.firstElementChild as HTMLElement
     const scroller = m.host.querySelector<HTMLElement>('.rail-scroll') as HTMLElement
-    const before = m.q('rail-spawning').getBoundingClientRect().top
+    const before = m.q('rail-workspace').getBoundingClientRect().top
 
     scroller.scrollTop = scroller.scrollHeight
     await nextTick()
 
     expect(scroller.scrollTop, 'the scroller did not move').toBeGreaterThan(0)
-    expect(m.q('rail-spawning').getBoundingClientRect().top).toBe(before)
-    expect(onScreen(m.q('rail-spawning'), aside)).toBe(true)
+    expect(m.q('rail-workspace').getBoundingClientRect().top).toBe(before)
+    expect(onScreen(m.q('rail-workspace'), aside)).toBe(true)
   })
 
-  it('⚑ the anchored end is outside the scroller, with the user card under the switch', async () => {
+  it('keeps the workspace footer outside the scroller', async () => {
     const m = await rail()
-    const bottom = m.host.querySelector('.rail-bottom')
-    expect(bottom).not.toBe(null)
-    // ⛔ Outside — a card inside the scroller is a card that scrolls, whatever it looks like when
-    // the list is short.
-    expect(m.q('rail-spawning').closest('.rail-scroll')).toBe(null)
-    expect(m.q('rail-spawning').closest('.rail-bottom')).toBe(bottom)
-
-    // v2.3's order: the cards, then the user card at the very foot.
-    const footer = (bottom as Element).querySelector('.rail-footer')
-    expect(footer).not.toBe(null)
-    expect(m.q('rail-spawning').getBoundingClientRect().bottom).toBeLessThanOrEqual(
-      (footer as Element).getBoundingClientRect().top,
-    )
-  })
-
-  it('⚠️ …and it is still absent entirely before the identities have arrived', async () => {
-    // ⛔ The `v-if` that 355 put on it survived the move, and survived 390 moving the state into
-    // `spawn-safety.ts` — the module answers `null` for the same reason the prop did. *Not asked*
-    // and *asked and empty* are two facts, and a kill switch drawn before anybody knows the answer
-    // is a claim the rail has not earned.
-    const m = await rail([], 520, { agents: null })
+    const workspace = m.q('rail-workspace')
     expect(m.all('rail-spawning')).toHaveLength(0)
-    expect(m.host.querySelector('.rail-bottom')).not.toBe(null)
-    expect(m.host.querySelector('.rail-footer')).not.toBe(null)
+    expect(workspace.closest('.rail-scroll')).toBeNull()
+    expect(workspace.closest('.rail-bottom')).not.toBeNull()
   })
 })
 
@@ -326,7 +297,7 @@ describe('§3 · the ≥1400px widening (390 §4)', () => {
    * that the switch scrolled away; a second rail width is a second layout, and a layout in which
    * the safety card is back inside the scroller would pass every assertion in §2 above.
    */
-  it('⚠️ the kill switch is still outside the scroller and on screen at 1400px', async () => {
+  it('⚠️ the workspace footer is still outside the scroller and on screen at 1400px', async () => {
     const m = await rail(
       [...Array(14).keys()].map((n) => conversation(`sess_${String(n)}`)),
       520,
@@ -339,7 +310,7 @@ describe('§3 · the ≥1400px widening (390 §4)', () => {
       scroller.scrollHeight - scroller.clientHeight,
       'the rail is not overflowing',
     ).toBeGreaterThan(100)
-    expect(m.q('rail-spawning').closest('.rail-scroll')).toBe(null)
-    expect(onScreen(m.q('rail-spawning'), aside)).toBe(true)
+    expect(m.q('rail-workspace').closest('.rail-scroll')).toBe(null)
+    expect(onScreen(m.q('rail-workspace'), aside)).toBe(true)
   })
 })
