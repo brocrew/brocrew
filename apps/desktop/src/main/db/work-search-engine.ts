@@ -14,7 +14,10 @@ import {
 import type { PieceRow, StatusLine } from '../../shared/task-contracts'
 import { formOfName } from '../../shared/documents'
 import { workFileGroup } from '../../shared/work-file-groups'
-import { describeConversationForRead } from '../runtime/conversation-address'
+import {
+  describeConversationForRead,
+  isRecordedServiceConversation,
+} from '../runtime/conversation-address'
 import { createSessionStore, type SessionStore } from './session-store'
 import { agentIdentityRowId } from './identity'
 import { rowsUnreadOnce, type RowsUnread } from './rows-unread'
@@ -288,8 +291,9 @@ export class WorkSearchEngine {
     taskLimit: number,
   ): ConversationSearchHit | null {
     const { id } = candidate
-    const { address, title, line } = describeConversationForRead(store, id)
     const root = store.rootOf(id)
+    const service = isRecordedServiceConversation(store, id, root)
+    const { address, title, line } = describeConversationForRead(store, id, service)
     const rootLines = root === null ? null : store.turnBlockRootLines(root.piece)
     if (root !== null && rootLines === null) throw new Error('unread conversation task')
     const tasks: MatchedTask[] = store.piecesWithTheirWaits(id, unread).map((piece) => ({
