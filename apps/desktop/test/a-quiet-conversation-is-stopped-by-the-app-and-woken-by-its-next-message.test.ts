@@ -20,8 +20,10 @@ import type {
 } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
+import { limitsWriterSampler } from '../src/main/db/fresh-limits-snapshot'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import type { WindowStoreReader } from '../src/main/db/window-read-protocol'
 import { RuntimeHost } from './helpers/giver-notice-host'
 import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
@@ -40,8 +42,8 @@ import type {
  * Each eligible conversation gets its own timer; pending cards, background work,
  * schedules, planning and an interrupt-and-send exclude it. Ledger-held waits can
  * outlive a stop, including a question waiting on an answer.
- * A mark replaces the countdown; expiry rechecks the facts, keeps unreadable sessions,
- * and closes eligible sessions through their normal close path. A message wakes them.
+ * Display marks preserve an eligible session's countdown. Expiry rechecks live facts and closes
+ * eligible sessions through their normal close path. A message wakes them.
  * The default delay is one minute and does not keep the process alive.
  * Call-through timer spies retain the real callbacks and cancellation handles, then
  * invoke the callbacks directly rather than waiting for minutes. Each negative ends
@@ -153,7 +155,7 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
   }
 
   /** A host over the shared database. The idle delay is the dep when given, the default when not. */
-  const buildHost = (idleStopAfterMs?: number): RuntimeHost => {
+  const buildHost = (idleStopAfterMs?: number, windowReader?: WindowStoreReader): RuntimeHost => {
     const built = new RuntimeHost({
       store: wrappedStore(store),
       ...neutralHostDeps(() => userData),
@@ -170,11 +172,13 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
       now: tick,
       interruptWaitMs: 40,
       readProviderConfig: fixtureProviderConfig,
-      // The dep that arms the countdown at all: what main hands every window on `runtime:states`.
       statesMoved: (message) => {
         pushed.push(message)
       },
       ...(idleStopAfterMs === undefined ? {} : { idleStopAfterMs }),
+      ...(windowReader === undefined
+        ? {}
+        : { windowReader, limitsWriterStamp: limitsWriterSampler(db, () => true) }),
     })
     hosts.push(built)
     return built
@@ -482,32 +486,22 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
     expect(runningOf(a)).toBe('not-running')
   })
 
-  it('a mark clears the countdown, a stale one says nothing, and a flush that finds the same word still counts', async () => {
+  it('display marks republish an equal state and keep the original idle deadline', async () => {
     const a = await opens('agent-a')
     await settle()
     const first = theOneLive()
     const before = saidOf(a).length
 
-    // A level frame that states nothing new: a mark whose derived word is the same one.
-    handleOf(0).simulateBackgroundWork({ running: [] })
-    await settle()
-
-    expect(cleared().has(first.timer)).toBe(true)
-    const fresh = theOneLive()
-    expect(fresh.timer).not.toBe(first.timer)
-    // The equal state is republished to clear the pending reading; the timer is still renewed.
-    expect(saidOf(a).length).toBe(before + 1)
+    for (let mark = 0; mark < 3; mark++) {
+      handleOf(0).simulateBackgroundWork({ running: [] })
+      await settle()
+      expect(theOneLive().timer).toBe(first.timer)
+    }
+    expect(cleared().has(first.timer)).toBe(false)
+    expect(saidOf(a).length).toBeGreaterThan(before)
     expect(lastSaid(a)?.is).toBe('idle')
-
-    // The stale callback, by hand: it is no longer this conversation's, and says nothing.
     await fire(first)
-    expect(handleOf(0).status()).toBe('idle')
-    expect(runningOf(a)).toBe('in-a-window')
-    expect(live().map(({ timer }) => timer)).toEqual([fresh.timer])
-
-    // The fresh countdown is the one that stops it.
-    await fire(fresh)
-    await waitFor(() => stopped(0), 'A to be stopped by the fresh countdown')
+    await waitFor(() => stopped(0), 'A to be stopped at its original deadline')
   })
 
   it('one minute is the quiet it waits, and its timer never keeps the process alive', async () => {
@@ -1003,34 +997,51 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
     expect(runningOf(a)).toBe('in-a-window')
   })
 
-  it('a conversation the host cannot read when its countdown runs out is kept running until its next fact', async () => {
+  it('stops from live facts when the roster cannot be read at expiry', async () => {
     const a = await opens('agent-a')
     await settle()
     const first = theOneLive()
 
-    // The card reads ask the roster; with it unreadable the run-out cannot tell whether it is idle.
     fault = (name) => {
       if (name === 'agentIdentities') throw new Error('planted')
     }
-    await fire(first)
+    try {
+      await fire(first)
+      await waitFor(() => stopped(0), 'A to stop without a roster read for eligibility')
+      expect(
+        warnSpy.mock.calls.some(([line]) =>
+          String(line).includes(`could not tell whether ${a} is still idle`),
+        ),
+      ).toBe(false)
+    } finally {
+      fault = null
+    }
+  })
 
-    // Read off the double: a list read would throw with the roster.
-    expect(handleOf(0).status()).toBe('idle')
-    expect(
-      warnSpy.mock.calls.some(([line]) =>
-        String(line).includes(`could not tell whether ${a} is still idle`),
-      ),
-    ).toBe(true)
-    expect(stopLines()).toEqual([])
-    // The countdown was spent and nothing re-arms it.
-    expect(live()).toEqual([])
+  it.each(['rejecting', 'parked'] as const)('stops while window publication is %s', async (mode) => {
+    let release!: () => void
+    const parked = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const read = vi.fn<WindowStoreReader['read']>(async () => {
+      if (mode === 'parked') await parked
+      throw new Error('window read failed')
+    })
+    host = buildHost(IDLE, { read, close: async () => {} })
 
-    // Once it can be read, the next fact counts it and the same conversation is stopped.
-    fault = null
-    handleOf(0).simulateBackgroundWork({ running: [] })
-    await settle()
-    expect(live()).toHaveLength(1)
-    await fire(theOneLive())
-    await waitFor(() => stopped(0), 'A to be stopped once it could be read')
+    try {
+      const a = await opens('agent-a')
+      await waitFor(
+        () => read.mock.calls.some(([query]) => query.kind === 'routes'),
+        'publication to reach the window reader',
+      )
+      await settle()
+      expect(saidOf(a)).toEqual([])
+      const countdown = theOneLive()
+      await fire(countdown)
+      await waitFor(() => stopped(0), 'A to stop without a publication answer')
+    } finally {
+      release()
+    }
   })
 })
