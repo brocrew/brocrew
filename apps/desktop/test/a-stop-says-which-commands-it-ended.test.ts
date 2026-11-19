@@ -181,7 +181,7 @@ function aWorkerWhoseStopEndsItsCommands(how: HowItStops = {}) {
             if (open !== null && !quiet) machine.noteWhatTheStopEnded(open, [`exec-waited-${n}`])
             // ⚑ The host widens a stop at once after asking it, before anything is awaited — as
             // Codex's pass reads the widening only once its list answers.
-            await new Promise((resolve) => setTimeout(resolve, 5))
+            await Promise.resolve()
             if (open !== null && explicit && !quiet) {
               machine.noteWhatTheStopEnded(open, [`exec-moved-${n}`])
             }
@@ -250,7 +250,7 @@ describe('F084 · a stop says which commands it ended, and what still runs', () 
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      // ⚑ Bounded: the double's stop ends its turn in ~5 ms; one that does not is waited 40 ms.
+      // The double can end the turn on a microtask or leave it open past the 40 ms bound.
       interruptWaitMs: 40,
       readProviderConfig: (provider, home) => ({
         home,
