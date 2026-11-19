@@ -24,7 +24,6 @@ import { INLINE_TEXT_LIMIT } from '../send-overflow'
 import { sendResourcesInput, sendResourcesProblem } from './send-resources'
 import { carryQuestionRefusal, refuseTool } from './refusals'
 import { type conversationAddressing } from './addressing'
-import { outOfReachAnswer } from './delivery'
 import { workRequestRefused } from '../spawn-rails'
 import { z } from 'zod'
 import {
@@ -37,11 +36,10 @@ import {
 } from './question-arguments'
 
 export function createAskQuestionTool(
-  host: Pick<AgentToolHost, 'raiseAQuestion' | 'tookItsPlace' | 'whyItIsOutOfReach'>,
+  host: Pick<AgentToolHost, 'raiseAQuestion' | 'tookItsPlace' | 'messageDestination'>,
   by: Caller,
   me: string,
   selfRefusal: ReturnType<typeof conversationAddressing>['selfRefusal'],
-  theConversationToReach: ReturnType<typeof conversationAddressing>['theConversationToReach'],
   guarded: (run: () => Promise<AgentToolAnswer>) => Promise<AgentToolAnswer>,
 ): AgentToolDefinition & { readonly name: ToolName } {
   return {
@@ -224,16 +222,11 @@ export function createAskQuestionTool(
             refuseTool('malformed-request', { problems: [...detail.problems, ...names] }),
           )
         }
-        // **D-016 · commit 7 · R1 — a label names its piece's owner** when this caller may reach
-        // it; one that names nothing it may reach is handed back as spelled, and meets this door's
-        // own word for an agent it cannot ask, as an unknown id does.
+        // The host reports an unknown address as the caller spelled it.
         const addressed =
-          who === 'an-agent' && typeof agent === 'string' ? theConversationToReach(agent) : null
-        // Unknown addresses keep the host’s refusal; reachable self-addresses are named here.
-        if (addressed !== null && addressed !== me) {
-          const out = host.whyItIsOutOfReach(addressed, by, me)
-          if (out !== null && out.is !== 'no-such-agent') return outOfReachAnswer(out, addressed)
-        }
+          who === 'an-agent' && typeof agent === 'string'
+            ? (host.messageDestination(agent) ?? agent)
+            : null
         if (addressed !== null && (addressed === me || host.tookItsPlace(addressed) === me)) {
           return selfRefusal(agent as string, addressed, {
             ...refuseTool('that-agent-is-you', { agent: addressed }),

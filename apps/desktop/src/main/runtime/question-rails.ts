@@ -306,6 +306,7 @@ export const QUESTION_RAILS = [
    * the act; naming the piece is, and a name resolves among every piece it holds.
    */
   'no-piece-to-ask-about',
+  'no-conversation-gave-this-work',
   /**
    * 🔴 **An answer — or a reason it cannot be given — longer than an answer may carry**, refused
    * before anything is recorded: the question stays open and the same caller answers it again.
@@ -356,6 +357,7 @@ const PERMANENCE: Readonly<Record<QuestionRail, RailPermanence>> = {
   // ⚑ **D-016** — changed by the call: name a piece. See each rail's own note.
   'name-the-piece-you-ask-about': 'permanent',
   'no-piece-to-ask-about': 'permanent',
+  'no-conversation-gave-this-work': 'permanent',
   'answer-too-long': 'while-this-holds',
 }
 
@@ -434,6 +436,7 @@ const REMEDY: Readonly<Record<QuestionRail, RefusalRemedy | null>> = {
   // ⚑ **D-016 · null, by the biconditional** — permanent; the act is in the sentence.
   'name-the-piece-you-ask-about': null,
   'no-piece-to-ask-about': null,
+  'no-conversation-gave-this-work': null,
   'answer-too-long': 'shorten-the-answer-or-put-the-long-form-in-a-file',
 }
 
@@ -598,6 +601,8 @@ const QUESTION_SENTENCES: Readonly<Record<QuestionRail, string>> = {
     'you hold more than one piece, so say which one this question is about: ask again naming it as piece. The detail lists the ones that have reached you; nothing was asked and nobody was told.',
   'no-piece-to-ask-about':
     'you hold no open piece of work that has reached you, so nothing was asked. A question to another agent needs no piece; otherwise do the work here until you hold a piece to ask about.',
+  'no-conversation-gave-this-work':
+    'no conversation gave you this work. If you meant to ask the person, use who_answers: a-person.',
   // ⚑ The act first, inside the cut. ⚠️ The words' length and the limit are said by
   // {@link answerTooLongSentence} whenever the detail holds them; this is the sentence without them.
   'answer-too-long':
