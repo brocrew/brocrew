@@ -601,7 +601,13 @@ describe('a work wait is reconciled without a window', () => {
         },
         tick(),
       )
-      put({ type: 'user_turn', text: brief, attribution: 'app_authored', drives: piece })
+      put({
+        type: 'user_turn',
+        text: brief,
+        attribution: 'app_authored',
+        appNotice: 'a-work-wait-needs-attention',
+        drives: piece,
+      })
       const failure = { message: 'The fictional model could not run.' }
       const terminalOrdinal = store.nextOrdinal(owner)
       put({ type: 'turn', state: 'failed', providerFailure: failure })

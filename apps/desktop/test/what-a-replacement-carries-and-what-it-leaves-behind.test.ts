@@ -238,6 +238,21 @@ describe('what a replacement carries, and what it leaves behind', () => {
       turnOrdinal: terminalOrdinal,
     })
     expect(host.providerFailureForItsAsker(holder, holder)).toBeNull()
+    expect(store.providerFailureNoticeProgress(asker, messageId)).toBe('retracted')
+    expect(store.reconciliationReceiptsForOwner(holder)).toMatchObject([
+      { outcome: 'planned', messageId, target: asker },
+    ])
+    await waitFor(
+      () => store.reconciliationReceiptsForOwner(holder).length >= 2,
+      'the restart pass to record a new plan for the same notice',
+    )
+    await waitFor(
+      () =>
+        ledger(asker).filter(
+          (event) => event.type === 'message_queued' && event.messageId === messageId,
+        ).length === 2,
+      'the restart pass to queue the same notice',
+    )
     await waitFor(
       () =>
         ledger(asker).some(
