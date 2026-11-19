@@ -237,3 +237,24 @@ it('settles another profile when ordinary forget disowns its pending catalogue r
   expect(lists.held('claude', 'beta')).toMatchObject({ state: 'answered', list: ACCOUNT_A })
   expect(lists.readiness('claude', 'beta').state).toBe('settled')
 })
+
+
+it('settles retained refresh ownership when another profile supplied an unavailable catalogue', async () => {
+  let read = () => Promise.resolve(ACCOUNT_A)
+  let calls = 0
+  const lists = holderOver(() => { calls++; return read() })
+  await lists.read('claude', 'alpha')
+  read = () => Promise.resolve({
+    ...ACCOUNT_B,
+    models: [],
+    notAsked: { ok: false as const, reason: 'refused' as const, detail: 'Fictional catalogue unavailable.' },
+  })
+  await lists.read('claude', 'beta')
+  expect(lists.held('claude', 'alpha')).toMatchObject({ state: 'answered', list: { notAsked: { reason: 'refused' } } })
+  lists.forget('alpha', { retainAnswered: true })
+  read = () => Promise.resolve(ACCOUNT_B)
+  await lists.reread()
+  expect(lists.held('claude', 'alpha')).not.toMatchObject({ refreshing: true })
+  expect(lists.readiness('claude', 'alpha').state).toBe('settled')
+  expect(calls).toBeGreaterThan(2)
+})
