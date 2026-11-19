@@ -702,8 +702,14 @@ async function showTaskSection(): Promise<void> {
   await nextTick()
   if (props.record.sessionId !== conversation) return
   const section = paneBody.value?.querySelector<HTMLElement>('[data-cy="card-task"]')
-  section?.scrollIntoView({ block: 'nearest' })
-  section?.focus({ preventScroll: true })
+  if (!section) return
+  if (section.dataset.folded === 'true') {
+    section.querySelector<HTMLButtonElement>('button[aria-expanded="false"]')?.click()
+    await nextTick()
+  }
+  if (!section.isConnected || props.record.sessionId !== conversation) return
+  section.scrollIntoView({ block: 'nearest' })
+  section.focus({ preventScroll: true })
 }
 
 /**

@@ -194,6 +194,7 @@ it('reads canonical identity on selection, refreshes on work, and rereads on reo
 it('opens the selected conversation’s task section and focuses it', async () => {
   localStorage.setItem('brobot2.drawerOpen', 'false')
   localStorage.setItem('brobot2.drawerTab', 'info')
+  localStorage.setItem('brobot2.cardTaskFolded', 'true')
   window.api.runtime.readConversationIdentity = vi.fn(async ({ sessionId: conversation }) => ({
     conversation,
     address,
@@ -202,10 +203,12 @@ it('opens the selected conversation’s task section and focuses it', async () =
   }))
   const m = await mountWith([row(sessionId, task)])
   await expect.poll(() => m.all('conversation-linked-task').length).toBe(1)
-  expect(m.all('card-task')).toHaveLength(0)
+  expect(m.all('session-drawer')).toHaveLength(0)
 
   m.q('conversation-linked-task').click()
   await expect.poll(() => m.all('card-task').length).toBe(1)
+  await expect.poll(() => m.q('card-task').dataset.folded).toBe('false')
+  expect(m.q('drawer-tab-open').getAttribute('aria-selected')).toBe('true')
   expect(document.activeElement).toBe(m.q('card-task'))
   expect(m.q('conversation-pane').getAttribute('data-session-id')).toBe(sessionId)
 })
