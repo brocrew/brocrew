@@ -185,9 +185,7 @@ describe('setup feedback follows the latest facts', () => {
     await begin(out.m)
     out.m.q('setup-sign-in').click()
     await settled()
-    expect(words(out.m.q('provider-auth-notice'))).toBe(
-      'Fable has connected this workspace.',
-    )
+    expect(words(out.m.q('provider-auth-notice'))).toBe('Fable has connected this workspace.')
     out.m.unmount()
     const failed = card('codex')
     failed.runtime.signInProvider.mockResolvedValueOnce({

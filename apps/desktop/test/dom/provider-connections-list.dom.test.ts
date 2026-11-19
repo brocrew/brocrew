@@ -298,8 +298,7 @@ it('keeps model chips visible and names the pending refresh until its new answer
     startsOn: null,
     models: [{ id: 'fern-known', label: 'Fern known', addedBy: 'the-provider' }],
   }
-  window.api.runtime.modelList = () =>
-    refreshing ? pending.promise : Promise.resolve(known)
+  window.api.runtime.modelList = () => (refreshing ? pending.promise : Promise.resolve(known))
   const { m, props } = card(async () => rows('claude'))
   await settle()
   expect(m.q('provider-model-row').textContent).toContain('Fern known')
