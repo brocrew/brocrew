@@ -995,7 +995,7 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
     )
   })
 
-  it('T8 · a question for the giver of a taken-on piece goes to a person, and the answer names reply_to_parent', async () => {
+  it('T8 · questions for the giver of a taken-on piece or a root record a short person receipt', async () => {
     const asked = (sessionId: string): QuestionAskedEvent[] =>
       events(sessionId).filter(
         (event): event is QuestionAskedEvent => event.type === 'question_asked',
@@ -1015,8 +1015,9 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
     })
     expect(forPiece.structured.outcome, JSON.stringify(forPiece.structured)).toBe('ok')
     expect(forPiece.structured.went_to).toBe('a-person')
-    expect(forPiece.text).toContain('reply_to_parent is what does that')
-    expect(forPiece.text).not.toContain('is a person’s')
+    expect(forPiece.text).toBe(
+      `Question ${forPiece.structured.question} recorded for the person. The answer arrives as a message.`,
+    )
     const askedAbout = asked(pm).find((one) => one.prompt === 'which city?')
     expect(askedAbout?.piece).toBe(taken.piece)
     expect(askedAbout?.label).toBe(taken.label)
@@ -1024,8 +1025,7 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
     expect(routedAbout?.to).toBe('a-person')
     expect(routedAbout !== undefined && Object.hasOwn(routedAbout, 'parent')).toBe(false)
 
-    // The paired positive: a conversation that took nothing on and asks about its own root reaches
-    // a person too — and its words are the other arm's, so the two texts really do differ.
+    // A conversation that asks about its own root reaches a person too.
     const alone = await aPerson('pm-alone')
     const forRoot = await callWithWords(alone.tools, 'ask_question', {
       question: 'which city?',
@@ -1033,8 +1033,9 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
     })
     expect(forRoot.structured.outcome, JSON.stringify(forRoot.structured)).toBe('ok')
     expect(forRoot.structured.went_to).toBe('a-person')
-    expect(forRoot.text).toContain('this conversation’s own work is a person’s')
-    expect(forRoot.text).not.toContain('reply_to_parent is what does that')
+    expect(forRoot.text).toBe(
+      `Question ${forRoot.structured.question} recorded for the person. The answer arrives as a message.`,
+    )
     const askedRoot = asked(alone.id).find((one) => one.prompt === 'which city?')
     expect(askedRoot?.piece).toBe(alone.root.piece)
     expect(routed(alone.id).find((one) => one.requestId === askedRoot?.requestId)?.to).toBe(
