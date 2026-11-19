@@ -61,21 +61,33 @@ export async function giveAndWaitForBriefTurn(
   return { agent, piece: given.piece as string, label: given.label as string }
 }
 
-export async function giveTheFrontEndChain<FirstHandle>({
+export async function openFrontEndChain<FirstHandle, FinalHandle>({
   host,
-  brobotTools,
-  pmProfile,
-  workerProfile,
+  nth,
+  includeSibling,
+  bringIdentityIntoBeing,
+  personOpens,
   ledger,
   firstHandle,
+  finalHandle,
 }: {
   host: RuntimeHost
-  brobotTools: AgentToolset
-  pmProfile: string
-  workerProfile: string
+  nth: number
+  includeSibling: boolean
+  bringIdentityIntoBeing: (profile: string) => Promise<void>
+  personOpens: (profile: string, approval: 'auto') => Promise<string>
   ledger: (conversation: string) => readonly { type: string }[]
   firstHandle: () => FirstHandle
+  finalHandle: () => FinalHandle
 }) {
+  const pmProfile = `pm-${String(nth)}`
+  const workerProfile = `worker-${String(nth)}`
+  const siblingProfile = `sibling-${String(nth)}`
+  await bringIdentityIntoBeing(pmProfile)
+  await bringIdentityIntoBeing(workerProfile)
+  if (includeSibling) await bringIdentityIntoBeing(siblingProfile)
+  const brobot = await personOpens(DEFAULT_PROFILE_ID, 'auto')
+  const brobotTools = agentToolsFor(host, brobot)
   const first = await giveAndWaitForBriefTurn(
     brobotTools,
     pmProfile,
@@ -85,13 +97,44 @@ export async function giveTheFrontEndChain<FirstHandle>({
   const ada = first.agent
   const adaHandle = firstHandle()
   const adaTools = agentToolsFor(host, ada)
-  const toAli = await giveAndWaitForBriefTurn(
+  const ali = await giveAndWaitForBriefTurn(
     adaTools,
     workerProfile,
     'build the world-clock page',
     ledger,
   )
-  return { ada, adaHandle, adaTools, toAli }
+  return {
+    brobot,
+    brobotTools,
+    ada,
+    adaHandle,
+    adaTools,
+    ali: ali.agent,
+    aliHandle: finalHandle(),
+    aliPiece: ali.piece,
+    aliLabel: ali.label,
+    pmProfile,
+    workerProfile,
+    siblingProfile,
+  }
+}
+
+export async function giveToALaunchedWorker<Launch extends { toolset: AgentToolset | undefined }>(
+  openPm: () => Promise<{ pm: string; pmLaunch: Launch }>,
+  lastLaunch: () => Launch,
+  approvalMode: 'auto' | 'ask',
+  turnsIn: (conversation: string) => number,
+  waitForTurn: typeof waitFor,
+) {
+  const { pm, pmLaunch } = await openPm()
+  const given = await callNewConversationGive(pmLaunch.toolset, 'worker', 'The work', 'the work')
+  expect(given.outcome, JSON.stringify(given)).toBe('ok')
+  const worker = given.agent as string
+  const workerLaunch = lastLaunch()
+  if (approvalMode === 'auto') {
+    await waitForTurn(() => turnsIn(worker) > 0, 'the brief’s turn to end')
+  }
+  return { pm, pmLaunch, worker, workerLaunch }
 }
 
 export function addressedGive<To, Profile>(to: To, profile: Profile, title: string, brief: string) {
@@ -128,6 +171,16 @@ export async function readGivenTask(send: () => Promise<Record<string, unknown>>
   expect(answer.outcome, JSON.stringify(answer)).toBe('ok')
   const { agent, piece, label } = answer
   return { agent: agent as string, piece: piece as string, label: label as string, answer }
+}
+
+export function giveNamedChildTask(
+  host: RuntimeHost,
+  giver: string,
+  profile: string,
+  brief: string,
+) {
+  const tools = agentToolsFor(host, giver)
+  return readGivenTask(() => callNewConversationGive(tools, profile, `The ${profile}`, brief))
 }
 
 export function ownedFixturePiece(store: SessionStore, owner: string, piece: string) {

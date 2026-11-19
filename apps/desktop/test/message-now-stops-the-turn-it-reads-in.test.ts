@@ -1,4 +1,4 @@
-import { giveTheFrontEndChain } from './lib/give-fixture'
+import { openFrontEndChain } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -23,7 +23,6 @@ import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { answerOn, callOn } from './helpers/call-tool'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import {
   syntheticProviderHome,
   neutralHostDeps,
@@ -186,38 +185,16 @@ describe('message now · a message or an answer can stop the running turn', () =
      * give to the same one reaches it (D-016's lookup). A sibling needs an identity of its own. */
     siblingProfile: string
   }> => {
-    const nth = ++chains
-    const pmProfile = `pm-${String(nth)}`
-    const workerProfile = `worker-${String(nth)}`
-    const siblingProfile = `sibling-${String(nth)}`
-    await bringIdentityIntoBeing(pmProfile)
-    await bringIdentityIntoBeing(workerProfile)
-    await bringIdentityIntoBeing(siblingProfile)
-    const brobot = await personOpens(DEFAULT_PROFILE_ID, 'auto')
-    const brobotTools = agentToolsFor(host, brobot)
-    const { ada, adaTools, toAli } = await giveTheFrontEndChain({
+    return openFrontEndChain({
       host,
-      brobotTools,
-      pmProfile,
-      workerProfile,
+      nth: ++chains,
+      includeSibling: true,
+      bringIdentityIntoBeing,
+      personOpens,
       ledger,
       firstHandle: () => undefined,
+      finalHandle: latestHandle,
     })
-    const ali = toAli.agent
-    const aliHandle = latestHandle()
-    return {
-      brobot,
-      ada,
-      ali,
-      aliPiece: toAli.piece,
-      aliLabel: toAli.label,
-      aliHandle,
-      brobotTools,
-      adaTools,
-      pmProfile,
-      workerProfile,
-      siblingProfile,
-    }
   }
 
   /** ⚑ The tools a conversation was handed. */

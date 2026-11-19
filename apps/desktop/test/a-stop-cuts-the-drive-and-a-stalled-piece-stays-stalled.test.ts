@@ -1,4 +1,4 @@
-import { callNewConversationGive, newConversationGive } from './lib/give-fixture'
+import { giveToALaunchedWorker, newConversationGive } from './lib/give-fixture'
 import { expectRecordedCannotRun, expectTaskKept } from './lib/recorded-send'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import type { PieceRow } from '../src/shared/task-contracts'
@@ -680,15 +680,13 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
   const aPmAndItsWorker = async (
     approvalMode: 'auto' | 'ask' = 'auto',
   ): Promise<{ pm: string; pmLaunch: Launch; worker: string; workerLaunch: Launch }> => {
-    const { pm, pmLaunch } = await aPmWithAGrant(approvalMode)
-    const given = await callNewConversationGive(pmLaunch.toolset, 'worker', 'The work', 'the work')
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    const worker = given.agent as string
-    const workerLaunch = launches.at(-1)!
-    if (approvalMode === 'auto') {
-      await waitFor(() => turnsIn(worker) > 0, 'the brief’s turn to end')
-    }
-    return { pm, pmLaunch, worker, workerLaunch }
+    return giveToALaunchedWorker(
+      () => aPmWithAGrant(approvalMode),
+      () => launches.at(-1)!,
+      approvalMode,
+      turnsIn,
+      waitFor,
+    )
   }
 
   /** ⛔ A PM with no child yet, and the identity `worker` in being — so a give starts one. */

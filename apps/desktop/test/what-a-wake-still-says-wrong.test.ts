@@ -1,4 +1,4 @@
-import { callNewConversationGive, readGivenTask } from './lib/give-fixture'
+import { giveNamedChildTask } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -126,9 +126,7 @@ describe('what a wake still says wrong', () => {
     profile: string,
     brief: string,
   ): Promise<{ child: string; piece: string; label: string }> => {
-    const { agent: child, piece, label } = await readGivenTask(() =>
-      callNewConversationGive(agentToolsFor(host, pm), profile, `The ${profile}`, brief),
-    )
+    const { agent: child, piece, label } = await giveNamedChildTask(host, pm, profile, brief)
     return { child, piece, label }
   }
 

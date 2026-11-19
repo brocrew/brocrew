@@ -1,4 +1,4 @@
-import { giveTheFrontEndChain } from './lib/give-fixture'
+import { openFrontEndChain } from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { callOn } from './helpers/call-agent-tool'
 import { HandleKeepingRuntime as ProviderDouble } from './helpers/handle-keeping-runtime'
@@ -20,7 +20,6 @@ import { refuseQuestion } from '../src/main/runtime/question-rails'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import {
   syntheticProviderHome,
   neutralHostDeps,
@@ -130,30 +129,16 @@ describe('F020 · a withdraw of a question already answered says so, and where i
     aliHandle: FakeSessionHandle
     adaTools: AgentToolset
   }> => {
-    const nth = ++chains
-    const pmProfile = `pm-${String(nth)}`
-    const workerProfile = `worker-${String(nth)}`
-    await bringIdentityIntoBeing(pmProfile)
-    await bringIdentityIntoBeing(workerProfile)
-    const brobot = await personOpens(DEFAULT_PROFILE_ID, 'auto')
-    const brobotTools = agentToolsFor(host, brobot)
-    const { ada, adaHandle, adaTools, toAli } = await giveTheFrontEndChain({
+    return openFrontEndChain({
       host,
-      brobotTools,
-      pmProfile,
-      workerProfile,
+      nth: ++chains,
+      includeSibling: false,
+      bringIdentityIntoBeing,
+      personOpens,
       ledger,
       firstHandle: latestHandle,
+      finalHandle: latestHandle,
     })
-    return {
-      brobot,
-      ada,
-      ali: toAli.agent,
-      aliPiece: toAli.piece,
-      adaHandle,
-      aliHandle: latestHandle(),
-      adaTools,
-    }
   }
 
   const asTools = (sessionId: string): AgentToolset => agentToolsFor(host, sessionId)

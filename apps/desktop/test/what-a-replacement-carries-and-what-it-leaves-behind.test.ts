@@ -1,4 +1,4 @@
-import { callNewConversationGive, giveToSeededWorker } from './lib/give-fixture'
+import { giveToSeededWorker } from './lib/give-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
