@@ -103,7 +103,7 @@ export function agentToolsFor(
   const theModels = theModelsSaid(lists)
   const theEfforts = theEffortsSaid(lists)
 
-  const { selfRefusal, theConversationToReach } = conversationAddressing(host, by, me)
+  const { selfRefusal } = conversationAddressing(host, by, me)
 
   const guarded = async (run: () => Promise<AgentToolAnswer>): Promise<AgentToolAnswer> => run()
   /**
@@ -160,7 +160,7 @@ export function agentToolsFor(
     createListQuestionsTool(host, me, readerInputs, readerFieldRefusal, guarded),
     createCreateAgentTool(host, by, me, theModels, theEfforts, guarded),
     createWithdrawTaskTool(host, by, guarded),
-    createAskQuestionTool(host, by, me, selfRefusal, theConversationToReach, guarded),
+    createAskQuestionTool(host, by, me, selfRefusal, guarded),
     createListProfilesTool(host, by, me, guarded),
     createProposeAgentRulesTool(host, by, me, guarded),
     createWithdrawQuestionTool(host, by, guarded),

@@ -14207,19 +14207,18 @@ export class RuntimeHost implements LiveHost {
     if (speaking === null) {
       return { ok: false, refusal: noPieceToAskAbout(input.piece ?? '', []) }
     }
-    // 🔴 **D-009 · F012 — an agent the asker names**: one it may name (the reach `list_agents`
-    // answers with), and never itself. ⚑ Asked before the work, so a question needing no piece is
-    // refused for the recipient it named rather than for a piece it does not hold.
-    // ⚑ **D-017 · R10 — an id that could never be reopened is the one in its place**, as every other
-    // door reads it: the question is asked of, routed to and answered by that one.
+    // A named question goes to an existing conversation, or the one that took its place.
     const named = input.agent ?? ''
     const agent = named === '' ? '' : this.theOneInItsPlace(named)
-    if (input.who === 'an-agent') {
-      if (agent === '' || agent === speaking || !this.withinMessagingReach(agent, by, speaking)) {
-        return {
-          ok: false,
-          refusal: refuseQuestion('no-agent-you-can-ask-by-that-name', { agent: named }),
-        }
+    if (
+      input.who === 'an-agent' &&
+      (agent === '' ||
+        agent === speaking ||
+        (!this.slots.has(agent) && this.deps.store.recordedOne(agent) === null))
+    ) {
+      return {
+        ok: false,
+        refusal: refuseQuestion('no-agent-you-can-ask-by-that-name', { agent: named }),
       }
     }
     // ⚑ **D-016 · the piece — among what the asker HOLDS**: its root, which counts as held work,
@@ -14252,22 +14251,17 @@ export class RuntimeHost implements LiveHost {
       )
       if (refusal !== null) return { ok: false, refusal }
     }
-    // ⚑ **D-016 · a question for the conversation that gave a ROOT — or work the asker took on for
-    // a person (commit 6) — goes to a person** (spec D15): their giver is the person the
-    // conversation is working for, so it is routed and recorded exactly as `a-person`, and the
-    // answer says so.
-    const went: QuestionRecipient =
-      input.who === 'the-parent' && piece !== null && piece.giver === null ? 'a-person' : input.who
-    // ⚑ **D-009 · who answers it**: the agent named, or the conversation that gave the piece —
-    // ⚑ **D-017 · R10** — the one in its place, when it could never be reopened, so the question is
-    // listed for and answerable by a conversation that runs. ⚠️ `null` for a question about a root
-    // or work taken on for a person: no conversation gave it, and a person answers.
-    const answerer =
-      input.who === 'an-agent'
-        ? agent
-        : piece === null || piece.giver === null
-          ? null
-          : this.theOneInItsPlace(piece.giver)
+    const went = input.who
+    let answerer: string | null = null
+    if (went === 'the-parent') {
+      const giver = piece?.giver ?? null
+      if (giver === null) {
+        return { ok: false, refusal: refuseQuestion('no-conversation-gave-this-work') }
+      }
+      answerer = this.theOneInItsPlace(giver)
+    } else if (went === 'an-agent') {
+      answerer = agent
+    }
     const session = this.slots.get(speaking)?.session ?? null
     // ⚠️ **A worker with no live session cannot be mid-tool-call**, so this is unreachable from the
     // tool and is a bug guard for a caller inside this process — the same shape the line above is.
@@ -14322,29 +14316,15 @@ export class RuntimeHost implements LiveHost {
       questions,
     })
     session.askedSinceItsLastTurnEnded.add(requestId)
-    // Copy the recipient the asker declared. The required argument prevents an undecided caller from routing a question; inferring it from the last speaker would be unstable because the person can speak to any agent.
-    //
-    // ⚑ **`parent` is on BOTH arms**, unchanged: it is what lets the conversation that gave the
-    // work see the question and, if it knows, answer it — `HO-088` §2.3's *"she delegated the
-    // asking, not her sight of it"*, which {@link admitAnswer} honours at the door.
-    //
-    // 🔴 **D-009 · and for `an-agent`, `parent` is the agent named** — that field is who may answer
-    // ({@link SessionStore.questionsRoutedTo} reads it), so the agent asked finds the question in
-    // its own `list_questions` and answers it with the same call a parent uses.
+    // The stored parent is the answerer for an agent-addressed question. Person-addressed
+    // questions have no answerer in this field.
     this.publishOurs(session, {
       type: 'request_routed',
       requestId,
       to: went,
-      // ⚑ **611 · omitted when there is none** — a root's question, which no conversation gave.
       ...(answerer === null ? {} : { parent: answerer }),
     })
-    // ⛔ **611 · delivered to the parent only when the parent is who it is FOR.** ⚠️ A question
-    // addressed to a person that also arrived in the parent's mailbox would be this app asking two
-    // parties one question — and the parent's turn is the expensive one. ⚑ **It is still VISIBLE to
-    // the parent**: `list_questions` lists it with its words, which is `HO-088` §2.3's sight
-    // without the summons.
-    //
-    // 🔴 **D-009 · and to the agent named, the same way** — it is who the question is for.
+    // Only an agent-addressed question goes through agent delivery.
     this.theWorldMoved('work')
     let delivery: Extract<AskOutcome, { ok: true }>['delivery']
     if (answerer !== null && (went === 'the-parent' || went === 'an-agent')) {
