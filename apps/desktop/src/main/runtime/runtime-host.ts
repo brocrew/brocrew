@@ -1971,7 +1971,7 @@ interface WordsForTheNextStart {
 type RecordedProviderFailure = Exclude<ProviderFailureEpisode, string>
 
 interface ProviderFailureRecipient {
-  readonly pieces: Set<string>
+  readonly pieces: Map<string, string>
   readonly questions: Set<string>
 }
 
@@ -15036,6 +15036,11 @@ export class RuntimeHost implements LiveHost {
     if (!aStallItsGiverCanBeToldOf(piece)) return
     // A quiet turn first gives its holder a chance to settle the work.
     if (piece.stalledBecause === 'turn_ended') return
+    if (
+      piece.providerTurnFailure !== undefined &&
+      this.piecesCoveredByProviderFailureNotice(piece.owner).has(piece.piece)
+    )
+      return
     // 🔴 **Nothing about work whose owner the restart's wake is about to start** — that start drives
     // it ({@link wakingForStoppedWork}); its end asks again. ⚑ **Nor, during a quit, about work the
     // quit's own stop took the background from**: the next launch decides, and wakes its owner.
@@ -16483,6 +16488,7 @@ export class RuntimeHost implements LiveHost {
         )
         const drivingNow = !this.nothingIsOnItsWayTo(owner, counting)
         let stoppedByPerson: boolean | undefined
+        let failureNoticePieces: ReadonlySet<string> | undefined
         for (const work of grouped.get(owner) ?? []) {
           const folded = held.get(work.piece)
           const completeRoot =
@@ -16526,7 +16532,13 @@ export class RuntimeHost implements LiveHost {
             rows.push({ ...one, disposition: 'ended' })
             continue
           }
-          if (folded?.providerTurnFailure !== undefined) {
+          if (
+            folded?.providerTurnFailure !== undefined &&
+            folded.giver !== null &&
+            (failureNoticePieces ??= this.piecesCoveredByProviderFailureNotice(owner)).has(
+              work.piece,
+            )
+          ) {
             rows.push({ ...one, disposition: 'waiting' })
             continue
           }
@@ -16987,7 +16999,7 @@ export class RuntimeHost implements LiveHost {
       const target = this.theOneInItsPlace(id)
       const found = recipients.get(target)
       if (found !== undefined) return found
-      const recipient = { pieces: new Set<string>(), questions: new Set<string>() }
+      const recipient = { pieces: new Map<string, string>(), questions: new Set<string>() }
       recipients.set(target, recipient)
       return recipient
     }
@@ -16999,7 +17011,7 @@ export class RuntimeHost implements LiveHost {
           piece.giver !== null &&
           piece.providerTurnFailure?.turnOrdinal === episode.terminalOrdinal
         )
-          forRecipient(piece.giver).pieces.add(`${piece.label} · ${piece.title}`)
+          forRecipient(piece.giver).pieces.set(piece.piece, `${piece.label} · ${piece.title}`)
       }
     }
 
@@ -17028,6 +17040,21 @@ export class RuntimeHost implements LiveHost {
         forRecipient(asker).questions.add(requestId)
     }
     return { recipients, complete: unread.count === 0 && unread.ledgersSkipped === 0 }
+  }
+
+  private piecesCoveredByProviderFailureNotice(holder: string): ReadonlySet<string> {
+    const pieces = new Set<string>()
+    try {
+      const episode = this.deps.store.providerFailureEpisode(holder)
+      if (typeof episode === 'string') return pieces
+      const audience = this.providerFailureRecipients(holder, episode)
+      if (audience.complete)
+        for (const recipient of audience.recipients.values())
+          for (const piece of recipient.pieces.keys()) pieces.add(piece)
+    } catch {
+      // Without the current audience, the ordinary reminders still apply.
+    }
+    return pieces
   }
 
   private reconcileProviderFailureNotices(holders: ReadonlySet<string>): void {
@@ -17090,7 +17117,7 @@ export class RuntimeHost implements LiveHost {
       return
 
     const { address, title } = this.questionConversation(holder)
-    const pieces = [...recipient.pieces].join(', ')
+    const pieces = [...recipient.pieces.values()].join(', ')
     const questions = [...recipient.questions].join(', ')
     const text =
       providerFailureDiagnosis(`Conversation ${address} · ${title}`, episode.cause.message) +

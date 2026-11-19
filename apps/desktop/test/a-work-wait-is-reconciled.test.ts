@@ -565,6 +565,91 @@ describe('a work wait is reconciled without a window', () => {
     }
   })
 
+  it.each(['person', 'unreadable episode'] as const)(
+    'keeps the usual work reminder routing for provider-failed work with %s',
+    async (route) => {
+      const { owner, work } = await create()
+      const giver = route === 'person' ? null : await create()
+      await host.closeAll()
+      const piece = 'fictional-provider-failed-piece'
+      const parent = giver?.work ?? work
+      const givenBy = giver?.owner ?? null
+      const brief = 'Fictional work that its provider could not finish.'
+      const put = (event: TranscriptEvent) =>
+        store.append(owner, store.nextOrdinal(owner), event, tick())
+      store.recordGive(
+        {
+          piece,
+          parent: parent.piece,
+          number: 1,
+          owner,
+          givenBy,
+          title: piece,
+          brief,
+          folder: null,
+          inputs: [],
+        },
+        store.nextOrdinal(owner),
+        {
+          type: 'work_given',
+          piece,
+          parent: parent.piece,
+          label: `${parent.label}.1`,
+          givenBy,
+          title: piece,
+          brief,
+        },
+        tick(),
+      )
+      put({ type: 'user_turn', text: brief, attribution: 'app_authored', drives: piece })
+      const failure = { message: 'The fictional model could not run.' }
+      const terminalOrdinal = store.nextOrdinal(owner)
+      put({ type: 'turn', state: 'failed', providerFailure: failure })
+      expect(store.piecesOwnedBy(owner)).toContainEqual(
+        expect.objectContaining({
+          piece,
+          stalledBecause: 'turn_ended',
+          providerTurnFailure: { turnOrdinal: terminalOrdinal, ...failure },
+        }),
+      )
+      expect(store.providerFailureEpisode(owner)).toMatchObject({ terminalOrdinal })
+      put({
+        type: 'work_reconciliation',
+        incident: 'fictional-provider-failed-incident',
+        piece,
+        kind: 'stopped',
+        cause: 'turn_ended',
+        since: tick(),
+        ...(giver === null
+          ? { step: 'person', outcome: 'listed' }
+          : {
+              step: 'holder',
+              outcome: 'failed',
+              target: owner,
+              messageId: 'fictional-holder-notice',
+            }),
+      })
+      if (giver !== null) {
+        const episode = store.providerFailureEpisode.bind(store)
+        vi.spyOn(store, 'providerFailureEpisode').mockImplementation((holder, unread) =>
+          holder === owner ? 'unknown' : episode(holder, unread),
+        )
+      }
+      host = build()
+      if (giver === null) {
+        expect(host.workIncidentsForAPerson().rows).toContainEqual(
+          expect.objectContaining({ piece, kind: 'stopped', giver: null }),
+        )
+        return
+      }
+      await cycle()
+      await waitFor(() => notices(giver.owner).length === 1, 'the ordinary notice for the giver')
+      expect(store.reconciliationReceiptsForOwner(owner)).not.toContainEqual(
+        expect.objectContaining({ kind: 'provider-turn-failed' }),
+      )
+    },
+  )
+
   it('a future time is untouched; the 60 s tick wakes a due root once and turn end lists it', async () => {
     const { owner, work } = await create()
     const at = clock + 3_600_000
