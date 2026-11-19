@@ -324,7 +324,9 @@ it('keeps the failure of driven work through an unrelated turn, a close, and rec
   expect(read(first)?.providerTurnFailure).toEqual(diagnosis)
   append({ type: 'reopened' })
   const reopened = openDatabase(file)
-  cleanup.push(() => reopened.close())
+  cleanup.push(() => {
+    reopened.close()
+  })
   expect(createSessionStore(reopened).piecesOwnedBy('alpha')).toEqual(store.piecesOwnedBy('alpha'))
 
   append({ type: 'message_unqueued', messageId: 'retry-first', reason: 'sent', text: 'Retry' })
