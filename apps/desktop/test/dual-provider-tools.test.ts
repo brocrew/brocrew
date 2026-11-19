@@ -1,3 +1,4 @@
+import { openPoolReviewLead } from './lib/worker-pool-fixture'
 import { z } from 'zod'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentCallerId, agentToolsFor } from '../src/main/runtime/agent-tools'
@@ -12,13 +13,7 @@ describe('provider choices in the public tools', () => {
   afterEach(async () => world.cleanUp())
 
   async function setup() {
-    const host = world.aHost()
-    const giver = (
-      await host.createSession(
-        { provider: 'claude', profileId: 'review-lead', cwd: world.folder, approvalMode: 'auto' },
-        world.window,
-      )
-    ).sessionId
+    const { host, sessionId: giver } = await openPoolReviewLead(world)
     const tools = agentToolsFor(host, giver).tools
     const tool = (name: string) => {
       const found = tools.find((one) => one.name === name)
