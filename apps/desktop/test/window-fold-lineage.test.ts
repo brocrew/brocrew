@@ -431,6 +431,7 @@ it('reads an ordinary holder failure through wakes, stopped completions and reop
 
   append({ type: 'provider_turn' })
   append({ type: 'turn', state: 'completed', startedBy: 'the-provider' })
+  expect(store.providerFailureEpisode('alpha')).toEqual(episode)
   append({ type: 'user_turn', text: 'Try again' })
   append({ type: 'work_interrupted', by: 'a-person' })
   append({ type: 'turn', state: 'completed' })
@@ -454,15 +455,28 @@ it('reads an ordinary holder failure through wakes, stopped completions and reop
   expect(createSessionStore(reopened).providerFailureEpisode('alpha')).toEqual(episode)
 
   append({ type: 'user_turn', text: 'Retry the same model' })
+  append({
+    type: 'user_decision',
+    requestId: 'req_cancelled_retry',
+    outcome: 'cancel',
+    by: { who: 'a-person' },
+  })
   const failedAgain = append(refusedTurn)
-  expect(store.providerFailureEpisode('alpha')).toMatchObject({ terminalOrdinal: failedAgain })
+  expect(store.providerFailureEpisode('alpha')).toMatchObject({
+    terminalOrdinal: failedAgain,
+    cause: providerCause,
+  })
+  expect(store.piecesOwnedBy('alpha')[0]?.providerTurnFailure).toEqual({
+    turnOrdinal: failedAgain,
+    ...providerCause,
+  })
   append({ type: 'user_turn', text: 'Continue silently' })
   append({ type: 'turn', state: 'completed' })
   expect(store.providerFailureEpisode('alpha')).toBe('none')
   expect(store.piecesOwnedBy('alpha')[0]?.providerTurnFailure).toBeUndefined()
 })
 
-it('joins taskless Asks from the failed batch, keeping late and mid-turn input outside it', () => {
+it('joins taskless Asks delivered into a provider burst, using the latest hold of each message', () => {
   const { store, folder, db } = world()
   const owner = 'peer-answerer'
   store.adopt({
@@ -479,10 +493,10 @@ it('joins taskless Asks from the failed batch, keeping late and mid-turn input o
     store.append(owner, ordinal, event, ordinal + 1)
     return ordinal
   }
-  const ask = (asker: string, requestId: string) => {
+  const ask = (asker: string, requestId: string, messageId = requestId) => {
     append({
       type: 'message_queued',
-      messageId: requestId,
+      messageId,
       kind: 'question',
       text: 'A question',
       relayedFrom: asker,
@@ -491,6 +505,14 @@ it('joins taskless Asks from the failed batch, keeping late and mid-turn input o
   }
   append({ type: 'user_turn', text: 'Earlier work' })
   append({ type: 'turn', state: 'completed' })
+  ask('alpha', 'req_alpha_earlier', 'req_alpha')
+  append({
+    type: 'message_unqueued',
+    messageId: 'req_alpha',
+    reason: 'handover',
+    text: 'A question',
+  })
+  append({ type: 'provider_turn' })
   ask('alpha', 'req_alpha')
   ask('beta', 'req_beta')
   for (const messageId of ['req_alpha', 'req_beta'])
@@ -510,8 +532,9 @@ it('joins taskless Asks from the failed batch, keeping late and mid-turn input o
     reason: 'handover',
     text: 'A question',
   })
-  const terminalOrdinal = append(refusedTurn)
+  const terminalOrdinal = append({ ...refusedTurn, startedBy: 'the-provider' })
   ask('beta', 'req_late')
+  expect(store.turns(owner)).toHaveLength(2)
   expect(store.piecesOwnedBy(owner)).toEqual([])
   expect(store.providerFailureEpisode(owner)).toMatchObject({
     terminalOrdinal,
@@ -535,21 +558,71 @@ it('joins taskless Asks from the failed batch, keeping late and mid-turn input o
   expect(store.providerFailureEpisode(owner)).toBe('unknown')
 })
 
+it('treats a failed batch with a moved part and only one sent row as unknown', () => {
+  const { store } = world()
+  const append = (event: TranscriptEvent) => {
+    const ordinal = store.nextOrdinal('alpha')
+    store.append('alpha', ordinal, event, ordinal + 1)
+  }
+  const movedFrom = { sessionId: 'source', name: 'Source', ordinal: 1, requestId: 'req_move' }
+  append({
+    type: 'message_queued',
+    messageId: 'msg_question',
+    kind: 'question',
+    text: 'A question',
+    relayedFrom: 'beta',
+    asks: { asker: 'beta', requestId: 'req_question' },
+  })
+  append({
+    type: 'message_queued',
+    messageId: 'msg_moved',
+    kind: 'work',
+    text: 'Moved work',
+    movedFrom,
+  })
+  append({
+    type: 'message_unqueued',
+    messageId: 'msg_question',
+    reason: 'sent',
+    text: 'A question',
+  })
+  append({
+    type: 'user_turn',
+    text: 'A question\n\nMoved work',
+    parts: [
+      { text: 'A question', relayedFrom: 'beta' },
+      { text: 'Moved work', movedFrom },
+    ],
+  })
+  append(refusedTurn)
+  expect(store.providerFailureEpisode('alpha')).toBe('unknown')
+})
+
 it('keeps the episode unknown for unread terminals or an exhausted closed-turn bound', () => {
   const { store, db } = world()
   store.append('alpha', 1, { type: 'user_turn', text: 'Run' }, 2)
   store.append('alpha', 2, refusedTurn, 3)
   for (let n = 0; n < 8; n++) {
-    const ordinal = 3 + n * 2
-    store.append('alpha', ordinal, { type: 'provider_turn' }, ordinal + 1)
-    store.append(
-      'alpha',
-      ordinal + 1,
-      { type: 'turn', state: 'completed', startedBy: 'the-provider' },
-      ordinal + 2,
-    )
+    if (n === 7) {
+      expect(store.providerFailureEpisode('beta')).toBe('none')
+      expect(store.providerFailureEpisode('alpha')).toMatchObject({ terminalOrdinal: 2 })
+    }
+    for (const [owner, start] of [
+      ['alpha', 3],
+      ['beta', 1],
+    ] as const) {
+      const ordinal = start + n * 2
+      store.append(owner, ordinal, { type: 'provider_turn' }, ordinal + 1)
+      store.append(
+        owner,
+        ordinal + 1,
+        { type: 'turn', state: 'completed', startedBy: 'the-provider' },
+        ordinal + 2,
+      )
+    }
   }
   expect(store.providerFailureEpisode('alpha')).toBe('unknown')
+  expect(store.providerFailureEpisode('beta')).toBe('unknown')
 
   store.append('alpha', 19, { type: 'user_turn', text: 'Try once more' }, 20)
   store.append('alpha', 20, { type: 'turn', state: 'completed' }, 21)
