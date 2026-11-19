@@ -16918,17 +16918,22 @@ export class RuntimeHost implements LiveHost {
       if (!this.reconciliationMayWake(target)) return false
       const episode = this.deps.store.providerFailureEpisode(holder)
       if (typeof episode === 'string') return false
-      const receipt = this.deps.store
-        .reconciliationReceiptsForOwner(holder)
-        .findLast(
-          (one) =>
-            one.kind === 'provider-turn-failed' &&
-            one.messageId === messageId &&
-            this.theOneInItsPlace(one.target) === target &&
-            one.episode.generation === episode.generation &&
-            one.episode.terminalOrdinal === episode.terminalOrdinal,
+      const receipts = this.deps.store.reconciliationReceiptsForOwner(holder)
+      let activeReceipt = false
+      for (let at = receipts.length - 1; at >= 0; at--) {
+        const receipt = receipts[at]
+        if (
+          receipt?.kind !== 'provider-turn-failed' ||
+          receipt.messageId !== messageId ||
+          this.theOneInItsPlace(receipt.target) !== target ||
+          receipt.episode.generation !== episode.generation ||
+          receipt.episode.terminalOrdinal !== episode.terminalOrdinal
         )
-      if (receipt === undefined || receipt.outcome === 'failed') return false
+          continue
+        activeReceipt = receipt.outcome !== 'failed'
+        break
+      }
+      if (!activeReceipt) return false
 
       const workUnread = rowsUnreadOnce()
       const pieces = this.deps.store.openPiecesOf(holder, workUnread)
@@ -16974,7 +16979,8 @@ export class RuntimeHost implements LiveHost {
     for (const queued of [...session.mailbox]) {
       if (queued.authorship.appNotice === 'a-provider-turn-failed') {
         const gone = this.whyItNoLongerGoes(session.id, queued)
-        if (gone !== null) this.takeQueuedBack(session, queued, gone)
+        if (gone?.reason === 'retracted')
+          this.takeQueuedBack(session, queued, { reason: gone.reason, detail: gone.detail })
         continue
       }
       if (queued.authorship.appNotice !== 'a-work-wait-needs-attention') continue
