@@ -37,6 +37,106 @@ const drain = async () => {
 }
 
 describe('window reader owns its native connection until confirmed exit', () => {
+  it('reports the owners and ages at the cap without releasing a cancelled posted read', async () => {
+    const worker = new ReadWorker()
+    const timing = vi.fn()
+    const reader = new WindowWorkerReader(worker, timing)
+    const stop = new AbortController()
+    const reads = Array.from({ length: WINDOW_READ_BOUNDS.pending }, (_, index) =>
+      reader.read({ kind: 'routes' }, index === 0 ? stop.signal : undefined),
+    )
+    worker.emit('message', { type: 'ready' })
+    await drain()
+    stop.abort()
+    worker.emit('message', { type: 'debug-window-read-timing', id: 1, phase: 'start', atUs: 100 })
+    worker.emit('message', { type: 'debug-window-read-timing', id: 1, phase: 'end', atUs: 200 })
+
+    await expect(reader.read({ kind: 'routes' })).rejects.toMatchObject({ why: 'busy' })
+    expect(timing).toHaveBeenCalledWith('start', { id: 1, kind: 'routes', atUs: 100 })
+    expect(timing).toHaveBeenCalledWith('end', { id: 1, kind: 'routes', atUs: 200 })
+    const owners = timing.mock.calls.find(([phase]) => phase === 'busy')?.[1].owners
+    expect(owners).toHaveLength(WINDOW_READ_BOUNDS.pending)
+    expect(owners?.[0]).toEqual({
+      id: 1,
+      kind: 'routes',
+      phase: 'end',
+      cancelled: true,
+      ageUs: expect.any(Number),
+    })
+    expect(worker.sent).toHaveLength(WINDOW_READ_BOUNDS.pending)
+
+    worker.emit('message', { type: 'read', id: 1, result })
+    await expect(reads[0]).resolves.toEqual(result)
+    expect(timing).toHaveBeenCalledWith(
+      'release',
+      expect.objectContaining({
+        id: 1,
+        kind: 'routes',
+        outcome: 'read',
+        receivedUs: expect.any(Number),
+      }),
+    )
+    worker.emit('exit', 0)
+    expect(
+      (await Promise.allSettled(reads.slice(1))).every((read) => read.status === 'rejected'),
+    ).toBe(true)
+    await reader.close()
+  })
+
+  it('keeps permit and reply behavior if the timing writer throws', async () => {
+    const worker = new ReadWorker()
+    const reader = new WindowWorkerReader(worker, () => {
+      throw new Error('fictional log failure')
+    })
+    const answer = reader.read({ kind: 'routes' })
+    worker.emit('message', { type: 'ready' })
+    await drain()
+    worker.emit('message', { type: 'debug-window-read-timing', id: 1, phase: 'start', atUs: 100 })
+    worker.emit('message', { type: 'debug-window-read-timing', id: 1, phase: 'end', atUs: 200 })
+    worker.emit('message', { type: 'read', id: 1, result })
+    await expect(answer).resolves.toEqual(result)
+    worker.emit('exit', 0)
+    await reader.close()
+  })
+
+  it.each([false, true])('emits worker phases only for a Debug %s generation', async (debug) => {
+    const port = Object.assign(new EventEmitter(), { postMessage: vi.fn(), close: vi.fn() })
+    const read = vi.fn(() => result)
+    vi.resetModules()
+    vi.doMock('node:worker_threads', () => ({ parentPort: port, workerData: { file: 'fictional' } }))
+    vi.doMock('../src/main/db/window-read-engine', () => ({
+      WindowReadEngine: class {
+        read = read
+      },
+    }))
+    vi.stubEnv('BROCREW_WINDOW_READ_TIMING', debug ? '1' : '0')
+    try {
+      await import('../src/main/window-reader.worker')
+      expect(port.postMessage).toHaveBeenCalledExactlyOnceWith({ type: 'ready' })
+      port.postMessage.mockClear()
+      port.emit('message', { type: 'read', id: 1, query: { kind: 'routes' } })
+      read.mockImplementationOnce(() => {
+        throw new Error('fictional worker failure')
+      })
+      port.emit('message', { type: 'read', id: 2, query: { kind: 'routes' } })
+      const phase = (id: number, phase: 'start' | 'end') => [
+        { type: 'debug-window-read-timing', id, phase, atUs: expect.any(Number) },
+      ]
+      expect(port.postMessage.mock.calls).toEqual([
+        ...(debug ? [phase(1, 'start'), phase(1, 'end')] : []),
+        [{ type: 'read', id: 1, result }],
+        ...(debug ? [phase(2, 'start'), phase(2, 'end')] : []),
+        [{ type: 'failed', id: 2, cause: 'fictional worker failure', reason: 'worker-read-failed' }],
+      ])
+      expect(read).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.unstubAllEnvs()
+      vi.doUnmock('node:worker_threads')
+      vi.doUnmock('../src/main/db/window-read-engine')
+      vi.resetModules()
+    }
+  })
+
   it.each([
     'rows',
     'bytes',
