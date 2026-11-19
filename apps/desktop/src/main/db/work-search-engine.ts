@@ -5,8 +5,10 @@ import {
   clippedWorkText,
   searchWords,
   WORK_SEARCH_BOUNDS,
+  WORK_SEARCH_GROUP_BOUNDS,
   workSearchQuery,
   type ConversationSearchHit,
+  type GroupedWorkSearchPreview,
   type WorkSearchHit,
   type WorkSearchPage,
   type WorkSearchQuery,
@@ -38,6 +40,7 @@ const cursorSchema = z
     within: point
       .extend({ offset: z.number().int().positive().max(WORK_SEARCH_BOUNDS.ledgerRows) })
       .optional(),
+    groupOffset: z.int().positive().max(WORK_SEARCH_BOUNDS.candidates).optional(),
   })
   .strict()
 type Point = z.infer<typeof point>
@@ -58,6 +61,58 @@ type MatchedTask = {
   status: StatusLine | null
   done: string | null
   piece: PieceRow | null
+}
+
+type ConversationMatch = {
+  hit: ConversationSearchHit
+  taskLabels: readonly string[]
+}
+
+class SearchGroups {
+  readonly counts = new Map<string | null, number>()
+  private readonly previews = new Map<string | null, GroupedWorkSearchPreview[]>()
+  matched = 0
+
+  constructor(readonly offset: number) {}
+
+  wantsPreview(profile: string | null): boolean {
+    const previews = this.previews.get(profile)
+    if (previews !== undefined) return previews.length < WORK_SEARCH_GROUP_BOUNDS.previews
+    return (
+      !this.counts.has(profile) &&
+      this.counts.size >= this.offset &&
+      this.previews.size < WORK_SEARCH_GROUP_BOUNDS.groups
+    )
+  }
+
+  add({ hit, taskLabels }: ConversationMatch): void {
+    if (this.wantsPreview(hit.profile)) {
+      const { conversation, address, title, last_active_at, metadata } = hit
+      const page = this.previews.get(hit.profile) ?? []
+      page.push({
+        conversation,
+        address,
+        title,
+        last_active_at,
+        metadata,
+        matched_task_labels: taskLabels,
+        tasks_omitted: hit.tasks_omitted - taskLabels.length,
+      })
+      this.previews.set(hit.profile, page)
+    }
+    this.counts.set(hit.profile, (this.counts.get(hit.profile) ?? 0) + 1)
+    this.matched++
+  }
+
+  page(complete: boolean): NonNullable<WorkSearchPage['grouped']> {
+    const groups = [...this.previews].map(([profile, previews]) => ({
+      profile,
+      matched: complete ? this.counts.get(profile)! : null,
+      previews: [...previews],
+    }))
+    while (JSON.stringify(groups).length > WORK_SEARCH_BOUNDS.responseUnits - 2200) groups.pop()
+    return { matched: complete ? this.matched : null, groups }
+  }
 }
 
 const CANDIDATES =
@@ -96,6 +151,8 @@ export class WorkSearchEngine {
     const query = parsed.data
     if (query.from !== undefined && query.to !== undefined && query.from > query.to)
       return { ok: false, reason: 'invalid' }
+    if (query.grouped === true && (query.scope !== undefined || query.state !== undefined))
+      return { ok: false, reason: 'invalid' }
     const words = searchWords(query.words)
     const profile = query.profile?.toLocaleLowerCase('en') ?? null
     if (
@@ -113,6 +170,7 @@ export class WorkSearchEngine {
       words,
       query.limit,
       ...(query.includeConversationMetadata === true ? [true] : []),
+      ...(query.grouped === true ? ['grouped'] : []),
     ])
     let cursor: Cursor | null = null
     if (query.cursor !== undefined) {
@@ -123,6 +181,9 @@ export class WorkSearchEngine {
         if (
           cursor.query !== queryKey ||
           (cursor.within !== undefined && query.scope === undefined) ||
+          (query.grouped === true
+            ? cursor.after !== null || cursor.groupOffset === undefined
+            : cursor.groupOffset !== undefined) ||
           (cursor.after !== null &&
             (cursor.after.at > cursor.high.at ||
               (cursor.after.at === cursor.high.at && cursor.after.id > cursor.high.id)))
@@ -178,30 +239,52 @@ export class WorkSearchEngine {
     let within = cursor?.within
     const unread = rowsUnreadOnce()
     const hits: ConversationSearchHit[] = []
+    const groups = query.grouped === true ? new SearchGroups(cursor?.groupOffset ?? 0) : null
     let searched = 0
     let matchedTasks = 0
-    const result = (finished: boolean): WorkSearchPage => ({
-      hits: [...hits],
-      searched,
-      rows_unread: unread.count,
-      ledgers_skipped: unread.ledgersSkipped,
-      complete: finished && unread.count === 0 && unread.ledgersSkipped === 0,
-      next_cursor: finished
-        ? null
-        : Buffer.from(
-            JSON.stringify({
-              version: 2,
-              query: queryKey,
-              high,
-              after: through,
-              ...(within === undefined ? {} : { within }),
-            }),
-          ).toString('base64url'),
-    })
+    const result = (finished: boolean): WorkSearchPage => {
+      const complete = finished && unread.count === 0 && unread.ledgersSkipped === 0
+      if (groups !== null) {
+        const grouped = groups.page(complete)
+        const groupOffset = groups.offset + grouped.groups.length
+        const hasNext = complete && grouped.groups.length > 0 && groupOffset < groups.counts.size
+        return {
+          hits: [],
+          searched,
+          rows_unread: unread.count,
+          ledgers_skipped: unread.ledgersSkipped,
+          complete,
+          next_cursor: hasNext
+            ? Buffer.from(
+                JSON.stringify({ version: 2, query: queryKey, high, after: null, groupOffset }),
+              ).toString('base64url')
+            : null,
+          grouped,
+        }
+      }
+      return {
+        hits: [...hits],
+        searched,
+        rows_unread: unread.count,
+        ledgers_skipped: unread.ledgersSkipped,
+        complete,
+        next_cursor: finished
+          ? null
+          : Buffer.from(
+              JSON.stringify({
+                version: 2,
+                query: queryKey,
+                high,
+                after: through,
+                ...(within === undefined ? {} : { within }),
+              }),
+            ).toString('base64url'),
+      }
+    }
     if (high === undefined) return result(true)
     checkpoint?.({ ok: true, page: result(false) })
 
-    const includeMetadata = query.includeConversationMetadata === true
+    const includeMetadata = query.includeConversationMetadata === true || groups !== null
     const candidates = this.db
       .prepare(
         'SELECT s.id, s.updated_at AS at, a.slug AS profile, ' +
@@ -226,26 +309,32 @@ export class WorkSearchEngine {
         afterId: through?.id ?? null,
         cap: WORK_SEARCH_BOUNDS.candidates + 1,
       }) as Candidate[]
-    const pageBudget = new WorkSearchPageBudget(
-      () => this.now() - started >= WORK_SEARCH_BOUNDS.workerMs - WORK_SEARCH_BOUNDS.pageMs,
-    )
+    const workerScanMs = WORK_SEARCH_BOUNDS.workerMs - WORK_SEARCH_BOUNDS.pageMs
+    const scanMs = groups === null ? WORK_SEARCH_BOUNDS.pageMs : workerScanMs
+    const pageBudget = new WorkSearchPageBudget(() => this.now() - started >= workerScanMs)
+    const groupedMeasure = groups === null ? null : workSearchMaterialization(pageBudget)
+    let groupedRead: { db: Database.Database; store: SessionStore } | undefined
     for (const candidate of candidates.slice(0, WORK_SEARCH_BOUNDS.candidates)) {
       if (
-        (query.scope === undefined ? hits.length : matchedTasks) >= query.limit ||
+        (groups === null &&
+          (query.scope === undefined ? hits.length : matchedTasks) >= query.limit) ||
         (searched > 0 &&
-          (this.now() - started >= WORK_SEARCH_BOUNDS.pageMs ||
+          (this.now() - started >= scanMs ||
             pageBudget.returnedRows >= WORK_SEARCH_BOUNDS.pageRows))
       )
         break
-      const measure = workSearchMaterialization(pageBudget)
+      const measure = groupedMeasure ?? workSearchMaterialization(pageBudget)
+      groupedMeasure?.resetLedger()
       const localUnread = workSearchUnread(unread)
-      let hit: ConversationSearchHit | null
+      let match: ConversationMatch | null
       const offset = within?.id === candidate.id && within.at === candidate.at ? within.offset : 0
-      const taskLimit = query.scope === undefined ? 50 : query.limit - matchedTasks
+      const taskLimit =
+        groups !== null ? 0 : query.scope === undefined ? 50 : query.limit - matchedTasks
       try {
-        const db = measure.database(this.db)
-        const store = createSessionStore(db, this.now)
-        hit = this.conversationHit(
+        const db = groupedRead?.db ?? measure.database(this.db)
+        const store = groupedRead?.store ?? createSessionStore(db, this.now)
+        if (groupedMeasure !== null && groupedRead === undefined) groupedRead = { db, store }
+        match = this.conversationHit(
           candidate,
           caller,
           identity.id,
@@ -256,22 +345,28 @@ export class WorkSearchEngine {
           localUnread,
           offset,
           taskLimit,
+          groups?.wantsPreview(candidate.profile) ?? false,
         )
         measure.assert()
-        if (localUnread.count > 0 || localUnread.ledgersSkipped > 0) hit = null
+        if (localUnread.count > 0 || localUnread.ledgersSkipped > 0) match = null
       } catch {
         if (pageBudget.overflowed) break
         unread.in(candidate.id)('the-whole-ledger')
-        hit = null
+        match = null
       }
+      const hit = match?.hit ?? null
       if (
+        groups === null &&
         hit !== null &&
         JSON.stringify([...hits, hit]).length > WORK_SEARCH_BOUNDS.responseUnits - 2200
       )
         break
-      if (hit !== null) {
-        hits.push(hit)
-        matchedTasks += hit.matched_tasks.length
+      if (match !== null) {
+        if (groups !== null) groups.add(match)
+        else {
+          hits.push(match.hit)
+          matchedTasks += match.hit.matched_tasks.length
+        }
       }
       searched++
       if (
@@ -302,11 +397,15 @@ export class WorkSearchEngine {
     unread: RowsUnread,
     offset: number,
     taskLimit: number,
-  ): ConversationSearchHit | null {
+    collectTaskLabels: boolean,
+  ): ConversationMatch | null {
     const { id } = candidate
     const root = store.rootOf(id)
     const service = isRecordedServiceConversation(store, id, root)
-    const savedTitle = candidate.provider === null ? undefined : store.conversationTitle(id)
+    const savedTitle =
+      candidate.provider === null
+        ? undefined
+        : store.conversationTitle(id, query.grouped === true ? unread : undefined)
     const { address, title, line } = describeConversationForRead(store, id, service, savedTitle)
     const rootLines = root === null ? null : store.turnBlockRootLines(root.piece)
     if (root !== null && rootLines === null) throw new Error('unread conversation task')
@@ -390,24 +489,29 @@ export class WorkSearchEngine {
       matched_tasks.push(one)
     }
     return {
-      conversation: id,
-      address,
-      title: clippedWorkText(title, WORK_SEARCH_BOUNDS.titleUnits).text ?? '',
-      line,
-      profile: candidate.profile,
-      last_active_at: candidate.at,
-      status: clippedWorkText(latest?.text ?? null, WORK_SEARCH_BOUNDS.statusUnits).text,
-      matched_tasks,
-      tasks_omitted: matched.length - matched_tasks.length,
-      ...(candidate.provider === null
-        ? {}
-        : {
-            metadata: {
-              provider: candidate.provider,
-              archived_at: candidate.archivedAt,
-              title_author: savedTitle?.author ?? null,
-            },
-          }),
+      taskLabels: collectTaskLabels
+        ? matched.slice(0, WORK_SEARCH_GROUP_BOUNDS.taskLabels).map((task) => task.label)
+        : [],
+      hit: {
+        conversation: id,
+        address,
+        title: clippedWorkText(title, WORK_SEARCH_BOUNDS.titleUnits).text ?? '',
+        line,
+        profile: candidate.profile,
+        last_active_at: candidate.at,
+        status: clippedWorkText(latest?.text ?? null, WORK_SEARCH_BOUNDS.statusUnits).text,
+        matched_tasks,
+        tasks_omitted: matched.length - matched_tasks.length,
+        ...(candidate.provider === null
+          ? {}
+          : {
+              metadata: {
+                provider: candidate.provider,
+                archived_at: candidate.archivedAt,
+                title_author: savedTitle?.author ?? null,
+              },
+            }),
+      },
     }
   }
 

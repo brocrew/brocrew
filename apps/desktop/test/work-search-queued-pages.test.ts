@@ -11,7 +11,11 @@ import { createSessionStore } from '../src/main/db/session-store'
 import { WorkSearchEngine } from '../src/main/db/work-search-engine'
 import { WorkSearchWorkerReader } from '../src/main/db/work-search-reader'
 import { workSearchInWords } from '../src/shared/work-search-words'
-import type { WorkSearchResult } from '../src/shared/work-search'
+import {
+  WORK_SEARCH_BOUNDS,
+  workSearchResult,
+  type WorkSearchResult,
+} from '../src/shared/work-search'
 import { bundleAWorker } from './helpers/bundle-a-worker'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -69,6 +73,7 @@ it('returns a single conversation row for matching ended and open tasks', () => 
   const parent = store.rootOf(giver)!
   const address = store.rootOf(owner)!.label
   const at = Date.now()
+  const labels: string[] = []
   for (const [index, title] of ['Indexed ended task', 'Indexed open task'].entries()) {
     const piece = `work_indexed_${String(index)}`
     const number = store.numberUnder(parent.piece)
@@ -82,6 +87,7 @@ it('returns a single conversation row for matching ended and open tasks', () => 
       brief: 'Archive details',
       definitionOfDone: 'Document the sources',
     }
+    labels.push(given.label)
     store.recordGive(
       { ...given, number, owner, folder: null, inputs: [] },
       store.nextOrdinal(owner),
@@ -140,6 +146,28 @@ it('returns a single conversation row for matching ended and open tasks', () => 
     expect(engine.read(giver, { words: address, profile: 'profile_0' })).toMatchObject({
       ok: true,
       page: { hits: [{ conversation: owner }] },
+    })
+    expect(
+      engine.read(giver, { grouped: true, profile: 'profile_0', words: 'Archive details' }),
+    ).toMatchObject({
+      ok: true,
+      page: {
+        grouped: {
+          matched: 1,
+          groups: [
+            {
+              matched: 1,
+              previews: [
+                {
+                  conversation: owner,
+                  matched_task_labels: [labels[1], labels[0]],
+                  tasks_omitted: 0,
+                },
+              ],
+            },
+          ],
+        },
+      },
     })
     const palette = { scope: 'all' as const, profile: 'profile_0' }
     for (const words of [address, 'Archive details', 'Consult the librarian']) {
@@ -392,6 +420,10 @@ it('stops at 1000 conversation candidates and continues without repeating a page
     expect(next.page.searched).toBe(total - 1000)
     expect(next.page.hits).toEqual([])
     expect(next.page.next_cursor).toBeNull()
+    expect(engine.read('fictional_0', { ...query, grouped: true })).toMatchObject({
+      ok: true,
+      page: { searched: 1000, complete: false, next_cursor: null, grouped: { matched: null } },
+    })
     expect(db.prepare('SELECT total_changes() AS count').get()).toEqual(before)
   } finally {
     engine.close()
@@ -467,3 +499,176 @@ it('adds recorded metadata only to opted-in conversation pages on the existing w
     await reader.close()
   }
 })
+
+it('groups distinct conversation matches before selecting the six visible profiles', () => {
+  const day = '2080-01-01'
+  const at = Date.parse(day)
+  const caller = 'fictional_0'
+  for (let i = 0; i <= 10; i++) {
+    const id = `fictional_group_${String(i).padStart(2, '0')}`
+    store.create({
+      id,
+      provider: 'claude',
+      profileId: `profile_${Math.min(7, i)}`,
+      approvalMode: 'ask',
+      cwd: directory,
+    })
+    store.titleConversation(
+      id,
+      store.nextOrdinal(id),
+      { type: 'titled', title: 'Group match', author: { kind: 'person' } },
+      at,
+    )
+  }
+  db.prepare('UPDATE provider_session SET agent_identity_id = NULL WHERE id = ?').run(
+    'fictional_group_00',
+  )
+  let clock = 0
+  const engine = new WorkSearchEngine(file, () => clock)
+  const query = { grouped: true, from: day, to: day, words: 'Group match' } as const
+  try {
+    const first = workSearchResult.parse(engine.read(caller, query))
+    if (!first.ok || first.page.next_cursor === null || first.page.grouped === undefined) {
+      throw new Error('expected a complete first group page')
+    }
+    const { grouped, next_cursor: cursor } = first.page
+    expect(first.page).toMatchObject({ hits: [], complete: true, searched: 11 })
+    expect(grouped.matched).toBe(11)
+    expect(grouped.groups.map(({ profile }) => profile)).toEqual([
+      'profile_7',
+      'profile_6',
+      'profile_5',
+      'profile_4',
+      'profile_3',
+      'profile_2',
+    ])
+    expect(grouped.groups[0]).toMatchObject({
+      matched: 4,
+      previews: [
+        { conversation: 'fictional_group_10', metadata: { provider: 'claude' } },
+        { conversation: 'fictional_group_09' },
+        { conversation: 'fictional_group_08' },
+      ],
+    })
+    expect(engine.read(caller, { from: day, to: day, words: 'Group match', cursor })).toEqual({
+      ok: false,
+      reason: 'cursor-invalid',
+    })
+    expect(engine.read(caller, { ...query, cursor })).toMatchObject({
+      ok: true,
+      page: {
+        complete: true,
+        next_cursor: null,
+        grouped: {
+          matched: 11,
+          groups: [
+            { profile: 'profile_1', matched: 1 },
+            { profile: null, matched: 1 },
+          ],
+        },
+      },
+    })
+    expect(engine.read(caller, { ...query, profile: 'profile_7' })).toMatchObject({
+      ok: true,
+      page: { grouped: { matched: 4, groups: [{ profile: 'profile_7', matched: 4 }] } },
+    })
+
+    const withinWorkerBudget = engine.read(caller, query, (progress) => {
+      if (progress.ok && progress.page.searched > 0) clock = WORK_SEARCH_BOUNDS.pageMs + 1
+    })
+    expect(withinWorkerBudget).toMatchObject({
+      ok: true,
+      page: { complete: true, searched: 11, grouped: { matched: 11 } },
+    })
+
+    clock = 0
+    const cutShort = engine.read(caller, query, (progress) => {
+      if (progress.ok && progress.page.searched > 0) clock = WORK_SEARCH_BOUNDS.workerMs
+    })
+    expect(cutShort).toMatchObject({
+      ok: true,
+      page: {
+        complete: false,
+        searched: 1,
+        next_cursor: null,
+        grouped: { matched: null, groups: [{ matched: null }] },
+      },
+    })
+
+    clock = 0
+    db.prepare(
+      "UPDATE events SET payload = 'broken JSON' WHERE session_id = ? AND type = 'titled'",
+    ).run('fictional_group_06')
+    const torn = engine.read(caller, query)
+    expect(torn).toMatchObject({
+      ok: true,
+      page: { complete: false, rows_unread: 1, next_cursor: null, grouped: { matched: null } },
+    })
+  } finally {
+    engine.close()
+  }
+})
+
+it('finds all 72 groups and exact totals for 640 conversations in the real worker', async () => {
+  const day = '2080-01-02'
+  const at = Date.parse(day)
+  store.atomically(() => {
+    for (let index = 0; index < 640; index++) {
+      const id = `grouped_scale_${String(index).padStart(3, '0')}`
+      store.create({
+        id,
+        provider: 'codex',
+        profileId: `profile_${index % 72}`,
+        cwd: directory,
+        approvalMode: 'ask',
+      })
+      store.titleConversation(
+        id,
+        store.nextOrdinal(id),
+        { type: 'titled', title: 'Scale preview', author: { kind: 'person' } },
+        at,
+      )
+    }
+  })
+
+  const reader = new WorkSearchWorkerReader(
+    (caller, query) =>
+      new Worker(join(directory, 'search.cjs'), { workerData: { file, caller, query } }),
+  )
+  const query = { grouped: true, from: day, to: day, words: 'Scale preview' } as const
+  try {
+    let cursor: string | null = null
+    for (let offset = 0; offset < 72; offset += 6) {
+      const result = await reader.read('fictional_0', { ...query, cursor: cursor ?? undefined })
+      if (!result.ok) throw new Error(`grouped search unavailable after ${offset} groups`)
+      const page = result.page
+      const grouped = page.grouped
+      if (grouped === undefined) throw new Error(`missing grouped page after ${offset} groups`)
+      expect(page).toMatchObject({ complete: true, searched: 640, grouped: { matched: 640 } })
+      expect(JSON.stringify(result).length).toBeLessThanOrEqual(WORK_SEARCH_BOUNDS.responseUnits)
+      expect(
+        grouped.groups.map(({ profile, matched, previews }) => ({
+          profile,
+          matched,
+          ids: previews.map(({ conversation }) => conversation),
+        })),
+      ).toEqual(
+        Array.from({ length: 6 }, (_, index) => {
+          const newest = 639 - offset - index
+          return {
+            profile: `profile_${newest % 72}`,
+            matched: Math.floor(newest / 72) + 1,
+            ids: [newest, newest - 72, newest - 144].map(
+              (ordinal) => `grouped_scale_${String(ordinal)}`,
+            ),
+          }
+        }),
+      )
+      cursor = page.next_cursor
+      if (offset + 6 < 72) expect(cursor).not.toBeNull()
+    }
+    expect(cursor).toBeNull()
+  } finally {
+    await reader.close()
+  }
+}, 90_000)

@@ -791,7 +791,7 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
     at: number,
   ): void
   /** The newest title set on a conversation in its current history, or `null` when none was. */
-  conversationTitle(conversation: string): ConversationTitle | null
+  conversationTitle(conversation: string, unread?: RowsUnread): ConversationTitle | null
   conversationTitleHistory(
     conversation: string,
     before?: ConversationTitleHistoryCursor,
@@ -2993,11 +2993,16 @@ export function createSessionStore(
   function newestConversationTitle(
     conversation: string,
     generation: number,
+    noteSkip?: SkipNote,
   ): ConversationTitle | null {
     const row = selectNewestTitled.get(conversation, generation) as EventRow | undefined
     if (row === undefined) return null
-    const read = toPersistedEvents([row])[0]
-    if (read?.event.type !== 'titled') return null
+    const read = toPersistedEvents([row], noteSkip)[0]
+    if (read === undefined) return null
+    if (read.event.type !== 'titled') {
+      noteSkip?.(row.ordinal)
+      return null
+    }
     return { title: read.event.title, author: read.event.author, at: read.at }
   }
 
@@ -5425,8 +5430,12 @@ export function createSessionStore(
       appendTx(conversation, ordinal, event, at, activeGeneration(conversation), true)
     },
 
-    conversationTitle(conversation) {
-      return newestConversationTitle(conversation, activeGeneration(conversation))
+    conversationTitle(conversation, unread) {
+      return newestConversationTitle(
+        conversation,
+        activeGeneration(conversation),
+        unread?.in(conversation),
+      )
     },
 
     conversationTitleHistory,
