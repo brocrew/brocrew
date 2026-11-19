@@ -451,7 +451,7 @@ describe('707 · R39, extended — a spawn that ran short', () => {
       homeFails = undefined
       expect(await sendToTheKeptAddress(pm, kept.recipient.id)).toMatchObject({
         outcome: 'ok',
-        receipt: { recipient: { id: kept.recipient.id } },
+        agent: kept.recipient.id,
       })
     })
 

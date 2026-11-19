@@ -35,20 +35,29 @@ interface DisplayTitleReads {
   ): { readonly slug: string; readonly displayName: string | null } | null
 }
 
-export function conversationDisplayTitle(reads: DisplayTitleReads, conversation: string): string {
+function conversationDisplayTitle(
+  reads: DisplayTitleReads,
+  conversation: string,
+  service: boolean,
+): string {
   const title = reads.conversationTitle(conversation)?.title
   if (title !== undefined) return title
-  const taskTitle = aConversationTitle(reads.latestTaskTitle(conversation))
-  if (taskTitle !== null) return taskTitle
+  if (!service) {
+    const taskTitle = aConversationTitle(reads.latestTaskTitle(conversation))
+    if (taskTitle !== null) return taskTitle
+  }
   const identity = reads.conversationBinding(conversation)?.identity
   const profile =
     identity == null ? null : reads.agentIdentityNameById(agentIdentityRowId(identity))
   return profile?.displayName ?? profile?.slug ?? 'untitled'
 }
 
-export function conversationLine(
+export function describeConversation(
   reads: AddressReads & DisplayTitleReads,
   conversation: string,
-): string {
-  return `conversation ${canonicalAddressOf(reads, conversation)} · ${conversationDisplayTitle(reads, conversation)}`
+  service: boolean,
+): { readonly address: string; readonly title: string; readonly line: string } {
+  const address = service ? conversation : canonicalAddressOf(reads, conversation)
+  const title = conversationDisplayTitle(reads, conversation, service)
+  return { address, title, line: `conversation ${address} · ${title}` }
 }

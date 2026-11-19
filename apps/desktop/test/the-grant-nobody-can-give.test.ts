@@ -152,6 +152,8 @@ describe('355 · the identity door a person writes through', () => {
         await tool.call({
           definition_of_done: 'The requested result and its checks are recorded.',
           profile: 'worker',
+          to: 'new',
+          conversation_title: 'The unchanged call',
           title: 'The unchanged call',
           brief: 'the unchanged call',
         })

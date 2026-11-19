@@ -265,6 +265,7 @@ describe('personal work fields and their existing ownership boundaries', () => {
       ).toBe('stalled')
     })
     const second = await world.gives(host, caller, 'worker', {
+      to: first.owner,
       title: 'The second fictional assignment',
     })
     if (!second.ok) throw new Error('fictional second give failed')

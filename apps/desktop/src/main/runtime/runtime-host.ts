@@ -23505,7 +23505,7 @@ export class RuntimeHost implements LiveHost {
   }
 
   receiptForSend(facts: SendFacts): ReturnType<typeof sendReceipt> {
-    return sendReceipt(facts, this.deps.store)
+    return sendReceipt(facts, this.deps.store, this.theServiceOf(facts.to) !== null)
   }
 
   private sendFailedAfterRecording(

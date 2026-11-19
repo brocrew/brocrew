@@ -1,7 +1,7 @@
 import type { SendReceipt } from '../../shared/tool-outcome'
-import { canonicalAddressOf, conversationDisplayTitle, conversationLine } from './conversation-address'
+import { describeConversation } from './conversation-address'
 
-type ConversationReads = Parameters<typeof conversationLine>[0]
+type ConversationReads = Parameters<typeof describeConversation>[0]
 
 export type SendFacts = Pick<SendReceipt, 'recorded' | 'attachments'> & {
   readonly to: string
@@ -12,15 +12,14 @@ export type SendFacts = Pick<SendReceipt, 'recorded' | 'attachments'> & {
 export function sendReceipt(
   facts: SendFacts,
   reads: ConversationReads,
+  service: boolean,
 ): { readonly receipt: SendReceipt; readonly said: string } {
-  const address = canonicalAddressOf(reads, facts.to)
-  const title = conversationDisplayTitle(reads, facts.to)
+  const { address, title, line: conversation } = describeConversation(reads, facts.to, service)
   const receipt: SendReceipt = {
     recorded: facts.recorded,
     recipient: { id: facts.to, address, title, state: facts.state },
     attachments: facts.attachments,
   }
-  const conversation = conversationLine(reads, facts.to)
   const recipient = `${facts.profile} at ${conversation}`
   const task = `Task ${facts.recorded.taskLabel}`
   const { state } = facts

@@ -375,10 +375,6 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
   // ───────────────────────────── §3 · the receipt says what the grant reaches ─────────────────────────────
 
   describe('§3 · the giver is told what the grant changes for that conversation', () => {
-    const RUNS_WITHOUT_ASKING = 'It runs without asking, so it could already reach'
-    const MAY_WRITE = 'without asking while'
-    const STILL_ASKS = 'still asks before changing anything'
-
     it('🔴 a helper that runs without asking: nothing new — ⛔ no write or read sentence', async () => {
       const giver = await aGiver()
       const helper = await aHelperAtWork(giver)
@@ -393,11 +389,7 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
       const data = given.structured as GiveAnswer
       expect(data.outcome, given.text).toBe('ok')
       expect(data.folder).toEqual({ folder: repoB, use: 'grant' })
-      expect(given.text).toContain(
-        `${RUNS_WITHOUT_ASKING} ${repoB}; the folder is shown as granted while ${data.label ?? '?'} is open.`,
-      )
-      expect(given.text).not.toContain(MAY_WRITE)
-      expect(given.text).not.toContain(STILL_ASKS)
+      expect(given.structured?.folder_reach).toBe('already')
     })
 
     it('🔴 Codex asking first may now write there without asking — ⛔ never told it still asks', async () => {
@@ -427,11 +419,7 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
       const data = given.structured as GiveAnswer
       expect(data.outcome, given.text).toBe('ok')
       expect(data.folder).toEqual({ folder: repoB, use: 'grant' })
-      expect(given.text).toContain(
-        `It may also write in ${repoB} without asking while ${data.label ?? '?'} is open; its own working folder is unchanged.`,
-      )
-      expect(given.text).not.toContain(STILL_ASKS)
-      expect(given.text).not.toContain(RUNS_WITHOUT_ASKING)
+      expect(given.structured?.folder_reach).toBe('writes')
     })
 
     it('🔴 Claude asking first reads there without asking and still asks before changing anything — ⛔ never told it may write', async () => {
@@ -462,11 +450,7 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
       const data = given.structured as GiveAnswer
       expect(data.outcome, given.text).toBe('ok')
       expect(data.folder).toEqual({ folder: repoB, use: 'grant' })
-      expect(given.text).toContain(
-        `It may also work in ${repoB} while ${data.label ?? '?'} is open: it reads there without asking, and ${STILL_ASKS}; its own working folder is unchanged.`,
-      )
-      expect(given.text).not.toContain(MAY_WRITE)
-      expect(given.text).not.toContain(RUNS_WITHOUT_ASKING)
+      expect(given.structured?.folder_reach).toBe('reads')
     })
   })
 

@@ -979,12 +979,13 @@ describe('a service queues the work it is given', () => {
         delivery: 'held',
         queued_behind: 0,
         folder: { use: 'grant', folder: world.folder },
-        receipt: { recipient: { state: { kind: 'queued', behind: 0 } } },
+        receipt: { recipient: { address: given.structured.agent, title: expect.any(String), state: { kind: 'queued', behind: 0 } } },
       })
       const label = String(given.structured.label)
-      expect(given.text.split('\n')[0]).toBe(
-        `Task ${label} held for browser-driver at conversation ${label} · Book the room.`,
+      expect(given.text.split('\n')[0]).toContain(
+        `Task ${label} held for browser-driver at conversation ${String(given.structured.agent)} · `,
       )
+      expect(given.text.split('\n')[0]).not.toContain('Book the room')
       const behind = await call(host, first, 'give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'browser-driver',
