@@ -312,23 +312,28 @@ export class WorkSearchEngine {
     const workerScanMs = WORK_SEARCH_BOUNDS.workerMs - WORK_SEARCH_BOUNDS.pageMs
     const scanMs = groups === null ? WORK_SEARCH_BOUNDS.pageMs : workerScanMs
     const pageBudget = new WorkSearchPageBudget(() => this.now() - started >= workerScanMs)
+    const groupedMeasure = groups === null ? null : workSearchMaterialization(pageBudget)
+    let groupedRead: { db: Database.Database; store: SessionStore } | undefined
     for (const candidate of candidates.slice(0, WORK_SEARCH_BOUNDS.candidates)) {
       if (
-        (groups === null && (query.scope === undefined ? hits.length : matchedTasks) >= query.limit) ||
+        (groups === null &&
+          (query.scope === undefined ? hits.length : matchedTasks) >= query.limit) ||
         (searched > 0 &&
           (this.now() - started >= scanMs ||
             pageBudget.returnedRows >= WORK_SEARCH_BOUNDS.pageRows))
       )
         break
-      const measure = workSearchMaterialization(pageBudget)
+      const measure = groupedMeasure ?? workSearchMaterialization(pageBudget)
+      groupedMeasure?.resetLedger()
       const localUnread = workSearchUnread(unread)
       let match: ConversationMatch | null
       const offset = within?.id === candidate.id && within.at === candidate.at ? within.offset : 0
       const taskLimit =
         groups !== null ? 0 : query.scope === undefined ? 50 : query.limit - matchedTasks
       try {
-        const db = measure.database(this.db)
-        const store = createSessionStore(db, this.now)
+        const db = groupedRead?.db ?? measure.database(this.db)
+        const store = groupedRead?.store ?? createSessionStore(db, this.now)
+        if (groupedMeasure !== null && groupedRead === undefined) groupedRead = { db, store }
         match = this.conversationHit(
           candidate,
           caller,

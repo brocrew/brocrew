@@ -11,7 +11,11 @@ import { createSessionStore } from '../src/main/db/session-store'
 import { WorkSearchEngine } from '../src/main/db/work-search-engine'
 import { WorkSearchWorkerReader } from '../src/main/db/work-search-reader'
 import { workSearchInWords } from '../src/shared/work-search-words'
-import { WORK_SEARCH_BOUNDS, workSearchResult, type WorkSearchResult } from '../src/shared/work-search'
+import {
+  WORK_SEARCH_BOUNDS,
+  workSearchResult,
+  type WorkSearchResult,
+} from '../src/shared/work-search'
 import { bundleAWorker } from './helpers/bundle-a-worker'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -154,7 +158,11 @@ it('returns a single conversation row for matching ended and open tasks', () => 
             {
               matched: 1,
               previews: [
-                { conversation: owner, matched_task_labels: [labels[1], labels[0]], tasks_omitted: 0 },
+                {
+                  conversation: owner,
+                  matched_task_labels: [labels[1], labels[0]],
+                  tasks_omitted: 0,
+                },
               ],
             },
           ],
@@ -623,8 +631,9 @@ it('finds all 72 groups and exact totals for 640 conversations in the real worke
     }
   })
 
-  const reader = new WorkSearchWorkerReader((caller, query) =>
-    new Worker(join(directory, 'search.cjs'), { workerData: { file, caller, query } }),
+  const reader = new WorkSearchWorkerReader(
+    (caller, query) =>
+      new Worker(join(directory, 'search.cjs'), { workerData: { file, caller, query } }),
   )
   const query = { grouped: true, from: day, to: day, words: 'Scale preview' } as const
   try {

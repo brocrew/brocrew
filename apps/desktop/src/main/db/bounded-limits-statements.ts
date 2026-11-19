@@ -20,6 +20,13 @@ export class LimitsMaterialization {
     }
   }
 
+  reset(): void {
+    this.failed = false
+    this.rows = 0
+    this.bytes = 0
+    this.statements = 0
+  }
+
   assert(): void {
     if (this.failed) throw new LimitsReadUnavailable('overflow')
   }

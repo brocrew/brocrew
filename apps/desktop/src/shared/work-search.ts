@@ -100,11 +100,10 @@ export interface WorkSearchPage {
   readonly grouped?: GroupedWorkSearch
 }
 
-export interface GroupedWorkSearchPreview
-  extends Pick<
-    ConversationSearchHit,
-    'conversation' | 'address' | 'title' | 'last_active_at' | 'metadata'
-  > {
+export interface GroupedWorkSearchPreview extends Pick<
+  ConversationSearchHit,
+  'conversation' | 'address' | 'title' | 'last_active_at' | 'metadata'
+> {
   readonly matched_task_labels: readonly string[]
   readonly tasks_omitted: number
 }

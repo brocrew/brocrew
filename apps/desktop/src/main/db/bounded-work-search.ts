@@ -66,6 +66,7 @@ export function workSearchMaterialization(page?: WorkSearchPageBudget) {
     cellBytes: WORK_SEARCH_BOUNDS.cellBytes,
   })
   return {
+    resetLedger: () => ledger.reset(),
     assert: () => ledger.assert(),
     measured: () => ledger.measured(),
     database: (db: AppDatabase) =>
