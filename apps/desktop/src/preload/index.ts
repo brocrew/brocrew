@@ -6,6 +6,7 @@ import type { LedgerWalk, PersonsDecision, PersonsQuestion } from '../shared/que
 import type { WhatEachConversationIsWaitingOn, WorkGivenOut } from '../shared/task-contracts'
 import type { McpServerRequestForAPerson } from '../shared/conversation-events'
 import type { ConversationTitleHistoryInput } from '../shared/conversation-title'
+import type { ConversationTaskPageInput } from '../shared/conversation-task-page'
 import type { HandedPath } from '../shared/attachment-contracts'
 import type { SessionSettingChanged } from '../shared/model-choice-contracts'
 import type { ListingAnswer } from '../shared/listing-published'
@@ -533,6 +534,8 @@ const runtime: RuntimeBridge = Object.freeze({
     command({ kind: 'retitleWork', ...input }),
   readConversationIdentity: (input: SessionInput) =>
     command({ kind: 'readConversationIdentity', ...input }),
+  readConversationTasks: ({ sessionId, cursor }: ConversationTaskPageInput) =>
+    command({ kind: 'readConversationTasks', sessionId, cursor }),
   readConversationTitleHistory: ({ sessionId, before }: ConversationTitleHistoryInput) =>
     command({
       kind: 'readConversationTitleHistory',

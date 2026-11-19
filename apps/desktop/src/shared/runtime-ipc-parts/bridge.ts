@@ -12,6 +12,10 @@ import type { RulesBaseline } from '../agent-rules'
 import type { ArchiveOutcome, DeleteOutcome, DeleteVerdict } from '../conversation-archive'
 import type { McpServerRequestForAPerson } from '../conversation-events'
 import type {
+  ConversationTaskPageInput,
+  ConversationTaskPageResult,
+} from '../conversation-task-page'
+import type {
   ConversationIdentity,
   ConversationRenameInput,
   ConversationRenameResult,
@@ -774,6 +778,7 @@ export interface RuntimeBridge {
    */
   retitleWork(input: { piece: string; title: string }): Promise<WorkRetitled>
   readConversationIdentity(input: { sessionId: string }): Promise<ConversationIdentity | null>
+  readConversationTasks(input: ConversationTaskPageInput): Promise<ConversationTaskPageResult>
   readConversationTitleHistory(
     input: ConversationTitleHistoryInput,
   ): Promise<ConversationTitleHistory | null>
