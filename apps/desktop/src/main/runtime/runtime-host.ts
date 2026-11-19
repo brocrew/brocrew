@@ -1943,8 +1943,8 @@ const theSignInChanged = (provider: Provider): string =>
  */
 const RESOURCE_SAMPLE_MS = 5_000
 
-/** A caller's words held for a service's next start while services are off: whose they are. */
-interface WordsLeftForAService {
+/** The sender and files of a message recorded before the recipient starts. */
+interface WordsForTheNextStart {
   readonly by: Caller
   /** What the caller said they are; absent for a new brief, which names its piece. */
   readonly says?: AgentMessageKind
@@ -8709,10 +8709,9 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * A caller's words to a service that is not running, while services are off: every rail a start
-   * would meet is asked first, then they are kept in its record for its next start, unsent.
+   * Keep the message and its sender receipt before the recipient's next start.
    */
-  private async leaveForTheServicesStart(
+  private async leaveForTheNextStart(
     sessionId: string,
     text: string,
     by: Caller,
@@ -8774,7 +8773,7 @@ export class RuntimeHost implements LiveHost {
     text: string,
     facts: FactsAQueueCarries,
     kind: MailboxKind,
-    left?: WordsLeftForAService,
+    left?: WordsForTheNextStart,
   ): Promise<QueueOutcome> {
     return new Promise<QueueOutcome>((kept, failed) => {
       this.holdUntilItStarts(
@@ -12954,8 +12953,8 @@ export class RuntimeHost implements LiveHost {
     kept?: (where: WhereHeldWordsWait, id?: string) => void,
     /** ⚑ The id to hold them under, when holding them again must be the same message. */
     id?: string,
-    /** A caller's words held for a service while services are off: whose they are. */
-    left?: WordsLeftForAService,
+    /** Sender and attachment facts when an outbound message is held before starting. */
+    left?: WordsForTheNextStart,
   ): void {
     if (this.startupRepairs.has(sessionId)) {
       void this.settleBeforeUse(sessionId)
@@ -13003,7 +13002,7 @@ export class RuntimeHost implements LiveHost {
     facts: FactsAQueueCarries,
     kind: MailboxKind,
     id?: string,
-    left?: WordsLeftForAService,
+    left?: WordsForTheNextStart,
   ): { readonly held: QueuedMessage; readonly row: QueuedMessageEvent } {
     // ⚑ **D-016 · commit 6 · R4** — the piece of its own these words drive, when they name one.
     const drives = this.thePieceTheseWordsDrive(sessionId, facts)
@@ -13058,7 +13057,7 @@ export class RuntimeHost implements LiveHost {
     /** ⚑ **D-030** — see {@link holdUntilItStarts}. */
     kept?: (where: WhereHeldWordsWait, id?: string) => void,
     id?: string,
-    left?: WordsLeftForAService,
+    left?: WordsForTheNextStart,
   ): void {
     const { held, row } = this.wordsThisAppHolds(sessionId, text, facts, kind, id, left)
     // ⚑ **D-030 · its mailbox, while it runs** — and a sign-in that moved on holds them there for
@@ -23115,7 +23114,7 @@ export class RuntimeHost implements LiveHost {
       this.queueAs(to, text, by, attachments, kind, facts, says, 'as-it-finds-it')
     // ⛔ While services are off, an agent's words start no service: they wait for its next start.
     if (heldForServices) {
-      return this.leaveForTheServicesStart(sessionId, text, by, attachments, kind, facts, says)
+      return this.leaveForTheNextStart(sessionId, text, by, attachments, kind, facts, says)
     }
     if (now) {
       // ⚑ **D-017 · R1** — straight in; a stop under it is waited out and it is started again.
@@ -23150,7 +23149,7 @@ export class RuntimeHost implements LiveHost {
       const to = this.theOneInItsPlace(destination)
       if (this.runsNow(to)) return null
       const heldForService = this.servicesHoldItBack(to, by)
-      const kept = await this.leaveForTheServicesStart(to, text, by, [], 'work', facts, says)
+      const kept = await this.leaveForTheNextStart(to, text, by, [], 'work', facts, says)
       if (kept.outcome !== 'queued') return null
       const id = kept.messageId
       if (heldForService) return { id, to, state: this.stateOfARecordedMessage(to, id) }
