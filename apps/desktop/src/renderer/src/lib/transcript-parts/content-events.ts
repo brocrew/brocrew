@@ -193,7 +193,6 @@ export function foldEvent(
     case 'message_queued': {
       // Not sent, and shown as not sent (077). It arrives on the stream like everything else, so a
       // message queued live and the same message replayed on resume land by the same path.
-      closeStreaming(state)
       state.items.push({
         kind: 'queued',
         id: nextId(state, 'queued'),
