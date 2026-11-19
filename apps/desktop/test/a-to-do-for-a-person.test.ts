@@ -169,14 +169,17 @@ describe('a to-do for a person', () => {
     return { ada, piece, label: given.label as string }
   }
   const aHelperWithAPiece = () => openGiverAndGivePages({ host, root, window }, settle, aPieceGiven)
-  const openTheWriterAndWaitForItsBrief = async () => {
-    const { brobot, ada } = await aHelperWithAPiece()
-    await ok(agentToolsFor(host, ada), 'create_agent', { profile_slug: 'writer' })
-    const gave = await ok(
-      agentToolsFor(host, ada),
+  const giveWriterCopy = async (giver: string) => {
+    await ok(agentToolsFor(host, giver), 'create_agent', { profile_slug: 'writer' })
+    return ok(
+      agentToolsFor(host, giver),
       'give_work',
       newConversationGive('writer', 'Write the copy', 'write the copy'),
     )
+  }
+  const openTheWriterAndWaitForItsBrief = async () => {
+    const { brobot, ada } = await aHelperWithAPiece()
+    const gave = await giveWriterCopy(ada)
     const bea = gave.agent as string
     const label = gave.label as string
     await waitFor(

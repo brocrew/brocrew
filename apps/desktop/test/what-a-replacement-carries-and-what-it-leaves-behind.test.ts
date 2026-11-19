@@ -157,15 +157,13 @@ describe('what a replacement carries, and what it leaves behind', () => {
   it('a lost session leaves the work and its successful automatic holder reminder recorded', async () => {
     await host.closeAll()
     host = buildHost(ProductRuntimeHost)
-    await host.close(await personOpens('worker'), window)
-    const pm = await personOpens('pm')
-    const given = await callNewConversationGive(
-      agentToolsFor(host, pm),
-      'worker',
+    const { pm, given } = await giveToSeededWorker(
+      host,
+      window,
+      personOpens,
       'The schema',
       'migrate the schema',
     )
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     const label = given.label as string
     await waitFor(() => store.piecesOwnedBy(worker).length > 0, 'the given piece to be recorded')

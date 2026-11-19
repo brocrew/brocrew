@@ -704,21 +704,21 @@ describe('687 · what the cards cannot say yet', () => {
     })
   })
 
+  const giveBehindTheBusyBrief = async (pmTools: AgentToolset, worker: string) => {
+    await waitFor(
+      () => ledger(worker).some((event) => event.type === 'permission_request'),
+      'the worker to be busy',
+    )
+    return call(
+      pmTools,
+      'give_work',
+      addressedGive(worker, 'worker', 'Now build it', 'now build it'),
+    )
+  }
+
   /* ═════════════════ §4 · H6 — the flushed brief carries its label ════════════════════════════════ */
 
   describe('§4 · `678` H6 — a held brief’s flushed turn says its label on its own', () => {
-    const giveBehindTheBusyBrief = async (pmTools: AgentToolset, worker: string) => {
-      await waitFor(
-        () => ledger(worker).some((event) => event.type === 'permission_request'),
-        'the worker to be busy',
-      )
-      return call(
-        pmTools,
-        'give_work',
-        addressedGive(worker, 'worker', 'Now build it', 'now build it'),
-      )
-    }
-
     it('🔴 the turn a held brief flushes into carries the label its piece row was given a turn earlier', async () => {
       const { pm, worker, pmTools } = await aPmAndItsWorker(3)
       // ⚑ **D-016** — a second give from the same giver reaches the SAME conversation, and is held

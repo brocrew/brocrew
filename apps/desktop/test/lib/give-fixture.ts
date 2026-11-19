@@ -9,6 +9,7 @@ import { agentToolsFor, type ToolName } from '../../src/main/runtime/agent-tools
 import type { RuntimeEventSink, RuntimeHost } from '../../src/main/runtime/runtime-host'
 import { callOn } from '../helpers/call-agent-tool'
 import { waitFor } from './f093-host'
+import { RecordingSink } from './host-fixture'
 
 const definitionOfDone = 'The requested result and its checks are recorded.'
 
@@ -60,6 +61,39 @@ export async function giveAndWaitForBriefTurn(
   return { agent, piece: given.piece as string, label: given.label as string }
 }
 
+export async function giveTheFrontEndChain<FirstHandle>({
+  host,
+  brobotTools,
+  pmProfile,
+  workerProfile,
+  ledger,
+  firstHandle,
+}: {
+  host: RuntimeHost
+  brobotTools: AgentToolset
+  pmProfile: string
+  workerProfile: string
+  ledger: (conversation: string) => readonly { type: string }[]
+  firstHandle: () => FirstHandle
+}) {
+  const first = await giveAndWaitForBriefTurn(
+    brobotTools,
+    pmProfile,
+    'run the front-end work',
+    ledger,
+  )
+  const ada = first.agent
+  const adaHandle = firstHandle()
+  const adaTools = agentToolsFor(host, ada)
+  const toAli = await giveAndWaitForBriefTurn(
+    adaTools,
+    workerProfile,
+    'build the world-clock page',
+    ledger,
+  )
+  return { ada, adaHandle, adaTools, toAli }
+}
+
 export function addressedGive<To, Profile>(to: To, profile: Profile, title: string, brief: string) {
   return { to, definition_of_done: definitionOfDone, profile, title, brief }
 }
@@ -100,6 +134,35 @@ export function ownedFixturePiece(store: SessionStore, owner: string, piece: str
   const found = store.piecesOwnedBy(owner).find((one) => one.piece === piece)
   if (found === undefined) throw new Error(`${owner} owns no piece ${piece}`)
   return found
+}
+
+export async function giveNotesToAWorkerOnItsCard({
+  host,
+  window,
+  personOpens,
+  lastToolset,
+  ledger,
+}: {
+  host: RuntimeHost
+  window: RuntimeEventSink
+  personOpens: (profile: string) => Promise<{ id: string; tools: AgentToolset }>
+  lastToolset: () => AgentToolset | undefined
+  ledger: (conversation: string) => readonly { type: string }[]
+}) {
+  await host.close((await personOpens('worker')).id, window)
+  const pm = await personOpens(DEFAULT_PROFILE_ID)
+  const given = await callNewConversationGive(pm.tools, 'worker', 'The notes', 'write it')
+  expect(given.outcome, JSON.stringify(given)).toBe('ok')
+  const worker = given.agent as string
+  const workerTools = lastToolset()
+  if (workerTools === undefined) throw new Error('no worker toolset')
+  const surface = new RecordingSink('webContents:9')
+  host.claimSession(worker, surface)
+  await waitFor(
+    () => ledger(worker).some((event) => event.type === 'permission_request'),
+    'the worker to park on its card',
+  )
+  return { pm, worker, workerTools, piece: given.label as string, surface }
 }
 
 export async function giveWorkerAndClaimItsBrief(

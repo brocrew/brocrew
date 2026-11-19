@@ -1,4 +1,4 @@
-import { giveAndWaitForBriefTurn } from './lib/give-fixture'
+import { giveTheFrontEndChain } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -161,16 +161,6 @@ describe('message now · a message or an answer can stop the running turn', () =
   }
 
   /**
-   * ⚑ **D-016 · a give, and the child's first turn is its brief** — waited out to its END, so the
-   * turn {@link makeItWork} starts is the only one in flight. ⛔ **The chain runs in `auto`** (BroBot
-   * is opened so, and a child runs in its giver's mode): in `ask` every brief parks on a permission
-   * card, and `INTERRUPT_RAILS` refuses `a-person-is-being-asked` — the rail this file must not
-   * measure.
-   */
-  const give = (tools: AgentToolset, profile: string, title: string) =>
-    giveAndWaitForBriefTurn(tools, profile, title, ledger)
-
-  /**
    * 🔴 **BroBot → Ada → Ali, through the real door.**
    *
    * ⛔ **Every hop is a give** and not a hand-written provenance row: what the ruling walks is what
@@ -205,9 +195,14 @@ describe('message now · a message or an answer can stop the running turn', () =
     await bringIdentityIntoBeing(siblingProfile)
     const brobot = await personOpens(DEFAULT_PROFILE_ID, 'auto')
     const brobotTools = agentToolsFor(host, brobot)
-    const ada = (await give(brobotTools, pmProfile, 'run the front-end work')).agent
-    const adaTools = agentToolsFor(host, ada)
-    const toAli = await give(adaTools, workerProfile, 'build the world-clock page')
+    const { ada, adaTools, toAli } = await giveTheFrontEndChain({
+      host,
+      brobotTools,
+      pmProfile,
+      workerProfile,
+      ledger,
+      firstHandle: () => undefined,
+    })
     const ali = toAli.agent
     const aliHandle = latestHandle()
     return {

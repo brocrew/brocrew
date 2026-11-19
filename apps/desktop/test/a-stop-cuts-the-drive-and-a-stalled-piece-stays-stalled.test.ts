@@ -680,17 +680,7 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
   const aPmAndItsWorker = async (
     approvalMode: 'auto' | 'ask' = 'auto',
   ): Promise<{ pm: string; pmLaunch: Launch; worker: string; workerLaunch: Launch }> => {
-    const first = await host.createSession(
-      { provider: 'claude', profileId: 'worker', approvalMode: 'auto', cwd: root },
-      window,
-    )
-    launches.at(-1)!.letCloseFinish()
-    await host.close(first.sessionId, window)
-    const { sessionId: pm } = await host.createSession(
-      { provider: 'claude', profileId: 'pm', approvalMode, cwd: root },
-      window,
-    )
-    const pmLaunch = launches.at(-1)!
+    const { pm, pmLaunch } = await aPmWithAGrant(approvalMode)
     const given = await callNewConversationGive(pmLaunch.toolset, 'worker', 'The work', 'the work')
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
@@ -702,14 +692,16 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
   }
 
   /** ⛔ A PM with no child yet, and the identity `worker` in being — so a give starts one. */
-  const aPmWithAGrant = async (): Promise<{ pm: string; pmLaunch: Launch }> => {
+  const aPmWithAGrant = async (
+    approvalMode: 'auto' | 'ask' = 'auto',
+  ): Promise<{ pm: string; pmLaunch: Launch }> => {
     const first = await host.createSession(
       { provider: 'claude', profileId: 'worker', approvalMode: 'auto', cwd: root },
       window,
     )
     launches.at(-1)!.letCloseFinish()
     await host.close(first.sessionId, window)
-    return anotherPm()
+    return anotherPm(approvalMode)
   }
 
   it('the identity seed closes and drains while only the subject worker stays held', async () => {
@@ -862,9 +854,11 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
     },
   )
 
-  const anotherPm = async (): Promise<{ pm: string; pmLaunch: Launch }> => {
+  const anotherPm = async (
+    approvalMode: 'auto' | 'ask' = 'auto',
+  ): Promise<{ pm: string; pmLaunch: Launch }> => {
     const { sessionId: pm } = await host.createSession(
-      { provider: 'claude', profileId: 'pm', approvalMode: 'auto', cwd: root },
+      { provider: 'claude', profileId: 'pm', approvalMode, cwd: root },
       window,
     )
     return { pm, pmLaunch: launches.at(-1)! }

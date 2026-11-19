@@ -1,4 +1,4 @@
-import { giveAndWaitForBriefTurn } from './lib/give-fixture'
+import { giveAndWaitForBriefTurn, giveTheFrontEndChain } from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { callOn } from './helpers/call-agent-tool'
 import { chainAbove } from './helpers/conversation-ancestry'
@@ -205,10 +205,14 @@ describe('629 · a stop reaches down the whole chain', () => {
     await bringIdentityIntoBeing(siblingProfile)
     const brobot = await personOpens(DEFAULT_PROFILE_ID, 'auto')
     const brobotTools = agentToolsFor(host, brobot)
-    const ada = (await give(brobotTools, pmProfile, 'run the front-end work')).agent
-    const adaHandle = latestHandle()
-    const adaTools = agentToolsFor(host, ada)
-    const toAli = await give(adaTools, workerProfile, 'build the world-clock page')
+    const { ada, adaHandle, adaTools, toAli } = await giveTheFrontEndChain({
+      host,
+      brobotTools,
+      pmProfile,
+      workerProfile,
+      ledger,
+      firstHandle: latestHandle,
+    })
     const ali = toAli.agent
     const aliHandle = latestHandle()
     return {
