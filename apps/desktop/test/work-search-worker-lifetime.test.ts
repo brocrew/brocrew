@@ -216,7 +216,28 @@ describe('searches wait in order and retain a bounded partial page', () => {
         complete: false,
         ...(mode === 'flat'
           ? { next_cursor: 'fictional-cursor' }
-          : { next_cursor: null, grouped: { matched: null, groups: [] } }),
+          : {
+              next_cursor: null,
+              grouped: {
+                matched: null,
+                groups: [
+                  {
+                    profile: 'dev',
+                    matched: null,
+                    previews: [
+                      {
+                        conversation: 'sess_1',
+                        address: 'W1.1',
+                        title: 'A readable result',
+                        last_active_at: 123,
+                        matched_task_labels: ['W1.1'],
+                        tasks_omitted: 0,
+                      },
+                    ],
+                  },
+                ],
+              },
+            }),
       },
     }
     workers[0]!.emit('message', { kind: 'progress', result: partial })

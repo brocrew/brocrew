@@ -601,7 +601,7 @@ it('groups distinct conversation matches before selecting the six visible profil
   }
 })
 
-it('finds exact grouped totals for 640 conversations across 72 profiles in the real worker', async () => {
+it('finds all 72 groups and exact totals for 640 conversations in the real worker', async () => {
   const day = '2080-01-02'
   const at = Date.parse(day)
   store.atomically(() => {
@@ -623,39 +623,43 @@ it('finds exact grouped totals for 640 conversations across 72 profiles in the r
     }
   })
 
-  const reader = new WorkSearchWorkerReader((caller, query) => {
-    return new Worker(join(directory, 'search.cjs'), { workerData: { file, caller, query } })
-  })
+  const reader = new WorkSearchWorkerReader((caller, query) =>
+    new Worker(join(directory, 'search.cjs'), { workerData: { file, caller, query } }),
+  )
   const query = { grouped: true, from: day, to: day, words: 'Scale preview' } as const
   try {
-    const first = await reader.read('fictional_0', query)
-    if (!first.ok || first.page.grouped === undefined || first.page.next_cursor === null) {
-      throw new Error(`grouped search did not return a continuation: ${JSON.stringify(first)}`)
+    let cursor: string | null = null
+    for (let offset = 0; offset < 72; offset += 6) {
+      const result = await reader.read('fictional_0', { ...query, cursor: cursor ?? undefined })
+      if (!result.ok) throw new Error(`grouped search unavailable after ${offset} groups`)
+      const page = result.page
+      const grouped = page.grouped
+      if (grouped === undefined) throw new Error(`missing grouped page after ${offset} groups`)
+      expect(page).toMatchObject({ complete: true, searched: 640, grouped: { matched: 640 } })
+      expect(JSON.stringify(result).length).toBeLessThanOrEqual(WORK_SEARCH_BOUNDS.responseUnits)
+      expect(
+        grouped.groups.map(({ profile, matched, previews }) => ({
+          profile,
+          matched,
+          ids: previews.map(({ conversation }) => conversation),
+        })),
+      ).toEqual(
+        Array.from({ length: 6 }, (_, index) => {
+          const newest = 639 - offset - index
+          return {
+            profile: `profile_${newest % 72}`,
+            matched: Math.floor(newest / 72) + 1,
+            ids: [newest, newest - 72, newest - 144].map(
+              (ordinal) => `grouped_scale_${String(ordinal)}`,
+            ),
+          }
+        }),
+      )
+      cursor = page.next_cursor
+      if (offset + 6 < 72) expect(cursor).not.toBeNull()
     }
-    expect(first.page).toMatchObject({ complete: true, searched: 640, grouped: { matched: 640 } })
-    expect(first.page.grouped.groups.map(({ profile, matched, previews }) => ({
-      profile,
-      matched,
-      ids: previews.map(({ conversation }) => conversation),
-    }))).toEqual(Array.from({ length: 6 }, (_, index) => ({
-      profile: `profile_${63 - index}`,
-      matched: 9,
-      ids: [639, 567, 495].map((ordinal) => `grouped_scale_${String(ordinal - index)}`),
-    })))
-
-    const second = await reader.read('fictional_0', { ...query, cursor: first.page.next_cursor })
-    expect(second).toMatchObject({
-      ok: true,
-      page: {
-        complete: true,
-        searched: 640,
-        grouped: {
-          matched: 640,
-          groups: Array.from({ length: 6 }, (_, index) => ({ profile: `profile_${57 - index}`, matched: 9 })),
-        },
-      },
-    })
+    expect(cursor).toBeNull()
   } finally {
     await reader.close()
   }
-})
+}, 90_000)
