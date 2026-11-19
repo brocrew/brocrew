@@ -4,6 +4,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Worker } from 'node:worker_threads'
 import { afterAll, beforeAll, expect, it } from 'vitest'
+import { archivedConversationsIn } from '../src/main/archived-file'
 import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
@@ -394,5 +395,75 @@ it('stops at 1000 conversation candidates and continues without repeating a page
     expect(db.prepare('SELECT total_changes() AS count').get()).toEqual(before)
   } finally {
     engine.close()
+  }
+})
+
+it('adds recorded metadata only to opted-in conversation pages on the existing worker', async () => {
+  const profile = 'search-metadata'
+  const older = 'fictional_metadata_older'
+  const newer = 'fictional_metadata_newer'
+  expect(
+    store.createAgentIdentity({ slug: profile, displayName: 'Metadata', provider: 'claude' }, null),
+  ).not.toBeNull()
+  for (const id of [older, newer]) {
+    store.create({
+      id,
+      provider: 'codex',
+      profileId: profile,
+      cwd: directory,
+      approvalMode: 'ask',
+    })
+  }
+  const archivedAt = Date.now() + 1000
+  const author = { kind: 'agent', conversation: 'fictional_0' } as const
+  store.titleConversation(
+    newer,
+    store.nextOrdinal(newer),
+    { type: 'titled', title: 'Archived search result', author },
+    archivedAt,
+  )
+  archivedConversationsIn(db).add([newer], archivedAt)
+
+  const reader = new WorkSearchWorkerReader(
+    (caller, query) =>
+      new Worker(join(directory, 'search.cjs'), { workerData: { file, caller, query } }),
+  )
+  const caller = 'fictional_0'
+  try {
+    const regular = await reader.read(caller, { profile })
+    if (!regular.ok) throw new Error('default search unavailable')
+    expect(regular.page.hits.map(({ conversation }) => conversation)).toEqual([newer, older])
+    for (const hit of regular.page.hits) expect(hit).not.toHaveProperty('metadata')
+
+    const query = { profile, limit: 1, includeConversationMetadata: true } as const
+    const first = await reader.read(caller, query)
+    if (!first.ok || first.page.next_cursor === null) throw new Error('no metadata continuation')
+    expect(first.page.hits).toMatchObject([
+      {
+        conversation: newer,
+        title: 'Archived search result',
+        metadata: { provider: 'codex', archived_at: archivedAt, title_author: author },
+      },
+    ])
+    const cursor = first.page.next_cursor
+    expect(await reader.read(caller, { profile, limit: 1, cursor })).toEqual({
+      ok: false,
+      reason: 'cursor-invalid',
+    })
+    expect(await reader.read(caller, { ...query, cursor })).toMatchObject({
+      ok: true,
+      page: {
+        hits: [
+          {
+            conversation: older,
+            title: 'Metadata',
+            metadata: { provider: 'codex', archived_at: null, title_author: null },
+          },
+        ],
+        next_cursor: null,
+      },
+    })
+  } finally {
+    await reader.close()
   }
 })

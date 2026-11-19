@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3'
+import type { Provider } from '@brobot2/shared'
 import { z } from 'zod'
 import {
   clippedWorkText,
@@ -42,7 +43,11 @@ const cursorSchema = z
 type Point = z.infer<typeof point>
 type Cursor = z.infer<typeof cursorSchema>
 type Search = z.output<typeof workSearchQuery>
-type Candidate = Point & { profile: string | null }
+type Candidate = Point & {
+  profile: string | null
+  provider: Provider | null
+  archivedAt: number | null
+}
 type MatchedTask = {
   id: string
   label: string
@@ -107,6 +112,7 @@ export class WorkSearchEngine {
       query.to,
       words,
       query.limit,
+      ...(query.includeConversationMetadata === true ? [true] : []),
     ])
     let cursor: Cursor | null = null
     if (query.cursor !== undefined) {
@@ -195,10 +201,17 @@ export class WorkSearchEngine {
     if (high === undefined) return result(true)
     checkpoint?.({ ok: true, page: result(false) })
 
+    const includeMetadata = query.includeConversationMetadata === true
     const candidates = this.db
       .prepare(
-        'SELECT s.id, s.updated_at AS at, a.slug AS profile ' +
+        'SELECT s.id, s.updated_at AS at, a.slug AS profile, ' +
+          (includeMetadata
+            ? 's.provider AS provider, archived.archived_at AS archivedAt '
+            : 'NULL AS provider, NULL AS archivedAt ') +
           CANDIDATES +
+          (includeMetadata
+            ? ' LEFT JOIN archived_conversation archived ON archived.conversation_id = s.id'
+            : '') +
           ' WHERE ' +
           DATE_SCOPE +
           ' AND (s.updated_at, s.id) <= (@highAt, @highId)' +
@@ -293,7 +306,8 @@ export class WorkSearchEngine {
     const { id } = candidate
     const root = store.rootOf(id)
     const service = isRecordedServiceConversation(store, id, root)
-    const { address, title, line } = describeConversationForRead(store, id, service)
+    const savedTitle = candidate.provider === null ? undefined : store.conversationTitle(id)
+    const { address, title, line } = describeConversationForRead(store, id, service, savedTitle)
     const rootLines = root === null ? null : store.turnBlockRootLines(root.piece)
     if (root !== null && rootLines === null) throw new Error('unread conversation task')
     const tasks: MatchedTask[] = store.piecesWithTheirWaits(id, unread).map((piece) => ({
@@ -385,6 +399,15 @@ export class WorkSearchEngine {
       status: clippedWorkText(latest?.text ?? null, WORK_SEARCH_BOUNDS.statusUnits).text,
       matched_tasks,
       tasks_omitted: matched.length - matched_tasks.length,
+      ...(candidate.provider === null
+        ? {}
+        : {
+            metadata: {
+              provider: candidate.provider,
+              archived_at: candidate.archivedAt,
+              title_author: savedTitle?.author ?? null,
+            },
+          }),
     }
   }
 
