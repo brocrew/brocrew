@@ -110,7 +110,8 @@ describe('a helper’s work stays in the tree it was given in', () => {
       expect(given.structured).toMatchObject({
         outcome: 'refused',
         rail: 'name-the-piece-you-give-from',
-        reason: 'Say which of your pieces this is for (W1.2): give again naming it as under.',
+        reason:
+          'Not sent: Say which of your pieces this is for (W1.2): give again naming it as under.',
         detail: { held: ['W1.2'] },
       })
       expect(labelsOf(helper)).toEqual(before)

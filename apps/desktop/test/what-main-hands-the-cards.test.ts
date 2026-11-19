@@ -384,19 +384,23 @@ describe('671 · what main hands the cards', () => {
    * give's own answer.
    */
   describe('§2 · G2 — the relayed turn names the piece it OPENED', () => {
-    it('🔴 IDLE branch: the brief names its piece FIRST, then the piece row labels it, and the giver’s answer names the same id', async () => {
+    it('records the new task and its first brief before the provider takes the turn', async () => {
       const { worker, piece, label } = await aPmAndItsWorker()
       const turn = rowsOf(worker, 'user_turn').at(-1)
       const given = rowsOf(worker, 'work_given').at(-1)
+      const messageId = given?.event.messageId
       expect(turn?.event.text).toBe('build it')
-      expect(given?.event.messageId).toBeUndefined()
+      expect(messageId).toMatch(/^msg_/)
+      expect(
+        rowsOf(worker, 'message_queued').find((row) => row.event.messageId === messageId)?.event,
+      ).toMatchObject({ text: 'build it', piece, label })
+      expect(
+        rowsOf(worker, 'message_unqueued').find((row) => row.event.messageId === messageId)?.event,
+      ).toMatchObject({ reason: 'sent' })
       expect(turn?.event.piece).toBe(given?.event.piece)
       expect(turn?.event.label).toBe(given?.event.label)
       expect([piece, label]).toEqual([given?.event.piece, given?.event.label])
-      // ⚠️ **The ORDER on this branch** — `UserTurnEvent.piece`'s own note: the turn is published
-      // when the provider accepts it, and the piece row after it. A reader that joined in one
-      // direction only would miss exactly this branch.
-      expect(turn!.ordinal).toBeLessThan(given!.ordinal)
+      expect(given!.ordinal).toBeLessThan(turn!.ordinal)
     })
 
     it('🔴 HELD branch: the piece row comes FIRST, and the turn the brief flushes into names it', async () => {

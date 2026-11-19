@@ -121,8 +121,6 @@ describe('the survivors the tree landing left', () => {
         // ⚑ The acts it does name are there, in the tools' own words.
         expect(said).toContain('withdraw_task')
         expect(said).toContain('message_agent')
-        // ⚑ The kind that continues the work, so it is not re-sent as new work.
-        expect(said).toContain('(kind follow-up)')
         for (const label of labels) expect(said).toContain(label)
         expect(said.endsWith('back with withdraw_task.')).toBe(true)
         // ⛔ …and it promises nothing about waiting.

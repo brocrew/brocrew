@@ -705,7 +705,11 @@ describe('657 · hold the second message instead of refusing it', () => {
     // 🔴 **RED before `657`**: the `message_queued` row re-read the caller's identity after the push,
     // so the caller was told *not queued* while the mailbox held the words and would send them.
     expect(answered).toMatchObject({ outcome: 'ok', delivery: 'queued' })
-    expect(eventsOf(child).filter((event) => event.type === 'message_queued')).toHaveLength(1)
+    expect(
+      eventsOf(child).filter(
+        (event) => event.type === 'message_queued' && event.text === 'and then this',
+      ),
+    ).toHaveLength(1)
   })
 
   // ───────────────────────────────────────────────────────────────────────────────────────────

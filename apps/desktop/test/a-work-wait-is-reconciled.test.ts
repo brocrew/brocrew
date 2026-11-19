@@ -1270,7 +1270,11 @@ describe('a work wait is reconciled without a window', () => {
     const oldGeneration = store.theActiveGeneration(holder)
     const source = store
       .events(holder)
-      .filter((one) => ['work_given', 'user_turn', 'turn'].includes(one.event.type))
+      .filter((one) =>
+        ['message_queued', 'work_given', 'user_turn', 'message_unqueued', 'turn'].includes(
+          one.event.type,
+        ),
+      )
     const generation = store.beginGeneration(holder)
     expect(generation).not.toBe(oldGeneration)
     const entries = source.map((one, ordinal) => ({ ordinal, event: one.event, at: tick() }))

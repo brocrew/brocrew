@@ -703,7 +703,10 @@ describe('396 · nothing waits on somebody looking', () => {
       await aNoteHeldBehindAnother({ worker, pmTools, workerHandle })
       await host.interrupt(worker, asPm(pm))
       await waitFor(
-        () => mailboxOf(store.events(worker)).some((one) => one.ending === 'sent'),
+        () =>
+          mailboxOf(store.events(worker)).some(
+            (one) => one.text === 'second' && one.ending === 'sent',
+          ),
         'the held message to go out',
       )
       await host.closeAll()
@@ -711,7 +714,12 @@ describe('396 · nothing waits on somebody looking', () => {
       // The constructor's sweep finds nothing to repair: the message already ended as `sent`,
       // not the `abandoned` a crash writes.
       buildHost(createSessionStore(db, tick))
-      expect(mailboxOf(store.events(worker)).map((one) => one.ending)).toEqual(['sent'])
+      expect(mailboxOf(store.events(worker)).map(({ text, ending }) => ({ text, ending }))).toEqual(
+        [
+          { text: 'the work this dispatch is about', ending: 'sent' },
+          { text: 'second', ending: 'sent' },
+        ],
+      )
     })
 
     it('a question answered through `list_questions` reads `answered` to the next launch', async () => {

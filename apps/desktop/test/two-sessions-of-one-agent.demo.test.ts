@@ -15,6 +15,7 @@ import { webContentsSink } from '../src/main/runtime/ipc'
 import { RuntimeHost, THE_APP_ITSELF, type RuntimeEventSink } from './helpers/giver-notice-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { expectRecordedCannotRun, expectTaskKept } from './lib/recorded-send'
 import { conversationList } from '../src/renderer/src/lib/conversation-list'
 import { createSessionStore as createRendererStore } from '../src/renderer/src/lib/session-store'
 import type { SessionStore as RendererStore } from '../src/renderer/src/lib/session-store'
@@ -440,12 +441,9 @@ describe('two sessions of one agent', () => {
         title: 'two',
         brief: 'two',
       })
-      expect(during).toMatchObject({
-        outcome: 'refused',
-        rail: 'that-conversation-is-still-stopping',
-        retryable: true,
-        detail: { agent: first },
-      })
+      const kept = expectRecordedCannotRun(during, 'task', 'putting away', false)
+      expect(kept.recipient.id).toBe(first)
+      expectTaskKept(ledger, kept)
 
       closeGate.release()
       await ending
@@ -457,6 +455,11 @@ describe('two sessions of one agent', () => {
         brief: 'three',
       })
       expect(afterTheStop).toMatchObject({ outcome: 'ok', agent: first, started: false })
+      expect(ledger.piecesGivenBy(parent).map((task) => [task.owner, task.title])).toEqual([
+        [first, 'one'],
+        [first, 'two'],
+        [first, 'three'],
+      ])
     })
   })
 
