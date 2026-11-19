@@ -512,7 +512,7 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
   })
 
   describe('work search reads current small facts without changing the ledger', () => {
-    it('matches brief, status, title and result while using the recorded profile across conversations', async () => {
+    it('keeps scoped palette matches and exposes briefs and statuses through public conversation search', async () => {
       const { worker, task, pmTools } = await workWasGiven('searchable title')
       const landed = await reply(worker, {
         piece: task,
@@ -524,7 +524,7 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
       const otherConversation = await personOpens('worker-1')
       await host.send(otherConversation, 'Please take on this separate search example.', window)
       const taken = await callOn(toolsOf(otherConversation), 'take_on_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
+        definition_of_done: 'done-condition-canary',
         title: 'searchable second',
         brief: 'brief-only-canary',
       })
@@ -536,6 +536,15 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
         status: 'status-only-canary',
       })
       const engine = new WorkSearchEngine(join(userData, 'brobot2.sqlite'))
+      const withSearch = buildHost({
+        read: async (caller, query) => engine.read(caller, query),
+        close: async () => undefined,
+      })
+      const search = async (words: string) => {
+        const answer = await callOn(agentToolsFor(withSearch, worker), 'search_work', { words })
+        expect(answer.outcome, JSON.stringify(answer)).toBe('ok')
+        return answer.hits as WorkSearchPage['hits']
+      }
       const read = (caller: string, scope: 'mine' | 'this-conversation' | 'all', words: string) => {
         const answer = engine.read(caller, { scope, words })
         expect(answer.ok, JSON.stringify(answer)).toBe(true)
@@ -553,13 +562,19 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
         expect(
           read(worker, 'this-conversation', 'searchable').hits.map((hit) => hit.piece),
         ).toEqual([task])
-        expect(read(worker, 'all', 'brief-only-canary').hits.map((hit) => hit.piece)).toContain(
-          taken.piece,
-        )
-        expect(read(worker, 'all', 'status-only-canary').hits.map((hit) => hit.piece)).toContain(
-          unrelated.task,
-        )
+        expect(read(worker, 'all', 'brief-only-canary').hits).toEqual([])
+        expect(read(worker, 'all', 'status-only-canary').hits).toEqual([])
         expect(read(worker, 'all', 'Body-only').hits).toEqual([])
+        expect(read(worker, 'all', 'done-condition-canary').hits.map((hit) => hit.piece)).toEqual([
+          taken.piece,
+        ])
+        expect(await search('brief-only-canary')).toMatchObject([
+          { conversation: otherConversation, matched_tasks: [{ piece: taken.piece }] },
+        ])
+        expect(await search('status-only-canary')).toMatchObject([
+          { conversation: unrelated.worker, matched_tasks: [{ piece: unrelated.task }] },
+        ])
+        expect(await search('Body-only')).toEqual([])
         const replyHit = read(worker, 'all', 'title result').hits.find((hit) => hit.piece === task)
         expect(replyHit).toMatchObject({
           state: 'answered',

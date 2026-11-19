@@ -1073,7 +1073,8 @@ describe('347 · the five tools', () => {
       // or everywhere.
       // ⚑ `request_mcp_server` asks the person to register an outside MCP server.
       // ⚑ `request_action` asks the person to do something, as a to-do.
-      expect(offered).toHaveLength(33)
+      expect(offered).toHaveLength(34)
+      expect(offered.at(-1)).toBe('rename_conversation')
     })
 
     it('⚠️ no published tool queues work for an agent to pick up later', async () => {
@@ -1087,6 +1088,7 @@ describe('347 · the five tools', () => {
       const SUBJECT: Record<
         ToolName,
         | 'the agent'
+        | 'the conversation'
         // ⚑ **D-016 · `give_work` names its agent by PROFILE** — the one conversation per helper per
         // giver is found by the app, so the caller names who, never which conversation.
         | 'an agent, by its profile'
@@ -1121,7 +1123,7 @@ describe('347 · the five tools', () => {
         set_theme: 'a theme',
         list_agents: 'nothing at all',
         get_agent_status: 'the agent',
-        rename_conversation: 'the agent',
+        rename_conversation: 'the conversation',
         // 🔴 **D-016 · it hands work over, and it NAMES who** — by profile, which is why it is not a
         // dispatch tool under the rule above. ⚠️ `new: true` brings that named agent into existence in
         // the same call; the name is still the caller's to give.
@@ -1242,6 +1244,7 @@ describe('347 · the five tools', () => {
             expect(shape, `${tool.name} advertises ${aimed}`).not.toContain(aimed)
         }
         if (names === 'the agent') expect(shape, tool.name).toContain('agent')
+        if (names === 'the conversation') expect(shape, tool.name).toEqual(['conversation', 'title'])
         if (names === 'an agent, by its profile') {
           expect(shape, tool.name).toContain('profile')
           expect(shape, tool.name).not.toContain('agent')
