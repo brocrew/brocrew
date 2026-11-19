@@ -373,7 +373,7 @@ describe('682 · a person’s choice holds the whole launch', () => {
       expect(start.model).toBe('wide')
       expect(start.reasoningEffort).toBe('high')
       // ⚑ …and says so, by R1's source (D-042 · R4: *"the give's answer says what it now runs"*).
-      expect(answered.text).toContain('It runs on “wide” at high effort (requested) — its default.')
+      expect(structured(answered).runs_on).toEqual({ model: 'wide', effort: 'high' })
       // ⛔ …its OWN list was NOT asked: a default that names its whole pair needs none (R1)…
       expect(world.listed).not.toContain('fresh/codex')
       // ⚑ …and the default is as the person saved it: no launch writes one.
@@ -408,7 +408,7 @@ describe('682 · a person’s choice holds the whole launch', () => {
       expect(start.model).toBe('wide')
       expect(start.reasoningEffort).toBe('high')
       expect(world.listed).not.toContain('fresh/codex')
-      expect(answered.text).toContain('It runs on “wide” at high effort (requested) — its default.')
+      expect(structured(answered).runs_on).toEqual({ model: 'wide', effort: 'high' })
       // ⚑ The choice is the person's: kept as saved.
       expect(store.modelChoiceOf('fresh')).toEqual({
         provider: 'codex',
@@ -494,7 +494,7 @@ describe('682 · a person’s choice holds the whole launch', () => {
       // ⚑ **D-042** — `682`'s *"checked again the next time something starts it"* is gone with the
       // provisional verdict: an outage of its own list costs a launch that names its pair nothing.
       expect(world.listed).not.toContain('fresh/codex')
-      expect(answered.text).toContain('It runs on “wide” at high effort (requested) — its default.')
+      expect(structured(answered).runs_on).toEqual({ model: 'wide', effort: 'high' })
       expect(store.modelChoiceOf('fresh')).toEqual({
         provider: 'codex',
         model: 'wide',
@@ -703,9 +703,7 @@ describe('682 · a person’s choice holds the whole launch', () => {
       expect([start.model, start.reasoningEffort]).toEqual(['narrow', 'medium'])
       // ⚑ `677`'s sentence for a choice not used (`aChoiceForAnotherProvider`) went with D-042: the
       // answer says what the start runs on, and where that came from.
-      expect(answered.text).toContain(
-        'It runs on “narrow” at medium effort (requested) — Codex’s default.',
-      )
+      expect(structured(answered).runs_on).toEqual({ model: 'narrow', effort: 'medium' })
       expect(answered.text).not.toContain('opus')
       const healed = await executeRuntimeCommand(host, window, {
         kind: 'setAgentProvider',

@@ -1,3 +1,11 @@
+import { callOn as callAgentTool } from './helpers/call-agent-tool'
+import { format } from 'node:util'
+import { expectRecordedCannotRun, expectTaskKept, recordedSendNotices } from './lib/recorded-send'
+import {
+  newConversationGive,
+  giveWorkBeforeProviderStart,
+  openPmWithSeededWorker,
+} from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { spawn } from 'node:child_process'
@@ -22,7 +30,6 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { applyEvent, createTranscript, type NoticeItem } from '../src/renderer/src/lib/transcript'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
 import { aSpawnRefusedAfterItsPipes } from '../../../packages/runtime/test/fixtures/a-spawn-that-failed'
 import { RecordingSink, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
@@ -75,8 +82,6 @@ const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
 /** ⚑ The new word — spelled here as a string, so `main` (which has no such word) can run this file. */
-const CANNOT_RUN = 'agent-could-not-be-started'
-const SHORTAGE = 'agent-could-not-start-just-now'
 
 /** The shape Node throws AT ONCE for a spawn it will not defer — `new ErrnoException(err, 'spawn')`. */
 const thrownAtOnce = (code: string): Error =>
@@ -143,76 +148,78 @@ describe('710 · R51 — a spawn a person must fix', () => {
 
   const personOpens = personOpener(() => ({ host, root, window }), 'auto')
 
-  const callOn = async (
+  const callOn = (
     caller: string,
     name: ToolName,
     args: Record<string, unknown> = {},
-  ): Promise<Record<string, unknown>> => {
-    const tool = agentToolsFor(host, caller).tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
+  ): Promise<Record<string, unknown>> =>
+    callAgentTool(agentToolsFor(host, caller), name, args)
 
   /** ⚑ A PM a person opened, which may start `worker` — an identity a person opened once, so it exists. */
-  const aPmThatMaySpawn = async (): Promise<string> => {
-    await host.close(await personOpens('worker'), window)
-    return personOpens('pm')
-  }
+  const aPmThatMaySpawn = () =>
+    openPmWithSeededWorker(personOpens, (id) => host.close(id, window))
 
   /** ⚑ **D-016 · `give_work` is the door that starts a conversation now** — `worker` has none with the PM. */
   const spawnWorker = (pm: string): Promise<Record<string, unknown>> =>
-    callOn(pm, 'give_work', {
-      to: 'new',
-      conversation_title: 'The work',
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'The work',
-      brief: 'the work',
-    })
+    giveWorkBeforeProviderStart((name, args) => callOn(pm, name, args))
 
-  const theRefusal = (payload: Record<string, unknown>): Record<string, unknown> => ({
-    outcome: payload.outcome,
-    rail: payload.rail,
-    permanence: payload.permanence,
-    retryable: payload.retryable,
-    remedy: payload.remedy,
-  })
+  const programFailure = 'could not run its provider’s program'
+
+  const aKeptGive = (
+    result: Record<string, unknown>,
+    reason = programFailure,
+    needsPerson = true,
+  ) => {
+    const receipt = expectRecordedCannotRun(result, 'task', reason, needsPerson)
+    expectTaskKept(store, receipt)
+    return receipt
+  }
+
+  const giveWithWords = async (pm: string) => {
+    const tool = agentToolsFor(host, pm).tools.find((one) => one.name === 'give_work')
+    if (tool === undefined) throw new Error('no give_work')
+    return tool.call(newConversationGive('worker', 'The work', 'the work'))
+  }
+
+  const rejectedProviderStart = async <Handle>(
+    start: Promise<Handle>,
+    unexpected: (handle: Handle) => Error | Promise<Error>,
+  ): Promise<Error> => {
+    const produced = await start.then(unexpected, (thrown: unknown) => thrown)
+    expect(produced).toBeInstanceOf(Error)
+    return produced as Error
+  }
 
   /** ⚑ Claude: the SDK's real `query()`, on the adapter's own spawn seam. */
   const claudeStartOver = async (child: () => unknown): Promise<Error> => {
-    const produced = await new ClaudeRuntime(
-      undefined,
-      async () => true,
-      undefined,
-      undefined,
-      () => child() as never,
+    const produced = await rejectedProviderStart(
+      new ClaudeRuntime(
+        undefined,
+        async () => true,
+        undefined,
+        undefined,
+        () => child() as never,
+      ).start({ cwd: root, providerHome: join(root, 'claude-home-710'), approvalMode: 'auto' }),
+      async (handle) => {
+        await handle.close()
+        return new Error('claude start RESOLVED a handle — its CLI never ran')
+      },
     )
-      .start({ cwd: root, providerHome: join(root, 'claude-home-710'), approvalMode: 'auto' })
-      .then(
-        async (handle) => {
-          await handle.close()
-          return new Error('claude start RESOLVED a handle — its CLI never ran')
-        },
-        (thrown: unknown) => thrown,
-      )
-    expect(produced).toBeInstanceOf(Error)
-    expect((produced as Error).message).not.toContain('RESOLVED a handle')
-    return produced as Error
+    expect(produced.message).not.toContain('RESOLVED a handle')
+    return produced
   }
 
   /** ⚑ Codex: the real transport and start; a command that does not exist, in case it is unarmed. */
   const codexStartOver = async (child: () => unknown): Promise<Error> => {
     armed.next = child
-    const produced = await new CodexRuntime(
-      createSpawnTransportFactory('/nonexistent/brobot2-710/codex'),
+    return rejectedProviderStart(
+      new CodexRuntime(createSpawnTransportFactory('/nonexistent/brobot2-710/codex')).start({
+        cwd: root,
+        providerHome: join(root, 'codex-home-710'),
+        approvalMode: 'auto',
+      }),
+      () => new Error('codex start RESOLVED a handle'),
     )
-      .start({ cwd: root, providerHome: join(root, 'codex-home-710'), approvalMode: 'auto' })
-      .then(
-        () => new Error('codex start RESOLVED a handle'),
-        (thrown: unknown) => thrown,
-      )
-    expect(produced).toBeInstanceOf(Error)
-    return produced as Error
   }
 
   // ───────────────────────────────────────────────────────────────────────────────
@@ -320,34 +327,29 @@ describe('710 · R51 — a spawn a person must fix', () => {
   ] as const
 
   describe.each(CANNOT_RUNS)('§1 · $name', ({ code, make }) => {
-    it('🔴 give_work answers the permanent word — never a broken tool, never ok', async () => {
+    it('keeps the task and tells the caller its provider program needs a person', async () => {
       const produced = await make()
       const pm = await aPmThatMaySpawn()
-      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const logged = vi.spyOn(console, 'warn').mockImplementation(() => {})
       gate.startFails = () => produced
-      const refused = await spawnWorker(pm)
-      expect(theRefusal(refused)).toEqual({
-        outcome: 'refused',
-        rail: CANNOT_RUN,
-        permanence: 'until-a-person-changes-it',
-        retryable: false,
-        remedy: null,
-      })
-      // ⚑ the closed reason is the errno's own code — by TYPE, never the provider's text or path
-      expect(refused.detail).toEqual({ profile: 'worker', because: code })
-      expect(JSON.stringify(refused)).not.toContain('/x/')
+      const result = await spawnWorker(pm)
+      const kept = aKeptGive(result)
+      expect(host.sessionIds).not.toContain(kept.recipient.id)
+      expect(logged.mock.calls.map((args) => format(...args)).join(' ')).toContain(code)
+      expect(JSON.stringify(result)).not.toContain('/x/')
     })
 
-    it('🔴 it says what is wrong in words, and that waiting will not help', async () => {
+    it('says what is wrong and asks the person to fix it', async () => {
       const produced = await make()
       const pm = await aPmThatMaySpawn()
       vi.spyOn(console, 'warn').mockImplementation(() => {})
       gate.startFails = () => produced
-      const said = String((await spawnWorker(pm)).reason)
-      expect(said).toContain('Starting it again will not help until a person has looked')
-      expect(said).toContain('this machine could not run its provider’s program')
-      // ⛔ never the shortage word's promise
-      expect(said).not.toMatch(/in a moment|usually clears/)
+      const answer = await giveWithWords(pm)
+      const kept = aKeptGive(answer.structured as Record<string, unknown>)
+      expect(answer.text).toContain(`recorded in conversation ${kept.recipient.address} · The work`)
+      expect(answer.text).toContain(programFailure)
+      expect(answer.text).toContain('Ask the person to fix it, with request_action.')
+      expect(answer.text).not.toMatch(/in a moment|usually clears/)
     })
   })
 
@@ -356,15 +358,26 @@ describe('710 · R51 — a spawn a person must fix', () => {
    * it is R51's — the same call, once a person has put the program back, starts it.
    */
   describe('§1b · standing rule 3', () => {
-    it('🔴 standing rule 3 — the same call, once a person has put the program back, starts it', async () => {
+    it('starts the kept conversation after a person has put the program back', async () => {
       const produced = await CANNOT_RUNS[0].make()
       const pm = await aPmThatMaySpawn()
       vi.spyOn(console, 'warn').mockImplementation(() => {})
       gate.startFails = () => produced
-      expect((await spawnWorker(pm)).rail).toBe(CANNOT_RUN)
+      const kept = aKeptGive(await spawnWorker(pm))
       gate.startFails = undefined
-      const started = await spawnWorker(pm)
-      expect(started.outcome, JSON.stringify(started)).toBe('ok')
+      const started = await callOn(pm, 'message_agent', {
+        agent: kept.recipient.id,
+        kind: 'note',
+        text: 'ready now',
+      })
+      expect(started).toMatchObject({
+        outcome: 'ok',
+        agent: kept.recipient.id,
+      })
+      expect(host.sessionIds).toContain(kept.recipient.id)
+      expect(events(kept.recipient.id).filter((event) => event.type === 'work_given')).toHaveLength(
+        1,
+      )
     })
   })
 
@@ -385,7 +398,7 @@ describe('710 · R51 — a spawn a person must fix', () => {
       const pm = await aPmThatMaySpawn()
       vi.spyOn(console, 'warn').mockImplementation(() => {})
       gate.startFails = () => produced
-      expect((await spawnWorker(pm)).rail).toBe(SHORTAGE)
+      aKeptGive(await spawnWorker(pm), 'ran short of open files', false)
     })
 
     // 🔴 since `716` (R66) — RED on `main` from then on, so no longer a control.
@@ -400,17 +413,15 @@ describe('710 · R51 — a spawn a person must fix', () => {
       // 🔴 **716 · R66 — it was a broken tool until `716`** (`710` F-1): now R51's permanent word too,
       // and ⚑ this arm's own claim still holds — its sentence is a FOLDER's, never the program's
       // (`what-a-person-must-fix-said-once.test.ts` §1 owns the rest).
-      const refused = await spawnWorker(pm)
-      expect(refused.rail).toBe(CANNOT_RUN)
-      expect(String(refused.reason)).toContain('folder')
-      expect(String(refused.reason)).not.toContain('program')
+      const kept = aKeptGive(await spawnWorker(pm), 'could not make or write a folder')
+      expect(JSON.stringify(kept.recipient.state)).not.toContain('program')
     })
 
     it('⚑ a sign-in the machine does not have keeps `agent-did-not-start`', async () => {
       const pm = await aPmThatMaySpawn()
       vi.spyOn(console, 'warn').mockImplementation(() => {})
       gate.startFails = () => new AuthUnavailableError('claude', 'signed out')
-      expect((await spawnWorker(pm)).rail).toBe('agent-did-not-start')
+      aKeptGive(await spawnWorker(pm), 'Claude sign-in could not be used')
     })
   })
 
@@ -490,29 +501,29 @@ describe('710 · R51 — a spawn a person must fix', () => {
   // ───────────────────────────────────────────────────────────────────────────────
 
   describe('§4 · what a person reads in the transcript', () => {
-    const noticesOf = (sessionId: string): string[] => {
-      const state = createTranscript()
-      for (const event of events(sessionId)) applyEvent(state, event)
-      return state.items
-        .filter((item): item is NoticeItem => item.kind === 'notice')
-        .map((item) => item.text)
-    }
+    const noticesOf = (sessionId: string) => recordedSendNotices(events(sessionId))
 
     /**
      * ⚑ **What a person sees at this limit**: a row that says somebody has to change something, and
      * the model's own account of it — and a row a person CAN clear, by putting the program back
      * (§2's standing-rule-3 arm). ⛔ On `main` the row said the tool broke.
      */
-    it('🔴 the refusal row says somebody has to change it, and that retrying will not help', async () => {
+    it('records the work for the giver and tells them a person can fix the start', async () => {
       const produced = await CANNOT_RUNS[4].make()
       const pm = await aPmThatMaySpawn()
       vi.spyOn(console, 'warn').mockImplementation(() => {})
       gate.startFails = () => produced
-      await spawnWorker(pm)
-      const row = noticesOf(pm).find((text) => text.startsWith('refused: give_work'))
-      expect(row).toBe(
-        `refused: give_work · ${CANNOT_RUN} · until somebody changes it · retrying will not help`,
+      const answer = await giveWithWords(pm)
+      const kept = aKeptGive(answer.structured as Record<string, unknown>)
+      expect(events(pm)).toContainEqual(
+        expect.objectContaining({
+          type: 'work_sent',
+          piece: kept.recorded.id,
+          to: kept.recipient.id,
+        }),
       )
+      expect(noticesOf(pm).some((text) => text.startsWith('refused: give_work'))).toBe(false)
+      expect(answer.text).toContain('Ask the person to fix it, with request_action.')
     })
   })
 })

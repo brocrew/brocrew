@@ -732,7 +732,7 @@ describe('677 §3 · a wake is a launch — 🔴 D-042: it replays the conversat
       brief: 'the work this is about',
     })
     // ⚑ R1's source in words, and the effort as requested until the provider reports it (R5).
-    expect(answered.text).toContain('It runs on “opus” at high effort (requested) — its default.')
+    expect(answered.structured).toMatchObject({ outcome: 'ok', runs_on: { model: 'opus', effort: 'high' } })
   })
 
   it('🔴 D-042 · R2 — a default changed AFTER the start does NOT reach its wake: the wake replays the ROW, which R1 already filled', async () => {
