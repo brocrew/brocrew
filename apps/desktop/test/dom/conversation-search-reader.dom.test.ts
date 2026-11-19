@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { userEvent } from 'vitest/browser'
 import { nextTick, type Ref } from 'vue'
 import { appClosing } from '../../src/renderer/src/lib/app-closing'
 import type { RuntimeBridge } from '../../src/shared/runtime-ipc'
@@ -276,6 +277,7 @@ it('searches dates without words and retires a pending page when the range chang
   finish(result([hit('stale-date', 'Old date page', 'W1.3')], null))
   await old
   await nextTick()
+  expect(insidePalette('palette-row-open-new-date')?.textContent).toContain('New date match')
   expect(insidePalette('palette-row-open-first-date')).toBeNull()
   expect(insidePalette('palette-row-open-stale-date')).toBeNull()
   expect(insidePalette('palette-search-more')).toBeNull()
@@ -297,7 +299,9 @@ it('shows an inverted range without searching, clears it, and forgets dates on d
   )
   expect(search).not.toHaveBeenCalled()
 
-  insidePalette('palette-clear-dates')!.click()
+  const clear = insidePalette('palette-clear-dates')!
+  clear.focus()
+  await userEvent.keyboard('{Enter}')
   await nextTick()
   expect(dateInput('from').value).toBe('')
   expect(dateInput('to').value).toBe('')
@@ -321,6 +325,28 @@ it('shows an inverted range without searching, clears it, and forgets dates on d
   await nextTick()
   expect(dateInput('from').value).toBe('')
   expect(dateInput('to').value).toBe('')
+})
+
+it('edits a native date without moving or opening the selected search result', async () => {
+  const search = vi
+    .fn<RuntimeBridge['searchWork']>()
+    .mockResolvedValue(result([hit('native-date', 'Native date match', 'W1.2')], null))
+  window.api.runtime.searchWork = search
+  await openPalette()
+  setDate('from', '2026-07-15')
+  const row = () => insidePalette('palette-row-open-native-date')
+  await expect.poll(() => row()?.getAttribute('aria-selected')).toBe('true')
+
+  const date = dateInput('from')
+  date.focus()
+  await userEvent.keyboard('{ArrowUp}')
+  await expect.poll(() => date.value).not.toBe('2026-07-15')
+  expect(date.value).not.toBe('')
+  await expect.poll(() => row()?.getAttribute('aria-selected')).toBe('true')
+  await userEvent.keyboard('{Enter}')
+  expect(document.activeElement).toBe(date)
+  expect(row()?.getAttribute('aria-selected')).toBe('true')
+  expect(insidePalette('palette-panel')).not.toBeNull()
 })
 
 it('keeps partial group counts unknown and discards a late grouped reply after mode changes', async () => {
