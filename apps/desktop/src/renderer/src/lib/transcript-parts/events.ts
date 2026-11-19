@@ -504,7 +504,7 @@ export function foldEvent(
     // No item, as for an ending of the piece the question it carried was about: the queue drops it.
     case 'question_ended_with_its_piece': {
       const asked = isAnId(event.requestId) ? questionSent(state, event.requestId) : null
-      if (asked?.action !== undefined) asked.closed = 'withdrawn'
+      if (asked?.action !== undefined && asked.closed === undefined) asked.closed = 'piece-ended'
       return
     }
 

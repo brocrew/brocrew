@@ -474,7 +474,9 @@ export function endActionsAbout(state: TranscriptState, piece: unknown): void {
   const end = (words: OutgoingWords | undefined): void => {
     if (words?.tool !== 'request_action') return
     const asked = words.asked
-    if (asked?.piece === piece && asked.answered === undefined) asked.closed = 'withdrawn'
+    if (asked?.piece === piece && asked.answered === undefined && asked.closed === undefined) {
+      asked.closed = 'piece-ended'
+    }
   }
   for (const words of state.outgoingAhead) end(words)
   for (const item of state.items) if (item.kind === 'tool') end(item.outgoing)
