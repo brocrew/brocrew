@@ -1,4 +1,5 @@
 import { newConversationGive } from './lib/give-fixture'
+import { askParentWhichSchema } from './helpers/ask-parent-which-schema'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -388,13 +389,7 @@ describe('608 · the turn that no longer waits', () => {
   describe('§2 · the answer reaches a worker whose turn has ENDED, as a turn', () => {
     it('⛔ the parent answers, and the worker takes a NEW turn carrying the words', async () => {
       const { worker, pmTools, workerTools, piece } = await aWorkerHoldingWork()
-      const said = await callOn(workerTools, 'ask_question', {
-        who_answers: 'the-parent',
-        piece,
-        question: 'which schema?',
-        options: ['a', 'b'],
-      })
-      expect(said.outcome, JSON.stringify(said)).toBe('ok')
+      await askParentWhichSchema(workerTools, piece)
 
       // 🔴 **The hazard, put on the path the code walks**: the turn ENDS before anybody answers.
       // ⚠️ Not a session that happened to still be running.
