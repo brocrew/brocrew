@@ -53,6 +53,18 @@ describe('a service is reached through the piece it is on', () => {
     const result = await tool.call(args)
     return { structured: result.structured as Record<string, unknown>, text: result.text }
   }
+  const giveRoomsTask = async (host: RuntimeHost, service: string) => {
+    const given = await call(
+      host,
+      service,
+      'give_work',
+      newConversationGive('helper', 'Find rooms', 'list the free rooms'),
+    )
+    expect(given.structured).toMatchObject({ outcome: 'ok' })
+    const helper = String(given.structured['owner'] ?? given.structured['agent'])
+    return { given, helper }
+  }
+
   const piecesOf = (service: string): readonly PieceRow[] => world.store.piecesOwnedBy(service)
   const stateOf = (service: string, piece: string): string | undefined =>
     piecesOf(service).find((one) => one.piece === piece)?.state
@@ -826,14 +838,7 @@ describe('a service is reached through the piece it is on', () => {
         signInsChecked: true,
       })
       world.anAgent('helper', 'nothing kept')
-      const given = await call(
-        host,
-        service,
-        'give_work',
-        newConversationGive('helper', 'Find rooms', 'list the free rooms'),
-      )
-      expect(given.structured).toMatchObject({ outcome: 'ok' })
-      const helper = String(given.structured['owner'] ?? given.structured['agent'])
+      const { given, helper } = await giveRoomsTask(host, service)
       const replied = await call(host, helper, 'reply_to_parent', {
         piece: String(given.structured['label']),
         outcome: 'done',
@@ -1567,14 +1572,7 @@ describe('a service is reached through the piece it is on', () => {
         signInsChecked: true,
       })
       world.anAgent('helper', 'nothing kept')
-      const given = await call(
-        host,
-        service,
-        'give_work',
-        newConversationGive('helper', 'Find rooms', 'list the free rooms'),
-      )
-      expect(given.structured).toMatchObject({ outcome: 'ok' })
-      const helper = String(given.structured['owner'] ?? given.structured['agent'])
+      const { given, helper } = await giveRoomsTask(host, service)
       const replied = await call(host, helper, 'reply_to_parent', {
         piece: String(given.structured['label']),
         outcome: 'done',

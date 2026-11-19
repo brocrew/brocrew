@@ -15,7 +15,6 @@ import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
-  DEFAULT_PROFILE_ID,
   type ResumableSessionInfo,
   type UnresumableSessionInfo,
 } from '../src/shared/runtime-ipc'
@@ -133,15 +132,7 @@ describe('a listed row says which piece its conversation waits on on purpose', (
     return { ada, piece, label: given.label as string }
   }
   const aHelperWithAPiece = () =>
-    openGiverAndGivePages(
-      () =>
-        host.createSession(
-          { provider: 'claude', profileId: DEFAULT_PROFILE_ID, approvalMode: 'auto', cwd: root },
-          window,
-        ),
-      settle,
-      aPieceGiven,
-    )
+    openGiverAndGivePages({ host, root, window }, settle, aPieceGiven)
   const statusOf = async (
     ada: string,
     label: string,

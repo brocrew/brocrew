@@ -1,4 +1,4 @@
-import { newConversationGive } from './lib/give-fixture'
+import { giveOpenWorkerTask } from './lib/give-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { launchSkillSelections } from '../src/main/skills/launch-selection'
 import { SqliteSkillCatalogue } from '../src/main/skills/catalogue-store'
@@ -48,7 +48,6 @@ import {
   type AHelperInTheTurn,
   type CurrentWorkInTheTurn,
 } from '../src/main/runtime/what-this-app-adds-to-a-turn'
-import { TASK_IS_OPEN } from '../src/shared/tasks'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 
@@ -275,19 +274,13 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
   }> => {
     const seeded = await personOpens('worker', provider)
     await host.close(seeded, window)
-    const pm = await personOpens('pm', provider, approvalMode)
-    const pmTools = theToolsetJustHandedOut()
-    const given = await callOn(
-      pmTools,
-      'give_work',
-      newConversationGive('worker', 'the work this dispatch is about', 'gather the requirements'),
+    return giveOpenWorkerTask(
+      store,
+      (profile) => personOpens(profile, provider, approvalMode),
+      theToolsetJustHandedOut,
+      'the work this dispatch is about',
+      'gather the requirements',
     )
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    const worker = given.agent as string
-    const workerTools = theToolsetJustHandedOut()
-    const open = store.piecesOwnedBy(worker).find((one) => TASK_IS_OPEN[one.state])
-    if (open === undefined) throw new Error('the give never opened a piece')
-    return { pm, worker, pmTools, workerTools, piece: open.piece }
   }
 
   const QUESTION_ONE = 'did the rest of the Mac freeze at about 17:05?'

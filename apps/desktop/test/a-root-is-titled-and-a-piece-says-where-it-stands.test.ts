@@ -1,4 +1,4 @@
-import { newConversationGive } from './lib/give-fixture'
+import { giveParkedWorker } from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import type { TaskState, WorkRetitledEvent, WorkStatusSetEvent } from '../src/shared/task-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -156,28 +156,8 @@ describe('D-016 · a root is titled, and a piece says where it stands', () => {
    * window on it — `724`'s rig. The give starts the worker's conversation, and its brief is that
    * conversation's first turn, which parks on its card, so the piece is open while the tests run.
    */
-  const aPmAndItsWorker = async (): Promise<{
-    pm: string
-    worker: string
-    piece: string
-    label: string
-  }> => {
-    await host.close(await personOpens('worker'), window)
-    const pm = await personOpens('pm')
-    const given = await callOn(
-      pm,
-      'give_work',
-      newConversationGive('worker', 'the work', 'migrate'),
-    )
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    const worker = given.agent as string
-    host.claimSession(worker, window)
-    await waitFor(() => cardsOn(worker) > 0, 'the worker to park mid-turn')
-    const piece = store.piecesOwnedBy(worker)[0]
-    if (piece === undefined) throw new Error('no piece')
-    expect(piece.piece).toBe(given.piece)
-    return { pm, worker, piece: piece.piece, label: piece.label }
-  }
+  const aPmAndItsWorker = () =>
+    giveParkedWorker({ host, store, window, personOpens }, 'the work')
 
   const theRootOf = (conversation: string): { piece: string; label: string } => {
     const found = store.rootOf(conversation)

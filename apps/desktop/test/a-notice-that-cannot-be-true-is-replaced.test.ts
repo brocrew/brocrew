@@ -1,4 +1,4 @@
-import { newConversationGive } from './lib/give-fixture'
+import { giveParkedWorker } from './lib/give-fixture'
 import { forestOf } from './lib/forest-of-host'
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
@@ -198,28 +198,8 @@ describe('711 · a notice that cannot be true is replaced', () => {
    * window on it — `what-a-waker-reads-after-its-own-act.test.ts`' rig. ⚑ D-016 · the give starts
    * the worker, and its brief is the turn that parks.
    */
-  const aPmAndItsParkedWorker = async (): Promise<{
-    pm: string
-    worker: string
-    piece: string
-    label: string
-  }> => {
-    await host.close(await personOpens('worker'), window)
-    const pm = await personOpens('pm')
-    const given = await callOn(
-      pm,
-      'give_work',
-      newConversationGive('worker', 'the migration', 'migrate'),
-    )
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    const worker = given.agent as string
-    host.claimSession(worker, window)
-    await waitFor(() => cardsOn(worker) > 0, 'the worker to park mid-turn')
-    const piece = store.piecesOwnedBy(worker)[0]?.piece
-    if (piece === undefined) throw new Error('no piece')
-    expect(piece).toBe(given.piece)
-    return { pm, worker, piece, label: given.label as string }
-  }
+  const aPmAndItsParkedWorker = () =>
+    giveParkedWorker({ host, store, window, personOpens }, 'the migration')
 
   describe.each([
     ['the Fake', false],

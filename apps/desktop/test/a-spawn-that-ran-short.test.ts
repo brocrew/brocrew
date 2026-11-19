@@ -1,8 +1,6 @@
-import { callOn as callAgentTool } from './helpers/call-agent-tool'
 import { format } from 'node:util'
 import { expectRecordedCannotRun, expectTaskKept, recordedSendNotices } from './lib/recorded-send'
 import { newConversationGive, spawnFailureFixture } from './lib/give-fixture'
-import { personOpener } from './helpers/person-opens-session'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
@@ -19,7 +17,7 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { CodexUnavailableError } from '../src/main/providers/codex/program'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
@@ -139,19 +137,11 @@ describe('707 · R39, extended — a spawn that ran short', () => {
   const events = (sessionId: string): TranscriptEvent[] =>
     store.events(sessionId).map((entry) => entry.event)
 
-  const personOpens = personOpener(() => ({ host, root, window }), 'auto')
-
-  const callOn = (
-    caller: string,
-    name: ToolName,
-    args: Record<string, unknown> = {},
-  ): Promise<Record<string, unknown>> => callAgentTool(agentToolsFor(host, caller), name, args)
-
-  const { aPmThatMaySpawn, spawnWorker } = spawnFailureFixture(
-    personOpens,
-    (id) => host.close(id, window),
-    callOn,
-  )
+  const { aPmThatMaySpawn, spawnWorker, callOn } = spawnFailureFixture(() => ({
+    host,
+    root,
+    window,
+  }))
 
   const aKeptGive = (result: Record<string, unknown>, reason: string, needsPerson = false) => {
     const receipt = expectRecordedCannotRun(result, 'task', reason, needsPerson)

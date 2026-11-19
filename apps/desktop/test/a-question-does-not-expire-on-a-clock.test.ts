@@ -1,4 +1,4 @@
-import { newConversationGive } from './lib/give-fixture'
+import { giveOpenWorkerTask } from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { callOn } from './helpers/call-agent-tool'
 import { waitFor } from './lib/f093-host'
@@ -197,19 +197,13 @@ describe('591 · a question does not expire on a clock', () => {
   }> => {
     const seeded = await personOpens('worker')
     await host.close(seeded, window)
-    const pm = await personOpens('pm')
-    const pmTools = theToolsetJustHandedOut()
-    const given = await callOn(
-      pmTools,
-      'give_work',
-      newConversationGive('worker', 'the work this dispatch is about', 'migrate the schema'),
+    return giveOpenWorkerTask(
+      store,
+      personOpens,
+      theToolsetJustHandedOut,
+      'the work this dispatch is about',
+      'migrate the schema',
     )
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    const worker = given.agent as string
-    const workerTools = theToolsetJustHandedOut()
-    const open = store.piecesOwnedBy(worker).find((one) => TASK_IS_OPEN[one.state])
-    if (open === undefined) throw new Error('the give never opened a piece')
-    return { pm, worker, pmTools, workerTools, piece: open.piece }
   }
 
   /**

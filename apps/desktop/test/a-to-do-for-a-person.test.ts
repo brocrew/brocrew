@@ -23,7 +23,6 @@ import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
-import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import {
   RecordingSink,
   syntheticProviderHome,
@@ -169,16 +168,17 @@ describe('a to-do for a person', () => {
     await settle()
     return { ada, piece, label: given.label as string }
   }
-  const aHelperWithAPiece = () =>
-    openGiverAndGivePages(
-      () =>
-        host.createSession(
-          { provider: 'claude', profileId: DEFAULT_PROFILE_ID, approvalMode: 'auto', cwd: root },
-          window,
-        ),
-      settle,
-      aPieceGiven,
+  const giveWriterCopy = async (giver: string) => {
+    await ok(agentToolsFor(host, giver), 'create_agent', { profile_slug: 'writer' })
+    return ok(
+      agentToolsFor(host, giver),
+      'give_work',
+      newConversationGive('writer', 'Write the copy', 'write the copy'),
     )
+  }
+
+  const aHelperWithAPiece = () =>
+    openGiverAndGivePages({ host, root, window }, settle, aPieceGiven)
   /** Ada asks about W1.1, of her giver or of a person; the question's id. */
   const asks = async (ada: string, whoAnswers: 'the-parent' | 'a-person'): Promise<string> => {
     const asked = await ok(agentToolsFor(host, ada), 'ask_question', {
@@ -373,12 +373,7 @@ describe('a to-do for a person', () => {
 
   it('the listed row names the agent a wait its giver set on its own question is on', async () => {
     const { brobot, ada } = await aHelperWithAPiece()
-    await ok(agentToolsFor(host, brobot), 'create_agent', { profile_slug: 'writer' })
-    const gave = await ok(
-      agentToolsFor(host, brobot),
-      'give_work',
-      newConversationGive('writer', 'Write the copy', 'write the copy'),
-    )
+    const gave = await giveWriterCopy(brobot)
     const bea = gave.agent as string
     await waitFor(
       () => store.piecesOwnedBy(bea).some((one) => one.state === 'stalled'),
@@ -569,12 +564,7 @@ describe('a to-do for a person', () => {
       copyOfTheCopy: string
     }> => {
       const { brobot, ada } = await aHelperWithAPiece()
-      await ok(agentToolsFor(host, ada), 'create_agent', { profile_slug: 'writer' })
-      const gave = await ok(
-        agentToolsFor(host, ada),
-        'give_work',
-        newConversationGive('writer', 'Write the copy', 'write the copy'),
-      )
+      const gave = await giveWriterCopy(ada)
       const bea = gave.agent as string
       const label = gave.label as string
       await waitFor(
@@ -892,12 +882,7 @@ describe('a to-do for a person', () => {
 
     it('a question addressed to a person whose routing lost who gave the work still ends with every copy of it', async () => {
       const { brobot, ada } = await aHelperWithAPiece()
-      await ok(agentToolsFor(host, ada), 'create_agent', { profile_slug: 'writer' })
-      const gave = await ok(
-        agentToolsFor(host, ada),
-        'give_work',
-        newConversationGive('writer', 'Write the copy', 'write the copy'),
-      )
+      const gave = await giveWriterCopy(ada)
       const bea = gave.agent as string
       const label = gave.label as string
       await waitFor(

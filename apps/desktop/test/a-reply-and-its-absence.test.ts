@@ -1,4 +1,4 @@
-import { addressedGive, giveToConversation } from './lib/give-fixture'
+import { addressedGive, giveWorkWithTitleAsBrief } from './lib/give-fixture'
 import { callOn } from './helpers/call-agent-tool'
 import { cleanupAndReportFailures } from './helpers/cleanup-failure-trace'
 import { waitFor } from './lib/f093-host'
@@ -260,20 +260,7 @@ describe('393 · a reply, and its absence', () => {
    * ⚑ **D-016 · a give, by the agent's profile** — to a sibling identity it starts that agent's
    * conversation, and to the worker's own it reaches the worker. Returns who holds the piece.
    */
-  const giveTo = async (
-    tools: AgentToolset,
-    profile: string,
-    text: string,
-    to = 'new',
-  ): Promise<{ agent: string; piece: string; label: string }> => {
-    const given = await callOn(tools, 'give_work', giveToConversation(to, profile, text, text))
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    return {
-      agent: given.agent as string,
-      piece: given.piece as string,
-      label: given.label as string,
-    }
-  }
+  const giveTo = giveWorkWithTitleAsBrief
 
   /**
    * `373`'s helper: a PM in a window with one child of its own, started through the real door —

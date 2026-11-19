@@ -1,4 +1,4 @@
-import { newConversationGive } from './lib/give-fixture'
+import { callNewConversationGive, openPmWithSeededWorker } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { HandedPath } from '../src/shared/attachment-contracts'
 import type {
@@ -242,15 +242,10 @@ describe('689 · four small things main owes the window', () => {
     piece: string
     label: string
   }> => {
-    const seeded = await personOpens('worker')
-    await host.close(seeded, window)
-    const pm = await personOpens('pm')
+    const pm = await openPmWithSeededWorker(personOpens, (id) => host.close(id, window))
     const pmTools = theToolsetJustHandedOut()
-    const given = await call(
-      pmTools,
-      'give_work',
-      newConversationGive('worker', 'The work this dispatch is about', 'build the thing'),
-    )
+    const title = 'The work this dispatch is about'
+    const given = await callNewConversationGive(pmTools, 'worker', title, 'build the thing')
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     const workerHandle = handles.at(-1)

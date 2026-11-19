@@ -1,4 +1,4 @@
-import { giveToConversation } from './lib/give-fixture'
+import { giveWorkWithTitleAsBrief } from './lib/give-fixture'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
 import {
   RecordingSink,
@@ -154,20 +154,7 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
     return last
   }
 
-  const aGive = async (
-    tools: AgentToolset,
-    profile: string,
-    title: string,
-    to = 'new',
-  ): Promise<{ agent: string; piece: string; label: string }> => {
-    const given = await callOn(tools, 'give_work', giveToConversation(to, profile, title, title))
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    return {
-      agent: given.agent as string,
-      piece: given.piece as string,
-      label: given.label as string,
-    }
-  }
+  const aGive = giveWorkWithTitleAsBrief
 
   /** A PM a person opened, and one worker it gave a piece to. */
   const aPmAndItsWorker = async (title: string) => {

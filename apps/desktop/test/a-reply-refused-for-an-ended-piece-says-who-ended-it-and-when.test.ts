@@ -1,4 +1,4 @@
-import { addressedGive, giveToConversation } from './lib/give-fixture'
+import { addressedGive, giveWorkWithTitleAsBrief } from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { callOn } from './helpers/call-agent-tool'
 import { waitFor } from './lib/f093-host'
@@ -437,20 +437,7 @@ describe('D-025 · §3-§6 · a refused reply through the real host', () => {
     )
   }
 
-  const giveTo = async (
-    tools: AgentToolset,
-    profile: string,
-    text: string,
-    to = 'new',
-  ): Promise<{ agent: string; piece: string; label: string }> => {
-    const given = await callOn(tools, 'give_work', giveToConversation(to, profile, text, text))
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    return {
-      agent: given.agent as string,
-      piece: given.piece as string,
-      label: given.label as string,
-    }
-  }
+  const giveTo = giveWorkWithTitleAsBrief
 
   /** A PM in a window with one worker of its own, holding one piece of work the PM gave it. */
   const aPmAndItsWorker = async (

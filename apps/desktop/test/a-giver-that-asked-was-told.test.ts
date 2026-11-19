@@ -1,4 +1,4 @@
-import { newConversationGive } from './lib/give-fixture'
+import { giveParkedWorker } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -204,28 +204,8 @@ describe('719 · a giver that asked was told', () => {
    * window on it — `711`'s rig. ⚑ D-016 · the give starts the worker, and its brief is the turn
    * that parks.
    */
-  const aPmAndItsParkedWorker = async (): Promise<{
-    pm: string
-    worker: string
-    piece: string
-    label: string
-  }> => {
-    await host.close(await personOpens('worker'), window)
-    const pm = await personOpens('pm')
-    const given = await callOn(
-      pm,
-      'give_work',
-      newConversationGive('worker', 'the migration', 'migrate'),
-    )
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    const worker = given.agent as string
-    host.claimSession(worker, window)
-    await waitFor(() => cardsOn(worker) > 0, 'the worker to park mid-turn')
-    const piece = store.piecesOwnedBy(worker)[0]?.piece
-    if (piece === undefined) throw new Error('no piece')
-    expect(piece).toBe(given.piece)
-    return { pm, worker, piece, label: given.label as string }
-  }
+  const aPmAndItsParkedWorker = () =>
+    giveParkedWorker({ host, store, window, personOpens }, 'the migration')
 
   describe.each([
     ['the Fake', false],

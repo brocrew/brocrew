@@ -467,19 +467,23 @@ describe('what a close does that a reopen never undoes', () => {
       expect(noticesAbout(pm, label, 'not being worked on')).toHaveLength(1)
     })
 
-    it('held work a Close hands on: delivered at its start, never `message_never_sent`, and its giver is told nothing', async () => {
-      const { pm, worker } = await aPmAndItsWorker('busy with something else')
-      host.claimSession(worker, window)
-      const handle = handles.at(-1)
-      if (handle === undefined) throw new Error('no provider handle was issued')
-      await waitFor(() => cardsOn(worker) > 0, 'the worker to be busy')
+    const holdWorkForWorker = async (pm: string, worker: string) => {
       const given = await callOn(
         agentToolsFor(host, pm),
         'give_work',
         addressedGive(worker, 'worker', 'The held one', 'the held one'),
       )
       expect(given).toMatchObject({ outcome: 'ok', agent: worker, delivery: 'held' })
-      const label = given.label as string
+      return given.label as string
+    }
+
+    it('held work a Close hands on: delivered at its start, never `message_never_sent`, and its giver is told nothing', async () => {
+      const { pm, worker } = await aPmAndItsWorker('busy with something else')
+      host.claimSession(worker, window)
+      const handle = handles.at(-1)
+      if (handle === undefined) throw new Error('no provider handle was issued')
+      await waitFor(() => cardsOn(worker) > 0, 'the worker to be busy')
+      const label = await holdWorkForWorker(pm, worker)
 
       await host.close(worker, window)
       await waitFor(
@@ -504,13 +508,7 @@ describe('what a close does that a reopen never undoes', () => {
       const handle = handles.at(-1)
       if (handle === undefined) throw new Error('no provider handle was issued')
       await waitFor(() => cardsOn(worker) > 0, 'the worker to be busy')
-      const given = await callOn(
-        agentToolsFor(host, pm),
-        'give_work',
-        addressedGive(worker, 'worker', 'The held one', 'the held one'),
-      )
-      expect(given).toMatchObject({ outcome: 'ok', agent: worker, delivery: 'held' })
-      const label = given.label as string
+      const label = await holdWorkForWorker(pm, worker)
 
       handle.simulateError('the provider fell over', true)
       await waitFor(
