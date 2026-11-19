@@ -426,92 +426,33 @@ describe('415 · a question is not work', () => {
       expect(saidToProvider(worker)[1]).not.toContain(FINISHING_LINE)
     })
 
-    it('🔴 D-010 · an OMITTED declaration is REFUSED — there is no default to fall back on', async () => {
-      /**
-       * ⚑ **Re-aimed twice, and the world moved each time** (standing rule 26). `415` defaulted an
-       * omitted kind to `work`; `553` (HO-060 §3) moved the default to `question`, because *"a
-       * model that simply sends a message assigns work"*. ⛔ **D-010 took the default away**: a
-       * question is `ask_question` now, and a caller that has not said which kind it means has not
-       * decided — so the call is refused, and the refusal names the vocabulary and the other door.
-       */
+    it.each([undefined, 'informational'])('sends a note without a declared kind (%s)', async (kind) => {
       const { worker, pmTools, piece } = await aPmAndItsWorker()
-      // ⚑ **D-016** — the give's brief is the worker's first turn: let it reach the provider first,
-      // so a refused call that DID send would show as a second entry, not race the first.
       await waitFor(() => saidToProvider(worker).length === 1, 'the brief to reach the provider')
-      const refused = await callOn(pmTools, 'message_agent', {
+      const text = 'How far have you got?'
+      const sent = await callOn(pmTools, 'message_agent', {
         agent: worker,
-        text: 'no kind at all',
+        text,
+        ...(kind === undefined ? {} : { kind }),
       })
-      expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
-      expect(refused.rail).toBe('malformed-request')
-      const problems = (refused.detail as { problems: string[] }).problems.join(' ')
-      for (const member of AGENT_MESSAGE_KINDS) expect(problems).toContain(member)
-      expect(problems).toContain('ask_question')
-      // ⛔ **And nothing happened**: no piece beyond the give's, and no words held or on the way to
-      // the provider.
+      expect(sent, JSON.stringify(sent)).toMatchObject({ outcome: 'ok', kind: 'note' })
       expect(openTasksOf(worker)).toEqual([piece])
-      expect(saidToProvider(worker).filter((said) => said.includes('no kind at all'))).toEqual([])
-      expect(saidToProvider(worker)).toHaveLength(1)
-      expect(JSON.stringify(ledger(worker))).not.toContain('no kind at all')
-      // ⚑ **THE CONTROL, one argument over**: the same call naming a kind lands.
-      const said = await callOn(pmTools, 'message_agent', {
-        agent: worker,
-        text: 'a note this time',
-        kind: 'note',
-      })
-      expect(said.outcome, JSON.stringify(said)).toBe('ok')
-      expect(said.kind).toBe('note')
+      await letTheTurnFinish(worker)
+      await waitFor(
+        () => saidToProvider(worker).some((said) => said.includes(text)),
+        'the note to reach the provider',
+      )
+      expect(saidToProvider(worker).filter((said) => said.includes(text))).toHaveLength(1)
       expect(openTasksOf(worker)).toEqual([piece])
     })
 
-    it('⛔ a kind this app has not been taught is REFUSED, and the refusal names the vocabulary', async () => {
-      // ⚑ **`325`'s rule and `reply_to_parent`'s `outcome` precedent**: a vocabulary the validator
-      // has not been taught is a refusal, never a pass — and never a transport error, which `307`
-      // measured *"carries no machine-readable policy meaning"*.
-      const { worker, pmTools, piece } = await aPmAndItsWorker()
-      // ⚑ **D-016** — the give's brief is the worker's first turn: let it reach the provider first.
-      await waitFor(() => saidToProvider(worker).length === 1, 'the brief to reach the provider')
-      const refused = await callOn(pmTools, 'message_agent', {
-        agent: worker,
-        text: 'something',
-        kind: 'informational',
-      })
-      expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
-      expect(refused.rail).toBe('malformed-request')
-      const problems = (refused.detail as { problems: string[] }).problems.join(' ')
-      for (const member of AGENT_MESSAGE_KINDS) expect(problems).toContain(member)
-      // ⛔ **And nothing happened**: no piece beyond the give's, and no words held or sent.
-      expect(openTasksOf(worker)).toEqual([piece])
-      expect(saidToProvider(worker).filter((said) => said.includes('something'))).toEqual([])
-      expect(saidToProvider(worker)).toHaveLength(1)
-      expect(JSON.stringify(ledger(worker))).not.toContain('"something"')
-    })
-
-    it('🔴 the argument is ADVERTISED, which is the half a green test cannot see', () => {
-      // ⛔ **Since `348` both adapters build their schema with `z.looseObject`, so an UNDOCUMENTED
-      // key is not stripped** — it reaches the handler, the behaviour changes, and a test that sends
-      // it passes **while no model has ever been told the argument exists.** ⚑ What a model is told
-      // is the JSON Schema built from the tool's `input` shape, and this reads it back out.
+    it('publishes the Message fields without a kind selector', () => {
       const tools = agentToolsFor(host, 'sess_1')
       const message = tools.tools.find((one) => one.name === 'message_agent')
       expect(message, 'message_agent is not published').toBeDefined()
-      const parameters = parametersOf(message?.input ?? {})
-      const kind = parameters.find((one) => one.name === 'kind')
-      expect(kind, JSON.stringify(parameters)).toBeDefined()
-      // ⚠️ **Optional in the SCHEMA and required at the door** (D-010): a schema-required argument
-      // is a transport error on Claude and a hint on Codex (`538` §3.3), and the door refuses its
-      // absence by name on both — measured in the omitted-declaration test above.
-      expect(kind?.required).toBe(false)
-      // ⛔ **The description names the whole vocabulary AS A LIST, and the default beside it.**
-      // ⚠️ **This read *"every member appears somewhere in the description"* and a mutation walked
-      // straight through it** (`415` `M4`): the prose below the list says *'work' is something for
-      // it to do* and *'note' tells it something*, so both words are in the sentence
-      // whatever the enumeration does — `an-assertion-can-be-satisfied-by-a-neighbouring-element`,
-      // found by the table rather than by reading. ⚑ The joined list is the DERIVED half, and it is
-      // the half that would go missing.
-      expect(kind?.description ?? '').toContain(AGENT_MESSAGE_KINDS.join(', '))
-      for (const member of AGENT_MESSAGE_KINDS) expect(kind?.description ?? '').toContain(member)
-      expect(kind?.description ?? '').toContain('There is no default')
+      const names = parametersOf(message?.input ?? {}).map((one) => one.name)
+      expect(names).toEqual(expect.arrayContaining(['agent', 'text', 'piece', 'resources']))
+      expect(names).not.toContain('kind')
     })
 
     it('⚑ the stall remedy is the ask-and-wait skill’s, and the core offers no new work for one', () => {

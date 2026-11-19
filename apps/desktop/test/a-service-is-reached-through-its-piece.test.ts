@@ -6,7 +6,9 @@ import {
   registerUnreadableQuestionCases,
 } from './helpers/service-unreadable-question-cases'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { theMessagesOf } from '../src/shared/runtime-ipc'
 import type { PieceRow } from '../src/shared/task-contracts'
+import type { SendReceipt } from '../src/shared/tool-outcome'
 import { TurnInProgress } from '@brobot2/runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
@@ -92,6 +94,8 @@ describe('a service is reached through the piece it is on', () => {
   }
   const rows = (conversation: string, type: TranscriptEvent['type']): TranscriptEvent[] =>
     world.ledger(conversation).filter((row) => row.type === type)
+  const deliveredParts = (conversation: string) =>
+    world.ledger(conversation).flatMap((row) => (row.type === 'user_turn' ? theMessagesOf(row) : []))
   /** The routing rows of `service`'s questions, by request id. */
   const routed = (
     service: string,
@@ -310,7 +314,9 @@ describe('a service is reached through the piece it is on', () => {
       })
       expect(note.structured).toMatchObject({ outcome: 'ok', agent: service })
       await vi.waitFor(() => {
-        expect(rows(service, 'user_turn').some((row) => row.type === 'user_turn' && row.text.includes('hello'))).toBe(true)
+        expect(deliveredParts(service)).toContainEqual(
+          expect.objectContaining({ text: 'hello', relayedFrom: other }),
+        )
       })
       const before = world.ledger(service).length
       expect(
@@ -343,6 +349,20 @@ describe('a service is reached through the piece it is on', () => {
           text: 'hello',
         })
         expect(sent.structured).toMatchObject({ outcome: 'ok', agent: service })
+        const receipt = sent.structured.receipt as SendReceipt
+        expect(receipt.recipient.id).toBe(service)
+        expect(world.ledger(outsider)).toContainEqual(
+          expect.objectContaining({
+            type: 'message_sent',
+            to: service,
+            messageAct: sent.structured.messageAct,
+          }),
+        )
+        await vi.waitFor(() => {
+          expect(deliveredParts(service)).toContainEqual(
+            expect.objectContaining({ text: 'hello', relayedFrom: outsider }),
+          )
+        })
         expect(
           (await call(host, outsider, 'withdraw_task', { piece: one.label })).structured,
         ).toMatchObject({ outcome: 'refused', rail: 'not-a-piece-you-gave' })
@@ -388,15 +408,18 @@ describe('a service is reached through the piece it is on', () => {
       try {
         const sent = await call(host, stranger, 'message_agent', { agent: service, text })
         expect(sent.structured).toMatchObject({ outcome: 'ok', delivery: 'queued', agent: service })
+        const receipt = sent.structured.receipt as SendReceipt
         const messageAct = sent.structured['messageAct']
         expect(typeof messageAct).toBe('string')
         const waiting = () => world.store.messagesWaitingIn(service).find((row) => row.text === text)
-        const original = waiting()
-        expect(original).toMatchObject({ messageAct })
+        expect(receipt.recipient.id).toBe(service)
+        const messageId = receipt.recorded.id
+        const recorded = { messageAct, messageId, authorship: { relayedFrom: stranger } }
+        expect(waiting()).toMatchObject(recorded)
         expect(stateOf(service, two.piece)).toBe('waiting')
         await host.closeAll()
         releaseTheTurn()
-        expect(waiting()?.messageId).toBe(original?.messageId)
+        expect(waiting()).toMatchObject(recorded)
 
         const after = world.aHost()
         await after.resumeSession(service, world.window)
@@ -406,11 +429,14 @@ describe('a service is reached through the piece it is on', () => {
           )
           expect(delivered).toHaveLength(1)
           expect(waiting()).toBeUndefined()
+          expect(deliveredParts(service)).toContainEqual(
+            expect.objectContaining({ text, relayedFrom: stranger }),
+          )
         })
         expect(world.ledger(service)).toContainEqual(
           expect.objectContaining({
             type: 'message_unqueued',
-            messageId: original?.messageId,
+            messageId,
             reason: 'sent',
           }),
         )

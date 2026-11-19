@@ -30,6 +30,7 @@ import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentCallerId, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import type { RuntimeChangeMessage, RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import type { SendReceipt } from '../src/shared/tool-outcome'
 import { stalledWorkSaid } from '../src/shared/stalled-work'
 import { undrivenSentence } from '../src/shared/tasks'
 import {
@@ -844,13 +845,27 @@ describe('692 · a restart keeps what was open', () => {
       // ⛔ **The provider forgets what it issued** — a conversation its files no longer hold.
       issued.forgetAll()
       const before = store.recorded().map(({ sessionId }) => sessionId)
-      await expect(
-        callOn(tools, 'message_agent', {
-          agent: children[0],
-          kind: 'note',
+      const said = await callOn(tools, 'message_agent', {
+        agent: children[0],
+        text: 'are you there',
+      })
+      expect(said, JSON.stringify(said)).toMatchObject({
+        outcome: 'ok',
+        receipt: {
+          recorded: { kind: 'message', id: expect.any(String) },
+          recipient: {
+            id: children[0],
+            state: { kind: 'cannot-run', cause: { code: 'provider-file-missing' } },
+          },
+        },
+      })
+      expect(store.messagesWaitingIn(children[0])).toContainEqual(
+        expect.objectContaining({
+          messageId: (said.receipt as SendReceipt).recorded.id,
           text: 'are you there',
+          authorship: expect.objectContaining({ relayedFrom: lead }),
         }),
-      ).rejects.toMatchObject({ cause: { unavailable: 'its-session-is-gone' } })
+      )
       expect(store.recorded().map(({ sessionId }) => sessionId)).toEqual(before)
       expect(store.replacements()).toEqual([])
       expect(listed(children[0])).toEqual({ running: 'not-running' })
@@ -867,7 +882,10 @@ describe('692 · a restart keeps what was open', () => {
         kind: 'note',
         text: 'are you there',
       })
-      expect(said, JSON.stringify(said)).toMatchObject({ outcome: 'refused' })
+      expect(said, JSON.stringify(said)).toMatchObject({
+        outcome: 'ok',
+        receipt: { recipient: { id: children[0], state: { kind: 'cannot-run' } } },
+      })
       // ⚑ **Still open**: nothing about the conversation was learned — only that this start failed.
       expect(listed(children[0])).toEqual({ running: 'not-running' })
     })
@@ -914,14 +932,18 @@ describe('692 · a restart keeps what was open', () => {
       await quitAndRelaunch()
       const tools = await personPresses(lead)
       CountingRuntime.theNextResumeThrows = lost
-      await expect(
-        callOn(tools, 'message_agent', {
-          agent: children[0],
-          kind: 'note',
-          text: 'are you there',
-        }),
-      ).rejects.toMatchObject({
-        cause: { unavailable: 'its-session-is-gone', cause: lost },
+      const said = await callOn(tools, 'message_agent', {
+        agent: children[0],
+        text: 'are you there',
+      })
+      expect(said, JSON.stringify(said)).toMatchObject({
+        outcome: 'ok',
+        receipt: {
+          recipient: {
+            id: children[0],
+            state: { kind: 'cannot-run', cause: { code: 'provider-file-missing' } },
+          },
+        },
       })
       expect(store.replacements()).toEqual([])
       expect(listed(children[0])).toEqual({ running: 'not-running' })
@@ -950,7 +972,10 @@ describe('692 · a restart keeps what was open', () => {
         kind: 'note',
         text: 'are you there',
       })
-      expect(said, JSON.stringify(said)).toMatchObject({ outcome: 'refused' })
+      expect(said, JSON.stringify(said)).toMatchObject({
+        outcome: 'ok',
+        receipt: { recipient: { id: children[0], state: { kind: 'cannot-run' } } },
+      })
       // ⚑ **Still open**: an app-server that died says nothing about the conversation.
       expect(listed(children[0])).toEqual({ running: 'not-running' })
     })
@@ -992,7 +1017,10 @@ describe('692 · a restart keeps what was open', () => {
           kind: 'note',
           text: 'are you there',
         })
-        expect(said, JSON.stringify(said)).toMatchObject({ outcome: 'refused' })
+        expect(said, JSON.stringify(said)).toMatchObject({
+          outcome: 'ok',
+          receipt: { recipient: { id: children[0], state: { kind: 'cannot-run' } } },
+        })
         expect(listed(children[0])).toEqual({ running: 'not-running' })
       },
     )
