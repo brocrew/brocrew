@@ -3293,8 +3293,6 @@ type IntoItsLedger =
   // ⚑ **D-017 · R1** — a message held for a conversation's next start ({@link
   // RuntimeHost.holdUntilItStarts}).
   | QueuedMessageEvent
-  // ⚑ **D-017 · R10** — the last row of a conversation that can never be reopened.
-  | ReplacedByEvent
   // A question whose recipient was deleted ends in its asker's ledger, whatever state that is in.
   | QuestionRecipientEndedEvent
   // A question passed up ends in the ledger that passed it up when its piece ends.
@@ -5693,8 +5691,6 @@ export class RuntimeHost implements LiveHost {
       const andItsCut = aCutGoesNow && this.moveTheCut(conversation, 'starting')
       if (andItsCut) this.cutHoldsTheFirstBatch.add(conversation)
       else if (aCutGoesNow) this.notContinued(conversation, 'start-failed')
-      // ⚑ Marked only for its own start, as a wake-up for jobs is: a delivery that joins it takes
-      // the mark off, and may replace a conversation that can never be reopened.
       const owned = !this.runsOrStartsHere(conversation)
       this.wakingForStoppedWork.add(conversation)
       try {
@@ -10026,9 +10022,8 @@ export class RuntimeHost implements LiveHost {
 
   /**
    * ⚑ **D-029 · the words a start would have told it of its jobs, ended** — for a conversation that
-   * can never be reopened, which a wake-up does not replace: no start will send them, and the
-   * conversation a message later puts in its place never scheduled those jobs, so a replacement
-   * does not hand them on either ({@link handWhatItHeldTo}); ⚑ and at a launch that tells its jobs
+   * can never be reopened: no start will send them, and no recorded stand-in scheduled those jobs
+   * ({@link handWhatItHeldTo}); and at a launch that tells its jobs
    * again ({@link armItsWakeUp}). ⚑ Each is ended in its ledger, `abandoned`, with the sentence that
    * says why. ⛔ **It never throws** — a warn is the trace, and what it could not read stays held.
    */
@@ -23679,9 +23674,7 @@ export class RuntimeHost implements LiveHost {
         let switchedFrom: ModelAndEffort | null | undefined
         // ⚑ Once: a brief handed again after a stop finds the pair already switched.
         if (goes.to === 'the-one-it-has' && choice !== null && applied.how !== 'switched') {
-          // ⛔ **The provider the choice was judged for, asked of the conversation the brief REACHED**:
-          // one that could never be reopened is replaced on the provider its agent names now
-          // ({@link replaceWhatCanNeverBeReopened}), and another provider's list never judged it.
+          // A recorded stand-in may run on a different provider than the one that judged this choice.
           if (this.theProviderOfConversation(to) !== choosing?.provider) {
             applied.how = 'another-provider'
           } else {

@@ -139,7 +139,7 @@ export const UNAVAILABLE_REASONS = [
    *
    * ⛔ **Until D-039 a person read the protocol's envelope** — *"{"code":-32600,"message":"dynamic
    * tool namespace description must be at most 1024 characters"}"* on a start, *"resume failed: {…}"*
-   * on a reopen (F055). ⚠️ Not a thread its provider no longer has: that one is replaced (D-017 R10).
+   * on a reopen (F055). A missing provider session has its own reason.
    */
   'its-provider-refused-it',
   /**
@@ -216,10 +216,8 @@ export const UNAVAILABLE_REASONS = [
    * ⚑ **D-017 · R10 — its provider never named this conversation, so there is nothing to resume**:
    * a row with no provider id, the CLI gone before its first turn was recorded (D-015).
    *
-   * ⛔ **Its own code, and NOT `cannot-be-reopened`**, because the two are decided differently: a
-   * delivery to this one starts a new conversation of the same agent in its place, and a bundle, a
-   * person's own conversation or a ref that stopped parsing — the rest of `cannot-be-reopened` —
-   * must never be replaced. ⚠️ **The sentence is the ROW's**, as `cannot-be-reopened`'s is
+   * The code distinguishes an unstarted conversation from a bundle or an unusable ref.
+   * The sentence is the ROW's, as `cannot-be-reopened`'s is
    * ({@link UnavailableContext.refusal}), so a person's Reopen explains it as the list does.
    */
   'never-started',

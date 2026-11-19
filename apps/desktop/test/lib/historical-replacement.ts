@@ -78,7 +78,8 @@ export function recordHistoricallyMovedNote(
   const note = store
     .events(previous)
     .map(({ event }) => event)
-    .findLast((event) => event.type === 'message_queued' && event.text === text)
+    .reverse()
+    .find((event) => event.type === 'message_queued' && event.text === text)
   if (note?.type !== 'message_queued') throw new Error(`no recorded note: ${text}`)
   store.append(
     previous,

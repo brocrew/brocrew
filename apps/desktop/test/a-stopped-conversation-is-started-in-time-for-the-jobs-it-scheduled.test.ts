@@ -2050,10 +2050,7 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
   })
 
   it('a scheduled wake records the missing file even when it held no missed-job notice', async () => {
-    const [conversation] = await aFirstLife(
-      async ([first]) => makes(first!, ONE_SHOT_A),
-      'agent-a',
-    )
+    const [conversation] = await aFirstLife(async ([first]) => makes(first!, ONE_SHOT_A), 'agent-a')
     if (conversation === undefined) throw new Error('no conversation was opened')
     const handlesBefore = handles.length
     issued.forgetAll()
