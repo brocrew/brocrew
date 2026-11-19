@@ -285,7 +285,9 @@ const readerCommands = computed<PaletteCommand[]>(() => {
         fullTime(hit.last_active_at),
         `Conversation ${hit.address}`,
         ...hit.matched_tasks.map((task) => task.label),
-        hit.tasks_omitted ? `${hit.tasks_omitted} more matching tasks` : null,
+        hit.tasks_omitted
+          ? `${hit.tasks_omitted} more matching ${hit.tasks_omitted === 1 ? 'task' : 'tasks'}`
+          : null,
         row?.place,
         row?.opening,
       ]
@@ -355,8 +357,12 @@ const searchNote = computed(() => {
   const page = searchPage.value
   if (!page) return searchFailed.value ? '' : 'Searching conversations…'
   const gaps = [
-    searchGaps.value.unread ? `${searchGaps.value.unread} unread rows` : null,
-    searchGaps.value.skipped ? `${searchGaps.value.skipped} skipped ledgers` : null,
+    searchGaps.value.unread
+      ? `${searchGaps.value.unread} unread ${searchGaps.value.unread === 1 ? 'row' : 'rows'}`
+      : null,
+    searchGaps.value.skipped
+      ? `${searchGaps.value.skipped} skipped ${searchGaps.value.skipped === 1 ? 'ledger' : 'ledgers'}`
+      : null,
   ].filter(Boolean)
   return [
     `${searchHits.value.length} shown.`,
