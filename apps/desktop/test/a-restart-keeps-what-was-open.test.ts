@@ -834,30 +834,23 @@ describe('692 · a restart keeps what was open', () => {
       expect(launched.length - before).toBe(0)
     })
 
-    /**
-     * ⚑ **D-017 · R10 — re-aimed: the start that finds out REPLACES it.** ⛔ This measured the
-     * message refused *could not be resumed* and the child closed. ⚑ A conversation its provider no
-     * longer has is replaced by a new one of the same agent, and the message goes there
-     * (`went_to`); the old one is not left open, for *open* is a promise nothing could keep for it.
-     */
-    it('⚑ one its provider can no longer resume is replaced by the start that finds out', async () => {
+    it('a lost provider session leaves the same conversation recorded and starts no replacement', async () => {
       const { lead, children } = await theFourOpen()
       await quitAndRelaunch()
       const tools = await personPresses(lead)
       // ⛔ **The provider forgets what it issued** — a conversation its files no longer hold.
       issued.forgetAll()
-      const said = await callOn(tools, 'message_agent', {
-        agent: children[0],
-        kind: 'note',
-        text: 'are you there',
-      })
-      expect(said, JSON.stringify(said)).toMatchObject({ outcome: 'ok', agent: children[0] })
-      const replacement = said.went_to as string
-      expect(replacement).toBeTruthy()
-      expect(replacement).not.toBe(children[0])
-      expect(ledger(children[0])).toContainEqual({ type: 'replaced_by', sessionId: replacement })
-      // ⚑ **…and nothing runs it**: the message went to the one in its place.
-      expect(listed(children[0])?.running ?? 'not-running').toBe('not-running')
+      const before = store.recorded().map(({ sessionId }) => sessionId)
+      await expect(
+        callOn(tools, 'message_agent', {
+          agent: children[0],
+          kind: 'note',
+          text: 'are you there',
+        }),
+      ).rejects.toMatchObject({ cause: { unavailable: 'its-session-is-gone' } })
+      expect(store.recorded().map(({ sessionId }) => sessionId)).toEqual(before)
+      expect(store.replacements()).toEqual([])
+      expect(listed(children[0])).toEqual({ running: 'not-running' })
       expect(listed(children[1])).toEqual({ running: 'not-running' })
     })
 
@@ -912,22 +905,23 @@ describe('692 · a restart keeps what was open', () => {
       return refused
     }
 
-    /** ⚑ **D-017 · R10 — re-aimed as above**: the start that finds out replaces it. */
-    it('🔴 706 · a Codex thread its app-server says it no longer has — the ADAPTER’s own refusal — is replaced by the start that finds out', async () => {
+    it('a Codex no-rollout reply becomes the same typed missing-session failure', async () => {
       const lost = await aCodexResumeRefused('no-rollout')
       const { lead, children } = await theFourOpen()
       await quitAndRelaunch()
       const tools = await personPresses(lead)
       CountingRuntime.theNextResumeThrows = lost
-      const said = await callOn(tools, 'message_agent', {
-        agent: children[0],
-        kind: 'note',
-        text: 'are you there',
+      await expect(
+        callOn(tools, 'message_agent', {
+          agent: children[0],
+          kind: 'note',
+          text: 'are you there',
+        }),
+      ).rejects.toMatchObject({
+        cause: { unavailable: 'its-session-is-gone', cause: lost },
       })
-      expect(said, JSON.stringify(said)).toMatchObject({ outcome: 'ok', agent: children[0] })
-      expect(said.went_to).toBeTruthy()
-      expect(said.went_to).not.toBe(children[0])
-      expect(listed(children[0])?.running ?? 'not-running').toBe('not-running')
+      expect(store.replacements()).toEqual([])
+      expect(listed(children[0])).toEqual({ running: 'not-running' })
       expect(listed(children[1])).toEqual({ running: 'not-running' })
     })
 
@@ -936,7 +930,9 @@ describe('692 · a restart keeps what was open', () => {
       const { children } = await theFourOpen()
       await quitAndRelaunch()
       CountingRuntime.theNextResumeThrows = lost
-      await expect(host.resumeSession(children[0], window)).rejects.toBeInstanceOf(ResumeError)
+      await expect(host.resumeSession(children[0], window)).rejects.toMatchObject({
+        cause: { unavailable: 'its-session-is-gone', cause: lost },
+      })
       expect(listed(children[0])).toEqual({ running: 'not-running' })
     })
 

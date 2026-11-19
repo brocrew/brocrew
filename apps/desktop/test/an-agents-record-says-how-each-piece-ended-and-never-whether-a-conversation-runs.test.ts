@@ -27,6 +27,7 @@ import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { FakeProviderSessions } from '@brobot2/runtime'
 import type { AgentToolset, ApprovalMode, FakeSessionHandle } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
+import { seedHistoricalSuccessor } from './lib/historical-replacement'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -70,18 +71,8 @@ describe('an agent’s record — the cases beyond what-an-agent-has-done', () =
   let window: RecordingSink
   const tick = (): number => (clock += 1_000)
 
-  beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-record-gaps-'))
-    root = mkdtempSync(join(tmpdir(), 'brobot2-record-gaps-root-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
-    clock = 1_790_000_000_000
-    store = createSessionStore(db, tick)
-    counter = 0
-    handles = []
-    issued = new FakeProviderSessions()
-    window = new RecordingSink('webContents:1')
-    host = new RuntimeHost({
+  const buildHost = () =>
+    new RuntimeHost({
       store,
       ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
@@ -95,6 +86,19 @@ describe('an agent’s record — the cases beyond what-an-agent-has-done', () =
       announce: () => {},
       readProviderConfig: fixtureProviderConfig,
     })
+
+  beforeEach(() => {
+    userData = mkdtempSync(join(tmpdir(), 'brobot2-record-gaps-'))
+    root = mkdtempSync(join(tmpdir(), 'brobot2-record-gaps-root-'))
+    db = openDatabase(join(userData, 'brobot2.sqlite'))
+    applyMigrations(db, migrationsFolder)
+    clock = 1_790_000_000_000
+    store = createSessionStore(db, tick)
+    counter = 0
+    handles = []
+    issued = new FakeProviderSessions()
+    window = new RecordingSink('webContents:1')
+    host = buildHost()
   })
 
   afterEach(async () => {
@@ -243,27 +247,13 @@ describe('an agent’s record — the cases beyond what-an-agent-has-done', () =
       expect(made.structured, made.text).toMatchObject({ outcome: 'ok' })
       const { label, holder } = await gives(tools, 'Ship the clock page')
 
-      const replaceWhatStandsFor = async (conversation: string): Promise<string> => {
-        await theAppStops(conversation)
-        issued.forgetAll()
-        const woken = await fullCall(tools, 'message_agent', {
-          agent: holder,
-          kind: 'follow-up',
-          piece: label,
-          text: 'carry on',
-        })
-        expect(woken.structured, woken.text).toMatchObject({ outcome: 'ok' })
-        const standIn = woken.structured.went_to as string
-        expect(typeof standIn).toBe('string')
-        expect(standIn).not.toBe(conversation)
-        await waitFor(() => turnsIn(standIn) > 0, `${standIn} to take the follow-up`)
-        return standIn
-      }
-      const firstStandIn = await replaceWhatStandsFor(holder)
-      const secondStandIn = await replaceWhatStandsFor(firstStandIn)
-      expect(secondStandIn).not.toBe(holder)
+      await host.closeAll()
+      const firstStandIn = seedHistoricalSuccessor(store, holder, `sess_${++counter}`, tick())
+      const secondStandIn = seedHistoricalSuccessor(store, firstStandIn, `sess_${++counter}`, tick())
+      host = buildHost()
+      await host.resumeSession(giver, window)
 
-      const record = await theRecordOf(tools, 'tester')
+      const record = await theRecordOf(agentToolsFor(host, giver), 'tester')
       expect(record.structured, record.text).toMatchObject({ outcome: 'ok' })
       const byId = new Map(
         (record.structured.conversations as ConversationPayload[]).map((one) => [one.agent, one]),

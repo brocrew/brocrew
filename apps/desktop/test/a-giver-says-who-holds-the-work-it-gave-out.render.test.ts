@@ -1,6 +1,7 @@
 import { waitFor } from './lib/f093-host'
 import type { AgentState, AgentStateFacts } from '../src/shared/agent-state-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { seedHistoricalSuccessor } from './lib/historical-replacement'
 import type {
   ConversationWaiting,
   PieceRow,
@@ -603,13 +604,13 @@ class ProviderDouble extends FakeRuntime {
     super(provider, { sessions })
   }
   override async start(options: StartOptions): Promise<FakeSessionHandle> {
-    this.startGate.entered += 1
-    if (this.startGate.hold !== null) await this.startGate.hold
     const handle = await super.start(options)
     this.handles.push(handle)
     return handle
   }
   override async resume(ref: SessionRef, options: ResumeOptions): Promise<FakeSessionHandle> {
+    this.startGate.entered += 1
+    if (this.startGate.hold !== null) await this.startGate.hold
     const handle = await super.resume(ref, options)
     this.handles.push(handle)
     return handle
@@ -1089,20 +1090,19 @@ describe('D-036 · the host says who holds the work a conversation gave out', ()
     expect(stateOf(parent)).toMatchObject({ since: store.piecesGivenBy(parent)[0]?.givenAt })
     expect(store.piecesGivenBy(parent)[0]?.state).not.toBe('answered')
 
-    // The parent is stopped and its provider forgets it, so a message to it is a replacement. The
-    // start is held at the provider while the stand-in is derived for the first time.
-    await host.close(parent, window)
-    issued.forgetAll()
+    await host.closeAll()
+    const standIn = seedHistoricalSuccessor(store, parent, `sess_${++counter}`, tick(), {
+      sessions: issued,
+      home: syntheticProviderHome(() => userData)('claude', DEFAULT_PROFILE_ID),
+    })
+    host = buildHost()
+    await host.resumeSession(ada, window)
     startGate.hold = new Promise<void>((resolve) => {
       startGate.release = resolve
     })
     const entered = startGate.entered
-    // The next id this host hands out is the stand-in's: read it before the act that mints it.
-    const standIn = `sess_${String(counter + 1)}`
     const sending = host.startAndSend(parent, 'are you there', window)
-    await waitFor(() => startGate.entered === entered + 1, 'the replacement to reach the provider')
-    // ⚑ The flush runs while the stand-in is still starting: it derives its first word now, from
-    // the work it has not yet been given to count, and keeps what it read.
+    await waitFor(() => startGate.entered === entered + 1, 'the historical stand-in to reach the provider')
     await settle()
     expect(saidOf(standIn).map((one) => one.state.is)).toEqual(['active'])
     startGate.release()

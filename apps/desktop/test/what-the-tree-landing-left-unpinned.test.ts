@@ -1,4 +1,5 @@
 import { fixtureProviderConfig, RecordingSink, neutralHostDeps } from './lib/host-fixture'
+import { recordHistoricalReplacement } from './lib/historical-replacement'
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
@@ -39,8 +40,7 @@ interface Mounted {
   readonly host: RuntimeHost
   readonly store: SessionStore
   readonly window: RecordingSink
-  readonly root: string
-  readonly issued: FakeProviderSessions
+  restartWithReplacement(previous: string, successor: string): Promise<void>
   events(sessionId: string): TranscriptEvent[]
   personOpens(profileId: string, approvalMode?: 'ask' | 'auto'): Promise<string>
   callOn(
@@ -72,7 +72,7 @@ const mount = (
   const store = createSessionStore(db, tick)
   let counter = 0
   const issued = new FakeProviderSessions()
-  const host = new RuntimeHost({
+  const buildHost = () => new RuntimeHost({
     store,
     ...neutralHostDeps(() => userData),
     createRuntime: (provider: Provider) => makeRuntime(provider, issued),
@@ -87,6 +87,7 @@ const mount = (
     now: tick,
     readProviderConfig: fixtureProviderConfig,
   })
+  let host = buildHost()
   const window = new RecordingSink('webContents:1')
   const events = (sessionId: string): TranscriptEvent[] =>
     store.events(sessionId).map((entry) => entry.event)
@@ -100,11 +101,16 @@ const mount = (
     return (await tool.call(args)).structured as Record<string, unknown>
   }
   return {
-    host,
+    get host() {
+      return host
+    },
     store,
     window,
-    root,
-    issued,
+    async restartWithReplacement(previous, successor) {
+      await host.closeAll()
+      recordHistoricalReplacement(store, previous, successor, tick())
+      host = buildHost()
+    },
     events,
     callOn,
     async personOpens(profileId, approvalMode = 'auto') {
@@ -230,18 +236,12 @@ describe('a question is routed by the task edge, not the spawn edge', () => {
     rig.host.questionsWaitingOn(parent).some((row) => row.request.requestId === requestId)
 
   it('after the giver is replaced the ledger names the replacement, not the dead predecessor', async () => {
-    const { host, store, window, events } = rig
+    const { store, window } = rig
     const { pm, worker, piece } = await aPmAndItsParkedWorker()
 
-    // The giver's provider forgets it, and a person's message wakes it: R10 replaces it.
-    await host.close(pm, window)
-    rig.issued.forgetAll()
-    await host.send(pm, 'carry on', window)
-    const replaced = events(pm).find((event) => event.type === 'replaced_by')
-    if (replaced === undefined || replaced.type !== 'replaced_by') {
-      throw new Error('the giver was not replaced')
-    }
-    const next = replaced.sessionId
+    const next = await rig.personOpens('pm', 'ask')
+    await rig.restartWithReplacement(pm, next)
+    await rig.host.resumeSession(worker, window)
 
     // The premise, before the question: the spawn edge still names the dead one, and a
     // replacement stands in its place.

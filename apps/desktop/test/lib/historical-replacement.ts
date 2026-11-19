@@ -12,6 +12,7 @@ export function seedHistoricalSuccessor(
   successor: string,
   at: number,
   native?: { sessions: FakeProviderSessions; home: string },
+  history: 'complete' | 'reverse-only' = 'complete',
 ): string {
   const row = store.recordedOne(previous)
   if (row?.profileId == null) throw new Error(`no recorded profile for ${previous}`)
@@ -39,7 +40,7 @@ export function seedHistoricalSuccessor(
     })
     store.append(successor, 0, { type: 'session', state: 'started', ref }, at)
   }
-  recordHistoricalReplacement(store, previous, successor, at)
+  recordHistoricalReplacement(store, previous, successor, at, history)
   return successor
 }
 
@@ -48,12 +49,46 @@ export function recordHistoricalReplacement(
   previous: string,
   successor: string,
   at: number,
+  history: 'complete' | 'reverse-only' = 'complete',
 ): void {
+  if (history === 'complete') {
+    store.append(
+      previous,
+      store.nextOrdinal(previous),
+      { type: 'replaced_by', sessionId: successor },
+      at,
+    )
+  }
+  store.append(
+    successor,
+    store.nextOrdinal(successor),
+    { type: 'replaces', sessionId: previous },
+    at,
+  )
+}
+
+export function recordHistoricallyMovedNote(
+  store: Pick<SessionStore, 'append' | 'events' | 'nextOrdinal'>,
+  previous: string,
+  successor: string,
+  text: string,
+  at: number,
+): void {
+  const note = store
+    .events(previous)
+    .map(({ event }) => event)
+    .find((event) => event.type === 'message_queued' && event.text === text)
+  if (note?.type !== 'message_queued') throw new Error(`no recorded note: ${text}`)
   store.append(
     previous,
     store.nextOrdinal(previous),
-    { type: 'replaced_by', sessionId: successor },
+    { type: 'message_unqueued', messageId: note.messageId, reason: 'abandoned', text },
     at,
   )
-  store.append(successor, store.nextOrdinal(successor), { type: 'replaces', sessionId: previous }, at)
+  store.append(
+    successor,
+    store.nextOrdinal(successor),
+    { ...note, messageId: `${note.messageId}_moved` },
+    at,
+  )
 }

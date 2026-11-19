@@ -205,13 +205,12 @@ describe('parallel worker tools and conversation readings', () => {
       )?.worker,
     ).toBeUndefined()
   })
-  it('a worker replacement keeps its original number and birth identity in the readings', async () => {
+  it('a historical worker replacement keeps its original number and birth identity in the readings', async () => {
     const { host, caller, b } = await two()
     await host.closeAll()
-    world.resumesAreGoneFor = 'document-reader'
+    const current = world.seedHistoricalSuccessor(b.owner, 'sess_historical_worker')
     const next = world.aHost()
     await next.reopenForAPerson(caller, world.window, null)
-    // The provider double refuses only resumes, so the ordinary recovery starts its replacement.
     const sent = await next.messageAgentNow(
       b.owner,
       'Check the fictional revision.',
@@ -219,8 +218,13 @@ describe('parallel worker tools and conversation readings', () => {
       'note',
     )
     expect(sent).toMatchObject({ ok: true, delivery: { outcome: 'sent' } })
-    const current = world.store.workerInItsPlace(b.owner)
-    expect(current).not.toBe(b.owner)
+    expect(world.ledger(current)).toContainEqual(
+      expect.objectContaining({
+        type: 'user_turn',
+        text: expect.stringContaining('Check the fictional revision.'),
+      }),
+    )
+    expect(world.store.workerInItsPlace(b.owner)).toBe(current)
     expect(next.agentCard(current, { ownerId: agentCallerId(caller) }, caller)?.worker).toEqual({
       identity,
       giver: caller,
@@ -233,7 +237,6 @@ describe('parallel worker tools and conversation readings', () => {
       )?.worker?.number,
     ).toBe(2)
     await next.closeAll()
-    world.resumesAreGoneFor = null
     const restarted = world.aHost()
     expect(
       restarted.agentCard(current, { ownerId: agentCallerId(caller) }, caller)?.worker,

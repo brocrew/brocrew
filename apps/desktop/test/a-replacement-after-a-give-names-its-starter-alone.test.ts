@@ -1,5 +1,6 @@
 import { personOpener } from './helpers/person-opens-session'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { seedHistoricalSuccessor } from './lib/historical-replacement'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -172,7 +173,6 @@ describe('3d1eb064 · a replacement after a give names its starter alone', () =>
     // ⚑ The control: the give's own first launch names the worker by that piece.
     expect(launchesOf('helper').at(-1)?.startedBy).toBe(byTheGivesPiece)
 
-    // ⚑ The helper is stopped and its provider forgets it: the worker's follow-up replaces it.
     await host.close(helper, THE_APP_ITSELF)
     await waitFor(
       () =>
@@ -181,7 +181,15 @@ describe('3d1eb064 · a replacement after a give names its starter alone', () =>
         ),
       'the helper to be over',
     )
-    issued.forgetAll()
+    await host.resumeSession(helper, window)
+    expect(launchesOf('helper').at(-1)?.startedBy).toBe(byTheGivesPiece)
+    await host.closeAll()
+    const next = seedHistoricalSuccessor(store, helper, `sess_${++counter}`, tick(), {
+      sessions: issued,
+      home: syntheticProviderHome(() => userData)('claude', 'helper'),
+    })
+    host = buildHost()
+    await host.resumeSession(worker, window)
     const launchesBefore = launchesOf('helper').length
     const sent = await callOn(worker, 'message_agent', {
       agent: helper,
@@ -189,18 +197,11 @@ describe('3d1eb064 · a replacement after a give names its starter alone', () =>
       kind: 'follow-up',
       piece: second.label,
     })
-    expect(sent.outcome, JSON.stringify(sent)).toBe('ok')
-    const next = sent.went_to as string
-    expect(next).not.toBe(helper)
+    expect(sent, JSON.stringify(sent)).toMatchObject({ outcome: 'ok', went_to: next })
     expect(ledger(helper)).toContainEqual({ type: 'replaced_by', sessionId: next })
 
-    // ⚑ Two launches: the old helper's reopen, tried first, which reads its own first words and
-    // names the worker by the piece it was started from; then the replacement's, which composes
-    // before a delivery brings it any words…
-    const [reopen, replacement] = launchesOf('helper').slice(launchesBefore)
-    expect(launchesOf('helper').slice(launchesBefore)).toHaveLength(2)
-    expect(reopen?.startedBy).toBe(byTheGivesPiece)
-    // ⛔ …and names the worker alone — never by the piece the earlier give started the helper from.
-    expect(replacement?.startedBy).toBe(alone)
+    expect(launchesOf('helper').slice(launchesBefore).map((launch) => launch.startedBy)).toEqual([
+      alone,
+    ])
   })
 })

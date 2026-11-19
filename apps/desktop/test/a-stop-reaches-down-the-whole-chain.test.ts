@@ -3,6 +3,7 @@ import { callOn } from './helpers/call-agent-tool'
 import { chainAbove } from './helpers/conversation-ancestry'
 import { HandleKeepingRuntime as ProviderDouble } from './helpers/handle-keeping-runtime'
 import { waitFor } from './lib/f093-host'
+import { seedHistoricalSuccessor } from './lib/historical-replacement'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -595,27 +596,21 @@ describe('629 · a stop reaches down the whole chain', () => {
     })
 
     it('🔴 F091 · a conversation in another’s place: that one’s id and its piece name this conversation too — at interrupt_agent and at message_agent', async () => {
-      const { ali, aliLabel, adaTools } = await aChainOfThree()
-      // ⚑ Ali stops, its provider forgets it, and Ada's next message puts a conversation in its place.
-      await host.close(ali, THE_APP_ITSELF)
-      await waitFor(
-        () =>
-          ![...host.resumableSessions()].some(
-            (row) => row.sessionId === ali && row.running !== 'not-running',
-          ),
-        'Ali to stop',
-      )
-      issued.forgetAll()
-      const woken = await callOn(adaTools, 'message_agent', {
+      const { ali, aliLabel, ada, workerProfile } = await aChainOfThree()
+      await host.closeAll()
+      const next = seedHistoricalSuccessor(store, ali, `sess_${++counter}`, tick(), {
+        sessions: issued,
+        home: syntheticProviderHome(() => userData)('claude', workerProfile),
+      })
+      host = buildHost()
+      await host.resumeSession(ada, window)
+      const woken = await callOn(agentToolsFor(host, ada), 'message_agent', {
         agent: ali,
         kind: 'follow-up',
         piece: aliLabel,
         text: 'carry on',
       })
-      expect(woken.outcome, JSON.stringify(woken)).toBe('ok')
-      const next = woken.went_to as string
-      expect(typeof next).toBe('string')
-      expect(next).not.toBe(ali)
+      expect(woken, JSON.stringify(woken)).toMatchObject({ outcome: 'ok', went_to: next })
       const nextTools = agentToolsFor(host, next)
       for (const named of [ali, aliLabel, next]) {
         const guide =

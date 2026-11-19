@@ -1,5 +1,6 @@
 import { expect, vi } from 'vitest'
 import { neutralHostDeps } from '../lib/host-fixture'
+import { seedHistoricalSuccessor } from '../lib/historical-replacement'
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { RuntimeHost as GiverNoticeHost } from './giver-notice-host'
 import { makeWorkerPieceFolder } from '../../src/main/worker-piece-folder'
@@ -181,6 +182,11 @@ export interface AServiceWorld {
   /** The services list is lost: nothing kept, while the database still holds what it named. */
   loseTheKept(): void
   conversationsRecorded(): number
+  seedHistoricalSuccessor(
+    previous: string,
+    successor: string,
+    history?: 'complete' | 'reverse-only',
+  ): string
   /** A conversation a person opens as `profile`, running, owning its root. */
   aPersonOpens(host: RuntimeHost, profile: string): Promise<string>
   /** `caller` gives `profile` a piece, as an agent gives one. */
@@ -437,6 +443,18 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
     },
     conversationsRecorded() {
       return (db.prepare('SELECT COUNT(*) AS n FROM provider_session').get() as { n: number }).n
+    },
+    seedHistoricalSuccessor(previous, successor, history) {
+      const row = world.store.recordedOne(previous)
+      if (row?.profileId == null) throw new Error(`no recorded profile for ${previous}`)
+      return seedHistoricalSuccessor(
+        world.store,
+        previous,
+        successor,
+        world.clock++,
+        { sessions: issued, home: join(folder, 'provider-homes', row.profileId, row.provider) },
+        history,
+      )
     },
     async aPersonOpens(host, profile) {
       const { sessionId } = await host.createSession(

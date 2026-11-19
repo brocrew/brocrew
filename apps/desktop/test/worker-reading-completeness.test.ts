@@ -41,9 +41,9 @@ describe('complete worker metadata on conversation readings', () => {
     return { caller, primary: primary.owner, extra: extra.owner }
   }
 
-  async function actualReplacement() {
+  async function historicalReplacement() {
     const seed = await twoWorkers()
-    world.resumesAreGoneFor = 'document-reader'
+    const current = world.seedHistoricalSuccessor(seed.extra, 'sess_historical_worker')
     const host = world.aHost()
     await host.reopenForAPerson(seed.caller, world.window, null)
     const sent = await host.messageAgentNow(
@@ -53,10 +53,8 @@ describe('complete worker metadata on conversation readings', () => {
       'note',
     )
     expect(sent).toMatchObject({ ok: true, delivery: { outcome: 'sent' } })
-    const current = world.store.workerInItsPlace(seed.extra)
-    expect(current).not.toBe(seed.extra)
+    expect(world.store.workerInItsPlace(seed.extra)).toBe(current)
     expect(world.store.recordedOne(current)).not.toBeNull()
-    world.resumesAreGoneFor = null
     return { ...seed, host, current }
   }
 
@@ -179,8 +177,8 @@ describe('complete worker metadata on conversation readings', () => {
     oneProfile()
   })
 
-  it('[C02] an actual complete replacement retains its original number and bornAs before and after restart', async () => {
-    const seed = await actualReplacement()
+  it('[C02] complete historical replacement rows retain the original number and bornAs across restarts', async () => {
+    const seed = await historicalReplacement()
     const binding = expected(seed.caller, 2, seed.extra)
     await cachedOnly(() => allReadings(seed.host, seed.caller, seed.current, binding))
     await seed.host.closeAll()
@@ -215,7 +213,7 @@ describe('complete worker metadata on conversation readings', () => {
   })
 
   it('[C05] duplicate readable replacement facts cannot supply metadata for a guessed terminal', async () => {
-    const seed = await actualReplacement()
+    const seed = await historicalReplacement()
     await seed.host.closeAll()
     appendReplacement(seed.extra, seed.current)
     expect(world.store.recordedOne(seed.current)).not.toBeNull()

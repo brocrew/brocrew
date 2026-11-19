@@ -32014,6 +32014,13 @@ export class RuntimeHost implements LiveHost {
       console.warn(
         `runtime host could not start ${sessionId} for the messages it held: ${errorMessage(error)}`,
       )
+      if (theProviderLostIt(error)) {
+        this.appendIntoItsLedger(sessionId, {
+          type: 'error',
+          message: IT_COULD_NOT_WAKE,
+          fatal: false,
+        })
+      }
     } finally {
       // ⚑ A reopen on the current sign-in is said by the start that answers it, or by none
       // ({@link reopeningForWhatWaited}).

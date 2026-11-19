@@ -1,10 +1,11 @@
 import { fixtureProviderConfig, neutralHostDeps, syntheticProviderHome } from './lib/host-fixture'
+import { seedHistoricalSuccessor } from './lib/historical-replacement'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions, FakeRuntime, ResumeError } from '@brobot2/runtime'
+import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type {
   AgentToolset,
   FakeSessionHandle,
@@ -266,17 +267,12 @@ interface Launch {
   readonly handle: FakeSessionHandle
 }
 
-/**
- * ⚑ **Every launch, in order, and the toolset each was handed.** `neverResumable` holds the provider
- * ids the double no longer has: a resume of one is the refusal the real adapters make for a session
- * their files do not hold (`noSuchSession`), and the other conversations still resume.
- */
+/** Every launch, in order, and the toolset each was handed. */
 class LaunchWatchingRuntime extends FakeRuntime {
   constructor(
     provider: Provider,
     private readonly handed: AgentToolset[],
     private readonly launches: Launch[],
-    private readonly neverResumable: ReadonlySet<string>,
     sessions: FakeProviderSessions,
   ) {
     super(provider, { sessions })
@@ -291,15 +287,6 @@ class LaunchWatchingRuntime extends FakeRuntime {
     ref: SessionRef,
     options: ResumeOptions,
   ): ReturnType<FakeRuntime['resume']> {
-    if (this.neverResumable.has(ref.sessionId)) {
-      throw new ResumeError(
-        ref,
-        `unknown session (never issued by this provider): ${ref.sessionId}`,
-        {
-          noSuchSession: true,
-        },
-      )
-    }
     const handle = await super.resume(ref, options)
     this.launches.push({ kind: 'resume', handle })
     if (options.agentTools) this.handed.push(options.agentTools)
@@ -328,7 +315,6 @@ describe('§3 · a launch lists the profile’s other conversations', () => {
   let handed: AgentToolset[]
   let launches: Launch[]
   let issued: FakeProviderSessions
-  let neverResumable: Set<string>
   let seen: InstructionContext[]
   let counter: number
   let clock: number
@@ -341,7 +327,7 @@ describe('§3 · a launch lists the profile’s other conversations', () => {
       store,
       ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) =>
-        new LaunchWatchingRuntime(provider, handed, launches, neverResumable, issued),
+        new LaunchWatchingRuntime(provider, handed, launches, issued),
       prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
@@ -388,7 +374,6 @@ describe('§3 · a launch lists the profile’s other conversations', () => {
     handed = []
     launches = []
     seen = []
-    neverResumable = new Set()
     issued = new FakeProviderSessions()
     host = buildHost()
     window = new Sink('webContents:1')
@@ -479,8 +464,9 @@ describe('§3 · a launch lists the profile’s other conversations', () => {
   }
 
   /** The quit a person's ⌘Q is, and the next launch over the same ledger. */
-  const quitAndRelaunch = async (): Promise<void> => {
+  const quitAndRelaunch = async (beforeLoad?: () => void): Promise<void> => {
     for (const built of hosts) await built.closeAll()
+    beforeLoad?.()
     store = createSessionStore(db, tick)
     host = buildHost()
     seen = []
@@ -657,20 +643,24 @@ describe('§3 · a launch lists the profile’s other conversations', () => {
   it('excludes replaced conversations while retaining the replacement address', async () => {
     const { bro, ali1, ali2, label1, label2, atAli2 } = await twoAlisOfTwoGivers()
     expect(atAli2.others.shown[0]?.label).toBe(label1)
-    const ali1Ref = store.find(ali1)?.ref
-    expect(ali1Ref).toBeDefined()
-    await quitAndRelaunch()
+    const replacement = `sess_${++counter}`
+    await quitAndRelaunch(() => {
+      seedHistoricalSuccessor(store, ali1, replacement, tick(), {
+        sessions: issued,
+        home: syntheticProviderHome(() => userData)('claude', 'ali'),
+      })
+    })
     await host.resumeSession(bro.id, window)
-    neverResumable.add(ali1Ref?.sessionId ?? '')
     const said = await callOn(lastTools(), 'message_agent', {
       agent: ali1,
       kind: 'note',
       text: 'are you there',
     })
-    expect(said, JSON.stringify(said)).toMatchObject({ outcome: 'ok', agent: ali1 })
-    const replacement = said.went_to as string
-    expect(replacement).toBeTruthy()
-    expect(replacement).not.toBe(ali1)
+    expect(said, JSON.stringify(said)).toMatchObject({
+      outcome: 'ok',
+      agent: ali1,
+      went_to: replacement,
+    })
     expect(ledger(ali1)).toContainEqual({ type: 'replaced_by', sessionId: replacement })
     expect(store.identityOf(ali1)?.profileSlug).toBe('ali')
     expect(lastContext().others).toEqual({

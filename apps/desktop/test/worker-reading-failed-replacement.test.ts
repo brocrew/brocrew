@@ -12,8 +12,19 @@ describe('worker metadata after a later replacement with an unread ordinary cach
     await world.cleanUp()
   })
 
+  function hostWithoutOrdinaryHistory() {
+    const cacheFailure = vi.spyOn(world.store, 'replacements').mockImplementation(() => {
+      throw new Error('fictional ordinary cache unavailable')
+    })
+    try {
+      return world.aHost()
+    } finally {
+      cacheFailure.mockRestore()
+    }
+  }
+
   for (const fails of [false, true]) {
-    it(`keeps complete terminal evidence with a failed replacement row: ${fails}`, async () => {
+    it(`checks terminal evidence with a missing historical forward row: ${fails}`, async () => {
       const first = world.aHost()
       const caller = (
         await first.createSession(
@@ -26,50 +37,37 @@ describe('worker metadata after a later replacement with an unread ordinary cach
       if (!given.ok) throw new Error('fictional worker refused')
       const birth = given.owner
       await first.closeAll()
-      world.resumesAreGoneFor = 'document-reader'
-      const middle = world.aHost()
+      const terminal = world.seedHistoricalSuccessor(birth, 'sess_historical_middle')
+      const middle = hostWithoutOrdinaryHistory()
+      expect(
+        middle.resumableSessions().find((row) => row.sessionId === terminal)?.worker,
+      ).toMatchObject({ number: 1, bornAs: birth })
       await middle.reopenForAPerson(caller, world.window, null)
       expect(
         await middle.messageAgentNow(
-          birth,
+          terminal,
           'Check the first fictional revision.',
           { ownerId: agentCallerId(caller) },
           'note',
         ),
       ).toMatchObject({ ok: true, delivery: { outcome: 'sent' } })
-      const terminal = world.store.workerInItsPlace(birth)
-      expect(terminal).not.toBe(birth)
+      expect(world.store.workerInItsPlace(birth)).toBe(terminal)
       await middle.closeAll()
-      const cacheFailure = vi.spyOn(world.store, 'replacements').mockImplementation(() => {
-        throw new Error('fictional ordinary cache unavailable')
-      })
-      const next = world.aHost()
-      cacheFailure.mockRestore()
-      expect(
-        next.resumableSessions().find((row) => row.sessionId === terminal)?.worker,
-      ).toMatchObject({ number: 1, bornAs: birth })
+      const current = world.seedHistoricalSuccessor(
+        terminal,
+        'sess_historical_final',
+        fails ? 'reverse-only' : 'complete',
+      )
+      const next = hostWithoutOrdinaryHistory()
       await next.reopenForAPerson(caller, world.window, null)
-      const recorded = () =>
-        world.db.prepare('SELECT id FROM provider_session').all() as { id: string }[]
-      const before = new Set(recorded().map((row) => row.id))
-      const append = world.store.append.bind(world.store)
-      const rowFailure = vi.spyOn(world.store, 'append').mockImplementation((...args) => {
-        if (fails && args[0] === terminal && args[2].type === 'replaced_by')
-          throw new Error('fictional later replacement row failed')
-        return append(...args)
-      })
-      try {
-        expect(
-          await next.messageAgentNow(
-            terminal,
-            'Check the second fictional revision.',
-            { ownerId: agentCallerId(caller) },
-            'note',
-          ),
-        ).toMatchObject({ ok: true, delivery: { outcome: 'sent' } })
-        const added = recorded().filter((row) => !before.has(row.id))
-        expect(added).toHaveLength(1)
-        const current = added[0]!.id
+      expect(
+        await next.messageAgentNow(
+          current,
+          'Check the second fictional revision.',
+          { ownerId: agentCallerId(caller) },
+          'note',
+        ),
+      ).toMatchObject({ ok: true, delivery: { outcome: 'sent' } })
         expect(world.store.workerInItsPlace(birth)).toBe(fails ? terminal : current)
         const rows = [...next.resumableSessions(), ...next.unresumableSessions()]
         const old = rows.find((row) => row.sessionId === terminal)
@@ -103,9 +101,6 @@ describe('worker metadata after a later replacement with an unread ordinary cach
             next.agentCard(current, { ownerId: agentCallerId(caller) }, caller)?.worker,
           ).toMatchObject({ number: 1, bornAs: birth })
         }
-      } finally {
-        rowFailure.mockRestore()
-      }
     })
   }
 })

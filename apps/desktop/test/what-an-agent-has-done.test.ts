@@ -15,6 +15,7 @@ import type { AgentToolset, ApprovalMode, FakeSessionHandle } from '@brobot2/run
 import type { Provider } from '@brobot2/shared'
 
 import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { seedHistoricalSuccessor } from './lib/historical-replacement'
 import { howTheRulesBegin } from '../src/shared/own-instructions'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 
@@ -212,6 +213,16 @@ describe('F009 · what an agent has done, read on demand', () => {
   const theRecordOf = (tools: AgentToolset, profile: string): Promise<Answer> =>
     fullCall(tools, 'list_profiles', { profile })
 
+  const seedTesterSuccessor = async (previous: string): Promise<string> => {
+    await host.closeAll()
+    const successor = seedHistoricalSuccessor(store, previous, `sess_${++counter}`, tick(), {
+      sessions: issued,
+      home: syntheticProviderHome(() => userData)('claude', 'tester'),
+    })
+    host = buildHost()
+    return successor
+  }
+
   /**
    * ⚑ **`tester`, made with standing rules, and the work it did for two givers**:
    *  - BroBot (`one`, W1) gave W1.1, answered *done* with a file; W1.2, taken back; W1.3, closed;
@@ -268,8 +279,6 @@ describe('F009 · what an agent has done, read on demand', () => {
     const second = w21.holder
     expect(second).not.toBe(first)
 
-    // ⚑ The second conversation stopped by the app; the first stopped, then replaced as it could
-    // never be reopened (D-017 · R10: its provider forgot it).
     await host.close(second, THE_APP_ITSELF)
     await host.close(first, THE_APP_ITSELF)
     for (const stopped of [first, second]) {
@@ -281,19 +290,28 @@ describe('F009 · what an agent has done, read on demand', () => {
         `${stopped} to stop`,
       )
     }
-    issued.forgetAll()
-    const woken = await fullCall(oneTools, 'message_agent', {
+    const standIn = await seedTesterSuccessor(first)
+    await host.resumeSession(one, window)
+    await host.resumeSession(two, window)
+    const oneAfterQuit = agentToolsFor(host, one)
+    const woken = await fullCall(oneAfterQuit, 'message_agent', {
       agent: first,
       kind: 'follow-up',
       piece: 'W1.4',
       text: 'carry on',
     })
-    expect(woken.structured, woken.text).toMatchObject({ outcome: 'ok' })
-    const standIn = woken.structured.went_to as string
-    expect(typeof standIn).toBe('string')
-    expect(standIn).not.toBe(first)
+    expect(woken.structured, woken.text).toMatchObject({ outcome: 'ok', went_to: standIn })
     await waitFor(() => turnsIn(standIn) > 0, 'the stand-in to take the follow-up')
-    return { one, two, oneTools, twoTools, first, standIn, second, file }
+    return {
+      one,
+      two,
+      oneTools: oneAfterQuit,
+      twoTools: agentToolsFor(host, two),
+      first,
+      standIn,
+      second,
+      file,
+    }
   }
 
   describe('1 · the record', () => {
@@ -571,6 +589,7 @@ describe('F009 · what an agent has done, read on demand', () => {
      * started Ali's conversation.
      */
     const aStarterThatMovedOn = async (): Promise<{
+      brobot: string
       tools: AgentToolset
       ada: string
       adaTools: AgentToolset
@@ -608,7 +627,7 @@ describe('F009 · what an agent has done, read on demand', () => {
       expect(host.nameByItsWork(ada)).toBe(
         'Ada (the owner of W1.2 · Live check: the clock page (answered))',
       )
-      return { tools, ada, adaTools, ali }
+      return { brobot, tools, ada, adaTools, ali }
     }
 
     it('🔴 a starter is named by the piece it started that conversation from — never its work now, nor a later piece, and with no mark', async () => {
@@ -633,32 +652,19 @@ describe('F009 · what an agent has done, read on demand', () => {
       })
     })
 
-    /** ⚑ A conversation stopped, and its provider made to forget it: what reaches it next replaces it. */
-    const stoppedAndForgotten = async (conversation: string): Promise<void> => {
-      await host.close(conversation, THE_APP_ITSELF)
-      await waitFor(
-        () =>
-          !host
-            .resumableSessions()
-            .some((row) => row.sessionId === conversation && row.running !== 'not-running'),
-        'it to stop',
-      )
-      issued.forgetAll()
-    }
-
     it('⚑ a conversation started with no piece names its starter alone — in another’s place, even once it is given work', async () => {
-      const { tools, ada, adaTools, ali } = await aStarterThatMovedOn()
-      // ⚑ Ali's conversation replaced at Ada's next note, by a conversation started with no piece.
-      await stoppedAndForgotten(ali)
+      const { brobot, ada, ali } = await aStarterThatMovedOn()
+      const standIn = await seedTesterSuccessor(ali)
+      await host.resumeSession(brobot, window)
+      await host.resumeSession(ada, window)
+      const tools = agentToolsFor(host, brobot)
+      const adaTools = agentToolsFor(host, ada)
       const noted = await fullCall(adaTools, 'message_agent', {
         agent: ali,
         kind: 'note',
         text: 'the routes are live',
       })
-      expect(noted.structured, noted.text).toMatchObject({ outcome: 'ok' })
-      const standIn = noted.structured.went_to as string
-      expect(typeof standIn).toBe('string')
-      expect(standIn).not.toBe(ali)
+      expect(noted.structured, noted.text).toMatchObject({ outcome: 'ok', went_to: standIn })
       // ⚑ Then Ada gives it work from a piece she is given after, and answers that piece.
       const w13 = await gives(tools, 'Ship the clock page', { profile: 'worker' })
       expect(w13).toEqual({ label: 'W1.3', holder: ada })
@@ -691,7 +697,7 @@ describe('F009 · what an agent has done, read on demand', () => {
     })
 
     it('🔴 a conversation standing in another’s place that a give started names its starter by the piece it gave it from', async () => {
-      const { tools, ada, adaTools, ali } = await aStarterThatMovedOn()
+      const { brobot, tools, ada, ali } = await aStarterThatMovedOn()
       // ⚑ Ali answers what Ada gave it, so Ada may give it more; Ada is given W1.3.
       const done = await fullCall(agentToolsFor(host, ali), 'reply_to_parent', {
         piece: 'W1.2.1',
@@ -701,12 +707,13 @@ describe('F009 · what an agent has done, read on demand', () => {
       expect(done.structured, done.text).toMatchObject({ outcome: 'ok' })
       const w13 = await gives(tools, 'Ship the clock page', { profile: 'worker' })
       expect(w13).toEqual({ label: 'W1.3', holder: ada })
-      // ⚑ Ali's conversation replaced by Ada's give, whose brief starts the conversation in its place.
-      await stoppedAndForgotten(ali)
+      const standIn = await seedTesterSuccessor(ali)
+      await host.resumeSession(brobot, window)
+      await host.resumeSession(ada, window)
+      const adaTools = agentToolsFor(host, ada)
       const w131 = await gives(adaTools, 'Tag the release', { piece: 'W1.3' })
       expect(w131.label).toBe('W1.3.1')
-      const standIn = w131.holder
-      expect(standIn).not.toBe(ali)
+      expect(w131.holder).toBe(standIn)
       const answered = await fullCall(adaTools, 'reply_to_parent', {
         piece: 'W1.3',
         outcome: 'done',
@@ -714,7 +721,7 @@ describe('F009 · what an agent has done, read on demand', () => {
       })
       expect(answered.structured, answered.text).toMatchObject({ outcome: 'ok' })
 
-      const record = await theRecordOf(tools, 'tester')
+      const record = await theRecordOf(agentToolsFor(host, brobot), 'tester')
       expect(record.structured, record.text).toMatchObject({ outcome: 'ok' })
       expect(record.text).toContain(
         '  - the owner of W1.3.1 · Tag the release · started by Ada (the owner of W1.3 · Ship the clock page) at ',

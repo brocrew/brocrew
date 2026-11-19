@@ -1,5 +1,6 @@
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { seedHistoricalSuccessor } from './lib/historical-replacement'
 import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -361,6 +362,23 @@ describe('D-026 · one door lists the kept files, and every door that keeps one 
     return wrapped as unknown as SessionStore
   }
 
+  const buildHost = () =>
+    new RuntimeHost({
+      store: faultingStore(store),
+      ...neutralHostDeps(() => userData),
+      createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued, gate),
+      prepareProviderHome: syntheticProviderHome(() => userData),
+      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
+      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
+      resourcesRoot: () => resourcesRoot(userData),
+      newSessionId: () => `sess_${++counter}`,
+      now: tick,
+      readProviderConfig: fixtureProviderConfig,
+      statesMoved: (message) => {
+        pushed.push(message)
+      },
+    })
+
   beforeEach(() => {
     userData = mkdtempSync(join(tmpdir(), 'brobot2-d026-door-'))
     root = mkdtempSync(join(tmpdir(), 'brobot2-d026-door-root-'))
@@ -376,22 +394,7 @@ describe('D-026 · one door lists the kept files, and every door that keeps one 
     issued = new FakeProviderSessions()
     gate = anOpenGate()
     window = new RecordingSink('webContents:1')
-    host = new RuntimeHost({
-      store: faultingStore(store),
-      ...neutralHostDeps(() => userData),
-      createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued, gate),
-      prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
-      resourcesRoot: () => resourcesRoot(userData),
-      newSessionId: () => `sess_${++counter}`,
-      now: tick,
-      readProviderConfig: fixtureProviderConfig,
-      // ⚑ **The dep the push is measured through** — what main hands every window.
-      statesMoved: (message) => {
-        pushed.push(message)
-      },
-    })
+    host = buildHost()
   })
 
   afterEach(async () => {
@@ -851,15 +854,9 @@ describe('D-026 · one door lists the kept files, and every door that keeps one 
     })
 
     it('a conversation that took another’s place lists what the one it replaced gave in its tree, and none of it in its conversation scope', async () => {
-      // The giver's provider forgets it, and a person's message wakes it: R10 replaces it.
-      await host.close(f.pm, window)
-      issued.forgetAll()
-      await host.send(f.pm, 'carry on', window)
-      const replaced = events(f.pm).find((event) => event.type === 'replaced_by')
-      if (replaced === undefined || replaced.type !== 'replaced_by') {
-        throw new Error('the giver was not replaced')
-      }
-      const next = replaced.sessionId
+      await host.closeAll()
+      const next = seedHistoricalSuccessor(store, f.pm, `sess_${++counter}`, tick())
+      host = buildHost()
       // ⚠️ The premise: a replacement stands in its place.
       expect(next).not.toBe(f.pm)
 

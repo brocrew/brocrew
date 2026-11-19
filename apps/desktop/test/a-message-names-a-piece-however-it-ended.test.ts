@@ -1,4 +1,5 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { recordHistoricallyMovedNote, seedHistoricalSuccessor } from './lib/historical-replacement'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -10,7 +11,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import {
   aFollowUpOnAPieceYouGaveAnother,
   aFollowUpOnAPieceYouHold,
@@ -329,16 +330,20 @@ describe('F086 · F087 · F088 · a message names a piece however it ended', () 
     )
   }
 
-  /** The app's own Close: it stops the process and never ends the conversation (D-017). */
-  const stop = async (sessionId: string): Promise<void> => {
-    await host.close(sessionId, THE_APP_ITSELF)
-    await waitFor(
-      () =>
-        ![...host.resumableSessions()].some(
-          (row) => row.sessionId === sessionId && row.running !== 'not-running',
-        ),
-      'the conversation to be over',
-    )
+  const restartWithHistoricalHelper = async (
+    helper: string,
+    moved: readonly string[] = [],
+  ): Promise<string> => {
+    await host.closeAll()
+    const next = seedHistoricalSuccessor(store, helper, `sess_${++counter}`, tick(), {
+      sessions: issued,
+      home: syntheticProviderHome(() => userData)('claude', 'helper'),
+    })
+    for (const text of moved) recordHistoricallyMovedNote(store, helper, next, text, tick())
+    store = createSessionStore(db, tick)
+    host = buildHost()
+    claimed.clear()
+    return next
   }
 
   // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -524,20 +529,10 @@ describe('F086 · F087 · F088 · a message names a piece however it ended', () 
   })
 
   it('🔴 §3 · once the agent holding the piece was replaced, a follow-up to it — by its old id, by the label, or to the one in its place — goes; to anyone else it is refused as given another', async () => {
-    const { pmTools, worker, helper, other } = await aPmAWorkerAndAHelper()
-    // The helper stops, forgotten by its provider; the first follow-up puts a new conversation in its place.
-    await stop(helper)
-    issued.forgetAll()
-    const woken = await callOn(pmTools, 'message_agent', {
-      kind: 'follow-up',
-      agent: helper,
-      text: 'carry on',
-      piece: other.label,
-    })
-    expect(woken.outcome, JSON.stringify(woken)).toBe('ok')
-    const next = woken.went_to as string
-    expect(typeof next).toBe('string')
-    expect(next).not.toBe(helper)
+    const { pm, worker, helper, other } = await aPmAWorkerAndAHelper()
+    const next = await restartWithHistoricalHelper(helper)
+    await host.resumeSession(pm, window)
+    const pmTools = agentToolsFor(host, pm)
 
     // ⚑ Read through the one in its place, on both sides: each of these names the agent holding it.
     for (const to of [helper, other.label, next]) {
@@ -633,24 +628,13 @@ describe('F086 · F087 · F088 · a message names a piece however it ended', () 
       const made = await aPmAWorkerAndAHelper()
       await twoHeldNotes(made)
       await endIt(ending, made)
-      // ⚑ The helper's provider forgets it and it stops: a stop holding messages starts it again,
-      // nothing can be reopened, and a new conversation takes its place, with both notes.
-      issued.forgetAll()
-      await stop(made.helper)
-      await waitFor(
-        () => ledger(made.helper).some((event) => event.type === 'replaced_by'),
-        'a conversation to take its place',
-      )
-      const replaced = ledger(made.helper).find((event) => event.type === 'replaced_by') as {
-        sessionId: string
-      }
-      const next = replaced.sessionId
-      expect(next).not.toBe(made.helper)
-      await waitFor(() => wordsIn(next).some((one) => one.text === PLAIN), 'both notes to move')
-      // ⚑ The moved rows: the named one keeps its piece, the plain one names none.
-      const moved = wordsIn(next).filter((one) => one.type === 'message_queued')
+      const next = await restartWithHistoricalHelper(made.helper, [NAMED, PLAIN])
+      const moved = store.messagesWaitingIn(next)
       expect(moved.find((one) => one.text === NAMED)).toMatchObject({ about: made.piece })
       expect(moved.find((one) => one.text === PLAIN)).not.toHaveProperty('about')
+      expect(store.messagesWaitingIn(made.helper)).toEqual([])
+      await host.resumeSession(next, window)
+      claimed.add(next)
       await readAsEnded(next, made.label, ending)
     })
   }

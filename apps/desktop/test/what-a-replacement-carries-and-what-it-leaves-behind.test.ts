@@ -198,7 +198,7 @@ describe('what a replacement carries, and what it leaves behind', () => {
     expect(store.replacements()).toEqual([])
     expect(store.piecesOwnedBy(worker)[0]).toEqual(recorded)
     expect(store.reconciliationReceipts(worker, before.piece)).toEqual(
-      expect.arrayContaining(receipts),
+      expect.arrayContaining([...receipts]),
     )
   })
 

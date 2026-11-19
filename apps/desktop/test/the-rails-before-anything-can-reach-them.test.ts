@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeRuntime, whatTheChildWouldLack } from '@brobot2/runtime'
+import { FakeProviderSessions, FakeRuntime, whatTheChildWouldLack } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
@@ -80,6 +80,7 @@ describe('341 · the rails, before anything can reach them', () => {
   let db: AppDatabase
   let host: RuntimeHost
   let store: SessionStore
+  let providerSessions: FakeProviderSessions
   let counter: number
   let window: RecordingSink
   /**
@@ -94,7 +95,7 @@ describe('341 · the rails, before anything can reach them', () => {
     new RuntimeHost({
       store,
       ...neutralHostDeps(() => userData),
-      createRuntime: (provider: Provider) => new FakeRuntime(provider),
+      createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions: providerSessions }),
       prepareProviderHome: (provider, profileId) => {
         const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
         mkdirSync(home, { recursive: true })
@@ -117,6 +118,7 @@ describe('341 · the rails, before anything can reach them', () => {
     applyMigrations(db, migrationsFolder)
     clock = 1_000_000
     store = createSessionStore(db, tick)
+    providerSessions = new FakeProviderSessions()
     counter = 0
     host = buildHost()
     window = new RecordingSink('webContents:1')
@@ -611,7 +613,7 @@ describe('341 · the rails, before anything can reach them', () => {
       expect(store.find(given.owner)).toMatchObject({ approvalMode: 'auto', provider: 'codex' })
     })
 
-    it('🔴 HO-005 §3 · a giver that has this identity’s conversation gives to IT — a piece that stalled there is NAMED to the next give, a stop keeps the stalls, and the give after a take-back finds the one in its place', async () => {
+    it('an existing worker is reused and its stalled piece is named even across a stop and take-back', async () => {
       // ⚑ **D-016 · the one conversation per helper per giver** — the second give is not refused
       // for the conversation it finds (`profile-already-live` went), it REACHES it; ⚑ and
       // its outcome names the piece that stalled there. ⚠️ An `auto` giver, so the child's brief
@@ -642,23 +644,18 @@ describe('341 · the rails, before anything can reach them', () => {
         'turn_ended',
         'turn_ended',
       ])
-      // ⚑ **Once the giver takes the piece back — the remedy it was named — the next give reaches
-      // the stopped child's place.** ⚠️ This host's provider keeps no session across launches, so
-      // the stopped one can never be reopened: the take-back's telling is where the conversation
-      // that takes its place (R10) is started, and the give finds THAT one — never a second one of
-      // the giver's own.
       expect(await host.takeBackPiece({ piece: first.piece }, as(parent))).toMatchObject({
         ok: true,
         owner: live,
       })
       const inItsPlace = host.tookItsPlace(live)
-      expect(inItsPlace).not.toBeNull()
+      expect(inItsPlace).toBeNull()
       const again = admitted(await give(aPiece('worker'), as(parent)))
-      expect(again.found).toBe(inItsPlace)
+      expect(again.found).toBe(live)
       // ⚑ **D-042 moved where *no start* is said** — `started: null` became `runsOn.how`: a give
       // that reaches the conversation it has, naming no model, leaves its pair `unchanged`.
       expect(again.runsOn.how).toBe('unchanged')
-      expect(again.owner).toBe(inItsPlace)
+      expect(again.owner).toBe(live)
       expect(store.parentOf(again.owner)).toBe(parent)
       // ⚑ **The paired positive, one fact over** — another identity, same giver, same call: a new
       // conversation, because this giver has none with that one.

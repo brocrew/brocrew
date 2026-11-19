@@ -2,6 +2,7 @@ import { personOpener } from './helpers/person-opens-session'
 import { callOn } from './helpers/call-agent-tool'
 import type { QuestionAskedEvent, RequestRoutedEvent } from '../src/shared/question-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { recordHistoricallyMovedNote, seedHistoricalSuccessor } from './lib/historical-replacement'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -329,6 +330,24 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
 
   const nameOf = (profile: string): string => agentName(profile, store.agentIdentities())
 
+  const restartWithHistoricalWorker = async (
+    worker: string,
+    pm: string,
+    moved?: string,
+  ): Promise<{ next: string; tools: AgentToolset }> => {
+    await host.closeAll()
+    const next = seedHistoricalSuccessor(store, worker, `sess_${++counter}`, tick(), {
+      sessions: issued,
+      home: syntheticProviderHome(() => userData)('claude', 'worker'),
+    })
+    if (moved !== undefined) recordHistoricallyMovedNote(store, worker, next, moved, tick())
+    store = createSessionStore(db, tick)
+    host = buildHost()
+    claimed.clear()
+    await host.resumeSession(pm, window)
+    return { next, tools: agentToolsFor(host, pm) }
+  }
+
   it('a piece taken back from a conversation that was replaced is not told to the one that took its place', async () => {
     const { pm, worker, pmTools, label } = await aPmAndItsWorker('the piece')
 
@@ -349,20 +368,14 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     const helperWasTold = await theNoticeIn(helper)
     expect(helperWasTold).toContain(second.label)
 
-    // Now the worker: stopped, forgotten by its provider, and replaced by a follow-up.
-    await stop(worker)
-    issued.forgetAll()
-    const woken = await callOn(pmTools, 'message_agent', {
+    const { next, tools } = await restartWithHistoricalWorker(worker, pm)
+    const woken = await callOn(tools, 'message_agent', {
       agent: worker,
       text: 'carry on',
       kind: 'follow-up',
       piece: label,
     })
-    expect(woken.outcome, JSON.stringify(woken)).toBe('ok')
-    const next = woken.went_to as string
-    // The premise: a new conversation stands in the worker's place, and the piece is stalled at the old one.
-    expect(typeof next).toBe('string')
-    expect(next).not.toBe(worker)
+    expect(woken, JSON.stringify(woken)).toMatchObject({ outcome: 'ok', went_to: next })
     const before = store.piecesOwnedBy(worker)[0]
     expect(before?.state).toBe('stalled')
     expect(before?.stalledBecause).toBe('could_not_be_reopened')
@@ -372,7 +385,7 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     )
     expect(takeBackNoticesIn(next)).toEqual([])
 
-    const back = await callWithWords(pmTools, 'withdraw_task', { piece: label })
+    const back = await callWithWords(tools, 'withdraw_task', { piece: label })
     // Ok, else the premise is wrong: the piece was taken back, and it is the tell that is refused.
     expect(back.structured.outcome, JSON.stringify(back.structured)).toBe('ok')
     expect(back.structured.delivery).toBe('not-delivered')
@@ -655,20 +668,15 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
   })
 
   it('⛔ a conversation standing in another’s place does not name the pieces that one held', async () => {
-    const { pm, worker, pmTools, piece, label } = await aPmAndItsWorker('the piece')
-    // The worker stopped, forgotten by its provider, and replaced by its giver's follow-up.
-    await stop(worker)
-    issued.forgetAll()
-    const woken = await callOn(pmTools, 'message_agent', {
+    const { pm, worker, piece, label } = await aPmAndItsWorker('the piece')
+    const { next, tools } = await restartWithHistoricalWorker(worker, pm)
+    const woken = await callOn(tools, 'message_agent', {
       agent: worker,
       text: 'carry on',
       kind: 'follow-up',
       piece: label,
     })
-    expect(woken.outcome, JSON.stringify(woken)).toBe('ok')
-    const next = woken.went_to as string
-    expect(typeof next).toBe('string')
-    expect(next).not.toBe(worker)
+    expect(woken, JSON.stringify(woken)).toMatchObject({ outcome: 'ok', went_to: next })
     await waitFor(
       () => wordsIn(next).some((one) => one.text.includes('carry on')),
       'the follow-up to reach the conversation that took its place',
@@ -687,7 +695,7 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
       detail: { piece: label },
     })
     // ⚑ The control: its giver names it to the one in its place — a piece it gave.
-    const given = await callOn(pmTools, 'message_agent', {
+    const given = await callOn(tools, 'message_agent', {
       kind: 'note',
       agent: next,
       text: 'about the piece I gave',
@@ -872,16 +880,19 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     )
   })
 
-  it('🔴 a held note still says which piece it is about when a restart sends it', async () => {
-    const { pmTools, worker, piece, label } = await aPmAndItsWorker('the piece')
-    // ⚑ Held: the worker is parked on its brief's card.
-    const held = await callOn(pmTools, 'message_agent', {
+  const holdANote = async (tools: AgentToolset, worker: string, label: string): Promise<void> => {
+    const held = await callOn(tools, 'message_agent', {
       kind: 'note',
       agent: worker,
       text: 'noted for later',
       piece: label,
     })
     expect(held.delivery, JSON.stringify(held)).toBe('queued')
+  }
+
+  it('🔴 a held note still says which piece it is about when a restart sends it', async () => {
+    const { pmTools, worker, piece, label } = await aPmAndItsWorker('the piece')
+    await holdANote(pmTools, worker, label)
     // ⚑ Its row keeps the piece it names, and a start reads it back.
     expect(
       store.messagesWaitingIn(worker).find((one) => one.text === 'noted for later'),
@@ -914,38 +925,38 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
   })
 
   it('🔴 a held note handed to the conversation that took its receiver’s place keeps the piece it names, on its row too', async () => {
+    const { pm, pmTools, worker, piece, label } = await aPmAndItsWorker('the piece')
+    await holdANote(pmTools, worker, label)
+    const { next } = await restartWithHistoricalWorker(worker, pm, 'noted for later')
+    expect(
+      store.messagesWaitingIn(next).find((one) => one.text === 'noted for later'),
+    ).toMatchObject({ about: piece })
+    await host.resumeSession(next, window)
+    const turn = await theTurnCarrying(next, 'noted for later')
+    expect(turn).toContain(`This message is about ${label} · the piece`)
+  })
+
+  it('a missing session leaves a held note recorded and says why its wake ran nothing', async () => {
     const { pmTools, worker, piece, label } = await aPmAndItsWorker('the piece')
-    const held = await callOn(pmTools, 'message_agent', {
-      kind: 'note',
-      agent: worker,
-      text: 'noted for later',
-      piece: label,
-    })
-    expect(held.delivery, JSON.stringify(held)).toBe('queued')
-    // ⚑ Its provider forgets it, and then it stops: a stop holding a message starts it again at once,
-    // that start finds nothing to reopen, and a new conversation takes its place, with the note.
+    await holdANote(pmTools, worker, label)
+    const before = store.recorded().map(({ sessionId }) => sessionId).sort()
+    const wakeFailure = {
+      type: 'error',
+      message: 'This conversation could not wake: its provider session file is missing. Nothing ran.',
+      fatal: false,
+    }
     issued.forgetAll()
     await stop(worker)
     await waitFor(
-      () => ledger(worker).some((event) => event.type === 'replaced_by'),
-      'a conversation to take its place',
+      () => ledger(worker).some((row) => row.type === 'error' && row.message === wakeFailure.message),
+      'the missing session wake failure',
     )
-    const replaced = ledger(worker).find((event) => event.type === 'replaced_by') as {
-      sessionId: string
-    }
-    const next = replaced.sessionId
-    expect(next).not.toBe(worker)
-    // ⚑ The note moved to it, and the row that holds it there names the piece — what a start after a
-    // quit reads back.
-    await waitFor(
-      () => wordsIn(next).some((one) => one.text === 'noted for later'),
-      'the note to move',
+    expect(ledger(worker)).toContainEqual(wakeFailure)
+    expect(store.messagesWaitingIn(worker)).toContainEqual(
+      expect.objectContaining({ text: 'noted for later', about: piece }),
     )
-    expect(
-      wordsIn(next).find((one) => one.type === 'message_queued' && one.text === 'noted for later'),
-    ).toMatchObject({ about: piece })
-    const turn = await theTurnCarrying(next, 'noted for later')
-    expect(turn).toContain(`This message is about ${label} · the piece`)
+    expect(store.replacements()).toEqual([])
+    expect(store.recorded().map(({ sessionId }) => sessionId).sort()).toEqual(before)
   })
 
   it('🔴 held messages that go as one turn each say what they are about, and only the one that names a piece', async () => {
@@ -1146,7 +1157,7 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
   })
 
   it('⛔ a take-back of a name its caller neither holds nor gave keeps the word’s own sentence — a made-up label, another’s piece, a predecessor’s', async () => {
-    const { worker, pmTools, workerTools, label } = await aPmAndItsWorker('the piece')
+    const { pm, worker, pmTools, workerTools, label } = await aPmAndItsWorker('the piece')
     await bringIdentityIntoBeing('helper')
     const other = await aGive(pmTools, 'helper', 'the other piece')
     const theGuess = refuseTool('not-a-piece-you-gave').reason
@@ -1161,25 +1172,21 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
       expect(refused.structured.detail, spelled).toEqual({ piece: spelled })
     }
     // ⛔ A conversation standing in another's place holds none of what that one held.
-    await stop(worker)
-    issued.forgetAll()
-    const woken = await callOn(pmTools, 'message_agent', {
+    const { next, tools } = await restartWithHistoricalWorker(worker, pm)
+    const woken = await callOn(tools, 'message_agent', {
       agent: worker,
       text: 'carry on',
       kind: 'follow-up',
       piece: label,
     })
-    expect(woken.outcome, JSON.stringify(woken)).toBe('ok')
-    const next = woken.went_to as string
-    expect(typeof next).toBe('string')
-    expect(next).not.toBe(worker)
+    expect(woken, JSON.stringify(woken)).toMatchObject({ outcome: 'ok', went_to: next })
     const fromNext = await callWithWords(agentToolsFor(host, next), 'withdraw_task', {
       piece: label,
     })
     expect(fromNext.structured).toMatchObject({ rail: 'not-a-piece-you-gave', reason: theGuess })
     expect(fromNext.structured.detail).toEqual({ piece: label })
     // ⚑ The control: the pm, which gave the other piece, takes it back.
-    const tookBack = await callOn(pmTools, 'withdraw_task', { piece: other.label })
+    const tookBack = await callOn(tools, 'withdraw_task', { piece: other.label })
     expect(tookBack.outcome, JSON.stringify(tookBack)).toBe('ok')
   })
 

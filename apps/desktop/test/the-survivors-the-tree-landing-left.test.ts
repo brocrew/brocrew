@@ -1,4 +1,5 @@
 import { waitFor } from './lib/f093-host'
+import { recordHistoricalReplacement } from './lib/historical-replacement'
 import { TASK_STALL_CAUSES } from '../src/shared/task-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { createHash } from 'node:crypto'
@@ -289,11 +290,6 @@ describe('the survivors the tree landing left', () => {
         )
       })
 
-    const runningOf = (sessionId: string): string | undefined =>
-      [...host.resumableSessions(), ...host.unresumableSessions()].find(
-        (row) => row.sessionId === sessionId,
-      )?.running
-
     // ─────────────────────────────────────────────────────────────────────────────────────────
     // 404 M10
     // ─────────────────────────────────────────────────────────────────────────────────────────
@@ -394,16 +390,14 @@ describe('the survivors the tree landing left', () => {
         'the piece to stop being driven',
       )
       expect(store.piecesOwnedBy(worker)[0]?.stalledBecause).toBe('turn_ended')
-      // ⚑ The giver is told, and stops; then its provider forgets it, so a message replaces it.
       await waitFor(() => read(pm).some((text) => isGiverStallNotice(text)), 'the giver to be told')
       await letItSettle()
-      await host.close(pm, window)
-      await waitFor(() => runningOf(pm) === 'not-running', 'the giver to be stopped')
-      issued.forgetAll()
-      const answer = await host.startAndSend(pm, 'are you there', window)
-      if (!('sent' in answer)) throw new Error(`not sent: ${JSON.stringify(answer)}`)
-      const next = answer.sent.sessionId
-      expect(next).not.toBe(pm)
+      const next = await personOpens('pm', 'auto')
+      await host.closeAll()
+      recordHistoricalReplacement(store, pm, next, tick())
+      host = buildHost()
+      await host.resumeSession(worker, window)
+      await host.resumeSession(next, window)
       expect(events(pm)).toContainEqual({ type: 'replaced_by', sessionId: next })
 
       // ⚑ **The premise**: the piece is the PREDECESSOR's — its giver is not the caller below — and
