@@ -350,6 +350,7 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
         address,
       ).toMatchObject({ outcome: 'ok', agent: target, asked: false })
     }
+    await host.resumeSession(worker, window)
     expect(
       await callOn(workerTools, 'reply_to_parent', {
         piece: label,
@@ -357,6 +358,7 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
         summary: 'done',
       }),
     ).toMatchObject({ outcome: 'ok' })
+    await host.close(worker, window)
     const ended = await callWithWords(workerTools, 'interrupt_agent', {
       agent: label,
       reason: 'stop',
