@@ -465,13 +465,40 @@ describe('a successful answer says in words what its payload held', () => {
       const action = given.structured?.delivery === 'sent' ? 'sent to' : 'held for'
       expect(given.structured?.delivery).toMatch(/^(sent|held)$/)
       expect(given.text.split('\n')[0]).toBe(
-        `Task ${label} ${action} worker at conversation ${label} · Inventory project.`,
+        `Task ${label} ${action} worker in a new conversation ${label} · Inventory project. Context: no current reading.`,
       )
       expect(given.text.split('\n')[0]).not.toContain('Survey the kept files')
       expect(given.text).toContain(
         `[${label} · Survey the kept files](brocrew://piece/${String(given.structured?.['piece'])})`,
       )
     })
+
+    it.each([
+      [{ kind: 'proportional', used: 10, window: 10_000 }, 'Context: <1% used.'],
+      [{ kind: 'tokens', used: 42_000 }, 'Context: 42,000 tokens used (window size not reported).'],
+    ] as const)(
+      'a continued Give reports the target conversation’s context (%j)',
+      async (reading, context) => {
+        const { label: address, pmTools, worker } = await aPmAndItsWorker()
+        handles.at(-1)!.simulateContextReading(reading)
+        await waitFor(
+          () => store.newestOfType?.(worker, 'context_reading')?.event.type === 'context_reading',
+          'the worker’s recorded context reading',
+        )
+        const result = await ok(pmTools, 'give_work', {
+          profile: 'worker',
+          to: address,
+          title: 'Count the images',
+          brief: 'Count the images as well.',
+          definition_of_done: 'The count is recorded.',
+        })
+        const action = result.structured?.delivery === 'sent' ? 'sent to' : 'held for'
+        expect(result.structured?.delivery).toMatch(/^(sent|held)$/)
+        expect(result.text.split('\n')[0]).toBe(
+          `Task ${String(result.structured?.label)} ${action} worker in the existing conversation ${address} · Inventory project. ${context}`,
+        )
+      },
+    )
 
     it('message_agent does not say the kind back, and keeps how it went', async () => {
       const { pmTools, worker, label } = await aPmAndItsWorker()
