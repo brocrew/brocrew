@@ -268,7 +268,7 @@ export type InterruptOutcome =
     }
   | {
       readonly ok: false
-      readonly refusal: InterruptRefusal | 'no-such-agent' | 'that-agent-is-you'
+      readonly refusal: InterruptRefusal | 'no-such-agent'
     }
 
 /** What {@link RuntimeHost.messageAgentNow} did about the turn its message waits behind. */

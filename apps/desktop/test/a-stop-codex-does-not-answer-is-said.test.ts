@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppDatabase } from '../src/main/db/connection'
 import type { SessionStore } from '../src/main/db/session-store'
+import { AGENT_TOOL_SERVER } from '../src/main/runtime/agent-tools'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 
 import {
@@ -167,6 +168,34 @@ describe('723 · R83 — a Stop the provider does not answer is said', () => {
     expect(ofType(id, 'work_interrupted')).toHaveLength(1)
     expect(ofType(id, 'stop_unanswered')).toEqual([])
     expect(sentOfType('stop_unanswered')).toEqual([])
+  })
+
+  it('returns the Stop receipt to the Codex turn that stopped itself', async () => {
+    const { id, server } = await aRunningTurn()
+    server.interruptAnswer = 'answers'
+    server.raise(70, 'item/tool/call', {
+      callId: 'self-stop',
+      namespace: AGENT_TOOL_SERVER,
+      tool: 'interrupt_agent',
+      arguments: { agent: id, reason: 'Stop this turn' },
+    })
+
+    await waitFor(() => sentOfType('permission_request').length === 1, 'the Stop approval')
+    await host.respondPermission(id, 'number:70', { outcome: 'allow' }, window)
+
+    await waitFor(() => ofType(id, 'turn').length === 1, 'the self-stopped turn to end')
+    expect(server.sent('turn/interrupt')).toEqual([{ threadId: 'th_1', turnId: 'tn_1' }])
+    expect(ofType(id, 'turn')).toEqual([expect.objectContaining({ state: 'interrupted' })])
+    await waitFor(() => server.responses.some(({ id }) => id === 70), 'the self-Stop receipt')
+    expect(server.responses.filter(({ id }) => id === 70)).toEqual([
+      {
+        id: 70,
+        result: {
+          success: true,
+          contentItems: [{ type: 'inputText', text: expect.stringContaining('was asked to stop') }],
+        },
+      },
+    ])
   })
 
   it('⚑ §4 CONTROL · a Codex that ENDS the turn and never answers — the turn stopped, so nothing is said', async () => {
