@@ -23109,6 +23109,7 @@ export class RuntimeHost implements LiveHost {
     session: HostedSession,
     event:
       | WorkReconciliationEvent
+      | ProviderFailureReconciliationEvent
       | WorkRecoveryEvent
       // ⚑ **439's sender-side receipt** — see {@link MessageSentEvent}.
       | MessageSentEvent
