@@ -177,8 +177,8 @@ describe('437 · a question a worker can ask its parent', () => {
   }
 
   /**
-   * ⛔ **Started and NOT awaited**, because this verb holds the turn open — awaiting it before the
-   * answer is sent is a deadlock, and that is the mechanism rather than a quirk of the double.
+   * Start the real tool call so a test can inspect its routing as it is recorded.
+   * Each test awaits the delivery receipt before closing the database.
    */
   const startAsking = (
     toolset: AgentToolset,
@@ -537,7 +537,7 @@ describe('437 · a question a worker can ask its parent', () => {
       expect(
         store.routedRequestsOf(worker).filter((one) => one.went.is === 'the-parent').length,
       ).toBe(1)
-      void asking
+      expect((await asking).outcome).toBe('ok')
     })
   })
 
@@ -561,9 +561,7 @@ describe('437 · a question a worker can ask its parent', () => {
         JSON.stringify(heldBy(pm)),
       ).toBe(1)
       const asking = startAsking(workerTools, { piece, question: 'postgres or sqlite?' })
-      // ⚠️ **Waited for, because the delivery is deliberately not awaited by the verb** — `394`'s
-      // ruling: the routing row is written first and the delivery is best-effort behind it, so a
-      // test that read the mailbox on the next line would read it before the question arrived.
+      // The mailbox is inspected while the parent is still parked on its existing card.
       await waitFor(
         () => heldBy(pm).some((one) => one.kind === 'question'),
         "the worker's question in the parent's mailbox",
@@ -573,7 +571,7 @@ describe('437 · a question a worker can ask its parent', () => {
       const held = heldBy(pm)
       expect(held.filter((one) => one.kind === 'question').length).toBe(1)
       expect(held.filter((one) => one.kind === 'work').length).toBe(1)
-      void asking
+      expect((await asking).outcome).toBe('ok')
       void worker
     })
 
@@ -600,7 +598,7 @@ describe('437 · a question a worker can ask its parent', () => {
         "the question to reach the parent's transcript",
       )
       expect(store.piecesOwnedBy(pm)).toEqual([])
-      void asking
+      expect((await asking).outcome).toBe('ok')
     })
   })
 
@@ -1100,7 +1098,7 @@ describe('437 · a question a worker can ask its parent', () => {
       expect(described).not.toContain('postgres or sqlite?')
       expect(described).toContain(`${'postgres or sqlite?'.length} chars`)
       expect(described).toContain(piece)
-      void asking
+      expect((await asking).outcome).toBe('ok')
     })
   })
 })

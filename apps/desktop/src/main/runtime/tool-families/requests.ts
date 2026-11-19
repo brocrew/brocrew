@@ -15,8 +15,8 @@ import {
 } from '../../../shared/mcp-server-requests'
 import { PATH_SEGMENT_RULE, isPathSegment } from '../../../shared/runtime-ipc'
 import { REPLY_SUMMARY_LIMIT } from '../reply-rails'
-import { type ToolRefusal, carryQuestionRefusal, refuseTool } from './refusals'
-import { answer, refusalAnswer, sendAnswer } from './answers'
+import { type ToolRefusal, refuseTool } from './refusals'
+import { answer, refusalAnswer, refusedAsk, sendAnswer } from './answers'
 import { z } from 'zod'
 
 /** Every argument `request_mcp_server` advertises, as a type its advertisement satisfies. */
@@ -260,13 +260,7 @@ export function createRequestActionTool(
           },
           by,
         )
-        if ('resourceFailure' in asked) {
-          return answer({ ...asked.refusal }, asked.refusal.reason)
-        }
-        if (!asked.ok) {
-          const carried = carryQuestionRefusal(asked.refusal)
-          return answer(carried, `refused (${asked.refusal.rail}): ${asked.refusal.reason}`)
-        }
+        if (!asked.ok) return refusedAsk(asked)
         return answer(
           { outcome: 'ok', question: asked.question, attachments: asked.attachments },
           `The to-do is under Waiting on you as ${asked.question}. The person answers Done or Can’t do it, and the answer reaches you as a message; they may not be looking now. Carry on from here.` + asked.overflowSaid,

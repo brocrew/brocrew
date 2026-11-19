@@ -401,7 +401,7 @@ describe('629 · a stop reaches down the whole chain', () => {
         text: 'build the settings page too',
       })
       expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
-      expect(refused.rail).toBe('not-a-piece-you-gave')
+      expect(refused.rail).toBe('no-piece-by-that-name')
 
       // ⚑ **THE PAIR one fact over** — the same work from the conversation that started Ali.
       const given = await callOn(adaTools, 'message_agent', {
@@ -523,7 +523,7 @@ describe('629 · a stop reaches down the whole chain', () => {
           named === aliLabel
             ? ` ${aliLabel} is your own piece, with no helpers recorded under it. list_agents names conversations; message_agent answers whether one can take your message.`
             : named === brobotsRoot
-              ? ` ${brobotsRoot} is your own piece. Its helpers: Ada (${pmProfile}) on ${adaLabel} (working). Reach a helper by its piece's label, even after it ended: message_agent with kind: note, or ask_question. For new work, give_work with its profile. To stop a known conversation, interrupt_agent with its label.`
+              ? ` ${brobotsRoot} is your own piece. Its helpers: Ada (${pmProfile}) on ${adaLabel} (working). Reach a helper by its task's label, even after it ended: message_agent or ask_question. For new work, give_work with its profile. To stop a known conversation, interrupt_agent with its label.`
               : ''
         expect(said.structured, named).toMatchObject({
           outcome: 'refused',

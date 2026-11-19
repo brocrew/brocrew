@@ -11,6 +11,7 @@ import { describeConversation } from '../src/main/runtime/conversation-address'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 import { deferred } from './helpers/quit-open-list-cases'
 import { waitFor } from './lib/f093-host'
+import { expectNoQuestionWake } from './lib/question-wake'
 import { recordHistoricalReplacement } from './lib/historical-replacement'
 
 describe('explicit outbound sends', () => {
@@ -29,6 +30,7 @@ describe('explicit outbound sends', () => {
     sender = await world.aRecordedWorker(giver, 'outbound-sender')
     await host.resumeSession(sender, world.window)
     target = await world.aPersonOpens(host, 'outbound-target')
+    await host.setApprovalMode(target, 'auto', world.window)
   })
 
   afterEach(async () => world.cleanUp())
@@ -139,11 +141,7 @@ describe('explicit outbound sends', () => {
       const [heldMessage, heldQuestion] = world.store.messagesWaitingIn(target)
       expect(heldMessage?.messageId).toBe(messageReceipt.recorded.id)
       expect(heldQuestion?.asks).toEqual({ asker: sender, requestId: askReceipt.recorded.id })
-      const reminderRows = () =>
-        world.ledger(target).filter(
-          (event) => event.type === 'message_queued' && event.appNotice === 'an-answer-is-still-owed',
-        )
-      expect(reminderRows()).toHaveLength(0)
+      expectNoQuestionWake(world.ledger(target))
       world.turnsWait = batch.promise
       gate.resolve()
       const body = 'Then record this question?'
@@ -155,7 +153,7 @@ describe('explicit outbound sends', () => {
       expect(deliveredBatch()?.words).toContain(
         `asks you ${askReceipt.recorded.id} in your ${recipient}.\n`,
       )
-      expect(reminderRows()).toHaveLength(0)
+      expectNoQuestionWake(world.ledger(target))
     } finally {
       world.turnsWait = null
       gate.resolve()
@@ -528,7 +526,6 @@ describe('explicit outbound sends', () => {
   it.each(['withdrawn', 'answered', 'answered after moving'] as const)(
     'retracts a rehydrated unanswered notice once the question is %s',
     async (ended) => {
-      host.claimSession(sender, world.window)
       const gate = deferred()
       const keepBusy: (() => void)[] = []
       let receiver = sender

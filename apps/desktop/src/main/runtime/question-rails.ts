@@ -969,7 +969,6 @@ export function questionText(
     readonly called: string
     /** ⚑ What `asked_by` quotes — the label of the piece that names it, or its id. */
     readonly address: string
-    readonly line?: string
   },
   request: {
     id: string
@@ -985,39 +984,8 @@ export function questionText(
      * piece, a passed-up one and a provider's.
      */
     label?: string | null
-    taskTitle?: string | null
   },
-  receiverLine?: string,
 ): string {
-  if (asker.line !== undefined) {
-    const receiver = receiverLine === undefined ? '' : ` in your ${receiverLine}`
-    const lines = [
-      `${asker.called} (${asker.line}) asks you ${request.id}${receiver}.`,
-      `Use asked_by ${asker.address} with this question id.`,
-    ]
-    if (request.label != null) {
-      const title = request.taskTitle == null ? '' : ` · ${request.taskTitle}`
-      lines.push(`About task ${request.label}${title}.`)
-    }
-    lines.push(request.prompt)
-    for (const part of request.questions) {
-      const header = part.header === undefined ? '' : ` · ${part.header}`
-      const soleAsk = request.questions.length === 1 && part.id === 'answer'
-      const prompt = soleAsk
-        ? part.options.length === 0
-          ? 'answer in your own words.'
-          : 'choose one:'
-        : part.prompt
-      lines.push(`Part id "${part.id}"${header}: ${prompt}`)
-      for (const option of part.options) lines.push(`    - ${option.label}`)
-      if (part.allowOther === true) lines.push('    (or an answer of your own)')
-      if (part.multiSelect === true) lines.push('    (this part takes more than one)')
-    }
-    lines.push(
-      'Answer with answer_question, one entry per part id: answers: [{ part: "id", answer: ["…"] }]. If you can’t, use cannot_answer and say why.',
-    )
-    return lines.join('\n')
-  }
   const about =
     request.label === undefined || request.label === null ? '' : ` about ${request.label}`
   const lines = [

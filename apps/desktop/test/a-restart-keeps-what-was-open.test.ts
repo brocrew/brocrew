@@ -463,7 +463,7 @@ describe('692 · a restart keeps what was open', () => {
       // whether it ran.
       // ⚑ **D-016 · commit 7 · R3** — the child named by the piece it owns, where it printed its id.
       // The receipt does not echo the kind the call declared.
-      expect(text).toContain(`${host.nameByItsWork(child)} has been sent it straight away.`)
+      expect(text).toMatch(/^Delivered to conversation W4\.1 · the mock-dev half of the work\./)
       expect(text).not.toContain('as note')
       expect(text).not.toContain('was idle')
       // ⛔ **Exactly one launch, and it is THAT child's** — the other two were not spoken to.
@@ -838,13 +838,21 @@ describe('692 · a restart keeps what was open', () => {
       expect(launched.length - before).toBe(0)
     })
 
+    const expectFailedMessageWake = async (tools: AgentToolset, child: string): Promise<void> => {
+      const said = await callOn(tools, 'message_agent', { agent: child, text: 'are you there' })
+      expect(said, JSON.stringify(said)).toMatchObject({
+        outcome: 'ok',
+        receipt: { recipient: { id: child, state: { kind: 'cannot-run' } } },
+      })
+    }
+
     it('a lost provider session leaves the same conversation recorded and starts no replacement', async () => {
       const { lead, children } = await theFourOpen()
       await quitAndRelaunch()
       const tools = await personPresses(lead)
       // ⛔ **The provider forgets what it issued** — a conversation its files no longer hold.
       issued.forgetAll()
-      const before = store.recorded().map(({ sessionId }) => sessionId)
+      const before = store.recorded().map(({ sessionId }) => sessionId).sort()
       const said = await callOn(tools, 'message_agent', {
         agent: children[0],
         text: 'are you there',
@@ -866,7 +874,7 @@ describe('692 · a restart keeps what was open', () => {
           authorship: expect.objectContaining({ relayedFrom: lead }),
         }),
       )
-      expect(store.recorded().map(({ sessionId }) => sessionId)).toEqual(before)
+      expect(store.recorded().map(({ sessionId }) => sessionId).sort()).toEqual(before)
       expect(store.replacements()).toEqual([])
       expect(listed(children[0])).toEqual({ running: 'not-running' })
       expect(listed(children[1])).toEqual({ running: 'not-running' })
@@ -877,15 +885,7 @@ describe('692 · a restart keeps what was open', () => {
       await quitAndRelaunch()
       const tools = await personPresses(lead)
       CountingRuntime.failTheNextResume = new Error('the app-server closed its pipe')
-      const said = await callOn(tools, 'message_agent', {
-        agent: children[0],
-        kind: 'note',
-        text: 'are you there',
-      })
-      expect(said, JSON.stringify(said)).toMatchObject({
-        outcome: 'ok',
-        receipt: { recipient: { id: children[0], state: { kind: 'cannot-run' } } },
-      })
+      await expectFailedMessageWake(tools, children[0])
       // ⚑ **Still open**: nothing about the conversation was learned — only that this start failed.
       expect(listed(children[0])).toEqual({ running: 'not-running' })
     })
@@ -967,15 +967,7 @@ describe('692 · a restart keeps what was open', () => {
       await quitAndRelaunch()
       const tools = await personPresses(lead)
       CountingRuntime.theNextResumeThrows = died
-      const said = await callOn(tools, 'message_agent', {
-        agent: children[0],
-        kind: 'note',
-        text: 'are you there',
-      })
-      expect(said, JSON.stringify(said)).toMatchObject({
-        outcome: 'ok',
-        receipt: { recipient: { id: children[0], state: { kind: 'cannot-run' } } },
-      })
+      await expectFailedMessageWake(tools, children[0])
       // ⚑ **Still open**: an app-server that died says nothing about the conversation.
       expect(listed(children[0])).toEqual({ running: 'not-running' })
     })
@@ -1012,15 +1004,7 @@ describe('692 · a restart keeps what was open', () => {
         await quitAndRelaunch()
         const tools = await personPresses(lead)
         CountingRuntime.theNextResumeThrows = unreadable
-        const said = await callOn(tools, 'message_agent', {
-          agent: children[0],
-          kind: 'note',
-          text: 'are you there',
-        })
-        expect(said, JSON.stringify(said)).toMatchObject({
-          outcome: 'ok',
-          receipt: { recipient: { id: children[0], state: { kind: 'cannot-run' } } },
-        })
+        await expectFailedMessageWake(tools, children[0])
         expect(listed(children[0])).toEqual({ running: 'not-running' })
       },
     )

@@ -813,17 +813,15 @@ describe('347 · the five tools', () => {
       expect(host.sessionIds).toContain(child)
       expect(host.sessionIds).toContain(sibling)
 
-      // ⛔ **`422`'s entitlement fact is UNCHANGED.** The other giver's child is not this caller's
-      // to follow up: a follow-up must name a piece the sender gave THAT agent, and the piece
-      // `there` gave went to its own conversation.
+      // The second giver can send a note about its task to the first giver's child.
       expect(
         await toolsOf(there).call('message_agent', {
           agent: child,
           text: 'can we coordinate?',
-          kind: 'follow-up',
           piece: alsoThere.label,
         }),
-      ).toMatchObject({ outcome: 'refused', rail: 'not-a-piece-you-gave' })
+      ).toMatchObject({ outcome: 'ok', agent: child, kind: 'note', label: alsoThere.label })
+      expect(store.workById(String(alsoThere.piece))?.owner).toBe(sibling)
 
       // ⚑ **The key stands on the giver** — `there`'s next give reaches `there`'s conversation.
       const again = await give(there, 'worker', 'A second one over there', { to: alsoThere.label })
@@ -938,10 +936,10 @@ describe('347 · the five tools', () => {
         await call('message_agent', {
           agent: personHeld,
           text: 'take this',
-          kind: 'follow-up',
           piece: given.label,
         }),
-      ).toMatchObject({ outcome: 'refused', rail: 'not-a-piece-you-gave' })
+      ).toMatchObject({ outcome: 'ok', agent: personHeld, kind: 'note', label: given.label })
+      expect(store.workById(String(given.piece))?.owner).toBe(child)
 
       // 🔴 **The paired positive, one fact over: the next give reaches the child this giver has**,
       // and never the person's.

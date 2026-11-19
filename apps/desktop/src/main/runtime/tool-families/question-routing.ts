@@ -31,7 +31,7 @@ import {
   documentedToolEnum,
 } from './catalog'
 import { REPLY_SUMMARY_LIMIT } from '../reply-rails'
-import { answer, refusalAnswer, sendAnswer } from './answers'
+import { answer, refusalAnswer, refusedAsk, sendAnswer } from './answers'
 import { THE_ANSWER_ARRIVES_AS_A_MESSAGE } from '../send-receipt'
 import { INLINE_TEXT_LIMIT } from '../send-overflow'
 import { sendResourcesInput, sendResourcesProblem } from './send-resources'
@@ -281,13 +281,7 @@ export function createAskQuestionTool(
           },
           by,
         )
-        if ('resourceFailure' in asked) {
-          return answer({ ...asked.refusal }, asked.refusal.reason)
-        }
-        if (!asked.ok) {
-          const carried = carryQuestionRefusal(asked.refusal)
-          return answer(carried, `refused (${asked.refusal.rail}): ${asked.refusal.reason}`)
-        }
+        if (!asked.ok) return refusedAsk(asked)
         if (moveTo !== undefined)
           return answer(
             { outcome: 'ok', question: asked.question, went_to: 'a-person' },
