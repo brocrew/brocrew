@@ -220,13 +220,14 @@ it('rereads metadata when the existing provider login notice changes', async () 
 
 it('keeps known connections and readiness visible while the same login is rechecked', async () => {
   const pending = held<ProviderConnection[]>()
-  let calls = 0
+  let refreshing = false
   const { m, props } = card(() =>
-    ++calls === 1 ? Promise.resolve(rows('claude', 'Known account')) : pending.promise,
+    refreshing ? pending.promise : Promise.resolve(rows('claude', 'Known account')),
   )
   await settle()
   expect(m.q('provider-connection').textContent).toContain('Known account')
   expect(m.q('provider-connection').textContent).toContain('Ready')
+  refreshing = true
   props.loginMoved++
   await settle()
   expect(m.all('provider-connection')).toHaveLength(1)
@@ -241,12 +242,13 @@ it('keeps known connections and readiness visible while the same login is rechec
 
 it('clears known connections immediately when switching provider during a read', async () => {
   const pending = held<ProviderConnection[]>()
-  let calls = 0
+  let switching = false
   const { m, props } = card(() =>
-    ++calls === 1 ? Promise.resolve(rows('claude', 'Previous provider')) : pending.promise,
+    switching ? pending.promise : Promise.resolve(rows('claude', 'Previous provider')),
   )
   await settle()
   expect(m.q('provider-connection').textContent).toContain('Previous provider')
+  switching = true
   props.provider = 'codex'
   await settle()
   expect(m.all('provider-connection')).toHaveLength(0)
