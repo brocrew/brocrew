@@ -1027,8 +1027,8 @@ describe('413 · words the person did not say', () => {
       const question = providerHeard(pm).find((said) => said.includes(raised.id))
       // ⛔ `questionText` leads with the asking conversation — ⚑ D-016 · commit 7 · R3: by its name
       // and the piece it owns, and quotes that piece's label as its address, where it was the id.
-      expect(question).toContain(`${host.nameByItsWork(worker)} is waiting on an answer`)
-      expect(question).toContain(`with asked_by ${host.addressOf(worker)}.`)
+      expect(question).toContain(`Ada (the owner of ${label} · The work) is waiting on an answer`)
+      expect(question).toContain(`with asked_by ${label}.`)
 
       const replied = await callOn(agentToolsFor(host, worker), 'reply_to_parent', {
         piece: label,

@@ -2667,7 +2667,6 @@ export async function executeRuntimeCommand(
         sink,
       ) satisfies Answer<'retitleWork'>
     case 'renameConversation':
-      requireAPerson(sink, command.kind)
       return (await host.renameConversation(command, {
         kind: 'person',
       })) satisfies Answer<'renameConversation'>

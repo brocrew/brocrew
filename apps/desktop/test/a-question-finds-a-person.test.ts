@@ -568,7 +568,7 @@ describe('394 · a question finds a person, and a permission never travels', () 
       // ⚑ **And it names the child that asked** — by the piece it owns, as every sentence names
       // another conversation (D-016 · commit 7 · R3), where it used to print the id.
       expect(words?.type === 'user_turn' && words.text).toContain(
-        `${host.nameByItsWork(worker)} is waiting on an answer`,
+        'Ada (the owner of W2.1 · the work this dispatch is about) is waiting on an answer',
       )
 
       // 🔴 **And the parent answers it, and the child goes on.** `answered` is the promise the fake's
