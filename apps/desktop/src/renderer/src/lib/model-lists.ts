@@ -180,7 +180,7 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
           const held = lists.value[key]
           if (held?.state === 'answered') {
             choices.delete(key)
-            lists.value = { ...lists.value, [key]: { ...held, refreshing: false } }
+            lists.value = { ...lists.value, [key]: { state: 'answered', list: held.list } }
           } else put(key, { state: 'unread', why: readableError(error) })
         }
       }
