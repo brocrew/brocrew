@@ -250,16 +250,7 @@ describe('659 · the question every teardown asks', () => {
   const aPmAndItsWorker = async (
     approvalMode: 'auto' | 'ask' = 'auto',
   ): Promise<{ pm: string; pmLaunch: Launch; worker: string; workerLaunch: Launch }> => {
-    const first = await host.createSession(
-      { provider: 'claude', profileId: 'worker', approvalMode: 'auto', cwd: root },
-      window,
-    )
-    await host.close(first.sessionId, window)
-    const { sessionId: pm } = await host.createSession(
-      { provider: 'claude', profileId: 'pm', approvalMode, cwd: root },
-      window,
-    )
-    const pmLaunch = launches.at(-1)!
+    const { pm, pmLaunch } = await aPmWithAGrant(approvalMode)
     const given = await callNewConversationGive(pmLaunch.toolset, 'worker', 'The work', 'the work')
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
@@ -274,14 +265,16 @@ describe('659 · the question every teardown asks', () => {
    * ⛔ **A PM with no child yet** — so §3's give starts one. ⚑ D-016: a second give to `worker`
    * would reach the conversation the first one started, which is a different act entirely.
    */
-  const aPmWithAGrant = async (): Promise<{ pm: string; pmLaunch: Launch }> => {
+  const aPmWithAGrant = async (
+    approvalMode: 'auto' | 'ask' = 'auto',
+  ): Promise<{ pm: string; pmLaunch: Launch }> => {
     const first = await host.createSession(
       { provider: 'claude', profileId: 'worker', approvalMode: 'auto', cwd: root },
       window,
     )
     await host.close(first.sessionId, window)
     const { sessionId: pm } = await host.createSession(
-      { provider: 'claude', profileId: 'pm', approvalMode: 'auto', cwd: root },
+      { provider: 'claude', profileId: 'pm', approvalMode, cwd: root },
       window,
     )
     return { pm, pmLaunch: launches.at(-1)! }

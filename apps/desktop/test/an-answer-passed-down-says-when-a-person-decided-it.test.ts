@@ -1,4 +1,4 @@
-import { callNewConversationGive } from './lib/give-fixture'
+import { giveNotesToAWorkerOnItsCard } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { rmSync } from 'node:fs'
@@ -119,22 +119,14 @@ describe('an answer an agent passes down says when a person decided it', () => {
     return text
   }
 
-  const aPmWithAWorkerOnATask = async () => {
-    await host.close((await personOpens('worker')).id, window)
-    const pm = await personOpens(DEFAULT_PROFILE_ID)
-    const given = await callNewConversationGive(pm.tools, 'worker', 'The notes', 'write it')
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    const worker = given.agent as string
-    const workerTools = order.at(-1)
-    if (workerTools === undefined) throw new Error('no worker toolset')
-    const surface = new RecordingSink('webContents:9')
-    host.claimSession(worker, surface)
-    await waitFor(
-      () => ledger(worker).some((event) => event.type === 'permission_request'),
-      'the worker to park on its card',
-    )
-    return { pm, worker, workerTools, piece: given.label as string, surface }
-  }
+  const aPmWithAWorkerOnATask = () =>
+    giveNotesToAWorkerOnItsCard({
+      host,
+      window,
+      personOpens,
+      lastToolset: () => order.at(-1),
+      ledger,
+    })
 
   const ask = async (
     tools: AgentToolset,

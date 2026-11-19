@@ -146,8 +146,7 @@ describe('710 · R51 — a spawn a person must fix', () => {
     result: Record<string, unknown>,
     reason = programFailure,
     needsPerson = true,
-  ) =>
-    expectRecordedGiveKept(store, result, reason, needsPerson)
+  ) => expectRecordedGiveKept(store, result, reason, needsPerson)
 
   const { aPmThatMaySpawn, spawnWorker, callOn } = spawnFailureFixture(() => ({
     host,

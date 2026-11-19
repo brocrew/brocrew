@@ -241,6 +241,22 @@ describe('729 · the words that were lost, and who asked', () => {
       (event) => event.type === 'message_unqueued' && event.work?.state === 'answered',
     )
 
+  const giveTheMigrationAndWaitForItsCard = async (pm: string) => {
+    const given = await callNewConversationGive(
+      agentToolsFor(host, pm),
+      'worker',
+      'The migration',
+      'migrate',
+    )
+    expect(given.outcome, JSON.stringify(given)).toBe('ok')
+    const worker = given.agent as string
+    host.claimSession(worker, window)
+    await waitFor(() => cardsOn(worker) > 0, 'the worker to park mid-turn')
+    const piece = store.piecesOwnedBy(worker)[0]?.piece
+    if (piece === undefined) throw new Error('no piece')
+    return { worker, piece }
+  }
+
   /**
    * ⚑ **A worker parked mid-turn on the work its giver gave it** — `719`'s and `724`'s rig — and the
    * giver's own handle, for the roads that act on its provider.
@@ -258,18 +274,7 @@ describe('729 · the words that were lost, and who asked', () => {
     const pm = await personOpens('pm')
     const pmHandle = handles[before]
     if (pmHandle === undefined) throw new Error('the giver has no handle')
-    const given = await callNewConversationGive(
-      agentToolsFor(host, pm),
-      'worker',
-      'The migration',
-      'migrate',
-    )
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    const worker = given.agent as string
-    host.claimSession(worker, window)
-    await waitFor(() => cardsOn(worker) > 0, 'the worker to park mid-turn')
-    const piece = store.piecesOwnedBy(worker)[0]?.piece
-    if (piece === undefined) throw new Error('no piece')
+    const { worker, piece } = await giveTheMigrationAndWaitForItsCard(pm)
     return { pm, pmHandle, worker, piece }
   }
 
@@ -403,18 +408,7 @@ describe('729 · the words that were lost, and who asked', () => {
       expect(givenPm.outcome, JSON.stringify(givenPm)).toBe('ok')
       expect(decorateNext).toBeNull()
       const pm = givenPm.agent as string
-      const given = await callNewConversationGive(
-        agentToolsFor(host, pm),
-        'worker',
-        'The migration',
-        'migrate',
-      )
-      expect(given.outcome, JSON.stringify(given)).toBe('ok')
-      const worker = given.agent as string
-      host.claimSession(worker, window)
-      await waitFor(() => cardsOn(worker) > 0, 'the worker to park mid-turn')
-      const piece = store.piecesOwnedBy(worker)[0]?.piece
-      if (piece === undefined) throw new Error('no piece')
+      const { worker, piece } = await giveTheMigrationAndWaitForItsCard(pm)
       host.claimSession(pm, window)
       await waitFor(
         () => host.agentCard(pm, window, null)?.state.is === 'active',

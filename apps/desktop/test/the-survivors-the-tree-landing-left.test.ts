@@ -1,4 +1,4 @@
-import { callNewConversationGive } from './lib/give-fixture'
+import { giveToSeededWorker } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import { recordHistoricalReplacement } from './lib/historical-replacement'
 import { TASK_STALL_CAUSES } from '../src/shared/task-contracts'
@@ -376,15 +376,13 @@ describe('the survivors the tree landing left', () => {
     // ─────────────────────────────────────────────────────────────────────────────────────────
 
     it("1016:M9 · a replaced giver is told of its predecessor's stalled piece when it gives the worker more", async () => {
-      await host.close(await personOpens('worker', 'auto'), window)
-      const pm = await personOpens('pm', 'auto')
-      const given = await callNewConversationGive(
-        agentToolsFor(host, pm),
-        'worker',
+      const { pm, given } = await giveToSeededWorker(
+        host,
+        window,
+        (profile) => personOpens(profile, 'auto'),
         'The schema',
         'migrate the schema',
       )
-      expect(given.outcome, JSON.stringify(given)).toBe('ok')
       const worker = given.agent as string
       const label = given.label as string
       // ⚑ The worker's turn ends with the piece open: nothing drives it.

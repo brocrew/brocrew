@@ -1,4 +1,4 @@
-import { giveAndWaitForBriefTurn } from './lib/give-fixture'
+import { giveTheFrontEndChain } from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { callOn } from './helpers/call-agent-tool'
 import { HandleKeepingRuntime as ProviderDouble } from './helpers/handle-keeping-runtime'
@@ -120,10 +120,6 @@ describe('F020 · a withdraw of a question already answered says so, and where i
     await waitFor(() => handle.status() === 'working', 'the conversation to be working')
   }
 
-  /** ⚑ A give, waited out to the END of the child's brief turn. */
-  const give = (tools: AgentToolset, profile: string, title: string) =>
-    giveAndWaitForBriefTurn(tools, profile, title, ledger)
-
   /** ⚑ BroBot → Ada → Ali, through the real door, in `auto`. */
   const aChainOfThree = async (): Promise<{
     brobot: string
@@ -141,10 +137,14 @@ describe('F020 · a withdraw of a question already answered says so, and where i
     await bringIdentityIntoBeing(workerProfile)
     const brobot = await personOpens(DEFAULT_PROFILE_ID, 'auto')
     const brobotTools = agentToolsFor(host, brobot)
-    const ada = (await give(brobotTools, pmProfile, 'run the front-end work')).agent
-    const adaHandle = latestHandle()
-    const adaTools = agentToolsFor(host, ada)
-    const toAli = await give(adaTools, workerProfile, 'build the world-clock page')
+    const { ada, adaHandle, adaTools, toAli } = await giveTheFrontEndChain({
+      host,
+      brobotTools,
+      pmProfile,
+      workerProfile,
+      ledger,
+      firstHandle: latestHandle,
+    })
     return {
       brobot,
       ada,
