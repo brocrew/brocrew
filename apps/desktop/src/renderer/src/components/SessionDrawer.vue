@@ -42,6 +42,7 @@ import SessionInfo from './SessionInfo.vue'
 import { keptInThisConversation } from '../lib/standing-grants'
 import SessionPanel from './SessionPanel.vue'
 import type { TitleHistorySource } from './ConversationTitleHistory.vue'
+import type { TaskPageSource } from '../composables/useConversationTaskPage'
 import SessionWork from './SessionWork.vue'
 
 /**
@@ -53,6 +54,7 @@ import SessionWork from './SessionWork.vue'
  */
 const props = defineProps<{
   titleHistory?: TitleHistorySource
+  taskPageSource?: TaskPageSource
   approvalSaving?: boolean
   session: CreatedSession
   /** What is OPEN — the session's control projection (064), never the fold on screen. */
@@ -451,6 +453,7 @@ function steer(event: KeyboardEvent, at: number): DrawerTab | null {
         :approval-saving="props.approvalSaving"
         v-if="props.tab === 'open'"
         :title-history="props.titleHistory"
+        :task-page-source="props.taskPageSource"
         :state="props.state"
         :shown="props.shown"
         :facets="props.facets"

@@ -248,6 +248,7 @@ import { createWindow, openAt, prependPage, type WindowState } from '../lib/tran
 import AppTitleBar from './AppTitleBar.vue'
 import ConversationPane from './ConversationPane.vue'
 import type { TitleHistorySource } from './ConversationTitleHistory.vue'
+import type { TaskPageSource } from '../composables/useConversationTaskPage'
 import MessageLinks from './MessageLinks.vue'
 import LinkedHistory from './LinkedHistory.vue'
 import { linkFailureReason, type ResolvedMessageLink } from '../lib/message-links'
@@ -3048,9 +3049,13 @@ const selectedForIdentity = computed(() =>
   surface.value === 'conversation' && active.value?.meta ? active.value : null,
 )
 const conversationIdentity = ref<ConversationIdentity | null>(null)
-const titleHistoryRevision = ref(0)
+const workRevision = ref(0)
 const readTitleHistory: TitleHistorySource['read'] = (input) =>
   appClosing.value ? Promise.resolve(null) : window.api.runtime.readConversationTitleHistory(input)
+const readTaskPage: TaskPageSource['read'] = (input) =>
+  appClosing.value
+    ? Promise.resolve({ ok: false, reason: 'unknown-conversation' })
+    : window.api.runtime.readConversationTasks(input)
 let identityRead = 0
 let identitySelection = 0
 
@@ -3179,7 +3184,7 @@ onMounted(() => {
     // answer — which is this channel's contract rather than an economy.
     work: () => {
       void readSelectedIdentity()
-      titleHistoryRevision.value += 1
+      workRevision.value += 1
       teamProfileGraph.markStale()
       filesLibrary.markStale()
       void readTheCast()
@@ -3979,7 +3984,8 @@ onUnmounted(() => {
             :provider-block="active ? store.providerBlocks.get(active.sessionId) : null"
             :named="listedNamedOfActive"
             :identity="conversationIdentity"
-            :title-history="{ read: readTitleHistory, revision: titleHistoryRevision }"
+            :title-history="{ read: readTitleHistory, revision: workRevision }"
+            :task-page-source="{ read: readTaskPage, revision: workRevision }"
             :rename="renameConversation"
             :archive="archiveOfActive"
             :identities="agentStore.identities.value?.identities ?? null"

@@ -5,8 +5,12 @@ import type {
   ConversationIdentity,
   ConversationTitleHistory,
 } from '../../src/shared/conversation-title'
+import type {
+  ConversationTaskPageResult,
+  ConversationTaskPageRow,
+} from '../../src/shared/conversation-task-page'
 import type { ResumableSessionInfo, RuntimeBridge } from '../../src/shared/runtime-ipc'
-import { META, mount } from './harness'
+import { META, allTasks, mount } from './harness'
 import {
   changed,
   disposeRuntimeScreenFixture,
@@ -321,4 +325,141 @@ it('keeps a delayed saved-title reply out of the next conversation', async () =>
   await first
   await nextTick()
   expect(history.textContent).not.toContain('Late title for the old conversation')
+})
+
+const taskStatusAt = Date.UTC(2026, 10, 19, 15, 35)
+
+function heldTask(number: number, title: string): ConversationTaskPageRow {
+  return {
+    kind: 'held',
+    piece: `fictional-task-${number}`,
+    label: `W1.${number}`,
+    title,
+    brief: 'Keep the old invoice number visible.',
+    giver: null,
+    definitionOfDone: 'Reconcile the final amounts.',
+    state: number === 1 ? 'waiting-on-purpose' : 'answered',
+    givenAt: Date.UTC(2026, 10, 18),
+    statusLine: number === 1 ? { text: 'Waiting for the archived copy.', at: taskStatusAt } : null,
+  }
+}
+
+type TaskPage = Extract<ConversationTaskPageResult, { ok: true }>
+
+function taskPage(conversation: string, partial: Partial<TaskPage> = {}): TaskPage {
+  return {
+    ok: true,
+    conversation,
+    current: heldTask(1, 'Newest open invoice task'),
+    other: [],
+    counts: { active: 0, open: 1, closed: 0 },
+    next: null,
+    rowsUnread: 0,
+    ledgersSkipped: 0,
+    ...partial,
+  }
+}
+
+function openTaskDrawer(): void {
+  localStorage.setItem('brobot2.drawerOpen', 'true')
+  localStorage.setItem('brobot2.drawerTab', 'open')
+}
+
+it('pages Other tasks, then rereads Current task when its saved cursor no longer applies', async () => {
+  const others = Array.from({ length: 8 }, (_, i) => heldTask(i + 2, `Earlier task ${i + 1}`))
+  const counts = { active: 0, open: 1, closed: 8 }
+  const root: ConversationTaskPageRow = {
+    ...heldTask(1, 'Person’s original request'),
+    kind: 'root',
+    label: 'W1',
+    piece: 'fictional-root-task',
+    state: null,
+    statusLine: { text: 'The original request is open.', at: taskStatusAt + 60_000 },
+  }
+  const read = vi
+    .fn<RuntimeBridge['readConversationTasks']>()
+    .mockResolvedValueOnce(
+      taskPage(sessionId, { other: others.slice(0, 5), counts, next: 'more-five' }),
+    )
+    .mockResolvedValueOnce(
+      taskPage(sessionId, { other: others.slice(5, 7), counts, next: 'more-seven' }),
+    )
+    .mockResolvedValueOnce({ ok: false, reason: 'invalid-cursor' })
+    .mockResolvedValueOnce(
+      taskPage(sessionId, { current: root, counts: null, rowsUnread: 1, other: [others[0]!] }),
+    )
+  window.api.runtime.readConversationTasks = read
+  openTaskDrawer()
+  const m = await mountWith([row(sessionId, task)])
+  const currentText = () => m.all('cast-taken')[0]?.textContent
+  const otherRows = () => m.q('cast-other').querySelectorAll('[data-cy="cast-taken-work"]')
+  await expect.poll(currentText).toContain('Newest open invoice task')
+  expect(read).toHaveBeenCalledExactlyOnceWith({ sessionId })
+  expect(currentText()).toContain('Reconcile the final amounts.')
+  expect(currentText()).toContain('Keep the old invoice number visible.')
+  expect(currentText()).not.toContain('Person’s original request')
+  expect(m.q('card-task-status').textContent).toContain('Waiting for the archived copy.')
+  expect(m.q('card-task-status').querySelector('time')?.textContent).toBe(fullTime(taskStatusAt))
+  expect(otherRows()).toHaveLength(5)
+  expect(m.q('card-task-counts').textContent?.trim()).toBe('0 active · 1 open · 8 closed')
+  expect(m.q('card-other-tasks-more').textContent?.trim()).toBe('Show 5 more · 5 of 8')
+  expect(m.q('card-tasks-all').textContent).toContain('All tasks')
+  const popup = await allTasks(m)
+  expect(popup.host.getAttribute('aria-labelledby')).toBe('all-tasks-title')
+  popup.q('close-overlay').click()
+  await nextTick()
+
+  m.q('card-other-tasks-more').click()
+  await expect.poll(() => otherRows().length).toBe(7)
+  expect(read).toHaveBeenNthCalledWith(2, { sessionId, cursor: 'more-five' })
+  expect(m.q('card-other-tasks-more').textContent?.trim()).toBe('Show 5 more · 7 of 8')
+  m.q('card-other-tasks-more').click()
+  await expect.poll(currentText).toContain('Person’s original request')
+  expect(read.mock.calls).toEqual([
+    [{ sessionId }],
+    [{ sessionId, cursor: 'more-five' }],
+    [{ sessionId, cursor: 'more-seven' }],
+    [{ sessionId }],
+  ])
+  expect(currentText()).not.toContain('Newest open invoice task')
+  expect(otherRows()).toHaveLength(1)
+  expect(m.all('card-task-counts')).toHaveLength(0)
+  expect(m.q('card-tasks-all').textContent).not.toContain('(')
+  expect(m.q('cast-taken-short').textContent).toContain('1 row of this app’s record')
+  expect(m.q('card-task-status').querySelector('time')?.textContent).toBe(
+    fullTime(taskStatusAt + 60_000),
+  )
+})
+
+it('ignores a former selection’s task page and refreshes the selected task on work notices', async () => {
+  let finish!: (result: ConversationTaskPageResult) => void
+  const old = new Promise<ConversationTaskPageResult>((resolve) => {
+    finish = resolve
+  })
+  const selected = heldTask(1, 'Selected service task')
+  const read = vi
+    .fn<RuntimeBridge['readConversationTasks']>()
+    .mockReturnValueOnce(old)
+    .mockResolvedValueOnce(taskPage(serviceId, { current: selected }))
+    .mockResolvedValueOnce(
+      taskPage(serviceId, { current: { ...selected, title: 'Refreshed service task' } }),
+    )
+  window.api.runtime.readConversationTasks = read
+  openTaskDrawer()
+  const m = await mountWith([row(sessionId, task), row(serviceId, null)])
+  m.q(`open-session-${sessionId}`).click()
+  await expect.poll(() => read.mock.calls.length).toBe(1)
+  expect(read).toHaveBeenCalledExactlyOnceWith({ sessionId })
+  m.q(`open-session-${serviceId}`).click()
+  const currentText = () => m.all('cast-taken')[0]?.textContent
+  await expect.poll(currentText).toContain('Selected service task')
+  expect(read).toHaveBeenNthCalledWith(2, { sessionId: serviceId })
+  finish(taskPage(sessionId))
+  await old
+  await nextTick()
+  expect(currentText()).toContain('Selected service task')
+  expect(currentText()).not.toContain('Newest open invoice task')
+  changed({ what: 'work' })
+  await expect.poll(currentText).toContain('Refreshed service task')
+  expect(read).toHaveBeenNthCalledWith(3, { sessionId: serviceId })
 })
