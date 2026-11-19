@@ -494,6 +494,8 @@ describe('§1 · 701 · `692` F-a, D-017b — through a real host, a real ledger
       win.sink,
     )
     const spawned = await callOn(lastToolset(), 'give_work', {
+      to: 'new',
+      conversation_title: 'the half the quit leaves open',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: kid,
       title: 'the half the quit leaves open',

@@ -130,12 +130,15 @@ describe('a wait names what will end it', () => {
   const aPieceGiven = async (
     brobot: string,
     title: string,
-    first: boolean,
+    to: string,
   ): Promise<{ ada: string; piece: string; label: string }> => {
-    const given = await ok(agentToolsFor(host, brobot), 'give_work', {
+    const tools = agentToolsFor(host, brobot)
+    if (to === 'new') await ok(tools, 'create_agent', { profile_slug: 'worker' })
+    const given = await ok(tools, 'give_work', {
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
-      ...(first ? { new: true } : {}),
+      to,
+      ...(to === 'new' ? { conversation_title: title } : {}),
       title,
       brief: title.toLowerCase(),
     })
@@ -151,7 +154,7 @@ describe('a wait names what will end it', () => {
       window,
     )
     await settle()
-    const { ada, piece } = await aPieceGiven(brobot, 'Build the pages', true)
+    const { ada, piece } = await aPieceGiven(brobot, 'Build the pages', 'new')
     return { brobot, ada, piece }
   }
   /** Ada asks about W1.1, of her giver or of a person; the question's id. */
@@ -173,10 +176,12 @@ describe('a wait names what will end it', () => {
   describe('a wait on each kind is kept on the line', () => {
     it('another agent’s piece, by its label', async () => {
       const { ada, piece } = await aHelperWithAPiece()
+      await ok(agentToolsFor(host, ada), 'create_agent', { profile_slug: 'writer' })
       const other = await ok(agentToolsFor(host, ada), 'give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'writer',
-        new: true,
+        to: 'new',
+        conversation_title: 'Write the copy',
         title: 'Write the copy',
         brief: 'write the copy',
       })
@@ -317,14 +322,14 @@ describe('a wait names what will end it', () => {
         {},
         "on.agent names W1.2, which this piece's holder holds too: an agent cannot wait on itself. Name what W1.2 waits on instead, or set the status without on",
         async (_ada, brobot) => {
-          const other = await aPieceGiven(brobot, 'Write the copy', false)
+          const other = await aPieceGiven(brobot, 'Write the copy', 'W1.1')
           return { on: { agent: other.label } }
         },
       ))
 
     it('its giver marking it waiting on another piece the same holder holds', async () => {
       const { brobot, ada, piece } = await aHelperWithAPiece()
-      const other = await aPieceGiven(brobot, 'Write the copy', false)
+      const other = await aPieceGiven(brobot, 'Write the copy', 'W1.1')
       const before = statusRows(ada).length
       const answer = await call(agentToolsFor(host, brobot), 'update_work', {
         piece: 'W1.1',
@@ -339,7 +344,7 @@ describe('a wait names what will end it', () => {
 
     it('a piece that has ended', () =>
       refusedFor({}, 'which has ended: say what the piece waits on now', async (_ada, brobot) => {
-        const other = await aPieceGiven(brobot, 'Write the copy', false)
+        const other = await aPieceGiven(brobot, 'Write the copy', 'W1.1')
         await ok(agentToolsFor(host, brobot), 'update_work', { piece: other.label, close: true })
         await settle()
         return { on: { agent: other.label } }
@@ -370,10 +375,12 @@ describe('a wait names what will end it', () => {
       window,
     )
     await settle()
+    await ok(agentToolsFor(host, stranger), 'create_agent', { profile_slug: 'outsider' })
     const theirs = await ok(agentToolsFor(host, stranger), 'give_work', {
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'outsider',
-      new: true,
+      to: 'new',
+      conversation_title: 'Their work',
       title: 'Their work',
       brief: 'their work',
     })

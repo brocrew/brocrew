@@ -324,6 +324,8 @@ describe('§4 · through the host: no stall notice while the build runs, and wha
     )
     const pmTools = order.at(-1) as AgentToolset
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'The build',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'The build',

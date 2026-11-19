@@ -1126,6 +1126,8 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
         codex.turnModes.push('held-open')
         const result = await host.giveWork(
           {
+            to: 'new',
+            conversation_title: 'The open pull requests',
             definition_of_done: 'The requested result and its checks are recorded.',
             profile: 'farah',
             title: 'The open pull requests',
@@ -1216,6 +1218,7 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
         codex.turnModes.push('held-open')
         const result = await host.giveWork(
           {
+            to: helper,
             definition_of_done: 'The fictional result is kept.',
             profile: 'farah',
             title: 'The new fictional give',
@@ -1263,7 +1266,19 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       })
 
       it('startup lifecycle and an empty terminal level survive both carry-on rechecks', async () => {
-        const { helper, piece } = await given()
+        const { giver, helper, piece } = await given()
+        const opened = store.newestOfType?.(helper, 'user_turn')
+        if (opened === undefined || opened === null) throw new Error('the first brief is missing')
+        expect(
+          store
+            .events(helper)
+            .filter((row) => row.ordinal > opened.ordinal)
+            .map((row) => row.event),
+        ).toContainEqual({
+          type: 'titled',
+          title: 'The open pull requests',
+          author: { kind: 'agent', conversation: giver },
+        })
         let rechecked = 0
         codex.asItResumes = (handle) => {
           for (const event of afterReopen) says(handle, event)
@@ -1485,6 +1500,7 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
         codex.turnModes.push('held-open')
         const next = await host.giveWork(
           {
+            to: helper,
             definition_of_done: 'The result is recorded.',
             profile: 'farah',
             title: 'The next brief',
@@ -1553,6 +1569,7 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
           codex.turnModes.push('held-open')
           const next = await host.giveWork(
             {
+              to: helper,
               definition_of_done: 'The result is recorded.',
               profile: 'farah',
               title: 'The next brief',
@@ -1721,6 +1738,8 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
         codex.turnModes.push('refused')
         const given = await host.giveWork(
           {
+            to: 'new',
+            conversation_title: 'The open pull requests',
             definition_of_done: 'The requested result and its checks are recorded.',
             profile: 'farah',
             title: 'The open pull requests',
@@ -1750,6 +1769,7 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
         held: 1 | 2,
       ): Promise<{ helper: string; letItGo: () => Promise<void> }> {
         let giver = ''
+        let target = ''
         let reopened = false
         let briefsCheck: (() => void) | null = null
         let second: Promise<unknown> | null = null
@@ -1765,6 +1785,7 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
               : Promise.resolve(false)
           second = host.giveWork(
             {
+              to: target,
               definition_of_done: 'The requested result and its checks are recorded.',
               profile: 'farah',
               title: 'The release notes',
@@ -1778,6 +1799,7 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
         }
         const { giver: theGiver, helper } = await aBriefRefused()
         giver = theGiver
+        target = helper
         await vi.waitFor(() => expect(briefsCheck).not.toBeNull())
         await settled()
         return {
@@ -1825,6 +1847,8 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
         codex.turnModes.push('held-open', 'refused')
         const older = await host.giveWork(
           {
+            to: 'new',
+            conversation_title: 'The release notes',
             definition_of_done: 'The requested result and its checks are recorded.',
             profile: 'farah',
             title: 'The release notes',
@@ -1835,6 +1859,7 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
         if (!older.ok) throw new Error(`refused: ${older.refusal.rail}`)
         const refused = await host.giveWork(
           {
+            to: older.label,
             definition_of_done: 'The requested result and its checks are recorded.',
             profile: 'farah',
             title: 'The open pull requests',

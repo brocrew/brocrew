@@ -45,7 +45,7 @@ import { ATTENTION_SIGNALS_CHANNEL, isAttentionSignal } from '../shared/attentio
 import { AttentionSignals } from './attention-signals'
 import { attentionOverlay } from './attention-overlay'
 import { installAppNavigation } from './app-navigation'
-import { makeWorkerPieceFolder, WORKER_OUTPUT_DIRNAME } from './worker-piece-folder'
+import { WORKER_OUTPUT_DIRNAME } from './worker-piece-folder'
 import { stopOrphanedCommands, stopWorkerCommands } from './command-cleanup'
 import { keptShippedSkills, prepareBuiltInSkills } from './skills/prepare-built-in-skills'
 import { factoryTextOf, readTextPack } from './skills/text-pack'
@@ -884,7 +884,6 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     openPath: (path) => shell.openPath(path),
     providerHomesRoot: () => providerHomesRoot(userData),
     resourcesRoot: () => resourcesRoot(userData),
-    makeWorkerPieceFolder: (piece) => makeWorkerPieceFolder(userData, piece),
     stopWorkerCommands: (cwd, occupied) => stopWorkerCommands(userData, cwd, occupied),
     whichBuild: () => ({ ...buildIdentity(), schema: migrationsAppliedOrNull() }),
     providerSnapshot: (provider, model) => snapshotFor(provider, model),

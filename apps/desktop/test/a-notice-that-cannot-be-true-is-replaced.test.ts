@@ -206,6 +206,8 @@ describe('711 · a notice that cannot be true is replaced', () => {
     await host.close(await personOpens('worker'), window)
     const pm = await personOpens('pm')
     const given = await callOn(pm, 'give_work', {
+      to: 'new',
+      conversation_title: 'the migration',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'the migration',

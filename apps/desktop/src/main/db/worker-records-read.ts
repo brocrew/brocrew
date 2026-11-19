@@ -1,31 +1,24 @@
 import type { AppDatabase, AppStatement } from './connection'
-import type { EventRow, PersistedEvent } from './ledger-row-types'
-import type { TranscriptEvent } from '../../shared/conversation-events'
 import type { WorkerBorn } from '../profile-execution-file'
 import { workerRegistrationOf } from '../worker-registration'
 import { FOLD_TERM } from './fold-index'
-import { aStoredObject, isAStoredId, boundStoredEvent } from './stored-event-codec'
+import { aStoredObject, isAStoredId } from './stored-event-codec'
 
-export function createWorkerRecordsRead(
-  db: AppDatabase,
-  selectOne: AppStatement,
-  activeGeneration: (sessionId: string) => number,
-) {
-  // Worker birth is always the first row of the first life, so this is a constant index probe.
-  const selectWorkerBirths = db.prepare(
+/** Child conversations read per page while looking for worker births. */
+const WORKER_BIRTH_PAGE = 1024
+
+export function createWorkerRecordsRead(db: AppDatabase, selectOne: AppStatement) {
+  // Worker birth is always the first row of the first life, so each child is a constant index
+  // probe. Children are read a page at a time, in id order, so any number of conversations is read.
+  const selectWorkerBirthPage = db.prepare(
     `SELECT s.id, s.agent_identity_id AS identity, a.created_at AS identityCreatedAt,
-            substr(e.payload, 1, 4097) AS payload, length(e.payload) AS characters
-       FROM (SELECT id, agent_identity_id FROM provider_session INDEXED BY provider_session_parent_identity_idx
-             WHERE parent_session_id IS NOT NULL LIMIT 8193) AS s
-       CROSS JOIN events AS e INDEXED BY events_session_ordinal_uq
+            e.type AS type, substr(e.payload, 1, 4097) AS payload, length(e.payload) AS characters
+       FROM (SELECT id, agent_identity_id FROM provider_session
+             WHERE parent_session_id IS NOT NULL AND id > ? ORDER BY id LIMIT ?) AS s
+       LEFT JOIN events AS e INDEXED BY events_session_ordinal_uq
          ON e.session_id = s.id AND e.generation = 0 AND e.ordinal = 0
        LEFT JOIN agent_identity AS a ON a.id = s.agent_identity_id
-       WHERE e.type = 'worker_registered'
-       ORDER BY s.id LIMIT 8193`,
-  )
-  const workerCandidateCount = db.prepare(
-    `SELECT count(*) AS total FROM (SELECT 1 FROM provider_session INDEXED BY provider_session_parent_identity_idx
-       WHERE parent_session_id IS NOT NULL LIMIT 8193)`,
+       ORDER BY s.id`,
   )
   const workerGiverReplacements = db.prepare(
     `SELECT substr(payload, 1, 4097) AS payload, length(payload) AS characters
@@ -65,94 +58,27 @@ export function createWorkerRecordsRead(
   function workerInItsPlace(conversation: string): string {
     return workerReplacementChain(conversation).at(-1)!
   }
-  const workerLedgerBudget = db.prepare(
-    `SELECT count(*) AS rows, coalesce(sum(length(CAST(payload AS BLOB))), 0) AS bytes
-       FROM (SELECT payload FROM events INDEXED BY events_session_ordinal_uq
-         WHERE session_id = ? AND generation = ? ORDER BY ordinal LIMIT 8193)`,
-  )
-  const workerLedgerRead = db.prepare(
-    `SELECT ordinal, payload, created_at FROM events INDEXED BY events_session_ordinal_uq
-       WHERE session_id = ? AND generation = ? ORDER BY ordinal LIMIT 8193`,
-  )
-  function workerLedger(
-    conversation: string,
-    left?: { rowsLeft: number; bytesLeft: number },
-  ): readonly PersistedEvent[] | null {
-    if (left !== undefined && (left.rowsLeft <= 0 || left.bytesLeft <= 0)) return null
-    if (selectOne.get(conversation) === undefined) return null
-    const generation = activeGeneration(conversation)
-    const budget = workerLedgerBudget.get(conversation, generation) as {
-      rows: number
-      bytes: number
-    }
-    if (
-      budget.rows > 8192 ||
-      budget.bytes > 8 * 1024 * 1024 ||
-      (left !== undefined && (budget.rows > left.rowsLeft || budget.bytes > left.bytesLeft))
-    ) {
-      if (left !== undefined) {
-        left.rowsLeft = 0
-        left.bytesLeft = 0
-      }
-      return null
-    }
-    if (left !== undefined) {
-      left.rowsLeft -= budget.rows
-      left.bytesLeft -= budget.bytes
-    }
-    const rows = workerLedgerRead.all(conversation, generation) as EventRow[]
-    try {
-      return rows.map((row) => {
-        const event = aStoredObject(row.payload)
-        if (event === null || typeof event.type !== 'string')
-          throw new Error('worker ledger unreadable')
-        return {
-          ordinal: row.ordinal,
-          at: row.created_at,
-          event: boundStoredEvent(event as unknown as TranscriptEvent),
-        }
-      })
-    } catch {
-      return null
-    }
-  }
-  const workerRoutingRows = db.prepare(
-    `SELECT session_id, substr(payload, 1, 4097) AS payload, length(payload) AS characters
-       FROM events INDEXED BY events_request_routed_idx WHERE type = 'request_routed'
-       ORDER BY session_id, ordinal LIMIT 8193`,
-  )
-  function workerQuestionTargets(): readonly { asker: string; recipient: string }[] | null {
-    const rows = workerRoutingRows.all() as {
-      session_id: string
-      payload: string
-      characters: number
-    }[]
-    if (rows.length > 8192) return null
-    const targets: { asker: string; recipient: string }[] = []
-    for (const row of rows) {
-      if (row.characters > 4096) return null
-      const event = aStoredObject(row.payload)
-      if (
-        event?.type !== 'request_routed' ||
-        !isAStoredId(event.requestId) ||
-        (event.parent !== null && !isAStoredId(event.parent))
-      )
-        return null
-      if (event.parent !== null) targets.push({ asker: row.session_id, recipient: event.parent })
-    }
-    return targets
-  }
-  function workersBorn(): readonly WorkerBorn[] {
-    const count = workerCandidateCount.get() as { total: number }
-    if (count.total > 8192) throw new Error('too many worker birth candidates')
-    const rows = selectWorkerBirths.all() as {
+  function workersBorn(page = WORKER_BIRTH_PAGE): readonly WorkerBorn[] {
+    const rows: {
       id: string
       identity: string | null
       identityCreatedAt: number | null
       payload: string
       characters: number
-    }[]
-    if (rows.length > 8192) throw new Error('too many worker registrations')
+    }[] = []
+    for (let after = ''; ;) {
+      const read = selectWorkerBirthPage.all(after, page) as {
+        id: string
+        identity: string | null
+        identityCreatedAt: number | null
+        type: string | null
+        payload: string
+        characters: number
+      }[]
+      for (const row of read) if (row.type === 'worker_registered') rows.push(row)
+      if (read.length < page) break
+      after = read[read.length - 1]!.id
+    }
     return rows.map((row) => {
       if (row.characters > 4096) throw new Error('worker registration is too large')
       const fact = workerRegistrationOf(JSON.parse(row.payload))
@@ -177,8 +103,6 @@ export function createWorkerRecordsRead(
     workersBorn,
     workerGiverContains,
     workerInItsPlace,
-    workerLedger,
     workerReplacementChain,
-    workerQuestionTargets,
   }
 }

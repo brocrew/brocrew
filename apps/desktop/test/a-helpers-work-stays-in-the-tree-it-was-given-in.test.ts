@@ -63,7 +63,7 @@ describe('a helper’s work stays in the tree it was given in', () => {
    * so no reminder follows, and its turn on it ends.
    */
   const aPieceReachesIt = async (giver: string, helper: string, title: string) => {
-    const given = await world.gives(host, giver, 'helper', { title })
+    const given = await world.gives(host, giver, 'helper', { title, to: 'W1.1' })
     expect(given).toMatchObject({ ok: true, owner: helper, delivery: 'sent' })
     if (!given.ok) throw new Error('fictional give failed')
     const waits = await call(helper, 'update_work', {
@@ -98,14 +98,19 @@ describe('a helper’s work stays in the tree it was given in', () => {
     it('never hangs under the helper’s own root while it holds a piece someone gave it', async () => {
       const { giver, helper } = await aHelperWithItsOwnRoot()
       // ⚑ The helper is still in its turn, so the new brief waits for it.
-      const second = await world.gives(host, giver, 'helper', { title: 'Second piece' })
+      const second = await world.gives(host, giver, 'helper', { title: 'Second piece', to: 'W1.1' })
       expect(second).toMatchObject({ ok: true, label: 'W1.2', owner: helper, delivery: 'held' })
       const before = labelsOf(helper)
-      const given = await call(helper, 'give_work', { ...request, profile: 'third' })
+      const given = await call(helper, 'give_work', {
+        ...request,
+        profile: 'third',
+        to: 'new',
+        conversation_title: request.title,
+      })
       expect(given.structured).toMatchObject({
         outcome: 'refused',
         rail: 'name-the-piece-you-give-from',
-        reason: 'Say which of your pieces this is for (W1.2): give again naming it as piece.',
+        reason: 'Say which of your pieces this is for (W1.2): give again naming it as under.',
         detail: { held: ['W1.2'] },
       })
       expect(labelsOf(helper)).toEqual(before)
@@ -116,7 +121,12 @@ describe('a helper’s work stays in the tree it was given in', () => {
 
     it('still hangs under its own root while it holds nothing', async () => {
       const { helper } = await aHelperWithItsOwnRoot()
-      const given = await call(helper, 'give_work', { ...request, profile: 'third' })
+      const given = await call(helper, 'give_work', {
+        ...request,
+        profile: 'third',
+        to: 'new',
+        conversation_title: request.title,
+      })
       expect(given.structured).toMatchObject({ outcome: 'ok', label: 'W2.2' })
     })
   })

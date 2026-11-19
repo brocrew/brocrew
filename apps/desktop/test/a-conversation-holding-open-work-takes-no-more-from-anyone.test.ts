@@ -152,6 +152,8 @@ describe('F146 · a conversation holding a stalled or parked piece still takes m
     const root = store.rootOf(parent)
     if (root === null) throw new Error('the parent owns no root')
     const given = await toolCall(parent, 'give_work', {
+      to: 'new',
+      conversation_title: 'Build the world clock page',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'Build the world clock page',
@@ -187,6 +189,7 @@ describe('F146 · a conversation holding a stalled or parked piece still takes m
 
   const giveMore = (fixture: AHelperHoldingAPiece): Promise<Record<string, unknown>> =>
     toolCall(fixture.parent, 'give_work', {
+      to: fixture.held.label,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'A piece of my own',
@@ -211,6 +214,7 @@ describe('F146 · a conversation holding a stalled or parked piece still takes m
     const tool = agentToolsFor(host, fixture.parent).tools.find((one) => one.name === 'give_work')
     if (tool === undefined) throw new Error('no such tool: give_work')
     const said = await tool.call({
+      to: fixture.held.label,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'A piece of my own',

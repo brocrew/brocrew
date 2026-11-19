@@ -199,6 +199,8 @@ describe('591 · a question does not expire on a clock', () => {
     const pm = await personOpens('pm')
     const pmTools = theToolsetJustHandedOut()
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'the work this dispatch is about',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'the work this dispatch is about',
@@ -578,6 +580,7 @@ describe('591 · a question does not expire on a clock', () => {
 
       // ⚑ **D-016 · the second piece is a second give**, which reaches the same worker.
       const second = await callOn(pmTools, 'give_work', {
+        to: worker,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'and rename the column',

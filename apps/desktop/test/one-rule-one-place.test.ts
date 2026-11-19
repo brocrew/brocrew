@@ -91,6 +91,8 @@ describe('one placement rule for kept resources, at both doors', () => {
     const giver = await personOpens()
     const given = await host.giveWork(
       {
+        to: 'new',
+        conversation_title: 'Write the answer',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'default',
         title: 'Write the answer',

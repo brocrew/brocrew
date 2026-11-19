@@ -569,6 +569,8 @@ describe('D-017 · a healthy record never claims it could not be read', () => {
     await personOpens(DEFAULT_PROFILE_ID)
     const tools = theToolsetJustHandedOut()
     const spawned = await callOn(tools, 'give_work', {
+      to: 'new',
+      conversation_title: 'the notes',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'the notes',

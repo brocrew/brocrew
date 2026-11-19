@@ -173,6 +173,7 @@ describe('through the host: a give never changes an agent’s provider', () => {
       profile,
       title: 'The work',
       brief: 'the work',
+      ...('to' in over ? {} : { to: 'new', conversation_title: 'The work' }),
       ...over,
     })
 
@@ -360,7 +361,7 @@ describe('through the host: a give never changes an agent’s provider', () => {
       expect(refused['rail']).toBe('malformed-request')
       expect(refused['detail']).toMatchObject({
         problems: [
-          '(request): unknown fields "priority" — it takes only profile, title, brief, definition_of_done, folder, piece, new, provider, parallel, inputs, model, effort',
+          '(request): unknown fields "priority" — it takes only profile, title, brief, definition_of_done, folder, to, conversation_title, under, provider, inputs, model, effort',
         ],
       })
     })
@@ -392,10 +393,10 @@ describe('through the host: a give never changes an agent’s provider', () => {
       expect(store.providerOf('ana')).toBeNull()
     })
 
-    it('a give asking for a NEW agent under its name is told the name exists, not to choose', async () => {
+    it('a create asking for that name is told the name exists, not to choose a provider', async () => {
       await anAgentThatRanOn('ana', ['claude', 'codex'])
-      const refused = await give(await aGiverOn('codex'), 'ana', { new: true })
-      expect(refused['rail']).toBe('that-profile-exists')
+      const refused = await callOn(await aGiverOn('codex'), 'create_agent', { profile_slug: 'ana' })
+      expect(refused['rail']).toBe('agent-name-taken')
     })
 
     it('once a person chooses, the same give starts on that provider', async () => {
@@ -450,8 +451,10 @@ describe('through the host: a give never changes an agent’s provider', () => {
       expect(store.providerOf('eve')).toBeNull()
     })
 
-    it('a new agent a give makes keeps the provider it starts on', async () => {
-      const given = await give(await aGiverOn('claude'), 'fresh', { new: true })
+    it('a new agent with no provider yet keeps the provider its first give starts on', async () => {
+      host.createAgent({ slug: 'fresh', displayName: null, provider: null })
+      expect(store.providerOf('fresh')).toBeNull()
+      const given = await give(await aGiverOn('claude'), 'fresh')
       expect(given['outcome'], JSON.stringify(given)).toBe('ok')
       expect(store.providerOf('fresh')).toBe('claude')
     })

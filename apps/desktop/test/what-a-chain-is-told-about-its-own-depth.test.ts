@@ -185,6 +185,8 @@ describe('what a chain is told about its own depth', () => {
       await tool.call({
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: profileSlug,
+        to: 'new',
+        conversation_title: 'The chain this file measures',
         title: 'The chain this file measures',
         brief: 'the chain this file measures',
       })

@@ -175,6 +175,8 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
   async function aHelperAtWork(giver: string): Promise<string> {
     const first = await host.giveWork(
       {
+        to: 'new',
+        conversation_title: 'the first piece',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'pm',
         title: 'the first piece',
@@ -198,6 +200,8 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
     const giver = await aGiver()
     const first = await host.giveWork(
       {
+        to: 'new',
+        conversation_title: 'the first piece',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'pm',
         title: 'the first piece',
@@ -221,6 +225,7 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
     host.claimSession(helper, window)
     const second = await host.giveWork(
       {
+        to: helper,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'pm',
         title: 'the second piece',
@@ -266,6 +271,8 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
     const giver = await aGiver('ask')
     const first = await host.giveWork(
       {
+        to: 'new',
+        conversation_title: 'the first piece',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'pm',
         title: 'the first piece',
@@ -286,6 +293,7 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
     mkdirSync(repoC)
     const two = await host.giveWork(
       {
+        to: first.label,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'pm',
         title: 'B',
@@ -296,6 +304,7 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
     )
     const three = await host.giveWork(
       {
+        to: first.label,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'pm',
         title: 'C',
@@ -324,6 +333,8 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
     const giver = await aGiver('ask')
     const first = await host.giveWork(
       {
+        to: 'new',
+        conversation_title: 'the first piece',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'pm',
         title: 'the first piece',
@@ -342,6 +353,7 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
     await waitFor('the first turn to park on its card', () => cards().length === 1)
     const second = await host.giveWork(
       {
+        to: first.label,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'pm',
         title: 'B',
@@ -374,6 +386,7 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
     const helper = await aHelperAtWork(giver)
     const second = await host.giveWork(
       {
+        to: helper,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'pm',
         title: 'B',
@@ -398,6 +411,7 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
     // ⚑ A give as a build before this one recorded it: the folder raw, no `givenFolder`.
     const second = await host.giveWork(
       {
+        to: helper,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'pm',
         title: 'B',
@@ -424,6 +438,7 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
     await host
       .giveWork(
         {
+          to: helper,
           definition_of_done: 'The requested result and its checks are recorded.',
           profile: 'pm',
           title: 'B',
@@ -445,6 +460,7 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
     const codex = join(scratch, 'home', '.codex')
     const given = await host.giveWork(
       {
+        to: helper,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'pm',
         title: 'C',
@@ -469,6 +485,7 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
     const missing = join(scratch, 'not-here')
     const given = await host.giveWork(
       {
+        to: helper,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'pm',
         title: 'B',
@@ -490,6 +507,7 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
     const helper = await aHelperAtWork(giver)
     const given = await host.giveWork(
       {
+        to: helper,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'pm',
         title: 'B',

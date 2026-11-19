@@ -119,6 +119,8 @@ describe('M77 · a second answer to an already-answered question', () => {
     // ⚑ **D-016 · one give is the old start and its work together**: the brief is the child's
     // first turn, and the piece it opens is the one the question is about.
     const given = await callOn(leadTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'answer a question',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'mock-dev',
       title: 'answer a question',
@@ -177,6 +179,8 @@ describe('M77 · a second answer to an already-answered question', () => {
     const leadTools = lastToolset()
 
     const given = await callOn(leadTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'answer a question',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'mock-dev',
       title: 'answer a question',

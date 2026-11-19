@@ -200,10 +200,12 @@ describe('a label names the conversation that owns the piece, and no more', () =
   const aFamily = async (): Promise<Family> => {
     const brobot = await personOpens(DEFAULT_PROFILE_ID)
     const brobotTools = agentToolsFor(host, brobot)
+    await callOn(brobotTools, 'create_agent', { profile_slug: 'worker' })
     const givenAda = await callOn(brobotTools, 'give_work', {
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
-      new: true,
+      to: 'new',
+      conversation_title: 'Build the pages',
       title: 'Build the pages',
       brief: 'build the pages',
     })
@@ -214,10 +216,12 @@ describe('a label names the conversation that owns the piece, and no more', () =
     })
     const ada = givenAda.agent as string
     await waitFor(() => ledger(ada).some((event) => event.type === 'turn'), 'Ada’s first turn')
+    await callOn(agentToolsFor(host, ada), 'create_agent', { profile_slug: 'tester' })
     const givenAli = await callOn(agentToolsFor(host, ada), 'give_work', {
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'tester',
-      new: true,
+      to: 'new',
+      conversation_title: 'Wire the routes',
       title: 'Wire the routes',
       brief: 'wire the routes',
     })
@@ -608,10 +612,12 @@ describe('a label names the conversation that owns the piece, and no more', () =
     const aChildHoldingTwoPieces = async (): Promise<{ parent: string; child: string }> => {
       const parent = await personOpens(DEFAULT_PROFILE_ID, 'ask')
       const parentTools = agentToolsFor(host, parent)
+      await callOn(parentTools, 'create_agent', { profile_slug: 'worker' })
       const first = await callOn(parentTools, 'give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
-        new: true,
+        to: 'new',
+        conversation_title: 'Build the world clock page',
         title: 'Build the world clock page',
         brief: 'build the world clock page',
       })
@@ -622,6 +628,7 @@ describe('a label names the conversation that owns the piece, and no more', () =
         'the card the brief’s turn raised',
       )
       const second = await callOn(parentTools, 'give_work', {
+        to: first.label,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'Test the clock page',
@@ -692,6 +699,7 @@ describe('a label names the conversation that owns the piece, and no more', () =
       startedAli,
     )
     const givenMore = await callOn(brobotTools, 'give_work', {
+      to: 'W1.1',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'Write the tests',

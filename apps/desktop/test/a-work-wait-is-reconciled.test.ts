@@ -106,6 +106,26 @@ describe('a work wait is reconciled without a window', () => {
     intervals.at(-1)!()
     await settle()
   }
+  const giveToNewWorker = async (
+    owner: string,
+    task: { profile: string; title: string; brief: string; definition_of_done: string },
+  ) => {
+    const { tools } = agentToolsFor(host, owner)
+    const made = await tools
+      .find((tool) => tool.name === 'create_agent')!
+      .call({
+        profile_slug: task.profile,
+      })
+    expect(made.structured).toMatchObject({ outcome: 'ok' })
+    return tools
+      .find((tool) => tool.name === 'give_work')!
+      .call({
+        ...task,
+        to: 'new',
+        conversation_title: task.title,
+      })
+  }
+
   const create = async () => {
     const { sessionId } = await host.createSession(
       { provider: 'claude', profileId: DEFAULT_PROFILE_ID, approvalMode: 'auto', cwd: root },
@@ -264,11 +284,9 @@ describe('a work wait is reconciled without a window', () => {
     await host.close(grace, window)
     const children: { holder: string; piece: string }[] = []
     for (let n = 0; n < 3; n++) {
-      const tool = agentToolsFor(host, owner).tools.find((one) => one.name === 'give_work')!
       const result = (
-        await tool.call({
+        await giveToNewWorker(owner, {
           profile: `fictional-worker-${n}`,
-          new: true,
           title: `Fictional piece ${n}`,
           brief: 'Produce a checked result.',
           definition_of_done: 'The result is checked.',
@@ -367,11 +385,9 @@ describe('a work wait is reconciled without a window', () => {
     }
     vi.spyOn(reading, 'reconcileWork').mockImplementation(() => {})
     const { owner } = await create()
-    const tool = agentToolsFor(host, owner).tools.find((one) => one.name === 'give_work')!
     const given = (
-      await tool.call({
+      await giveToNewWorker(owner, {
         profile: 'fictional-known-holder',
-        new: true,
         title: 'Fictional resumed work',
         brief: 'Check the result.',
         definition_of_done: 'A checked result.',
@@ -675,9 +691,11 @@ describe('a work wait is reconciled without a window', () => {
       expect(value).toMatchObject({ outcome: 'ok' })
       return value
     }
+    await call('create_agent', { profile_slug: 'fictional-worker' })
     const child = await call('give_work', {
       profile: 'fictional-worker',
-      new: true,
+      to: 'new',
+      conversation_title: 'Fictional child',
       title: 'Fictional child',
       brief: 'Keep this open.',
       definition_of_done: 'A checked result.',
@@ -844,9 +862,11 @@ describe('a work wait is reconciled without a window', () => {
       expect(result).toMatchObject({ outcome: 'ok' })
       return result
     }
+    await call(owner, 'create_agent', { profile_slug: 'fictional-worker' })
     const child = await call(owner, 'give_work', {
       profile: 'fictional-worker',
-      new: true,
+      to: 'new',
+      conversation_title: 'Fictional owned work',
       title: 'Fictional owned work',
       brief: 'Produce a checked result.',
       definition_of_done: 'The result is checked.',
@@ -1053,11 +1073,9 @@ describe('a work wait is reconciled without a window', () => {
     async (hops) => {
       keepTurnsOpen = true
       const { owner } = await create()
-      const tool = agentToolsFor(host, owner).tools.find((one) => one.name === 'give_work')!
       const given = (
-        await tool.call({
+        await giveToNewWorker(owner, {
           profile: 'fictional-lineage-worker',
-          new: true,
           title: 'Fictional legacy work',
           brief: 'Check the result.',
           definition_of_done: 'A checked result.',
@@ -1117,15 +1135,12 @@ describe('a work wait is reconciled without a window', () => {
       keepTurnsOpen = true
       const { owner } = await create()
       const given = (
-        await agentToolsFor(host, owner)
-          .tools.find((one) => one.name === 'give_work')!
-          .call({
-            profile: 'fictional-incomplete-proof-worker',
-            new: true,
-            title: 'Fictional legacy work',
-            brief: 'Check the result.',
-            definition_of_done: 'A checked result.',
-          })
+        await giveToNewWorker(owner, {
+          profile: 'fictional-incomplete-proof-worker',
+          title: 'Fictional legacy work',
+          brief: 'Check the result.',
+          definition_of_done: 'A checked result.',
+        })
       ).structured as { agent: string; piece: string }
       const { agent: holder, piece } = given
       await waitFor(() => store.theOpenTurn(holder) !== null, 'the old holder turn')
@@ -1229,15 +1244,12 @@ describe('a work wait is reconciled without a window', () => {
     keepTurnsOpen = true
     const { owner } = await create()
     const given = (
-      await agentToolsFor(host, owner)
-        .tools.find((one) => one.name === 'give_work')!
-        .call({
-          profile: 'fictional-rebuilt-worker',
-          new: true,
-          title: 'Fictional rebuilt work',
-          brief: 'Check the result.',
-          definition_of_done: 'A checked result.',
-        })
+      await giveToNewWorker(owner, {
+        profile: 'fictional-rebuilt-worker',
+        title: 'Fictional rebuilt work',
+        brief: 'Check the result.',
+        definition_of_done: 'A checked result.',
+      })
     ).structured as { agent: string; piece: string }
     const { agent: holder, piece } = given
     await waitFor(() => store.theOpenTurn(holder) !== null, 'the old holder turn')
@@ -1478,17 +1490,13 @@ describe('a work wait is reconciled without a window', () => {
   it('a giver new wait never inherits an old person receipt before the next tick', async () => {
     keepTurnsOpen = true
     const { owner } = await create()
-    const tools = agentToolsFor(host, owner).tools
     const given = (
-      await tools
-        .find((one) => one.name === 'give_work')!
-        .call({
-          profile: 'fictional-idle-worker',
-          new: true,
-          title: 'Fictional result',
-          brief: 'Check it.',
-          definition_of_done: 'Checked.',
-        })
+      await giveToNewWorker(owner, {
+        profile: 'fictional-idle-worker',
+        title: 'Fictional result',
+        brief: 'Check it.',
+        definition_of_done: 'Checked.',
+      })
     ).structured as Record<string, unknown>
     expect(given).toMatchObject({ outcome: 'ok' })
     const holder = given.agent as string
@@ -1529,6 +1537,7 @@ describe('a work wait is reconciled without a window', () => {
     ;(host as unknown as { workReconciler: { close(): void } }).workReconciler.close()
     const previous = receipts(holder, piece).at(-1)!.incident
     const at = clock + 60_000
+    const { tools } = agentToolsFor(host, owner)
     expect(
       (
         await tools
@@ -1602,15 +1611,12 @@ describe('a work wait is reconciled without a window', () => {
   it('a cross-holder target ending is found in its touched pass without a tick', async () => {
     const a = await create()
     const b = await create()
-    const given = await agentToolsFor(host, b.owner)
-      .tools.find((one) => one.name === 'give_work')!
-      .call({
-        profile: 'cross-holder-worker',
-        new: true,
-        title: 'Target',
-        brief: 'A fictional target.',
-        definition_of_done: 'A checked result.',
-      })
+    const given = await giveToNewWorker(b.owner, {
+      profile: 'cross-holder-worker',
+      title: 'Target',
+      brief: 'A fictional target.',
+      definition_of_done: 'A checked result.',
+    })
     const target = given.structured as { piece: string; label: string; agent: string }
     await settle()
     waiting(a.owner, a.work.piece, { kind: 'agent', piece: target.piece, label: target.label })
@@ -1719,16 +1725,20 @@ describe('a work wait is reconciled without a window', () => {
         expect(answer).toMatchObject({ outcome: 'ok' })
         return answer
       }
+      await call(owner, 'create_agent', { profile_slug: 'request-holder' })
       const a = await call(owner, 'give_work', {
         profile: 'request-holder',
-        new: true,
+        to: 'new',
+        conversation_title: 'Waiting work',
         title: 'Waiting work',
         brief: 'A fictional piece.',
         definition_of_done: 'Checked.',
       })
+      await call(owner, 'create_agent', { profile_slug: 'request-answerer' })
       const b = await call(owner, 'give_work', {
         profile: 'request-answerer',
-        new: true,
+        to: 'new',
+        conversation_title: 'Other work',
         title: 'Other work',
         brief: 'Another fictional piece.',
         definition_of_done: 'Checked.',

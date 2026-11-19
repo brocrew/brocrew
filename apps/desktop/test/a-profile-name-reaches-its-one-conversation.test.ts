@@ -136,10 +136,12 @@ describe('a profile name reaches its one conversation', () => {
 
   /** `giver` gives a new `worker` a piece, and the worker's first turn is recorded. */
   const giveAWorker = async (giver: AgentToolset, title: string, label: string) => {
+    await callOn(giver, 'create_agent', { profile_slug: 'worker' })
     const given = await callOn(giver, 'give_work', {
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
-      new: true,
+      to: 'new',
+      conversation_title: title,
       title,
       brief: title.toLowerCase(),
     })
@@ -250,6 +252,8 @@ describe('a profile name reaches its one conversation', () => {
     const tools = agentToolsFor(host, giver)
     const claude = await giveAWorker(tools, 'Plan the fictional catalogue', 'W1.1')
     const given = await callOn(tools, 'give_work', {
+      to: 'new',
+      conversation_title: 'Review the fictional catalogue',
       profile: 'worker',
       provider: 'codex',
       title: 'Review the fictional catalogue',

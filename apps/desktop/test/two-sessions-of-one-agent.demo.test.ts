@@ -174,8 +174,10 @@ describe('two sessions of one agent', () => {
   }
 
   /** A give from parent to worker, through the real tool. */
-  const gives = async (parent: string, title = 'x'): Promise<Record<string, unknown>> => {
+  const gives = async (parent: string, title = 'x', to = 'new'): Promise<Record<string, unknown>> => {
     const given = await toolsOf(parent)('give_work', {
+      to,
+      ...(to === 'new' ? { conversation_title: title } : {}),
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title,
@@ -363,7 +365,7 @@ describe('two sessions of one agent', () => {
       const parent = await personOpens('pm')
       const first = await aParkedChildOf(parent, 'one')
 
-      const second = await gives(parent, 'two')
+      const second = await gives(parent, 'two', first)
       expect(second.agent).toBe(first)
       expect(second.started).toBe(false)
       expect(second.delivery).toBe('held')
@@ -397,7 +399,7 @@ describe('two sessions of one agent', () => {
       expect(said).toMatchObject({ outcome: 'refused', rail: 'not-a-piece-you-gave' })
       expect(host.sessionIds).toContain(theirs)
 
-      expect((await gives(parent, 'a second')).agent).toBe(mine)
+      expect((await gives(parent, 'a second', mine)).agent).toBe(mine)
       expect(
         await call('message_agent', {
           agent: mine,
@@ -432,6 +434,7 @@ describe('two sessions of one agent', () => {
       expect(host.sessionIds).toContain(first)
 
       const during = await call('give_work', {
+        to: first,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'two',
@@ -447,6 +450,7 @@ describe('two sessions of one agent', () => {
       closeGate.release()
       await ending
       const afterTheStop = await call('give_work', {
+        to: first,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'three',
@@ -470,7 +474,7 @@ describe('two sessions of one agent', () => {
       expect(host.sessionIds).toContain(mineHere)
       expect(host.sessionIds).toContain(mineThere)
 
-      expect((await gives(overThere, 'a second over there')).agent).toBe(mineThere)
+      expect((await gives(overThere, 'a second over there', mineThere)).agent).toBe(mineThere)
     })
 
     it('reopening a stopped conversation of one identity is ungated — the person’s step 4, exactly', async () => {
@@ -487,6 +491,7 @@ describe('two sessions of one agent', () => {
 
       expect(host.sessionIds).toContain(first)
       const second = await toolsOf(parent)('give_work', {
+        to: first,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'two',

@@ -167,6 +167,8 @@ describe('590 · a folder approved that no agent can work in', () => {
       // ⚑ **D-016** — a child is started by a give that finds no conversation with that agent.
       const staffed = await host.giveWork(
         {
+          to: 'new',
+          conversation_title: 'no folder named',
           definition_of_done: 'The requested result and its checks are recorded.',
           profile: 'pm',
           title: 'no folder named',
@@ -202,6 +204,8 @@ describe('590 · a folder approved that no agent can work in', () => {
         const missing = join(elsewhere, 'not-here')
         const refused = await host.giveWork(
           {
+            to: 'new',
+            conversation_title: 'a folder nobody made',
             definition_of_done: 'The requested result and its checks are recorded.',
             profile: 'pm',
             title: 'a folder nobody made',
@@ -218,6 +222,8 @@ describe('590 · a folder approved that no agent can work in', () => {
 
         const placed = await host.giveWork(
           {
+            to: 'new',
+            conversation_title: 'somewhere else entirely',
             definition_of_done: 'The requested result and its checks are recorded.',
             profile: 'pm',
             title: 'somewhere else entirely',
@@ -253,6 +259,8 @@ describe('590 · a folder approved that no agent can work in', () => {
       mkdirSync(inside)
       const child = await host.giveWork(
         {
+          to: 'new',
+          conversation_title: 'the docs PM',
           definition_of_done: 'The requested result and its checks are recorded.',
           profile: 'pm',
           title: 'the docs PM',
@@ -269,6 +277,8 @@ describe('590 · a folder approved that no agent can work in', () => {
       // one.
       const grandchild = await host.giveWork(
         {
+          to: 'new',
+          conversation_title: 'one level down',
           definition_of_done: 'The requested result and its checks are recorded.',
           profile: 'pm',
           title: 'one level down',

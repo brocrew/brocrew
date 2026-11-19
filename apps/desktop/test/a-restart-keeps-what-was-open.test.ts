@@ -326,6 +326,8 @@ describe('692 · a restart keeps what was open', () => {
     const children: string[] = []
     for (const kid of kids) {
       const given = await callOn(leadTools, 'give_work', {
+        to: 'new',
+        conversation_title: `the ${kid} half of the work`,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: kid,
         title: `the ${kid} half of the work`,
@@ -362,6 +364,7 @@ describe('692 · a restart keeps what was open', () => {
    */
   const giveTo = async (tools: AgentToolset, child: string, text: string): Promise<string> => {
     const given = await callOn(tools, 'give_work', {
+      to: child,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: profileOf(child),
       title: text,

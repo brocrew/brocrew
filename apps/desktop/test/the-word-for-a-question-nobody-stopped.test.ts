@@ -216,6 +216,8 @@ describe('397 · the word for a question nobody stopped', () => {
     const pm = await personOpens(pmProfile, host, provider, 'auto')
     const pmTools = agentToolsFor(host, pm)
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'The work',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: workerProfile,
       title: 'The work',

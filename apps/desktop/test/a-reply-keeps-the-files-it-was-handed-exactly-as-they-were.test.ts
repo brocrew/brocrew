@@ -152,6 +152,8 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
     const pm = await personOpens(`pm-${String(nth)}`)
     const pmTools = toolsOf(pm)
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: text,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: workerProfile,
       title: text,
@@ -648,18 +650,22 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
       const second = await workWasGiven('shared dependency second')
       await bringIdentityIntoBeing('shared-child')
       const a = await callOn(toolsOf(first.worker), 'give_work', {
+        to: 'new',
+        conversation_title: 'child A',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'shared-child',
         title: 'child A',
         brief: 'child A',
-        piece: first.task,
+        under: first.task,
       })
       const b = await callOn(toolsOf(second.worker), 'give_work', {
+        to: 'new',
+        conversation_title: 'child B',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'shared-child',
         title: 'child B',
         brief: 'child B',
-        piece: second.task,
+        under: second.task,
       })
       expect(a.outcome).toBe('ok')
       expect(b.outcome).toBe('ok')

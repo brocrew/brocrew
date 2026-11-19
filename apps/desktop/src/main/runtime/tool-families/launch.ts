@@ -1,4 +1,6 @@
 import { ABriefThatDidNotArrive, AGiveThatGaveNothing } from '../session-unavailable'
+import { RecordWriteFailed } from '../record-write'
+import { sendOverflowSaid } from '../send-overflow'
 import { type AgentModelChoice } from '../../../shared/model-choice-contracts'
 import {
   type AgentToolAnswer,
@@ -24,17 +26,15 @@ import { OWN_INSTRUCTIONS_CHARS } from '../../../shared/own-instructions'
 import { PIECE_TITLE_CHARS, pieceNumbersOf } from '../../../shared/piece-called'
 import { type Provider, providerSchema } from '@brobot2/shared'
 import { TOOL_INPUT_ENUMS, type ToolName, documentedToolEnum } from './catalog'
-import { WITH_WHATEVER_ELSE_IS_HELD, heldAndWhy, queuedSaid, whatADeliveryMet } from './delivery'
+import { whatADeliveryMet } from './delivery'
 import { WORK_FIELD_WORDS } from '../../../shared/work-fields'
 import { type WhatItRunsOn, stalledPiecesSaid } from '../spawn-rails'
 import { aPairInWords } from '../../../shared/model-choice'
-import { answer, itsLabelIsNotUsed, refusalAnswer } from './answers'
+import { answer, itsLabelIsNotUsed, refusalAnswer, sendAnswer } from './answers'
 import { carryRailRefusal, refuseTool, type PublishedRefusal } from './refusals'
 import { clockTimeFrom } from '../../../shared/clock'
 import { namedByItsWorkOnce } from './listings'
 import { protectedPlaceSaid } from '../../../shared/work-folders'
-import { resourcesNamed } from '../reply-rails'
-import { workerLine } from '../../worker-readings'
 import { z } from 'zod'
 
 // Launch, creation and restore tools classify only their known failure types.
@@ -161,14 +161,14 @@ interface GiveWorkArguments {
   readonly brief: string
   /** The piece folder: a fresh conversation starts there; an existing one gets a grant. */
   readonly folder?: string
-  /** The caller's own piece to hang this under, by label or id. */
-  readonly piece?: string
-  /** **D-016 · R3** — bring a new agent into existence under that profile. */
-  readonly new?: boolean
-  /** Select this provider's conversation without changing the identity's default. */
+  /** "new", or the address of the conversation that continues the job. */
+  readonly to?: string
+  /** The job's name, for a new conversation. */
+  readonly conversation_title?: string
+  /** The caller's own task to hang this under, by label or id. */
+  readonly under?: string
+  /** The provider a new conversation runs on. */
   readonly provider?: Provider
-  /** Select a free worker or start another worker of the same normal profile. */
-  readonly parallel?: boolean
   /** **D-016 · R2** — files handed over with the work, kept as the piece's inputs. */
   readonly inputs?: readonly string[]
   /** **D-042 · R4** — the model that conversation runs on, from this piece on. */
@@ -178,7 +178,7 @@ interface GiveWorkArguments {
 }
 
 export function createGiveWorkTool(
-  host: Pick<AgentToolHost, 'giveWork' | 'whatToCallTheConversation' | 'whyWhatIsHeldWaits'>,
+  host: Pick<AgentToolHost, 'giveWork' | 'receiptForSend'>,
   by: Caller,
   theModels: string,
   theEfforts: string,
@@ -190,17 +190,8 @@ export function createGiveWorkTool(
   return {
     name: 'give_work',
     handlerOwnsMissingInput: true,
-    /**
-     * **D-016 · the one verb that hands an agent something to do** (plan §3.5, R2–R4).
-     *
-     * **The description says what the act IS, not how the app decides** (standing rule 8): it
-     * goes to the ONE conversation the giver has with that agent — woken if it stopped, started the
-     * first time — the brief is a turn that names the piece's label, and the two refusals a caller
-     * can act on are named with their act: a stalled piece (follow it up or take it back) and a
-     * name this app does not hold (check it, or ask for a new agent with `new`).
-     */
     description:
-      'Give a piece of work with a short brief and definition_of_done. Put the detail in inputs. Give a piece of work to an agent, by its profile. By default, it goes to the one conversation you have with that agent on its default provider. A normal agent has one conversation per provider with you; choose provider, or name a model only that provider lists, to reach or start the other one. An existing conversation keeps its provider. Services keep one conversation and refuse another provider. A stopped conversation is woken, and the first give starts it. Name what you give it with a title and a brief; the brief is sent to it as a message of its own, with the piece\u2019s label (W1.2) so it can reply to you. Hand it files with inputs: each is kept as an input of the piece, and the brief names each by its id so the agent can read it with read_document. The piece is hung under the piece you name — or, naming none, under the one piece you were given or took on; holding several, the one the words that began this turn were about, when they were about one; holding none, your own conversation\u2019s work. A piece whose brief has not reached you yet is never chosen for you. Without parallel, an agent that is busy, or still holds a piece from you that stalled, still takes it; the answer names a stalled piece, to follow up or take back. new: true brings a new agent into existence under that name; without it, a name this app does not hold is refused. Returns the piece\u2019s label and whether it went straight out or is held. Name model and effort to choose what that conversation runs on; a choice outside the list is refused with the choices. Without them a conversation you have keeps what it runs on, and a new one starts on that agent\u2019s default, else on the model a person last picked for that provider, else on that provider\u2019s default. A model from another provider chooses that provider\u2019s conversation; it does not change the agent\u2019s default. Standing rules and Own notes are shared. Native memory and Always allow rules stay per provider. A conversation whose model or effort a person set keeps both. A switch holds from that piece on, even if you take the piece back. The answer says what it runs on.',
+      'Give a profile a task. Set to to a conversation address to add the task there, or use "new" and supply conversation_title for a new job. A service has one conversation, so name its profile and leave to out. Use under for your task this belongs to. Every valid give records the task before starting its provider. Anything over 2,000 characters arrives as a file the reader is pointed to. An existing conversation keeps its provider. Its model and effort can change from this task on unless the person set either, then it keeps both. The receipt names who received the task, the conversation address and whether it was sent or held.',
     /**
      * **486 · a person is asked as well** (HO-031 §2.4) — as `spawn_agent` was.
      *
@@ -215,12 +206,12 @@ export function createGiveWorkTool(
         profile: z
           .string()
           .describe(
-            'Which agent to give it to — a name list_profiles gives. It must already exist, unless new is true.',
+            'Which agent to give it to — a name list_profiles gives. It must exist; create_agent makes one.',
           ),
         title: z
           .string()
           .describe(
-            `What the piece is called: one line, at most ${String(PIECE_TITLE_CHARS)} characters.`,
+            `What the task is called: one line, at most ${String(PIECE_TITLE_CHARS)} characters.`,
           ),
         definition_of_done: z.string().describe(WORK_FIELD_WORDS.condition),
         brief: z.string().describe(WORK_FIELD_WORDS.brief),
@@ -228,31 +219,31 @@ export function createGiveWorkTool(
           .string()
           .optional()
           .describe(
-            "A folder for this piece: any that exists; a relative path is read from your own working directory. With parallel: true and no folder, the piece gets its own output folder. A conversation this starts works in the piece's folder, or else in your own working directory. An existing conversation keeps its own working folder and may also use the piece's folder while the piece is open.",
+            "A folder for this task: any that exists; a relative path is read from your own working directory. A new conversation works in the task's folder, or else your working directory. An existing conversation keeps its own working folder and may also use the task's folder while the task is open.",
           ),
-        piece: z
+        to: z
           .string()
           .optional()
           .describe(
-            'Which of your own pieces this is part of, by its label (W1.2) or id. Leave it out to hang it under the one piece you were given or took on — holding several, the one the words that began this turn were about, when they were about one; holding none, your own conversation\u2019s work. A piece whose brief has not reached you yet is never chosen for you. Name it when that leaves it unclear — list_tasks names them.',
+            'Where the task goes: "new" for a new conversation of that profile, or a conversation by any of its task labels (W4.1621). Required, except for a service. A label names that task’s conversation: the work becomes a new task there, and the labelled task keeps its outcome.',
           ),
-        new: z
-          .boolean()
+        conversation_title: z
+          .string()
           .optional()
           .describe(
-            'Set it to bring a new agent into existence under that profile name, with no standing rules, to take this work. A name that is already an agent is refused with it: give without it to use that agent, who keeps its memory.',
+            'With to: "new", the new conversation’s title: the job, not this task, short, distinguishing word first ("DEV-78078", "Lisbon trip, March"). Required with to: "new"; leave it out otherwise.',
+          ),
+        under: z
+          .string()
+          .optional()
+          .describe(
+            'Your own task this belongs to, by its label (W1.2) or id. Leave it out to put it under the one task you hold — holding several, the one the words that began this turn were about; holding none, your own conversation’s work. A task whose brief has not reached you yet is never chosen for you. list_tasks names them.',
           ),
         provider: documentedToolEnum(
           TOOL_INPUT_ENUMS['give_work:provider'],
-          'Which provider this piece runs on. It selects that provider’s conversation with this normal agent, or starts one; never switches an existing conversation or changes the agent’s default. Services refuse a different provider.',
-          'Leave it out to use the named model’s unique provider, else the agent’s default.',
+          'Which provider a new conversation runs on. Leave it out to use the named model’s provider, else the profile’s default. An existing conversation keeps its provider.',
+          'Leave it out for the named model’s provider, else the profile’s default.',
         ).optional(),
-        parallel: z
-          .boolean()
-          .optional()
-          .describe(
-            'true gives this piece to a free worker of that agent, or starts another worker if all are busy. Leave it out to use your usual conversation with it. Not for a service, which runs one piece at a time.',
-          ),
         inputs: z
           .array(z.string())
           .optional()
@@ -263,7 +254,7 @@ export function createGiveWorkTool(
           .string()
           .optional()
           .describe(
-            'The model that conversation runs on, from this piece on: one in the list a person keeps for its provider — the provider\u2019s own models (an alias such as opus stands for the model it points at) and any a person added. Leave it out to keep what it runs on.' +
+            'The model from this task on, from the list a person keeps for its provider (an alias such as opus stands for the model it points at). Leave it out: a new conversation starts on the profile’s default, an existing one keeps what it runs on.' +
               theModels,
           ),
         effort: z
@@ -289,6 +280,12 @@ export function createGiveWorkTool(
         try {
           given = await host.giveWork(args, by)
         } catch (error) {
+          if (error instanceof RecordWriteFailed) {
+            return refusalAnswer({
+              ...refuseTool('work-record-unavailable'),
+              reason: 'This conversation could not save the change.',
+            })
+          }
           // **A give that took its label and gave nothing** says so, after what failed: the
           // label is not handed out again, and nothing is called by it.
           if (error instanceof AGiveThatGaveNothing) {
@@ -316,68 +313,24 @@ export function createGiveWorkTool(
           const carried = 'outcome' in refusal ? { ...refusal } : carryRailRefusal(refusal)
           return answer(carried, `refused (${refusal.rail}): ${refusal.reason}`)
         }
-        // **The agent by the name every surface says**, and its conversation by the label it was
-        // given, which every door that takes an agent takes (D-016 · commit 7 · R1) — the one the
-        // brief reached. The ids are in the payload.
-        const name = host.whatToCallTheConversation(given.owner)
-        const where =
-          given.owner === given.found
-            ? ''
-            : ` Your conversation with ${name} could never be reopened, so it went to the conversation that took its place.`
-        // Held for a reopen on the current sign-in, it says why in place of *until it is free*
-        // ({@link heldAndWhy}'s rule) — its last full stop is the sentence's below.
-        const queued = given.queuedBehind
-        const waits =
-          given.delivery === 'sent' || queued !== undefined
-            ? null
-            : heldAndWhy(host, given.owner, '; it is held.')
-        const went =
-          queued !== undefined
-            ? ''
-            : given.delivery === 'sent'
-              ? `; it went to ${name} straight away`
-              : waits === null
-                ? `; it is held until ${name} is free, then goes out ${WITH_WHATEVER_ELSE_IS_HELD}`
-                : waits.replace(/\.$/, '')
-        // **D-042 · R4 — the answer says what it runs on** — see {@link whatItRunsOnSaid}.
-        // A queued give runs on nothing yet: its pair is kept for its turn.
-        const runsOn = queued !== undefined ? '' : whatItRunsOnSaid(given.runsOn)
-        const started =
-          given.startedIn === null
-            ? runsOn === ''
-              ? ''
-              : ` ${runsOn}`
-            : ` It started a new conversation on ${PROVIDER_NAME[given.runsOn.provider]}${given.startedOnDefault === true ? ", this agent's default," : ''} in ${given.startedIn}.${runsOn === '' ? '' : ` ${runsOn}`}`
-        // Report how the supplied folder is used and any protected place it meets; naming such a place does not refuse the folder.
-        const usedFolder = given.givenFolder
-        // Only what is true for THAT conversation (`grantReach`): a grant widens what asks first,
-        // and changes nothing for one that already runs without asking.
-        const folder = usedFolder?.folder ?? ''
-        const granted =
-          usedFolder?.use !== 'grant'
-            ? ''
-            : queued !== undefined
-              ? ` It may also work in ${folder} while ${given.label} is open, once its turn comes.`
-              : given.grantReach === 'writes'
-                ? ` It may also write in ${folder} without asking while ${given.label} is open; its own working folder is unchanged.`
-                : given.grantReach === 'reads'
-                  ? ` It may also work in ${folder} while ${given.label} is open: it reads there without asking, and still asks before changing anything; its own working folder is unchanged.`
-                  : ` It runs without asking, so it could already reach ${folder}; the folder is shown as granted while ${given.label} is open.`
-        const notGranted =
-          given.folderNotGranted === null
-            ? ''
-            : ` The folder you named was not granted, and the work was given all the same: ${given.folderNotGranted}.`
+        const { receipt, said } = host.receiptForSend({
+          recorded: { kind: 'task', id: given.piece, taskLabel: given.label },
+          to: given.owner,
+          profile: given.profile,
+          state: given.recipientState,
+          attachments: given.inputs.map((file) => {
+            const overflow = given.overflow?.find((part) => part.file.resource === file.resource)
+            return overflow === undefined ? file : { ...file, overflowField: overflow.field }
+          }),
+        })
+        const folder = given.givenFolder
+        const folderProblem =
+          given.folderNotGranted === null ? '' : ` Folder could not be granted: ${given.folderNotGranted}.`
         const notice =
-          usedFolder?.notice === undefined
-            ? ''
-            : ` ${protectedPlaceSaid(usedFolder.folder, usedFolder.notice)}`
-        const unused = `${granted}${notGranted}${notice}`
-        const inputs =
-          given.inputs.length === 0 ? '' : ` Kept as its inputs: ${resourcesNamed(given.inputs)}.`
-        // A stall refuses nothing; the answer names what the giver still has there that
-        // nothing drives, with the two acts a stall asks for.
+          folder?.notice === undefined ? '' : ` ${protectedPlaceSaid(folder.folder, folder.notice)}`
         const stalled = given.stalled ?? []
-        const stillHeld = stalled.length === 0 ? '' : ` ${stalledPiecesSaid(stalled)}`
+        const stalledNotice = stalled.length === 0 ? '' : ` ${stalledPiecesSaid(stalled)}`
+        const overflow = given.overflow?.map(sendOverflowSaid).join('') ?? ''
         return answer(
           {
             outcome: 'ok',
@@ -385,20 +338,18 @@ export function createGiveWorkTool(
             label: given.label,
             agent: given.owner,
             profile: given.profile,
-            ...(given.worker === undefined ? {} : { worker: given.worker }),
             delivery: given.delivery,
+            receipt,
             started: given.runsOn.how === 'started',
             runs_on: { model: given.runsOn.model, effort: given.runsOn.effort },
-            ...(given.owner === given.found ? {} : { went_to: given.owner }),
-            ...(queued === undefined ? {} : { queued_behind: queued }),
+            ...(given.queuedBehind === undefined ? {} : { queued_behind: given.queuedBehind }),
             ...(given.inputs.length === 0 ? {} : { inputs: given.inputs }),
-            // **W4.189** — the folder, how it was used, and D's notice: data beside the words.
-            ...(given.givenFolder === null ? {} : { folder: given.givenFolder }),
+            ...(folder === null ? {} : { folder }),
             ...(stalled.length === 0 ? {} : { stalled: stalled.map((one) => one.label) }),
           },
-          `${given.label} given to ${name} (${given.profile})${went}.${queuedSaid(queued, given.queueStalledAt)}${started}${unused}${where}${inputs}${stillHeld}${given.worker === undefined ? '' : ` ${workerLine(given.profile, given.worker.number)}`}`,
+          said + folderProblem + notice + stalledNotice + overflow,
         )
-      }),
+      }).then(sendAnswer),
   }
 }
 

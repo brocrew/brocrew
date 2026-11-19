@@ -223,6 +223,8 @@ describe('415 · a question is not work', () => {
     const pmTools = theToolsetJustHandedOut()
     // ⛔ No grant is set for the give (D-014: any agent may give work to any agent).
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'the work this dispatch is about',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'the work this dispatch is about',
@@ -260,6 +262,8 @@ describe('415 · a question is not work', () => {
     // ⛔ No grant is set for either give (D-014: any agent may give work to any agent).
     // ⚑ **D-016 · each give's brief is its child's first turn**, parked on a card in BroBot's `ask`.
     const madePm = await callOn(brobotTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'run the project',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'pm',
       title: 'run the project',
@@ -269,6 +273,8 @@ describe('415 · a question is not work', () => {
     const pm = madePm.agent as string
     const pmTools = theToolsetJustHandedOut()
     const madeWorker = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'do the work',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'do the work',
@@ -346,6 +352,7 @@ describe('415 · a question is not work', () => {
       // ⚑ **The same words one fact over** (standing rule 3): the identical caller and target, with
       // the declaration changed — the words given as work — and nothing else.
       const given = await callOn(pmTools, 'give_work', {
+        to: worker,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'do the thing',
@@ -559,6 +566,7 @@ describe('415 · a question is not work', () => {
       expect(stillHeld(store.events(worker))).toEqual([])
 
       const given = await callOn(pmTools, 'give_work', {
+        to: label,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'and another',
@@ -605,6 +613,7 @@ describe('415 · a question is not work', () => {
       })
       expect(replied.outcome, JSON.stringify(replied)).toBe('ok')
       const second = await callOn(pmTools, 'give_work', {
+        to: worker,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'and another',

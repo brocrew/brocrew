@@ -127,6 +127,8 @@ describe('two verbs, one sentence', () => {
       expect(created['outcome'], 'the creation this test is about did not happen').toBe('ok')
 
       const started = await callOn(tools, 'give_work', {
+        to: 'new',
+        conversation_title: 'The work it was made for',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'archivist',
         title: 'The work it was made for',
@@ -135,6 +137,8 @@ describe('two verbs, one sentence', () => {
       expect(started['outcome']).toBe('ok')
 
       const refused = await callOn(tools, 'give_work', {
+        to: 'new',
+        conversation_title: 'The work it was made for',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'nobody-made-this',
         title: 'The work it was made for',

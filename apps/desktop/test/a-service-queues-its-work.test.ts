@@ -319,7 +319,7 @@ describe('a service queues the work it is given', () => {
               profile: 'browser-driver',
               title: 'Late',
               brief: 'late',
-              piece: root.label,
+              under: root.label,
               definition_of_done: 'The requested result and its checks are recorded.',
             },
             { ownerId: agentCallerId(caller.sessionId) },
@@ -391,7 +391,7 @@ describe('a service queues the work it is given', () => {
               profile: 'browser-driver',
               title: 'Late',
               brief: 'late',
-              piece: root.label,
+              under: root.label,
               definition_of_done: 'The requested result and its checks are recorded.',
             },
             { ownerId: agentCallerId(caller.sessionId) },
@@ -489,7 +489,7 @@ describe('a service queues the work it is given', () => {
             profile: 'browser-driver',
             title: 'Late',
             brief: 'late',
-            piece: at.root,
+            under: at.root,
           },
           { ownerId: agentCallerId(at.caller) },
         )
@@ -639,7 +639,7 @@ describe('a service queues the work it is given', () => {
               profile: 'browser-driver',
               title: 'Late',
               brief: 'late',
-              piece: root.label,
+              under: root.label,
             },
             { ownerId: agentCallerId(caller.sessionId) },
           )
@@ -712,7 +712,7 @@ describe('a service queues the work it is given', () => {
       world.anAgent('caller', 'nothing kept')
       const host = world.aHost()
       const caller = await world.aPersonOpens(host, 'caller')
-      const refused = await world.gives(host, caller, 'browser-driver')
+      const refused = await world.gives(host, caller, 'browser-driver', { to: undefined })
       expect(refusedAs(refused)).toBe('its-provider-is-not-chosen')
       expect(refused.ok ? '' : refused.refusal.reason).toBe(
         'Ask a person to choose a provider for “browser-driver” on its sheet, or give the work to ' +
@@ -809,22 +809,23 @@ describe('a service queues the work it is given', () => {
       drivenByTheTurn: () => null,
       isAHelper: () => false,
       agentExists: () => true,
-      helperAs: () => null,
+      conversationAt: () => null,
+      recentWith: () => ({ rows: [], more: false }),
       serviceAt: () => service,
       spawningEnabled: () => true,
-      creatorOf: () => null,
       itsProvider: () => ({ provider: 'claude', from: 'saved' }),
       theNamedModelsProvider: () => null,
       modelChoiceOf: () => null,
       checkFolder: (path) => ({ ok: true, path }),
     })
-    const admitted = (service: ServiceAtAGive): string => {
+    const admitted = (service: ServiceAtAGive, normalGive = {}): string => {
       const admission = admitGive(
         {
           definition_of_done: 'The requested result and its checks are recorded.',
           profile: 'browser-driver',
           title: 'A piece',
           brief: 'a piece',
+          ...normalGive,
         },
         { ownerId: agentCallerId('sess_caller') },
         facts(service),
@@ -867,8 +868,10 @@ describe('a service queues the work it is given', () => {
       expect(admitted({ is: 'unknown' })).toBe('its-kind-is-unknown')
     })
 
-    it('leaves an agent that is not a service to the lookup, as today', () => {
-      expect(admitted({ is: 'normal' })).toBe('a-new-conversation')
+    it('lets a give to a normal agent name a new conversation', () => {
+      expect(admitted({ is: 'normal' }, { to: 'new', conversation_title: 'A job' })).toBe(
+        'a-new-conversation',
+      )
     })
   })
 
@@ -1051,14 +1054,16 @@ describe('a service queues the work it is given', () => {
 
     it('refuses a service giving work to itself, end to end', async () => {
       const { host, one } = await twoRunningServices()
-      expect(refusedAs(await world.gives(host, one, 'svc-one'))).toBe('that-is-this-conversation')
+      expect(refusedAs(await world.gives(host, one, 'svc-one', { to: undefined }))).toBe(
+        'that-is-this-conversation',
+      )
     })
 
     it('two services giving each other work at the same moment: one is given, the other closes no wait', async () => {
       const { host, one, two } = await twoRunningServices()
       const [toTwo, toOne] = await Promise.all([
-        world.gives(host, one, 'svc-two', { title: 'To two' }),
-        world.gives(host, two, 'svc-one', { title: 'To one' }),
+        world.gives(host, one, 'svc-two', { title: 'To two', to: undefined }),
+        world.gives(host, two, 'svc-one', { title: 'To one', to: undefined }),
       ])
       const outcomes = [toTwo, toOne].map((outcome) =>
         outcome.ok ? 'given' : outcome.refusal.rail,

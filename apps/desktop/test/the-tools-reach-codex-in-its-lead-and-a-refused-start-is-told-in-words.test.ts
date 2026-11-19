@@ -1116,6 +1116,7 @@ describe('§6 to §8 · what a failed start says at each door', () => {
       profile: 'worker',
       title: 'The work',
       brief: 'the work',
+      ...('to' in over ? {} : { to: 'new', conversation_title: over.title ?? 'The work' }),
       ...over,
     })
 
@@ -1203,39 +1204,37 @@ describe('§6 to §8 · what a failed start says at each door', () => {
       expect(given.outcome, JSON.stringify(given)).toBe('ok')
     })
 
-    it('a give with new: true says the new agent was made all the same, and one without it says nothing of the kind', async () => {
+    it('a failed new conversation does not undo a separately created profile or record a task', async () => {
       const pm = await aPmThatMaySpawn()
       vi.spyOn(console, 'warn').mockImplementation(() => {})
       gate.startFails = () => refusedStart(SAID)
 
-      // ⚑ The control first: a give to an existing profile, without `new`, appends nothing.
       const plain = await giveWork(pm)
       expect(plain.reason).toBe(tools.A_PROVIDER_REFUSED_THE_START)
       expect(String(plain.reason)).not.toContain(tools.THE_NEW_AGENT_WAS_MADE)
 
       const asked = {
-        definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'archivist',
         title: 'Index the ledger',
         brief: 'index it',
-        new: true,
       }
+      expect(await callOn(pm, 'create_agent', { profile_slug: asked.profile })).toMatchObject({
+        outcome: 'ok',
+      })
       const refused = await giveWork(pm, asked)
       expect(refused).toMatchObject({ rail: CANNOT_BE_STARTED, retryable: false })
-      expect(refused.reason).toBe(
-        `${tools.A_PROVIDER_REFUSED_THE_START} ${tools.THE_NEW_AGENT_WAS_MADE}`,
-      )
-      // ⚑ It is true: the agent was made, so the same give again meets the profile it made.
+      expect(refused.reason).toBe(tools.A_PROVIDER_REFUSED_THE_START)
       expect(store.agentIdentities().some((one) => one.slug === 'archivist')).toBe(true)
       const again = await giveWork(pm, asked)
-      expect(again).toMatchObject({ outcome: 'refused', rail: 'that-profile-exists' })
+      expect(again).toMatchObject({ outcome: 'refused', rail: CANNOT_BE_STARTED })
 
-      // ⚑ The sentence is said after whichever sentence the launch's failure has: a sign-in too.
+      await callOn(pm, 'create_agent', { profile_slug: 'scribe' })
       gate.startFails = () => new AuthUnavailableError('claude', 'signed out')
       const signedOut = await giveWork(pm, { ...asked, profile: 'scribe' })
       expect(signedOut.rail).toBe('agent-did-not-start')
-      expect(String(signedOut.reason).endsWith(tools.THE_NEW_AGENT_WAS_MADE)).toBe(true)
+      expect(String(signedOut.reason)).not.toContain(tools.THE_NEW_AGENT_WAS_MADE)
       expect(store.agentIdentities().some((one) => one.slug === 'scribe')).toBe(true)
+      expect(store.piecesGivenBy(pm)).toEqual([])
     })
 
     it('a start that failed otherwise is agent-did-not-start with a closed reason, and the diagnostic reaches only the log', async () => {

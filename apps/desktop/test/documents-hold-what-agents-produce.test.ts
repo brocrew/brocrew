@@ -131,6 +131,8 @@ describe('635 · the store widens, and viewing never executes', () => {
     const giver = await personOpens()
     const given = await host.giveWork(
       {
+        to: 'new',
+        conversation_title: 'Write the answer',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'default',
         title: 'Write the answer',
@@ -173,6 +175,7 @@ describe('635 · the store widens, and viewing never executes', () => {
         'give_work',
         {
           profile: 'default',
+          to: piece.label,
           title: 'Read notes',
           brief: 'Read notes',
           definition_of_done: 'Notes read',

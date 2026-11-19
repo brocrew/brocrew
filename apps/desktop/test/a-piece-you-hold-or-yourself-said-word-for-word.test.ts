@@ -157,8 +157,11 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
     tools: AgentToolset,
     profile: string,
     title: string,
+    to = 'new',
   ): Promise<{ agent: string; piece: string; label: string }> => {
     const given = await callOn(tools, 'give_work', {
+      to,
+      ...(to === 'new' ? { conversation_title: title } : {}),
       definition_of_done: 'The requested result and its checks are recorded.',
       profile,
       title,
@@ -313,7 +316,7 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
   describe('§2 · F090 · update_work on an ended piece its caller holds', () => {
     it('🔴 taken back while its give still waited: close, new brief and title are told how and when, by nobody, as the model reads it', async () => {
       const { worker, pmTools, workerTools } = await aPmAndItsWorker('the first piece')
-      const waited = await aGive(pmTools, 'worker', 'the piece that never reached it')
+      const waited = await aGive(pmTools, 'worker', 'the piece that never reached it', worker)
       expect(waited.agent).toBe(worker)
       expect((await callOn(pmTools, 'withdraw_task', { piece: waited.label })).outcome).toBe('ok')
       const row = store.piecesOwnedBy(worker).find((one) => one.label === waited.label)

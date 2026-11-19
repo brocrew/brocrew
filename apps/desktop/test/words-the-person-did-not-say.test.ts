@@ -187,6 +187,8 @@ describe('413 · words the person did not say', () => {
     const pmTools = agentToolsFor(host, pm)
     const profile = siblings[0] as string
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'The work',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile,
       title: 'The work',
@@ -520,6 +522,8 @@ describe('413 · words the person did not say', () => {
       // numbered task."* This is the turn that was unattributed on BOTH providers. ⚑ **D-016** —
       // the give starts the PM, and the project is its first turn.
       const given = await callOn(bossTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'The project',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: pmProfile,
         title: 'The project',
@@ -530,6 +534,8 @@ describe('413 · words the person did not say', () => {
 
       const pmTools = agentToolsFor(host, pm)
       const task = await callOn(pmTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'Task 001',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: workerProfile,
         title: 'Task 001',
@@ -768,6 +774,7 @@ describe('413 · words the person did not say', () => {
       // ⚑ **D-016** — a second give from the same giver reaches the SAME conversation, and the
       // one-open-task rail that made `415` finish the first piece here first is gone.
       const second = await callOn(pmTools, 'give_work', {
+        to: worker,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile,
         title: 'Task two',
@@ -813,6 +820,7 @@ describe('413 · words the person did not say', () => {
       const { pmTools, worker, profile } = await workWasGiven('the first task')
       // ⚑ **D-016** — the second give is held behind the first brief's turn, as above.
       const second = await callOn(pmTools, 'give_work', {
+        to: worker,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile,
         title: 'Task two',

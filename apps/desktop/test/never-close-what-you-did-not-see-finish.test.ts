@@ -140,8 +140,11 @@ describe('400 · never close what you did not see finish', () => {
     tools: AgentToolset,
     profile: string,
     brief: string,
+    to = 'new',
   ): Promise<Given & { worker: string; delivery: unknown }> => {
     const given = await callOn(tools, 'give_work', {
+      to,
+      ...(to === 'new' ? { conversation_title: brief } : {}),
       definition_of_done: 'The requested result and its checks are recorded.',
       profile,
       title: brief,
@@ -570,7 +573,7 @@ describe('400 · never close what you did not see finish', () => {
       const running = other.piece
       await cardOn(other.worker)
       await cardOn(worker)
-      const held = await aGive(pmTools, profile, 'the held one')
+      const held = await aGive(pmTools, profile, 'the held one', worker)
       expect(held.worker).toBe(worker)
       expect(held.delivery, JSON.stringify(held)).toBe('held')
       const waiting = held.piece
@@ -637,7 +640,7 @@ describe('400 · never close what you did not see finish', () => {
     it('⛔ work still HELD when the app died gets its own cause, and the MESSAGE is still abandoned', async () => {
       const { worker, profile, pmTools } = await aPmAndItsWorker('claude', host, 'are you free?')
       await cardOn(worker)
-      const held = await aGive(pmTools, profile, 'the held one')
+      const held = await aGive(pmTools, profile, 'the held one', worker)
       expect(held.worker).toBe(worker)
       expect(held.delivery, JSON.stringify(held)).toBe('held')
       const waiting = held.piece

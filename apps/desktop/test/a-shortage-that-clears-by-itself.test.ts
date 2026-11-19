@@ -155,6 +155,8 @@ describe('705 · R39 — a shortage that clears by itself', () => {
     await host.close(await personOpens('worker'), window)
     const pm = await personOpens('pm')
     const given = await callOn(pm, 'give_work', {
+      to: 'new',
+      conversation_title: 'the work',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'the work',

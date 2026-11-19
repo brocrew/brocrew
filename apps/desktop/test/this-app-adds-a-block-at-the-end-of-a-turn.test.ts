@@ -277,6 +277,8 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
     const pm = await personOpens('pm', provider, approvalMode)
     const pmTools = theToolsetJustHandedOut()
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'the work this dispatch is about',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'the work this dispatch is about',
@@ -1792,6 +1794,8 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       // that names it as its giver, for a piece the work table has no row of.
       await host.close(await personOpens('stranger'), window)
       const started = await callOn(pmTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'another piece',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'stranger',
         title: 'another piece',

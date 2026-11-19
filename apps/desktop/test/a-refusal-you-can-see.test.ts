@@ -300,6 +300,8 @@ describe('405 · a refusal you can see', () => {
       const { call } = toolsOf(pm)
 
       const refused = await call('give_work', {
+        to: 'new',
+        conversation_title: 'do the thing',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'do the thing',
@@ -330,6 +332,8 @@ describe('405 · a refusal you can see', () => {
       const { call } = toolsOf(pm)
 
       const admitted = await call('give_work', {
+        to: 'new',
+        conversation_title: 'do the thing',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'do the thing',
@@ -352,6 +356,8 @@ describe('405 · a refusal you can see', () => {
       const { call } = toolsOf(pm)
 
       const refused = await call('give_work', {
+        to: 'new',
+        conversation_title: 'deeper',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'deeper',
@@ -381,6 +387,8 @@ describe('405 · a refusal you can see', () => {
       store.setSpawningEnabled(true)
       const { call } = toolsOf(pm)
       const admitted = await call('give_work', {
+        to: 'new',
+        conversation_title: 'deeper',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'deeper',
@@ -407,6 +415,8 @@ describe('405 · a refusal you can see', () => {
       // 1 · `SPAWN_RAILS` — refused by the spawning switch, a start rail that waits on a person.
       store.setSpawningEnabled(false)
       await call('give_work', {
+        to: 'new',
+        conversation_title: 'x',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'x',
@@ -431,6 +441,8 @@ describe('405 · a refusal you can see', () => {
       // lands, and nobody else has to decide anything.
       store.setSpawningEnabled(true)
       const given = await call('give_work', {
+        to: 'new',
+        conversation_title: 'a piece',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'a piece',
@@ -486,6 +498,8 @@ describe('405 · a refusal you can see', () => {
       const pm = await personOpens('pm')
       const { call } = toolsOf(pm)
       const spawned = await call('give_work', {
+        to: 'new',
+        conversation_title: 'work',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'work',
@@ -496,6 +510,8 @@ describe('405 · a refusal you can see', () => {
       // ⚑ **The CHILD asks for something that cannot be** — an agent nobody has made.
       const childTools = toolsOf(child)
       const refused = await childTools.call('give_work', {
+        to: 'new',
+        conversation_title: 'a helper of my own',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'nobody-by-that-name',
         title: 'a helper of my own',
@@ -527,6 +543,8 @@ describe('405 · a refusal you can see', () => {
       const answered = await give.call({
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
+        to: 'new',
+        conversation_title: 'Read the fictional input',
         title: 'Read the fictional input',
         brief: 'Read the fictional input',
         inputs: [file],
@@ -557,6 +575,8 @@ describe('405 · a refusal you can see', () => {
       const secretFolder = join(work, 'northwind-acquisition')
       mkdirSync(secretFolder, { recursive: true })
       const refused = await call('give_work', {
+        to: 'new',
+        conversation_title: secretPurpose,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: secretPurpose,
@@ -623,7 +643,7 @@ describe('405 · a refusal you can see', () => {
         if (one === undefined) throw new Error(`no such tool: ${name}`)
         return one.call(args)
       }
-      await expect(invoke('give_work', { profile: 'w', title: 'x', brief: 'x' })).rejects.toThrow(
+      await expect(invoke('give_work', { to: 'new', conversation_title: 'x', profile: 'w', title: 'x', brief: 'x' })).rejects.toThrow(
         'the door blew up',
       )
       expect(noted).toEqual([])
@@ -711,18 +731,29 @@ describe('405 · a refusal you can see', () => {
     }
 
     it('🔴 a sentence longer than a receipt keeps is on the row whole, and a new host on the same file reads it back', async () => {
+      await bringIdentityIntoBeing('worker')
       const pm = await personOpens('pm')
-      const refused = await toolsOf(pm).call('give_work', {
+      const { call } = toolsOf(pm)
+      const task = {
         definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'ghost',
+        profile: 'worker',
         title: 'count the rows',
         brief: 'count the rows',
+      }
+      expect(await call('give_work', {
+        ...task,
+        to: 'new',
+        conversation_title: `Fictional counts: ${'x'.repeat(170)}`,
+      })).toMatchObject({ outcome: 'ok' })
+      const refused = await call('give_work', task)
+      expect(refused).toMatchObject({
+        outcome: 'refused',
+        rail: 'name-the-conversation',
       })
-      expect(refused.outcome).toBe('refused')
       const reason = refused.reason as string
       // ⚑ Longer than the 200 characters a tool's own row keeps of what it answered.
       expect(reason.length).toBeGreaterThan(200)
-      const sentence = `${reason} ${permanenceInWords('no-such-profile', 'permanent')}`
+      const sentence = `${reason} ${permanenceInWords('name-the-conversation', 'permanent')}`
       expect(theRefusalIn(pm).told).toEqual({ text: sentence, dropped: 0 })
 
       await host.closeAll()
@@ -748,6 +779,8 @@ describe('405 · a refusal you can see', () => {
       // ⚑ One word, written into every field that carries a caller's own work.
       const WORK = 'Northwind'
       await call('give_work', {
+        to: 'new',
+        conversation_title: `${WORK} memo`,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: `${WORK} memo`,
@@ -832,18 +865,24 @@ describe('405 · a refusal you can see', () => {
         texts.push((await tool.call(args)).text)
       }
       await said('give_work', {
+        to: 'new',
+        conversation_title: 'x',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'x',
         brief: 'x',
       })
       await said('give_work', {
+        to: 'new',
+        conversation_title: 'x',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'ghost',
         title: 'x',
         brief: 'x',
       })
       await said('give_work', {
+        to: 'new',
+        conversation_title: 'x',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'x',
@@ -963,6 +1002,8 @@ describe('405 · a refusal you can see', () => {
 
     it('⚑ a refusal whose payload carries no sentence still writes its row, without one', () => {
       const facts = refusalIn('give_work', {
+        to: 'new',
+        conversation_title: 'A test conversation',
         outcome: 'refused',
         rail: 'spawning-disabled',
         permanence: 'while-this-holds',
@@ -1144,6 +1185,8 @@ describe('405 · a refusal you can see', () => {
       const pm = await personOpens('pm')
       const { call } = toolsOf(pm)
       await call('give_work', {
+        to: 'new',
+        conversation_title: 'x',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'nobody',
         title: 'x',
@@ -1189,6 +1232,8 @@ describe('405 · a refusal you can see', () => {
       // would reach a model as a broken tool, which is the one shape `307` says a refusal must never
       // wear.
       const refused = await call('give_work', {
+        to: 'new',
+        conversation_title: 'x',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'nobody',
         title: 'x',

@@ -324,6 +324,8 @@ describe('677 §1-§2 · a spawn reaches the provider with exactly the person’
   const spawn = async (parent: string, profileId: string): Promise<string> => {
     const outcome = await host.giveWork(
       {
+        to: 'new',
+        conversation_title: 'the work this is about',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: profileId,
         title: 'the work this is about',
@@ -475,6 +477,8 @@ describe('677 §1-§2 · a spawn reaches the provider with exactly the person’
     expect(store.setModelChoice('builder', OPUS_HIGH)).toBe(true)
     const outcome = await host.giveWork(
       {
+        to: 'new',
+        conversation_title: 'the work this is about',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'builder',
         title: 'the work this is about',
@@ -655,6 +659,8 @@ describe('677 §3 · a wake is a launch — 🔴 D-042: it replays the conversat
     const given = await callOn(pm, 'give_work', {
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
+      to: 'new',
+      conversation_title: 'migrate',
       title: 'migrate',
       brief: 'migrate',
       ...(recorded === undefined ? {} : { model: recorded }),
@@ -720,6 +726,8 @@ describe('677 §3 · a wake is a launch — 🔴 D-042: it replays the conversat
     const answered = await spawnTool.call({
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
+      to: 'new',
+      conversation_title: 'the work this is about',
       title: 'the work this is about',
       brief: 'the work this is about',
     })
@@ -811,6 +819,7 @@ describe('677 §3 · a wake is a launch — 🔴 D-042: it replays the conversat
       'the worker to hear it',
     )
     const switched = await callOn(pm, 'give_work', {
+      to: ended.piece,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'and then',

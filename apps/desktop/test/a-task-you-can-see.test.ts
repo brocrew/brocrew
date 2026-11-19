@@ -239,8 +239,14 @@ describe('379 · a task you can see', () => {
   }
 
   /** ⚑ **D-016 · a give to the worker, through the real tool** — the one door that gives work. */
-  const give = (pmTools: AgentToolset, brief: string): Promise<Record<string, unknown>> =>
+  const give = (
+    pmTools: AgentToolset,
+    brief: string,
+    to: string,
+  ): Promise<Record<string, unknown>> =>
     callOn(pmTools, 'give_work', {
+      to,
+      ...(to === 'new' ? { conversation_title: brief } : {}),
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: brief,
@@ -265,7 +271,7 @@ describe('379 · a task you can see', () => {
     first: Record<string, unknown>
   }> => {
     const { pm, pmTools } = await aPm()
-    const first = await give(pmTools, brief)
+    const first = await give(pmTools, brief, 'new')
     expect(first.outcome, JSON.stringify(first)).toBe('ok')
     return {
       pm,
@@ -374,7 +380,7 @@ describe('379 · a task you can see', () => {
       const { pm, pmTools } = await aPm()
       expect(store.piecesGivenBy(pm)).toEqual([])
 
-      const said = await give(pmTools, 'read the brief and report')
+      const said = await give(pmTools, 'read the brief and report', 'new')
       expect(said.outcome, JSON.stringify(said)).toBe('ok')
       const worker = said.agent as string
 
@@ -415,7 +421,7 @@ describe('379 · a task you can see', () => {
       // The child is BUSY still — the reply was a tool call inside its turn — so this one is held
       // and DOES have a message id. ⚑ **D-016 · and it reaches the SAME conversation** — one
       // conversation per helper per giver.
-      const held = await give(pmTools, 'second')
+      const held = await give(pmTools, 'second', worker)
       // ⚑ **D-022 · R3** — a held give answers `held`, the word the verbs that tell a piece's
       // holder share, where it answered `queued`.
       expect(held.delivery, JSON.stringify(held)).toBe('held')
@@ -450,7 +456,7 @@ describe('379 · a task you can see', () => {
 
       await cardOn(worker)
       await theWorkIsFinished(worker, workerTools)
-      await give(pmTools, 'second')
+      await give(pmTools, 'second', worker)
       const held = typesIn(worker)
       expect(held.indexOf('message_queued')).toBeGreaterThan(0)
       expect(held.lastIndexOf('work_given')).toBeGreaterThan(held.indexOf('message_queued'))
@@ -489,7 +495,7 @@ describe('379 · a task you can see', () => {
       const { worker, pmTools, workerTools } = await aPmAndItsWorker('the first thing')
       await cardOn(worker)
       const first = await theWorkIsFinished(worker, workerTools)
-      const held = await give(pmTools, 'the second')
+      const held = await give(pmTools, 'the second', worker)
       expect(held.delivery, JSON.stringify(held)).toBe('held')
       const heldMessageId = lastQueuedMessageId(worker)
       const second = store.piecesOwnedBy(worker)[1]?.piece ?? ''
@@ -523,7 +529,7 @@ describe('379 · a task you can see', () => {
       const { pm, worker, pmTools, workerTools } = await aPmAndItsWorker('the first thing')
       await cardOn(worker)
       const first = await theWorkIsFinished(worker, workerTools)
-      const held = await give(pmTools, 'the second')
+      const held = await give(pmTools, 'the second', worker)
       expect(held.delivery, JSON.stringify(held)).toBe('held')
       const heldMessageId = lastQueuedMessageId(worker)
       const second = store.piecesOwnedBy(worker)[1]?.piece ?? ''
@@ -537,7 +543,7 @@ describe('379 · a task you can see', () => {
 
       // ⚑ **A third piece**, and it is the one the ending below acts on. ⚠️ It is held, then flushed
       // by the turn ending, so it is genuinely being driven when the conversation is ended under it.
-      const third = await give(pmTools, 'the third')
+      const third = await give(pmTools, 'the third', worker)
       expect(third.delivery, JSON.stringify(third)).toBe('held')
       const running = store.piecesOwnedBy(worker)[2]?.piece ?? ''
       await letTheTurnFinish(worker)
@@ -611,7 +617,7 @@ describe('379 · a task you can see', () => {
       const { pm, worker, pmTools, workerTools } = await aPmAndItsWorker('the running one')
       await cardOn(worker)
       await theWorkIsFinished(worker, workerTools)
-      const first = await give(pmTools, 'held first')
+      const first = await give(pmTools, 'held first', worker)
       expect(first.delivery, JSON.stringify(first)).toBe('held')
       const firstMessageId = lastQueuedMessageId(worker)
       await letTheTurnFinish(worker)
@@ -621,7 +627,7 @@ describe('379 · a task you can see', () => {
       )
       await cardOn(worker)
       await theWorkIsFinished(worker, workerTools, 'the held one is done')
-      const second = await give(pmTools, 'held second')
+      const second = await give(pmTools, 'held second', worker)
       expect(second.delivery, JSON.stringify(second)).toBe('held')
       const secondMessageId = lastQueuedMessageId(worker)
       expect(secondMessageId).not.toBe(firstMessageId)
@@ -741,7 +747,7 @@ describe('379 · a task you can see', () => {
       const { pm, worker, pmTools, workerTools } = await aPmAndItsWorker('the first thing')
       await cardOn(worker)
       await theWorkIsFinished(worker, workerTools)
-      const held = await give(pmTools, 'the second')
+      const held = await give(pmTools, 'the second', worker)
       expect(held.delivery, JSON.stringify(held)).toBe('held')
       const heldMessageId = lastQueuedMessageId(worker)
       expect(store.piecesOwnedBy(worker).map((piece) => piece.endedAt === null)).toEqual([
@@ -772,10 +778,10 @@ describe('379 · a task you can see', () => {
       const { pm, worker, pmTools, workerTools } = await aPmAndItsWorker('one')
       await cardOn(worker)
       await theWorkIsFinished(worker, workerTools)
-      const cancelled = await give(pmTools, 'two')
+      const cancelled = await give(pmTools, 'two', worker)
       expect(cancelled.delivery, JSON.stringify(cancelled)).toBe('held')
       await host.cancelQueuedMessage(worker, lastQueuedMessageId(worker), speakingAs(pm))
-      const carried = await give(pmTools, 'three')
+      const carried = await give(pmTools, 'three', worker)
       expect(carried.delivery, JSON.stringify(carried)).toBe('held')
       await letTheTurnFinish(worker)
       await waitFor(() => store.piecesOwnedBy(worker).length === 3, 'all three pieces')
@@ -897,7 +903,7 @@ describe('379 · a task you can see', () => {
       const { worker, pmTools, workerTools } = await aPmAndItsWorker('the running one')
       await cardOn(worker)
       await theWorkIsFinished(worker, workerTools)
-      const held = await give(pmTools, 'the held one')
+      const held = await give(pmTools, 'the held one', worker)
       expect(held.delivery, JSON.stringify(held)).toBe('held')
       const piece = store.piecesOwnedBy(worker)[1]?.piece ?? ''
       expect(stateOf(worker, piece)).toBe('waiting')
@@ -1002,10 +1008,10 @@ describe('379 · a task you can see', () => {
       const { pm, worker, pmTools, workerTools } = await aPmAndItsWorker('one')
       await cardOn(worker)
       await theWorkIsFinished(worker, workerTools)
-      const held = await give(pmTools, 'two')
+      const held = await give(pmTools, 'two', worker)
       expect(held.delivery, JSON.stringify(held)).toBe('held')
       await host.cancelQueuedMessage(worker, lastQueuedMessageId(worker), speakingAs(pm))
-      await give(pmTools, 'three')
+      await give(pmTools, 'three', worker)
 
       const under = store.rootOf(pm)
       if (under === null) throw new Error('the PM has no root')
@@ -1164,7 +1170,7 @@ describe('379 · a task you can see', () => {
       // test is about is HELD: the hold reads `status() !== 'idle'`, which `working` satisfies.
       await letTheTurnFinish(worker)
       await busyWithNoCard()
-      const held = await give(pmTools, 'the held one')
+      const held = await give(pmTools, 'the held one', worker)
       expect(held.delivery, JSON.stringify(held)).toBe('held')
       const heldMessageId = lastQueuedMessageId(worker)
       const queuedRows = (): number =>

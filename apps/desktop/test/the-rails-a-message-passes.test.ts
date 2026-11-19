@@ -160,6 +160,8 @@ describe('374 · the rails a message passes', () => {
     const pm = await personOpens(pmProfile, root, pmMode)
     const pmTools = theToolsetJustHandedOut()
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'the work this dispatch is about',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: workerProfile,
       title: 'the work this dispatch is about',
@@ -301,6 +303,8 @@ describe('374 · the rails a message passes', () => {
       )
       const pmTools = theToolsetJustHandedOut()
       const given = await callOn(pmTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'with no questions',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker2',
         title: 'with no questions',
@@ -324,6 +328,8 @@ describe('374 · the rails a message passes', () => {
       )
       const askingTools = theToolsetJustHandedOut()
       const asking = await callOn(askingTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'with questions',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker2',
         title: 'with questions',

@@ -178,6 +178,8 @@ describe('553 · anyone may ask; work needs a relationship', () => {
     const boss = await personOpens('lead')
     const bossTools = theToolsetJustHandedOut()
     const given = await callOn(bossTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'the work',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'hand',
       title: 'the work',
@@ -228,6 +230,8 @@ describe('553 · anyone may ask; work needs a relationship', () => {
       // to the one conversation this caller has with that agent — none yet, so one it starts —
       // and nothing at all reached the conversation a person opened.
       const given = await callOn(bossTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'for me',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'scribe',
         title: 'for me',
@@ -243,6 +247,8 @@ describe('553 · anyone may ask; work needs a relationship', () => {
       // and D-014 refuses it at every word: a desk in the same room is not a conversation you
       // started.
       const nearby = await callOn(bossTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'for me',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'archivist',
         title: 'for me',
@@ -265,6 +271,7 @@ describe('553 · anyone may ask; work needs a relationship', () => {
       // ⚑ **REACHED · work to the agent of a conversation this caller STARTED** — the one
       // relationship the rule admits, and it needs nobody to open a sheet.
       const handed = await callOn(bossTools, 'give_work', {
+        to: child,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'hand',
         title: 'the thing',
@@ -308,6 +315,8 @@ describe('553 · anyone may ask; work needs a relationship', () => {
       expect(staffed.outcome, JSON.stringify(staffed)).toBe('ok')
       // ⚑ **D-016 · starting it and giving it work are one act** — the give starts it.
       const given = await callOn(pmTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'the piece',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'fresh-hand',
         title: 'the piece',
@@ -367,6 +376,8 @@ describe('553 · anyone may ask; work needs a relationship', () => {
       expect(store.piecesGivenBy(boss)).toHaveLength(before)
 
       const given = await callOn(bossTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'the thing',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'hand',
         title: 'the thing',
@@ -416,7 +427,7 @@ describe('553 · anyone may ask; work needs a relationship', () => {
     // ⚑ **Landing D-014 · `1014 M23`**: what a model is told about giving work is what the rail
     // does. A sentence offering another way in sends it to a door that is permanently shut. ⚑
     // **D-016** — the message tool sends work to `give_work`, and the give says where work goes.
-    it('⛔ the description sends work to give_work, which goes only to your own conversation', async () => {
+    it('the description sends work to give_work, which names a destination', async () => {
       const { bossTools } = await aBossItsChildAndAStranger()
       const tool = bossTools.tools.find((one) => one.name === 'message_agent')
       if (tool === undefined) throw new Error('message_agent is not published')
@@ -425,9 +436,7 @@ describe('553 · anyone may ask; work needs a relationship', () => {
       expect(tool.description).not.toContain('granted you more')
       const give = bossTools.tools.find((one) => one.name === 'give_work')
       if (give === undefined) throw new Error('give_work is not published')
-      expect(give.description).toContain(
-        'By default, it goes to the one conversation you have with that agent',
-      )
+      expect(give.description).toContain('to says where it goes')
     })
   })
 

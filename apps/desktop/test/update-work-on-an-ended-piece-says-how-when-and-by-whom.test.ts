@@ -278,6 +278,8 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
     await bringIdentityIntoBeing(workerProfile)
     const pm = await personOpens(`pm-${String(nth)}`)
     const given = await callOn(pm, 'give_work', {
+      to: 'new',
+      conversation_title: 'the work',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: workerProfile,
       title: 'the work',
@@ -523,6 +525,7 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
 
     // A second give to the same profile reaches the same worker, HELD behind the running turn's card.
     const held = await callOn(pm, 'give_work', {
+      to: worker,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: workerProfile,
       title: 'the held one',

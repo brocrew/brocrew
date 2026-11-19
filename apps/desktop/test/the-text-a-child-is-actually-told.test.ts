@@ -904,6 +904,8 @@ describe('§8 · what the host tells the reader, at a launch and at a reopen', (
     const pm = await personOpens(DEFAULT_PROFILE_ID)
     const pmTools = handed.at(-1) as AgentToolset
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'The text',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'The text',
@@ -937,6 +939,8 @@ describe('§8 · what the host tells the reader, at a launch and at a reopen', (
     const pm = await personOpens(DEFAULT_PROFILE_ID)
     const pmTools = handed.at(-1) as AgentToolset
     const first = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'Build the pages',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'Build the pages',
@@ -946,11 +950,13 @@ describe('§8 · what the host tells the reader, at a launch and at a reopen', (
     const worker = first.agent as string
     const workerTools = handed.at(-1) as AgentToolset
     const second = await callOn(workerTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'Check the pages',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'helper',
       title: 'Check the pages',
       brief: 'check the pages',
-      piece: first.label,
+      under: first.label,
     })
     expect(second.outcome, JSON.stringify(second)).toBe('ok')
     expect(second.started).toBe(true)
@@ -962,6 +968,7 @@ describe('§8 · what the host tells the reader, at a launch and at a reopen', (
     expect((seen.at(-1) as InstructionContext).startedBy).toBe(byThePieceItGaveFrom)
 
     const third = await callOn(pmTools, 'give_work', {
+      to: first.label,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'Write the copy',
@@ -1011,6 +1018,8 @@ describe('§8 · what the host tells the reader, at a launch and at a reopen', (
 
     const brobotTools = handed.at(-1) as AgentToolset
     const admitted = await callOn(brobotTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'The delegation',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: PROJECT_MANAGER_PROFILE_ID,
       title: 'The delegation',
@@ -1021,6 +1030,8 @@ describe('§8 · what the host tells the reader, at a launch and at a reopen', (
 
     expect(host.setSpawningEnabled(false)).toEqual({ spawningEnabled: false })
     const refused = await callOn(brobotTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'The delegation',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'reviewer',
       title: 'The delegation',

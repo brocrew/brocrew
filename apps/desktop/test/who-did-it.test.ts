@@ -188,6 +188,8 @@ describe('477 · who did it', () => {
       window,
     )
     const given = await callOn(agentToolsFor(host, parent.sessionId), 'give_work', {
+      to: 'new',
+      conversation_title: 'raise the question',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: `worker-${label}`,
       title: 'raise the question',
@@ -478,6 +480,8 @@ describe('477 · who did it', () => {
     )
     const pmTools = agentToolsFor(host, pm.sessionId)
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'migrate the schema',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'held-worker',
       title: 'migrate the schema',

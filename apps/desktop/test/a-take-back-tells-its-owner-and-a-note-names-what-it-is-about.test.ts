@@ -243,6 +243,7 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     tools: AgentToolset,
     profile: string,
     title: string,
+    to: string,
     under?: string,
   ): Promise<{ agent: string; piece: string; label: string }> => {
     const given = await callOn(tools, 'give_work', {
@@ -250,7 +251,9 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
       profile,
       title,
       brief: title,
-      ...(under === undefined ? {} : { piece: under }),
+      to,
+      ...(to === 'new' ? { conversation_title: title } : {}),
+      ...(under === undefined ? {} : { under }),
     })
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     return {
@@ -274,7 +277,7 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     await bringIdentityIntoBeing('worker')
     const pm = await personOpens('pm')
     const pmTools = theToolsetJustHandedOut()
-    const given = await aGive(pmTools, 'worker', title)
+    const given = await aGive(pmTools, 'worker', title, 'new')
     return {
       pm,
       worker: given.agent,
@@ -369,7 +372,7 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
 
     // The paired positive first: a stopped owner that was NOT replaced is told, and its answer says so.
     await bringIdentityIntoBeing('helper')
-    const second = await aGive(pmTools, 'helper', 'second piece')
+    const second = await aGive(pmTools, 'helper', 'second piece', 'new')
     const helper = second.agent
     expect(helper).not.toBe(worker)
     await stop(helper)
@@ -408,8 +411,8 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
   it('the tell to the owner says to stop and not to reply, and lists only the pieces it gave that are still open', async () => {
     const { worker, pmTools, workerTools, label } = await aPmAndItsWorker('the piece')
     await bringIdentityIntoBeing('grandchild')
-    const first = await aGive(workerTools, 'grandchild', 'first child', label)
-    const second = await aGive(workerTools, 'grandchild', 'second child', label)
+    const first = await aGive(workerTools, 'grandchild', 'first child', 'new', label)
+    const second = await aGive(workerTools, 'grandchild', 'second child', first.label, label)
     expect(second.label).not.toBe(first.label)
     // Both children went to the one conversation the worker has with that agent.
     const grandchild = first.agent
@@ -616,7 +619,7 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
 
     // ⛔ Neither held nor given, and ended: a piece the pm gave another conversation, answered there.
     await bringIdentityIntoBeing('helper')
-    const other = await aGive(pmTools, 'helper', 'the other piece')
+    const other = await aGive(pmTools, 'helper', 'the other piece', 'new')
     expect(other.agent).not.toBe(worker)
     const otherReplied = await callOn(agentToolsFor(host, other.agent), 'reply_to_parent', {
       piece: other.label,
@@ -740,7 +743,7 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
   it('🔴 a follow-up naming a piece its sender gave another agent says so, and the call it points to goes; a name it cannot place points to a note without the piece', async () => {
     const { pm, worker, pmTools, workerTools } = await aPmAndItsWorker('the piece')
     await bringIdentityIntoBeing('helper')
-    const other = await aGive(pmTools, 'helper', 'the other piece')
+    const other = await aGive(pmTools, 'helper', 'the other piece', 'new')
     expect(other.agent).not.toBe(worker)
     // The pm follows up the helper's piece, addressed to the worker.
     const refused = await callWithWords(pmTools, 'message_agent', {
@@ -1022,8 +1025,8 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     const { pm, worker, pmTools, workerTools, label } = await aPmAndItsWorker('the piece')
     await bringIdentityIntoBeing('helper')
     await bringIdentityIntoBeing('reviewer')
-    const back = await aGive(pmTools, 'helper', 'the piece taken back')
-    const closed = await aGive(pmTools, 'reviewer', 'the piece closed')
+    const back = await aGive(pmTools, 'helper', 'the piece taken back', 'new')
+    const closed = await aGive(pmTools, 'reviewer', 'the piece closed', 'new')
     // ⚑ Each ends one way: answered by its holder, taken back and closed by the pm that gave them.
     const replied = await callOn(workerTools, 'reply_to_parent', {
       piece: label,
@@ -1072,7 +1075,7 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     }
     // ⚑ …and one taken back while its give still waited behind the holder's turn: the row that
     // ended it names nobody, so neither does the sentence.
-    const waited = await aGive(pmTools, 'worker', 'the piece that never reached it')
+    const waited = await aGive(pmTools, 'worker', 'the piece that never reached it', label)
     expect(waited.agent).toBe(worker)
     const tookItBack = await callOn(pmTools, 'withdraw_task', { piece: waited.label })
     expect(tookItBack.outcome, JSON.stringify(tookItBack)).toBe('ok')
@@ -1155,7 +1158,7 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
   it('⛔ a take-back of a name its caller neither holds nor gave keeps the word’s own sentence — a made-up label, another’s piece, a predecessor’s', async () => {
     const { pm, worker, pmTools, workerTools, label } = await aPmAndItsWorker('the piece')
     await bringIdentityIntoBeing('helper')
-    const other = await aGive(pmTools, 'helper', 'the other piece')
+    const other = await aGive(pmTools, 'helper', 'the other piece', 'new')
     const theGuess = refuseTool('not-a-piece-you-gave').reason
     expect(theGuess).toContain('or to nothing at all')
     for (const spelled of ['W99.99', other.label]) {
@@ -1181,7 +1184,7 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
 
   it('an ask that names no piece while a second piece still waits is about the one that has reached the asker', async () => {
     const { worker, pmTools, workerTools, piece, label } = await aPmAndItsWorker('first piece')
-    const second = await aGive(pmTools, 'worker', 'second piece')
+    const second = await aGive(pmTools, 'worker', 'second piece', label)
     expect(second.agent).toBe(worker)
     // The premise: the worker holds two open pieces, and the second's give is held behind the
     // turn it is in, so only the first has reached it (D-022 · R4).
@@ -1205,7 +1208,7 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
 
   it('an ask that names no piece while two have reached the asker is told to name one, and naming one is admitted', async () => {
     const { worker, pmTools, workerTools, label } = await aPmAndItsWorker('first piece')
-    const second = await aGive(pmTools, 'worker', 'second piece')
+    const second = await aGive(pmTools, 'worker', 'second piece', label)
     expect(second.agent).toBe(worker)
     // The premise: the worker holds two open pieces.
     expect(openPiecesOf(worker)).toHaveLength(2)
@@ -1257,7 +1260,7 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
   })
 
   it('an ask that names no piece while none is held is told there is no piece, and a fresh piece is then inferred', async () => {
-    const { worker, pmTools, workerTools } = await workAlreadyAnswered()
+    const { worker, pmTools, workerTools, label } = await workAlreadyAnswered()
     // The premise: the worker replied and went idle, so it holds nothing open.
     expect(openPiecesOf(worker)).toEqual([])
 
@@ -1275,7 +1278,7 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     expect(askedIn(worker)).toHaveLength(askedBefore)
 
     // The pm gives it a fresh piece: it holds exactly one, and the same unnamed ask infers it.
-    const fresh = await aGive(pmTools, 'worker', 'a fresh piece')
+    const fresh = await aGive(pmTools, 'worker', 'a fresh piece', label)
     expect(fresh.agent).toBe(worker)
     expect(openPiecesOf(worker).map((one) => one.piece)).toEqual([fresh.piece])
     const admitted = await callOn(workerTools, 'ask_question', {

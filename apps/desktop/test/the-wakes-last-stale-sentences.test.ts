@@ -178,6 +178,8 @@ describe('698 · the wake’s last stale sentences', () => {
     await host.close(await personOpens('worker'), window)
     const pm = await personOpens('pm')
     const given = await callOn(pm, 'give_work', {
+      to: 'new',
+      conversation_title: 'The work',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'The work',

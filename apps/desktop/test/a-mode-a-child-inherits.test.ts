@@ -243,6 +243,8 @@ const A_GIVE = {
   profile: 'worker',
   title: 'x',
   brief: 'x',
+  to: 'new',
+  conversation_title: 'x',
 } as const
 
 function startOf(out: GiveAdmission): { provider: Provider; approvalMode: ApprovalMode } | null {

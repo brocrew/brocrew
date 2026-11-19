@@ -552,6 +552,8 @@ describe('D-026 · the doors: every way a file is kept writes the title its byte
     // (1) ⚑ A give's inputs: one file with a heading, and one with none, in the SAME give.
     const brief = 'index it'
     const given = await callOn(pm, 'give_work', {
+      to: 'new',
+      conversation_title: 'the index',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'ali',
       title: 'the index',

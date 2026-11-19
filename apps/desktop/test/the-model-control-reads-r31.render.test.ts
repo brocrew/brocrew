@@ -543,6 +543,8 @@ describe('696 §6 · D-042 — a default a stand-in’s list admitted is what it
       window,
     )
     const answered = await callOn(pm, 'give_work', {
+      to: 'new',
+      conversation_title: 'work',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: slug,
       title: 'work',

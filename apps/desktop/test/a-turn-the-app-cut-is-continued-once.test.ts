@@ -965,10 +965,12 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
         window,
       )
       await settle()
+      await callOn(lead, 'create_agent', { profile_slug: 'agent-w' })
       const given = await callOn(lead, 'give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'agent-w',
-        new: true,
+        to: 'new',
+        conversation_title: 'build the thing',
         title: 'build the thing',
         brief: 'build the thing',
       })

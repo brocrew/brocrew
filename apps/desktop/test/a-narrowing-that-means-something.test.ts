@@ -222,6 +222,8 @@ describe('371 · a narrowing that means something', () => {
     for (const name of ['mid', 'deep']) await bringIdentityIntoBeing(name)
     const pm = await personOpens('pm', root)
     const spawned = await toolsOf(pm).call('give_work', {
+      to: 'new',
+      conversation_title: 'work in one package',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'mid',
       title: 'work in one package',
@@ -242,6 +244,8 @@ describe('371 · a narrowing that means something', () => {
     it('⚑ the child asking for its OWN descendant is placed there', async () => {
       const { mid } = await aChildDeepInTheSubtree()
       const allowed = await toolsOf(mid).call('give_work', {
+        to: 'new',
+        conversation_title: 'narrow further',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'deep',
         title: 'narrow further',
@@ -262,6 +266,8 @@ describe('371 · a narrowing that means something', () => {
       // ⚑ The control first (a refusal starts nothing): a relative name that is not there is
       // refused in the PARENT's terms.
       const missing = await toolsOf(mid).call('give_work', {
+        to: 'new',
+        conversation_title: 'a folder that is not there',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'deep',
         title: 'a folder that is not there',
@@ -273,6 +279,8 @@ describe('371 · a narrowing that means something', () => {
         `cwd does not exist: ${join(root, 'pkg', 'not-there')}`,
       )
       const relative = await toolsOf(mid).call('give_work', {
+        to: 'new',
+        conversation_title: 'a folder named from where I stand',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'deep',
         title: 'a folder named from where I stand',
@@ -286,6 +294,8 @@ describe('371 · a narrowing that means something', () => {
     it('⚑ a spawn that names NO folder inherits its parent`s, which is the ordinary case', async () => {
       const { mid } = await aChildDeepInTheSubtree()
       const allowed = await toolsOf(mid).call('give_work', {
+        to: 'new',
+        conversation_title: 'stay where you are',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'deep',
         title: 'stay where you are',
@@ -298,6 +308,8 @@ describe('371 · a narrowing that means something', () => {
     it('🔴 a BLANK folder is an absent one — before this it silently became the BroCrew workspace', async () => {
       const { mid } = await aChildDeepInTheSubtree()
       const allowed = await toolsOf(mid).call('give_work', {
+        to: 'new',
+        conversation_title: 'blank is not the workspace',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'deep',
         title: 'blank is not the workspace',
@@ -328,6 +340,8 @@ describe('371 · a narrowing that means something', () => {
       fsWatch.recording = true
       try {
         return await toolsOf(mid).call('give_work', {
+          to: 'new',
+          conversation_title: 'watched',
           definition_of_done: 'The requested result and its checks are recorded.',
           profile: 'deep',
           title: 'watched',
@@ -356,6 +370,8 @@ describe('371 · a narrowing that means something', () => {
       // ⚑ `726` · R92: refused by `folder-unusable` — a folder that does not exist — since a folder
       // outside the parent's (`cwd-outside-parent`, the rail this used) is no longer refused.
       const refused = await toolsOf(mid).call('give_work', {
+        to: 'new',
+        conversation_title: 'nothing is created',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'deep',
         title: 'nothing is created',
@@ -379,6 +395,8 @@ describe('371 · a narrowing that means something', () => {
       const inward = join(root, 'pkg', 'inward')
       symlinkSync(join(root, 'pkg', 'sub'), inward)
       const allowed = await toolsOf(mid).call('give_work', {
+        to: 'new',
+        conversation_title: 'in through a link',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'deep',
         title: 'in through a link',
@@ -425,6 +443,8 @@ describe('371 · a narrowing that means something', () => {
       // still believes something about this door that is not true: it is refused BY NAME.
       const { pm, mid } = await aChildDeepInTheSubtree()
       const refused = await toolsOf(mid).call('give_work', {
+        to: 'new',
+        conversation_title: 'give from somebody else',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'deep',
         title: 'give from somebody else',
@@ -440,6 +460,8 @@ describe('371 · a narrowing that means something', () => {
     it('⚠️ an argument NEITHER name knows still reaches the door and is named there (criterion 10)', async () => {
       const { mid } = await aChildDeepInTheSubtree()
       const refused = await toolsOf(mid).call('give_work', {
+        to: 'new',
+        conversation_title: 'x',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'deep',
         title: 'x',

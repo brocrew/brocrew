@@ -299,6 +299,8 @@ describe('414 · the origin a model is told', () => {
   ): Promise<APair> => {
     const title = 'The work'
     const given = await callOn(made.pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: title,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: made.workerProfile,
       title,
@@ -558,6 +560,8 @@ describe('414 · the origin a model is told', () => {
       // independence is now covered by this test rather than assumed by it.
       const made = await aPm()
       const given = await callOn(made.pmTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'The work',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: made.workerProfile,
         title: 'The work',
@@ -1079,6 +1083,8 @@ describe('414 · the origin a model is told', () => {
       // parent's profile starts one below itself, and never reaches the parent whatever id the frame
       // handed over.
       const upward = await callOn(workerTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'Up the tree',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: made.pmProfile,
         title: 'Up the tree',
@@ -1099,6 +1105,7 @@ describe('414 · the origin a model is told', () => {
       // profile reaches that very child, which is the conversation it started. ⚑ D-016: no reply
       // first — the one-open-task rail it was answered around is gone, and the busy child takes it.
       const downward = await callOn(made.pmTools, 'give_work', {
+        to: made.worker,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: store.identityOf(made.worker)?.profileSlug,
         title: 'Down the tree',

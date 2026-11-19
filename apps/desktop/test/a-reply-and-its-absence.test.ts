@@ -263,8 +263,11 @@ describe('393 · a reply, and its absence', () => {
     tools: AgentToolset,
     profile: string,
     text: string,
+    to = 'new',
   ): Promise<{ agent: string; piece: string; label: string }> => {
     const given = await callOn(tools, 'give_work', {
+      to,
+      ...(to === 'new' ? { conversation_title: text } : {}),
       definition_of_done: 'The requested result and its checks are recorded.',
       profile,
       title: text,
@@ -427,7 +430,7 @@ describe('393 · a reply, and its absence', () => {
       // ⚠️ **One fact over: a DIFFERENT piece, same caller, same everything else.** Without this the
       // refusal above would also pass against a tool that refused every second call. ⚑ **D-016** —
       // a second give to the same agent reaches the same worker.
-      const second = await giveTo(pmTools, siblings[0] as string, 'the second')
+      const second = await giveTo(pmTools, siblings[0] as string, 'the second', worker)
       expect(second.agent).toBe(worker)
       const next = second.piece
       expect(next).not.toBe(task)
@@ -457,6 +460,7 @@ describe('393 · a reply, and its absence', () => {
       // ⛔ **Called directly, not through `giveTo`**, so the raw result is read: a held give carries
       // no `message` property (`650` F3 — *reported as not queued*).
       const held = await callOn(pmTools, 'give_work', {
+        to: worker,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: siblings[0] as string,
         title: 'the held one',
@@ -493,7 +497,7 @@ describe('393 · a reply, and its absence', () => {
       // at that moment, which is the only time a second piece of work is admitted (HO-021 §1
       // property 3). ⚠️ The control is unchanged in what it controls for: a reply that lands, from
       // the same caller, against a task that has not ended.
-      const alive = await giveTo(pmTools, siblings[0] as string, 'the live one')
+      const alive = await giveTo(pmTools, siblings[0] as string, 'the live one', worker)
       expect(alive.agent).toBe(worker)
       const open = alive.piece
       expect(open).not.toBe(heldTask)

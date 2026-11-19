@@ -140,6 +140,8 @@ describe('Windows-suite Codex delegation round trip', () => {
 
   const give = async (parent: string, profile: string) => {
     const given = await call(parent, 'give_work', {
+      to: 'new',
+      conversation_title: `Read ${profile}`,
       profile,
       title: `Read ${profile}`,
       brief: `Read the made-up ${profile} note`,

@@ -179,3 +179,12 @@ export const CONTENT_OF_FORM: Readonly<Record<DocumentForm, DocumentContent['as'
   pdf: 'file',
   file: 'file',
 }
+
+export interface GivenInput {
+  /** `res_<32 hex>` — `newResourceId`. */
+  readonly resource: string
+  readonly title: string
+  readonly name: string
+  readonly sha256: string
+  readonly bytes: number
+}

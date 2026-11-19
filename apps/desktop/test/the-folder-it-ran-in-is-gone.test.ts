@@ -341,6 +341,8 @@ describe('724 · `717` F-2 — the folder it ran in is gone', () => {
     const folder = join(root, 'the-workers-folder')
     mkdirSync(folder, { recursive: true })
     const given = await callOn(pm, 'give_work', {
+      to: 'new',
+      conversation_title: 'the work',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'the work',

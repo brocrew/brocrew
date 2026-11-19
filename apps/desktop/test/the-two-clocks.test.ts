@@ -293,6 +293,8 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
     const pm = await personOpens(pmProfile, on, provider)
     const pmTools = agentToolsFor(on, pm)
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'The work',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: workerProfile,
       title: 'The work',

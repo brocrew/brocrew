@@ -250,6 +250,8 @@ describe('394 · a question finds a person, and a permission never travels', () 
     const pmTools = toolsOf(pm)
     // ⛔ No grant is set for the give (D-014: any agent may give work to any agent).
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'the work this dispatch is about',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: workerProfile,
       title: 'the work this dispatch is about',

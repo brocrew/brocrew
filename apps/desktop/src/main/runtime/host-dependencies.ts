@@ -304,8 +304,6 @@ export interface RuntimeHostDeps {
    * only through a folder it has checked is its own.
    */
   resourcesRoot?(): string
-  /** Makes an exclusive piece directory under the app-owned output root, after admission. */
-  makeWorkerPieceFolder?(piece: string): string
   /** Reap commands in a worker's own output folder after its provider has stopped. */
   stopWorkerCommands?(cwd: string, occupied: () => readonly string[]): Promise<void>
   /**

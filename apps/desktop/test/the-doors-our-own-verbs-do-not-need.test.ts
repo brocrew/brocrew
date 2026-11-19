@@ -205,6 +205,8 @@ describe('486 · the doors our own verbs do not need', () => {
     await bringIdentityIntoBeing(profileId)
     const parent = await personOpens('pm')
     const given = await toolsOf(parent).call('give_work', {
+      to: 'new',
+      conversation_title: 'work',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: profileId,
       title: 'work',

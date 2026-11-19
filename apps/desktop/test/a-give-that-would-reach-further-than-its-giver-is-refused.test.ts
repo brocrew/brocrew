@@ -84,6 +84,8 @@ const A_GIVE = {
   profile: 'worker',
   title: 'x',
   brief: 'x',
+  to: 'new',
+  conversation_title: 'x',
 } as const
 
 /** The start a give admitted, or `null` when it was refused. */
@@ -193,15 +195,17 @@ describe('2 · the postures the comparison is asked about', () => {
   })
 })
 
-describe('3 · a lookup is not a rail', () => {
-  it('a conversation the giver already has is found before the rail is asked, and takes the give whatever the comparison would say', () => {
+describe('3 · an addressed conversation is not a start', () => {
+  it('a conversation the giver addresses takes the give whatever the comparison would say', () => {
     const giver = aParent('claude', 'ask')
     comparison.says = [CARD]
 
     const found = admitGive(
-      A_GIVE,
+      { ...A_GIVE, to: 'W1.2', conversation_title: undefined },
       asThe(giver),
-      factsWith(giver, 'claude', { helperAs: () => 'sess_found' }),
+      factsWith(giver, 'claude', {
+        conversationAt: () => ({ conversation: 'sess_found', profileId: 'worker', provider: 'claude' }),
+      }),
     )
     expect(found.ok).toBe(true)
     if (!found.ok) throw new Error('the found conversation was refused')
@@ -212,15 +216,11 @@ describe('3 · a lookup is not a rail', () => {
       grant: null,
       notGranted: null,
     })
-    // The comparison is not even made for a lookup (D-038 F-C).
+    // The comparison is not made for an existing conversation (D-038 F-C).
     expect(comparison.calls).toHaveLength(0)
 
-    // The paired positive: the same armed comparison, nothing found, and the rail refuses.
-    const notFound = admitGive(
-      A_GIVE,
-      asThe(giver),
-      factsWith(giver, 'claude', { helperAs: () => null }),
-    )
+    // The paired positive: the same armed comparison, a new conversation, and the rail refuses.
+    const notFound = admitGive(A_GIVE, asThe(giver), factsWith(giver, 'claude'))
     expect(notFound.ok).toBe(false)
     expect(refusalOf(notFound).rail).toBe('wider-than-its-parent')
     expect(comparison.calls).toHaveLength(1)

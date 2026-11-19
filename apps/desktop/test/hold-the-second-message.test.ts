@@ -260,6 +260,8 @@ describe('657 · hold the second message instead of refusing it', () => {
     const call = toolsOf(parent)
     const given = payload(
       await call('give_work', {
+        to: 'new',
+        conversation_title: 'X',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'X',
@@ -293,6 +295,7 @@ describe('657 · hold the second message instead of refusing it', () => {
     expect(
       payload(
         await call('give_work', {
+          to: child,
           profile: 'worker',
           title: 'Go',
           brief: 'go',
@@ -318,6 +321,7 @@ describe('657 · hold the second message instead of refusing it', () => {
   }> => {
     const given = payload(
       await call('give_work', {
+        to: child,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'The task',
@@ -371,6 +375,7 @@ describe('657 · hold the second message instead of refusing it', () => {
     const given = {
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
+      to: child,
       title: 'Then this',
       brief: 'then do this',
     }
@@ -497,12 +502,14 @@ describe('657 · hold the second message instead of refusing it', () => {
     // when the loser reads the conversation.
     sendGate = latch()
     const first = call('give_work', {
+      to: child,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'This',
       brief: 'do this',
     })
     const second = call('give_work', {
+      to: child,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'And this',
@@ -542,6 +549,7 @@ describe('657 · hold the second message instead of refusing it', () => {
     const { child, call } = await aParentAndItsIdleChild()
     sendGate = latch()
     const first = call('give_work', {
+      to: child,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'This',

@@ -153,12 +153,13 @@ describe('a to-do for a person', () => {
   const aPieceGiven = async (
     brobot: string,
     title: string,
-    first: boolean,
+    to: string,
   ): Promise<{ ada: string; piece: string; label: string }> => {
+    if (to === 'new') await ok(agentToolsFor(host, brobot), 'create_agent', { profile_slug: 'worker' })
     const given = await ok(agentToolsFor(host, brobot), 'give_work', {
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
-      ...(first ? { new: true } : {}),
+      ...(to === 'new' ? { to, conversation_title: title } : { to }),
       title,
       brief: title.toLowerCase(),
     })
@@ -174,7 +175,7 @@ describe('a to-do for a person', () => {
       window,
     )
     await settle()
-    const { ada, piece } = await aPieceGiven(brobot, 'Build the pages', true)
+    const { ada, piece } = await aPieceGiven(brobot, 'Build the pages', 'new')
     return { brobot, ada, piece }
   }
   /** Ada asks about W1.1, of her giver or of a person; the question's id. */
@@ -290,7 +291,7 @@ describe('a to-do for a person', () => {
 
   it('the listed row names the agent a wait on an agent is on', async () => {
     const { brobot, ada } = await aHelperWithAPiece()
-    const other = await aPieceGiven(brobot, 'Write the copy', false)
+    const other = await aPieceGiven(brobot, 'Write the copy', 'W1.1')
     const listedAda = () =>
       [...host.resumableSessions(), ...host.unresumableSessions()].find(
         (one) => one.sessionId === ada,
@@ -298,11 +299,13 @@ describe('a to-do for a person', () => {
     // The row reads its newest open piece, W1.2: it waits on W1.1.1, which Ada gave another agent.
     const theNewest = (on: Record<string, unknown>) =>
       call(agentToolsFor(host, ada), 'update_work', { piece: other.label, status: 'waiting', on })
+    await call(agentToolsFor(host, ada), 'create_agent', { profile_slug: 'writer' })
     const handedOn = await call(agentToolsFor(host, ada), 'give_work', {
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'writer',
-      new: true,
-      piece: 'W1.1',
+      to: 'new',
+      conversation_title: 'Check the copy',
+      under: 'W1.1',
       title: 'Check the copy',
       brief: 'check the copy',
     })
@@ -374,10 +377,12 @@ describe('a to-do for a person', () => {
 
   it('the listed row names the agent a wait its giver set on its own question is on', async () => {
     const { brobot, ada } = await aHelperWithAPiece()
+    await ok(agentToolsFor(host, brobot), 'create_agent', { profile_slug: 'writer' })
     const gave = await ok(agentToolsFor(host, brobot), 'give_work', {
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'writer',
-      new: true,
+      to: 'new',
+      conversation_title: 'Write the copy',
       title: 'Write the copy',
       brief: 'write the copy',
     })
@@ -571,10 +576,12 @@ describe('a to-do for a person', () => {
       copyOfTheCopy: string
     }> => {
       const { brobot, ada } = await aHelperWithAPiece()
+      await ok(agentToolsFor(host, ada), 'create_agent', { profile_slug: 'writer' })
       const gave = await ok(agentToolsFor(host, ada), 'give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'writer',
-        new: true,
+        to: 'new',
+        conversation_title: 'Write the copy',
         title: 'Write the copy',
         brief: 'write the copy',
       })
@@ -895,10 +902,12 @@ describe('a to-do for a person', () => {
 
     it('a question addressed to a person whose routing lost who gave the work still ends with every copy of it', async () => {
       const { brobot, ada } = await aHelperWithAPiece()
+      await ok(agentToolsFor(host, ada), 'create_agent', { profile_slug: 'writer' })
       const gave = await ok(agentToolsFor(host, ada), 'give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'writer',
-        new: true,
+        to: 'new',
+        conversation_title: 'Write the copy',
         title: 'Write the copy',
         brief: 'write the copy',
       })

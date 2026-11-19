@@ -366,6 +366,8 @@ describe('621 · the conversation that is waiting', () => {
 
       // ⚑ **D-016 · the give** — it starts Ada's conversation, and its brief is her first turn.
       const given = await callOn(tools, 'give_work', {
+        to: 'new',
+        conversation_title: 'the thing',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'the thing',
@@ -421,6 +423,8 @@ describe('621 · the conversation that is waiting', () => {
       const pm = await personOpens(DEFAULT_PROFILE_ID)
       const tools = theToolsetJustHandedOut()
       const given = await callOn(tools, 'give_work', {
+        to: 'new',
+        conversation_title: 'the work',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'the work',
@@ -673,6 +677,8 @@ describe('621 · the conversation that is waiting', () => {
       // ⚑ **D-016 · the give starts the worker, and its brief is the worker's first turn** — so
       // there is no *before* in which it holds nothing: from here its turn is on the work.
       const given = await callOn(tools, 'give_work', {
+        to: 'new',
+        conversation_title: 'the report',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'the report',

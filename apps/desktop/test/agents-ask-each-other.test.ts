@@ -196,6 +196,8 @@ describe('D-009 · agents ask each other, and the answer comes back', () => {
     await host.close((await personOpens('worker')).id, window)
     const pm = await personOpens(DEFAULT_PROFILE_ID)
     const given = await callOn(pm.tools, 'give_work', {
+      to: 'new',
+      conversation_title: 'The notes',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'The notes',
@@ -226,6 +228,8 @@ describe('D-009 · agents ask each other, and the answer comes back', () => {
     await host.close((await personOpens('reviewer')).id, window)
     const ada = await personOpens(DEFAULT_PROFILE_ID, 'auto')
     const given = await callOn(ada.tools, 'give_work', {
+      to: 'new',
+      conversation_title: 'The schema',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'reviewer',
       title: 'The schema',

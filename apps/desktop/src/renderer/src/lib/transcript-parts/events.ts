@@ -334,7 +334,9 @@ export function foldEvent(
      * piece is the Work tab's and `list_tasks`' to show; a status line lands on a take-on's card
      * (the arm above). ⚑ The raw Events tab prints every one of them (`describe-event.ts`).
      */
+    // A conversation's title, like a piece's, is the header's and the lists' to show.
     case 'work_retitled':
+    case 'titled':
       return
     case 'work_taken_back':
     case 'work_closed':

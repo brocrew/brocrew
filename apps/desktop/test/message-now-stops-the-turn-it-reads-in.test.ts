@@ -172,6 +172,8 @@ describe('message now · a message or an answer can stop the running turn', () =
     title: string,
   ): Promise<{ agent: string; piece: string; label: string }> => {
     const given = await callOn(tools, 'give_work', {
+      to: 'new',
+      conversation_title: title,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile,
       title,

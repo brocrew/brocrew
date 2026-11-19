@@ -231,6 +231,8 @@ describe('D-016 · a new agent is asked for by name, and a give names the piece 
     await aKnownAgent('helper')
     const pm = await personOpens('pm')
     const first = await callOn(pm.tools, 'give_work', {
+      to: 'new',
+      conversation_title: 'Piece one',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'Piece one',
@@ -240,6 +242,7 @@ describe('D-016 · a new agent is asked for by name, and a give names the piece 
     expect(first.started).toBe(true)
     const workerTools = order.at(-1) as AgentToolset
     const second = await callOn(pm.tools, 'give_work', {
+      to: first.label,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'Piece two',
@@ -264,51 +267,53 @@ describe('D-016 · a new agent is asked for by name, and a give names the piece 
   }
 
   describe('R3 · a new agent is asked for by name', () => {
-    it.each([null, 'none'])(
-      'a give with new: true records its creator with retired grant %s',
-      async (retiredGrant) => {
-        const pm = await personOpens('pm')
-        db.prepare("UPDATE agent_identity SET can_create_agents = ? WHERE slug = 'pm'").run(
-          retiredGrant,
-        )
-        // A launch-made identity records the app as creator.
-        expect(createdByOf('pm')).toEqual({ by: 'this-app' })
-        expect(createdByOf('archivist')).toBeUndefined()
+    it('a separate creation records the giver as creator before the first give', async () => {
+      const pm = await personOpens('pm')
+      // The control: a launch-made identity reads `this-app`, which is exactly what a give that
+      // left the creating to the launch would write for the new one.
+      expect(createdByOf('pm')).toEqual({ by: 'this-app' })
+      expect(createdByOf('archivist')).toBeUndefined()
 
-        const ghost = await callOn(pm.tools, 'give_work', {
-          definition_of_done: 'The requested result and its checks are recorded.',
-          profile: 'ghost',
-          title: 'Haunt',
-          brief: 'boo',
-        })
-        expect(ghost.rail, JSON.stringify(ghost)).toBe('no-such-profile')
-        expect(createdByOf('ghost')).toBeUndefined()
+      // A typo is still refused, and makes nothing.
+      const ghost = await callOn(pm.tools, 'give_work', {
+        to: 'new',
+        conversation_title: 'Haunt',
+        definition_of_done: 'The requested result and its checks are recorded.',
+        profile: 'ghost',
+        title: 'Haunt',
+        brief: 'boo',
+      })
+      expect(ghost.rail, JSON.stringify(ghost)).toBe('no-such-profile')
+      expect(createdByOf('ghost')).toBeUndefined()
 
-        const given = await callOn(pm.tools, 'give_work', {
-          definition_of_done: 'The requested result and its checks are recorded.',
-          profile: 'archivist',
-          title: 'Index the ledger',
-          brief: 'index it',
-          new: true,
-        })
-        expect(given.outcome, JSON.stringify(given)).toBe('ok')
-        expect(given.started).toBe(true)
-        expect(createdByOf('archivist')).toEqual(by('pm'))
-        expect(creatorColumn('archivist')).toBe(agentIdentityRowId('pm'))
-        expect(store.identityOf(given.agent as string)?.profileSlug).toBe('archivist')
-      },
-    )
+      await callOn(pm.tools, 'create_agent', { profile_slug: 'archivist' })
+      const given = await callOn(pm.tools, 'give_work', {
+        definition_of_done: 'The requested result and its checks are recorded.',
+        profile: 'archivist',
+        title: 'Index the ledger',
+        brief: 'index it',
+        to: 'new',
+        conversation_title: 'Index the ledger',
+      })
+      expect(given.outcome, JSON.stringify(given)).toBe('ok')
+      expect(given.started).toBe(true)
+      expect(createdByOf('archivist')).toEqual(by('pm'))
+      expect(creatorColumn('archivist')).toBe(agentIdentityRowId('pm'))
+      expect(store.identityOf(given.agent as string)?.profileSlug).toBe('archivist')
+    })
 
     it("a new agent's name is folded once - `Archivist` is the identity `archivist`, and its conversation starts under that spelling", async () => {
       await aKnownAgent('worker')
       const pm = await personOpens('pm')
 
+      await callOn(pm.tools, 'create_agent', { profile_slug: 'Archivist' })
       const given = await callOn(pm.tools, 'give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'Archivist',
+        profile: 'archivist',
         title: 'Index the ledger',
         brief: 'index it',
-        new: true,
+        to: 'new',
+        conversation_title: 'Index the ledger',
       })
       expect(given.outcome, JSON.stringify(given)).toBe('ok')
       const identities = store
@@ -319,6 +324,8 @@ describe('D-016 · a new agent is asked for by name, and a give names the piece 
 
       // A known agent keeps the spelling it was asked for: the fold is for a NEW name only.
       const known = await callOn(pm.tools, 'give_work', {
+        to: 'new',
+        conversation_title: 'Build it',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'Worker',
         title: 'Build it',
@@ -338,19 +345,20 @@ describe('D-016 · a new agent is asked for by name, and a give names the piece 
       const ask = {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
+        to: 'new',
+        conversation_title: 'Build it',
         title: 'Build it',
         brief: 'build it',
       }
 
-      const refused = await callOn(pm.tools, 'give_work', { ...ask, new: true })
+      const refused = await callOn(pm.tools, 'create_agent', { profile_slug: 'worker' })
       expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
-      expect(refused.rail).toBe('that-profile-exists')
+      expect(refused.rail).toBe('agent-name-taken')
       expect(refused.permanence).toBe('permanent')
       expect(host.sessionIds.length).toBe(sessionsBefore)
       expect(order.length).toBe(launchesBefore)
       expect(store.childrenOf(pmRoot.piece)).toEqual([])
 
-      // The same request with `new` left out uses the agent that exists.
       const went = await callOn(pm.tools, 'give_work', ask)
       expect(went.outcome, JSON.stringify(went)).toBe('ok')
       expect(went.started).toBe(true)
@@ -359,10 +367,12 @@ describe('D-016 · a new agent is asked for by name, and a give names the piece 
       expect(store.childrenOf(pmRoot.piece)).toHaveLength(1)
     })
 
-    it('`new: true` is refused the same when the giver already has a conversation with that agent, and nothing reaches it', async () => {
+    it('creating a duplicate profile leaves its conversation alone, and addressing it continues the job', async () => {
       await aKnownAgent('worker')
       const pm = await personOpens('pm')
       const first = await callOn(pm.tools, 'give_work', {
+        to: 'new',
+        conversation_title: 'First piece',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'First piece',
@@ -376,18 +386,18 @@ describe('D-016 · a new agent is asked for by name, and a give names the piece 
       const ask = {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
+        to: first.label,
         title: 'Second piece',
         brief: 'do the second',
       }
 
-      const refused = await callOn(pm.tools, 'give_work', { ...ask, new: true })
+      const refused = await callOn(pm.tools, 'create_agent', { profile_slug: 'worker' })
       expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
-      expect(refused.rail).toBe('that-profile-exists')
+      expect(refused.rail).toBe('agent-name-taken')
       expect(host.sessionIds.length).toBe(sessionsBefore)
       expect(store.piecesOwnedBy(worker)).toHaveLength(1)
       expect(JSON.stringify(ledger(worker))).not.toContain('do the second')
 
-      // The same give with `new` left out goes to the conversation it has.
       const went = await callOn(pm.tools, 'give_work', ask)
       expect(went.outcome, JSON.stringify(went)).toBe('ok')
       expect(went.agent).toBe(worker)
@@ -406,6 +416,8 @@ describe('D-016 · a new agent is asked for by name, and a give names the piece 
       const ask = {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'helper',
+        to: 'new',
+        conversation_title: 'Sub',
         title: 'Sub',
         brief: 'sub',
       }
@@ -418,7 +430,7 @@ describe('D-016 · a new agent is asked for by name, and a give names the piece 
       expect(host.sessionIds.length).toBe(sessionsBefore)
       expect(order.length).toBe(launchesBefore)
 
-      const given = await callOn(workerTools, 'give_work', { ...ask, piece: l2 })
+      const given = await callOn(workerTools, 'give_work', { ...ask, under: l2 })
       expect(given.outcome, JSON.stringify(given)).toBe('ok')
       expect(given.label).toBe(`${l2}.1`)
       expect(store.workById(given.piece as string)?.parent).toBe(p2)
@@ -433,6 +445,8 @@ describe('D-016 · a new agent is asked for by name, and a give names the piece 
       const sessionsBefore = host.sessionIds.length
 
       const given = await callOn(workerTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'Sub',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'helper',
         title: 'Sub',
@@ -449,6 +463,8 @@ describe('D-016 · a new agent is asked for by name, and a give names the piece 
       await aKnownAgent('helper')
       const pm = await personOpens('pm')
       const first = await callOn(pm.tools, 'give_work', {
+        to: 'new',
+        conversation_title: 'Only piece',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'Only piece',
@@ -467,6 +483,8 @@ describe('D-016 · a new agent is asked for by name, and a give names the piece 
       const ask = {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'helper',
+        to: 'new',
+        conversation_title: 'Sub',
         title: 'Sub',
         brief: 'sub',
       }
@@ -493,11 +511,13 @@ describe('D-016 · a new agent is asked for by name, and a give names the piece 
       if (pmRoot === null) throw new Error('a conversation a person opened has a root')
 
       const byId = await callOn(workerTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'Sub by id',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'helper',
         title: 'Sub by id',
         brief: 'sub by id',
-        piece: p2,
+        under: p2,
       })
       expect(byId.outcome, JSON.stringify(byId)).toBe('ok')
       expect(store.workById(byId.piece as string)?.parent).toBe(p2)
@@ -505,22 +525,25 @@ describe('D-016 · a new agent is asked for by name, and a give names the piece 
 
       // The label reaches the same piece.
       const byLabel = await callOn(workerTools, 'give_work', {
+        to: byId.label,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'helper',
         title: 'Sub by label',
         brief: 'sub by label',
-        piece: l2,
+        under: l2,
       })
       expect(byLabel.outcome, JSON.stringify(byLabel)).toBe('ok')
       expect(store.workById(byLabel.piece as string)?.parent).toBe(p2)
 
       // A piece the worker does not hold is refused by its id, as by its label.
       const notHeld = await callOn(workerTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'Sub of the root',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'helper',
         title: 'Sub of the root',
         brief: 'sub of the root',
-        piece: pmRoot.piece,
+        under: pmRoot.piece,
       })
       expect(notHeld.outcome, JSON.stringify(notHeld)).toBe('refused')
       expect(notHeld.rail).toBe('no-piece-you-hold-by-that-name')
@@ -532,35 +555,38 @@ describe('D-016 · a new agent is asked for by name, and a give names the piece 
       await aKnownAgent('worker')
       const pm = await personOpens('pm')
       const granted = `${root} while`
-      const give = (title: string, folder?: string) =>
+      const give = (title: string, to: string, folder?: string) =>
         wholeCallOn(pm.tools, 'give_work', {
           definition_of_done: 'The requested result and its checks are recorded.',
           profile: 'worker',
           title,
           brief: `do ${title}`,
+          to,
+          ...(to === 'new' ? { conversation_title: title } : {}),
           ...(folder === undefined ? {} : { folder }),
         })
 
       // The give that STARTS the conversation uses the folder it was given.
-      const started = await give('Started', root)
+      const started = await give('Started', 'new', root)
       expect(started.structured?.outcome, started.text).toBe('ok')
       expect(started.structured?.started).toBe(true)
       expect(started.text).not.toContain(granted)
       expect(started.structured?.folder).toEqual({ folder: root, use: 'working-folder' })
+      const to = started.structured?.label as string
 
       // ⚑ Found: the folder is granted to the conversation it has, for that piece (W4.189).
-      const found = await give('Found', root)
+      const found = await give('Found', to, root)
       expect(found.structured?.outcome, found.text).toBe('ok')
       expect(found.structured?.started).toBe(false)
       expect(found.text).toContain(granted)
       expect(found.structured?.folder).toEqual({ folder: root, use: 'grant' })
 
       // A blank folder is an absent one, and so is none.
-      const blank = await give('Blank', '   ')
+      const blank = await give('Blank', to, '   ')
       expect(blank.structured?.outcome, blank.text).toBe('ok')
       expect(blank.text).not.toContain(granted)
       expect(blank.structured?.folder).toBeUndefined()
-      const none = await give('None')
+      const none = await give('None', to)
       expect(none.structured?.outcome, none.text).toBe('ok')
       expect(none.text).not.toContain(granted)
     })
@@ -569,6 +595,8 @@ describe('D-016 · a new agent is asked for by name, and a give names the piece 
       await aKnownAgent('worker')
       const pm = await personOpens('pm')
       const first = await callOn(pm.tools, 'give_work', {
+        to: 'new',
+        conversation_title: 'First job',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'First job',
@@ -583,6 +611,7 @@ describe('D-016 · a new agent is asked for by name, and a give names the piece 
       )
 
       const second = await callOn(pm.tools, 'give_work', {
+        to: first.label,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'Second job',

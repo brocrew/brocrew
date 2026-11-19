@@ -244,10 +244,12 @@ describe('F097 · a person owes the agent that answered them', () => {
     )
     await settle()
     const brobotTools = agentToolsFor(host, brobot)
+    await callOn(brobotTools, 'create_agent', { profile_slug: 'worker' })
     const given = await callOn(brobotTools, 'give_work', {
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
-      new: true,
+      to: 'new',
+      conversation_title: 'Build the pages',
       title: 'Build the pages',
       brief: 'build the pages',
     })
@@ -425,6 +427,7 @@ describe('F097 · a person owes the agent that answered them', () => {
     const { brobot, brobotTools, ada, piece } = await aGiverAndItsHelper()
     const giveMore = (title: string): Promise<Record<string, unknown>> =>
       callOn(brobotTools, 'give_work', {
+        to: ada,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title,

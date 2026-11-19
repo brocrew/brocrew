@@ -209,6 +209,8 @@ describe('424 §A · where BroBot’s own conversation runs', () => {
       // identity is not live when the real spawn below asks for it.
       const missing = join(planted, 'not-here')
       const refused = await toolsOf(brobot.sessionId)('give_work', {
+        to: 'new',
+        conversation_title: 'Work in a folder that is not there',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: PROJECT_MANAGER_PROFILE_ID,
         title: 'Work in a folder that is not there',
@@ -222,6 +224,8 @@ describe('424 §A · where BroBot’s own conversation runs', () => {
       // 🔴 **R92**: the same give, into the project's folder, is admitted and placed there.
       // ⚑ **D-016** — `give_work` starts the conversation its giver does not have yet, in `folder`.
       const admitted = await toolsOf(brobot.sessionId)('give_work', {
+        to: 'new',
+        conversation_title: 'Work in the repository',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: PROJECT_MANAGER_PROFILE_ID,
         title: 'Work in the repository',

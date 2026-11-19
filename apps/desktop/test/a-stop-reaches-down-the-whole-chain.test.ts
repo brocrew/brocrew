@@ -171,6 +171,8 @@ describe('629 · a stop reaches down the whole chain', () => {
     title: string,
   ): Promise<{ agent: string; piece: string; label: string }> => {
     const given = await callOn(tools, 'give_work', {
+      to: 'new',
+      conversation_title: title,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile,
       title,
@@ -411,15 +413,17 @@ describe('629 · a stop reaches down the whole chain', () => {
       const request = {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: siblingProfile,
+        to: 'new',
+        conversation_title: 'a helper',
         title: 'a helper',
         brief: 'a helper',
       }
-      const refused = await host.giveWork({ ...request, piece: aliLabel }, asAgent(brobot))
+      const refused = await host.giveWork({ ...request, under: aliLabel }, asAgent(brobot))
       if (refused.ok) throw new Error(`the grandparent's give was admitted: ${refused.owner}`)
       expect(refused.refusal.rail).toBe('no-piece-you-hold-by-that-name')
 
       // ⚑ **THE PAIR one fact over** — the same request from the conversation that holds the piece.
-      const allowed = await host.giveWork({ ...request, piece: aliLabel }, asAgent(ali))
+      const allowed = await host.giveWork({ ...request, under: aliLabel }, asAgent(ali))
       expect(allowed.ok, JSON.stringify(allowed)).toBe(true)
       if (allowed.ok) expect(store.parentOf(allowed.owner)).toBe(ali)
     })

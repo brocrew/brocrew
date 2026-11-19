@@ -193,6 +193,8 @@ describe('an answer a quit cannot lose', () => {
     const children: string[] = []
     for (const kid of kids) {
       const given = await callOn(leadTools, 'give_work', {
+        to: 'new',
+        conversation_title: `The ${kid} half of the work`,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: kid,
         title: `The ${kid} half of the work`,
@@ -429,6 +431,8 @@ describe('an answer a quit cannot lose', () => {
       // An ordinary child the giver started itself is not taken over.
       await bringIntoBeing('a-worker')
       const givenToChild = await callOn(giverTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'An ordinary piece of work',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'a-worker',
         title: 'An ordinary piece of work',

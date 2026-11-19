@@ -268,6 +268,8 @@ describe('642 · who can I talk to', () => {
     // ⚑ **D-014** — any agent may start a conversation as any existing identity, so no grant is set.
     // ⚑ **D-016** — the give starts the conversation BroBot does not have with `worker` yet.
     const spawned = await callOn(brobotTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'The half it hands off',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'The half it hands off',
@@ -342,6 +344,8 @@ describe('642 · who can I talk to', () => {
     await personOpens(DEFAULT_PROFILE_ID)
     const tools = theToolsetJustHandedOut()
     const gave = await callOn(tools, 'give_work', {
+      to: 'new',
+      conversation_title: 'The work it hands off',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'The work it hands off',
@@ -410,6 +414,8 @@ describe('642 · who can I talk to', () => {
       const tools = theToolsetJustHandedOut()
       // ⚑ **D-016** — the give starts the child; its brief is the child's first turn.
       const spawned = await callOn(tools, 'give_work', {
+        to: 'new',
+        conversation_title: 'The notes',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'The notes',
@@ -505,6 +511,8 @@ describe('642 · who can I talk to', () => {
       // helper per giver), so the second half is another identity's, and starts a second child.
       await host.close(await personOpens('helper'), window)
       const second = await callOn(tools, 'give_work', {
+        to: 'new',
+        conversation_title: 'The other half',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'helper',
         title: 'The other half',

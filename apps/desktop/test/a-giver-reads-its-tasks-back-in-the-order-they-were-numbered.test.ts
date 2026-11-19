@@ -145,8 +145,11 @@ describe('D-016a · a giver reads its pieces back in the order they were numbere
     pmTools: AgentToolset,
     profile: string,
     brief: string,
+    to: string,
   ): Promise<{ owner: string; label: string }> => {
     const given = await callOn(pmTools, 'give_work', {
+      to,
+      ...(to === 'new' ? { conversation_title: brief } : {}),
       definition_of_done: 'The requested result and its checks are recorded.',
       profile,
       title: brief,
@@ -162,11 +165,16 @@ describe('D-016a · a giver reads its pieces back in the order they were numbere
   it('🔴 A .1, B .2, A .3 — the giver reads .1, .2, .3, though no ledger holds them in that order', async () => {
     const { pm, root, pmTools } = await aPm()
 
-    const first = await gives(pmTools, 'worker-a', 'the first piece, to the first worker')
-    const second = await gives(pmTools, 'worker-b', 'the second piece, to the second worker')
+    const first = await gives(pmTools, 'worker-a', 'the first piece, to the first worker', 'new')
+    const second = await gives(pmTools, 'worker-b', 'the second piece, to the second worker', 'new')
     // ⚑ **The same conversation, busy on its first piece** — the give finds the one it has and holds
     // the brief for it: a helper that is working takes more (D-016 · the stall rule).
-    const third = await gives(pmTools, 'worker-a', 'the third piece, back to the first worker')
+    const third = await gives(
+      pmTools,
+      'worker-a',
+      'the third piece, back to the first worker',
+      first.label,
+    )
     const a = first.owner
     const b = second.owner
     expect(third.owner).toBe(a)
@@ -202,8 +210,8 @@ describe('D-016a · a giver reads its pieces back in the order they were numbere
   it('⚑ the positive beside it — a giver whose pieces all sit in ONE ledger reads them in order too', async () => {
     const { pm, root, pmTools } = await aPm()
 
-    const first = await gives(pmTools, 'worker-a', 'the first piece')
-    const second = await gives(pmTools, 'worker-a', 'the second piece')
+    const first = await gives(pmTools, 'worker-a', 'the first piece', 'new')
+    const second = await gives(pmTools, 'worker-a', 'the second piece', first.label)
     expect(second.owner).toBe(first.owner)
 
     // ⚠️ **One helper, so there is nothing to interleave** — this arm passes with the sort and

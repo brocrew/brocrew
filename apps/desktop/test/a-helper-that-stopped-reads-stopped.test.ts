@@ -193,10 +193,12 @@ describe('a helper that stopped with a piece open reads as stopped', () => {
     )
     await settle()
     turnEnds.nextState = endState
+    await callOn(agentToolsFor(host, brobot), 'create_agent', { profile_slug: 'worker' })
     const given = await callOn(agentToolsFor(host, brobot), 'give_work', {
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
-      new: true,
+      to: 'new',
+      conversation_title: 'Build the pages',
       title: 'Build the pages',
       brief: 'build the pages',
     })
@@ -423,10 +425,12 @@ describe('a helper that stopped with a piece open reads as stopped', () => {
     it('leaves another helper’s piece stopped when one helper’s held row can’t be read', async () => {
       const { brobot, ada, piece } = await aClosedHelper()
       turnEnds.nextState = 'interrupted'
+      await callOn(agentToolsFor(host, brobot), 'create_agent', { profile_slug: 'writer' })
       const given = await callOn(agentToolsFor(host, brobot), 'give_work', {
         definition_of_done: 'The copy is written and checked.',
         profile: 'writer',
-        new: true,
+        to: 'new',
+        conversation_title: 'Write the copy',
         title: 'Write the copy',
         brief: 'write the copy',
       })

@@ -461,6 +461,12 @@ export function refuseTool(
 }
 
 /** A spawn rail's refusal, carried over MCP **unchanged** — see the module note. */
+export function refusalSaid(reason: string): string {
+  if (reason.startsWith('Not sent:')) return reason
+  const words = reason.replace(/,? so nothing was sent(?=[.;]|$)/u, '')
+  return `Not sent: ${words}`
+}
+
 export function carryRailRefusal(refusal: SpawnRefusal): PublishedRefusal {
   return {
     outcome: 'refused',

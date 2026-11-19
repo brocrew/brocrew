@@ -268,6 +268,8 @@ describe('439 · BroBot asks a PM, and both conversations hold both halves', () 
   }> => {
     const { brobot, brobotTools } = await aManagerAPersonOpened()
     const given = await callOn(brobotTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'the migration',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'pm',
       title: 'the migration',
@@ -378,6 +380,8 @@ describe('439 · BroBot asks a PM, and both conversations hold both halves', () 
       // on its slot. ⚠️ **Measured where the two readings DIVERGE**, which is the only place this
       // clause is worth asserting: everything else about the two sends is identical.
       const spawned = await callOn(brobotTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'something with nobody watching',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: PROJECT_MANAGER_PROFILE_ID,
         title: 'something with nobody watching',
@@ -390,6 +394,8 @@ describe('439 · BroBot asks a PM, and both conversations hold both halves', () 
       // test above: work goes only to a conversation the giver started, and every agent holds the
       // same grants, so the two gives differ only in who is behind the giver.
       const started = await callOn(childTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'carry on',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'pm',
         title: 'carry on',
@@ -471,6 +477,8 @@ describe('439 · BroBot asks a PM, and both conversations hold both halves', () 
       // walked. ⚑ **So the rig becomes that owner too** — a conversation a give started belongs to
       // nobody until something claims it, and a sink is four members any caller can satisfy.
       const spawned = await callOn(brobotTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'reached by something new',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: PROJECT_MANAGER_PROFILE_ID,
         title: 'reached by something new',

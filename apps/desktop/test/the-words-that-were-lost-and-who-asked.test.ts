@@ -258,6 +258,8 @@ describe('729 · the words that were lost, and who asked', () => {
     const pmHandle = handles[before]
     if (pmHandle === undefined) throw new Error('the giver has no handle')
     const given = await callOn(pm, 'give_work', {
+      to: 'new',
+      conversation_title: 'The migration',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'The migration',
@@ -392,6 +394,8 @@ describe('729 · the words that were lost, and who asked', () => {
       // ⚑ **D-016 · the boss's brief is the giver's first turn**, and on this handle that turn WORKS
       // until something ends it — the busy giver the answer is held for.
       const givenPm = await callOn(boss, 'give_work', {
+        to: 'new',
+        conversation_title: 'The plan',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'pm',
         title: 'The plan',
@@ -401,6 +405,8 @@ describe('729 · the words that were lost, and who asked', () => {
       expect(decorateNext).toBeNull()
       const pm = givenPm.agent as string
       const given = await callOn(pm, 'give_work', {
+        to: 'new',
+        conversation_title: 'The migration',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'The migration',

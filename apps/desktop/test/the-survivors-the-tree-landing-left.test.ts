@@ -327,6 +327,8 @@ describe('the survivors the tree landing left', () => {
       })
 
       const first = await callOn(pm, 'give_work', {
+        to: 'new',
+        conversation_title: 'The first piece',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker-a',
         title: 'The first piece',
@@ -337,6 +339,8 @@ describe('the survivors the tree landing left', () => {
       await waitFor(() => reached === 1, 'the first notice at the parent’s door')
 
       const second = await callOn(pm, 'give_work', {
+        to: 'new',
+        conversation_title: 'The second piece',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker-b',
         title: 'The second piece',
@@ -376,6 +380,8 @@ describe('the survivors the tree landing left', () => {
       await host.close(await personOpens('worker', 'auto'), window)
       const pm = await personOpens('pm', 'auto')
       const given = await callOn(pm, 'give_work', {
+        to: 'new',
+        conversation_title: 'The schema',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'The schema',
@@ -409,6 +415,7 @@ describe('the survivors the tree landing left', () => {
 
       const said = (): string[] => read(worker).filter((text) => text.includes('and another piece'))
       const named = await callOn(next, 'give_work', {
+        to: label,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'And another',
@@ -425,6 +432,7 @@ describe('the survivors the tree landing left', () => {
       const back = await callOn(next, 'withdraw_task', { piece: label })
       expect(back.outcome, JSON.stringify(back)).toBe('ok')
       const admitted = await callOn(next, 'give_work', {
+        to: label,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'And a third',

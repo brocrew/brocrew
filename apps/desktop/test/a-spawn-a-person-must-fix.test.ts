@@ -162,6 +162,8 @@ describe('710 · R51 — a spawn a person must fix', () => {
   /** ⚑ **D-016 · `give_work` is the door that starts a conversation now** — `worker` has none with the PM. */
   const spawnWorker = (pm: string): Promise<Record<string, unknown>> =>
     callOn(pm, 'give_work', {
+      to: 'new',
+      conversation_title: 'The work',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'The work',

@@ -177,6 +177,8 @@ describe('what an agent is told about its work', () => {
     const pm = await personOpens('pm')
     const pmTools = theToolsetJustHandedOut()
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'The work',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'The work',
@@ -257,6 +259,7 @@ describe('what an agent is told about its work', () => {
       const { worker, pmTools } = await aPmAndItsWorker('first')
       await cardOn(worker)
       const held = await callOn(pmTools, 'give_work', {
+        to: worker,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'The second',

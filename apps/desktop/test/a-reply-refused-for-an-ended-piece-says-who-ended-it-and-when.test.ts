@@ -440,8 +440,11 @@ describe('D-025 · §3-§6 · a refused reply through the real host', () => {
     tools: AgentToolset,
     profile: string,
     text: string,
+    to = 'new',
   ): Promise<{ agent: string; piece: string; label: string }> => {
     const given = await callOn(tools, 'give_work', {
+      to,
+      ...(to === 'new' ? { conversation_title: text } : {}),
       definition_of_done: 'The requested result and its checks are recorded.',
       profile,
       title: text,
@@ -519,7 +522,7 @@ describe('D-025 · §3-§6 · a refused reply through the real host', () => {
 
     // The paired positive, same caller and same call shape: the worker now holds nothing open, a
     // new piece reaches the same worker, and a reply that names it lands.
-    const next = await giveTo(pmTools, siblings[0] as string, 'the next one')
+    const next = await giveTo(pmTools, siblings[0] as string, 'the next one', worker)
     expect(next.agent).toBe(worker)
     expect(next.piece).not.toBe(task)
     const landed = await reply(worker, { piece: next.piece, outcome: 'done', summary: 'the next' })
@@ -548,7 +551,7 @@ describe('D-025 · §3-§6 · a refused reply through the real host', () => {
     expect(JSON.stringify(refused)).not.toContain('giver')
 
     // The paired positive: a piece given after the take-back is answered by the same worker.
-    const next = await giveTo(pmTools, siblings[0] as string, 'the one after')
+    const next = await giveTo(pmTools, siblings[0] as string, 'the one after', worker)
     expect(next.agent).toBe(worker)
     expect(
       (await reply(worker, { piece: next.piece, outcome: 'done', summary: 'the one after' }))
@@ -588,6 +591,7 @@ describe('D-025 · §3-§6 · a refused reply through the real host', () => {
     // A second give is HELD behind the running turn's card. Called directly so the raw result is
     // read: a held give carries no message property.
     const held = await callOn(pmTools, 'give_work', {
+      to: worker,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: siblings[0] as string,
       title: 'the held one',
@@ -646,7 +650,7 @@ describe('D-025 · §3-§6 · a refused reply through the real host', () => {
     // The paired positive: §4's explicit take-back of an OPEN piece says "taken back by <name>" in
     // the same words, so the absence above is the row's and not the sentence's. And a live sibling
     // given after the cancel is answered by the same worker.
-    const alive = await giveTo(pmTools, siblings[0] as string, 'the live one')
+    const alive = await giveTo(pmTools, siblings[0] as string, 'the live one', worker)
     expect(alive.agent).toBe(worker)
     expect(alive.piece).not.toBe(heldTask)
     expect(

@@ -165,6 +165,8 @@ describe('what a person must fix, said once', () => {
    */
   const spawnWorker = (pm: string): Promise<Record<string, unknown>> =>
     callOn(pm, 'give_work', {
+      to: 'new',
+      conversation_title: 'The work',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'The work',
@@ -179,6 +181,8 @@ describe('what a person must fix, said once', () => {
    */
   const aWorkerThatStopped = async (pm: string): Promise<{ worker: string; label: string }> => {
     const given = await callOn(pm, 'give_work', {
+      to: 'new',
+      conversation_title: 'The schema',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'The schema',

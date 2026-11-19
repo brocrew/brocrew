@@ -255,8 +255,11 @@ describe('F086 · F087 · F088 · a message names a piece however it ended', () 
     tools: AgentToolset,
     profile: string,
     title: string,
+    to = 'new',
   ): Promise<{ agent: string; piece: string; label: string }> => {
     const given = await callOn(tools, 'give_work', {
+      to,
+      ...(to === 'new' ? { conversation_title: title } : {}),
       definition_of_done: 'The requested result and its checks are recorded.',
       profile,
       title,
@@ -672,7 +675,7 @@ describe('F086 · F087 · F088 · a message names a piece however it ended', () 
 
   it('🔴 §5 · of two pieces one conversation holds, a note names the one it names — by the title it was given since — and never the other', async () => {
     const { worker, pmTools, label } = await aPmAndItsWorker('first piece')
-    const second = await aGive(pmTools, 'worker', 'second piece')
+    const second = await aGive(pmTools, 'worker', 'second piece', worker)
     // The premise: both pieces went to the one conversation.
     expect(second.agent).toBe(worker)
     const retitled = await callOn(pmTools, 'update_work', {

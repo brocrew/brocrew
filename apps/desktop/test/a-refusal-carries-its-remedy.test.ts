@@ -367,6 +367,8 @@ describe('425 · a refusal carries its remedy', () => {
     const giver = await personOpens()
     const given = await host.giveWork(
       {
+        to: 'new',
+        conversation_title: 'write the long form',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'write the long form',
@@ -460,7 +462,6 @@ describe('425 · a refusal carries its remedy', () => {
           // ⚑ **The nineteenth**: a give to a service whose waits reach too far to check; the same
           // give once some of that work has ended.
           'SPAWN_RAILS · its-waits-cannot-all-be-checked',
-          'SPAWN_RAILS · no-free-worker-at-capacity',
           // ⚑ **The twentieth**: a stop of a service on another caller's piece; the same stop once
           // that piece has ended.
           'INTERRUPT_RAILS · that-service-is-on-another-callers-piece',
@@ -477,7 +478,7 @@ describe('425 · a refusal carries its remedy', () => {
       )
       // ⚑ One fewer — `its-work-has-stalled` went, so a give is no longer refused over a stall;
       // services added two. Four more: a piece that cannot end with the copies of its questions.
-      expect(carrying).toHaveLength(31)
+      expect(carrying).toHaveLength(30)
     })
 
     it('🔴 the named rails with no remedy are independently not retryable', () => {
@@ -492,8 +493,12 @@ describe('425 · a refusal carries its remedy', () => {
       // deciding, which is `a-person-is-being-asked`'s row exactly. ⚑ **D-016** — that word and
       // `no-person-to-ask` went with proposals, and are gone from the roster below.
       const NAMED_WITHOUT_REMEDIES: readonly (readonly [string, string])[] = [
-        ['SPAWN_RAILS', 'worker-binding-is-unknown'],
-        ['SPAWN_RAILS', 'parallel-not-for-a-service'],
+        ['SPAWN_RAILS', 'name-the-conversation'],
+        ['SPAWN_RAILS', 'no-conversation-by-that-address'],
+        ['SPAWN_RAILS', 'not-that-agents-conversation'],
+        ['SPAWN_RAILS', 'its-provider-is-fixed'],
+        ['SPAWN_RAILS', 'conversation-title-needed'],
+        ['SPAWN_RAILS', 'a-service-has-one-conversation'],
         ['INTERRUPT_RAILS', 'a-person-is-being-asked'],
         // ⚑ **`496`'s rail, and the biconditional decided it before the table was written.** ⛔ The
         // PO named a real act — *withdraw the work, or wait for the person* — and neither half makes
@@ -572,7 +577,7 @@ describe('425 · a refusal carries its remedy', () => {
       // ⚑ Four more — a piece that cannot end with the copies of its questions, two words at two
       // vocabularies.
       const retryable = everyRail().filter((one) => one.permanence === 'while-this-holds')
-      expect(retryable).toHaveLength(31)
+      expect(retryable).toHaveLength(30)
       expect(retryable.filter((one) => one.remedy === null)).toEqual([])
     })
 
@@ -858,7 +863,6 @@ describe('425 · a refusal carries its remedy', () => {
           'SPAWN_RAILS · it-would-wait-on-itself',
           // A give to a service whose waits can't all be checked: the same give, once some has ended.
           'SPAWN_RAILS · its-waits-cannot-all-be-checked',
-          'SPAWN_RAILS · no-free-worker-at-capacity',
           // A stop of a service on another caller's piece: the same stop, once that piece has ended.
           'INTERRUPT_RAILS · that-service-is-on-another-callers-piece',
           // A message about a piece queued at a service: the same message, once it is handed over.
@@ -1042,6 +1046,8 @@ describe('425 · a refusal carries its remedy', () => {
       const call = callerOf(host, pm)
       const secret = 'Northwind: do not write this into a ledger'
       await call('give_work', {
+        to: 'new',
+        conversation_title: secret,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'ghost',
         title: secret,
@@ -1135,6 +1141,8 @@ describe('425 · a refusal carries its remedy', () => {
       // rail refuses nothing now.
       const pm = await personOpens('pm', 'auto')
       const first = await callerOf(host, pm)('give_work', {
+        to: 'new',
+        conversation_title: 'work',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'work',
@@ -1185,6 +1193,8 @@ describe('425 · a refusal carries its remedy', () => {
       // ⛔ **Standing rule 3 over the SAME reader** — a call admitted writes no row and carries no
       // remedy.
       const sent = await call('give_work', {
+        to: 'new',
+        conversation_title: 'work',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'work',

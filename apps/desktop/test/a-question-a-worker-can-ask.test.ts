@@ -280,6 +280,8 @@ describe('437 · a question a worker can ask its parent', () => {
     const pm = await personOpens('pm')
     const pmTools = theToolsetJustHandedOut()
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'the work this dispatch is about',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'the work this dispatch is about',
@@ -619,6 +621,8 @@ describe('437 · a question a worker can ask its parent', () => {
       const spawner = await personOpens('pm')
       const spawnerTools = theToolsetJustHandedOut()
       const given = await callOn(spawnerTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'the work this question is about',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'the work this question is about',
@@ -638,6 +642,8 @@ describe('437 · a question a worker can ask its parent', () => {
       const bystander = await personOpens('brobot')
       const bystanderTools = theToolsetJustHandedOut()
       const elsewhere = await callOn(bystanderTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'the work this question is about',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'the work this question is about',
@@ -966,6 +972,8 @@ describe('437 · a question a worker can ask its parent', () => {
       // is what makes this a different cause from the first rather than a second spelling of it.
       await bringIdentityIntoBeing('other')
       const second = await callOn(pmTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'a second child with work of its own',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'other',
         title: 'a second child with work of its own',

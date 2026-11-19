@@ -112,6 +112,8 @@ describe('a helper stopped on a person’s approval', () => {
     const pm = await personOpens('pm', 'ask')
     const pmTools = agentToolsFor(host, pm)
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'The tests',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'The tests',
@@ -347,6 +349,8 @@ describe('a helper stopped on a person’s approval', () => {
       const pm = await personOpens('pm', 'auto')
       const pmTools = agentToolsFor(host, pm)
       const given = await callOn(pmTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'The tests',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'The tests',
@@ -369,6 +373,8 @@ describe('a helper stopped on a person’s approval', () => {
       const pmHandle = handles.at(-1)
       const pmTools = agentToolsFor(host, pm)
       const given = await callOn(pmTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'The tests',
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'The tests',

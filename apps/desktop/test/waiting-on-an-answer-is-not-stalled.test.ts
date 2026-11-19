@@ -214,6 +214,8 @@ describe('603 · waiting on an answer is not stalled', () => {
     const pmTools = theToolsetJustHandedOut()
     const give = async (slug: string, brief: string): Promise<string> => {
       const made = await callOn(pmTools, 'give_work', {
+        to: 'new',
+        conversation_title: brief,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: slug,
         title: brief,

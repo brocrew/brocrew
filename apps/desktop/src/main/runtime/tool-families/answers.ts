@@ -1,5 +1,5 @@
 import { type AgentToolAnswer } from '@brobot2/runtime'
-import { type ToolRefusalPayload } from './refusals'
+import { refusalSaid, type ToolRefusalPayload } from './refusals'
 
 // Translate answers without catching failures the tool does not classify.
 
@@ -13,6 +13,13 @@ export const answer = (
 
 export const refusalAnswer = (payload: ToolRefusalPayload): AgentToolAnswer =>
   answer({ ...payload }, `refused (${payload.rail}): ${payload.reason}`)
+
+export function sendAnswer(result: AgentToolAnswer): AgentToolAnswer {
+  const payload = result.structured
+  if (payload?.outcome !== 'refused' || typeof payload.reason !== 'string') return result
+  const reason = refusalSaid(payload.reason)
+  return { ...result, structured: { ...payload, reason }, text: reason }
+}
 
 /**
  * **A give that took its label and gave nothing** — the failure as it is said alone, and the label

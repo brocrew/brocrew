@@ -162,6 +162,8 @@ describe('D-024 · a profile reads across its own conversations', () => {
     brief: string,
   ): Promise<{ agent: string; piece: string; label: string }> => {
     const answer = await callOn(giver, 'give_work', {
+      to: 'new',
+      conversation_title: title,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile,
       title,

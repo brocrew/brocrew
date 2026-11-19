@@ -450,6 +450,8 @@ describe('713 §1 · R59 — the host, over the REAL Codex adapter', () => {
     // worker's first turn.
     const tools = agentToolsFor(app.host, pm)
     const given = await callOn(tools, 'give_work', {
+      to: 'new',
+      conversation_title: 'The work 713 is about',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: workerProfile,
       title: 'The work 713 is about',

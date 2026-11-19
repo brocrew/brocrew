@@ -240,6 +240,8 @@ describe('708 · R42 — a person’s command goes to the provider exactly as ty
     )
     const tools = agentToolsFor(host, pm)
     const given = await callOn(tools, 'give_work', {
+      to: 'new',
+      conversation_title: 'the work this dispatch is about',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: workerProfile,
       title: 'the work this dispatch is about',

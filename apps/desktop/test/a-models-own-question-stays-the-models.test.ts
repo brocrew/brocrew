@@ -178,6 +178,8 @@ describe('D-009 · a model’s own question stays the model’s', () => {
     await host.close(await personOpens('worker'), window)
     const pm = await personOpens(DEFAULT_PROFILE_ID)
     const spawned = await callOn(pm, 'give_work', {
+      to: 'new',
+      conversation_title: 'the notes',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'the notes',
@@ -280,6 +282,8 @@ describe('D-009 · a model’s own question stays the model’s', () => {
     await host.close(await personOpens('worker'), window)
     const lead = await personOpens(DEFAULT_PROFILE_ID, 'auto')
     const spawnedPm = await callOn(lead, 'give_work', {
+      to: 'new',
+      conversation_title: 'the release',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'pm',
       title: 'the release',
@@ -288,6 +292,8 @@ describe('D-009 · a model’s own question stays the model’s', () => {
     expect(spawnedPm.outcome, JSON.stringify(spawnedPm)).toBe('ok')
     const pm = spawnedPm.agent as string
     const spawned = await callOn(pm, 'give_work', {
+      to: 'new',
+      conversation_title: 'the notes',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'the notes',

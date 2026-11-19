@@ -297,6 +297,8 @@ describe('the idle stop and what is on its way into a conversation that needs yo
     const pmTools = handed.at(-1)
     if (pmTools === undefined) throw new Error('no toolset was handed to the PM')
     const made = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'the work nobody asks about',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker-b',
       title: 'the work nobody asks about',

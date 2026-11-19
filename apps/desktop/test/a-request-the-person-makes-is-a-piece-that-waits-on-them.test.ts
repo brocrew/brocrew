@@ -456,6 +456,8 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
     await bringIdentityIntoBeing(workerProfile)
     const { id: pm, tools: pmTools } = await aPerson(pmProfile)
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: brief,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: workerProfile,
       title: brief,
@@ -575,11 +577,13 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
     await bringIdentityIntoBeing('worker')
     const handlesBeforeTheGive = handles.length
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'the errand',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'the errand',
       brief: 'the errand',
-      piece: pmRoot.label,
+      under: pmRoot.label,
     })
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     expect(given.label).toBe(`${pmRoot.label}.3`)
@@ -773,6 +777,8 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
       callOn(tools, 'give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile,
+        to: 'new',
+        conversation_title: 'errand',
         title: 'errand',
         brief: 'errand',
         ...extra,
@@ -812,7 +818,7 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
     expect(store.childrenOf(two.piece)).toEqual([])
 
     // Naming the second resolves it, and the piece hangs under that one.
-    const named = await give(c.tools, 'worker-c', { piece: two.label })
+    const named = await give(c.tools, 'worker-c', { under: two.label })
     expect(named.outcome, JSON.stringify(named)).toBe('ok')
     expect(store.workById(named.piece as string)?.parent).toBe(two.piece)
     expect(named.label).toBe(`${two.label}.1`)
@@ -822,13 +828,20 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
     await bringIdentityIntoBeing('worker')
     const { id: pm, tools: pmTools } = await aPerson('pm')
     const taken = await takeOn(pmTools, 'the request')
-    const admitted = await callOn(pmTools, 'give_work', {
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'worker',
-      title: 'the errand',
-      brief: 'the errand',
-      piece: taken.label,
-    })
+    const giveUnder = (): Promise<Record<string, unknown>> =>
+      callOn(pmTools, 'give_work', {
+        to: 'new',
+        conversation_title: 'the errand',
+        definition_of_done: 'The requested result and its checks are recorded.',
+        profile: 'worker',
+        title: 'the errand',
+        brief: 'the errand',
+        under: taken.label,
+      })
+
+    // The positive: one level of depth is enough for a give under the piece the person asked for.
+    grant({ maxDepth: 1 })
+    const admitted = await giveUnder()
     expect(admitted.outcome, JSON.stringify(admitted)).toBe('ok')
     const underIt = admitted.piece as string
     expect(store.workById(underIt)?.parent).toBe(taken.piece)
@@ -920,11 +933,13 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
     const taken = await takeOn(pmTools, 'the request')
     await bringIdentityIntoBeing('worker')
     const errand = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: 'the errand',
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'the errand',
       brief: 'the errand',
-      piece: taken.label,
+      under: taken.label,
     })
     expect(errand.outcome, JSON.stringify(errand)).toBe('ok')
     const workerTools = agentToolsFor(host, errand.agent as string)

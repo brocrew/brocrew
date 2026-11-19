@@ -122,6 +122,8 @@ describe('557 · work that stalls with nobody left to tell', () => {
     const pm = await personOpens(pmProfile)
     const pmTools = agentToolsFor(host, pm)
     const given = await callOn(pmTools, 'give_work', {
+      to: 'new',
+      conversation_title: title,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: workerProfile,
       title,
@@ -411,6 +413,7 @@ describe('557 · work that stalls with nobody left to tell', () => {
       })
       expect(answered.outcome, JSON.stringify(answered)).toBe('ok')
       const second = await callOn(pmTools, 'give_work', {
+        to: worker,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: workerProfile,
         title: 'the unfinished one',
