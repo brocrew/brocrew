@@ -55,6 +55,10 @@ import {
   type SessionFacetInput,
 } from '../lib/agent-state'
 
+import type {
+  ConversationRenameInput,
+  ConversationRenameResult,
+} from '../../../shared/conversation-title'
 import type { WorkThatNamesIt } from '../../../shared/piece-called'
 // ⚑ **636 · a TYPE only** — see {@link ConversationPane.waiting}, which is narrowed before it
 // arrives and is never derived here.
@@ -232,11 +236,8 @@ const props = defineProps<{
    * through.
    */
   named?: WorkThatNamesIt | null
-  /**
-   * ⚑ **R4 — rename that work**, present only where the door would accept it — the header's press.
-   * ⚑ Handed through: the screen owns the bridge and the re-list.
-   */
-  retitle?: (title: string) => Promise<string | null>
+  /** Rename this conversation through the host. */
+  rename?: (input: ConversationRenameInput) => Promise<ConversationRenameResult>
   /** Archive this conversation: the header's press. Handed through; the screen owns the bridge. */
   archive?: () => Promise<string | null>
   /**
@@ -1902,7 +1903,7 @@ onUnmounted(() => {
       :capabilities="props.capabilities"
       :tools="control.tools"
       :named="props.named ?? null"
-      :retitle="props.retitle"
+      :rename="props.rename"
       :archive="props.archive"
       :activity="activity"
       :last-report-at="lastReport"

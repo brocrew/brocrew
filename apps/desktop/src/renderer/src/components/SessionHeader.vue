@@ -8,10 +8,11 @@ import {
   type SessionStatus,
 } from '../../../shared/runtime-ipc'
 import {
-  PIECE_TITLE_CHARS,
-  theWorkThatNamesItSaid,
-  type WorkThatNamesIt,
-} from '../../../shared/piece-called'
+  CONVERSATION_TITLE_CHARS,
+  type ConversationRenameInput,
+  type ConversationRenameResult,
+} from '../../../shared/conversation-title'
+import { theWorkThatNamesItSaid, type WorkThatNamesIt } from '../../../shared/piece-called'
 import { clockTime } from '../../../shared/clock'
 import {
   activityWords,
@@ -24,6 +25,7 @@ import {
 import { fullTime } from '../lib/clock'
 import { handBackOffer } from '../lib/handing-it-back'
 import { basenameOf } from '../lib/paths'
+import { readableError } from '../lib/session-record'
 import { inventoryAsOf, inventorySummary, readInventory } from '../lib/tool-inventory'
 import { stillThinkingSays } from '../lib/still-thinking'
 import type { ToolRegistry } from '../lib/transcript'
@@ -136,19 +138,10 @@ const props = withDefaults(
      * does not exist, which is `106`'s rule — a control that cannot act is not offered.
      */
     tools?: ToolRegistry
-    /**
-     * 🔴 **D-016 · commit 7 · R2 — the work that names this conversation**, off the host's list
-     * (`SideRail.listedOf`): the title is `W1 · Bakery website` where it was the folder, and the
-     * folder moves to the hover. ⚑ `null` for the launcher and for a conversation the one list does
-     * not name, which keep today's title; the agent's name is on the Agent panel.
-     */
+    /** Linked task details and marks from the conversation list. */
     named?: WorkThatNamesIt | null
-    /**
-     * ⚑ **R4 — a person renames that work**, present only where the door would accept it (a root:
-     * `RuntimeScreen`'s rule), so an absent one draws the title and no press (`106`). Resolves
-     * `null` once renamed and re-listed, or the words that refused it.
-     */
-    retitle?: (title: string) => Promise<string | null>
+    /** Write the conversation's title through the host. */
+    rename?: (input: ConversationRenameInput) => Promise<ConversationRenameResult>
     /**
      * Archive this conversation: resolves `null` once it is archived, or the words that refused
      * it, drawn under the bar as they are. Absent draws neither Archive nor Delete, as on the
@@ -180,7 +173,7 @@ const props = withDefaults(
     starting: false,
     tools: undefined,
     named: null,
-    retitle: undefined,
+    rename: undefined,
     archive: undefined,
     activity: null,
     lastReportAt: null,
@@ -252,34 +245,29 @@ const toolsTitle = computed(() => {
   return asOf === null ? head : `${head} · ${asOf}`
 })
 
+const conversation = computed(() => props.session?.sessionId)
+const renamable = computed(() => (props.rename === undefined ? undefined : conversation.value))
+const savedTitle = ref<Extract<ConversationRenameResult, { ok: true }> | null>(null)
+const identity = computed(() =>
+  savedTitle.value?.conversation === conversation.value ? savedTitle.value : null,
+)
+const task = computed(() => (props.named === null ? null : theWorkThatNamesItSaid(props.named)))
 const title = computed(() => {
   if (!props.session) return 'New conversation'
-  // ⚑ F033 · with its marks; the rename field below edits `named.title` alone, never a mark.
-  if (props.named !== null) return theWorkThatNamesItSaid(props.named)
-  return basenameOf(props.session.cwd) || props.session.sessionId
+  return (
+    identity.value?.title ?? task.value ?? (basenameOf(props.session.cwd) || props.session.sessionId)
+  )
 })
 
-/**
- * 🔴 **D-016 · commit 7 · R4 — the work a press on the title renames**, or `null` where the title is
- * no press: the launcher, a title that is not the work's, and work the door would refuse
- * ({@link retitle} absent).
- *
- * ⚑ **The rename happens in place.** A press turns the title into its field, the label kept before
- * it; **Enter** saves, and **Escape** or leaving the field drops the draft and sends nothing — a
- * title is never written by a click somewhere else. ⛔ A refusal keeps the field open, with the
- * door's own words under it; nobody is told of a rename, and the title reads the newest.
- */
-const renamable = computed(() =>
-  props.session !== null && props.retitle !== undefined ? props.named : null,
-)
 const renaming = ref(false)
 const draft = ref('')
 const saving = ref(false)
 const refused = ref<string | null>(null)
 const titleInput = ref<HTMLInputElement | null>(null)
+let edit = 0
 
 function startRenaming(): void {
-  draft.value = renamable.value?.title ?? ''
+  draft.value = identity.value?.title ?? props.named?.title ?? title.value
   refused.value = null
   renaming.value = true
   void nextTick(() => {
@@ -289,26 +277,42 @@ function startRenaming(): void {
 }
 
 function stopRenaming(): void {
+  edit += 1
   renaming.value = false
+  saving.value = false
   refused.value = null
 }
 
-/** ⚑ Leaving the field cancels, except while Enter's save is in flight (the field is disabled). */
 function stopRenamingUnlessSaving(): void {
   if (!saving.value) stopRenaming()
 }
 
 async function save(): Promise<void> {
-  if (props.retitle === undefined) return
+  const id = renamable.value
+  if (id === undefined || props.rename === undefined || saving.value) return
+  const currentEdit = edit
   saving.value = true
-  refused.value = await props.retitle(draft.value)
-  saving.value = false
-  if (refused.value === null) renaming.value = false
-  else void nextTick(() => titleInput.value?.focus())
+  refused.value = null
+  try {
+    const result = await props.rename({ conversation: id, title: draft.value })
+    if (currentEdit !== edit) return
+    if (result.ok) {
+      savedTitle.value = result
+      stopRenaming()
+    } else {
+      refused.value = result.reason
+    }
+  } catch (cause) {
+    if (currentEdit === edit) refused.value = readableError(cause)
+  } finally {
+    if (currentEdit === edit) {
+      saving.value = false
+      void nextTick(() => titleInput.value?.focus())
+    }
+  }
 }
 
-// ⚑ Another conversation on screen — or its work no longer renamable here — leaves the field.
-watch(() => renamable.value?.label, stopRenaming)
+watch(renamable, stopRenaming, { flush: 'sync' })
 
 /** An archive in flight, and main's words when it refused one. */
 const archiving = ref(false)
@@ -519,20 +523,21 @@ const panelToggleName = computed(() =>
   <header class="session-header" data-cy="session-header">
     <div class="header-title">
       <h1 :title="props.session?.cwd ?? ''" data-cy="conversation-title">
-        <template v-if="renamable && renaming"
-          >{{ renamable.label }} ·
+        <template v-if="renamable && renaming">
           <input
             ref="titleInput"
             v-model="draft"
             class="title-input"
             data-cy="conversation-title-input"
-            :maxlength="PIECE_TITLE_CHARS"
+            :maxlength="CONVERSATION_TITLE_CHARS"
             :disabled="saving"
-            :aria-label="`Title of ${renamable.label}`"
+            aria-label="Conversation title"
+            aria-describedby="conversation-title-help"
             @keydown.enter.prevent="save"
             @keydown.esc.stop.prevent="stopRenaming"
             @blur="stopRenamingUnlessSaving"
-        /></template>
+          />
+        </template>
         <button
           v-else-if="renamable"
           type="button"
@@ -541,12 +546,23 @@ const panelToggleName = computed(() =>
           :aria-label="`Rename ${title}`"
           @click="startRenaming"
         >
-          {{ title }}
+          {{ title }}<span class="title-edit-mark" aria-hidden="true"></span>
         </button>
         <template v-else>{{ title }}</template>
       </h1>
-      <!-- ⚑ **R4 · the door's own words, under the field they are about** — one line, cut with the
-           whole sentence on its hover, so the bar keeps its height. -->
+      <small v-if="renaming" id="conversation-title-help" class="title-detail">
+        Name it after the job. Renaming keeps its address.
+      </small>
+      <small v-if="identity || (renaming && task)" class="title-detail">
+        <template v-if="identity">
+          <template v-if="identity.author.kind === 'person'">Named by you · </template>
+          <span data-cy="conversation-address">Conversation {{ identity.address }}</span>
+        </template>
+        <template v-if="task">
+          <template v-if="identity"> · </template>
+          <span data-cy="conversation-linked-task">Task {{ task }}</span>
+        </template>
+      </small>
       <small
         v-if="renaming && refused"
         class="title-refused"
@@ -890,12 +906,19 @@ h1 {
   border: 0;
   background: none;
   color: inherit;
-  cursor: text;
+  cursor: pointer;
   letter-spacing: inherit;
   text-align: left;
   white-space: normal;
   overflow-wrap: anywhere;
   font: inherit;
+}
+
+.title-edit-mark::before {
+  margin-inline-start: var(--space-4);
+  color: var(--muted);
+  content: '✎';
+  font-size: var(--type-caption);
 }
 
 .title-press:focus-visible,
@@ -908,6 +931,13 @@ h1 {
   max-width: 100%;
   padding: 0 var(--space-3);
   letter-spacing: inherit;
+}
+
+.title-detail {
+  display: block;
+  color: var(--muted);
+  font-size: var(--type-caption);
+  overflow-wrap: anywhere;
 }
 
 .title-refused {

@@ -215,7 +215,7 @@ import { ROSTER_EVERY_MS } from '../lib/team-roster'
 import { refusedToOpen } from '../lib/taking-over'
 import { THE_COMPACT_COMMAND } from '../lib/compaction-offer'
 import { type WorkGivenOutReading } from '../lib/work-given-out'
-import { theWorkAPersonGave } from '../lib/working-together'
+import type { ConversationRenameInput } from '../../../shared/conversation-title'
 import { filesReadFor } from '../lib/files-kept'
 import { createFilesLibrary, provideFilesLibrary } from '../composables/useFilesLibrary'
 import { createTeamProfileGraph, provideTeamProfileGraph } from '../composables/useTeamProfileGraph'
@@ -3027,33 +3027,9 @@ const listedNamedOfActive = computed(() =>
   active.value === null ? null : (rail.value?.listedOf(active.value.sessionId)?.named ?? null),
 )
 
-/**
- * ⚑ **R4 — the header's rename, offered only where the door accepts it: a piece a person gave.**
- * ⛔ On this surface that is exactly a ROOT (a label of one number): a conversation that owns a root
- * is named by that root, and one that owns none is named by a piece its parent gave it — only a
- * conversation with a root takes work on for a person.
- *
- * ⚑ **A refusal is the door's own words, handed back to the field**; a throw (the bridge, a quit)
- * is said as {@link readableError} says it. ⚠️ The list is asked again BEFORE the field closes, so
- * the old title does not flash back — except on a conversation still starting, whose row is written
- * once its launch settles: the old title shows until then, and the `work` announcement the host
- * makes when the row is down re-reads the list here, as in every other window.
- */
-const retitleOfActive = computed(() => {
-  // ⚑ **UI-008 · the one rule, asked** — the card's *Current task* draws the same root.
-  const named = theWorkAPersonGave(listedNamedOfActive.value)
-  if (named === null) return undefined
-  return async (title: string): Promise<string | null> => {
-    try {
-      const retitled = await window.api.runtime.retitleWork({ piece: named.label, title })
-      if (!retitled.ok) return retitled.reason
-      await rail.value?.refreshResumable()
-      return null
-    } catch (cause) {
-      return readableError(cause)
-    }
-  }
-})
+function renameConversation(input: ConversationRenameInput) {
+  return window.api.runtime.renameConversation(input)
+}
 
 // Arriving at Recent activity or Waiting on you reads again at once, so neither shows a reading up
 // to a tick old.
@@ -3938,7 +3914,7 @@ onUnmounted(() => {
             :listed-state="listedStateOfActive"
             :provider-block="active ? store.providerBlocks.get(active.sessionId) : null"
             :named="listedNamedOfActive"
-            :retitle="retitleOfActive"
+            :rename="renameConversation"
             :archive="archiveOfActive"
             :identities="agentStore.identities.value?.identities ?? null"
             :draft="drafts.read(draftKeyForActive)"
