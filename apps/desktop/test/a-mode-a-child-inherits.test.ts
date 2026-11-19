@@ -8,35 +8,32 @@ import {
   capabilitiesFor,
   PROTECTIONS,
   SUPPORTED_PROVIDERS,
-  whatTheChildWouldLack,
   WHAT_STANDS_PAST_ITS_FOLDER,
   type ApprovalMode,
-  type ApprovalPosture,
   type Protection,
 } from '@brobot2/runtime'
 import {
   admitGive,
-  describeRail,
-  permanenceOf,
-  remedyOf,
-  retryableOf,
-  SPAWN_RAILS,
   type GiveAdmission,
   type GivingConversation,
 } from '../src/main/runtime/spawn-rails'
 import type { CallerIdentity } from '../src/main/runtime/runtime-host'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
 import { giveFactsForTest as factsWith } from './lib/give-facts-fixture'
-import { SPAWN_RAIL_MEANS } from '../src/shared/capabilities'
 import { YOLO_MEANS, YOLO_MEANS_FOR_AGENTS_IT_STARTS } from '../src/renderer/src/lib/approval-mode'
 
 const HERE = fileURLToPath(new URL('.', import.meta.url))
 const REPO = join(HERE, '../../..')
 const RUNTIME = join(REPO, 'packages/runtime/src')
 
+function whatAutoTakesOff(provider: Provider): Protection[] {
+  const { ask, auto } = WHAT_STANDS_PAST_ITS_FOLDER[provider]
+  return ask.filter((one) => !auto.includes(one))
+}
+
 const MODES: readonly ApprovalMode[] = ['ask', 'auto']
 
-describe('§1 · what a posture keeps past its folder, and never wider as any against none', () => {
+describe('§1 · what each provider mode keeps past its folder', () => {
   it('⛔ the table is TOTAL — every provider, every mode, from the vocabularies', () => {
     expect(Object.keys(WHAT_STANDS_PAST_ITS_FOLDER).sort()).toEqual([...SUPPORTED_PROVIDERS].sort())
     for (const provider of SUPPORTED_PROVIDERS) {
@@ -67,83 +64,7 @@ describe('§1 · what a posture keeps past its folder, and never wider as any ag
     expect([...claude].every((one) => codex.has(one))).toBe(true)
     expect(codex.size).toBeGreaterThan(claude.size)
   })
-
-  it('⛔ every (parent, child) pair, and the verdict is any against none and nothing else', () => {
-    const postures: ApprovalPosture[] = SUPPORTED_PROVIDERS.flatMap((provider) =>
-      MODES.map((approvalMode) => ({ provider, approvalMode })),
-    )
-    expect(postures).toHaveLength(4)
-    let refused = 0
-    for (const parent of postures) {
-      for (const child of postures) {
-        const parentKeeps = keptBy(parent)
-        const expected =
-          keptBy(child).length === 0 ? PROTECTIONS.filter((one) => parentKeeps.includes(one)) : []
-        expect(
-          whatTheChildWouldLack(child, parent),
-          `${label(child)} under ${label(parent)}`,
-        ).toEqual(expected)
-        if (expected.length > 0) refused += 1
-      }
-    }
-    expect(refused).toBe(4)
-  })
-
-  it('🔴 THE DIVERGENCE · the removal reading and the reach reading disagree on exactly one pair, and it is F050`s', () => {
-    const claudeAuto: ApprovalPosture = { provider: 'claude', approvalMode: 'auto' }
-    const codexAuto: ApprovalPosture = { provider: 'codex', approvalMode: 'auto' }
-
-    expect(claudeAuto.approvalMode).toBe(codexAuto.approvalMode)
-    expect(whatTheRemovalReadingRefused(codexAuto, claudeAuto)).toEqual([
-      'the-sandbox-around-an-act',
-    ])
-    expect(whatTheChildWouldLack(codexAuto, claudeAuto)).toEqual([])
-
-    expect(whatTheChildWouldLack(claudeAuto, codexAuto)).toEqual([])
-
-    const claudeAsk: ApprovalPosture = { provider: 'claude', approvalMode: 'ask' }
-    expect(whatTheChildWouldLack(codexAuto, claudeAsk)).toEqual(['the-card-before-an-act'])
-
-    const postures: ApprovalPosture[] = SUPPORTED_PROVIDERS.flatMap((provider) =>
-      MODES.map((approvalMode) => ({ provider, approvalMode })),
-    )
-    const parted: string[] = []
-    for (const parent of postures) {
-      for (const child of postures) {
-        const removal = whatTheRemovalReadingRefused(child, parent).length > 0
-        const reach = whatTheChildWouldLack(child, parent).length > 0
-        if (removal !== reach) parted.push(`${label(child)} under ${label(parent)}`)
-        expect(reach, `${label(child)} under ${label(parent)}`).toBe(
-          parent.approvalMode === 'ask' && child.approvalMode === 'auto',
-        )
-      }
-    }
-    expect(parted).toEqual(['codex/auto under claude/auto'])
-  })
 })
-
-function label(posture: ApprovalPosture): string {
-  return `${posture.provider}/${posture.approvalMode}`
-}
-
-function keptBy(posture: ApprovalPosture): readonly Protection[] {
-  return WHAT_STANDS_PAST_ITS_FOLDER[posture.provider][posture.approvalMode]
-}
-
-function whatAutoTakesOff(provider: Provider): Protection[] {
-  const left = WHAT_STANDS_PAST_ITS_FOLDER[provider].auto
-  return WHAT_STANDS_PAST_ITS_FOLDER[provider].ask.filter((one) => !left.includes(one))
-}
-
-function whatTheRemovalReadingRefused(
-  child: ApprovalPosture,
-  parent: ApprovalPosture,
-): Protection[] {
-  const removes = ({ provider, approvalMode }: ApprovalPosture): Protection[] =>
-    approvalMode === 'auto' ? whatAutoTakesOff(provider) : []
-  const kept = removes(parent)
-  return removes(child).filter((one) => !kept.includes(one))
-}
 
 describe('§2 · the table says what the adapters DO, and each half is bound differently', () => {
   it('⛔ the CLAUDE row is a NEGATIVE, and this is the search shape behind it', () => {
@@ -247,124 +168,30 @@ function startOf(out: GiveAdmission): { provider: Provider; approvalMode: Approv
   return { provider: out.goes.start.provider, approvalMode: out.goes.start.approvalMode }
 }
 
-describe('§5 · the door — where a started conversation`s mode is decided, and what the refusal says', () => {
-  it('🔴 every (giver, child provider) pair through the REAL door, and it agrees with the derivation', () => {
-    let admitted = 0
+describe('A conversation started by a give inherits the giver’s approval mode', () => {
+  it('works for every combination of giver provider, child provider and mode', () => {
     for (const parentProvider of SUPPORTED_PROVIDERS) {
-      for (const parentMode of MODES) {
+      for (const mode of MODES) {
         for (const childProvider of SUPPORTED_PROVIDERS) {
-          const parent = aParent(parentProvider, parentMode)
+          const parent = aParent(parentProvider, mode)
           const out = admitGive(A_GIVE, asThe(parent), factsWith(parent, childProvider))
-          const shouldPass =
-            whatTheChildWouldLack(
-              { provider: childProvider, approvalMode: parentMode },
-              { provider: parentProvider, approvalMode: parentMode },
-            ).length === 0
-          const where = `${parentProvider}/${parentMode} → ${childProvider}`
-          expect(out.ok, where).toBe(shouldPass)
-          if (!out.ok) expect(out.refusal.rail, where).toBe('wider-than-its-parent')
-          else {
-            admitted += 1
-            expect(startOf(out), where).toEqual({
-              provider: childProvider,
-              approvalMode: parentMode,
-            })
-          }
+          expect(startOf(out), `${parentProvider}/${mode} → ${childProvider}`).toEqual({
+            provider: childProvider,
+            approvalMode: mode,
+          })
         }
       }
     }
-    expect(admitted).toBe(8)
   })
 
-  it('⛔ the mode INHERITS — the half `366` refused and HO-036 restored', () => {
-    for (const provider of SUPPORTED_PROVIDERS) {
-      for (const mode of MODES) {
-        const parent = aParent(provider, mode)
-        const out = admitGive(A_GIVE, asThe(parent), factsWith(parent, provider))
-        if (!out.ok) throw new Error(`${provider}/${mode} inherited and was refused`)
-        expect(startOf(out)?.approvalMode, `${provider}/${mode}`).toBe(mode)
-      }
-    }
-  })
-
-  it('🔴 a lax parent on ONE provider hands its word to a child on the OTHER — F050, given', () => {
-    const parent = aParent('claude', 'auto')
-    const out = admitGive(A_GIVE, asThe(parent), factsWith(parent, 'codex'))
-    if (!out.ok)
-      throw new Error(`F050: a Claude auto giver's Codex helper was refused: ${out.refusal.rail}`)
-    expect(startOf(out)).toEqual({ provider: 'codex', approvalMode: 'auto' })
-    const codexParent = aParent('codex', 'auto')
-    const back = admitGive(A_GIVE, asThe(codexParent), factsWith(codexParent, 'claude'))
-    if (!back.ok) throw new Error('a cross-provider auto child was refused')
-    expect(startOf(back)).toEqual({ provider: 'claude', approvalMode: 'auto' })
-    for (const childProvider of SUPPORTED_PROVIDERS) {
-      expect(
-        whatTheChildWouldLack(
-          { provider: childProvider, approvalMode: 'auto' },
-          { provider: 'claude', approvalMode: 'ask' },
-        ),
-        childProvider,
-      ).toEqual(['the-card-before-an-act'])
-    }
-  })
-
-  it('⚠️ the rail`s policy facts, and the one arm where the permanence overstates', () => {
-    expect(SPAWN_RAILS).toContain('wider-than-its-parent')
-    expect(permanenceOf('wider-than-its-parent')).toBe('until-a-person-changes-it')
-    expect(retryableOf('wider-than-its-parent')).toBe(false)
-    expect(remedyOf('wider-than-its-parent')).toBeNull()
-    expect(describeRail('wider-than-its-parent')).toContain(
-      'Do this work here, or ask a person whether to change your approval mode',
-    )
-    expect(describeRail('wider-than-its-parent')).not.toMatch(/provider/)
-    const said = SPAWN_RAILS.map((rail) => describeRail(rail))
-    expect(new Set(said).size).toBe(SPAWN_RAILS.length)
-  })
-
-  it('⛔ every protection has a clause a caller can read — none renders as a raw code', () => {
-    for (const protection of PROTECTIONS) {
-      const child: ApprovalPosture = { provider: 'claude', approvalMode: 'auto' }
-      const parent: ApprovalPosture = { provider: 'codex', approvalMode: 'ask' }
-      expect(whatTheChildWouldLack(child, parent)).toContain(protection)
-    }
-    const sentence = describeRail('wider-than-its-parent', {
-      asked: 'auto',
-      spawnerRunsAs: 'ask',
-      wouldLack: [...PROTECTIONS],
-    })
-    for (const protection of PROTECTIONS) {
-      expect(sentence, protection).not.toContain(protection)
-    }
-    expect(sentence).toContain('the card before you act')
-    expect(sentence).toContain('the sandbox around what you run')
-    expect(sentence).toContain('“ask”')
-    expect(sentence).toContain('“auto”')
-  })
-})
-
-describe('§6 · `spawn-must-prompt` is retired, and the sentences that described it moved', () => {
-  it('⛔ the word is gone from the CODE, and survives only where a docblock records the withdrawal', () => {
+  it('publishes no spawn-policy rail for the inherited mode', () => {
     for (const tree of ['apps/desktop/src', 'packages/runtime/src', 'packages/shared/src']) {
-      const found = filesUnder(join(REPO, tree)).filter((file) =>
-        withoutProse(readFileSync(file, 'utf8')).includes('spawn-must-prompt'),
-      )
+      const found = filesUnder(join(REPO, tree)).filter((file) => {
+        const code = withoutProse(readFileSync(file, 'utf8'))
+        return code.includes('spawn-must-prompt') || code.includes('wider-than-its-parent')
+      })
       expect(found, tree).toEqual([])
     }
-    expect(
-      withoutProse(
-        readFileSync(join(REPO, 'apps/desktop/src/main/runtime/spawn-rails.ts'), 'utf8'),
-      ),
-    ).toContain("'wider-than-its-parent'")
-    expect((SPAWN_RAILS as readonly string[]).includes('spawn-must-prompt')).toBe(false)
-    const guide = readFileSync(join(REPO, 'docs/development.md'), 'utf8')
-    expect(guide).not.toContain('spawn-must-prompt')
-    expect(guide).toContain('never wider')
-  })
-
-  it('🔴 the person-facing sentence states the rule that is in force, and not the withdrawn one', () => {
-    expect(SPAWN_RAIL_MEANS).toContain('runs the way that agent does')
-    expect(SPAWN_RAIL_MEANS).toContain('can never be given more')
-    expect(SPAWN_RAIL_MEANS).not.toMatch(/never open without prompts/)
   })
 })
 

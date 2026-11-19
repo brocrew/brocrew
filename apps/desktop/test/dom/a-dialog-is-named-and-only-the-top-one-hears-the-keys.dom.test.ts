@@ -6,7 +6,6 @@ import OverlayHost from '../../src/renderer/src/components/OverlayHost.vue'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
 import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { DRAWER_W_MIN } from '../../src/renderer/src/lib/drawer'
-import { useSpawnSafety } from '../../src/renderer/src/lib/spawn-safety'
 import type { KeptFile, ResourceReading } from '../../src/shared/runtime-ipc'
 import { META, drawerProps, mount, unmountAll } from './harness'
 
@@ -15,11 +14,8 @@ import { META, drawerProps, mount, unmountAll } from './harness'
  * the host on top answers Escape and Tab, and a `<details>` summary is a stop in the focus trap.
  */
 
-const safety = useSpawnSafety()
-
 beforeEach(() => {
   // No stop lane: the trap's last stop is then the last one the test puts in the slot.
-  safety.forget()
 })
 
 afterEach(() => {

@@ -70,11 +70,7 @@ export interface ProfileExecution {
 /** What is kept, by identity id. */
 export interface KeptProfileExecution {
   readonly profiles: Readonly<Record<string, ProfileExecution>>
-  /**
-   * A person turned services off in this workspace: no profile is made a service, and services
-   * take no new work. ⚑ On where it is missing, so a new workspace and an installer start with
-   * services on.
-   */
+  /** Retired switch value retained in storage through the compatibility release. */
   readonly servicesOff?: true
 }
 

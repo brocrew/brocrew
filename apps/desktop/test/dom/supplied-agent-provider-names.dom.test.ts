@@ -42,7 +42,6 @@ function fixture(names = ['Fern', 'Birch'], held: Choice | null = null) {
     identities: [row],
     foldersWithoutARow: [],
     use: [],
-    spawningEnabled: true,
     defaultApprovalMode: 'ask',
     externalMcpServers: [],
   })

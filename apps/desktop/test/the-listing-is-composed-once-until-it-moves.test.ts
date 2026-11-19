@@ -26,7 +26,7 @@ describe('the listing is composed once until it moves', () => {
     world = aServiceWorld()
     world.anAgent('giver', 'normal')
     world.anAgent('helper', 'normal')
-    host = world.aHost({ servicesOn: false })
+    host = world.aHost()
     giver = await world.aPersonOpens(host, 'giver')
     const read = vi.spyOn(world.store, 'resumable')
     compositions = () => read.mock.calls.length

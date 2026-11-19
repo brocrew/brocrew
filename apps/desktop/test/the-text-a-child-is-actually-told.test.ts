@@ -126,7 +126,6 @@ function context(over: Partial<InstructionContext> = {}): InstructionContext {
     profileSlug: 'default',
     cwd: '/tmp/work',
     startedBy: null,
-    spawningEnabled: true,
     root: null,
     others: { shown: [], more: 0 },
     ...over,
@@ -881,15 +880,10 @@ describe('§8 · what the host tells the reader, at a launch and at a reopen', (
     expect(said).not.toContain('You may not')
   })
 
-  it('⚑ …and the app-wide spawn switch reaches the context, both ways', async () => {
+  it('omits the retired switch from a launch even when its old column holds off', async () => {
+    db.prepare("UPDATE app_policy SET spawning_enabled = 0 WHERE id = 'policy'").run()
     await personOpens(DEFAULT_PROFILE_ID)
-    expect((seen.at(-1) as InstructionContext).spawningEnabled).toBe(true)
     expect(thisConversationText(seen.at(-1) as InstructionContext)).not.toContain(SPAWNING_OFF)
-    expect(host.setSpawningEnabled(false)).toEqual({ spawningEnabled: false })
-    await personOpens(DEFAULT_PROFILE_ID)
-    const ctx = seen.at(-1) as InstructionContext
-    expect(ctx.spawningEnabled).toBe(false)
-    expect(thisConversationText(ctx)).toContain(SPAWNING_OFF)
   })
 
   it('⛔ …and a first launch of a new identity is told the rule-writing policy', async () => {
@@ -992,7 +986,7 @@ describe('§8 · what the host tells the reader, at a launch and at a reopen', (
     expect(calledFor(pm)).toContain(`the owner of ${store.rootOf(pm)?.label ?? '?'}`)
   })
 
-  it('🔴 the shared delegation rule stays conditional while the spawn rail reads the current switch', async () => {
+  it('🔴 the shared delegation wording and a real give agree', async () => {
     for (const slug of [PROJECT_MANAGER_PROFILE_ID, 'reviewer']) {
       expect(
         store.createAgentIdentity(
@@ -1021,26 +1015,6 @@ describe('§8 · what the host tells the reader, at a launch and at a reopen', (
     expect(admitted.outcome, JSON.stringify(admitted)).toBe('ok')
     expect(admitted.started).toBe(true)
 
-    expect(host.setSpawningEnabled(false)).toEqual({ spawningEnabled: false })
-    const refused = await callOn(brobotTools, 'give_work', {
-      to: 'new',
-      conversation_title: 'The delegation',
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'reviewer',
-      title: 'The delegation',
-      brief: 'the delegation the text no longer instructs',
-    })
-    expect(refused.outcome).toBe('refused')
-    expect(refused.rail).toBe('spawning-disabled')
-    expect(refused.permanence).toBe('until-a-person-changes-it')
-    expect(refused.retryable).toBe(false)
-
-    await personOpens(DEFAULT_PROFILE_ID)
-    const relaunched = seen.at(-1) as InstructionContext
-    expect(thisConversationText(relaunched)).toContain(SPAWNING_OFF)
-    expect(composeProfileBundle(relaunched)).toContain(
-      'Follow current permissions, tool contracts and refusals.',
-    )
     expect(brobot).toBeTruthy()
   })
 })
@@ -1078,20 +1052,8 @@ function grantsIn(said: string): string {
 function grantLines(said: string): string[] {
   return grantsIn(said)
     .split('\n')
-    .filter((line) => line.startsWith('- ') && line !== SPAWNING_OFF)
+    .filter((line) => line.startsWith('- '))
 }
-
-describe('§10 · the app-wide switch', () => {
-  it('⚑ the app-wide switch is said only when it is OFF, in the rail’s own words', () => {
-    const on = thisConversationText(context({ spawningEnabled: true }))
-    const off = thisConversationText(context({ spawningEnabled: false }))
-    expect(off).toContain(SPAWNING_OFF)
-    expect(on).not.toContain(SPAWNING_OFF)
-    expect(grantLines(off)).toEqual(grantLines(on))
-    const nobody = thisConversationText(context({ profileSlug: null, spawningEnabled: false }))
-    expect(nobody).toContain(SPAWNING_OFF)
-  })
-})
 
 describe('the workspace rules in the conversation block', () => {
   for (const profileSlug of ['brobot', 'named', null]) {

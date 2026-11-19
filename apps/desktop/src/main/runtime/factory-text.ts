@@ -440,10 +440,6 @@ export const MAY_SAVE_MEMORY = "You may save lessons to your profile's memory an
 export const MAY_NOT_SAVE_MEMORY =
   'Do not save memory or saved methods: this app cannot tell which profile this conversation belongs to.'
 
-// The app-wide switch, said while it is off.
-const SPAWNING_IS_OFF =
-  '- This app currently blocks creating agents and starting new agent conversations.'
-
 /**
  * 🔴 **Everything the dynamic layer is rendered FROM** — every field typed, and every absence a real
  * value rather than a missing one.
@@ -487,15 +483,7 @@ export interface InstructionContext {
    * profile rather than one conversation, and a display name alone is non-unique.
    */
   readonly startedBy: string | null
-  /**
-   * 🔴 **Whether this app will start a new conversation at all, for anybody** (485) —
-   * `app_policy.spawning_enabled`, read at launch.
-   *
-   * ⚑ It is one row for the whole app — see {@link SPAWNING_IS_OFF}, which is the only thing that
-   * reads it.
-   */
-  readonly spawningEnabled: boolean
-  /** It is a service's profile while services are on: it gets the service text after the core. */
+  /** A service gets the service text after the core. */
   readonly isAService?: true
   /**
    * 🔴 **D-016 · the conversation's own root — the work a person gave it** (plan §3.10): its label,
@@ -801,7 +789,6 @@ function thisConversationSections(
     blocks: [dynamicLayer(context).join('\n')],
   })
   const lines = [`- ${RULE_WRITING_POLICY}`]
-  if (!context.spawningEnabled) lines.push(SPAWNING_IS_OFF)
   lines.push(`- ${context.profileSlug == null ? MAY_NOT_SAVE_MEMORY : MAY_SAVE_MEMORY}`)
   sections.push({ whose: 'dynamic', heading: '## What you may do', blocks: [lines.join('\n')] })
   // The index is composed here from the fields of its well-formed lines, never sent as written.

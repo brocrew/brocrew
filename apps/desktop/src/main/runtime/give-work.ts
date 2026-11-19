@@ -470,7 +470,6 @@ export class GiveWork {
         }
       },
       serviceAt: (giver, profileSlug) => h.theServiceAtAGive(giver, profileSlug),
-      spawningEnabled: () => h.store().spawnPolicy().spawningEnabled,
       itsProvider: (profileSlug) => h.itsProvider(profileSlug),
       theNamedModelsProvider: () => theNamedModels,
       serviceModels: () => models.map(({ id }) => id),

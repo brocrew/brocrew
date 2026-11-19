@@ -42,7 +42,6 @@ describe('the listing and the states are published under one stamp', () => {
     announced = []
     pushed = []
     host = world.aHost({
-      servicesOn: false,
       announce: (message) => announced.push(message),
       statesMoved: (message) => pushed.push(message),
     })

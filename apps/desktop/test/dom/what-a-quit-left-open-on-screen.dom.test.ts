@@ -26,7 +26,6 @@ import {
 } from '../../src/renderer/src/lib/permission-offer'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import { createSessionStore, type SessionStore } from '../../src/renderer/src/lib/session-store'
-import { useSpawnSafety } from '../../src/renderer/src/lib/spawn-safety'
 import type { QueuedItem } from '../../src/renderer/src/lib/transcript'
 import { foldWindow, type WindowState } from '../../src/renderer/src/lib/transcript-window'
 import { workReading } from '../../src/renderer/src/lib/work-report'
@@ -155,7 +154,6 @@ const roster = (): AgentIdentities => ({
   identities: [identity('pm', null)],
   foldersWithoutARow: [],
   use: [],
-  spawningEnabled: true,
   defaultApprovalMode: 'ask',
   externalMcpServers: [],
 })
@@ -165,12 +163,10 @@ const roster = (): AgentIdentities => ({
     listResumable: () => Promise.resolve(hostRows.resumable),
     listUnresumable: () => Promise.resolve(hostRows.unresumable),
     agentIdentities: async () => roster(),
-    setSpawningEnabled: async () => ({ spawningEnabled: true }),
   },
 }
 
 const queue = usePersonsQueue()
-const safety = useSpawnSafety()
 
 beforeEach(() => {
   hostRows.resumable = []
@@ -180,7 +176,6 @@ beforeEach(() => {
 afterEach(async () => {
   unmountAll()
   queue.forget()
-  safety.forget()
   await page.viewport(ORIGINAL.width, ORIGINAL.height)
 })
 
@@ -862,10 +857,6 @@ async function overlay(): Promise<Mounted> {
 const MARKS = [GRANT_WITHHELD, DEFAULT_IS_NO, inTheProvidersWords('this could delete the index')]
 
 describe('§5 · 700 §5 GAP 1 — the person’s queue draws the marks, and does not dim a refusal-first ask (PersonsQueue)', () => {
-  beforeEach(() => {
-    safety.supply(roster(), () => {})
-  })
-
   it('🔴 a marked ask: the three lines, in order, before the answers, in the quiet ink — Deny not dimmed', async () => {
     supply(live({ marksSay: MARKS, refusesFirst: true }))
     const m = await overlay()

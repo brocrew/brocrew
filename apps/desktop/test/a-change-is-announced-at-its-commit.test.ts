@@ -46,7 +46,6 @@ describe('a committed change is announced at its commit', () => {
     world.anAgent('source', 'normal')
     world.anAgent('target', 'normal')
     host = world.aHost({
-      servicesOn: false,
       announce: (message) => announced.push(message.what),
       statesMoved: (message) => states.push(message),
     })

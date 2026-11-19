@@ -28,7 +28,6 @@ it('says kept files and states while a writer moves during every publication rea
     return result
   }
   const host = world.aHost({
-    servicesOn: false,
     windowReader: { read, close: async () => engine.close() },
     windowWriterStamp: windowWriterSampler(world.db, () => true),
     limitsWriterStamp: limitsWriterSampler(world.db, () => true),

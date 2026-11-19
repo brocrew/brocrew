@@ -35,7 +35,6 @@ function context(over: Partial<InstructionContext> = {}): InstructionContext {
     profileSlug: 'reader-test',
     cwd: '/tmp/work',
     startedBy: null,
-    spawningEnabled: true,
     root: (over.startedBy ?? null) === null ? 'not-yet-numbered' : null,
     others: { shown: [], more: 0 },
     ...over,

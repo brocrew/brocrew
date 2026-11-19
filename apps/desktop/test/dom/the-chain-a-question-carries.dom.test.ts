@@ -56,12 +56,10 @@ const NAME = (id: string): string => id.replace('sess_', '')
       identities: [],
       foldersWithoutARow: [],
       use: [],
-      spawningEnabled: true,
       defaultApprovalMode: 'ask',
       externalMcpServers: [],
     }),
     setExternalMcpServers: async () => null,
-    setSpawningEnabled: async () => ({ spawningEnabled: true }),
   },
 }
 

@@ -1152,11 +1152,10 @@ describe('692 · a restart keeps what was open', () => {
      * asked the launch rails. ⚑ The one start door (`ensureRunning`) asks none: switching spawning
      * off stops NEW conversations, and a message to one that exists starts it.
      */
-    it('⚑ with spawning switched off, the parent’s message still starts its child — a message is not a spawn', async () => {
+    it('a parent’s message reopens its child after the app restarts', async () => {
       const { lead, children } = await theFourOpen()
       await quitAndRelaunch()
       const leadTools = await personPresses(lead)
-      store.setSpawningEnabled(false)
       const before = launched.length
 
       const said = await callOn(leadTools, 'message_agent', {

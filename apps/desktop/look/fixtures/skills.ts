@@ -26,7 +26,6 @@ export const SKILLS_CAST: AgentIdentities = {
   ],
   use: [],
   foldersWithoutARow: [],
-  spawningEnabled: true,
   defaultApprovalMode: 'ask',
   externalMcpServers: [],
 }

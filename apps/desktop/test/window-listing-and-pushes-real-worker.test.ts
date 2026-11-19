@@ -151,7 +151,6 @@ it('measures window reads with 1960 conversations and nine live agents', async (
     release = resolve
   })
   const host = world.aHost({
-    servicesOn: false,
     windowReader: {
       read: async (query, signal) => {
         await ready

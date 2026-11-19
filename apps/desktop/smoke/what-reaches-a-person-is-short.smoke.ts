@@ -91,7 +91,6 @@ it(
         cwd: work,
         // ⚑ D-016 · commit 7 · R3 · the parent, named by the root it owns (the sender below).
         startedBy: audience === 'agent' ? 'Parent (the owner of W1)' : null,
-        spawningEnabled: true,
         // ⚑ D-016 · a conversation a person starts owns a root; one another conversation started
         // owns none.
         root: audience === 'agent' ? null : 'W1',
