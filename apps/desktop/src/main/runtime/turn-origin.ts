@@ -471,7 +471,11 @@ export function provenanceOf(
  * off anything the sender says: a relationship a model could spell would be `413`'s defect again.
  */
 export interface WhereTheSenderStands {
-  readonly messageSender?: { readonly address: string; readonly line: string }
+  readonly messageSender?: {
+    readonly address: string
+    readonly line: string
+    readonly receiverLine: string
+  }
 
   /**
    * ⚑ **Its name, the one every surface says** — `agentName` over the roster, which is a person's
@@ -655,8 +659,10 @@ export function messageNamingItsSender(
   const stands = standing(from)
   if (stands.messageSender !== undefined) {
     const name = stands.name ?? from.profile ?? from.caller
-    const { address, line } = stands.messageSender
-    const sender = soFar?.senders.has(from.caller) === true ? `conversation ${address}` : line
+    const { address, line, receiverLine } = stands.messageSender
+    const repeated = soFar?.senders.has(from.caller) === true
+    const sender = repeated ? `conversation ${address}` : line
+    const receiver = repeated ? '' : `, in your ${receiverLine}`
     soFar?.senders.set(from.caller, name)
     const about = stands.about
     const title = about === null || soFar?.titled.get(about.label) === about.title ? null : about.title
@@ -669,7 +675,10 @@ export function messageNamingItsSender(
     const previous = workItGaveYou(stands)
     const relationship = previous === null ? '' : `\n\nThis conversation ${previous}.`
     const direction = `Your reply here doesn't reach ${name}: answer with answer_question, hand back with reply_to_parent, or tell it something with message_agent.`
-    return withTheLine(`From ${name} (${sender})${task}.${relationship}${person}${stop}\n\n${direction}`, text)
+    return withTheLine(
+      `From ${name} (${sender})${task}${receiver}.${relationship}${person}${stop}\n\n${direction}`,
+      text,
+    )
   }
   const who = theAgentNamed(from, stands)
   // ⚑ **W4.187 · named in full once a turn, then by its name alone** — W1's nit: one sender, with

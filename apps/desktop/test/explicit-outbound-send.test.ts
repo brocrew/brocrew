@@ -80,6 +80,7 @@ describe('explicit outbound sends', () => {
 
   it('records a busy Message and an Ask in order before either is delivered', async () => {
     const gate = Promise.withResolvers<void>()
+    const batch = Promise.withResolvers<void>()
     world.turnsWait = gate.promise
     try {
       await host.send(target, 'Hold this turn open.', world.window)
@@ -102,8 +103,27 @@ describe('explicit outbound sends', () => {
       const [heldMessage, heldQuestion] = world.store.messagesWaitingIn(target)
       expect(heldMessage?.messageId).toBe(messageReceipt.recorded.id)
       expect(heldQuestion?.asks).toEqual({ asker: sender, requestId: askReceipt.recorded.id })
-    } finally {
+      const reminderRows = () =>
+        world.ledger(target).filter(
+          (event) => event.type === 'message_queued' && event.appNotice === 'an-answer-is-still-owed',
+        )
+      expect(reminderRows()).toHaveLength(0)
+      world.turnsWait = batch.promise
       gate.resolve()
+      const body = 'Then record this question?'
+      const deliveredBatch = () =>
+        world.sent.find((one) => one.as === 'outbound-target' && one.words.includes(body))
+      await waitFor(() => deliveredBatch() !== undefined, 'the original Ask and held Message to go')
+      const recipient = `conversation ${askReceipt.recipient.address} · ${askReceipt.recipient.title}`
+      expect(deliveredBatch()?.words).toContain(`), in your ${recipient}.\n`)
+      expect(deliveredBatch()?.words).toContain(
+        `asks you ${askReceipt.recorded.id} in your ${recipient}.\n`,
+      )
+      expect(reminderRows()).toHaveLength(0)
+    } finally {
+      world.turnsWait = null
+      gate.resolve()
+      batch.resolve()
     }
   })
 
@@ -294,6 +314,7 @@ describe('explicit outbound sends', () => {
   )
 
   it('delivers held messages even if the reminder read fails at the turn boundary', async () => {
+    const handle = world.handleOf('outbound-target')
     const gate = Promise.withResolvers<void>()
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const progress = vi.spyOn(world.store, 'queuedPromptProgress')
@@ -321,7 +342,6 @@ describe('explicit outbound sends', () => {
       expect(progress).toHaveBeenCalledWith(target, expect.any(String), 'an-answer-is-still-owed')
       expect(warn).toHaveBeenCalledWith(expect.stringContaining(fault))
       const next = 'The same provider still takes new words.'
-      const handle = world.handleOf('outbound-target')
       await waitFor(() => handle.status() === 'idle', 'the held message’s turn to finish')
       await host.send(target, next, world.window)
       expect(world.handleOf('outbound-target')).toBe(handle)
@@ -367,6 +387,13 @@ describe('explicit outbound sends', () => {
         const id = asked.structured?.question
         if (typeof id !== 'string') throw new Error('The question has no recorded id.')
         await waitFor(() => handle.status() === 'working', 'the question turn to open')
+        const mail = 'Keep this message for the next turn.'
+        const queued = await send('message_agent', { agent: sessionId, text: mail })
+        expect(queued.structured?.delivery).toBe('queued')
+        const receipt = queued.structured?.receipt as SendReceipt
+        expect(world.store.messagesWaitingIn(sessionId)).toContainEqual(
+          expect.objectContaining({ messageId: receipt.recorded.id, text: mail }),
+        )
         const beforeStop = world.ledger(sessionId).length
         await host.interrupt(sessionId, world.window)
         const stopRows = () => world.ledger(sessionId).slice(beforeStop)
@@ -390,8 +417,17 @@ describe('explicit outbound sends', () => {
           )
         expect(reminders()).toHaveLength(0)
         expect(world.sent.filter((one) => one.as === profile && one.words.includes(id))).toHaveLength(1)
-
-        await host.send(sessionId, 'Continue with the earlier question.', world.window)
+        await waitFor(
+          () => stopRows().some(
+            (event) =>
+              event.type === 'message_unqueued' &&
+              event.messageId === receipt.recorded.id &&
+              event.reason === 'sent',
+          ),
+          'the ordinary queued message to flush after Stop',
+        )
+        expect(world.sent.filter((one) => one.as === profile && one.words.includes(mail))).toHaveLength(1)
+        expect(reminders()).toHaveLength(0)
         providerTurn.machine.completeTurn('completed')
         await waitFor(() => reminders().length === 1, 'a reminder after the next ordinary turn')
       } finally {
@@ -402,10 +438,11 @@ describe('explicit outbound sends', () => {
   )
 
   it.each(['withdrawn', 'answered'] as const)(
-    'retracts a held unanswered notice once the question is %s',
+    'retracts a rehydrated unanswered notice once the question is %s',
     async (ended) => {
       host.claimSession(sender, world.window)
       const gate = Promise.withResolvers<void>()
+      const keepBusy: (() => void)[] = []
       world.turnsWait = gate.promise
       try {
         await host.send(sender, 'Hold the asker’s turn open.', world.window)
@@ -427,6 +464,23 @@ describe('explicit outbound sends', () => {
         expect(queued.unansweredQuestion).toEqual({ asker: sender, requestId: id })
         expect(queued).not.toHaveProperty('asks')
 
+        const firstAsker = world.handleOf('outbound-sender')
+        await host.closeAll()
+        gate.resolve()
+        host = world.aHost()
+        await host.resumeSession(target, world.window)
+        world.onResumed = (profile, handle) => {
+          if (profile !== 'outbound-sender') return
+          const busy = vi.spyOn(handle, 'status').mockReturnValue('working')
+          keepBusy.push(() => busy.mockRestore())
+        }
+        await host.resumeSession(sender, world.window)
+        expect(world.handleOf('outbound-sender')).not.toBe(firstAsker)
+        expect(pendingNotice()?.messageId).toBe(queued.messageId)
+        expect(world.store.routedRequestsOf(sender).find((one) => one.requestId === id)?.state).toBe(
+          'open',
+        )
+
         if (ended === 'withdrawn') {
           const withdrawn = await send('withdraw_question', { question: id })
           expect(withdrawn.structured?.outcome).toBe('ok')
@@ -444,7 +498,8 @@ describe('explicit outbound sends', () => {
         expect(world.store.routedRequestsOf(sender).find((one) => one.requestId === id)?.state).toBe(
           ended,
         )
-        gate.resolve()
+        keepBusy.pop()?.()
+        await host.send(sender, 'A new turn after the settlement.', world.window)
         await waitFor(
           () => world.ledger(sender).some(
             (event) => event.type === 'message_unqueued' && event.messageId === queued.messageId,
@@ -466,6 +521,8 @@ describe('explicit outbound sends', () => {
           ]),
         )
       } finally {
+        keepBusy.pop()?.()
+        world.onResumed = null
         gate.resolve()
         world.turnsWait = null
       }

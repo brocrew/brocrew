@@ -15,6 +15,7 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
+import { describeConversation } from '../src/main/runtime/conversation-address'
 import {
   aTakeBackOfAPieceYouHold,
   aTakeBackOfAPieceYouHoldThatEnded,
@@ -714,8 +715,10 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     const turn = await theTurnCarrying(made.worker, 'thanks, one more thing')
     const line = turn.split('\n')[0] ?? ''
     expect(line).toContain(`From ${nameOf('pm')} (conversation `)
-    expect(line).toMatch(/, about task .+ · read the brief and report \(answered\)\.$/)
-    expect(line).toContain(`about task ${made.label} ·`)
+    const destination = describeConversation(store, made.worker, false).line
+    expect(line).toContain(
+      `, about task ${made.label} · read the brief and report (answered), in your ${destination}.`,
+    )
     expect(turn).toContain('This conversation gave you work that is now closed.')
     expect(turn).toContain('A person is at that conversation.')
     await letTheTurnFinish(made.worker)
@@ -728,6 +731,7 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     const plainLine = plainTurn.split('\n')[0] ?? ''
     expect(plainLine).toContain(`From ${nameOf('pm')} (conversation `)
     expect(plainLine).not.toContain('about task')
+    expect(plainLine).toContain(`), in your ${destination}.`)
     expect(plainTurn).toContain('This conversation gave you work that is now closed.')
     expect(plainTurn).toContain('A person is at that conversation.')
   })
@@ -745,8 +749,9 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     })
     expect(open.outcome, JSON.stringify(open)).toBe('ok')
     const first = await theTurnCarrying(pm, 'halfway there')
+    const destination = describeConversation(store, pm, false).line
     expect(theFirstLine(first)).toBe(
-      `From ${nameOf('worker')} (conversation ${label} · the piece), about task ${label} · the piece.`,
+      `From ${nameOf('worker')} (conversation ${label} · the piece), about task ${label} · the piece, in your ${destination}.`,
     )
     await letTheTurnFinish(pm)
 
@@ -769,7 +774,7 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     expect(after.outcome, JSON.stringify(after)).toBe('ok')
     const second = await theTurnCarrying(pm, 'one file I forgot')
     expect(theFirstLine(second)).toBe(
-      `From ${nameOf('worker')} (conversation ${label} · the piece), about task ${label} · the piece (answered).`,
+      `From ${nameOf('worker')} (conversation ${label} · the piece), about task ${label} · the piece (answered), in your ${destination}.`,
     )
   })
 
@@ -795,7 +800,7 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     host = buildHost()
     await host.resumeSession(worker, window)
     const turn = await theTurnCarrying(worker, 'noted for later')
-    expect(turn).toContain(`about task ${label} · the piece.`)
+    expect(turn).toContain(`about task ${label} · the piece, in your conversation `)
     expect(turn).toContain(`This conversation gave you ${label}.`)
     // ⛔ A row whose piece this app could not have written is read back without one.
     store.append(
@@ -866,7 +871,7 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     const turn = await theTurnCarrying(worker, 'second, about nothing')
     // ⚑ One turn, each message under its own sender line: the first's says what it is about, ahead
     // of its words, and nothing between the first's words and the second's does.
-    const about = `about task ${label} · the piece.`
+    const about = `about task ${label} · the piece, in your conversation `
     const first = turn.indexOf('first, about the piece')
     const second = turn.indexOf('second, about nothing')
     expect(first).toBeGreaterThan(-1)

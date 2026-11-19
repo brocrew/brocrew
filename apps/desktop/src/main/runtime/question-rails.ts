@@ -987,10 +987,12 @@ export function questionText(
     label?: string | null
     taskTitle?: string | null
   },
+  receiverLine?: string,
 ): string {
   if (asker.line !== undefined) {
+    const receiver = receiverLine === undefined ? '' : ` in your ${receiverLine}`
     const lines = [
-      `${asker.called} (${asker.line}) asks you ${request.id}.`,
+      `${asker.called} (${asker.line}) asks you ${request.id}${receiver}.`,
       `Use asked_by ${asker.address} with this question id.`,
     ]
     if (request.label != null) {

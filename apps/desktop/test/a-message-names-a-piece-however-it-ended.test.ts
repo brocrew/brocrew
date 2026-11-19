@@ -344,8 +344,8 @@ describe('F086 · F087 · F088 · a message names a piece however it ended', () 
       const turn = await driveUntilHeard(pm, `a word after it was ${MARK[ending]}`)
       const line = turn.split('\n')[0] ?? ''
       expect(line.startsWith(`From ${nameOf('worker')} (conversation `), line).toBe(true)
-      const about = `${ABOUT} ${label} · the piece (${MARK[ending]}).`
-      expect(line.slice(-about.length), line).toBe(about)
+      const about = `${ABOUT} ${label} · the piece (${MARK[ending]}), in your conversation `
+      expect(line, line).toContain(about)
       // ⛔ A note changes nothing about the piece it names.
       expect(store.piecesOwnedBy(worker).find((one) => one.piece === piece)?.state).toBe(ending)
 
