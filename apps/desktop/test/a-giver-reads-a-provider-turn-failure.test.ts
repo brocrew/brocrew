@@ -100,3 +100,95 @@ it('reads each giver’s recorded error and the current provider and model, live
   await host.close(holder, w.window)
   await check()
 })
+
+it('reads a taskless failure for the question’s successor and stops saying it when the episode is unread or stale', async () => {
+  const w = (world = aServiceWorld())
+  for (const profile of ['asker', 'observer', 'answerer']) w.anAgent(profile, 'normal')
+  let host = w.aHost()
+  const asker = await w.aPersonOpens(host, 'asker')
+  const observer = await w.aPersonOpens(host, 'observer')
+  await host.closeAll()
+  const holder = 'sess_taskless_answerer'
+  w.store.create({
+    id: holder,
+    provider: 'claude',
+    cwd: w.folder,
+    approvalMode: 'ask',
+    profileId: 'answerer',
+    parentSessionId: asker,
+  })
+  const append = (conversation: string, event: TranscriptEvent) => {
+    const ordinal = w.store.nextOrdinal(conversation)
+    w.store.append(conversation, ordinal, event, w.clock++)
+    return ordinal
+  }
+  const requestId = 'req_read_failure'
+  const prompt = 'Which chapter should we keep?'
+  append(asker, {
+    type: 'question_asked',
+    requestId,
+    prompt,
+    questions: [{ id: 'answer', prompt, options: [] }],
+  })
+  append(asker, { type: 'request_routed', requestId, to: 'an-agent', parent: holder })
+  append(holder, {
+    type: 'message_queued',
+    messageId: requestId,
+    kind: 'question',
+    text: prompt,
+    relayedFrom: asker,
+    asks: { asker, requestId },
+  })
+  append(holder, { type: 'message_unqueued', messageId: requestId, reason: 'sent', text: prompt })
+  append(holder, { type: 'user_turn', text: prompt, relayedFrom: asker })
+  const message = 'The recorded provider rejected the request.'
+  const terminal: TranscriptEvent = {
+    type: 'turn',
+    state: 'failed',
+    wordOf: 'this-app',
+    providerFailure: { message },
+  }
+  const turnOrdinal = append(holder, terminal)
+  const successor = w.seedHistoricalSuccessor(asker, 'sess_successor_asker')
+  host = w.aHost()
+
+  const read = (me: string) =>
+    answerOn(agentToolsFor(host, me), 'get_agent_status', { agent: holder })
+  const readOrdinary = async (me: string) => {
+    const answer = await read(me)
+    expect(answer.structured).toMatchObject({ outcome: 'ok', agent: { agent: holder } })
+    expect(answer.structured).not.toHaveProperty('provider_question_failure')
+    expect(answer.text).not.toContain(message)
+  }
+  expect(w.store.rootOf(holder)).toBeNull()
+  expect(await read(successor)).toMatchObject({
+    structured: {
+      outcome: 'ok',
+      agent: { agent: holder },
+      provider_question_failure: { message, turnOrdinal },
+    },
+    text: expect.stringContaining(message),
+  })
+  await readOrdinary(observer)
+
+  const writeTerminal = w.db.prepare(
+    'UPDATE events SET payload = ? WHERE session_id = ? AND ordinal = ?',
+  )
+  writeTerminal.run(
+    JSON.stringify({ ...terminal, providerFailure: { message: null } }),
+    holder,
+    turnOrdinal,
+  )
+  expect(w.store.providerFailureEpisode(holder)).toBe('unknown')
+  await readOrdinary(successor)
+  writeTerminal.run(JSON.stringify(terminal), holder, turnOrdinal)
+  expect((await read(successor)).structured).toHaveProperty('provider_question_failure', {
+    message,
+    turnOrdinal,
+  })
+
+  append(holder, { type: 'user_turn', text: 'Do an ordinary recovery check.' })
+  append(holder, { type: 'turn', state: 'completed' })
+  expect(w.store.providerFailureEpisode(holder)).toBe('none')
+  await readOrdinary(successor)
+})
