@@ -34,6 +34,21 @@ if (parentPort !== null) {
   }
   if (engine !== undefined) {
     const reader = engine
+    const mark =
+      process.env.BROCREW_WINDOW_READ_TIMING === '1'
+        ? (id: number, phase: 'start' | 'end') => {
+            try {
+              port.postMessage({
+                type: 'debug-window-read-timing',
+                id,
+                phase,
+                atUs: Number(process.hrtime.bigint() / 1_000n),
+              })
+            } catch {
+              // A failed timing send cannot turn a valid read into a failure.
+            }
+          }
+        : undefined
     port.on('message', (incoming: unknown) => {
       const parsed = request.safeParse(incoming)
       if (!parsed.success || parsed.data.type === 'close') {
@@ -44,10 +59,17 @@ if (parentPort !== null) {
       const { id, query, cancellation } = parsed.data
       const flag = cancellation === undefined ? undefined : new Int32Array(cancellation)
       try {
+        let result: ReturnType<WindowReadEngine['read']>
+        mark?.(id, 'start')
+        try {
+          result = reader.read(query, () => flag !== undefined && Atomics.load(flag, 0) !== 0)
+        } finally {
+          mark?.(id, 'end')
+        }
         port.postMessage({
           type: 'read',
           id,
-          result: reader.read(query, () => flag !== undefined && Atomics.load(flag, 0) !== 0),
+          result,
         })
       } catch (error) {
         port.postMessage({
