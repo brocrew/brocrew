@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { nextTick, type Ref } from 'vue'
 import { appClosing } from '../../src/renderer/src/lib/app-closing'
+import { fullTime } from '../../src/renderer/src/lib/clock'
 import type { RuntimeBridge } from '../../src/shared/runtime-ipc'
 import type {
   ConversationSearchHit,
   GroupedWorkSearch,
+  GroupedWorkSearchPreview,
   WorkSearchResult,
 } from '../../src/shared/work-search'
 import { mount } from './harness'
@@ -119,25 +121,31 @@ function groupedPage(
   }
 }
 
-function preview(id: string, title: string) {
+function preview(
+  id: string,
+  title: string,
+  status: string | null = null,
+): GroupedWorkSearchPreview {
   return {
     conversation: id,
     address: `W4.${id}`,
     title,
     last_active_at: 1_700_000_000_000,
+    status,
     matched_task_labels: ['W6.2'],
     tasks_omitted: 1,
   }
 }
 
 it('pages exact worker groups and opens all matches for one profile with the keyboard', async () => {
+  const recordedStatus = '<b>Review ready</b> & awaiting signoff'
   const editor = {
     profile: 'editor',
     matched: 13,
     previews: [
-      preview('editor-one', 'Newest review'),
+      preview('editor-one', 'Newest review', recordedStatus),
       preview('editor-two', 'Second review'),
-      preview('editor-three', 'Third review'),
+      preview('editor-three', 'Third review', ''),
     ],
   }
   const others = ['design', 'planner', 'ops', 'tools', null].map((profile, index) => ({
@@ -167,6 +175,17 @@ it('pages exact worker groups and opens all matches for one profile with the key
   expect(groups()[5]?.textContent?.trim()).toContain('No profile')
   expect(insidePalette('palette-row-open-editor-one')?.textContent).toContain('W6.2')
   expect(insidePalette('palette-row-open-editor-three')?.textContent).toContain('Third review')
+  const status = insidePalette('palette-row-open-editor-one')!.querySelector(
+    '[data-cy="palette-recorded-status"]',
+  )
+  expect(status?.textContent?.trim()).toBe(`Status: ${recordedStatus}`)
+  expect(status?.getAttribute('title')).toBe(recordedStatus)
+  expect(status?.querySelector('b')).toBeNull()
+  for (const id of ['editor-two', 'editor-three']) {
+    expect(
+      insidePalette(`palette-row-open-${id}`)!.querySelector('[data-cy="palette-recorded-status"]'),
+    ).toBeNull()
+  }
   expect(insidePalette('palette-searched')?.textContent).toBe('19 matching conversations.')
   const input = {
     words: 'group-scenario',
@@ -258,11 +277,14 @@ it('searches recorded conversations with the same cursor and opens an archived m
   search.mockResolvedValueOnce(
     result(
       [
-        hit(caller, 'Recorded result title', 'W1.1', {
-          provider: 'claude',
-          archived_at: null,
-          title_author: null,
-        }),
+        {
+          ...hit(caller, 'Recorded result title', 'W1.1', {
+            provider: 'claude',
+            archived_at: null,
+            title_author: null,
+          }),
+          status: 'Draft sent & waiting for feedback',
+        },
       ],
       'later',
       2,
@@ -311,7 +333,14 @@ it('searches recorded conversations with the same cursor and opens an archived m
     .poll(() => insidePalette(`palette-row-open-${caller}`)?.textContent)
     .toContain('Recorded result title')
   const first = insidePalette(`palette-row-open-${caller}`)!
-  expect(first.textContent).toContain('Conversation W1.1')
+  const detail = first.querySelector('small')!
+  expect(detail.textContent).toContain(' · active · ')
+  expect(detail.textContent).toContain(fullTime(1_700_000_000_000))
+  expect(detail.textContent).toContain('Conversation W1.1')
+  expect(detail.textContent).not.toContain('Draft sent & waiting for feedback')
+  const status = first.querySelector('[data-cy="palette-recorded-status"]')
+  expect(status?.textContent?.trim()).toBe('Status: Draft sent & waiting for feedback')
+  expect(status?.getAttribute('title')).toBe('Draft sent & waiting for feedback')
   expect(first.textContent).toContain('claude')
   expect(first.textContent).not.toContain('codex')
   expect(first.querySelector('[data-cy="palette-recorded-archive"]')).toBeNull()
@@ -336,6 +365,7 @@ it('searches recorded conversations with the same cursor and opens an archived m
   })
   const second = insidePalette(`palette-row-open-${archive}`)!
   expect(second.textContent).toContain('codex')
+  expect(second.querySelector('[data-cy="palette-recorded-status"]')).toBeNull()
   expect(second.querySelector('[data-cy="palette-recorded-archive"]')?.textContent).toBe('Archived')
   expect(second.querySelector('[data-cy="palette-recorded-title-author"]')?.textContent).toBe(
     'Named by you',

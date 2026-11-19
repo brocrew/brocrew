@@ -669,6 +669,13 @@ defineExpose({
                 >
               </strong>
               <small v-if="row.detail">{{ row.detail }}</small>
+              <small
+                v-if="row.recordedStatus"
+                :title="row.recordedStatus"
+                data-cy="palette-recorded-status"
+              >
+                Status: {{ row.recordedStatus }}
+              </small>
             </li>
           </template>
         </ul>
