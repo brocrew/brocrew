@@ -164,9 +164,7 @@ describe('663 M33 · a store that failed is not dressed as a word', () => {
     await expect(wakeByMessage(pm, worker, piece)).rejects.toThrow(
       '663 M33: the ledger read failed (disk I/O error)',
     )
-    expect(store.messagesWaitingIn(worker)).toEqual([
-      expect.objectContaining({ text: 'carry on' }),
-    ])
+    expect(store.messagesWaitingIn(worker)).toEqual([expect.objectContaining({ text: 'carry on' })])
   })
 
   it('§2 · control — an unavailable sign-in leaves a recorded message and a cannot-run receipt', async () => {

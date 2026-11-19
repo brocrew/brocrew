@@ -389,7 +389,12 @@ describe('724 · `717` F-2 — the folder it ran in is gone', () => {
 
         const refused = await wakeByMessage(pm, worker, piece)
         recordedMessageWakeFailure(
-          store, worker, refused, 'could-not-start', /the folder it ran in is no longer there/, true,
+          store,
+          worker,
+          refused,
+          'could-not-start',
+          /the folder it ran in is no longer there/,
+          true,
         )
         expect(JSON.stringify(refused)).not.toContain('could not run its provider’s program')
       })
@@ -409,7 +414,11 @@ describe('724 · `717` F-2 — the folder it ran in is gone', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     const refused = await wakeByMessage(pm, worker, piece)
     recordedMessageWakeFailure(
-      store, worker, refused, 'could-not-start', /its provider could not bring it back/,
+      store,
+      worker,
+      refused,
+      'could-not-start',
+      /its provider could not bring it back/,
     )
   })
 })

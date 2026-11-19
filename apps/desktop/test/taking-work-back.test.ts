@@ -434,7 +434,8 @@ describe('429 · taking work back', () => {
         text: 'read the brief and report',
       })
       expect(note).toMatchObject({
-        outcome: 'ok', kind: 'note',
+        outcome: 'ok',
+        kind: 'note',
         receipt: { recorded: { kind: 'message', taskLabel: null }, recipient: { id: worker } },
       })
       expect(note).not.toHaveProperty('piece')
@@ -488,15 +489,28 @@ describe('429 · taking work back', () => {
       const other = (await aGive(pmTools, 'helper', 'a second child')).agent
       expect(other).not.toBe(worker)
       const refused = await callOn(pmTools, 'message_agent', {
-        agent: other, text: 'do this', piece: 'work_never_minted',
+        agent: other,
+        text: 'do this',
+        piece: 'work_never_minted',
       })
       expect(refused).toMatchObject({
-        outcome: 'refused', rail: 'no-piece-by-that-name', permanence: 'permanent', remedy: null,
+        outcome: 'refused',
+        rail: 'no-piece-by-that-name',
+        permanence: 'permanent',
+        remedy: null,
       })
-      for (const [agent, kind] of [[other, 'note'], [worker, 'follow-up']] as const) {
-        const sent = await callOn(pmTools, 'message_agent', { agent, text: 'do this', piece: label })
+      for (const [agent, kind] of [
+        [other, 'note'],
+        [worker, 'follow-up'],
+      ] as const) {
+        const sent = await callOn(pmTools, 'message_agent', {
+          agent,
+          text: 'do this',
+          piece: label,
+        })
         expect(sent).toMatchObject({
-          outcome: 'ok', kind,
+          outcome: 'ok',
+          kind,
           receipt: { recorded: { kind: 'message', taskLabel: label }, recipient: { id: agent } },
         })
       }

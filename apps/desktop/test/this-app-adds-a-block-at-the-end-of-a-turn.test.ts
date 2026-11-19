@@ -328,8 +328,9 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
     await itsTurnEnds(answerer, surface)
     await waitFor(
       () =>
-        handedOver(answerer).some((words) => words.includes(`Question ${question} from conversation`)) &&
-        theCardItWaitsOn(answerer) !== originalCard,
+        handedOver(answerer).some((words) =>
+          words.includes(`Question ${question} from conversation`),
+        ) && theCardItWaitsOn(answerer) !== originalCard,
       'the unanswered question’s reminder to open its own turn',
     )
     await itsTurnEnds(answerer, surface)

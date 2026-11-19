@@ -20,7 +20,11 @@ import {
 } from '../src/main/runtime/agent-tools'
 import { SessionStillStarting } from '../src/main/runtime/session-unavailable'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { DEFAULT_PROFILE_ID, theMessagesOf, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import {
+  DEFAULT_PROFILE_ID,
+  theMessagesOf,
+  type RuntimeEventMessage,
+} from '../src/shared/runtime-ipc'
 
 /**
  * # 🔴 650 · a refusal that clears on its own
@@ -304,9 +308,12 @@ describe('650 · a refusal that clears on its own', () => {
       receipt: { recorded: { kind: 'message', id: recorded?.messageId } },
     })
     await until(
-      () => eventsOf(id).some(
-        (event) => event.type === 'user_turn' && theMessagesOf(event).some((part) => part.text === words.text),
-      ),
+      () =>
+        eventsOf(id).some(
+          (event) =>
+            event.type === 'user_turn' &&
+            theMessagesOf(event).some((part) => part.text === words.text),
+        ),
       'the waiting message to reach the same conversation',
     )
     // ⚑ **The wait burned no number** (D-016 · R4): the control's give took the first number under
@@ -377,9 +384,12 @@ describe('650 · a refusal that clears on its own', () => {
     })
     expect(host.sessionIds).toContain(id)
     await until(
-      () => eventsOf(id).some(
-        (event) => event.type === 'user_turn' && theMessagesOf(event).some((part) => part.text === words.text),
-      ),
+      () =>
+        eventsOf(id).some(
+          (event) =>
+            event.type === 'user_turn' &&
+            theMessagesOf(event).some((part) => part.text === words.text),
+        ),
       'the waiting note to reach the recorded conversation',
     )
     expect(labelsIn(id)).toEqual(['W3.2'])

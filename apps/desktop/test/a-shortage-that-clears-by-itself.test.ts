@@ -74,7 +74,9 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
 
 /** ⚑ The new word — spelled here as a string, so `main` (which has no such word) can run this file. */
 const shortageReason = (code: string): RegExp =>
-  code === 'EMFILE' ? /BroCrew had too many files open/ : /ran short of open files, processes or memory/
+  code === 'EMFILE'
+    ? /BroCrew had too many files open/
+    : /ran short of open files, processes or memory/
 
 describe('705 · R39 — a shortage that clears by itself', () => {
   let userData: string
@@ -279,7 +281,11 @@ describe('705 · R39 — a shortage that clears by itself', () => {
       const { pm, worker, piece } = await aWorkerOver()
       gate.resumeFails = () => produced
       const id = recordedMessageWakeFailure(
-        store, worker, await wake(pm, worker, piece), 'could-not-start', shortageReason(code),
+        store,
+        worker,
+        await wake(pm, worker, piece),
+        'could-not-start',
+        shortageReason(code),
       )
       gate.resumeFails = undefined
       expect(await wake(pm, worker, piece)).toMatchObject({ outcome: 'ok', agent: worker })
@@ -302,7 +308,11 @@ describe('705 · R39 — a shortage that clears by itself', () => {
       expect(address).toMatch(/^W/)
       const before = store.recorded().map(({ sessionId }) => sessionId)
       recordedMessageWakeFailure(
-        store, worker, await wake(pm, worker, piece), 'provider-file-missing', /session file is missing/,
+        store,
+        worker,
+        await wake(pm, worker, piece),
+        'provider-file-missing',
+        /session file is missing/,
       )
       expect(store.recorded().map(({ sessionId }) => sessionId)).toEqual(before)
       expect(store.replacements()).toEqual([])
@@ -322,7 +332,11 @@ describe('705 · R39 — a shortage that clears by itself', () => {
         gate.resumeFails = () => produced
         const refused = await wake(pm, worker, piece)
         recordedMessageWakeFailure(
-          store, worker, refused, 'could-not-start', /its provider could not bring it back/,
+          store,
+          worker,
+          refused,
+          'could-not-start',
+          /its provider could not bring it back/,
         )
       }
     })
@@ -342,7 +356,11 @@ describe('705 · R39 — a shortage that clears by itself', () => {
       gate.resumeFails = () => produced
       const refused = await wake(pm, worker, piece)
       recordedMessageWakeFailure(
-        store, worker, refused, 'could-not-start', /its provider could not bring it back/,
+        store,
+        worker,
+        refused,
+        'could-not-start',
+        /its provider could not bring it back/,
       )
     })
   })
@@ -366,11 +384,20 @@ describe('705 · R39 — a shortage that clears by itself', () => {
       const { pm, worker, piece } = await aWorkerOver()
       gate.resumeFails = () => produced
       const id = recordedMessageWakeFailure(
-        store, worker, await wake(pm, worker, piece), 'could-not-start', shortageReason(code),
+        store,
+        worker,
+        await wake(pm, worker, piece),
+        'could-not-start',
+        shortageReason(code),
       )
-      expect(events(pm)).toContainEqual(expect.objectContaining({
-        type: 'message_sent', to: worker, messageId: id, delivery: 'queued',
-      }))
+      expect(events(pm)).toContainEqual(
+        expect.objectContaining({
+          type: 'message_sent',
+          to: worker,
+          messageId: id,
+          delivery: 'queued',
+        }),
+      )
       expect(noticesOf(pm).some((text) => text.startsWith('refused: message_agent'))).toBe(false)
     })
 
@@ -381,11 +408,20 @@ describe('705 · R39 — a shortage that clears by itself', () => {
       const { pm, worker, piece } = await aWorkerOver()
       gate.resumeFails = () => produced
       const id = recordedMessageWakeFailure(
-        store, worker, await wake(pm, worker, piece), 'could-not-start', /its provider could not bring it back/,
+        store,
+        worker,
+        await wake(pm, worker, piece),
+        'could-not-start',
+        /its provider could not bring it back/,
       )
-      expect(events(pm)).toContainEqual(expect.objectContaining({
-        type: 'message_sent', to: worker, messageId: id, delivery: 'queued',
-      }))
+      expect(events(pm)).toContainEqual(
+        expect.objectContaining({
+          type: 'message_sent',
+          to: worker,
+          messageId: id,
+          delivery: 'queued',
+        }),
+      )
       expect(noticesOf(pm).some((text) => text.startsWith('refused: message_agent'))).toBe(false)
     })
   })

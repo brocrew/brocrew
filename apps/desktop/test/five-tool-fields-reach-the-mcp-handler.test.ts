@@ -86,8 +86,7 @@ describe('five more tools answer field failures through Claude MCP', () => {
       }
     if (name === 'ask_question')
       return { who_answers: 'an-agent', agent: worker, question: 'What did you find?' }
-    if (name === 'message_agent')
-      return { agent: worker, text: 'The notes are here.' }
+    if (name === 'message_agent') return { agent: worker, text: 'The notes are here.' }
     if (name === 'answer_question')
       return { question: 'q_fictional', cannot_answer: 'I cannot settle this.' }
     return { title: 'Notes', definition_of_done: 'Notes are collected.', brief: 'Collect notes.' }

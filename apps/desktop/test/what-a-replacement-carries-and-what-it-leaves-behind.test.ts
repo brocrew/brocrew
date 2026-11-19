@@ -190,7 +190,11 @@ describe('what a replacement carries, and what it leaves behind', () => {
     const recorded = store.piecesOwnedBy(worker)[0]
     issued.forgetAll()
     recordedMessageWakeFailure(
-      store, worker, await wake(pm, worker, label), 'provider-file-missing', /session file is missing/,
+      store,
+      worker,
+      await wake(pm, worker, label),
+      'provider-file-missing',
+      /session file is missing/,
     )
     expect(store.recorded().map(({ sessionId }) => sessionId)).toEqual(all)
     expect(store.replacements()).toEqual([])

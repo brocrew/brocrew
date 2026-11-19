@@ -454,18 +454,23 @@ describe('F097 · a person owes the agent that answered them', () => {
       piece: 'W1.1',
     })
     expect(asked, JSON.stringify(asked)).toMatchObject({ outcome: 'ok' })
-    const noticeAt = () => store.events(ada).find(
-      ({ event }) =>
-        event.type === 'user_turn' &&
-        (event.parts ?? [event]).some(
-          (part) => part.appNotice === 'a-question-stayed-unanswered' &&
-            part.text.includes(String(asked.question)),
-        ),
-    )?.ordinal
+    const noticeAt = () =>
+      store
+        .events(ada)
+        .find(
+          ({ event }) =>
+            event.type === 'user_turn' &&
+            (event.parts ?? [event]).some(
+              (part) =>
+                part.appNotice === 'a-question-stayed-unanswered' &&
+                part.text.includes(String(asked.question)),
+            ),
+        )?.ordinal
     await waitFor(() => {
       const ordinal = noticeAt()
-      return ordinal !== undefined && store.events(ada).some(
-        (entry) => entry.ordinal > ordinal && entry.event.type === 'turn',
+      return (
+        ordinal !== undefined &&
+        store.events(ada).some((entry) => entry.ordinal > ordinal && entry.event.type === 'turn')
       )
     }, 'the unanswered-question notice to open and finish a separate turn')
     await settle()

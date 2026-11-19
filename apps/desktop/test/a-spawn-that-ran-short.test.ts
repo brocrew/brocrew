@@ -458,7 +458,11 @@ describe('707 · R39, extended — a spawn that ran short', () => {
       const wake = { agent: worker, text: 'carry on', kind: 'follow-up', piece: spawned.label }
       const refused = await callOn(pm, 'message_agent', wake)
       recordedMessageWakeFailure(
-        store, worker, refused, 'could-not-start', /BroCrew had too many files open/,
+        store,
+        worker,
+        refused,
+        'could-not-start',
+        /BroCrew had too many files open/,
       )
       homeFails = undefined
       expect(await callOn(pm, 'message_agent', wake)).toMatchObject({

@@ -317,7 +317,7 @@ describe('D-009 · a model’s own question stays the model’s', () => {
         .events(child.id)
         .flatMap(({ event }) =>
           event.type === 'user_turn' || event.type === 'message_queued'
-            ? (event.type === 'user_turn' ? event.parts ?? [event] : [event])
+            ? (event.type === 'user_turn' ? (event.parts ?? [event]) : [event])
                 .filter((part) => part.appNotice !== 'a-question-stayed-unanswered')
                 .map((part) => part.text)
             : [],

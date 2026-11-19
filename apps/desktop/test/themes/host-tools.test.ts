@@ -237,7 +237,8 @@ describe('theme tools use the workspace store and carry their facts once', () =>
       const table = refuseTool('malformed-request', detail)
       const reason = name === 'message_agent' ? `Not sent: ${table.reason}` : table.reason
       expect(refused.structured).toEqual({ ...table, reason })
-      const introduction = name === 'message_agent' ? reason : `refused (malformed-request): ${reason}`
+      const introduction =
+        name === 'message_agent' ? reason : `refused (malformed-request): ${reason}`
       expect(refused.text).toBe(
         `${introduction} Problems: ${detail.problems.map((one) => one.trim().replace(/[.;]+$/u, '')).join('; ')}. This exact call can never succeed. Fix it and call again.`,
       )

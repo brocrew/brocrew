@@ -31,7 +31,6 @@ const itWithPosixChmod = process.platform === 'win32' ? it.skip : it
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
-
 class RecordingSink implements RuntimeEventSink {
   readonly aPersonIsBehindIt = true
   readonly messages: RuntimeEventMessage[] = []
@@ -316,7 +315,14 @@ describe('what a person must fix, said once', () => {
       vi.spyOn(console, 'warn').mockImplementation(() => {})
       gate.resumeFails = () => new CodexUnavailableError('Codex isn’t available.')
       const refused = await wakeByMessage(pm, worker, label)
-      recordedMessageWakeFailure(store, worker, refused, 'could-not-start', /could not run its provider’s program/, true)
+      recordedMessageWakeFailure(
+        store,
+        worker,
+        refused,
+        'could-not-start',
+        /could not run its provider’s program/,
+        true,
+      )
     })
 
     itWithPosixChmod(
@@ -328,7 +334,14 @@ describe('what a person must fix, said once', () => {
         const refusal = aFolderTheDiskRefuses()
         homeFails = () => refusal
         const refused = await wakeByMessage(pm, worker, label)
-        recordedMessageWakeFailure(store, worker, refused, 'could-not-start', /could not make or write a folder/, true)
+        recordedMessageWakeFailure(
+          store,
+          worker,
+          refused,
+          'could-not-start',
+          /could not make or write a folder/,
+          true,
+        )
       },
     )
 
@@ -338,7 +351,11 @@ describe('what a person must fix, said once', () => {
       vi.spyOn(console, 'warn').mockImplementation(() => {})
       issued.forgetAll()
       recordedMessageWakeFailure(
-        store, worker, await wakeByMessage(pm, worker, label), 'provider-file-missing', /session file is missing/,
+        store,
+        worker,
+        await wakeByMessage(pm, worker, label),
+        'provider-file-missing',
+        /session file is missing/,
       )
       expect(store.replacements()).toEqual([])
     })

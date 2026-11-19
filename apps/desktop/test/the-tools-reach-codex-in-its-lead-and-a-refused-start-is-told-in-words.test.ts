@@ -1274,7 +1274,13 @@ describe('§6 to §8 · what a failed start says at each door', () => {
 
       gate.resumeFails = () => aResumeRefusedWith(refusedStart(SAID))
       const refused = await wakeByMessage(pm, worker, label)
-      recordedMessageWakeFailure(store, worker, refused, 'could-not-start', /its provider refused to start it/)
+      recordedMessageWakeFailure(
+        store,
+        worker,
+        refused,
+        'could-not-start',
+        /its provider refused to start it/,
+      )
       expect(JSON.stringify(refused)).not.toContain(SAID)
       expect(JSON.stringify(refused)).not.toContain(THREAD_ID)
       // ⛔ The conversation was not replaced: a provider that refuses is not one that lost it.
@@ -1285,13 +1291,25 @@ describe('§6 to §8 · what a failed start says at each door', () => {
       // of the provider's …
       gate.resumeFails = () => aResumeRefusedWith(new Error('the handshake died'))
       const generic = await wakeByMessage(pm, worker, label)
-      recordedMessageWakeFailure(store, worker, generic, 'could-not-start', /its provider could not bring it back/)
+      recordedMessageWakeFailure(
+        store,
+        worker,
+        generic,
+        'could-not-start',
+        /its provider could not bring it back/,
+      )
       expect(JSON.stringify(generic)).not.toContain('the handshake died')
       // … and one that failed otherwise (StartFailed) gets the same generic word, which is the arm
       // the host's person-read wrapper would otherwise hide from the `ResumeError` reader.
       gate.resumeFails = () => aResumeRefusedWith(new StartFailed('the child exited'))
       const failedOtherwise = await wakeByMessage(pm, worker, label)
-      recordedMessageWakeFailure(store, worker, failedOtherwise, 'could-not-start', /its provider could not bring it back/)
+      recordedMessageWakeFailure(
+        store,
+        worker,
+        failedOtherwise,
+        'could-not-start',
+        /its provider could not bring it back/,
+      )
       expect(JSON.stringify(failedOtherwise)).not.toContain('the child exited')
     })
 

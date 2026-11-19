@@ -176,7 +176,11 @@ describe('663 M50 · a wake refused logs the host’s own words and keeps them o
 
       // ⚑ Positive — the caller is told, in the door's own closed sentence, that the wake failed.
       recordedMessageWakeFailure(
-        store, worker, refused.structured, 'could-not-start', /could not bring it back/,
+        store,
+        worker,
+        refused.structured,
+        'could-not-start',
+        /could not bring it back/,
       )
       expect(refused.text).toContain('Your message is recorded for')
 
