@@ -7,6 +7,7 @@ import type {
   WorkSearchResult,
 } from '../../../shared/work-search'
 import { fullTime } from '../lib/clock'
+import { appClosing } from '../lib/app-closing'
 import { useClientApi } from '../client-provider/injection'
 import { chordSaid, platformHere } from '../lib/this-computer'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
@@ -218,7 +219,7 @@ async function readConversations(more = false): Promise<void> {
   const caller = props.searchCaller
   const search = props.searchConversations
   const cursor = more ? searchPage.value?.next_cursor : null
-  if (!caller || !search || searchBusy.value || (more && !cursor)) return
+  if (appClosing.value || !caller || !search || searchBusy.value || (more && !cursor)) return
   const reading = ++searchRequest
   searchBusy.value = true
   searchFailed.value = null

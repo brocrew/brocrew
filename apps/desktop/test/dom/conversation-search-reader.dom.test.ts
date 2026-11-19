@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { nextTick } from 'vue'
+import { nextTick, type Ref } from 'vue'
+import { appClosing } from '../../src/renderer/src/lib/app-closing'
 import type { RuntimeBridge } from '../../src/shared/runtime-ipc'
 import type { ConversationSearchHit, WorkSearchResult } from '../../src/shared/work-search'
 import { mount } from './harness'
@@ -13,8 +14,18 @@ import {
 const { default: RuntimeScreen } =
   await import('../../src/renderer/src/components/RuntimeScreen.vue')
 
+vi.mock('../../src/renderer/src/lib/app-closing', async (load) => {
+  const actual = await load<typeof import('../../src/renderer/src/lib/app-closing')>()
+  const { ref } = await import('vue')
+  return { ...actual, appClosing: ref(false) }
+})
+
+const closing = appClosing as Ref<boolean>
 beforeEach(installRuntimeScreenFixture)
-afterEach(disposeRuntimeScreenFixture)
+afterEach(() => {
+  closing.value = false
+  disposeRuntimeScreenFixture()
+})
 
 const caller = 'recorded-caller'
 const archive = 'archived-result'
@@ -86,7 +97,14 @@ it('searches recorded conversations with the same cursor and opens an archived m
     opens: { sessionId: archive },
   })
   runtime.latestHistory.mockResolvedValue({
-    entries: [],
+    entries: [
+      {
+        sessionId: archive,
+        ordinal: 0,
+        at: 1_700_000_000_000,
+        event: { type: 'assistant_message', text: 'The archived review is attached.' },
+      },
+    ],
     from: 0,
     hasOlder: false,
     turnAligned: true,
@@ -124,6 +142,7 @@ it('searches recorded conversations with the same cursor and opens an archived m
   await expect.poll(() => m.all('linked-history').length).toBe(1)
   expect(runtime.resolveLink).toHaveBeenCalledWith(`brocrew://conversation/${archive}`)
   expect(runtime.latestHistory).toHaveBeenCalledWith({ sessionId: archive })
+  expect(m.q('linked-history').textContent).toContain('The archived review is attached.')
   expect(runtime.resume).not.toHaveBeenCalled()
   expect(runtime.startAndSend).not.toHaveBeenCalled()
 })
@@ -158,4 +177,16 @@ it('ignores a delayed page after the query changes without affecting command key
   expect(insidePalette('palette-row-open-new-result')?.textContent).toContain(
     'Current search result',
   )
+})
+
+it('does not dispatch a queued conversation search after quitting starts', async () => {
+  const search = vi.fn<RuntimeBridge['searchWork']>(async () => result([], null))
+  window.api.runtime.searchWork = search
+  await openPalette()
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  typeQuery('queued')
+  await nextTick()
+  closing.value = true
+  await vi.advanceTimersByTimeAsync(180)
+  expect(search).not.toHaveBeenCalled()
 })
