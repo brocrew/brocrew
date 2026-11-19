@@ -157,3 +157,33 @@ it('isolates distinct clients, out-of-order generations and refusals without cha
   await settle()
   expect(right.held().value).toBe(recovered)
 })
+
+
+it('coalesces login notices received during one usage read and settles the last answer', async () => {
+  const f = usageClient()
+  const previous = answer(8)
+  f.read.mockResolvedValueOnce(previous)
+  const out = surface(f.api)
+  await settle()
+  const pendingReads: ReturnType<typeof pending>[] = []
+  f.read.mockImplementation(() => {
+    const next = pending()
+    pendingReads.push(next)
+    return next.promise
+  })
+  for (let notice = 0; notice < 50; notice++) f.notice('login')
+  const concurrent = pendingReads.length
+  const retained = out.held().value === previous
+  const firstRound = [...pendingReads]
+  for (const read of firstRound) read.resolve(answer(9))
+  await settle()
+  const followups = pendingReads.slice(firstRound.length)
+  for (const read of followups) read.resolve(answer(10))
+  await settle()
+  const final = out.held().value?.claude[0]?.usedPercent
+  console.log('CARD399_USAGE_BURST', JSON.stringify({ notices: 50, concurrent, followups: followups.length, retained, final }))
+  expect(retained).toBe(true)
+  expect(concurrent).toBe(1)
+  expect(followups).toHaveLength(1)
+  expect(final).toBe(10)
+})
