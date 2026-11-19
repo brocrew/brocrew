@@ -85,9 +85,9 @@ import type {
   TheStopItsWordsAsked,
   AnswerWithItsStop,
   MessageNowOutcome,
+  RecordedAgentMessage,
   OutOfReach,
   TheDoorsReach,
-  AProfileNames,
   NewBriefDelivery,
   Told,
 } from './message-records'
@@ -99,7 +99,6 @@ export type {
   MessageNowOutcome,
   OutOfReach,
   TheDoorsReach,
-  AProfileNames,
   NewBriefDelivery,
   Told,
 } from './message-records'
@@ -117,12 +116,28 @@ import type {
 } from '../../shared/conversation-title'
 import {
   canonicalAddressOf,
+  describeConversation,
   describeConversationForRead,
   isRecordedServiceConversation,
   resolveConversationAddress,
 } from './conversation-address'
 import { renameConversation } from './rename-conversation'
 import { sendReceipt, type SendFacts } from './send-receipt'
+import { outboundQuestionText } from './outbound-question-words'
+import {
+  INLINE_TEXT_LIMIT,
+  keepPlainSendFile,
+  keepSendOverflow,
+  keepTasklessSendFiles,
+  keepTasklessSendText,
+  outboundOverflowSaid,
+  sendFilesSaid,
+  sendOverflowAttachment,
+  textWithOverflowResource,
+  type PreparedSendFiles,
+  type PreparedSendText,
+  type SendOverflow,
+} from './send-overflow'
 import type { SendRecipientState } from '../../shared/tool-outcome'
 import type { NewSessionRecord } from '../db/session-store'
 import type {
@@ -508,11 +523,13 @@ import {
 } from '../../shared/documents'
 import {
   keepResource,
-  readOfferedResource,
+  readOfferedFile,
+  sha256Hex,
   refuseResource,
   resolveResource,
   resourceTitle,
   type OfferedFile,
+  type OfferedFileBytes,
   type ResourceRefusal,
 } from '../resources/resources'
 
@@ -1188,7 +1205,6 @@ import {
   type QuestionRefusal,
 } from './question-rails'
 import { admitInterrupt } from './interrupt-rails'
-import { describeConversation } from './conversation-address'
 import { explicitStopWords, stopTurn, type ExplicitStopNotice } from './stop-turn'
 import { distilSkipping } from './digest'
 import { MAX_DIGEST_SPAN_MS, WINDOW_WAS_CHOSEN, type DigestReading } from '../../shared/digest'
@@ -1931,8 +1947,8 @@ const theSignInChanged = (provider: Provider): string =>
  */
 const RESOURCE_SAMPLE_MS = 5_000
 
-/** A caller's words held for a service's next start while services are off: whose they are. */
-interface WordsLeftForAService {
+/** The sender and files of a message recorded before the recipient starts. */
+interface WordsForTheNextStart {
   readonly by: Caller
   /** What the caller said they are; absent for a new brief, which names its piece. */
   readonly says?: AgentMessageKind
@@ -2240,6 +2256,7 @@ interface HostedSession {
    * this count holds.
    */
   turnsEnded: number
+  questionWakeDue?: true
   /**
    * ⚑ **When a person last wrote in it**, as far as this life knows: noted as a turn their own
    * words opened is recorded, and read off its ledger as a life that continues a recording begins
@@ -2935,6 +2952,7 @@ interface WhoOwesIt {
   readonly owesAnAnswerTo: readonly string[]
   /** When the oldest question it owes an answer to was put to it, epoch ms, or `null`. */
   readonly owesAnAnswerSince: number | null
+  readonly owedQuestions: readonly OwedQuestion[]
 }
 
 /** ⚑ **F009 · the most of an agent's conversations its record lists**, newest activity first. */
@@ -4957,7 +4975,7 @@ export class RuntimeHost implements LiveHost {
       thePairItRunsOn: (conversation) => this.thePairItRunsOn(conversation),
       switchedFor: (conversation, choice) => this.switchedFor(conversation, choice),
       switchedBack: (conversation, wrote, was) => this.switchedBack(conversation, wrote, was),
-      keptFor: (conversation, spelled) => this.keptFor<never>(conversation, spelled),
+      keptFor: (conversation, spelled) => this.keepFilesForSend(conversation, spelled),
       aProtectedPlaceFor: (folder) => this.aProtectedPlaceFor(folder),
       theBriefTo: (conversation, giving, by, onRecorded, deliver) =>
         this.theBriefTo(conversation, giving, by, onRecorded, deliver),
@@ -8698,10 +8716,9 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * A caller's words to a service that is not running, while services are off: every rail a start
-   * would meet is asked first, then they are kept in its record for its next start, unsent.
+   * Keep the message and its sender receipt before the recipient's next start.
    */
-  private async leaveForTheServicesStart(
+  private async leaveForTheNextStart(
     sessionId: string,
     text: string,
     by: Caller,
@@ -8711,7 +8728,7 @@ export class RuntimeHost implements LiveHost {
     says: AgentMessageKind,
   ): Promise<QueueOutcome> {
     const to = this.theOneInItsPlace(sessionId)
-    await this.refuseBeforeAStart(to, text, by, attachments)
+    await this.refuseBeforeAStart(to, text, by, attachments, facts.messageAct)
     const from = this.originOf(by)
     const toProfile = from?.who === 'a-caller-with-an-id' ? this.profileOf(to) : null
     const kept = await this.keptUntilItStarts(to, text, facts, kind, { by, says, attachments })
@@ -8763,7 +8780,7 @@ export class RuntimeHost implements LiveHost {
     text: string,
     facts: FactsAQueueCarries,
     kind: MailboxKind,
-    left?: WordsLeftForAService,
+    left?: WordsForTheNextStart,
   ): Promise<QueueOutcome> {
     return new Promise<QueueOutcome>((kept, failed) => {
       this.holdUntilItStarts(
@@ -8828,8 +8845,12 @@ export class RuntimeHost implements LiveHost {
    */
   private aCallersWordsWaitForItsQueue(session: HostedSession): boolean {
     return session.mailbox.some(
-      (queued) => this.theReachOfACallersWords(session.id, queued) === 'unknown',
+      (queued) => this.theReachOfHeldWords(session.id, queued) === 'unknown',
     )
+  }
+
+  private theReachOfHeldWords(sessionId: string, queued: QueuedMessage) {
+    return queued.messageAct === undefined ? this.theReachOfACallersWords(sessionId, queued) : null
   }
 
   /**
@@ -10822,6 +10843,14 @@ export class RuntimeHost implements LiveHost {
     return this.theServiceOf(sessionId) === null ? { is: 'takes-no-messages' } : { is: 'a-service' }
   }
 
+  messageDestination(address: string): string | null {
+    const destination = resolveConversationAddress(address, this.deps.store)
+    const current = this.theOneInItsPlace(destination)
+    return this.slots.has(current) || this.deps.store.recordedOne(current) !== null
+      ? destination
+      : null
+  }
+
   /** A known piece label names its owner for reads; other doors retain their own reach. */
   theConversationAddressed(
     address: string,
@@ -10841,39 +10870,6 @@ export class RuntimeHost implements LiveHost {
       (reach === 'interrupting' && this.mayInterrupt(this.theOneInItsPlace(owner))) ||
       reach === 'reading'
     return admitted ? owner : address
-  }
-
-  /**
-   * The conversation an agent's profile name names at `message_agent` and `ask_question`: its one
-   * reachable conversation, or the label of each when there are several. Archived conversations
-   * and the caller's own conversation count when they are reachable. A message also reaches the
-   * service working on the caller's piece, as a message to its id does.
-   *
-   * `null` when the address is a conversation's id, or names no agent with a conversation in this
-   * caller's reach: the door then reads it as the id it was spelled as, so a name out of reach is
-   * refused as an unknown one is.
-   */
-  theConversationAProfileNames(
-    address: string,
-    by: Caller,
-    me: string | null,
-    forAMessage = false,
-  ): AProfileNames {
-    if (this.slots.has(address) || this.deps.store.recordedOne(address) !== null) return null
-    const named = [
-      ...new Set(
-        this.deps.store
-          .conversationsOf(address)
-          .map((one) => this.theOneInItsPlace(one.conversation)),
-      ),
-    ].filter((one) => this.whyItIsOutOfReach(one, by, me, forAMessage) === null)
-    if (named.length === 0) return null
-    if (named.length === 1) return { is: 'one', conversation: named[0]! }
-    return {
-      is: 'several',
-      profile: foldProfileName(address),
-      labels: named.map((one) => this.addressOf(one)),
-    }
   }
 
   /** The recorded profile of an already named conversation, without opening it. */
@@ -12599,6 +12595,18 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
+  private recordMadeOverflow(
+    piece: string,
+    { file: { name, title, sha256, bytes } }: SendOverflow,
+    sender: string,
+    at: number,
+  ): ResourceRow {
+    return this.deps.store.addResource(
+      { piece, role: 'made', name, title, summary: null, sha256, bytes, addedBy: sender },
+      at,
+    )
+  }
+
   private recordMadeFiles(
     piece: string,
     files: readonly (OfferedFile & { readonly title: string })[],
@@ -12649,22 +12657,10 @@ export class RuntimeHost implements LiveHost {
     | { readonly ok: true; readonly files: readonly (OfferedFile & { readonly title: string })[] }
     | { readonly ok: false; readonly refusal: ResourceRefusal | T } {
     if (spelled.length === 0) return { ok: true, files: [] }
-    const root = this.deps.resourcesRoot?.()
-    if (root === undefined) {
-      return { ok: false, refusal: refuseResource('resource-store-unavailable') }
-    }
-    const folder = this.deps.store.recordedOne(conversation)?.cwd ?? null
-    const files: OfferedFile[] = []
-    for (const path of spelled) {
-      if (folder === null) {
-        return { ok: false, refusal: refuseResource('resource-unreadable', { path }) }
-      }
-      const placed = resolveResource(folder, path)
-      if (!placed.ok) return placed
-      const read = readOfferedResource(placed.realPath, path)
-      if (!read.ok) return read
-      files.push(read)
-    }
+    const offered = this.filesForKeeping(conversation, spelled)
+    if (!offered.ok) return offered
+    const { root } = offered
+    const files = offered.files.map((file) => ({ ...file, sha256: sha256Hex(file.bytes) }))
     const refused = admitFiles?.(files)
     if (refused != null) return { ok: false, refusal: refused }
     for (const [index, file] of files.entries()) {
@@ -12680,6 +12676,54 @@ export class RuntimeHost implements LiveHost {
       }
     }
     return { ok: true, files: files.map((file) => ({ ...file, title: resourceTitle(file) })) }
+  }
+
+  private filesForKeeping(conversation: string, spelled: readonly string[]) {
+    const root = this.deps.resourcesRoot?.()
+    if (root === undefined) {
+      return { ok: false, refusal: refuseResource('resource-store-unavailable') } as const
+    }
+    const folder = this.deps.store.recordedOne(conversation)?.cwd ?? null
+    const offered = this.readFilesOfferedIn(folder, spelled)
+    return offered.ok ? { ...offered, root } : offered
+  }
+
+  private readFilesOfferedIn(
+    folder: string | null,
+    spelled: readonly string[],
+  ):
+    | { readonly ok: true; readonly files: readonly OfferedFileBytes[] }
+    | { readonly ok: false; readonly refusal: ResourceRefusal } {
+    const files: OfferedFileBytes[] = []
+    for (const path of spelled) {
+      if (folder === null)
+        return { ok: false, refusal: refuseResource('resource-unreadable', { path }) }
+      const placed = resolveResource(folder, path)
+      if (!placed.ok) return placed
+      const read = readOfferedFile(placed.realPath, path)
+      if (!read.ok) return read
+      files.push(read)
+    }
+    return { ok: true, files }
+  }
+
+  private keepFilesForSend(
+    conversation: string,
+    spelled: readonly string[],
+  ):
+    | { readonly ok: true; readonly files: readonly (OfferedFile & { readonly title: string })[] }
+    | { readonly ok: false; readonly refusal: ResourceRefusal } {
+    if (spelled.length === 0) return { ok: true, files: [] }
+    const offered = this.filesForKeeping(conversation, spelled)
+    if (!offered.ok) return offered
+    const { root } = offered
+    const files: (OfferedFile & { readonly title: string })[] = []
+    for (const file of offered.files) {
+      const kept = keepPlainSendFile(root, file.name, file.bytes)
+      if (!kept.ok) return kept
+      files.push({ ...file, sha256: kept.key, title: resourceTitle(file) })
+    }
+    return { ok: true, files }
   }
 
   titleTheOlderFiles(): Promise<{ titled: number; retitled: number }> {
@@ -12964,8 +13008,8 @@ export class RuntimeHost implements LiveHost {
     kept?: (where: WhereHeldWordsWait, id?: string) => void,
     /** ⚑ The id to hold them under, when holding them again must be the same message. */
     id?: string,
-    /** A caller's words held for a service while services are off: whose they are. */
-    left?: WordsLeftForAService,
+    /** Sender and attachment facts when an outbound message is held before starting. */
+    left?: WordsForTheNextStart,
   ): void {
     if (this.startupRepairs.has(sessionId)) {
       void this.settleBeforeUse(sessionId)
@@ -13013,7 +13057,7 @@ export class RuntimeHost implements LiveHost {
     facts: FactsAQueueCarries,
     kind: MailboxKind,
     id?: string,
-    left?: WordsLeftForAService,
+    left?: WordsForTheNextStart,
   ): { readonly held: QueuedMessage; readonly row: QueuedMessageEvent } {
     // ⚑ **D-016 · commit 6 · R4** — the piece of its own these words drive, when they name one.
     const drives = this.thePieceTheseWordsDrive(sessionId, facts)
@@ -13041,6 +13085,10 @@ export class RuntimeHost implements LiveHost {
       ...(drives === null ? {} : { drives }),
       ...(from === null ? {} : { origin: from }),
       ...(facts.asks === undefined ? {} : { asks: facts.asks }),
+      ...(facts.unansweredQuestion === undefined
+        ? {}
+        : { unansweredQuestion: facts.unansweredQuestion }),
+      ...(facts.messageAct === undefined ? {} : { messageAct: facts.messageAct }),
       ...(itNames === null ? {} : { about: itNames }),
     }
     const row: QueuedMessageEvent = {
@@ -13054,6 +13102,10 @@ export class RuntimeHost implements LiveHost {
       ...(drives === null ? {} : { drives }),
       ...(itNames === null ? {} : { about: itNames }),
       ...(held.asks === undefined ? {} : { asks: held.asks }),
+      ...(held.unansweredQuestion === undefined
+        ? {}
+        : { unansweredQuestion: held.unansweredQuestion }),
+      ...(held.messageAct === undefined ? {} : { messageAct: held.messageAct }),
     }
     return { held, row }
   }
@@ -13068,7 +13120,7 @@ export class RuntimeHost implements LiveHost {
     /** ⚑ **D-030** — see {@link holdUntilItStarts}. */
     kept?: (where: WhereHeldWordsWait, id?: string) => void,
     id?: string,
-    left?: WordsLeftForAService,
+    left?: WordsForTheNextStart,
   ): void {
     const { held, row } = this.wordsThisAppHolds(sessionId, text, facts, kind, id, left)
     // ⚑ **D-030 · its mailbox, while it runs** — and a sign-in that moved on holds them there for
@@ -13246,6 +13298,20 @@ export class RuntimeHost implements LiveHost {
     return routed
   }
 
+  private outboundQuestionWords(
+    asker: string,
+    receiver: string,
+    request: Parameters<typeof questionText>[1] & { readonly piece?: string | null },
+  ): string {
+    const { address, line } = this.questionConversation(asker)
+    const task = request.piece == null ? null : this.onePieceAsItStandsNow(request.piece)
+    return outboundQuestionText(
+      { called: this.whatToCallTheConversation(asker), address, line },
+      { ...request, label: request.label ?? task?.label, taskTitle: task?.title },
+      this.questionConversation(receiver).line,
+    )
+  }
+
   /**
    * ⚑ **Put the question into the conversation that spawned the one asking** (394).
    *
@@ -13275,6 +13341,7 @@ export class RuntimeHost implements LiveHost {
     verdict: {
       id: string
       prompt: string
+      outbound?: true
       questions: readonly UserInputQuestion[]
       /** ⚑ **611 · a passed-up question's added context** — see {@link questionText}. */
       context?: string | null
@@ -13287,7 +13354,7 @@ export class RuntimeHost implements LiveHost {
        */
       piece?: string | null
     },
-  ): Promise<void> {
+  ): Promise<{ readonly to: string; readonly state: SendRecipientState }> {
     // ⚑ **D-016 · commit 6 · R4 — the piece it is about**, which the recipient's turn drives.
     const piece = verdict.piece ?? null
     const label = verdict.label ?? null
@@ -13296,33 +13363,208 @@ export class RuntimeHost implements LiveHost {
       asks: { asker: asked, requestId: verdict.id },
       ...(piece === null || label === null ? {} : { aboutPiece: { piece, label } }),
     }
+    const facts = { carriedFor: asked, ...about }
+    let to = this.theOneInItsPlace(parent)
     try {
-      // ⛔ **`carriedFor` is the whole of `413`'s half 1 here** (413, named at the merge). The
-      // caller is {@link THE_APP_ITSELF}, so nothing about it can name the conversation whose
-      // question this is — and `406` left this producer unmarked rather than render a child's
-      // question under the go-ahead's *"sent for you"*. ⚑ Naming it is what gives the turn a
-      // subject of its own, and {@link UserTurnEvent.relayedFrom} is where that lands.
-      //
-      // ⚠️ **And it is why no origin line reaches the PROVIDER here** (414): these are BroBot's
-      // words about a child's question, not the child's own words, and {@link questionText}
-      // already names the conversation inside the sentence. See {@link messageNamingItsSender}.
-      await this.queueMessage(
-        parent,
-        // ⚑ **D-016 · commit 7 · R3 — the asker by the piece it owns, and its label to quote** —
-        // ⚑ F033 · the one it asked under, when it named one.
-        questionText(this.calledUnder(asked, piece), verdict),
-        THE_APP_ITSELF,
-        [],
-        'question',
-        { carriedFor: asked, ...about },
-      )
+      const wordsFor = (recipient: string): string =>
+        verdict.outbound === true
+          ? this.outboundQuestionWords(asked, recipient, verdict)
+          : questionText(this.calledUnder(asked, piece), verdict)
+      const deliveryState = (outcome: QueueOutcome): SendRecipientState =>
+        outcome.outcome === 'sent'
+          ? { kind: 'started' }
+          : this.stateOfARecordedMessage(to, outcome.messageId)
+      const deliverNow = async (): Promise<SendRecipientState> => {
+        const outcome = await this.queueMessage(
+          to,
+          wordsFor(to),
+          THE_APP_ITSELF,
+          [],
+          'question',
+          facts,
+        )
+        to = this.theOneInItsPlace(to)
+        return deliveryState(outcome)
+      }
+      if (verdict.outbound === true && !this.takesADeliveryNow(to)) {
+        const state = await this.afterWhatArrivedFirst<SendRecipientState | null>(to, async () => {
+          to = this.theOneInItsPlace(to)
+          if (this.takesADeliveryNow(to)) return null
+          const kept = await this.keptUntilItStarts(to, wordsFor(to), facts, 'question')
+          await this.ensureRunning(to, null)
+          await this.slots.get(to)?.session?.flushing
+          return deliveryState(kept)
+        })
+        if (state !== null) return { to, state }
+      }
+      const state = await deliverNow()
+      return { to, state }
     } catch (error) {
       console.warn(
         `runtime host could not deliver ${asked}'s question ${verdict.id} to ${parent}: ${
           error instanceof Error ? error.message : String(error)
         }`,
       )
+      return { to, state: this.sendFailedAfterRecording(error) }
     }
+  }
+
+  private questionWakeIds(asker: string, question: string) {
+    const key = Buffer.from(questionKey(asker, question)).toString('base64url')
+    return { reminder: `msg_owed_${key}`, notice: `msg_unanswered_${key}` }
+  }
+
+  private questionReminderProgress(answererIds: readonly string[], id: string) {
+    for (const target of answererIds) {
+      const progress = this.deps.store.queuedPromptProgress(target, id, 'an-answer-is-still-owed')
+      if (progress !== 'missing') return progress
+    }
+    return 'missing'
+  }
+
+  private questionCanBeReminded(
+    asker: string,
+    id: string,
+    answererIds: readonly string[],
+    ledgerOf: (conversation: string) => ItsLedger = this.oneLedgerReadPerAnswer(),
+  ): boolean {
+    const original = ledgerOf(asker).raised.get(id)
+    return (
+      original?.raisedBy === 'this-app' &&
+      original.passedUpFrom === null &&
+      !answererIds.some((answerer) =>
+        [...ledgerOf(answerer).raised.values()].some((raised) => raised.passedUpFrom === id),
+      )
+    )
+  }
+
+  private questionHasStalled(
+    asker: string,
+    id: string,
+    answererIds: readonly string[],
+    ledgerOf: (conversation: string) => ItsLedger = this.oneLedgerReadPerAnswer(),
+  ): boolean {
+    return (
+      this.questionCanBeReminded(asker, id, answererIds, ledgerOf) &&
+      this.questionReminderProgress(answererIds, this.questionWakeIds(asker, id).reminder) ===
+        'turn-ended'
+    )
+  }
+
+  private stalledQuestionRecipient(request: RoutedRequest) {
+    if (
+      request.parent === null ||
+      !REQUEST_IS_OPEN[request.state] ||
+      request.escalatedAt !== null ||
+      (request.went.is !== 'the-parent' && request.went.is !== 'the-agent-the-asker-named')
+    ) {
+      return undefined
+    }
+    const answerer = this.theOneInItsPlace(request.parent)
+    const answererIds = this.theIdsItStandsFor(answerer)
+    if (!this.questionHasStalled(request.askedBy, request.requestId, answererIds)) {
+      return undefined
+    }
+    const { address, title } = this.questionConversation(answerer)
+    return { address, title }
+  }
+
+  private wakeForOwedQuestions(session: HostedSession): void {
+    try {
+      this.queueOwedQuestionReminders(session)
+    } catch (error) {
+      if (!(error instanceof RecordWriteFailed)) {
+        console.warn(`Could not check which answers ${session.id} owes: ${errorMessage(error)}`)
+      }
+    }
+  }
+
+  private queueOwedQuestionReminders(session: HostedSession): void {
+    const ledgerOf = this.oneLedgerReadPerAnswer()
+    const owed = this.oneOwedReadPerAnswer(ledgerOf)(session.id)
+    if (owed.length === 0) return
+    const last = this.deps.store.lastEndedTurn(session.id)
+    if (last?.how !== 'it-finished' || last.who !== null) return
+
+    const waiting = new Set(
+      [...session.mailbox, ...session.handingOver].flatMap(({ asks }) =>
+        asks === undefined ? [] : [questionKey(asks.asker, asks.requestId)],
+      ),
+    )
+    const answererIds = this.theIdsItStandsFor(session.id)
+    for (const { askedBy, requestId } of owed) {
+      if (waiting.has(questionKey(askedBy, requestId))) continue
+      if (!this.questionCanBeReminded(askedBy, requestId, answererIds, ledgerOf)) continue
+      const { reminder, notice } = this.questionWakeIds(askedBy, requestId)
+      const progress = this.questionReminderProgress(answererIds, reminder)
+      if (progress === 'turn-ended') {
+        void this.tellTheAskerItWentUnanswered(session.id, askedBy, requestId, notice).catch(
+          (error: unknown) => {
+            console.warn(
+              `The unanswered-question notice could not reach ${askedBy}: ${errorMessage(error)}`,
+            )
+          },
+        )
+      } else if (progress === 'missing') {
+        const { address, title } = this.questionConversation(askedBy)
+        this.holdUntilItStarts(
+          session.id,
+          `Question ${requestId} from conversation ${address} · ${title} is still open. Answer it with answer_question, using asked_by ${address}, or give cannot_answer with your reason.`,
+          {
+            carriedFor: askedBy,
+            asks: { asker: askedBy, requestId },
+            appNotice: 'an-answer-is-still-owed',
+          },
+          'question',
+          undefined,
+          reminder,
+        )
+      }
+    }
+  }
+
+  private questionConversation(conversation: string) {
+    return describeConversation(
+      this.deps.store,
+      conversation,
+      this.theServiceOf(conversation) !== null,
+    )
+  }
+
+  private async tellTheAskerItWentUnanswered(
+    answerer: string,
+    asker: string,
+    question: string,
+    id: string,
+  ): Promise<void> {
+    await this.afterWhatArrivedFirst(this.theOneInItsPlace(asker), async () => {
+      if (this.howItsQuestionEnded(asker, question) !== null) return
+      if (!this.questionCanBeReminded(asker, question, this.theIdsItStandsFor(answerer))) return
+      const to = this.theOneInItsPlace(asker)
+      const notice = 'a-question-stayed-unanswered'
+      const kept = this.theIdsItStandsFor(to).some(
+        (thread) => this.deps.store.queuedPromptProgress(thread, id, notice) !== 'missing',
+      )
+      if (kept) return
+      const { address, title } = this.questionConversation(answerer)
+      const where = await new Promise<WhereHeldWordsWait>((resolve) =>
+        this.holdUntilItStarts(
+          to,
+          `Conversation ${address} · ${title} didn't answer question ${question} after a reminder.`,
+          { unansweredQuestion: { asker, requestId: question }, appNotice: notice },
+          'notice',
+          resolve,
+          id,
+        ),
+      )
+      if (
+        where === 'its-ledger' &&
+        !this.keptStopped(to) &&
+        !this.servicesHoldItBack(to, THE_APP_ITSELF)
+      ) {
+        await this.ensureRunning(to, null)
+      }
+    })
   }
 
   /**
@@ -13839,6 +14081,7 @@ export class RuntimeHost implements LiveHost {
        */
       piece: string | null
       question: string
+      resources?: readonly string[]
       options: readonly string[]
       /** 🔴 **611 · who the asker said it is for** (HO-088 §2) — see {@link QuestionRecipient}. */
       who: QuestionRecipient
@@ -13846,6 +14089,7 @@ export class RuntimeHost implements LiveHost {
       agent: string | null
       /** It asks a person to do something, with these files kept for its piece (`request_action`). */
       action?: ActionAsked
+      actionOverflowSaid?: string
     },
     by: Caller,
   ): Promise<AskOutcome> {
@@ -13931,6 +14175,18 @@ export class RuntimeHost implements LiveHost {
       if (!prepared.ok) return prepared
       move = prepared.move
     }
+    const files = this.prepareFilesForSend(speaking, input.resources ?? [], piece?.piece)
+    if (!files.ok) return { ok: false, refusal: files.refusal, resourceFailure: true }
+    const prepared: PreparedSendText =
+      input.action === undefined
+        ? this.prepareTextForSend(speaking, 'question', input.question, piece?.piece)
+        : { ok: true, text: input.question }
+    if (!prepared.ok) return { ok: false, refusal: prepared.refusal, resourceFailure: true }
+    const attachments =
+      prepared.overflow === undefined
+        ? files.files
+        : [...files.files, sendOverflowAttachment(prepared.overflow)]
+    const prompt = prepared.text + sendFilesSaid(files.files)
     const requestId = newAskedQuestionId()
     // ⛔ **One part, built here rather than taken from the caller** (437). ⚑ The shape is
     // `answer_question`'s, so a parent answers a worker's question with the same call and the same
@@ -13941,7 +14197,7 @@ export class RuntimeHost implements LiveHost {
     const questions: readonly UserInputQuestion[] = [
       {
         id: 'answer',
-        prompt: input.question,
+        prompt,
         options: (move === undefined ? input.options : [MOVE_IT, DO_IT_HERE]).map((label) => ({
           label,
         })),
@@ -13955,7 +14211,7 @@ export class RuntimeHost implements LiveHost {
       requestId,
       // ⚑ **D-009** — absent for a peer question about no piece (`QuestionAskedEvent.piece`).
       ...(piece === null ? {} : { piece: piece.piece, label: piece.label }),
-      prompt: input.question,
+      prompt,
       questions,
     })
     session.askedSinceItsLastTurnEnded.add(requestId)
@@ -13982,21 +14238,22 @@ export class RuntimeHost implements LiveHost {
     // without the summons.
     //
     // 🔴 **D-009 · and to the agent named, the same way** — it is who the question is for.
+    this.theWorldMoved('work')
+    let delivery: Extract<AskOutcome, { ok: true }>['delivery']
     if (answerer !== null && (went === 'the-parent' || went === 'an-agent')) {
-      void this.deliverQuestion(speaking, answerer, {
+      const { to, state } = await this.deliverQuestion(speaking, answerer, {
         id: requestId,
-        prompt: input.question,
+        prompt,
         questions,
+        outbound: true,
         ...(piece === null ? {} : { piece: piece.piece, label: piece.label }),
       })
-      // 🔴 **612 · a look was armed here and the deadline it watched is GONE** (HO-088 §3.1).
-      //
-      // ⛔ **`608` wrote that it mattered MORE, not less** — *"now the escalation is the only
-      // mechanism that gets a person told, which is the chain `437`'s bound was derived from with
-      // its first step removed"* — and that was true for exactly two dispatches. ⚑ **`611` built
-      // the mechanism the chain was missing**: `pass_question_up`, an ACT, carrying the original
-      // words. ⚠️ So the last step of `437`'s chain is a decision somebody makes rather than a
-      // window somebody misses, and there is nothing here to arm.
+      delivery = this.receiptForSend({
+        recorded: { kind: 'question', id: requestId, taskLabel: piece?.label ?? null },
+        to,
+        state,
+        attachments,
+      })
     }
     // ⛔ **No `answered`, no `waitedForMs` and no post-wait ledger read** (608) — see
     // {@link AskOutcome}. ⚑ All three described the wait: what arrived during it, how long it
@@ -14011,7 +14268,6 @@ export class RuntimeHost implements LiveHost {
     // a piece, so that piece reads `waiting-on-an-answer` on the holder's list AND the giver's.
     // ⛔ **The children half is not the only one that composes a piece's state**: `answers` and
     // `aPerson` do too, and a surface reading a row cannot tell which half moved it.
-    this.theWorldMoved('work')
     return {
       ok: true,
       question: requestId,
@@ -14019,6 +14275,11 @@ export class RuntimeHost implements LiveHost {
       // ⚑ **D-016 · commit 6** — from the root flag: work taken on for a person also has a person
       // for its giver, and `reply_to_parent` DOES finish it.
       aboutItsRoot: piece !== null && piece.root,
+      ...(delivery === undefined ? {} : { delivery }),
+      attachments: input.action?.files ?? attachments,
+      overflowSaid:
+        input.actionOverflowSaid ??
+        (prepared.overflow === undefined ? '' : outboundOverflowSaid(prepared.overflow)),
     }
   }
 
@@ -14035,7 +14296,7 @@ export class RuntimeHost implements LiveHost {
       readonly files: readonly string[]
     },
     by: Caller,
-  ): Promise<AskOutcome | { readonly ok: false; readonly resourceRefusal: ResourceRefusal }> {
+  ): Promise<AskOutcome> {
     const speaking = sessionSpeakingAs(by)
     if (speaking === null) {
       return { ok: false, refusal: noPieceToAskAbout(input.piece ?? '', []) }
@@ -14057,8 +14318,8 @@ export class RuntimeHost implements LiveHost {
     if (refusal !== null || piece === null) {
       return { ok: false, refusal: refusal ?? noPieceToAskAbout(input.piece ?? '', []) }
     }
-    const kept = this.keptFor(speaking, input.files)
-    if (!kept.ok) return { ok: false, resourceRefusal: kept.refusal }
+    const kept = this.keepFilesForSend(speaking, input.files)
+    if (!kept.ok) return { ok: false, refusal: kept.refusal, resourceFailure: true }
     const at = this.now()
     const rows = this.writeRecord(speaking, 'work_resource', () =>
       this.recordMadeFiles(piece.piece, kept.files, speaking, at),
@@ -14067,14 +14328,22 @@ export class RuntimeHost implements LiveHost {
       resource: one.resource,
       name: one.name,
     }))
+    const prepared = this.prepareTextForSend(speaking, 'action', input.action, piece.piece)
+    if (!prepared.ok) return { ok: false, refusal: prepared.refusal, resourceFailure: true }
+    const overflow = prepared.overflow
+    const actionFiles =
+      overflow !== undefined && 'file' in overflow
+        ? [...files, { resource: overflow.file.resource, name: overflow.file.name }]
+        : files
     return this.raiseAQuestion(
       {
         piece: piece.piece,
-        question: input.action,
+        question: prepared.text,
+        ...(overflow === undefined ? {} : { actionOverflowSaid: outboundOverflowSaid(overflow) }),
         options: [A_TO_DO_DONE, A_TO_DO_NOT_DONE],
         who: 'a-person',
         agent: null,
-        action: { files },
+        action: { files: actionFiles },
       },
       by,
     )
@@ -18634,10 +18903,12 @@ export class RuntimeHost implements LiveHost {
         const asked = raised(request.askedBy).get(request.requestId)
         if (asked === undefined) return null
         const asker = askerOf(request.askedBy, asked.piece)
+        const stalledRecipient = this.stalledQuestionRecipient(request)
         return {
           request,
           words: questionText(asker, { ...asked, id: request.requestId }),
           askerCalled: asker.called,
+          ...(stalledRecipient === undefined ? {} : { stalledRecipient }),
         }
       })
       // 🔴 **D-017 · R8 — the outer net**: words the asker's record cannot give are absent, and a
@@ -19348,17 +19619,28 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **F036 · and whose questions it owes an answer to**, for the same reason.
     if (owed.owedTo.length === 0) this.owesTheAnswersOf.delete(sessionId)
     else this.owesTheAnswersOf.set(sessionId, owed.owedTo)
+    const active =
+      this.startsInFlight.has(sessionId) ||
+      this.arrivals.has(sessionId) ||
+      (slot !== undefined && !going && (slot.session === null || status === 'working'))
+    const answererIds =
+      active || owed.owedQuestions.length === 0 ? [] : this.theIdsItStandsFor(sessionId)
+    let stalled: (typeof owed.owedQuestions)[number] | undefined
+    if (answererIds.length > 0) {
+      const questionLedger = this.oneLedgerReadPerAnswer(unread)
+      stalled = owed.owedQuestions.find(({ askedBy, requestId }) =>
+        this.questionHasStalled(askedBy, requestId, answererIds, questionLedger),
+      )
+    }
     return agentStateOf(
       {
         needsYou: owed.needsYou,
-        active:
-          this.startsInFlight.has(sessionId) ||
-          this.arrivals.has(sessionId) ||
-          (slot !== undefined && !going && (slot.session === null || status === 'working')),
+        active,
         waitingOnTheAnswerOf: owed.waitingOnTheAnswerOf,
         waitingOnTheAnswerSince: owed.waitingOnTheAnswerSince,
         owesAnAnswerTo: owed.owesAnAnswerTo,
         owesAnAnswerSince: owed.owesAnAnswerSince,
+        ...(stalled === undefined ? {} : { stalledQuestion: stalled.requestId }),
         background: session?.background ?? NOTHING_IN_THE_BACKGROUND,
         scheduled:
           slot?.session?.scheduled ?? this.wakeUps.get(sessionId)?.level ?? NOTHING_SCHEDULED,
@@ -19491,6 +19773,7 @@ export class RuntimeHost implements LiveHost {
         called(asker, this.theWorkThatNamesUnder(asker, piece)),
       ),
       owesAnAnswerSince: earliest(owedNow.map((one) => one.at)),
+      owedQuestions: owedNow,
     }
   }
 
@@ -21091,7 +21374,7 @@ export class RuntimeHost implements LiveHost {
      */
     authorship: Pick<
       UserTurnEvent,
-      'attribution' | 'work' | 'relayedFrom' | 'appNotice' | 'movedFrom'
+      'attribution' | 'work' | 'relayedFrom' | 'appNotice' | 'movedFrom' | 'says'
     >,
     /**
      * 🔴 **713 · `708` H-4 — the FIRST gate's answer, on the one path that has two** — see
@@ -21189,7 +21472,8 @@ export class RuntimeHost implements LiveHost {
       messageNamingItsSender(
         messageWithHandedPaths(this.withWhereItWasMovedFrom(text, authorship.movedFrom), handed),
         from,
-        (sender) => this.whereTheSenderStands(sender, session.id, handing, drives, about),
+        (sender) =>
+          this.whereTheSenderStands(sender, session.id, handing, drives, about, authorship.says),
         interrupting,
       ),
       handing,
@@ -21291,6 +21575,7 @@ export class RuntimeHost implements LiveHost {
                 handing,
                 queued.drives ?? null,
                 queued.about ?? null,
+                queued.authorship.says,
               ),
             queued.interrupting,
             soFar,
@@ -21701,6 +21986,7 @@ export class RuntimeHost implements LiveHost {
     drives: string | null,
     /** 🔴 **F088** — the piece an agent's note or follow-up names: see `handToProvider`. */
     names: string | null,
+    says: AgentMessageKind | undefined,
   ): WhereTheSenderStands {
     const giver = new Set(this.theIdsItStandsFor(sender.caller))
     // ⚑ **In the order they were given** — the fold's own order, which is the ledger's.
@@ -21720,7 +22006,15 @@ export class RuntimeHost implements LiveHost {
       handedUnder !== null && handedUnder.length > 1
         ? (this.deps.store.workByLabel(pieceCalled(handedUnder.slice(0, -1)))?.piece ?? null)
         : (drives ?? open.at(-1)?.piece ?? null)
+    const messageSender =
+      says === undefined
+        ? undefined
+        : {
+            ...this.questionConversation(sender.caller),
+            receiverLine: this.questionConversation(receiver).line,
+          }
     return {
+      ...(messageSender === undefined ? {} : { messageSender }),
       name:
         sender.profile === null
           ? null
@@ -21917,7 +22211,7 @@ export class RuntimeHost implements LiveHost {
     // — it refuses the command {@link handToProvider} would send bare, so both ask about one sender.
     // ⚠️ Spelled at both call sites rather than hoisted, because `the-origin-a-model-is-told.test.ts`
     // §6 reads the HANDOVER's origin off its call; the gate's is spelled the same for symmetry.
-    const session = this.requireToMessage(sessionId, by)
+    const session = this.requireToMessage(sessionId, by, facts.messageAct)
     // ⚑ **D-017 · R1** — a stop that lands in the gate's awaits is waited out and the words go after
     // the start ({@link aDeliveryAStopCaught}), never refused *still closing*.
     let handed: Awaited<ReturnType<typeof recheckHandedPaths>>
@@ -22014,7 +22308,9 @@ export class RuntimeHost implements LiveHost {
       // ⛔ A caller's words go straight in to a service only while it is still on that caller's
       // piece, asked again after the gate's waits, in the tick they are handed over: else they lose
       // the race, and the queue door asks them again ({@link aCallersWordsGoNow}).
-      if (this.aCallersWordsNoLongerGoStraightIn(sessionId, by)) throw new TurnInProgress()
+      if (facts.messageAct === undefined && this.aCallersWordsNoLongerGoStraightIn(sessionId, by)) {
+        throw new TurnInProgress()
+      }
       await this.handToProvider(
         session,
         text,
@@ -23072,7 +23368,7 @@ export class RuntimeHost implements LiveHost {
       this.queueAs(to, text, by, attachments, kind, facts, says, 'as-it-finds-it')
     // ⛔ While services are off, an agent's words start no service: they wait for its next start.
     if (heldForServices) {
-      return this.leaveForTheServicesStart(sessionId, text, by, attachments, kind, facts, says)
+      return this.leaveForTheNextStart(sessionId, text, by, attachments, kind, facts, says)
     }
     if (now) {
       // ⚑ **D-017 · R1** — straight in; a stop under it is waited out and it is started again.
@@ -23088,7 +23384,47 @@ export class RuntimeHost implements LiveHost {
         deliver,
       )
     }
-    return this.deliverWhenItRuns(sessionId, text, by, attachments, says, deliver)
+    return this.deliverWhenItRuns(sessionId, text, by, attachments, says, deliver, facts.messageAct)
+  }
+
+  /** Keep the recipient's message before opening a stopped conversation. */
+  holdAgentMessageForStart(
+    sessionId: string,
+    text: string,
+    by: Caller,
+    facts: FactsAQueueCarries,
+    says: AgentMessageKind,
+  ): Promise<RecordedAgentMessage | null> | null {
+    const destination = this.theOneInItsPlace(sessionId)
+    if (this.takesADeliveryNow(destination) || this.deps.store.recordedOne(destination) === null) {
+      return null
+    }
+    return this.afterWhatArrivedFirst(destination, async () => {
+      const to = this.theOneInItsPlace(destination)
+      if (this.runsNow(to)) return null
+      const heldForService = this.servicesHoldItBack(to, by)
+      const kept = await this.leaveForTheNextStart(to, text, by, [], 'work', facts, says)
+      if (kept.outcome !== 'queued') return null
+      const id = kept.messageId
+      if (heldForService) return { id, to, state: this.stateOfARecordedMessage(to, id) }
+      try {
+        await this.ensureRunning(to, null)
+      } catch (error) {
+        const unavailable =
+          unavailableOf(error) ?? unavailableOf(error instanceof Error ? error.cause : undefined)
+        if (
+          unavailable === null &&
+          !(error instanceof ServicesAreOff) &&
+          aWakeThatDidNotHappen(error) === null
+        ) {
+          throw error
+        }
+        console.warn(`message_agent: the start did not happen for ${to}: ${errorMessage(error)}`)
+        return { id, to, state: this.sendFailedAfterRecording(error) }
+      }
+      await this.slots.get(to)?.session?.flushing
+      return { id, to, state: this.stateOfARecordedMessage(to, id) }
+    })
   }
 
   /**
@@ -23489,8 +23825,91 @@ export class RuntimeHost implements LiveHost {
     return this.giveWorkRunner.give(input, by)
   }
 
+  private taskForSendAttachment(sender: string, piece?: string): string | undefined {
+    const held = this.heldBy(sender)
+    return (
+      held.find((one) => one.piece === piece)?.piece ??
+      this.thePieceItIsOn(sender)?.piece ??
+      held.find((one) => one.received)?.piece
+    )
+  }
+
+  prepareFilesForSend(sender: string, paths: readonly string[], piece?: string): PreparedSendFiles {
+    if (paths.length === 0) return { ok: true, files: [] }
+    const task = this.taskForSendAttachment(sender, piece)
+    if (task === undefined) {
+      const cwd = this.deps.store.recordedOne(sender)?.cwd
+      if (cwd === undefined) {
+        return { ok: false, refusal: refuseResource('resource-unreadable', { path: paths[0] }) }
+      }
+      const offered = this.readFilesOfferedIn(cwd, paths)
+      return offered.ok ? keepTasklessSendFiles(cwd, offered.files) : offered
+    }
+    const kept = this.keepFilesForSend(sender, paths)
+    if (!kept.ok) return kept
+    const made = this.writeRecord(sender, 'work_resource', () =>
+      this.recordMadeFiles(task, kept.files, sender, this.now()),
+    )
+    return { ok: true, files: made.map(({ resource, name }) => ({ resource, name })) }
+  }
+
+  prepareTextForSend(
+    sender: string,
+    field: string,
+    text: string,
+    piece?: string,
+  ): PreparedSendText {
+    if (text.length <= INLINE_TEXT_LIMIT) return { ok: true, text }
+    const on = this.taskForSendAttachment(sender, piece)
+    if (on === undefined) {
+      const cwd = this.deps.store.recordedOne(sender)?.cwd
+      return cwd === undefined
+        ? { ok: false, refusal: refuseResource('resource-store-unavailable') }
+        : keepTasklessSendText(cwd, field, text)
+    }
+    const kept = keepSendOverflow(this.deps.resourcesRoot?.(), field, text)
+    if (!kept.ok) return kept
+    const overflow = kept.overflow
+    if (overflow === null) return { ok: true, text }
+    const actual = this.writeRecord(sender, 'work_resource', () =>
+      this.recordMadeOverflow(on, overflow, sender, this.now()),
+    )
+    return {
+      ok: true,
+      text: textWithOverflowResource(kept.inline, actual.resource),
+      overflow: { ...overflow, file: { ...overflow.file, resource: actual.resource } },
+    }
+  }
+
   receiptForSend(facts: SendFacts): ReturnType<typeof sendReceipt> {
-    return sendReceipt(facts, this.deps.store, this.theServiceOf(facts.to) !== null)
+    const service = this.theServiceOf(facts.to) !== null
+    if (!('profile' in facts)) {
+      const delivery = { ...facts, heldBehindTurn: this.heldBehindATurn(facts.recorded.id) }
+      return sendReceipt(delivery, this.deps.store, service)
+    }
+    let context: ContextReading | null = null
+    if (facts.state.kind !== 'cannot-run') {
+      try {
+        context = this.contextOfConversation(facts.to)
+      } catch (error) {
+        console.warn(`give_work: could not read context for ${facts.to}: ${errorMessage(error)}`)
+      }
+    }
+    return sendReceipt({ ...facts, context }, this.deps.store, service)
+  }
+
+  private contextOfConversation(
+    sessionId: string,
+    live = this.slots.get(sessionId)?.session ?? null,
+  ): ContextReading | null {
+    if (live !== null) return live.latestContext
+    const row = this.deps.store.newestOfType?.(sessionId, 'context_reading') ?? null
+    return row?.event.type === 'context_reading' ? row.event.reading : null
+  }
+
+  stateOfARecordedMessage(owner: string, id: string): SendRecipientState {
+    const behind = this.deps.store.messagesWaitingIn(owner).findIndex((one) => one.messageId === id)
+    return behind === -1 ? { kind: 'started' } : { kind: 'queued', behind }
   }
 
   private sendFailedAfterRecording(
@@ -24587,12 +25006,13 @@ export class RuntimeHost implements LiveHost {
     _says: AgentMessageKind | null,
     /** ⚑ **D-017 · R10** — handed the conversation it goes to: the one that took its place, if any. */
     deliver: (to: string) => Promise<T>,
+    messageAct?: string,
   ): Promise<T> {
     const onArrival = (async () => {
       const arriving = this.theOneInItsPlace(sessionId)
       if (this.startupRepairs.has(arriving)) await this.settleBeforeUse(arriving)
       if (!this.runsNow(arriving)) {
-        await this.refuseBeforeAStart(arriving, text, by, attachments)
+        await this.refuseBeforeAStart(arriving, text, by, attachments, messageAct)
       }
     })()
     const inLine = this.afterWhatArrivedFirst(sessionId, async () => {
@@ -24606,7 +25026,7 @@ export class RuntimeHost implements LiveHost {
         this.aPersonsWindowTakesIt(to, theSurfaceAsking(by))
         return deliver(to)
       }
-      await this.refuseBeforeAStart(to, text, by, attachments)
+      await this.refuseBeforeAStart(to, text, by, attachments, messageAct)
       const waker = sessionSpeakingAs(by)
       let ran: string
       try {
@@ -24802,7 +25222,13 @@ export class RuntimeHost implements LiveHost {
     text: string,
     by: Caller,
     attachments: readonly HandedPath[],
+    messageAct?: string,
   ): Promise<void> {
+    if (messageAct !== undefined) {
+      if (this.messageDestination(sessionId) === null)
+        throw new Error(`unknown session: ${sessionId}`)
+      return
+    }
     const me = sessionSpeakingAs(by)
     if (me !== null) {
       if (this.itsCallerMessagesAService(sessionId, by)) return
@@ -25063,7 +25489,12 @@ export class RuntimeHost implements LiveHost {
         ...queued.authorship,
       })
       if (work || itsJobs) continue
-      const held: QueuedMessage = { ...queued, id: newQueuedMessageId(), since: this.now() }
+      const held: QueuedMessage = {
+        ...queued,
+        id: newQueuedMessageId(),
+        since: this.now(),
+        text: this.wordsMovedTo(queued, next.id),
+      }
       delete held.interrupting
       next.mailbox.push(held)
       this.publishOurs(next, {
@@ -25079,6 +25510,11 @@ export class RuntimeHost implements LiveHost {
         ...(held.drives === undefined ? {} : { drives: held.drives }),
         // ⚑ **F088 · and the piece they name**, so a start after a quit still says which.
         ...(held.about === undefined ? {} : { about: held.about }),
+        ...(held.unansweredQuestion === undefined
+          ? {}
+          : { unansweredQuestion: held.unansweredQuestion }),
+        ...(held.asks === undefined ? {} : { asks: held.asks }),
+        ...(held.messageAct === undefined ? {} : { messageAct: held.messageAct }),
       })
       moved += 1
     }
@@ -25086,6 +25522,25 @@ export class RuntimeHost implements LiveHost {
     this.publishStateIfChanged(next)
     this.flushQueued(next)
     this.theWorldMoved('work')
+  }
+
+  private wordsMovedTo(held: QueuedMessage, receiver: string): string {
+    if (
+      held.kind !== 'question' ||
+      held.asks === undefined ||
+      held.authorship.appNotice !== undefined
+    ) {
+      return held.text
+    }
+    const { asker, requestId } = held.asks
+    try {
+      const question = this.deps.store.questionsRaisedIn(asker).get(requestId)
+      if (question?.raisedBy !== 'this-app' || question.passedUpFrom != null) return held.text
+      return this.outboundQuestionWords(asker, receiver, { ...question, id: requestId })
+    } catch (error) {
+      console.warn(`Could not read question ${requestId} while moving it: ${errorMessage(error)}`)
+      return held.text
+    }
   }
 
   /**
@@ -25182,14 +25637,14 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **D-017 · R1** — the same words, once more, through the conversation's start.
     const startItAgain = (again: (to: string) => Promise<QueueOutcome>): Promise<QueueOutcome> =>
       facts.giving === undefined
-        ? this.deliverWhenItRuns(sessionId, text, by, attachments, says, again)
+        ? this.deliverWhenItRuns(sessionId, text, by, attachments, says, again, facts.messageAct)
         : again(sessionId)
     // 🔴 **`requireToMessage`, and the word IS the widening** (431 · criterion 6). ⛔ `send` asks
     // the same gate — see its own note for why the pair is the rule — and the three siblings left
     // on {@link requireToCommand} are `sendInterrupting`, `cancelQueuedMessage` and `interrupt`.
     // What this verb asks is {@link withinMessagingReach}, which admits everything `mayCommand` does
     // and any other conversation that is not a service's.
-    const session = this.requireToMessage(sessionId, by)
+    const session = this.requireToMessage(sessionId, by, facts.messageAct)
     // ⚑ **708 · the same `this.originOf(by)` the held branch records below** — the gate refuses a
     // person's command that carries attachments at the QUEUE, while the composer still holds them.
     // 🔴 **A sign-in that moved on HOLDS the words a reopen carries** ({@link aReopenCarriesIt}): an
@@ -25395,6 +25850,7 @@ export class RuntimeHost implements LiveHost {
       ...(from === null ? {} : { origin: from }),
       // ⚑ **The question a held question's notice asks** — see {@link QueuedMessage.asks}.
       ...(facts.asks === undefined ? {} : { asks: facts.asks }),
+      ...(facts.messageAct === undefined ? {} : { messageAct: facts.messageAct }),
       // 🔴 **F088 · and the piece an agent's note or follow-up names** — see {@link QueuedMessage.about}.
       ...(about === null ? {} : { about }),
     }
@@ -25422,6 +25878,7 @@ export class RuntimeHost implements LiveHost {
       ...(about === null ? {} : { about }),
       // ⚑ See {@link QueuedMessageEvent.asks}.
       ...(held.asks === undefined ? {} : { asks: held.asks }),
+      ...(held.messageAct === undefined ? {} : { messageAct: held.messageAct }),
     }
     if (giving !== null) {
       this.recordTheGive(session, giving, id, null, { queued, mailboxEntry: held })
@@ -26993,7 +27450,7 @@ export class RuntimeHost implements LiveHost {
    * words.
    */
   private aCallersWordsGoNow(session: HostedSession, queued: QueuedMessage): boolean {
-    const reach = this.theReachOfACallersWords(session.id, queued)
+    const reach = this.theReachOfHeldWords(session.id, queued)
     if (reach === null || reach === 'reaches') return true
     if (reach === 'outlived') this.endItUnsent(session, queued, ITS_PIECE_HAD_ENDED)
     return false
@@ -27020,6 +27477,7 @@ export class RuntimeHost implements LiveHost {
     const itNoLongerGoes =
       queued.piece === undefined &&
       queued.asks === undefined &&
+      queued.unansweredQuestion === undefined &&
       queued.origin?.who !== 'a-caller-with-an-id'
         ? null
         : this.whyItNoLongerGoes(session.id, queued)
@@ -27154,7 +27612,7 @@ export class RuntimeHost implements LiveHost {
       // ⚑ …and while any caller's words wait for their queue, only a person's own go with them, so
       // nothing overtakes the words that wait.
       const someWait = going.some(
-        ({ queued }) => this.theReachOfACallersWords(session.id, queued) === 'unknown',
+        ({ queued }) => this.theReachOfHeldWords(session.id, queued) === 'unknown',
       )
       going = going.filter(
         ({ queued }) =>
@@ -27596,9 +28054,10 @@ export class RuntimeHost implements LiveHost {
       // can't be read are not ended here, and no flush takes them while it can't
       // ({@link aCallersWordsWaitForItsQueue}), asked in the same stretch as this, with nothing
       // awaited between.
-      if (this.theReachOfACallersWords(sessionId, queued) === 'outlived') return ITS_PIECE_HAD_ENDED
-      if (queued.kind === 'question' && queued.asks !== undefined) {
-        const { asker, requestId } = queued.asks
+      if (this.theReachOfHeldWords(sessionId, queued) === 'outlived') return ITS_PIECE_HAD_ENDED
+      const question = queued.kind === 'question' ? queued.asks : queued.unansweredQuestion
+      if (question !== undefined) {
+        const { asker, requestId } = question
         const ended = this.howItsQuestionEnded(asker, requestId)
         if (ended === null) return null
         return {
@@ -27681,6 +28140,10 @@ export class RuntimeHost implements LiveHost {
       // ⚑ **F088 · and the piece they name**, so its sender line still says which.
       ...(row.about === undefined ? {} : { about: row.about }),
       ...(row.asks === undefined ? {} : { asks: row.asks }),
+      ...(row.unansweredQuestion === undefined
+        ? {}
+        : { unansweredQuestion: row.unansweredQuestion }),
+      ...(row.messageAct === undefined ? {} : { messageAct: row.messageAct }),
       ...(origin === null ? {} : { origin }),
     }
   }
@@ -35098,14 +35561,7 @@ export class RuntimeHost implements LiveHost {
         : null
     const declaredWith =
       startedWith !== null && startedWith.length < MAX_TOOL_TEXT ? startedWith : null
-    const contextRow =
-      live === null ? (this.deps.store.newestOfType?.(sessionId, 'context_reading') ?? null) : null
-    const context =
-      live !== null
-        ? live.latestContext
-        : contextRow?.event.type === 'context_reading'
-          ? contextRow.event.reading
-          : null
+    const context = this.contextOfConversation(sessionId, live)
     return whatItWasGiven({
       sessionId,
       provider,
@@ -38743,8 +39199,10 @@ export class RuntimeHost implements LiveHost {
    * in a conversation it could not take back if that verb were published — which is a note for the
    * dispatch that publishes it, not a hole this one opened.
    */
-  private requireToMessage(sessionId: string, by: Caller): HostedSession {
-    return this.sessionFor(sessionId, (slot) => this.assertMayMessage(slot, by))
+  private requireToMessage(sessionId: string, by: Caller, messageAct?: string): HostedSession {
+    return this.sessionFor(sessionId, (slot) => {
+      if (messageAct === undefined) this.assertMayMessage(slot, by)
+    })
   }
 
   /** Read any known conversation's transcript, including an empty one. */
@@ -40621,7 +41079,18 @@ export class RuntimeHost implements LiveHost {
     // wire is still unsent, so a flush that published synchronously could not overtake it — the
     // ordering holds by POSITION rather than by the fact that {@link runFlush} happens to await
     // first, which is a fact a later edit is free to change.
-    if (event.type === 'status' && event.state === 'idle') this.flushQueued(session)
+    if (event.type === 'turn') {
+      if (event.state === 'completed') session.questionWakeDue = true
+      else delete session.questionWakeDue
+    }
+    if (event.type === 'status' && TURN_ENDINGS.has(event.state)) {
+      const wake = session.questionWakeDue === true
+      delete session.questionWakeDue
+      if (event.state === 'idle') {
+        if (wake) this.wakeForOwedQuestions(session)
+        this.flushQueued(session)
+      }
+    }
     // ⚑ **Work that ran in the background is one thing a reopen on the current sign-in waits for**
     // — so a level that moved asks again ({@link reopenForWhatWaits}).
     if (event.type === 'background_work') {

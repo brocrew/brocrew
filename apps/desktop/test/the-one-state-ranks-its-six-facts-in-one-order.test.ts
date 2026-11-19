@@ -164,6 +164,19 @@ describe('§1 · agentStateArm ranks all eight, and agentStateOf carries each ar
     expect(agentStateWords(agentStateOf({ ...owes, owesAnAnswerTo: ['Ada'] }, 0))).toBe(
       'owes an answer to Ada',
     )
+    const stalled = { ...owes, stalledQuestion: 'req_original' }
+    expect(agentStateOf(stalled, 0)).toEqual({
+      is: 'owes-an-answer',
+      to: ['Ada', 'Ali'],
+      stalledQuestion: 'req_original',
+    })
+    expect(agentStateWords(agentStateOf(stalled, 0))).toBe(
+      'stalled: question req_original remains unanswered after a reminder',
+    )
+    expect(agentStateOf({ ...stalled, background: running('b1', 'npm test') }, 0)).toEqual({
+      is: 'owes-an-answer',
+      to: ['Ada', 'Ali'],
+    })
     expect(agentStateOf({ ...owes, waitingOnTheAnswerOf: 'BroBot' }, 0)).toEqual({
       is: 'waiting-on-an-answer',
       from: 'BroBot',

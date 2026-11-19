@@ -351,7 +351,12 @@ describe('what an agent is told about its work', () => {
       for (const name of named) {
         expect(published, `the bundle names ${name}, which no tool is called`).toContain(name)
       }
-      expect(named.sort()).toEqual(['ask_question', 'request_action', 'update_work'])
+      expect(named.sort()).toEqual([
+        'ask_question',
+        'message_agent',
+        'request_action',
+        'update_work',
+      ])
     })
   })
 

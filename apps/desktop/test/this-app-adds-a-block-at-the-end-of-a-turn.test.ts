@@ -319,6 +319,22 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
     await host.respondPermission(id, theCardItWaitsOn(id), { outcome: 'allow' }, surface)
     await waitFor(() => turnsEnded(id) === before + 1, 'its turn to end')
   }
+  const finishAskAndItsReminder = async (
+    answerer: string,
+    question: string,
+    surface: RecordingSink,
+  ): Promise<void> => {
+    const originalCard = theCardItWaitsOn(answerer)
+    await itsTurnEnds(answerer, surface)
+    await waitFor(
+      () =>
+        handedOver(answerer).some((words) =>
+          words.includes(`Question ${question} from conversation`),
+        ) && theCardItWaitsOn(answerer) !== originalCard,
+      'the unanswered question’s reminder to open its own turn',
+    )
+    await itsTurnEnds(answerer, surface)
+  }
   /** These words go to it as a turn, and the block that turn carried is given back. */
   const theBlockOfATurn = async (
     id: string,
@@ -1692,7 +1708,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         const id = await asks(workerTools, piece, question, 'the-parent')
         await waitFor(() => handedOver(pm).length === before + 1, 'the question to reach its giver')
         const block = whatThisAppAdded(handedOver(pm).at(-1) ?? '')
-        await itsTurnEnds(pm, pmSurface)
+        await finishAskAndItsReminder(pm, id, pmSurface)
         return { id, block }
       }
       const { id: forItsGiver } = await asksItsGiver('which branch?')
@@ -1741,7 +1757,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       const before = handedOver(pm).length
       const forItsGiver = await asks(workerTools, piece, 'which branch?', 'the-parent')
       await waitFor(() => handedOver(pm).length === before + 1, 'the parent question to arrive')
-      await itsTurnEnds(pm, window)
+      await finishAskAndItsReminder(pm, forItsGiver, window)
       // A transaction cannot expose a kept fold, even when reconciliation warmed one.
       const cold = db.transaction(() => {
         expect(store.piecesAtHand(pm)).toBeNull()

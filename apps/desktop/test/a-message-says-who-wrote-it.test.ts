@@ -628,6 +628,14 @@ describe('624 · a message says who wrote it', () => {
           expect(sentence).toBe(
             'This app added this note because a piece of work needs attention. You did not write it, and it is not a go-ahead.',
           )
+        } else if (notice === 'an-answer-is-still-owed') {
+          expect(sentence).toBe(
+            'This app reminded you about an open question another conversation asked you.',
+          )
+        } else if (notice === 'a-question-stayed-unanswered') {
+          expect(sentence).toBe(
+            'This app added this note because a conversation still owes an answer after a reminder.',
+          )
         } else {
           expect(sentence).toContain('not sent on anybody’s behalf')
         }

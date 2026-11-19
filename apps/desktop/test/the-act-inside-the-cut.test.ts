@@ -12,15 +12,11 @@ import {
   A_WAKE_WHOSE_FOLDER_IS_GONE,
   A_WAKE_WHOSE_PROGRAM_COULD_NOT_RUN,
   TOOL_REFUSALS,
-  aFollowUpOnAPieceYouDidNotGive,
-  aFollowUpOnAPieceYouGaveAnother,
   aMessageAboutAQueuedPiece,
   aStartItsLoginOrSettingsRefused,
-  aFollowUpOnAPieceYouHold,
   aTakeBackOfAPieceYouHold,
   aTakeBackOfAPieceYouHoldThatEnded,
   aTakeBackOfYourOwnWork,
-  anAgentWithSeveralConversations,
   anEndedPieceSaid,
   refuseTool,
 } from '../src/main/runtime/agent-tools'
@@ -533,39 +529,6 @@ const OVERRIDES: readonly {
       3 * 24 * 60 * 60_000,
     ),
   },
-  // ⚑ **F087 · a follow-up naming a piece the caller holds, or gave another agent**, said as what it
-  // is — the word's own sentence guesses the name may belong to nothing. Planted with a deep label;
-  // the act comes first, so no label can push it past the cut.
-  {
-    key: 'TOOL_REFUSALS|not-a-piece-you-gave/a-piece-you-hold',
-    rail: 'not-a-piece-you-gave',
-    spreadAs: 'aFollowUpOnAPieceYouHold',
-    sentence: aFollowUpOnAPieceYouHold('W3.4.1.2.1.1'),
-  },
-  {
-    key: 'TOOL_REFUSALS|not-a-piece-you-gave/a-piece-you-gave-another',
-    rail: 'not-a-piece-you-gave',
-    spreadAs: 'aFollowUpOnAPieceYouGaveAnother',
-    sentence: aFollowUpOnAPieceYouGaveAnother('W3.4.1.2.1.1'),
-  },
-  // A follow-up naming a piece the caller neither gave nor holds: a note to the same agent. Planted
-  // with the longest address an agent has, its id.
-  {
-    key: 'TOOL_REFUSALS|not-a-piece-you-gave/a-piece-you-did-not-give',
-    rail: 'not-a-piece-you-gave',
-    spreadAs: 'aFollowUpOnAPieceYouDidNotGive',
-    sentence: aFollowUpOnAPieceYouDidNotGive('sess_0123456789abcdef0123456789abcdef'),
-  },
-  // An agent's profile name with several conversations in reach, at its longest: five labels named.
-  {
-    key: 'TOOL_REFUSALS|that-agent-has-several-conversations/their-labels',
-    rail: 'that-agent-has-several-conversations',
-    spreadAs: 'anAgentWithSeveralConversations',
-    sentence: anAgentWithSeveralConversations(
-      'a-profile-name-of-forty-characters-long',
-      Array.from({ length: 7 }, (_, at) => `W3.4.1.2.1.${at + 1}`),
-    ),
-  },
   // ⚑ A message about a piece still queued at a service, said with its label.
   {
     key: 'TOOL_REFUSALS|that-piece-is-still-queued/its-label',
@@ -694,8 +657,6 @@ const ACT: Readonly<Record<string, string>> = {
   'TOOL_REFUSALS|that-is-a-service': 'Give it the work with give_work',
   'TOOL_REFUSALS|that-agent-has-several-conversations':
     'make the same call with agent set to one of that agent\u2019s conversations',
-  'TOOL_REFUSALS|that-agent-has-several-conversations/their-labels':
-    'make the same call with agent set to one of',
   'TOOL_REFUSALS|malformed-request': 'The problems are listed in the detail',
   'TOOL_REFUSALS|agent-cannot-take-a-message':
     'ask a person to inspect why that conversation cannot take a message',
@@ -736,10 +697,6 @@ const ACT: Readonly<Record<string, string>> = {
   'TOOL_REFUSALS|services-are-off-so-none-is-made': 'A person turns them on in Team',
   // ⚑ **D-016 · commit 3** — the task words became piece words, and a new piece is a give.
   'TOOL_REFUSALS|not-a-piece-you-gave': 'list_tasks lists the open pieces you gave out',
-  // ⚑ **F087** — the same call as a note, or to the agent holding the piece.
-  'TOOL_REFUSALS|not-a-piece-you-gave/a-piece-you-hold': 'make the same call with kind note',
-  'TOOL_REFUSALS|not-a-piece-you-gave/a-piece-you-gave-another': 'make the same call with agent',
-  'TOOL_REFUSALS|not-a-piece-you-gave/a-piece-you-did-not-give': 'send it as kind note to',
   'TOOL_REFUSALS|that-piece-is-still-queued': 'Change its brief with update_work',
   'TOOL_REFUSALS|that-piece-is-still-queued/its-label': 'Change its brief with update_work',
   // ⚑ **F089** — the doors open to work the caller holds, or nothing more owed, or the person.

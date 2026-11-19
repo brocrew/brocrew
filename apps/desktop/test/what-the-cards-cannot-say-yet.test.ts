@@ -552,14 +552,11 @@ describe('687 · what the cards cannot say yet', () => {
       expect(turnSaying(worker, 'what is left?')?.says).toBe('follow-up')
     })
 
-    it('🔴 a note is recorded as a note at both ends — and, since D-010, no kind named is no message', async () => {
+    it('a message with no task is recorded as a note at both ends', async () => {
       const { pm, worker, pmTools } = await aPmAndItsWorker()
       await letTheTurnFinish(worker)
-      // ⛔ **D-010 · there is no default kind**: the call is refused and nothing is written.
-      await call(pmTools, 'message_agent', { agent: worker, text: 'no kind named' })
-      expect(turnSaying(worker, 'no kind named')).toBeUndefined()
-      expect(receipts(pm)).toEqual([])
-      await call(pmTools, 'message_agent', { agent: worker, text: 'a note', kind: 'note' })
+      const sent = await call(pmTools, 'message_agent', { agent: worker, text: 'a note' })
+      expect(sent.structured).toMatchObject({ outcome: 'ok', kind: 'note' })
       const turn = turnSaying(worker, 'a note')
       expect(turn?.says).toBe('note')
       expect(turn).not.toHaveProperty('piece')

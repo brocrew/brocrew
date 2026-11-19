@@ -234,10 +234,13 @@ describe('theme tools use the workspace store and carry their facts once', () =>
       expect(detail.problems.length).toBeGreaterThan(0)
       expect(detail.problems.some((one) => one.startsWith(problemAt))).toBe(true)
       expect(refused.text).toContain(problemAt)
-      expect(refused.structured).toEqual(refuseTool('malformed-request', detail))
-      const reason = refused.structured!['reason'] as string
+      const table = refuseTool('malformed-request', detail)
+      const reason = name === 'message_agent' ? `Not sent: ${table.reason}` : table.reason
+      expect(refused.structured).toEqual({ ...table, reason })
+      const introduction =
+        name === 'message_agent' ? reason : `refused (malformed-request): ${reason}`
       expect(refused.text).toBe(
-        `refused (malformed-request): ${reason} Problems: ${detail.problems.map((one) => one.trim().replace(/[.;]+$/u, '')).join('; ')}. This exact call can never succeed. Fix it and call again.`,
+        `${introduction} Problems: ${detail.problems.map((one) => one.trim().replace(/[.;]+$/u, '')).join('; ')}. This exact call can never succeed. Fix it and call again.`,
       )
       expect(refused.text.match(/This exact call can never succeed\./g)).toHaveLength(1)
       expect(refused.text.match(/Fix it and call again\./g)).toHaveLength(1)

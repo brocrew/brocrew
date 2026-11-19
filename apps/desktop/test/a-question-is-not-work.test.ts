@@ -426,92 +426,36 @@ describe('415 · a question is not work', () => {
       expect(saidToProvider(worker)[1]).not.toContain(FINISHING_LINE)
     })
 
-    it('🔴 D-010 · an OMITTED declaration is REFUSED — there is no default to fall back on', async () => {
-      /**
-       * ⚑ **Re-aimed twice, and the world moved each time** (standing rule 26). `415` defaulted an
-       * omitted kind to `work`; `553` (HO-060 §3) moved the default to `question`, because *"a
-       * model that simply sends a message assigns work"*. ⛔ **D-010 took the default away**: a
-       * question is `ask_question` now, and a caller that has not said which kind it means has not
-       * decided — so the call is refused, and the refusal names the vocabulary and the other door.
-       */
-      const { worker, pmTools, piece } = await aPmAndItsWorker()
-      // ⚑ **D-016** — the give's brief is the worker's first turn: let it reach the provider first,
-      // so a refused call that DID send would show as a second entry, not race the first.
-      await waitFor(() => saidToProvider(worker).length === 1, 'the brief to reach the provider')
-      const refused = await callOn(pmTools, 'message_agent', {
-        agent: worker,
-        text: 'no kind at all',
-      })
-      expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
-      expect(refused.rail).toBe('malformed-request')
-      const problems = (refused.detail as { problems: string[] }).problems.join(' ')
-      for (const member of AGENT_MESSAGE_KINDS) expect(problems).toContain(member)
-      expect(problems).toContain('ask_question')
-      // ⛔ **And nothing happened**: no piece beyond the give's, and no words held or on the way to
-      // the provider.
-      expect(openTasksOf(worker)).toEqual([piece])
-      expect(saidToProvider(worker).filter((said) => said.includes('no kind at all'))).toEqual([])
-      expect(saidToProvider(worker)).toHaveLength(1)
-      expect(JSON.stringify(ledger(worker))).not.toContain('no kind at all')
-      // ⚑ **THE CONTROL, one argument over**: the same call naming a kind lands.
-      const said = await callOn(pmTools, 'message_agent', {
-        agent: worker,
-        text: 'a note this time',
-        kind: 'note',
-      })
-      expect(said.outcome, JSON.stringify(said)).toBe('ok')
-      expect(said.kind).toBe('note')
-      expect(openTasksOf(worker)).toEqual([piece])
-    })
+    it.each([undefined, 'informational'])(
+      'sends a note without a declared kind (%s)',
+      async (kind) => {
+        const { worker, pmTools, piece } = await aPmAndItsWorker()
+        await waitFor(() => saidToProvider(worker).length === 1, 'the brief to reach the provider')
+        const text = 'How far have you got?'
+        const sent = await callOn(pmTools, 'message_agent', {
+          agent: worker,
+          text,
+          ...(kind === undefined ? {} : { kind }),
+        })
+        expect(sent, JSON.stringify(sent)).toMatchObject({ outcome: 'ok', kind: 'note' })
+        expect(openTasksOf(worker)).toEqual([piece])
+        await letTheTurnFinish(worker)
+        await waitFor(
+          () => saidToProvider(worker).some((said) => said.includes(text)),
+          'the note to reach the provider',
+        )
+        expect(saidToProvider(worker).filter((said) => said.includes(text))).toHaveLength(1)
+        expect(openTasksOf(worker)).toEqual([piece])
+      },
+    )
 
-    it('⛔ a kind this app has not been taught is REFUSED, and the refusal names the vocabulary', async () => {
-      // ⚑ **`325`'s rule and `reply_to_parent`'s `outcome` precedent**: a vocabulary the validator
-      // has not been taught is a refusal, never a pass — and never a transport error, which `307`
-      // measured *"carries no machine-readable policy meaning"*.
-      const { worker, pmTools, piece } = await aPmAndItsWorker()
-      // ⚑ **D-016** — the give's brief is the worker's first turn: let it reach the provider first.
-      await waitFor(() => saidToProvider(worker).length === 1, 'the brief to reach the provider')
-      const refused = await callOn(pmTools, 'message_agent', {
-        agent: worker,
-        text: 'something',
-        kind: 'informational',
-      })
-      expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
-      expect(refused.rail).toBe('malformed-request')
-      const problems = (refused.detail as { problems: string[] }).problems.join(' ')
-      for (const member of AGENT_MESSAGE_KINDS) expect(problems).toContain(member)
-      // ⛔ **And nothing happened**: no piece beyond the give's, and no words held or sent.
-      expect(openTasksOf(worker)).toEqual([piece])
-      expect(saidToProvider(worker).filter((said) => said.includes('something'))).toEqual([])
-      expect(saidToProvider(worker)).toHaveLength(1)
-      expect(JSON.stringify(ledger(worker))).not.toContain('"something"')
-    })
-
-    it('🔴 the argument is ADVERTISED, which is the half a green test cannot see', () => {
-      // ⛔ **Since `348` both adapters build their schema with `z.looseObject`, so an UNDOCUMENTED
-      // key is not stripped** — it reaches the handler, the behaviour changes, and a test that sends
-      // it passes **while no model has ever been told the argument exists.** ⚑ What a model is told
-      // is the JSON Schema built from the tool's `input` shape, and this reads it back out.
+    it('publishes the Message fields without a kind selector', () => {
       const tools = agentToolsFor(host, 'sess_1')
       const message = tools.tools.find((one) => one.name === 'message_agent')
       expect(message, 'message_agent is not published').toBeDefined()
-      const parameters = parametersOf(message?.input ?? {})
-      const kind = parameters.find((one) => one.name === 'kind')
-      expect(kind, JSON.stringify(parameters)).toBeDefined()
-      // ⚠️ **Optional in the SCHEMA and required at the door** (D-010): a schema-required argument
-      // is a transport error on Claude and a hint on Codex (`538` §3.3), and the door refuses its
-      // absence by name on both — measured in the omitted-declaration test above.
-      expect(kind?.required).toBe(false)
-      // ⛔ **The description names the whole vocabulary AS A LIST, and the default beside it.**
-      // ⚠️ **This read *"every member appears somewhere in the description"* and a mutation walked
-      // straight through it** (`415` `M4`): the prose below the list says *'work' is something for
-      // it to do* and *'note' tells it something*, so both words are in the sentence
-      // whatever the enumeration does — `an-assertion-can-be-satisfied-by-a-neighbouring-element`,
-      // found by the table rather than by reading. ⚑ The joined list is the DERIVED half, and it is
-      // the half that would go missing.
-      expect(kind?.description ?? '').toContain(AGENT_MESSAGE_KINDS.join(', '))
-      for (const member of AGENT_MESSAGE_KINDS) expect(kind?.description ?? '').toContain(member)
-      expect(kind?.description ?? '').toContain('There is no default')
+      const names = parametersOf(message?.input ?? {}).map((one) => one.name)
+      expect(names).toEqual(expect.arrayContaining(['agent', 'text', 'piece', 'resources']))
+      expect(names).not.toContain('kind')
     })
 
     it('⚑ the stall remedy is the ask-and-wait skill’s, and the core offers no new work for one', () => {
@@ -897,37 +841,32 @@ describe('415 · a question is not work', () => {
    * halves of one reading (`tasksVisibleTo`; `pieceBoard` since D-016).
    */
   describe('§6 · a child speaking UP about work it holds', () => {
-    it('🔴 `message_agent` naming a task the caller HOLDS is refused, and named as the mistake', async () => {
-      // ⚑ **Through the real door**: BroBot gives the PM a piece of work, so the PM holds a piece —
-      // ⚑ **D-016** — the give that started it.
+    it('a child can send a note about the open task it holds', async () => {
       const { brobot, pm, pmTools } = await aChainOfThree()
       const held = store.piecesOwnedBy(pm)[0]
-      expect(held, 'the PM holds no piece, so nothing below is being measured').toBeDefined()
-
-      // ⛔ **The exact call `HO-095` §3 measured**: the manager, naming the task it HOLDS,
-      // addressed to the conversation that gave it.
-      const refused = await callOn(pmTools, 'message_agent', {
+      if (held === undefined) throw new Error('The PM holds no piece.')
+      const text = 'Here is my plan.'
+      const sent = await callOn(pmTools, 'message_agent', {
         agent: brobot,
-        text: 'here is my plan, may I proceed?',
-        kind: 'follow-up',
-        piece: held?.piece,
+        text,
+        piece: held.piece,
       })
-
-      expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
-      // 🔴 **The new word, and it names the MISTAKE rather than the state** — `that-agent-is-you`'s
-      // own shape (`424`), one object over.
-      expect(refused.rail).toBe('that-is-work-you-hold')
-      const reason = String(refused.reason)
-      expect(reason).toContain('HOLDING')
-      expect(reason).toContain('ask_question')
-      expect(reason).toContain('stays yours and stays open')
-      expect(reason).toContain('reply_to_parent')
-      // ⚑ **Nothing was sent**, which every sentence in this table says and a caller must never
-      // have to guess.
-      expect(saidToProvider(brobot)).toEqual([])
+      expect(sent).toMatchObject({
+        outcome: 'ok',
+        kind: 'note',
+        piece: held.piece,
+        label: held.label,
+      })
+      await waitFor(
+        () => saidToProvider(brobot).some((words) => words.includes(text)),
+        'the note to reach the giver',
+      )
+      const stillHeld = store.piecesOwnedBy(pm).find((one) => one.piece === held.piece)
+      expect(stillHeld?.owner).toBe(pm)
+      expect(TASK_IS_OPEN[stillHeld?.state ?? 'answered']).toBe(true)
     })
 
-    it('⛔ …and the remedy it names WORKS, which is what makes it a remedy', async () => {
+    it('asks the giver a question while the task remains open', async () => {
       // 🔴 **The brief's criterion 4: performable BY THE REFUSED CALLER**, not merely present in a
       // string. ⚠️ `a-priced-cost-can-name-a-remedy-that-does-not-exist` is what this is measured
       // against — so the same caller, the same task, makes the call the sentence named.
@@ -953,10 +892,7 @@ describe('415 · a question is not work', () => {
       expect(host.questionsWaitingOn(brobot).length).toBeGreaterThan(0)
     })
 
-    it('⚠️ an id that is NOBODY’s still meets the old refusal — the repair is a split', async () => {
-      // ⛔ **The new rail takes ONE case and not the family**, which is what keeps
-      // `not-a-piece-you-gave` (D-016's name for `no-task-you-gave-that-agent`) truthful where it
-      // is the truth.
+    it('refuses a Message that names an unknown task', async () => {
       const { brobot, pmTools } = await aChainOfThree()
       const refused = await callOn(pmTools, 'message_agent', {
         agent: brobot,
@@ -964,8 +900,7 @@ describe('415 · a question is not work', () => {
         kind: 'follow-up',
         piece: 'work_00000000-0000-4000-8000-000000000000',
       })
-      expect(refused.rail).toBe('not-a-piece-you-gave')
-      expect(String(refused.reason)).toContain('not a piece you gave')
+      expect(refused).toMatchObject({ outcome: 'refused', rail: 'no-piece-by-that-name' })
     })
   })
 })

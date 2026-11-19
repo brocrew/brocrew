@@ -454,9 +454,7 @@ describe('a helper stopped on a person’s approval', () => {
         text: 'One more thing.',
       })
       expect(sent.structured['delivery']).toBe('queued')
-      expect(sent.text).toContain(
-        'is free — at once, if it is — with whatever else is held for it, oldest first',
-      )
+      expect(sent.text).toContain('it is working; it goes out when it is free.')
       expect(sent.text).not.toContain('Its turn is stopped')
 
       const answered = await callOn(pmTools, 'answer_question', {

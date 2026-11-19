@@ -1,3 +1,4 @@
+import { expectNoQuestionWake } from './lib/question-wake'
 import { giveOpenWorkerTask } from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { callOn } from './helpers/call-agent-tool'
@@ -336,18 +337,11 @@ describe('611 · a question names who it is for', () => {
       expect(said).not.toContain('a question goes to the conversation that gave you the task')
     })
 
-    it('⚑ the two members are advertised to a MODEL, and the sentences come from the vocabulary', async () => {
+    it('⚑ the recipient choices are advertised to a MODEL, and the sentences come from the vocabulary', async () => {
       const { workerTools } = await aWorkerHoldingWork()
       const tool = workerTools.tools.find((one) => one.name === 'ask_question')
       if (tool === undefined) throw new Error('no ask_question')
       expect(Object.keys(tool.input)).toContain('who_answers')
-      // ⚑ **The vocabulary is REGISTERED at both addresses**, which is what puts its members and
-      // their sentences into the published schema — `every-tool-enum-is-documented.test.ts` is the
-      // census that walks every registered address and asserts each member's own sentence, so a
-      // second copy of that walk here would be two readers of one rule.
-      //
-      // 🔴 **D-009 · two vocabularies now, and each says its own**: `ask_question` takes the three
-      // ends, and `pass_question_up` only the two a question climbs to — never an agent by name.
       const asking = TOOL_INPUT_ENUMS['ask_question:who_answers']
       expect(asking.members).toEqual([...QUESTION_RECIPIENTS])
       for (const member of QUESTION_RECIPIENTS) {
@@ -359,8 +353,7 @@ describe('611 · a question names who it is for', () => {
       for (const member of PASS_UP_RECIPIENTS) {
         expect(passing.sentences[member]).toBe(RECIPIENT_MEANS[member])
       }
-      // ⛔ **And the description does not promise a default**, because there is not one.
-      expect(tool.description).toContain('Say who answers it')
+      expect(tool.description).toContain('who_answers: the-parent')
     })
   })
 
@@ -639,6 +632,12 @@ describe('611 · a question names who it is for', () => {
       })
       expect(asked.outcome, JSON.stringify(asked)).toBe('ok')
 
+      const nativeCard = routedIn(worker, 'the-person-the-channel-left-it-with')
+      expect(nativeCard.state).toBe('open')
+      const pendingApproval = () => ledger(pm).find((event) => event.type === 'permission_request')
+      await waitFor(() => pendingApproval() !== undefined, 'the Ask turn to park on approval')
+      const card = pendingApproval()
+      if (card?.type !== 'permission_request') throw new Error('the Ask turn has no approval')
       const passed = await callOn(pmTools, 'pass_question_up', {
         question: asked.question,
         who_answers: 'a-person',
@@ -646,27 +645,38 @@ describe('611 · a question names who it is for', () => {
       })
       expect(passed.outcome, JSON.stringify(passed)).toBe('ok')
 
-      // ⛔ **The new row is in the PASSER's ledger and repeats the words EXACTLY.**
       const raised = store.questionsRaisedIn(pm).get(passed.question as string)
       if (raised === undefined) throw new Error('the passed-up question was not recorded')
       expect(raised.prompt).toBe('Which cities does he want on the trip?')
-      // ⚑ **And the context is a field of its own** — *"the parent MAY add context; it may NOT
-      // replace the question."*
       expect(raised.context).toBe('I have no way to know this; it is his own preference.')
       expect(raised.prompt).not.toContain('I have no way to know this')
-      // 🔴 **The join, which is what makes *the original words travelled* checkable** rather than
-      // promised: the row names the request it copied them from.
       expect(raised.passedUpFrom).toBe(asked.question)
       expect(store.questionsRaisedIn(worker).get(asked.question as string)?.prompt).toBe(
         raised.prompt,
       )
-      // ⚠️ **It names NO piece**, because the work is the original asker's and a piece from
-      // another conversation is a reference nothing here can resolve.
       expect(raised.piece).toBeNull()
-      // ⛔ **And the child's question is STILL OPEN and still the passer's to answer** — passing
-      // up raises a question, it does not settle one.
       const child = store.routedRequestsOf(worker).find((one) => one.requestId === asked.question)
       expect(REQUEST_IS_OPEN[child?.state ?? 'answered']).toBe(true)
+      expect(
+        store.routedRequestsOf(pm).find((one) => one.requestId === passed.question),
+      ).toMatchObject({ went: { is: 'the-person-the-asker-named' }, state: 'open' })
+
+      const beforeDecision = ledger(pm).length
+      await host.respondPermission(pm, card.id, { outcome: 'allow' }, window)
+      await waitFor(
+        () =>
+          ledger(pm)
+            .slice(beforeDecision)
+            .some((event) => event.type === 'status' && event.state === 'idle') &&
+          store.lastEndedTurn(pm)?.how === 'it-finished',
+        'the passer to finish the Ask turn',
+      )
+      expect(routedIn(worker, 'the-person-the-channel-left-it-with').requestId).toBe(
+        nativeCard.requestId,
+      )
+      expect(routedIn(worker, 'the-person-the-channel-left-it-with').state).toBe('open')
+      expectNoQuestionWake(ledger(pm))
+      expectNoQuestionWake(ledger(worker))
     })
 
     it('⛔ there is no field to reword the question in, and that is the whole ruling', async () => {

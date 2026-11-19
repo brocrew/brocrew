@@ -143,6 +143,8 @@ export interface QueuedMessage {
    * restart keeps it. ⛔ Absent on every other message.
    */
   readonly asks?: TheQuestionItAsks
+  readonly unansweredQuestion?: TheQuestionItAsks
+  readonly messageAct?: string
   /**
    * 🔴 **Who these words came from, when they are somebody's own** (414) — see {@link TurnOrigin}.
    *

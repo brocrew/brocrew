@@ -86,8 +86,7 @@ describe('five more tools answer field failures through Claude MCP', () => {
       }
     if (name === 'ask_question')
       return { who_answers: 'an-agent', agent: worker, question: 'What did you find?' }
-    if (name === 'message_agent')
-      return { agent: worker, kind: 'note', text: 'The notes are here.' }
+    if (name === 'message_agent') return { agent: worker, text: 'The notes are here.' }
     if (name === 'answer_question')
       return { question: 'q_fictional', cannot_answer: 'I cannot settle this.' }
     return { title: 'Notes', definition_of_done: 'Notes are collected.', brief: 'Collect notes.' }
@@ -159,9 +158,8 @@ describe('five more tools answer field failures through Claude MCP', () => {
   }
   function ownRefusal(tool: ToolName, packet: Packet, field: string): string {
     const text = words(packet)
-    expect(
-      text.startsWith(tool === 'give_work' ? 'Not sent: ' : 'refused (malformed-request): '),
-    ).toBe(true)
+    const sends = tool === 'give_work' || tool === 'ask_question' || tool === 'message_agent'
+    expect(text).toMatch(sends ? /^Not sent: / : /^refused \(malformed-request\): /)
     expect(text).toContain(field)
     expect(text).not.toContain('PRIVATE_VALUE')
     expect(text).not.toContain('MCP error')
@@ -242,8 +240,11 @@ describe('five more tools answer field failures through Claude MCP', () => {
       expect(properties[entry.field]).not.toHaveProperty('default')
       if (entry.name === 'ask_question')
         expect(properties.who_answers?.enum).toEqual(['the-parent', 'a-person', 'an-agent'])
-      if (entry.name === 'message_agent')
-        expect(properties.kind?.enum).toEqual(['note', 'follow-up'])
+      if (entry.name === 'message_agent') {
+        expect(properties).not.toHaveProperty('kind')
+        expect(properties.piece).toMatchObject({ type: 'string' })
+        expect(schema.required).not.toContain('piece')
+      }
     })
   }
 
@@ -355,16 +356,13 @@ describe('five more tools answer field failures through Claude MCP', () => {
     })
   }
 
-  for (const patch of [
-    { kind: 'follow-up', peice: 'PRIVATE_MISSPELLED_PIECE' },
-    { kind: 'note', piece: '', peice: 'PRIVATE_MISSPELLED_PIECE' },
-  ]) {
-    it(`message_agent: ${patch.kind} piece failures include typo guidance without sending`, async () => {
+  for (const piece of ['', 42]) {
+    it(`message_agent: invalid piece ${JSON.stringify(piece)} includes typo guidance without sending`, async () => {
       const wire = await server('message_agent')
       const before = effects()
       const text = ownRefusal(
         'message_agent',
-        await wire.call({ ...valid('message_agent'), ...patch }),
+        await wire.call({ ...valid('message_agent'), piece, peice: 'PRIVATE_MISSPELLED_PIECE' }),
         'piece:',
       )
       expect(text).toContain('peice: not a field of message_agent; use ')

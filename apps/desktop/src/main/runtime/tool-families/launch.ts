@@ -316,6 +316,7 @@ export function createGiveWorkTool(
           recorded: { kind: 'task', id: given.piece, taskLabel: given.label },
           to: given.owner,
           profile: given.profile,
+          targetKind: given.targetKind,
           state: given.recipientState,
           attachments: given.inputs.map((file) => {
             const overflow = given.overflow?.find((part) => part.file.resource === file.resource)

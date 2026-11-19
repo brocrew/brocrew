@@ -1,5 +1,6 @@
 import { giveLateServiceTask } from './lib/give-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
+import type { SendReceipt } from '../src/shared/tool-outcome'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -944,46 +945,6 @@ describe('a service queues the work it is given', () => {
     const NOT_TOLD =
       'could not be told. The piece was queued and had not reached it, so nothing was sent.'
 
-    it('a Give receipt says held and carries its place in line and the task folder', async () => {
-      const { host, first } = await aServiceAndTwoCallers()
-      const given = await call(host, first, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'browser-driver',
-        title: 'Book the room',
-        brief: 'book the meeting room for Tuesday',
-        folder: world.folder,
-      })
-      expect(given.structured).toMatchObject({
-        outcome: 'ok',
-        delivery: 'held',
-        queued_behind: 0,
-        folder: { use: 'grant', folder: world.folder },
-        receipt: {
-          recipient: {
-            address: given.structured.agent,
-            title: expect.any(String),
-            state: { kind: 'queued', behind: 0 },
-          },
-        },
-      })
-      const label = String(given.structured.label)
-      expect(given.text.split('\n')[0]).toContain(
-        `Task ${label} held for browser-driver at conversation ${String(given.structured.agent)} · `,
-      )
-      expect(given.text.split('\n')[0]).not.toContain('Book the room')
-      const behind = await call(host, first, 'give_work', {
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'browser-driver',
-        title: 'Order lunch',
-        brief: 'order lunch for six',
-      })
-      expect(behind.structured).toMatchObject({ outcome: 'ok', queued_behind: 1 })
-      expect(behind.structured.receipt).toMatchObject({
-        recipient: { state: { kind: 'queued', behind: 1 } },
-      })
-      expect(behind.structured).not.toHaveProperty('folder')
-    })
-
     it('update_work and withdraw_task say the service was not told, and why', async () => {
       const { host, first } = await aServiceAndTwoCallers()
       await aServiceAtWork(host, first)
@@ -1197,7 +1158,7 @@ describe('a service queues the work it is given', () => {
       expect(refusedAs(await world.gives(host, caller, 'born-service'))).toBe('its-kind-is-unknown')
     })
 
-    it('a note to a service reaches its ledger only from the caller of the piece it is on', async () => {
+    it('records a public Message from the queued caller and keeps the internal queue rule', async () => {
       const { host, first, second } = await aServiceAndTwoCallers()
       const { owner: service } = await aServiceAtWork(host, first)
       accepted(await world.gives(host, second, 'browser-driver', { title: 'Queued' }))
@@ -1207,13 +1168,21 @@ describe('a service queues the work it is given', () => {
       ).rejects.toThrow()
       expect(world.ledger(service).length).toBe(before)
       const tool = agentToolsFor(host, second).tools.find((one) => one.name === 'message_agent')!
-      const said = await tool.call({ agent: service, kind: 'note', text: 'a note' })
+      const said = await tool.call({ agent: service, text: 'a note from the queued caller' })
       expect(said.structured, said.text).toMatchObject({
-        outcome: 'refused',
-        rail: 'that-is-a-service',
-        permanence: 'permanent',
+        outcome: 'ok',
+        delivery: 'queued',
+        receipt: { recipient: { id: service, state: { kind: 'queued' } } },
       })
-      expect(world.ledger(service).length).toBe(before)
+      const receipt = (said.structured as { receipt: SendReceipt }).receipt
+      expect(world.ledger(service).slice(before)).toContainEqual(
+        expect.objectContaining({
+          type: 'message_queued',
+          messageId: receipt.recorded.id,
+          relayedFrom: second,
+          text: 'a note from the queued caller',
+        }),
+      )
       await expect(
         host.queueMessage(service, 'a note', { ownerId: agentCallerId(first) }),
       ).resolves.toMatchObject({ outcome: 'queued' })

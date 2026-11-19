@@ -1,4 +1,3 @@
-import { AGENT_MESSAGE_KINDS, type AgentMessageKind } from '../../../shared/task-contracts'
 import { ASKED_TO_STOP } from '../../../shared/how-work-stopped'
 import {
   type AgentToolAnswer,
@@ -9,26 +8,20 @@ import {
 import { type AgentToolHost } from './host'
 import { type Caller } from '../conversation-caller'
 import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
-import { TOOL_INPUT_ENUMS, type ToolName, documentedToolEnum } from './catalog'
+import type { ToolName } from './catalog'
 import {
-  WITH_WHATEVER_ELSE_IS_HELD,
-  aFollowUpOnAPieceYouDidNotGive,
-  aFollowUpOnAPieceYouGaveAnother,
-  aFollowUpOnAPieceYouHold,
   aMessageAboutAQueuedPiece,
-  heldAndWhy,
   outOfReachAnswer,
   theRuleOfAStopForWords,
   whatADeliveryMet,
   whatBecameOfTheStop,
-  whereItWent,
 } from './delivery'
 import { agentStateWords } from '../../../shared/agent-state'
-import { answer, refusalAnswer } from './answers'
+import { answer, refusalAnswer, sendAnswer } from './answers'
 import { carryInterruptRefusal, refuseTool } from './refusals'
-import { type conversationAddressing } from './addressing'
+import { outboundOverflowSaid, sendFilesSaid, sendOverflowAttachment } from '../send-overflow'
+import { sendResourcesInput, sendResourcesProblem } from './send-resources'
 import { hasSomethingToSend } from '../../../shared/runtime-ipc'
-import { isAgentMessageKind } from '../../../shared/tasks'
 import { randomUUID } from 'node:crypto'
 import { theStoppedWork } from '../reply-rails'
 import { workRequestRefused } from '../spawn-rails'
@@ -39,33 +32,12 @@ interface MessageAgentArguments {
   readonly agent: string
   /** The words. */
   readonly text: string
-  /**
-   * **What the caller says the message IS** — one of `AGENT_MESSAGE_KINDS`. **Required since
-   * D-010, at the handler and not in the schema**: a schema-required argument is refused by the MCP
-   * SDK before this door runs on Claude and handed over unparsed on Codex (`538` §3.3), so only the
-   * handler refuses its absence the same way on both.
-   */
-  readonly kind?: AgentMessageKind
-  /**
-   * **The piece this message is ABOUT** (429 as a task; a piece since D-016) — by its label
-   * (`W1.2`) or its id.
-   *
-   * **It hands nothing over and it opens nothing**: work is given with `give_work`. **What it
-   * may name depends on the kind** (D-016 spec D14): a follow-up adds to a piece the sender gave
-   * that agent, so it must name one; a note may name a piece the sender holds or gave, or none.
-   * It is written on the SENDER's receipt (`message_sent.piece`) and read by nothing on the
-   * receiver's side.
-   */
+  /** The piece this message is about, by its label or id. */
   readonly piece?: string
+  readonly resources?: readonly string[]
   /** `true` asks the receiver's running turn to stop so it reads this message now. */
   readonly interrupt?: boolean
 }
-
-/**
- * **The advertised name of the declaration, as a key of {@link MessageAgentArguments}** (415) —
- * see that interface for what the typing buys.
- */
-const MESSAGE_KIND_ARGUMENT = 'kind' satisfies keyof MessageAgentArguments
 
 const MESSAGE_INTERRUPT_ARGUMENT = 'interrupt' satisfies keyof MessageAgentArguments
 
@@ -80,21 +52,23 @@ const MESSAGE_PIECE_ARGUMENT = 'piece' satisfies keyof MessageAgentArguments
 export function createMessageAgentTool(
   host: Pick<
     AgentToolHost,
-    | 'addressOf'
+    | 'holdAgentMessageForStart'
+    | 'messageDestination'
     | 'messageAgentNow'
     | 'nameByItsWork'
+    | 'prepareTextForSend'
+    | 'prepareFilesForSend'
     | 'queueMessage'
+    | 'receiptForSend'
+    | 'stateOfARecordedMessage'
     | 'takeBackWhatItsQuestionMadeFalse'
     | 'tookItsPlace'
     | 'whatAPieceIsTo'
     | 'whatToCallTheConversation'
-    | 'whyItIsOutOfReach'
     | 'whyWhatIsHeldWaits'
   >,
   by: Caller,
   me: string,
-  selfRefusal: ReturnType<typeof conversationAddressing>['selfRefusal'],
-  theConversationToReach: ReturnType<typeof conversationAddressing>['theConversationToReach'],
   guarded: (run: () => Promise<AgentToolAnswer>) => Promise<AgentToolAnswer>,
 ): AgentToolDefinition & { readonly name: ToolName } {
   return {
@@ -108,9 +82,9 @@ export function createMessageAgentTool(
      * names it.
      */
     description:
-      'Send a message to an agent: a note for its information, or a follow-up on a piece of work you gave it, which you name — say which. To give work, use give_work; to ask something and get the answer back, use ask_question. It is held until that agent is free, then delivered with whatever else is held for it, oldest first (a person\u2019s command goes on its own). With interrupt: true, the turn that agent is running is also asked to stop, so that the message need not wait for its work to finish; the agent is told who asked for the stop. ' +
+      'Send a message to an existing conversation, by any of its labels. To give work, use give_work; to ask something and get the answer back, use ask_question. piece names the task it is about, if any. Hand files with resources. Anything over 2,000 characters arrives as a file the reader is pointed to. It is held until that conversation is free, then delivered with whatever else is held for it, oldest first (a person’s command goes on its own). A message leaves an archived conversation archived. With interrupt: true, the turn that conversation is running is also asked to stop, so the message need not wait for its work to finish; give the reason in the message — the conversation is told who stopped it and why. ' +
       theRuleOfAStopForWords(undefined, 'it') +
-      ' Use interrupt only for something the agent must know before it goes on, not for a routine note, and only for an agent you started or one started under it. Says whether the message is held or went straight out, and what became of the stop.',
+      ' Use interrupt only for something it must know before it goes on. The answer names the conversation by its address and title and says what happened: delivered now, held because it is working, or Not sent and why.',
 
     /**
      * **486 · the rails are the whole gate** (HO-031 §2.4).
@@ -128,32 +102,15 @@ export function createMessageAgentTool(
       Object.entries({
         agent: z
           .string()
-          .describe('The agent, by the piece it owns (W1.2) or by its id from list_agents.'),
+          .describe(
+            'The conversation, by any of its task labels (W1.2) or its id from list_agents.',
+          ),
         text: z.string().describe('What to say to it.'),
-        /**
-         * **The shared enum schema publishes the words without moving validation out of this
-         * door** (`490`, preserving `325`'s rule). Its catch hands an unknown word through, so this
-         * file can answer with the structured refusal `307` requires instead of a transport error.
-         * **A vocabulary the validator has not been taught is a refusal that NAMES the
-         * vocabulary, never a pass and never a transport error.**
-         */
-        kind: documentedToolEnum(
-          TOOL_INPUT_ENUMS['message_agent:kind'],
-          'What this message is.',
-          'There is no default: say which. A note can go to any agent you may message; a follow-up ' +
-            'goes only to an agent you gave a piece to, and names that piece.',
-        ).optional(),
-        /**
-         * **429 · the reference, and the tool's own description is where it may be taught** —
-         * a piece since D-016. **It says what the field DOES for each kind**, because a follow-up
-         * requires one and a note does not.
-         */
+        resources: sendResourcesInput,
         piece: z
           .string()
           .optional()
-          .describe(
-            'The piece this is about, by its label (W1.2) or id. A follow-up must name a piece you gave that agent; a note may name one you hold or gave, or none. list_tasks names them.',
-          ),
+          .describe('The task this is about, by its label (W1.2) or id, if any.'),
         interrupt: z
           .boolean()
           .optional()
@@ -174,9 +131,9 @@ export function createMessageAgentTool(
           problems.push({ code: 'custom', path: [field], message })
         }
         const malformed = () => {
-          const fields = ['agent', 'text', 'kind', 'piece', 'interrupt']
-          const detail = workRequestRefused(problems, args, fields)
-          const unknown = Object.keys(args).filter((key) => !fields.includes(key))
+          const fields = ['agent', 'text', 'piece', 'resources', 'interrupt']
+          const detail = workRequestRefused(problems, args, [...fields, 'kind'])
+          const unknown = Object.keys(args).filter((key) => key !== 'kind' && !fields.includes(key))
           if (unknown.length === 0) return refusalAnswer(refuseTool('malformed-request', detail))
           const names = unknown.slice(0, 3).map((key) => {
             const name = /^[A-Za-z_][A-Za-z0-9_]{0,79}$/.test(key) ? key : 'unknown field'
@@ -208,231 +165,169 @@ export function createMessageAgentTool(
         else if (!hasSomethingToSend(text, 0)) problem('text', 'send a non-blank text message')
         if (typeof spelled !== 'string' || typeof text !== 'string' || problems.length > 0)
           return malformed()
-        // **The caller's own declaration, validated here** (415) — and required since D-010
-        // (see `AGENT_MESSAGE_KINDS`): a caller that has not said which it means has not decided,
-        // and no default decides for it.
-        const declared = args[MESSAGE_KIND_ARGUMENT]
-        if (!isAgentMessageKind(declared)) {
-          problem(
-            'kind',
-            `required; send one of ${AGENT_MESSAGE_KINDS.join(', ')}; use ask_question to ask for an answer`,
-          )
-          return malformed()
-        }
-        const says: AgentMessageKind = declared
         const interruptAsked = args[MESSAGE_INTERRUPT_ARGUMENT]
         if (interruptAsked !== undefined && typeof interruptAsked !== 'boolean') {
           problem('interrupt', 'send true or false, or leave it out')
         }
-        if (args.piece !== undefined && typeof args.piece !== 'string') {
+        const named = args[MESSAGE_PIECE_ARGUMENT]
+        if (named !== undefined && (typeof named !== 'string' || named.length === 0)) {
           problem('piece', 'send a piece label or id as text, or leave it out')
         }
-        if (problems.length > 0) return malformed()
-        // **D-016 · commit 7 · R1 — a label names its piece's owner**, after the call's own shape
-        // and before the first rail that reads the target: one that names nothing this caller may
-        // reach is handed back as spelled, and meets `no-such-agent` below as an unknown id does.
-        // An agent's profile name names its one conversation in reach.
-        const reached = theConversationToReach(spelled, true)
-        if ('refused' in reached) return reached.refused
-        const agent = reached.agent
+        const resources = sendResourcesInput.safeParse(args.resources)
+        if (!resources.success) problem('resources', sendResourcesProblem)
+        if (!resources.success || problems.length > 0) return malformed()
+        const destination = host.messageDestination(spelled)
+        const agent = destination ?? spelled
         // A piece the caller gave that waits, queued, at a service has reached nobody: nothing is
         // sent about it, whether the message names it or is addressed by its label. Asked before
         // reach, which a caller whose piece is only queued does not have.
-        const namedFirst = args[MESSAGE_PIECE_ARGUMENT]
-        const aboutPiece =
-          typeof namedFirst === 'string' && namedFirst !== '' ? namedFirst : spelled
-        {
-          const it = host.whatAPieceIsTo(me, agent, aboutPiece)
-          if (it.is === 'queued-there') {
-            return refusalAnswer({
-              ...refuseTool('that-piece-is-still-queued', {
-                agent,
-                piece: it.piece,
-                label: it.label,
-              }),
-              reason: aMessageAboutAQueuedPiece(it.label),
-            })
-          }
+        const aboutPiece = typeof named === 'string' ? named : spelled
+        const it = host.whatAPieceIsTo(me, agent, aboutPiece)
+        if (it.is === 'queued-there') {
+          return refusalAnswer({
+            ...refuseTool('that-piece-is-still-queued', {
+              agent,
+              piece: it.piece,
+              label: it.label,
+            }),
+            reason: aMessageAboutAQueuedPiece(it.label),
+          })
         }
-        const out = host.whyItIsOutOfReach(agent, by, me, true)
-        if (out !== null) return outOfReachAnswer(out, agent)
-        if (agent === me || host.tookItsPlace(agent) === me) {
-          return selfRefusal(spelled, agent)
-        }
-        // **429 · the piece it is about, validated ONCE** — {@link MESSAGE_PIECE_ARGUMENT}. Its
-        // own shape refusal rather than a fold into the empty-string guard above: `piece: 42` is a
-        // caller naming a piece wrong, not a caller with no text. **A follow-up must name one**
-        // (D-016 spec D14): it adds to a piece the sender gave, and says which.
-        const named = args[MESSAGE_PIECE_ARGUMENT]
-        if (
-          (named !== undefined && (typeof named !== 'string' || named.length === 0)) ||
-          (says === 'follow-up' && named === undefined)
-        ) {
-          problem(
-            'piece',
-            says === 'follow-up'
-              ? 'on a follow-up, send the label or id of a piece you gave that agent'
-              : 'send the label or id of a piece you hold or gave, or leave it out',
-          )
-          return malformed()
-        }
+        if (destination === null) return outOfReachAnswer({ is: 'no-such-agent' }, agent)
         let about: { readonly piece: string; readonly label: string } | null = null
         if (typeof named === 'string') {
-          // **The lookup is the entitlement** ({@link RuntimeHost.whatAPieceIsTo}): a piece is
-          // this caller's to name only as one it gave or one it holds, so one answer covers a name
-          // that names nothing and one that is somebody else's. **F086 · a note names either,
-          // open or ended** — a piece it held is still its own once answered, taken back or closed,
-          // as one it gave is. A follow-up names one it gave that agent; a piece it held that has
-          // ended is not that, and is refused `not-a-piece-you-gave` below, never
-          // `that-is-work-you-hold`, whose acts — ask about it, hand it back — an ended piece refuses.
-          const it = host.whatAPieceIsTo(me, agent, named)
-          if (says === 'follow-up' && it.is !== 'given-to-it') {
-            // **628 · is it work this caller HOLDS?** (`HO-095` §3.1 · §3.2). That is the case
-            // the whole chain came from: a manager naming the piece its parent gave IT, addressed
-            // to that parent. The sentence names the two verbs that are right for work it holds.
-            // **F087 · a piece the caller holds that has ended, or gave another agent, is said
-            // as what it is** — `not-a-piece-you-gave`, with the act left. A name that is
-            // neither points at a note to the same agent, which it may message.
-            if (it.is === 'held-and-ended') {
-              return refusalAnswer({
-                ...refuseTool('not-a-piece-you-gave', {
-                  agent,
-                  piece: it.piece,
-                  label: it.label,
-                }),
-                reason: aFollowUpOnAPieceYouHold(it.label),
-              })
-            }
-            if (it.is === 'given-to-another') {
-              return refusalAnswer({
-                ...refuseTool('not-a-piece-you-gave', {
-                  agent,
-                  piece: it.piece,
-                  label: it.label,
-                }),
-                reason: aFollowUpOnAPieceYouGaveAnother(it.label),
-              })
-            }
-            return refusalAnswer(
-              it.is === 'held'
-                ? refuseTool('that-is-work-you-hold', { piece: it.piece, label: it.label })
-                : it.is === 'its-root'
-                  ? refuseTool('that-is-your-own-work', { piece: it.piece, label: it.label })
-                  : {
-                      ...refuseTool('not-a-piece-you-gave', { agent, piece: named }),
-                      reason: aFollowUpOnAPieceYouDidNotGive(spelled),
-                    },
-            )
-          }
           if (it.is === 'none') {
             return refusalAnswer(refuseTool('no-piece-by-that-name', { piece: named }))
           }
           about = { piece: it.piece, label: it.label }
         }
-        try {
-          // **The three arguments between are this call's own values and not padding**: no
-          // attachment, the work slot in the receiver's mailbox — see `MAILBOX_KINDS`, which
-          // decides whether a SECOND message may be held and is a different question from the one
-          // `says` answers — and no turn facts, which only the app's own doors carry.
-          // **D-017 · R1 — a conversation that is not running is started for it** (the host's
-          // `deliverWhenItRuns`), so the receipt says what reached it and never whether it ran.
-          // **D-017 · R10 — whether it had already been replaced**, so the receipt says once, to
-          // the sender whose message found it could never be reopened, what happened.
-          const before = host.tookItsPlace(agent)
-          const messageAct = `message_act_${randomUUID()}`
-          const facts = {
-            ...(about === null ? {} : { aboutPiece: about }),
-            addressedAs: spelled,
-            messageAct,
+        const says = about !== null && it.is === 'given-to-it' ? 'follow-up' : 'note'
+        const kept = host.prepareFilesForSend(me, resources.data ?? [], about?.piece)
+        if (!kept.ok) return answer({ ...kept.refusal }, `Not sent: ${kept.refusal.reason}`)
+        const prepared = host.prepareTextForSend(me, 'text', text, about?.piece)
+        if (!prepared.ok) {
+          return answer({ ...prepared.refusal }, `Not sent: ${prepared.refusal.reason}`)
+        }
+        const attachment =
+          prepared.overflow === undefined ? '' : outboundOverflowSaid(prepared.overflow)
+        const attachments =
+          prepared.overflow === undefined
+            ? kept.files
+            : [...kept.files, sendOverflowAttachment(prepared.overflow)]
+        const outgoingText = prepared.text + sendFilesSaid(kept.files)
+        const messageAct = `message_act_${randomUUID()}`
+        const facts = {
+          ...(about === null ? {} : { aboutPiece: about }),
+          addressedAs: spelled,
+          messageAct,
+        }
+        const holdingBeforeStart = host.holdAgentMessageForStart(
+          agent,
+          outgoingText,
+          by,
+          facts,
+          says,
+        )
+        const heldBeforeStart = holdingBeforeStart === null ? null : await holdingBeforeStart
+        if (heldBeforeStart !== null) {
+          const { id, to, state } = heldBeforeStart
+          if (state.kind === 'started' && says === 'follow-up' && about !== null) {
+            host.takeBackWhatItsQuestionMadeFalse({ agent: to, piece: about.piece }, by)
           }
+          const { receipt, said } = host.receiptForSend({
+            recorded: { kind: 'message', id, taskLabel: about?.label ?? null },
+            to,
+            state,
+            attachments,
+            ...(state.kind === 'queued' ? { waitsFor: host.whyWhatIsHeldWaits(to) } : {}),
+          })
+          return answer(
+            {
+              outcome: 'ok',
+              delivery: state.kind === 'started' ? 'sent' : 'queued',
+              messageAct,
+              agent,
+              kind: says,
+              ...(about === null ? {} : { piece: about.piece, label: about.label }),
+              ...(to === agent ? {} : { went_to: to }),
+              receipt,
+            },
+            said + attachment,
+          )
+        }
+        try {
           // Hold the message before asking its running turn to stop.
           const now =
             interruptAsked === true
-              ? await host.messageAgentNow(agent, text, by, says, facts)
+              ? await host.messageAgentNow(agent, outgoingText, by, says, facts)
               : null
           const outcome =
             now === null
-              ? await host.queueMessage(agent, text, by, [], 'work', facts, says)
+              ? await host.queueMessage(
+                  agent,
+                  outgoingText,
+                  by,
+                  [],
+                  'work',
+                  facts,
+                  says === 'follow-up' ? says : undefined,
+                )
               : now.delivery
           const wentTo = host.tookItsPlace(agent)
-          const where = whereItWent(agent, before, wentTo, host)
-          // **D-016 · commit 7 · R3 — the receiver by the piece it owns**: one agent can hold many
-          // conversations, and nothing else in these words says which one took the message.
-          const called = host.nameByItsWork(wentTo ?? agent)
-          // **…named in full ONCE, and by its name alone after that**: the full name is a
-          // sentence of its own, and five of them made one paragraph hard to read.
-          const again = host.whatToCallTheConversation(wentTo ?? agent)
-          const heldBecause =
+          const to = wentTo ?? agent
+          const state =
             outcome.outcome === 'sent'
-              ? null
-              : heldAndWhy(host, wentTo ?? agent, `${where}held for ${called}.`)
+              ? { kind: 'started' as const }
+              : host.stateOfARecordedMessage(to, outcome.messageId)
+          const waitsFor = state.kind === 'queued' ? host.whyWhatIsHeldWaits(to) : null
+          const { receipt, said } = host.receiptForSend({
+            recorded: {
+              kind: 'message',
+              id: outcome.outcome === 'sent' ? messageAct : outcome.messageId,
+              taskLabel: about?.label ?? null,
+            },
+            to,
+            state,
+            attachments,
+            waitsFor,
+          })
           const stopped =
             now === null
               ? null
               : whatBecameOfTheStop(
                   now,
-                  again,
+                  host.whatToCallTheConversation(to),
                   'this message',
                   (conversation) => conversation === me,
                   (conversation) => host.nameByItsWork(conversation),
-                  heldBecause !== null,
+                  waitsFor !== null,
                 )
           // **703 · a message about a piece this caller gave has reached its holder** (`698` F-A)
           // — what the host still holds for this caller about that piece, saying it is not being
           // worked on, is false now ({@link RuntimeHost.takeBackWhatItsQuestionMadeFalse}).
           // **SENT, never held** (`703`'s review): a held message has reached nobody, and the
           // push is still true.
-          if (outcome.outcome === 'sent' && about !== null) {
+          if (outcome.outcome === 'sent' && says === 'follow-up' && about !== null) {
             host.takeBackWhatItsQuestionMadeFalse({ agent, piece: about.piece }, by)
-          }
-          // **The held message's id stays inside the app** (490). It names the receiver's
-          // cancellable mailbox entry, and the renderer's `cancelQueuedMessage` command accepts
-          // it; no AGENT tool does. Returning it here gave this caller a handle it could neither
-          // read nor act on and looked like the delivery receipt the app does not have. The id
-          // remains on both durable ledgers and in the live disclosure for the person who can
-          // actually cancel it; this answer reports only the outcome this caller can use.
-          // The words do not echo the kind the call declared; the payload keeps it.
-          if (outcome.outcome === 'sent') {
-            return answer(
-              {
-                outcome: 'ok',
-                delivery: 'sent',
-                messageAct,
-                agent,
-                kind: says,
-                ...(about === null ? {} : { piece: about.piece, label: about.label }),
-                ...(wentTo === null ? {} : { went_to: wentTo }),
-                ...(stopped === null ? {} : stopped.structured),
-              },
-              `${where}${called} has been sent it straight away.${stopped === null ? '' : ` ${stopped.said}`}`,
-            )
           }
           return answer(
             {
               outcome: 'ok',
-              delivery: 'queued',
+              delivery: outcome.outcome,
               messageAct,
+              receipt,
               agent,
               kind: says,
               ...(about === null ? {} : { piece: about.piece, label: about.label }),
               ...(wentTo === null ? {} : { went_to: wentTo }),
               ...(stopped === null ? {} : stopped.structured),
             },
-            // **657 · true in both arms a hold now has.** It said *"when the turn it is
-            // running now ends"*, and a message held after a lost race can find the winning turn
-            // already over — it then goes at once, with no turn to wait for. **D-027 · and
-            // WITH whatever else is held for it**: the mailbox goes out as one turn, oldest first,
-            // so a notice or another caller's words can be in the same turn, ahead of this one —
-            // up to a person's command, which goes alone ({@link WITH_WHATEVER_ELSE_IS_HELD}).
-            (heldBecause ??
-              `${where}held for ${called}; it goes out once ${again} is free — at once, ` +
-                `if it is — ${WITH_WHATEVER_ELSE_IS_HELD}.`) +
-              (stopped === null ? '' : ` ${stopped.said}`),
+            said + (stopped === null ? '' : ` ${stopped.said}`) + attachment,
           )
         } catch (error) {
           return whatADeliveryMet(error, agent, 'message_agent')
         }
-      }),
+      }).then(sendAnswer),
   }
 }
 

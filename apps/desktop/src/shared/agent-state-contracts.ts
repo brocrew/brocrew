@@ -174,6 +174,8 @@ export type AgentState =
       readonly to: readonly [string, ...string[]]
       /** When the oldest of those questions was put to it, epoch ms; absent where this app cannot say. */
       readonly since?: number
+      /** An open question whose reminder turn has ended. */
+      readonly stalledQuestion?: string
     }
   | { readonly is: 'in-the-background'; readonly what: string | null }
   | { readonly is: 'scheduled'; readonly dueAt: number | null }
@@ -229,6 +231,7 @@ export interface AgentStateFacts {
   readonly owesAnAnswerTo: readonly string[]
   /** When the oldest question it owes an answer to was put to it, epoch ms, or `null` or absent. */
   readonly owesAnAnswerSince?: number | null
+  readonly stalledQuestion?: string
   readonly background: BackgroundLevel
   readonly scheduled: ScheduleLevel
   /**

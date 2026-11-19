@@ -427,7 +427,7 @@ describe('§1 · one instruction set', () => {
       expect(TOOL_NAMES as readonly string[], `${named} is a tool`).toContain(named)
     }
     expect(pm).toContain(
-      "Ask your questions with ask_question, even to agents; notes expect none. request_action tracks the person's actions. Never guarantee replies.",
+      "Ask with ask_question and tell with message_agent. You owe whoever asks you an answer: find it however you need and answer in your own words, or say you can't and who might.",
     )
     expect(pm).not.toMatch(/routed|travels|the app (sends|records|delivers)/i)
     expect(pm).not.toMatch(/your child(ren)? cannot/i)

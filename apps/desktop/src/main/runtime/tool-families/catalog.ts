@@ -1,4 +1,4 @@
-import { AGENT_MESSAGE_KINDS, TASK_OUTCOMES } from '../../../shared/task-contracts'
+import { TASK_OUTCOMES } from '../../../shared/task-contracts'
 import { MCP_SERVER_REQUEST_WHO } from '../../../shared/mcp-server-requests'
 import {
   PASS_UP_RECIPIENTS,
@@ -243,12 +243,6 @@ const TASK_RECORD_SECTION_INPUT = toolInputVocabulary(TASK_RECORD_SECTIONS, {
   exchanges: "'exchanges' pages through the rest of the last exchange.",
 })
 
-// whose answer comes back.
-const MESSAGE_KIND_INPUT = toolInputVocabulary(AGENT_MESSAGE_KINDS, {
-  note: "'note' tells it something for its information; no reply is expected.",
-  'follow-up': "'follow-up' adds to a piece of work you gave it, which you name.",
-})
-
 // `request_routed.to` has no room for.
 const QUESTION_RECIPIENT_INPUT = toolInputVocabulary(
   QUESTION_RECIPIENTS as unknown as [QuestionRecipient, ...QuestionRecipient[]],
@@ -281,7 +275,6 @@ const TASK_OUTCOME_INPUT = toolInputVocabulary(TASK_OUTCOMES, {
  * documented by merely importing a vocabulary and never using it.
  */
 export const TOOL_INPUT_ENUMS = {
-  'message_agent:kind': MESSAGE_KIND_INPUT,
   'reply_to_parent:outcome': TASK_OUTCOME_INPUT,
   'create_agent:provider': PROVIDER_INPUT,
   'give_work:provider': PROVIDER_INPUT,

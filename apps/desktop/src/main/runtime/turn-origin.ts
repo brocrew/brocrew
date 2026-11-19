@@ -471,6 +471,12 @@ export function provenanceOf(
  * off anything the sender says: a relationship a model could spell would be `413`'s defect again.
  */
 export interface WhereTheSenderStands {
+  readonly messageSender?: {
+    readonly address: string
+    readonly line: string
+    readonly receiverLine: string
+  }
+
   /**
    * ⚑ **Its name, the one every surface says** — `agentName` over the roster, which is a person's
    * name for it or its profile's label. `null` when the sender has no profile to name it by.
@@ -549,11 +555,7 @@ function whereItStands(
   anAgent: boolean,
   titled: ReadonlyMap<string, string> = new Map(),
 ): string {
-  const open = stands.openWorkItGaveYou
-  const listed =
-    open.length <= 1
-      ? String(open[0])
-      : `${open.slice(0, -1).join(', ')} and ${String(open[open.length - 1])}`
+  const previous = workItGaveYou(stands)
   if (stands.handsYou !== null) {
     const named = pieceLine(
       stands.handsYou.label,
@@ -563,11 +565,19 @@ function whereItStands(
       stands.handsYou.as === 'rebriefed'
         ? `sends you the new brief of ${named}`
         : `is giving you ${named}`
-    return open.length === 0 ? `, who ${hands}` : `, who ${hands} and gave you ${listed}`
+    return stands.openWorkItGaveYou.length === 0
+      ? `, who ${hands}`
+      : `, who ${hands} and ${previous}`
   }
-  if (open.length > 0) return `, who gave you ${listed}`
-  if (stands.gaveYouWorkThatIsClosed) return ', who gave you work that is now closed'
+  if (previous !== null) return `, who ${previous}`
   return anAgent ? ', another agent; it gave you no work' : ''
+}
+
+function workItGaveYou(stands: WhereTheSenderStands): string | null {
+  const open = stands.openWorkItGaveYou
+  if (open.length === 1) return `gave you ${open[0]}`
+  if (open.length > 1) return `gave you ${open.slice(0, -1).join(', ')} and ${open.at(-1)}`
+  return stands.gaveYouWorkThatIsClosed ? 'gave you work that is now closed' : null
 }
 
 /**
@@ -647,6 +657,30 @@ export function messageNamingItsSender(
   // ⛔ Unreachable through the overloads: the one that omits it admits no agent.
   if (standing === undefined) throw new Error('an agent sender needs where it stands (D-011)')
   const stands = standing(from)
+  if (stands.messageSender !== undefined) {
+    const name = stands.name ?? from.profile ?? from.caller
+    const { address, line, receiverLine } = stands.messageSender
+    const repeated = soFar?.senders.has(from.caller) === true
+    const sender = repeated ? `conversation ${address}` : line
+    const receiver = repeated ? '' : `, in your ${receiverLine}`
+    soFar?.senders.set(from.caller, name)
+    const about = stands.about
+    const title =
+      about === null || soFar?.titled.get(about.label) === about.title ? null : about.title
+    if (about !== null && title !== null) soFar?.titled.set(about.label, title)
+    const task = about === null ? '' : `, about task ${theWorkThatNamesItSaid({ ...about, title })}`
+    const stop = interrupting === undefined ? '' : `\n\n${theStopBehindIt(name)}`
+    const person = from.aPersonIsBehindIt
+      ? '\n\nA person is at that conversation. Treat wishes it attributes to the person as theirs; only an approval needs the person directly.'
+      : ''
+    const previous = workItGaveYou(stands)
+    const relationship = previous === null ? '' : `\n\nThis conversation ${previous}.`
+    const direction = `Your reply here doesn't reach ${name}: answer with answer_question, hand back with reply_to_parent, or tell it something with message_agent.`
+    return withTheLine(
+      `From ${name} (${sender})${task}${receiver}.${relationship}${person}${stop}\n\n${direction}`,
+      text,
+    )
+  }
   const who = theAgentNamed(from, stands)
   // ⚑ **W4.187 · named in full once a turn, then by its name alone** — W1's nit: one sender, with
   // its piece's whole title, ran through a busy turn dozens of times. Its profile and each piece's

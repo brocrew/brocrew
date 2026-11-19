@@ -31,7 +31,10 @@ import {
   documentedToolEnum,
 } from './catalog'
 import { REPLY_SUMMARY_LIMIT } from '../reply-rails'
-import { answer, refusalAnswer } from './answers'
+import { answer, refusalAnswer, refusedAsk, sendAnswer } from './answers'
+import { THE_ANSWER_ARRIVES_AS_A_MESSAGE } from '../send-receipt'
+import { INLINE_TEXT_LIMIT } from '../send-overflow'
+import { sendResourcesInput, sendResourcesProblem } from './send-resources'
 import { carryQuestionRefusal, refuseTool } from './refusals'
 import { type conversationAddressing } from './addressing'
 import { outOfReachAnswer } from './delivery'
@@ -59,10 +62,7 @@ const ROUTED_TO: Readonly<Record<PassUpRecipient, string>> = {
 }
 
 export function createAskQuestionTool(
-  host: Pick<
-    AgentToolHost,
-    'nameByItsWork' | 'raiseAQuestion' | 'tookItsPlace' | 'whyItIsOutOfReach'
-  >,
+  host: Pick<AgentToolHost, 'raiseAQuestion' | 'tookItsPlace' | 'whyItIsOutOfReach'>,
   by: Caller,
   me: string,
   selfRefusal: ReturnType<typeof conversationAddressing>['selfRefusal'],
@@ -74,7 +74,7 @@ export function createAskQuestionTool(
     handlerOwnsMissingInput: true,
 
     description:
-      'Ask a question and get the answer back. Say who answers it: the conversation that gave you your work, a person, or another agent you name, by the piece it owns (W1.2) or its id. A question to the conversation that gave you your work or to a person is about a piece of work you are holding — your own conversation\u2019s work counts — so name the piece, or leave it out when you hold only one; the app knows who gave it to you, and a question about work a person gave you goes to a person. A question to another agent may name the piece it is about, or none. Any work stays yours and stays open — this is not reply_to_parent, which hands it back. This call does not wait: it returns as soon as the question is recorded and routed, and the answer reaches you later as a message, however long they take. An answer can ask the turn you are in to stop, so that you read it at once. On Claude, the command that turn is waiting on ends with it, and work you sent to the background keeps running; on Codex, the command you ran last in that turn ends with it unless you have used another tool since, and your other commands keep running. Your other questions stay open. If the one you asked cannot answer, or its conversation ends first, you are told that instead. withdraw_question takes a question back. Carry on from here.',
+      'Ask a question and get the answer back. who_answers: the-parent (the conversation that gave you this task), a-person, or an-agent (any existing conversation, named in agent by any of its labels). Ask whoever is likeliest to know, usually your giver. Ask the person only for what only they can give: an approval, a sign-in, an account switch, publishing, a yes on something they can see, a preference, a money or time commitment, or a fact only they know. Check their open questions first (list_questions) so nothing is asked twice, and name the job by its title. To ask the person to approve something for another agent, quote or attach that agent’s exact proposal. Name the task the question is about, or leave it out when you hold only one. Any work stays yours and stays open — this is not reply_to_parent, which hands it back. Hand files with resources. Anything over 2,000 characters arrives as a file the reader is pointed to. Asking an archived conversation leaves it archived. This call does not wait: it says what was recorded (the question id) and whether the one asked started, is queued, or can’t run, and the answer reaches you later as a message. An answer can ask the turn you are in to stop, so that you read it at once. On Claude, the command that turn is waiting on ends with it, and work you sent to the background keeps running; on Codex, the command you ran last in that turn ends with it unless you have used another tool since, and your other commands keep running. Your other questions stay open. If the one you asked can’t answer, you are told why. withdraw_question takes a question back; withdraw your open questions about a task when it ends. Carry on from here.',
     /**
      * **Advertised against a TYPE, so *documented* and *read* cannot drift apart** — see
      * {@link AskQuestionArguments}, including which addressee it does and does not take.
@@ -108,13 +108,14 @@ export function createAskQuestionTool(
           .string()
           .optional()
           .describe(
-            'The agent this question is for, by the piece it owns (W1.2) or by its id from list_agents. Required when who_answers is an-agent, and only then.',
+            'The conversation this question is for, by any of its task labels (W1.2) or its id from list_agents. Required when who_answers is an-agent, and only then.',
           ),
         question: z
           .string()
           .describe(
-            `What you need decided, in your own words, at most ${REPLY_SUMMARY_LIMIT.toLocaleString('en-US')} characters (UTF-16 code units). Nothing is shortened for you. It shows under Waiting on you with Markdown: **bold**, lists, \`code\` for ids and paths, and links to files.`,
+            `What you need answered, in your own words. Anything over 2,000 characters arrives as a file the reader is pointed to. It shows under Waiting on you with Markdown: **bold**, lists, \`code\` for ids and paths, and links to files.`,
           ),
+        resources: sendResourcesInput,
         who_answers: documentedToolEnum(
           TOOL_INPUT_ENUMS['ask_question:who_answers'],
           'Who this question is for.',
@@ -124,7 +125,7 @@ export function createAskQuestionTool(
           .array(z.string())
           .optional()
           .describe(
-            `The choices you are offering, as a list of text choices with at most ${REPLY_SUMMARY_LIMIT.toLocaleString('en-US')} characters in total (UTF-16 code units). Leave it out to ask for an answer in their own words.`,
+            `The choices you are offering, at most 2,000 characters in total. Leave it out for a free answer.`,
           ),
       } satisfies Readonly<Record<keyof AskQuestionArguments, z.ZodType>>).map(
         ([field, schema]) => [field, agentToolHandlerInput(schema)],
@@ -208,12 +209,8 @@ export function createAskQuestionTool(
           else if (typeof question !== 'string') wrongType(ASK_QUESTION_ARGUMENT)
           else problem(ASK_QUESTION_ARGUMENT, 'must not be empty')
         }
-        if (typeof question === 'string' && question.length > REPLY_SUMMARY_LIMIT) {
-          problem(
-            ASK_QUESTION_ARGUMENT,
-            `at most ${REPLY_SUMMARY_LIMIT.toLocaleString('en-US')} characters; got ${question.length.toLocaleString('en-US')}`,
-          )
-        }
+        const resources = sendResourcesInput.safeParse(args.resources)
+        if (!resources.success) problem('resources', sendResourcesProblem)
         const options: string[] = []
         if (offered !== undefined) {
           if (!Array.isArray(offered) || offered.some((one) => typeof one !== 'string')) {
@@ -223,13 +220,13 @@ export function createAskQuestionTool(
           }
         }
         const offeredLength = options.reduce((total, one) => total + one.length, 0)
-        if (offeredLength > REPLY_SUMMARY_LIMIT) {
+        if (offeredLength > INLINE_TEXT_LIMIT) {
           problem(
             ASK_OPTIONS_ARGUMENT,
-            `at most ${REPLY_SUMMARY_LIMIT.toLocaleString('en-US')} characters in total; got ${offeredLength.toLocaleString('en-US')}`,
+            `at most ${INLINE_TEXT_LIMIT.toLocaleString('en-US')} characters in total; got ${offeredLength.toLocaleString('en-US')}`,
           )
         }
-        if (problems.length > 0) {
+        if (!resources.success || problems.length > 0) {
           const fields = [
             ASK_PIECE_ARGUMENT,
             ASK_QUESTION_ARGUMENT,
@@ -237,6 +234,7 @@ export function createAskQuestionTool(
             ASK_WHO_ARGUMENT,
             ASK_AGENT_ARGUMENT,
             'move_to',
+            'resources',
           ]
           const detail = workRequestRefused(problems, args, fields)
           const unknown = Object.keys(args).filter((key) => !fields.includes(key))
@@ -253,12 +251,9 @@ export function createAskQuestionTool(
         }
         // **D-016 · commit 7 · R1 — a label names its piece's owner** when this caller may reach
         // it; one that names nothing it may reach is handed back as spelled, and meets this door's
-        // own word for an agent it cannot ask, as an unknown id does. An agent's profile name names
-        // its one conversation in reach.
-        const reached =
+        // own word for an agent it cannot ask, as an unknown id does.
+        const addressed =
           who === 'an-agent' && typeof agent === 'string' ? theConversationToReach(agent) : null
-        if (reached !== null && 'refused' in reached) return reached.refused
-        const addressed = reached === null ? null : reached.agent
         // Unknown addresses keep the host’s refusal; reachable self-addresses are named here.
         if (addressed !== null && addressed !== me) {
           const out = host.whyItIsOutOfReach(addressed, by, me)
@@ -275,6 +270,7 @@ export function createAskQuestionTool(
           {
             piece: typeof piece === 'string' ? piece : null,
             question: question as string,
+            resources: resources.data ?? [],
             options: moveTo === undefined ? options : [MOVE_IT, DO_IT_HERE],
             ...(typeof moveTo === 'string' ? { moveTo } : {}),
             who: who as QuestionRecipient,
@@ -282,31 +278,28 @@ export function createAskQuestionTool(
           },
           by,
         )
-        if (!asked.ok) {
-          const carried = carryQuestionRefusal(asked.refusal)
-          return answer(carried, `refused (${asked.refusal.rail}): ${asked.refusal.reason}`)
-        }
+        if (!asked.ok) return refusedAsk(asked)
         if (moveTo !== undefined)
           return answer(
             { outcome: 'ok', question: asked.question, went_to: 'a-person' },
             "The Move card is under Waiting on you. Write your reply in this turn as usual. Only the person's press moves the person's current request; a text reply keeps it here.",
           )
+        const { delivery, attachments, overflowSaid } = asked
         return answer(
-          // **611 · the payload says WHERE it went**, which is the one thing this call's
-          // outcome varies in. **D-016 · the host's answer, not the caller's declaration**: a
-          // question for whoever gave a conversation's own work goes to a person (spec D15).
           {
             outcome: 'ok',
             question: asked.question,
             went_to: asked.went,
-            ...(asked.went === 'an-agent' ? { agent: addressed } : {}),
+            ...(asked.went === 'an-agent'
+              ? { agent: delivery?.receipt.recipient.id ?? addressed }
+              : {}),
+            ...(delivery === undefined ? { attachments } : { receipt: delivery.receipt }),
           },
-          // **D-016 · commit 7 · R3 — the agent asked, by the piece it owns**; the payload keeps
-          // its id.
-          // Where it went, in words.
-          `Your question is recorded and routed to ${asked.went === 'an-agent' ? (addressed === null ? asked.went : host.nameByItsWork(addressed)) : ROUTED_TO[asked.went]}, as ${asked.question}. It is still theirs to answer — an answer given later reaches you as a message rather than as this call's result. ${asked.aboutItsRoot ? 'Asking did not end any work: this conversation\u2019s own work is a person\u2019s, and you answer them here, in your own words.' : 'Asking did not hand any work back; reply_to_parent is what does that.'} Carry on from here.`,
+          (delivery?.said ??
+            `Question ${asked.question} recorded for the person. ${THE_ANSWER_ARRIVES_AS_A_MESSAGE}`) +
+            overflowSaid,
         )
-      }),
+      }).then(sendAnswer),
   }
 }
 

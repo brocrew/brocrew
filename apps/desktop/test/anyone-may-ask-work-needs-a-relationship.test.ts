@@ -1,4 +1,3 @@
-import { AGENT_MESSAGE_KINDS } from '../src/shared/task-contracts'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -332,48 +331,20 @@ describe('553 · anyone may ask; work needs a relationship', () => {
   // ─────────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§3 · a model that simply sends a message assigns nothing', () => {
-    /**
-     * 🔴 **The ruling, measured on the one caller that can tell the two readings apart.**
-     *
-     * ⛔ **A parent and its own child is the case HO-060 §3 calls out by name** — *"that is
-     * backwards wherever it happens, including between a parent and its own child"* — because it
-     * is the one pair where the assignment gate admits, so the only thing deciding whether a task
-     * is opened is the default. ⚑ **Measured where the two readings DIVERGE**, exactly.
-     *
-     * ⚑ **D-016 · no message opens a piece**, whatever its kind: `work` is no kind now, and a piece
-     * is opened by a give alone.
-     */
-    it('🔴 D-010 · no `kind` to its OWN child is refused and opens nothing, and only a give opens one', async () => {
+    it('a Message never opens a piece, and only a Give opens one', async () => {
       const { boss, bossTools, child } = await aBossItsChildAndAStranger()
-      // ⚑ The fixture's own give — the count every step below is measured against.
       const before = store.piecesGivenBy(boss).length
       expect(before).toBe(1)
 
-      const said = await callOn(bossTools, 'message_agent', {
-        agent: child,
-        text: 'a thought about the thing',
-      })
-      expect(said.outcome, JSON.stringify(said)).toBe('refused')
-      expect(said.rail).toBe('malformed-request')
-      expect(store.piecesGivenBy(boss)).toHaveLength(before)
-      // ⚑ **A note opens nothing either**, echoed back so a caller sees which reading was taken.
-      const noted = await callOn(bossTools, 'message_agent', {
-        agent: child,
-        text: 'a thought about the thing',
-        kind: 'note',
-      })
-      expect(noted.outcome, JSON.stringify(noted)).toBe('ok')
-      expect(noted.kind).toBe('note')
-      expect(store.piecesGivenBy(boss)).toHaveLength(before)
-      // ⛔ **And `work` is no kind at all** — a message never gives work.
-      const worded = await callOn(bossTools, 'message_agent', {
-        agent: child,
-        text: 'a thought about the thing',
-        kind: 'work',
-      })
-      expect(worded.outcome, JSON.stringify(worded)).toBe('refused')
-      expect(worded.rail).toBe('malformed-request')
-      expect(store.piecesGivenBy(boss)).toHaveLength(before)
+      for (const kind of [undefined, 'note', 'work']) {
+        const sent = await callOn(bossTools, 'message_agent', {
+          agent: child,
+          text: 'a thought about the thing',
+          ...(kind === undefined ? {} : { kind }),
+        })
+        expect(sent, JSON.stringify(sent)).toMatchObject({ outcome: 'ok', kind: 'note' })
+        expect(store.piecesGivenBy(boss)).toHaveLength(before)
+      }
 
       const given = await callOn(bossTools, 'give_work', {
         to: 'new',
@@ -387,41 +358,12 @@ describe('553 · anyone may ask; work needs a relationship', () => {
       expect(store.piecesGivenBy(boss)).toHaveLength(before + 1)
     })
 
-    /**
-     * ⛔ **The other acceptable answer was to REQUIRE the argument, and it was declined** — §2.1's
-     * price, asserted as the choice rather than re-deriving `538` §3.3's SDK measurement.
-     *
-     * ⚠️ **A required argument fails differently per provider**: the MCP SDK throws
-     * `McpError(InvalidParams, …)` before this app's own door runs on Claude, while
-     * `answerCodexToolCall` hands arguments over unparsed — so `required` would be a rail on one
-     * provider and a hint on the other, and the missing arm would still exist unhandled.
-     * 🔴 **So the published schema must still accept a call with no `kind` at all**, and it is
-     * asserted on the tool this app publishes rather than on a docblock about it.
-     */
-    it('⛔ the argument stayed OPTIONAL in the schema — the door refuses its absence on both providers', async () => {
-      const { bossTools, child } = await aBossItsChildAndAStranger()
+    it('publishes Message without a kind parameter', async () => {
+      const { bossTools } = await aBossItsChildAndAStranger()
       const tool = bossTools.tools.find((one) => one.name === 'message_agent')
       if (tool === undefined) throw new Error('message_agent is not published')
-
-      // ⚑ **What a model is actually told**, read back out of the tool's own input shape —
-      // `parametersOf` is the reader both adapters build their schema through.
       const kind = parametersOf(tool.input ?? {}).find((one) => one.name === 'kind')
-      expect(kind, 'kind is not advertised at all').toBeDefined()
-      expect(kind?.required, 'requiring it would be a rail on Claude and a hint on Codex').toBe(
-        false,
-      )
-
-      // ⛔ **And the call reaches THIS door with the argument absent**, which is the half a schema
-      // assertion alone cannot make: the answer is this app's own named refusal, naming the
-      // vocabulary — never a transport error.
-      const said = await callOn(bossTools, 'message_agent', { agent: child, text: 'anything' })
-      expect(said.outcome, JSON.stringify(said)).toBe('refused')
-      expect(said.rail).toBe('malformed-request')
-      const problems = (said.detail as { problems: string[] }).problems.join(' ')
-      for (const member of AGENT_MESSAGE_KINDS) expect(problems).toContain(member)
-
-      // ⚠️ **What leaving it out means is published beside the field** (D-010): nothing — say which.
-      expect(kind?.description ?? '').toContain('There is no default')
+      expect(kind).toBeUndefined()
     })
 
     // ⚑ **Landing D-014 · `1014 M23`**: what a model is told about giving work is what the rail

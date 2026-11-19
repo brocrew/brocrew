@@ -27,7 +27,6 @@ import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { agentName } from '../src/shared/runtime-ipc'
-import { theOwnerOf } from '../src/shared/piece-called'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
 import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 
@@ -565,11 +564,11 @@ describe('607 · a message from a person says so', () => {
       // 7 · R3 — the piece the PM owns, composed from the product's own parts.
       const pmNamed = store.workThatNames(made.pm)
       if (pmNamed === null) throw new Error('the PM holds no piece, so no piece addresses it')
-      const answering = theDirectionLine(
-        `${agentName(made.pmProfile, store.agentIdentities())}, ${theOwnerOf(pmNamed)}`,
-        'caller',
+      const sender = agentName(made.pmProfile, store.agentIdentities())
+      expect(flushed.split('\n')[0]).toBe(
+        `From ${sender} (conversation ${pmNamed.label} · ${sender}), about task W2.1 · the work this dispatch is about, in your conversation W2.1 · the work this dispatch is about.`,
       )
-      expect(flushed.startsWith('Sent by ') && flushed.includes(answering), flushed).toBe(true)
+      expect(flushed).toContain(`Your reply here doesn't reach ${sender}`)
       expect(flushed).not.toContain(A_PERSON_SENT_IT)
     })
   })

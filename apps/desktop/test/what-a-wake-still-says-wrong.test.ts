@@ -1,5 +1,6 @@
 import { giveNamedChildTask } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
+import { expectRecordedCannotRun } from './lib/recorded-send'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -202,7 +203,6 @@ describe('what a wake still says wrong', () => {
     const aQuestionTo = (worker: string): Record<string, unknown> => ({
       agent: worker,
       text: 'how far along are you?',
-      kind: 'note',
     })
     /**
      * ⚑ **A worker that is stopped** — ⚑ D-017: by a person's Close (a person takes it over and
@@ -222,37 +222,40 @@ describe('what a wake still says wrong', () => {
       return { pm, worker }
     }
 
-    it('§3.1 an expired sign-in at the reopen reaches the sign-in word', async () => {
+    const expectHeldIn = (
+      worker: string,
+      result: Record<string, unknown>,
+      reason: string,
+      needsPerson: boolean,
+    ) => {
+      const receipt = expectRecordedCannotRun(result, 'message', reason, needsPerson)
+      expect(receipt.recipient.id).toBe(worker)
+      expect(store.messagesWaitingIn(worker)).toEqual(
+        expect.arrayContaining([expect.objectContaining({ messageId: receipt.recorded.id })]),
+      )
+      expect(events(worker)).not.toContainEqual(
+        expect.objectContaining({ type: 'user_turn', text: 'how far along are you?' }),
+      )
+      return receipt
+    }
+
+    it('§3.1 an expired sign-in at the reopen leaves the message held and names the sign-in', async () => {
       const { pm, worker } = await aWorkerOver()
       gate.resumeFails = () => new AuthUnavailableError('codex', 'Your sign-in has expired.')
-      const refused = await callOn(pm, 'message_agent', aQuestionTo(worker))
-      expect(refused.rail).toBe('agent-did-not-start')
-      expect(refused.detail).toEqual({
-        agent: worker,
-        because: 'its-sign-in-is-unusable',
-        provider: 'codex',
-      })
-      expect(String(refused.reason)).toContain('its Codex sign-in could not be used')
+      const result = await callOn(pm, 'message_agent', aQuestionTo(worker))
+      expectHeldIn(worker, result, 'its Codex sign-in could not be used', true)
     })
 
-    it('§3.1b a reopen on a computer with no Codex sign-in to copy says that, in the wake’s words', async () => {
+    it('§3.1b a missing sign-in to copy leaves the message held without exposing the provider diagnostic', async () => {
       const { pm, worker } = await aWorkerOver()
       gate.resumeFails = () =>
         new NoCodexSignInOnThisComputerError('personal Codex auth.json not found at /fictional')
-      const refused = await callOn(pm, 'message_agent', aQuestionTo(worker))
-      expect(refused.rail).toBe('agent-did-not-start')
-      expect(refused.detail).toEqual({
-        agent: worker,
-        because: 'this-computer-has-no-sign-in-to-copy',
-        provider: 'codex',
-      })
-      const said = String(refused.reason)
-      expect(said).toContain('there is no Codex sign-in for that agent to start on')
-      expect(said).toContain('Nothing was sent, and sending again will not help until then.')
-      expect(said).not.toContain('/fictional')
+      const result = await callOn(pm, 'message_agent', aQuestionTo(worker))
+      expectHeldIn(worker, result, 'there is no Codex sign-in', true)
+      expect(JSON.stringify(result)).not.toContain('/fictional')
     })
 
-    it('§3.2 a thread the provider no longer has is still could-not-be-resumed', async () => {
+    it('§3.2 a thread the provider no longer has leaves the message held with the resume reason', async () => {
       const { pm, worker } = await aWorkerOver()
       gate.resumeFails = () =>
         new ResumeError(
@@ -260,9 +263,8 @@ describe('what a wake still says wrong', () => {
           'resume failed: no such thread',
           { cause: new Error('thread/resume: not found') },
         )
-      const refused = await callOn(pm, 'message_agent', aQuestionTo(worker))
-      expect(refused.rail).toBe('that-conversation-could-not-be-resumed')
-      expect(refused.detail).toEqual({ agent: worker, because: 'the-provider-could-not-resume-it' })
+      const result = await callOn(pm, 'message_agent', aQuestionTo(worker))
+      expectHeldIn(worker, result, 'its provider could not bring it back', false)
     })
 
     /** The error the Codex adapter itself makes for a transport it could not spawn. */
@@ -280,9 +282,8 @@ describe('what a wake still says wrong', () => {
       expect(produced).toBeInstanceOf(ResumeError)
       expect((produced as ResumeError).cause).toMatchObject({ message: 'spawn ENOENT' })
       gate.resumeFails = () => produced as Error
-      const refused = await callOn(pm, 'message_agent', aQuestionTo(worker))
-      expect(refused.rail).toBe('that-conversation-could-not-be-resumed')
-      expect(refused.detail).toEqual({ agent: worker, because: 'the-provider-could-not-resume-it' })
+      const result = await callOn(pm, 'message_agent', aQuestionTo(worker))
+      expectHeldIn(worker, result, 'its provider could not bring it back', false)
     })
   })
 })

@@ -1,3 +1,4 @@
+import { recordedMessageWakeFailure } from './lib/recorded-message-wake'
 import { giveToSeededWorker } from './lib/give-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -185,13 +186,22 @@ describe('what a replacement carries, and what it leaves behind', () => {
     )
     expect(receipts.some((one) => one.step === 'holder' && one.outcome === 'failed')).toBe(false)
     await host.close(worker, THE_APP_ITSELF)
-    const all = store.recorded().map(({ sessionId }) => sessionId)
+    const recordedIds = () =>
+      store
+        .recorded()
+        .map(({ sessionId }) => sessionId)
+        .sort()
+    const all = recordedIds()
     const recorded = store.piecesOwnedBy(worker)[0]
     issued.forgetAll()
-    await expect(wake(pm, worker, label)).rejects.toMatchObject({
-      cause: { unavailable: 'its-session-is-gone', context: { address: label } },
-    })
-    expect(store.recorded().map(({ sessionId }) => sessionId)).toEqual(all)
+    recordedMessageWakeFailure(
+      store,
+      worker,
+      await wake(pm, worker, label),
+      'provider-file-missing',
+      /session file is missing/,
+    )
+    expect(recordedIds()).toEqual(all)
     expect(store.replacements()).toEqual([])
     expect(store.piecesOwnedBy(worker)[0]).toEqual(recorded)
     expect(store.reconciliationReceipts(worker, before.piece)).toEqual(

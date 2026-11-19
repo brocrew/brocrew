@@ -1,3 +1,5 @@
+import type { SendReceipt } from '../../shared/tool-outcome'
+import type { ResourceRefusal } from '../resources/resources'
 import type {
   QuestionRecipient,
   RequestState,
@@ -900,22 +902,15 @@ export function noPieceToAskAbout(named: string, held: readonly string[]): Quest
 export type AskOutcome =
   | {
       readonly ok: true
-      /** ⚑ **The id the parent quotes to answer.** */
       readonly question: string
-      /**
-       * ⚑ **D-016 · where it went** — what the asker said, except that a question for the conversation
-       * that gave a ROOT, or work the asker took on for a person (commit 6), goes to a person: their
-       * giver is the person (spec D15).
-       */
       readonly went: QuestionRecipient
-      /**
-       * ⚑ **D-016 · the piece it is about is the asker's own ROOT** — work a person gave it, which
-       * nothing hands back — so the answer says how that work ends instead of naming
-       * `reply_to_parent`, which refuses a root.
-       */
       readonly aboutItsRoot: boolean
+      readonly delivery?: { readonly receipt: SendReceipt; readonly said: string }
+      readonly attachments: SendReceipt['attachments']
+      readonly overflowSaid: string
     }
   | { readonly ok: false; readonly refusal: QuestionRefusal }
+  | { readonly ok: false; readonly refusal: ResourceRefusal; readonly resourceFailure: true }
 
 /**
  * 🔴 **679 · what a pass-up states: the new question, AND the one it carried, by its asker.**

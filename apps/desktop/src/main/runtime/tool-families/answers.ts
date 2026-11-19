@@ -1,5 +1,6 @@
 import { type AgentToolAnswer } from '@brobot2/runtime'
-import { refusalSaid, type ToolRefusalPayload } from './refusals'
+import type { AskOutcome } from '../question-rails'
+import { carryQuestionRefusal, refusalSaid, type ToolRefusalPayload } from './refusals'
 
 // Translate answers without catching failures the tool does not classify.
 
@@ -13,6 +14,12 @@ export const answer = (
 
 export const refusalAnswer = (payload: ToolRefusalPayload): AgentToolAnswer =>
   answer({ ...payload }, `refused (${payload.rail}): ${payload.reason}`)
+
+export function refusedAsk(asked: Extract<AskOutcome, { ok: false }>): AgentToolAnswer {
+  if ('resourceFailure' in asked) return answer({ ...asked.refusal }, asked.refusal.reason)
+  const carried = carryQuestionRefusal(asked.refusal)
+  return answer(carried, `refused (${carried.rail}): ${carried.reason}`)
+}
 
 export function sendAnswer(result: AgentToolAnswer): AgentToolAnswer {
   const payload = result.structured

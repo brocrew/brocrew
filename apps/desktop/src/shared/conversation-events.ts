@@ -314,6 +314,10 @@ export interface QueuedMessageEvent {
    * every question's row written before it.
    */
   asks?: TheQuestionItAsks
+  /** The question an unanswered notice is about, used to retract the notice on settlement. */
+  unansweredQuestion?: TheQuestionItAsks
+  /** The explicit Message action that recorded these words. */
+  messageAct?: string
   /**
    * ⚑ **D-016 · the held words are a NEW brief of {@link piece}** (`update_work`), not the brief that
    * gave it — present only beside {@link piece}, and absent otherwise.

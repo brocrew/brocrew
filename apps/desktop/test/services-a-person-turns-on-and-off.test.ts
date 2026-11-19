@@ -355,7 +355,11 @@ describe('services a person turns on and off', () => {
       await vi.waitFor(() => {
         expect(told()).toBeDefined()
       })
-      expect(told()).toContain(`${host.whatToCallTheConversation(service)} (a service)`)
+      expect(told()).toContain(
+        `${host.whatToCallTheConversation(service)} (conversation ${service} · Ada) asks you ${asked.structured?.question}`,
+      )
+      expect(told()).toContain(`Use asked_by ${service} with this question id.`)
+      expect(told()).toContain(`About task ${one.label} · One.`)
       expect(told()).not.toContain(`the owner of ${one.label}`)
       // Its caller waits on it by its agent's name too, never by the caller's own piece it holds.
       const waits = host

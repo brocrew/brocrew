@@ -1,6 +1,7 @@
 import { openFrontEndChain } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { theMessagesOf } from '../src/shared/runtime-ipc'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -366,6 +367,24 @@ describe('message now · a message or an answer can stop the running turn', () =
         .filter((one) => one.went.is === 'the-parent')
         .at(-1)
       if (row === undefined) throw new Error('the question was not routed')
+      await waitFor(() => {
+        const events = ledger(chain.ali)
+        const notice = events.findIndex(
+          (event) =>
+            event.type === 'user_turn' &&
+            theMessagesOf(event).some(
+              (part) =>
+                part.appNotice === 'a-question-stayed-unanswered' &&
+                part.text.includes(row.requestId),
+            ),
+        )
+        return (
+          notice !== -1 &&
+          events
+            .slice(notice + 1)
+            .some((event) => event.type === 'status' && event.state === 'idle')
+        )
+      }, 'the unanswered-question notice turn to finish before the Stop fixture starts')
       return { ...chain, requestId: row.requestId }
     }
 

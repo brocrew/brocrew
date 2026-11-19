@@ -338,7 +338,7 @@ describe('give_work goes to the conversation the giver names', () => {
     expect(delivery === 'sent' || delivery === 'held').toBe(true)
     const action = delivery === 'sent' ? 'sent to' : 'held for'
     expect(navigationReply(result.text).prose).toBe(
-      `Task ${label} ${action} pm at conversation ${named.label} · Lisbon trip.`,
+      `Task ${label} ${action} pm in the existing conversation ${named.label} · Lisbon trip. Context: no current reading.`,
     )
   })
 
@@ -759,4 +759,76 @@ describe('give_work goes to the conversation the giver names', () => {
       expect.objectContaining({ piece: recorded.piece, text: 'Book the flights, in a sentence' }),
     )
   })
+})
+
+it('a Give receipt says held and carries its place in line and the task folder', async () => {
+  const world = aServiceWorld()
+  try {
+    world.anAgent('browser-driver')
+    world.anAgent('caller', 'nothing kept')
+    world.anAgent('other-caller', 'nothing kept')
+    const host = world.aHost()
+    const caller = await world.aPersonOpens(host, 'caller')
+    await world.aPersonOpens(host, 'other-caller')
+    const give = async (args: Record<string, unknown>) => {
+      const result = await answerOn(agentToolsFor(host, caller), 'give_work', args)
+      if (result.structured == null) throw new Error(result.text)
+      return { structured: result.structured, text: result.text }
+    }
+    const newestOfType = world.store.newestOfType
+    if (newestOfType === undefined) throw new Error('Missing the stored context reader.')
+    const failedReads: string[] = []
+    world.store.newestOfType = (conversation, type, before, from) => {
+      if (type === 'context_reading' && failedReads.length === 0) {
+        failedReads.push(conversation)
+        throw new Error('The stored context reading could not be read.')
+      }
+      return newestOfType(conversation, type, before, from)
+    }
+    const given = await give({
+      definition_of_done: 'The requested result and its checks are recorded.',
+      profile: 'browser-driver',
+      title: 'Book the room',
+      brief: 'book the meeting room for Tuesday',
+      folder: world.folder,
+    })
+    expect(given.structured).toMatchObject({
+      outcome: 'ok',
+      delivery: 'held',
+      queued_behind: 0,
+      folder: { use: 'grant', folder: world.folder },
+      receipt: {
+        recipient: {
+          address: given.structured.agent,
+          title: expect.any(String),
+          state: { kind: 'queued', behind: 0 },
+        },
+        recorded: { kind: 'task', id: given.structured.piece },
+      },
+    })
+    expect(failedReads).toEqual([given.structured.agent])
+    expect(world.store.workById(String(given.structured.piece))?.owner).toBe(given.structured.agent)
+    const label = String(given.structured.label)
+    expect(given.text.split('\n')[0]).toContain(
+      `Task ${label} held for browser-driver in a new conversation ${String(given.structured.agent)} · `,
+    )
+    expect(given.text.split('\n')[0]).toMatch(/Context: no current reading\.$/)
+    expect(given.text.split('\n')[0]).not.toContain('Book the room')
+    const behind = await give({
+      definition_of_done: 'The requested result and its checks are recorded.',
+      profile: 'browser-driver',
+      title: 'Order lunch',
+      brief: 'order lunch for six',
+    })
+    expect(behind.structured).toMatchObject({ outcome: 'ok', queued_behind: 1 })
+    expect(behind.structured.receipt).toMatchObject({
+      recipient: { state: { kind: 'queued', behind: 1 } },
+    })
+    expect(behind.text.split('\n')[0]).toContain(
+      `Task ${String(behind.structured.label)} held for browser-driver in the existing conversation ${String(given.structured.agent)} · `,
+    )
+    expect(behind.structured).not.toHaveProperty('folder')
+  } finally {
+    await world.cleanUp()
+  }
 })

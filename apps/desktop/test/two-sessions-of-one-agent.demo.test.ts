@@ -395,13 +395,22 @@ describe('two sessions of one agent', () => {
       expect(host.sessionIds).toContain(mine)
 
       const [piece] = ledger.piecesGivenBy(parent)
+      const owned = ledger.piecesOwnedBy(theirs)
       const said = await call('message_agent', {
         agent: theirs,
         text: 'carry on with mine',
-        kind: 'follow-up',
         piece: piece!.label,
       })
-      expect(said).toMatchObject({ outcome: 'refused', rail: 'not-a-piece-you-gave' })
+      expect(said).toMatchObject({
+        outcome: 'ok',
+        kind: 'note',
+        agent: theirs,
+        receipt: {
+          recorded: { kind: 'message', taskLabel: piece!.label },
+          recipient: { id: theirs },
+        },
+      })
+      expect(ledger.piecesOwnedBy(theirs)).toEqual(owned)
       expect(host.sessionIds).toContain(theirs)
 
       expect((await gives(parent, 'a second', mine)).agent).toBe(mine)

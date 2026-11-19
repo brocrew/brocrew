@@ -1,3 +1,4 @@
+import type { SendRecipientState } from '../../shared/tool-outcome'
 import type { Provider } from '@brobot2/shared'
 import type { AgentState } from '../../shared/agent-state-contracts'
 import type { AppNotice } from '../../shared/app-notice'
@@ -206,6 +207,7 @@ export interface TurnFacts {
    * waiting is taken back rather than sent ({@link RuntimeHost.whyItNoLongerGoes}).
    */
   readonly asks?: TheQuestionItAsks
+  readonly unansweredQuestion?: TheQuestionItAsks
   /**
    * 🔴 **This app's OWN report of something it observed** (624, `HO-095` §6.1) — see
    * {@link AppNotice}.
@@ -374,12 +376,6 @@ export type OutOfReach =
  */
 export type TheDoorsReach = 'messaging' | 'interrupting' | 'reading' | 'answering'
 
-/** What an agent's profile name names: see {@link RuntimeHost.theConversationAProfileNames}. */
-export type AProfileNames =
-  | { readonly is: 'one'; readonly conversation: string }
-  | { readonly is: 'several'; readonly profile: string; readonly labels: readonly string[] }
-  | null
-
 /**
  * 🔴 **D-022 · R3 — what became of words about a piece, told to the conversation holding it** —
  * `reply_to_parent`'s three words, for a take-back, a close, a new brief and new inputs.
@@ -414,3 +410,9 @@ export type NewBriefDelivery =
 export type Told<D extends NewBriefDelivery = TellDelivery> =
   | { readonly delivery: Exclude<D, 'not-delivered'> }
   | { readonly delivery: 'not-delivered'; readonly whyNotTold: string }
+
+export interface RecordedAgentMessage {
+  readonly id: string
+  readonly to: string
+  readonly state: SendRecipientState
+}

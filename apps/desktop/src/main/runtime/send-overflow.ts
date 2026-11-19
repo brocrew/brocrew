@@ -1,12 +1,13 @@
+import { randomBytes, randomUUID } from 'node:crypto'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { newResourceId } from '../db/ids'
 import type { GivenInput } from '../../shared/documents'
-import {
-  keepResource,
-  refuseResource,
-  sha256Hex,
-  type ResourceRefusal,
-} from '../resources/resources'
+import { refuseResource, type OfferedFileBytes, type ResourceRefusal } from '../resources/resources'
 import { WORK_BRIEF_CHARS } from '../../shared/work-fields'
+import type { SendReceipt } from '../../shared/tool-outcome'
+
+export const INLINE_TEXT_LIMIT = WORK_BRIEF_CHARS
 
 export interface SendOverflow {
   readonly field: string
@@ -22,35 +23,158 @@ export function keepSendOverflow(
 ):
   | { readonly ok: true; readonly inline: string; readonly overflow: SendOverflow | null }
   | { readonly ok: false; readonly refusal: ResourceRefusal } {
-  if (text.length <= WORK_BRIEF_CHARS) return { ok: true, inline: text, overflow: null }
+  if (text.length <= INLINE_TEXT_LIMIT) return { ok: true, inline: text, overflow: null }
   if (root === undefined)
     return { ok: false, refusal: refuseResource('resource-store-unavailable') }
 
   const name = `${field.replaceAll('_', '-')}.txt`
   const bytes = Buffer.from(text, 'utf8')
-  const sha256 = sha256Hex(bytes)
-  const kept = keepResource(root, { name, bytes, sha256 })
-  if (!kept.ok) {
-    return {
-      ok: false,
-      refusal: refuseResource('resource-could-not-be-kept', { path: name, problem: kept.problem }),
-    }
-  }
+  const kept = keepPlainSendFile(root, name, bytes)
+  if (!kept.ok) return kept
   return {
     ok: true,
-    inline: text
-      .trimStart()
-      .slice(0, WORK_BRIEF_CHARS)
-      .replace(/[\uD800-\uDBFF]$/, ''),
+    inline: overflowPreview(text),
     overflow: {
       field,
       characters: text.length,
-      file: { resource: newResourceId(), name, title: name, sha256, bytes: bytes.length },
+      file: { resource: newResourceId(), name, title: name, sha256: kept.key, bytes: bytes.length },
     },
   }
 }
 
-export function sendOverflowSaid(overflow: SendOverflow): string {
-  const { field, characters, file } = overflow
+interface OverflowOnDisk {
+  readonly field: string
+  readonly characters: number
+  readonly path: string
+}
+
+export type ReadableSendOverflow = SendOverflow | OverflowOnDisk
+
+export function sendOverflowAttachment(
+  overflow: ReadableSendOverflow,
+): SendReceipt['attachments'][number] {
+  return 'path' in overflow
+    ? { path: overflow.path, overflowField: overflow.field }
+    : { resource: overflow.file.resource, name: overflow.file.name, overflowField: overflow.field }
+}
+
+function sendOverflowPointer(overflow: ReadableSendOverflow): string {
+  return 'path' in overflow
+    ? `The full text is saved at ${overflow.path}: read the file.`
+    : resourcePointer(overflow.file.resource)
+}
+
+export type PreparedSendText =
+  | { readonly ok: true; readonly text: string; readonly overflow?: ReadableSendOverflow }
+  | { readonly ok: false; readonly refusal: ResourceRefusal }
+
+export type PreparedSendFiles =
+  | { readonly ok: true; readonly files: SendReceipt['attachments'] }
+  | { readonly ok: false; readonly refusal: ResourceRefusal }
+
+export function keepTasklessSendFiles(
+  cwd: string,
+  offered: readonly OfferedFileBytes[],
+): PreparedSendFiles {
+  const files: { path: string; name: string }[] = []
+  for (const { name, bytes } of offered) {
+    const kept = writeTasklessFile(cwd, name, bytes)
+    if (!kept.ok) return kept
+    files.push({ path: kept.path, name })
+  }
+  return { ok: true, files }
+}
+
+export function sendFilesSaid(files: SendReceipt['attachments']): string {
+  if (files.length === 0) return ''
+  return (
+    '\n\n' +
+    files
+      .map((file) =>
+        'path' in file
+          ? `Read the file ${file.path}.`
+          : `Read ${file.name} with read_document using ${file.resource}.`,
+      )
+      .join('\n')
+  )
+}
+
+function overflowPreview(text: string): string {
+  return previewOf(text.trimStart(), INLINE_TEXT_LIMIT)
+}
+
+function previewOf(text: string, limit: number): string {
+  return text.slice(0, limit).replace(/[\uD800-\uDBFF]$/, '')
+}
+
+export function keepTasklessSendText(cwd: string, field: string, text: string): PreparedSendText {
+  const kept = writeTasklessFile(cwd, `${field.replaceAll('_', '-')}.txt`, text)
+  if (!kept.ok) return kept
+  const overflow = { field, characters: text.length, path: kept.path }
+  return {
+    ok: true,
+    text: `${overflowPreview(text)} ${sendOverflowPointer(overflow)}`,
+    overflow,
+  }
+}
+
+export function keepPlainSendFile(
+  root: string,
+  name: string,
+  body: Buffer,
+):
+  | { readonly ok: true; readonly key: string }
+  | { readonly ok: false; readonly refusal: ResourceRefusal } {
+  // The existing resource row and reader take a 64-hex directory name.
+  const key = randomBytes(32).toString('hex')
+  const folder = resolve(root, key)
+  const kept = writeSendFile(resolve(folder, name), body, folder)
+  return kept.ok ? { ok: true, key } : kept
+}
+
+function writeTasklessFile(cwd: string, name: string, body: string | Buffer) {
+  return writeSendFile(resolve(cwd, `brocrew-${randomUUID()}-${name}`), body)
+}
+
+function writeSendFile(
+  path: string,
+  body: string | Buffer,
+  folder?: string,
+):
+  | { readonly ok: true; readonly path: string }
+  | { readonly ok: false; readonly refusal: ResourceRefusal } {
+  try {
+    if (folder !== undefined) mkdirSync(folder, { recursive: true, mode: 0o700 })
+    writeFileSync(path, body)
+    return { ok: true, path }
+  } catch (error) {
+    return {
+      ok: false,
+      refusal: refuseResource('resource-could-not-be-kept', {
+        path,
+        problem: error instanceof Error ? error.message : String(error),
+      }),
+    }
+  }
+}
+
+export function textWithOverflowResource(inline: string, resource: string | undefined): string {
+  return resource === undefined ? inline : `${inline} ${resourcePointer(resource)}`
+}
+
+function resourcePointer(resource: string): string {
+  return `The full text is attached as ${resource}: read it with read_document.`
+}
+
+export function sendOverflowSaid({ field, characters, file }: SendOverflow): string {
   return ` Your ${field} was ${characters.toLocaleString('en-US')} characters, so the full text is attached as ${file.name} (${file.resource}).`
+}
+
+export function outboundOverflowSaid(overflow: ReadableSendOverflow): string {
+  const { field, characters } = overflow
+  const place =
+    'path' in overflow
+      ? `saved at ${overflow.path}`
+      : `attached as ${overflow.file.name} (${overflow.file.resource})`
+  return ` Your ${field} was ${characters.toLocaleString('en-US')} characters, so the full text is ${place}; the message shows its start.`
 }

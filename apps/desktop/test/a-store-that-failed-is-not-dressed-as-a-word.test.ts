@@ -164,17 +164,59 @@ describe('663 M33 · a store that failed is not dressed as a word', () => {
     await expect(wakeByMessage(pm, worker, piece)).rejects.toThrow(
       '663 M33: the ledger read failed (disk I/O error)',
     )
+    expect(store.messagesWaitingIn(worker)).toEqual([expect.objectContaining({ text: 'carry on' })])
   })
 
-  it('§2 · control — the very same wake, failing on a cause it DOES recognise, still comes back as the ordinary refusal', async () => {
+  it('§2 · control — an unavailable sign-in leaves a recorded message and a cannot-run receipt', async () => {
     const { pm, worker, piece } = await aWorkerThatStopped()
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     gate.resumeFails = () => new AuthUnavailableError('claude', 'signed out')
-    const refused = await wakeByMessage(pm, worker, piece)
-    expect(refused).toMatchObject({
-      outcome: 'refused',
-      rail: 'agent-did-not-start',
-      detail: { agent: worker, because: 'its-sign-in-is-unusable', provider: 'claude' },
+    const result = await wakeByMessage(pm, worker, piece)
+    const [held] = store.messagesWaitingIn(worker)
+    expect(held?.text).toBe('carry on')
+    expect(result).toMatchObject({
+      outcome: 'ok',
+      delivery: 'queued',
+      agent: worker,
+      receipt: {
+        recorded: { kind: 'message', id: held?.messageId },
+        recipient: {
+          id: worker,
+          state: {
+            kind: 'cannot-run',
+            needsPerson: true,
+            cause: { code: 'could-not-start' },
+          },
+        },
+      },
     })
+  })
+
+  it('surfaces the store error reading the receipt after a recorded Message wakes its recipient', async () => {
+    const { pm, worker, piece } = await aWorkerThatStopped()
+    const fault = new Error('the post-wake message receipt read failed')
+    const read = store.messagesWaitingIn.bind(store)
+    const lookup = vi.spyOn(store, 'messagesWaitingIn').mockImplementation((id) => {
+      if (id === worker && new Error().stack?.includes('.stateOfARecordedMessage (')) throw fault
+      return read(id)
+    })
+    try {
+      await expect(wakeByMessage(pm, worker, piece)).rejects.toBe(fault)
+    } finally {
+      lookup.mockRestore()
+    }
+    expect(host.sessionIds).toContain(worker)
+    const events = store.events(worker).map(({ event }) => event)
+    const queued = events
+      .filter((event) => event.type === 'message_queued')
+      .filter((event) => event.text === 'carry on')
+    expect(queued).toEqual([expect.objectContaining({ messageId: expect.any(String) })])
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'message_unqueued',
+        messageId: queued[0]?.messageId,
+        reason: 'sent',
+      }),
+    )
   })
 })

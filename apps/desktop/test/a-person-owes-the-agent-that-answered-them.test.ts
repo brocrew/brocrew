@@ -324,11 +324,9 @@ describe('F097 · a person owes the agent that answered them', () => {
       const turns = turnsIn(ada)
       const sent = await callOn(brobotTools, 'message_agent', {
         agent: 'W1.1',
-        kind: 'note',
-        piece: 'W1.1',
         text,
       })
-      expect(sent, JSON.stringify(sent)).toMatchObject({ outcome: 'ok' })
+      expect(sent, JSON.stringify(sent)).toMatchObject({ outcome: 'ok', kind: 'note' })
       await waitFor(() => turnsIn(ada) > turns, 'the note-opened turn to end')
       await settle()
       expect(pieceOf(ada, piece)).toMatchObject({
@@ -456,9 +454,35 @@ describe('F097 · a person owes the agent that answered them', () => {
       piece: 'W1.1',
     })
     expect(asked, JSON.stringify(asked)).toMatchObject({ outcome: 'ok' })
+    const noticeAt = () =>
+      store
+        .events(ada)
+        .find(
+          ({ event }) =>
+            event.type === 'user_turn' &&
+            (event.parts ?? [event]).some(
+              (part) =>
+                part.appNotice === 'a-question-stayed-unanswered' &&
+                part.text.includes(String(asked.question)),
+            ),
+        )?.ordinal
+    const nextBoundary = () => {
+      const ordinal = noticeAt()
+      return ordinal === undefined
+        ? undefined
+        : store
+            .events(ada)
+            .find(
+              (entry) =>
+                entry.ordinal > ordinal &&
+                (entry.event.type === 'turn' || entry.event.type === 'user_turn'),
+            )?.event
+    }
+    await waitFor(() => nextBoundary() !== undefined, 'the notice turn to reach its next boundary')
+    expect(nextBoundary()).toMatchObject({ type: 'turn', state: 'completed' })
     await settle()
 
-    // ⛔ The fold's own row still says the person wrote; every reading of it says the answer instead.
+    // The informational notice preserves the task wait while the open question takes precedence.
     expect(pieceOf(ada, piece)?.state).toBe('waiting-on-the-person-who-wrote')
     expect(stateOf(ada)?.is).toBe('waiting-on-an-answer')
     expect(lastSaid(ada)?.is).toBe('waiting-on-an-answer')

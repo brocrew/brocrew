@@ -464,7 +464,7 @@ describe('373 · a parent that survives a restart', () => {
         text: 'not mine',
       })
       expect(refused.outcome).toBe('refused')
-      expect(refused.rail).toBe('not-a-piece-you-gave')
+      expect(refused.rail).toBe('no-piece-by-that-name')
     })
 
     it('⚠️ the same pair BEFORE the restart gives the same two answers — so the restart is the only variable', async () => {
@@ -492,7 +492,7 @@ describe('373 · a parent that survives a restart', () => {
             text: 'not mine',
           })
         ).rail,
-      ).toBe('not-a-piece-you-gave')
+      ).toBe('no-piece-by-that-name')
     })
 
     /**

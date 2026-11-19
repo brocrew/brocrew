@@ -1616,7 +1616,6 @@ describe('D-027 · the work a turn of several drives', () => {
     for (const text of ['the first note', 'the second note']) {
       const sent = await callOn(pm.tools, 'message_agent', {
         agent: label,
-        kind: 'note',
         piece: label,
         text,
       })
@@ -1628,17 +1627,16 @@ describe('D-027 · the work a turn of several drives', () => {
     await waitFor(() => both() !== undefined, 'the two notes to be handed over')
     const heard = withoutWhatThisAppAdds(both() ?? '')
     expect(heard).toContain('Message 2 of 2.')
-    // ⛔ Once each: the sender's profile, its piece's title, and the given piece's title.
-    expect(heard.split('(pm)'), heard).toHaveLength(2)
-    expect(heard.split('Ship the clock'), heard).toHaveLength(2)
-    expect(heard.split('the index'), heard).toHaveLength(2)
-    // ⚑ …and every fact is still in the second message: who sent it, about which piece, and the
-    // address an answer goes back to.
-    const name = /Sent by (.+?) \(pm\)/.exec(heard)?.[1] ?? ''
+    const firstSender = `(conversation ${root} · Ship the clock)`
+    expect(heard.split(firstSender), heard).toHaveLength(2)
+    expect(heard.split(`about task ${label} · the index`), heard).toHaveLength(2)
+    expect(heard.split(`in your conversation ${label} · the index.`), heard).toHaveLength(2)
+    const name = /^From (.+?) \(conversation /m.exec(heard)?.[1] ?? ''
     expect(name).not.toBe('')
     const second = heard.slice(heard.indexOf('Message 2 of 2.'))
-    expect(second).toContain(`Sent by ${name}, who gave you ${label}.`)
-    expect(second).toContain(`This message is about ${label}.`)
-    expect(second).toContain(`do not reach ${name}, the owner of ${root}.`)
+    expect(second).toContain(`From ${name} (conversation ${root}), about task ${label}`)
+    expect(second).not.toContain('in your conversation')
+    expect(second).toContain(`This conversation gave you ${label}.`)
+    expect(second).toContain(`Your reply here doesn't reach ${name}:`)
   })
 })

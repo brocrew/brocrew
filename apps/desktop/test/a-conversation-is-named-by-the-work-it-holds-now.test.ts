@@ -512,7 +512,9 @@ describe('F033 · a conversation is named by the work it holds now', () => {
       await waitFor(() => theNote() !== undefined, 'the note to reach Ali')
       const note = theNote() ?? ''
       // ⚑ W4.187 · the direction line names the sender by its name alone: the sender line named it in full.
-      expect(note).toContain('Ada, the owner of W1.1 · Build the world clock page')
+      expect(note.split('\n')[0]).toBe(
+        'echo: From Ada (conversation W1.1 · Build the world clock page), about task W1.1.1 · Wire the routes (answered), in your conversation W1.1.1 · Wire the routes.',
+      )
       expect(withoutWhatThisAppAdds(note)).not.toContain('the owner of W1.2')
       // ⚑ And read back from its record, the message names its sender the same way.
       const read = await fullCall(tools, 'read_transcript', { agent: 'W1.2.1' })

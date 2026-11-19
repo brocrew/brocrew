@@ -266,7 +266,7 @@ describe('424 §B · what `agent-cannot-take-a-message` still answers for', () =
     // half that would survive a rename.
     expect(refused.rail).not.toBe('agent-cannot-take-a-message')
     expect(String(refused.reason)).not.toContain('not in a state')
-    expect(String(refused.reason)).toBe(refuseTool('malformed-request').reason)
+    expect(String(refused.reason)).toBe(`Not sent: ${refuseTool('malformed-request').reason}`)
 
     // ⚑ **ONE FACT OVER — the identical call with words in it.** The receiver never moved.
     const landed = await callOn(tools, 'message_agent', {

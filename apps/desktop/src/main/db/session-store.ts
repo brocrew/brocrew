@@ -1,3 +1,4 @@
+import type { AppNotice } from '../../shared/app-notice'
 import type { GivenInput } from '../../shared/documents'
 import {
   createLedgerHistoryRead,
@@ -380,6 +381,8 @@ export interface WaitingMessage {
   readonly drives?: string
   readonly about?: string
   readonly asks?: TheQuestionItAsks
+  readonly unansweredQuestion?: TheQuestionItAsks
+  readonly messageAct?: string
 }
 
 interface AdoptedSessionRecord {
@@ -628,6 +631,8 @@ export interface ScheduleEvidenceRow {
   readonly rowType: string
   readonly payload: unknown
 }
+
+type QueuedPromptProgress = 'missing' | 'pending' | 'running' | 'turn-ended' | 'not-delivered'
 
 export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore {
   /** Indexed candidate pages; the caller folds owners within its turn-block budget. */
@@ -948,6 +953,11 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   reconciliationRecovery(owner: string): WorkRecoveryEvent | null
   reconciliationDrivenByTurn(owner: string, turn: string): readonly string[]
   reconciliationReceipts(owner: string, piece: string): readonly ReconciliationReceipt[]
+  queuedPromptProgress(
+    target: string,
+    messageId: string,
+    appNotice: AppNotice,
+  ): QueuedPromptProgress
   reconciliationDelivery(
     target: string,
     messageId: string,
@@ -1314,6 +1324,7 @@ export const NULL_SESSION_STORE: SessionStore = {
   reconciliationRecovery: () => null,
   reconciliationDrivenByTurn: () => [],
   reconciliationReceipts: () => [],
+  queuedPromptProgress: () => 'missing',
   reconciliationDelivery: () => 'not-delivered',
   workById: () => null,
   activityWorkNames: () => new Map(),
@@ -2281,6 +2292,33 @@ export function createSessionStore(
         AND e.type IN ('user_turn', 'provider_turn', 'launched', 'reopened')
       ORDER BY e.ordinal LIMIT 1`,
   )
+
+  function queuedPromptProgress(
+    target: string,
+    messageId: string,
+    appNotice: AppNotice,
+  ): QueuedPromptProgress {
+    const message = selectReconciliationMessage.get(target, messageId) as
+      { generation: number; ordinal: number; payload: string } | undefined
+    if (message === undefined) return 'missing'
+    const event = JSON.parse(message.payload) as QueuedMessageEvent | UnqueuedMessageEvent
+    if (event.type === 'message_queued') return 'pending'
+    if (event.reason !== 'sent') return 'not-delivered'
+    const opened = selectTurnAfterReconciliation.get(
+      target,
+      message.generation,
+      message.ordinal,
+    ) as { payload: string; turn: string | null; closed_at: number | null } | undefined
+    if (opened === undefined || opened.turn === null) return 'not-delivered'
+    const turn = JSON.parse(opened.payload) as TranscriptEvent
+    if (
+      turn.type !== 'user_turn' ||
+      !theMessagesOf(turn).some((one) => one.text === event.text && one.appNotice === appNotice)
+    )
+      return 'not-delivered'
+    return opened.closed_at === null ? 'running' : 'turn-ended'
+  }
+
   const selectTurnBlockInstructions = db.prepare(
     `SELECT session_id AS conversation, created_at AS at, ordinal, json_valid(payload) AS readable, payload
        FROM events WHERE session_id = ? AND type IN ('instruction_proposed', 'instruction_settled')
@@ -5749,6 +5787,7 @@ export function createSessionStore(
         const stored = aStoredObject(row.payload)
         const messageId = stored?.messageId
         if (stored === null || typeof messageId !== 'string') return []
+        const unansweredQuestion = theQuestionItAsks(stored.unansweredQuestion)?.asks
         const piece = isAStoredId(stored.piece) ? stored.piece : null
         const label =
           piece !== null &&
@@ -5770,6 +5809,8 @@ export function createSessionStore(
             ...(isAStoredId(stored.drives) ? { drives: stored.drives } : {}),
             ...(isAStoredId(stored.about) ? { about: stored.about } : {}),
             ...(theQuestionItAsks(stored.asks) ?? {}),
+            ...(unansweredQuestion === undefined ? {} : { unansweredQuestion }),
+            ...(isAStoredId(stored.messageAct) ? { messageAct: stored.messageAct } : {}),
           },
         ]
       })
@@ -5956,28 +5997,10 @@ export function createSessionStore(
         return receipt
       })
     },
+    queuedPromptProgress,
     reconciliationDelivery(target, messageId) {
-      const message = selectReconciliationMessage.get(target, messageId) as
-        { generation: number; ordinal: number; payload: string } | undefined
-      if (message === undefined) return 'not-delivered'
-      const event = JSON.parse(message.payload) as QueuedMessageEvent | UnqueuedMessageEvent
-      if (event.type === 'message_queued') return 'pending'
-      if (event.reason !== 'sent') return 'not-delivered'
-      const opened = selectTurnAfterReconciliation.get(
-        target,
-        message.generation,
-        message.ordinal,
-      ) as { payload: string; turn: string | null; closed_at: number | null } | undefined
-      if (opened === undefined || opened.turn === null) return 'not-delivered'
-      const turn = JSON.parse(opened.payload) as TranscriptEvent
-      if (
-        turn.type !== 'user_turn' ||
-        !theMessagesOf(turn).some(
-          (one) => one.text === event.text && one.appNotice === 'a-work-wait-needs-attention',
-        )
-      )
-        return 'not-delivered'
-      return opened.closed_at === null ? 'running' : 'turn-ended'
+      const progress = queuedPromptProgress(target, messageId, 'a-work-wait-needs-attention')
+      return progress === 'missing' ? 'not-delivered' : progress
     },
     workById(piece) {
       const row = workSql().byId.get(piece) as WorkDbRow | undefined

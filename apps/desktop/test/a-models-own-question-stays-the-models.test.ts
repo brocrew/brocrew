@@ -316,14 +316,19 @@ describe('D-009 · a model’s own question stays the model’s', () => {
       store
         .events(child.id)
         .flatMap(({ event }) =>
-          event.type === 'user_turn' || event.type === 'message_queued' ? [event.text] : [],
+          event.type === 'user_turn' || event.type === 'message_queued'
+            ? (event.type === 'user_turn' ? (event.parts ?? [event]) : [event])
+                .filter((part) => part.appNotice !== 'a-question-stayed-unanswered')
+                .map((part) => part.text)
+            : [],
         )
     // 🔴 **The model's own question is still open**, and still the model's: nothing settled it.
     expect(questionOf(child.id, raised.id)?.state).toBe('open')
     expect(await settledYet(raised.answered)).toBe(false)
     // ⚑ …and so is the app's: a stop ends nothing, and a message starts the parent again.
     expect(questionOf(child.id, ours)?.state).toBe('open')
-    // ⛔ …and the child was told about neither.
+    // Stop reports no ended recipient for either question. Earlier unanswered-Ask notices
+    // do not imply that the route has ended.
     expect(toldTheChild().some((text) => text.includes(ours))).toBe(false)
     expect(toldTheChild().some((text) => text.includes(raised.id))).toBe(false)
     expect(

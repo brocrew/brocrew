@@ -394,35 +394,18 @@ describe('431 · the message that crosses a project', () => {
       expect(JSON.stringify(heard)).toContain('it is finished')
     })
 
-    /**
-     * ⛔ **A conversation cannot reach ITSELF through the reach**, and the host is where that is
-     * closed. ⚠️ The tool answers `that-agent-is-you` one line after the reach admits `me`; the
-     * gate has no `me`, so the clause has to be in the predicate rather than in the door.
-     */
-    it('⛔ the widest reach does not let a conversation queue words into itself', async () => {
+    it('accepts a self-message through the public Message action with its sender intact', async () => {
       const brobot = await personOpens(DEFAULT_PROFILE_ID)
       const brobotTools = theToolsetJustHandedOut()
       expect(host.withinMessagingReach(brobot, speakingAs(brobot))).toBe(false)
-      // ⛔ **The sentence, not merely a throw.** `rejects.toThrow()` with no matcher accepts a type
-      // error from a renamed method as readily as the refusal, which is a green test over a broken
-      // door.
-      await expect(host.queueMessage(brobot, 'to myself', speakingAs(brobot))).rejects.toThrow(
+      await expect(host.queueMessage(brobot, 'through host', speakingAs(brobot))).rejects.toThrow(
         /belongs to another window|held for/i,
       )
-      // ⚑ **One fact over**: the same predicate admits it when the DOOR supplies `me`, which is how
-      // `424`'s `that-agent-is-you` is reached instead of `no-such-agent`.
-      expect(host.withinMessagingReach(brobot, speakingAs(brobot), brobot)).toBe(true)
       expect(
-        await callOn(brobotTools, 'message_agent', {
-          agent: brobot,
-          text: 'to myself',
-          kind: 'note',
-        }),
-      ).toMatchObject({ outcome: 'refused', rail: 'that-agent-is-you' })
-      // ⚑ **Non-vacuity first**: this ledger is not empty, so the absence below is about the turn
-      // and not about a reader that found nothing.
-      expect(eventKinds(brobot).length).toBeGreaterThan(0)
-      expect(eventKinds(brobot)).not.toContain('user_turn')
+        await callOn(brobotTools, 'message_agent', { agent: brobot, text: 'to myself' }),
+      ).toMatchObject({ outcome: 'ok', agent: brobot, receipt: { recipient: { id: brobot } } })
+      expect(eventKinds(brobot)).toContain('user_turn')
+      expect(eventKinds(brobot)).toContain('message_sent')
     })
   })
 })

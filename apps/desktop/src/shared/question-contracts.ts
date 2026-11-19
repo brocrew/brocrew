@@ -320,6 +320,8 @@ export interface OfferedAnswer {
  */
 export interface VisibleQuestion {
   readonly request: RoutedRequest
+  /** The recorded recipient whose reminder turn ended with this question still open. */
+  readonly stalledRecipient?: { readonly address: string; readonly title: string }
   /**
    * 🔴 **F033 · what a line calls the question's asker** — its agent's name beside the piece the
    * question was asked under (`RuntimeHost.nameByItsWorkUnder`): its root when it owns one, else its

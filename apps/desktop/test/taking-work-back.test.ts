@@ -422,37 +422,23 @@ describe('429 · taking work back', () => {
       // ⚑ **Optional, which is the shape a default belongs to.** Required would make every existing
       // caller malformed rather than making one reading explicit.
       expect(named?.required).toBe(false)
-      // ⛔ **Both readings are in the description**, because the field means two different things
-      // and a sentence naming only one would be advice that is right half the time — ⚑ D-016: a
-      // follow-up's, and a note's.
-      const said = named?.description ?? ''
-      expect(said).toContain('follow-up')
-      expect(said).toContain('note')
-      expect(said).toContain('list_tasks')
+      expect(named?.description).toBe('The task this is about, by its label (W1.2) or id, if any.')
+      expect(parameters.some((one) => one.name === 'kind')).toBe(false)
     })
 
-    it('🔴 an omitted reference on a FOLLOW-UP is the caller’s fault, and on a note means no piece', async () => {
-      // ⛔ **`429` §2.1's decision, re-ruled by D-016**: `MESSAGE_TASK_WHEN_UNSAID` — *an omitted
-      // reference means not about any task* — went with the kind that sent work. ⚑ A follow-up adds
-      // to a piece the caller gave, so one that names none is MALFORMED, by name; a note may be
-      // about no piece at all, and is admitted.
+    it('an omitted task means an ordinary note even for an older caller that passed kind', async () => {
       const { worker, pmTools } = await workAlreadyAnswered()
-      const unnamed = await callOn(pmTools, 'message_agent', {
+      const note = await callOn(pmTools, 'message_agent', {
         kind: 'follow-up',
         agent: worker,
         text: 'read the brief and report',
       })
-      expect(unnamed.outcome, JSON.stringify(unnamed)).toBe('refused')
-      expect(unnamed.rail).toBe('malformed-request')
-      expect(JSON.stringify(unnamed.detail)).toContain(
-        'piece: on a follow-up, send the label or id of a piece you gave that agent',
-      )
-      const note = await callOn(pmTools, 'message_agent', {
+      expect(note).toMatchObject({
+        outcome: 'ok',
         kind: 'note',
-        agent: worker,
-        text: 'read the brief and report',
+        receipt: { recorded: { kind: 'message', taskLabel: null }, recipient: { id: worker } },
       })
-      expect(note.outcome, JSON.stringify(note)).toBe('ok')
+      expect(note).not.toHaveProperty('piece')
       // ⚠️ **And neither opened anything**: a message hands nothing over (D-016).
       expect(piecesOf(worker)).toHaveLength(1)
     })
@@ -497,41 +483,37 @@ describe('429 · taking work back', () => {
       expect(piecesOf(worker)).toHaveLength(3)
     })
 
-    it('⛔ a reference that is not a piece you gave THAT agent is one answer, whichever cause', async () => {
+    it('refuses an unknown task and uses the same known task as either a note or follow-up', async () => {
       const { worker, pmTools, label } = await workAlreadyAnswered()
-      // ⚑ **Two causes, one sentence** — an id this app never minted, and a piece given to a
-      // different agent of the caller's own. ⛔ Separating them is how a caller learns which pieces
-      // exist, which is the disclosure `no-such-agent` already folds away.
-      // ⚑ **D-016 · its own identity, because a give reaches the ONE conversation a giver has with
-      // an agent** — a second give to `worker` would reach `worker`. ⛔ Measured, not assumed: the
-      // give's own outcome is asserted before its id is used.
       await bringIdentityIntoBeing('helper')
       const other = (await aGive(pmTools, 'helper', 'a second child')).agent
       expect(other).not.toBe(worker)
-      for (const [named, why] of [
-        ['work_never_minted', 'an id this app never minted'],
-        [label, 'the right piece, aimed at the wrong agent'],
-      ] as const) {
-        const refused = await callOn(pmTools, 'message_agent', {
-          kind: 'follow-up',
-          agent: other,
-          text: 'do this',
-          piece: named,
-        })
-        expect(refused.outcome, `${why}: ${JSON.stringify(refused)}`).toBe('refused')
-        expect(refused.rail, why).toBe('not-a-piece-you-gave')
-        expect(refused.permanence, why).toBe('permanent')
-        expect(refused.remedy, why).toBeNull()
-      }
-      // ⚑ **The paired positive**: the same label, at the agent it was given to, resolves — so the
-      // refusals above are about the PAIR and not about the label being unreadable.
-      const resolved = await callOn(pmTools, 'message_agent', {
-        kind: 'follow-up',
-        agent: worker,
+      const refused = await callOn(pmTools, 'message_agent', {
+        agent: other,
         text: 'do this',
-        piece: label,
+        piece: 'work_never_minted',
       })
-      expect(resolved.outcome, JSON.stringify(resolved)).toBe('ok')
+      expect(refused).toMatchObject({
+        outcome: 'refused',
+        rail: 'no-piece-by-that-name',
+        permanence: 'permanent',
+        remedy: null,
+      })
+      for (const [agent, kind] of [
+        [other, 'note'],
+        [worker, 'follow-up'],
+      ] as const) {
+        const sent = await callOn(pmTools, 'message_agent', {
+          agent,
+          text: 'do this',
+          piece: label,
+        })
+        expect(sent).toMatchObject({
+          outcome: 'ok',
+          kind,
+          receipt: { recorded: { kind: 'message', taskLabel: label }, recipient: { id: agent } },
+        })
+      }
     })
 
     it('⚠️ a malformed reference is the CALLER’s fault and says so, not the receiver’s', async () => {

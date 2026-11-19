@@ -823,11 +823,10 @@ describe('a person moves the stored request', () => {
       permanence,
       retryable,
       remedy,
-      reason,
+      reason: `Not sent: ${reason}`,
       detail: {},
     })
-    const prefix = `refused (${rail}): `
-    expect(answered.text.startsWith(prefix + reason)).toBe(true)
+    expect(answered.text.startsWith(`Not sent: ${reason}`)).toBe(true)
     expect(answered.text).not.toContain(callerWords)
     const added = world
       .ledger(source)
@@ -841,7 +840,7 @@ describe('a person moves the stored request', () => {
         permanence,
         retryable,
         remedy,
-        told: { text: answered.text.slice(prefix.length), dropped: 0 },
+        told: { text: answered.text, dropped: 0 },
       },
     ])
     expect(JSON.stringify(added)).not.toContain(callerWords)

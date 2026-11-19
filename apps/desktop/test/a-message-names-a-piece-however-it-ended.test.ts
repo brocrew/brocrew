@@ -13,62 +13,20 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import {
-  aFollowUpOnAPieceYouGaveAnother,
-  aFollowUpOnAPieceYouHold,
-  type ToolName,
-} from '../src/main/runtime/agent-tools'
+import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentName } from '../src/shared/runtime-ipc'
-import { permanenceInWords } from '../src/main/runtime/agent-tool-answer-words'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
 import {
   fixtureProviderConfig,
   RecordingSink,
   syntheticProviderHome,
   neutralHostDeps,
+  waitFor,
 } from './lib/host-fixture'
-
-/**
- * # F086 · F087 · F088 · a message names a piece however it ended, and is refused truly
- *
- * `7bd23f9e` (F086) and `db6e90a3` (F087, F088) pinned their own cases in
- * `a-take-back-tells-its-owner-and-a-note-names-what-it-is-about.test.ts`: a held piece ANSWERED (by
- * note and by follow-up), a follow-up's two new sentences, and the receiver's *"This message is
- * about …"* line for an open piece and an answered one — straight, held, after a restart, at a
- * replacement and in a batch. This file pins what those leave open:
- *
- *  - **§1 · F086 · F087 · a held piece TAKEN BACK or CLOSED** — its holder's note naming it is
- *    admitted and its giver is told *"(taken back)"* / *"(closed)"*; its holder's follow-up naming
- *    it gets {@link aFollowUpOnAPieceYouHold}'s words; its giver's note naming it is admitted.
- *  - **§2 · F086 · a piece the RECEIVER holds is not the sender's to name** — a note naming it is
- *    refused `no-piece-by-that-name`, open or ended, beside the giver's note naming it, admitted.
- *  - **§3 · F087 · a piece given another agent, once ended, and once that agent was replaced** — the
- *    refusal's words, and the call they name goes.
- *  - **§4 · F088 · every ending mark on every path a held message takes** — answered, taken back and
- *    closed; held behind a turn, rebuilt after a quit, handed to the conversation that took its
- *    receiver's place — each beside a note that names no piece, which carries no such sentence.
- *  - **§5 · F088 · which piece, by the title it stands under now** — the sender's own root by its
- *    title (no mark), one of two pieces its owner holds (never the other), and a retitled piece by
- *    its new title.
- *  - **§6 · F088 · only an agent's words carry it** — a held app notice about a piece keeps no
- *    `about` on its row; a held note beside it does.
- *
- * Real host, real SQLite ledger, real migrations, over `FakeRuntime` — the harness of the devs' own
- * file, plus {@link driveUntilHeard}, which answers whatever cards stand between a held message and
- * its turn (bounded).
- */
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-const waitFor = async (ready: () => boolean, what: string, tries = 300): Promise<void> => {
-  for (let attempt = 0; attempt < tries; attempt += 1) {
-    if (ready()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
 
 /** `FakeRuntime` with the toolset each launch was handed captured, so a test can act as that agent. */
 type WordsInARow = TranscriptEvent & { type: 'user_turn' | 'message_queued'; text: string }
@@ -82,7 +40,7 @@ const MARK: Readonly<Record<Ending, string>> = {
   closed: 'closed',
 }
 
-const ABOUT = 'This message is about'
+const ABOUT = 'about task'
 
 describe('F086 · F087 · F088 · a message names a piece however it ended', () => {
   let userData: string
@@ -158,17 +116,6 @@ describe('F086 · F087 · F088 · a message names a piece however it ended', () 
     const tool = toolset.tools.find((one) => one.name === name)
     if (tool === undefined) throw new Error(`no such tool: ${name}`)
     return (await tool.call(args)).structured as Record<string, unknown>
-  }
-
-  const callWithWords = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<{ structured: Record<string, unknown>; text: string }> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    const result = await tool.call(args)
-    return { structured: result.structured as Record<string, unknown>, text: result.text }
   }
 
   const theToolsetJustHandedOut = (): AgentToolset => {
@@ -335,13 +282,13 @@ describe('F086 · F087 · F088 · a message names a piece however it ended', () 
   // ─────────────────────────────────────────────────────────────────────────────────────────────
 
   for (const ending of ['withdrawn', 'closed'] as const) {
-    it(`🔴 §1 · a held piece ${MARK[ending]}: its holder's note names it and its giver reads "(${MARK[ending]})"; a follow-up is refused as a piece it holds; its giver's note names it too`, async () => {
+    it(`🔴 §1 · a held piece ${MARK[ending]}: its holder names it and its giver reads "(${MARK[ending]})"; its giver can send about it too`, async () => {
       const made = await aPmAndItsWorker('the piece')
       const { pm, worker, pmTools, workerTools, piece, label } = made
       await endIt(ending, made)
 
       // ⚑ Held and ended, by a take-back or a close rather than an answer: the note is admitted.
-      let receipts = sentBy(worker).length
+      const receipts = sentBy(worker).length
       const note = await callOn(workerTools, 'message_agent', {
         kind: 'note',
         agent: pm,
@@ -359,53 +306,27 @@ describe('F086 · F087 · F088 · a message names a piece however it ended', () 
       // 🔴 F088 · its giver is told which piece, and how it ended.
       const turn = await driveUntilHeard(pm, `a word after it was ${MARK[ending]}`)
       const line = turn.split('\n')[0] ?? ''
-      expect(line.startsWith(`Sent by ${nameOf('worker')} (worker),`), line).toBe(true)
-      const about = `${ABOUT} ${label} · the piece (${MARK[ending]}).`
-      expect(line.slice(-about.length), line).toBe(about)
+      expect(line.startsWith(`From ${nameOf('worker')} (conversation `), line).toBe(true)
+      const about = `${ABOUT} ${label} · the piece (${MARK[ending]}), in your conversation `
+      expect(line, line).toContain(about)
       // ⛔ A note changes nothing about the piece it names.
       expect(store.piecesOwnedBy(worker).find((one) => one.piece === piece)?.state).toBe(ending)
 
-      // 🔴 F087 · a follow-up naming it is refused with the true words, and nothing is sent.
-      receipts = sentBy(worker).length
-      const refused = await callWithWords(workerTools, 'message_agent', {
-        kind: 'follow-up',
-        agent: pm,
-        text: 'a follow-up about it',
-        piece: label,
-      })
-      expect(refused.structured).toMatchObject({
-        outcome: 'refused',
-        rail: 'not-a-piece-you-gave',
-        permanence: 'permanent',
-        retryable: false,
-        reason: aFollowUpOnAPieceYouHold(label),
-        detail: { agent: pm, piece, label },
-      })
-      expect(refused.text).toBe(
-        `refused (not-a-piece-you-gave): ${aFollowUpOnAPieceYouHold(label)} ${permanenceInWords('not-a-piece-you-gave', 'permanent')}`,
-      )
-      expect(refused.text).not.toContain('or to nothing at all')
-      expect(refused.text).not.toContain('ask_question')
-      expect(sentBy(worker)).toHaveLength(receipts)
-      expect(heardBy(pm).some((one) => one.includes('a follow-up about it'))).toBe(false)
-
-      // ⚑ Given and ended the same way: the giver's note naming it is admitted, and receipted.
-      receipts = sentBy(pm).length
+      const giverReceipts = sentBy(pm).length
       const given = await callOn(pmTools, 'message_agent', {
-        kind: 'note',
         agent: worker,
         text: 'thanks all the same',
         piece: label,
       })
       expect(given, JSON.stringify(given)).toMatchObject({
         outcome: 'ok',
-        kind: 'note',
+        kind: 'follow-up',
         piece,
         label,
       })
       expect(['sent', 'queued']).toContain(given.delivery)
-      expect(sentBy(pm)).toHaveLength(receipts + 1)
-      expect(sentBy(pm).at(-1)).toMatchObject({ kind: 'note', piece, label })
+      expect(sentBy(pm)).toHaveLength(giverReceipts + 1)
+      expect(sentBy(pm).at(-1)).toMatchObject({ kind: 'follow-up', piece, label })
     })
   }
 
@@ -435,7 +356,18 @@ describe('F086 · F087 · F088 · a message names a piece however it ended', () 
     }
 
     // ⛔ Open: the helper holds it; the worker neither holds nor gave it.
-    await fromTheWorker('while it is open')
+    const inaccessible = await callOn(workerTools, 'message_agent', {
+      agent: helper,
+      piece: other.label,
+      text: 'Please look at the named task.',
+    })
+    const invented = await callOn(workerTools, 'message_agent', {
+      agent: helper,
+      piece: 'W99999.99999',
+      text: 'Please look at the named task.',
+    })
+    expect(inaccessible.reason).toBe(invented.reason)
+    expect(invented).toMatchObject({ outcome: 'refused', rail: 'no-piece-by-that-name' })
     // ⚑ The twin, one fact over: the worker's note to the helper naming the piece the WORKER holds.
     const own = await callOn(workerTools, 'message_agent', {
       kind: 'note',
@@ -471,7 +403,7 @@ describe('F086 · F087 · F088 · a message names a piece however it ended', () 
   // §3 · F087 · a piece given another agent, ended, and that agent replaced
   // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-  it('🔴 §3 · a follow-up naming a piece its sender gave another agent that has ENDED says so, and the follow-up to that piece’s agent goes', async () => {
+  it('🔴 §3 · the same ended task produces a note to a peer and a follow-up to its owner', async () => {
     const { pmTools, helperTools, worker, other } = await aPmAWorkerAndAHelper()
     const replied = await callOn(helperTools, 'reply_to_parent', {
       piece: other.label,
@@ -480,26 +412,18 @@ describe('F086 · F087 · F088 · a message names a piece however it ended', () 
     })
     expect(replied.outcome, JSON.stringify(replied)).toBe('ok')
 
-    const refused = await callWithWords(pmTools, 'message_agent', {
-      kind: 'follow-up',
+    const said = await callOn(pmTools, 'message_agent', {
       agent: worker,
       text: 'and the tests',
       piece: other.label,
     })
-    expect(refused.structured).toMatchObject({
-      outcome: 'refused',
-      rail: 'not-a-piece-you-gave',
-      permanence: 'permanent',
-      reason: aFollowUpOnAPieceYouGaveAnother(other.label),
-      detail: { agent: worker, piece: other.piece, label: other.label },
+    expect(said).toMatchObject({
+      outcome: 'ok',
+      kind: 'note',
+      piece: other.piece,
+      label: other.label,
     })
-    expect(refused.text).toBe(
-      `refused (not-a-piece-you-gave): ${aFollowUpOnAPieceYouGaveAnother(other.label)} ${permanenceInWords('not-a-piece-you-gave', 'permanent')}`,
-    )
-    expect(refused.text).not.toContain('or to nothing at all')
-    // ⚑ The call it names goes, ended piece and all: a follow-up names a piece one gave that agent.
     const followed = await callOn(pmTools, 'message_agent', {
-      kind: 'follow-up',
       agent: other.label,
       text: 'and the tests',
       piece: other.label,
@@ -512,7 +436,7 @@ describe('F086 · F087 · F088 · a message names a piece however it ended', () 
     })
   })
 
-  it('🔴 §3 · once the agent holding the piece was replaced, a follow-up to it — by its old id, by the label, or to the one in its place — goes; to anyone else it is refused as given another', async () => {
+  it('🔴 §3 · a follow-up to the successor can use the old id, the task label or the successor id', async () => {
     const { pm, worker, helper, other } = await aPmAWorkerAndAHelper()
     const next = await restartWithHistoricalHelper(helper)
     await host.resumeSession(pm, window)
@@ -521,7 +445,6 @@ describe('F086 · F087 · F088 · a message names a piece however it ended', () 
     // ⚑ Read through the one in its place, on both sides: each of these names the agent holding it.
     for (const to of [helper, other.label, next]) {
       const again = await callOn(pmTools, 'message_agent', {
-        kind: 'follow-up',
         agent: to,
         text: `again, to ${to}`,
         piece: other.label,
@@ -532,18 +455,12 @@ describe('F086 · F087 · F088 · a message names a piece however it ended', () 
         piece: other.piece,
       })
     }
-    // ⛔ …and to the worker it is still a piece given another, said so.
-    const refused = await callOn(pmTools, 'message_agent', {
-      kind: 'follow-up',
+    const said = await callOn(pmTools, 'message_agent', {
       agent: worker,
-      text: 'to the wrong agent',
+      text: 'for the other agent’s information',
       piece: other.label,
     })
-    expect(refused).toMatchObject({
-      outcome: 'refused',
-      rail: 'not-a-piece-you-gave',
-      reason: aFollowUpOnAPieceYouGaveAnother(other.label),
-    })
+    expect(said).toMatchObject({ outcome: 'ok', kind: 'note', piece: other.piece })
   })
 
   // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -572,7 +489,7 @@ describe('F086 · F087 · F088 · a message names a piece however it ended', () 
   const readAsEnded = async (receiver: string, label: string, ending: Ending): Promise<void> => {
     const named = await driveUntilHeard(receiver, NAMED)
     const plain = await driveUntilHeard(receiver, PLAIN)
-    const about = `${ABOUT} ${label} · first piece (${MARK[ending]}).`
+    const about = `${ABOUT} ${label} · first piece (${MARK[ending]}), in your conversation `
     const namedSection = theSectionOf(named, NAMED, [PLAIN])
     expect(namedSection, namedSection).toContain(about)
     expect(namedSection.split(ABOUT), namedSection).toHaveLength(2)
@@ -649,8 +566,10 @@ describe('F086 · F087 · F088 · a message names a piece however it ended', () 
     expect(note, JSON.stringify(note)).toMatchObject({ outcome: 'ok', label: rootPiece.label })
     const turn = await driveUntilHeard(worker, 'the launch is what this is all for')
     const section = theSectionOf(turn, 'the launch is what this is all for', [])
-    // ⛔ A root never ends: its title, then the full stop — never a bare label, never a mark.
-    expect(section, section).toContain(`${ABOUT} ${rootPiece.label} · Plan the launch.`)
+    // A root has no ending mark between its title and the receiver name.
+    expect(section, section).toContain(
+      `${ABOUT} ${rootPiece.label} · Plan the launch, in your conversation `,
+    )
     expect(section, section).not.toContain(`${ABOUT} ${rootPiece.label}.`)
   })
 

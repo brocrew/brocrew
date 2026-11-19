@@ -731,7 +731,9 @@ describe('a label names the conversation that owns the piece, and no more', () =
       piece: 'W1.1',
       text: 'hello',
     })
-    expect(message.text).toContain(ADA_CONVERSATION)
+    expect(message.text).toMatch(
+      /^(Delivered to|Held for) conversation W1\.1 · Build the pages[.:]/,
+    )
     await waitFor(
       () => ledger(ada).filter((event) => event.type === 'turn').length >= 3,
       'Ada to answer the follow-up',
@@ -874,13 +876,11 @@ describe('a label names the conversation that owns the piece, and no more', () =
       },
     )
 
-    for (const tool of ['message_agent', 'ask_question', 'interrupt_agent'] as const) {
+    for (const tool of ['ask_question', 'interrupt_agent'] as const) {
       const argsFor = (agent: string): Record<string, unknown> =>
-        tool === 'message_agent'
-          ? { agent, kind: 'note', text: 'Read the helper’s result.' }
-          : tool === 'ask_question'
-            ? { agent, who_answers: 'an-agent', question: 'Which helper owns this?' }
-            : { agent, reason: 'Stop the unfinished draft.' }
+        tool === 'ask_question'
+          ? { agent, who_answers: 'an-agent', question: 'Which helper owns this?' }
+          : { agent, reason: 'Stop the unfinished draft.' }
 
       const helperStates = tool === 'interrupt_agent' ? [] : [false, true]
       for (const ended of helperStates) {
@@ -903,14 +903,16 @@ describe('a label names the conversation that owns the piece, and no more', () =
           expect(said.text).toContain('Ada (worker) on W1.1')
           if (ended) expect(said.text).toContain('(ended: closed)')
           else expect(said.text).not.toContain('(ended:')
-          expect(said.text).toContain('kind: note')
+          expect(said.text).toContain('message_agent or ask_question')
           expect(said.text).toContain('give_work')
           expect(acts(ledger(ada))).toEqual(before)
           expect(queued).not.toHaveBeenCalled()
           expect(asked).not.toHaveBeenCalled()
           expect(stopped).not.toHaveBeenCalled()
           const told = `${said.structured.reason} This exact call can never succeed.`
-          expect(said.text).toBe(`refused (that-agent-is-you): ${told}`)
+          expect(said.text).toBe(
+            tool === 'ask_question' ? told : `refused (that-agent-is-you): ${told}`,
+          )
           expect(refusalWritten).toHaveBeenCalledTimes(1)
           expect(refusalWritten).toHaveBeenCalledWith(brobot, tool, {
             rail: 'that-agent-is-you',
@@ -948,10 +950,10 @@ describe('a label names the conversation that owns the piece, and no more', () =
 
     it('the caller’s non-root piece lists its own child and not the parent’s helper', async () => {
       const { ada } = await settledFamily()
-      const said = await fullCall(agentToolsFor(host, ada), 'message_agent', {
+      const said = await fullCall(agentToolsFor(host, ada), 'ask_question', {
         agent: 'W1.1',
-        kind: 'note',
-        text: 'Read the helper’s result.',
+        who_answers: 'an-agent',
+        question: 'Which helper owns this?',
       })
       expect(said.text).toContain('W1.1 is your own piece.')
       expect(said.text).toContain('Ali (tester) on W1.1.1')
@@ -1003,10 +1005,10 @@ describe('a label names the conversation that owns the piece, and no more', () =
           brief: 'Write the notes here.',
         }),
       ).toMatchObject({ outcome: 'ok' })
-      const said = await fullCall(tools, 'message_agent', {
+      const said = await fullCall(tools, 'ask_question', {
         agent: 'W1',
-        kind: 'note',
-        text: 'Read this.',
+        who_answers: 'an-agent',
+        question: 'Which helper owns this?',
       })
       expect(said.text).toContain('W1 is your own piece, with no helpers recorded under it.')
       expect(said.text).not.toContain('Its helpers:')
@@ -1039,10 +1041,10 @@ describe('a label names the conversation that owns the piece, and no more', () =
           : card
       })
       try {
-        const said = await fullCall(brobotTools, 'message_agent', {
+        const said = await fullCall(brobotTools, 'ask_question', {
           agent: 'W1',
-          kind: 'note',
-          text: 'Read this.',
+          who_answers: 'an-agent',
+          question: 'Which helper owns this?',
         })
         expect(said.text).toContain('Its helpers: W1.1 (working).')
         expect(said.text).not.toContain('None of its helpers')
@@ -1066,10 +1068,10 @@ describe('a label names the conversation that owns the piece, and no more', () =
         .spyOn(host, 'agentCard')
         .mockImplementation((id, by, me) => (id === ada ? null : read(id, by, me)))
       try {
-        const said = await fullCall(brobotTools, 'message_agent', {
+        const said = await fullCall(brobotTools, 'ask_question', {
           agent: 'W1',
-          kind: 'note',
-          text: 'Read this.',
+          who_answers: 'an-agent',
+          question: 'Which helper owns this?',
         })
         expect(said.text).toContain('None of its helpers is in your messaging reach.')
         expect(said.text).not.toContain('Ada')
@@ -1083,7 +1085,7 @@ describe('a label names the conversation that owns the piece, and no more', () =
       }
     })
 
-    it('a root with no helper pieces says so, while an id self-address stays generic', async () => {
+    it('a Message reaches its own conversation by its root label and by its ID', async () => {
       const me = await personOpens(DEFAULT_PROFILE_ID)
       const tools = agentToolsFor(host, me)
       const label = await fullCall(tools, 'message_agent', {
@@ -1091,14 +1093,13 @@ describe('a label names the conversation that owns the piece, and no more', () =
         kind: 'note',
         text: 'Read this.',
       })
-      expect(label.text).toContain('W1 is your own piece, with no helpers recorded under it.')
+      expect(label.structured).toMatchObject({ outcome: 'ok', agent: me })
       const id = await fullCall(tools, 'message_agent', {
         agent: me,
         kind: 'note',
         text: 'Read this.',
       })
-      expect(id.structured.rail).toBe('that-agent-is-you')
-      expect(id.text).not.toContain('is your own piece')
+      expect(id.structured).toMatchObject({ outcome: 'ok', agent: me })
     })
   })
 })
