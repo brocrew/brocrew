@@ -237,6 +237,7 @@ const SAMPLES: Record<RuntimeCommandKind, RuntimeCommand> = {
   // `no-piece-by-that-name` rather than writing a title anywhere.
   retitleWork: { kind: 'retitleWork', piece: 'W0', title: 'Build the pages' },
   readConversationIdentity: { kind: 'readConversationIdentity', sessionId: SESSION },
+  readConversationIdentities: { kind: 'readConversationIdentities', sessionIds: [SESSION] },
   readConversationTasks: { kind: 'readConversationTasks', sessionId: SESSION },
   readConversationTitleHistory: { kind: 'readConversationTitleHistory', sessionId: SESSION },
   renameConversation: {

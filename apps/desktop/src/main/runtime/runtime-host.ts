@@ -114,6 +114,7 @@ import type { ConversationTaskPageInput } from '../../shared/conversation-task-p
 import { GiveWork } from './give-work'
 import type {
   ConversationIdentity,
+  ConversationIdentityBatchInput,
   ConversationRenameInput,
   ConversationRenameResult,
   ConversationTitleAuthor,
@@ -18714,6 +18715,15 @@ export class RuntimeHost implements LiveHost {
       savedTitle,
     )
     return { conversation, address, title, author: savedTitle?.author ?? null }
+  }
+
+  readConversationIdentities(
+    input: ConversationIdentityBatchInput,
+  ): readonly ConversationIdentity[] {
+    return [...new Set(input.sessionIds)].flatMap((id) => {
+      const identity = this.readConversationIdentity(id)
+      return identity === null ? [] : [identity]
+    })
   }
 
   readConversationTitleHistory(

@@ -16,6 +16,7 @@ describe('renaming a conversation', () => {
     world = aServiceWorld()
     world.anAgent('caller', 'normal')
     world.anAgent('worker', 'normal')
+    world.anAgent('rail-service')
     expect(world.store.setAgentDisplayName('worker', profileName)).toBe(true)
     changed = []
     host = world.aHost({ announce: (notice) => changed.push(notice.what) })
@@ -36,6 +37,86 @@ describe('renaming a conversation', () => {
     executeRuntimeCommand(host, world.window, { kind: 'readConversationIdentity', sessionId })
   const readTitles = (sessionId: string) =>
     executeRuntimeCommand(host, world.window, { kind: 'readConversationTitleHistory', sessionId })
+
+  function recordFirstTask(owner: string, title: string, brief: string): string {
+    const root = world.store.rootOf(caller)!
+    const number = world.store.numberUnder(root.piece)
+    const label = `${root.label}.${String(number)}`
+    const piece = 'work_first'
+    world.store.recordGive(
+      {
+        piece,
+        parent: root.piece,
+        number,
+        owner,
+        givenBy: caller,
+        title,
+        brief,
+        folder: null,
+        inputs: [],
+      },
+      world.store.nextOrdinal(owner),
+      { type: 'work_given', piece, label, parent: root.piece, givenBy: caller, title, brief },
+      world.clock,
+    )
+    return label
+  }
+
+  it('projects only the requested distinct rail rows with the same canonical identity as selection', async () => {
+    const empty = 'sess_rail_empty'
+    const service = 'sess_rail_service'
+    const serviceTask = 'Service task title'
+    expect(world.store.setAgentDisplayName('rail-service', 'Rail Service')).toBe(true)
+    world.store.create({
+      id: empty,
+      provider: 'claude',
+      cwd: '/work',
+      approvalMode: 'ask',
+      profileId: 'worker',
+      parentSessionId: caller,
+    })
+    world.store.create({
+      id: service,
+      provider: 'claude',
+      cwd: '/work',
+      approvalMode: 'ask',
+      profileId: 'rail-service',
+      service: true,
+    })
+    const taskLabel = recordFirstTask(service, serviceTask, 'Complete the service task.')
+    expect(world.store.firstTaskOf(service)?.label).toBe(taskLabel)
+    expect(world.store.latestTaskTitle(service)).toBe(serviceTask)
+    world.store.titleConversation(
+      target,
+      world.store.nextOrdinal(target),
+      { type: 'titled', title: 'Saved rail title', author: { kind: 'person' } },
+      world.clock,
+    )
+    const root = world.store.rootOf(target)!
+    const starts = world.handles.length
+    const descending = [
+      {
+        conversation: target,
+        address: root.label,
+        title: 'Saved rail title',
+        author: { kind: 'person' },
+      },
+      { conversation: empty, address: empty, title: profileName, author: null },
+      { conversation: service, address: service, title: 'Rail Service', author: null },
+    ].sort((first, second) => (first.conversation < second.conversation ? 1 : -1))
+    const expected = [descending[1]!, descending[0]!, descending[2]!]
+    const ids = expected.map(({ conversation }) => conversation)
+    const before = ids.map((id) => world.store.events(id))
+    const read = (sessionIds: readonly string[]) =>
+      executeRuntimeCommand(host, world.window, { kind: 'readConversationIdentities', sessionIds })
+
+    expect(await read(['sess_missing', ...ids, ids[0]!])).toEqual(expected)
+    expect(await read([])).toEqual([])
+    expect(await read(Array(15).fill(target))).toEqual([await readIdentity(target)])
+    await expect(read(Array(16).fill(target))).rejects.toThrow('invalid runtime command')
+    expect(world.handles).toHaveLength(starts)
+    expect(ids.map((id) => world.store.events(id))).toEqual(before)
+  })
 
   it('uses one ledger history for a person and an agent, while keeping the task title', async () => {
     const root = world.store.rootOf(target)!
@@ -159,28 +240,8 @@ describe('renaming a conversation', () => {
       author: null,
     })
 
-    const root = world.store.rootOf(caller)!
-    const number = world.store.numberUnder(root.piece)
-    const label = `${root.label}.${String(number)}`
-    const piece = 'work_first'
     const title = 'First recorded task'
-    const brief = 'Do the first task'
-    world.store.recordGive(
-      {
-        piece,
-        parent: root.piece,
-        number,
-        owner: sessionId,
-        givenBy: caller,
-        title,
-        brief,
-        folder: null,
-        inputs: [],
-      },
-      world.store.nextOrdinal(sessionId),
-      { type: 'work_given', piece, label, parent: root.piece, givenBy: caller, title, brief },
-      world.clock,
-    )
+    const label = recordFirstTask(sessionId, title, 'Do the first task')
 
     const ledger = world.store.events(sessionId)
     const providerHandles = world.handles.length

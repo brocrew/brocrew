@@ -868,6 +868,7 @@ function fakeBridge() {
     // 500 · answers the fail-safe word, like the switch above answers the fail-closed one.
     setDefaultApprovalMode: async () => ({ defaultApprovalMode: 'ask' as const }),
     readConversationIdentity: async () => null,
+    readConversationIdentities: async () => [],
     readConversationTasks: async () => ({ ok: false, reason: 'unknown-conversation' }),
     readConversationTitleHistory: async () => null,
     // D-016 · R4 · ⛔ **`no-piece-by-that-name`, the refusal arm, as `setAgentDisplayName` answers

@@ -474,6 +474,7 @@ export interface RuntimeCommandResults {
    */
   retitleWork: WorkRetitled
   readConversationIdentity: ConversationIdentity | null
+  readConversationIdentities: readonly ConversationIdentity[]
   readConversationTasks: ConversationTaskPageResult
   readConversationTitleHistory: ConversationTitleHistory | null
   renameConversation: ConversationRenameResult
