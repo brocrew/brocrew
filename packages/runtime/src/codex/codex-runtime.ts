@@ -186,7 +186,12 @@ import { CodexSubAgents } from './sub-agents'
 import type { ThreadCompactStartParams } from './protocol/v2/ThreadCompactStartParams'
 import type { ThreadResumeParams } from './protocol/v2/ThreadResumeParams'
 import type { ThreadStartParams } from './protocol/v2/ThreadStartParams'
-import { type TransportFactory, createSpawnTransportFactory } from './codex-transport'
+import {
+  CodexRequestRefused,
+  type CodexTransport,
+  type TransportFactory,
+  createSpawnTransportFactory,
+} from './codex-transport'
 import {
   MODEL_LIST_PAGE_LIMIT,
   MODEL_PROBE_TIMEOUT_MS,
@@ -195,10 +200,8 @@ import {
 import { seedRateLimitBaseline, readProviderCommands } from './runtime-parts/initial-observations'
 export {
   codexAppServerArgs,
-  CodexRequestRefused,
   createSpawnTransportFactory,
   type CodexLaunchContext,
-  type CodexTransport,
   type TransportFactory,
 } from './codex-transport'
 export { A_COMPACTION_IS_STILL_OUTSTANDING } from './runtime-parts/turn-state'
