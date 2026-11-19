@@ -1,3 +1,4 @@
+import type { ConversationSearchHit } from '../../../shared/work-search'
 import { providerName, type Provider, type ProviderCommandSet } from '../../../shared/runtime-ipc'
 import type { WorkThatNamesIt } from '../../../shared/piece-called'
 import { conversationTitle } from './conversation-list'
@@ -163,6 +164,7 @@ export interface PaletteCommand {
    * an absent line, never an empty one (`211` §3's rule for the rail's opening line).
    */
   readonly detail: string | null
+  readonly recorded?: ConversationSearchHit['metadata']
   readonly group: PaletteGroup
   /**
    * Words a search should match that are NOT on screen — a session id, a provider name.

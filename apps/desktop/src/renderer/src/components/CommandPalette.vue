@@ -229,6 +229,7 @@ async function readConversations(more = false): Promise<void> {
       ...(profile.value ? { profile: profile.value } : {}),
       ...(cursor ? { cursor } : {}),
       limit: 20,
+      includeConversationMetadata: true,
     })
     if (reading !== searchRequest) return
     if (!result.ok) {
@@ -278,9 +279,10 @@ const readerCommands = computed<PaletteCommand[]>(() => {
     return {
       id: `open-${hit.conversation}`,
       title: hit.title,
+      recorded: hit.metadata,
       detail: [
         name,
-        row?.provider,
+        hit.metadata?.provider,
         row?.word,
         fullTime(hit.last_active_at),
         `Conversation ${hit.address}`,
@@ -763,7 +765,22 @@ defineExpose({
               "
               @mousedown.prevent="run(row)"
             >
-              <strong>{{ row.title }}</strong>
+              <strong>
+                {{ row.title }}
+                <span
+                  v-if="row.recorded?.archived_at != null"
+                  class="palette-recorded-mark"
+                  :title="fullTime(row.recorded.archived_at)"
+                  data-cy="palette-recorded-archive"
+                  >Archived</span
+                >
+                <span
+                  v-if="row.recorded?.title_author?.kind === 'person'"
+                  class="palette-recorded-mark"
+                  data-cy="palette-recorded-title-author"
+                  >Named by you</span
+                >
+              </strong>
               <!-- Absent, not blank, when there is nothing true to say (`211` §3).
                    ⚠️ **A hover on the AGENT's rows only, and the bound above is the reason**
                    (279, from this dispatch's own review). `MAX_COMMAND_TEXT` is 500 because the live
@@ -852,6 +869,13 @@ defineExpose({
    first version of this comment said the two "never coexist by construction", which `show`'s guard
    makes true only at the moment of opening — an overlay raised afterwards is a state neither of
    them prevents, and the z-index is what keeps it survivable. */
+.palette-recorded-mark {
+  margin-inline-start: var(--space-4);
+  color: var(--muted);
+  font-size: var(--type-caption);
+  font-weight: var(--fw-normal);
+}
+
 .palette-profile,
 .palette-more {
   align-self: start;

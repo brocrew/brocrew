@@ -30,7 +30,12 @@ afterEach(() => {
 const caller = 'recorded-caller'
 const archive = 'archived-result'
 
-function hit(conversation: string, title: string, address: string): ConversationSearchHit {
+function hit(
+  conversation: string,
+  title: string,
+  address: string,
+  metadata?: ConversationSearchHit['metadata'],
+): ConversationSearchHit {
   return {
     conversation,
     address,
@@ -41,6 +46,7 @@ function hit(conversation: string, title: string, address: string): Conversation
     status: null,
     matched_tasks: [],
     tasks_omitted: 0,
+    ...(metadata === undefined ? {} : { metadata }),
   }
 }
 
@@ -86,8 +92,31 @@ function typeQuery(words: string): void {
 
 it('searches recorded conversations with the same cursor and opens an archived match read-only', async () => {
   const search = vi.fn<RuntimeBridge['searchWork']>()
-  search.mockResolvedValueOnce(result([hit(caller, 'Recorded result title', 'W1.1')], 'later', 2))
-  search.mockResolvedValueOnce(result([hit(archive, 'Archived result title', 'W1.2')], null))
+  search.mockResolvedValueOnce(
+    result(
+      [
+        hit(caller, 'Recorded result title', 'W1.1', {
+          provider: 'claude',
+          archived_at: null,
+          title_author: null,
+        }),
+      ],
+      'later',
+      2,
+    ),
+  )
+  search.mockResolvedValueOnce(
+    result(
+      [
+        hit(archive, 'Archived result title', 'W1.2', {
+          provider: 'codex',
+          archived_at: 1_700_000_000_040,
+          title_author: { kind: 'person' },
+        }),
+      ],
+      null,
+    ),
+  )
   window.api.runtime.searchWork = search
   runtime.resolveLink.mockResolvedValue({
     state: 'archived',
@@ -118,10 +147,15 @@ it('searches recorded conversations with the same cursor and opens an archived m
   await expect
     .poll(() => insidePalette(`palette-row-open-${caller}`)?.textContent)
     .toContain('Recorded result title')
-  expect(insidePalette(`palette-row-open-${caller}`)?.textContent).toContain('Conversation W1.1')
+  const first = insidePalette(`palette-row-open-${caller}`)!
+  expect(first.textContent).toContain('Conversation W1.1')
+  expect(first.textContent).toContain('claude')
+  expect(first.textContent).not.toContain('codex')
+  expect(first.querySelector('[data-cy="palette-recorded-archive"]')).toBeNull()
+  expect(first.querySelector('[data-cy="palette-recorded-title-author"]')).toBeNull()
   expect(search).toHaveBeenCalledExactlyOnceWith({
     conversation: caller,
-    query: { words: 'launch', profile: 'editor', limit: 20 },
+    query: { words: 'launch', profile: 'editor', limit: 20, includeConversationMetadata: true },
   })
   insidePalette('palette-search-more')!.click()
   await expect
@@ -129,8 +163,20 @@ it('searches recorded conversations with the same cursor and opens an archived m
     .toContain('Archived result title')
   expect(search).toHaveBeenLastCalledWith({
     conversation: caller,
-    query: { words: 'launch', profile: 'editor', limit: 20, cursor: 'later' },
+    query: {
+      words: 'launch',
+      profile: 'editor',
+      limit: 20,
+      cursor: 'later',
+      includeConversationMetadata: true,
+    },
   })
+  const second = insidePalette(`palette-row-open-${archive}`)!
+  expect(second.textContent).toContain('codex')
+  expect(second.querySelector('[data-cy="palette-recorded-archive"]')?.textContent).toBe('Archived')
+  expect(second.querySelector('[data-cy="palette-recorded-title-author"]')?.textContent).toBe(
+    'Named by you',
+  )
   expect(insidePalette('palette-searched')?.textContent).toContain('2 shown.')
   expect(insidePalette('palette-searched')?.textContent).toContain('2 unread rows')
   expect(insidePalette('palette-searched')?.textContent).not.toContain('75')
