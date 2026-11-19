@@ -2156,6 +2156,7 @@ function start(ownership: HostGateVerdict): void {
       startRecordingWhatTheOlderOnesRan(host)
       let itself = whatTheAppItselfHolds([])
       let appMetrics: ReturnType<typeof app.getAppMetrics> = []
+      let agentsApart = ''
       const intoTheMemoryLog = (message: string): void => logWarn('memory', message)
       const unrefdInterval = (fn: () => void, ms: number): unknown => {
         const timer = setInterval(fn, ms)
@@ -2171,11 +2172,26 @@ function start(ownership: HostGateVerdict): void {
           itself = whatTheAppItselfHolds(appMetrics)
           return itself.bytes
         },
+        detail: () => {
+          agentsApart = whatItsAgentsHoldApart(
+            !spawnedReader.everRead()
+              ? 'not-read-yet'
+              : spawnedReader.failed()
+                ? 'unreadable'
+                : spawnedReader.snapshot(),
+          )
+          return `[${itself.said}] ${agentsApart}`
+        },
         ...(process.platform === 'darwin'
           ? {
               confirm: async () => {
                 const captured = appMetrics
-                if (captured.length === 0) return null
+                const companions = agentsApart
+                if (
+                  captured.length === 0 ||
+                  new Set(captured.map(({ pid }) => pid)).size !== captured.length
+                )
+                  return null
                 const output = await new Promise<string>((resolve, reject) => {
                   execFile(
                     '/usr/bin/footprint',
@@ -2197,34 +2213,13 @@ function start(ownership: HostGateVerdict): void {
                   captured.some(({ pid, creationTime }) => current.get(pid) !== creationTime)
                 )
                   return null
-                const blocks = output.split(/^.+? \[(\d+)\]: \d+-bit\s+Footprint:/m)
-                if (blocks.length !== 1 + captured.length * 2) return null
-                const footprints = new Map<number, number>()
-                for (let i = 1; i < blocks.length; i += 2) {
-                  const pid = Number(blocks[i])
-                  const matches = [
-                    ...(blocks[i + 1] ?? '').matchAll(/^[ \t]*phys_footprint: (\d+) B[ \t]*$/gm),
-                  ]
-                  const bytes = Number(matches[0]?.[1])
-                  if (matches.length !== 1 || !Number.isSafeInteger(bytes) || footprints.has(pid))
-                    return null
-                  footprints.set(pid, bytes)
-                }
-                const bytesByIndex = captured.map(({ pid }) => footprints.get(pid))
-                if (bytesByIndex.some((bytes) => bytes === undefined)) return null
-                const total = whatTheAppItselfHolds(captured, (_entry, index) => bytesByIndex[index]!)
-                return { bytes: total.bytes, detail: `[${total.said}]` }
+                const total = whatTheAppItselfHolds(captured, output)
+                return total === null
+                  ? null
+                  : { bytes: total.bytes, detail: `[${total.said}] ${companions}` }
               },
             }
           : {}),
-        detail: () =>
-          `[${itself.said}] ${whatItsAgentsHoldApart(
-            !spawnedReader.everRead()
-              ? 'not-read-yet'
-              : spawnedReader.failed()
-                ? 'unreadable'
-                : spawnedReader.snapshot(),
-          )}`,
         log: intoTheMemoryLog,
         setInterval: unrefdInterval,
         clearInterval: stopInterval,

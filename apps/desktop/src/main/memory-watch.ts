@@ -139,8 +139,10 @@ export function startMemoryWatch(options: MemoryWatchOptions): MemoryWatch {
   let reported = 0
   let confirmedStep = 0
   let confirming = false
+  let stopped = false
 
   const tick = (): void => {
+    if (stopped) return
     const rss = options.sample()
     if (options.rearmBelowBytes !== undefined && rss < options.rearmBelowBytes) reported = 0
     if (rss < floor) return
@@ -148,11 +150,13 @@ export function startMemoryWatch(options: MemoryWatchOptions): MemoryWatch {
     if (crossed <= reported || confirming) return
     reported = crossed
     const detail = options.detail?.()
-    if (options.confirm !== undefined) {
+    const confirm = options.confirm
+    if (confirm !== undefined) {
       confirming = true
-      void options.confirm()
+      void (async () => confirm())()
         .catch(() => null)
         .then((result) => {
+          if (stopped) return
           if (result === null) {
             options.log(theAppItselfHeadline(rss, 'resident') + (detail ? ` ${detail}` : ''))
             return
@@ -174,6 +178,7 @@ export function startMemoryWatch(options: MemoryWatchOptions): MemoryWatch {
   const handle = options.setInterval(tick, options.intervalMs ?? MEMORY_INTERVAL_MS)
   return {
     stop(): void {
+      stopped = true
       options.clearInterval(handle)
     },
   }
@@ -269,17 +274,43 @@ export interface OwnProcess {
  */
 export function whatTheAppItselfHolds(
   processes: readonly OwnProcess[],
-  bytesOf: (one: OwnProcess, index: number) => number = (one) => one.memory.workingSetSize * 1024,
-): {
-  readonly bytes: number
-  readonly said: string
-} {
-  return {
-    bytes: processes.reduce((total, one, index) => total + bytesOf(one, index), 0),
-    said: processes
-      .map((one, index) => `${plainNameOf(one)}:${gb(bytesOf(one, index))}GB`)
-      .join(' '),
+): { bytes: number; said: string }
+export function whatTheAppItselfHolds(
+  processes: readonly (OwnProcess & { pid: number })[],
+  footprintOutput: string,
+): { bytes: number; said: string } | null
+export function whatTheAppItselfHolds(
+  processes: readonly (OwnProcess & { pid?: number })[],
+  footprintOutput?: string,
+): { bytes: number; said: string } | null {
+  const footprints = new Map<number, number>()
+  if (footprintOutput !== undefined) {
+    const expected = new Set(processes.map(({ pid }) => pid))
+    if (expected.size !== processes.length || expected.has(undefined)) return null
+    const blocks = footprintOutput.split(/^.+? \[(\d+)\]: \d+-bit[ \t]+Footprint:/m)
+    if (blocks.length !== 1 + expected.size * 2) return null
+    for (let i = 1; i < blocks.length; i += 2) {
+      const pid = Number(blocks[i])
+      const matches = [
+        ...(blocks[i + 1] ?? '').matchAll(/^[ \t]*phys_footprint: (\d+) B[ \t]*$/gm),
+      ]
+      const bytes = Number(matches[0]?.[1])
+      if (!expected.delete(pid) || matches.length !== 1 || !Number.isSafeInteger(bytes)) return null
+      footprints.set(pid, bytes)
+    }
   }
+
+  let bytes = 0
+  const parts: string[] = []
+  for (const one of processes) {
+    const held =
+      footprintOutput === undefined ? one.memory.workingSetSize * 1024 : footprints.get(one.pid ?? 0)
+    if (held === undefined) return null
+    bytes += held
+    parts.push(`${plainNameOf(one)}:${gb(held)}GB`)
+  }
+  if (footprintOutput !== undefined && !Number.isSafeInteger(bytes)) return null
+  return { bytes, said: parts.join(' ') }
 }
 
 /**
