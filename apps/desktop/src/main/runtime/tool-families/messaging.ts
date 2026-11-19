@@ -42,16 +42,17 @@ export function createCompactAgentTool(
 ): AgentToolDefinition & { readonly name: 'compact_agent' } {
   return {
     name: 'compact_agent',
+    handlerOwnsMissingInput: true,
     description:
       "Request compaction of a conversation's context with its provider's own compaction, by any of its labels. Any conversation may; give the reason. The first answer acknowledges the request. When the provider confirms manual compaction, the notice of who requested it and why waits for the conversation's next ordinary input. Use it when get_agent_status shows a high context size and more work is coming.",
     beyondItsRails: 'nothing-its-rails-do-not-cover',
     input: {
-      agent: z.string().describe('The conversation, by any of its labels.'),
-      reason: z.string().describe('Why you are asking for compaction.'),
+      agent: agentToolHandlerInput(z.string().describe('The conversation, by any of its labels.')),
+      reason: agentToolHandlerInput(z.string().describe('Why you are asking for compaction.')),
     },
     call: (args) =>
       guarded(async () => {
-        const { agent, reason } = args
+        const { agent, reason } = toolArgumentsAtHandler(args)
         if (
           typeof agent !== 'string' ||
           typeof reason !== 'string' ||
