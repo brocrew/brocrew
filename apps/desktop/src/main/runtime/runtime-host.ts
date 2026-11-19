@@ -23016,19 +23016,13 @@ export class RuntimeHost implements LiveHost {
     // ⚠️ The question is asked inside a `try`, so a store that fails to answer it is a REJECTION
     // like every other refusal here, and never a throw out of this non-`async` method.
     let now: boolean
-    let heldForServices: boolean
     try {
       now = this.takesADeliveryNow(sessionId)
-      heldForServices = !now && this.servicesHoldItBack(sessionId, by)
     } catch (error) {
       return Promise.reject(error)
     }
     const deliver = (to: string): Promise<QueueOutcome> =>
       this.queueAs(to, text, by, attachments, kind, facts, says, 'as-it-finds-it')
-    // ⛔ While services are off, an agent's words start no service: they wait for its next start.
-    if (heldForServices) {
-      return this.leaveForTheServicesStart(sessionId, text, by, attachments, kind, facts, says)
-    }
     if (now) {
       // ⚑ **D-017 · R1** — straight in; a stop under it is waited out and it is started again.
       return this.queueAs(
