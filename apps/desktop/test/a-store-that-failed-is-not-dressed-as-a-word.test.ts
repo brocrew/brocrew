@@ -207,9 +207,9 @@ describe('663 M33 · a store that failed is not dressed as a word', () => {
     }
     expect(host.sessionIds).toContain(worker)
     const events = store.events(worker).map(({ event }) => event)
-    const queued = events.filter(
-      (event) => event.type === 'message_queued' && event.text === 'carry on',
-    )
+    const queued = events
+      .filter((event) => event.type === 'message_queued')
+      .filter((event) => event.text === 'carry on')
     expect(queued).toEqual([expect.objectContaining({ messageId: expect.any(String) })])
     expect(events).toContainEqual(
       expect.objectContaining({
