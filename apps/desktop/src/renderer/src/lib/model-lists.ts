@@ -262,8 +262,12 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
       inFlight.clear()
       const next = { ...lists.value }
       for (const [key, parts] of asked) {
-        if (profileOf(parts.profileId) !== profileId && next[key]?.state !== 'asking') continue
         const held = next[key]
+        if (profileOf(parts.profileId) !== profileId && held?.state !== 'asking') {
+          if (held?.state === 'answered' && held.refreshing)
+            next[key] = { state: 'answered', list: held.list }
+          continue
+        }
         if (options?.retainAnswered && held?.state === 'answered' && held.list.notAsked === null) {
           next[key] = { ...held, refreshing: true }
           continue
