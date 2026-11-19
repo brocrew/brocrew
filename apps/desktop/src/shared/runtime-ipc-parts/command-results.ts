@@ -569,9 +569,6 @@ export interface RuntimeCommandResults {
   checkDeleteConversation: DeleteVerdict
   deleteConversation: DeleteOutcome
   /** The switch as it now stands, read back rather than assumed from what was asked. */
-  setSpawningEnabled: { spawningEnabled: boolean }
-  /** Whether services are on now, read back rather than assumed from what was asked. */
-  setServicesOn: { servicesOn: boolean }
   /**
    * The default as it now stands, read back rather than assumed from what was asked — the same
    * rule as the switch above, and load-bearing for the same reason: the store answers `'ask'` for

@@ -600,21 +600,10 @@ const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
   restoreConversation: { how: 'plain-by-construction' },
   checkDeleteConversation: { how: 'plain-by-construction' },
   deleteConversation: { how: 'plain-by-construction' },
-  // ⛔ **Not `nothing`.** `setSpawningEnabled` carries a boolean; the wrapper is an object literal
-  // written by `agent-store.ts` and a `boolean` is a primitive however it was read. §7 is where that
-  // is measured rather than claimed, because this row is the value 105 others carry.
-  // ⚠️ **It said *41* and the assertion below said 43** (found by `446`, which moved neither). The
-  // first number went 42 → 43 at `438`'s `digest` and this sentence did not, so it was one short
-  // before this dispatch opened the file — `a-number-can-survive-the-death-of-its-derivation`, and
-  // the reason the split is asserted at all is that a prose count has nothing holding it.
-  setSpawningEnabled: { how: 'plain-by-construction' },
-  // A person's services switch: a boolean, in a literal the preload writes, as the switch above.
-  setServicesOn: { how: 'plain-by-construction' },
   // 500. ⛔ **`plain-by-construction`, and it earns the label on BOTH halves** (363, 365): the
   // preload builds the outer literal itself (`{ kind, ...input }`), `agent-store.ts` writes
   // `{ mode }` at its own call site, and `mode` is a WORD — a primitive however it was read.
-  // ⚠️ **`setSpawningEnabled` above is the shape, not `revealPath`**: the thing that makes a
-  // row `handed-over` is a field somebody ELSE made, and a two-member union is not one. ⛔ It is
+  // A row is `handed-over` when somebody else created a field on the wire. It is
   // also the reason `ipc.ts` takes a `z.enum` rather than a `z.string()` — the vocabulary is this
   // app's own code on both sides of the wire.
   setDefaultApprovalMode: { how: 'plain-by-construction' },
@@ -1133,9 +1122,9 @@ function agentStoreOverTheWire(): {
       seen.push({ verb: 'setExternalMcpServers', input })
       return roster.identities[0] ?? null
     },
-    setSpawningEnabled: async (input: unknown) => {
-      seen.push({ verb: 'setSpawningEnabled', input })
-      return { spawningEnabled: false }
+    setDefaultApprovalMode: async (input: unknown) => {
+      seen.push({ verb: 'setDefaultApprovalMode', input })
+      return { defaultApprovalMode: 'auto' }
     },
   }) as unknown as RuntimeBridge
   return { store: createAgentStore(bridge), seen }
@@ -1147,7 +1136,7 @@ describe('§7 · the agent store crosses a wire (363)', () => {
     await store.load()
     const ids = ['ems:docs']
     expect(await store.saveExternalMcpServers('pm', ids)).toBeNull()
-    expect(await store.setSpawning(false)).toBeNull()
+    expect(await store.setApprovalDefault('auto')).toBeNull()
 
     // ⛔ the save re-reads, so `agentIdentities` is here twice — the order is the store's, not this
     // test's, and pinning it is what would notice a save that stopped refreshing the list.
@@ -1155,14 +1144,14 @@ describe('§7 · the agent store crosses a wire (363)', () => {
       'agentIdentities',
       'setExternalMcpServers',
       'agentIdentities',
-      'setSpawningEnabled',
+      'setDefaultApprovalMode',
     ])
     // ⚑ The store calls `bridge.agentIdentities()` with no argument at all, so the far side is
     // handed nothing rather than an empty wrapper.
     expect(seen[0]).toBeDefined()
     expect(seen[0]?.input).toBeUndefined()
     expect(seen[1]?.input).toEqual({ profileId: 'pm', externalMcpServerIds: ['ems:docs'] })
-    expect(seen[3]?.input).toEqual({ enabled: false })
+    expect(seen[3]?.input).toEqual({ mode: 'auto' })
     // ⚠️ The half that says this really went over a wire rather than past one: the far side holds a
     // copy. Without it every assertion above would pass just as well against a passthrough.
     expect((seen[1]?.input as { externalMcpServerIds: unknown }).externalMcpServerIds).not.toBe(ids)
