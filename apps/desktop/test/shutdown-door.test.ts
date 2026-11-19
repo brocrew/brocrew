@@ -239,6 +239,7 @@ const SAMPLES: Record<RuntimeCommandKind, RuntimeCommand> = {
   readConversationIdentity: { kind: 'readConversationIdentity', sessionId: SESSION },
   readConversationIdentities: { kind: 'readConversationIdentities', sessionIds: [SESSION] },
   readConversationTasks: { kind: 'readConversationTasks', sessionId: SESSION },
+  readAllConversationTasks: { kind: 'readAllConversationTasks', sessionId: SESSION, filter: 'all' },
   readConversationTitleHistory: { kind: 'readConversationTitleHistory', sessionId: SESSION },
   renameConversation: {
     kind: 'renameConversation',

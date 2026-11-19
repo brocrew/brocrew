@@ -9,7 +9,7 @@ import type {
   ConversationIdentityBatchInput,
   ConversationTitleHistoryInput,
 } from '../shared/conversation-title'
-import type { ConversationTaskPageInput } from '../shared/conversation-task-page'
+import type { AllConversationTasksInput, ConversationTaskPageInput } from '../shared/conversation-task-page'
 import type { HandedPath } from '../shared/attachment-contracts'
 import type { SessionSettingChanged } from '../shared/model-choice-contracts'
 import type { ListingAnswer } from '../shared/listing-published'
@@ -541,6 +541,8 @@ const runtime: RuntimeBridge = Object.freeze({
     command({ kind: 'readConversationIdentities', sessionIds: [...sessionIds] }),
   readConversationTasks: ({ sessionId, cursor }: ConversationTaskPageInput) =>
     command({ kind: 'readConversationTasks', sessionId, cursor }),
+  readAllConversationTasks: ({ sessionId, filter, text, cursor }: AllConversationTasksInput) =>
+    command({ kind: 'readAllConversationTasks', sessionId, filter, text, cursor }),
   readConversationTitleHistory: ({ sessionId, before }: ConversationTitleHistoryInput) =>
     command({
       kind: 'readConversationTitleHistory',

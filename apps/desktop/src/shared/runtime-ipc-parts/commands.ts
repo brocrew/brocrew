@@ -4,7 +4,7 @@ import type {
   ConversationIdentityBatchInput,
   ConversationTitleHistoryInput,
 } from '../conversation-title'
-import type { ConversationTaskPageInput } from '../conversation-task-page'
+import type { AllConversationTasksInput, ConversationTaskPageInput } from '../conversation-task-page'
 import type { ExternalMcpServerReach } from '../external-mcp'
 import type { DecideMoveRequestInput } from '../move-contracts'
 import type { OwnNotesWrite } from '../own-notes'
@@ -628,6 +628,7 @@ export type RuntimeCommand =
   | { kind: 'readConversationIdentity'; sessionId: string }
   | ({ kind: 'readConversationIdentities' } & ConversationIdentityBatchInput)
   | ({ kind: 'readConversationTasks' } & ConversationTaskPageInput)
+  | ({ kind: 'readAllConversationTasks' } & AllConversationTasksInput)
   | ({ kind: 'readConversationTitleHistory' } & ConversationTitleHistoryInput)
   | { kind: 'renameConversation'; conversation: string; title: string }
   /**

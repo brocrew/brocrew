@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { ConversationTaskPageResult } from '../src/shared/conversation-task-page'
+import type {
+  AllConversationTasksInput,
+  AllConversationTasksResult,
+  ConversationTaskPageResult,
+} from '../src/shared/conversation-task-page'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
 describe('the selected conversation task panel', () => {
@@ -130,5 +134,120 @@ describe('the selected conversation task panel', () => {
       next: null,
     })
     expect(await read('sess_missing')).toEqual({ ok: false, reason: 'unknown-conversation' })
+  })
+
+  it('pages All tasks in recorded order with the root and full filtered counts', async () => {
+    const subject = world.store.rootOf(target)!
+    const parent = world.store.rootOf(giver)!
+    const at = world.clock + 200
+    const pieces = Array.from({ length: 22 }, (_, index) => {
+      const piece = `work_all_${String(22 - index).padStart(2, '0')}`
+      const number = world.store.numberUnder(parent.piece)
+      const task = {
+        piece,
+        label: `${parent.label}.${number}`,
+        parent: parent.piece,
+        givenBy: giver,
+        title: index === 0 || index === 20 ? 'Index sources' : 'Read files',
+        brief: 'The original brief',
+      }
+      world.store.recordGive(
+        { ...task, number, owner: target, folder: null, inputs: [] },
+        world.store.nextOrdinal(target),
+        {
+          type: 'work_given',
+          ...task,
+          definitionOfDone: 'Sources checked',
+          ...(index === 0 ? { messageId: 'msg_all_held' } : {}),
+        },
+        index === 21 ? at - 1 : at,
+      )
+      return piece
+    })
+    world.store.append(
+      target,
+      world.store.nextOrdinal(target),
+      {
+        type: 'work_replied',
+        piece: pieces[20]!,
+        outcome: 'done',
+        summary: 'Indexed',
+        resources: [],
+      },
+      at + 1,
+    )
+    const all = async (
+      options: Partial<AllConversationTasksInput> = {},
+    ): Promise<AllConversationTasksResult> =>
+      (await executeRuntimeCommand(host, world.window, {
+        kind: 'readAllConversationTasks',
+        sessionId: target,
+        filter: 'all',
+        ...options,
+      })) as AllConversationTasksResult
+    const ledger = world.store.events(target)
+    const starts = world.handles.length
+    const first = await all()
+    if (!first.ok || first.next === null) throw new Error('missing All tasks cursor')
+    expect(first.root).toMatchObject({ label: subject.label })
+    expect(first.tasks.map(({ piece }) => piece)).toEqual(pieces.slice(0, 20))
+    expect(first.tasks[0]).toMatchObject({
+      from: giver,
+      fromIdentity: 'giver',
+      state: 'waiting',
+      definitionOfDone: 'Sources checked',
+    })
+    const counts = { all: 23, active: 20, open: 2, closed: 1 }
+    expect(first).toMatchObject({ counts, matched: 23, newestOpenMatch: pieces[21] })
+    const last = await all({ cursor: first.next })
+    if (!last.ok) throw new Error('missing All tasks continuation')
+    expect(last.tasks.map(({ piece }) => piece)).toEqual(pieces.slice(20))
+    expect(last.tasks[0]).toMatchObject({ state: 'answered', outcome: 'done' })
+    expect(last).toMatchObject({
+      root: null,
+      counts,
+      matched: 23,
+      newestOpenMatch: pieces[21],
+      next: null,
+    })
+    expect(await all({ filter: 'closed', text: ' INDEX ' })).toMatchObject({
+      root: null,
+      tasks: [{ piece: pieces[20] }],
+      counts,
+      matched: 1,
+      newestOpenMatch: null,
+    })
+    expect(await all({ filter: 'open' })).toMatchObject({
+      root: { label: subject.label },
+      tasks: [{ piece: pieces[0] }],
+      counts,
+      matched: 2,
+      newestOpenMatch: pieces[0],
+    })
+    expect(await all({ text: subject.label })).toMatchObject({
+      root: { label: subject.label },
+      tasks: [],
+      counts,
+      matched: 1,
+      newestOpenMatch: null,
+    })
+    const invalid = { ok: false, reason: 'invalid-cursor' }
+    expect(await all({ cursor: first.next, text: 'Read files' })).toEqual(invalid)
+    expect(await all({ cursor: first.next, filter: 'active' })).toEqual(invalid)
+    expect(await all({ cursor: first.next, sessionId: giver })).toEqual(invalid)
+    expect(await all({ sessionId: 'sess_missing' })).toEqual({
+      ok: false,
+      reason: 'unknown-conversation',
+    })
+    expect(world.store.events(target)).toEqual(ledger)
+    expect(world.handles).toHaveLength(starts)
+
+    world.db
+      .prepare(
+        "UPDATE events SET payload = 'invalid json' WHERE session_id = ? AND type = 'work_given' AND json_extract(payload, '$.piece') = ?",
+      )
+      .run(target, pieces[19])
+    expect(await all({ cursor: first.next })).toEqual(invalid)
+    expect(await all()).toMatchObject({ ok: true, counts: null, matched: null, rowsUnread: 1 })
   })
 })

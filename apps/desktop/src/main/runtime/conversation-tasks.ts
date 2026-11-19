@@ -1,12 +1,16 @@
 import { z } from 'zod'
 import { TASK_IS_OPEN } from '../../shared/tasks'
 import type { PieceRow, StatusLine, TaskState } from '../../shared/task-contracts'
+import { ALL_TASKS_FILTERS } from '../../shared/conversation-task-page'
 import type {
+  AllConversationTasksInput,
+  AllConversationTasksResult,
   ConversationTaskPageInput,
   ConversationTaskPageResult,
   ConversationTaskPageRow,
 } from '../../shared/conversation-task-page'
 import type { SessionStore } from '../db/session-store'
+import type { WorkEdge } from '../../shared/who-called-whom'
 import { rowsUnreadOnce } from '../db/rows-unread'
 import { describeConversationForRead, resolveConversationAddress } from './conversation-address'
 
@@ -21,6 +25,13 @@ const panelCursorShape = cursorShape
   .omit({ listing: true })
   .extend({ current: z.string().nullable() })
 const OTHER_TASKS_PER_PAGE = 5
+const ALL_TASKS_PER_PAGE = 20
+const allTasksCursor = z.object({
+  conversation: z.string(),
+  filter: z.enum(ALL_TASKS_FILTERS),
+  text: z.string(),
+  piece: z.string(),
+})
 
 type TaskPoint = { readonly piece: string; readonly at: number }
 const olderThan = (row: TaskPoint, cursor: TaskPoint): boolean =>
@@ -156,6 +167,97 @@ function heldTask(row: PieceRow): ConversationTaskPageRow {
     state,
     givenAt,
     statusLine: statusOf(row.statusLine),
+  }
+}
+
+export function readAllConversationTasks(
+  input: AllConversationTasksInput,
+  store: Pick<
+    SessionStore,
+    'conversationBinding' | 'workThisOneWasGiven' | 'rootOf' | 'turnBlockRootLines' | 'rootDoneCondition'
+  >,
+): AllConversationTasksResult {
+  const { sessionId: conversation, filter } = input
+  if (store.conversationBinding(conversation) === null)
+    return { ok: false, reason: 'unknown-conversation' }
+
+  const text = input.text?.trim().toLocaleLowerCase() ?? ''
+  const key = { conversation, filter, text }
+  const invalid = { ok: false, reason: 'invalid-cursor' } as const
+  let after: string | undefined
+  if (input.cursor !== undefined) {
+    try {
+      const cursor = allTasksCursor.parse(
+        JSON.parse(Buffer.from(input.cursor, 'base64url').toString('utf8')),
+      )
+      if (cursor.conversation !== conversation || cursor.filter !== filter || cursor.text !== text)
+        return invalid
+      after = cursor.piece
+    } catch {
+      return invalid
+    }
+  }
+
+  const walk = store.workThisOneWasGiven(conversation)
+  const rows = walk.rows
+  const from = after === undefined ? -1 : rows.findIndex(({ piece }) => piece === after)
+  if (after !== undefined && from < 0) return invalid
+
+  const matches = (label: string, title: string | null): boolean =>
+    `${label} ${title ?? ''}`.toLocaleLowerCase().includes(text)
+  const rootRow = store.rootOf(conversation)
+  const rootLines = rootRow === null ? null : store.turnBlockRootLines(rootRow.piece)
+  const rootMatches =
+    rootRow !== null &&
+    rootLines !== null &&
+    (filter === 'all' || filter === 'open') &&
+    matches(rootRow.label, rootLines.title)
+  const root =
+    after === undefined && rootMatches
+      ? {
+          label: rootRow.label,
+          title: rootLines.title,
+          definitionOfDone: store.rootDoneCondition(rootRow.piece),
+        }
+      : null
+  const counts = {
+    all: rows.length + Number(rootRow !== null),
+    active: 0,
+    open: Number(rootRow !== null),
+    closed: 0,
+  }
+  let matched = Number(rootMatches)
+  let newestOpenMatch: string | null = null
+  const tasks: WorkEdge[] = []
+  let more = false
+  for (const [index, row] of rows.entries()) {
+    const open = TASK_IS_OPEN[row.state] === true
+    const bucket = !open ? 'closed' : row.state === 'working' ? 'active' : 'open'
+    counts[bucket]++
+    if ((filter !== 'all' && filter !== bucket) || !matches(row.label, row.title)) continue
+    matched++
+    if (open) newestOpenMatch = row.piece
+    if (index <= from) continue
+    if (tasks.length === ALL_TASKS_PER_PAGE) more = true
+    else tasks.push(row)
+  }
+
+  const rowsUnread = walk.rowsUnread + Number(rootRow !== null && rootLines === null)
+  const ledgersSkipped = walk.ledgersSkipped ?? 0
+  const complete = rowsUnread === 0 && ledgersSkipped === 0
+  return {
+    ok: true,
+    conversation,
+    root,
+    tasks,
+    counts: complete ? counts : null,
+    matched: complete ? matched : null,
+    newestOpenMatch,
+    next: more
+      ? Buffer.from(JSON.stringify({ ...key, piece: tasks.at(-1)!.piece })).toString('base64url')
+      : null,
+    rowsUnread,
+    ledgersSkipped,
   }
 }
 

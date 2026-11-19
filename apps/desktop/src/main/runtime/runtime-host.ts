@@ -107,10 +107,14 @@ import { KeptFiles } from './kept-files'
 import { WorkReads } from './work-reads'
 import {
   listConversationTasks,
+  readAllConversationTasks,
   readConversationTasks,
   type ConversationTasksInput,
 } from './conversation-tasks'
-import type { ConversationTaskPageInput } from '../../shared/conversation-task-page'
+import type {
+  AllConversationTasksInput,
+  ConversationTaskPageInput,
+} from '../../shared/conversation-task-page'
 import { GiveWork } from './give-work'
 import type {
   ConversationIdentity,
@@ -11173,6 +11177,10 @@ export class RuntimeHost implements LiveHost {
 
   readConversationTasks(input: ConversationTaskPageInput) {
     return readConversationTasks(input, this.deps.store)
+  }
+
+  readAllConversationTasks(input: AllConversationTasksInput) {
+    return readAllConversationTasks(input, this.deps.store)
   }
 
   /**

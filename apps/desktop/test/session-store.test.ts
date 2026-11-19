@@ -869,9 +869,9 @@ function fakeBridge() {
     readConversationIdentity: async () => null,
     readConversationIdentities: async () => [],
     readConversationTasks: async () => ({ ok: false, reason: 'unknown-conversation' }),
+    readAllConversationTasks: async () => ({ ok: false, reason: 'unknown-conversation' }),
     readConversationTitleHistory: async () => null,
-    // D-016 · R4 · ⛔ **`no-piece-by-that-name`, the refusal arm, as `setAgentDisplayName` answers
-    // its own**: this double holds no work, so there is no piece to rename — in the door's own words.
+    // D-016 · R4 · This double has no conversation or piece to rename.
     renameConversation: async () => ({
       ok: false as const,
       code: 'unknown-conversation' as const,
