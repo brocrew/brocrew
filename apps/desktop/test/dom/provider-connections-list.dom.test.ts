@@ -218,6 +218,44 @@ it('rereads metadata when the existing provider login notice changes', async () 
   expect(m.q('provider-connections').textContent).not.toContain('Before')
 })
 
+it('keeps known connections and readiness visible while the same login is rechecked', async () => {
+  const pending = held<ProviderConnection[]>()
+  let calls = 0
+  const { m, props } = card(() =>
+    ++calls === 1 ? Promise.resolve(rows('claude', 'Known account')) : pending.promise,
+  )
+  await settle()
+  expect(m.q('provider-connection').textContent).toContain('Known account')
+  expect(m.q('provider-connection').textContent).toContain('Ready')
+  props.loginMoved++
+  await settle()
+  expect(m.all('provider-connection')).toHaveLength(1)
+  expect(m.q('provider-connection').textContent).toContain('Known account')
+  expect(m.q('provider-connection').textContent).toContain('Ready')
+  expect(m.q('provider-connections').textContent).not.toContain('Reading…')
+  pending.answer(rows('claude', 'Refreshed account'))
+  await settle()
+  expect(m.q('provider-connection').textContent).toContain('Refreshed account')
+  expect(m.q('provider-connections').getAttribute('aria-busy')).toBe('false')
+})
+
+it('clears known connections immediately when switching provider during a read', async () => {
+  const pending = held<ProviderConnection[]>()
+  let calls = 0
+  const { m, props } = card(() =>
+    ++calls === 1 ? Promise.resolve(rows('claude', 'Previous provider')) : pending.promise,
+  )
+  await settle()
+  expect(m.q('provider-connection').textContent).toContain('Previous provider')
+  props.provider = 'codex'
+  await settle()
+  expect(m.all('provider-connection')).toHaveLength(0)
+  expect(m.q('provider-connections').textContent).not.toContain('Previous provider')
+  pending.answer(rows('codex', 'Next provider'))
+  await settle()
+  expect(m.q('provider-connection').textContent).toContain('Codex · Next provider')
+})
+
 for (const state of ['absent', 'unknown'] as const) {
   it(`does not label an ${state} sign-in route as In use`, async () => {
     window.api.runtime.checkProviderAuth = async () => ({ state, reason: 'Fictional status' })
