@@ -157,6 +157,32 @@ describe('Service lifecycle', () => {
   }
 
   describe('Queued work and delivery', () => {
+    it('refuses a Give before recording work when the service queue is not owned', async () => {
+      world.anAgent('browser-driver')
+      world.anAgent('caller', 'nothing kept')
+      const host = world.aHost({ owned: false })
+      const caller = await world.aPersonOpens(host, 'caller')
+      const recorded = world.conversationsRecorded()
+      const started = [...world.startedAs]
+      const said = await call(host, caller, 'give_work', {
+        profile: 'browser-driver',
+        title: 'A piece',
+        brief: 'a piece',
+        definition_of_done: 'The requested result and its checks are recorded.',
+      })
+      expect(said.structured, said.text).toMatchObject({
+        outcome: 'refused',
+        rail: 'service-queue-not-owned',
+        reason:
+          'Not sent: this app may be open twice. Ask the person with request_action to close any other BroCrew instance using this workspace and reopen this one, or give the work to another agent.',
+      })
+      expect(said.structured).not.toHaveProperty('receipt')
+      expect(said.text.match(/Not sent:/gu)).toHaveLength(1)
+      expect(world.store.piecesGivenBy(caller)).toEqual([])
+      expect(world.conversationsRecorded()).toBe(recorded)
+      expect(world.startedAs).toEqual(started)
+    })
+
     it('hands the next piece over after the current one is withdrawn', async () => {
       const { host, caller, service, one, two, releaseTheTurn } = await aServiceWithWorkQueued()
       expect(stateOf(service, two.piece)).toBe('waiting')
