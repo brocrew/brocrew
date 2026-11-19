@@ -7,21 +7,13 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type { AgentToolset } from '@brobot2/runtime'
-import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from './helpers/giver-notice-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
-import { resourcesRoot } from '../src/main/resources/resources'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
-import {
-  fixtureProviderConfig,
-  RecordingSink,
-  syntheticProviderHome,
-  neutralHostDeps,
-} from './lib/host-fixture'
+import { numberedFixtureHostPaths, RecordingSink } from './lib/host-fixture'
 /** An outbound Message or Ask uses an exact conversation address on either provider. */
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -38,8 +30,6 @@ describe('a profile name reaches its one conversation', () => {
   let db: AppDatabase
   let store: SessionStore
   let host: RuntimeHost
-  let issued: FakeProviderSessions
-  let counter: number
   let clock: number
   let window: RecordingSink
   const tick = (): number => clock++
@@ -51,20 +41,12 @@ describe('a profile name reaches its one conversation', () => {
     applyMigrations(db, migrationsFolder)
     clock = 9_000_000
     store = createSessionStore(db, tick)
-    counter = 0
-    issued = new FakeProviderSessions()
+    const issued = new FakeProviderSessions()
     host = new RuntimeHost({
       store,
-      ...neutralHostDeps(() => userData),
-      resourcesRoot: () => resourcesRoot(userData),
-      createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions: issued }),
-      prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
-      newSessionId: () => `sess_${++counter}`,
-      now: tick,
+      ...numberedFixtureHostPaths(() => userData, tick),
+      createRuntime: (provider) => new FakeRuntime(provider, { sessions: issued }),
       interruptWaitMs: 40,
-      readProviderConfig: fixtureProviderConfig,
     })
     window = new RecordingSink('webContents:1')
   })
