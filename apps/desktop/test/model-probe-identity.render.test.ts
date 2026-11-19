@@ -153,7 +153,6 @@ describe('293 §5 · an answer applies only while it still owns the profile', ()
   })
 })
 
-
 describe('a login refresh retains the last model answer while disowning older requests', () => {
   it('retains rows while refreshing and never lets the pre-login request win', async () => {
     const old = deferred()
@@ -196,7 +195,6 @@ describe('a login refresh retains the last model answer while disowning older re
   })
 })
 
-
 it('settles a failed forced refresh without promoting retained choices to current readiness', async () => {
   const fresh = deferred()
   let read = () => Promise.resolve(ACCOUNT_A)
@@ -212,7 +210,6 @@ it('settles a failed forced refresh without promoting retained choices to curren
   expect(lists.readiness('claude', 'work')).toMatchObject({ state: 'settled', ready: null })
   expect(lists.choices('claude', 'work')).toBeNull()
 })
-
 
 it('settles another profile when ordinary forget disowns its pending catalogue request', async () => {
   const pending = deferred()
