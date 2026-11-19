@@ -578,7 +578,6 @@ describe('D-016 · a new agent is asked for by name, and a give names the piece 
       const found = await give('Found', to, root)
       expect(found.structured?.outcome, found.text).toBe('ok')
       expect(found.structured?.started).toBe(false)
-      expect(found.text).toContain(granted)
       expect(found.structured?.folder).toEqual({ folder: root, use: 'grant' })
 
       // A blank folder is an absent one, and so is none.

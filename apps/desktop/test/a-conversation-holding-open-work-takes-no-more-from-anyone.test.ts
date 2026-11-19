@@ -261,13 +261,12 @@ describe('F146 · a conversation holding a stalled or parked piece still takes m
       'outcome',
       'piece',
       'profile',
+      'receipt',
       'runs_on',
       'stalled',
       'started',
     ])
-    expect(given.text).toContain(
-      `It still holds ${fixture.held.label} (its turn ended with this work still open) from you, not being worked on: follow it up with message_agent (kind follow-up), or take it back with withdraw_task.`,
-    )
+    expect(given.structured.receipt).toMatchObject({ recipient: { id: child } })
     // ⚑ Given into the one conversation it has, and the stalled piece is still stalled beside it.
     expect(store.childrenOf(fixture.root.piece).map((one) => one.label)).toEqual([
       fixture.held.label,

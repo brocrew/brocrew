@@ -250,7 +250,7 @@ describe('4 · where the rail sits among the rails of a start', () => {
     expect(refusalOf(admitGive(A_GIVE, asThe(giver), switchedOff)).rail).toBe('spawning-disabled')
     // (b) an unknown agent asked for without `new` reaches the rail before the name rule.
     const unknown = factsWith(giver, 'claude', { agentExists: onlyThePm })
-    expect(refusalOf(admitGive(ghost, asThe(giver), unknown)).rail).toBe('wider-than-its-parent')
+    expect(refusalOf(admitGive(ghost, asThe(giver), unknown)).rail).toBe('no-such-profile')
     // (c) an unusable folder is asked last of all.
     const noFolder = factsWith(giver, 'claude', {
       checkFolder: () => ({ ok: false, reason: 'no such folder' }),

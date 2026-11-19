@@ -191,7 +191,7 @@ export function createGiveWorkTool(
     name: 'give_work',
     handlerOwnsMissingInput: true,
     description:
-      'Give a profile a task. Set to to a conversation address to add the task there, or use "new" and supply conversation_title for a new job. A service has one conversation, so name its profile and leave to out. Use under for your task this belongs to. Every valid give records the task before starting its provider. Anything over 2,000 characters arrives as a file the reader is pointed to. An existing conversation keeps its provider. Its model and effort can change from this task on unless the person set either, then it keeps both. The receipt names who received the task, the conversation address and whether it was sent or held.',
+      'Give a profile a task. The to field says where it goes. A conversation address adds the task there. "new" starts a new conversation for a new job and requires conversation_title. A service has one conversation, so name its profile and leave to out. Use under for your task this belongs to. Every valid give records the task before starting its provider. Anything over 2,000 characters arrives as a file the reader is pointed to. An existing conversation keeps its provider. Its model and effort can change from this task on unless the person set either, then it keeps both. The receipt names who received the task, the conversation address and whether it was sent or held.',
     /**
      * **486 · a person is asked as well** (HO-031 §2.4) — as `spawn_agent` was.
      *
@@ -344,6 +344,7 @@ export function createGiveWorkTool(
             ...(given.queuedBehind === undefined ? {} : { queued_behind: given.queuedBehind }),
             ...(given.inputs.length === 0 ? {} : { inputs: given.inputs }),
             ...(folder === null ? {} : { folder }),
+            ...(given.grantReach === null ? {} : { folder_reach: given.grantReach }),
             ...(stalled.length === 0 ? {} : { stalled: stalled.map((one) => one.label) }),
           },
           said + folderProblem + notice + overflow,

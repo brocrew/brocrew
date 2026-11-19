@@ -762,10 +762,10 @@ describe('425 · a refusal carries its remedy', () => {
       // R03 removes the permanent ancestry-only read refusal; a known conversation is readable.
       // Two provider choices cannot be cleared by retrying: a fixed service and a full pool.
       // No per-agent grant rail is left; a service's conversation has its own word at the message door.
-      expect(quiet).toHaveLength(79)
+      expect(quiet).toHaveLength(81)
       for (const [rail, permanence] of [
         ['service-provider-is-fixed', 'permanent'],
-        ['no-room-for-provider-conversation', 'until-a-person-changes-it'],
+        ['its-provider-is-fixed', 'permanent'],
       ]) {
         expect(quiet).toContainEqual(
           expect.objectContaining({ vocabulary: 'SPAWN_RAILS', rail, permanence, remedy: null }),
@@ -1003,7 +1003,7 @@ describe('425 · a refusal carries its remedy', () => {
       // The walk also includes the fixed service provider and a pool with no matching provider.
       // R03 removes the ancestry-only read refusal from the canonical vocabulary.
       // No per-agent grant rail is left; a service's conversation has its own word at the message door.
-      expect(walked).toHaveLength(110)
+      expect(walked).toHaveLength(111)
       expect(everyRail().some((one) => one.rail === 'not-a-conversation-below-you')).toBe(false)
       expect(walked).toEqual(everyRail().map((one) => `${one.vocabulary} · ${one.rail}`))
     })

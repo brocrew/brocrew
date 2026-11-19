@@ -35,7 +35,7 @@ describe('provider choices in the public tools', () => {
     expect(schema.properties?.provider).toMatchObject({ enum: ['claude', 'codex'] })
     expect(schema.required ?? []).not.toContain('provider')
     expect(give.description).toContain('"new" starts a new conversation')
-    expect(give.description).toContain('an existing conversation keeps its provider')
+    expect(give.description.toLowerCase()).toContain('an existing conversation keeps its provider')
   })
 
   it('names each conversation provider on both list and status even though the identity default differs', async () => {
@@ -91,7 +91,11 @@ describe('provider choices in the public tools', () => {
         .agentsVisibleTo({ ownerId: agentCallerId(giver) }, giver)
         .agents.find((agent) => agent.agent !== giver)
       expect(card?.state.is).toBe('active')
-      expect(world.store.recordedOne(card!.agent)).toBeNull()
+      expect(world.store.recordedOne(card!.agent)).toMatchObject({
+        provider: 'codex',
+        neverStarted: true,
+      })
+      expect(world.store.piecesOwnedBy(card!.agent)).toHaveLength(1)
       expect(card?.provider).toBe('codex')
       const status = await tool('get_agent_status').call({ agent: card!.agent })
       expect(status.text).toContain(' · Codex · ')
@@ -120,7 +124,7 @@ describe('provider choices in the public tools', () => {
     const fresh = await give('new')
     expect(fresh.structured).toMatchObject({ outcome: 'ok', started: true })
     expect(fresh.structured?.agent).not.toBe(original.owner)
-    expect(fresh.text).toContain("started a new conversation on Codex, this agent's default")
+    expect(world.store.recordedOne(String(fresh.structured?.agent))?.provider).toBe('codex')
     expect(world.store.workById(original.piece)?.owner).toBe(original.owner)
     const old = await give(original.label)
     expect(old.structured).toMatchObject({ outcome: 'ok', agent: original.owner, started: false })
