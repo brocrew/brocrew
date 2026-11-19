@@ -8,8 +8,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import {
   canonicalAddressOf,
-  conversationDisplayTitle,
-  conversationLine,
+  describeConversationForRead,
   resolveConversationAddress,
 } from '../src/main/runtime/conversation-address'
 
@@ -133,24 +132,28 @@ describe("a conversation's first task", () => {
       null,
     )
     conversation('sess_without_tasks', 'sess_pm', 'fictional-reader')
-    expect(conversationDisplayTitle(store, 'sess_without_tasks')).toBe('Fictional Reader')
+    expect(describeConversationForRead(store, 'sess_without_tasks').title).toBe('Fictional Reader')
     const address = given('sess_pm', 'sess_dev', 'work_first', AT + 20)
     given('sess_lead', 'sess_dev', 'work_second', AT + 1)
-    expect(conversationLine(store, 'sess_dev')).toBe(`conversation ${address} · the work_second`)
+    expect(describeConversationForRead(store, 'sess_dev').line).toBe(
+      `conversation ${address} · the work_second`,
+    )
     store.append(
       'sess_dev',
       2,
       { type: 'work_retitled', piece: 'work_second', title: 'Current task title', by: null },
       AT + 10,
     )
-    expect(conversationDisplayTitle(store, 'sess_dev')).toBe('Current task title')
+    expect(describeConversationForRead(store, 'sess_dev').title).toBe('Current task title')
     store.titleConversation(
       'sess_dev',
       3,
       { type: 'titled', title: 'Fictional project', author: { kind: 'person' } },
       AT + 11,
     )
-    expect(conversationLine(store, 'sess_dev')).toBe(`conversation ${address} · Fictional project`)
+    expect(describeConversationForRead(store, 'sess_dev').line).toBe(
+      `conversation ${address} · Fictional project`,
+    )
   })
 
   it('§3 a task stored later with an earlier clock time does not take it over', () => {
