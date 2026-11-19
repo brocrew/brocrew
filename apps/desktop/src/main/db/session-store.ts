@@ -39,6 +39,7 @@ export type { WorkRow } from './work-ledger-read'
 import type { AncestryContext } from './work-ancestry-reader'
 import { rowsUnreadOnce, THE_WHOLE_LEDGER, type RowsUnread, type SkipNote } from './rows-unread'
 import type {
+  HolderReconciliationReceipt,
   ReconciliationReceipt,
   WorkRecoveryEvent,
 } from '../../shared/reconciliation-contracts'
@@ -113,7 +114,11 @@ import { committedChangesOf, committedRowOf, type Committed } from './committed-
 import { currentWorkTitle } from './current-work-title'
 import { searchPastWork, closePastWorkSearch, pastWorkSource } from './past-work-search'
 import type { PastWorkSearchResult, PastWorkSource } from '../../shared/past-work-search'
-import { workRecoveryEvent, reconciliationReceipt } from '../../shared/work-reconciliation'
+import {
+  holderReconciliationReceipt,
+  reconciliationReceipt,
+  workRecoveryEvent,
+} from '../../shared/work-reconciliation'
 
 import type { WorkerBorn } from '../profile-execution-file'
 import { workerRegistrationOf } from '../worker-registration'
@@ -954,7 +959,7 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   /** Every saved work row, including roots, for incident reconciliation. */
   reconciliationOwners(): readonly string[]
   reconciliationWork(holders?: ReadonlySet<string>, unread?: RowsUnread): readonly WorkRow[]
-  reconciliationReceiptsForOwner(owner: string): readonly ReconciliationReceipt[]
+  reconciliationReceiptsForOwner(owner: string): readonly HolderReconciliationReceipt[]
   reconciliationRecovery(owner: string): WorkRecoveryEvent | null
   reconciliationDrivenByTurn(owner: string, turn: string): readonly string[]
   reconciliationReceipts(owner: string, piece: string): readonly ReconciliationReceipt[]
@@ -2295,12 +2300,14 @@ export function createSessionStore(
   const selectReconciliationReceipts = db.prepare(
     `SELECT payload, created_at FROM events INDEXED BY events_work_piece_idx
       WHERE session_id = ? AND type = 'work_reconciliation'
+        AND CASE WHEN json_valid(payload) THEN json_extract(payload, '$.kind') IS NOT 'provider-turn-failed' ELSE 1 END
         AND CASE WHEN json_valid(payload) THEN CASE WHEN json_type(payload, '$.piece') = 'text' AND length(CAST(json_extract(payload, '$.piece') AS BLOB)) BETWEEN 1 AND 512 THEN json_extract(payload, '$.piece') END END = ?
       ORDER BY generation, ordinal`,
   )
   const selectUnreadReconciliationReceipt = db.prepare(
     `SELECT 1 FROM events INDEXED BY events_work_piece_idx
       WHERE session_id = ? AND type = 'work_reconciliation'
+        AND CASE WHEN json_valid(payload) THEN json_extract(payload, '$.kind') IS NOT 'provider-turn-failed' ELSE 1 END
         AND CASE WHEN json_valid(payload) THEN CASE WHEN json_type(payload, '$.piece') = 'text' AND length(CAST(json_extract(payload, '$.piece') AS BLOB)) BETWEEN 1 AND 512 THEN json_extract(payload, '$.piece') END END IS NULL
       LIMIT 1`,
   )
@@ -6102,7 +6109,7 @@ export function createSessionStore(
       return (
         selectReconciliationOwnerReceipts.all(owner) as { payload: string; created_at: number }[]
       ).map((row) => {
-        const receipt = reconciliationReceipt(JSON.parse(row.payload), row.created_at)
+        const receipt = holderReconciliationReceipt(JSON.parse(row.payload), row.created_at)
         if (receipt === null) throw new Error('an incident receipt could not be read')
         return receipt
       })

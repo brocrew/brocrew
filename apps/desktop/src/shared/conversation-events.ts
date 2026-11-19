@@ -20,7 +20,11 @@ import type {
   RequestRoutedEvent,
   RequestStrandedEvent,
 } from './question-contracts'
-import type { WorkReconciliationEvent, WorkRecoveryEvent } from './reconciliation-contracts'
+import type {
+  ProviderFailureReconciliationEvent,
+  WorkReconciliationEvent,
+  WorkRecoveryEvent,
+} from './reconciliation-contracts'
 import type { RailPermanence, RefusalRemedy, RefusalTold } from './refusals'
 import type {
   AgentMessageKind,
@@ -1309,6 +1313,7 @@ export interface InstructionChangedEvent {
 
 export type TranscriptEvent =
   | WorkReconciliationEvent
+  | ProviderFailureReconciliationEvent
   | WorkRecoveryEvent
   | WorkerRegisteredEvent
   | RuntimeEvent

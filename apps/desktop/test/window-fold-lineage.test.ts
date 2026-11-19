@@ -406,6 +406,49 @@ const refusedTurn = {
   providerFailure: providerCause,
 } as const
 
+it('reads a taskless failure notice beside a legacy piece receipt after reopening the ledger', () => {
+  const { store, file } = world()
+  const piece = store.piecesOwnedBy('alpha')[0]?.piece
+  if (piece === undefined) throw new Error('the fixture holder needs its original piece')
+  const append = (event: TranscriptEvent, at: number) =>
+    store.append('alpha', store.nextOrdinal('alpha'), event, at)
+  append({ type: 'user_turn', text: 'Try the selected model' }, 10)
+  const failure = store.nextOrdinal('alpha')
+  append(refusedTurn, 11)
+  const existing = {
+    type: 'work_reconciliation',
+    incident: 'the-missing-wait',
+    piece,
+    kind: 'wait-target-missing',
+    since: 5,
+    step: 'person',
+    outcome: 'listed',
+  } as const
+  const notice = {
+    type: 'work_reconciliation',
+    incident: `rc3:0:${failure}:beta`,
+    kind: 'provider-turn-failed',
+    episode: { generation: 0, terminalOrdinal: failure },
+    since: 11,
+    step: 'giver',
+    outcome: 'planned',
+    target: 'beta',
+    messageId: 'the-first-failure-notice',
+  } as const
+  append(existing, 12)
+  append(notice, 13)
+  const reopened = openDatabase(file)
+  cleanup.push(() => reopened.close())
+  const read = createSessionStore(reopened)
+  const pieceReceipt = { ...existing, at: 12 }
+  expect(read.reconciliationReceiptsForOwner('alpha')).toEqual([
+    pieceReceipt,
+    { ...notice, at: 13 },
+  ])
+  expect(read.reconciliationReceipts('alpha', piece)).toEqual([pieceReceipt])
+  expect(read.reconciliationReceiptsForOwner('beta')).toEqual([])
+})
+
 it('reads an ordinary holder failure through wakes, stopped completions and reopen', () => {
   const { store, file } = world()
   const append = (event: TranscriptEvent) => {
