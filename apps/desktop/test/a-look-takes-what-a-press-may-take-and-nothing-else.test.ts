@@ -1,4 +1,8 @@
-import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import {
+  fixtureProviderConfig,
+  neutralHostDeps,
+  RecordingSink as FixtureRecordingSink,
+} from './lib/host-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -89,15 +93,7 @@ class CapturingRuntime extends FakeRuntime {
   }
 }
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
+class RecordingSink extends FixtureRecordingSink {
   events(): TranscriptEvent[] {
     return this.messages.map((message) => message.event)
   }

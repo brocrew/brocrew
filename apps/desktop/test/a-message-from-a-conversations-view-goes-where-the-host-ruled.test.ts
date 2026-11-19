@@ -19,24 +19,11 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore as createLedger, type SessionStore } from '../src/main/db/session-store'
-import {
-  RuntimeHost,
-  THE_APP_ITSELF,
-  type RuntimeEventSink,
-} from '../src/main/runtime/runtime-host'
-import { executeRuntimeCommand } from '../src/main/runtime/ipc'
+import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { createSessionStore, type FirstMessageCameTo } from '../src/renderer/src/lib/session-store'
-import {
-  NOTHING_TO_SEND,
-  type FirstMessageAnswer,
-  type RuntimeBridge,
-  type RuntimeChangeMessage,
-  type RuntimeCommand,
-  type RuntimeEventMessage,
-  type SessionLivenessMessage,
-} from '../src/shared/runtime-ipc'
-import { fixtureRuntimeBridge } from './lib/runtime-command-bridge'
+import { NOTHING_TO_SEND, type FirstMessageAnswer } from '../src/shared/runtime-ipc'
+import { FixtureRuntimeWindow as AWindow } from './lib/runtime-command-bridge'
 import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
@@ -72,41 +59,6 @@ import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-/**
- * One window: the sink the host writes to and, for the renderer store, the bridge over the real
- * dispatcher. The host is a getter because a relaunch builds a new one under the same window code.
- */
-class AWindow implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  alive = true
-  private readonly events: ((message: RuntimeEventMessage) => void)[] = []
-  private readonly liveness: ((message: SessionLivenessMessage) => void)[] = []
-  private readonly changed: ((message: RuntimeChangeMessage) => void)[] = []
-
-  constructor(
-    readonly ownerId: string,
-    private readonly host: () => RuntimeHost,
-  ) {}
-
-  send(message: RuntimeEventMessage): void {
-    for (const listener of [...this.events]) listener(message)
-  }
-
-  sendLiveness(message: SessionLivenessMessage): void {
-    for (const listener of [...this.liveness]) listener(message)
-  }
-
-  announce(change: RuntimeChangeMessage): void {
-    for (const listener of [...this.changed]) listener(change)
-  }
-
-  bridge(): RuntimeBridge {
-    const run = async <T>(command: RuntimeCommand): Promise<T> =>
-      (await executeRuntimeCommand(this.host(), this, command)) as T
-    return fixtureRuntimeBridge(run, this.events, this.liveness, this.changed)
-  }
-}
 
 interface Launch {
   readonly kind: 'start' | 'resume'

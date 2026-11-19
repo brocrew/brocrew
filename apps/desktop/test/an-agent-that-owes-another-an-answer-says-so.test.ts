@@ -30,6 +30,7 @@ import {
   fixtureProviderConfig,
   ProviderDouble,
   type ResumeGate,
+  settleFixtureTurns,
 } from './lib/host-fixture'
 
 /**
@@ -46,16 +47,7 @@ const ADA = 'Ada (the owner of W1.1 · Build the pages)'
 const OWES_ADA = `owes an answer to ${ADA}`
 const WAITING_ON_ADA = `waiting on ${ADA}`
 
-/**
- * A stretch of the event loop long enough for everything a provider row starts to have run: five
- * turns of `setImmediate` (each pump, and the flush a mark arms, run there) and a short timer.
- */
-async function settle(): Promise<void> {
-  for (let round = 0; round < 2; round++) {
-    for (let turn = 0; turn < 5; turn++) await new Promise((resolve) => setImmediate(resolve))
-    await new Promise((resolve) => setTimeout(resolve, 30))
-  }
-}
+const settle = (): Promise<void> => settleFixtureTurns(2, 30)
 
 /** A start the test can hold at the provider. */
 type StartGate = ResumeGate & { release: () => void }

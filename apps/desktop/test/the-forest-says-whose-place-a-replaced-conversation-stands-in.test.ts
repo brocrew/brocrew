@@ -15,7 +15,6 @@ import {
 } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import {
   type ForestConversation,
@@ -25,8 +24,7 @@ import {
 import {
   fixtureProviderConfig,
   RecordingSink,
-  syntheticProviderHome,
-  neutralHostDeps,
+  fixtureHostPaths,
   fixtureDatabase,
 } from './lib/host-fixture'
 
@@ -81,11 +79,8 @@ describe('D-034 — the forest says, for each conversation, whose place it stand
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      ...neutralHostDeps(() => userData),
+      ...fixtureHostPaths(() => userData),
       createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions: issued }),
-      prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       readProviderConfig: fixtureProviderConfig,

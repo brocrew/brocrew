@@ -1,3 +1,5 @@
+import { executeRuntimeCommand } from '../../src/main/runtime/ipc'
+import type { RuntimeEventSink, RuntimeHost } from '../../src/main/runtime/runtime-host'
 import type {
   RuntimeBridge,
   RuntimeChangeMessage,
@@ -39,4 +41,36 @@ export function fixtureRuntimeBridge(
     onChanged: (listener) => (changed === undefined ? () => {} : subscribe(changed, listener)),
   }
   return everythingOverTheWire(bridge) as RuntimeBridge
+}
+
+/** A renderer bridge and the event sink it subscribes to, kept across host restarts. */
+export class FixtureRuntimeWindow implements RuntimeEventSink {
+  readonly aPersonIsBehindIt = true
+  alive = true
+  private readonly events: ((message: RuntimeEventMessage) => void)[] = []
+  private readonly liveness: ((message: SessionLivenessMessage) => void)[] = []
+  private readonly changed: ((message: RuntimeChangeMessage) => void)[] = []
+
+  constructor(
+    readonly ownerId: string,
+    private readonly host: () => RuntimeHost,
+  ) {}
+
+  send(message: RuntimeEventMessage): void {
+    for (const listener of [...this.events]) listener(message)
+  }
+
+  sendLiveness(message: SessionLivenessMessage): void {
+    for (const listener of [...this.liveness]) listener(message)
+  }
+
+  announce(change: RuntimeChangeMessage): void {
+    for (const listener of [...this.changed]) listener(change)
+  }
+
+  bridge(): RuntimeBridge {
+    const run = async <T>(command: RuntimeCommand): Promise<T> =>
+      (await executeRuntimeCommand(this.host(), this, command)) as T
+    return fixtureRuntimeBridge(run, this.events, this.liveness, this.changed)
+  }
 }

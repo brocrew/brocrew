@@ -23,7 +23,6 @@ import {
   refuseTool,
   type ToolName,
 } from '../src/main/runtime/agent-tools'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { agentName } from '../src/shared/runtime-ipc'
 import { permanenceInWords } from '../src/main/runtime/agent-tool-answer-words'
@@ -33,7 +32,7 @@ import {
   fixtureProviderConfig,
   RecordingSink,
   syntheticProviderHome,
-  neutralHostDeps,
+  fixtureHostPaths,
 } from './lib/host-fixture'
 
 /**
@@ -101,11 +100,8 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      ...neutralHostDeps(() => userData),
+      ...fixtureHostPaths(() => userData),
       createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, handed, issued),
-      prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       readProviderConfig: fixtureProviderConfig,

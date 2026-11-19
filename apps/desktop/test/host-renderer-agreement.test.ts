@@ -23,7 +23,7 @@ import type {
   RuntimeEventMessage,
   SessionLivenessMessage,
 } from '../src/shared/runtime-ipc'
-import { everythingOverTheWire } from './lib/the-wire'
+import { fixtureRuntimeBridge } from './lib/runtime-command-bridge'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
 
 /**
@@ -90,38 +90,7 @@ class Surface {
       this.commands.push(command.kind)
       return (await executeRuntimeCommand(this.host, this.sink, command)) as T
     }
-    // `Partial` so the members are contextually typed by the real interface — an `as unknown as`
-    // over a bare literal would type every parameter `any` and let a command drift from its schema
-    // silently, which is the one thing a test wired through the real dispatcher exists to catch.
-    // The methods these tests do not reach are simply absent; reaching one is a TypeError at the
-    // call site rather than a plausible empty answer.
-    const bridge: Partial<RuntimeBridge> = {
-      createSession: (input) => run({ kind: 'createSession', ...input }),
-      resume: (input) => run({ kind: 'resume', ...input }),
-      // ⚑ **D-017b** — a record whose fold ends, or that this window lets go, is looked at again.
-      look: (input) => run({ kind: 'look', ...input }),
-      attachOpen: () => run({ kind: 'attachOpen' }),
-      send: (input) => run({ kind: 'send', ...input }),
-      // ⛔ **All three send verbs, because they share one schema and only one of them was ever
-      // driven through it** (221 §1). `220` reached `send` and reported the wire refusing an
-      // attachment-only message; `sendInterrupting` and `queueMessage` carry the identical `text`
-      // rule and nothing had ever crossed this boundary with either.
-      sendInterrupting: (input) => run({ kind: 'sendInterrupting', ...input }),
-      queueMessage: (input) => run({ kind: 'queueMessage', ...input }),
-      close: (input) => run({ kind: 'close', ...input }),
-      onEvent: (fn) => {
-        this.events.push(fn)
-        return () => void this.events.splice(this.events.indexOf(fn), 1)
-      },
-      onLiveness: (fn) => {
-        this.liveness.push(fn)
-        return () => void this.liveness.splice(this.liveness.indexOf(fn), 1)
-      },
-    }
-    // 🔴 **Through the wire as well as through the dispatcher** (361 §2). This double already runs
-    // the real `executeRuntimeCommand`, so the schema and the host method are exercised — but a
-    // direct call hands the payload over by reference, and `ipcRenderer.invoke` does not.
-    return everythingOverTheWire(bridge) as RuntimeBridge
+    return fixtureRuntimeBridge(run, this.events, this.liveness)
   }
 }
 

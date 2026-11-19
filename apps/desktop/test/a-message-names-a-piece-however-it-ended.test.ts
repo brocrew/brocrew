@@ -17,7 +17,6 @@ import {
   aFollowUpOnAPieceYouHold,
   type ToolName,
 } from '../src/main/runtime/agent-tools'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentName } from '../src/shared/runtime-ipc'
 import { permanenceInWords } from '../src/main/runtime/agent-tool-answer-words'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
@@ -25,7 +24,7 @@ import {
   fixtureProviderConfig,
   RecordingSink,
   syntheticProviderHome,
-  neutralHostDeps,
+  fixtureHostPaths,
 } from './lib/host-fixture'
 
 /**
@@ -101,11 +100,8 @@ describe('F086 · F087 · F088 · a message names a piece however it ended', () 
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      ...neutralHostDeps(() => userData),
+      ...fixtureHostPaths(() => userData),
       createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, handed, issued),
-      prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       readProviderConfig: fixtureProviderConfig,

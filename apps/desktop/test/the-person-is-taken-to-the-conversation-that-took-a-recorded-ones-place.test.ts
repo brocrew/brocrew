@@ -15,19 +15,11 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore as createLedger, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import { executeRuntimeCommand } from '../src/main/runtime/ipc'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { createSessionStore, type FirstMessageCameTo } from '../src/renderer/src/lib/session-store'
 import { LAUNCHER, useSurface, type Surface } from '../src/renderer/src/composables/useSurface'
-import type {
-  RuntimeBridge,
-  RuntimeChangeMessage,
-  RuntimeCommand,
-  RuntimeEventMessage,
-  SessionLivenessMessage,
-} from '../src/shared/runtime-ipc'
-import { fixtureRuntimeBridge } from './lib/runtime-command-bridge'
+import { FixtureRuntimeWindow as AWindow } from './lib/runtime-command-bridge'
 import { recordHistoricalReplacement } from './lib/historical-replacement'
 
 /**
@@ -50,38 +42,6 @@ import { recordHistoricalReplacement } from './lib/historical-replacement'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-/** The window: the sink the host writes to, and the bridge the renderer store reads through. */
-class AWindow implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  alive = true
-  private readonly events: ((message: RuntimeEventMessage) => void)[] = []
-  private readonly liveness: ((message: SessionLivenessMessage) => void)[] = []
-  private readonly changed: ((message: RuntimeChangeMessage) => void)[] = []
-
-  constructor(
-    readonly ownerId: string,
-    private readonly host: () => RuntimeHost,
-  ) {}
-
-  send(message: RuntimeEventMessage): void {
-    for (const listener of [...this.events]) listener(message)
-  }
-
-  sendLiveness(message: SessionLivenessMessage): void {
-    for (const listener of [...this.liveness]) listener(message)
-  }
-
-  announce(change: RuntimeChangeMessage): void {
-    for (const listener of [...this.changed]) listener(change)
-  }
-
-  bridge(): RuntimeBridge {
-    const run = async <T>(command: RuntimeCommand): Promise<T> =>
-      (await executeRuntimeCommand(this.host(), this, command)) as T
-    return fixtureRuntimeBridge(run, this.events, this.liveness, this.changed)
-  }
-}
 
 describe('the person is taken to the conversation that took a recorded one’s place', () => {
   let userData: string
