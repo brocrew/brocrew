@@ -302,7 +302,11 @@ it('keeps the failure of driven work through an unrelated turn, a close, and rec
   append({ type: 'user_turn', text: 'Work on the first piece', drives: first })
   const failedAt = append(terminalError)
   const diagnosis = { turnOrdinal: failedAt, ...terminalError.providerFailure }
-  expect(read(first)).toMatchObject({ owner: 'alpha', giver: 'alpha', providerTurnFailure: diagnosis })
+  expect(read(first)).toMatchObject({
+    owner: 'alpha',
+    giver: 'alpha',
+    providerTurnFailure: diagnosis,
+  })
   expect(read(second)).toMatchObject({ owner: 'alpha', giver: 'beta' })
   expect(read(second)).not.toHaveProperty('providerTurnFailure')
   expect(store.piecesOwnedBy('beta')[0]).toMatchObject({ owner: 'beta', giver: 'alpha' })
@@ -377,7 +381,12 @@ it('bounds only the copied provider reason on the turn and reads old or malforme
   store.append('alpha', 5, malformed as unknown as TranscriptEvent, 6)
 
   const bounded = `${'x'.repeat(4094)}…`
-  expect(store.events('alpha').slice(2).map(({ event }) => event)).toEqual([
+  expect(
+    store
+      .events('alpha')
+      .slice(2)
+      .map(({ event }) => event),
+  ).toEqual([
     diagnostic,
     { type: 'turn', state: 'failed', providerFailure: { message: bounded } },
     { type: 'turn', state: 'failed' },
