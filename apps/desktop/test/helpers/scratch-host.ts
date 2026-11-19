@@ -1,10 +1,31 @@
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { FakeProviderSessions } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import type { AppDatabase } from '../../src/main/db/connection'
+import { createSessionStore } from '../../src/main/db/session-store'
 import type { RuntimeHost, RuntimeHostDeps } from '../../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../../src/main/runtime/scratch-cwd'
-import { syntheticProviderHome } from '../lib/host-fixture'
+import {
+  fixtureDatabase,
+  fixtureFolder,
+  RecordingSink,
+  syntheticProviderHome,
+} from '../lib/host-fixture'
+
+export function scratchHostState(prefix: string, now: () => number) {
+  const userData = fixtureFolder(prefix + '-')
+  const root = fixtureFolder(prefix + '-root-')
+  const db = fixtureDatabase(userData)
+  return {
+    userData,
+    root,
+    db,
+    store: createSessionStore(db, now),
+    issued: new FakeProviderSessions(),
+    window: new RecordingSink('webContents:1'),
+  }
+}
 
 /** Provider homes and conversation folders laid out under one scratch data folder. */
 export function homesUnder(

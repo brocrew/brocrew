@@ -6,23 +6,21 @@ import { HandleKeepingRuntime as ProviderDouble } from './helpers/handle-keeping
 import { waitFor } from './lib/f093-host'
 import { seedHistoricalSuccessor } from './lib/historical-replacement'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { closeAndRemove, homesUnder } from './helpers/scratch-host'
+import { closeAndRemove, homesUnder, scratchHostState } from './helpers/scratch-host'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { FakeProviderSessions } from '@brobot2/runtime'
+import type { FakeProviderSessions } from '@brobot2/runtime'
 import type { AgentToolset, FakeSessionHandle } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import type { AppDatabase } from '../src/main/db/connection'
-import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import type { SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from './helpers/giver-notice-host'
 import { agentToolsFor, refuseTool } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import {
-  fixtureDatabase,
-  fixtureFolder,
   syntheticProviderHome,
   neutralHostDeps,
   fixtureProviderConfig,
-  RecordingSink,
+  type RecordingSink,
 } from './lib/host-fixture'
 
 /**
@@ -92,18 +90,13 @@ describe('629 · a stop reaches down the whole chain', () => {
   }
 
   beforeEach(() => {
-    userData = fixtureFolder('brobot2-629-')
-    root = fixtureFolder('brobot2-629-root-')
-    db = fixtureDatabase(userData)
     clock = 9_000_000
-    store = createSessionStore(db, tick)
+    ;({ userData, root, db, store, issued, window } = scratchHostState('brobot2-629', tick))
     counter = 0
     hosts = []
     handles = []
     chains = 0
-    issued = new FakeProviderSessions()
     host = buildHost()
-    window = new RecordingSink('webContents:1')
   })
 
   afterEach(async () => {
@@ -113,10 +106,8 @@ describe('629 · a stop reaches down the whole chain', () => {
 
   const personOpens = personOpener(() => ({ host, root, window }), 'ask')
 
-  const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
-    const id = await personOpens(profileId)
-    await host.close(id, window)
-  }
+  const bringIdentityIntoBeing = async (profileId: string): Promise<void> =>
+    host.close(await personOpens(profileId), window)
 
   const ledger = (sessionId: string): TranscriptEvent[] =>
     store.events(sessionId).map((entry) => entry.event)

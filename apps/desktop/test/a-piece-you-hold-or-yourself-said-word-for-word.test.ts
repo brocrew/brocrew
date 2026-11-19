@@ -1,25 +1,17 @@
 import { giveAndWaitForBriefTurn, giveWorkWithTitleAsBrief } from './lib/give-fixture'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
-import {
-  RecordingSink,
-  fixtureDatabase,
-  fixtureFolder,
-  fixtureProviderConfig,
-  syntheticProviderHome,
-  neutralHostDeps,
-} from './lib/host-fixture'
-import { closeAndRemove } from './helpers/scratch-host'
+import { type RecordingSink, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import { closeAndRemove, homesUnder, scratchHostState } from './helpers/scratch-host'
 import { personOpener } from './helpers/person-opens-session'
-import { join } from 'node:path'
+import { answerOn } from './helpers/call-tool'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions } from '@brobot2/runtime'
+import type { FakeProviderSessions } from '@brobot2/runtime'
 import type { AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import type { AppDatabase } from '../src/main/db/connection'
-import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import type { SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { clockTime, clockTimeFrom } from '../src/shared/clock'
 import { sameLocalDay } from '../src/shared/local-time'
 import { permanenceInWords } from '../src/main/runtime/agent-tool-answer-words'
@@ -79,9 +71,7 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
       store,
       ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, handed, issued),
-      prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
+      ...homesUnder(() => userData),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       readProviderConfig: fixtureProviderConfig,
@@ -91,27 +81,20 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
   }
 
   beforeEach(() => {
-    userData = fixtureFolder('brobot2-held-words-')
-    root = fixtureFolder('brobot2-held-words-root-')
-    db = fixtureDatabase(userData)
     clock = 7_200_000
-    store = createSessionStore(db, tick)
+    ;({ userData, root, db, store, issued, window } = scratchHostState('brobot2-held-words', tick))
     counter = 0
     hosts = []
     handed = []
-    issued = new FakeProviderSessions()
     host = buildHost()
-    window = new RecordingSink('webContents:1')
   })
 
   afterEach(() => closeAndRemove(hosts, db, userData, root))
 
   const personOpens = personOpener(() => ({ host, root, window }), 'ask')
 
-  const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
-    const id = await personOpens(profileId)
-    await host.close(id, window)
-  }
+  const bringIdentityIntoBeing = async (profileId: string): Promise<void> =>
+    host.close(await personOpens(profileId), window)
 
   /** The words a model reads, and the payload beside them. */
   const callWithWords = async (
@@ -119,9 +102,7 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
     name: ToolName,
     args: Record<string, unknown>,
   ): Promise<{ structured: Record<string, unknown>; text: string }> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    const result = await tool.call(args)
+    const result = await answerOn(toolset, name, args)
     return { structured: result.structured as Record<string, unknown>, text: result.text }
   }
 
