@@ -108,7 +108,6 @@ const roster = (...slugs: [string, string | null][]): unknown => ({
   })),
   foldersWithoutARow: [],
   use: [],
-  spawningEnabled: true,
   // ⚑ **516** — the registry rides the same read; empty is the answer every install starts with.
   externalMcpServers: [],
 })

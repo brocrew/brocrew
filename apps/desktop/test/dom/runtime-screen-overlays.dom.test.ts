@@ -106,7 +106,14 @@ it.each(keyboardSheets)(
           expect(bounds.bottom).toBeLessThanOrEqual(window.innerHeight)
           await expect.poll(() => host.contains(document.activeElement)).toBe(true)
           const first = m.q('close-overlay')
-          const last = m.q('overlay-spawning')
+          const last = [
+            ...host.querySelectorAll<HTMLElement>(
+              'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+            ),
+          ]
+            .filter((el) => el.getClientRects().length > 0)
+            .at(-1)
+          expect(last).toBeDefined()
           first.focus()
           overlayKey('Tab', true)
           expect(document.activeElement).toBe(last)

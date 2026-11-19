@@ -63,7 +63,6 @@ const AGENTS: AgentIdentities = {
       runsOn: { provider: 'claude', from: 'saved' },
     },
   ],
-  spawningEnabled: true,
   defaultApprovalMode: 'ask',
   externalMcpServers: [],
 }

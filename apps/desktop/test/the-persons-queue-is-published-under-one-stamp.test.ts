@@ -67,7 +67,7 @@ describe('the person’s queue is published under one stamp', () => {
     world.anAgent('giver', 'normal')
     world.anAgent('helper', 'normal')
     announced = []
-    host = world.aHost({ servicesOn: false, announce: (message) => announced.push(message) })
+    host = world.aHost({ announce: (message) => announced.push(message) })
     giver = await world.aPersonOpens(host, 'giver')
   })
   afterEach(async () => {

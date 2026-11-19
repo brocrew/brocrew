@@ -101,7 +101,6 @@ function storeOver(): AgentStore {
       const one = answers.list.identities[0]
       return one === undefined ? null : { ...one, modelChoiceCleared: null }
     },
-    setSpawningEnabled: async () => ({ spawningEnabled: true }),
   } as unknown as RuntimeBridge
   return createAgentStore(bridge)
 }
@@ -134,7 +133,6 @@ beforeEach(() => {
       identities: [identity()],
       foldersWithoutARow: [],
       use: [],
-      spawningEnabled: true,
       defaultApprovalMode: 'ask',
       externalMcpServers: [],
     },

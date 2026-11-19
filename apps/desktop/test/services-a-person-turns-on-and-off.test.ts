@@ -1,27 +1,16 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { writeFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { composeProfileBundle } from '../src/main/runtime/factory-text'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
-import {
-  importProfileExecutionFile,
-  PROFILE_EXECUTION_FILE,
-  readProfileExecution,
-} from '../src/main/profile-execution-file'
 import type { GiveOutcome, RuntimeHost } from '../src/main/runtime/runtime-host'
 import { createAgentStore } from '../src/renderer/src/lib/agent-store'
-import type { AgentIdentity, RuntimeBridge } from '../src/shared/runtime-ipc'
+import { theMessagesOf, type AgentIdentity, type RuntimeBridge } from '../src/shared/runtime-ipc'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
 type Given = Extract<GiveOutcome, { ok: true }>
 
-/**
- * Services run only while a person has turned them on in the workspace. Off by default; off holds
- * back new work for services and stops nothing that exists.
- */
-describe('services a person turns on and off', () => {
+describe('Service lifecycle', () => {
   let world: AServiceWorld
   beforeEach(() => {
     world = aServiceWorld()
@@ -57,67 +46,9 @@ describe('services a person turns on and off', () => {
     })
     return { held, release }
   }
-  const switchedOn = (): boolean =>
-    (() => {
-      const read = readProfileExecution(world.db)
-      return !read.readable || read.kept.servicesOff !== true
-    })()
-
-  describe('the switch', () => {
-    it('is on until a person turns it off, and is kept in the services list', () => {
-      const host = world.aHost()
-      expect(host.agentIdentities().servicesOn).toBe(true)
-      expect(switchedOn()).toBe(true)
-      expect(host.setServicesOn(false)).toEqual({ servicesOn: false })
-      expect(switchedOn()).toBe(false)
-      expect(host.agentIdentities().servicesOn).toBeUndefined()
-      expect(host.setServicesOn(true)).toEqual({ servicesOn: true })
-      expect(switchedOn()).toBe(true)
-      expect(host.agentIdentities().servicesOn).toBe(true)
-    })
-
-    it('is on where the services list can’t be read, and the launch logs why', () => {
-      world.anAgent('browser-driver')
-      world.store.create({
-        id: 'sess_service',
-        provider: 'claude',
-        cwd: world.folder,
-        approvalMode: 'ask',
-        profileId: 'browser-driver',
-        service: true,
-      })
-      world.loseTheKept()
-      const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
-      const host = world.aHost()
-      expect(host.agentIdentities().servicesOn).toBe(true)
-      expect(warned).toHaveBeenCalledWith(
-        expect.stringContaining('runtime host could not read how its profiles run their work'),
-      )
-      warned.mockRestore()
-    })
-
-    it('is changed only by the one app running on the data', () => {
-      const host = world.aHost({ owned: false, servicesOn: false })
-      expect(() => host.setServicesOn(true)).toThrow('Not changed: the app may be open twice.')
-      expect(switchedOn()).toBe(false)
-    })
-
-    it('imports a switch an older build wrote false as on, as a missing one', () => {
-      writeFileSync(
-        join(world.folder, PROFILE_EXECUTION_FILE),
-        JSON.stringify({ version: 2, servicesOff: false, profiles: {} }),
-      )
-      importProfileExecutionFile(world.db, world.folder)
-      expect(readProfileExecution(world.db)).toEqual({ readable: true, kept: { profiles: {} } })
-    })
-  })
-
   describe('the window’s doors', () => {
-    it('turns services on and makes a service through the window’s commands', async () => {
-      const host = world.aHost({ servicesOn: false })
-      expect(
-        await executeRuntimeCommand(host, world.window, { kind: 'setServicesOn', on: true }),
-      ).toEqual({ servicesOn: true })
+    it('makes a service through the window with the old switch saved as off', async () => {
+      const host = world.aHost({ retiredServicesOff: true })
       const made = (await executeRuntimeCommand(host, world.window, {
         kind: 'createAgent',
         slug: 'browser-driver',
@@ -154,35 +85,9 @@ describe('services a person turns on and off', () => {
   })
 
   describe('making a service', () => {
-    it('is refused at both doors while services are off, and makes nothing', async () => {
+    it('makes a service at both doors and lists it as a service', async () => {
       world.anAgent('caller', 'nothing kept')
-      const host = world.aHost({ servicesOn: false })
-      const caller = await world.aPersonOpens(host, 'caller')
-      expect(() =>
-        host.createAgent({
-          slug: 'browser-driver',
-          displayName: null,
-          provider: 'claude',
-          asAService: true,
-        }),
-      ).toThrow('Not created: services are off.')
-      const made = await call(host, caller, 'create_agent', {
-        profile_slug: 'fetcher',
-        kind: 'service',
-      })
-      expect(made.structured).toMatchObject({
-        outcome: 'refused',
-        rail: 'services-are-off-so-none-is-made',
-      })
-      expect(made.text).toContain('Not sent: services are off. A person turns them on in Team.')
-      const slugs = world.store.agentIdentities().map((one) => one.slug)
-      expect(slugs).not.toContain('browser-driver')
-      expect(slugs).not.toContain('fetcher')
-    })
-
-    it('makes a service at both doors while services are on, and says it is one', async () => {
-      world.anAgent('caller', 'nothing kept')
-      const host = world.aHost({ servicesOn: true })
+      const host = world.aHost()
       const caller = await world.aPersonOpens(host, 'caller')
       const byAPerson = host.createAgent({
         slug: 'browser-driver',
@@ -226,7 +131,7 @@ describe('services a person turns on and off', () => {
     world.anAgent('caller', 'nothing kept')
     world.anAgent('other-caller', 'nothing kept')
     world.store.setDefaultApprovalMode('auto')
-    const host = world.aHost({ servicesOn: true })
+    const host = world.aHost()
     const caller = await world.aPersonOpens(host, 'caller')
     const other = await world.aPersonOpens(host, 'other-caller')
     const turn = aGate()
@@ -251,89 +156,49 @@ describe('services a person turns on and off', () => {
     }
   }
 
-  describe('turning services off with work queued', () => {
-    it('stops nothing, hands nothing more over, and the next piece goes once they are on again', async () => {
-      const { host, caller, other, service, one, two, releaseTheTurn } =
-        await aServiceWithWorkQueued()
-      host.setServicesOn(false)
-      // The turn running finishes; nothing was asked to stop.
+  describe('Queued work and delivery', () => {
+    it('refuses a Give before recording work when the service queue is not owned', async () => {
+      world.anAgent('browser-driver')
+      world.anAgent('caller', 'nothing kept')
+      const host = world.aHost({ owned: false })
+      const caller = await world.aPersonOpens(host, 'caller')
+      const recorded = world.conversationsRecorded()
+      const started = [...world.startedAs]
+      const said = await call(host, caller, 'give_work', {
+        profile: 'browser-driver',
+        title: 'A piece',
+        brief: 'a piece',
+        definition_of_done: 'The requested result and its checks are recorded.',
+      })
+      expect(said.structured, said.text).toMatchObject({
+        outcome: 'refused',
+        rail: 'service-queue-not-owned',
+        reason:
+          'Not sent: this app may be open twice. Ask the person with request_action to close any other BroCrew instance using this workspace and reopen this one, or give the work to another agent.',
+      })
+      expect(said.structured).not.toHaveProperty('receipt')
+      expect(said.text.match(/Not sent:/gu)).toHaveLength(1)
+      expect(world.store.piecesGivenBy(caller)).toEqual([])
+      expect(world.conversationsRecorded()).toBe(recorded)
+      expect(world.startedAs).toEqual(started)
+    })
+
+    it('hands the next piece over after the current one is withdrawn', async () => {
+      const { host, caller, service, one, two, releaseTheTurn } = await aServiceWithWorkQueued()
+      expect(stateOf(service, two.piece)).toBe('waiting')
       releaseTheTurn()
       await vi.waitFor(() => {
         expect(stateOf(service, one.piece)).toBe('stalled')
       })
       expect(world.stopsAsked).toEqual([])
-      // The caller takes its piece back: the service's own rules still hold.
       const taken = await call(host, caller, 'withdraw_task', { piece: one.label })
       expect(taken.structured).toMatchObject({ outcome: 'ok' })
-      await new Promise((settled) => setTimeout(settled, 100))
-      // Its notice of the take-back goes in, as at any service; the next piece's brief does not.
-      expect(stateOf(service, two.piece)).toBe('waiting')
-      expect(
-        rows(service, 'user_turn').some(
-          (turn) => turn.type === 'user_turn' && turn.piece === two.piece,
-        ),
-      ).toBe(false)
-      // Its caller reads why it waits.
-      const board = await call(host, other, 'list_tasks', {})
-      expect(board.text).toContain('queued; it waits until services are on')
-      // A new give to the service is refused while off.
-      const refused = await world.gives(host, caller, 'browser-driver', { title: 'Three' })
-      expect(refused.ok).toBe(false)
-      if (!refused.ok) expect(refused.refusal.rail).toBe('services-are-off')
-      // On again: the next piece is handed over.
-      host.setServicesOn(true)
       await vi.waitFor(() => {
-        expect(stateOf(service, two.piece)).not.toBe('waiting')
-      })
-    })
-
-    const handedOver = (service: string, piece: string): boolean =>
-      rows(service, 'user_turn').some((turn) => turn.type === 'user_turn' && turn.piece === piece)
-
-    it('hands nothing over when services go off in the tick they came on', async () => {
-      const { host, caller, service, one, two, releaseTheTurn } = await aServiceWithWorkQueued()
-      host.setServicesOn(false)
-      releaseTheTurn()
-      await vi.waitFor(() => {
-        expect(stateOf(service, one.piece)).toBe('stalled')
-      })
-      await call(host, caller, 'withdraw_task', { piece: one.label })
-      await new Promise((settled) => setTimeout(settled, 100))
-      // On asks the dispatcher to look, in a microtask; off comes before it looks.
-      host.setServicesOn(true)
-      host.setServicesOn(false)
-      await new Promise((settled) => setTimeout(settled, 150))
-      expect(stateOf(service, two.piece)).toBe('waiting')
-      expect(handedOver(service, two.piece)).toBe(false)
-      // Its brief was not even placed: no row holds it for the service.
-      expect(
-        rows(service, 'message_queued').some(
-          (row) => row.type === 'message_queued' && row.piece === two.piece,
-        ),
-      ).toBe(false)
-    })
-
-    it('holds a next brief whose handover was under way when services went off, and sends it once they are on', async () => {
-      world.signInsChecked = true
-      world.anAgent('browser-driver')
-      world.anAgent('caller', 'nothing kept')
-      world.store.setDefaultApprovalMode('auto')
-      const host = world.aHost({ servicesOn: true })
-      const caller = await world.aPersonOpens(host, 'caller')
-      const signIn = aGate()
-      world.signInWait = signIn.held
-      const giving = world.gives(host, caller, 'browser-driver', { title: 'One' })
-      await new Promise((settled) => setTimeout(settled, 100))
-      host.setServicesOn(false)
-      world.signInWait = null
-      signIn.release()
-      const one = accepted(await giving)
-      await new Promise((settled) => setTimeout(settled, 150))
-      expect(handedOver(one.owner, one.piece)).toBe(false)
-      expect(stateOf(one.owner, one.piece)).toBe('waiting')
-      host.setServicesOn(true)
-      await vi.waitFor(() => {
-        expect(handedOver(one.owner, one.piece)).toBe(true)
+        expect(
+          rows(service, 'user_turn').filter(
+            (turn) => turn.type === 'user_turn' && turn.piece === two.piece,
+          ),
+        ).toHaveLength(1)
       })
     })
 
@@ -365,9 +230,8 @@ describe('services a person turns on and off', () => {
       releaseTheTurn()
     })
 
-    it('lets an agent stop the active service turn while services are off', async () => {
+    it('lets a caller stop the active service turn while its piece is queued', async () => {
       const { host, other, service, releaseTheTurn } = await aServiceWithWorkQueued()
-      host.setServicesOn(false)
       const stopped = await call(host, other, 'interrupt_agent', {
         agent: service,
         reason: 'not needed now',
@@ -377,8 +241,8 @@ describe('services a person turns on and off', () => {
       releaseTheTurn()
     })
 
-    /** The service stopped on `caller`'s piece, in a new run with services off. */
-    const aStoppedServiceWhileOff = async (
+    /** The service stopped on `caller`'s piece, after a restart. */
+    const aStoppedService = async (
       deferred = false,
     ): Promise<{
       after: RuntimeHost
@@ -393,7 +257,7 @@ describe('services a person turns on and off', () => {
         expect(stateOf(service, one.piece)).toBe('stalled')
       })
       await host.closeAll()
-      const after = world.aHost({ servicesOn: false, deferStartupUntilListPaint: deferred })
+      const after = world.aHost({ retiredServicesOff: true, deferStartupUntilListPaint: deferred })
       if (deferred) after.firstListPainted()
       await after.resumeSession(caller, world.window)
       return { after, caller, service, one, two }
@@ -402,40 +266,22 @@ describe('services a person turns on and off', () => {
       rows(service, 'user_turn').some(
         (turn) => turn.type === 'user_turn' && turn.text.includes(text),
       )
-    const sendsWhileOff = async (
-      after: RuntimeHost,
-      caller: string,
-      service: string,
-      one: Given,
-    ): Promise<void> => {
+    it('delivers a follow-up to a stopped service with the old switch saved as off', async () => {
+      const { after, caller, service, one } = await aStoppedService()
+      const text = 'the room on the third floor'
       const sent = await call(after, caller, 'message_agent', {
         agent: service,
         kind: 'follow-up',
         piece: one.label,
-        text: 'the room on the third floor',
+        text,
       })
-      expect(sent.structured).toMatchObject({ outcome: 'ok', delivery: 'queued' })
-      expect(sent.text).toContain('It waits until services are on.')
-      await new Promise((settled) => setTimeout(settled, 100))
-      expect(wentIn(service, 'the room on the third floor')).toBe(false)
-      const held = rows(service, 'message_queued').find(
-        (row) => row.type === 'message_queued' && row.text === 'the room on the third floor',
-      )
-      expect(held).toMatchObject({ relayedFrom: caller, says: 'follow-up', about: one.piece })
-    }
-
-    it('keeps a caller’s words to a stopped service for its next start, which turning services on makes', async () => {
-      const { after, caller, service, one } = await aStoppedServiceWhileOff()
-      await sendsWhileOff(after, caller, service, one)
-      expect(after.agentIdentities().servicesOn).toBeUndefined()
-      after.setServicesOn(true)
+      expect(sent.structured).toMatchObject({ outcome: 'ok' })
       await vi.waitFor(() => {
-        expect(wentIn(service, 'the room on the third floor')).toBe(true)
+        const turn = rows(service, 'user_turn').find(
+          (row) => row.type === 'user_turn' && row.text.includes(text),
+        )
+        expect(turn).toMatchObject({ relayedFrom: caller })
       })
-      const turn = rows(service, 'user_turn').find(
-        (row) => row.type === 'user_turn' && row.text.includes('the room on the third floor'),
-      )
-      expect(turn).toMatchObject({ relayedFrom: caller })
     })
 
     /** An MCP server a person approved, granted to `agents`, as the approval's producer reads it. */
@@ -471,10 +317,9 @@ describe('services a person turns on and off', () => {
         (turn) => turn.type === 'user_turn' && turn.text.includes('req_fictional'),
       )
 
-    it('reopens a running service on the current sign-in while off, with no window', async () => {
+    it('reopens a running service on the current sign-in with no window', async () => {
       world.signInsChecked = true
       const { host, caller, service, one, releaseTheTurn } = await aServiceWithWorkQueued()
-      host.setServicesOn(false)
       // Its sign-in reads as moved on from here, mid-turn, until this app reopens it.
       world.signInMovedFor = 'browser-driver'
       const sent = await call(host, caller, 'message_agent', {
@@ -491,12 +336,10 @@ describe('services a person turns on and off', () => {
         expect(wentIn(service, 'the room on the third floor')).toBe(true)
       })
       expect(world.handles.length).toBeGreaterThan(lives)
-      expect(host.agentIdentities().servicesOn).toBeUndefined()
     })
 
-    it('reopens a running service for an MCP server a person approved for it while off, with no window', async () => {
+    it('reopens a running service for an MCP server a person approved for it with no window', async () => {
       const { host, service, releaseTheTurn } = await aServiceWithWorkQueued()
-      host.setServicesOn(false)
       const lives = world.handles.length
       expect(itWasApproved(host, service, anApprovedServer(['browser-driver']))).toBe(true)
       // The reopen waits for its turn, then this app stops and starts it with the new tools.
@@ -505,66 +348,50 @@ describe('services a person turns on and off', () => {
         expect(toldOfTheRequest(service)).toBe(true)
       })
       expect(world.handles.length).toBeGreaterThan(lives)
-      expect(host.agentIdentities().servicesOn).toBeUndefined()
     })
 
-    it('starts no stopped service while off for an approval, one that does not reach it, or a refusal', async () => {
-      world.anAgent('writer', 'nothing kept')
-      const { after, service } = await aStoppedServiceWhileOff()
-      const approval = anApprovedServer(['writer'])
-      // Approved for another agent: this one is only told.
-      expect(itWasApproved(after, service, approval)).toBe(true)
-      // Refused: told the same way.
-      ;(
-        after as unknown as { tellTheAsker(conversation: string, text: string): boolean }
-      ).tellTheAsker(service, 'Your MCP server request req_fictional was refused.')
-      await new Promise((settled) => setTimeout(settled, 150))
-      expect(toldOfTheRequest(service)).toBe(false)
-      // On: the words go in at its next start.
-      after.setServicesOn(true)
-      await vi.waitFor(() => {
-        expect(toldOfTheRequest(service)).toBe(true)
-      })
-    })
-
-    it('starts no stopped service while off when a person approves a server for it: there is no reopen', async () => {
-      const { after, service } = await aStoppedServiceWhileOff()
-      expect(itWasApproved(after, service, anApprovedServer(['browser-driver']))).toBe(true)
-      await new Promise((settled) => setTimeout(settled, 150))
-      expect(toldOfTheRequest(service)).toBe(false)
-    })
-
-    it('lets a person open a stopped service while off, and what waited for its start goes in', async () => {
-      const { after, caller, service, one } = await aStoppedServiceWhileOff()
-      await sendsWhileOff(after, caller, service, one)
-      await after.resumeSession(service, world.window)
-      await vi.waitFor(() => {
-        expect(wentIn(service, 'the room on the third floor')).toBe(true)
-      })
-      expect(after.agentIdentities().servicesOn).toBeUndefined()
-    })
-
-    it('keeps the notice of a take-back for a stopped service while off, and its caller reads why', async () => {
-      const { after, caller, service, one, two } = await aStoppedServiceWhileOff()
+    it('delivers a take-back notice and advances the next piece after restart', async () => {
+      const { after, caller, service, one, two } = await aStoppedService()
+      expect(stateOf(service, two.piece)).toBe('waiting')
+      const before = rows(service, 'user_turn').length
       const taken = await call(after, caller, 'withdraw_task', { piece: one.label })
-      expect(taken.structured).toMatchObject({ outcome: 'ok', delivery: 'held' })
-      expect(taken.text).toContain('is not told yet: it is held. It waits until services are on.')
-      const notice = rows(service, 'message_queued').find(
-        (row) => row.type === 'message_queued' && row.appNotice === 'a-piece-taken-back',
-      )
-      if (notice?.type !== 'message_queued') throw new Error('the take-back was not kept')
-      await new Promise((settled) => setTimeout(settled, 100))
-      expect(wentIn(service, notice.text)).toBe(false)
-      after.setServicesOn(true)
+      expect(taken.structured).toMatchObject({ outcome: 'ok', state: 'withdrawn' })
       await vi.waitFor(() => {
-        expect(wentIn(service, notice.text)).toBe(true)
-      })
-      await vi.waitFor(() => {
-        expect(stateOf(service, two.piece)).not.toBe('waiting')
+        const delivered = rows(service, 'user_turn')
+          .slice(before)
+          .flatMap((row) => (row.type === 'user_turn' ? theMessagesOf(row) : []))
+        const notice = delivered.findIndex(
+          (message) =>
+            message.appNotice === 'a-piece-taken-back' &&
+            message.drives === one.piece &&
+            message.text.includes(`took back ${one.label}`),
+        )
+        const handover = delivered.findIndex((message) => message.piece === two.piece)
+        expect(notice).toBeGreaterThanOrEqual(0)
+        expect(handover).toBeGreaterThan(notice)
       })
     })
 
-    it('keeps a caller’s answer to a stopped service’s question while off, and starts nothing', async () => {
+    it('hands the next piece over when the take-back notice cannot start the service', async () => {
+      const { after, caller, service, one, two } = await aStoppedService()
+      expect(stateOf(service, two.piece)).toBe('waiting')
+      world.failNextResumeFor = 'browser-driver'
+
+      const taken = await call(after, caller, 'withdraw_task', { piece: one.label })
+      expect(taken.structured).toMatchObject({
+        outcome: 'ok',
+        state: 'withdrawn',
+        delivery: 'not-delivered',
+      })
+      expect(world.failNextResumeFor).toBeNull()
+      await vi.waitFor(() => {
+        expect(
+          world.store.piecesOwnedBy(service).find((row) => row.piece === two.piece),
+        ).toMatchObject({ briefHandedOver: true })
+      })
+    })
+
+    it('delivers a caller’s answer to its stopped service after restart', async () => {
       const { host, caller, service, one, releaseTheTurn } = await aServiceWithWorkQueued()
       const asked = await call(host, service, 'ask_question', {
         piece: one.label,
@@ -577,34 +404,25 @@ describe('services a person turns on and off', () => {
         expect(stateOf(service, one.piece)).toBe('stalled')
       })
       await host.closeAll()
-      const after = world.aHost({ servicesOn: false })
+      const after = world.aHost({ retiredServicesOff: true })
       await after.resumeSession(caller, world.window)
       const answered = await call(after, caller, 'answer_question', {
         question: String(asked.structured['question']),
         answers: [{ part: 'answer', answer: ['the third'] }],
       })
       expect(answered.structured).toMatchObject({ outcome: 'ok' })
-      expect(answered.text).toContain(
-        'It could not be started now — Services are off, so a service’s conversation is not started.',
-      )
-      await new Promise((settled) => setTimeout(settled, 100))
-      expect(wentIn(service, 'the third')).toBe(false)
-      after.setServicesOn(true)
       await vi.waitFor(() => {
         expect(wentIn(service, 'the third')).toBe(true)
       })
     })
 
     it.each([false, true])(
-      'keeps a new brief for a stopped service while off, and it goes in once they are on (deferred %s)',
+      'delivers a new brief to a stopped service after restart (deferred %s)',
       async (deferred) => {
-        const { after, caller, service, one } = await aStoppedServiceWhileOff(deferred)
+        const { after, caller, service, one } = await aStoppedService(deferred)
         const brief = 'Look at the second floor instead.'
         const updated = await call(after, caller, 'update_work', { piece: one.label, brief })
-        expect(updated.text).toContain('the new brief is held. It waits until services are on.')
-        await new Promise((settled) => setTimeout(settled, 100))
-        expect(wentIn(service, brief)).toBe(false)
-        after.setServicesOn(true)
+        expect(updated.structured).toMatchObject({ outcome: 'ok' })
         await vi.waitFor(() => {
           expect(wentIn(service, brief)).toBe(true)
         })
@@ -627,21 +445,19 @@ describe('services a person turns on and off', () => {
       releaseTheTurn()
     })
 
-    it('marks the piece a person may take back, only while services are on', async () => {
+    it('marks the piece a person may take back', async () => {
       const { host, caller, one, releaseTheTurn } = await aServiceWithWorkQueued()
       const marked = (): boolean | undefined =>
         host.whoCalledWhom(caller).workGivenOut.rows.find((edge) => edge.piece === one.piece)
           ?.aPersonMayTakeItBack
       expect(marked()).toBe(true)
-      host.setServicesOn(false)
-      expect(marked()).toBeUndefined()
       releaseTheTurn()
     })
 
-    it('gives a service the service text after the core, while services are on, and no other agent', async () => {
+    it('gives the service text to a service and no other agent', async () => {
       world.anAgent('browser-driver')
       world.anAgent('writer', 'nothing kept')
-      const host = world.aHost({ servicesOn: true })
+      const host = world.aHost()
       const reader = host as unknown as {
         instructionContext(
           profileId: string | null,
@@ -656,9 +472,6 @@ describe('services a person turns on and off', () => {
         'You serve many callers through one conversation',
       )
       expect(composeProfileBundle(writer)).not.toContain('You serve many callers')
-      host.setServicesOn(false)
-      const off = reader.instructionContext('browser-driver', world.folder, null, null)
-      expect(composeProfileBundle(off)).not.toContain('You serve many callers')
     })
   })
 })

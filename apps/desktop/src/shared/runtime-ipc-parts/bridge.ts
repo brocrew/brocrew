@@ -706,7 +706,7 @@ export interface RuntimeBridge {
    */
   createAgent(input: NewAgent): Promise<AgentIdentity>
   /**
-   * Every agent identity there is, with its capabilities and the kill switch (355).
+   * The agent roster, service identities and external server associations.
    *
    * ⚠️ **No project, since 369.** An identity is global; the project slug this took was never a
    * choice a caller made, only a constant a refusal enforced.
@@ -894,10 +894,6 @@ export interface RuntimeBridge {
   checkDeleteConversation(input: { sessionId: string }): Promise<DeleteVerdict>
   /** Delete the ticked parts of a conversation, and nothing else. */
   deleteConversation(input: { sessionId: string; parts: string[] }): Promise<DeleteOutcome>
-  /** Throw the global spawning switch (355), and answer with where it now stands. */
-  setSpawningEnabled(input: { enabled: boolean }): Promise<{ spawningEnabled: boolean }>
-  /** Turn services on or off in this workspace, and answer with where they now stand. */
-  setServicesOn(input: { on: boolean }): Promise<{ servicesOn: boolean }>
   /**
    * Set the mode a person's next conversation begins in (500), and answer with where it now stands.
    *
