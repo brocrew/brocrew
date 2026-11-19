@@ -24,12 +24,25 @@ export function newConversationGive(profile: string, title: string, brief: strin
 }
 
 export function callNewConversationGive(
-  tools: AgentToolset,
+  tools: AgentToolset | undefined,
   profile: string,
   title: string,
   brief: string,
 ) {
+  if (tools === undefined) throw new Error('no such tool: give_work')
   return callOn(tools, 'give_work', newConversationGive(profile, title, brief))
+}
+
+export async function giveANewWorkerItsFirstTask(
+  tools: AgentToolset,
+  profile: string,
+  title: string,
+  brief = title,
+) {
+  const given = await callNewConversationGive(tools, profile, title, brief)
+  expect(given.outcome, JSON.stringify(given)).toBe('ok')
+  expect(given.started, JSON.stringify(given)).toBe(true)
+  return given
 }
 
 export async function giveAndWaitForBriefTurn(
@@ -38,9 +51,7 @@ export async function giveAndWaitForBriefTurn(
   title: string,
   ledger: (agent: string) => readonly { type: string }[],
 ): Promise<{ agent: string; piece: string; label: string }> {
-  const given = await callNewConversationGive(tools, profile, title, title)
-  expect(given.outcome, JSON.stringify(given)).toBe('ok')
-  expect(given.started, JSON.stringify(given)).toBe(true)
+  const given = await giveANewWorkerItsFirstTask(tools, profile, title)
   const agent = given.agent as string
   await waitFor(
     () => ledger(agent).some((event) => event.type === 'turn'),
@@ -72,9 +83,10 @@ export function giveToConversation(to: string, profile: string, title: string, b
 export async function openPmWithSeededWorker(
   open: (profile: string) => Promise<string>,
   close: (conversation: string) => Promise<unknown>,
+  pmProfile = 'pm',
 ) {
   await close(await open('worker'))
-  return open('pm')
+  return open(pmProfile)
 }
 
 export async function readGivenTask(send: () => Promise<Record<string, unknown>>) {
@@ -134,8 +146,9 @@ export async function giveToSeededWorker(
   open: (profile: string) => Promise<string>,
   title: string,
   brief: string,
+  pmProfile = 'pm',
 ) {
-  const pm = await openPmWithSeededWorker(open, (id) => host.close(id, window))
+  const pm = await openPmWithSeededWorker(open, (id) => host.close(id, window), pmProfile)
   const given = await readGivenTask(() =>
     callNewConversationGive(agentToolsFor(host, pm), 'worker', title, brief),
   )

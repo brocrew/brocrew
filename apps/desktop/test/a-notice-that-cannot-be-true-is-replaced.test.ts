@@ -193,14 +193,6 @@ describe('711 · a notice that cannot be true is replaced', () => {
   const TAKEN_BACK_ANSWERED =
     /^taken back by this app before it was read, because it was no longer true: .+ answered that work$/
 
-  /**
-   * ⚑ **In ONE app run, a worker parked mid-turn on the work its parent gave it**, with a person's
-   * window on it — `what-a-waker-reads-after-its-own-act.test.ts`' rig. ⚑ D-016 · the give starts
-   * the worker, and its brief is the turn that parks.
-   */
-  const aPmAndItsParkedWorker = () =>
-    giveParkedWorker({ host, store, window, personOpens }, 'the migration')
-
   describe.each([
     ['the Fake', false],
     ['Claude', true],
@@ -215,7 +207,11 @@ describe('711 · a notice that cannot be true is replaced', () => {
       piece: string
       label: string
     }> => {
-      const { pm, worker, piece, label } = await aPmAndItsParkedWorker()
+      // The child parks on the first brief its parent gives it in this app run.
+      const { pm, worker, piece, label } = await giveParkedWorker(
+        { host, store, window, personOpens },
+        'the migration',
+      )
       gate.silentUntilItsFirstTurn = silent
       await host.send(pm, 'keep an eye on the migration', window)
       await waitFor(() => cardsOn(pm) > 0, 'the parent to park mid-turn')
@@ -430,7 +426,10 @@ describe('711 · a notice that cannot be true is replaced', () => {
        * word beside `running`.
        */
       it('§4.1 a conversation the quit stopped is in all three lists, with no kept-open word', async () => {
-        const { pm, worker } = await aPmAndItsParkedWorker()
+        const { pm, worker } = await giveParkedWorker(
+          { host, store, window, personOpens },
+          'the migration',
+        )
         gate.silentUntilItsFirstTurn = silent
         await quitAndRelaunch()
         expect(await whatEachListSays(pm, worker)).toEqual({
@@ -449,7 +448,10 @@ describe('711 · a notice that cannot be true is replaced', () => {
        * quit stopped — and a start moves every list at once, so `running` is a live answer there.
        */
       it('§4.2 a closed conversation reads as a quit-stopped one, and a started one moves every list', async () => {
-        const { pm, worker } = await aPmAndItsParkedWorker()
+        const { pm, worker } = await giveParkedWorker(
+          { host, store, window, personOpens },
+          'the migration',
+        )
         await host.close(worker, window)
         gate.silentUntilItsFirstTurn = silent
         await quitAndRelaunch()

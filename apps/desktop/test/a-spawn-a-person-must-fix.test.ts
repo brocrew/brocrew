@@ -1,5 +1,5 @@
 import { format } from 'node:util'
-import { expectRecordedCannotRun, expectTaskKept, recordedSendNotices } from './lib/recorded-send'
+import { expectRecordedGiveKept, recordedSendNotices } from './lib/recorded-send'
 import { newConversationGive, spawnFailureFixture } from './lib/give-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { spawn } from 'node:child_process'
@@ -140,23 +140,20 @@ describe('710 · R51 — a spawn a person must fix', () => {
   const events = (sessionId: string): TranscriptEvent[] =>
     store.events(sessionId).map((entry) => entry.event)
 
-  const { aPmThatMaySpawn, spawnWorker, callOn } = spawnFailureFixture(() => ({
-    host,
-    root,
-    window,
-  }))
-
   const programFailure = 'could not run its provider’s program'
 
   const aKeptGive = (
     result: Record<string, unknown>,
     reason = programFailure,
     needsPerson = true,
-  ) => {
-    const receipt = expectRecordedCannotRun(result, 'task', reason, needsPerson)
-    expectTaskKept(store, receipt)
-    return receipt
-  }
+  ) =>
+    expectRecordedGiveKept(store, result, reason, needsPerson)
+
+  const { aPmThatMaySpawn, spawnWorker, callOn } = spawnFailureFixture(() => ({
+    host,
+    root,
+    window,
+  }))
 
   const giveWithWords = async (pm: string) => {
     const tool = agentToolsFor(host, pm).tools.find((one) => one.name === 'give_work')

@@ -1,4 +1,4 @@
-import { newConversationGive } from './lib/give-fixture'
+import { giveToSeededWorker } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
@@ -109,14 +109,14 @@ describe('D-017 · a stop is not an ending', () => {
 
     /** ⚑ A PM in a window, and one child its give started through the real door (D-016). */
     const aPmAndAChild = async (): Promise<{ pm: string; child: string }> => {
-      await host.close(await personOpens('worker'), window)
-      const pm = await personOpens(DEFAULT_PROFILE_ID)
-      const spawned = await callOn(
-        pm,
-        'give_work',
-        newConversationGive('worker', 'The notes', 'the notes'),
+      const { pm, given: spawned } = await giveToSeededWorker(
+        host,
+        window,
+        personOpens,
+        'The notes',
+        'the notes',
+        DEFAULT_PROFILE_ID,
       )
-      expect(spawned.outcome, JSON.stringify(spawned)).toBe('ok')
       return { pm, child: spawned.agent as string }
     }
 

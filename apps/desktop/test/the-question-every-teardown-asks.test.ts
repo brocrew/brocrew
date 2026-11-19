@@ -1,4 +1,4 @@
-import { newConversationGive } from './lib/give-fixture'
+import { callNewConversationGive } from './lib/give-fixture'
 import {
   fixtureProviderConfig,
   RecordingSink,
@@ -260,11 +260,7 @@ describe('659 · the question every teardown asks', () => {
       window,
     )
     const pmLaunch = launches.at(-1)!
-    const given = await callOn(
-      pmLaunch.toolset,
-      'give_work',
-      newConversationGive('worker', 'The work', 'the work'),
-    )
+    const given = await callNewConversationGive(pmLaunch.toolset, 'worker', 'The work', 'the work')
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     const workerLaunch = launches.at(-1)!

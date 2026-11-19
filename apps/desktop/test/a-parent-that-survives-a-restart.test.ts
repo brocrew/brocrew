@@ -1,4 +1,4 @@
-import { addressedGive, callNewConversationGive, newConversationGive } from './lib/give-fixture'
+import { addressedGive, giveANewWorkerItsFirstTask, newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
@@ -269,10 +269,11 @@ describe('373 · a parent that survives a restart', () => {
     // ⚑ **D-016 · the child is started by a GIVE** — `spawn_agent` is gone — and the brief is its
     // first turn: in `ask` mode that turn parks on the card it raises, and the piece it hands the
     // child is the one every follow-up below names.
-    const title = 'the work this dispatch is about'
-    const given = await callNewConversationGive(pmTools, workerProfile, title, title)
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    expect(given.started, JSON.stringify(given)).toBe(true)
+    const given = await giveANewWorkerItsFirstTask(
+      pmTools,
+      workerProfile,
+      'the work this dispatch is about',
+    )
     return { pm, worker: given.agent as string, pmTools, piece: given.label as string }
   }
 

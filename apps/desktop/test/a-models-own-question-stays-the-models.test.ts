@@ -1,4 +1,4 @@
-import { newConversationGive } from './lib/give-fixture'
+import { giveToSeededWorker, newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import {
   fixtureProviderConfig,
@@ -176,14 +176,14 @@ describe('D-009 · a model’s own question stays the model’s', () => {
    * starts the child, and its brief is the child's first turn).
    */
   const aPmAndAChild = async (): Promise<{ pm: string; child: Child }> => {
-    await host.close(await personOpens('worker'), window)
-    const pm = await personOpens(DEFAULT_PROFILE_ID)
-    const spawned = await callOn(
-      pm,
-      'give_work',
-      newConversationGive('worker', 'the notes', 'the notes'),
+    const { pm, given: spawned } = await giveToSeededWorker(
+      host,
+      window,
+      personOpens,
+      'the notes',
+      'the notes',
+      DEFAULT_PROFILE_ID,
     )
-    expect(spawned.outcome, JSON.stringify(spawned)).toBe('ok')
     const handle = handles.at(-1)
     if (handle === undefined) throw new Error('no provider handle was issued to the child')
     return { pm, child: { id: spawned.agent as string, handle } }

@@ -1,4 +1,4 @@
-import { newConversationGive } from './lib/give-fixture'
+import { callNewConversationGive, newConversationGive } from './lib/give-fixture'
 import { expectRecordedCannotRun, expectTaskKept } from './lib/recorded-send'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import type { PieceRow } from '../src/shared/task-contracts'
@@ -691,11 +691,7 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
       window,
     )
     const pmLaunch = launches.at(-1)!
-    const given = await callOn(
-      pmLaunch.toolset,
-      'give_work',
-      newConversationGive('worker', 'The work', 'the work'),
-    )
+    const given = await callNewConversationGive(pmLaunch.toolset, 'worker', 'The work', 'the work')
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
     const workerLaunch = launches.at(-1)!
