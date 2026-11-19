@@ -59,7 +59,6 @@ describe('a commit another connection makes is heard before a window answer', ()
     held = Promise.resolve()
     served = true
     host = world.aHost({
-      servicesOn: false,
       windowWriterStamp: () => stamp,
       windowReader: reader,
     })

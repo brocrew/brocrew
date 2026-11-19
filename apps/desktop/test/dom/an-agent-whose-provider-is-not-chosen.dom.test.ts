@@ -47,7 +47,6 @@ const roster = (runsOn: ItsProvider): AgentIdentities => ({
   identities: [identity('ana', { displayName: 'Ana' }), identity('ida', { displayName: 'Ida' })],
   foldersWithoutARow: [],
   use: [use('ana', runsOn), use('ida', { provider: 'codex', from: 'its-conversations' })],
-  spawningEnabled: true,
   defaultApprovalMode: 'ask',
   externalMcpServers: [],
 })
@@ -56,7 +55,6 @@ const storeOver = (list: AgentIdentities): AgentStore =>
   createAgentStore({
     agentIdentities: async () => list,
     setExternalMcpServers: async () => list.identities[0] ?? null,
-    setSpawningEnabled: async () => ({ spawningEnabled: true }),
     setAgentProvider: async () => null,
   } as unknown as RuntimeBridge)
 

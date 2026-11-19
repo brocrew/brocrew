@@ -211,19 +211,10 @@ export interface AgentStore {
    */
   create(said: NewAgent): Promise<string | null>
   /**
-   * Throw the global switch. Answers the refusal sentence, or null.
-   *
-   * ⚠️ **No project**, and that is the switch rather than an omission: `app_policy` is ONE row,
-   * app-wide, and a per-project argument here would imply a per-project answer that does not exist.
-   */
-  setSpawning(enabled: boolean): Promise<string | null>
-  /** Turn services on or off in this workspace. Answers the refusal sentence, or null. */
-  setServices(on: boolean): Promise<string | null>
-  /**
    * 🔴 **Set the mode a person's next conversation begins in** (500, HO-036 §3.1). Answers the
    * refusal sentence, or null.
    *
-   * ⚠️ **No profile and no project, for {@link AgentStore.setSpawning}'s reason one method up** —
+   * The default is app-wide.
    * `app_policy` is ONE row, so an argument naming an identity here would imply a per-identity
    * answer that does not exist. ⛔ It is a person's preference, not an identity's capability.
    */
@@ -307,14 +298,6 @@ export function providerForALaunch(
   asked: Provider | null = null,
 ): Provider {
   return asked ?? runsOnIn(list, slug)?.provider ?? fallback
-}
-
-/** `held`, saying services are on or off as the host read them back. */
-function withServices(held: AgentIdentities, on: boolean): AgentIdentities {
-  if (on) return { ...held, servicesOn: true }
-  return Object.fromEntries(
-    Object.entries(held).filter(([key]) => key !== 'servicesOn'),
-  ) as unknown as AgentIdentities
 }
 
 export function createAgentStore(bridge: ClientAgentApi): AgentStore {
@@ -640,39 +623,10 @@ export function createAgentStore(bridge: ClientAgentApi): AgentStore {
       }
     },
 
-    async setServices(on) {
-      try {
-        const now = await bridge.setServicesOn({ on })
-        // What the services list now says, read back, not what was asked for.
-        const held = identities.value
-        if (held !== null) identities.value = withServices(held, now.servicesOn)
-        return null
-      } catch (error) {
-        return sentence(error)
-      }
-    },
-
-    async setSpawning(enabled) {
-      try {
-        const now = await bridge.setSpawningEnabled({ enabled })
-        // ⛔ **What the DATABASE now says, not what was asked for.** `spawnPolicy` answers `false`
-        // for a store that cannot read the row — *"a kill switch whose broken state is on is not a
-        // kill switch"* — so echoing the request would draw a switch that is on and is not.
-        const held = identities.value
-        if (held !== null) identities.value = { ...held, spawningEnabled: now.spawningEnabled }
-        return null
-      } catch (error) {
-        return sentence(error)
-      }
-    },
-
     async setApprovalDefault(mode) {
       try {
         const now = await bridge.setDefaultApprovalMode({ mode })
-        // ⛔ **What the DATABASE now says**, for the reason the method above gives and one that is
-        // sharper here: `defaultApprovalMode` answers `'ask'` for a row it could not write, so
-        // echoing the request would leave a control reading *yolo* over a database that will hand
-        // the next launch an `ask`. ⚠️ The direction of the lie is the dangerous one.
+        // Use the stored default. A write that did not take can still read back 'ask'.
         const held = identities.value
         if (held !== null) {
           identities.value = {

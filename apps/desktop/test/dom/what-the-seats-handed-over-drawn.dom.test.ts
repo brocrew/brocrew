@@ -16,7 +16,6 @@ import WorkflowOutputViewer from '../../src/renderer/src/components/WorkflowOutp
 import type { AttentionRequest } from '../../src/renderer/src/lib/attention'
 import { stalledWorkLead, usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import { absenceUnreadSays } from '../../src/renderer/src/lib/rows-unread'
-import { useSpawnSafety } from '../../src/renderer/src/lib/spawn-safety'
 import { workReading } from '../../src/renderer/src/lib/work-report'
 
 import {
@@ -115,7 +114,6 @@ const roster = (): AgentIdentities =>
     identities: [ident('pm')],
     foldersWithoutARow: [],
     use: [],
-    spawningEnabled: true,
     defaultApprovalMode: 'ask',
     externalMcpServers: [],
   }) as unknown as AgentIdentities
@@ -125,12 +123,10 @@ const roster = (): AgentIdentities =>
     listResumable: () => Promise.resolve(hostRows.resumable),
     listUnresumable: () => Promise.resolve([]),
     agentIdentities: async () => roster(),
-    setSpawningEnabled: async () => ({ spawningEnabled: true }),
   },
 }
 
 const queue = usePersonsQueue()
-const safety = useSpawnSafety()
 
 beforeEach(() => {
   hostRows.resumable = []
@@ -139,7 +135,6 @@ beforeEach(() => {
 afterEach(async () => {
   unmountAll()
   queue.forget()
-  safety.forget()
   await page.viewport(ORIGINAL.width, ORIGINAL.height)
 })
 

@@ -249,7 +249,6 @@ describe('every identity a person reads is named, never by slug', () => {
         identities,
         foldersWithoutARow: [],
         use: [],
-        spawningEnabled: true,
       }) as unknown as AgentIdentities
 
     /** A store over a double bridge: the first read answers the roster; later reads may fail. */

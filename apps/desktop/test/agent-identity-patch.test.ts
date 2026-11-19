@@ -18,7 +18,6 @@ const roster = (identities: AgentIdentity[]): AgentIdentities => ({
   foldersWithoutARow: ['not-registered'],
   use: [],
   externalMcpServers: [],
-  spawningEnabled: true,
   defaultApprovalMode: 'ask',
 })
 
@@ -91,7 +90,7 @@ describe.each(actions)('$name identity update', (action) => {
   it('patches before refreshing and waits for the complete roster before answering', async () => {
     const { store, read, write } = await setup()
     let finish!: (list: AgentIdentities) => void
-    const refreshed = { ...roster([saved, neighbour]), spawningEnabled: false }
+    const refreshed = { ...roster([saved, neighbour]), defaultApprovalMode: 'auto' as const }
     read.mockImplementation(() => {
       expect(store.identities.value).toEqual({ ...initial, identities: [neighbour, saved] })
       return new Promise((resolve) => {

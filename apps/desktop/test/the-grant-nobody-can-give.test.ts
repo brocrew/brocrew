@@ -8,12 +8,8 @@ import { FakeRuntime } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
-import {
-  NULL_SESSION_STORE,
-  createSessionStore,
-  type SessionStore,
-} from '../src/main/db/session-store'
-import { agentCallerId, agentToolsFor } from '../src/main/runtime/agent-tools'
+import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import {
   RuntimeHost,
   type CallerIdentity,
@@ -161,69 +157,6 @@ describe('355 · the identity door a person writes through', () => {
       expect(given.outcome, JSON.stringify(given)).toBe('ok')
       expect(typeof given.agent).toBe('string')
     })
-
-    /**
-     * 🔴 **The switch answers the DATABASE, not the request — measured where the two disagree.**
-     *
-     * ⛔ **`a-rule-measured-only-where-both-readings-agree`, caught by this dispatch's own mutation
-     * row.** On a store that can write, *"read it back"* and *"echo what was asked"* give the same
-     * answer for every input, so the round trip above could never see the difference. A host over
-     * {@link NULL_SESSION_STORE} is where they diverge: the write goes nowhere and `spawnPolicy`
-     * answers `false` — *"a kill switch whose broken state is on is not a kill switch"*.
-     */
-    it('🔴 a store that cannot write answers OFF, however the switch was asked for', () => {
-      const deaf = new RuntimeHost(depsOver({ store: NULL_SESSION_STORE }))
-      expect(deaf.setSpawningEnabled(true)).toEqual({ spawningEnabled: false })
-      // ⚑ The pair, at the same moment: the real store DOES move, so the above is about the deaf
-      // one rather than about a method that always says no.
-      expect(host.setSpawningEnabled(true)).toEqual({ spawningEnabled: true })
-    })
-
-    /**
-     * ⚑ **The kill switch, both directions, and the pair that keeps the first half honest.**
-     * §1 asks for it *"reachable fast"*; this is the half that proves the wire really throws it.
-     */
-    it('🔴 the switch refuses every spawn, and turning it back on allows the same one', async () => {
-      await bringIdentityIntoBeing('worker')
-      const parent = await personOpens('pm')
-
-      expect(await overTheWire({ kind: 'setSpawningEnabled', enabled: false })).toEqual({
-        spawningEnabled: false,
-      })
-      // ⚑ **D-016 · asked of `giveWork`, as the conversation that gives** — the switch refuses only
-      // a give that would START a conversation, and `pm` has none with `worker` yet.
-      const asPm = { ownerId: agentCallerId(parent) }
-      const refused = await host.giveWork(
-        {
-          to: 'new',
-          conversation_title: 'While it is off',
-          definition_of_done: 'The requested result and its checks are recorded.',
-          profile: 'worker',
-          title: 'While it is off',
-          brief: 'while it is off',
-        },
-        asPm,
-      )
-      expect(refused.ok).toBe(false)
-      if (refused.ok) throw new Error('unreachable')
-      expect(refused.refusal.rail).toBe('spawning-disabled')
-
-      expect(await overTheWire({ kind: 'setSpawningEnabled', enabled: true })).toEqual({
-        spawningEnabled: true,
-      })
-      const allowed = await host.giveWork(
-        {
-          to: 'new',
-          conversation_title: 'Once it is back on',
-          definition_of_done: 'The requested result and its checks are recorded.',
-          profile: 'worker',
-          title: 'Once it is back on',
-          brief: 'once it is back on',
-        },
-        asPm,
-      )
-      expect(allowed.ok, allowed.ok ? '' : allowed.refusal.reason).toBe(true)
-    })
   })
 
   describe('§2 · what the door will not do', () => {
@@ -263,17 +196,9 @@ describe('355 · the identity door a person writes through', () => {
       expect(second.foldersWithoutARow).toEqual(['ghost-folder'])
     })
 
-    /**
-     * 🔴 **The whole door is a PERSON's** (349) — every verb, refused on a channel that does not
-     * declare one, and allowed on the one that does, at the same moment.
-     */
-    it.each([
-      ['setSpawningEnabled', { kind: 'setSpawningEnabled', enabled: false }],
-      // ⚑ **500 · the launch default, live through the same door.** ⛔ `'auto'` deliberately, not
-      // `'ask'`: the refusal has to be measured on the value a caller would actually want, and a
-      // payload asking for the mode the fold already defaults to would prove nothing about the gate.
-      ['setDefaultApprovalMode', { kind: 'setDefaultApprovalMode', mode: 'auto' }],
-    ])('🔴 %s is refused when nobody is behind the channel', async (kind, command) => {
+    it('keeps setting the native approval default on the person’s channel', async () => {
+      const kind = 'setDefaultApprovalMode'
+      const command = { kind, mode: 'auto' }
       await bringIdentityIntoBeing('pm')
       await expect(overTheWire(command, new AnonymousSink('mcp:someone'))).rejects.toThrow(
         noPersonBehindIt(kind as never),
@@ -334,16 +259,13 @@ describe('355 · the identity door a person writes through', () => {
   })
 
   describe('§3 · the identities a surface may draw', () => {
-    it('⚑ carries the id, the slug, when it began, and the switch', async () => {
+    it('⚑ carries the id, slug and creation time', async () => {
       await bringIdentityIntoBeing('pm')
       const list: AgentIdentities = host.agentIdentities()
       const pm = list.identities[0]
       expect(pm?.id).toBe('aid:pm')
       expect(pm?.slug).toBe('pm')
       expect(pm?.createdAt).toBeGreaterThan(0)
-      expect(list.spawningEnabled).toBe(true)
-      expect(host.setSpawningEnabled(false)).toEqual({ spawningEnabled: false })
-      expect(host.agentIdentities().spawningEnabled).toBe(false)
     })
 
     /**

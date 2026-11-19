@@ -2,7 +2,6 @@
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
-import { useSpawnSafety } from '../../src/renderer/src/lib/spawn-safety'
 import {
   acceptEvent,
   createSessionRecord,
@@ -109,8 +108,6 @@ const RECORDED = [
   },
 ]
 
-const safety = useSpawnSafety()
-
 async function rail(width: number): Promise<Mounted> {
   const stub = window as unknown as { api?: unknown }
   stub.api = {
@@ -123,11 +120,9 @@ async function rail(width: number): Promise<Mounted> {
     identities: [identity('default'), identity('project-manager'), identity('worker')],
     foldersWithoutARow: [],
     use: [],
-    spawningEnabled: true,
     defaultApprovalMode: 'ask',
     externalMcpServers: [],
   }
-  safety.supply(agents as never, () => {})
   const m = mount(
     SideRail,
     {
@@ -153,7 +148,6 @@ async function rail(width: number): Promise<Mounted> {
 
 afterEach(() => {
   unmountAll()
-  safety.supply(null, () => {})
 })
 
 /* ------------------------------------------------------------------ the sweep */
@@ -472,8 +466,6 @@ describe('§2 · the three sentences 531 repaired, by name', () => {
   // the Home row itself**, and that negative went with the row it was about.
   const REPAIRED: readonly [string, string][] = [
     ['rail-sessions', 'Includes chats from Claude and Codex on this computer.'],
-    // ⚑ D-016 · ruling 12 — the switch names the START it refuses (`spawnSafetyView`).
-    ['rail-spawning-line', 'Click to prevent new conversations. Current work will continue.'],
   ]
 
   for (const width of [251.68, WIDE_RAIL_W]) {
@@ -516,8 +508,8 @@ describe('§2 · the three sentences 531 repaired, by name', () => {
     // until this one existed (`a-line-no-mutation-can-kill-is-not-carrying-its-rule`). ⚑ What the
     // clamp is for is the sentence somebody writes NEXT, so that is what gets planted.
     const m = await rail(251.68)
-    const row = m.q('rail-spawning')
-    const el = m.q('rail-spawning-line')
+    const row = m.q('rail-sessions')
+    const el = row.querySelector<HTMLElement>('small.says')!
     const line = Number.parseFloat(getComputedStyle(el).lineHeight)
     expect(line, 'the line height did not resolve to pixels').toBeGreaterThan(0)
     el.textContent = `${'a sentence somebody lengthened later '.repeat(6)}and then some`

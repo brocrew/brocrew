@@ -59,7 +59,6 @@ const world = (
   identities,
   foldersWithoutARow: [],
   use: [],
-  spawningEnabled: true,
   defaultApprovalMode: 'ask',
   externalMcpServers: servers,
 })

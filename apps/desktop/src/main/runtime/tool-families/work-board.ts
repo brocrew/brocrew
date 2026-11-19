@@ -96,7 +96,6 @@ const piecePayload = (
   // Queued at a service: how many pieces are ahead of it.
   ...(piece.queuedBehind === undefined ? {} : { queued_behind: piece.queuedBehind }),
   ...(piece.queueStalledAt === undefined ? {} : { queue_stalled_at: piece.queueStalledAt }),
-  ...(piece.queueWaitsForServices === true ? { queue_waits_for_services: true } : {}),
   // What it waited on in the background when its stop took that with it — only on a stall.
   ...(piece.state === 'stalled' && (piece.stoppedInTheBackground ?? []).length > 0
     ? { stopped_in_the_background: piece.stoppedInTheBackground }
@@ -195,15 +194,13 @@ const pieceText = (
   }${heldBecause === null ? '' : ` · what is held for the conversation holding it waits: ${heldBecause}`}${
     piece.queuedBehind === undefined
       ? ''
-      : piece.queueWaitsForServices === true
-        ? ' · queued; it waits until services are on'
-        : piece.queuedBehind === 0
-          ? ' · queued; next in line'
-          : ` · queued behind ${String(piece.queuedBehind)}${
-              piece.queueStalledAt === undefined
-                ? ''
-                : `; the active piece stalled at ${clockTime(piece.queueStalledAt)}`
-            }`
+      : piece.queuedBehind === 0
+        ? ' · queued; next in line'
+        : ` · queued behind ${String(piece.queuedBehind)}${
+            piece.queueStalledAt === undefined
+              ? ''
+              : `; the active piece stalled at ${clockTime(piece.queueStalledAt)}`
+          }`
   }${piece.questionLostAtRestart ? ' · a question of its own was lost at a restart' : ''}${
     piece.outcome === null ? '' : ` · ${piece.outcome}`
   } · ${piece.statusLine?.text ?? piece.brief.split('\n')[0] ?? ''}${piece.definitionOfDone === undefined ? '' : `\n  Done when: ${piece.definitionOfDone ?? 'Not recorded'}`}`
