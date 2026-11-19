@@ -1,3 +1,4 @@
+import { openPoolReviewLead } from './lib/worker-pool-fixture'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { claudeProjectDirName } from '@brobot2/runtime/claude'
@@ -16,13 +17,7 @@ describe('worker pools follow whole-tree lifecycle decisions', () => {
     await world.cleanUp()
   })
   async function setup() {
-    const host = world.aHost()
-    const giver = (
-      await host.createSession(
-        { provider: 'claude', profileId: 'review-lead', cwd: world.folder, approvalMode: 'auto' },
-        world.window,
-      )
-    ).sessionId
+    const { host, sessionId: giver } = await openPoolReviewLead(world)
     await host.closeAll()
     const worker = await world.aRecordedWorker(giver, 'document-reader')
     const restarted = world.aHost()
