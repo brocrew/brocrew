@@ -1443,8 +1443,7 @@ describe('484 · state a supervisor can trust', () => {
     }
 
     /**
-     * The line also names who holds the piece: the worker, whose own name is Ada here too. That one
-     * clause is checked and set aside; no other "by Ada" may appear, and no id outside a link.
+     * Check the holder clause separately so it cannot satisfy the assertion about the stop asker.
      */
     const theHolderClauseSetAside = (
       line: string,
@@ -1456,7 +1455,9 @@ describe('484 · state a supervisor can trust', () => {
       expect(holder).toBe(
         store.agentIdentities().find((one) => one.slug === workerProfile)?.displayName,
       )
-      const heldBy = ` · held by ${holder} · `
+      const task = store.workThatNames(worker)
+      if (task === null || task.title === null) throw new Error('the worker has no titled task')
+      const heldBy = ` · held by conversation ${task.label} · ${task.title} · `
       expect(line.split(heldBy)).toHaveLength(2)
       expect(line.replace(heldBy, ' · ')).not.toContain('by Ada')
       expectIdsOnlyInLinkTargets(line, [pm])

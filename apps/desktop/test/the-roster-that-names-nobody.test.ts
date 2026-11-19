@@ -30,7 +30,6 @@ import {
   agentName,
   type RuntimeEventMessage,
 } from '../src/shared/runtime-ipc'
-import { theOwnerOf } from '../src/shared/piece-called'
 import { neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -223,7 +222,9 @@ describe('610 · the roster that names nobody', () => {
 
   /** ⚑ **A conversation whose ledger row names no profile** — planted, because no door writes one. */
   const forgetTheProfile = (sessionId: string): void => {
-    db.prepare('UPDATE provider_session SET profile_id = NULL WHERE id = ?').run(sessionId)
+    db.prepare(
+      'UPDATE provider_session SET profile_id = NULL, agent_identity_id = NULL WHERE id = ?',
+    ).run(sessionId)
   }
 
   /**
@@ -241,12 +242,11 @@ describe('610 · the roster that names nobody', () => {
   // §1 · the line a model reads NAMES the agent
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
-  /**
-   * ⚑ **D-016 · commit 7 · R3 — a line leads with the piece its conversation owns** (`theOwnerOf`,
-   * the one spelling): every line pinned below is the first conversation's, which owns root `W1`,
-   * untitled. ⚑ Its id is in the payload beside the line.
-   */
-  const ownerOf = (label: string): string => theOwnerOf({ label, title: null })
+  function lastActive(session: string): string {
+    const recorded = store.recordedOne(session)
+    if (recorded === null) throw new Error('fictional conversation is missing')
+    return ` · last active ${new Date(recorded.updatedAt).toISOString()}`
+  }
 
   /**
    * ⚑ **D-042 · R6 — what each conversation runs on, on its line, after its state** (`runsOnText`):
@@ -261,7 +261,7 @@ describe('610 · the roster that names nobody', () => {
     text: string,
     prose: string,
     session: string,
-    name: string,
+    title: string,
     slug: string,
   ): void {
     const root = store.rootOf(session)
@@ -270,7 +270,7 @@ describe('610 · the roster that names nobody', () => {
     const reply = navigationReply(text)
     expect(reply.prose).toBe(prose)
     expect(reply.links).toEqual([
-      conversationLink(session, `${name} (${ownerOf(root.label)})`),
+      conversationLink(session, `conversation ${root.label} · ${title}`),
       agentLink(identity.id, identity.displayName ?? slug),
       pieceLink(root.piece, root.label, root.title ?? ''),
     ])
@@ -291,7 +291,7 @@ describe('610 · the roster that names nobody', () => {
       expect(store.rootOf(ada)?.label).toBe('W1')
       expectRosterText(
         listed.text,
-        `${ownerOf('W1')} · Ada (ada) · Claude · idle${runsOn} · holds W1`,
+        `conversation W1 · Ada · Ada (ada) · Claude · idle${runsOn}${lastActive(ada)} · holds W1`,
         ada,
         'Ada',
         'ada',
@@ -312,7 +312,7 @@ describe('610 · the roster that names nobody', () => {
       expect(listed.text).toContain('(ada)')
     })
 
-    it('⚠️ a name nobody gave is not printed twice, and one somebody gave is', async () => {
+    it('keeps the profile and fallback title when an agent has no display name', async () => {
       const worker = await personOpens('worker')
       // ⛔ **The mint again**, cleared here so the row is the one `profileLabel` answers for: an
       // identity nobody has named. ⚑ `agentName`'s own contract — *"a row nobody has named"* falls
@@ -320,7 +320,7 @@ describe('610 · the roster that names nobody', () => {
       expect(store.setAgentDisplayName('worker', null)).toBe(true)
       expectRosterText(
         (await ask(worker, 'list_agents')).text,
-        `${ownerOf('W1')} · worker · Claude · idle${runsOn} · holds W1`,
+        `conversation W1 · worker · worker · Claude · idle${runsOn}${lastActive(worker)} · holds W1`,
         worker,
         'worker',
         'worker',
@@ -331,7 +331,7 @@ describe('610 · the roster that names nobody', () => {
       expect(store.setAgentDisplayName('worker', 'Ada')).toBe(true)
       expectRosterText(
         (await ask(worker, 'list_agents')).text,
-        `${ownerOf('W1')} · Ada (worker) · Claude · idle${runsOn} · holds W1`,
+        `conversation W1 · Ada · Ada (worker) · Claude · idle${runsOn}${lastActive(worker)} · holds W1`,
         worker,
         'Ada',
         'worker',
@@ -347,7 +347,7 @@ describe('610 · the roster that names nobody', () => {
       expect(store.agentIdentities().map((one) => one.slug)).toContain('dev')
       expectRosterText(
         (await ask(dev, 'list_agents')).text,
-        `${ownerOf('W1')} · Ada (Dev) · Claude · idle${runsOn} · holds W1`,
+        `conversation W1 · Ada · Ada (Dev) · Claude · idle${runsOn}${lastActive(dev)} · holds W1`,
         dev,
         'Ada',
         'dev',
@@ -358,9 +358,9 @@ describe('610 · the roster that names nobody', () => {
       const brobot = await personOpens(DEFAULT_PROFILE_ID)
       expectRosterText(
         (await ask(brobot, 'list_agents')).text,
-        `${ownerOf('W1')} · ${DEFAULT_PROFILE_LABEL} (${DEFAULT_PROFILE_ID}) · Claude · idle${runsOn} · holds W1`,
+        `conversation W1 · brobot · ${DEFAULT_PROFILE_LABEL} (${DEFAULT_PROFILE_ID}) · Claude · idle${runsOn}${lastActive(brobot)} · holds W1`,
         brobot,
-        'BroBot',
+        'brobot',
         'brobot',
       )
     })
@@ -382,9 +382,11 @@ describe('610 · the roster that names nobody', () => {
 
       let card: AgentCard | undefined
       let listed = ''
+      let activity = ''
       await whileAResumeIsHeld(ours, async (cards) => {
         card = cards.find((one) => one.agent === ours)
         listed = (await ask(reader, 'list_agents')).text
+        activity = lastActive(ours)
       })
       // ⚑ **D-017 · R11 — a start reads `active`** (`starting` was a process fact, and is gone).
       expect(card?.state).toEqual({ is: 'active' })
@@ -396,12 +398,12 @@ describe('610 · the roster that names nobody', () => {
       expect(store.rootOf(ours)?.label).toBe('W1')
       // ⚑ D-042 · a held resume runs on its row's pair, replayed — what the line says it runs on.
       expect(listed.split('\n')).toContain(
-        `${ownerOf('W1')} · ${THIS_APP_CANNOT_NAME_IT} · Claude · active${runsOn} · holds W1`,
+        `conversation W1 · untitled · ${THIS_APP_CANNOT_NAME_IT} · Claude · active${runsOn}${activity} · holds W1`,
       )
       expect(THIS_APP_CANNOT_NAME_IT).toBe('an agent this app cannot name')
       // 🔴 **And the word it did NOT print**, which is the whole of the forbidden input: the
       // identity this app ships is called BroBot, and this row is not it.
-      expect(listed).not.toContain(`${ownerOf('W1')} · ${DEFAULT_PROFILE_LABEL}`)
+      expect(listed).not.toContain(`conversation W1 · ${DEFAULT_PROFILE_LABEL}`)
     })
 
     it('⛔ the same call one fact over IS named — the reservation carries the answer', async () => {
@@ -483,7 +485,7 @@ describe('610 · the roster that names nobody', () => {
       const asked = await ask(ada, 'get_agent_status', { agent: ada })
       expectRosterText(
         asked.text,
-        `${ownerOf('W1')} · Ada (ada) · Claude · idle${runsOn} · holds W1`,
+        `conversation W1 · Ada · Ada (ada) · Claude · idle${runsOn}${lastActive(ada)} · holds W1`,
         ada,
         'Ada',
         'ada',
@@ -531,25 +533,20 @@ describe('610 · the roster that names nobody', () => {
       const said = describedBy(ada, 'list_agents')
       // ⚑ **The clause that changed, by name** — a safety sentence with no test is a comment.
       // ⚑ **D-016 · commit 7 · R3 — each is named by the piece it owns first, then who it is.**
-      expect(said).toContain('Each is named by the piece of work it owns')
-      expect(said).toContain('then who it is — the name a person gave that agent')
-      expect(said).toContain('A conversation this app cannot attribute is still listed')
+      expect(said).toContain('Each row: conversation <address> · <title>')
+      expect(said).toContain('the name a person gave it, and the profile slug give_work takes')
+      expect(said).toContain('its provider, model, effort and context size; and the tasks it holds')
       // ⛔ **And the sentence it replaced, which was TRUE and useless.**
       expect(said).not.toContain('Reports id, project, profile, state')
     })
 
-    it('⚠️ get_agent_status says who, and keeps the clause that binds it to the listing', async () => {
+    it('get_agent_status describes the same address and profile as the listing', async () => {
       const ada = await personOpens('ada')
       const said = describedBy(ada, 'get_agent_status')
-      expect(said).toContain('Who one agent is')
-      // ⚑ **D-017 · R2 — the clause re-aimed, still binding it to the listing**: `list_agents` names
-      // the stopped conversations only up to its cut, so the card answers every id the listing
-      // names AND any other the same reach admits — one predicate, `withinMessagingReach`.
-      // ⚑ **D-016 · commit 7 · R1 — and by the piece it owns**, the label every door that takes an
-      // agent takes beside its id.
       expect(said).toContain(
-        'It answers for any conversation this app can run or restart, including every one list_agents names, by the piece it owns (W1.2) or by its id.',
+        "One conversation's status, by any of its labels or its id: conversation <address> · <title>, its profile",
       )
+      expect(said).toContain('its context size, the tasks it holds, and when it was last active')
     })
   })
 })

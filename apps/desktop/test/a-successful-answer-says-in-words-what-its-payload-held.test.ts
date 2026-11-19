@@ -414,12 +414,11 @@ describe('a successful answer says in words what its payload held', () => {
   it('list_tasks names who holds a piece, what its holder does now on a stall, and each file by its role', async () => {
     const input = aFile('the-brief-notes.md', '# Notes\n\nWhat to survey.\n')
     const { pmTools, worker, workerTools, label } = await aPmAndItsWorker({ inputs: [input] })
-    const holder = host.whatToCallTheConversation(worker)
 
     // The worker's turn ends with the piece still open: a stall.
     await theCardIsAnswered(worker, 'allow')
     const board = (await ok(pmTools, 'list_tasks', {})).text
-    expect(board).toContain(`· held by ${holder}`)
+    expect(board).toContain(`· held by conversation ${label} · Inventory project`)
     expect(board).toMatch(/· stalled \(.*\).* · the conversation holding it is now \S/)
 
     const report = aFile('the-survey.md', '# Survey\n\nAll files read.\n')
@@ -721,7 +720,7 @@ describe('a successful answer says in words what its payload held', () => {
 
       // The emitted line, as a model reads it: led by the id, the one address it has.
       const listed = await ok(pmTools, 'list_agents', {})
-      const line = listed.text.split('\n').find((one) => one.startsWith('below_1 · '))
+      const line = listed.text.split('\n').find((one) => one.startsWith('conversation below_1 · Ada'))
       expect(line, listed.text).toBeDefined()
       expect(line).toContain(' · started by ')
       expect(line?.split(' · started by ')[0]).not.toContain('the owner of')
