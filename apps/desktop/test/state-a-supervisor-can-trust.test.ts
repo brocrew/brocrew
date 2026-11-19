@@ -8,7 +8,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeProviderSessions, FakeRuntime, SessionMachine } from '@brobot2/runtime'
 import type {
   AgentToolset,
@@ -110,7 +110,6 @@ function holdingAWorkingTurn(
   // the stop honoured; `completed` is the turn a provider finished anyway, which Codex does
   // (`probe:codex-early-interrupt`, `709`).
   itsWord: 'interrupted' | 'completed' = 'interrupted',
-  onSend?: (text: string) => void,
 ): FakeSessionHandle {
   const queue = new AsyncQueue<RuntimeEvent>()
   let status = handle.status()
@@ -138,11 +137,10 @@ function holdingAWorkingTurn(
         }
       }
       if (property === 'send') {
-        return async (text: string): Promise<void> => {
+        return async (): Promise<void> => {
           if (machine.beginTurn() === null) {
             throw new Error('cannot send: session is not active or a turn is in progress')
           }
-          onSend?.(text)
         }
       }
       if (property === 'interrupt') {
@@ -1082,16 +1080,17 @@ describe('484 · state a supervisor can trust', () => {
     })
   })
 
-  // ─────────────────────────────────────────────────────────────────────────────────────────────
-  // §5 · what `interrupt_agent.reason` actually is
-  // ─────────────────────────────────────────────────────────────────────────────────────────────
-
   describe('§5 · an explicit agent Stop records its reason and tells it on the next delivery', () => {
     it('keeps the reason on the worker’s ask and tells the provider on its next input', async () => {
-      const delivered: string[] = []
-      const { pm, pmProfile, pmTools, worker, workerHandle } = await aPmAndItsWorker((handle) =>
-        holdingAWorkingTurn(handle, 'interrupted', (text) => delivered.push(text)),
-      )
+      const send = vi.fn<FakeSessionHandle['send']>()
+      const { pm, pmProfile, pmTools, worker, workerHandle } = await aPmAndItsWorker((handle) => {
+        const held = holdingAWorkingTurn(handle)
+        send.mockImplementation(held.send)
+        return new Proxy(held, {
+          get: (target, key) =>
+            key === 'send' ? send : (Reflect.get(target, key, target) as unknown),
+        })
+      })
       await waitFor(() => workerHandle.status() === 'working', 'the child to be working')
       const reason = 'zzq-the-recorded-stop-reason-9137'
       const said = await callOn(pmTools, 'interrupt_agent', { agent: worker, reason })
@@ -1103,19 +1102,19 @@ describe('484 · state a supervisor can trust', () => {
       const otherRows = workerRows.filter((event) => event.type !== 'work_interrupted')
       const recordedElsewhere = [...ledger(pm), ...otherRows]
       expect(JSON.stringify(recordedElsewhere)).not.toContain(reason)
-      expect(delivered).toHaveLength(1)
-      expect(delivered[0]).not.toContain(reason)
+      expect(send).toHaveBeenCalledTimes(1)
+      expect(send.mock.calls[0]?.[0]).not.toContain(reason)
       const followUp = `${reason}-but-spoken`
       await host.send(worker, followUp, asPm(pm))
       await waitFor(
         () => JSON.stringify(ledger(worker)).includes(followUp),
         'the spoken ledger row',
       )
-      expect(delivered).toHaveLength(2)
-      expect(delivered[1]).toContain(
+      expect(send).toHaveBeenCalledTimes(2)
+      expect(send.mock.calls[1]?.[0]).toContain(
         `stopped your turn: ${reason}. Read what was recorded before continuing instead of redoing it.`,
       )
-      expect(delivered[1]).toContain(followUp)
+      expect(send.mock.calls[1]?.[0]).toContain(followUp)
     })
 
     it('⚠️ the UI half of the evidence, measured — interrupting and speaking really are two acts', async () => {
