@@ -46,7 +46,12 @@ describe('the selected conversation task panel', () => {
       world.store.recordGive(
         { ...given, number, owner: target, folder: null, inputs: [] },
         world.store.nextOrdinal(target),
-        { type: 'work_given', ...given, definitionOfDone: 'Sorted and checked' },
+        {
+          type: 'work_given',
+          ...given,
+          definitionOfDone: 'Sorted and checked',
+          ...(i === 0 ? { messageId: 'msg_panel_waiting' } : {}),
+        },
         givenAt,
       )
       return { piece, label }
@@ -85,9 +90,12 @@ describe('the selected conversation task panel', () => {
     expect(page.other.map(({ piece }) => piece)).toEqual(
       [6, 4, 3, 2, 1].map((i) => pieces[i]!.piece),
     )
-    expect(page.counts.closed).toBe(1)
-    expect(page.counts.active + page.counts.open).toBe(6)
-    expect(await read(target, page.next)).toMatchObject({ ok: true, other: [pieces[0]], next: null })
+    expect(page.counts).toEqual({ active: 5, open: 1, closed: 1 })
+    expect(await read(target, page.next)).toMatchObject({
+      ok: true,
+      other: [{ ...pieces[0], state: 'waiting' }],
+      next: null,
+    })
     expect(await read(giver, page.next)).toEqual({ ok: false, reason: 'invalid-cursor' })
     expect(world.store.events(target)).toEqual(ledger)
     expect(world.handles).toHaveLength(starts)
