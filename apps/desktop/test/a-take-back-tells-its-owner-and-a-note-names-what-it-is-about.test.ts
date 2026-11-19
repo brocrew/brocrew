@@ -320,6 +320,16 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
       event.type === 'assistant_message' && event.text.startsWith('echo: ')
         ? [event.text.slice('echo: '.length)]
         : [],
+    )
+
+  /** ⚑ The turn that carried these words, as its provider was handed it. */
+  const theTurnCarrying = async (sessionId: string, words: string): Promise<string> => {
+    await waitFor(() => heardBy(sessionId).some((one) => one.includes(words)), `"${words}"`)
+    return heardBy(sessionId).find((one) => one.includes(words)) ?? ''
+  }
+
+  const nameOf = (profile: string): string => agentName(profile, store.agentIdentities())
+
   const restartWithHistoricalWorker = async (
     worker: string,
     pm: string,
@@ -353,16 +363,6 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     )
     return { next, tools }
   }
-
-    )
-
-  /** ⚑ The turn that carried these words, as its provider was handed it. */
-  const theTurnCarrying = async (sessionId: string, words: string): Promise<string> => {
-    await waitFor(() => heardBy(sessionId).some((one) => one.includes(words)), `"${words}"`)
-    return heardBy(sessionId).find((one) => one.includes(words)) ?? ''
-  }
-
-  const nameOf = (profile: string): string => agentName(profile, store.agentIdentities())
 
   it('a piece taken back from a conversation that was replaced is not told to the one that took its place', async () => {
     const { pm, worker, pmTools, label } = await aPmAndItsWorker('the piece')
@@ -872,11 +872,6 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
       `Sent by ${nameOf('worker')} (worker), another agent; it gave you no work. ` +
         `This message is about ${label} · the piece (answered).`,
     )
-  }
-
-  it('🔴 a held note still says which piece it is about when a restart sends it', async () => {
-    const { pmTools, worker, piece, label } = await aPmAndItsWorker('the piece')
-    await holdANote(pmTools, worker, label)
   })
 
   const holdANote = async (tools: AgentToolset, worker: string, label: string): Promise<void> => {
@@ -887,6 +882,11 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
       piece: label,
     })
     expect(held.delivery, JSON.stringify(held)).toBe('queued')
+  }
+
+  it('🔴 a held note still says which piece it is about when a restart sends it', async () => {
+    const { pmTools, worker, piece, label } = await aPmAndItsWorker('the piece')
+    await holdANote(pmTools, worker, label)
     // ⚑ Its row keeps the piece it names, and a start reads it back.
     expect(
       store.messagesWaitingIn(worker).find((one) => one.text === 'noted for later'),
@@ -909,6 +909,16 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
         messageId: 'msg_by_hand',
         kind: 'work',
         text: 'x',
+        about: 7,
+      } as never,
+      tick(),
+    )
+    expect(
+      store.messagesWaitingIn(worker).find((one) => one.messageId === 'msg_by_hand'),
+    ).not.toHaveProperty('about')
+  })
+
+  it('🔴 a held note handed to the conversation that took its receiver’s place keeps the piece it names, on its row too', async () => {
     const { pm, pmTools, worker, piece, label } = await aPmAndItsWorker('the piece')
     await holdANote(pmTools, worker, label)
     const { next } = await restartWithHistoricalWorker(worker, pm, 'noted for later')
@@ -921,46 +931,28 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
   })
 
   it('a missing session leaves a held note recorded and says why its wake ran nothing', async () => {
-        about: 7,
-      } as never,
-      tick(),
-    )
-    expect(
-      store.messagesWaitingIn(worker).find((one) => one.messageId === 'msg_by_hand'),
-    ).not.toHaveProperty('about')
-  })
-
-  it('🔴 a held note handed to the conversation that took its receiver’s place keeps the piece it names, on its row too', async () => {
     const { pmTools, worker, piece, label } = await aPmAndItsWorker('the piece')
     await holdANote(pmTools, worker, label)
-    const before = store
-      .recorded()
-      .map(({ sessionId }) => sessionId)
-      .sort()
-    const wakeFailure = {
-      type: 'error',
-      message:
-        'This conversation could not wake: its provider session file is missing. Nothing ran.',
-      fatal: false,
-    }
-    issued.forgetAll()
-    expect(store.replacements()).toEqual([])
-    await stop(worker)
-    await waitFor(
-      () =>
-        ledger(worker).some((row) => row.type === 'error' && row.message === wakeFailure.message),
-      'the missing session wake failure',
-    )
-    expect(ledger(worker)).toContainEqual(wakeFailure)
-    expect(store.messagesWaitingIn(worker)).toContainEqual(
-      expect.objectContaining({ text: 'noted for later', about: piece }),
-    )
-    expect(
+    const idsOfRecordedConversations = () =>
       store
         .recorded()
         .map(({ sessionId }) => sessionId)
-        .sort(),
-    ).toEqual(before)
+        .sort()
+    const before = idsOfRecordedConversations()
+    const message =
+      'This conversation could not wake: its provider session file is missing. Nothing ran.'
+    issued.forgetAll()
+    await stop(worker)
+    await waitFor(
+      () => ledger(worker).some((row) => row.type === 'error' && row.message === message),
+      'the missing session wake failure',
+    )
+    expect(ledger(worker)).toContainEqual({ type: 'error', message, fatal: false })
+    expect(store.messagesWaitingIn(worker)).toContainEqual(
+      expect.objectContaining({ text: 'noted for later', about: piece }),
+    )
+    expect(store.replacements()).toEqual([])
+    expect(idsOfRecordedConversations()).toEqual(before)
   })
 
   it('🔴 held messages that go as one turn each say what they are about, and only the one that names a piece', async () => {

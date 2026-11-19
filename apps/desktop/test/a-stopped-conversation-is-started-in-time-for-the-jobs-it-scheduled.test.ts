@@ -35,7 +35,12 @@ import {
 import { clockTime, clockTimeFrom } from '../src/shared/clock'
 import type { RuntimeEventMessage, RuntimeStatesMessage } from '../src/shared/runtime-ipc'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
-import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 
 /**
  * Scheduled conversations use one wake-up per newest ledger level at launch and stop.
@@ -526,13 +531,7 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       interruptWaitMs: 40,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       ...(listening
         ? {
             statesMoved: (message: RuntimeStatesMessage): void => {
@@ -2011,9 +2010,17 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
   })
 
   it.each([
+    ['with a notice already held', true],
+    ['with no notice held', false],
+  ] as const)('records a missing provider file on scheduled wake %s', async (_, hadNotice) => {
+    const [conversation] = await aFirstLife(async ([first]) => makes(first!, ONE_SHOT_A), 'agent-a')
+    if (conversation === undefined) throw new Error('no conversation was opened')
+    issued.forgetAll()
+    const idsBefore = store.recorded().map(({ sessionId }) => sessionId)
+    const handlesBefore = handles.length
     const onlyTheOriginal = () => {
       expect(wakeUpsOf(host).has(conversation)).toBe(false)
-      expect(ids()).toEqual(idsBefore)
+      expect(store.recorded().map(({ sessionId }) => sessionId)).toEqual(idsBefore)
       expect(store.replacements()).toEqual([])
       expect(handles.length).toBe(handlesBefore)
     }
@@ -2047,16 +2054,6 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
       )
       expect(ledger(conversation)).toContainEqual({ type: 'error', message: detail, fatal: false })
     }
-    ['with a notice already held', true],
-    ['with no notice held', false],
-  ] as const)('records a missing provider file on scheduled wake %s', async (_, hadNotice) => {
-    const [conversation] = await aFirstLife(async ([first]) => makes(first!, ONE_SHOT_A), 'agent-a')
-    if (conversation === undefined) throw new Error('no conversation was opened')
-    issued.forgetAll()
-    const ids = () => store.recorded().map((row) => row.sessionId)
-    const idsBefore = ids()
-    const handlesBefore = handles.length
-
     onlyTheOriginal()
   })
 
