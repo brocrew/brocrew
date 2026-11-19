@@ -85,6 +85,7 @@ export interface AServiceWorld {
   }[]
   writesFail: WritesFail
   startsFail: boolean | Error
+  failNextResumeFor: string | null
   /** While set, every resume of a conversation of this agent fails. */
   resumesFailFor: string | null
   /** The fictional provider no longer holds conversations of this agent. */
@@ -222,6 +223,7 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
     sent: [],
     writesFail: 'none',
     startsFail: false,
+    failNextResumeFor: null,
     resumesFailFor: null,
     resumesAreGoneFor: null,
     startsWait: null,
@@ -329,17 +331,20 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
           ref: SessionRef,
           options: ResumeOptions,
         ): ReturnType<FakeRuntime['resume']> {
-          if (world.resumesAreGoneFor === profileOf(options.providerHome)) {
+          const as = profileOf(options.providerHome)
+          if (world.resumesAreGoneFor === as) {
             throw new ResumeError(ref, 'the fictional conversation is gone', {
               noSuchSession: true,
             })
           }
-          if (world.resumesFailFor === profileOf(options.providerHome)) {
+          const failsOnce = world.failNextResumeFor === as
+          if (failsOnce) world.failNextResumeFor = null
+          if (failsOnce || world.resumesFailFor === as) {
             throw new Error('the provider could not start')
           }
           world.resumesAsked++
           if (world.resumesWait !== null) await world.resumesWait
-          return itsTurnsKept(await super.resume(ref, options), profileOf(options.providerHome))
+          return itsTurnsKept(await super.resume(ref, options), as)
         }
         override async listModels(
           context: ProviderRuntimeContext,

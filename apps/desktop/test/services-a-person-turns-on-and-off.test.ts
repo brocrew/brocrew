@@ -349,6 +349,25 @@ describe('Service lifecycle', () => {
       })
     })
 
+    it('hands the next piece over when the take-back notice cannot start the service', async () => {
+      const { after, caller, service, one, two } = await aStoppedService()
+      expect(stateOf(service, two.piece)).toBe('waiting')
+      world.failNextResumeFor = 'browser-driver'
+
+      const taken = await call(after, caller, 'withdraw_task', { piece: one.label })
+      expect(taken.structured).toMatchObject({
+        outcome: 'ok',
+        state: 'withdrawn',
+        delivery: 'not-delivered',
+      })
+      expect(world.failNextResumeFor).toBeNull()
+      await vi.waitFor(() => {
+        expect(
+          world.store.piecesOwnedBy(service).find((row) => row.piece === two.piece),
+        ).toMatchObject({ briefHandedOver: true })
+      })
+    })
+
     it('delivers a caller’s answer to its stopped service after restart', async () => {
       const { host, caller, service, one, releaseTheTurn } = await aServiceWithWorkQueued()
       const asked = await call(host, service, 'ask_question', {
