@@ -31,7 +31,7 @@ export function sendReceipt(
   if (state.cause.code === 'provider-file-missing') {
     return {
       receipt,
-      said: `${task} is recorded in ${conversation}, but that conversation can't run: its session file is missing. Its record is still readable with read_transcript.`,
+      said: `${task} is recorded in ${conversation}, but that conversation can't run: its session file is missing. Its record is still readable with read_transcript. To have the work done, give it with to: "new" and a brief pointing at ${address}, then close task ${facts.recorded.taskLabel}.`,
     }
   }
   const person = state.needsPerson === true ? ' Ask the person to fix it, with request_action.' : ''
