@@ -1,4 +1,5 @@
 import { givePagesToNewWorker } from './lib/give-fixture'
+import { expectNoQuestionWake } from './lib/question-wake'
 import { waitFor } from './lib/f093-host'
 import type { AgentState } from '../src/shared/agent-state-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -46,6 +47,7 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
 /** BroBot's child, as every door names her: the first new agent, by the piece she owns. */
 const ADA = 'Ada (the owner of W1.1 · Build the pages)'
 const stalledOn = (id: string) => `stalled: question ${id} remains unanswered after a reminder`
+const owesAda: AgentState = { is: 'owes-an-answer', to: [ADA], since: expect.any(Number) }
 const owesAdaAfterReminder = (id: string): AgentState => ({
   is: 'owes-an-answer',
   to: [ADA],
@@ -283,6 +285,27 @@ describe('the host says who a conversation owes an answer to, and moves the word
     expect(stateOf(ada)?.is).toBe('waiting-on-an-answer')
     expect(seeded).not.toHaveBeenCalled()
 
+    const parentTools = agentToolsFor(host, brobot)
+    const passed = await callOn(parentTools, 'pass_question_up', {
+      asked_by: ada,
+      question: id,
+      who_answers: 'a-person',
+    })
+    if (typeof passed.question !== 'string') throw new Error(JSON.stringify(passed))
+    expect(passed.outcome).toBe('ok')
+    expect(store.questionsRaisedIn(brobot).get(passed.question)?.passedUpFrom).toBe(id)
+    const declined = await host.respondUserInput(brobot, passed.question, { kind: 'reject' }, window)
+    expect(declined.outcome).toBe('taken')
+    expect(store.routedRequestsOf(ada).find((row) => row.requestId === id)?.state).toBe('open')
+    await untilPushed(brobot, owesAda, 'the parent to owe the passed-up question without a stall')
+    expect(stateOf(brobot)).toEqual(owesAda)
+    const listedQuestions = await callOn(parentTools, 'list_questions', {})
+    const original = (listedQuestions.questions as { question: string }[]).find(
+      (row) => row.question === id,
+    )
+    expect(original).toMatchObject({ question: id, state: 'open' })
+    expect(original).not.toHaveProperty('delivery', 'stalled after a reminder')
+
     // The answer is a row in the asker's ledger; it moves the parent's kept read back.
     const before = saidOf(brobot).length
     const answered = await callOn(agentToolsFor(host, brobot), 'answer_question', {
@@ -385,6 +408,7 @@ describe('the host says who a conversation owes an answer to, and moves the word
     const adaHandle = doubleOf(ada)
     expect(adaHandle.status()).toBe('idle')
 
+    const turnsBefore = turnsIn(brobot)
     const raised = adaHandle.simulateUserInput('which branch?', ['main', 'dev'], false)
     const release = adaHandle.waitForAPerson()
     await waitFor(
@@ -402,7 +426,11 @@ describe('the host says who a conversation owes an answer to, and moves the word
         .at(-1),
     ).toMatchObject({ state: 'open', parent: brobot, went: { is: 'the-parent' } })
 
-    await untilPushed(brobot, owesAdaAfterReminder(raised.id), 'the parent to owe the card')
+    await waitFor(() => turnsIn(brobot) > turnsBefore, 'the turn receiving the card to finish')
+    await untilPushed(brobot, owesAda, 'the parent to owe the card without a reminder')
+    expect(stateOf(brobot)).toEqual(owesAda)
+    expectNoQuestionWake(ledger(brobot))
+    expectNoQuestionWake(ledger(ada))
 
     // Only the child's status moves; that re-asks the parent.
     const before = saidOf(brobot).length
