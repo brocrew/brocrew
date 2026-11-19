@@ -152,3 +152,62 @@ describe('293 §5 · an answer applies only while it still owns the profile', ()
     expect(shownIn(lists), 'a credential gesture could not revive a failed menu').toEqual(ACCOUNT_B)
   })
 })
+
+
+describe('a login refresh retains the last model answer while disowning older requests', () => {
+  it('retains rows while refreshing and never lets the pre-login request win', async () => {
+    const old = deferred()
+    const fresh = deferred()
+    let read = () => Promise.resolve(ACCOUNT_A)
+    const lists = holderOver(() => read())
+    await lists.read('claude', 'work')
+    read = () => old.promise
+    const obsolete = lists.reread()
+    lists.forget('work', { retainAnswered: true })
+    expect(shownIn(lists)).toEqual(ACCOUNT_A)
+    expect(lists.readiness('claude', 'work')).toEqual({ state: 'pending' })
+    expect(lists.choices('claude', 'work')).toBeNull()
+    read = () => fresh.promise
+    const current = lists.reread()
+    expect(lists.held('claude', 'work')).toMatchObject({ state: 'answered', refreshing: true })
+    fresh.resolve(ACCOUNT_B)
+    await current
+    expect(shownIn(lists)).toEqual(ACCOUNT_B)
+    old.resolve(ACCOUNT_A)
+    await obsolete
+    expect(shownIn(lists)).toEqual(ACCOUNT_B)
+    expect(lists.held('claude', 'work')).not.toMatchObject({ refreshing: true })
+  })
+
+  it('replaces retained rows with the authoritative empty answer', async () => {
+    const fresh = deferred()
+    let read = () => Promise.resolve(ACCOUNT_A)
+    const lists = holderOver(() => read())
+    await lists.read('claude', 'work')
+    lists.forget('work', { retainAnswered: true })
+    read = () => fresh.promise
+    const current = lists.reread()
+    expect(shownIn(lists)).toEqual(ACCOUNT_A)
+    fresh.resolve({ ...ACCOUNT_B, models: [] })
+    await current
+    expect(shownIn(lists)?.models).toEqual([])
+    expect(lists.held('claude', 'work')).not.toMatchObject({ refreshing: true })
+  })
+})
+
+
+it('settles a failed forced refresh without promoting retained choices to current readiness', async () => {
+  const fresh = deferred()
+  let read = () => Promise.resolve(ACCOUNT_A)
+  const lists = holderOver(() => read())
+  await lists.read('claude', 'work')
+  lists.forget('work', { retainAnswered: true })
+  read = () => fresh.promise
+  const current = lists.reread()
+  fresh.reject(new Error('Fictional refresh failed'))
+  await current
+  expect(shownIn(lists)).toEqual(ACCOUNT_A)
+  expect(lists.held('claude', 'work')).not.toMatchObject({ refreshing: true })
+  expect(lists.readiness('claude', 'work')).toMatchObject({ state: 'settled', ready: null })
+  expect(lists.choices('claude', 'work')).toBeNull()
+})

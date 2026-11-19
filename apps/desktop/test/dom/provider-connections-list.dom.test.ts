@@ -1,5 +1,7 @@
 import { createModelLists } from '../lib/provider-launch-fixture'
 import { providerDescriptor } from '@brobot2/shared'
+import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
+import type { ModelList } from '../../src/shared/model-choice-contracts'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, reactive, type Component } from 'vue'
 import type { Provider, ProviderConnection } from '@brobot2/shared'
@@ -283,6 +285,37 @@ it('clears the previous metadata when the recheck identifies a different account
   await settle()
   expect(m.q('provider-connection').textContent).toContain('Next account')
   expect(m.q('provider-connections').getAttribute('aria-busy')).toBe('false')
+})
+
+it('keeps model chips visible and names the pending refresh until its new answer settles', async () => {
+  const pending = held<ModelList>()
+  let refreshing = false
+  const known: ModelList = {
+    provider: 'claude',
+    notAsked: null,
+    standIn: null,
+    lastPicked: null,
+    startsOn: null,
+    models: [{ id: 'fern-known', label: 'Fern known', addedBy: 'the-provider' }],
+  }
+  window.api.runtime.modelList = () =>
+    refreshing ? pending.promise : Promise.resolve(known)
+  const { m, props } = card(async () => rows('claude'))
+  await settle()
+  expect(m.q('provider-model-row').textContent).toContain('Fern known')
+  refreshing = true
+  props.lists.forget(DEFAULT_PROFILE_ID, { retainAnswered: true })
+  const refresh = props.lists.reread()
+  await settle()
+  expect(m.q('provider-model-row').textContent).toContain('Fern known')
+  expect(m.q('provider-models-said').textContent).toContain('Updating models…')
+  expect(m.q('provider-models').textContent).not.toContain('Reading Claude’s models…')
+  pending.answer({ ...known, models: [] })
+  await refresh
+  await settle()
+  expect(m.all('provider-model-row')).toHaveLength(0)
+  expect(m.q('provider-models').textContent).not.toContain('Updating models…')
+  expect(m.q('provider-models').textContent).not.toContain('Reading Claude’s models…')
 })
 
 for (const state of ['absent', 'unknown'] as const) {
