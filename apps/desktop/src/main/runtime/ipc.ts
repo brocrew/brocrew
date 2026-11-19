@@ -10,6 +10,7 @@ import { z } from 'zod'
 import { workSearchQuery } from '../../shared/work-search'
 import { filesLibraryRequest } from '../../shared/files-library'
 import { teamProfileGraphRequest } from '../../shared/team-profile-graph'
+import { CONVERSATION_IDENTITY_BATCH_SIZE } from '../../shared/conversation-title'
 import {
   MAX_BACKGROUND_ID,
   MAX_SETTINGS_BYTES,
@@ -1071,6 +1072,10 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
   }),
   z.object({ kind: z.literal('readConversationIdentity'), sessionId }),
   z.object({
+    kind: z.literal('readConversationIdentities'),
+    sessionIds: z.array(sessionId).max(CONVERSATION_IDENTITY_BATCH_SIZE),
+  }),
+  z.object({
     kind: z.literal('readConversationTasks'),
     sessionId,
     cursor: z.string().max(2048).optional(),
@@ -1567,6 +1572,7 @@ const DURING_A_QUIT: Record<RuntimeCommandKind, QuitRuling> = {
   // naming work, while the surfaces that would draw the new title are going away with the process.
   retitleWork: 'refused',
   readConversationIdentity: 'refused',
+  readConversationIdentities: 'refused',
   readConversationTasks: 'refused',
   readConversationTitleHistory: 'refused',
   renameConversation: 'refused',
@@ -2686,6 +2692,8 @@ export async function executeRuntimeCommand(
       return host.readConversationIdentity(
         command.sessionId,
       ) satisfies Answer<'readConversationIdentity'>
+    case 'readConversationIdentities':
+      return host.readConversationIdentities(command) satisfies Answer<'readConversationIdentities'>
     case 'readConversationTasks':
       return host.readConversationTasks(command) satisfies Answer<'readConversationTasks'>
     case 'readConversationTitleHistory':

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
+import { CONVERSATION_IDENTITY_BATCH_SIZE } from '../src/shared/conversation-title'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
 describe('renaming a conversation', () => {
@@ -36,6 +37,52 @@ describe('renaming a conversation', () => {
     executeRuntimeCommand(host, world.window, { kind: 'readConversationIdentity', sessionId })
   const readTitles = (sessionId: string) =>
     executeRuntimeCommand(host, world.window, { kind: 'readConversationTitleHistory', sessionId })
+
+  it('projects only the requested distinct rail rows with the same canonical identity as selection', async () => {
+    const empty = 'sess_rail_empty'
+    const service = 'sess_rail_service'
+    world.anAgent('rail-service')
+    expect(world.store.setAgentDisplayName('rail-service', 'Rail Service')).toBe(true)
+    world.store.create({
+      id: empty,
+      provider: 'claude',
+      cwd: '/work',
+      approvalMode: 'ask',
+      profileId: 'worker',
+      parentSessionId: caller,
+    })
+    world.store.create({
+      id: service,
+      provider: 'claude',
+      cwd: '/work',
+      approvalMode: 'ask',
+      profileId: 'rail-service',
+      service: true,
+    })
+    world.store.titleConversation(
+      target,
+      world.store.nextOrdinal(target),
+      { type: 'titled', title: 'Saved rail title', author: { kind: 'person' } },
+      world.clock,
+    )
+    const root = world.store.rootOf(target)!
+    const starts = world.handles.length
+    const ledger = world.store.events(target)
+    const read = (sessionIds: readonly string[]) =>
+      executeRuntimeCommand(host, world.window, { kind: 'readConversationIdentities', sessionIds })
+
+    expect(await read([target, 'sess_missing', empty, target, service])).toEqual([
+      { conversation: target, address: root.label, title: 'Saved rail title', author: { kind: 'person' } },
+      { conversation: empty, address: empty, title: profileName, author: null },
+      { conversation: service, address: service, title: 'Rail Service', author: null },
+    ])
+    expect(await read([])).toEqual([])
+    await expect(read(Array(CONVERSATION_IDENTITY_BATCH_SIZE + 1).fill(target))).rejects.toThrow(
+      'invalid runtime command',
+    )
+    expect(world.handles).toHaveLength(starts)
+    expect(world.store.events(target)).toEqual(ledger)
+  })
 
   it('uses one ledger history for a person and an agent, while keeping the task title', async () => {
     const root = world.store.rootOf(target)!

@@ -34,6 +34,12 @@ export interface ConversationIdentity {
   readonly author: ConversationTitleAuthor | null
 }
 
+export const CONVERSATION_IDENTITY_BATCH_SIZE = 15
+
+export interface ConversationIdentityBatchInput {
+  readonly sessionIds: readonly string[]
+}
+
 export interface ConversationTitleHistoryCursor {
   readonly generation: number
   readonly ordinal: number
