@@ -1,6 +1,6 @@
 import type { SessionHandle } from '@brobot2/runtime'
 import type { AgentState } from '../../shared/agent-state-contracts'
-import { sessionSpeakingAs, type Caller } from './conversation-caller'
+import type { Caller } from './conversation-caller'
 import { admitInterrupt, refuseInterrupt } from './interrupt-rails'
 import type { InterruptOutcome } from './message-records'
 
@@ -52,10 +52,6 @@ export async function stopTurn<Running extends RunningTurn>(
   const id = deps.currentConversation(conversation)
   const slot = deps.findSlot(id)
   if (slot === undefined && !deps.isRecorded(id)) return { ok: false, refusal: 'no-such-agent' }
-  const speaking = sessionSpeakingAs(caller)
-  if (speaking !== null && deps.currentConversation(speaking) === id) {
-    return { ok: false, refusal: 'that-agent-is-you' }
-  }
   const result = (asked: boolean, ended?: readonly string[]): InterruptOutcome => ({
     ok: true,
     agent: id,

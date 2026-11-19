@@ -160,7 +160,7 @@ export function agentToolsFor(
     createReplyToParentTool(host, by, me, guarded, replyInput),
     createListTasksTool(host, by, me, readerInputs, readerFieldRefusal, guarded),
     createAnswerQuestionTool(host, by, me, guarded),
-    createInterruptAgentTool(host, by, me, selfRefusal, guarded),
+    createInterruptAgentTool(host, by, me, guarded),
     createListQuestionsTool(host, me, readerInputs, readerFieldRefusal, guarded),
     createCreateAgentTool(host, by, me, theModels, theEfforts, guarded),
     createWithdrawTaskTool(host, by, guarded),

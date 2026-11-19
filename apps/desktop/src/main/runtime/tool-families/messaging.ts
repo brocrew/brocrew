@@ -1,6 +1,5 @@
 import { AGENT_MESSAGE_KINDS, type AgentMessageKind } from '../../../shared/task-contracts'
 import { ASKED_TO_STOP } from '../../../shared/how-work-stopped'
-import { A_CONVERSATION_CANNOT_INTERRUPT_ITSELF } from './launch-failures'
 import {
   type AgentToolAnswer,
   type AgentToolDefinition,
@@ -438,13 +437,9 @@ export function createMessageAgentTool(
 }
 
 export function createInterruptAgentTool(
-  host: Pick<
-    AgentToolHost,
-    'interruptAgent' | 'nameByItsWork' | 'theConversationAddressed' | 'tookItsPlace'
-  >,
+  host: Pick<AgentToolHost, 'interruptAgent' | 'nameByItsWork' | 'theConversationAddressed'>,
   by: Caller,
   me: string,
-  selfRefusal: ReturnType<typeof conversationAddressing>['selfRefusal'],
   guarded: (run: () => Promise<AgentToolAnswer>) => Promise<AgentToolAnswer>,
 ): AgentToolDefinition & { readonly name: ToolName } {
   return {
@@ -482,15 +477,6 @@ export function createInterruptAgentTool(
           )
         }
         const addressed = host.theConversationAddressed(agent, by, me, 'interrupting')
-        // **F091 · that is this conversation** — its own id, a piece it holds (a label names its
-        // owner), or one it took the place of, whose place it now stands in: `message_agent`'s word
-        // for the same address, with the acts an interrupt has.
-        if (addressed === me || host.tookItsPlace(addressed) === me) {
-          return selfRefusal(agent, addressed, {
-            ...refuseTool('that-agent-is-you', { agent: addressed }),
-            reason: A_CONVERSATION_CANNOT_INTERRUPT_ITSELF,
-          })
-        }
         // **Every refusal arrives as a value, so there is no catch** (395): an interrupt that
         // failed for any other reason is a bug, and reporting one as a refusal would tell a model a
         // person could fix it.
@@ -499,7 +485,7 @@ export function createInterruptAgentTool(
           // **Two vocabularies meet here and neither is rewritten.** `'no-such-agent'` is
           // `TOOL_REFUSALS`' word — the same one every door gives about an id no conversation has
           // — and everything else is an `INTERRUPT_RAILS` payload carried unchanged.
-          if (outcome.refusal === 'no-such-agent' || outcome.refusal === 'that-agent-is-you') {
+          if (outcome.refusal === 'no-such-agent') {
             return refusalAnswer(refuseTool(outcome.refusal, { agent: addressed }))
           }
           const carried = carryInterruptRefusal(outcome.refusal)
