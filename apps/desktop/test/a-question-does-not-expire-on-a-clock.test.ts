@@ -1,6 +1,7 @@
 import { giveOpenWorkerTask } from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
 import { callOn } from './helpers/call-agent-tool'
+import { askParentWhichSchema } from './helpers/ask-parent-which-schema'
 import { waitFor } from './lib/f093-host'
 import { TASK_STATES } from '../src/shared/task-contracts'
 import { REQUEST_STATES } from '../src/shared/question-contracts'
@@ -294,13 +295,7 @@ describe('591 · a question does not expire on a clock', () => {
   describe('§1 · an answer given after the bound reaches the agent', () => {
     it('⛔ the call does not wait, the question stays open, and the answer arrives as a turn the worker reads', async () => {
       const { worker, pmTools, workerTools, piece } = await aWorkerHoldingWork()
-      const said = await callOn(workerTools, 'ask_question', {
-        who_answers: 'the-parent',
-        piece,
-        question: 'which schema?',
-        options: ['a', 'b'],
-      })
-      expect(said.outcome, JSON.stringify(said)).toBe('ok')
+      const said = await askParentWhichSchema(workerTools, piece)
       // ⛔ **608 · the call carries no answer and no word about one** (HO-084 §4). ⚠️ It used to
       // report `answered: false` and `question_is: 'open'` after a five-minute race; there is no
       // race, so both were constants and both went with it.
