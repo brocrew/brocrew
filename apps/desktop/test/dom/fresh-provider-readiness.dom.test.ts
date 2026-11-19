@@ -366,14 +366,15 @@ it('keeps the post-login usage answer when an older signed-out read arrives late
   expect(screen.q('app-usage').textContent).toContain('5h 28%')
 })
 
-
 it('immediately disowns an old account model reply when another login notice joins its refresh', async () => {
   const { listeners } = fixture(true)
   await settle()
   expect(lists.choices('claude', DEFAULT_PROFILE_ID)?.ready).toBe(true)
   const known = lists.choices('claude', DEFAULT_PROFILE_ID)!.list
   const replies: ((answer: ModelList) => void)[] = []
-  window.api.runtime.modelList = vi.fn(() => new Promise<ModelList>((resolve) => replies.push(resolve)))
+  window.api.runtime.modelList = vi.fn(
+    () => new Promise<ModelList>((resolve) => replies.push(resolve)),
+  )
   const readyMenus: string[][] = []
   const stop = watch(
     () => lists.choices('claude', DEFAULT_PROFILE_ID),
@@ -415,7 +416,9 @@ it('immediately disowns an old account model reply when another login notice joi
       state: 'settled',
       ready: true,
     })
-    expect(lists.choices('claude', DEFAULT_PROFILE_ID)?.list.models[0]?.id).toBe('latest-account-only')
+    expect(lists.choices('claude', DEFAULT_PROFILE_ID)?.list.models[0]?.id).toBe(
+      'latest-account-only',
+    )
     expect(replies).toHaveLength(2)
   } finally {
     stop()
