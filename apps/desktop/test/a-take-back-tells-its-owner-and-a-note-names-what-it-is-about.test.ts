@@ -468,7 +468,15 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     })
     expect(followed).toMatchObject({ outcome: 'ok', kind: 'follow-up', piece, label })
     expect(sentBy(pm).at(-1)).toMatchObject({ kind: 'follow-up', piece, label })
-    expect(sentBy(pm)).toHaveLength(receiptsBefore + 2)
+    const addressedByTask = await callOn(pmTools, 'message_agent', {
+      agent: label,
+      text: 'just a note to this conversation',
+    })
+    expect(addressedByTask).toMatchObject({ outcome: 'ok', agent: worker, kind: 'note' })
+    expect(addressedByTask).not.toHaveProperty('piece')
+    expect(sentBy(pm).at(-1)).toMatchObject({ kind: 'note', to: worker })
+    expect(sentBy(pm).at(-1)).not.toHaveProperty('piece')
+    expect(sentBy(pm)).toHaveLength(receiptsBefore + 3)
   })
 
   it('a message names the piece it is about in its answer and on its receipt, and a name nothing answers to for that sender is refused', async () => {
