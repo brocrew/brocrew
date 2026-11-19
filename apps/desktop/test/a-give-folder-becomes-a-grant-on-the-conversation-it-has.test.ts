@@ -268,12 +268,12 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
     )
     if (!first.ok) throw new Error('refused')
     const helper = first.owner
-    return { giver, helper }
+    return { giver, helper, first }
   }
 
   it('🔴 several pieces: the union — and a piece that ends takes its folder back at the next turn', async () => {
     // ⚑ The helper asks first, so its turn parks on a card and both gives are held behind it.
-    const { giver, helper } = await giveWithFirstFolder()
+    const { giver, helper, first } = await giveWithFirstFolder()
     const cards = (): string[] =>
       store
         .events(helper)
@@ -321,7 +321,7 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
   })
 
   it('🔴 a busy conversation: the grant waits with its brief, queued — never widening the turn running', async () => {
-    const { giver, helper } = await giveWithFirstFolder()
+    const { giver, helper, first } = await giveWithFirstFolder()
     host.claimSession(helper, window)
     const cards = (): string[] =>
       store

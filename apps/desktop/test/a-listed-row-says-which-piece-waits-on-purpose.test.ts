@@ -14,10 +14,7 @@ import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import {
-  type ResumableSessionInfo,
-  type UnresumableSessionInfo,
-} from '../src/shared/runtime-ipc'
+import { type ResumableSessionInfo, type UnresumableSessionInfo } from '../src/shared/runtime-ipc'
 import {
   fixtureFolder,
   fixtureDatabase,
@@ -131,8 +128,7 @@ describe('a listed row says which piece its conversation waits on on purpose', (
     await settle()
     return { ada, piece, label: given.label as string }
   }
-  const aHelperWithAPiece = () =>
-    openGiverAndGivePages({ host, root, window }, settle, aPieceGiven)
+  const aHelperWithAPiece = () => openGiverAndGivePages({ host, root, window }, settle, aPieceGiven)
   const statusOf = async (
     ada: string,
     label: string,

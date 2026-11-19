@@ -177,8 +177,7 @@ describe('a to-do for a person', () => {
     )
   }
 
-  const aHelperWithAPiece = () =>
-    openGiverAndGivePages({ host, root, window }, settle, aPieceGiven)
+  const aHelperWithAPiece = () => openGiverAndGivePages({ host, root, window }, settle, aPieceGiven)
   /** Ada asks about W1.1, of her giver or of a person; the question's id. */
   const asks = async (ada: string, whoAnswers: 'the-parent' | 'a-person'): Promise<string> => {
     const asked = await ok(agentToolsFor(host, ada), 'ask_question', {
