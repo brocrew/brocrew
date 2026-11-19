@@ -1004,7 +1004,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
           about: null,
           from: null,
           authorship: { attribution: 'app_authored' },
-        ): Promise<void>
+        ): { readonly accepted: Promise<void> }
         publishOurs(
           session: ControlledSession,
           event: { type: 'user_turn'; text: string; attribution: 'app_authored' },
@@ -1019,7 +1019,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       const send = () =>
         reader.handToProvider(session, 'ready', [], null, null, null, null, {
           attribution: 'app_authored',
-        })
+        }).accepted
       const stillEligible = () => {
         expect(session.turnBlockSnapshot).toBe(before)
         const words = session.pendingTurnBlock!.words

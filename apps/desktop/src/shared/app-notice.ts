@@ -201,7 +201,9 @@ export const NOTICE_MEANS: Readonly<Record<AppNotice, string>> = {
   'an-mcp-server-request-decided':
     'This app put these words here because a request this conversation made to register an MCP ' +
     'server was decided. You did not write them, and they were not sent on anybody’s behalf.',
-  'a-conversation-was-compacted': 'The conversation was compacted.',
+  'a-conversation-was-compacted':
+    'This app put these words here because the provider confirmed compaction of this conversation. ' +
+    'You did not write them, and they were not sent on anybody’s behalf.',
 }
 
 /** ⛔ **Is this a member of the vocabulary, asked of a value that has crossed the LEDGER?** */
