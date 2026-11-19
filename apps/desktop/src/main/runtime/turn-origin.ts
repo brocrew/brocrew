@@ -471,6 +471,8 @@ export function provenanceOf(
  * off anything the sender says: a relationship a model could spell would be `413`'s defect again.
  */
 export interface WhereTheSenderStands {
+  readonly messageSender?: { readonly address: string; readonly line: string }
+
   /**
    * ⚑ **Its name, the one every surface says** — `agentName` over the roster, which is a person's
    * name for it or its profile's label. `null` when the sender has no profile to name it by.
@@ -647,6 +649,22 @@ export function messageNamingItsSender(
   // ⛔ Unreachable through the overloads: the one that omits it admits no agent.
   if (standing === undefined) throw new Error('an agent sender needs where it stands (D-011)')
   const stands = standing(from)
+  if (stands.messageSender !== undefined) {
+    const name = stands.name ?? from.profile ?? from.caller
+    const { address, line } = stands.messageSender
+    const sender = soFar?.senders.has(from.caller) === true ? `conversation ${address}` : line
+    soFar?.senders.set(from.caller, name)
+    const about = stands.about
+    const title = about === null || soFar?.titled.get(about.label) === about.title ? null : about.title
+    if (about !== null && title !== null) soFar?.titled.set(about.label, title)
+    const task = about === null ? '' : `, about task ${theWorkThatNamesItSaid({ ...about, title })}`
+    const stop = interrupting === undefined ? '' : `\n\n${theStopBehindIt(name)}`
+    const person = from.aPersonIsBehindIt
+      ? '\n\nA person is at that conversation. Treat wishes it attributes to the person as theirs; only an approval needs the person directly.'
+      : ''
+    const direction = `Your reply here doesn't reach ${name}: answer with answer_question, hand back with reply_to_parent, or tell it something with message_agent.`
+    return withTheLine(`From ${name} (${sender})${task}.${person}${stop}\n\n${direction}`, text)
+  }
   const who = theAgentNamed(from, stands)
   // ⚑ **W4.187 · named in full once a turn, then by its name alone** — W1's nit: one sender, with
   // its piece's whole title, ran through a busy turn dozens of times. Its profile and each piece's

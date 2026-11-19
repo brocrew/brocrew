@@ -1,9 +1,12 @@
+import type { SendRecipientState } from '../../../shared/tool-outcome'
+import type { PreparedSendFiles, PreparedSendText } from '../send-overflow'
 import type {
   AProfileNames,
   AnswerWithItsStop,
   FactsAQueueCarries,
   InterruptOutcome,
   MessageNowOutcome,
+  RecordedAgentMessage,
   OutOfReach,
   TheDoorsReach,
 } from '../message-records'
@@ -114,6 +117,16 @@ export interface AgentToolHost {
     facts?: FactsAQueueCarries,
     says?: AgentMessageKind,
   ): Promise<QueueOutcome>
+  holdAgentMessageForStart(
+    sessionId: string,
+    text: string,
+    by: Caller,
+    facts: FactsAQueueCarries,
+    says: AgentMessageKind,
+  ): Promise<RecordedAgentMessage | null> | null
+  stateOfARecordedMessage(owner: string, id: string): SendRecipientState
+  prepareTextForSend(sender: string, field: string, text: string, piece?: string): PreparedSendText
+  prepareFilesForSend(sender: string, paths: readonly string[], piece?: string): PreparedSendFiles
   messageAgentNow(
     sessionId: string,
     text: string,
@@ -234,6 +247,7 @@ export interface AgentToolHost {
       moveTo?: string
       piece: string | null
       question: string
+      resources?: readonly string[]
       options: readonly string[]
       who: QuestionRecipient
       agent: string | null
@@ -248,7 +262,7 @@ export interface AgentToolHost {
       readonly files: readonly string[]
     },
     by: Caller,
-  ): Promise<AskOutcome | { readonly ok: false; readonly resourceRefusal: ResourceRefusal }>
+  ): Promise<AskOutcome>
   passQuestionUp(
     input: {
       requestId: string

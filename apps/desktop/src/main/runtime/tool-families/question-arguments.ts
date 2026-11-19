@@ -15,6 +15,7 @@ export interface AskQuestionArguments {
   readonly agent?: string
   /** The question itself. */
   readonly question: string
+  readonly resources?: readonly string[]
   /**
    * **611 · who it is for** (HO-088 §2.2) — REQUIRED, and the PO ruled why.
    *

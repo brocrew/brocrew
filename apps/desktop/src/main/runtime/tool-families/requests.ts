@@ -16,7 +16,7 @@ import {
 import { PATH_SEGMENT_RULE, isPathSegment } from '../../../shared/runtime-ipc'
 import { REPLY_SUMMARY_LIMIT } from '../reply-rails'
 import { type ToolRefusal, carryQuestionRefusal, refuseTool } from './refusals'
-import { answer, refusalAnswer } from './answers'
+import { answer, refusalAnswer, sendAnswer } from './answers'
 import { z } from 'zod'
 
 /** Every argument `request_mcp_server` advertises, as a type its advertisement satisfies. */
@@ -205,7 +205,7 @@ export function createRequestActionTool(
   return {
     name: 'request_action',
     description:
-      'Ask the person to do something only they can do — a click, a check, a sign-in, a file to look at — as a to-do under Waiting on you, about a piece you hold. Say what to do, and hand them files with resources. Name the piece, or leave it out when you hold only one. This does not wait: the person answers Done or Can’t do it, with a note if they like, and the answer reaches you as a message. To mark the piece as waiting on it, call update_work with on: {person: "<the question id this returns>"}. A request in your reply is not a to-do, and shows nowhere.',
+      'Ask the person to do something only they can do — a click, a check, a sign-in, a file to look at — as a to-do under Waiting on you, about a piece you hold. Say what to do, and hand them files with resources. Name the piece, or leave it out when you hold only one. This does not wait: the person answers Done or Can’t do it, with a note if they like, and the answer reaches you as a message. To mark the piece as waiting on it, call update_work with on: {person: "<the question id this returns>"}. A request in your reply is not a to-do, and shows nowhere. Only the person answers questions and actions addressed to them. If you asked and no longer need it, withdraw your request; withdrawal does not answer it. Use withdraw_question with the request id.',
     /** It writes a request and hands nobody work: only the person's answer reaches the caller. */
     beyondItsRails: 'nothing-its-rails-do-not-cover',
     input: {
@@ -218,7 +218,7 @@ export function createRequestActionTool(
       action: z
         .string()
         .describe(
-          `What the person should do, in plain words, at most ${String(REPLY_SUMMARY_LIMIT)} characters. It shows under Waiting on you with Markdown: **bold**, lists, \`code\` for ids and paths, and links to files.`,
+          `What the person should do, in plain words. Anything over 2,000 characters arrives as a file the reader is pointed to. It shows under Waiting on you with Markdown: **bold**, lists, \`code\` for ids and paths, and links to files.`,
         ),
       resources: z
         .array(z.string())
@@ -237,11 +237,7 @@ export function createRequestActionTool(
           problems.push("piece must be a piece's label or id, or left out")
         }
         const said = typeof action === 'string' ? action.trim() : ''
-        if (said === '' || said.length > REPLY_SUMMARY_LIMIT) {
-          problems.push(
-            `action must say what to do, in 1 to ${String(REPLY_SUMMARY_LIMIT)} characters`,
-          )
-        }
+        if (said === '') problems.push('action must say what to do')
         if (
           paths !== undefined &&
           (!Array.isArray(paths) ||
@@ -264,21 +260,17 @@ export function createRequestActionTool(
           },
           by,
         )
-        if ('resourceRefusal' in asked) {
-          const { resourceRefusal } = asked
-          return answer(
-            { ...resourceRefusal },
-            `refused (${resourceRefusal.rail}): ${resourceRefusal.reason}`,
-          )
+        if ('resourceFailure' in asked) {
+          return answer({ ...asked.refusal }, asked.refusal.reason)
         }
         if (!asked.ok) {
           const carried = carryQuestionRefusal(asked.refusal)
           return answer(carried, `refused (${asked.refusal.rail}): ${asked.refusal.reason}`)
         }
         return answer(
-          { outcome: 'ok', question: asked.question },
-          `The to-do is under Waiting on you as ${asked.question}. The person answers Done or Can’t do it, and the answer reaches you as a message; they may not be looking now. Carry on from here.`,
+          { outcome: 'ok', question: asked.question, attachments: asked.attachments },
+          `The to-do is under Waiting on you as ${asked.question}. The person answers Done or Can’t do it, and the answer reaches you as a message; they may not be looking now. Carry on from here.` + asked.overflowSaid,
         )
-      }),
+      }).then(sendAnswer),
   }
 }

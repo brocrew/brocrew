@@ -1,3 +1,5 @@
+import type { SendReceipt } from '../../shared/tool-outcome'
+import type { ResourceRefusal } from '../resources/resources'
 import type {
   QuestionRecipient,
   RequestState,
@@ -900,22 +902,15 @@ export function noPieceToAskAbout(named: string, held: readonly string[]): Quest
 export type AskOutcome =
   | {
       readonly ok: true
-      /** ⚑ **The id the parent quotes to answer.** */
       readonly question: string
-      /**
-       * ⚑ **D-016 · where it went** — what the asker said, except that a question for the conversation
-       * that gave a ROOT, or work the asker took on for a person (commit 6), goes to a person: their
-       * giver is the person (spec D15).
-       */
       readonly went: QuestionRecipient
-      /**
-       * ⚑ **D-016 · the piece it is about is the asker's own ROOT** — work a person gave it, which
-       * nothing hands back — so the answer says how that work ends instead of naming
-       * `reply_to_parent`, which refuses a root.
-       */
       readonly aboutItsRoot: boolean
+      readonly delivery?: { readonly receipt: SendReceipt; readonly said: string }
+      readonly attachments: SendReceipt['attachments']
+      readonly overflowSaid: string
     }
   | { readonly ok: false; readonly refusal: QuestionRefusal }
+  | { readonly ok: false; readonly refusal: ResourceRefusal; readonly resourceFailure: true }
 
 /**
  * 🔴 **679 · what a pass-up states: the new question, AND the one it carried, by its asker.**
@@ -974,6 +969,7 @@ export function questionText(
     readonly called: string
     /** ⚑ What `asked_by` quotes — the label of the piece that names it, or its id. */
     readonly address: string
+    readonly line?: string
   },
   request: {
     id: string
@@ -989,8 +985,37 @@ export function questionText(
      * piece, a passed-up one and a provider's.
      */
     label?: string | null
+    taskTitle?: string | null
   },
 ): string {
+  if (asker.line !== undefined) {
+    const lines = [
+      `${asker.called} (${asker.line}) asks you ${request.id}.`,
+      `Use asked_by ${asker.address} with this question id.`,
+    ]
+    if (request.label != null) {
+      const title = request.taskTitle == null ? '' : ` · ${request.taskTitle}`
+      lines.push(`About task ${request.label}${title}.`)
+    }
+    lines.push(request.prompt)
+    for (const part of request.questions) {
+      const header = part.header === undefined ? '' : ` · ${part.header}`
+      const soleAsk = request.questions.length === 1 && part.id === 'answer'
+      const prompt = soleAsk
+        ? part.options.length === 0
+          ? 'answer in your own words.'
+          : 'choose one:'
+        : part.prompt
+      lines.push(`Part id "${part.id}"${header}: ${prompt}`)
+      for (const option of part.options) lines.push(`    - ${option.label}`)
+      if (part.allowOther === true) lines.push('    (or an answer of your own)')
+      if (part.multiSelect === true) lines.push('    (this part takes more than one)')
+    }
+    lines.push(
+      'Answer with answer_question, one entry per part id: answers: [{ part: "id", answer: ["…"] }]. If you can’t, use cannot_answer and say why.',
+    )
+    return lines.join('\n')
+  }
   const about =
     request.label === undefined || request.label === null ? '' : ` about ${request.label}`
   const lines = [
