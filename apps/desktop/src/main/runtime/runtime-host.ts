@@ -23808,14 +23808,20 @@ export class RuntimeHost implements LiveHost {
   }
 
   receiptForSend(facts: SendFacts): ReturnType<typeof sendReceipt> {
-    const delivery =
-      'profile' in facts
-        ? {
-            ...facts,
-            context: facts.state.kind === 'cannot-run' ? null : this.contextOfConversation(facts.to),
-          }
-        : { ...facts, heldBehindTurn: this.heldBehindATurn(facts.recorded.id) }
-    return sendReceipt(delivery, this.deps.store, this.theServiceOf(facts.to) !== null)
+    const service = this.theServiceOf(facts.to) !== null
+    if (!('profile' in facts)) {
+      const delivery = { ...facts, heldBehindTurn: this.heldBehindATurn(facts.recorded.id) }
+      return sendReceipt(delivery, this.deps.store, service)
+    }
+    let context: ContextReading | null = null
+    if (facts.state.kind !== 'cannot-run') {
+      try {
+        context = this.contextOfConversation(facts.to)
+      } catch (error) {
+        console.warn(`give_work: could not read context for ${facts.to}: ${errorMessage(error)}`)
+      }
+    }
+    return sendReceipt({ ...facts, context }, this.deps.store, service)
   }
 
   private contextOfConversation(

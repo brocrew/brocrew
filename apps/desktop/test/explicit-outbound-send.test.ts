@@ -38,6 +38,21 @@ describe('explicit outbound sends', () => {
     return tool.call(args)
   }
 
+  it('delivers a self-addressed Message with its sender and action ID', async () => {
+    const text = 'Read these notes in this conversation.'
+    const sent = await send('message_agent', { agent: sender, text })
+    const receipt = sent.structured?.receipt as SendReceipt
+    expect(receipt.recipient).toMatchObject({ id: sender, state: { kind: 'started' } })
+    expect(receipt.recorded.id).toBe(sent.structured?.messageAct)
+    expect(world.ledger(sender)).toContainEqual(
+      expect.objectContaining({ type: 'message_sent', to: sender, messageAct: receipt.recorded.id }),
+    )
+    const parts = world.ledger(sender).flatMap((row) =>
+      row.type === 'user_turn' ? theMessagesOf(row) : [],
+    )
+    expect(parts).toContainEqual(expect.objectContaining({ text, relayedFrom: sender }))
+  })
+
   it('delivers a taskless message and keeps the full words in its sender’s folder', async () => {
     expect(world.store.piecesOwnedBy(sender)).toHaveLength(0)
     const attachment = join(world.folder, 'appendix.txt')
