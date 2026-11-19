@@ -256,7 +256,7 @@ describe('a service is reached through the piece it is on', () => {
       expect(rebriefed.structured).toMatchObject({ outcome: 'ok' })
     })
 
-    it('reads the service status while a question remains outside the caller’s reach', async () => {
+    it('reads the service status and lets a caller ask its exact conversation address', async () => {
       const { host, caller, service } = await aServiceOnTheFirstPiece()
       const status = await call(host, caller, 'get_agent_status', { agent: service })
       expect(status.structured).toMatchObject({ outcome: 'ok', agent: { agent: service } })
@@ -265,7 +265,21 @@ describe('a service is reached through the piece it is on', () => {
         agent: service,
         question: 'which floor?',
       })
-      expect(asked.structured).toMatchObject({ outcome: 'refused' })
+      const question = asked.structured.question
+      expect(asked.structured).toMatchObject({
+        outcome: 'ok',
+        question: expect.any(String),
+        went_to: 'an-agent',
+        agent: service,
+        receipt: {
+          recorded: { kind: 'question', id: question },
+          recipient: { id: service },
+        },
+      })
+      const routed = world.store.routedRequestsOf(caller).find((row) => row.requestId === question)
+      expect(routed).toMatchObject({
+        parent: service,
+      })
       const listed = await call(host, caller, 'list_agents', {})
       expect(JSON.stringify(listed.structured)).toContain(service)
     })
