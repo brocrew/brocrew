@@ -865,7 +865,6 @@ function fakeBridge() {
     deleteConversation: async () => ({ done: false, refusal: 'not here' }) as const,
     setSpawningEnabled: async () => ({ spawningEnabled: false }),
     setServicesOn: async () => ({ servicesOn: false }),
-    // 500 · answers the fail-safe word, like the switch above answers the fail-closed one.
     setDefaultApprovalMode: async () => ({ defaultApprovalMode: 'ask' as const }),
     readConversationIdentity: async () => null,
     readConversationIdentities: async () => [],
