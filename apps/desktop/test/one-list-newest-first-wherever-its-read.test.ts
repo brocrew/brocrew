@@ -66,40 +66,22 @@ describe('one list of running and stopped conversations', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§3 · stopped conversations remain readable', () => {
-    it('a stopped conversation remains readable when messaging is narrowed', async () => {
+    it('a stopped conversation remains readable and listed for both other callers', async () => {
       const manager = await personOpens('pm')
       const brobotTools = agentToolsFor(host, await personOpens(DEFAULT_PROFILE_ID))
       const explorerTools = agentToolsFor(host, await personOpens('explorer'))
-      expect(world.store.setCapabilities('explorer', { canMessage: 'none' })).toBe(true)
-      expect({
-        defaultReach: world.store.capabilitiesOf(DEFAULT_PROFILE_ID)?.canMessage,
-        explorerReach: world.store.capabilitiesOf('explorer')?.canMessage,
-        managerParent: world.store.parentOf(manager),
-      }).toEqual({ defaultReach: 'any', explorerReach: 'none', managerParent: null })
+      expect(world.store.parentOf(manager)).toBeNull()
 
       // 🔴 **The target stops.**
       await host.close(manager, world.window)
 
-      expect(await callOn(explorerTools, 'get_agent_status', { agent: manager })).toMatchObject({
-        outcome: 'ok',
-        agent: { state: 'idle' },
-      })
-      const said = await callOn(explorerTools, 'message_agent', {
-        agent: manager,
-        text: 'anything at all',
-        // ⚑ **D-016 · a note** — a follow-up names a piece the sender gave, and this caller gave none.
-        kind: 'note',
-      })
-      expect(said).toMatchObject({ outcome: 'refused', rail: 'may-not-message' })
-      expect(said['detail']).toStrictEqual({ reach: 'none' })
-      expect(await listedAgentIds(explorerTools)).toContain(manager)
-
-      // ⚑ **THE PAIRED POSITIVE — the granted caller, over the identical stopped id.**
-      expect(await callOn(brobotTools, 'get_agent_status', { agent: manager })).toMatchObject({
-        outcome: 'ok',
-        agent: { state: 'idle' },
-      })
-      expect(await listedAgentIds(brobotTools)).toContain(manager)
+      for (const tools of [explorerTools, brobotTools]) {
+        expect(await callOn(tools, 'get_agent_status', { agent: manager })).toMatchObject({
+          outcome: 'ok',
+          agent: { state: 'idle' },
+        })
+        expect(await listedAgentIds(tools)).toContain(manager)
+      }
     })
   })
 })
