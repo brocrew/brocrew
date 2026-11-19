@@ -386,6 +386,8 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
     const pmTools = theToolsetJustHandedOut()
     const give = async (slug: string, brief: string): Promise<string> => {
       const made = await callOn(pmTools, 'give_work', {
+        to: 'new',
+        conversation_title: brief,
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: slug,
         title: brief,

@@ -35,7 +35,7 @@ describe('a worker binding needs its complete current record', () => {
     )
   })
 
-  it('keeps an unchanged worker current and follows its old address after replacement', async () => {
+  it('keeps the historical lineage and gives to the explicitly named successor', async () => {
     const { host, caller, worker } = await completed()
     expect(world.store.workerInItsPlace(worker)).toBe(worker)
     const successor = (
@@ -63,8 +63,8 @@ describe('a worker binding needs its complete current record', () => {
     await host.closeAll()
     const next = world.aHost()
     await next.reopenForAPerson(caller, world.window, null)
-    const ordinary = await world.gives(next, caller, 'document-reader', { to: worker })
-    expect(ordinary).toMatchObject({ ok: true, owner: successor, found: worker })
+    const ordinary = await world.gives(next, caller, 'document-reader', { to: successor })
+    expect(ordinary).toMatchObject({ ok: true, owner: successor, found: successor })
     if (!ordinary.ok) throw new Error('complete replacement refused')
     expect(
       await next.replyToParent(

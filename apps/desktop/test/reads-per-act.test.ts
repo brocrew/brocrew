@@ -87,11 +87,11 @@ const ACTS = {
   // ⚑ **D-016 · `spawn_agent` is gone, and a give is what starts a conversation**: `672`'s *spawn 3*
   // and *give 3 tasks* are ONE act now — three gives, each starting its worker's conversation with
   // the brief as its first turn — and the pin is what that act announces (re-measured at D-016).
-  // Each give and its stall announce work; the serial giver notice then queues and sends,
-  // announcing both queue changes. Three pieces therefore produce twelve work announcements.
+  // The first brief queues and sends from the ledger, adding two work announcements per Give.
+  // Each give and stall also announce work, as do the giver notice's queue and send.
   // ⚑ `persons` is announced from the store's record, once per commit holding a row the person's
   // queue reads; the window hears each subject once per turn of the loop.
-  'give 3': { conversations: 3, agents: 3, work: 12, persons: 27 },
+  'give 3': { conversations: 3, agents: 3, work: 18, persons: 30 },
   '3 replies': { work: 3, persons: 9 },
   // ⚑ **D-017** — it was *end 3*, the parent's `end_agent` on each child, and nothing ends a
   // conversation any more: the act is the STOP, the app's own close — the teardown `end_agent`

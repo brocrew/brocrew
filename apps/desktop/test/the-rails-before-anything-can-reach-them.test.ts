@@ -296,6 +296,7 @@ describe('341 · the rails, before anything can reach them', () => {
         found: expect.any(String),
         profile: 'worker',
         delivery: 'sent',
+        recipientState: { kind: 'started' },
         runsOn: {
           provider: 'claude',
           model: 'default',
@@ -658,7 +659,7 @@ describe('341 · the rails, before anything can reach them', () => {
       })
       const inItsPlace = host.tookItsPlace(live)
       expect(inItsPlace).toBeNull()
-      const again = admitted(await give(aPiece('worker'), as(parent)))
+      const again = admitted(await give(aPiece('worker', { to: first.label }), as(parent)))
       expect(again.found).toBe(live)
       // ⚑ **D-042 moved where *no start* is said** — `started: null` became `runsOn.how`: a give
       // that reaches the conversation it has, naming no model, leaves its pair `unchanged`.

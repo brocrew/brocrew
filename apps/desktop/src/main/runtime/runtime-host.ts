@@ -10497,8 +10497,6 @@ export class RuntimeHost implements LiveHost {
         ownerId: agentCallerId(spawn.parentSessionId),
       })
       this.recordTheGive(id, firstGive, queued.messageId, null, { conversation, queued })
-      this.theWorldMoved('conversations')
-      this.theWorldMoved('agents')
       input = { ...input, cwd }
     }
     // Translated on the same rule as the reopen path (100): both refusals land on the same
@@ -10542,6 +10540,10 @@ export class RuntimeHost implements LiveHost {
       return await this.startSession(slot, input, sink ?? NO_SURFACE, spawn, recordingGive)
     } catch (error) {
       await this.cleanUpAFailedStart(slot)
+      if (recordingGive) {
+        this.theWorldMoved('conversations')
+        this.theWorldMoved('agents')
+      }
       throw this.refusalTranslated(this.aRefusalAPersonReads(error, id))
     } finally {
       slot.settle()
