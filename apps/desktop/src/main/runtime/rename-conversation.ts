@@ -6,11 +6,7 @@ import {
   type ConversationTitledEvent,
 } from '../../shared/conversation-title'
 import type { SessionStore } from '../db/session-store'
-import {
-  canonicalAddressOf,
-  conversationDisplayTitle,
-  resolveConversationAddress,
-} from './conversation-address'
+import { describeConversationForRead, resolveConversationAddress } from './conversation-address'
 
 interface RenameConversationDependencies {
   readonly store: Pick<
@@ -21,7 +17,11 @@ interface RenameConversationDependencies {
     | 'conversationBinding'
     | 'agentIdentityNameById'
     | 'conversationTitle'
+    | 'recordedOne'
+    | 'parentOf'
+    | 'rootOf'
   >
+  readonly itIsAService: (conversation: string) => boolean
   readonly beforeWriting: (conversation: string) => Promise<void>
   readonly record: (conversation: string, title: ConversationTitledEvent) => void
 }
@@ -29,7 +29,7 @@ interface RenameConversationDependencies {
 export async function renameConversation(
   input: ConversationRenameInput,
   author: ConversationTitleAuthor,
-  { store, beforeWriting, record }: RenameConversationDependencies,
+  { store, itIsAService, beforeWriting, record }: RenameConversationDependencies,
 ): Promise<ConversationRenameResult> {
   const title = aConversationTitle(input.title)
   if (title === null)
@@ -48,9 +48,12 @@ export async function renameConversation(
   await beforeWriting(conversation)
   if (store.conversationBinding(conversation) === null) return unknown()
 
-  const address = canonicalAddressOf(store, conversation)
+  const { address, title: previousTitle } = describeConversationForRead(
+    store,
+    conversation,
+    itIsAService(conversation),
+  )
   const previous = store.conversationTitle(conversation)
-  const previousTitle = previous?.title ?? conversationDisplayTitle(store, conversation)
   record(conversation, { type: 'titled', title, author })
   return {
     ok: true,

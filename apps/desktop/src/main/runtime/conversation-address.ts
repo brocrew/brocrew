@@ -35,10 +35,10 @@ interface DisplayTitleReads {
   ): { readonly slug: string; readonly displayName: string | null } | null
 }
 
-export function conversationDisplayTitle(
+function conversationDisplayTitle(
   reads: DisplayTitleReads,
   conversation: string,
-  service = false,
+  service: boolean,
 ): string {
   const title = reads.conversationTitle(conversation)?.title
   if (title !== undefined) return title
@@ -62,9 +62,27 @@ export function describeConversation(
   return { address, title, line: `conversation ${address} · ${title}` }
 }
 
-export function conversationLine(
-  reads: AddressReads & DisplayTitleReads,
+interface RecordedServiceReads {
+  recordedOne(conversation: string): object | null
+  parentOf(conversation: string): string | null
+  rootOf(conversation: string): object | null
+}
+
+export function isRecordedServiceConversation(
+  reads: RecordedServiceReads,
   conversation: string,
-): string {
-  return describeConversation(reads, conversation, false).line
+): boolean {
+  return (
+    reads.recordedOne(conversation) !== null &&
+    reads.parentOf(conversation) === null &&
+    reads.rootOf(conversation) === null
+  )
+}
+
+export function describeConversationForRead(
+  reads: AddressReads & DisplayTitleReads & RecordedServiceReads,
+  conversation: string,
+  itIsAService = isRecordedServiceConversation(reads, conversation),
+) {
+  return describeConversation(reads, conversation, itIsAService)
 }
