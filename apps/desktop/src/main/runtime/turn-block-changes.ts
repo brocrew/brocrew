@@ -43,6 +43,15 @@ export function turnBlockChanges(
   const order = (left: AHelperInTheTurn, right: AHelperInTheTurn): number =>
     left.givenAt - right.givenAt || left.label.localeCompare(right.label)
   const eligible = [...input.helpers].sort(order)
+  const latestFailure = new Map<string, number>()
+  for (const row of eligible) {
+    const failure = row.providerTurnFailure
+    if (failure !== undefined) {
+      const latest = latestFailure.get(row.owner)
+      if (latest === undefined || failure.turnOrdinal > latest)
+        latestFailure.set(row.owner, failure.turnOrdinal)
+    }
+  }
   const urgent = eligible.filter((row) => row.urgent)
   const allUrgentFit = urgent.length <= TURN_HELPER_LINES
   const fixed = allUrgentFit ? urgent : []
@@ -52,8 +61,16 @@ export function turnBlockChanges(
   const rotating = rotatable.slice(offset).concat(rotatable.slice(0, offset)).slice(0, slots)
   const rows = [...fixed, ...rotating]
   const rotation = rotatable.length > slots ? (offset + rotating.length) % rotatable.length : 0
+  const diagnosed = new Set<string>()
   extra.helpers = {
-    rows,
+    rows: rows.map((row) => {
+      const { providerTurnFailure, ...ordinary } = row
+      if (providerTurnFailure === undefined) return row
+      if (providerTurnFailure.turnOrdinal !== latestFailure.get(row.owner) || diagnosed.has(row.owner))
+        return ordinary
+      diagnosed.add(row.owner)
+      return row
+    }),
     more: eligible.length - rows.length,
     ...(input.helpersIncomplete ? { incomplete: true } : {}),
   }

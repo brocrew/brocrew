@@ -898,6 +898,7 @@ import {
 } from '../../shared/external-mcp'
 import type { RefusalFacts } from '../../shared/refusals'
 import type { ToolName, ToolRefusal } from './agent-tools'
+import type { AgentStatusRead } from './tool-families/host'
 import {
   aTurnOfSeveral,
   messageNamingItsSender,
@@ -10812,10 +10813,28 @@ export class RuntimeHost implements LiveHost {
   }
 
   agentCard(id: string, by: Caller, me: string | null): AgentCard | null {
+    return this.readAgentCard(id, by, me)
+  }
+
+  agentStatus(id: string, by: Caller, me: string): AgentStatusRead | null {
+    const failures: AgentStatusRead['failures'][number][] = []
+    const card = this.readAgentCard(id, by, me, (piece) => {
+      const failure = piece.providerTurnFailure
+      if (piece.giver === me && failure !== undefined) failures.push({ piece: piece.piece, failure })
+    })
+    return card === null ? null : { card, failures }
+  }
+
+  private readAgentCard(
+    id: string,
+    by: Caller,
+    me: string | null,
+    seeHeldPiece?: (piece: PieceRow) => void,
+  ): AgentCard | null {
     const sessionId = this.theOneInItsPlace(id)
     const slot = this.slots.get(sessionId)
-    if (slot === undefined) return this.stoppedCardFor(sessionId, by, me)
-    return this.cardFor(slot, this.cardReads())
+    if (slot === undefined) return this.stoppedCardFor(sessionId, by, me, seeHeldPiece)
+    return this.cardFor(slot, this.cardReads(), seeHeldPiece)
   }
 
   /** Whether this caller's words may reach that conversation, at the send and command doors. */
@@ -20192,12 +20211,17 @@ export class RuntimeHost implements LiveHost {
    * no-slot branch.
    *
    */
-  private stoppedCardFor(sessionId: string, _by: Caller, _me: string | null): AgentCard | null {
+  private stoppedCardFor(
+    sessionId: string,
+    _by: Caller,
+    _me: string | null,
+    seeHeldPiece?: (piece: PieceRow) => void,
+  ): AgentCard | null {
     void _by
     void _me
     const stopped = this.startable(sessionId)
     if (stopped === null) return null
-    return this.stoppedCard(stopped, this.cardReads())
+    return this.stoppedCard(stopped, this.cardReads(), seeHeldPiece)
   }
 
   /**
@@ -20209,7 +20233,11 @@ export class RuntimeHost implements LiveHost {
    * across the start it describes. ⚑ **`state` is the one derivation's**, off the ledger and — D-029
    * — its wake-up: see {@link AgentCard.state}.
    */
-  private stoppedCard(stopped: Startable, reads: CardReads): AgentCard {
+  private stoppedCard(
+    stopped: Startable,
+    reads: CardReads,
+    seeHeldPiece?: (piece: PieceRow) => void,
+  ): AgentCard {
     const unread = rowsUnreadOnce()
     // ⚑ **D-036 · one read of each for its state and its pieces** — as in {@link cardFor}.
     const ledger = this.oneLedgerReadPerAnswer(unread)
@@ -20230,7 +20258,7 @@ export class RuntimeHost implements LiveHost {
       parentCalled: this.theStarterOnACard(stopped.parent, stopped.id, reads),
       lastEndedTurn: this.deps.store.lastEndedTurn(stopped.id, unread),
       lastAskToStop: this.deps.store.lastAskToStop(stopped.id, unread),
-      pieces: this.piecesOnTheCard(stopped.id, unread, ledger, workOut),
+      pieces: this.piecesOnTheCard(stopped.id, unread, ledger, workOut, seeHeldPiece),
       runsOn: this.whatACardSaysItRunsOn(stopped.id),
       rowsUnread: unread.count,
       ledgersSkipped: unread.ledgersSkipped,
@@ -20238,7 +20266,11 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  private cardFor(slot: SessionSlot, reads: CardReads): AgentCard {
+  private cardFor(
+    slot: SessionSlot,
+    reads: CardReads,
+    seeHeldPiece?: (piece: PieceRow) => void,
+  ): AgentCard {
     const session = slot.session
     const parent = this.deps.store.parentOf(slot.id)
     // 🔴 **676 · F3 — one set per CARD** ({@link AgentCard.rowsUnread}), read after both ledger reads.
@@ -20290,7 +20322,7 @@ export class RuntimeHost implements LiveHost {
       // finds is precisely the row that one cannot reach.
       lastAskToStop: this.deps.store.lastAskToStop(slot.id, unread),
       // ⚑ **D-016 · the pieces it holds** — see {@link piecesOnTheCard}.
-      pieces: this.piecesOnTheCard(slot.id, unread, ledger, workOut),
+      pieces: this.piecesOnTheCard(slot.id, unread, ledger, workOut, seeHeldPiece),
       // ⚑ **D-042 · R6** — see {@link whatACardSaysItRunsOn}.
       runsOn: this.whatACardSaysItRunsOn(slot.id),
       // 🔴 **676 · F3 — LAST, after every read has met what it met** ({@link AgentCard.rowsUnread}).
@@ -20332,6 +20364,7 @@ export class RuntimeHost implements LiveHost {
     /** ⚑ **D-036 · the card's own reads**, which its state read first — see {@link cardFor}. */
     ledger: (id: string) => ItsLedger,
     workOut: WorkOutOf,
+    seeHeldPiece?: (piece: PieceRow) => void,
   ): readonly PieceOnTheCard[] {
     const root = this.deps.store.rootOf(sessionId)
     const open = composeWhatEachPieceIsWaitingOn(
@@ -20349,12 +20382,15 @@ export class RuntimeHost implements LiveHost {
               state: null,
             },
           ]),
-      ...open.map((one) => ({
-        piece: one.piece,
-        label: one.label,
-        title: one.title,
-        state: one.state,
-      })),
+      ...open.map((one) => {
+        seeHeldPiece?.(one)
+        return {
+          piece: one.piece,
+          label: one.label,
+          title: one.title,
+          state: one.state,
+        }
+      }),
     ]
   }
 

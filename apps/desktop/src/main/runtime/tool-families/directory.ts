@@ -31,6 +31,7 @@ import { type ToolName } from './catalog'
 import { WHEN_THE_ASK_LANDED } from './delivery'
 import { aPairInWords, sameModel } from '../../../shared/model-choice'
 import { agentStateWords } from '../../../shared/agent-state'
+import { providerFailureDiagnosis } from '../../../shared/work-reconciliation'
 import { answer, refusalAnswer } from './answers'
 import { clockTimeFrom } from '../../../shared/clock'
 import { fromClause, receivedPayload } from './documents'
@@ -77,7 +78,11 @@ const ARCHIVED_BY = 'a person'
 const archivedSaid = (archivedAt: number, readAt: number): string =>
   ` · archived ${clockTimeFrom(archivedAt, readAt)} by ${ARCHIVED_BY}`
 
-const cardText = (card: AgentCard, called: string): string =>
+const cardText = (
+  card: AgentCard,
+  called: string,
+  renderPiece: (one: PieceOnTheCard) => string = (one) => pieceOnTheCardText(one),
+): string =>
   // **D-017 · R11 — the state in the one derivation's words** (`agentStateWords`), the words the
   // window draws: never whether a process runs.
   `${called} · ${whoseText(card.whose)} · ${card.provider === null ? 'provider not recorded' : PROVIDER_NAME[card.provider]} · ${agentStateWords(card.state)}` +
@@ -92,9 +97,7 @@ const cardText = (card: AgentCard, called: string): string =>
   // line's words (`AgentCard.parentCalled`), never by the starter's work now.
   `${card.parentCalled === null ? '' : ` · started by ${card.parentCalled}`}` +
   // **D-016 · the pieces it holds** (spec D17) — its root, then its open pieces with their states.
-  (card.pieces.length === 0
-    ? ''
-    : ` · holds ${card.pieces.map((piece) => pieceOnTheCardText(piece)).join(', ')}`) +
+  (card.pieces.length === 0 ? '' : ` · holds ${card.pieces.map(renderPiece).join(', ')}`) +
   // **676 · F3 — said on the line, where both readers of a card read it** (`AgentCard.rowsUnread`):
   // above `0`, its last ending and its last ask to stop may be older than the truth. Nothing on
   // a clean card, so the ordinary line is unchanged.
@@ -573,7 +576,7 @@ export function createListAgentsTool(
 export function createGetAgentStatusTool(
   host: Pick<
     AgentToolHost,
-    | 'agentCard'
+    | 'agentStatus'
     | 'nameByItsWork'
     | 'nameByItsWorkUnder'
     | 'theConversationAddressed'
@@ -623,8 +626,22 @@ export function createGetAgentStatusTool(
         // **D-016 · commit 7 · R1 — a label names its piece's owner**, before any rail reads the
         // target; one that names nothing reads as an unknown id below.
         const agent = host.theConversationAddressed(args.agent, by, me, 'reading')
-        const card = host.agentCard(agent, by, me)
-        if (card === null) return refusalAnswer(refuseTool('no-such-agent', { agent }))
+        const status = host.agentStatus(agent, by, me)
+        if (status === null) return refusalAnswer(refuseTool('no-such-agent', { agent }))
+        const { card, failures } = status
+        const conversation = host.nameByItsWork(card.agent)
+        let newest: (typeof failures)[number] | undefined
+        for (const one of failures) {
+          if (newest === undefined || one.failure.turnOrdinal > newest.failure.turnOrdinal)
+            newest = one
+        }
+        const diagnosis =
+          newest === undefined
+            ? undefined
+            : providerFailureDiagnosis(
+                conversation.replace(/^conversation /, 'Conversation '),
+                newest.failure.message,
+              )
         // **When its last turn ran, and what opened it** — so a giver reading *nothing has
         // started since* can tell whether its own held words were what that turn took.
         const last = host.whatOpenedItsLastTurn(card.agent)
@@ -647,6 +664,7 @@ export function createGetAgentStatusTool(
           {
             outcome: 'ok',
             agent: cardPayload(card),
+            ...(failures.length === 0 ? {} : { provider_turn_failures: failures }),
             ...(archivedAt === null
               ? {}
               : {
@@ -656,7 +674,9 @@ export function createGetAgentStatusTool(
             ...(last.took === null ? {} : { last_turn_took: receivedPayload(last.took) }),
           },
           [
-            cardText(card, host.nameByItsWork(card.agent)) +
+            cardText(card, conversation, (piece) =>
+              pieceOnTheCardText(piece, piece.piece === newest?.piece ? diagnosis : undefined),
+            ) +
               (archivedAt === null ? '' : archivedSaid(archivedAt, last.readAt)),
             ...theLastTurnSaid(card.lastEndedTurn, last, named, askedBy, card.lastAskToStop),
           ].join('\n\n'),
