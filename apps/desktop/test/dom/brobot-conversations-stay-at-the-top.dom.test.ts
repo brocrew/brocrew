@@ -213,5 +213,5 @@ it('renders the restored group with seven BroBots and many newer helpers', async
     ).toEqual(['STRONG', 'SMALL', 'SMALL'])
   await drawnReady()
   if (import.meta.env.VITE_RAIL_RESTORE_CAPTURE)
-    await page.screenshot({ element: m.host, path: '__screenshots__/brobot-restore-143.png' })
+    await page.screenshot({ element: m.host, path: import.meta.env.VITE_RAIL_RESTORE_CAPTURE })
 })
