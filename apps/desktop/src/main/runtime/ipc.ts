@@ -2388,7 +2388,7 @@ export async function executeRuntimeCommand(
       // ⛔ **A read, and it takes no sink and no owner** (508) — `digest`'s note, one verb over.
       // ⚠️ **No `requireAPerson`**: the answer is what THIS window's conversation
       // handed out, and no agent reaches this door — `list_tasks` is the toolset's own way in and
-      // it goes through `pieceBoard`. ⚑ Synchronous: the host folds rows it has already read.
+      // it goes through `pieceBoard`. The canonical walk is read in the window worker.
       return host.workGivenBy(command.sessionId) satisfies Answer<'workGivenBy'>
     case 'whoCalledWhom':
       // ⛔ **A read, and it takes no sink and no owner** (543) — `workGivenBy`'s note, one verb

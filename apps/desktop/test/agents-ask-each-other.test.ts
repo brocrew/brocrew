@@ -1,3 +1,4 @@
+import { snapshotWindowReads } from './helpers/snapshot-window-reads'
 import { giveNotesToAWorkerOnItsCard } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -85,6 +86,7 @@ describe('D-009 · agents ask each other, and the answer comes back', () => {
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
+      ...snapshotWindowReads(join(userData, 'brobot2.sqlite'), db),
       ...hostPaths,
       createRuntime: (provider: Provider) =>
         new ToolWatchingRuntime(provider, new Map(), order, issued),
@@ -670,7 +672,7 @@ describe('D-009 · agents ask each other, and the answer comes back', () => {
       const { pm, worker, piece } = await aWorkerThatAskedAPeerAndStopped()
       // ⛔ **THE PREMISE**: the fold alone calls it stalled — only the open question says otherwise.
       expect(store.piecesOwnedBy(worker).find((one) => one.label === piece)?.state).toBe('stalled')
-      const workTab = host.workGivenBy(pm.id).rows.find((one) => one.label === piece)
+      const workTab = (await host.workGivenBy(pm.id)).rows.find((one) => one.label === piece)
       expect(workTab?.state).toBe('waiting-on-an-answer')
       expect(host.stalledWorkForAPerson().rows.map((row) => row.label)).not.toContain(piece)
     })

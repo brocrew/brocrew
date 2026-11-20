@@ -1,3 +1,4 @@
+import { snapshotWindowReads } from './helpers/snapshot-window-reads'
 import { LEDGER_WALK_KINDS } from '../src/shared/question-contracts'
 import { TASK_STATES } from '../src/shared/task-contracts'
 import type { PieceRow, TaskState, WorkGivenOut } from '../src/shared/task-contracts'
@@ -120,6 +121,7 @@ describe('508 · the work this conversation gave out', () => {
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       readProviderConfig: fixtureProviderConfig,
+      ...snapshotWindowReads(join(userData, 'brobot2.sqlite'), db),
     })
     hosts.push(built)
     return built
@@ -465,7 +467,7 @@ describe('508 · the work this conversation gave out', () => {
     it('🔴 the host answers the store’s walk, field for field', async () => {
       const { pm } = await aPmAndItsWorker('something to do')
 
-      const fromHost = host.workGivenBy(pm)
+      const fromHost = await host.workGivenBy(pm)
       const fromStore = store.workGivenOutBy(pm)
       // ⛔ **Equality against the store, not a re-derivation** — `453`'s rule: the party that WALKED
       // is the only one that can say what it walked, and a second derivation one layer up could
@@ -488,8 +490,8 @@ describe('508 · the work this conversation gave out', () => {
 
       // ⛔ **The host carries it.** A host that answered `rowsUnread: 0` would be telling a window
       // the list is whole over a walk that said it is short — `453`'s rule with the sign flipped.
-      expect(host.workGivenBy(pm).rowsUnread).toBe(1)
-      expect(host.workGivenBy(pm)).toEqual(store.workGivenOutBy(pm))
+      expect((await host.workGivenBy(pm)).rowsUnread).toBe(1)
+      expect(await host.workGivenBy(pm)).toEqual(store.workGivenOutBy(pm))
     })
 
     it('⛔ …and it is the same data `list_tasks` reads, through a different door', async () => {
@@ -499,7 +501,7 @@ describe('508 · the work this conversation gave out', () => {
       // that no toolset publishes `workGivenBy` would be false, and saying so is the point.
       const gave = host.pieceBoard(pm).gave
       expect(gave.map((piece) => piece.piece)).toEqual(
-        host.workGivenBy(pm).rows.map((row) => row.piece),
+        (await host.workGivenBy(pm)).rows.map((row) => row.piece),
       )
     })
 
@@ -538,7 +540,7 @@ describe('508 · the work this conversation gave out', () => {
 
     it('⚠️ every field of the narrowed row is one a surface reads, and no field of `PieceRow` leaks', async () => {
       const { pm } = await aPmAndItsWorker('something to do')
-      const [row] = host.workGivenBy(pm).rows
+      const [row] = (await host.workGivenBy(pm)).rows
       expect(row).toBeDefined()
       // ⛔ **`WorkReport`'s rule, applied**: *"A dead field on a DURABLE wire contract is worse than
       // dead code."* Every key here is drawn or folded by `work-given-out.ts`; the `PieceRow`
