@@ -4679,6 +4679,7 @@ export class RuntimeHost implements LiveHost {
    */
   private restartWakes: Promise<void> = Promise.resolve()
   private workReconciler: WorkReconciler | undefined
+  private initialReconciliation: Promise<void> | undefined
   private reconciliationTimer: ReturnType<typeof setInterval> | undefined
   /** When the last start in that line ended, on a clock that is never set. */
   private lastPacedStart = Number.NEGATIVE_INFINITY
@@ -5533,7 +5534,20 @@ export class RuntimeHost implements LiveHost {
         if (this.launches.closed) return
         this.reconciliationTimer = setInterval(() => this.reconcileWork(), WORK_RECONCILIATION_MS)
         this.reconciliationTimer.unref?.()
-        setImmediate(() => this.reconcileWork())
+        this.initialReconciliation = new Promise<void>((resolve) => setImmediate(resolve))
+          .then(() => {
+            this.reconcileWork()
+            return this.workReconciler?.currentPass()
+          })
+          .then(() => undefined)
+          .catch((error) =>
+            console.warn(
+              `runtime host could not finish initial reconciliation: ${errorMessage(error)}`,
+            ),
+          )
+          .finally(() => {
+            this.initialReconciliation = undefined
+          })
       })
     }
     if (deps.deferStartupUntilListPaint) {
@@ -17271,6 +17285,19 @@ export class RuntimeHost implements LiveHost {
   /** All queue facts share one worker snapshot, then compose with live state at one publication. */
   async personsQueue(): Promise<PersonsQueueAnswer> {
     try {
+      // Observe an already-resolved activation; never wait for first paint or provider starts.
+      await Promise.resolve()
+      const initial = this.initialReconciliation
+      if (this.deps.windowReader !== undefined && initial !== undefined) {
+        if (this.windowReadCallers >= WINDOW_READ_BOUNDS.callers)
+          throw new WindowReadUnavailable('busy')
+        this.windowReadCallers++
+        try {
+          await initial
+        } finally {
+          this.windowReadCallers--
+        }
+      }
       if (this.deps.windowReader !== undefined) {
         try {
           return await this.incidentsForWindow(() =>

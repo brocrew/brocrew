@@ -83,6 +83,11 @@ export class WorkReconciler {
     this.closed = true
   }
 
+  /** The sweep already running, excluding future reruns and paced notice deliveries. */
+  currentPass(): Promise<void> | null {
+    return this.running
+  }
+
   run(holders?: ReadonlySet<string>): Promise<void> {
     if (this.closed || holders?.size === 0) return Promise.resolve()
     if (holders !== undefined) {
