@@ -131,8 +131,8 @@ function extraLines(facts: ExtraTurnFacts, now: number): string[] {
       }),
     )
     const overflow = more + Math.max(0, rows.length - 5)
-    if (overflow > 0) lines.push(TURN_BLOCK_WORDS.more(overflow))
-    else if (facts.helpers.incomplete === true) lines.push('list_tasks shows the work you gave.')
+    if (facts.helpers.incomplete === true) lines.push('list_tasks shows the work you gave.')
+    else if (overflow > 0) lines.push(TURN_BLOCK_WORDS.more(overflow))
   }
   if (facts.nobodyWaiting === true) lines.push(TURN_BLOCK_WORDS.nobody)
   if (facts.replyQuestion === true) lines.push(TURN_BLOCK_WORDS.replyQuestion)

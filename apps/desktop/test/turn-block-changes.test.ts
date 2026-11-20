@@ -64,6 +64,31 @@ describe('turn block changes', () => {
     expect(partial.next.personWait).toBeNull()
   })
 
+  it('keeps a partial helper remainder unknown while retaining known questions', () => {
+    const helpers = Array.from({ length: 8 }, (_, i) => helper(i + 1, true))
+    const partial = turnBlockChanges(
+      { ...input, helpers, helpersIncomplete: true, personWait: null, nobodyWaiting: false },
+      EMPTY_TURN_BLOCK,
+    )
+    const complete = turnBlockChanges({ ...input, helpers }, EMPTY_TURN_BLOCK)
+    const rendered = whatThisAppAddsToATurn({
+      now: input.now,
+      aPersonStartedIt: false,
+      thePersonLastWroteAt: null,
+      questions: [{ id: 'req-known', askedAt: 0, prompt: 'Which next step?' }],
+      waiting: null,
+      extra: partial.extra,
+    })
+    expect(partial.extra.helpers?.rows).toEqual(complete.extra.helpers?.rows)
+    expect(rendered.split('\n').filter((line) => line.startsWith('- conversation '))).toHaveLength(5)
+    expect(rendered).toContain('list_tasks shows the work you gave.')
+    expect(rendered).not.toContain('and 3 more: list_tasks')
+    expect(rendered).not.toContain(TURN_BLOCK_WORDS.nobody)
+    expect(rendered).toContain('req-known')
+    expect(rendered).toContain('Which next step?')
+    expect(block(complete.extra)).toContain('and 3 more: list_tasks')
+  })
+
   it('shows the newest recorded failure once per holder on successive ordinary turns', () => {
     const older = { turnOrdinal: 3, message: 'Earlier provider error.' }
     const newest = { turnOrdinal: 9, message: 'Current provider error.' }
