@@ -360,7 +360,7 @@ describe('610 · the roster that names nobody', () => {
         (await ask(brobot, 'list_agents')).text,
         `conversation W1 · ${DEFAULT_PROFILE_LABEL} · ${DEFAULT_PROFILE_LABEL} (${DEFAULT_PROFILE_ID}) · Claude · idle${runsOn}${lastActive(brobot)} · holds W1`,
         brobot,
-        'brobot',
+        DEFAULT_PROFILE_LABEL,
         'brobot',
       )
     })
