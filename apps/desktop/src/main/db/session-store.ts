@@ -987,7 +987,7 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
    * address, and it never changes.
    */
   firstTaskOf(conversation: string): { readonly piece: string; readonly label: string } | null
-  latestTaskTitle(conversation: string): string | null
+  defaultTaskTitle(conversation: string): string | null
   /** The root this conversation owns, or `null`: a conversation another one started owns none. */
   rootOf(conversation: string): WorkRow | null
   servicesBorn(): readonly { readonly conversation: string; readonly identity: string | null }[]
@@ -1345,7 +1345,7 @@ export const NULL_SESSION_STORE: SessionStore = {
   activityWorkNames: () => new Map(),
   workByLabel: () => null,
   firstTaskOf: () => null,
-  latestTaskTitle: () => null,
+  defaultTaskTitle: () => null,
   rootOf: () => null,
   servicesBorn: () => [],
   workersBorn: () => [],
@@ -6309,8 +6309,11 @@ export function createSessionStore(
       return { piece: row.id, label: workRowWalked(row).label }
     },
 
-    latestTaskTitle(conversation) {
-      const row = workSql().latestOwnedBy.get(conversation) as WorkDbRow | undefined
+    defaultTaskTitle(conversation) {
+      const sql = workSql()
+      const row = (sql.rootOwnedBy.get(conversation) ?? sql.latestOwnedBy.get(conversation)) as
+        | WorkDbRow
+        | undefined
       return row === undefined ? null : titleNow(row, activeGeneration(conversation))
     },
 
