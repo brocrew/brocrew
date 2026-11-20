@@ -151,8 +151,9 @@ describe('runtime IPC boundary', () => {
     // that row's own default effort, `medium`. ⛔ What still holds is the title: nothing on the way
     // through INVENTS one — the command carries no effort, and what reaches the adapter is the
     // provider's own answer.
+    const input = { kind: 'createSession', provider: 'codex', profileId: 'worker' } as const
     startOptions.length = 0
-    await executeRuntimeCommand(host, sink, { kind: 'createSession', provider: 'codex' })
+    await executeRuntimeCommand(host, sink, input)
     expect(startOptions.at(-1)).toMatchObject({ model: 'fake-codex-a', reasoningEffort: 'medium' })
 
     // ⛔ …and `medium` is that ANSWER, not a middle rung a boundary picked that happens to agree
@@ -173,7 +174,7 @@ describe('runtime IPC boundary', () => {
     })
     try {
       startOptions.length = 0
-      await executeRuntimeCommand(lowByDefault, sink, { kind: 'createSession', provider: 'codex' })
+      await executeRuntimeCommand(lowByDefault, sink, input)
       expect(startOptions.at(-1)).toMatchObject({ model: 'fake-codex-a', reasoningEffort: 'low' })
     } finally {
       await lowByDefault.closeAll()
