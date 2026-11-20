@@ -201,10 +201,13 @@ export function createWithdrawTaskTool(
         const outcome = await host.takeBackPiece({ piece, ...(words ? { reason: words } : {}) }, by)
         if (!outcome.ok && 'ended' in outcome.refused) {
           const refused = outcome.refused
-          return refusalAnswer({
-            ...refuseTool(refused.rail, takeBackDetail(piece, refused)),
-            reason: anEndedPieceSaid(refused.ended, refused.readAt),
-          })
+          const { nextSteps, ...ended } = refused.ended
+          const reason = anEndedPieceSaid(refused.ended, refused.readAt)
+          const payload = {
+            ...refuseTool(refused.rail, takeBackDetail(piece, { ...refused, ended })),
+            reason,
+          }
+          return nextSteps === undefined ? refusalAnswer(payload) : answer(payload, reason)
         }
         if (
           !outcome.ok &&
@@ -497,10 +500,17 @@ export function createUpdateWorkTool(
             )
           }
           if (updated.rail === 'that-piece-has-ended') {
-            return refusalAnswer({
-              ...refuseTool(updated.rail, { ...updated.detail }),
-              reason: anEndedPieceSaid(updated.detail, updated.readAt),
-            })
+            const { nextSteps, ...detail } = updated.detail
+            const reason = anEndedPieceSaid(updated.detail, updated.readAt)
+            const payload = { ...refuseTool(updated.rail, detail), reason }
+            return nextSteps === undefined ? refusalAnswer(payload) : answer(payload, reason)
+          }
+          if (
+            updated.rail === 'malformed-request' &&
+            typeof updated.detail.taskChoice === 'string'
+          ) {
+            const reason = updated.detail.taskChoice
+            return answer({ ...refuseTool(updated.rail, updated.detail), reason }, reason)
           }
           if (updated.rail === 'a-conversation-with-its-questions-is-starting') {
             return refusalAnswer({

@@ -30,7 +30,7 @@ const isTaskOutcome = (value: unknown): value is TaskOutcome =>
   typeof value === 'string' && (TASK_OUTCOMES as readonly string[]).includes(value)
 
 export function createReplyToParentTool(
-  host: Pick<AgentToolHost, 'maySaveMemory' | 'replyToParent'>,
+  host: Pick<AgentToolHost, 'maySaveMemory' | 'replyTaskChoice' | 'replyToParent'>,
   by: Caller,
   me: string,
   guarded: (run: () => Promise<AgentToolAnswer>) => Promise<AgentToolAnswer>,
@@ -128,7 +128,16 @@ export function createReplyToParentTool(
             (key) => key !== 'message' && !Object.hasOwn(replyInput, key),
           )
           const detail = workRequestRefused(problems, args, fields)
-          if (unknown.length === 0) return refusalAnswer(refuseTool('malformed-request', detail))
+          if (unknown.length === 0) {
+            const taskChoice =
+              piece === undefined && problems.length === 1 ? host.replyTaskChoice(me) : undefined
+            if (taskChoice === undefined)
+              return refusalAnswer(refuseTool('malformed-request', detail))
+            return answer(
+              { ...refuseTool('malformed-request', { ...detail, taskChoice }), reason: taskChoice },
+              taskChoice,
+            )
+          }
           const names = unknown.slice(0, 3).map((key) => {
             const name = /^[A-Za-z_][A-Za-z0-9_]{0,79}$/.test(key) ? key : 'unknown field'
             return `${name}: not a field of reply_to_parent; use ${fields.slice(0, -1).join(', ')} or ${fields.at(-1)}`

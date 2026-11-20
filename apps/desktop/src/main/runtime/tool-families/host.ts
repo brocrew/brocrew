@@ -184,6 +184,7 @@ export interface AgentToolHost {
     },
     by: Caller,
   ): Promise<ReplyOutcome>
+  replyTaskChoice(caller: string): string | undefined
   maySaveMemory(sessionId: string): boolean
   pieceBoard(sessionId: string): PieceBoard
   answersHeldFor(sessionId: string): ReadonlySet<string>

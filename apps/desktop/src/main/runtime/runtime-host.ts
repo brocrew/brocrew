@@ -11663,6 +11663,19 @@ export class RuntimeHost implements LiveHost {
           ? { endedByYou: true as const }
           : { called: this.whatToCallTheConversation(endedBy) }),
       yoursToRetitle,
+      ...(caller === null
+        ? {}
+        : {
+            nextSteps: {
+              title: piece.title,
+              outcome: piece.outcome,
+              address: this.addressOf(piece.owner),
+              heldTasks: this.heldTaskLines(
+                this.heldBy(caller).filter((task) => task.received),
+                3,
+              ),
+            },
+          }),
     }
   }
 
@@ -24754,6 +24767,25 @@ export class RuntimeHost implements LiveHost {
     ]
   }
 
+  private heldTaskLines(held: readonly HeldPiece[], limit: number): readonly string[] {
+    return held
+      .slice(0, limit)
+      .map((task) => pieceLine(task.label, this.deps.store.workById(task.piece)?.title ?? null))
+  }
+
+  private missingTaskChoice(held: readonly HeldPiece[]): string {
+    const names = this.heldTaskLines(held, 5)
+    if (names.length === 0) return 'Name the task in piece. Nothing was changed.'
+    const remaining = held.length - names.length
+    const more = remaining === 0 ? '' : ` and ${String(remaining)} more (list_tasks)`
+    return `Name the task in piece. You hold ${String(held.length)}: ${names.join(', ')}${more}. Nothing was changed.`
+  }
+
+  replyTaskChoice(caller: string): string | undefined {
+    const held = this.heldBy(caller).filter((task) => task.received && !task.root)
+    return held.length > 1 ? this.missingTaskChoice(held) : undefined
+  }
+
   private async settlePieceBeforeUse(spelled: string): Promise<void> {
     const row = this.pieceNamed(spelled)
     if (row !== null) await this.settleBeforeUse(row.owner)
@@ -25021,11 +25053,8 @@ export class RuntimeHost implements LiveHost {
       const held = this.heldBy(caller).filter((one) => one.received)
       if (held.length !== 1 || held[0] === undefined) {
         return refused('malformed-request', {
-          problems: [
-            held.length === 0
-              ? 'piece is required: you hold no piece it could mean'
-              : `piece is required: you hold more than one (${held.map((one) => one.label).join(', ')})`,
-          ],
+          problems: ['piece must name one task'],
+          taskChoice: this.missingTaskChoice(held),
         })
       }
       row = this.deps.store.workById(held[0].piece)

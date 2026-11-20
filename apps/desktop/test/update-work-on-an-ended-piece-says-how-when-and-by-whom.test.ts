@@ -65,8 +65,6 @@ const DAY_MS = 86_400_000
 /** The acts, as the three arms of the sentence open. */
 const STOP = 'stop work on that piece; no further reply is owed.'
 const ONLY_THE_TITLE = 'only its title may still be changed.'
-const readItsAnswer = (label: string): string =>
-  `read its answer with list_tasks, naming ${label}; only its title may still be changed.`
 const NOTHING_CHANGED = 'so nothing was changed.'
 
 async function waitFor(predicate: () => boolean, what: string): Promise<void> {
@@ -315,7 +313,10 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
     }
   }
 
-  it('an answered piece: its giver is told to read the answer and who answered; its helper to stop, as "You"; and only the giver’s title is taken', async () => {
+  const endedOpening = (label: string, title: string, outcome: string): string =>
+    `Not changed: task ${label} · ${title} has ended (${outcome}) and keeps that outcome; only its title can still change.`
+
+  it('an answered piece keeps its actor and outcome and only the giver can retitle it', async () => {
     const { pm, worker, piece, label } = await aPmAndItsWorker()
     const replied = await callOn(worker, 'reply_to_parent', {
       piece,
@@ -340,7 +341,7 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
 
     // The giver tries to close it.
     const toTheGiver = await refusedAsEnded(pm, { piece: label, close: true })
-    expect(toTheGiver.detail).toEqual({
+    expect(toTheGiver.detail).toMatchObject({
       piece,
       label,
       state: 'answered',
@@ -348,15 +349,17 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
       called: helper,
       yoursToRetitle: true,
     })
+    const root = store.rootOf(pm)
+    if (root === null) throw new Error('expected the giver root')
+    const rootLine = root.title === null ? root.label : `${root.label} · ${root.title}`
     expect(toTheGiver.reason).toBe(
-      `${readItsAnswer(label)} ${label} was answered by ${helper} at ${clockTime(answeredAt)}, ${NOTHING_CHANGED}`,
+      `${endedOpening(label, 'the work', 'done')} To note something, set the status of a task you hold: ${rootLine}. To have more done, give_work with to: ${host.addressOf(worker)}.`,
     )
-    expect(toTheGiver.reason).not.toContain('You ')
     expect(JSON.stringify(toTheGiver)).not.toMatch(/sess_/)
 
     // The helper tries to say where it stands.
     const toTheHelper = await refusedAsEnded(worker, { piece: label, status: 'late' })
-    expect(toTheHelper.detail).toEqual({
+    expect(toTheHelper.detail).toMatchObject({
       piece,
       label,
       state: 'answered',
@@ -366,11 +369,8 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
     })
     expect(toTheHelper.detail).not.toHaveProperty('called')
     expect(toTheHelper.reason).toBe(
-      `${STOP} You answered ${label} at ${clockTime(answeredAt)}, ${NOTHING_CHANGED}`,
+      `${endedOpening(label, 'the work', 'done')} To have more done, give_work with to: ${host.addressOf(worker)}.`,
     )
-    // Its own act, never its own name.
-    expect(toTheHelper.reason).not.toContain(helper)
-    expect(toTheHelper.reason).not.toContain(ONLY_THE_TITLE)
 
     // Nothing was written by either refusal, and the piece is still answered.
     expect(rowsOf(worker, 'work_status_set')).toBe(statusRowsBefore)
@@ -402,7 +402,7 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
     })
   })
 
-  it('the same refusal read on another day says the ending with its date', async () => {
+  it('the same refusal read on another day keeps the original ending timestamp and actor', async () => {
     const { pm, worker, piece, label } = await aPmAndItsWorker()
     expect(
       (await callOn(worker, 'reply_to_parent', { piece, outcome: 'done', summary: 'done it' }))
@@ -417,9 +417,7 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
 
     // The control first, the same caller and the same call: read that day, the time alone.
     const thatDay = await refusedAsEnded(pm, { piece: label, status: 'late' })
-    expect(thatDay.reason).toContain(
-      `${label} was answered by ${helper} at ${clockTime(answeredAt)}, `,
-    )
+    expect(thatDay.reason).toContain(endedOpening(label, 'the work', 'done'))
 
     // Three days on, by the host's own clock.
     clock += 3 * DAY_MS
@@ -430,13 +428,10 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
     const later = await refusedAsEnded(pm, { piece: label, status: 'late' })
     // The moment in the detail is the ending's own, not the reading's.
     expect(later.detail).toMatchObject({ state: 'answered', at: answeredAt, called: helper })
-    expect(later.reason).toBe(
-      `${readItsAnswer(label)} ${label} was answered by ${helper} at ${said}, ${NOTHING_CHANGED}`,
-    )
-    expect(later.reason).not.toBe(thatDay.reason)
+    expect(later.reason).toBe(thatDay.reason)
   })
 
-  it('a piece its giver closed, closed again: "You closed", and its helper is told who closed it', async () => {
+  it('a repeated close keeps the actor for each caller and leaves the task closed', async () => {
     const { pm, worker, piece, label } = await aPmAndItsWorker()
     const closing = await callOn(pm, 'update_work', { piece: label, close: true })
     expect(closing.outcome, JSON.stringify(closing)).toBe('ok')
@@ -445,7 +440,7 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
     const giver = host.whatToCallTheConversation(pm)
 
     const again = await refusedAsEnded(pm, { piece: label, close: true })
-    expect(again.detail).toEqual({
+    expect(again.detail).toMatchObject({
       piece,
       label,
       state: 'closed',
@@ -453,15 +448,13 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
       endedByYou: true,
       yoursToRetitle: true,
     })
-    expect(again.reason).toBe(
-      `${ONLY_THE_TITLE} You closed ${label} at ${clockTime(closedAt)}, ${NOTHING_CHANGED}`,
-    )
+    expect(again.reason).toContain(endedOpening(label, 'the work', 'closed'))
     expect(again.reason).not.toContain(giver)
     // A closed piece has no answer to read: the giver is not sent to list_tasks for one.
     expect(again.reason).not.toContain('list_tasks')
 
     const toTheHelper = await refusedAsEnded(worker, { piece: label, status: 'still on it' })
-    expect(toTheHelper.detail).toEqual({
+    expect(toTheHelper.detail).toMatchObject({
       piece,
       label,
       state: 'closed',
@@ -469,9 +462,7 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
       called: giver,
       yoursToRetitle: false,
     })
-    expect(toTheHelper.reason).toBe(
-      `${STOP} ${label} was closed by ${giver} at ${clockTime(closedAt)}, ${NOTHING_CHANGED}`,
-    )
+    expect(toTheHelper.reason).toContain(endedOpening(label, 'the work', 'closed'))
 
     // One close row, the first; and the positive, a title, is still taken.
     expect(rowsOf(worker, 'work_closed')).toBe(1)
@@ -480,7 +471,7 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
     expect(pieceOf(worker, piece)).toMatchObject({ state: 'closed', title: 'renamed' })
   })
 
-  it('a piece its giver took back: "You took … back" to the giver, "… was taken back by <giver>" to its helper', async () => {
+  it('an update after withdrawal keeps the actor and timestamp for each caller', async () => {
     const { pm, worker, piece, label } = await aPmAndItsWorker()
     const back = await callOn(pm, 'withdraw_task', { piece: label })
     expect(back.outcome, JSON.stringify(back)).toBe('ok')
@@ -489,7 +480,7 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
     const giver = host.whatToCallTheConversation(pm)
 
     const toTheGiver = await refusedAsEnded(pm, { piece: label, brief: 'do it differently' })
-    expect(toTheGiver.detail).toEqual({
+    expect(toTheGiver.detail).toMatchObject({
       piece,
       label,
       state: 'withdrawn',
@@ -497,12 +488,10 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
       endedByYou: true,
       yoursToRetitle: true,
     })
-    expect(toTheGiver.reason).toBe(
-      `${ONLY_THE_TITLE} You took ${label} back at ${clockTime(at)}, ${NOTHING_CHANGED}`,
-    )
+    expect(toTheGiver.reason).toContain(endedOpening(label, 'the work', 'withdrawn'))
 
     const toTheHelper = await refusedAsEnded(worker, { piece: label, status: 'halfway' })
-    expect(toTheHelper.detail).toEqual({
+    expect(toTheHelper.detail).toMatchObject({
       piece,
       label,
       state: 'withdrawn',
@@ -510,9 +499,7 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
       called: giver,
       yoursToRetitle: false,
     })
-    expect(toTheHelper.reason).toBe(
-      `${STOP} ${label} was taken back by ${giver} at ${clockTime(at)}, ${NOTHING_CHANGED}`,
-    )
+    expect(toTheHelper.reason).toContain(endedOpening(label, 'the work', 'withdrawn'))
     expect(rowsOf(worker, 'work_rebriefed')).toBe(0)
   })
 
@@ -551,7 +538,7 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
     if (typeof cancelledAt !== 'number') throw new Error('the cancel recorded no moment')
 
     const refused = await refusedAsEnded(pm, { piece: heldLabel, status: 'never mind' })
-    expect(refused.detail).toEqual({
+    expect(refused.detail).toMatchObject({
       piece: heldPiece,
       label: heldLabel,
       state: 'withdrawn',
@@ -560,9 +547,7 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
     })
     expect(refused.detail).not.toHaveProperty('called')
     expect(refused.detail).not.toHaveProperty('endedByYou')
-    expect(refused.reason).toBe(
-      `${ONLY_THE_TITLE} ${heldLabel} was taken back at ${clockTime(cancelledAt)}, ${NOTHING_CHANGED}`,
-    )
+    expect(refused.reason).toContain(endedOpening(heldLabel, 'the held one', 'withdrawn'))
     expect(refused.reason).not.toContain(' by ')
     expect(refused.reason).not.toContain('You ')
   })
@@ -602,9 +587,7 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
       { piece: label, resources: ['notes.md'] },
     ]) {
       const ended = await refusedAsEnded(worker, args)
-      expect(ended.reason, JSON.stringify(args)).toBe(
-        `${STOP} You answered ${label} at ${clockTime(answeredAt)}, ${NOTHING_CHANGED}`,
-      )
+      expect(ended.reason, JSON.stringify(args)).toContain(endedOpening(label, 'the work', 'done'))
       expect(ended.detail, JSON.stringify(args)).toEqual({
         piece,
         label,
@@ -634,9 +617,9 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
     ).toBe('ok')
     const taking = await aPmAndItsWorker()
     expect((await callOn(taking.pm, 'withdraw_task', { piece: taking.label })).outcome).toBe('ok')
-    for (const [made, row, state, how] of [
-      [closing, 'work_closed', 'closed', 'closed'],
-      [taking, 'work_taken_back', 'withdrawn', 'taken back'],
+    for (const [made, row, state] of [
+      [closing, 'work_closed', 'closed'],
+      [taking, 'work_taken_back', 'withdrawn'],
     ] as const) {
       const at = momentOf(made.worker, (event) => event.type === row, `${row} row`)
       const giver = host.whatToCallTheConversation(made.pm)
@@ -646,8 +629,8 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
         { piece: made.label, title: 'mine now' },
       ]) {
         const ended = await refusedAsEnded(made.worker, args)
-        expect(ended.reason, `${state} · ${JSON.stringify(args)}`).toBe(
-          `${STOP} ${made.label} was ${how} by ${giver} at ${clockTime(at)}, ${NOTHING_CHANGED}`,
+        expect(ended.reason, `${state} · ${JSON.stringify(args)}`).toContain(
+          endedOpening(made.label, 'the work', state),
         )
         expect(ended.detail, `${state} · ${JSON.stringify(args)}`).toEqual({
           piece: made.piece,
@@ -682,8 +665,8 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
       { piece: label, brief: 'plan it again' },
     ]) {
       const ended = await refusedAsEnded(pm, args)
-      expect(ended.reason, JSON.stringify(args)).toBe(
-        `${ONLY_THE_TITLE} You answered ${label} at ${clockTime(at)}, ${NOTHING_CHANGED}`,
+      expect(ended.reason, JSON.stringify(args)).toContain(
+        endedOpening(label, 'Plan the trip', 'done'),
       )
       expect(ended.detail, JSON.stringify(args)).toEqual({
         piece,

@@ -40,6 +40,14 @@ export const WHEN_THE_ASK_LANDED: Readonly<
  * the caller's own act said as its own: never its own name.
  */
 export function anEndedPieceSaid(detail: EndedPieceDetail, readAt: number): string {
+  if (detail.nextSteps !== undefined) {
+    const { title, outcome, address, heldTasks } = detail.nextSteps
+    const note =
+      heldTasks.length === 0
+        ? ''
+        : ` To note something, set the status of a task you hold: ${heldTasks.join(', ')}.`
+    return `Not changed: task ${detail.label} · ${title} has ended (${outcome ?? detail.state}) and keeps that outcome; only its title can still change.${note} To have more done, give_work with to: ${address}.`
+  }
   const when = detail.at === undefined ? '' : ` at ${clockTimeFrom(detail.at, readAt)}`
   const by = detail.called === undefined ? '' : ` by ${detail.called}`
   const yours = detail.endedByYou === true

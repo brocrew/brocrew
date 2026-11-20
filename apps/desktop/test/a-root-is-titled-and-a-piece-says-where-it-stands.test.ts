@@ -673,12 +673,18 @@ describe('D-016 · a root is titled, and a piece says where it stands', () => {
       const bare = await callOn(worker, 'update_work', { status: 'which one?' })
       expect(bare.outcome, JSON.stringify(bare)).toBe('refused')
       expect(bare.rail).toBe('malformed-request')
-      const problems = (bare.detail as { problems: string[] }).problems
-      expect(problems).toHaveLength(1)
-      expect(problems[0]).toContain('you hold more than one')
-      expect(problems[0]).toContain(label)
-      expect(problems[0]).toContain(secondLabel)
+      const choice = `Name the task in piece. You hold 2: ${label} · the work, ${secondLabel} · the second thing. Nothing was changed.`
+      expect(bare.reason).toBe(choice)
       expect(linesIn(worker, 'work_status_set')).toHaveLength(written)
+      const unaddressedReply = await callOn(worker, 'reply_to_parent', {
+        outcome: 'done',
+        summary: 'finished',
+      })
+      expect(unaddressedReply).toMatchObject({
+        outcome: 'refused',
+        rail: 'malformed-request',
+        reason: choice,
+      })
 
       // ⚑ The paired positive: naming one of the two succeeds where the bare call was refused, and
       // updates that one only.

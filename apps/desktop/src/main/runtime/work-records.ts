@@ -129,6 +129,12 @@ export interface EndedPieceDetail {
    * or the owner of a piece a person gave. ⚑ Its sentence's act turns on it.
    */
   readonly yoursToRetitle: boolean
+  readonly nextSteps?: {
+    readonly title: string
+    readonly outcome: PieceRow['outcome']
+    readonly address: string
+    readonly heldTasks: readonly string[]
+  }
 }
 
 /**

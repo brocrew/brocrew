@@ -406,7 +406,11 @@ export function answerInWords(
     const reason = answered.structured['reason']
     if (typeof reason === 'string') {
       refusalReason(reason)
-      if (answered.text === reason && reason.startsWith('Not changed:')) return answered
+      if (
+        answered.text === reason &&
+        (reason.startsWith('Not changed:') || isTaskChoice(answered.structured, reason))
+      )
+        return answered
     }
   }
   const adds = whatARefusalAdds(answered.structured, context)
@@ -425,6 +429,10 @@ function detailOf(
   return typeof raw === 'object' && raw !== null && !Array.isArray(raw)
     ? (raw as Readonly<Record<string, unknown>>)
     : {}
+}
+
+function isTaskChoice(structured: Readonly<Record<string, unknown>>, reason: string): boolean {
+  return structured['rail'] === 'malformed-request' && detailOf(structured)['taskChoice'] === reason
 }
 
 function hasCompleteRefusalWords(rail: string | undefined): boolean {
@@ -461,8 +469,13 @@ export function appOnlyRefusalQuote(
   ) {
     return reason
   }
-  if (rail !== undefined && finalText === reason && reason.startsWith('Not changed:')) return reason
-  if (hasCompleteRefusalWords(rail) && finalText === reason) return reason
+  if (
+    finalText === reason &&
+    ((rail !== undefined && reason.startsWith('Not changed:')) ||
+      hasCompleteRefusalWords(rail) ||
+      isTaskChoice(structured, reason))
+  )
+    return reason
   const prefix =
     hasDirectRefusalOpening(reason) && finalText.startsWith(reason) ? '' : `refused (${rail}): `
   const base = `${prefix}${reason}`
