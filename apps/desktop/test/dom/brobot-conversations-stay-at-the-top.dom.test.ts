@@ -300,7 +300,8 @@ for (const width of [252, 266.2]) {
       ...workerRows(1)[0]!,
       state: { is: 'waiting-on-an-answer' as const, from: long },
     }
-    const m = await draw([row, helper])
+    const idleHelper = { ...workerRows(2)[1]!, state: { is: 'idle' as const } }
+    const m = await draw([row, helper, idleHelper])
     m.host.style.width = `${width}px`
     await expect.poll(() => m.all('rail-profile-recipe-1').length).toBe(1)
     const line = m.q('open-session-person-4').querySelector<HTMLElement>('.rail-brobot-standing')!
@@ -313,6 +314,9 @@ for (const width of [252, 266.2]) {
     const standing = label.closest('small')!
     expect(label.textContent).toBe('Mira')
     expect(label.scrollWidth).toBeLessThanOrEqual(label.clientWidth + 1)
+    const idleLabel = m.q('rail-profile-recipe-2')
+    expect(idleLabel.textContent).toBe('Mira')
+    expect(idleLabel.scrollWidth).toBeLessThanOrEqual(idleLabel.clientWidth + 1)
     expect(label.clientWidth).toBeGreaterThan(20)
     expect(label.getBoundingClientRect().right).toBeLessThanOrEqual(
       standing.getBoundingClientRect().right,

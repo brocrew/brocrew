@@ -1939,6 +1939,10 @@ const platform = platformHere()
   min-width: var(--space-4);
 }
 
+.rail-standing-canonical .rail-standing-prefix {
+  flex: 1 1 auto;
+  min-width: 0;
+}
 .rail-standing-canonical .rail-standing-profile {
   flex: none;
   max-width: 50%;
