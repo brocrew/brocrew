@@ -23,7 +23,7 @@ function edge(position: number, state: WorkEdge['state'] = 'answered'): WorkEdge
     piece: `piece-${30 - position}`,
     label: `W9.${position}`,
     title: `Draft ${position}`,
-    from: giver,
+    from: position === 20 ? 'other-giver-of-same-profile' : giver,
     fromIdentity: 'editor',
     to: sessionId,
     toIdentity: null,
@@ -82,6 +82,12 @@ function show(readAll: RuntimeBridge['readAllConversationTasks']) {
         tasks: [],
         root: null,
         canOpen: true,
+        parent: {
+          conversation: giver,
+          name: 'Editor profile',
+          identity: 'editor',
+          facets: { doing: 'thinking' as const },
+        },
         identities: [
           {
             id: 'fictional-editor',
@@ -153,6 +159,10 @@ it('keeps root, ledger order, whole-set counts and newest open match across page
   expect(m.q('cast-work-done').textContent).toContain('Share the appendix.')
   const row = m.all('cast-taken-work').at(-1)!
   expect(row.textContent).toContain('Editor profile')
+  expect(row.querySelector('[data-cy="agent-state"]')?.getAttribute('data-doing')).toBe('thinking')
+  const other = m.all('cast-taken-work').at(-2)!
+  expect(other.textContent).toContain('Editor profile')
+  expect(other.querySelector('[data-cy="agent-state"]')).toBeNull()
   row.click()
   expect(open).toHaveBeenCalledExactlyOnceWith(giver)
 
@@ -170,6 +180,7 @@ it('retires stale continuations when search or conversation changes, and shows i
     .fn<RuntimeBridge['readAllConversationTasks']>()
     .mockResolvedValueOnce(result({ root, tasks: [edge(1)], matched: 22, next: 'old-cursor' }))
     .mockReturnValueOnce(lostNext.promise)
+    .mockResolvedValueOnce(result({ tasks: [edge(4)], matched: 1 }))
     .mockReturnValueOnce(lostSearch.promise)
     .mockResolvedValueOnce(
       result({ conversation: 'second-holder', counts: null, matched: null, rowsUnread: 1 }),
@@ -179,22 +190,32 @@ it('retires stale continuations when search or conversation changes, and shows i
   await expect.poll(titles).toEqual([root.title, 'Draft 1'])
   m.q('all-tasks-more').click()
   search('  draft  ')
-  await expect.poll(() => read.mock.calls.length).toBe(3)
+  await expect.poll(titles).toEqual(['Draft 4'])
   expect(read).toHaveBeenLastCalledWith({ sessionId, filter: 'all', text: 'draft' })
+  expect(m.q('all-tasks-count').textContent?.trim()).toBe('1 task')
+  lostNext.resolve(result({ tasks: [edge(3)], matched: 22 }))
+  await lostNext.promise
+  await nextTick()
+  expect(titles()).toEqual(['Draft 4'])
+  expect(m.q('all-tasks-count').textContent?.trim()).toBe('1 task')
+
+  search('older')
+  await expect.poll(() => read.mock.calls.length).toBe(4)
+  expect(read).toHaveBeenLastCalledWith({ sessionId, filter: 'all', text: 'older' })
   active.value = 'second-holder'
   await expect.poll(() => m.all('all-tasks-unread').length).toBe(1)
   expect(read).toHaveBeenLastCalledWith({
     sessionId: 'second-holder',
     filter: 'all',
-    text: 'draft',
+    text: 'older',
   })
   expect(m.q('all-tasks-unread').textContent).toContain('1 row')
   expect(m.q('all-tasks-count').textContent?.trim()).toBe('0 tasks shown')
   expect(m.all('all-tasks-empty')).toHaveLength(0)
   expect(m.host.querySelectorAll('.list-filter-count')).toHaveLength(0)
 
-  lostSearch.resolve(result({ tasks: [edge(2)] }))
-  lostNext.resolve(result({ tasks: [edge(3)] }))
+  lostSearch.resolve(result({ tasks: [edge(2)], matched: 1 }))
+  await lostSearch.promise
   await nextTick()
   expect(titles()).toEqual([])
   expect(m.all('all-tasks-unread')).toHaveLength(1)
@@ -203,7 +224,7 @@ it('retires stale continuations when search or conversation changes, and shows i
   expect(read).toHaveBeenLastCalledWith({
     sessionId: 'second-holder',
     filter: 'all',
-    text: 'draft',
+    text: 'older',
   })
 })
 
