@@ -10969,7 +10969,12 @@ export class RuntimeHost implements LiveHost {
   ): ProfileReport {
     const chosen = this.deps.store.modelChoiceOf(one.slug)
     const runsOn = this.itsProvider(one.slug).provider
-    const kind = kindOf(this.profileExecution, this.profileExecutionConflicts, one.id, one.createdAt)
+    const kind = kindOf(
+      this.profileExecution,
+      this.profileExecutionConflicts,
+      one.id,
+      one.createdAt,
+    )
     return {
       profile: one.slug,
       displayName: one.displayName,

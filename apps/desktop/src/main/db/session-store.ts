@@ -680,7 +680,10 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   /** One identity, or null when no agent has that name. */
   agentIdentityOf(profileSlug: string): AgentIdentity | null
   agentIdentities(): readonly AgentIdentity[]
-  agentIdentityPage(after: string, limit: number): {
+  agentIdentityPage(
+    after: string,
+    limit: number,
+  ): {
     readonly identities: readonly Pick<AgentIdentity, 'id' | 'slug' | 'displayName' | 'createdAt'>[]
     readonly count: number
   }
