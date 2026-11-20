@@ -1,6 +1,3 @@
-/** Which releases a BroBot is offered: full releases, or betas too. */
-export type UpdateChannel = 'stable' | 'beta'
-
 export interface UpdateRestartWorkspace {
   readonly path: string
   readonly name: string
@@ -64,7 +61,6 @@ export interface UpdatesSnapshot {
   readonly version: string
   /** Whether it checks by itself, at launch and once a day. A person can always check now. */
   readonly checkAutomatically: boolean
-  readonly channel: UpdateChannel
   readonly state: UpdateState
 }
 
@@ -81,8 +77,7 @@ export const UPDATES_CHANNELS = {
   changed: 'updates:changed',
 } as const
 
-/** What `updates:set` takes: either switch, or both. */
+/** What `updates:set` takes. */
 export interface UpdatesSettingsChange {
   readonly checkAutomatically?: boolean
-  readonly channel?: UpdateChannel
 }

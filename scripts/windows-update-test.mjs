@@ -805,7 +805,6 @@ try {
   summary.steps.b = {
     version: snapshotB.version,
     checkAutomatically: snapshotB.checkAutomatically,
-    channel: snapshotB.channel,
   }
   check(snapshotB.version === VERSION_B, `the running app says it is ${String(snapshotB.version)}`)
   const builtB = await cdpB.evaluate('return await window.api.getAppInfo()')
@@ -814,7 +813,7 @@ try {
     `B says it was built from this commit (${String(builtB?.build?.commit)})`,
   )
   check(
-    snapshotB.channel === 'stable' && snapshotB.checkAutomatically === (namedFolder === null),
+    snapshotB.checkAutomatically === (namedFolder === null),
     `the person's update settings are kept: ${JSON.stringify(summary.steps.b)}`,
   )
   const shows = await whatBShows(cdpB, made, rowsBefore)

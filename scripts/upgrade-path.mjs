@@ -2182,7 +2182,7 @@ async function runUpgradePath() {
     { renamed, namedAs },
   )
   const betaUpdates = await running.cdp.evaluate(
-    'const set = await window.api.updates.set({ checkAutomatically: false }); return { checkAutomatically: set.checkAutomatically, channel: set.channel }',
+    'const set = await window.api.updates.set({ checkAutomatically: false }); return { checkAutomatically: set.checkAutomatically }',
   )
   must(betaUpdates.checkAutomatically === false, 'the beta turned automatic update checks off', {
     betaUpdates,
@@ -2527,10 +2527,10 @@ async function runUpgradePath() {
       info?.db,
     )
     const updates = await running.cdp.evaluate(
-      'const read = await window.api.updates.read(); return { checkAutomatically: read.checkAutomatically, channel: read.channel }',
+      'const read = await window.api.updates.read(); return { checkAutomatically: read.checkAutomatically }',
     )
     check(
-      updates.checkAutomatically === false && updates.channel === betaUpdates.channel,
+      updates.checkAutomatically === false,
       'the candidate keeps the update setting the beta left',
       { beta: betaUpdates, candidate: updates },
     )

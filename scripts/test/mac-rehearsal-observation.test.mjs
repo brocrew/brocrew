@@ -593,7 +593,6 @@ it('preserves the released plain-file key and resumes without saving it again', 
             updates: {
               read: async () => ({
                 version: '0.2.24',
-                channel: 'stable',
                 checkAutomatically: true,
                 state: { kind: 'idle', upToDate: true },
               }),

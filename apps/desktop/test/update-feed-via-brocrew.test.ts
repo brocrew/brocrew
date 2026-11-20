@@ -132,7 +132,7 @@ async function start(
   )
   writeFileSync(
     join(data, 'update-settings.json'),
-    JSON.stringify({ updates: { checkAutomatically: enabled, channel: 'stable' } }),
+    JSON.stringify({ updates: { checkAutomatically: enabled } }),
   )
   quit = vi.fn<() => void>()
   // MacUpdater loads Electron through CommonJS, outside Vitest's import mocks.
@@ -478,25 +478,13 @@ describe('the public update feed', () => {
     primaryRequest = () =>
       writeFileSync(
         join(root, 'data', 'update-settings.json'),
-        JSON.stringify({ updates: { checkAutomatically: false, channel: 'stable' } }),
+        JSON.stringify({ updates: { checkAutomatically: false } }),
       )
     expect((await updates!.checkNow()).state.kind).toBe('available')
     expect(asked.filter((row) => row.url.origin === 'https://brocrew.app')).toHaveLength(1)
     asked = []
     expect((await updates!.download()).state.kind).toBe('ready')
     expect(asked.every((row) => row.url.origin === 'https://github.com')).toBe(true)
-  })
-
-  it('keeps beta on GitHub, and returns to the website for a stable check', async () => {
-    await start()
-    updates!.set({ channel: 'beta' })
-    expect((await updates!.checkNow()).state.kind).toBe('available')
-    expect(asked.length).toBeGreaterThan(0)
-    expect(asked.every((row) => row.url.origin === 'https://github.com')).toBe(true)
-    updates!.set({ channel: 'stable' })
-    asked = []
-    expect((await updates!.checkNow()).state.kind).toBe('available')
-    expect(asked.map((row) => row.url.origin)).toEqual(['https://brocrew.app'])
   })
 
   it('encodes the full installed SemVer without adding a timestamp or identifier', async () => {

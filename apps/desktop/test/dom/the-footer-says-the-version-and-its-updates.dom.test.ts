@@ -10,7 +10,6 @@ import { mount, unmountAll } from './harness'
 const snapshotOf = (state: UpdateState, over: Partial<UpdatesSnapshot> = {}): UpdatesSnapshot => ({
   version: '0.1.0',
   checkAutomatically: true,
-  channel: 'stable',
   state,
   ...over,
 })
@@ -246,18 +245,13 @@ describe('B2 · the menu, state by state', () => {
     expect(fake.checkNow).toHaveBeenCalledTimes(1)
   })
 
-  it('🔴 the switches: check automatically (on) and beta (off), each reaching the bridge', async () => {
+  it('🔴 the switch: check automatically (on), reaching the bridge', async () => {
     const { m, fake } = await menuIn({ kind: 'idle', checkedAt: null, upToDate: false })
     const automatically = m.q('updates-automatically') as HTMLInputElement
-    const beta = m.q('updates-beta') as HTMLInputElement
     expect(automatically.checked).toBe(true)
-    expect(beta.checked).toBe(false)
     automatically.click()
     await settle()
     expect(fake.set).toHaveBeenLastCalledWith({ checkAutomatically: false })
-    beta.click()
-    await settle()
-    expect(fake.set).toHaveBeenLastCalledWith({ channel: 'beta' })
   })
 })
 

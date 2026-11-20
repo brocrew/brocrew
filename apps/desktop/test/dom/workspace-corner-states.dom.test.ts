@@ -14,7 +14,6 @@ function setup(state: UpdateState) {
   const snapshot = (next: UpdateState): UpdatesSnapshot => ({
     version: '0.2.0',
     checkAutomatically: true,
-    channel: 'stable',
     state: next,
   })
   const update = {

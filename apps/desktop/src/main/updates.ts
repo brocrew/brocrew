@@ -1,6 +1,5 @@
 import type { AppUpdater } from 'electron-updater'
 import type {
-  UpdateChannel,
   UpdateState,
   UpdatesSettingsChange,
   UpdatesSnapshot,
@@ -29,8 +28,8 @@ export interface UpdatesDeps {
   /** Why this build never checks, or null when it does. */
   readonly notHere: 'a-development-build' | 'no-release-feed' | null
   readonly settings: { read(): UpdateSettings; write(settings: UpdateSettings): void }
-  /** Ask the release feed: the newer release on this channel, or null when this is the newest. */
-  check(channel: UpdateChannel): Promise<FoundUpdate | null>
+  /** Ask the release feed: the newer full release, or null when this is the newest. */
+  check(): Promise<FoundUpdate | null>
   /** Download the update the feed offered. */
   download(found: FoundUpdate, onPercent: (percent: number) => void): Promise<void>
   /** Quit and install the update, then start BroCrew again. */
@@ -60,19 +59,13 @@ export function parseSettingsChange(said: unknown): UpdatesSettingsChange {
   if (typeof said !== 'object' || said === null || Array.isArray(said)) {
     throw new Error('an update setting is an object')
   }
-  const { checkAutomatically, channel, ...rest } = said as Record<string, unknown>
+  const { checkAutomatically, ...rest } = said as Record<string, unknown>
   if (Object.keys(rest).length > 0)
     throw new Error(`unknown update settings: ${Object.keys(rest).join(', ')}`)
   if (checkAutomatically !== undefined && typeof checkAutomatically !== 'boolean') {
     throw new Error('checkAutomatically is true or false')
   }
-  if (channel !== undefined && channel !== 'stable' && channel !== 'beta') {
-    throw new Error('channel is stable or beta')
-  }
-  return {
-    ...(checkAutomatically === undefined ? {} : { checkAutomatically }),
-    ...(channel === undefined ? {} : { channel }),
-  }
+  return checkAutomatically === undefined ? {} : { checkAutomatically }
 }
 
 /** Read electron-updater's singleton from its CommonJS or named export. */
@@ -95,9 +88,9 @@ function firstLineOf(error: unknown): string {
 }
 
 /**
- * Why a check failed, in plain words — or null when it did not fail at all: the channel has no
- * release yet (electron-updater's `ERR_UPDATER_LATEST_VERSION_NOT_FOUND` for full releases,
- * `ERR_UPDATER_NO_PUBLISHED_VERSIONS` for betas), so this is the newest there is.
+ * Why a check failed, in plain words — or null when it did not fail at all: there is no release
+ * yet (electron-updater's `ERR_UPDATER_LATEST_VERSION_NOT_FOUND` or
+ * `ERR_UPDATER_NO_PUBLISHED_VERSIONS`), so this is the newest there is.
  */
 export function whyACheckFailed(error: unknown): string | null {
   const code =
@@ -175,7 +168,6 @@ export function createUpdates(deps: UpdatesDeps): Updates {
       ...(deps.updateNow ? { updateNow: true } : {}),
       version: deps.version,
       checkAutomatically: settings.checkAutomatically,
-      channel: settings.channel,
       state,
     }
   }
@@ -205,10 +197,9 @@ export function createUpdates(deps: UpdatesDeps): Updates {
     if (state.kind !== 'idle' && state.kind !== 'error' && state.kind !== 'available') {
       return snapshot()
     }
-    const channel = deps.settings.read().channel
     become({ kind: 'checking' })
     try {
-      found = await deps.check(channel)
+      found = await deps.check()
       become(
         found === null
           ? { kind: 'idle', checkedAt: deps.now(), upToDate: true }
@@ -226,19 +217,13 @@ export function createUpdates(deps: UpdatesDeps): Updates {
   async function download(): Promise<UpdatesSnapshot> {
     if (stopped || state.kind !== 'available' || found === null) return snapshot()
     let refreshed: FoundUpdate | null = found
-    const channel = deps.settings.read().channel
     become({ kind: 'checking' })
     try {
-      refreshed = await deps.check(channel)
+      refreshed = await deps.check()
     } catch (error) {
       deps.log(`updates: could not refresh before download: ${firstLineOf(error)}`)
     }
     if (stopped) return snapshot()
-    if (channel !== deps.settings.read().channel) {
-      found = null
-      become({ kind: 'idle', checkedAt: null, upToDate: false })
-      return snapshot()
-    }
     found = refreshed
     if (refreshed === null) {
       become({ kind: 'idle', checkedAt: deps.now(), upToDate: true })
@@ -339,16 +324,7 @@ export function createUpdates(deps: UpdatesDeps): Updates {
 
   function set(change: UpdatesSettingsChange): UpdatesSnapshot {
     const was = deps.settings.read()
-    const settings = {
-      checkAutomatically: change.checkAutomatically ?? was.checkAutomatically,
-      channel: change.channel ?? was.channel,
-    }
-    deps.settings.write(settings)
-    // An offer from the other channel is not this one's: it is asked again.
-    if (settings.channel !== was.channel && state.kind === 'available') {
-      found = null
-      state = { kind: 'idle', checkedAt: null, upToDate: false }
-    }
+    deps.settings.write({ checkAutomatically: change.checkAutomatically ?? was.checkAutomatically })
     arm(FIRST_CHECK_AFTER_MS)
     deps.publish(snapshot())
     return snapshot()

@@ -17,7 +17,7 @@ type RuntimeOptions = ConstructorParameters<typeof GenericProvider>[2]
 type ProviderOptions = Extract<Parameters<AppUpdater['setFeedURL']>[0], { provider: 'custom' }>
 
 export function websiteUpdatesEnabled(settings: UpdateSettings): boolean {
-  return settings.checkAutomatically && settings.channel === 'stable'
+  return settings.checkAutomatically
 }
 
 function unavailable(error: unknown): boolean {

@@ -279,7 +279,7 @@ afterEach(() => {
 it('only the installed target primary consumes the captured reopen set, preserving other settings', () => {
   folder = mkdtempSync(join(tmpdir(), 'update-reopen-'))
   const file = join(folder, 'settings.json')
-  const rest = { updates: { channel: 'beta', checkAutomatically: false }, other: { kept: true } }
+  const rest = { updates: { checkAutomatically: false }, other: { kept: true } }
   writeFileSync(file, JSON.stringify(rest))
   rememberUpdateWorkspaces(file, {
     executable: '/BroCrew',
