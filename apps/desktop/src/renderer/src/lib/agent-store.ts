@@ -152,12 +152,10 @@ export interface AgentStore {
   ): Promise<string | null>
   /**
    * 🔴 **Approve or refuse one ask an agent made against an identity's instructions** (582).
-   * Answers the refusal SENTENCE, or null when it was taken.
-   *
-   * ⛔ **The refusal arrives as DATA rather than as an exception** — `AnswerAck` — so the sentence
-   * comes off the ack and is not composed here.
+   * Answers the host's answer: a press it took or refused, with its sentence and whether the ask is
+   * still open. A call that failed is a refusal that leaves the ask open.
    */
-  decideInstruction(askId: string, approve: boolean): Promise<string | null>
+  decideInstruction(askId: string, approve: boolean): Promise<AnswerAck>
   /**
    * Approve or refuse one agent's request to register an MCP server. Answers the host's answer: a
    * press it took or refused, with its sentence. A call that failed is a refusal that leaves the
@@ -462,12 +460,9 @@ export function createAgentStore(bridge: ClientAgentApi): AgentStore {
 
     async decideInstruction(askId, approve) {
       try {
-        const ack = await bridge.decideInstruction({ askId, approve })
-        // ⛔ **The refusal is DATA on this door**, so the sentence is the main process's own words
-        // and is not composed here — `485`'s rule, and the same shape `remove` takes below.
-        return ack.outcome === 'taken' ? null : ack.reason
+        return await bridge.decideInstruction({ askId, approve })
       } catch (error) {
-        return sentence(error)
+        return { outcome: 'refused', reason: sentence(error), stillOpen: true }
       }
     },
 

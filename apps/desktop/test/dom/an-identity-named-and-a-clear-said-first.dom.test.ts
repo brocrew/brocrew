@@ -628,7 +628,7 @@ describe('712 §2c · R41 — the ask on an identity’s own rules names the age
     return {
       instructionsFor: async () => ASKED,
       instruct: async () => null,
-      decideInstruction: async () => null,
+      decideInstruction: async () => ({ outcome: 'taken' as const }),
       ...identities,
     } as unknown as AgentStore
   }

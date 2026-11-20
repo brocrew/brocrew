@@ -83,7 +83,7 @@ function parts(direct = false, empty = false) {
       writes.push(input)
       return writeResult
     },
-    decideInstruction: async () => null,
+    decideInstruction: async () => ({ outcome: 'taken' as const }),
   } as unknown as AgentStore
   const bridge = {
     agentRulesUnread: async () => ({

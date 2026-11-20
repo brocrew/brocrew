@@ -3570,11 +3570,15 @@ async function answerFromTheQueue(
 /**
  * ⚑ **D-017 · R19 — a person decides an agent's ask about an identity's rules from *Waiting on
  * you*** — the same `decideInstruction` that identity's own sheet presses. ⚑ The host's words when
- * it did not take it, and the look again at once, so the row goes when it did.
+ * it did not take it, and the look again at once. An ask the host no longer holds leaves the list
+ * now, since a refused look keeps the last good answer (352).
  */
 async function decideInstructionAsk(askId: string, approve: boolean): Promise<void> {
-  const refused = await agentStore.decideInstruction(askId, approve)
-  if (refused !== null) say(refused)
+  const ack = await agentStore.decideInstruction(askId, approve)
+  if (ack.outcome === 'refused') say(ack.reason)
+  if (ack.outcome === 'taken' || !ack.stillOpen)
+    instructionAsks.value =
+      instructionAsks.value?.filter((one) => one.asked.askId !== askId) ?? null
   await lookForWhatIsYours()
 }
 
