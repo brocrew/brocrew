@@ -142,14 +142,16 @@ it('keeps root, ledger order, whole-set counts and newest open match across page
   await expect.poll(titles).toEqual([root.title, ...first.map((one) => one.title)])
   expect(current()).toBeUndefined()
   expect(m.q('cast-taken-work').tagName).toBe('SPAN')
-  expect(m.q('all-tasks-count').textContent?.trim()).toBe('22 tasks')
+  expect(m.q('all-tasks-count').textContent?.trim()).toBe('21 of 22 tasks')
   for (const [filter, count] of Object.entries(counts))
     expect(m.q(`all-tasks-filter-${filter}`).querySelector('.list-filter-count')?.textContent).toBe(
       String(count),
     )
 
+  expect(m.q('all-tasks-more').textContent?.trim()).toBe('Show 1 more')
   m.q('all-tasks-more').click()
   await expect.poll(titles).toEqual([root.title, ...first.map((one) => one.title), last.title])
+  expect(m.q('all-tasks-count').textContent?.trim()).toBe('22 of 22 tasks')
   expect(read.mock.calls).toEqual([
     [{ sessionId, filter: 'all' }],
     [{ sessionId, filter: 'all', cursor: 'after-twenty' }],
@@ -169,7 +171,7 @@ it('keeps root, ledger order, whole-set counts and newest open match across page
   m.q('all-tasks-filter-active').click()
   await expect.poll(titles).toEqual([last.title])
   expect(read).toHaveBeenLastCalledWith({ sessionId, filter: 'active' })
-  expect(m.q('all-tasks-count').textContent?.trim()).toBe('1 task')
+  expect(m.q('all-tasks-count').textContent?.trim()).toBe('1 of 1 task')
   expect(m.q('all-tasks-filter-all').querySelector('.list-filter-count')?.textContent).toBe('22')
 })
 
@@ -192,12 +194,12 @@ it('retires stale continuations when search or conversation changes, and shows i
   search('  draft  ')
   await expect.poll(titles).toEqual(['Draft 4'])
   expect(read).toHaveBeenLastCalledWith({ sessionId, filter: 'all', text: 'draft' })
-  expect(m.q('all-tasks-count').textContent?.trim()).toBe('1 task')
+  expect(m.q('all-tasks-count').textContent?.trim()).toBe('1 of 1 task')
   lostNext.resolve(result({ tasks: [edge(3)], matched: 22 }))
   await lostNext.promise
   await nextTick()
   expect(titles()).toEqual(['Draft 4'])
-  expect(m.q('all-tasks-count').textContent?.trim()).toBe('1 task')
+  expect(m.q('all-tasks-count').textContent?.trim()).toBe('1 of 1 task')
 
   search('older')
   await expect.poll(() => read.mock.calls.length).toBe(4)

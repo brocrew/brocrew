@@ -6,6 +6,7 @@ import type {
 } from '../../../shared/conversation-task-page'
 import { TASK_IS_OPEN } from '../../../shared/tasks'
 import { agoWords, fullTime } from '../lib/clock'
+import { useMinuteClock } from '../composables/useMinuteClock'
 import { A_PERSON_ADDRESSED } from '../lib/outgoing-card'
 import { ROWS_UNREAD_LEAD, unreadSays } from '../lib/rows-unread'
 import { workReading } from '../lib/work-report'
@@ -61,6 +62,7 @@ const briefs = computed(() => {
   const row = props.page?.current
   return row?.brief ? new Map([[row.label, row.brief]]) : undefined
 })
+const minute = useMinuteClock()
 const other = computed(() => props.page?.other.flatMap(forList) ?? [])
 const otherTotal = computed(() => {
   const counts = props.page?.counts
@@ -69,6 +71,9 @@ const otherTotal = computed(() => {
     counts.active + counts.open + counts.closed - (props.page?.current?.kind === 'held' ? 1 : 0)
   )
 })
+const moreCount = computed(() =>
+  otherTotal.value === null ? 5 : Math.min(5, otherTotal.value - other.value.length),
+)
 const gaps = computed(() =>
   props.page ? unreadSays(props.page.rowsUnread, props.page.ledgersSkipped) : null,
 )
@@ -97,8 +102,16 @@ const status = computed(() => props.page?.current?.statusLine ?? null)
       hint="Work given to this agent appears here."
       data-cy="card-task-empty"
     />
-    <div v-if="other.length" class="task-other" data-cy="card-other-tasks">
-      <h4>Other tasks in this conversation</h4>
+    <details
+      v-if="other.length"
+      :key="page.conversation"
+      class="task-other"
+      data-cy="card-other-tasks"
+    >
+      <summary>
+        Other tasks in this conversation
+        <span v-if="otherTotal !== null">{{ otherTotal }}</span>
+      </summary>
       <TaskList
         data-cy="cast-other"
         mode="other"
@@ -113,9 +126,11 @@ const status = computed(() => props.page?.current?.statusLine ?? null)
         :disabled="pending"
         @click="emit('more')"
       >
-        Show 5 more<span v-if="otherTotal !== null"> · {{ other.length }} of {{ otherTotal }}</span>
+        Show {{ moreCount }} more<span v-if="otherTotal !== null">
+          · {{ other.length }} of {{ otherTotal }}</span
+        >
       </button>
-    </div>
+    </details>
     <p
       v-if="page.counts && otherTotal !== null && otherTotal + current.length > 0"
       class="task-note"
@@ -129,8 +144,14 @@ const status = computed(() => props.page?.current?.statusLine ?? null)
     </p>
     <div v-if="status" class="task-status" data-cy="card-task-status">
       <h4>Latest status</h4>
+      <time
+        v-if="fullTime(status.at)"
+        :title="fullTime(status.at)"
+        :aria-label="fullTime(status.at)"
+      >
+        {{ agoWords(status.at, minute) }}
+      </time>
       <p>{{ status.text }}</p>
-      <time v-if="fullTime(status.at)">{{ fullTime(status.at) }}</time>
     </div>
   </template>
 </template>
@@ -141,7 +162,6 @@ p {
   margin: 0;
 }
 h4 {
-  margin-block-end: var(--space-2);
   font-size: var(--type-caption);
 }
 .task-note,
@@ -150,11 +170,23 @@ time {
   font-size: var(--type-caption);
 }
 .task-status {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--space-3);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 .task-status p {
+  grid-column: 1 / -1;
   font-size: var(--type-caption);
+}
+.task-other summary {
+  cursor: pointer;
+  font-size: var(--type-caption);
+}
+.task-other summary span {
+  margin-inline-start: var(--space-2);
+  color: var(--muted);
 }
 .task-other button {
   padding: var(--space-1) var(--space-3);

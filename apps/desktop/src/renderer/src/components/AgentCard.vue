@@ -635,7 +635,9 @@ const fileManager = fileManagerHere()
             @click="props.agent?.openTasks()"
           >
             All tasks
-            <span v-if="allTasks !== null" class="text-action-count">({{ allTasks }})</span>
+            <span v-if="!props.taskPageSource && allTasks !== null" class="text-action-count">
+              ({{ allTasks }})
+            </span>
             <svg class="icon" aria-hidden="true"><use href="#i-arrow" /></svg>
           </button>
         </template>

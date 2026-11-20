@@ -1023,27 +1023,8 @@ const platform = platformHere()
     </div>
 
     <div class="rail-scroll">
-      <div class="rail-section" style="margin-top: 0">
-        <!-- 🔴 **606 · `EXT-008` §3's split, and the rule is older than the mockup.**
-
-             ⛔ ***"Waiting on you and While you were away are separate destinations. Those are not
-             two views of one thing — one is what he owes, one is what changed — and that split was
-             ruled in `HO-025` §2."*** ⚑ **`HO-025` §2 is the rule underneath:** *a digest is
-             WINDOWED; the queue is COMPLETE regardless of age.*
-
-             ⚠️ **Which is why they cannot share a count.** ⛔ A single badge over a complete queue
-             and a windowed reading is bounded by neither — `304`'s contradiction. ⚑ **Here that is
-             settled by there being one badge and not two** — see {@link waitingCount}'s neighbour
-             for why the windowed count is drawn on its own page instead.
-
-             ⚑ **Two rows, first, in `EXT-008` §5's order** — *New conversation · Waiting on you ·
-             While you were away · … · Agents · Tools · History*. ⚠️ **The rest of that order is not
-             re-opened here**; `566` and `570` each placed their own row and the remaining inversion
-             is theirs.
-
-             ⛔ **`#i-bang` and `#i-activity` are both already in `IconSprite`** — the first was
-             DEFINED and drawn nowhere, the second is the digest's own glyph. ⚑ Reusing them keeps
-             the sprite's count where it is, which is `570`'s argument for `#i-bot`. -->
+      <div class="rail-section rail-destinations" style="margin-top: 0">
+        <!-- The complete Waiting on you queue and the windowed Recent activity stay separate. -->
         <button
           class="rail-item"
           :class="{ active: props.place === 'waiting' }"
@@ -1077,6 +1058,18 @@ const platform = platformHere()
           <span class="rail-copy">
             <strong>Recent activity</strong>
           </span>
+        </button>
+
+        <button
+          v-if="paletteSearchCaller && props.searchConversations"
+          class="rail-item"
+          type="button"
+          data-cy="rail-find-destination"
+          :title="props.collapsed ? 'Find a conversation' : undefined"
+          @click="palette?.toggle()"
+        >
+          <svg class="icon"><use href="#i-search" /></svg>
+          <span class="rail-copy"><strong>Find a conversation</strong></span>
         </button>
 
         <!-- WIRED (047) — everything this app knows about, ours and the user's own provider homes
@@ -1842,6 +1835,11 @@ const platform = platformHere()
   gap: var(--space-4);
   grid-template-columns: 18px minmax(0, 1fr) auto;
   text-align: left;
+}
+
+.rail:not([data-collapsed='true']) .rail-destinations .rail-item {
+  min-height: 28px;
+  padding-block: var(--space-2);
 }
 
 .rail-item + .rail-item {

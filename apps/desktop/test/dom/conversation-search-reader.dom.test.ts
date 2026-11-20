@@ -78,15 +78,19 @@ function result(
 const insidePalette = (name: string): HTMLElement | null =>
   document.querySelector<HTMLElement>(`[data-cy="${name}"]`)
 
-async function openPalette() {
+async function openPalette(fromRail = false) {
   window.api.runtime.listResumable = async () => [
     { ...workerRows(1)[0]!, sessionId: caller, provider: 'codex' },
   ]
   const m = mount(RuntimeScreen, {})
   await expect.poll(() => m.all(`open-session-${caller}`).length).toBe(1)
-  window.dispatchEvent(
-    new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, metaKey: true, bubbles: true }),
-  )
+  if (fromRail) {
+    m.q('rail-find-destination').click()
+  } else {
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, metaKey: true, bubbles: true }),
+    )
+  }
   await expect.poll(() => insidePalette('palette-profile-filter')?.children.length).toBe(2)
   return m
 }
@@ -459,7 +463,7 @@ it('searches recorded conversations with the same cursor and opens an archived m
     hasOlder: false,
     turnAligned: true,
   })
-  const m = await openPalette()
+  const m = await openPalette(true)
   const profile = insidePalette('palette-profile-filter') as HTMLSelectElement
   expect(profile.value).toBe('')
   typeQuery('launch')

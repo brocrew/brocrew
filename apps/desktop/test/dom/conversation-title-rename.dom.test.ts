@@ -284,7 +284,7 @@ it('reads saved titles only on demand, follows the cursor and restarts after a r
   expect(read).toHaveBeenCalledExactlyOnceWith({ sessionId })
   expect(history.textContent).toContain('Current saved title')
   expect(history.textContent).toContain('Named by you')
-  expect(history.querySelector('time')?.textContent).toBe(fullTime(savedAt))
+  expect(history.querySelector('time')?.getAttribute('title')).toBe(fullTime(savedAt))
 
   m.q('conversation-title-history-more').click()
   await expect.poll(() => m.all('conversation-saved-title').length).toBe(2)
@@ -420,10 +420,19 @@ it('pages Other tasks, then rereads Current task when its saved cursor no longer
   expect(currentText()).toContain('Keep the old invoice number visible.')
   expect(currentText()).not.toContain('Person’s original request')
   expect(m.q('card-task-status').textContent).toContain('Waiting for the archived copy.')
-  expect(m.q('card-task-status').querySelector('time')?.textContent).toBe(fullTime(taskStatusAt))
+  expect(m.q('card-task-status').querySelector('time')?.getAttribute('title')).toBe(
+    fullTime(taskStatusAt),
+  )
+  const disclosure = m.q('card-other-tasks') as HTMLDetailsElement
+  expect(disclosure.open).toBe(false)
+  expect(m.q('cast-other').getClientRects()).toHaveLength(0)
+  expect(disclosure.querySelector('summary')?.textContent).toContain('8')
+  disclosure.querySelector('summary')!.click()
+  expect(disclosure.open).toBe(true)
+  expect(m.q('cast-other').getClientRects()).not.toHaveLength(0)
   expect(otherTitles()).toEqual(others.slice(0, 5).map((item) => item.title))
   expect(m.q('card-task-counts').textContent?.trim()).toBe('0 active · 1 open · 8 closed')
-  expect(m.q('card-other-tasks-more').textContent?.trim()).toBe('Show 5 more · 5 of 8')
+  expect(m.q('card-other-tasks-more').textContent?.trim()).toBe('Show 3 more · 5 of 8')
   expect(m.q('card-tasks-all').textContent).toContain('All tasks')
   const readAll = vi.fn<RuntimeBridge['readAllConversationTasks']>().mockResolvedValue({
     ok: true,
@@ -448,7 +457,7 @@ it('pages Other tasks, then rereads Current task when its saved cursor no longer
   m.q('card-other-tasks-more').click()
   await expect.poll(otherTitles).toEqual(others.slice(0, 7).map((item) => item.title))
   expect(read).toHaveBeenNthCalledWith(2, { sessionId, cursor: 'more-five' })
-  expect(m.q('card-other-tasks-more').textContent?.trim()).toBe('Show 5 more · 7 of 8')
+  expect(m.q('card-other-tasks-more').textContent?.trim()).toBe('Show 1 more · 7 of 8')
   m.q('card-other-tasks-more').click()
   await expect.poll(currentText).toContain('Person’s original request')
   expect(read.mock.calls).toEqual([
@@ -462,7 +471,7 @@ it('pages Other tasks, then rereads Current task when its saved cursor no longer
   expect(m.all('card-task-counts')).toHaveLength(0)
   expect(m.q('card-tasks-all').textContent).not.toContain('(')
   expect(m.q('cast-taken-short').textContent).toContain('1 row of this app’s record')
-  expect(m.q('card-task-status').querySelector('time')?.textContent).toBe(
+  expect(m.q('card-task-status').querySelector('time')?.getAttribute('title')).toBe(
     fullTime(taskStatusAt + 60_000),
   )
 })

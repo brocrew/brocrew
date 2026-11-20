@@ -183,10 +183,21 @@ const briefs = computed(() => briefsOf(props.state))
           <span v-if="counts" class="list-filter-count">{{ counts[one.key] }}</span>
         </button>
       </div>
-      <p v-if="found != null" class="list-count" role="status" data-cy="all-tasks-count">
-        {{ found }} {{ found === 1 ? 'task' : 'tasks' }}
+      <p
+        v-if="found != null && (!paged || found > 0)"
+        class="list-count"
+        role="status"
+        data-cy="all-tasks-count"
+      >
+        <template v-if="paged">{{ shown }} of </template>{{ found }}
+        {{ found === 1 ? 'task' : 'tasks' }}
       </p>
-      <p v-else-if="page" class="list-count" role="status" data-cy="all-tasks-count">
+      <p
+        v-else-if="page && found == null"
+        class="list-count"
+        role="status"
+        data-cy="all-tasks-count"
+      >
         {{ shown }} {{ shown === 1 ? 'task' : 'tasks' }} shown
       </p>
     </template>
@@ -218,7 +229,13 @@ const briefs = computed(() => briefsOf(props.state))
         :disabled="pending"
         @click="read(page?.next ?? undefined)"
       >
-        {{ failed && !page ? 'Try again' : 'Show more' }}
+        {{
+          failed && !page
+            ? 'Try again'
+            : found == null
+              ? 'Show more'
+              : `Show ${Math.min(20, found - shown)} more`
+        }}
       </button>
     </template>
   </ListDialogShell>
