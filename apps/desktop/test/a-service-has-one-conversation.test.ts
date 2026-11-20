@@ -7,10 +7,8 @@ import { THE_APP_ITSELF, type RuntimeHost } from '../src/main/runtime/runtime-ho
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
 /**
- * A service has one conversation: recorded at its first give, nothing launched, with no parent
- * and no root; kept in `profile-execution.json` as that service's; never replaced by another; and
- * deleted only by a person, only while nobody has given it work. Reached through the host alone:
- * services are switched off in the app.
+ * A historical service identity without a recorded conversation acquires one on its first Give.
+ * The reservation is recovered across a restart; later Gives reuse the same conversation.
  */
 
 describe('a service’s one conversation', () => {

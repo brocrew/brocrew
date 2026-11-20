@@ -1,3 +1,5 @@
+import { DEFAULT_CONVERSATION_PROVIDER } from '@brobot2/shared'
+import type { SessionStore } from '../src/main/db/session-store'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
@@ -96,17 +98,46 @@ describe('Service lifecycle', () => {
         asAService: true,
       })
       expect(world.kept(byAPerson.id)).toMatchObject({ kind: 'service' })
+      const personConversation = world.kept(byAPerson.id)?.serviceConversation
+      expect(personConversation).toBeTypeOf('string')
+      expect(world.store.recordedOne(personConversation!)?.provider).toBe('claude')
+      expect(world.store.parentOf(personConversation!)).toBeNull()
+      expect(world.store.rootOf(personConversation!)).toBeNull()
+      expect(world.store.piecesOwnedBy(personConversation!)).toEqual([])
+      expect(host.agentCard(personConversation!, world.window, null)?.agent).toBe(
+        personConversation,
+      )
       const made = await call(host, caller, 'create_agent', {
         profile_slug: 'fetcher',
         kind: 'service',
+        model: 'fake-claude-a',
+        effort: 'high',
       })
       expect(made.structured).toMatchObject({ outcome: 'ok' })
       const fetcher = world.store.agentIdentities().find((one) => one.slug === 'fetcher')
       if (fetcher === undefined) throw new Error('fetcher was not made')
       expect(world.kept(fetcher.id)).toMatchObject({ kind: 'service' })
+      const toolConversation = world.kept(fetcher.id)?.serviceConversation
+      expect(toolConversation).toBeTypeOf('string')
+      expect(made.structured['conversation']).toBe(toolConversation)
+      expect(world.store.recordedOne(toolConversation!)?.provider).toBe('claude')
+      expect(world.store.findLive(toolConversation!)).toMatchObject({
+        model: 'fake-claude-a',
+        reasoningEffort: 'high',
+      })
+      expect(made.text).toContain(toolConversation!)
+      expect(world.store.parentOf(toolConversation!)).toBeNull()
+      expect(world.store.rootOf(toolConversation!)).toBeNull()
+      expect(world.startedAs).toEqual(['caller'])
+      const before = world.conversationsRecorded()
+      const given = accepted(await world.gives(host, caller, 'fetcher'))
+      expect(given.owner).toBe(toolConversation)
+      expect(world.conversationsRecorded()).toBe(before)
       // A normal agent made beside them is not one.
       const normal = await call(host, caller, 'create_agent', { profile_slug: 'writer' })
       expect(normal.structured).toMatchObject({ outcome: 'ok' })
+      expect(normal.structured).not.toHaveProperty('conversation')
+      expect(normal.text).toContain('It is not running and has been sent nothing.')
       expect(host.agentIdentities().services).toEqual(['browser-driver', 'fetcher'])
       const listed = await call(host, caller, 'list_profiles', {})
       const profiles = listed.structured['profiles'] as { profile: string; kind?: string }[]
@@ -114,6 +145,233 @@ describe('Service lifecycle', () => {
       expect(profiles.find((one) => one.profile === 'writer')?.kind).toBeUndefined()
       expect(listed.text).toContain('fetcher')
       expect(listed.text).toContain(' · a service')
+    })
+  })
+
+  describe('recording the service before any request', () => {
+    it.each(['address', 'profile'] as const)(
+      'answers an Ask by %s before its first Give',
+      async (by) => {
+        world.anAgent('caller', 'nothing kept')
+        world.store.setDefaultApprovalMode('auto')
+        const host = world.aHost()
+        const caller = await world.aPersonOpens(host, 'caller')
+        const created = host.createAgent({
+          slug: 'fetcher',
+          displayName: null,
+          provider: 'claude',
+          asAService: true,
+        })
+        const service = world.kept(created.id)?.serviceConversation
+        if (service === undefined) throw new Error('the service has no conversation')
+        const before = world.conversationsRecorded()
+        const asked = await call(host, caller, 'ask_question', {
+          who_answers: 'an-agent',
+          agent: by === 'address' ? service : 'fetcher',
+          question: 'which floor?',
+        })
+        expect(asked.structured).toMatchObject({ outcome: 'ok', agent: service })
+        expect(world.store.routedRequestsOf(caller)).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ requestId: asked.structured.question, parent: service }),
+          ]),
+        )
+        await vi.waitFor(() =>
+          expect(
+            world.sent.some((turn) => turn.as === 'fetcher' && turn.words.includes('which floor?')),
+          ).toBe(true),
+        )
+        const answered = await call(host, service, 'answer_question', {
+          question: asked.structured.question,
+          asked_by: caller,
+          answers: [{ part: 'answer', answer: ['the third'] }],
+          interrupt: false,
+        })
+        expect(answered.structured).toMatchObject({ outcome: 'ok' })
+        expect(world.store.routedRequestsOf(caller)).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ requestId: asked.structured.question, state: 'answered' }),
+          ]),
+        )
+        expect(world.conversationsRecorded()).toBe(before)
+        expect(world.store.piecesOwnedBy(service)).toEqual([])
+        expect(world.store.parentOf(service)).toBeNull()
+        expect(world.store.rootOf(service)).toBeNull()
+        expect(world.startedAs).toEqual(['caller', 'fetcher'])
+        expect(host.questionDestination('caller')).toBeNull()
+        expect(host.messageDestination('fetcher')).toBeNull()
+      },
+    )
+
+    it.each(['writeOwnInstructions', 'setModelChoice'] as const)(
+      'keeps a failed %s setup unaddressable and lets creation retry',
+      async (method) => {
+        world.anAgent('caller', 'nothing kept')
+        let fails = true
+        const store = new Proxy(world.store, {
+          get(target, key) {
+            if (key === method && fails)
+              return () => {
+                throw new Error('setup write failed')
+              }
+            const value: unknown = Reflect.get(target, key)
+            return typeof value === 'function' ? value.bind(target) : value
+          },
+        })
+        const host = world.aHost({ store })
+        const caller = await world.aPersonOpens(host, 'caller')
+        const before = world.conversationsRecorded()
+        const args = {
+          profile_slug: 'fetcher',
+          kind: 'service',
+          rules: 'Use the existing queue.',
+          model: 'fake-claude-a',
+          effort: 'high',
+        }
+        await expect(call(host, caller, 'create_agent', args)).rejects.toThrow('setup write failed')
+        expect(host.questionDestination('fetcher')).toBeNull()
+        expect(world.store.agentIdentities().some((one) => one.slug === 'fetcher')).toBe(false)
+        expect(world.conversationsRecorded()).toBe(before)
+        expect(world.startedAs).toEqual(['caller'])
+        fails = false
+        const retry = await call(host, caller, 'create_agent', args)
+        expect(retry.structured).toMatchObject({ outcome: 'ok', conversation: expect.any(String) })
+        expect(world.conversationsRecorded()).toBe(before + 1)
+        expect(world.store.ownInstructionsOf('fetcher').versions).toHaveLength(1)
+        expect(world.store.modelChoiceOf('fetcher')).toMatchObject({
+          model: 'fake-claude-a',
+          effort: 'high',
+        })
+      },
+    )
+
+    it('keeps its saved settings when defaults change before its first Ask', async () => {
+      world.anAgent('caller', 'nothing kept')
+      const host = world.aHost()
+      const caller = await world.aPersonOpens(host, 'caller')
+      const made = await call(host, caller, 'create_agent', {
+        profile_slug: 'fetcher',
+        kind: 'service',
+        model: 'fake-claude-a',
+        effort: 'high',
+      })
+      const service = String(made.structured.conversation)
+      expect(
+        world.store.setModelChoice('fetcher', {
+          provider: 'claude',
+          model: 'fake-claude-b',
+          effort: null,
+        }),
+      ).toBe(true)
+      host.setDefaultApprovalMode('auto')
+      const asked = await call(host, caller, 'ask_question', {
+        who_answers: 'an-agent',
+        agent: 'fetcher',
+        question: 'which floor?',
+      })
+      expect(asked.structured).toMatchObject({ outcome: 'ok', agent: service })
+      await vi.waitFor(() =>
+        expect(world.sent).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ as: 'fetcher', model: 'fake-claude-a', effort: 'high' }),
+          ]),
+        ),
+      )
+      expect(world.store.findLive(service)).toMatchObject({
+        model: 'fake-claude-a',
+        reasoningEffort: 'high',
+        approvalMode: 'ask',
+      })
+      const status = await call(host, caller, 'get_agent_status', { agent: service })
+      expect(status.structured.agent).toMatchObject({
+        provider: 'claude',
+        runsOn: { selected: { model: 'fake-claude-a', effort: 'high' } },
+      })
+    })
+
+    it('records the existing launch fallback when a person leaves its provider unset', () => {
+      const host = world.aHost()
+      const created = host.createAgent({
+        slug: 'fetcher',
+        displayName: null,
+        provider: null,
+        asAService: true,
+      })
+      const conversation = world.kept(created.id)?.serviceConversation
+      expect(conversation).toBeTypeOf('string')
+      expect(world.store.recordedOne(conversation!)?.provider).toBe(DEFAULT_CONVERSATION_PROVIDER)
+      expect(host.agentCard(conversation!, world.window, null)?.provider).toBe(
+        DEFAULT_CONVERSATION_PROVIDER,
+      )
+      expect(world.startedAs).toEqual([])
+    })
+
+    it('removes the new identity if its conversation reservation cannot be kept', () => {
+      const host = world.aHost()
+      world.writesFail = 'reserved'
+      expect(() =>
+        host.createAgent({
+          slug: 'fetcher',
+          displayName: null,
+          provider: 'claude',
+          asAService: true,
+        }),
+      ).toThrow('the disk is full')
+      expect(world.store.agentIdentities().some((one) => one.slug === 'fetcher')).toBe(false)
+      expect(world.conversationsRecorded()).toBe(0)
+      expect(world.startedAs).toEqual([])
+    })
+
+    it('removes the identity after its service conversation row fails to record', () => {
+      const store = new Proxy(world.store, {
+        get(target, key) {
+          if (key === 'create') {
+            return (record: Parameters<SessionStore['create']>[0]) => {
+              if (record.service === true) throw new Error('service row failed')
+              return target.create(record)
+            }
+          }
+          const value: unknown = Reflect.get(target, key)
+          return typeof value === 'function' ? value.bind(target) : value
+        },
+      })
+      const host = world.aHost({ store })
+      expect(() =>
+        host.createAgent({
+          slug: 'fetcher',
+          displayName: null,
+          provider: 'claude',
+          asAService: true,
+        }),
+      ).toThrow('service row failed')
+      expect(world.store.agentIdentities().some((one) => one.slug === 'fetcher')).toBe(false)
+      expect(world.conversationsRecorded()).toBe(0)
+      expect(world.startedAs).toEqual([])
+    })
+
+    it('recovers the same recorded conversation after the final binding write fails', async () => {
+      const host = world.aHost()
+      world.writesFail = 'serviceConversation'
+      const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const created = host.createAgent({
+        slug: 'fetcher',
+        displayName: null,
+        provider: 'claude',
+        asAService: true,
+      })
+      const conversation = world.store
+        .servicesBorn()
+        .find((one) => one.identity === created.id)?.conversation
+      expect(conversation).toBeTypeOf('string')
+      expect(world.kept(created.id)?.reserved).toBe(conversation)
+      world.writesFail = 'none'
+      await host.closeAll()
+      const next = world.aHost()
+      expect(world.kept(created.id)?.serviceConversation).toBe(conversation)
+      expect(next.profileKindOf('fetcher')).toBe('service')
+      expect(world.conversationsRecorded()).toBe(1)
+      expect(world.startedAs).toEqual([])
+      warning.mockRestore()
     })
   })
 

@@ -210,8 +210,9 @@ const toolInputVocabulary = <const Members extends readonly [string, ...string[]
 
 // The kind of agent create_agent makes: one with separate workers, or a service.
 const AGENT_KIND_INPUT = toolInputVocabulary(['normal', 'service'] as const, {
-  normal: "'normal', the default: separate workers for each caller.",
-  service: "'service': one conversation. Work runs one piece at a time.",
+  normal: '\'normal\' has a conversation per job, started by give_work with to: "new".',
+  service:
+    "'service' has one top-level conversation shared by the whole workspace, recorded when the agent is created. Give it work or ask it by profile name; leave to out of give_work. It takes one request at a time, in order.",
 })
 
 // Zod exposes `.options` as an array even though `z.enum` proves it non-empty at construction.
