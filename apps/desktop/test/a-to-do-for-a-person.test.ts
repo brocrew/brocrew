@@ -345,17 +345,21 @@ describe('a to-do for a person', () => {
     expect(recorded).not.toHaveProperty('parent')
     expect(route(id)).toMatchObject({ went: { to: 'a-person' }, parent: null, state: 'open' })
     expect(queued()).toContain(id)
-    const proxy = await call(agentToolsFor(host, brobot), 'answer_question', {
+    const answer = agentToolsFor(host, brobot).tools.find((one) => one.name === 'answer_question')
+    if (answer === undefined) throw new Error('the giver has no answer tool')
+    const proxy = await answer.call({
       question: id,
       asked_by: ada,
       answers: [{ part: 'answer', answer: ['Done'] }],
     })
-    expect(proxy).toMatchObject({
+    const refusal = {
       outcome: 'refused',
       rail: 'person-addressed-request',
       reason:
         'Not answered: only the person can answer this request. If you asked it and no longer need it, withdraw it.',
-    })
+    }
+    expect(proxy.structured).toMatchObject(refusal)
+    expect(proxy.text).toBe(refusal.reason)
     expect(route(id)?.state).toBe('open')
     expect(queued()).toContain(id)
 
