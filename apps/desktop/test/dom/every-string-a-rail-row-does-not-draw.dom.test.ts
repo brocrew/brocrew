@@ -1,7 +1,8 @@
 // The approved plain words replace the former labels; the state and gesture checks remain.
-import { afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
+import { AGENT_DISPLAY_NAME_CHARS } from '../../src/shared/runtime-ipc'
 import {
   acceptEvent,
   createSessionRecord,
@@ -28,11 +29,15 @@ import {
  * full text; a repaired cut must leave the roster. The rhythm suite checks the wide breakpoint.
  */
 const WIDE_RAIL_W = 266.2
-const ON_WINDOWS = /^win/i.test(navigator.platform)
 
 /* ------------------------------------------------------------------ the fixture */
 
 const NOW = 1_700_000_000_000
+const DRAWN_AT = NOW + 1102 * 86_400_000
+
+beforeEach(() => {
+  vi.spyOn(Date, 'now').mockReturnValue(DRAWN_AT)
+})
 
 const conversation = (id: string, where: string, said: string | null): unknown => {
   const record = createSessionRecord(id)
@@ -57,10 +62,10 @@ const conversation = (id: string, where: string, said: string | null): unknown =
   return record
 }
 
-const identity = (slug: string): unknown => ({
+const identity = (slug: string, displayName: string | null = null): unknown => ({
   id: `agp:default:${slug}`,
   slug,
-  displayName: null,
+  displayName,
   createdAt: NOW,
   provider: null,
   externalMcpServerIds: [],
@@ -108,7 +113,7 @@ const RECORDED = [
   },
 ]
 
-async function rail(width: number): Promise<Mounted> {
+async function rail(width: number, displayName: string | null = null): Promise<Mounted> {
   const stub = window as unknown as { api?: unknown }
   stub.api = {
     runtime: {
@@ -117,7 +122,7 @@ async function rail(width: number): Promise<Mounted> {
     },
   }
   const agents = {
-    identities: [identity('default'), identity('project-manager'), identity('worker')],
+    identities: [identity('default', displayName), identity('project-manager'), identity('worker')],
     foldersWithoutARow: [],
     use: [],
     defaultApprovalMode: 'ask',
@@ -148,6 +153,7 @@ async function rail(width: number): Promise<Mounted> {
 
 afterEach(() => {
   unmountAll()
+  vi.restoreAllMocks()
 })
 
 /* ------------------------------------------------------------------ the sweep */
@@ -162,6 +168,7 @@ interface Cut {
   /** Why this one is allowed to be short, or who owns the repair. */
   readonly because: string
   readonly widths?: readonly number[]
+  readonly mayFit?: boolean
 }
 
 /**
@@ -170,10 +177,16 @@ interface Cut {
  */
 const SHORTENED_ON_PURPOSE: readonly Cut[] = [
   {
+    cy: 'rail-profile-sess_named',
+    starts: 'default',
+    mayFit: true,
+    because: 'The profile name owns its ellipsis while the full standing remains on hover.',
+  },
+  {
     cy: 'open-session-sess_named',
     starts: /^\d+d ago$/,
-    widths: ON_WINDOWS ? [251.68] : undefined,
-    because: 'The activity on a crowded metadata line remains on hover.',
+    mayFit: true,
+    because: 'The activity has its own ellipsis and retains its full age and timestamp on hover.',
   },
   {
     cy: 'session-opening-sess_a',
@@ -181,19 +194,19 @@ const SHORTENED_ON_PURPOSE: readonly Cut[] = [
     because: 'The opening excerpt stays on one line, with its full excerpt on hover.',
   },
   {
-    cy: 'open-session-sess_long',
-    starts: 'codex · ',
+    cy: 'rail-place-sess_long',
+    starts: '· a-very-long-directory-name-that-will-not-fit',
     because: 'The long folder cannot expand the status line; the full text remains on hover.',
   },
   {
-    cy: 'open-session-sess_openable',
-    starts: 'claude · ',
-    because: 'The full status, other-window notice and folder remain on hover.',
+    cy: 'rail-place-sess_openable',
+    starts: '·',
+    because: 'The other-window notice and folder retain their full text on the standing hover.',
   },
   {
-    cy: 'open-session-sess_named',
-    starts: 'default · ',
-    because: 'The full agent, provider, status and folder remain on hover.',
+    cy: 'rail-place-sess_named',
+    starts: '· brobot-2',
+    because: 'The shortened folder remains on the standing hover.',
   },
 ]
 
@@ -407,10 +420,12 @@ describe('§1 · the roster, at both shipped widths', () => {
       expect(found.filter((c) => !declaredFor(c, width)).map(describeCarrier)).toEqual([])
     })
 
-    it(`⛔ ${width}px · and every declared cut is still cut, so the list cannot go quiet`, async () => {
+    it(`⛔ ${width}px · and every required cut is still cut, so the list cannot go quiet`, async () => {
       const m = await rail(width)
       const found = sweep(m.host).filter((c) => c.cut !== null)
-      const missing = CUTS.filter((d) => appliesAt(d, width) && !found.some((c) => matches(c, d)))
+      const missing = CUTS.filter(
+        (d) => !d.mayFit && appliesAt(d, width) && !found.some((c) => matches(c, d)),
+      )
       for (const declared of CUTS.filter((d) => !appliesAt(d, width))) {
         const carrier = sweep(m.host).find((c) => matches(c, declared))
         expect(carrier, 'the previously shortened status is missing').toBeDefined()
@@ -437,13 +452,49 @@ describe('§1 · the roster, at both shipped widths', () => {
     })
   }
 
-  it('266.2px · draws the named row’s full activity age on Windows', async (ctx) => {
-    ctx.skip(!ON_WINDOWS)
-    const m = await rail(WIDE_RAIL_W)
-    const activity = m.q('open-session-sess_named').querySelector<HTMLElement>('time')!
-    expect(activity.textContent?.trim()).toMatch(/^\d+d ago$/)
-    assertDrawn(activity, 'the named row’s activity age is drawn in full')
-  })
+  it.each([251.68, WIDE_RAIL_W])(
+    '%spx · bounds the activity age and owns its ellipsis',
+    async (width) => {
+      const m = await rail(width)
+      const activity = m.q('open-session-sess_named').querySelector<HTMLElement>('time')!
+      const standing = activity.closest('small')!
+      const ageBox = activity.getBoundingClientRect()
+      const lineBox = standing.getBoundingClientRect()
+      expect(activity.textContent?.trim()).toBe('1102d ago')
+      expect(ageBox.width).toBeGreaterThan(Number.parseFloat(getComputedStyle(activity).fontSize))
+      expect(ageBox.left).toBeGreaterThanOrEqual(lineBox.left)
+      expect(ageBox.right).toBeLessThanOrEqual(lineBox.right + 0.01)
+      expect(cutsOf(activity).every(({ by }) => by === activity)).toBe(true)
+      expect(getComputedStyle(activity).overflowX).toBe('hidden')
+      expect(getComputedStyle(activity).textOverflow).toBe('ellipsis')
+      expect(titleRecovers(activity)).toBe(true)
+    },
+  )
+
+  it.each([251.68, WIDE_RAIL_W])(
+    '%spx · preserves visible age beside a maximum-length profile name',
+    async (width) => {
+      const name = 'Project manager '.repeat(14).slice(0, AGENT_DISPLAY_NAME_CHARS)
+      expect(name).toHaveLength(AGENT_DISPLAY_NAME_CHARS)
+      const m = await rail(width, name)
+      const row = m.q('open-session-sess_named')
+      const prefix = row.querySelector<HTMLElement>('.rail-standing-prefix')!
+      const age = row.querySelector<HTMLElement>('time')!
+      const standing = age.closest('small')!
+      expect(prefix.textContent).toContain(name)
+      expect(getComputedStyle(prefix).textOverflow).toBe('ellipsis')
+      expect(titleRecovers(prefix)).toBe(true)
+      expect(age.textContent?.trim()).toBe('1102d ago')
+      expect(age.getBoundingClientRect().width).toBeGreaterThan(
+        Number.parseFloat(getComputedStyle(age).fontSize),
+      )
+      expect(age.getBoundingClientRect().right).toBeLessThanOrEqual(
+        standing.getBoundingClientRect().right + 0.01,
+      )
+      expect(cutsOf(age).every(({ by }) => by === age)).toBe(true)
+      expect(titleRecovers(age)).toBe(true)
+    },
+  )
 
   it.each([251.68, WIDE_RAIL_W])(
     '%spx · wraps the long title without losing any of it',
